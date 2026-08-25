@@ -1,7 +1,7 @@
 'use strict';
 const pino = require('pino');
 
-function createLogger({ level = 'info', env = 'development' } = {}) {
+function createLogger({ level = 'info', env = 'development', destination } = {}) {
   const options = {
     level,
     redact: {
@@ -29,7 +29,7 @@ function createLogger({ level = 'info', env = 'development' } = {}) {
     options.transport = { target: 'pino-pretty', options: { colorize: true } };
   }
 
-  return pino(options);
+  return pino(options, destination);
 }
 
 module.exports = { createLogger };

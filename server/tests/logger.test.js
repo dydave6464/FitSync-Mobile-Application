@@ -1,8 +1,8 @@
 'use strict';
 const test = require('node:test');
 const assert = require('node:assert/strict');
-const pino = require('pino');
 const { Writable } = require('node:stream');
+const { createLogger } = require('../src/lib/logger');
 
 test('redacts sensitive fields at multiple nesting levels', () => {
   let capturedOutput = '';
@@ -14,29 +14,8 @@ test('redacts sensitive fields at multiple nesting levels', () => {
     },
   });
 
-  // Create logger with redaction paths, using production env to avoid pino-pretty
-  const logger = pino({
-    level: 'info',
-    redact: {
-      paths: [
-        'req.headers.authorization',
-        'req.headers.cookie',
-        'password',
-        '*.password',
-        '*.*.password',
-        'req.body.password',
-        'password_hash',
-        '*.password_hash',
-        '*.*.password_hash',
-        'req.body.password_hash',
-        'token',
-        '*.token',
-        '*.*.token',
-        'req.body.token',
-      ],
-      censor: '[REDACTED]',
-    },
-  }, destination);
+  // Create logger via createLogger, using production env to avoid pino-pretty
+  const logger = createLogger({ level: 'info', env: 'production', destination });
 
   logger.info({
     password: 'secret123',
