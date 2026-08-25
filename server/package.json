@@ -4,7 +4,7 @@
   "description": "FitSync REST API",
   "main": "server.js",
   "scripts": {
-    "test": "node --test 'tests/**/*.test.js'",
+    "test": "node --test --test-concurrency=1 'tests/**/*.test.js'",
     "start": "node server.js",
     "dev": "node --watch server.js",
     "migrate": "node scripts/migrate.js"
