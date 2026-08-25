@@ -14,11 +14,16 @@ async function dropAllTables(pool) {
   );
   if (rows.length === 0) return;
 
-  await pool.query('SET FOREIGN_KEY_CHECKS = 0');
-  for (const row of rows) {
-    await pool.query(`DROP TABLE IF EXISTS \`${row.t}\``);
+  const conn = await pool.getConnection();
+  try {
+    await conn.query('SET FOREIGN_KEY_CHECKS = 0');
+    for (const row of rows) {
+      await conn.query(`DROP TABLE IF EXISTS \`${row.t}\``);
+    }
+  } finally {
+    await conn.query('SET FOREIGN_KEY_CHECKS = 1').catch(() => {});
+    conn.release();
   }
-  await pool.query('SET FOREIGN_KEY_CHECKS = 1');
 }
 
 async function tableNames(pool) {

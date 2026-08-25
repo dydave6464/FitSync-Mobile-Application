@@ -26,6 +26,9 @@ test('pool reports utf8mb4 so Filipino text is storable', async () => {
 
 test('pool surfaces connection failures rather than hanging', async () => {
   const pool = createPool({ ...testDbConfig(), database: 'definitely_not_a_database' });
-  await assert.rejects(() => pool.query('SELECT 1'));
-  await pool.end();
+  try {
+    await assert.rejects(() => pool.query('SELECT 1'));
+  } finally {
+    await pool.end();
+  }
 });
