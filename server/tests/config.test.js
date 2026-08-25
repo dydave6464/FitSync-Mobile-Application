@@ -44,3 +44,10 @@ test('load coerces numeric env values to numbers', () => {
 test('REQUIRED lists exactly the five database keys', () => {
   assert.deepEqual(REQUIRED, ['DB_HOST', 'DB_PORT', 'DB_USER', 'DB_PASSWORD', 'DB_NAME']);
 });
+
+test('load rejects a required key that is present but empty', () => {
+  assert.throws(
+    () => load({ ...validEnv, DB_PASSWORD: '' }),
+    /DB_PASSWORD/,
+  );
+});
