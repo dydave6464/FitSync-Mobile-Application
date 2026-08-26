@@ -64,6 +64,46 @@ DB_NAME=fitsync_test npm run migrate
 
 See `MIGRATIONS.md` for the rules migration files follow and why.
 
+### Re-migrating from scratch
+
+While the project is pre-release, `MIGRATIONS.md` sanctions editing an
+already-applied migration file in place. The runner has no checksum, so it
+will not replay an edited file — it just reports "No pending migrations"
+while your database keeps the old shape. **Pulling a branch that edited a
+migration therefore means dropping every table and re-migrating.**
+
+The `.env` user holds `ALL PRIVILEGES` on its own schema but only `USAGE`
+globally, so drop the tables rather than the database. This is
+non-interactive and asks for no password — it reuses the credentials in
+`.env`, the same way `tests/helpers/test-db.js` does:
+
+```bash
+node -e "
+const { load } = require('./src/config');
+const mysql = require('mysql2/promise');
+(async () => {
+  const cfg = load().db;
+  const c = await mysql.createConnection(cfg);
+  const [rows] = await c.query(
+    'SELECT table_name AS t FROM information_schema.tables WHERE table_schema = ?',
+    [cfg.database],
+  );
+  await c.query('SET FOREIGN_KEY_CHECKS = 0');
+  for (const r of rows) {
+    await c.query('DROP TABLE IF EXISTS ' + mysql.escapeId(cfg.database) + '.' + mysql.escapeId(r.t));
+  }
+  await c.query('SET FOREIGN_KEY_CHECKS = 1');
+  console.log('dropped ' + rows.length + ' tables');
+  await c.end();
+})();
+"
+npm run migrate
+```
+
+This destroys every row in `DB_NAME`. Re-run `npm run seed` afterwards to
+restore the exercise catalogue. `npm test` migrates `<DB_NAME>_test` from
+scratch on every run, so the test database needs nothing done to it.
+
 ## Exercise catalogue
 
 The catalogue is seeded from [hasaneyldrm/exercises-dataset](https://github.com/hasaneyldrm/exercises-dataset),
@@ -83,6 +123,22 @@ Of the 1,324 exercises, 1,203 are seeded `live` and 121 `pending` — cardio
 machines and niche equipment, held back for an admin review pass. Equipment
 *availability* is a separate concern, handled by joining `user_equipment` at
 query time.
+
+**What a re-seed does and does not overwrite.** `status` is written on insert
+only. That protects an admin who promoted a pending exercise from having the
+decision undone by the next re-seed — but it cuts both ways: if you change the
+promotion rule in `src/db/seeds/normalize.js` and re-run `npm run seed:fetch`,
+the manifest will show the new `promote` values while `npm run seed` leaves
+the `status` of every existing row exactly as it was, and still reports
+success. Re-applying a changed rule to the existing catalogue needs an
+explicit `UPDATE`. Coaching cues behave the opposite way — they are deleted
+and re-inserted wholesale on every re-seed, so upstream edits do land and
+hand-edited cue text does not survive.
+
+If `npm run seed` fails with `ER_BAD_FIELD_ERROR: Unknown column 'source_id'`,
+the database predates this branch's schema change. The migration runner will
+not replay an edited file, so drop the tables and re-migrate (see
+[Re-migrating from scratch](#re-migrating-from-scratch)), then seed again.
 
 **Media licensing:** the exercise data is MIT, but the animations and
 thumbnails are © Gym visual, may only be shown at 180x180, and must carry the

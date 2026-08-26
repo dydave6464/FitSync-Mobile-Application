@@ -9,6 +9,16 @@ const UPSERT_EQUIPMENT = `
 
 // status is intentionally absent from the update list. An admin who promotes a
 // pending exercise must not have that decision reverted by the next re-seed.
+//
+// The corollary is that status is insert-only, and it is a trap worth naming.
+// Change the promotion rule — add an entry to NICHE_EQUIPMENT, say — and
+// re-run `npm run seed:fetch`, and the manifest diff will correctly show
+// exercises flipping to `promote: false`. This upsert will not apply that to
+// rows that already exist, and will report success anyway, leaving the
+// manifest and the database quietly disagreeing. Applying a changed promotion
+// rule to the existing catalogue takes a deliberate UPDATE pass; a re-seed
+// alone will never do it. (Cues are the opposite: deleted and re-inserted
+// wholesale below, so upstream changes to them do land on every re-seed.)
 const UPSERT_EXERCISE = `
   INSERT INTO exercises
     (source_id, name, muscle_group, equipment_id, animation_url, thumbnail_url, status)
