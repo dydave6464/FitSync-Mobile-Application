@@ -7,7 +7,7 @@ const notFound = require('./middleware/not-found');
 const errorHandler = require('./middleware/error-handler');
 const buildRoutes = require('./routes');
 
-function createApp({ config, logger, pool, extraRouter = null }) {
+function createApp({ config, logger, pool, ml = null, storage = null, extraRouter = null }) {
   const app = express();
 
   app.disable('x-powered-by');
@@ -16,7 +16,12 @@ function createApp({ config, logger, pool, extraRouter = null }) {
   app.use(express.json({ limit: '1mb' }));
   app.use(requestId);
 
-  app.use('/api/v1', buildRoutes({ config, logger, pool, extraRouter }));
+  app.use((req, _res, next) => {
+    req.services = { pool, ml, storage, logger, config };
+    next();
+  });
+
+  app.use('/api/v1', buildRoutes({ config, logger, pool, ml, storage, extraRouter }));
 
   app.use(notFound);
   app.use(errorHandler(logger));
