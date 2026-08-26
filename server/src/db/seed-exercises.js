@@ -53,11 +53,23 @@ async function seedExercises(dbConfig, manifest, { logger = null } = {}) {
         continue;
       }
 
+      const equipmentId = equipmentIds.get(exercise.equipment);
+      if (equipmentId === undefined) {
+        // equipment_id is nullable, so MySQL would silently accept a NULL
+        // here. Fail loudly instead: this only happens when the manifest's
+        // exact spelling doesn't match what survived the equipment upsert
+        // (e.g. a collation collision between two differently-cased names),
+        // and a silently unequipped exercise is worse than a stopped seed.
+        throw new Error(
+          `Cannot resolve equipment "${exercise.equipment}" for exercise ${exercise.source_id}`,
+        );
+      }
+
       await connection.query(UPSERT_EXERCISE, [
         exercise.source_id,
         exercise.name,
         exercise.muscle_group,
-        equipmentIds.get(exercise.equipment) ?? null,
+        equipmentId,
         exercise.animation_url,
         exercise.thumbnail_url,
         exercise.promote ? 'live' : 'pending',
@@ -87,10 +99,24 @@ async function seedExercises(dbConfig, manifest, { logger = null } = {}) {
       logger.info(`seeded ${summary.exercises} exercises, ${summary.cues} cues`);
     }
   } catch (err) {
-    await connection.rollback();
+    // If the connection itself is what failed (e.g. the server went away
+    // mid-seed), rollback() rejects too — swallow that so the real cause
+    // below still reaches the caller instead of being replaced by it.
+    try {
+      await connection.rollback();
+    } catch {
+      // Connection already gone; nothing left to roll back.
+    }
     throw err;
   } finally {
-    await connection.end();
+    // A rejecting end() would otherwise override a thrown error above, or —
+    // on the success path — turn a committed seed into a rejected promise.
+    // Fall back to a forced close so the socket doesn't leak either way.
+    try {
+      await connection.end();
+    } catch {
+      connection.destroy();
+    }
   }
 
   return summary;

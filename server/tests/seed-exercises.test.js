@@ -162,11 +162,67 @@ test('exercise catalogue seed', async (t) => {
     // three have already been inserted.
     broken.exercises[3].muscle_group = null;
 
-    await assert.rejects(() => seedExercises(testDbConfig(), broken));
+    // The matcher matters here: a bare assert.rejects() passes whether the
+    // real cause survives the rollback/end path or gets replaced by a
+    // connection error, so it cannot prove the catch/finally block preserves
+    // the original error.
+    await assert.rejects(
+      () => seedExercises(testDbConfig(), broken),
+      /muscle_group/,
+      'the original constraint violation must reach the caller, not be masked by a rollback or connection error',
+    );
 
     const [ex] = await pool.query('SELECT COUNT(*) AS n FROM exercises');
     assert.equal(ex[0].n, 0, 'no exercise may survive a failed seed');
     const [cues] = await pool.query('SELECT COUNT(*) AS n FROM coaching_cues');
     assert.equal(cues[0].n, 0, 'no cue may survive a failed seed');
+  });
+
+  await t.test('equipment names that collide under the case-insensitive collation are rejected, not silently dropped', async () => {
+    await reset();
+    // "Body Weight" and "body weight" are distinct JS strings but the same
+    // row under utf8mb4_unicode_ci: the second upsert overwrites the row's
+    // stored name, so the in-memory map (keyed by exact JS string) loses
+    // whichever spelling did not win. That must fail loudly — equipment_id is
+    // nullable, so a silent miss would otherwise insert with no equipment.
+    const colliding = {
+      exercises: [
+        {
+          source_id: '9001',
+          name: 'Test Push-up',
+          muscle_group: 'chest',
+          equipment: 'Body Weight',
+          animation_url: 'exercises/9001/animation.gif',
+          thumbnail_url: 'exercises/9001/thumb.jpg',
+          promote: true,
+          cues: ['Push up.'],
+        },
+        {
+          source_id: '9002',
+          name: 'Test Sit-up',
+          muscle_group: 'abs',
+          equipment: 'body weight',
+          animation_url: 'exercises/9002/animation.gif',
+          thumbnail_url: 'exercises/9002/thumb.jpg',
+          promote: true,
+          cues: ['Sit up.'],
+        },
+      ],
+    };
+
+    await assert.rejects(
+      () => seedExercises(testDbConfig(), colliding),
+      (err) => {
+        assert.match(err.message, /Body Weight/);
+        assert.match(err.message, /9001/);
+        return true;
+      },
+      'the error must name the unresolved equipment and the exercise it belongs to',
+    );
+
+    const [ex] = await pool.query('SELECT COUNT(*) AS n FROM exercises');
+    assert.equal(ex[0].n, 0, 'no exercise may survive an unresolved equipment reference');
+    const [eq] = await pool.query('SELECT COUNT(*) AS n FROM equipment');
+    assert.equal(eq[0].n, 0, 'the equipment insert must roll back too');
   });
 });
