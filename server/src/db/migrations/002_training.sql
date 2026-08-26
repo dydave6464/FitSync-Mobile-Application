@@ -1,14 +1,17 @@
 CREATE TABLE IF NOT EXISTS exercises (
   exercise_id   INT AUTO_INCREMENT PRIMARY KEY,
+  source_id     VARCHAR(16) NULL,
   name          VARCHAR(255) NOT NULL,
   muscle_group  VARCHAR(255) NOT NULL,
   equipment_id  INT NULL,
   animation_url VARCHAR(255) NULL,
+  thumbnail_url VARCHAR(255) NULL,
   status        ENUM('pending','live') NOT NULL DEFAULT 'pending',
   reviewed_by   INT NULL,
   created_at    TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
   CONSTRAINT fk_exercises_equipment FOREIGN KEY (equipment_id) REFERENCES equipment(equipment_id) ON DELETE RESTRICT,
   CONSTRAINT fk_exercises_reviewer FOREIGN KEY (reviewed_by) REFERENCES admins(admin_id) ON DELETE SET NULL,
+  UNIQUE KEY uq_exercises_source (source_id),
   INDEX idx_exercises_equipment (equipment_id),
   INDEX idx_exercises_reviewer (reviewed_by),
   INDEX idx_exercises_status (status)

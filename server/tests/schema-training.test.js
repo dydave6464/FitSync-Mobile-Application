@@ -39,10 +39,48 @@ test('002 training schema', async (t) => {
     const [res] = await pool.query(
       "INSERT INTO exercises (name, muscle_group) VALUES ('Squat', 'legs')",
     );
-    const [rows] = await pool.query('SELECT status, reviewed_by, animation_url FROM exercises WHERE exercise_id = ?', [res.insertId]);
+    const [rows] = await pool.query(
+      'SELECT status, reviewed_by, animation_url, thumbnail_url, source_id FROM exercises WHERE exercise_id = ?',
+      [res.insertId],
+    );
     assert.equal(rows[0].status, 'pending');
     assert.equal(rows[0].reviewed_by, null);
     assert.equal(rows[0].animation_url, null);
+    assert.equal(rows[0].thumbnail_url, null);
+    assert.equal(rows[0].source_id, null, 'a hand-added exercise has no upstream id');
+  });
+
+  await t.test('source_id is unique, but many hand-added exercises may have none', async () => {
+    await pool.query(
+      "INSERT INTO exercises (source_id, name, muscle_group) VALUES ('0001', 'Seeded A', 'abs')",
+    );
+    await assert.rejects(
+      () => pool.query(
+        "INSERT INTO exercises (source_id, name, muscle_group) VALUES ('0001', 'Seeded B', 'abs')",
+      ),
+      (err) => {
+        assert.equal(err.code, 'ER_DUP_ENTRY');
+        return true;
+      },
+    );
+
+    // NULL source_id must not collide with itself, or hand-added exercises
+    // would be limited to a single row.
+    await pool.query("INSERT INTO exercises (name, muscle_group) VALUES ('Manual A', 'abs')");
+    await pool.query("INSERT INTO exercises (name, muscle_group) VALUES ('Manual B', 'abs')");
+  });
+
+  await t.test('two exercises may share a name — the dataset has 6 such pairs', async () => {
+    await pool.query(
+      "INSERT INTO exercises (source_id, name, muscle_group) VALUES ('9001', 'Shared Name', 'abs')",
+    );
+    await pool.query(
+      "INSERT INTO exercises (source_id, name, muscle_group) VALUES ('9002', 'Shared Name', 'abs')",
+    );
+    const [rows] = await pool.query(
+      "SELECT COUNT(*) AS n FROM exercises WHERE name = 'Shared Name'",
+    );
+    assert.equal(rows[0].n, 2);
   });
 
   await t.test('the same exercise may appear twice in one plan', async () => {
