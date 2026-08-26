@@ -14,9 +14,9 @@ function createApp({ config, logger, pool, ml = null, storage = null, extraRoute
   app.disable('x-powered-by');
   app.use(helmet());
   app.use(cors());
-  app.use(express.json({ limit: '1mb' }));
   app.use(requestId);
   app.use(pinoHttp({ logger, genReqId: (req) => req.id }));
+  app.use(express.json({ limit: '1mb' }));
 
   app.use((req, _res, next) => {
     req.services = {
