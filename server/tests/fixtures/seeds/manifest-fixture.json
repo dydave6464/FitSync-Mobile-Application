@@ -1,0 +1,60 @@
+{
+  "source": {
+    "repo": "hasaneyldrm/exercises-dataset",
+    "commit": "7455efae41b330c265e7cd4b78dfa848e7ce5ebd",
+    "exercise_count": 5
+  },
+  "failures": [],
+  "exercises": [
+    {
+      "source_id": "0001",
+      "name": "3/4 sit-up",
+      "muscle_group": "abs",
+      "equipment": "body weight",
+      "animation_url": "exercises/0001/animation.gif",
+      "thumbnail_url": "exercises/0001/thumb.jpg",
+      "promote": true,
+      "cues": ["Lie flat on your back.", "Curl forward.", "Lower slowly."]
+    },
+    {
+      "source_id": "0002",
+      "name": "45 degree side bend",
+      "muscle_group": "abs",
+      "equipment": "body weight",
+      "animation_url": "exercises/0002/animation.gif",
+      "thumbnail_url": "exercises/0002/thumb.jpg",
+      "promote": true,
+      "cues": ["Stand upright.", "Bend sideways."]
+    },
+    {
+      "source_id": "0003",
+      "name": "Shared Name",
+      "muscle_group": "biceps",
+      "equipment": "dumbbell",
+      "animation_url": "exercises/0003/animation.gif",
+      "thumbnail_url": "exercises/0003/thumb.jpg",
+      "promote": true,
+      "cues": ["Curl up."]
+    },
+    {
+      "source_id": "0004",
+      "name": "Shared Name",
+      "muscle_group": "biceps",
+      "equipment": "barbell",
+      "animation_url": "exercises/0004/animation.gif",
+      "thumbnail_url": "exercises/0004/thumb.jpg",
+      "promote": true,
+      "cues": ["Curl up with a bar."]
+    },
+    {
+      "source_id": "0005",
+      "name": "Sled push",
+      "muscle_group": "quads",
+      "equipment": "sled machine",
+      "animation_url": "exercises/0005/animation.gif",
+      "thumbnail_url": "exercises/0005/thumb.jpg",
+      "promote": false,
+      "cues": ["Push the sled."]
+    }
+  ]
+}
