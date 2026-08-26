@@ -66,6 +66,27 @@ test('delete removes the file and is safe to repeat', async () => {
   }
 });
 
+test('a write interrupted after the bytes land but before it reaches the key leaves nothing readable there', async () => {
+  const { dir, storage } = tmpStorage();
+  const fsp = require('node:fs/promises');
+  const originalRename = fsp.rename;
+  fsp.rename = async () => {
+    throw new Error('simulated crash between write and rename');
+  };
+  try {
+    await assert.rejects(
+      () => storage.put('exercises/0001/animation.gif', Buffer.from('GIF89a')),
+      /simulated crash between write and rename/,
+    );
+    assert.equal(await storage.exists('exercises/0001/animation.gif'), false);
+    // No temp file left behind either — a resumed run must see a clean directory.
+    assert.deepEqual(fs.readdirSync(path.join(dir, 'exercises', '0001')), []);
+  } finally {
+    fsp.rename = originalRename;
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});
+
 test('rejects path traversal keys', async () => {
   const { dir, storage } = tmpStorage();
   try {
