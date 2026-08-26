@@ -64,6 +64,31 @@ DB_NAME=fitsync_test npm run migrate
 
 See `MIGRATIONS.md` for the rules migration files follow and why.
 
+## Exercise catalogue
+
+The catalogue is seeded from [hasaneyldrm/exercises-dataset](https://github.com/hasaneyldrm/exercises-dataset),
+pinned to commit `7455efae`. Two phases:
+
+```bash
+npm run seed:fetch   # downloads 1,324 animations + thumbnails into storage/, writes the manifest
+npm run seed         # upserts equipment, exercises and coaching_cues from the manifest
+```
+
+`seed:fetch` needs a network and takes several minutes; it is resumable and
+skips assets already in `storage/`. `seed` needs neither network nor the
+dataset — it reads only `src/db/seeds/exercises.json`, and runs in a single
+transaction, so a failure leaves the database untouched. Both are idempotent.
+
+Of the 1,324 exercises, 1,203 are seeded `live` and 121 `pending` — cardio
+machines and niche equipment, held back for an admin review pass. Equipment
+*availability* is a separate concern, handled by joining `user_equipment` at
+query time.
+
+**Media licensing:** the exercise data is MIT, but the animations and
+thumbnails are © Gym visual, may only be shown at 180x180, and must carry the
+credit `© Gym visual — https://gymvisual.com/` wherever they appear. See
+`NOTICE.md` in the dataset repository.
+
 ## Response envelope
 
 Every JSON response is one of exactly two shapes:
