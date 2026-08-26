@@ -14,7 +14,12 @@ function create(rootDir) {
   }
 
   return {
-    async put(key, buffer) {
+    // Storage interface: put(key, buffer, contentType). contentType is part
+    // of the boundary so an object-storage driver (S3, GCS) can set it at
+    // upload time without callers changing — those backends serve objects
+    // as application/octet-stream otherwise. The local disk driver has no
+    // place to store a MIME type, so it accepts and ignores the argument.
+    async put(key, buffer, _contentType) {
       const full = resolveKey(key);
       await fs.mkdir(path.dirname(full), { recursive: true });
       await fs.writeFile(full, buffer);

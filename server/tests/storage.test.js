@@ -22,6 +22,17 @@ test('round-trips a file', async () => {
   }
 });
 
+test('put accepts a contentType argument that the local driver ignores', async () => {
+  const { dir, storage } = tmpStorage();
+  try {
+    const key = await storage.put('exercises/squat.gif', Buffer.from('GIF89a'), 'image/gif');
+    assert.equal(key, 'exercises/squat.gif');
+    assert.equal((await storage.get('exercises/squat.gif')).toString(), 'GIF89a');
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});
+
 test('creates nested directories on write', async () => {
   const { dir, storage } = tmpStorage();
   try {
