@@ -87,6 +87,33 @@ test('a write interrupted after the bytes land but before it reaches the key lea
   }
 });
 
+test('a failing temp-file cleanup does not replace the real write failure', async () => {
+  const { dir, storage } = tmpStorage();
+  const fsp = require('node:fs/promises');
+  const originalRename = fsp.rename;
+  const originalRm = fsp.rm;
+  fsp.rename = async () => {
+    throw new Error('ENOSPC: no space left on device');
+  };
+  // `force: true` swallows ENOENT but not this: a locked or read-only temp
+  // file makes cleanup itself throw.
+  fsp.rm = async () => {
+    throw Object.assign(new Error('EPERM: operation not permitted'), { code: 'EPERM' });
+  };
+  try {
+    await assert.rejects(
+      () => storage.put('exercises/0001/animation.gif', Buffer.from('GIF89a')),
+      // The cause, not the cleanup — an operator debugging a failed fetch must
+      // see the disk filling up, not a permissions error on a temp file.
+      /ENOSPC/,
+    );
+  } finally {
+    fsp.rename = originalRename;
+    fsp.rm = originalRm;
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});
+
 test('rejects path traversal keys', async () => {
   const { dir, storage } = tmpStorage();
   try {

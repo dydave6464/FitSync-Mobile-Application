@@ -37,7 +37,16 @@ function create(rootDir) {
         await fs.writeFile(tempPath, buffer);
         await fs.rename(tempPath, full);
       } catch (err) {
-        await fs.rm(tempPath, { force: true });
+        // Best-effort cleanup. `force` swallows ENOENT but not EPERM, EACCES
+        // or EBUSY, and a rejecting rm here would replace the real write or
+        // rename failure with a misleading one. Same defect the seed's
+        // rollback path already guards against: never let cleanup overwrite
+        // the cause. A stranded temp file is the cheaper loss.
+        try {
+          await fs.rm(tempPath, { force: true });
+        } catch {
+          // Nothing more to do; the original error is the one that matters.
+        }
         throw err;
       }
       return key;
