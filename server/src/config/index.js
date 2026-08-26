@@ -3,6 +3,14 @@ require('dotenv').config({ quiet: true });
 
 const REQUIRED = ['DB_HOST', 'DB_PORT', 'DB_USER', 'DB_PASSWORD', 'DB_NAME'];
 
+function parsePositiveInteger(name, value) {
+  const n = Number(value);
+  if (!Number.isInteger(n) || n <= 0) {
+    throw new Error(`${name} must be a positive integer, got: ${value}`);
+  }
+  return n;
+}
+
 function load(env = process.env) {
   const missing = REQUIRED.filter((key) => !env[key]);
   if (missing.length > 0) {
@@ -11,11 +19,11 @@ function load(env = process.env) {
 
   return {
     env: env.NODE_ENV || 'development',
-    port: Number(env.PORT || 3000),
+    port: env.PORT ? parsePositiveInteger('PORT', env.PORT) : 3000,
     logLevel: env.LOG_LEVEL || 'info',
     db: {
       host: env.DB_HOST,
-      port: Number(env.DB_PORT),
+      port: parsePositiveInteger('DB_PORT', env.DB_PORT),
       user: env.DB_USER,
       password: env.DB_PASSWORD,
       database: env.DB_NAME,

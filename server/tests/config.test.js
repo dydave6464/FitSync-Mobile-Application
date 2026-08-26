@@ -51,3 +51,20 @@ test('load rejects a required key that is present but empty', () => {
     /DB_PASSWORD/,
   );
 });
+
+test('load rejects an unparseable PORT rather than binding a random port', () => {
+  assert.throws(() => load({ ...validEnv, PORT: 'abc' }), /PORT/);
+});
+
+test('load rejects an unparseable DB_PORT', () => {
+  assert.throws(() => load({ ...validEnv, DB_PORT: 'abc' }), /DB_PORT/);
+});
+
+test('load rejects a zero or negative PORT', () => {
+  assert.throws(() => load({ ...validEnv, PORT: '0' }), /PORT/);
+  assert.throws(() => load({ ...validEnv, PORT: '-1' }), /PORT/);
+});
+
+test('load rejects a non-integer PORT', () => {
+  assert.throws(() => load({ ...validEnv, PORT: '3000.5' }), /PORT/);
+});

@@ -6,6 +6,9 @@ function create(rootDir) {
   const root = path.resolve(rootDir);
 
   function resolveKey(key) {
+    if (key === '' || key === '.') {
+      throw new Error(`Invalid storage key: ${key}`);
+    }
     const full = path.resolve(root, key);
     if (full !== root && !full.startsWith(root + path.sep)) {
       throw new Error(`Invalid storage key: ${key}`);

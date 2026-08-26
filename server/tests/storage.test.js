@@ -76,6 +76,24 @@ test('rejects path traversal keys', async () => {
   }
 });
 
+test('rejects an empty-string key instead of resolving to the storage root', async () => {
+  const { dir, storage } = tmpStorage();
+  try {
+    await assert.rejects(() => storage.put('', Buffer.from('x')), /Invalid storage key/);
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test("rejects a '.' key instead of resolving to the storage root", async () => {
+  const { dir, storage } = tmpStorage();
+  try {
+    await assert.rejects(() => storage.put('.', Buffer.from('x')), /Invalid storage key/);
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});
+
 test('url returns a servable path', () => {
   const { dir, storage } = tmpStorage();
   try {
