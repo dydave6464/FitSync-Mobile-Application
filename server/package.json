@@ -7,7 +7,8 @@
     "test": "node --test --test-concurrency=1 'tests/**/*.test.js'",
     "start": "node server.js",
     "dev": "node --watch server.js",
-    "migrate": "node scripts/migrate.js"
+    "migrate": "node scripts/migrate.js",
+    "seed:fetch": "node scripts/fetch-exercises.js"
   },
   "keywords": [],
   "author": "",
