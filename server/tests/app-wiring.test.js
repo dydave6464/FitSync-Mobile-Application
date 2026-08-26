@@ -39,3 +39,21 @@ test('the app builds with no services supplied', async () => {
   const res = await request(app).get('/api/v1/health');
   assert.equal(res.status, 503);
 });
+
+test('req.services never exposes database credentials', async () => {
+  const probe = express.Router();
+  probe.get('/probe', (req, res) => {
+    res.json({ data: { services: JSON.parse(JSON.stringify(req.services)) } });
+  });
+  const app = createApp({
+    config: { env: 'test', db: { password: 'SUPER_SECRET_PW', user: 'dbuser' } },
+    logger: silentLogger(),
+    pool: null,
+    extraRouter: probe,
+  });
+  const res = await request(app).get('/api/v1/probe');
+  const body = JSON.stringify(res.body);
+  assert.doesNotMatch(body, /SUPER_SECRET_PW/);
+  assert.doesNotMatch(body, /dbuser/);
+  assert.equal(res.body.data.services.config.db, undefined);
+});

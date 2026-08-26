@@ -18,7 +18,10 @@ const server = app.listen(config.port, () => {
   logger.info(`FitSync API listening on port ${config.port} (${config.env})`);
 });
 
+let shuttingDown = false;
 function shutdown(signal) {
+  if (shuttingDown) return;
+  shuttingDown = true;
   logger.info(`${signal} received, shutting down`);
   server.close(() => {
     pool.end().finally(() => process.exit(0));

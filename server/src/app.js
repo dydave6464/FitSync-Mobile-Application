@@ -17,7 +17,21 @@ function createApp({ config, logger, pool, ml = null, storage = null, extraRoute
   app.use(requestId);
 
   app.use((req, _res, next) => {
-    req.services = { pool, ml, storage, logger, config };
+    req.services = {
+      pool,
+      ml,
+      storage,
+      logger,
+      config: config
+        ? {
+            env: config.env,
+            port: config.port,
+            logLevel: config.logLevel,
+            ml: config.ml ? { mode: config.ml.mode } : null,
+            storage: config.storage ? { mode: config.storage.mode } : null,
+          }
+        : null,
+    };
     next();
   });
 
