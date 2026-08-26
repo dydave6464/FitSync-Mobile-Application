@@ -7,7 +7,7 @@ CREATE TABLE IF NOT EXISTS activity_logs (
   distance_km     DECIMAL(6,2) NOT NULL DEFAULT 0,
   active_minutes  INT NOT NULL DEFAULT 0,
   CONSTRAINT fk_activity_logs_user FOREIGN KEY (user_id) REFERENCES users(user_id) ON DELETE CASCADE,
-  INDEX idx_activity_logs_user_date (user_id, log_date)
+  UNIQUE KEY uq_activity_logs_user_date (user_id, log_date)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 CREATE TABLE IF NOT EXISTS body_weight_logs (

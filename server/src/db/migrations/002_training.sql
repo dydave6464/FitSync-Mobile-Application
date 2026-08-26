@@ -74,6 +74,7 @@ CREATE TABLE IF NOT EXISTS set_logs (
   is_completed BOOLEAN NOT NULL DEFAULT FALSE,
   CONSTRAINT fk_set_logs_session FOREIGN KEY (session_id) REFERENCES workout_sessions(session_id) ON DELETE CASCADE,
   CONSTRAINT fk_set_logs_exercise FOREIGN KEY (exercise_id) REFERENCES exercises(exercise_id) ON DELETE RESTRICT,
+  UNIQUE KEY uq_set_logs_session_exercise_set (session_id, exercise_id, set_number),
   INDEX idx_set_logs_session (session_id),
   INDEX idx_set_logs_exercise (exercise_id)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;

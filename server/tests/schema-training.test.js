@@ -88,6 +88,26 @@ test('002 training schema', async (t) => {
     assert.equal(Number(rows[0].total_volume_kg), 18450.5);
   });
 
+  await t.test('a retried "log set" request cannot insert a duplicate set', async () => {
+    const { userId, exerciseId } = await seed();
+    const [s] = await pool.query(
+      "INSERT INTO workout_sessions (user_id, session_date) VALUES (?, '2026-08-25')",
+      [userId],
+    );
+    await pool.query(
+      'INSERT INTO set_logs (session_id, exercise_id, set_number, weight_kg, reps) VALUES (?, ?, 1, 60.00, 10)',
+      [s.insertId, exerciseId],
+    );
+    await assert.rejects(
+      () =>
+        pool.query(
+          'INSERT INTO set_logs (session_id, exercise_id, set_number, weight_kg, reps) VALUES (?, ?, 1, 60.00, 10)',
+          [s.insertId, exerciseId],
+        ),
+      (err) => err.code === 'ER_DUP_ENTRY',
+    );
+  });
+
   await t.test('coaching cues cascade when their exercise is removed', async () => {
     const { exerciseId } = await seed();
     await pool.query(

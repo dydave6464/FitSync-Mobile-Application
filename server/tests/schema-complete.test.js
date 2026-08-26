@@ -66,6 +66,24 @@ test('complete FitSync schema', async (t) => {
     );
   });
 
+  await t.test('activity_logs rejects a second row for the same user and date', async () => {
+    const [u] = await pool.query(
+      "INSERT INTO users (email, password_hash, full_name) VALUES ('sync@b.com', 'x', 'Sync')",
+    );
+    await pool.query(
+      "INSERT INTO activity_logs (user_id, log_date, steps) VALUES (?, '2026-08-25', 4000)",
+      [u.insertId],
+    );
+    await assert.rejects(
+      () =>
+        pool.query(
+          "INSERT INTO activity_logs (user_id, log_date, steps) VALUES (?, '2026-08-25', 6000)",
+          [u.insertId],
+        ),
+      (err) => err.code === 'ER_DUP_ENTRY',
+    );
+  });
+
   await t.test('muscle balance defaults off — it is a premium section (C-10)', async () => {
     const [u] = await pool.query(
       "INSERT INTO users (email, password_hash, full_name) VALUES ('rep@b.com', 'x', 'R')",
