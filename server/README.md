@@ -140,10 +140,7 @@ the database predates this branch's schema change. The migration runner will
 not replay an edited file, so drop the tables and re-migrate (see
 [Re-migrating from scratch](#re-migrating-from-scratch)), then seed again.
 
-**Media licensing:** the exercise data is MIT, but the animations and
-thumbnails are © Gym visual, may only be shown at 180x180, and must carry the
-credit `© Gym visual — https://gymvisual.com/` wherever they appear. See
-`NOTICE.md` in the dataset repository.
+**Licensing:** see [`THIRD_PARTY_LICENSES.md`](../THIRD_PARTY_LICENSES.md).
 
 ## Response envelope
 
