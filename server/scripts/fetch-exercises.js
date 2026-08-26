@@ -16,15 +16,37 @@ const RETRIES = 3;
 const TIMEOUT_MS = 30000;
 const MANIFEST = path.join(__dirname, '..', 'src', 'db', 'seeds', 'exercises.json');
 
-async function download(url, attempt = 1) {
+// The only two shapes a media path takes in the dataset: one directory, one
+// filename. Checked before interpolation because URL normalisation collapses
+// `..` — a crafted path would otherwise walk out of the pinned-commit prefix
+// and pull bytes from a mutable branch, which is the exact thing the pin
+// exists to prevent. The leading character must be alphanumeric, so a
+// dot-segment cannot pass as a filename either.
+const ASSET_PATH = /^(?:videos|images)\/[A-Za-z0-9][A-Za-z0-9._-]*$/;
+
+function assetUrl(sourcePath) {
+  if (typeof sourcePath !== 'string' || !ASSET_PATH.test(sourcePath) || sourcePath.includes('..')) {
+    throw new Error(`Refusing dataset path outside the pinned tree: ${sourcePath}`);
+  }
+  return `${RAW}/${sourcePath}`;
+}
+
+const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+
+// `fetch` and `storage` arrive as dependencies rather than being reached for
+// on the global / built inside, so the whole pipeline is testable without a
+// network. Same shape as src/services/ml/http-client.js.
+async function download(deps, url, attempt = 1) {
   try {
-    const response = await fetch(url, { signal: AbortSignal.timeout(TIMEOUT_MS) });
+    const response = await deps.fetch(url, { signal: AbortSignal.timeout(TIMEOUT_MS) });
     if (!response.ok) throw new Error(`${url} responded ${response.status}`);
     return Buffer.from(await response.arrayBuffer());
   } catch (err) {
     if (attempt >= RETRIES) throw err;
-    await new Promise((resolve) => setTimeout(resolve, 2 ** attempt * 500));
-    return download(url, attempt + 1);
+    // Injectable only so a test can exercise the retry loop without sitting
+    // out the real backoff; the CLI always gets the real one.
+    await (deps.sleep || sleep)(2 ** attempt * 500);
+    return download(deps, url, attempt + 1);
   }
 }
 
@@ -45,7 +67,7 @@ async function mapWithConcurrency(items, limit, worker) {
   return results;
 }
 
-async function fetchOne(storage, record) {
+async function fetchOne(deps, record) {
   const normalized = normalizeRecord(record);
   const failures = [];
 
@@ -55,12 +77,12 @@ async function fetchOne(storage, record) {
   ];
 
   for (const [field, sourcePath, key, isValid, contentType] of assets) {
-    if (await storage.exists(key)) continue;
+    if (await deps.storage.exists(key)) continue;
     try {
-      const buffer = await download(`${RAW}/${sourcePath}`);
+      const buffer = await download(deps, assetUrl(sourcePath));
       // Validate before writing: a rate-limit page is a 200 with bytes in it.
       if (!isValid(buffer)) throw new Error(`${sourcePath} is not valid ${contentType}`);
-      await storage.put(key, buffer, contentType);
+      await deps.storage.put(key, buffer, contentType);
     } catch (err) {
       normalized[field] = null;
       failures.push({ source_id: record.id, field, reason: err.message });
@@ -70,32 +92,48 @@ async function fetchOne(storage, record) {
   return { normalized, failures };
 }
 
-async function main() {
-  const storage = createStorage(load().storage);
+async function buildManifest(deps) {
+  const log = deps.log || (() => {});
 
-  process.stdout.write(`Fetching dataset at ${COMMIT.slice(0, 8)}...\n`);
-  const dataset = JSON.parse((await download(`${RAW}/data/exercises.json`)).toString('utf8'));
-  process.stdout.write(`${dataset.length} exercises. Downloading media...\n`);
+  log(`Fetching dataset at ${COMMIT.slice(0, 8)}...\n`);
+  const dataset = JSON.parse((await download(deps, `${RAW}/data/exercises.json`)).toString('utf8'));
+  log(`${dataset.length} exercises. Downloading media...\n`);
 
   let done = 0;
   const results = await mapWithConcurrency(dataset, CONCURRENCY, async (record) => {
-    const result = await fetchOne(storage, record);
+    const result = await fetchOne(deps, record);
     done += 1;
-    if (done % 100 === 0) process.stdout.write(`  ${done}/${dataset.length}\n`);
+    if (done % 100 === 0) log(`  ${done}/${dataset.length}\n`);
     return result;
   });
 
-  const manifest = {
+  return {
     source: { repo: REPO, commit: COMMIT, exercise_count: dataset.length },
     failures: results.flatMap((r) => r.failures),
     exercises: results.map((r) => r.normalized),
   };
+}
 
-  await fs.mkdir(path.dirname(MANIFEST), { recursive: true });
-  await fs.writeFile(MANIFEST, `${JSON.stringify(manifest, null, 2)}\n`);
+// Returns the exit code instead of calling process.exit itself, so the
+// failure path is reachable from a test. The CLI below exits only on a
+// non-zero return; the success path still ends the process naturally.
+async function main(overrides = {}) {
+  const deps = {
+    fetch: overrides.fetch || globalThis.fetch,
+    storage: overrides.storage || createStorage(load().storage),
+    sleep: overrides.sleep,
+    log: overrides.log || ((text) => process.stdout.write(text)),
+  };
+  const logError = overrides.logError || ((text) => process.stderr.write(text));
+  const manifestPath = overrides.manifestPath || MANIFEST;
+
+  const manifest = await buildManifest(deps);
+
+  await fs.mkdir(path.dirname(manifestPath), { recursive: true });
+  await fs.writeFile(manifestPath, `${JSON.stringify(manifest, null, 2)}\n`);
 
   const promoted = manifest.exercises.filter((e) => e.promote).length;
-  process.stdout.write(
+  deps.log(
     `Wrote ${manifest.exercises.length} exercises `
       + `(${promoted} live, ${manifest.exercises.length - promoted} pending), `
       + `${manifest.failures.length} asset failures.\n`,
@@ -104,13 +142,36 @@ async function main() {
   // Non-zero on any failure so a partial fetch cannot pass unnoticed.
   if (manifest.failures.length > 0) {
     for (const failure of manifest.failures.slice(0, 20)) {
-      process.stderr.write(`  ${failure.source_id} ${failure.field}: ${failure.reason}\n`);
+      logError(`  ${failure.source_id} ${failure.field}: ${failure.reason}\n`);
     }
-    process.exit(1);
+    return 1;
   }
+
+  return 0;
 }
 
-main().catch((err) => {
-  console.error(err.message);
-  process.exit(1);
-});
+if (require.main === module) {
+  main()
+    .then((code) => {
+      if (code !== 0) process.exit(code);
+    })
+    .catch((err) => {
+      console.error(err.message);
+      process.exit(1);
+    });
+}
+
+module.exports = {
+  REPO,
+  COMMIT,
+  RAW,
+  CONCURRENCY,
+  RETRIES,
+  MANIFEST,
+  assetUrl,
+  download,
+  mapWithConcurrency,
+  fetchOne,
+  buildManifest,
+  main,
+};
