@@ -1,10 +1,13 @@
 'use strict';
 const express = require('express');
 const { createApp } = require('../../src/app');
+const { createLogger } = require('../../src/lib/logger');
 
 function silentLogger() {
-  const noop = () => {};
-  return { info: noop, warn: noop, error: noop, debug: noop, child: () => silentLogger() };
+  // A real pino instance at the 'silent' level: emits nothing, but (unlike a
+  // hand-rolled noop stub) still satisfies pino-http's expectations of a
+  // genuine logger (e.g. `.levels.values`, a working `.child()`).
+  return createLogger({ level: 'silent', env: 'test' });
 }
 
 function buildTestApp({ pool = null, extend = null } = {}) {

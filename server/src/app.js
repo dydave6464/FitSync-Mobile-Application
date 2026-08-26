@@ -2,6 +2,7 @@
 const express = require('express');
 const helmet = require('helmet');
 const cors = require('cors');
+const pinoHttp = require('pino-http');
 const requestId = require('./middleware/request-id');
 const notFound = require('./middleware/not-found');
 const errorHandler = require('./middleware/error-handler');
@@ -15,6 +16,7 @@ function createApp({ config, logger, pool, ml = null, storage = null, extraRoute
   app.use(cors());
   app.use(express.json({ limit: '1mb' }));
   app.use(requestId);
+  app.use(pinoHttp({ logger, genReqId: (req) => req.id }));
 
   app.use((req, _res, next) => {
     req.services = {
