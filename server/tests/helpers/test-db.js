@@ -1,4 +1,5 @@
 'use strict';
+const mysql = require('mysql2/promise');
 const { load } = require('../../src/config');
 
 function testDbConfig() {
@@ -18,7 +19,9 @@ async function dropAllTables(pool) {
   try {
     await conn.query('SET FOREIGN_KEY_CHECKS = 0');
     for (const row of rows) {
-      await conn.query(`DROP TABLE IF EXISTS \`${row.t}\``);
+      await conn.query(
+        `DROP TABLE IF EXISTS ${mysql.escapeId(cfg.database)}.${mysql.escapeId(row.t)}`,
+      );
     }
   } finally {
     await conn.query('SET FOREIGN_KEY_CHECKS = 1').catch(() => {});
