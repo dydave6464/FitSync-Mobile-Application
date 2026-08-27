@@ -100,6 +100,11 @@ class ExerciseListNotifier extends AsyncNotifier<ExerciseListState> {
         equipment: filters.equipment,
         page: current.page + 1,
       );
+      // The selection may have changed while this request was in flight —
+      // build() already reran and produced a fresh state for it. Applying
+      // this response on top would silently show the old filter's data
+      // under the new selection, so discard it instead.
+      if (filters != ref.read(selectedFiltersProvider)) return;
       state = AsyncData(current.copyWith(
         items: [...current.items, ...next.items],
         page: next.page,
@@ -108,6 +113,7 @@ class ExerciseListNotifier extends AsyncNotifier<ExerciseListState> {
         loadingMore: false,
       ));
     } catch (err, stack) {
+      if (filters != ref.read(selectedFiltersProvider)) return;
       // A failed "load more" must not discard the pages already shown.
       state = AsyncData(current.copyWith(loadingMore: false));
       ref.read(listErrorProvider.notifier).report(err, stack);
