@@ -22,8 +22,20 @@ import '../domain/exercise_filters.dart';
 /// from the client's side and must surface immediately. This function only
 /// decides whether to retry at all; the backoff for the case that should
 /// retry is still Riverpod's own default.
+/// How many times a transient failure is retried before the error is shown.
+///
+/// Riverpod's default allows ten. A refused connection backs off 200ms
+/// doubling to a 6.4s cap — about 38 seconds — and a connection that *hangs*
+/// is worse still, because each attempt then burns the client's full 10s
+/// timeout. Either way the message written specifically to tell a developer
+/// their `adb reverse` is missing ends up buried behind a minute of spinner,
+/// which is the opposite of what it is for. Two retries still absorb a
+/// genuine blip; the third would cost more than it can win.
+const _maxTransientRetries = 2;
+
 Duration? apiRetryPolicy(int retryCount, Object error) {
   if (error is! ApiException || error.code != 'NETWORK_ERROR') return null;
+  if (retryCount >= _maxTransientRetries) return null;
   return ProviderContainer.defaultRetry(retryCount, error);
 }
 
