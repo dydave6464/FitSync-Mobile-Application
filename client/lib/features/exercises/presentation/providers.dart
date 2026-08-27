@@ -127,6 +127,31 @@ class ExerciseListNotifier extends AsyncNotifier<ExerciseListState> {
       // build() already reran and produced a fresh state for it. Applying
       // this response on top would silently show the old filter's data
       // under the new selection, so discard it instead.
+      //
+      // Known gap, left alone on purpose: A -> B -> A. If the user switches
+      // away from a filter and back while an old request for A is still in
+      // flight, this equality check compares the captured `filters` against
+      // the current selection and finds them equal again, even though
+      // build() reran in between and this response is stale with respect to
+      // it. The response still gets merged in.
+      //
+      // That is fine today because the merge is still correct data for the
+      // selected filter: the catalogue is read-only with deterministic
+      // ordering, so a stale page for filter A is identical to a fresh page
+      // for filter A. The only visible artefact is a brief flicker (items
+      // from the in-flight page appearing after the rebuilt list already
+      // rendered) that self-heals on the next successful fetch.
+      //
+      // Reach for a generation counter instead of this value-equality guard
+      // if any of these become true:
+      //   - a write path is added, so page 1 (or any page) can change
+      //     between the two A requests;
+      //   - results become per-user or otherwise not deterministic, so a
+      //     stale page for filter A is no longer guaranteed to match a
+      //     fresh one;
+      //   - any caller invalidates this list provider without changing
+      //     SelectedFilters — value equality is blind to that by
+      //     construction, since the filters object never actually changes.
       if (filters != ref.read(selectedFiltersProvider)) return;
       state = AsyncData(current.copyWith(
         items: [...current.items, ...next.items],
