@@ -65,7 +65,14 @@ class _ExerciseListScreenState extends ConsumerState<ExerciseListScreen> {
               loading: () => const Center(child: CircularProgressIndicator()),
               error: (error, _) => _ErrorView(
                 message: describeError(error),
-                onRetry: () => ref.invalidate(exerciseListProvider),
+                // Both, not just the list. An outage takes the filter bar
+                // down too, and its own error branch renders an empty strip
+                // with no way back — so a retry that recovered only the list
+                // would leave filtering silently dead until an app restart.
+                onRetry: () {
+                  ref.invalidate(exerciseListProvider);
+                  ref.invalidate(exerciseFiltersProvider);
+                },
               ),
               data: (state) {
                 if (state.items.isEmpty) {
