@@ -57,15 +57,28 @@ void main() {
 
   testWidgets('surfaces the server error message with a retry', (tester) async {
     _usePortraitSurface(tester);
+    // A counter, not just a non-throwing tap: proves the button causes a
+    // second fetch rather than merely existing and being tappable. Also
+    // incidentally confirms the initial failure (a permanent, server-named
+    // error) is not silently retried by Riverpod's own default retry policy
+    // before the tap — see apiRetryPolicy in providers.dart.
+    var calls = 0;
     await tester.pumpWidget(harness(
-      exerciseDetailProvider(1).overrideWith(
-        (ref) async => throw const ApiException('EXERCISE_NOT_FOUND', 'No live exercise with id 1.'),
-      ),
+      exerciseDetailProvider(1).overrideWith((ref) async {
+        calls++;
+        throw const ApiException('EXERCISE_NOT_FOUND', 'No live exercise with id 1.');
+      }),
     ));
     await tester.pumpAndSettle();
 
     expect(find.textContaining('No live exercise with id 1.'), findsOneWidget);
     expect(find.text('Retry'), findsOneWidget);
+    expect(calls, 1);
+
+    await tester.tap(find.text('Retry'));
+    await tester.pumpAndSettle();
+
+    expect(calls, 2);
   });
 
   testWidgets('an unreachable animation does not crash the screen', (tester) async {
