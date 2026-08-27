@@ -68,6 +68,24 @@ test('exercise endpoints', async (t) => {
     await request(app).get('/api/v1/exercises?page=0').expect(400);
   });
 
+  await t.test('rejects a page value outside the safe integer range', async () => {
+    const res = await request(app)
+      .get('/api/v1/exercises?page=99999999999999999999')
+      .expect(400);
+    assert.equal(res.body.error.code, 'INVALID_QUERY_PARAM');
+    assert.match(res.body.error.message, /page/);
+    assert.equal(res.body.data, undefined);
+  });
+
+  await t.test('rejects a repeated muscleGroup query param instead of erroring on the array', async () => {
+    const res = await request(app)
+      .get('/api/v1/exercises?muscleGroup=abs&muscleGroup=biceps')
+      .expect(400);
+    assert.equal(res.body.error.code, 'INVALID_QUERY_PARAM');
+    assert.match(res.body.error.message, /muscleGroup/);
+    assert.equal(res.body.data, undefined);
+  });
+
   await t.test('returns one exercise with cues and an animation', async () => {
     const list = await request(app).get('/api/v1/exercises').expect(200);
     const { exerciseId } = list.body.data.exercises[0];

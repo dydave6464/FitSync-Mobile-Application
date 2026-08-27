@@ -14,7 +14,7 @@ const {
 function parsePositiveInt(name, raw, fallback, max = null) {
   if (raw === undefined || raw === '') return fallback;
   const value = Number(raw);
-  if (!Number.isInteger(value) || value < 1) {
+  if (!Number.isSafeInteger(value) || value < 1) {
     throw AppError.badRequest(
       'INVALID_QUERY_PARAM',
       `${name} must be a positive integer.`,
@@ -29,6 +29,23 @@ function parsePositiveInt(name, raw, fallback, max = null) {
     );
   }
   return value;
+}
+
+// Express 5's default query parser turns a repeated key (?muscleGroup=a&
+// muscleGroup=b) into an array. mysql2 happily formats an array as a comma
+// list, which reaches the database as a syntax error instead of a 400 — so
+// this must reject anything that isn't a plain string before it gets near
+// pool.query.
+function parseOptionalString(name, raw) {
+  if (raw === undefined || raw === '') return null;
+  if (typeof raw !== 'string') {
+    throw AppError.badRequest(
+      'INVALID_QUERY_PARAM',
+      `${name} must be a single string value.`,
+      [{ field: name, value: String(raw) }],
+    );
+  }
+  return raw;
 }
 
 module.exports = function buildExercisesRouter({ pool, storage }) {
@@ -63,8 +80,8 @@ module.exports = function buildExercisesRouter({ pool, storage }) {
       const limit = parsePositiveInt('limit', req.query.limit, DEFAULT_LIMIT, MAX_LIMIT);
 
       const { rows, total } = await listExercises(pool, {
-        muscleGroup: req.query.muscleGroup || null,
-        equipment: req.query.equipment || null,
+        muscleGroup: parseOptionalString('muscleGroup', req.query.muscleGroup),
+        equipment: parseOptionalString('equipment', req.query.equipment),
         page,
         limit,
       });
