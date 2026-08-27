@@ -1,9 +1,31 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../core/api_client.dart';
+import '../../../core/api_exception.dart';
 import '../data/exercise_repository.dart';
 import '../domain/exercise.dart';
 import '../domain/exercise_filters.dart';
+
+/// Riverpod retries any provider failure up to 10 times by default
+/// (`ProviderContainer.defaultRetry`, ~200ms doubling to a 6.4s cap) for any
+/// error that isn't a `ProviderException` or a Dart `Error` — which includes
+/// [ApiException], since it `implements Exception`. Left alone, a permanent
+/// failure like `EXERCISE_NOT_FOUND` or `INVALID_QUERY_PARAM` would be
+/// retried ten times against the live server before the error branch ever
+/// renders.
+///
+/// Only [ApiException]'s `NETWORK_ERROR` — raised by [ApiClient] when the
+/// device could not reach the server at all — is transient in a way a retry
+/// can fix. Every other code, whether named by the server
+/// (`EXERCISE_NOT_FOUND`, `INVALID_QUERY_PARAM`) or raised locally for a
+/// malformed response (`INVALID_RESPONSE`, `UNKNOWN_ERROR`), is permanent
+/// from the client's side and must surface immediately. This function only
+/// decides whether to retry at all; the backoff for the case that should
+/// retry is still Riverpod's own default.
+Duration? apiRetryPolicy(int retryCount, Object error) {
+  if (error is! ApiException || error.code != 'NETWORK_ERROR') return null;
+  return ProviderContainer.defaultRetry(retryCount, error);
+}
 
 final apiClientProvider = Provider<ApiClient>((ref) => ApiClient());
 
@@ -13,6 +35,7 @@ final exerciseRepositoryProvider = Provider<ExerciseRepository>(
 
 final exerciseFiltersProvider = FutureProvider<ExerciseFilters>(
   (ref) => ref.watch(exerciseRepositoryProvider).filters(),
+  retry: apiRetryPolicy,
 );
 
 class SelectedFiltersNotifier extends Notifier<SelectedFilters> {
@@ -124,6 +147,7 @@ class ExerciseListNotifier extends AsyncNotifier<ExerciseListState> {
 final exerciseListProvider =
     AsyncNotifierProvider<ExerciseListNotifier, ExerciseListState>(
   ExerciseListNotifier.new,
+  retry: apiRetryPolicy,
 );
 
 /// Surfaces a pagination failure without tearing down the list already on
@@ -143,4 +167,5 @@ final listErrorProvider = NotifierProvider<ListErrorNotifier, Object?>(
 final exerciseDetailProvider =
     FutureProvider.family<ExerciseDetail, int>(
   (ref, id) => ref.watch(exerciseRepositoryProvider).byId(id),
+  retry: apiRetryPolicy,
 );
