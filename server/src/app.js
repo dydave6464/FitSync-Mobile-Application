@@ -1,4 +1,5 @@
 'use strict';
+const path = require('node:path');
 const express = require('express');
 const helmet = require('helmet');
 const cors = require('cors');
@@ -36,6 +37,22 @@ function createApp({ config, logger, pool, ml = null, storage = null, extraRoute
     };
     next();
   });
+
+  // Media lives outside /api/v1 because storage.url(key) returns '/storage/<key>'
+  // and that contract predates this route. express.static brings tested path
+  // handling, range requests and caching headers. Default fallthrough is kept so
+  // a missing file reaches notFound and gets the standard error envelope rather
+  // than an HTML page.
+  if (config && config.storage && config.storage.mode === 'local') {
+    app.use(
+      '/storage',
+      express.static(path.resolve(config.storage.localDir || 'storage'), {
+        maxAge: '1h',
+        index: false,
+        dotfiles: 'deny',
+      }),
+    );
+  }
 
   app.use('/api/v1', buildRoutes({ config, logger, pool, ml, storage, extraRouter }));
 

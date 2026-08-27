@@ -10,14 +10,15 @@ function silentLogger() {
   return createLogger({ level: 'silent', env: 'test' });
 }
 
-function buildTestApp({ pool = null, extend = null } = {}) {
+function buildTestApp({ pool = null, extend = null, storage = null, storageConfig = null } = {}) {
   const extraRouter = express.Router();
   if (extend) extend(extraRouter);
 
   return createApp({
-    config: { env: 'test', logLevel: 'silent' },
+    config: { env: 'test', logLevel: 'silent', storage: storageConfig },
     logger: silentLogger(),
     pool,
+    storage,
     extraRouter: extend ? extraRouter : null,
   });
 }
