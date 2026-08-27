@@ -1,0 +1,140 @@
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+
+import '../../../core/api_client.dart';
+import '../data/exercise_repository.dart';
+import '../domain/exercise.dart';
+import '../domain/exercise_filters.dart';
+
+final apiClientProvider = Provider<ApiClient>((ref) => ApiClient());
+
+final exerciseRepositoryProvider = Provider<ExerciseRepository>(
+  (ref) => ExerciseRepository(ref.watch(apiClientProvider)),
+);
+
+final exerciseFiltersProvider = FutureProvider<ExerciseFilters>(
+  (ref) => ref.watch(exerciseRepositoryProvider).filters(),
+);
+
+class SelectedFiltersNotifier extends Notifier<SelectedFilters> {
+  @override
+  SelectedFilters build() => const SelectedFilters();
+
+  void setMuscleGroup(String? value) => state = state.withMuscleGroup(value);
+  void setEquipment(String? value) => state = state.withEquipment(value);
+  void clear() => state = const SelectedFilters();
+}
+
+final selectedFiltersProvider =
+    NotifierProvider<SelectedFiltersNotifier, SelectedFilters>(
+  SelectedFiltersNotifier.new,
+);
+
+/// The accumulated list across pages, plus enough state to drive infinite
+/// scroll without the screen tracking page numbers itself.
+class ExerciseListState {
+  const ExerciseListState({
+    required this.items,
+    required this.page,
+    required this.total,
+    required this.hasMore,
+    this.loadingMore = false,
+  });
+
+  final List<ExerciseSummary> items;
+  final int page;
+  final int total;
+  final bool hasMore;
+  final bool loadingMore;
+
+  ExerciseListState copyWith({
+    List<ExerciseSummary>? items,
+    int? page,
+    int? total,
+    bool? hasMore,
+    bool? loadingMore,
+  }) =>
+      ExerciseListState(
+        items: items ?? this.items,
+        page: page ?? this.page,
+        total: total ?? this.total,
+        hasMore: hasMore ?? this.hasMore,
+        loadingMore: loadingMore ?? this.loadingMore,
+      );
+}
+
+class ExerciseListNotifier extends AsyncNotifier<ExerciseListState> {
+  @override
+  Future<ExerciseListState> build() async {
+    // Watching the selection means any filter change rebuilds this provider
+    // from scratch — which is exactly the "reset to page 1" behaviour we want,
+    // with no manual reset logic to forget.
+    final filters = ref.watch(selectedFiltersProvider);
+    final repo = ref.watch(exerciseRepositoryProvider);
+
+    final result = await repo.list(
+      muscleGroup: filters.muscleGroup,
+      equipment: filters.equipment,
+      page: 1,
+    );
+
+    return ExerciseListState(
+      items: result.items,
+      page: result.page,
+      total: result.total,
+      hasMore: result.hasMore,
+    );
+  }
+
+  Future<void> loadMore() async {
+    final current = state.value;
+    if (current == null || !current.hasMore || current.loadingMore) return;
+
+    state = AsyncData(current.copyWith(loadingMore: true));
+
+    final filters = ref.read(selectedFiltersProvider);
+    final repo = ref.read(exerciseRepositoryProvider);
+
+    try {
+      final next = await repo.list(
+        muscleGroup: filters.muscleGroup,
+        equipment: filters.equipment,
+        page: current.page + 1,
+      );
+      state = AsyncData(current.copyWith(
+        items: [...current.items, ...next.items],
+        page: next.page,
+        total: next.total,
+        hasMore: next.hasMore,
+        loadingMore: false,
+      ));
+    } catch (err, stack) {
+      // A failed "load more" must not discard the pages already shown.
+      state = AsyncData(current.copyWith(loadingMore: false));
+      ref.read(listErrorProvider.notifier).report(err, stack);
+    }
+  }
+}
+
+final exerciseListProvider =
+    AsyncNotifierProvider<ExerciseListNotifier, ExerciseListState>(
+  ExerciseListNotifier.new,
+);
+
+/// Surfaces a pagination failure without tearing down the list already on
+/// screen. The list screen shows it as a snack bar.
+class ListErrorNotifier extends Notifier<Object?> {
+  @override
+  Object? build() => null;
+
+  void report(Object error, StackTrace _) => state = error;
+  void clear() => state = null;
+}
+
+final listErrorProvider = NotifierProvider<ListErrorNotifier, Object?>(
+  ListErrorNotifier.new,
+);
+
+final exerciseDetailProvider =
+    FutureProvider.family<ExerciseDetail, int>(
+  (ref, id) => ref.watch(exerciseRepositoryProvider).byId(id),
+);
