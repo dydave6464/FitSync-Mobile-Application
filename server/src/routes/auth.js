@@ -2,7 +2,7 @@
 const express = require('express');
 const AppError = require('../lib/app-error');
 const { signToken } = require('../lib/tokens');
-const { hashPassword, verifyPassword } = require('../lib/passwords');
+const { hashPassword, verifyPassword, DUMMY_HASH } = require('../lib/passwords');
 const {
   findUserByEmail, findUserById, createUserWithPassword, findOrCreateGoogleUser,
 } = require('../db/users');
@@ -62,7 +62,16 @@ module.exports = function buildAuthRouter({ pool, jwt, google }) {
       const user = await findUserByEmail(pool, email);
       // One error, one message, whether the email is unknown or the password is
       // wrong. Anything else turns this route into an account-existence oracle.
-      const ok = user && await verifyPassword(password, user.password_hash);
+      //
+      // That includes timing: always compare against SOME bcrypt hash, even
+      // when there is no user or no real password_hash (a Google-only
+      // account), so an unknown email and a known email both pay the same
+      // bcrypt cost. Short-circuiting the compare for either case would let
+      // response latency leak exactly what the identical error is supposed
+      // to hide.
+      const hash = (user && user.password_hash) || DUMMY_HASH;
+      const matches = await verifyPassword(password, hash);
+      const ok = Boolean(user && user.password_hash && matches);
       if (!ok) {
         throw AppError.unauthorized('INVALID_CREDENTIALS', 'Email or password is incorrect.');
       }
@@ -89,6 +98,14 @@ module.exports = function buildAuthRouter({ pool, jwt, google }) {
   router.get('/me', requireAuth({ pool, jwt }), async (req, res, next) => {
     try {
       const user = await findUserById(pool, req.user.userId);
+      // requireAuth already confirmed this user existed a moment ago, but the
+      // account can be deleted in the window between that check and this
+      // lookup. Without this guard toPublicUser(null) throws a TypeError and
+      // the client gets a 500 for what is really the same "sign in again"
+      // case requireAuth already handles.
+      if (!user) {
+        throw AppError.unauthorized('UNAUTHENTICATED', 'Sign in again to continue.');
+      }
       res.json({ data: { user: toPublicUser(user) } });
     } catch (err) { next(err); }
   });

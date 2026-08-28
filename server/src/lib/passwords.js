@@ -16,4 +16,13 @@ async function verifyPassword(plain, hash) {
   return bcrypt.compare(plain, hash);
 }
 
-module.exports = { hashPassword, verifyPassword };
+// A precomputed hash of a value nobody will ever type, at the same cost as a
+// real password hash. The login route compares against this whenever there is
+// no real hash to check (unknown email, or a Google-only account with a NULL
+// password_hash), so every login pays the same bcrypt cost. Skipping the
+// compare in those cases would let response latency reveal which case it was
+// — exactly the account-existence signal INVALID_CREDENTIALS's identical
+// code and message exist to hide. Do not "optimise" this away.
+const DUMMY_HASH = bcrypt.hashSync('not-a-real-password', ROUNDS);
+
+module.exports = { hashPassword, verifyPassword, DUMMY_HASH };

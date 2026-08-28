@@ -85,6 +85,22 @@ test('auth endpoints', async (t) => {
     assert.equal(res.body.error.code, 'INVALID_GOOGLE_TOKEN');
   });
 
+  // Distinct from the case above: this token IS recognized by the verifier
+  // (unlike 'nonsense', which the stub itself rejects before
+  // findOrCreateGoogleUser ever runs) but carries emailVerified: false. This
+  // is what actually exercises the Task 6 pre-hijacking gate through the HTTP
+  // layer — if that gate ever moved back inside the account-linking branch,
+  // this is the test that would catch it.
+  await t.test('refuses an unverified Google identity and creates no account', async () => {
+    await reset();
+    const res = await request(app).post('/api/v1/auth/google')
+      .send({ idToken: 'stub-token-unverified' }).expect(401);
+    assert.equal(res.body.error.code, 'INVALID_GOOGLE_TOKEN');
+
+    const [rows] = await pool.query('SELECT * FROM users');
+    assert.equal(rows.length, 0, 'the gate must hold before any row is written');
+  });
+
   await t.test('me returns the signed-in user', async () => {
     await reset();
     const { body } = await register().expect(201);
