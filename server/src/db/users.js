@@ -46,16 +46,28 @@ async function findOrCreateGoogleUser(pool, identity) {
     return { user: await findUserById(pool, existing[0].user_id), isNew: false };
   }
 
+  // From here on, every branch either links to an account found by email or
+  // creates a new one carrying that email, so an unverified email can no
+  // longer be trusted — and it must be checked here, before branch 2, not
+  // inside it. Gating only inside branch 2 leaves branch 3 open to a
+  // two-call pre-hijack: an attacker signs in first with an unverified token
+  // for the victim's address (branch 3 would create the account
+  // unconditionally), then the real victim signs in later with a genuinely
+  // verified token; branch 2's own gate checks only *that* call's
+  // verification and happily links the victim's real identity into the
+  // account the attacker already controls. Do not move this check back
+  // inside branch 2.
+  if (!email || !emailVerified) {
+    throw AppError.unauthorized(
+      'INVALID_GOOGLE_TOKEN',
+      'Google sign-in could not be verified.',
+    );
+  }
+
   // 2. An account already exists on this email. Linking is right — one person,
-  //    one account — but only on Google's word that they own the address.
-  const byEmail = email ? await findUserByEmail(pool, email) : null;
+  //    one account — now that Google has vouched for the address above.
+  const byEmail = await findUserByEmail(pool, email);
   if (byEmail) {
-    if (!emailVerified) {
-      throw AppError.unauthorized(
-        'INVALID_GOOGLE_TOKEN',
-        'Google sign-in could not be verified.',
-      );
-    }
     await pool.query(
       'INSERT INTO user_identities (user_id, provider, provider_subject) VALUES (?, ?, ?)',
       [byEmail.user_id, 'google', subject],
