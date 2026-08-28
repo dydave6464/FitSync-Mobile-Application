@@ -68,7 +68,7 @@ test('plan endpoints', async (t) => {
     assert.equal(res.body.data.plan, null);
   });
 
-  await t.test('a failed generation leaves onboarding incomplete', async () => {
+  await t.test('a failed generation leaves onboarding incomplete, and retrying succeeds', async () => {
     await reset();
     const brokenApp = buildTestApp({
       pool,
@@ -87,5 +87,14 @@ test('plan endpoints', async (t) => {
     // Stranding a user as "onboarded" with no plan gives them no way back.
     const after = await request(app).get('/api/v1/profile').set('Authorization', auth).expect(200);
     assert.equal(after.body.data.profile.onboardingCompleted, false);
+
+    // onboardingCompleted staying false is only the precondition for
+    // recovery, not the property that matters — the user must actually be
+    // able to retry and end up with a plan. Same user, same token, this
+    // time against the working ML stub.
+    const retry = await request(app).post('/api/v1/profile/complete-onboarding')
+      .set('Authorization', auth).expect(200);
+    assert.equal(retry.body.data.plan.name, 'Starter Plan');
+    assert.equal(retry.body.data.profile.onboardingCompleted, true);
   });
 });

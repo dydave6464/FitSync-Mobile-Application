@@ -10,11 +10,24 @@ async function resolveExerciseIds(pool, names) {
 
   const [rows] = await pool.query(
     `SELECT exercise_id, name FROM exercises
-      WHERE status = 'live' AND LOWER(name) IN (?)`,
+      WHERE status = 'live' AND LOWER(name) IN (?)
+      ORDER BY exercise_id ASC`,
     [names.map((n) => String(n).toLowerCase())],
   );
 
-  const byLower = new Map(rows.map((r) => [r.name.toLowerCase(), r.exercise_id]));
+  // The catalogue has known duplicate names — the earlier catalogue slice
+  // recorded six of them — so more than one live row can share a name.
+  // ORDER BY exercise_id ASC plus first-write-wins below means a duplicate
+  // always resolves to its lowest exercise_id, matching the same
+  // exercise_id tiebreaker the catalogue's own paginated query already uses
+  // (see src/db/exercises.js), rather than whatever order MySQL happens to
+  // return. Without this, two users onboarding with the same generated plan
+  // could silently land on different exercises for the same name.
+  const byLower = new Map();
+  for (const r of rows) {
+    const key = r.name.toLowerCase();
+    if (!byLower.has(key)) byLower.set(key, r.exercise_id);
+  }
   for (const name of names) {
     const id = byLower.get(String(name).toLowerCase());
     if (id) map.set(name, id);
