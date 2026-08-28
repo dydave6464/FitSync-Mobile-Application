@@ -10,8 +10,8 @@ const EXPECTED_TABLES = [
   'equipment', 'exercises', 'food_recognitions', 'foods', 'goals', 'injuries',
   'injury_risk_estimates', 'meal_logs', 'morning_checkins', 'plan_exercises',
   'progress_reports', 'reminders', 'routine_items', 'set_logs', 'streaks',
-  'subscriptions', 'user_equipment', 'user_injuries', 'users', 'workout_plans',
-  'workout_sessions',
+  'subscriptions', 'user_equipment', 'user_identities', 'user_injuries', 'users',
+  'workout_plans', 'workout_sessions',
 ];
 
 test('complete FitSync schema', async (t) => {
@@ -24,10 +24,10 @@ test('complete FitSync schema', async (t) => {
     await pool.end();
   });
 
-  await t.test('creates exactly the 26 tables from the data dictionary', async () => {
+  await t.test('creates exactly the 27 tables from the data dictionary', async () => {
     const names = (await tableNames(pool)).filter((n) => n !== 'schema_migrations');
     assert.deepEqual(names.sort(), [...EXPECTED_TABLES].sort());
-    assert.equal(names.length, 26);
+    assert.equal(names.length, 27);
   });
 
   await t.test('every table is InnoDB and utf8mb4', async () => {
@@ -52,7 +52,7 @@ test('complete FitSync schema', async (t) => {
     );
     const composite = rows.filter((r) => r.cols > 1 && r.t !== 'schema_migrations');
     assert.deepEqual(composite, [], 'no table may use a composite primary key');
-    assert.equal(rows.length, 27); // 26 tables + schema_migrations
+    assert.equal(rows.length, 28); // 27 tables + schema_migrations
   });
 
   await t.test('a user has exactly one streak record', async () => {
@@ -114,7 +114,7 @@ test('complete FitSync schema', async (t) => {
     assert.equal(rows[0].added_by, null);
   });
 
-  await t.test('all six migrations are recorded', async () => {
+  await t.test('all seven migrations are recorded', async () => {
     const [rows] = await pool.query('SELECT version FROM schema_migrations ORDER BY version');
     assert.deepEqual(rows.map((r) => r.version), [
       '001_account_and_profile.sql',
@@ -123,6 +123,7 @@ test('complete FitSync schema', async (t) => {
       '004_nutrition.sql',
       '005_activity_motivation.sql',
       '006_reporting_monetization.sql',
+      '007_auth_identities.sql',
     ]);
   });
 });
