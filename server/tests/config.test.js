@@ -9,6 +9,7 @@ const validEnv = {
   DB_USER: 'fitsync',
   DB_PASSWORD: 'secret',
   DB_NAME: 'fitsync',
+  JWT_SECRET: 'x'.repeat(32),
 };
 
 test('load throws listing every missing required key', () => {
@@ -41,8 +42,8 @@ test('load coerces numeric env values to numbers', () => {
   assert.equal(typeof cfg.port, 'number');
 });
 
-test('REQUIRED lists exactly the five database keys', () => {
-  assert.deepEqual(REQUIRED, ['DB_HOST', 'DB_PORT', 'DB_USER', 'DB_PASSWORD', 'DB_NAME']);
+test('REQUIRED lists exactly the database and auth keys', () => {
+  assert.deepEqual(REQUIRED, ['DB_HOST', 'DB_PORT', 'DB_USER', 'DB_PASSWORD', 'DB_NAME', 'JWT_SECRET']);
 });
 
 test('load rejects a required key that is present but empty', () => {
@@ -67,4 +68,22 @@ test('load rejects a zero or negative PORT', () => {
 
 test('load rejects a non-integer PORT', () => {
   assert.throws(() => load({ ...validEnv, PORT: '3000.5' }), /PORT/);
+});
+
+test('requires JWT_SECRET', () => {
+  const env = { ...validEnv };
+  delete env.JWT_SECRET;
+  assert.throws(() => load(env), /JWT_SECRET/);
+});
+
+test('rejects an empty JWT_SECRET rather than defaulting', () => {
+  assert.throws(() => load({ ...validEnv, JWT_SECRET: '' }), /JWT_SECRET/);
+});
+
+test('exposes jwt and google config', () => {
+  const cfg = load({ ...validEnv, JWT_SECRET: 'x'.repeat(32), GOOGLE_CLIENT_ID: 'cid' });
+  assert.equal(cfg.jwt.secret, 'x'.repeat(32));
+  assert.equal(cfg.jwt.expiresIn, '30d');
+  assert.equal(cfg.google.mode, 'stub');
+  assert.equal(cfg.google.clientId, 'cid');
 });

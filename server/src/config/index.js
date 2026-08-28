@@ -1,7 +1,7 @@
 'use strict';
 require('dotenv').config({ quiet: true });
 
-const REQUIRED = ['DB_HOST', 'DB_PORT', 'DB_USER', 'DB_PASSWORD', 'DB_NAME'];
+const REQUIRED = ['DB_HOST', 'DB_PORT', 'DB_USER', 'DB_PASSWORD', 'DB_NAME', 'JWT_SECRET'];
 
 function parsePositiveInteger(name, value) {
   const n = Number(value);
@@ -36,6 +36,16 @@ function load(env = process.env) {
     storage: {
       mode: env.STORAGE_MODE || 'local',
       localDir: env.STORAGE_LOCAL_DIR || 'storage',
+    },
+    jwt: {
+      secret: env.JWT_SECRET,
+      // Long-lived on purpose: there are no refresh tokens, so expiry means
+      // signing in again. See the spec, section 2.
+      expiresIn: env.JWT_EXPIRES_IN || '30d',
+    },
+    google: {
+      mode: env.GOOGLE_MODE || 'stub',
+      clientId: env.GOOGLE_CLIENT_ID || null,
     },
   };
 }
