@@ -62,8 +62,23 @@ void main() {
 
     test('retries NETWORK_ERROR, deferring the backoff to the framework default', () {
       const error = ApiException('NETWORK_ERROR', 'Could not reach the server.');
+      // Asserted across the retries that still happen — the backoff duration
+      // is the framework's, not a reimplementation.
       expect(apiRetryPolicy(0, error), ProviderContainer.defaultRetry(0, error));
-      expect(apiRetryPolicy(3, error), ProviderContainer.defaultRetry(3, error));
+      expect(apiRetryPolicy(1, error), ProviderContainer.defaultRetry(1, error));
+    });
+
+    test('stops retrying NETWORK_ERROR after two attempts', () {
+      const error = ApiException('NETWORK_ERROR', 'Could not reach the server.');
+      // Two retries still absorb a transient blip...
+      expect(apiRetryPolicy(0, error), isNotNull);
+      expect(apiRetryPolicy(1, error), isNotNull);
+      // ...but the third does not. Riverpod's default would allow ten, and a
+      // refused connection backs off 200ms doubling to 6.4s — worse when the
+      // connection hangs instead, since each attempt then burns the client's
+      // full 10s timeout. That buries the one message written to tell the
+      // developer their `adb reverse` is missing behind a minute of spinner.
+      expect(apiRetryPolicy(2, error), isNull);
     });
 
     test('does not retry an error that is not an ApiException', () {
