@@ -21,14 +21,15 @@ const UPSERT_EQUIPMENT = `
 // wholesale below, so upstream changes to them do land on every re-seed.)
 const UPSERT_EXERCISE = `
   INSERT INTO exercises
-    (source_id, name, muscle_group, equipment_id, animation_url, thumbnail_url, status)
-  VALUES (?, ?, ?, ?, ?, ?, ?) AS new
+    (source_id, name, muscle_group, equipment_id, animation_url, thumbnail_url, status, body_part)
+  VALUES (?, ?, ?, ?, ?, ?, ?, ?) AS new
   ON DUPLICATE KEY UPDATE
     name          = new.name,
     muscle_group  = new.muscle_group,
     equipment_id  = new.equipment_id,
     animation_url = new.animation_url,
-    thumbnail_url = new.thumbnail_url
+    thumbnail_url = new.thumbnail_url,
+    body_part     = new.body_part
 `;
 
 async function seedExercises(dbConfig, manifest, { logger = null } = {}) {
@@ -83,6 +84,10 @@ async function seedExercises(dbConfig, manifest, { logger = null } = {}) {
         exercise.animation_url,
         exercise.thumbnail_url,
         exercise.promote ? 'live' : 'pending',
+        // Nullable in the schema, and not present on every hand-built test
+        // manifest; mysql2 rejects `undefined` outright, so coerce it to the
+        // SQL NULL the column already allows.
+        exercise.body_part || null,
       ]);
 
       const [[row]] = await connection.query(

@@ -40,6 +40,9 @@ function normalizeRecord(record) {
     // synergist muscles. `target` is the primary muscle, which is what the
     // exercises.muscle_group column means.
     muscle_group: record.target,
+    // Coarser than `target` and unrelated to it: `target` is the muscle worked,
+    // `body_part` is the region involved. Injury filtering needs the region.
+    body_part: record.body_part,
     equipment: record.equipment,
     animation_url: keys.animation,
     thumbnail_url: keys.thumbnail,

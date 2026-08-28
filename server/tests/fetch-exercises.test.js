@@ -119,6 +119,7 @@ test('a dataset record becomes a manifest record through the fetch path', async 
     source_id: '0001',
     name: '3/4 sit-up',
     muscle_group: 'abs',
+    body_part: 'waist',
     equipment: 'body weight',
     animation_url: 'exercises/0001/animation.gif',
     thumbnail_url: 'exercises/0001/thumb.jpg',

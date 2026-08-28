@@ -29,6 +29,7 @@ test('a record maps onto exactly the columns the schema has', () => {
     source_id: '0001',
     name: '3/4 sit-up',
     muscle_group: 'abs',
+    body_part: 'waist',
     equipment: 'body weight',
     animation_url: 'exercises/0001/animation.gif',
     thumbnail_url: 'exercises/0001/thumb.jpg',
@@ -50,6 +51,11 @@ test('only English cues are kept', () => {
 test('an exercise with no English steps normalises to an empty cue list', () => {
   const out = normalizeRecord({ ...RECORD, instruction_steps: { tr: ['Yat.'] } });
   assert.deepEqual(out.cues, []);
+});
+
+test('keeps body_part rather than discarding it', () => {
+  const out = normalizeRecord(RECORD);
+  assert.equal(out.body_part, 'waist');
 });
 
 test('storage keys are derived from source_id, not the upstream filename', () => {
