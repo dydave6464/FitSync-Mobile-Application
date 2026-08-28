@@ -12,7 +12,10 @@ function signToken(userId, jwtConfig) {
 function verifyToken(token, jwtConfig) {
   let payload;
   try {
-    payload = jwt.verify(token, jwtConfig.secret);
+    // Pin algorithms to HS256. Although this secret is a random string (not a
+    // public key), algorithm-confusion attacks are eliminated by restricting
+    // to the algorithm we use.
+    payload = jwt.verify(token, jwtConfig.secret, { algorithms: ['HS256'] });
   } catch (cause) {
     // A bad signature, an expired token and malformed input are all the same
     // to a caller: this request is not authenticated. Saying which would tell
