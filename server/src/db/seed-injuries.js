@@ -23,17 +23,20 @@ const REGIONS = [
   { name: 'Foot', isLateral: true, regionGroup: 'lower_body' },
 ];
 
+// MySQL 8.0.46: the row-alias form. VALUES() is deprecated since 8.0.20.
+const UPSERT_INJURY = `
+  INSERT INTO injuries (name, is_lateral, region_group) VALUES (?, ?, ?) AS new
+  ON DUPLICATE KEY UPDATE
+    is_lateral   = new.is_lateral,
+    region_group = new.region_group
+`;
+
 async function seedInjuries(dbConfig) {
   const pool = createPool(dbConfig);
   try {
     for (const r of REGIONS) {
       // uq_injuries_name makes this idempotent without a pre-read.
-      await pool.query(
-        `INSERT INTO injuries (name, is_lateral, region_group) VALUES (?, ?, ?)
-         ON DUPLICATE KEY UPDATE is_lateral = VALUES(is_lateral),
-                                 region_group = VALUES(region_group)`,
-        [r.name, r.isLateral, r.regionGroup],
-      );
+      await pool.query(UPSERT_INJURY, [r.name, r.isLateral, r.regionGroup]);
     }
     return { inserted: REGIONS.length };
   } finally {
