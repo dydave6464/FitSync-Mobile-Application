@@ -94,4 +94,67 @@ test('profile endpoints', async (t) => {
       .send({ injuries: [{ injuryId: knee.injuryId, side: 'sideways' }] }).expect(400);
     assert.equal(res.body.error.code, 'INVALID_PROFILE_FIELD');
   });
+
+  await t.test('rejects null for a field that cannot be null', async () => {
+    await reset();
+    const res = await request(app).patch('/api/v1/profile').set('Authorization', auth)
+      .send({ fullName: null }).expect(400);
+    assert.equal(res.body.error.code, 'INVALID_PROFILE_FIELD');
+
+    const res2 = await request(app).patch('/api/v1/profile').set('Authorization', auth)
+      .send({ notificationsEnabled: null }).expect(400);
+    assert.equal(res2.body.error.code, 'INVALID_PROFILE_FIELD');
+  });
+
+  await t.test('rejects a value longer than the column allows', async () => {
+    await reset();
+    const res = await request(app).patch('/api/v1/profile').set('Authorization', auth)
+      .send({ fullName: 'a'.repeat(256) }).expect(400);
+    assert.equal(res.body.error.code, 'INVALID_PROFILE_FIELD');
+
+    const res2 = await request(app).patch('/api/v1/profile').set('Authorization', auth)
+      .send({ city: 'a'.repeat(256) }).expect(400);
+    assert.equal(res2.body.error.code, 'INVALID_PROFILE_FIELD');
+  });
+
+  await t.test('rejects a side on a non-lateral injury and stores nothing', async () => {
+    await reset();
+    const list = await request(app).get('/api/v1/injuries').set('Authorization', auth).expect(200);
+    const neck = list.body.data.injuries.find((i) => i.name === 'Neck');
+    const res = await request(app).put('/api/v1/profile/injuries').set('Authorization', auth)
+      .send({ injuries: [{ injuryId: neck.injuryId, side: 'right' }] }).expect(400);
+    assert.equal(res.body.error.code, 'INVALID_PROFILE_FIELD');
+
+    const profile = await request(app).get('/api/v1/profile').set('Authorization', auth).expect(200);
+    assert.deepEqual(profile.body.data.profile.injuries, [], 'the rejected entry must not be stored');
+  });
+
+  await t.test('rejects an equipment or injury id that does not exist', async () => {
+    await reset();
+    const badEquip = await request(app).put('/api/v1/profile/equipment').set('Authorization', auth)
+      .send({ equipmentIds: [999999] }).expect(400);
+    assert.equal(badEquip.body.error.code, 'INVALID_PROFILE_FIELD');
+
+    const badInjury = await request(app).put('/api/v1/profile/injuries').set('Authorization', auth)
+      .send({ injuries: [{ injuryId: 999999, side: null }] }).expect(400);
+    assert.equal(badInjury.body.error.code, 'INVALID_PROFILE_FIELD');
+  });
+
+  await t.test('rejects duplicate ids in an equipment or injury set', async () => {
+    await reset();
+    const dupEquip = await request(app).put('/api/v1/profile/equipment').set('Authorization', auth)
+      .send({ equipmentIds: [1, 1] }).expect(400);
+    assert.equal(dupEquip.body.error.code, 'INVALID_PROFILE_FIELD');
+
+    const list = await request(app).get('/api/v1/injuries').set('Authorization', auth).expect(200);
+    const knee = list.body.data.injuries.find((i) => i.name === 'Knee');
+    const dupInjury = await request(app).put('/api/v1/profile/injuries').set('Authorization', auth)
+      .send({
+        injuries: [
+          { injuryId: knee.injuryId, side: 'right' },
+          { injuryId: knee.injuryId, side: 'left' },
+        ],
+      }).expect(400);
+    assert.equal(dupInjury.body.error.code, 'INVALID_PROFILE_FIELD');
+  });
 });

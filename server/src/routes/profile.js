@@ -17,6 +17,14 @@ const ENUMS = {
 const NUMERIC = ['heightCm', 'weightKg', 'goalWeightKg'];
 const SIDES = ['left', 'right', 'both'];
 
+// users.full_name and users.notifications_enabled are NOT NULL. Every other
+// WRITABLE column allows NULL, and clearing an optional field is legitimate.
+const REQUIRED_NOT_NULL = ['fullName', 'notificationsEnabled'];
+
+// Both columns are VARCHAR(255). An over-length string must be rejected here,
+// not discovered as ER_DATA_TOO_LONG from the database.
+const MAX_LENGTH = { fullName: 255, city: 255 };
+
 function invalid(field, message) {
   return AppError.badRequest('INVALID_PROFILE_FIELD', message, [{ field }]);
 }
@@ -29,7 +37,13 @@ function validatePatch(body) {
     if (!Object.prototype.hasOwnProperty.call(body, key)) continue;
     const value = body[key];
 
-    if (value === null) { fields[key] = null; continue; }
+    if (value === null) {
+      if (REQUIRED_NOT_NULL.includes(key)) {
+        throw invalid(key, `${key} cannot be null.`);
+      }
+      fields[key] = null;
+      continue;
+    }
 
     if (ENUMS[key] && !ENUMS[key].includes(value)) {
       throw invalid(key, `${key} must be one of: ${ENUMS[key].join(', ')}.`);
@@ -50,6 +64,9 @@ function validatePatch(body) {
     if (key === 'dateOfBirth' && !/^\d{4}-\d{2}-\d{2}$/.test(String(value))) {
       throw invalid(key, 'dateOfBirth must be YYYY-MM-DD.');
     }
+    if (MAX_LENGTH[key] && typeof value === 'string' && value.length > MAX_LENGTH[key]) {
+      throw invalid(key, `${key} must be at most ${MAX_LENGTH[key]} characters.`);
+    }
     fields[key] = value;
   }
   return fields;
@@ -57,11 +74,15 @@ function validatePatch(body) {
 
 function validateIds(name, raw) {
   if (!Array.isArray(raw)) throw invalid(name, `${name} must be an array.`);
-  return raw.map((v) => {
+  const ids = raw.map((v) => {
     const n = Number(v);
     if (!Number.isSafeInteger(n) || n < 1) throw invalid(name, `${name} must contain positive integers.`);
     return n;
   });
+  if (new Set(ids).size !== ids.length) {
+    throw invalid(name, `${name} must not contain duplicate ids.`);
+  }
+  return ids;
 }
 
 module.exports = function buildProfileRouter(deps) {
@@ -86,6 +107,18 @@ module.exports = function buildProfileRouter(deps) {
   router.put('/profile/equipment', auth, async (req, res, next) => {
     try {
       const ids = validateIds('equipmentIds', (req.body || {}).equipmentIds);
+      // A stale cached list on the client can name equipment that no longer
+      // exists. Checking here turns that into a 400 instead of the FK
+      // violation (ER_NO_REFERENCED_ROW_2) that setEquipment's insert would
+      // otherwise raise as an opaque 500.
+      if (ids.length > 0) {
+        const [rows] = await pool.query(
+          'SELECT equipment_id FROM equipment WHERE equipment_id IN (?)', [ids],
+        );
+        if (rows.length !== ids.length) {
+          throw invalid('equipmentIds', 'equipmentIds must reference existing equipment.');
+        }
+      }
       await setEquipment(pool, req.user.userId, ids);
       await respond(res, req.user.userId);
     } catch (err) { next(err); }
@@ -106,6 +139,33 @@ module.exports = function buildProfileRouter(deps) {
         }
         return { injuryId, side };
       });
+
+      const ids = entries.map((e) => e.injuryId);
+      if (new Set(ids).size !== ids.length) {
+        throw invalid('injuries', 'injuries must not contain duplicate injuryId values.');
+      }
+
+      // One lookup answers both remaining questions: does this injuryId
+      // exist (the same FK-violation-as-500 risk equipment has), and is a
+      // non-null side meaningful for it. injuries.is_lateral exists
+      // precisely so a side can be rejected on a region that has none, e.g.
+      // Neck — silently accepting it would feed Module 2's plan generation
+      // with meaningless laterality.
+      if (entries.length > 0) {
+        const [rows] = await pool.query(
+          'SELECT injury_id, is_lateral FROM injuries WHERE injury_id IN (?)', [ids],
+        );
+        const lateralById = new Map(rows.map((r) => [r.injury_id, Boolean(r.is_lateral)]));
+        for (const entry of entries) {
+          if (!lateralById.has(entry.injuryId)) {
+            throw invalid('injuries', 'injuries must reference an existing injury.');
+          }
+          if (entry.side !== null && !lateralById.get(entry.injuryId)) {
+            throw invalid('injuries', 'side is not applicable to a non-lateral injury.');
+          }
+        }
+      }
+
       await setInjuries(pool, req.user.userId, entries);
       await respond(res, req.user.userId);
     } catch (err) { next(err); }
