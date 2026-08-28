@@ -30,6 +30,24 @@ function invalid(field, message) {
   return AppError.badRequest('INVALID_PROFILE_FIELD', message, [{ field }]);
 }
 
+// True for a real calendar date, not just something shaped like one.
+// /^\d{4}-\d{2}-\d{2}$/ alone accepts "2026-02-31", which MySQL then rejects
+// under STRICT_TRANS_TABLES as a 500 — a 400 belongs here instead. Date's
+// constructor normalises an out-of-range day/month forward (e.g. Feb 31
+// becomes Mar 3) rather than rejecting it, so round-tripping the parsed parts
+// back against the input is what actually catches that.
+function isRealCalendarDate(value) {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) return false;
+  const [year, month, day] = value.split('-').map(Number);
+  if (month < 1 || month > 12) return false;
+  const parsed = new Date(Date.UTC(year, month - 1, day));
+  return (
+    parsed.getUTCFullYear() === year
+    && parsed.getUTCMonth() === month - 1
+    && parsed.getUTCDate() === day
+  );
+}
+
 // Silently dropping unknown keys is deliberate: the client may send a whole
 // form back. What must never happen is a key outside WRITABLE reaching SQL.
 function validatePatch(body) {
@@ -62,10 +80,24 @@ function validatePatch(body) {
       fields[key] = value;
       continue;
     }
-    if (key === 'dateOfBirth' && !/^\d{4}-\d{2}-\d{2}$/.test(String(value))) {
-      throw invalid(key, 'dateOfBirth must be YYYY-MM-DD.');
+    if (key === 'dateOfBirth') {
+      if (typeof value !== 'string' || !isRealCalendarDate(value)) {
+        throw invalid(key, 'dateOfBirth must be a real calendar date in YYYY-MM-DD form.');
+      }
+      fields[key] = value;
+      continue;
     }
-    if (MAX_LENGTH[key] && typeof value === 'string' && value.length > MAX_LENGTH[key]) {
+    // Every WRITABLE key not already handled above (enum, numeric, boolean,
+    // dateOfBirth) is expected to be a plain string. Gating the length check
+    // on typeof value === 'string' — as this used to do — let a non-string
+    // value skip that check AND every other check here, reaching pool.query
+    // as-is: an array becomes a SQL syntax error (500), an object stores the
+    // literal text "[object Object]". See the identical hazard and fix in
+    // src/routes/exercises.js's parseOptionalString.
+    if (typeof value !== 'string') {
+      throw invalid(key, `${key} must be a string.`);
+    }
+    if (MAX_LENGTH[key] && value.length > MAX_LENGTH[key]) {
       throw invalid(key, `${key} must be at most ${MAX_LENGTH[key]} characters.`);
     }
     fields[key] = value;

@@ -45,6 +45,21 @@ test('profile endpoints', async (t) => {
     assert.equal(res.body.data.profile.onboardingCompleted, false);
   });
 
+  // getProfile's explicit SELECT list (rather than SELECT *) is what keeps
+  // this safe today; nothing pinned that until now.
+  await t.test('never returns password_hash on the profile', async () => {
+    await reset();
+    const res = await request(app).get('/api/v1/profile').set('Authorization', auth).expect(200);
+    assert.ok(
+      !Object.prototype.hasOwnProperty.call(res.body.data.profile, 'password_hash'),
+      'password_hash must never reach the client',
+    );
+    assert.ok(
+      !Object.prototype.hasOwnProperty.call(res.body.data.profile, 'passwordHash'),
+      'passwordHash must never reach the client either',
+    );
+  });
+
   await t.test('patches one step at a time', async () => {
     await reset();
     await request(app).patch('/api/v1/profile').set('Authorization', auth)
@@ -115,6 +130,51 @@ test('profile endpoints', async (t) => {
     const res2 = await request(app).patch('/api/v1/profile').set('Authorization', auth)
       .send({ city: 'a'.repeat(256) }).expect(400);
     assert.equal(res2.body.error.code, 'INVALID_PROFILE_FIELD');
+  });
+
+  // The max-length guard used to read `typeof value === 'string' && ...`,
+  // which means a non-string value skipped that check AND every other type
+  // check, and reached pool.query as-is: an array becomes a SQL syntax error
+  // (500) and an object stores the literal text "[object Object]".
+  await t.test('rejects a non-string value for a string field instead of reaching SQL', async () => {
+    await reset();
+    const arrayRes = await request(app).patch('/api/v1/profile').set('Authorization', auth)
+      .send({ fullName: ['a', 'b'] }).expect(400);
+    assert.equal(arrayRes.body.error.code, 'INVALID_PROFILE_FIELD');
+
+    const objectRes = await request(app).patch('/api/v1/profile').set('Authorization', auth)
+      .send({ city: { nested: true } }).expect(400);
+    assert.equal(objectRes.body.error.code, 'INVALID_PROFILE_FIELD');
+
+    const numberRes = await request(app).patch('/api/v1/profile').set('Authorization', auth)
+      .send({ city: 12345 }).expect(400);
+    assert.equal(numberRes.body.error.code, 'INVALID_PROFILE_FIELD');
+  });
+
+  // The old regex /^\d{4}-\d{2}-\d{2}$/ only checks shape, so "2026-02-31"
+  // passes it and reaches MySQL, which rejects it under STRICT_TRANS_TABLES
+  // as a 500 — a 400 belongs here instead.
+  await t.test('rejects a date of birth that is not a real calendar date', async () => {
+    await reset();
+    const res = await request(app).patch('/api/v1/profile').set('Authorization', auth)
+      .send({ dateOfBirth: '2026-02-31' }).expect(400);
+    assert.equal(res.body.error.code, 'INVALID_PROFILE_FIELD');
+
+    const res2 = await request(app).patch('/api/v1/profile').set('Authorization', auth)
+      .send({ dateOfBirth: '2026-13-01' }).expect(400);
+    assert.equal(res2.body.error.code, 'INVALID_PROFILE_FIELD');
+
+    // 2026 is not a leap year.
+    const res3 = await request(app).patch('/api/v1/profile').set('Authorization', auth)
+      .send({ dateOfBirth: '2026-02-29' }).expect(400);
+    assert.equal(res3.body.error.code, 'INVALID_PROFILE_FIELD');
+  });
+
+  await t.test('accepts a real calendar date, including a leap day', async () => {
+    await reset();
+    const res = await request(app).patch('/api/v1/profile').set('Authorization', auth)
+      .send({ dateOfBirth: '2024-02-29' }).expect(200);
+    assert.equal(res.body.data.profile.dateOfBirth.slice(0, 10), '2024-02-29');
   });
 
   await t.test('rejects a side on a non-lateral injury and stores nothing', async () => {
