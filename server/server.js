@@ -4,6 +4,7 @@ const { createLogger } = require('./src/lib/logger');
 const { createPool } = require('./src/db/pool');
 const { createMlService } = require('./src/services/ml');
 const { createStorage } = require('./src/services/storage');
+const { createGoogleVerifier } = require('./src/services/google');
 const { createApp } = require('./src/app');
 
 const config = load();
@@ -11,8 +12,9 @@ const logger = createLogger({ level: config.logLevel, env: config.env });
 const pool = createPool(config.db);
 const ml = createMlService(config.ml);
 const storage = createStorage(config.storage);
+const google = createGoogleVerifier(config.google);
 
-const app = createApp({ config, logger, pool, ml, storage });
+const app = createApp({ config, logger, pool, ml, storage, jwt: config.jwt, google });
 
 const server = app.listen(config.port, () => {
   logger.info(`FitSync API listening on port ${config.port} (${config.env})`);

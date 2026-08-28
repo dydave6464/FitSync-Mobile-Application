@@ -10,7 +10,8 @@ function silentLogger() {
   return createLogger({ level: 'silent', env: 'test' });
 }
 
-function buildTestApp({ pool = null, extend = null, storage = null, storageConfig = null } = {}) {
+function buildTestApp(deps = {}) {
+  const { pool = null, extend = null, storage = null, storageConfig = null } = deps;
   const extraRouter = express.Router();
   if (extend) extend(extraRouter);
 
@@ -20,6 +21,8 @@ function buildTestApp({ pool = null, extend = null, storage = null, storageConfi
     pool,
     storage,
     extraRouter: extend ? extraRouter : null,
+    jwt: deps.jwt || { secret: 'test-secret-value-at-least-32-chars', expiresIn: '30d' },
+    google: deps.google || require('../../src/services/google').createGoogleVerifier({ mode: 'stub' }),
   });
 }
 

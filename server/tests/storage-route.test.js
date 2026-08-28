@@ -7,6 +7,7 @@ const path = require('node:path');
 const request = require('supertest');
 const { createStorage } = require('../src/services/storage');
 const { buildTestApp } = require('./helpers/test-app');
+const { signToken } = require('../src/lib/tokens');
 
 const GIF = Buffer.concat([Buffer.from('GIF89a', 'ascii'), Buffer.from([0x01, 0x02, 0x03])]);
 
@@ -44,6 +45,10 @@ test('storage media route', async (t) => {
   });
 
   await t.test('the API surface is unaffected', async () => {
-    await request(app).get('/api/v1/exercises/filters').expect(500);
+    // /exercises now sits behind requireAuth, so a bearer token is needed to
+    // reach the route at all; the pool is still null here, so it still errors
+    // — just one step further in, once requireAuth tries to look the user up.
+    const auth = `Bearer ${signToken(1, { secret: 'test-secret-value-at-least-32-chars', expiresIn: '1h' })}`;
+    await request(app).get('/api/v1/exercises/filters').set('Authorization', auth).expect(500);
   });
 });
