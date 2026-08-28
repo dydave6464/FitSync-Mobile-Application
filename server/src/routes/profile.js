@@ -4,8 +4,9 @@ const AppError = require('../lib/app-error');
 const requireAuth = require('../middleware/require-auth');
 const {
   getProfile, updateProfile, setEquipment, setInjuries,
-  listEquipment, listInjuries, WRITABLE,
+  listEquipment, listInjuries, markOnboardingComplete, WRITABLE,
 } = require('../db/profile');
+const { savePlan, getActivePlan } = require('../db/plans');
 
 const ENUMS = {
   sex: ['male', 'female', 'prefer_not_to_say'],
@@ -177,6 +178,26 @@ module.exports = function buildProfileRouter(deps) {
 
   router.get('/injuries', auth, async (_req, res, next) => {
     try { res.json({ data: { injuries: await listInjuries(pool) } }); } catch (err) { next(err); }
+  });
+
+  router.post('/profile/complete-onboarding', auth, async (req, res, next) => {
+    try {
+      const userId = req.user.userId;
+      const profile = await getProfile(pool, userId);
+
+      // Generate first, mark complete second. If generation throws, the user
+      // stays mid-onboarding and can retry — rather than being "done" with no plan.
+      const generated = await deps.ml.generatePlan(profile);
+      await savePlan(pool, userId, generated);
+      await markOnboardingComplete(pool, userId);
+
+      res.json({
+        data: {
+          profile: await getProfile(pool, userId),
+          plan: await getActivePlan(pool, userId),
+        },
+      });
+    } catch (err) { next(err); }
   });
 
   return router;

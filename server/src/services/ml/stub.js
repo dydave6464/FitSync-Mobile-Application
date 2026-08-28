@@ -1,10 +1,14 @@
 'use strict';
 
+// Body-weight exercises only: the stub ignores the user's equipment
+// entirely, so a body-weight starter plan is valid regardless of what any
+// given user owns. Verified against the live catalogue (see Task 9's
+// Step 1 check) — all four resolve.
 const DEFAULT_EXERCISES = [
-  { name: 'Goblet Squat', orderNo: 1, targetSets: 3, targetReps: '8-12' },
-  { name: 'Push-Up', orderNo: 2, targetSets: 3, targetReps: '8-12' },
-  { name: 'Dumbbell Row', orderNo: 3, targetSets: 3, targetReps: '8-12' },
-  { name: 'Glute Bridge', orderNo: 4, targetSets: 3, targetReps: '10-15' },
+  { name: 'walking lunge', orderNo: 1, targetSets: 3, targetReps: '8-12' },
+  { name: 'push-up', orderNo: 2, targetSets: 3, targetReps: '8-12' },
+  { name: 'inverted row', orderNo: 3, targetSets: 3, targetReps: '8-12' },
+  { name: 'low glute bridge on floor', orderNo: 4, targetSets: 3, targetReps: '10-15' },
 ];
 
 async function generatePlan(profile = {}) {
