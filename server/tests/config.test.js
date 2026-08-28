@@ -87,3 +87,30 @@ test('exposes jwt and google config', () => {
   assert.equal(cfg.google.mode, 'stub');
   assert.equal(cfg.google.clientId, 'cid');
 });
+
+test('refuses to start with GOOGLE_MODE=stub in production', () => {
+  assert.throws(
+    () => load({ ...validEnv, NODE_ENV: 'production', GOOGLE_MODE: 'stub' }),
+    (err) => {
+      assert.match(err.message, /GOOGLE_MODE/);
+      assert.match(err.message, /NODE_ENV/);
+      return true;
+    },
+  );
+});
+
+test('allows GOOGLE_MODE=stub outside production', () => {
+  const cfg = load({ ...validEnv, NODE_ENV: 'development', GOOGLE_MODE: 'stub' });
+  assert.equal(cfg.google.mode, 'stub');
+});
+
+test('allows GOOGLE_MODE=http in production', () => {
+  const cfg = load({ ...validEnv, NODE_ENV: 'production', GOOGLE_MODE: 'http' });
+  assert.equal(cfg.google.mode, 'http');
+});
+
+test('defaulting GOOGLE_MODE (unset) is refused in production, same as an explicit stub', () => {
+  const env = { ...validEnv, NODE_ENV: 'production' };
+  delete env.GOOGLE_MODE;
+  assert.throws(() => load(env), /GOOGLE_MODE/);
+});

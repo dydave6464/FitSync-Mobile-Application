@@ -17,8 +17,24 @@ function load(env = process.env) {
     throw new Error(`Missing required environment variables: ${missing.join(', ')}`);
   }
 
+  const nodeEnv = env.NODE_ENV || 'development';
+  const googleMode = env.GOOGLE_MODE || 'stub';
+  // The stub driver accepts a small, fixed set of tokens that are public in
+  // this repository (see src/services/google/stub.js) — one of them signs in
+  // as juan@example.com, creating the account if it does not exist yet.
+  // Refusing to boot here mirrors the JWT_SECRET guard above: a predictable
+  // auth bypass in production is exactly the kind of thing that must fail
+  // fast at startup, not in an incident.
+  if (nodeEnv === 'production' && googleMode === 'stub') {
+    throw new Error(
+      'GOOGLE_MODE is "stub" (or unset) while NODE_ENV is "production". '
+        + 'The stub driver accepts publicly known tokens and must never run in '
+        + 'production — set GOOGLE_MODE=http.',
+    );
+  }
+
   return {
-    env: env.NODE_ENV || 'development',
+    env: nodeEnv,
     port: env.PORT ? parsePositiveInteger('PORT', env.PORT) : 3000,
     logLevel: env.LOG_LEVEL || 'info',
     db: {
@@ -44,7 +60,7 @@ function load(env = process.env) {
       expiresIn: env.JWT_EXPIRES_IN || '30d',
     },
     google: {
-      mode: env.GOOGLE_MODE || 'stub',
+      mode: googleMode,
       clientId: env.GOOGLE_CLIENT_ID || null,
     },
   };
