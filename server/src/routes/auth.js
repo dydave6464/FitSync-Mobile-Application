@@ -9,6 +9,16 @@ const {
 const requireAuth = require('../middleware/require-auth');
 
 const MIN_PASSWORD_LENGTH = 8;
+// bcrypt (via bcryptjs) only reads the first 72 bytes of its input — anything
+// beyond that contributes nothing to the hash. Without a cap, an anonymous
+// caller can send an arbitrarily large password and force the server to spend
+// real CPU running it through a deliberately slow hash function: a cheap
+// denial-of-service against the one route that has no auth to gate it.
+const MAX_PASSWORD_LENGTH = 72;
+// users.email and users.full_name are both VARCHAR(255). Anything longer must
+// be rejected here as a 400, not discovered as ER_DATA_TOO_LONG from MySQL —
+// see the identical MAX_LENGTH map in src/routes/profile.js.
+const MAX_STRING_LENGTH = 255;
 
 // The row carries password_hash. Nothing outside this module may see it.
 function toPublicUser(row) {
@@ -21,7 +31,7 @@ function toPublicUser(row) {
   };
 }
 
-function requireString(field, value, { minLength = 1 } = {}) {
+function requireString(field, value, { minLength = 1, maxLength = null } = {}) {
   if (typeof value !== 'string' || value.trim().length < minLength) {
     throw AppError.badRequest(
       'INVALID_PROFILE_FIELD',
@@ -29,7 +39,15 @@ function requireString(field, value, { minLength = 1 } = {}) {
       [{ field }],
     );
   }
-  return value.trim();
+  const trimmed = value.trim();
+  if (maxLength !== null && trimmed.length > maxLength) {
+    throw AppError.badRequest(
+      'INVALID_PROFILE_FIELD',
+      `${field} must be at most ${maxLength} characters.`,
+      [{ field }],
+    );
+  }
+  return trimmed;
 }
 
 module.exports = function buildAuthRouter({ pool, jwt, google }) {
@@ -37,9 +55,12 @@ module.exports = function buildAuthRouter({ pool, jwt, google }) {
 
   router.post('/register', async (req, res, next) => {
     try {
-      const email = requireString('email', req.body.email).toLowerCase();
-      const password = requireString('password', req.body.password, { minLength: MIN_PASSWORD_LENGTH });
-      const fullName = requireString('fullName', req.body.fullName);
+      const email = requireString('email', req.body.email, { maxLength: MAX_STRING_LENGTH }).toLowerCase();
+      const password = requireString('password', req.body.password, {
+        minLength: MIN_PASSWORD_LENGTH,
+        maxLength: MAX_PASSWORD_LENGTH,
+      });
+      const fullName = requireString('fullName', req.body.fullName, { maxLength: MAX_STRING_LENGTH });
 
       if (await findUserByEmail(pool, email)) {
         throw AppError.conflict('EMAIL_TAKEN', 'That email is already registered.');

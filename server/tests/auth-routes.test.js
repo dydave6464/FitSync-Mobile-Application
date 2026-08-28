@@ -32,7 +32,20 @@ test('auth endpoints', async (t) => {
     const res = await register().expect(201);
     assert.equal(res.body.data.user.email, 'juan@example.com');
     assert.ok(res.body.data.token);
-    assert.equal(res.body.data.user.passwordHash, undefined, 'never leak the hash');
+    // A vacuous form of this assertion — checking only that passwordHash (the
+    // camelCase name) is undefined — would still pass if toPublicUser were
+    // ever replaced by a naive spread of the database row, which carries the
+    // hash under its actual key, password_hash. Pinning the full key set (and
+    // separately confirming password_hash by name) is what actually catches
+    // that regression.
+    assert.deepEqual(
+      Object.keys(res.body.data.user).sort(),
+      ['email', 'fullName', 'isPremium', 'onboardingCompleted', 'userId'].sort(),
+    );
+    assert.ok(
+      !Object.prototype.hasOwnProperty.call(res.body.data.user, 'password_hash'),
+      'never leak the hash',
+    );
   });
 
   await t.test('rejects a duplicate email', async () => {
@@ -46,6 +59,37 @@ test('auth endpoints', async (t) => {
     await reset();
     const res = await request(app).post('/api/v1/auth/register')
       .send({ email: 'a@b.com', password: 'short', fullName: 'A' }).expect(400);
+    assert.equal(res.body.error.code, 'INVALID_PROFILE_FIELD');
+  });
+
+  // users.email is VARCHAR(255). Without a max-length check this reaches
+  // pool.query and MySQL raises ER_DATA_TOO_LONG, which the generic handler
+  // turns into a 500 — a 400 belongs here instead.
+  await t.test('rejects an email longer than the column allows', async () => {
+    await reset();
+    const overlong = `${'a'.repeat(250)}@b.com`;
+    const res = await request(app).post('/api/v1/auth/register')
+      .send({ email: overlong, password: 's3cret-pass', fullName: 'A' }).expect(400);
+    assert.equal(res.body.error.code, 'INVALID_PROFILE_FIELD');
+  });
+
+  // users.full_name is VARCHAR(255) — same hazard as email above.
+  await t.test('rejects a full name longer than the column allows', async () => {
+    await reset();
+    const res = await request(app).post('/api/v1/auth/register')
+      .send({ email: 'longname@b.com', password: 's3cret-pass', fullName: 'a'.repeat(256) })
+      .expect(400);
+    assert.equal(res.body.error.code, 'INVALID_PROFILE_FIELD');
+  });
+
+  // bcrypt only reads the first 72 bytes of its input; anything past that adds
+  // no security and an unbounded password is a cheap way to make the server
+  // spend real CPU on a deliberately slow hash function.
+  await t.test('rejects a password longer than bcrypt can use', async () => {
+    await reset();
+    const res = await request(app).post('/api/v1/auth/register')
+      .send({ email: 'longpass@b.com', password: 'a'.repeat(73), fullName: 'A' })
+      .expect(400);
     assert.equal(res.body.error.code, 'INVALID_PROFILE_FIELD');
   });
 
