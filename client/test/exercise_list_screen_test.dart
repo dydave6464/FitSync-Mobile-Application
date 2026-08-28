@@ -62,7 +62,7 @@ class FakeRepository implements ExerciseRepository {
       throw const ApiException('NETWORK_ERROR', 'Could not reach the server.');
     }
     return const ExerciseFilters(
-        muscleGroups: [FilterOption(value: 'abs', count: 147), FilterOption(value: 'biceps', count: 150)],
+      muscleGroups: [FilterOption(value: 'abs', count: 147), FilterOption(value: 'biceps', count: 150)],
       equipment: [FilterOption(value: 'body weight', count: 304)],
     );
   }
