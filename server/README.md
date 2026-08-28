@@ -4,7 +4,8 @@ Node/Express REST API backing the FitSync mobile app.
 
 ## Prerequisites
 
-- Node.js 18 or later.
+- Node.js 22 or later (`google-auth-library` and two of its transitive
+  dependencies declare `"engines": { "node": ">=22" }`).
 - MySQL 8. (MySQL 8's default `sql_mode` already includes
   `STRICT_TRANS_TABLES`, which the schema and its tests rely on — nothing
   extra to configure there on a stock install.)
@@ -39,8 +40,12 @@ cp .env.example .env
 
 Then edit `.env` and set at least `DB_PASSWORD` to the password you chose
 above. `src/config/index.js` fails fast (refuses to boot) if any of
-`DB_HOST`, `DB_PORT`, `DB_USER`, `DB_PASSWORD`, `DB_NAME` are missing, or if
-`PORT`/`DB_PORT` aren't positive integers.
+`DB_HOST`, `DB_PORT`, `DB_USER`, `DB_PASSWORD`, `DB_NAME`, `JWT_SECRET` are
+missing, or if `PORT`/`DB_PORT` aren't positive integers. Set `JWT_SECRET` to
+a long, random value of your own — never commit it. `GOOGLE_MODE` and
+`GOOGLE_CLIENT_ID` have working defaults for local development (see
+`.env.example`), but `GOOGLE_MODE=stub` is refused outright when
+`NODE_ENV=production`.
 
 ## Install, migrate, run
 
@@ -141,6 +146,21 @@ not replay an edited file, so drop the tables and re-migrate (see
 [Re-migrating from scratch](#re-migrating-from-scratch)), then seed again.
 
 **Licensing:** see [`THIRD_PARTY_LICENSES.md`](../THIRD_PARTY_LICENSES.md).
+
+## Injury regions
+
+Onboarding's fourth step and `GET /api/v1/injuries` both read the 16-row
+`injuries` lookup table. Migration `007_auth_identities.sql` only adds the
+columns that table needs (`is_lateral`, `region_group`) — it does not insert
+the rows themselves. Run this once after migrating (and again any time
+`src/db/seed-injuries.js`'s region list changes; it is idempotent):
+
+```bash
+npm run seed:injuries
+```
+
+Without it, `injuries` is empty on a fresh database and `GET
+/api/v1/injuries` returns `[]`.
 
 ## Response envelope
 

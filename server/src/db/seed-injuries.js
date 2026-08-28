@@ -34,11 +34,24 @@ const UPSERT_INJURY = `
 async function seedInjuries(dbConfig) {
   const pool = createPool(dbConfig);
   try {
+    let inserted = 0;
+    let updated = 0;
+    let unchanged = 0;
     for (const r of REGIONS) {
       // uq_injuries_name makes this idempotent without a pre-read.
-      await pool.query(UPSERT_INJURY, [r.name, r.isLateral, r.regionGroup]);
+      const [result] = await pool.query(UPSERT_INJURY, [r.name, r.isLateral, r.regionGroup]);
+      // MySQL's documented affectedRows convention for INSERT ... ON
+      // DUPLICATE KEY UPDATE is 1 for a new row / 2 for a changed row / 0 for
+      // an existing row already matching. mysql2 enables the CLIENT_FOUND_ROWS
+      // flag by default, though, which changes that 0 to a 1 (see
+      // connection_config.js's default flag list) — so affectedRows === 1
+      // alone cannot tell "newly inserted" from "already matched" apart.
+      // insertId does: it is only nonzero when a row was actually inserted.
+      if (result.affectedRows === 2) updated += 1;
+      else if (result.affectedRows === 1 && result.insertId > 0) inserted += 1;
+      else unchanged += 1;
     }
-    return { inserted: REGIONS.length };
+    return { inserted, updated, unchanged, total: REGIONS.length };
   } finally {
     await pool.end();
   }
