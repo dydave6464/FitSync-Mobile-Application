@@ -9,6 +9,9 @@ import 'package:fitsync/core/api_exception.dart';
 import 'package:fitsync/features/auth/domain/auth_user.dart';
 import 'package:fitsync/features/auth/presentation/auth_controller.dart';
 import 'package:fitsync/features/auth/presentation/sign_in_screen.dart';
+import 'package:fitsync/features/onboarding/presentation/onboarding_flow.dart';
+import 'package:fitsync/features/profile/domain/profile.dart';
+import 'package:fitsync/features/profile/presentation/providers.dart';
 
 AuthUser _user({bool onboardingCompleted = false}) => AuthUser(
       userId: 7,
@@ -17,6 +20,23 @@ AuthUser _user({bool onboardingCompleted = false}) => AuthUser(
       onboardingCompleted: onboardingCompleted,
       isPremium: false,
     );
+
+/// Keeps the shell's onboarding branch hermetic. Without it the real profile
+/// provider would reach the secure-storage platform channel, which has no
+/// binding under `flutter test`.
+class StubProfileNotifier extends ProfileNotifier {
+  @override
+  Future<Profile> build() async => const Profile(
+        userId: 7,
+        email: 'juan@example.com',
+        fullName: 'Juan Dela Cruz',
+        onboardingCompleted: false,
+        isPremium: false,
+        notificationsEnabled: true,
+        equipment: [],
+        injuries: [],
+      );
+}
 
 /// Drives the shell's four branches directly. [onBuild] receives how many
 /// times `build()` has already run, so a test can fail the first attempt and
@@ -39,6 +59,7 @@ Future<void> _pumpShell(
       ProviderScope(
         overrides: [
           authControllerProvider.overrideWith(() => FakeAuthController(onBuild)),
+          profileProvider.overrideWith(StubProfileNotifier.new),
         ],
         child: const MaterialApp(home: AppShell()),
       ),
@@ -70,7 +91,7 @@ void main() {
     );
     await tester.pumpAndSettle();
 
-    expect(find.byType(OnboardingPlaceholder), findsOneWidget);
+    expect(find.byType(OnboardingFlow), findsOneWidget);
   });
 
   testWidgets('a finished profile shows the plan screen', (tester) async {

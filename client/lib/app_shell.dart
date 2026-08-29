@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'features/auth/presentation/auth_controller.dart';
 import 'features/auth/presentation/sign_in_screen.dart';
 import 'features/exercises/presentation/exercise_list_screen.dart' show describeError;
+import 'features/onboarding/presentation/onboarding_flow.dart';
 
 /// Chooses the first screen from auth state, and nothing else.
 ///
@@ -26,7 +27,7 @@ class AppShell extends ConsumerWidget {
       ),
       data: (state) => switch (state.status) {
         AuthStatus.signedOut => const SignInScreen(),
-        AuthStatus.onboarding => const OnboardingPlaceholder(),
+        AuthStatus.onboarding => const OnboardingFlow(),
         AuthStatus.ready => const PlanPlaceholder(),
       },
     );
@@ -61,18 +62,9 @@ class _ShellError extends StatelessWidget {
 // Placeholders, not dead code.
 //
 // The shell's routing is built and tested before the screens it routes to
-// exist. Task 6 replaces [OnboardingPlaceholder] and Task 9 replaces
-// [PlanPlaceholder]. Each one should be deleted as its real screen lands —
-// if you are reading this and both screens exist, these are leftovers.
+// exist. Task 9 replaces [PlanPlaceholder]; delete it when the real plan
+// screen lands.
 // ---------------------------------------------------------------------------
-
-class OnboardingPlaceholder extends StatelessWidget {
-  const OnboardingPlaceholder({super.key});
-
-  @override
-  Widget build(BuildContext context) =>
-      const Scaffold(body: Center(child: Text('Onboarding')));
-}
 
 class PlanPlaceholder extends StatelessWidget {
   const PlanPlaceholder({super.key});
