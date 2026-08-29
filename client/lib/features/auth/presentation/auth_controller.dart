@@ -4,6 +4,7 @@ import '../../../core/api_exception.dart';
 import '../../../core/token_store.dart';
 import '../../exercises/presentation/providers.dart';
 import '../data/auth_repository.dart';
+import '../data/google_sign_in_gateway.dart';
 import '../domain/auth_user.dart';
 
 /// Where the app can be, as far as authentication is concerned.
@@ -37,6 +38,10 @@ final authRepositoryProvider = Provider<AuthRepository>(
     ref.watch(apiClientProvider),
     ref.watch(tokenStoreProvider),
   ),
+);
+
+final googleSignInGatewayProvider = Provider<GoogleSignInGateway>(
+  (ref) => PluginGoogleSignInGateway(),
 );
 
 class AuthController extends AsyncNotifier<AuthState> {

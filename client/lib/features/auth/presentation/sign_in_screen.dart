@@ -47,6 +47,32 @@ class _SignInScreenState extends ConsumerState<SignInScreen> {
     return null;
   }
 
+  Future<void> _signInWithGoogle() async {
+    if (_busy) return;
+
+    setState(() {
+      _busy = true;
+      _error = null;
+    });
+
+    try {
+      final idToken = await ref.read(googleSignInGatewayProvider).idToken();
+      if (!mounted) return;
+      // A cancelled dialog is a decision, not a failure. Leave the screen
+      // exactly as it was so the user can pick another way in.
+      if (idToken == null) return;
+
+      final user = await ref.read(authRepositoryProvider).signInWithGoogle(idToken);
+      if (!mounted) return;
+      ref.read(authControllerProvider.notifier).onAuthenticated(user);
+    } on ApiException catch (error) {
+      if (!mounted) return;
+      setState(() => _error = error.message);
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
+  }
+
   Future<void> _submit() async {
     // Guard here as well as on the button: a tap already in flight when the
     // widget rebuilds must not start a second request.
@@ -163,12 +189,9 @@ class _SignInScreenState extends ConsumerState<SignInScreen> {
                 const SizedBox(height: 12),
                 OutlinedButton.icon(
                   key: const Key('google'),
-                  // Wired in Task 11, once the Google OAuth client exists.
-                  // Disabled rather than absent so the button's place in the
-                  // layout is already settled.
-                  onPressed: null,
+                  onPressed: _busy ? null : _signInWithGoogle,
                   icon: const Icon(Icons.g_mobiledata),
-                  label: const Text('Continue with Google (coming soon)'),
+                  label: const Text('Continue with Google'),
                 ),
                 const SizedBox(height: 12),
                 TextButton(
