@@ -8,6 +8,7 @@ import '../../profile/presentation/providers.dart';
 import 'onboarding_scaffold.dart';
 import 'steps/about_step.dart';
 import 'steps/goal_step.dart';
+import 'steps/injuries_step.dart';
 import 'steps/level_step.dart';
 
 /// Sequences the four onboarding steps.
@@ -35,6 +36,7 @@ class _OnboardingFlowState extends ConsumerState<OnboardingFlow> {
   String? _mainGoal;
   AboutAnswers _about = const AboutAnswers();
   LevelAnswers _level = const LevelAnswers();
+  List<SelectedInjury> _injuries = const [];
 
   void _seedFrom(Profile profile) {
     if (_seeded) return;
@@ -54,6 +56,7 @@ class _OnboardingFlowState extends ConsumerState<OnboardingFlow> {
       equipmentIds:
           profile.equipment.map((e) => e.equipmentId).toList(growable: false),
     );
+    _injuries = profile.injuries;
   }
 
   /// Only the keys the user actually answered. The server reads an absent key
@@ -86,12 +89,12 @@ class _OnboardingFlowState extends ConsumerState<OnboardingFlow> {
     final fields = _patchForCurrentStep();
     if (fields.isNotEmpty) await notifier.patch(fields);
 
-    if (_index == 2) {
-      // Sent unconditionally, and only on Continue. It is a replace-set, so
-      // an empty list is a real answer — "I own none of these" — and skipping
-      // the call when the list is empty would make that unsavable.
-      await notifier.setEquipment(_level.equipmentIds);
-    }
+    // Both of these are replace-set writes on their own endpoints, sent
+    // unconditionally and only on Continue. An empty list is a real answer —
+    // "I own none of these", "nothing hurts" — and skipping the call when the
+    // list is empty would make that unsavable.
+    if (_index == 2) await notifier.setEquipment(_level.equipmentIds);
+    if (_index == 3) await notifier.setInjuries(_injuries);
   }
 
   Future<void> _continue() async {
@@ -143,9 +146,10 @@ class _OnboardingFlowState extends ConsumerState<OnboardingFlow> {
             value: _level,
             onChanged: (value) => setState(() => _level = value),
           ),
-        // Step 4 lands in Task 8 of this plan. Replace this case with
-        // InjuriesStep when it arrives.
-        _ => const _PendingStep(),
+        _ => InjuriesStep(
+            value: _injuries,
+            onChanged: (value) => setState(() => _injuries = value),
+          ),
       };
 
   @override
@@ -202,14 +206,4 @@ class _OnboardingFlowState extends ConsumerState<OnboardingFlow> {
       },
     );
   }
-}
-
-class _PendingStep extends StatelessWidget {
-  const _PendingStep();
-
-  @override
-  Widget build(BuildContext context) => const Padding(
-        padding: EdgeInsets.symmetric(vertical: 32),
-        child: Text('This step is not built yet.', textAlign: TextAlign.center),
-      );
 }

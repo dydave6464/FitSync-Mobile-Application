@@ -18,12 +18,28 @@ Profile _emptyProfile() => const Profile(
       injuries: [],
     );
 
+const _equipment = [EquipmentOption(equipmentId: 41, name: 'Resistance band')];
+const _injuries = [
+  InjuryOption(
+    injuryId: 1,
+    name: 'Shoulder',
+    isLateral: true,
+    regionGroup: 'upper_body',
+  ),
+];
+
 class FakeProfileNotifier extends ProfileNotifier {
-  FakeProfileNotifier(this.patches, {this.onPatch, this.equipmentWrites});
+  FakeProfileNotifier(
+    this.patches, {
+    this.onPatch,
+    this.equipmentWrites,
+    this.injuryWrites,
+  });
 
   final List<Map<String, dynamic>> patches;
   final Future<void> Function()? onPatch;
   final List<List<int>>? equipmentWrites;
+  final List<List<SelectedInjury>>? injuryWrites;
 
   @override
   Future<Profile> build() async => _emptyProfile();
@@ -38,33 +54,62 @@ class FakeProfileNotifier extends ProfileNotifier {
   Future<void> setEquipment(List<int> equipmentIds) async {
     equipmentWrites?.add(equipmentIds);
   }
+
+  @override
+  Future<void> setInjuries(List<SelectedInjury> injuries) async {
+    injuryWrites?.add(injuries);
+  }
 }
 
-Future<List<Map<String, dynamic>>> _pumpFlow(
+/// Both lookup providers are always stubbed, even for tests that never reach
+/// steps 3 and 4. Leaving one live means the first `pumpAndSettle` after
+/// arriving at that step waits forever on its loading spinner.
+Future<void> _pumpFlow(
   WidgetTester tester, {
+  required List<Map<String, dynamic>> patches,
   Future<void> Function()? onPatch,
+  List<List<int>>? equipmentWrites,
+  List<List<SelectedInjury>>? injuryWrites,
 }) async {
-  final patches = <Map<String, dynamic>>[];
   await tester.pumpWidget(ProviderScope(
     overrides: [
-      profileProvider.overrideWith(() => FakeProfileNotifier(patches, onPatch: onPatch)),
+      profileProvider.overrideWith(() => FakeProfileNotifier(
+            patches,
+            onPatch: onPatch,
+            equipmentWrites: equipmentWrites,
+            injuryWrites: injuryWrites,
+          )),
+      equipmentOptionsProvider.overrideWith((ref) async => _equipment),
+      injuryOptionsProvider.overrideWith((ref) async => _injuries),
     ],
     child: const MaterialApp(home: OnboardingFlow()),
   ));
   await tester.pumpAndSettle();
-  return patches;
+}
+
+Future<void> _tapKey(WidgetTester tester, Key key) async {
+  await tester.ensureVisible(find.byKey(key));
+  await tester.pumpAndSettle();
+  await tester.tap(find.byKey(key));
+  await tester.pumpAndSettle();
+}
+
+Future<void> _skip(WidgetTester tester) async {
+  await tester.tap(find.byKey(const Key('skip')));
+  await tester.pumpAndSettle();
 }
 
 void main() {
   testWidgets('starts on step 1 of 4', (tester) async {
-    await _pumpFlow(tester);
+    await _pumpFlow(tester, patches: []);
 
     expect(find.text('Step 1 of 4'), findsOneWidget);
     expect(find.byKey(const Key('goal.lose_weight')), findsOneWidget);
   });
 
   testWidgets('Continue saves the step and advances', (tester) async {
-    final patches = await _pumpFlow(tester);
+    final patches = <Map<String, dynamic>>[];
+    await _pumpFlow(tester, patches: patches);
 
     await tester.tap(find.byKey(const Key('goal.build_muscle')));
     await tester.pumpAndSettle();
@@ -78,10 +123,10 @@ void main() {
   });
 
   testWidgets('Skip advances without saving', (tester) async {
-    final patches = await _pumpFlow(tester);
+    final patches = <Map<String, dynamic>>[];
+    await _pumpFlow(tester, patches: patches);
 
-    await tester.tap(find.byKey(const Key('skip')));
-    await tester.pumpAndSettle();
+    await _skip(tester);
 
     expect(patches, isEmpty);
     expect(find.text('Step 2 of 4'), findsOneWidget);
@@ -89,7 +134,8 @@ void main() {
 
   testWidgets('Continue with nothing chosen saves nothing but still advances',
       (tester) async {
-    final patches = await _pumpFlow(tester);
+    final patches = <Map<String, dynamic>>[];
+    await _pumpFlow(tester, patches: patches);
 
     await tester.tap(find.byKey(const Key('continue')));
     await tester.pumpAndSettle();
@@ -102,6 +148,7 @@ void main() {
       (tester) async {
     await _pumpFlow(
       tester,
+      patches: [],
       onPatch: () async => throw const ApiException(
           'INVALID_PROFILE_FIELD', 'That goal is not one we recognise.'),
     );
@@ -120,34 +167,14 @@ void main() {
       (tester) async {
     final patches = <Map<String, dynamic>>[];
     final equipmentWrites = <List<int>>[];
-    await tester.pumpWidget(ProviderScope(
-      overrides: [
-        profileProvider.overrideWith(() => FakeProfileNotifier(
-              patches,
-              equipmentWrites: equipmentWrites,
-            )),
-        equipmentOptionsProvider.overrideWith((ref) async => const [
-              EquipmentOption(equipmentId: 41, name: 'Resistance band'),
-            ]),
-      ],
-      child: const MaterialApp(home: OnboardingFlow()),
-    ));
-    await tester.pumpAndSettle();
+    await _pumpFlow(tester, patches: patches, equipmentWrites: equipmentWrites);
 
-    // Skip to step 3.
-    await tester.tap(find.byKey(const Key('skip')));
-    await tester.pumpAndSettle();
-    await tester.tap(find.byKey(const Key('skip')));
-    await tester.pumpAndSettle();
+    await _skip(tester);
+    await _skip(tester);
     expect(find.text('Step 3 of 4'), findsOneWidget);
 
-    await tester.tap(find.byKey(const Key('level.beginner')));
-    await tester.pumpAndSettle();
-    await tester.ensureVisible(find.byKey(const Key('equipment.41')));
-    await tester.pumpAndSettle();
-    await tester.tap(find.byKey(const Key('equipment.41')));
-    await tester.pumpAndSettle();
-
+    await _tapKey(tester, const Key('level.beginner'));
+    await _tapKey(tester, const Key('equipment.41'));
     await tester.tap(find.byKey(const Key('continue')));
     await tester.pumpAndSettle();
 
@@ -157,11 +184,26 @@ void main() {
     expect(find.text('Step 4 of 4'), findsOneWidget);
   });
 
-  testWidgets('back returns to the previous step', (tester) async {
-    await _pumpFlow(tester);
+  testWidgets('step 4 saves the injury set, empty included', (tester) async {
+    final injuryWrites = <List<SelectedInjury>>[];
+    await _pumpFlow(tester, patches: [], injuryWrites: injuryWrites);
 
-    await tester.tap(find.byKey(const Key('skip')));
+    await _skip(tester);
+    await _skip(tester);
+    await _skip(tester);
+    expect(find.text('Step 4 of 4'), findsOneWidget);
+
+    await tester.tap(find.byKey(const Key('continue')));
     await tester.pumpAndSettle();
+
+    // "Nothing hurts" is the common answer and has to be savable.
+    expect(injuryWrites.single, isEmpty);
+  });
+
+  testWidgets('back returns to the previous step', (tester) async {
+    await _pumpFlow(tester, patches: []);
+
+    await _skip(tester);
     expect(find.text('Step 2 of 4'), findsOneWidget);
 
     await tester.tap(find.byKey(const Key('back')));
