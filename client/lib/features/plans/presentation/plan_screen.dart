@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../exercises/presentation/exercise_detail_screen.dart';
 import '../../exercises/presentation/exercise_list_screen.dart' show describeError;
 import '../../exercises/presentation/providers.dart';
+import '../../settings/presentation/settings_screen.dart';
 import '../data/plan_repository.dart';
 import '../domain/workout_plan.dart';
 
@@ -35,9 +36,19 @@ class PlanScreen extends ConsumerWidget {
     final plan = ref.watch(activePlanProvider);
 
     return Scaffold(
-      // The Settings entry point is added in Task 10, alongside the screen
-      // it opens.
-      appBar: AppBar(title: const Text('Your plan')),
+      appBar: AppBar(
+        title: const Text('Your plan'),
+        actions: [
+          IconButton(
+            key: const Key('settings'),
+            icon: const Icon(Icons.settings_outlined),
+            tooltip: 'Settings',
+            onPressed: () => Navigator.of(context).push(
+              MaterialPageRoute<void>(builder: (_) => const SettingsScreen()),
+            ),
+          ),
+        ],
+      ),
       body: plan.when(
         loading: () => const Center(child: CircularProgressIndicator()),
         error: (error, _) => Center(

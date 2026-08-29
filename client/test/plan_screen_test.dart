@@ -10,6 +10,7 @@ import 'package:fitsync/features/exercises/presentation/exercise_detail_screen.d
 import 'package:fitsync/features/exercises/presentation/providers.dart';
 import 'package:fitsync/features/plans/domain/workout_plan.dart';
 import 'package:fitsync/features/plans/presentation/plan_screen.dart';
+import 'package:fitsync/features/settings/presentation/settings_screen.dart';
 
 const _plan = WorkoutPlan(
   planId: 42,
@@ -81,6 +82,15 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.byType(ExerciseDetailScreen), findsOneWidget);
+  });
+
+  testWidgets('offers a way into Settings', (tester) async {
+    await _pump(tester, _plan);
+
+    await tester.tap(find.byKey(const Key('settings')));
+    await tester.pumpAndSettle();
+
+    expect(find.byType(SettingsScreen), findsOneWidget);
   });
 
   testWidgets('no plan yet renders an empty state, not a crash',
