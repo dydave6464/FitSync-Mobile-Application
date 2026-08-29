@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import 'features/auth/presentation/auth_controller.dart';
+import 'features/auth/presentation/sign_in_screen.dart';
 import 'features/exercises/presentation/exercise_list_screen.dart' show describeError;
 
 /// Chooses the first screen from auth state, and nothing else.
@@ -24,7 +25,7 @@ class AppShell extends ConsumerWidget {
         onRetry: () => ref.invalidate(authControllerProvider),
       ),
       data: (state) => switch (state.status) {
-        AuthStatus.signedOut => const SignInPlaceholder(),
+        AuthStatus.signedOut => const SignInScreen(),
         AuthStatus.onboarding => const OnboardingPlaceholder(),
         AuthStatus.ready => const PlanPlaceholder(),
       },
@@ -60,19 +61,10 @@ class _ShellError extends StatelessWidget {
 // Placeholders, not dead code.
 //
 // The shell's routing is built and tested before the screens it routes to
-// exist. Task 4 replaces [SignInPlaceholder], Task 6 replaces
-// [OnboardingPlaceholder], and Task 9 replaces [PlanPlaceholder]. Each one
-// should be deleted as its real screen lands — if you are reading this and
-// all three screens exist, these are leftovers.
+// exist. Task 6 replaces [OnboardingPlaceholder] and Task 9 replaces
+// [PlanPlaceholder]. Each one should be deleted as its real screen lands —
+// if you are reading this and both screens exist, these are leftovers.
 // ---------------------------------------------------------------------------
-
-class SignInPlaceholder extends StatelessWidget {
-  const SignInPlaceholder({super.key});
-
-  @override
-  Widget build(BuildContext context) =>
-      const Scaffold(body: Center(child: Text('Sign in')));
-}
 
 class OnboardingPlaceholder extends StatelessWidget {
   const OnboardingPlaceholder({super.key});

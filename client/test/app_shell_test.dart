@@ -8,6 +8,7 @@ import 'package:fitsync/app_shell.dart';
 import 'package:fitsync/core/api_exception.dart';
 import 'package:fitsync/features/auth/domain/auth_user.dart';
 import 'package:fitsync/features/auth/presentation/auth_controller.dart';
+import 'package:fitsync/features/auth/presentation/sign_in_screen.dart';
 
 AuthUser _user({bool onboardingCompleted = false}) => AuthUser(
       userId: 7,
@@ -59,7 +60,7 @@ void main() {
     await _pumpShell(tester, (_) async => AuthState.signedOut);
     await tester.pumpAndSettle();
 
-    expect(find.byType(SignInPlaceholder), findsOneWidget);
+    expect(find.byType(SignInScreen), findsOneWidget);
   });
 
   testWidgets('an unfinished profile shows the onboarding flow', (tester) async {
@@ -99,7 +100,7 @@ void main() {
     await tester.tap(find.text('Retry'));
     await tester.pumpAndSettle();
 
-    expect(find.byType(SignInPlaceholder), findsOneWidget,
+    expect(find.byType(SignInScreen), findsOneWidget,
         reason: 'retry must re-read the controller, not just clear the error');
   });
 }
