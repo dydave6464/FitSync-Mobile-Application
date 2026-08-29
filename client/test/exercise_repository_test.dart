@@ -5,6 +5,7 @@ import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
 
 import 'package:fitsync/core/api_client.dart';
+import 'package:fitsync/core/token_store.dart';
 import 'package:fitsync/features/exercises/data/exercise_repository.dart';
 
 ExerciseRepository repoReturning(Object body, {void Function(http.Request)? onRequest}) {
@@ -12,7 +13,13 @@ ExerciseRepository repoReturning(Object body, {void Function(http.Request)? onRe
     onRequest?.call(request);
     return http.Response(jsonEncode(body), 200, headers: {'content-type': 'application/json'});
   });
-  return ExerciseRepository(ApiClient(client: mock, baseUrl: 'http://test.local'));
+  // An in-memory token store, because the real one reaches a platform channel
+  // that has no binding under `flutter test`.
+  return ExerciseRepository(ApiClient(
+    client: mock,
+    baseUrl: 'http://test.local',
+    tokens: TokenStore(backing: InMemorySecureStore()),
+  ));
 }
 
 void main() {

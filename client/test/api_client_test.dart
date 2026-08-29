@@ -1,4 +1,5 @@
 import 'dart:convert';
+import 'dart:io';
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
@@ -6,13 +7,20 @@ import 'package:http/testing.dart';
 
 import 'package:fitsync/core/api_client.dart';
 import 'package:fitsync/core/api_exception.dart';
+import 'package:fitsync/core/token_store.dart';
 
 ApiClient clientReturning(String body, {int status = 200, void Function(http.Request)? onRequest}) {
   final mock = MockClient((request) async {
     onRequest?.call(request);
     return http.Response(body, status, headers: {'content-type': 'application/json'});
   });
-  return ApiClient(client: mock, baseUrl: 'http://test.local');
+  // An in-memory token store, because the real one reaches a platform channel
+  // that has no binding under `flutter test`.
+  return ApiClient(
+    client: mock,
+    baseUrl: 'http://test.local',
+    tokens: TokenStore(backing: InMemorySecureStore()),
+  );
 }
 
 void main() {
@@ -47,6 +55,7 @@ void main() {
     final api = ApiClient(
       client: MockClient((_) async => throw const SocketExceptionStub()),
       baseUrl: 'http://test.local',
+      tokens: TokenStore(backing: InMemorySecureStore()),
     );
     expect(
       () => api.getJson('/api/v1/exercises'),
@@ -76,6 +85,72 @@ void main() {
     expect(
       () => api.getJson('/api/v1/exercises'),
       throwsA(isA<ApiException>().having((e) => e.code, 'code', 'INVALID_RESPONSE')),
+    );
+  });
+
+  test('attaches the bearer token when one is stored', () async {
+    final tokens = TokenStore(backing: InMemorySecureStore());
+    await tokens.write('abc.def.ghi');
+    String? seen;
+    final client = ApiClient(
+      tokens: tokens,
+      client: MockClient((req) async {
+        seen = req.headers['Authorization'];
+        return http.Response('{"data":{}}', 200);
+      }),
+    );
+    await client.getJson('/api/v1/profile');
+    expect(seen, 'Bearer abc.def.ghi');
+  });
+
+  test('sends no Authorization header when no token is stored', () async {
+    String? seen;
+    final client = ApiClient(
+      tokens: TokenStore(backing: InMemorySecureStore()),
+      client: MockClient((req) async {
+        seen = req.headers['Authorization'];
+        return http.Response('{"data":{}}', 200);
+      }),
+    );
+    await client.getJson('/api/v1/exercises');
+    expect(seen, isNull, reason: 'an anonymous request must not send an empty header');
+  });
+
+  test('postJson sends a JSON body and unwraps the envelope', () async {
+    String? body;
+    final client = ApiClient(
+      tokens: TokenStore(backing: InMemorySecureStore()),
+      client: MockClient((req) async {
+        body = req.body;
+        expect(req.headers['Content-Type'], contains('application/json'));
+        return http.Response('{"data":{"token":"t"}}', 201);
+      }),
+    );
+    final data = await client.postJson('/api/v1/auth/login', {'email': 'a@b.com'});
+    expect(jsonDecode(body!), {'email': 'a@b.com'});
+    expect(data['token'], 't');
+  });
+
+  test('a write that fails surfaces the server code', () async {
+    final client = ApiClient(
+      tokens: TokenStore(backing: InMemorySecureStore()),
+      client: MockClient((_) async => http.Response(
+          '{"error":{"code":"EMAIL_TAKEN","message":"That email is already registered."}}', 409)),
+    );
+    await expectLater(
+      client.postJson('/api/v1/auth/register', const {}),
+      throwsA(isA<ApiException>().having((e) => e.code, 'code', 'EMAIL_TAKEN')),
+    );
+  });
+
+  test('a write that cannot reach the server raises NETWORK_ERROR', () async {
+    final client = ApiClient(
+      tokens: TokenStore(backing: InMemorySecureStore()),
+      client: MockClient((_) async => throw const SocketException('refused')),
+    );
+    await expectLater(
+      client.postJson('/api/v1/auth/login', const {}),
+      throwsA(isA<ApiException>().having((e) => e.code, 'code', 'NETWORK_ERROR')),
     );
   });
 }
