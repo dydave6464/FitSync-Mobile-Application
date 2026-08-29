@@ -3,7 +3,10 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import 'package:fitsync/core/api_exception.dart';
+import 'package:fitsync/features/auth/domain/auth_user.dart';
+import 'package:fitsync/features/auth/presentation/auth_controller.dart';
 import 'package:fitsync/features/onboarding/presentation/onboarding_flow.dart';
+import 'package:fitsync/features/profile/data/profile_repository.dart';
 import 'package:fitsync/features/profile/domain/profile.dart';
 import 'package:fitsync/features/profile/presentation/providers.dart';
 
@@ -34,12 +37,19 @@ class FakeProfileNotifier extends ProfileNotifier {
     this.onPatch,
     this.equipmentWrites,
     this.injuryWrites,
+    this.completions,
+    this.onComplete,
   });
 
   final List<Map<String, dynamic>> patches;
   final Future<void> Function()? onPatch;
   final List<List<int>>? equipmentWrites;
   final List<List<SelectedInjury>>? injuryWrites;
+  final List<int>? completions;
+
+  /// Called before each completion resolves, so a test can fail the first
+  /// attempt and succeed on the retry.
+  final Future<void> Function(int attempt)? onComplete;
 
   @override
   Future<Profile> build() async => _emptyProfile();
@@ -59,6 +69,39 @@ class FakeProfileNotifier extends ProfileNotifier {
   Future<void> setInjuries(List<SelectedInjury> injuries) async {
     injuryWrites?.add(injuries);
   }
+
+  @override
+  Future<CompletedOnboarding> completeOnboarding() async {
+    final attempt = completions?.length ?? 0;
+    completions?.add(attempt);
+    if (onComplete != null) await onComplete!(attempt);
+    return (profile: _emptyProfile(), plan: const {'planId': 42});
+  }
+}
+
+/// Records the shell hand-off so a test can prove onboarding actually ends.
+class RecordingAuthController extends AuthController {
+  RecordingAuthController(this.completed);
+
+  final List<bool> completed;
+
+  @override
+  Future<AuthState> build() async => AuthState(
+        AuthStatus.onboarding,
+        const AuthUser(
+          userId: 7,
+          email: 'juan@example.com',
+          fullName: 'Juan Dela Cruz',
+          onboardingCompleted: false,
+          isPremium: false,
+        ),
+      );
+
+  @override
+  void onOnboardingCompleted() {
+    completed.add(true);
+    super.onOnboardingCompleted();
+  }
 }
 
 /// Both lookup providers are always stubbed, even for tests that never reach
@@ -70,6 +113,9 @@ Future<void> _pumpFlow(
   Future<void> Function()? onPatch,
   List<List<int>>? equipmentWrites,
   List<List<SelectedInjury>>? injuryWrites,
+  List<int>? completions,
+  Future<void> Function(int attempt)? onComplete,
+  List<bool>? completed,
 }) async {
   await tester.pumpWidget(ProviderScope(
     overrides: [
@@ -78,7 +124,11 @@ Future<void> _pumpFlow(
             onPatch: onPatch,
             equipmentWrites: equipmentWrites,
             injuryWrites: injuryWrites,
+            completions: completions,
+            onComplete: onComplete,
           )),
+      authControllerProvider
+          .overrideWith(() => RecordingAuthController(completed ?? [])),
       equipmentOptionsProvider.overrideWith((ref) async => _equipment),
       injuryOptionsProvider.overrideWith((ref) async => _injuries),
     ],
@@ -198,6 +248,70 @@ void main() {
 
     // "Nothing hurts" is the common answer and has to be savable.
     expect(injuryWrites.single, isEmpty);
+  });
+
+  testWidgets('the last step offers to generate the plan', (tester) async {
+    await _pumpFlow(tester, patches: []);
+
+    await _skip(tester);
+    await _skip(tester);
+    await _skip(tester);
+
+    expect(find.text('Generate my plan'), findsOneWidget);
+    expect(find.text('Continue'), findsNothing);
+  });
+
+  testWidgets('generating the plan completes onboarding and hands off',
+      (tester) async {
+    final completions = <int>[];
+    final completed = <bool>[];
+    await _pumpFlow(
+      tester,
+      patches: [],
+      completions: completions,
+      completed: completed,
+    );
+
+    await _skip(tester);
+    await _skip(tester);
+    await _skip(tester);
+    await tester.tap(find.byKey(const Key('continue')));
+    await tester.pumpAndSettle();
+
+    expect(completions, hasLength(1));
+    expect(completed, [true],
+        reason: 'the shell has to be told, or the user stays in onboarding');
+  });
+
+  testWidgets('a failed generation can be retried', (tester) async {
+    final completions = <int>[];
+    await _pumpFlow(
+      tester,
+      patches: [],
+      completions: completions,
+      onComplete: (attempt) async {
+        // The server leaves onboarding incomplete when generation fails,
+        // precisely so this retry is possible.
+        if (attempt == 0) {
+          throw const ApiException(
+              'PLAN_GENERATION_FAILED', 'Could not build a plan right now.');
+        }
+      },
+    );
+
+    await _skip(tester);
+    await _skip(tester);
+    await _skip(tester);
+    await tester.tap(find.byKey(const Key('continue')));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Could not build a plan right now.'), findsOneWidget);
+    expect(find.text('Step 4 of 4'), findsOneWidget);
+
+    await tester.tap(find.byKey(const Key('continue')));
+    await tester.pumpAndSettle();
+
+    expect(completions, hasLength(2));
   });
 
   testWidgets('back returns to the previous step', (tester) async {

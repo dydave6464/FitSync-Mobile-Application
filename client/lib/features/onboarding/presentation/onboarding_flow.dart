@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../core/api_exception.dart';
+import '../../auth/presentation/auth_controller.dart';
 import '../../exercises/presentation/exercise_list_screen.dart' show describeError;
 import '../../profile/domain/profile.dart';
 import '../../profile/presentation/providers.dart';
@@ -94,7 +95,16 @@ class _OnboardingFlowState extends ConsumerState<OnboardingFlow> {
     // "I own none of these", "nothing hurts" — and skipping the call when the
     // list is empty would make that unsavable.
     if (_index == 2) await notifier.setEquipment(_level.equipmentIds);
-    if (_index == 3) await notifier.setInjuries(_injuries);
+
+    if (_index == _total - 1) {
+      await notifier.setInjuries(_injuries);
+      // Generating the plan is the last thing that happens, and the server
+      // leaves onboarding incomplete if it fails — so a failure here lands in
+      // _continue's catch, the user stays on this step, and tapping again is a
+      // genuine retry rather than a resubmission.
+      await notifier.completeOnboarding();
+      if (mounted) ref.read(authControllerProvider.notifier).onOnboardingCompleted();
+    }
   }
 
   Future<void> _continue() async {
@@ -184,6 +194,8 @@ class _OnboardingFlowState extends ConsumerState<OnboardingFlow> {
           step: _index + 1,
           total: _total,
           busy: _busy,
+          continueLabel:
+              _index == _total - 1 ? 'Generate my plan' : 'Continue',
           onContinue: _continue,
           onSkip: _busy ? null : _advance,
           onBack: _index == 0 ? null : _back,

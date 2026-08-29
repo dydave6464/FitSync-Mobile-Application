@@ -3,14 +3,20 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:http/http.dart' as http;
+import 'package:http/testing.dart';
 
 import 'package:fitsync/app_shell.dart';
+import 'package:fitsync/core/api_client.dart';
 import 'package:fitsync/core/api_exception.dart';
+import 'package:fitsync/core/token_store.dart';
 import 'package:fitsync/features/auth/domain/auth_user.dart';
 import 'package:fitsync/features/auth/presentation/auth_controller.dart';
 import 'package:fitsync/features/auth/presentation/sign_in_screen.dart';
 import 'package:fitsync/features/onboarding/presentation/onboarding_flow.dart';
 import 'package:fitsync/features/profile/domain/profile.dart';
+import 'package:fitsync/features/exercises/presentation/providers.dart';
+import 'package:fitsync/features/plans/presentation/plan_screen.dart';
 import 'package:fitsync/features/profile/presentation/providers.dart';
 
 AuthUser _user({bool onboardingCompleted = false}) => AuthUser(
@@ -60,6 +66,12 @@ Future<void> _pumpShell(
         overrides: [
           authControllerProvider.overrideWith(() => FakeAuthController(onBuild)),
           profileProvider.overrideWith(StubProfileNotifier.new),
+          // Keeps the plan branch off the secure-storage platform channel.
+          apiClientProvider.overrideWithValue(ApiClient(
+            baseUrl: 'http://test.local',
+            tokens: TokenStore(backing: InMemorySecureStore()),
+            client: MockClient((_) async => http.Response('{"data":{"plan":null}}', 200)),
+          )),
         ],
         child: const MaterialApp(home: AppShell()),
       ),
@@ -104,7 +116,7 @@ void main() {
     );
     await tester.pumpAndSettle();
 
-    expect(find.byType(PlanPlaceholder), findsOneWidget);
+    expect(find.byType(PlanScreen), findsOneWidget);
   });
 
   testWidgets('an error shows the message and recovers on retry', (tester) async {

@@ -70,6 +70,14 @@ class AuthController extends AsyncNotifier<AuthState> {
   /// shell moves on without a second round trip to `/auth/me`.
   void onAuthenticated(AuthUser user) => state = AsyncData(_forUser(user));
 
+  /// Called when onboarding finishes. Without it the shell would keep showing
+  /// the wizard until something else re-read `/auth/me`.
+  void onOnboardingCompleted() {
+    final user = state.value?.user;
+    if (user == null) return;
+    state = AsyncData(AuthState(AuthStatus.ready, user));
+  }
+
   Future<void> signOut() async {
     await ref.read(authRepositoryProvider).signOut();
     state = const AsyncData(AuthState.signedOut);
