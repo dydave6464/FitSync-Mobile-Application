@@ -157,8 +157,16 @@ class _PlanExerciseTile extends StatelessWidget {
           height: 56,
           child: exercise.thumbnailUrl == null
               ? const _ThumbPlaceholder()
+              // `/plans/active` returns a bare relative path
+              // ("exercises/1460/thumb.jpg") while `/exercises` returns an
+              // absolute one ("/storage/exercises/0001/thumb.jpg"). Joining
+              // naively produced "http://host:3000exercises/...". This keeps
+              // the URL well formed; the server-side inconsistency (the plans
+              // path also omits the /storage mount) still needs fixing there,
+              // and until it is, errorBuilder shows the placeholder.
               : Image.network(
-                  '$baseUrl${exercise.thumbnailUrl}',
+                  '$baseUrl${exercise.thumbnailUrl!.startsWith('/') ? '' : '/'}'
+                  '${exercise.thumbnailUrl}',
                   fit: BoxFit.cover,
                   // One unreachable thumbnail must not take the row down.
                   errorBuilder: (_, _, _) => const _ThumbPlaceholder(),

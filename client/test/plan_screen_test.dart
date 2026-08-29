@@ -26,7 +26,7 @@ const _plan = WorkoutPlan(
       muscleGroup: 'quadriceps',
       orderNo: 1,
       targetSets: 3,
-      targetReps: 10,
+      targetReps: '8-12',
     ),
     PlanExercise(
       exerciseId: 102,
@@ -34,7 +34,7 @@ const _plan = WorkoutPlan(
       muscleGroup: 'chest',
       orderNo: 2,
       targetSets: 3,
-      targetReps: 12,
+      targetReps: '10-15',
     ),
   ],
 );
@@ -71,8 +71,8 @@ void main() {
 
     expect(find.text('Goblet squat'), findsOneWidget);
     expect(find.text('Push-up'), findsOneWidget);
-    expect(find.textContaining('3 × 10'), findsOneWidget);
-    expect(find.textContaining('3 × 12'), findsOneWidget);
+    expect(find.textContaining('3 × 8-12'), findsOneWidget);
+    expect(find.textContaining('3 × 10-15'), findsOneWidget);
   });
 
   testWidgets('tapping an exercise opens its detail screen', (tester) async {

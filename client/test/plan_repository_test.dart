@@ -25,7 +25,9 @@ const _planJson = {
       'thumbnailUrl': '/storage/thumbs/101.png',
       'orderNo': 1,
       'targetSets': 3,
-      'targetReps': 10,
+      // A range, not a number. `plan_exercises.target_reps` is VARCHAR(255)
+      // and the live generator emits "8-12".
+      'targetReps': '8-12',
     },
     {
       'exerciseId': 102,
@@ -34,7 +36,7 @@ const _planJson = {
       'thumbnailUrl': null,
       'orderNo': 2,
       'targetSets': 3,
-      'targetReps': 12,
+      'targetReps': '10-15',
     },
   ],
 };
@@ -60,8 +62,27 @@ void main() {
     expect(plan.exercises, hasLength(2));
     expect(plan.exercises.first.name, 'Goblet squat');
     expect(plan.exercises.first.targetSets, 3);
-    expect(plan.exercises.first.targetReps, 10);
+    expect(plan.exercises.first.targetReps, '8-12');
     expect(plan.exercises.last.thumbnailUrl, isNull);
+  });
+
+  test('accepts a rep target the generator wrote as a plain number', () {
+    // Nothing stops a future generator writing "10" into that VARCHAR.
+    final plan = WorkoutPlan.fromJson({
+      ..._planJson,
+      'exercises': [
+        {
+          'exerciseId': 101,
+          'name': 'Goblet squat',
+          'muscleGroup': 'quadriceps',
+          'orderNo': 1,
+          'targetSets': 3,
+          'targetReps': 10,
+        },
+      ],
+    });
+
+    expect(plan.exercises.single.targetReps, '10');
   });
 
   test('an active-plan request returns the plan', () async {

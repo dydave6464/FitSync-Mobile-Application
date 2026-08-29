@@ -112,6 +112,23 @@ class Profile {
   /// configurations and as a string through others. Going via `toString()`
   /// handles both and stops a `type 'String' is not a subtype of type
   /// 'double'` crash at runtime.
+  /// Trims a full timestamp back to a plain calendar date.
+  ///
+  /// `GET /profile` returns `dateOfBirth` as `1999-04-17T00:00:00.000Z`, but
+  /// `PATCH /profile` rejects that exact string with `INVALID_PROFILE_FIELD`,
+  /// demanding `YYYY-MM-DD`. Without this, anyone who has already set a
+  /// birthday cannot save any other body metric.
+  ///
+  /// Truncating the string rather than parsing to a `DateTime` is deliberate:
+  /// the value is UTC midnight, so converting to a local date would move the
+  /// birthday a day earlier for anyone west of UTC.
+  static String? _toDate(Object? value) {
+    if (value == null) return null;
+    final text = value.toString();
+    final separator = text.indexOf('T');
+    return separator == -1 ? text : text.substring(0, separator);
+  }
+
   static double? _toDouble(Object? value) {
     if (value == null) return null;
     if (value is num) return value.toDouble();
@@ -132,7 +149,7 @@ class Profile {
             .map((e) => SelectedInjury.fromJson(e as Map<String, dynamic>))
             .toList(growable: false),
         sex: json['sex'] as String?,
-        dateOfBirth: json['dateOfBirth'] as String?,
+        dateOfBirth: _toDate(json['dateOfBirth']),
         heightCm: _toDouble(json['heightCm']),
         weightKg: _toDouble(json['weightKg']),
         goalWeightKg: _toDouble(json['goalWeightKg']),

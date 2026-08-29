@@ -15,7 +15,11 @@ class PlanExercise {
   final String muscleGroup;
   final int orderNo;
   final int targetSets;
-  final int targetReps;
+
+  /// A string, not a number: `plan_exercises.target_reps` is `VARCHAR(255)`
+  /// and the generator writes ranges like "8-12". Typing this as an int
+  /// crashes on every real plan.
+  final String targetReps;
 
   /// A path relative to the API base, or null when the catalogue has no
   /// artwork for this exercise yet.
@@ -27,7 +31,9 @@ class PlanExercise {
         muscleGroup: json['muscleGroup'] as String? ?? '',
         orderNo: json['orderNo'] as int? ?? 0,
         targetSets: json['targetSets'] as int? ?? 0,
-        targetReps: json['targetReps'] as int? ?? 0,
+        // via toString() so a generator that writes a bare number into that
+        // VARCHAR is handled too.
+        targetReps: json['targetReps']?.toString() ?? '',
         thumbnailUrl: json['thumbnailUrl'] as String?,
       );
 }

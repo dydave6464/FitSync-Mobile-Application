@@ -110,6 +110,29 @@ void main() {
     expect(profile.onboardingCompleted, isFalse);
   });
 
+  test('normalises a date of birth the server returned as a timestamp', () {
+    // Verified against the running server: PATCH /profile stores 1999-04-17
+    // and GET returns "1999-04-17T00:00:00.000Z", but PATCH then REJECTS that
+    // same value with INVALID_PROFILE_FIELD ("must be ... YYYY-MM-DD form").
+    // Without trimming it here, editing any body metric fails for every user
+    // who has already set a birthday.
+    final profile = Profile.fromJson({
+      ..._fullProfileJson,
+      'dateOfBirth': '1999-04-17T00:00:00.000Z',
+    });
+
+    expect(profile.dateOfBirth, '1999-04-17');
+  });
+
+  test('leaves an already-plain date of birth alone', () {
+    final profile = Profile.fromJson({
+      ..._fullProfileJson,
+      'dateOfBirth': '1999-04-17',
+    });
+
+    expect(profile.dateOfBirth, '1999-04-17');
+  });
+
   test('parses measurements the driver returned as strings', () {
     // MySQL DECIMAL columns come back as strings through some driver
     // configurations. Parsing defensively is what stops a runtime
