@@ -8,6 +8,7 @@ import '../../profile/presentation/providers.dart';
 import 'onboarding_scaffold.dart';
 import 'steps/about_step.dart';
 import 'steps/goal_step.dart';
+import 'steps/level_step.dart';
 
 /// Sequences the four onboarding steps.
 ///
@@ -33,6 +34,7 @@ class _OnboardingFlowState extends ConsumerState<OnboardingFlow> {
   // user sees what they already chose.
   String? _mainGoal;
   AboutAnswers _about = const AboutAnswers();
+  LevelAnswers _level = const LevelAnswers();
 
   void _seedFrom(Profile profile) {
     if (_seeded) return;
@@ -45,6 +47,12 @@ class _OnboardingFlowState extends ConsumerState<OnboardingFlow> {
       weightKg: profile.weightKg,
       goalWeightKg: profile.goalWeightKg,
       activityLevel: profile.activityLevel,
+    );
+    _level = LevelAnswers(
+      fitnessLevel: profile.fitnessLevel,
+      trainingLocation: profile.trainingLocation,
+      equipmentIds:
+          profile.equipment.map((e) => e.equipmentId).toList(growable: false),
     );
   }
 
@@ -62,33 +70,52 @@ class _OnboardingFlowState extends ConsumerState<OnboardingFlow> {
             if (_about.activityLevel != null)
               'activityLevel': _about.activityLevel,
           },
+        2 => {
+            if (_level.fitnessLevel != null) 'fitnessLevel': _level.fitnessLevel,
+            if (_level.trainingLocation != null)
+              'trainingLocation': _level.trainingLocation,
+          },
         _ => const {},
       };
+
+  /// Writes whatever the current step collected. Equipment is a separate
+  /// endpoint from the profile patch, so step 3 makes two calls.
+  Future<void> _saveCurrentStep() async {
+    final notifier = ref.read(profileProvider.notifier);
+
+    final fields = _patchForCurrentStep();
+    if (fields.isNotEmpty) await notifier.patch(fields);
+
+    if (_index == 2) {
+      // Sent unconditionally, and only on Continue. It is a replace-set, so
+      // an empty list is a real answer — "I own none of these" — and skipping
+      // the call when the list is empty would make that unsavable.
+      await notifier.setEquipment(_level.equipmentIds);
+    }
+  }
 
   Future<void> _continue() async {
     if (_busy) return;
 
-    final fields = _patchForCurrentStep();
-    if (fields.isNotEmpty) {
-      setState(() {
-        _busy = true;
-        _error = null;
-      });
-      try {
-        await ref.read(profileProvider.notifier).patch(fields);
-      } on ApiException catch (error) {
-        if (!mounted) return;
-        // Staying put is deliberate: advancing past a step whose answer the
-        // server rejected would lose the answer with no way back to it.
-        setState(() {
-          _error = error.message;
-          _busy = false;
-        });
-        return;
-      }
+    setState(() {
+      _busy = true;
+      _error = null;
+    });
+
+    try {
+      await _saveCurrentStep();
+    } on ApiException catch (error) {
       if (!mounted) return;
-      setState(() => _busy = false);
+      // Staying put is deliberate: advancing past a step whose answer the
+      // server rejected would lose the answer with no way back to it.
+      setState(() {
+        _error = error.message;
+        _busy = false;
+      });
+      return;
     }
+    if (!mounted) return;
+    setState(() => _busy = false);
 
     _advance();
   }
@@ -112,8 +139,12 @@ class _OnboardingFlowState extends ConsumerState<OnboardingFlow> {
             value: _about,
             onChanged: (value) => _about = value,
           ),
-        // Steps 3 and 4 land in Tasks 7 and 8 of this plan. Replace these
-        // cases with LevelStep and InjuriesStep as each arrives.
+        2 => LevelStep(
+            value: _level,
+            onChanged: (value) => setState(() => _level = value),
+          ),
+        // Step 4 lands in Task 8 of this plan. Replace this case with
+        // InjuriesStep when it arrives.
         _ => const _PendingStep(),
       };
 

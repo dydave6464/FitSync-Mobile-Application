@@ -19,10 +19,11 @@ Profile _emptyProfile() => const Profile(
     );
 
 class FakeProfileNotifier extends ProfileNotifier {
-  FakeProfileNotifier(this.patches, {this.onPatch});
+  FakeProfileNotifier(this.patches, {this.onPatch, this.equipmentWrites});
 
   final List<Map<String, dynamic>> patches;
   final Future<void> Function()? onPatch;
+  final List<List<int>>? equipmentWrites;
 
   @override
   Future<Profile> build() async => _emptyProfile();
@@ -31,6 +32,11 @@ class FakeProfileNotifier extends ProfileNotifier {
   Future<void> patch(Map<String, dynamic> fields) async {
     patches.add(fields);
     if (onPatch != null) await onPatch!();
+  }
+
+  @override
+  Future<void> setEquipment(List<int> equipmentIds) async {
+    equipmentWrites?.add(equipmentIds);
   }
 }
 
@@ -108,6 +114,47 @@ void main() {
     expect(find.text('That goal is not one we recognise.'), findsOneWidget);
     expect(find.text('Step 1 of 4'), findsOneWidget,
         reason: 'advancing past a step whose answer was rejected would lose it');
+  });
+
+  testWidgets('step 3 saves the level fields and the equipment set',
+      (tester) async {
+    final patches = <Map<String, dynamic>>[];
+    final equipmentWrites = <List<int>>[];
+    await tester.pumpWidget(ProviderScope(
+      overrides: [
+        profileProvider.overrideWith(() => FakeProfileNotifier(
+              patches,
+              equipmentWrites: equipmentWrites,
+            )),
+        equipmentOptionsProvider.overrideWith((ref) async => const [
+              EquipmentOption(equipmentId: 41, name: 'Resistance band'),
+            ]),
+      ],
+      child: const MaterialApp(home: OnboardingFlow()),
+    ));
+    await tester.pumpAndSettle();
+
+    // Skip to step 3.
+    await tester.tap(find.byKey(const Key('skip')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const Key('skip')));
+    await tester.pumpAndSettle();
+    expect(find.text('Step 3 of 4'), findsOneWidget);
+
+    await tester.tap(find.byKey(const Key('level.beginner')));
+    await tester.pumpAndSettle();
+    await tester.ensureVisible(find.byKey(const Key('equipment.41')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const Key('equipment.41')));
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.byKey(const Key('continue')));
+    await tester.pumpAndSettle();
+
+    expect(patches.single, {'fitnessLevel': 'beginner'});
+    expect(equipmentWrites.single, [41],
+        reason: 'equipment is a replace-set write, not part of the patch');
+    expect(find.text('Step 4 of 4'), findsOneWidget);
   });
 
   testWidgets('back returns to the previous step', (tester) async {
