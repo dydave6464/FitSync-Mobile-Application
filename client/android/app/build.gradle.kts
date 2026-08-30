@@ -6,7 +6,14 @@ plugins {
 
 android {
     namespace = "com.fitsync.fitsync"
-    compileSdk = flutter.compileSdkVersion
+    // Pinned rather than `flutter.compileSdkVersion`, which resolves to 37.
+    // Gradle auto-installs that platform as `android-37.0` declaring
+    // `AndroidVersion.ApiLevel=37.0`, and AGP 9.1.0 looks for the hash string
+    // `android-37` — so it never matches and every plugin fails with
+    // "Failed to find target with hash string 'android-37'". Platform 36 is
+    // installed, current, and builds cleanly. Revisit when a properly
+    // numbered android-37 package ships.
+    compileSdk = 36
     ndkVersion = flutter.ndkVersion
 
     compileOptions {
