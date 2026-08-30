@@ -222,12 +222,17 @@ test('profile endpoints', async (t) => {
 
   await t.test('lists the eight curated chips in design order', async () => {
     await reset();
+    // A raw, un-curated catalogue tag. is_user_selectable defaults to 0, so
+    // this must never appear in the response — proves the endpoint excludes
+    // raw catalogue tags, not just that it happens to have only 8 rows to
+    // choose from (this file never runs the catalogue seed).
+    await pool.query("INSERT IGNORE INTO equipment (name) VALUES ('yoga mat')");
     const res = await request(app).get('/api/v1/equipment')
       .set('Authorization', auth).expect(200);
     assert.deepEqual(res.body.data.equipment.map((e) => e.name), [
       'Barbell', 'Dumbbells', 'Bench', 'Pull-up bar',
       'Kettlebell', 'Bands', 'Machines', 'Bodyweight',
-    ]);
+    ], 'the non-selectable "yoga mat" row must not be in this list');
   });
 
   // The subtest above cannot fail if `ORDER BY display_order` were removed:
