@@ -145,7 +145,7 @@ class LevelStep extends ConsumerWidget {
         Row(
           mainAxisAlignment: MainAxisAlignment.spaceBetween,
           children: [
-            const FsEyebrow('Available equipment'),
+            const Flexible(child: FsEyebrow('Available equipment')),
             FsTag('${value.equipmentIds.length} selected'),
           ],
         ),
@@ -172,20 +172,27 @@ class LevelStep extends ConsumerWidget {
           ),
           // The server now returns the curated list in display order, and
           // this step renders it verbatim.
-          data: (options) => Wrap(
-            spacing: 8,
-            runSpacing: 8,
-            children: [
-              for (final option in options)
-                FsChip(
-                  key: Key('equipment.${option.equipmentId}'),
-                  label: option.name,
-                  selected: value.equipmentIds.contains(option.equipmentId),
-                  showCheck: true,
-                  onTap: () => _toggleEquipment(option.equipmentId),
+          data: (options) => options.isEmpty
+              ? Text(
+                  'No equipment options are available right now.',
+                  style: TextStyle(fontSize: 11, color: t.text3),
+                )
+              : Wrap(
+                  spacing: 8,
+                  runSpacing: 8,
+                  children: [
+                    for (final option in options)
+                      FsChip(
+                        key: Key('equipment.${option.equipmentId}'),
+                        label: option.name,
+                        selected: value.equipmentIds.contains(
+                          option.equipmentId,
+                        ),
+                        showCheck: true,
+                        onTap: () => _toggleEquipment(option.equipmentId),
+                      ),
+                  ],
                 ),
-            ],
-          ),
         ),
       ],
     );

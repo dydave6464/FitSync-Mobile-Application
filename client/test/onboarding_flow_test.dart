@@ -268,6 +268,30 @@ void main() {
     ]);
   });
 
+  testWidgets('a selected equipment chip renders a check', (tester) async {
+    await _pumpFlow(tester, patches: []);
+    await _skip(tester);
+    await _skip(tester);
+    expect(find.text('STEP 3 / 4'), findsOneWidget);
+
+    // Scope the icon search to this one chip's subtree. A bare
+    // find.byIcon(Icons.check) would also match FsRadioDot on the fitness
+    // level cards above (which always renders a check when selected,
+    // showCheck or not), so the finder has to discriminate by location, not
+    // just by icon.
+    final chip = find.byKey(const Key('equipment.3'));
+    expect(find.descendant(of: chip, matching: find.byIcon(Icons.check)),
+        findsNothing,
+        reason: 'unselected chip must not show a check');
+
+    await _tapKey(tester, const Key('equipment.3'));
+
+    expect(find.descendant(of: chip, matching: find.byIcon(Icons.check)),
+        findsOneWidget,
+        reason: 'showCheck must actually be wired to the equipment chips, '
+            'not just supported by FsChip');
+  });
+
   testWidgets('the counter tracks the equipment selection', (tester) async {
     await _pumpFlow(tester, patches: []);
     await _skip(tester);

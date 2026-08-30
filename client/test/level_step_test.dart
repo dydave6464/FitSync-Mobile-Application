@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 
+import 'package:fitsync/core/widgets/fs_kit.dart';
 import 'package:fitsync/features/onboarding/presentation/steps/level_step.dart';
 import 'package:fitsync/features/profile/domain/profile.dart';
 import 'package:fitsync/features/profile/presentation/providers.dart';
@@ -176,5 +177,34 @@ void main() {
     await _tapKey(tester, const Key('equipment.41'));
 
     expect(emitted!.equipmentIds, [62]);
+  });
+
+  testWidgets('an empty equipment list shows a fallback message, not blank space',
+      (tester) async {
+    await _pump(tester, equipment: const []);
+
+    expect(find.text('No equipment options are available right now.'),
+        findsOneWidget);
+    expect(find.byType(FsChip), findsNWidgets(4),
+        reason: 'only the four location chips should remain; no equipment '
+            'chip has anything to render');
+  });
+
+  testWidgets(
+      'the equipment eyebrow row does not overflow at a large text scale on a narrow screen',
+      (tester) async {
+    // 320dp is a common small-phone width; 1.5x is within the accessibility
+    // text-scale range both platforms support. Neither alone forces the
+    // overflow this is guarding — it takes the combination.
+    tester.view.physicalSize = const Size(320, 1400);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+    tester.platformDispatcher.textScaleFactorTestValue = 1.5;
+    addTearDown(tester.platformDispatcher.clearTextScaleFactorTestValue);
+
+    await _pump(tester);
+
+    expect(tester.takeException(), isNull);
   });
 }
