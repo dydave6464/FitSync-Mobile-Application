@@ -66,49 +66,57 @@ migrations (or an equivalent forward-only mechanism) with a real rollback
 and data-migration story. That transition is an **open item for a later
 sub-project** — it has not been designed yet.
 
-## Exception: `007_auth_identities.sql`
+## Exceptions: `007_auth_identities.sql`, `008_equipment_curation.sql`
 
-`007_auth_identities.sql` breaks the rule above on purpose: alongside its
+Both files break the rule above on purpose, for the same reason: each needs
+to change tables that migrations `001`–`006` already defined and that may
+already be applied on someone's database. The runner has no checksum (see the
+gap recorded below): it decides whether to apply a file solely by filename,
+so editing e.g. `001_account_and_profile.sql` in place to add these columns
+would not be replayed on a database where `001` was already recorded as
+applied — the edit would be silently invisible there, exactly the failure
+mode the pre-release policy above depends on nobody hitting. A new,
+forward-only file sidesteps that. The tradeoff is the one below: unlike a
+`CREATE TABLE IF NOT EXISTS`-only file, neither of these is safe to replay
+after a partial failure.
+
+**`007_auth_identities.sql`** — alongside its
 `CREATE TABLE IF NOT EXISTS user_identities`, it contains six `ALTER TABLE`
 statements against `users`, `injuries`, `user_injuries` and `exercises`
 (making `password_hash` nullable, changing the `main_goal` enum, adding
 `notifications_enabled`, `onboarding_completed_at`, `is_lateral`,
 `region_group`, `side` and `body_part`).
 
-This was not an oversight. The columns and table it changes were defined by
-migrations `001`–`006`, already applied on any database anyone had already
-migrated. The runner has no checksum (see the gap recorded below): it decides
-whether to apply a file solely by filename, so editing
-`001_account_and_profile.sql` in place to add these columns would not be
-replayed on a database where `001` was already recorded as applied — the
-edit would be silently invisible there, exactly the failure mode the
-pre-release policy above depends on nobody hitting. A new, forward-only file
-sidesteps that. The tradeoff is the one below: unlike a
-`CREATE TABLE IF NOT EXISTS`-only file, this one is not safe to replay after
-a partial failure.
+**`008_equipment_curation.sql`** — alongside four `ALTER TABLE equipment ADD
+COLUMN` statements (`display_name`, `display_order`, `is_user_selectable`,
+`parent_equipment_id`, plus the `fk_equipment_parent` foreign key), it
+contains a standalone `CREATE INDEX idx_equipment_selectable ON equipment
+(is_user_selectable, display_order)` — the other forbidden shape, alongside
+`ALTER TABLE` itself.
 
-**Consequence: 007 is not replay-safe.** Unlike every other migration file,
-if 007 fails partway through, `IF NOT EXISTS` does not protect the `ALTER
-TABLE` statements — a second run will hit `ER_DUP_FIELDNAME` (or the
-equivalent "duplicate column/key" error) on whichever statement had already
-committed. Because `ALTER TABLE` implicitly commits, a partial failure is not
-rolled back by the runner failing to record the version.
+**Consequence: neither is replay-safe.** Unlike every other migration file,
+if 007 or 008 fails partway through, `IF NOT EXISTS` does not protect the
+`ALTER TABLE` (or, for 008, the trailing `CREATE INDEX`) statements — a
+second run will hit `ER_DUP_FIELDNAME` (or, for the index, the equivalent
+"duplicate key name" error) on whichever statement had already committed.
+Because `ALTER TABLE` and `CREATE INDEX` both implicitly commit, a partial
+failure is not rolled back by the runner failing to record the version.
 
-**If 007 fails partway through**, recovery is manual:
+**If 007 or 008 fails partway through**, recovery is manual:
 
-1. Inspect the actual table shapes (`DESCRIBE users;`, `DESCRIBE injuries;`,
-   `DESCRIBE user_injuries;`, `DESCRIBE exercises;`, and confirm whether
-   `user_identities` exists) to see exactly which of the six `ALTER`
-   statements already committed.
-2. Comment out (or delete) the statements in a local copy of
-   `007_auth_identities.sql` that already applied, leaving only the ones that
-   did not.
-3. Re-run `npm run migrate`. Since the runner never recorded `007` as applied
-   (the file did not finish), it will attempt it again; with the
+1. Inspect the actual table shape to see exactly which statements already
+   committed: for 007, `DESCRIBE users;`, `DESCRIBE injuries;`, `DESCRIBE
+   user_injuries;`, `DESCRIBE exercises;`, and confirm whether
+   `user_identities` exists; for 008, `DESCRIBE equipment;` and `SHOW INDEX
+   FROM equipment;`.
+2. Comment out (or delete) the statements in a local copy of the migration
+   file that already applied, leaving only the ones that did not.
+3. Re-run `npm run migrate`. Since the runner never recorded the file as
+   applied (it did not finish), it will attempt it again; with the
    already-applied statements removed, the remainder can complete.
-4. Restore `007_auth_identities.sql` to its original committed contents
-   afterwards — the trimmed copy was a local recovery aid only, not a
-   replacement migration.
+4. Restore the migration file to its original committed contents afterwards
+   — the trimmed copy was a local recovery aid only, not a replacement
+   migration.
 
 On a pre-release database (see the section above), it is almost always
 simpler to drop all tables and re-migrate from scratch instead.

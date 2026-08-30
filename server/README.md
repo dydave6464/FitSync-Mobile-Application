@@ -105,9 +105,12 @@ const mysql = require('mysql2/promise');
 npm run migrate
 ```
 
-This destroys every row in `DB_NAME`. Re-run `npm run seed` afterwards to
-restore the exercise catalogue. `npm test` migrates `<DB_NAME>_test` from
-scratch on every run, so the test database needs nothing done to it.
+This destroys every row in `DB_NAME`. Re-run `npm run seed` and then
+`npm run seed:equipment` afterwards, **in that order**, to restore the
+exercise catalogue and the curated equipment list — `seed:equipment`'s
+catalogue adoption step needs the catalogue's rows to already exist (see
+[Equipment options](#equipment-options)). `npm test` migrates `<DB_NAME>_test`
+from scratch on every run, so the test database needs nothing done to it.
 
 ## Exercise catalogue
 
@@ -161,6 +164,33 @@ npm run seed:injuries
 
 Without it, `injuries` is empty on a fresh database and `GET
 /api/v1/injuries` returns `[]`.
+
+## Equipment options
+
+Onboarding's third step and `GET /api/v1/equipment` both read an eight-row
+curated subset of the `equipment` table (Barbell, Dumbbells, Bench, Pull-up
+bar, Kettlebell, Bands, Machines, Bodyweight), not the raw catalogue tags the
+exercise seed writes. Migration `008_equipment_curation.sql` only adds the
+columns curation needs (`display_name`, `display_order`, `is_user_selectable`,
+`parent_equipment_id`) — it does not populate them. Run this once after
+migrating (and again any time `src/db/seed-equipment.js`'s `OPTIONS` list
+changes; it is idempotent):
+
+```bash
+npm run seed:equipment
+```
+
+Run `npm run seed` (the exercise catalogue) **first**. `seed:equipment` also
+absorbs matching catalogue rows (`cable`, `smith machine`, and so on) as
+hidden children of their curated parent, and that adoption only happens
+against rows that already exist in `equipment` — running `seed:equipment`
+before the catalogue seed leaves those children permanently unparented, with
+nothing to repair it short of re-running `seed:equipment` again once the
+catalogue is there. If any tag `OPTIONS` names as a child is missing from the
+catalogue, the command prints a warning naming it.
+
+Without it, `is_user_selectable` stays `0` on every row and `GET
+/api/v1/equipment` returns `[]` — no error, just an empty onboarding step.
 
 ## Response envelope
 
