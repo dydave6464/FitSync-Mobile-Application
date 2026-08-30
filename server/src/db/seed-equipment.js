@@ -47,6 +47,28 @@ const ADOPT_CHILD = `
    WHERE name = ?
 `;
 
+// Existing users selected raw catalogue rows. Those rows are no longer
+// selectable, so without this the onboarding step renders their gear unticked
+// and the next save silently discards it.
+//
+// INSERT IGNORE, not UPDATE: a user owning both 'cable' and 'smith machine'
+// maps to Machines twice, and uq_user_equipment (user_id, equipment_id) would
+// reject the second. IGNORE absorbs it; the sweep below then removes the
+// originals along with anything that has no curated home at all.
+const MOVE_TO_PARENT = `
+  INSERT IGNORE INTO user_equipment (user_id, equipment_id)
+    SELECT ue.user_id, e.parent_equipment_id
+      FROM user_equipment ue
+      JOIN equipment e ON e.equipment_id = ue.equipment_id
+     WHERE e.parent_equipment_id IS NOT NULL
+`;
+
+const DROP_UNSELECTABLE = `
+  DELETE ue FROM user_equipment ue
+    JOIN equipment e ON e.equipment_id = ue.equipment_id
+   WHERE e.is_user_selectable = 0
+`;
+
 async function seedEquipment(dbConfig) {
   const pool = createPool(dbConfig);
   try {
@@ -82,7 +104,18 @@ async function seedEquipment(dbConfig) {
       }
     }
 
-    return { inserted, updated, unchanged, adopted, total: OPTIONS.length };
+    const [moved] = await pool.query(MOVE_TO_PARENT);
+    const [dropped] = await pool.query(DROP_UNSELECTABLE);
+
+    return {
+      inserted,
+      updated,
+      unchanged,
+      adopted,
+      movedSelections: moved.affectedRows,
+      droppedSelections: dropped.affectedRows,
+      total: OPTIONS.length,
+    };
   } finally {
     await pool.end();
   }

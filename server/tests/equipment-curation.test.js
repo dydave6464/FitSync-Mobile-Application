@@ -72,6 +72,7 @@ test('equipment curation seed', async (t) => {
 
   const resetCatalogue = async () => {
     await pool.query('DELETE FROM user_equipment');
+    await pool.query('DELETE FROM users');
     await pool.query('UPDATE equipment SET parent_equipment_id = NULL');
     await pool.query('DELETE FROM equipment');
     for (const name of CATALOGUE) {
@@ -158,5 +159,68 @@ test('equipment curation seed', async (t) => {
     );
     assert.equal(row.label, 'Barbell', 'curation is not clobbered by a re-seed');
     assert.equal(Number(row.sel), 1);
+  });
+
+  const makeUser = async (email) => {
+    const [r] = await pool.query(
+      'INSERT INTO users (email, password_hash, full_name) VALUES (?, ?, ?)',
+      [email, 'x', 'Test'],
+    );
+    return r.insertId;
+  };
+
+  const own = async (userId, name) => {
+    const [[row]] = await pool.query(
+      'SELECT equipment_id FROM equipment WHERE name = ?', [name],
+    );
+    await pool.query(
+      'INSERT INTO user_equipment (user_id, equipment_id) VALUES (?, ?)',
+      [userId, row.equipment_id],
+    );
+  };
+
+  const owned = async (userId) => {
+    const [rows] = await pool.query(
+      `SELECT COALESCE(e.display_name, e.name) AS label FROM user_equipment ue
+         JOIN equipment e ON e.equipment_id = ue.equipment_id
+        WHERE ue.user_id = ? ORDER BY label`, [userId],
+    );
+    return rows.map((r) => r.label);
+  };
+
+  await t.test('collapses two machine selections into one Machines row', async () => {
+    await resetCatalogue();
+    const userId = await makeUser('collapse@example.com');
+    await own(userId, 'cable');
+    await own(userId, 'smith machine');
+    await seedEquipment(testDbConfig());
+    assert.deepEqual(await owned(userId), ['Machines'],
+      'both map to the same parent, and the duplicate must not raise');
+  });
+
+  await t.test('promotes a child selection to its parent', async () => {
+    await resetCatalogue();
+    const userId = await makeUser('promote@example.com');
+    await own(userId, 'ez barbell');
+    await seedEquipment(testDbConfig());
+    assert.deepEqual(await owned(userId), ['Barbell']);
+  });
+
+  await t.test('drops a selection with no curated home', async () => {
+    await resetCatalogue();
+    const userId = await makeUser('drop@example.com');
+    await own(userId, 'medicine ball');
+    await seedEquipment(testDbConfig());
+    assert.deepEqual(await owned(userId), [],
+      'medicine ball is not one of the eight chips, so it cannot be shown or kept');
+  });
+
+  await t.test('leaves an already-curated selection untouched', async () => {
+    await resetCatalogue();
+    await seedEquipment(testDbConfig());
+    const userId = await makeUser('stable@example.com');
+    await own(userId, 'kettlebell');
+    await seedEquipment(testDbConfig());
+    assert.deepEqual(await owned(userId), ['Kettlebell']);
   });
 });

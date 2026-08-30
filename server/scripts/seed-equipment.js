@@ -7,7 +7,9 @@ seedEquipment(load().db)
     console.log(
       `Seeded equipment options: ${summary.inserted} inserted, ${summary.updated} updated, `
         + `${summary.unchanged} unchanged (of ${summary.total} total), `
-        + `${summary.adopted} catalogue tags absorbed.`,
+        + `${summary.adopted} catalogue tags absorbed. `
+        + `Selections: ${summary.movedSelections} moved to a parent, `
+        + `${summary.droppedSelections} dropped.`,
     );
     process.exit(0);
   })
