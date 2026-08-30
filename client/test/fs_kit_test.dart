@@ -32,6 +32,48 @@ void main() {
         reason: 'the location chips keep the plain treatment');
   });
 
+  testWidgets('ticking a chip does not change its width', (tester) async {
+    // The check slot is reserved whenever showCheck is set, so selecting a
+    // chip repaints it without resizing it. Building the icon on selection
+    // alone widened the chip by 18px mid-layout, which reflowed the
+    // enclosing Wrap and pushed neighbouring chips onto another line.
+    Future<double> widthWhen(bool selected) async {
+      await tester.pumpWidget(_host(
+        FsChip(
+          label: 'Pull-up bar',
+          selected: selected,
+          showCheck: true,
+          onTap: _noop,
+        ),
+      ));
+      return tester.getSize(find.byType(FsChip)).width;
+    }
+
+    expect(await widthWhen(true), await widthWhen(false));
+  });
+
+  testWidgets('a chip without showCheck reserves no check slot',
+      (tester) async {
+    // The reserved slot must not leak onto the location chips, which would
+    // gain 18px of dead space for a check they never render.
+    await tester.pumpWidget(_host(
+      const FsChip(label: 'Home gym', selected: false, onTap: _noop),
+    ));
+    final plain = tester.getSize(find.byType(FsChip)).width;
+
+    await tester.pumpWidget(_host(
+      const FsChip(
+        label: 'Home gym',
+        selected: false,
+        showCheck: true,
+        onTap: _noop,
+      ),
+    ));
+    final reserved = tester.getSize(find.byType(FsChip)).width;
+
+    expect(plain, lessThan(reserved));
+  });
+
   testWidgets('FsTag renders its text', (tester) async {
     await tester.pumpWidget(_host(const FsTag('4 selected')));
     expect(find.text('4 selected'), findsOneWidget);

@@ -210,8 +210,22 @@ class FsChip extends StatelessWidget {
           child: Row(
             mainAxisSize: MainAxisSize.min,
             children: [
-              if (showCheck && selected) ...[
-                Icon(Icons.check, size: small ? 11 : 13, color: t.onAccent),
+              // The slot is reserved whenever the chip can show a check, not
+              // only while it does. Building it on selection alone made the
+              // chip 18px wider the moment it was ticked, which reflowed the
+              // enclosing Wrap and shunted its neighbours onto another line.
+              if (showCheck) ...[
+                SizedBox(
+                  width: small ? 11 : 13,
+                  height: small ? 11 : 13,
+                  child: selected
+                      ? Icon(
+                          Icons.check,
+                          size: small ? 11 : 13,
+                          color: t.onAccent,
+                        )
+                      : null,
+                ),
                 const SizedBox(width: 5),
               ],
               Flexible(
