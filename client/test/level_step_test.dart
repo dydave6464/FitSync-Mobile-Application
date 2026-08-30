@@ -190,21 +190,41 @@ void main() {
             'chip has anything to render');
   });
 
-  testWidgets(
-      'the equipment eyebrow row does not overflow at a large text scale on a narrow screen',
-      (tester) async {
-    // 320dp is a common small-phone width; 1.5x is within the accessibility
-    // text-scale range both platforms support. Neither alone forces the
-    // overflow this is guarding — it takes the combination.
-    tester.view.physicalSize = const Size(320, 1400);
-    tester.view.devicePixelRatio = 1;
-    addTearDown(tester.view.resetPhysicalSize);
-    addTearDown(tester.view.resetDevicePixelRatio);
-    tester.platformDispatcher.textScaleFactorTestValue = 1.5;
-    addTearDown(tester.platformDispatcher.clearTextScaleFactorTestValue);
+  for (final scale in [1.5, 2.0]) {
+    testWidgets(
+        'the equipment eyebrow row does not overflow at ${scale}x text scale '
+        'on a narrow screen', (tester) async {
+      // 320dp is a common small-phone width; 2.0x is Android 14's maximum
+      // text scale, with 1.5x kept as a lower accessibility point on the
+      // same range. Neither the width nor the scale alone forces the
+      // overflow this is guarding — it takes the combination.
+      tester.view.physicalSize = const Size(320, 1400);
+      tester.view.devicePixelRatio = 1;
+      addTearDown(tester.view.resetPhysicalSize);
+      addTearDown(tester.view.resetDevicePixelRatio);
+      tester.platformDispatcher.textScaleFactorTestValue = scale;
+      addTearDown(tester.platformDispatcher.clearTextScaleFactorTestValue);
 
-    await _pump(tester);
+      await _pump(tester);
 
-    expect(tester.takeException(), isNull);
-  });
+      // A bare takeException() catches any overflow anywhere on the step,
+      // not just the eyebrow row's. That is deliberate breadth, not
+      // sloppiness: RenderFlex's overflow flag is private
+      // (RenderFlex._hasOverflow) with no public accessor, and the
+      // FlutterError this throws carries only a generic "overflowed by N
+      // pixels" summary — no widget identity or source location — so there
+      // is no supported way to attribute the exception to this Row
+      // specifically without abandoning exception-based detection (and
+      // rendering the eyebrow row in isolation, which would stop this test
+      // from also guarding the rest of the step).
+      final exception = tester.takeException();
+      expect(exception, isNull,
+          reason: exception == null
+              ? null
+              : 'a layout overflow appeared on step 3 at ${scale}x/320dp; '
+                  'the eyebrow row (Available equipment / N selected) is the '
+                  'most likely source, since it is the one Row here with an '
+                  'unflexed sibling: $exception');
+    });
+  }
 }

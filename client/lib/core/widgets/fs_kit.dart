@@ -214,12 +214,14 @@ class FsChip extends StatelessWidget {
                 Icon(Icons.check, size: small ? 11 : 13, color: t.onAccent),
                 const SizedBox(width: 5),
               ],
-              Text(
-                label,
-                style: TextStyle(
-                  fontSize: small ? 11 : 12.5,
-                  fontWeight: FontWeight.w600,
-                  color: selected ? t.onAccent : t.text2,
+              Flexible(
+                child: Text(
+                  label,
+                  style: TextStyle(
+                    fontSize: small ? 11 : 12.5,
+                    fontWeight: FontWeight.w600,
+                    color: selected ? t.onAccent : t.text2,
+                  ),
                 ),
               ),
             ],
