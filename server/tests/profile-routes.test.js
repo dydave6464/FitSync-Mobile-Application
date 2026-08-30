@@ -7,12 +7,14 @@ const { createPool } = require('../src/db/pool');
 const { buildTestApp } = require('./helpers/test-app');
 const { testDbConfig, dropAllTables } = require('./helpers/test-db');
 const { seedInjuries } = require('../src/db/seed-injuries');
+const { seedEquipment } = require('../src/db/seed-equipment');
 
 test('profile endpoints', async (t) => {
   const pool = createPool(testDbConfig());
   await dropAllTables(pool);
   await migrate(testDbConfig());
   await seedInjuries(testDbConfig());
+  await seedEquipment(testDbConfig());
   const app = buildTestApp({ pool });
 
   t.after(async () => {
@@ -216,5 +218,44 @@ test('profile endpoints', async (t) => {
         ],
       }).expect(400);
     assert.equal(dupInjury.body.error.code, 'INVALID_PROFILE_FIELD');
+  });
+
+  await t.test('lists the eight curated chips in design order', async () => {
+    await reset();
+    const res = await request(app).get('/api/v1/equipment')
+      .set('Authorization', auth).expect(200);
+    assert.deepEqual(res.body.data.equipment.map((e) => e.name), [
+      'Barbell', 'Dumbbells', 'Bench', 'Pull-up bar',
+      'Kettlebell', 'Bands', 'Machines', 'Bodyweight',
+    ]);
+  });
+
+  await t.test('rejects a catalogue tag that is not user-selectable', async () => {
+    await reset();
+    // seedEquipment only INSERTs the eight curated names; it reaches 'cable'
+    // through an UPDATE that no-ops when the row is absent. This file never
+    // runs the catalogue seed, so the row has to be made here. A bare insert
+    // lands is_user_selectable = 0 by column default, which is the condition
+    // under test.
+    await pool.query("INSERT IGNORE INTO equipment (name) VALUES ('cable')");
+    const [[row]] = await pool.query(
+      "SELECT equipment_id AS id FROM equipment WHERE name = 'cable'",
+    );
+    const res = await request(app).put('/api/v1/profile/equipment')
+      .set('Authorization', auth).send({ equipmentIds: [row.id] }).expect(400);
+    assert.equal(res.body.error.code, 'INVALID_PROFILE_FIELD');
+  });
+
+  await t.test('returns the display name on the saved profile', async () => {
+    await reset();
+    const list = await request(app).get('/api/v1/equipment')
+      .set('Authorization', auth).expect(200);
+    const bodyweight = list.body.data.equipment.find((e) => e.name === 'Bodyweight');
+    await request(app).put('/api/v1/profile/equipment')
+      .set('Authorization', auth).send({ equipmentIds: [bodyweight.equipmentId] }).expect(200);
+    const res = await request(app).get('/api/v1/profile')
+      .set('Authorization', auth).expect(200);
+    assert.deepEqual(res.body.data.profile.equipment.map((e) => e.name), ['Bodyweight'],
+      'the profile must not show the raw catalogue name "body weight"');
   });
 });

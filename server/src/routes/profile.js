@@ -143,10 +143,14 @@ module.exports = function buildProfileRouter(deps) {
       // A stale cached list on the client can name equipment that no longer
       // exists. Checking here turns that into a 400 instead of the FK
       // violation (ER_NO_REFERENCED_ROW_2) that setEquipment's insert would
-      // otherwise raise as an opaque 500.
+      // otherwise raise as an opaque 500. A stale client can also still name a
+      // raw catalogue tag that curation folded away (e.g. 'cable'); requiring
+      // is_user_selectable turns that into the same 400 rather than a row the
+      // onboarding step can never render again.
       if (ids.length > 0) {
         const [rows] = await pool.query(
-          'SELECT equipment_id FROM equipment WHERE equipment_id IN (?)', [ids],
+          `SELECT equipment_id FROM equipment
+            WHERE equipment_id IN (?) AND is_user_selectable = 1`, [ids],
         );
         if (rows.length !== ids.length) {
           throw invalid('equipmentIds', 'equipmentIds must reference existing equipment.');

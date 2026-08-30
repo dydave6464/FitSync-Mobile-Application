@@ -29,9 +29,12 @@ async function getProfile(pool, userId) {
   const u = rows[0];
 
   const [equipment] = await pool.query(
-    `SELECT e.equipment_id, e.name FROM user_equipment ue
+    // COALESCE so a selection that predates curation still renders rather than
+    // coming back as a null name.
+    `SELECT e.equipment_id, COALESCE(e.display_name, e.name) AS name
+       FROM user_equipment ue
        JOIN equipment e ON e.equipment_id = ue.equipment_id
-      WHERE ue.user_id = ? ORDER BY e.name`, [userId],
+      WHERE ue.user_id = ? ORDER BY e.display_order, e.name`, [userId],
   );
   const [injuries] = await pool.query(
     `SELECT i.injury_id, i.name, i.is_lateral, i.region_group, ui.side
@@ -123,8 +126,14 @@ async function setInjuries(pool, userId, entries) {
 }
 
 async function listEquipment(pool) {
-  const [rows] = await pool.query('SELECT equipment_id, name FROM equipment ORDER BY name');
-  return rows.map((r) => ({ equipmentId: r.equipment_id, name: r.name }));
+  // Only the curated chips. Raw catalogue tags stay out of onboarding; see
+  // seed-equipment.js for what promotes a row into this list.
+  const [rows] = await pool.query(
+    `SELECT equipment_id, display_name FROM equipment
+      WHERE is_user_selectable = 1
+      ORDER BY display_order`,
+  );
+  return rows.map((r) => ({ equipmentId: r.equipment_id, name: r.display_name }));
 }
 
 async function listInjuries(pool) {
