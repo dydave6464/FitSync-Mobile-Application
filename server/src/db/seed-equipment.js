@@ -72,8 +72,13 @@ async function seedEquipment(dbConfig) {
         'SELECT equipment_id FROM equipment WHERE name = ?', [option.name],
       );
       for (const child of option.children) {
+        // ADOPT_CHILD is a plain UPDATE, so CLIENT_FOUND_ROWS makes
+        // affectedRows report rows matched, not rows changed — it would stay
+        // 1 forever, even once the child is already adopted. changedRows is
+        // unaffected by that flag and reflects MySQL's actual "Changed:"
+        // count, so it correctly goes to 0 on a no-op re-run.
         const [r] = await pool.query(ADOPT_CHILD, [parent.equipment_id, child]);
-        if (r.affectedRows > 0) adopted += 1;
+        if (r.changedRows > 0) adopted += 1;
       }
     }
 

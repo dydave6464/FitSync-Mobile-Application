@@ -131,11 +131,13 @@ test('equipment curation seed', async (t) => {
 
   await t.test('is idempotent', async () => {
     await resetCatalogue();
-    await seedEquipment(testDbConfig());
+    const first = await seedEquipment(testDbConfig());
+    assert.equal(first.adopted, 7, 'the first run absorbs all seven child tags');
     const [[before]] = await pool.query('SELECT COUNT(*) AS n FROM equipment');
-    await seedEquipment(testDbConfig());
+    const second = await seedEquipment(testDbConfig());
     const [[after]] = await pool.query('SELECT COUNT(*) AS n FROM equipment');
     assert.equal(Number(after.n), Number(before.n), 'a re-run adds no rows');
+    assert.equal(second.adopted, 0, 'a re-run adopts nothing new');
     assert.deepEqual(await selectable(), [
       'Barbell', 'Dumbbells', 'Bench', 'Pull-up bar',
       'Kettlebell', 'Bands', 'Machines', 'Bodyweight',
