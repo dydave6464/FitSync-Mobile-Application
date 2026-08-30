@@ -11,6 +11,13 @@ seedEquipment(load().db)
         + `Selections: ${summary.movedSelections} moved to a parent, `
         + `${summary.droppedSelections} dropped.`,
     );
+    if (summary.missingChildTags.length > 0) {
+      console.warn(
+        `Warning: ${summary.missingChildTags.length} catalogue tag(s) named in OPTIONS `
+          + `were not found in equipment (run npm run seed first if this is unexpected): `
+          + `${summary.missingChildTags.join(', ')}`,
+      );
+    }
     process.exit(0);
   })
   .catch((err) => {

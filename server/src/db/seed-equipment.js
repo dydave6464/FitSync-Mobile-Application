@@ -38,8 +38,13 @@ const UPSERT_OPTION = `
     parent_equipment_id = NULL
 `;
 
-// A no-op when the catalogue has not been seeded yet, which is what makes this
-// safe to run before or after `npm run seed`.
+// A no-op when the catalogue has not been seeded yet — but nothing else ever
+// re-runs this adoption, so that no-op is not safe, it is silent data loss:
+// the catalogue seed (`npm run seed`) must run BEFORE this one. Running
+// seed:equipment first leaves these children permanently unparented
+// (parent_equipment_id stays NULL) until seed:equipment is re-run once the
+// catalogue exists. `missingChildTags` on the return value is what makes that
+// omission observable instead of silent; see scripts/seed-equipment.js.
 const ADOPT_CHILD = `
   UPDATE equipment
      SET parent_equipment_id = ?, is_user_selectable = 0,
@@ -76,6 +81,7 @@ async function seedEquipment(dbConfig) {
     let updated = 0;
     let unchanged = 0;
     let adopted = 0;
+    const missingChildTags = [];
 
     for (const [index, option] of OPTIONS.entries()) {
       // uq_equipment_name makes this idempotent without a pre-read.
@@ -101,6 +107,12 @@ async function seedEquipment(dbConfig) {
         // count, so it correctly goes to 0 on a no-op re-run.
         const [r] = await pool.query(ADOPT_CHILD, [parent.equipment_id, child]);
         if (r.changedRows > 0) adopted += 1;
+        // affectedRows === 0 means the WHERE name = ? matched nothing — the
+        // catalogue seed has not run yet, or this tag was renamed/removed
+        // upstream. Either way it is exactly the case the comment above warns
+        // about: this run cannot adopt what is not there, and nothing retries
+        // it later on its own.
+        if (r.affectedRows === 0) missingChildTags.push(child);
       }
     }
 
@@ -115,6 +127,7 @@ async function seedEquipment(dbConfig) {
       movedSelections: moved.affectedRows,
       droppedSelections: dropped.affectedRows,
       total: OPTIONS.length,
+      missingChildTags,
     };
   } finally {
     await pool.end();

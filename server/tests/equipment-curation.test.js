@@ -226,4 +226,26 @@ test('equipment curation seed', async (t) => {
     assert.equal(summary.movedSelections, 0);
     assert.equal(summary.droppedSelections, 0);
   });
+
+  await t.test('reports nothing missing once the catalogue seed has run', async () => {
+    await resetCatalogue();
+    const summary = await seedEquipment(testDbConfig());
+    assert.deepEqual(summary.missingChildTags, []);
+  });
+
+  await t.test('names the catalogue tags it could not find to adopt', async () => {
+    // The exact scenario the comment on ADOPT_CHILD warns about: this seed
+    // run before the exercise catalogue seed has ever populated `equipment`.
+    // Every child tag in OPTIONS is unmatched; bench, pull-up bar and
+    // machines are unaffected because they are parents, not children, so
+    // they must not show up here.
+    await pool.query('DELETE FROM user_equipment');
+    await pool.query('UPDATE equipment SET parent_equipment_id = NULL');
+    await pool.query('DELETE FROM equipment');
+    const summary = await seedEquipment(testDbConfig());
+    assert.deepEqual(summary.missingChildTags.slice().sort(), [
+      'cable', 'ez barbell', 'leverage machine', 'olympic barbell',
+      'resistance band', 'smith machine', 'trap bar',
+    ]);
+  });
 });
