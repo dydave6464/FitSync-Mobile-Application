@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import 'core/theme.dart';
+import 'core/widgets/fs_kit.dart';
 import 'features/auth/presentation/auth_controller.dart';
 import 'features/auth/presentation/sign_in_screen.dart';
 import 'features/exercises/presentation/exercise_list_screen.dart' show describeError;
@@ -19,8 +21,9 @@ class AppShell extends ConsumerWidget {
     final auth = ref.watch(authControllerProvider);
 
     return auth.when(
-      loading: () => const Scaffold(
-        body: Center(child: CircularProgressIndicator()),
+      loading: () => Scaffold(
+        backgroundColor: context.fs.bg,
+        body: const Center(child: CircularProgressIndicator()),
       ),
       error: (error, _) => _ShellError(
         message: describeError(error),
@@ -42,19 +45,28 @@ class _ShellError extends StatelessWidget {
   final VoidCallback onRetry;
 
   @override
-  Widget build(BuildContext context) => Scaffold(
-        body: Center(
-          child: Padding(
-            padding: const EdgeInsets.all(24),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Text(message, textAlign: TextAlign.center),
-                const SizedBox(height: 16),
-                FilledButton(onPressed: onRetry, child: const Text('Retry')),
-              ],
-            ),
+  Widget build(BuildContext context) {
+    final t = context.fs;
+
+    return Scaffold(
+      backgroundColor: t.bg,
+      body: Center(
+        child: Padding(
+          padding: const EdgeInsets.all(24),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Text(
+                message,
+                textAlign: TextAlign.center,
+                style: TextStyle(fontSize: 12.5, color: t.text2, height: 1.5),
+              ),
+              const SizedBox(height: 20),
+              FsButton(label: 'Retry', small: true, onPressed: onRetry),
+            ],
           ),
         ),
-      );
+      ),
+    );
+  }
 }

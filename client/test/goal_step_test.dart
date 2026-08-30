@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
+import 'package:fitsync/core/widgets/fs_kit.dart';
 import 'package:fitsync/features/onboarding/presentation/steps/goal_step.dart';
 
 /// The wire values the server's `main_goal` ENUM accepts. Pinned as literals
@@ -23,7 +24,7 @@ void main() {
     for (final value in _wireValues) {
       expect(find.byKey(Key('goal.$value')), findsOneWidget);
     }
-    expect(find.byType(ListTile), findsNWidgets(4));
+    expect(find.byType(FsCard), findsNWidgets(4));
   });
 
   testWidgets('emits the server enum value, not the label', (tester) async {
@@ -47,12 +48,13 @@ void main() {
       ),
     ));
 
+    // The selected card carries the accent-card treatment.
     expect(
-      tester.widget<ListTile>(find.byKey(const Key('goal.build_muscle'))).selected,
+      tester.widget<FsCard>(find.byKey(const Key('goal.build_muscle'))).accent,
       isTrue,
     );
     expect(
-      tester.widget<ListTile>(find.byKey(const Key('goal.lose_weight'))).selected,
+      tester.widget<FsCard>(find.byKey(const Key('goal.lose_weight'))).accent,
       isFalse,
     );
   });

@@ -2,6 +2,9 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../core/api_exception.dart';
+import '../../../core/theme.dart';
+import '../../../core/theme_controller.dart';
+import '../../../core/widgets/fs_kit.dart';
 import '../../auth/presentation/auth_controller.dart';
 import '../../exercises/presentation/exercise_list_screen.dart' show describeError;
 import '../../onboarding/presentation/edit_scaffold.dart';
@@ -22,10 +25,12 @@ class SettingsScreen extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
+    final t = context.fs;
     final profile = ref.watch(profileProvider);
 
     return Scaffold(
-      appBar: AppBar(title: const Text('Settings')),
+      backgroundColor: t.bg,
+      appBar: AppBar(title: const Text('Profile')),
       body: profile.when(
         loading: () => const Center(child: CircularProgressIndicator()),
         error: (error, _) => Center(
@@ -36,9 +41,10 @@ class SettingsScreen extends ConsumerWidget {
               children: [
                 Text(describeError(error), textAlign: TextAlign.center),
                 const SizedBox(height: 16),
-                FilledButton(
+                FsButton(
+                  label: 'Retry',
+                  small: true,
                   onPressed: () => ref.invalidate(profileProvider),
-                  child: const Text('Retry'),
                 ),
               ],
             ),
@@ -59,64 +65,204 @@ class _SettingsList extends ConsumerWidget {
         MaterialPageRoute<void>(builder: (_) => editor),
       );
 
+  String get _initials {
+    final parts = profile.fullName.trim().split(RegExp(r'\s+'));
+    if (parts.isEmpty || parts.first.isEmpty) return '?';
+    if (parts.length == 1) return parts.first[0].toUpperCase();
+    return (parts.first[0] + parts.last[0]).toUpperCase();
+  }
+
   @override
   Widget build(BuildContext context, WidgetRef ref) {
+    final t = context.fs;
+    final theme = Theme.of(context);
+    final isDark = ref.watch(themeModeProvider) == ThemeMode.dark;
+
+    final subtitle = [
+      if (profile.fitnessLevel != null)
+        profile.fitnessLevel![0].toUpperCase() +
+            profile.fitnessLevel!.substring(1),
+      if (profile.city != null) profile.city!,
+      if (profile.fitnessLevel == null && profile.city == null) profile.email,
+    ].join(' · ');
+
     return ListView(
+      padding: const EdgeInsets.fromLTRB(20, 8, 20, 24),
       children: [
-        ListTile(
-          leading: const CircleAvatar(child: Icon(Icons.person_outline)),
-          title: Text(profile.fullName),
-          subtitle: Text(
-            [profile.email, if (profile.city != null) profile.city!].join(' · '),
+        FsCard(
+          child: Row(
+            children: [
+              Container(
+                width: 52,
+                height: 52,
+                decoration: BoxDecoration(
+                  color: t.surface2,
+                  borderRadius: BorderRadius.circular(FsRadius.md),
+                  border: Border.all(color: t.line),
+                ),
+                alignment: Alignment.center,
+                child: Text(
+                  _initials,
+                  style: TextStyle(
+                    fontSize: 18,
+                    fontWeight: FontWeight.w700,
+                    color: t.text,
+                  ),
+                ),
+              ),
+              const SizedBox(width: 14),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(profile.fullName, style: theme.textTheme.titleLarge),
+                    const SizedBox(height: 3),
+                    Text(
+                      subtitle,
+                      style: TextStyle(fontSize: 11, color: t.text3),
+                    ),
+                  ],
+                ),
+              ),
+            ],
           ),
         ),
-        const Divider(),
-        ListTile(
-          key: const Key('edit.goal'),
-          leading: const Icon(Icons.flag_outlined),
-          title: const Text('Goal'),
-          trailing: const Icon(Icons.chevron_right),
-          onTap: () => _open(context, const _GoalEditor()),
+        const SizedBox(height: 22),
+        const FsEyebrow('Training'),
+        const SizedBox(height: 10),
+        FsCard(
+          padding: const EdgeInsets.symmetric(horizontal: 16),
+          child: Column(
+            children: [
+              _SettingsRow(
+                rowKey: const Key('edit.goal'),
+                icon: Icons.flag_outlined,
+                label: 'Goal',
+                onTap: () => _open(context, const _GoalEditor()),
+              ),
+              _SettingsRow(
+                rowKey: const Key('edit.about'),
+                icon: Icons.straighten_outlined,
+                label: 'Body metrics (height, weight)',
+                onTap: () => _open(context, const _AboutEditor()),
+              ),
+              _SettingsRow(
+                rowKey: const Key('edit.level'),
+                icon: Icons.fitness_center_outlined,
+                label: 'Equipment & location',
+                onTap: () => _open(context, const _LevelEditor()),
+              ),
+              _SettingsRow(
+                rowKey: const Key('edit.injuries'),
+                icon: Icons.healing_outlined,
+                label: 'Injuries',
+                iconColor: t.red,
+                onTap: () => _open(context, const _InjuriesEditor()),
+                last: true,
+              ),
+            ],
+          ),
         ),
-        ListTile(
-          key: const Key('edit.about'),
-          leading: const Icon(Icons.straighten_outlined),
-          title: const Text('Body metrics'),
-          trailing: const Icon(Icons.chevron_right),
-          onTap: () => _open(context, const _AboutEditor()),
+        const SizedBox(height: 22),
+        const FsEyebrow('App'),
+        const SizedBox(height: 10),
+        FsCard(
+          padding: const EdgeInsets.symmetric(horizontal: 16),
+          child: Column(
+            children: [
+              _SettingsRow(
+                icon: Icons.notifications_outlined,
+                label: 'Notifications & reminders',
+                trailing: Switch(
+                  key: const Key('notifications'),
+                  value: profile.notificationsEnabled,
+                  onChanged: (value) => ref
+                      .read(profileProvider.notifier)
+                      .patch({'notificationsEnabled': value}),
+                ),
+              ),
+              _SettingsRow(
+                icon: isDark ? Icons.dark_mode_outlined : Icons.light_mode_outlined,
+                label: 'Dark mode',
+                trailing: Switch(
+                  key: const Key('darkMode'),
+                  value: isDark,
+                  onChanged: (value) =>
+                      ref.read(themeModeProvider.notifier).setDark(value),
+                ),
+                last: true,
+              ),
+            ],
+          ),
         ),
-        ListTile(
-          key: const Key('edit.level'),
-          leading: const Icon(Icons.fitness_center_outlined),
-          title: const Text('Experience & equipment'),
-          trailing: const Icon(Icons.chevron_right),
-          onTap: () => _open(context, const _LevelEditor()),
-        ),
-        ListTile(
-          key: const Key('edit.injuries'),
-          leading: const Icon(Icons.healing_outlined),
-          title: const Text('Injuries'),
-          trailing: const Icon(Icons.chevron_right),
-          onTap: () => _open(context, const _InjuriesEditor()),
-        ),
-        const Divider(),
-        SwitchListTile(
-          key: const Key('notifications'),
-          secondary: const Icon(Icons.notifications_outlined),
-          title: const Text('Notifications'),
-          value: profile.notificationsEnabled,
-          onChanged: (value) => ref
-              .read(profileProvider.notifier)
-              .patch({'notificationsEnabled': value}),
-        ),
-        const Divider(),
-        ListTile(
+        const SizedBox(height: 22),
+        FsButton(
           key: const Key('signOut'),
-          leading: const Icon(Icons.logout),
-          title: const Text('Sign out'),
-          onTap: () => ref.read(authControllerProvider.notifier).signOut(),
+          label: 'Sign out',
+          kind: FsButtonKind.ghost,
+          danger: true,
+          small: true,
+          onPressed: () => ref.read(authControllerProvider.notifier).signOut(),
         ),
       ],
+    );
+  }
+}
+
+/// The prototype's `SettRow`: square icon tile, label, trailing control, and a
+/// hairline between rows.
+class _SettingsRow extends StatelessWidget {
+  const _SettingsRow({
+    required this.icon,
+    required this.label,
+    this.rowKey,
+    this.onTap,
+    this.trailing,
+    this.iconColor,
+    this.last = false,
+  });
+
+  final IconData icon;
+  final String label;
+  final Key? rowKey;
+  final VoidCallback? onTap;
+  final Widget? trailing;
+  final Color? iconColor;
+  final bool last;
+
+  @override
+  Widget build(BuildContext context) {
+    final t = context.fs;
+
+    return InkWell(
+      key: rowKey,
+      onTap: onTap,
+      child: Container(
+        padding: const EdgeInsets.symmetric(vertical: 12),
+        decoration: BoxDecoration(
+          border: last
+              ? null
+              : Border(bottom: BorderSide(color: t.line)),
+        ),
+        child: Row(
+          children: [
+            FsIconTile(icon: icon, size: 32, color: iconColor),
+            const SizedBox(width: 13),
+            Expanded(
+              child: Text(
+                label,
+                style: TextStyle(
+                  fontSize: 12.5,
+                  fontWeight: FontWeight.w500,
+                  color: t.text,
+                ),
+              ),
+            ),
+            trailing ??
+                Icon(Icons.chevron_right, size: 16, color: t.text3),
+          ],
+        ),
+      ),
     );
   }
 }
@@ -176,7 +322,7 @@ abstract class _EditorState<W extends ConsumerStatefulWidget>
             Text(
               _error!,
               key: const Key('error'),
-              style: TextStyle(color: Theme.of(context).colorScheme.error),
+              style: TextStyle(fontSize: 12.5, color: context.fs.red),
             ),
           ],
         ],
@@ -274,7 +420,7 @@ class _LevelEditorState extends _EditorState<_LevelEditor> {
   bool _seeded = false;
 
   @override
-  String get title => 'Experience & equipment';
+  String get title => 'Equipment & location';
 
   @override
   Widget buildStep(Profile profile) {

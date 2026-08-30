@@ -1,5 +1,8 @@
 import 'package:flutter/material.dart';
 
+import '../../../../core/theme.dart';
+import '../../../../core/widgets/fs_kit.dart';
+
 /// The answers step 2 collects.
 ///
 /// A value object rather than six separate callbacks, so the step can report
@@ -140,21 +143,19 @@ class _AboutStepState extends State<AboutStep> {
   Widget _measurement(Key key, TextEditingController controller, String label,
           String suffix) =>
       Padding(
-        padding: const EdgeInsets.only(bottom: 12),
-        child: TextField(
-          key: key,
+        padding: const EdgeInsets.only(bottom: 10),
+        child: FsField(
+          fieldKey: key,
           controller: controller,
+          hint: label,
+          suffix: suffix,
           keyboardType: const TextInputType.numberWithOptions(decimal: true),
-          decoration: InputDecoration(
-            labelText: label,
-            suffixText: suffix,
-            border: const OutlineInputBorder(),
-          ),
         ),
       );
 
   @override
   Widget build(BuildContext context) {
+    final t = context.fs;
     final theme = Theme.of(context);
 
     return Column(
@@ -165,60 +166,90 @@ class _AboutStepState extends State<AboutStep> {
         const SizedBox(height: 8),
         Text(
           'Used to size your starting loads and calorie targets.',
-          style: theme.textTheme.bodyMedium,
+          style: TextStyle(fontSize: 12.5, color: t.text2, height: 1.5),
         ),
-        const SizedBox(height: 20),
-        Text('Sex', style: theme.textTheme.titleMedium),
-        const SizedBox(height: 8),
+        const SizedBox(height: 22),
+        const FsEyebrow('Sex'),
+        const SizedBox(height: 10),
         Wrap(
           spacing: 8,
+          runSpacing: 8,
           children: [
             for (final option in _sexes)
-              ChoiceChip(
+              FsChip(
                 key: Key('sex.${option.value}'),
-                label: Text(option.label),
+                label: option.label,
                 selected: _sex == option.value,
-                onSelected: (_) {
+                onTap: () {
                   setState(() => _sex = option.value);
                   _emit();
                 },
               ),
           ],
         ),
-        const SizedBox(height: 20),
-        ListTile(
+        const SizedBox(height: 22),
+        const FsEyebrow('Date of birth'),
+        const SizedBox(height: 10),
+        FsCard(
           key: const Key('dateOfBirth'),
-          contentPadding: EdgeInsets.zero,
-          leading: const Icon(Icons.cake_outlined),
-          title: const Text('Date of birth'),
-          subtitle: Text(_dateOfBirth ?? 'Not set'),
-          trailing: const Icon(Icons.edit_calendar_outlined),
+          small: true,
           onTap: _pickDate,
+          child: Row(
+            children: [
+              const FsIconTile(icon: Icons.cake_outlined, size: 32),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Text(
+                  _dateOfBirth ?? 'Not set',
+                  style: TextStyle(
+                    fontSize: 14,
+                    color: _dateOfBirth == null ? t.text3 : t.text,
+                  ),
+                ),
+              ),
+              Icon(Icons.edit_calendar_outlined, size: 17, color: t.text3),
+            ],
+          ),
         ),
-        const SizedBox(height: 12),
+        const SizedBox(height: 22),
+        const FsEyebrow('Measurements'),
+        const SizedBox(height: 10),
         _measurement(const Key('heightCm'), _height, 'Height', 'cm'),
         _measurement(const Key('weightKg'), _weight, 'Weight', 'kg'),
         _measurement(const Key('goalWeightKg'), _goalWeight, 'Goal weight', 'kg'),
-        const SizedBox(height: 8),
-        Text('How active are you?', style: theme.textTheme.titleMedium),
-        const SizedBox(height: 8),
-        for (final option in _activityLevels)
-          Card(
-            clipBehavior: Clip.antiAlias,
-            child: ListTile(
-              key: Key('activity.${option.value}'),
-              selected: _activityLevel == option.value,
-              title: Text(option.label),
-              subtitle: Text(option.blurb),
-              trailing: _activityLevel == option.value
-                  ? const Icon(Icons.check_circle)
-                  : null,
-              onTap: () {
-                setState(() => _activityLevel = option.value);
-                _emit();
-              },
+        const SizedBox(height: 12),
+        const FsEyebrow('How active are you?'),
+        const SizedBox(height: 10),
+        for (final option in _activityLevels) ...[
+          FsCard(
+            key: Key('activity.${option.value}'),
+            small: true,
+            accent: _activityLevel == option.value,
+            onTap: () {
+              setState(() => _activityLevel = option.value);
+              _emit();
+            },
+            child: Row(
+              children: [
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(option.label, style: theme.textTheme.titleMedium),
+                      const SizedBox(height: 2),
+                      Text(
+                        option.blurb,
+                        style: TextStyle(fontSize: 11, color: t.text3),
+                      ),
+                    ],
+                  ),
+                ),
+                FsRadioDot(selected: _activityLevel == option.value),
+              ],
             ),
           ),
+          const SizedBox(height: 8),
+        ],
       ],
     );
   }

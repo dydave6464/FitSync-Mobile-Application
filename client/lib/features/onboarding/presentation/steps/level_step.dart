@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../../../core/theme.dart';
+import '../../../../core/widgets/fs_kit.dart';
 import '../../../exercises/presentation/exercise_list_screen.dart' show describeError;
 import '../../../profile/presentation/providers.dart';
 
@@ -33,16 +35,18 @@ class LevelAnswers {
 }
 
 /// `fitness_level` ENUM values. The schema offers two; there is no "advanced".
-const _levels = <({String value, String label, String blurb})>[
+const _levels = <({String value, String label, String blurb, IconData icon})>[
   (
     value: 'beginner',
     label: 'Beginner',
     blurb: 'New to training, or coming back after a long break',
+    icon: Icons.eco_outlined,
   ),
   (
     value: 'intermediate',
     label: 'Intermediate',
     blurb: 'Training consistently and comfortable with the basic lifts',
+    icon: Icons.trending_up,
   ),
 ];
 
@@ -73,6 +77,7 @@ class LevelStep extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
+    final t = context.fs;
     final theme = Theme.of(context);
     final equipment = ref.watch(equipmentOptionsProvider);
 
@@ -84,45 +89,64 @@ class LevelStep extends ConsumerWidget {
         const SizedBox(height: 8),
         Text(
           'Sets your starting volume and how quickly it climbs.',
-          style: theme.textTheme.bodyMedium,
+          style: TextStyle(fontSize: 12.5, color: t.text2, height: 1.5),
         ),
-        const SizedBox(height: 16),
-        for (final level in _levels)
-          Card(
-            clipBehavior: Clip.antiAlias,
-            child: ListTile(
-              key: Key('level.${level.value}'),
-              selected: value.fitnessLevel == level.value,
-              title: Text(level.label),
-              subtitle: Text(level.blurb),
-              trailing: value.fitnessLevel == level.value
-                  ? const Icon(Icons.check_circle)
-                  : null,
-              onTap: () => onChanged(value.copyWith(fitnessLevel: level.value)),
+        const SizedBox(height: 20),
+        for (final level in _levels) ...[
+          FsCard(
+            key: Key('level.${level.value}'),
+            small: true,
+            accent: value.fitnessLevel == level.value,
+            onTap: () => onChanged(value.copyWith(fitnessLevel: level.value)),
+            child: Row(
+              children: [
+                FsIconTile(
+                  icon: level.icon,
+                  selected: value.fitnessLevel == level.value,
+                ),
+                const SizedBox(width: 13),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(level.label, style: theme.textTheme.titleMedium),
+                      const SizedBox(height: 2),
+                      Text(
+                        level.blurb,
+                        style: TextStyle(fontSize: 11, color: t.text3),
+                      ),
+                    ],
+                  ),
+                ),
+                FsRadioDot(selected: value.fitnessLevel == level.value),
+              ],
             ),
           ),
-        const SizedBox(height: 24),
-        Text('Where do you train?', style: theme.textTheme.titleMedium),
-        const SizedBox(height: 8),
+          const SizedBox(height: 8),
+        ],
+        const SizedBox(height: 14),
+        const FsEyebrow('Where do you train?'),
+        const SizedBox(height: 10),
         Wrap(
           spacing: 8,
+          runSpacing: 8,
           children: [
             for (final location in _locations)
-              ChoiceChip(
+              FsChip(
                 key: Key('location.${location.value}'),
-                label: Text(location.label),
+                label: location.label,
                 selected: value.trainingLocation == location.value,
-                onSelected: (_) =>
+                onTap: () =>
                     onChanged(value.copyWith(trainingLocation: location.value)),
               ),
           ],
         ),
-        const SizedBox(height: 24),
-        Text('What equipment can you use?', style: theme.textTheme.titleMedium),
-        const SizedBox(height: 4),
+        const SizedBox(height: 22),
+        const FsEyebrow('What equipment can you use?'),
+        const SizedBox(height: 6),
         Text(
           'Leave everything unticked if you are training with bodyweight only.',
-          style: theme.textTheme.bodySmall,
+          style: TextStyle(fontSize: 11, color: t.text3),
         ),
         const SizedBox(height: 12),
         equipment.when(
@@ -136,9 +160,11 @@ class LevelStep extends ConsumerWidget {
               children: [
                 Text(describeError(error), textAlign: TextAlign.center),
                 const SizedBox(height: 12),
-                OutlinedButton(
+                FsButton(
+                  label: 'Retry',
+                  small: true,
+                  kind: FsButtonKind.secondary,
                   onPressed: () => ref.invalidate(equipmentOptionsProvider),
-                  child: const Text('Retry'),
                 ),
               ],
             ),
@@ -148,14 +174,14 @@ class LevelStep extends ConsumerWidget {
           // match the names in the design.
           data: (options) => Wrap(
             spacing: 8,
-            runSpacing: 4,
+            runSpacing: 8,
             children: [
               for (final option in options)
-                FilterChip(
+                FsChip(
                   key: Key('equipment.${option.equipmentId}'),
-                  label: Text(option.name),
+                  label: option.name,
                   selected: value.equipmentIds.contains(option.equipmentId),
-                  onSelected: (_) => _toggleEquipment(option.equipmentId),
+                  onTap: () => _toggleEquipment(option.equipmentId),
                 ),
             ],
           ),

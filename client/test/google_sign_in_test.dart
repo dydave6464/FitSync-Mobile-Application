@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import 'package:fitsync/core/api_exception.dart';
+import 'package:fitsync/core/widgets/fs_kit.dart';
 import 'package:fitsync/features/auth/data/auth_repository.dart';
 import 'package:fitsync/features/auth/data/google_sign_in_gateway.dart';
 import 'package:fitsync/features/auth/domain/auth_user.dart';
@@ -152,7 +153,7 @@ void main() {
 
     expect(find.textContaining('coming soon'), findsNothing);
     expect(
-      tester.widget<OutlinedButton>(find.byKey(const Key('google'))).onPressed,
+      tester.widget<FsButton>(find.byKey(const Key('google'))).onPressed,
       isNotNull,
     );
   });

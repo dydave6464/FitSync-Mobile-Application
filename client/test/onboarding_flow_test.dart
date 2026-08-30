@@ -153,7 +153,7 @@ void main() {
   testWidgets('starts on step 1 of 4', (tester) async {
     await _pumpFlow(tester, patches: []);
 
-    expect(find.text('Step 1 of 4'), findsOneWidget);
+    expect(find.text('STEP 1 / 4'), findsOneWidget);
     expect(find.byKey(const Key('goal.lose_weight')), findsOneWidget);
   });
 
@@ -169,7 +169,7 @@ void main() {
     expect(patches, [
       {'mainGoal': 'build_muscle'}
     ], reason: 'a dropout after step 1 must still have their goal saved');
-    expect(find.text('Step 2 of 4'), findsOneWidget);
+    expect(find.text('STEP 2 / 4'), findsOneWidget);
   });
 
   testWidgets('Skip advances without saving', (tester) async {
@@ -179,7 +179,7 @@ void main() {
     await _skip(tester);
 
     expect(patches, isEmpty);
-    expect(find.text('Step 2 of 4'), findsOneWidget);
+    expect(find.text('STEP 2 / 4'), findsOneWidget);
   });
 
   testWidgets('Continue with nothing chosen saves nothing but still advances',
@@ -191,7 +191,7 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(patches, isEmpty, reason: 'an empty patch is a pointless round trip');
-    expect(find.text('Step 2 of 4'), findsOneWidget);
+    expect(find.text('STEP 2 / 4'), findsOneWidget);
   });
 
   testWidgets('a failed save shows the message and stays on the step',
@@ -209,7 +209,7 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.text('That goal is not one we recognise.'), findsOneWidget);
-    expect(find.text('Step 1 of 4'), findsOneWidget,
+    expect(find.text('STEP 1 / 4'), findsOneWidget,
         reason: 'advancing past a step whose answer was rejected would lose it');
   });
 
@@ -221,7 +221,7 @@ void main() {
 
     await _skip(tester);
     await _skip(tester);
-    expect(find.text('Step 3 of 4'), findsOneWidget);
+    expect(find.text('STEP 3 / 4'), findsOneWidget);
 
     await _tapKey(tester, const Key('level.beginner'));
     await _tapKey(tester, const Key('equipment.41'));
@@ -231,7 +231,7 @@ void main() {
     expect(patches.single, {'fitnessLevel': 'beginner'});
     expect(equipmentWrites.single, [41],
         reason: 'equipment is a replace-set write, not part of the patch');
-    expect(find.text('Step 4 of 4'), findsOneWidget);
+    expect(find.text('STEP 4 / 4'), findsOneWidget);
   });
 
   testWidgets('step 4 saves the injury set, empty included', (tester) async {
@@ -241,7 +241,7 @@ void main() {
     await _skip(tester);
     await _skip(tester);
     await _skip(tester);
-    expect(find.text('Step 4 of 4'), findsOneWidget);
+    expect(find.text('STEP 4 / 4'), findsOneWidget);
 
     await tester.tap(find.byKey(const Key('continue')));
     await tester.pumpAndSettle();
@@ -306,7 +306,7 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.text('Could not build a plan right now.'), findsOneWidget);
-    expect(find.text('Step 4 of 4'), findsOneWidget);
+    expect(find.text('STEP 4 / 4'), findsOneWidget);
 
     await tester.tap(find.byKey(const Key('continue')));
     await tester.pumpAndSettle();
@@ -318,11 +318,11 @@ void main() {
     await _pumpFlow(tester, patches: []);
 
     await _skip(tester);
-    expect(find.text('Step 2 of 4'), findsOneWidget);
+    expect(find.text('STEP 2 / 4'), findsOneWidget);
 
     await tester.tap(find.byKey(const Key('back')));
     await tester.pumpAndSettle();
 
-    expect(find.text('Step 1 of 4'), findsOneWidget);
+    expect(find.text('STEP 1 / 4'), findsOneWidget);
   });
 }

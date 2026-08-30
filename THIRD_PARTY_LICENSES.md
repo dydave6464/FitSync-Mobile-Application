@@ -58,3 +58,33 @@ The MIT licence in section 1 does not extend to these files; the dataset's
 - **Resolution.** The media is used at **180×180**, unmodified.
 
 **Governing terms:** https://gymvisual.com/content/3-terms-and-conditions-of-use
+
+---
+
+## 3. Typefaces — Space Grotesk and JetBrains Mono
+
+**Source:** [google/fonts](https://github.com/google/fonts) —
+`ofl/spacegrotesk/SpaceGrotesk[wght].ttf` and
+`ofl/jetbrainsmono/JetBrainsMono[wght].ttf`.
+
+**Used for:** the entire app UI (Space Grotesk) and numeric/label text
+(JetBrains Mono), bundled under `client/assets/fonts/` as variable fonts.
+
+Bundled rather than fetched from Google Fonts at runtime, so the app renders
+identically offline.
+
+**Licence:** SIL Open Font License 1.1 — both families.
+
+- Space Grotesk © Florian Karsten.
+- JetBrains Mono © JetBrains s.r.o.
+
+**Conditions:**
+
+- **Attribution.** The copyright notices above are retained here, and the OFL
+  text ships inside each font file's metadata.
+- **No standalone sale.** The fonts are distributed only as part of this
+  application, never sold on their own.
+- **Reserved names.** Neither font is renamed or distributed under a Reserved
+  Font Name.
+
+**Full licence text:** https://openfontlicense.org

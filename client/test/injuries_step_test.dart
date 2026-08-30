@@ -85,9 +85,10 @@ void main() {
       (tester) async {
     await _pump(tester);
 
-    final upper = tester.getTopLeft(find.text('Upper body')).dy;
-    final back = tester.getTopLeft(find.text('Back and core')).dy;
-    final lower = tester.getTopLeft(find.text('Lower body')).dy;
+    // Group headings render through the eyebrow style, which uppercases.
+    final upper = tester.getTopLeft(find.text('UPPER BODY')).dy;
+    final back = tester.getTopLeft(find.text('BACK AND CORE')).dy;
+    final lower = tester.getTopLeft(find.text('LOWER BODY')).dy;
 
     expect(upper, lessThan(back));
     expect(back, lessThan(lower));

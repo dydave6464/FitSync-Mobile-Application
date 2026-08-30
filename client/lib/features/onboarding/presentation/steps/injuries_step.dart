@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../../../core/theme.dart';
+import '../../../../core/widgets/fs_kit.dart';
 import '../../../exercises/presentation/exercise_list_screen.dart' show describeError;
 import '../../../profile/domain/profile.dart';
 import '../../../profile/presentation/providers.dart';
@@ -88,6 +90,7 @@ class InjuriesStep extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
+    final t = context.fs;
     final theme = Theme.of(context);
     final injuries = ref.watch(injuryOptionsProvider);
 
@@ -102,14 +105,14 @@ class InjuriesStep extends ConsumerWidget {
           'are recorded with your profile and passed to the plan generator. '
           'This is not a medical diagnosis — if something hurts, see a '
           'professional.',
-          style: theme.textTheme.bodyMedium,
+          style: TextStyle(fontSize: 12.5, color: t.text2, height: 1.5),
         ),
-        const SizedBox(height: 8),
+        const SizedBox(height: 6),
         Text(
           'If nothing applies, just continue.',
-          style: theme.textTheme.bodySmall,
+          style: TextStyle(fontSize: 11, color: t.text3),
         ),
-        const SizedBox(height: 16),
+        const SizedBox(height: 18),
         injuries.when(
           loading: () => const Padding(
             padding: EdgeInsets.symmetric(vertical: 32),
@@ -121,9 +124,11 @@ class InjuriesStep extends ConsumerWidget {
               children: [
                 Text(describeError(error), textAlign: TextAlign.center),
                 const SizedBox(height: 12),
-                OutlinedButton(
+                FsButton(
+                  label: 'Retry',
+                  small: true,
+                  kind: FsButtonKind.secondary,
                   onPressed: () => ref.invalidate(injuryOptionsProvider),
-                  child: const Text('Retry'),
                 ),
               ],
             ),
@@ -134,19 +139,20 @@ class InjuriesStep extends ConsumerWidget {
             children: [
               for (final section in _grouped(options)) ...[
                 Padding(
-                  padding: const EdgeInsets.only(top: 8, bottom: 4),
-                  child: Text(
+                  padding: const EdgeInsets.only(top: 10, bottom: 8),
+                  child: FsEyebrow(
                     _groupLabels[section.group] ?? section.group,
-                    style: theme.textTheme.titleMedium,
                   ),
                 ),
-                for (final option in section.options)
-                  _RegionTile(
+                for (final option in section.options) ...[
+                  _RegionCard(
                     option: option,
                     selection: _selection(option.injuryId),
                     onToggle: () => _toggle(option),
                     onSide: (side) => _setSide(option.injuryId, side),
                   ),
+                  const SizedBox(height: 8),
+                ],
               ],
             ],
           ),
@@ -156,8 +162,8 @@ class InjuriesStep extends ConsumerWidget {
   }
 }
 
-class _RegionTile extends StatelessWidget {
-  const _RegionTile({
+class _RegionCard extends StatelessWidget {
+  const _RegionCard({
     required this.option,
     required this.selection,
     required this.onToggle,
@@ -171,40 +177,52 @@ class _RegionTile extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final t = context.fs;
+    final theme = Theme.of(context);
     final selected = selection != null;
 
-    return Card(
-      clipBehavior: Clip.antiAlias,
+    return FsCard(
+      small: true,
+      accent: selected,
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
-          CheckboxListTile(
+          InkWell(
             key: Key('injury.${option.injuryId}'),
-            value: selected,
-            title: Text(option.name),
-            controlAffinity: ListTileControlAffinity.leading,
-            onChanged: (_) => onToggle(),
+            onTap: onToggle,
+            child: Row(
+              children: [
+                Expanded(
+                  child: Text(option.name, style: theme.textTheme.titleMedium),
+                ),
+                FsRadioDot(selected: selected),
+              ],
+            ),
           ),
           // Only a selected, lateral region gets a side. The server rejects a
           // side on anything else.
-          if (selected && option.isLateral)
-            Padding(
-              padding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
-              child: Row(
-                children: [
-                  for (final side in _sides)
-                    Padding(
-                      padding: const EdgeInsets.only(right: 8),
-                      child: ChoiceChip(
-                        key: Key('side.${option.injuryId}.${side.value}'),
-                        label: Text(side.label),
-                        selected: selection!.side == side.value,
-                        onSelected: (_) => onSide(side.value),
-                      ),
-                    ),
+          if (selected && option.isLateral) ...[
+            const SizedBox(height: 12),
+            Row(
+              children: [
+                Text(
+                  'Side',
+                  style: TextStyle(fontSize: 11, color: t.text3),
+                ),
+                const SizedBox(width: 10),
+                for (final side in _sides) ...[
+                  FsChip(
+                    key: Key('side.${option.injuryId}.${side.value}'),
+                    label: side.label,
+                    small: true,
+                    selected: selection!.side == side.value,
+                    onTap: () => onSide(side.value),
+                  ),
+                  const SizedBox(width: 6),
                 ],
-              ),
+              ],
             ),
+          ],
         ],
       ),
     );

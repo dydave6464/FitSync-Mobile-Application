@@ -172,7 +172,9 @@ void main() {
     final signOuts = <bool>[];
     await _pump(tester, patches: [], signOuts: signOuts);
 
-    await tester.ensureVisible(find.byKey(const Key('signOut')));
+    // The list is long enough that sign out starts outside ListView's lazy
+    // build window, so scroll it into existence before tapping.
+    await tester.scrollUntilVisible(find.byKey(const Key('signOut')), 200);
     await tester.pumpAndSettle();
     await tester.tap(find.byKey(const Key('signOut')));
     await tester.pumpAndSettle();

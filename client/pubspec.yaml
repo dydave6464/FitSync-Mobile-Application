@@ -61,6 +61,18 @@ flutter:
   # the material Icons class.
   uses-material-design: true
 
+  # Bundled rather than fetched at runtime: the prototype loads these from
+  # Google Fonts over the network, which would silently fall back to system
+  # sans on a blocked or offline device and change how every screen looks.
+  # Variable fonts, so one file covers every weight the design uses.
+  fonts:
+    - family: SpaceGrotesk
+      fonts:
+        - asset: assets/fonts/SpaceGrotesk-Variable.ttf
+    - family: JetBrainsMono
+      fonts:
+        - asset: assets/fonts/JetBrainsMono-Variable.ttf
+
   # To add assets to your application, add an assets section, like this:
   # assets:
   #   - images/a_dot_burr.jpeg

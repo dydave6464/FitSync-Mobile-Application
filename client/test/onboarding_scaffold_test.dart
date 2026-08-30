@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
+import 'package:fitsync/core/widgets/fs_kit.dart';
 import 'package:fitsync/features/onboarding/presentation/edit_scaffold.dart';
 import 'package:fitsync/features/onboarding/presentation/onboarding_scaffold.dart';
 
@@ -16,10 +17,12 @@ void main() {
         ),
       ));
 
-      final progress = tester.widget<LinearProgressIndicator>(
-        find.byType(LinearProgressIndicator),
-      );
-      expect(progress.value, 0.5, reason: 'step 2 of 4 is half way');
+      // The design uses one bar per step rather than a continuous track, so
+      // progress is "how many bars are filled", not a fraction.
+      final bars = tester.widget<FsStepBars>(find.byType(FsStepBars));
+      expect(bars.step, 2);
+      expect(bars.total, 4);
+      expect(find.text('STEP 2 / 4'), findsOneWidget);
       expect(find.text('content'), findsOneWidget);
     });
 
@@ -122,7 +125,7 @@ void main() {
       // This is what makes it a different wrapper rather than the same one
       // with different labels: editing one answer from Settings is not a
       // position in a sequence, and there is nothing to skip.
-      expect(find.byType(LinearProgressIndicator), findsNothing);
+      expect(find.byType(FsStepBars), findsNothing);
       expect(find.byKey(const Key('skip')), findsNothing);
       expect(find.byKey(const Key('continue')), findsNothing);
     });
