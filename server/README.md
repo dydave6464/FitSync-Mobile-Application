@@ -109,8 +109,10 @@ This destroys every row in `DB_NAME`. Re-run `npm run seed` and then
 `npm run seed:equipment` afterwards, **in that order**, to restore the
 exercise catalogue and the curated equipment list — `seed:equipment`'s
 catalogue adoption step needs the catalogue's rows to already exist (see
-[Equipment options](#equipment-options)). `npm test` migrates `<DB_NAME>_test`
-from scratch on every run, so the test database needs nothing done to it.
+[Equipment options](#equipment-options)) — then `npm run seed:injuries` to
+restore the injury regions lookup (see [Injury regions](#injury-regions)).
+`npm test` migrates `<DB_NAME>_test` from scratch on every run, so the test
+database needs nothing done to it.
 
 ## Exercise catalogue
 
