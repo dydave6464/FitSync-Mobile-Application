@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import 'package:fitsync/core/api_exception.dart';
+import 'package:fitsync/core/widgets/fs_kit.dart';
 import 'package:fitsync/features/auth/domain/auth_user.dart';
 import 'package:fitsync/features/auth/presentation/auth_controller.dart';
 import 'package:fitsync/features/onboarding/presentation/onboarding_flow.dart';
@@ -244,19 +245,27 @@ void main() {
     expect(find.text('STEP 4 / 4'), findsOneWidget);
   });
 
-  testWidgets('step 3 shows the eight chips the design specifies',
+  testWidgets('step 3 shows the eight chips the design specifies, in order',
       (tester) async {
     await _pumpFlow(tester, patches: []);
     await _skip(tester);
     await _skip(tester);
     expect(find.text('STEP 3 / 4'), findsOneWidget);
 
-    for (final label in [
+    // Read the rendered chips back in tree order, not just check presence —
+    // display order is the point of the curated list, and `find.text` alone
+    // cannot see it. The key filter excludes the location chips, which are
+    // FsChips too but keyed 'location.*'.
+    final labels = tester
+        .widgetList<FsChip>(find.byType(FsChip))
+        .where((chip) => (chip.key as ValueKey<String>).value.startsWith('equipment.'))
+        .map((chip) => chip.label)
+        .toList();
+
+    expect(labels, [
       'Barbell', 'Dumbbells', 'Bench', 'Pull-up bar',
       'Kettlebell', 'Bands', 'Machines', 'Bodyweight',
-    ]) {
-      expect(find.text(label), findsOneWidget, reason: '$label is missing');
-    }
+    ]);
   });
 
   testWidgets('the counter tracks the equipment selection', (tester) async {
