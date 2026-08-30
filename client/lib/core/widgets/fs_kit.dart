@@ -177,12 +177,18 @@ class FsChip extends StatelessWidget {
     required this.selected,
     required this.onTap,
     this.small = false,
+    this.showCheck = false,
   });
 
   final String label;
   final bool selected;
   final VoidCallback onTap;
   final bool small;
+
+  /// The equipment chips carry a check when on, as the design shows. The
+  /// location chips do not — they are single-select, so a tick would read as
+  /// a second affordance.
+  final bool showCheck;
 
   @override
   Widget build(BuildContext context) {
@@ -201,13 +207,22 @@ class FsChip extends StatelessWidget {
           padding: small
               ? const EdgeInsets.symmetric(horizontal: 10, vertical: 5)
               : const EdgeInsets.symmetric(horizontal: 13, vertical: 7),
-          child: Text(
-            label,
-            style: TextStyle(
-              fontSize: small ? 11 : 12.5,
-              fontWeight: FontWeight.w600,
-              color: selected ? t.onAccent : t.text2,
-            ),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              if (showCheck && selected) ...[
+                Icon(Icons.check, size: small ? 11 : 13, color: t.onAccent),
+                const SizedBox(width: 5),
+              ],
+              Text(
+                label,
+                style: TextStyle(
+                  fontSize: small ? 11 : 12.5,
+                  fontWeight: FontWeight.w600,
+                  color: selected ? t.onAccent : t.text2,
+                ),
+              ),
+            ],
           ),
         ),
       ),
@@ -289,6 +304,35 @@ class FsEyebrow extends StatelessWidget {
   @override
   Widget build(BuildContext context) =>
       Text(text.toUpperCase(), style: fsEyebrow(context.fs));
+}
+
+/// `.tag` — the small count pill the design puts opposite a section eyebrow.
+class FsTag extends StatelessWidget {
+  const FsTag(this.text, {super.key});
+
+  final String text;
+
+  @override
+  Widget build(BuildContext context) {
+    final t = context.fs;
+
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+      decoration: BoxDecoration(
+        color: t.surface2,
+        borderRadius: BorderRadius.circular(FsRadius.pill),
+        border: Border.all(color: t.line),
+      ),
+      child: Text(
+        text,
+        style: TextStyle(
+          fontSize: 10.5,
+          fontWeight: FontWeight.w600,
+          color: t.text2,
+        ),
+      ),
+    );
+  }
 }
 
 /// The onboarding progress strip: one bar per step, filled up to [step].
