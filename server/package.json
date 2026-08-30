@@ -10,7 +10,8 @@
     "migrate": "node scripts/migrate.js",
     "seed:fetch": "node scripts/fetch-exercises.js",
     "seed": "node scripts/seed-exercises.js",
-    "seed:injuries": "node scripts/seed-injuries.js"
+    "seed:injuries": "node scripts/seed-injuries.js",
+    "seed:equipment": "node scripts/seed-equipment.js"
   },
   "keywords": [],
   "author": "",
