@@ -142,11 +142,12 @@ class LevelStep extends ConsumerWidget {
           ],
         ),
         const SizedBox(height: 22),
-        const FsEyebrow('What equipment can you use?'),
-        const SizedBox(height: 6),
-        Text(
-          'Leave everything unticked if you are training with bodyweight only.',
-          style: TextStyle(fontSize: 11, color: t.text3),
+        Row(
+          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          children: [
+            const FsEyebrow('Available equipment'),
+            FsTag('${value.equipmentIds.length} selected'),
+          ],
         ),
         const SizedBox(height: 12),
         equipment.when(
@@ -169,9 +170,8 @@ class LevelStep extends ConsumerWidget {
               ],
             ),
           ),
-          // Rendered straight from the response. The catalogue seed decides
-          // what is in the `equipment` table, and it does not necessarily
-          // match the names in the design.
+          // The server now returns the curated list in display order, and
+          // this step renders it verbatim.
           data: (options) => Wrap(
             spacing: 8,
             runSpacing: 8,
@@ -181,6 +181,7 @@ class LevelStep extends ConsumerWidget {
                   key: Key('equipment.${option.equipmentId}'),
                   label: option.name,
                   selected: value.equipmentIds.contains(option.equipmentId),
+                  showCheck: true,
                   onTap: () => _toggleEquipment(option.equipmentId),
                 ),
             ],

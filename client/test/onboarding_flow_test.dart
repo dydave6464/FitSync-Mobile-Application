@@ -21,7 +21,17 @@ Profile _emptyProfile() => const Profile(
       injuries: [],
     );
 
-const _equipment = [EquipmentOption(equipmentId: 41, name: 'Resistance band')];
+// The curated list the server now returns, in display order.
+const _equipment = [
+  EquipmentOption(equipmentId: 1, name: 'Barbell'),
+  EquipmentOption(equipmentId: 2, name: 'Dumbbells'),
+  EquipmentOption(equipmentId: 3, name: 'Bench'),
+  EquipmentOption(equipmentId: 4, name: 'Pull-up bar'),
+  EquipmentOption(equipmentId: 5, name: 'Kettlebell'),
+  EquipmentOption(equipmentId: 6, name: 'Bands'),
+  EquipmentOption(equipmentId: 7, name: 'Machines'),
+  EquipmentOption(equipmentId: 8, name: 'Bodyweight'),
+];
 const _injuries = [
   InjuryOption(
     injuryId: 1,
@@ -224,14 +234,43 @@ void main() {
     expect(find.text('STEP 3 / 4'), findsOneWidget);
 
     await _tapKey(tester, const Key('level.beginner'));
-    await _tapKey(tester, const Key('equipment.41'));
+    await _tapKey(tester, const Key('equipment.3'));
     await tester.tap(find.byKey(const Key('continue')));
     await tester.pumpAndSettle();
 
     expect(patches.single, {'fitnessLevel': 'beginner'});
-    expect(equipmentWrites.single, [41],
+    expect(equipmentWrites.single, [3],
         reason: 'equipment is a replace-set write, not part of the patch');
     expect(find.text('STEP 4 / 4'), findsOneWidget);
+  });
+
+  testWidgets('step 3 shows the eight chips the design specifies',
+      (tester) async {
+    await _pumpFlow(tester, patches: []);
+    await _skip(tester);
+    await _skip(tester);
+    expect(find.text('STEP 3 / 4'), findsOneWidget);
+
+    for (final label in [
+      'Barbell', 'Dumbbells', 'Bench', 'Pull-up bar',
+      'Kettlebell', 'Bands', 'Machines', 'Bodyweight',
+    ]) {
+      expect(find.text(label), findsOneWidget, reason: '$label is missing');
+    }
+  });
+
+  testWidgets('the counter tracks the equipment selection', (tester) async {
+    await _pumpFlow(tester, patches: []);
+    await _skip(tester);
+    await _skip(tester);
+    expect(find.text('STEP 3 / 4'), findsOneWidget);
+
+    expect(find.text('0 selected'), findsOneWidget);
+    await _tapKey(tester, const Key('equipment.3'));
+    await _tapKey(tester, const Key('equipment.5'));
+    expect(find.text('2 selected'), findsOneWidget);
+    await _tapKey(tester, const Key('equipment.3'));
+    expect(find.text('1 selected'), findsOneWidget);
   });
 
   testWidgets('step 4 saves the injury set, empty included', (tester) async {
