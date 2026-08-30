@@ -210,9 +210,10 @@ test('equipment curation seed', async (t) => {
     await resetCatalogue();
     const userId = await makeUser('drop@example.com');
     await own(userId, 'medicine ball');
-    await seedEquipment(testDbConfig());
+    const summary = await seedEquipment(testDbConfig());
     assert.deepEqual(await owned(userId), [],
       'medicine ball is not one of the eight chips, so it cannot be shown or kept');
+    assert.equal(summary.droppedSelections, 1);
   });
 
   await t.test('leaves an already-curated selection untouched', async () => {
@@ -220,7 +221,9 @@ test('equipment curation seed', async (t) => {
     await seedEquipment(testDbConfig());
     const userId = await makeUser('stable@example.com');
     await own(userId, 'kettlebell');
-    await seedEquipment(testDbConfig());
+    const summary = await seedEquipment(testDbConfig());
     assert.deepEqual(await owned(userId), ['Kettlebell']);
+    assert.equal(summary.movedSelections, 0);
+    assert.equal(summary.droppedSelections, 0);
   });
 });
