@@ -230,6 +230,29 @@ test('profile endpoints', async (t) => {
     ]);
   });
 
+  // The subtest above cannot fail if `ORDER BY display_order` were removed:
+  // seedEquipment inserts the eight rows in display order on a fresh table, so
+  // insertion (id) order coincidentally satisfies that assertion too. Perturbing
+  // one row's display_order and re-reading forces the ordering to come from the
+  // column itself, not from insertion/id order.
+  await t.test('orders strictly by display_order, not by insertion or id order', async () => {
+    await reset();
+    try {
+      await pool.query("UPDATE equipment SET display_order = 99 WHERE display_name = 'Barbell'");
+      const res = await request(app).get('/api/v1/equipment')
+        .set('Authorization', auth).expect(200);
+      assert.deepEqual(res.body.data.equipment.map((e) => e.name), [
+        'Dumbbells', 'Bench', 'Pull-up bar', 'Kettlebell',
+        'Bands', 'Machines', 'Bodyweight', 'Barbell',
+      ], 'Barbell must sort last once its display_order is pushed past the rest, and the other seven must keep their relative order');
+    } finally {
+      // Re-seeding is idempotent (UPSERT_OPTION rewrites every option's
+      // display_order from OPTIONS), so this restores Barbell to 1 even if the
+      // assertion above throws — no later subtest inherits the perturbation.
+      await seedEquipment(testDbConfig());
+    }
+  });
+
   await t.test('rejects a catalogue tag that is not user-selectable', async () => {
     await reset();
     // seedEquipment only INSERTs the eight curated names; it reaches 'cable'
