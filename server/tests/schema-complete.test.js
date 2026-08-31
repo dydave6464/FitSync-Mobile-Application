@@ -7,7 +7,8 @@ const { testDbConfig, dropAllTables, tableNames } = require('./helpers/test-db')
 
 const EXPECTED_TABLES = [
   'activity_logs', 'admins', 'advertisements', 'body_weight_logs', 'coaching_cues',
-  'equipment', 'exercises', 'food_recognitions', 'foods', 'goals', 'injuries',
+  'equipment', 'exercise_contraindications', 'exercise_equipment_requirements',
+  'exercises', 'food_recognitions', 'foods', 'goals', 'injuries',
   'injury_risk_estimates', 'meal_logs', 'morning_checkins', 'plan_exercises',
   'progress_reports', 'reminders', 'routine_items', 'set_logs', 'streaks',
   'subscriptions', 'user_equipment', 'user_identities', 'user_injuries', 'users',
@@ -24,10 +25,10 @@ test('complete FitSync schema', async (t) => {
     await pool.end();
   });
 
-  await t.test('creates exactly the 27 tables from the data dictionary', async () => {
+  await t.test('creates exactly the 29 tables from the data dictionary', async () => {
     const names = (await tableNames(pool)).filter((n) => n !== 'schema_migrations');
     assert.deepEqual(names.sort(), [...EXPECTED_TABLES].sort());
-    assert.equal(names.length, 27);
+    assert.equal(names.length, 29);
   });
 
   await t.test('every table is InnoDB and utf8mb4', async () => {
@@ -52,7 +53,7 @@ test('complete FitSync schema', async (t) => {
     );
     const composite = rows.filter((r) => r.cols > 1 && r.t !== 'schema_migrations');
     assert.deepEqual(composite, [], 'no table may use a composite primary key');
-    assert.equal(rows.length, 28); // 27 tables + schema_migrations
+    assert.equal(rows.length, 30); // 29 tables + schema_migrations
   });
 
   await t.test('a user has exactly one streak record', async () => {
@@ -114,7 +115,7 @@ test('complete FitSync schema', async (t) => {
     assert.equal(rows[0].added_by, null);
   });
 
-  await t.test('all eight migrations are recorded', async () => {
+  await t.test('all nine migrations are recorded', async () => {
     const [rows] = await pool.query('SELECT version FROM schema_migrations ORDER BY version');
     assert.deepEqual(rows.map((r) => r.version), [
       '001_account_and_profile.sql',
@@ -125,6 +126,7 @@ test('complete FitSync schema', async (t) => {
       '006_reporting_monetization.sql',
       '007_auth_identities.sql',
       '008_equipment_curation.sql',
+      '009_exercise_safety.sql',
     ]);
   });
 });
