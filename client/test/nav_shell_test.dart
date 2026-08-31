@@ -15,6 +15,7 @@ import 'package:fitsync/features/home/presentation/nav_shell.dart';
 import 'package:fitsync/features/plans/presentation/providers.dart';
 import 'package:fitsync/features/profile/domain/profile.dart';
 import 'package:fitsync/features/profile/presentation/providers.dart';
+import 'package:fitsync/features/settings/presentation/settings_screen.dart';
 
 /// Enough rows that the catalogue's list is taller than the test viewport,
 /// so it actually has somewhere to scroll to.
@@ -145,11 +146,26 @@ void main() {
         reason: 'IndexedStack must keep the tab mounted, not rebuild it');
   });
 
-  testWidgets('reports the tapped tab as current', (tester) async {
+  testWidgets('tapping Browse reaches the exercise catalogue', (tester) async {
     await _pumpShell(tester);
     await tester.tap(find.byKey(const Key('nav.2')));
     await tester.pumpAndSettle();
     expect(find.text('Exercises'), findsOneWidget,
         reason: 'the Browse tab shows the catalogue, previously unreachable');
+  });
+
+  testWidgets('tapping Profile reaches account settings', (tester) async {
+    await _pumpShell(tester);
+    await tester.tap(find.byKey(const Key('nav.3')));
+    await tester.pumpAndSettle();
+    // byType, not text: SettingsScreen's own AppBar title is 'Profile', the
+    // same word FsNav already uses as this tab's label, so a text finder
+    // would be ambiguous between the label and the screen it opens onto.
+    // The type is unique across the whole tree — nothing else in NavShell
+    // is a SettingsScreen — so this cannot be satisfied by anything but the
+    // real screen actually being current.
+    expect(find.byType(SettingsScreen), findsOneWidget,
+        reason: 'Profile must still reach Settings now that the gear icon '
+            'plan_screen_test.dart tested is gone');
   });
 }
