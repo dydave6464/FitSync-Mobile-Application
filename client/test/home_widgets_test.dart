@@ -35,13 +35,52 @@ Profile _profile({
       joinedAt: joinedAt,
     );
 
+/// A UTC instant whose local calendar date differs from its own UTC
+/// calendar date — or null if the host's timezone offset is exactly zero,
+/// in which case no such instant can exist.
+///
+/// Two fixed candidates cover every real timezone regardless of its
+/// offset's sign or magnitude: 23:59 UTC rolls forward onto the next local
+/// day under any positive offset of at least a minute, and 00:00 UTC rolls
+/// back onto the previous local day under any negative offset of at least a
+/// minute. Verified against Asia/Manila (+8), UTC (0), America/Los_Angeles
+/// (-7), Asia/Kolkata (+5:30), Pacific/Niue (-11) and Pacific/Kiritimati
+/// (+14) — the widest real-world offsets — before relying on it here.
+DateTime? _mismatchedZoneJoin() {
+  final day = DateTime.utc(2026, 8, 31);
+  final rollsForward = day.add(const Duration(hours: 23, minutes: 59));
+  final rollsBack = day;
+
+  bool diverges(DateTime utcInstant) {
+    final local = utcInstant.toLocal();
+    return local.year != utcInstant.year ||
+        local.month != utcInstant.month ||
+        local.day != utcInstant.day;
+  }
+
+  if (diverges(rollsForward)) return rollsForward;
+  if (diverges(rollsBack)) return rollsBack;
+  return null;
+}
+
 void main() {
+  final mismatchedZoneJoin = _mismatchedZoneJoin();
+
   testWidgets('the greeting shows initials, first name and the day count',
       (tester) async {
+    // joinedAt is a genuine UTC instant, as production always sends it. now
+    // is derived from its *local* calendar date, 30 days later, rather than
+    // hardcoded as a second independent UTC instant — so the elapsed-day
+    // arithmetic is exactly 30 days regardless of the host machine's own
+    // timezone.
+    final joinedAt = DateTime.utc(2026, 8, 1, 12);
+    final joinedLocalDate = joinedAt.toLocal();
+    final now = DateTime(
+        joinedLocalDate.year, joinedLocalDate.month, joinedLocalDate.day + 30);
+
     await tester.pumpWidget(_host(Greeting(
-      profile: _profile(fullName: 'Juan Dela Cruz',
-          joinedAt: DateTime.utc(2026, 8, 1)),
-      now: DateTime.utc(2026, 8, 31),
+      profile: _profile(fullName: 'Juan Dela Cruz', joinedAt: joinedAt),
+      now: now,
     )));
 
     expect(find.text('JC'), findsOneWidget, reason: 'first and last initials');
@@ -51,13 +90,57 @@ void main() {
   });
 
   testWidgets('a single-word name yields one initial', (tester) async {
+    // now falls on the same local calendar day as the join, derived the
+    // same way, so this must read Day 1 regardless of the host's timezone.
+    final joinedAt = DateTime.utc(2026, 8, 31, 12);
+    final joinedLocalDate = joinedAt.toLocal();
+    final now = DateTime(
+        joinedLocalDate.year, joinedLocalDate.month, joinedLocalDate.day);
+
     await tester.pumpWidget(_host(Greeting(
-      profile: _profile(fullName: 'Juan', joinedAt: DateTime.utc(2026, 8, 31)),
-      now: DateTime.utc(2026, 8, 31),
+      profile: _profile(fullName: 'Juan', joinedAt: joinedAt),
+      now: now,
     )));
     expect(find.text('J'), findsOneWidget);
     expect(find.textContaining('Day 1'), findsOneWidget,
         reason: 'the join date itself is Day 1, never Day 0');
+  });
+
+  testWidgets(
+    'the day count follows the local calendar date, not the UTC one, when '
+    'the two differ',
+    (tester) async {
+      final joinedAt = mismatchedZoneJoin!;
+      final joinedLocalDate = joinedAt.toLocal();
+      final now = DateTime(
+          joinedLocalDate.year, joinedLocalDate.month, joinedLocalDate.day);
+
+      await tester.pumpWidget(_host(Greeting(
+        profile: _profile(joinedAt: joinedAt),
+        now: now,
+      )));
+
+      expect(find.textContaining('Day 1'), findsOneWidget,
+          reason:
+              'now falls on the same local calendar day as the join — this '
+              'must read Day 1 by the local calendar even though the '
+              'fixture is deliberately chosen so the UTC calendar date of '
+              'the join differs from its local one');
+    },
+    skip: mismatchedZoneJoin == null,
+  );
+
+  testWidgets('the greeting shows only the weekday when there is no join date',
+      (tester) async {
+    await tester.pumpWidget(_host(Greeting(
+      profile: _profile(fullName: 'Juan Dela Cruz'), // joinedAt defaults null
+      now: DateTime.utc(2026, 8, 31), // a Monday
+    )));
+
+    expect(find.text('Monday'), findsOneWidget);
+    expect(find.textContaining('Day'), findsNothing,
+        reason: 'no join date recorded (server predates the field) means no '
+            'day count to show');
   });
 
   testWidgets('the nudge fires on each missing field independently',

@@ -33,13 +33,27 @@ class Greeting extends StatelessWidget {
 
   String get _firstName => _words.isEmpty ? 'there' : _words.first;
 
-  /// Days since the account was created, counted on date parts only so a
-  /// late-evening join does not read as Day 2 the next morning. The join
-  /// date itself is Day 1, never Day 0.
+  /// Days since the account was created, counted in the viewer's local
+  /// calendar rather than UTC. Local midnight is the boundary the user
+  /// actually experiences, so [joined] — stored as UTC — is converted to
+  /// local time before its date parts are taken. [now] needs no such
+  /// conversion: it already carries the caller's local wall clock, per this
+  /// class's contract.
+  ///
+  /// Computing in UTC instead would read a day behind for the first hours of
+  /// every local day for anyone east of UTC, and comparing [joined]'s raw
+  /// UTC date parts against a local [now] would pin the wrong baseline
+  /// permanently for anyone who joined between local midnight and UTC
+  /// midnight.
+  ///
+  /// Counted on date parts only so a late-evening join does not read as
+  /// Day 2 the next morning. The join date itself is Day 1, never Day 0.
   int? get _dayCount {
     final joined = profile.joinedAt;
     if (joined == null) return null;
-    final from = DateTime.utc(joined.year, joined.month, joined.day);
+    final localJoined = joined.toLocal();
+    final from =
+        DateTime.utc(localJoined.year, localJoined.month, localJoined.day);
     final to = DateTime.utc(now.year, now.month, now.day);
     return to.difference(from).inDays + 1;
   }
