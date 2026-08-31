@@ -122,18 +122,32 @@ pinned to commit `7455efae`. Two phases:
 ```bash
 npm run seed:fetch   # downloads 1,324 animations + thumbnails into storage/, writes the manifest
 npm run seed         # upserts equipment, exercises and coaching_cues from the manifest
-npm run seed:safety     # requirements + contraindications; run LAST, after
-                        # seed, seed:equipment AND seed:injuries. It resolves
-                        # curated equipment names and the 16 injury region
-                        # names to ids; anything it cannot resolve is skipped
-                        # and reported, and a skipped contraindication is a
-                        # safety row that never got written.
 ```
 
 `seed:fetch` needs a network and takes several minutes; it is resumable and
 skips assets already in `storage/`. `seed` needs neither network nor the
 dataset — it reads only `src/db/seeds/exercises.json`, and runs in a single
 transaction, so a failure leaves the database untouched. Both are idempotent.
+
+Once the catalogue, equipment options ([below](#equipment-options)) and injury
+regions ([below](#injury-regions)) are all seeded, run:
+
+```bash
+npm run seed:safety   # requirements + contraindications; run LAST, after
+                       # seed, seed:equipment AND seed:injuries. It resolves
+                       # curated equipment names and the 16 injury region
+                       # names to ids; anything it cannot resolve is skipped
+                       # and reported, and a skipped contraindication is a
+                       # safety row that never got written.
+```
+
+To review what the classifier decided before trusting it, run:
+
+```bash
+npm run review:safety   # writes docs/exercise-safety-review.md, a table of
+                         # every requirement and contraindication row the
+                         # classifier produced, for a human to read
+```
 
 Of the 1,324 exercises, 1,203 are seeded `live` and 121 `pending` — cardio
 machines and niche equipment, held back for an admin review pass. Equipment
