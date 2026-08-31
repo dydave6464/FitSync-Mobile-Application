@@ -298,4 +298,29 @@ test('profile endpoints', async (t) => {
     assert.ok(age >= 0 && age < 60_000,
       'the account was just created, so joinedAt must be within the last minute');
   });
+
+  // The freshness check above cannot fail if joinedAt were computed as
+  // `new Date().toISOString()` at request time instead of read from the row:
+  // a freshly-registered account's created_at is already "just now", so a
+  // hardcoded current-time value would slip through unnoticed. Backdating
+  // created_at to a fixed, known instant and asserting exact equality closes
+  // that gap — only a real read of the stored row can reproduce this exact
+  // timestamp; a call to Date.now() at request time would report today.
+  await t.test('joinedAt reflects the stored creation date, not the current time', async () => {
+    await reset();
+    const knownDate = new Date('2020-06-15T12:00:00.000Z');
+    // FROM_UNIXTIME(epoch) round-trips correctly regardless of the session's
+    // time_zone: MySQL renders it as the epoch's wall-clock in session time,
+    // then storing that into the TIMESTAMP column converts it back to the
+    // same UTC instant, so this is not vulnerable to the bug joinedAt itself
+    // had to be fixed for.
+    await pool.query(
+      'UPDATE users SET created_at = FROM_UNIXTIME(?) WHERE email = ?',
+      [Math.floor(knownDate.getTime() / 1000), 'p@example.com'],
+    );
+    const res = await request(app).get('/api/v1/profile')
+      .set('Authorization', auth).expect(200);
+    assert.equal(res.body.data.profile.joinedAt, knownDate.toISOString(),
+      'joinedAt must equal the row\'s created_at, not Date.now()');
+  });
 });

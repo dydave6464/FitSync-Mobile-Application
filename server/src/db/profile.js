@@ -23,14 +23,20 @@ async function getProfile(pool, userId) {
     // session's time_zone (often 'SYSTEM', i.e. the DB host's local zone) on
     // the way out, not UTC. The pool's mysql2 `timezone: 'Z'` option only
     // controls how the driver labels the string it receives; it cannot undo
-    // a server-side conversion that already happened. CONVERT_TZ does that
-    // conversion explicitly so joinedAt is a true UTC instant regardless of
-    // what the session's time_zone is set to.
+    // a server-side conversion that already happened. UNIX_TIMESTAMP() on a
+    // TIMESTAMP argument sidesteps the conversion entirely instead of
+    // reversing it: for this argument type MySQL hands back the
+    // internally-stored UTC epoch directly, consulting neither
+    // @@session.time_zone nor the zone-name tables. That also makes it safe
+    // where CONVERT_TZ was not: CONVERT_TZ returns NULL if the session's zone
+    // is an unloaded named zone, and joinedAt is built from this value
+    // unconditionally, so a NULL there would throw and 500 the whole
+    // endpoint, not just blank out one field.
     `SELECT user_id, email, full_name, sex, date_of_birth, height_cm, weight_kg,
             goal_weight_kg, main_goal, fitness_level, activity_level,
             training_location, city, is_premium, notifications_enabled,
             onboarding_completed_at,
-            CONVERT_TZ(created_at, @@session.time_zone, '+00:00') AS created_at
+            UNIX_TIMESTAMP(created_at) AS created_at_epoch
        FROM users WHERE user_id = ?`, [userId],
   );
   if (rows.length === 0) return null;
@@ -68,10 +74,13 @@ async function getProfile(pool, userId) {
     isPremium: Boolean(u.is_premium),
     notificationsEnabled: Boolean(u.notifications_enabled),
     onboardingCompleted: u.onboarding_completed_at !== null,
-    // created_at was already converted to UTC in the query above, so this Date
-    // is a true UTC instant. Serialised here rather than in the route so every
-    // caller sees the same shape.
-    joinedAt: u.created_at.toISOString(),
+    // created_at_epoch is the row's true UTC instant as seconds (see the
+    // query comment). Guarded rather than assumed present: a NULL here
+    // degrades joinedAt to null instead of throwing on `.toISOString()` and
+    // 500ing the entire profile over one field.
+    joinedAt: u.created_at_epoch == null
+      ? null
+      : new Date(Number(u.created_at_epoch) * 1000).toISOString(),
     equipment: equipment.map((e) => ({ equipmentId: e.equipment_id, name: e.name })),
     injuries: injuries.map((i) => ({
       injuryId: i.injury_id,
