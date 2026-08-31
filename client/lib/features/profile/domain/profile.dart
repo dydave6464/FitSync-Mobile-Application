@@ -81,6 +81,7 @@ class Profile {
     this.activityLevel,
     this.trainingLocation,
     this.city,
+    this.joinedAt,
   });
 
   final int userId;
@@ -107,6 +108,10 @@ class Profile {
   final String? activityLevel;
   final String? trainingLocation;
   final String? city;
+
+  /// When the account was created, as UTC. Null only if the server predates
+  /// the field.
+  final DateTime? joinedAt;
 
   /// MySQL `DECIMAL` columns arrive as a JSON number through some driver
   /// configurations and as a string through others. Going via `toString()`
@@ -158,5 +163,8 @@ class Profile {
         activityLevel: json['activityLevel'] as String?,
         trainingLocation: json['trainingLocation'] as String?,
         city: json['city'] as String?,
+        joinedAt: json['joinedAt'] == null
+            ? null
+            : DateTime.parse(json['joinedAt'] as String),
       );
 }

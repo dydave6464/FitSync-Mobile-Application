@@ -8,6 +8,7 @@ class PlanExercise {
     required this.targetSets,
     required this.targetReps,
     this.thumbnailUrl,
+    this.equipment,
   });
 
   final int exerciseId;
@@ -25,6 +26,10 @@ class PlanExercise {
   /// artwork for this exercise yet.
   final String? thumbnailUrl;
 
+  /// The curated equipment name the server resolved for this exercise, or
+  /// null — `exercises.equipment_id` is nullable.
+  final String? equipment;
+
   factory PlanExercise.fromJson(Map<String, dynamic> json) => PlanExercise(
         exerciseId: json['exerciseId'] as int,
         name: json['name'] as String,
@@ -35,6 +40,7 @@ class PlanExercise {
         // VARCHAR is handled too.
         targetReps: json['targetReps']?.toString() ?? '',
         thumbnailUrl: json['thumbnailUrl'] as String?,
+        equipment: json['equipment'] as String?,
       );
 }
 
@@ -68,4 +74,14 @@ class WorkoutPlan {
             .map((e) => PlanExercise.fromJson(e as Map<String, dynamic>))
             .toList(growable: false),
       );
+}
+
+/// Turns a `split_style` slug into something readable without pretending to
+/// know every value the generator might produce.
+String describeSplit(String slug) {
+  if (slug.isEmpty) return '';
+  return slug
+      .split('_')
+      .map((word) => word.isEmpty ? word : word[0].toUpperCase() + word.substring(1))
+      .join(' ');
 }

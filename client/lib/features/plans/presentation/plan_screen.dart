@@ -5,30 +5,9 @@ import '../../../core/theme.dart';
 import '../../../core/widgets/fs_kit.dart';
 import '../../exercises/presentation/exercise_detail_screen.dart';
 import '../../exercises/presentation/exercise_list_screen.dart' show describeError;
-import '../../exercises/presentation/providers.dart';
 import '../../settings/presentation/settings_screen.dart';
-import '../data/plan_repository.dart';
 import '../domain/workout_plan.dart';
-
-final planRepositoryProvider = Provider<PlanRepository>(
-  (ref) => PlanRepository(ref.watch(apiClientProvider)),
-);
-
-/// The user's current plan, or null when they have none.
-final activePlanProvider = FutureProvider<WorkoutPlan?>(
-  (ref) => ref.watch(planRepositoryProvider).activePlan(),
-  retry: apiRetryPolicy,
-);
-
-/// Turns a `split_style` slug into something readable without pretending to
-/// know every value the generator might produce.
-String describeSplit(String slug) {
-  if (slug.isEmpty) return '';
-  return slug
-      .split('_')
-      .map((word) => word.isEmpty ? word : word[0].toUpperCase() + word.substring(1))
-      .join(' ');
-}
+import 'providers.dart';
 
 class PlanScreen extends ConsumerWidget {
   const PlanScreen({super.key});

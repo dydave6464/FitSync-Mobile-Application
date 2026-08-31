@@ -10,6 +10,7 @@ import 'package:fitsync/features/exercises/presentation/exercise_detail_screen.d
 import 'package:fitsync/features/exercises/presentation/providers.dart';
 import 'package:fitsync/features/plans/domain/workout_plan.dart';
 import 'package:fitsync/features/plans/presentation/plan_screen.dart';
+import 'package:fitsync/features/plans/presentation/providers.dart';
 import 'package:fitsync/features/settings/presentation/settings_screen.dart';
 
 const _plan = WorkoutPlan(
