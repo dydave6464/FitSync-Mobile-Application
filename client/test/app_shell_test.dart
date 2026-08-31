@@ -16,7 +16,7 @@ import 'package:fitsync/features/auth/presentation/sign_in_screen.dart';
 import 'package:fitsync/features/onboarding/presentation/onboarding_flow.dart';
 import 'package:fitsync/features/profile/domain/profile.dart';
 import 'package:fitsync/features/exercises/presentation/providers.dart';
-import 'package:fitsync/features/plans/presentation/plan_screen.dart';
+import 'package:fitsync/features/home/presentation/nav_shell.dart';
 import 'package:fitsync/features/profile/presentation/providers.dart';
 
 AuthUser _user({bool onboardingCompleted = false}) => AuthUser(
@@ -106,7 +106,7 @@ void main() {
     expect(find.byType(OnboardingFlow), findsOneWidget);
   });
 
-  testWidgets('a finished profile shows the plan screen', (tester) async {
+  testWidgets('a finished profile shows the nav shell', (tester) async {
     await _pumpShell(
       tester,
       (_) async => AuthState(
@@ -116,7 +116,7 @@ void main() {
     );
     await tester.pumpAndSettle();
 
-    expect(find.byType(PlanScreen), findsOneWidget);
+    expect(find.byType(NavShell), findsOneWidget);
   });
 
   testWidgets('an error shows the message and recovers on retry', (tester) async {

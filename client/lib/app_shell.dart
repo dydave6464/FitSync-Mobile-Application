@@ -6,8 +6,8 @@ import 'core/widgets/fs_kit.dart';
 import 'features/auth/presentation/auth_controller.dart';
 import 'features/auth/presentation/sign_in_screen.dart';
 import 'features/exercises/presentation/exercise_list_screen.dart' show describeError;
+import 'features/home/presentation/nav_shell.dart';
 import 'features/onboarding/presentation/onboarding_flow.dart';
-import 'features/plans/presentation/plan_screen.dart';
 
 /// Chooses the first screen from auth state, and nothing else.
 ///
@@ -32,7 +32,7 @@ class AppShell extends ConsumerWidget {
       data: (state) => switch (state.status) {
         AuthStatus.signedOut => const SignInScreen(),
         AuthStatus.onboarding => const OnboardingFlow(),
-        AuthStatus.ready => const PlanScreen(),
+        AuthStatus.ready => const NavShell(),
       },
     );
   }

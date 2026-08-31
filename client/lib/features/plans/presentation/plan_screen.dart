@@ -5,7 +5,6 @@ import '../../../core/theme.dart';
 import '../../../core/widgets/fs_kit.dart';
 import '../../exercises/presentation/exercise_detail_screen.dart';
 import '../../exercises/presentation/exercise_list_screen.dart' show describeError;
-import '../../settings/presentation/settings_screen.dart';
 import '../domain/workout_plan.dart';
 import 'providers.dart';
 
@@ -21,17 +20,6 @@ class PlanScreen extends ConsumerWidget {
       backgroundColor: t.bg,
       appBar: AppBar(
         title: const Text('Your plan'),
-        actions: [
-          IconButton(
-            key: const Key('settings'),
-            icon: const Icon(Icons.settings_outlined),
-            tooltip: 'Settings',
-            onPressed: () => Navigator.of(context).push(
-              MaterialPageRoute<void>(builder: (_) => const SettingsScreen()),
-            ),
-          ),
-          const SizedBox(width: 4),
-        ],
       ),
       body: plan.when(
         loading: () => const Center(child: CircularProgressIndicator()),
