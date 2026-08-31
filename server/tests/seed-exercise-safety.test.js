@@ -101,6 +101,8 @@ test('exercise safety seed', async (t) => {
     assert.equal(after[0].n, before[0].n);
     assert.equal(result.contraindications.inserted, 0);
     assert.equal(result.contraindications.removed, 0);
+    assert.equal(result.requirements.inserted, 0);
+    assert.equal(result.requirements.removed, 0);
   });
 
   await t.test('a manual row survives a re-seed', async () => {
@@ -121,6 +123,25 @@ test('exercise safety seed', async (t) => {
     assert.equal(result.contraindications.manual, 1);
   });
 
+  await t.test('a manual requirement row survives a re-seed', async () => {
+    // Same guarantee as contraindications, for the other table: a reviewer
+    // decides the seated curl also needs a bench, though the classifier does
+    // not produce that pair on its own (curl has no equipment tag).
+    await pool.query(
+      `INSERT INTO exercise_equipment_requirements (exercise_id, equipment_id, is_manual)
+       VALUES (?, ?, 1)`,
+      [curl, equipmentIds.bench],
+    );
+    const result = await seedExerciseSafety(testDbConfig());
+    const [rows] = await pool.query(
+      'SELECT is_manual FROM exercise_equipment_requirements WHERE exercise_id = ? AND equipment_id = ?',
+      [curl, equipmentIds.bench],
+    );
+    assert.equal(rows.length, 1);
+    assert.equal(rows[0].is_manual, 1);
+    assert.equal(result.requirements.manual, 1);
+  });
+
   await t.test('a stale classifier row is removed when the exercise changes', async () => {
     // Rename it so the classifier no longer sees a bench.
     await pool.query('UPDATE exercises SET name = ? WHERE exercise_id = ?',
@@ -139,6 +160,12 @@ test('exercise safety seed', async (t) => {
     await pool.query('DELETE FROM equipment WHERE equipment_id = ?', [equipmentIds['pull-up bar']]);
     const result = await seedExerciseSafety(testDbConfig());
     assert.ok(result.unknownEquipment.includes('pull-up bar'));
+
+    // An unresolvable name must not take the rest of the table down with it:
+    // the escape valve skips reconciliation entirely rather than reconciling
+    // against a partially-resolved wanted set.
+    const [rows] = await pool.query('SELECT COUNT(*) AS n FROM exercise_equipment_requirements');
+    assert.ok(rows[0].n > 0, 'exercise_equipment_requirements was wiped');
   });
 
   await t.test('a missing injury region is reported, not silently dropped', async () => {
@@ -149,5 +176,11 @@ test('exercise safety seed', async (t) => {
     await pool.query('DELETE FROM injuries WHERE injury_id = ?', [injuryIds.Shoulder]);
     const result = await seedExerciseSafety(testDbConfig());
     assert.ok(result.unknownRegions.includes('Shoulder'));
+
+    // Same reasoning as above, for the higher-stakes table: a table whose
+    // resolution left any name unknown must be skipped entirely, not
+    // reconciled down to nothing.
+    const [rows] = await pool.query('SELECT COUNT(*) AS n FROM exercise_contraindications');
+    assert.ok(rows[0].n > 0, 'exercise_contraindications was wiped');
   });
 });

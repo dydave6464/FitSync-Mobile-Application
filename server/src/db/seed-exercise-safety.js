@@ -112,18 +112,30 @@ async function seedExerciseSafety(dbConfig) {
       'exercise_contraindications', ['exercise_id', 'injury_id'],
     );
 
-    const requirements = await reconcile(
-      pool, 'exercise_equipment_requirements', ['exercise_id', 'equipment_id'],
-      wantedRequirements.filter((r) => !blockedReq.has(`${r.exercise_id} ${r.equipment_id}`)),
-      existingReq,
-    );
-    const contraindications = await reconcile(
-      pool, 'exercise_contraindications', ['exercise_id', 'injury_id'],
-      wantedContraindications.filter(
-        (r) => !blockedContra.has(`${r.exercise_id} ${r.injury_id}`),
-      ),
-      existingContra,
-    );
+    // A table whose resolution left any name unknown is skipped entirely rather
+    // than reconciled. wantedRequirements/wantedContraindications only ever
+    // hold what DID resolve, so reconciling a partially-resolved set against
+    // the full existing table would read as "the classifier no longer wants
+    // the rest" and delete them -- e.g. an empty `injuries` table (seed:injuries
+    // not run, or truncated) makes every wanted contraindication unknown, so
+    // reconcile would delete every contraindication row while merely warning.
+    // A safety table must fail toward keeping its rows, not toward emptying them.
+    const requirements = unknownEquipment.size > 0
+      ? { inserted: 0, removed: 0 }
+      : await reconcile(
+        pool, 'exercise_equipment_requirements', ['exercise_id', 'equipment_id'],
+        wantedRequirements.filter((r) => !blockedReq.has(`${r.exercise_id} ${r.equipment_id}`)),
+        existingReq,
+      );
+    const contraindications = unknownRegions.size > 0
+      ? { inserted: 0, removed: 0 }
+      : await reconcile(
+        pool, 'exercise_contraindications', ['exercise_id', 'injury_id'],
+        wantedContraindications.filter(
+          (r) => !blockedContra.has(`${r.exercise_id} ${r.injury_id}`),
+        ),
+        existingContra,
+      );
 
     return {
       requirements: { ...requirements, manual: blockedReq.size },
