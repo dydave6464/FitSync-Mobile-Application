@@ -53,6 +53,18 @@ test('curated overrides beat the patterns', () => {
   assert.deepEqual(req('inverse leg curl (on pull-up cable machine)', 'body weight'), ['machines']);
 });
 
+test('a space-separated compound is caught, not just the hyphenated form', () => {
+  // All three are live, promoted rows in seeds/exercises.json. A hyphen-only
+  // pattern returned [] for every one of them.
+  assert.deepEqual(req('archer pull up', 'body weight'), ['pull-up bar']);
+  assert.deepEqual(req('pull up (neutral grip)', 'body weight'), ['pull-up bar']);
+  assert.deepEqual(req('triceps dip (between benches)', 'body weight'), ['bench']);
+});
+
+test('the machines override is exercised', () => {
+  assert.deepEqual(req('chest dip (on dip-pull-up cage)', 'body weight'), ['machines']);
+});
+
 test('an ordinary exercise requires nothing extra', () => {
   assert.deepEqual(req('dumbbell biceps curl', 'dumbbell'), []);
   assert.deepEqual(req('push-up', 'body weight'), []);

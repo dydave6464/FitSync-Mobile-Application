@@ -18,9 +18,13 @@ const FREE_WEIGHT = new Set([
 // lock a gym-goer out of equipment they demonstrably have.
 const MACHINE = new Set(['cable', 'leverage machine', 'smith machine']);
 
-const SAYS_BENCH = /\bbench\b/;
+// The catalogue writes these compounds three ways -- 'pull-up', 'pull up' and
+// 'pullup' -- so the separator is optional AND may be a space. A hyphen-only
+// pattern misses the live rows 'archer pull up' and 'pull up (neutral grip)'.
+// SAYS_BENCH matches the plural too: 'triceps dip (between benches)' is live.
+const SAYS_BENCH = /\bbenche?s?\b/;
 const IMPLIES_BENCH = /\b(incline|decline|lying|prone|supine)\b/;
-const SAYS_BAR = /\b(pull-?ups?|chin-?ups?)\b/;
+const SAYS_BAR = /\b(pull[\s-]?ups?|chin[\s-]?ups?)\b/;
 
 // Names the patterns above get wrong. Each value is the final answer for that
 // exercise, returned verbatim -- not a hint the patterns then refine.
