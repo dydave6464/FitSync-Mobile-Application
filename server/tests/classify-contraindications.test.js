@@ -85,6 +85,25 @@ test('supported and isolated limb work is spine-safe', () => {
   assert.equal(isSpineSafe(ex('dumbbell lying triceps extension', 'triceps', 'upper arms')), true);
 });
 
+test('the allow-list does not treat an equipment name as body support', () => {
+  // All four are real live rows that an earlier allow-list let through.
+  // 'cable pull through' is a loaded hip hinge; its 'band'/'dumbbell' siblings
+  // were flagged, and only the 'cable ' prefix spared it.
+  assert.equal(isSpineSafe(ex('cable pull through (with rope)', 'glutes', 'upper legs')), false);
+  assert.equal(isSpineSafe(ex('lever reverse hyperextension', 'glutes', 'upper legs')), false);
+  // Tagged with a limb muscle group, but still a bar-hanging pull-up.
+  assert.equal(isSpineSafe(ex('biceps pull-up', 'biceps', 'upper arms')), false);
+  assert.equal(isSpineSafe(ex('biceps narrow pull-ups', 'biceps', 'upper arms')), false);
+});
+
+test('genuine body-position support is still allowed', () => {
+  // The fix must not over-tighten: a seated or lying exercise is still safe,
+  // and 'lever seated calf raise' qualifies on 'seated', not on 'lever '.
+  assert.equal(isSpineSafe(ex('lever seated calf raise', 'calves', 'lower legs')), true);
+  assert.equal(isSpineSafe(ex('dumbbell lying triceps extension', 'triceps', 'upper arms')), true);
+  assert.equal(isSpineSafe(ex('dumbbell bench press', 'pectorals', 'chest')), true);
+});
+
 test('a spine-safe exercise gets no Lower back or Core row', () => {
   const curl = ex('dumbbell seated biceps curl', 'biceps', 'upper arms');
   assert.ok(!blocks(curl, 'Lower back'));

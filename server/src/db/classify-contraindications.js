@@ -71,8 +71,16 @@ const SPINE_TARGET = new Set([
 const LIMB_ISOLATION = new Set([
   'biceps', 'triceps', 'forearms', 'calves', 'delts', 'pectorals',
 ]);
-const SUPPORTED = /seated|lying|supine|prone|on bench|machine|lever |cable |bench |floor|wall|preacher/;
-const SPINE_RISK = /deadlift|good morning|bent.?over|clean|snatch|jerk|squat|lunge|overhead|military|standing.*press|carry|walk|swing|twist|side bend|hanging|\brow\b|thruster|farmer/;
+// SUPPORTED lists BODY POSITIONS only. It deliberately contains no equipment
+// name: an earlier draft included 'cable ' and 'lever ', which let
+// 'cable pull through (with rope)' -- a loaded hip hinge, mechanically a
+// Romanian deadlift -- return zero contraindication rows, while its own
+// siblings 'band pull through' and 'dumbbell sumo pull through' were correctly
+// flagged. Naming the load source is not evidence the spine is supported. That
+// is the same category error as trusting muscle_group, recurring inside the
+// allow-list built to avoid it.
+const SUPPORTED = /seated|lying|supine|prone|on bench|bench |floor|wall|preacher|kneeling/;
+const SPINE_RISK = /deadlift|good morning|bent.?over|clean|snatch|jerk|squat|lunge|overhead|military|standing.*press|carry|walk|swing|twist|side bend|hanging|\brow\b|thruster|farmer|pull[\s-]?ups?|chin[\s-]?ups?|pull through|hyperextension|hip thrust|romanian|stiff leg/;
 
 function isSpineSafe(exercise) {
   const name = String(exercise.name || '').toLowerCase();
