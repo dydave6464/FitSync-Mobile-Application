@@ -3,7 +3,10 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import 'package:fitsync/core/api_exception.dart';
+import 'package:fitsync/core/widgets/fs_kit.dart';
 import 'package:fitsync/features/home/presentation/home_screen.dart';
+import 'package:fitsync/features/home/presentation/widgets/greeting.dart';
+import 'package:fitsync/features/home/presentation/widgets/plan_card.dart';
 import 'package:fitsync/features/plans/domain/workout_plan.dart';
 import 'package:fitsync/features/plans/presentation/providers.dart';
 import 'package:fitsync/features/profile/domain/profile.dart';
@@ -112,12 +115,54 @@ void main() {
     await _pumpHome(tester, plan: null);
     expect(find.text('Start workout'), findsNothing);
     expect(find.textContaining('no active plan'), findsOneWidget);
+    // Absence of the one specific label is not enough — a relabelled
+    // "Generate plan" button would satisfy both assertions above. The
+    // no-plan state must offer no action at all, so nothing tappable may
+    // exist inside it: there is no on-demand generate endpoint, so a
+    // button here would call nothing. Scoped to the noPlan-keyed subtree
+    // (matching PlanScreen's own _NoPlanYet key), not the whole screen, so
+    // this can't be satisfied or defeated by an unrelated FsButton
+    // elsewhere (e.g. a retry button in another state).
+    expect(
+      find.descendant(
+        of: find.byKey(const Key('noPlan')),
+        matching: find.byType(FsButton),
+      ),
+      findsNothing,
+      reason: 'the no-plan state must offer no action; a "Generate plan" '
+          'button would call an endpoint that does not exist',
+    );
   });
 
   testWidgets('a failed plan load offers a retry', (tester) async {
     await _pumpHome(tester,
         planError: const ApiException('X', 'Server is down'));
     expect(find.text('Retry'), findsOneWidget);
+  });
+
+  testWidgets(
+      'a complete profile leaves no gap where the nudge would have been',
+      (tester) async {
+    // Both the nudge and its trailing SizedBox(height: 14) live inside the
+    // same `if (profileNeedsFinishing(p))` block in home_screen.dart. If
+    // that SizedBox ever escaped the conditional (e.g. moved below the
+    // closing bracket), the nudge would still correctly disappear for a
+    // complete profile, but a 14px gap would remain — invisible to a test
+    // that only checks the nudge is absent. Measuring the actual on-screen
+    // distance between Greeting and the plan card is what catches that:
+    // with the nudge suppressed, only the fixed SizedBox(height: 20) after
+    // Greeting should separate them.
+    await _pumpHome(tester); // default profile is complete; default plan renders
+
+    expect(find.text('Finish your profile'), findsNothing);
+
+    final greetingBottom = tester.getBottomLeft(find.byType(Greeting)).dy;
+    final planCardTop = tester.getTopLeft(find.byType(PlanCard)).dy;
+
+    expect(planCardTop - greetingBottom, moreOrLessEquals(20),
+        reason: 'only the base 20px gap after Greeting should separate it '
+            'from the plan card when the nudge does not render; a leftover '
+            '14px would mean the nudge\'s SizedBox escaped its conditional');
   });
 
   testWidgets(

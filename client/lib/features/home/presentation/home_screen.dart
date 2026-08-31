@@ -85,6 +85,7 @@ class _NoPlan extends StatelessWidget {
     final t = context.fs;
 
     return FsCard(
+      key: const Key('noPlan'),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
