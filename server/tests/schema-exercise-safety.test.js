@@ -133,5 +133,29 @@ test('009 exercise safety schema', async (t) => {
       'SELECT is_manual FROM exercise_contraindications WHERE exercise_id = ?', [ex],
     );
     assert.equal(rows[0].is_manual, 0);
+
+    // Also test exercise_equipment_requirements
+    const eq = await benchId();
+    await pool.query(
+      'INSERT INTO exercise_equipment_requirements (exercise_id, equipment_id) VALUES (?, ?)',
+      [ex, eq],
+    );
+    const [reqRows] = await pool.query(
+      'SELECT is_manual FROM exercise_equipment_requirements WHERE exercise_id = ?', [ex],
+    );
+    assert.equal(reqRows[0].is_manual, 0);
+  });
+
+  await t.test('deleting equipment referenced by a requirement fails (RESTRICT)', async () => {
+    const ex = await newExercise('leg press');
+    const eq = await benchId();
+    await pool.query(
+      'INSERT INTO exercise_equipment_requirements (exercise_id, equipment_id) VALUES (?, ?)',
+      [ex, eq],
+    );
+    await assert.rejects(
+      () => pool.query('DELETE FROM equipment WHERE equipment_id = ?', [eq]),
+      (err) => err.code === 'ER_ROW_IS_REFERENCED_2',
+    );
   });
 });
