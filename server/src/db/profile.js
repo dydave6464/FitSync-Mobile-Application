@@ -19,10 +19,18 @@ const WRITABLE = {
 
 async function getProfile(pool, userId) {
   const [rows] = await pool.query(
+    // created_at is TIMESTAMP, and MySQL renders TIMESTAMP columns in the
+    // session's time_zone (often 'SYSTEM', i.e. the DB host's local zone) on
+    // the way out, not UTC. The pool's mysql2 `timezone: 'Z'` option only
+    // controls how the driver labels the string it receives; it cannot undo
+    // a server-side conversion that already happened. CONVERT_TZ does that
+    // conversion explicitly so joinedAt is a true UTC instant regardless of
+    // what the session's time_zone is set to.
     `SELECT user_id, email, full_name, sex, date_of_birth, height_cm, weight_kg,
             goal_weight_kg, main_goal, fitness_level, activity_level,
             training_location, city, is_premium, notifications_enabled,
-            onboarding_completed_at
+            onboarding_completed_at,
+            CONVERT_TZ(created_at, @@session.time_zone, '+00:00') AS created_at
        FROM users WHERE user_id = ?`, [userId],
   );
   if (rows.length === 0) return null;
@@ -60,6 +68,10 @@ async function getProfile(pool, userId) {
     isPremium: Boolean(u.is_premium),
     notificationsEnabled: Boolean(u.notifications_enabled),
     onboardingCompleted: u.onboarding_completed_at !== null,
+    // created_at was already converted to UTC in the query above, so this Date
+    // is a true UTC instant. Serialised here rather than in the route so every
+    // caller sees the same shape.
+    joinedAt: u.created_at.toISOString(),
     equipment: equipment.map((e) => ({ equipmentId: e.equipment_id, name: e.name })),
     injuries: injuries.map((i) => ({
       injuryId: i.injury_id,

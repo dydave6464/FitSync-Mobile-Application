@@ -97,4 +97,43 @@ test('plan endpoints', async (t) => {
     assert.equal(retry.body.data.plan.name, 'Starter Plan');
     assert.equal(retry.body.data.profile.onboardingCompleted, true);
   });
+
+  await t.test('resolves each exercise to its curated equipment name', async () => {
+    // This test needs a user who already has an active plan, reached the
+    // same way the tests above reach it: drive complete-onboarding with the
+    // ml stub declared at the top of this file.
+    await reset();
+    await request(app).post('/api/v1/profile/complete-onboarding')
+      .set('Authorization', auth).expect(200);
+
+    // The catalogue tags an exercise with a raw name like 'cable'. Curation
+    // makes that row a hidden child of 'Machines'. The plan must report the
+    // curated parent, because that is what the client's MET table keys on.
+    const [rows] = await pool.query(
+      `SELECT x.exercise_id, e.name AS raw FROM exercises x
+         JOIN equipment e ON e.equipment_id = x.equipment_id
+        WHERE x.status = 'live' LIMIT 1`,
+    );
+    const raw = rows[0];
+
+    await pool.query(
+      "INSERT IGNORE INTO equipment (name, display_name, display_order, "
+      + "is_user_selectable) VALUES ('planmet', 'PlanMet', 99, 1)",
+    );
+    const [[parent]] = await pool.query(
+      "SELECT equipment_id FROM equipment WHERE name = 'planmet'",
+    );
+
+    await pool.query(
+      'UPDATE equipment SET parent_equipment_id = ?, is_user_selectable = 0, '
+      + 'display_name = NULL WHERE name = ?',
+      [parent.equipment_id, raw.raw],
+    );
+
+    const res = await request(app).get('/api/v1/plans/active')
+      .set('Authorization', auth).expect(200);
+    const names = res.body.data.plan.exercises.map((e) => e.equipment);
+    assert.ok(names.includes('PlanMet'),
+      'an adopted child must report its curated parent, not its raw tag');
+  });
 });

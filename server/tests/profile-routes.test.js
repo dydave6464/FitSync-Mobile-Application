@@ -286,4 +286,16 @@ test('profile endpoints', async (t) => {
     assert.deepEqual(res.body.data.profile.equipment.map((e) => e.name), ['Bodyweight'],
       'the profile must not show the raw catalogue name "body weight"');
   });
+
+  await t.test('returns the account creation date as joinedAt', async () => {
+    await reset();
+    const res = await request(app).get('/api/v1/profile')
+      .set('Authorization', auth).expect(200);
+    const joinedAt = res.body.data.profile.joinedAt;
+    assert.ok(joinedAt, 'joinedAt must be present');
+    assert.match(joinedAt, /^\d{4}-\d{2}-\d{2}T/, 'an ISO-8601 UTC string');
+    const age = Date.now() - Date.parse(joinedAt);
+    assert.ok(age >= 0 && age < 60_000,
+      'the account was just created, so joinedAt must be within the last minute');
+  });
 });

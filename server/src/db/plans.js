@@ -92,10 +92,17 @@ async function getActivePlan(pool, userId) {
   const p = plans[0];
 
   const [exercises] = await pool.query(
+    // LEFT JOINs throughout: exercises.equipment_id is nullable, and a tag
+    // that was never adopted has no parent. COALESCE walks curated parent ->
+    // curated self -> raw tag, so an adopted child like 'cable' reports
+    // 'Machines' while an unadopted tag still reports something usable.
     `SELECT pe.order_no, pe.target_sets, pe.target_reps,
-            x.exercise_id, x.name, x.muscle_group, x.thumbnail_url
+            x.exercise_id, x.name, x.muscle_group, x.thumbnail_url,
+            COALESCE(parent.display_name, eq.display_name, eq.name) AS equipment
        FROM plan_exercises pe
        JOIN exercises x ON x.exercise_id = pe.exercise_id
+       LEFT JOIN equipment eq ON eq.equipment_id = x.equipment_id
+       LEFT JOIN equipment parent ON parent.equipment_id = eq.parent_equipment_id
       WHERE pe.plan_id = ? ORDER BY pe.order_no`, [p.plan_id],
   );
 
@@ -114,6 +121,7 @@ async function getActivePlan(pool, userId) {
       orderNo: e.order_no,
       targetSets: e.target_sets,
       targetReps: e.target_reps,
+      equipment: e.equipment,
     })),
   };
 }
