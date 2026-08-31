@@ -351,6 +351,77 @@ class FsTag extends StatelessWidget {
   }
 }
 
+/// One destination in [FsNav].
+class FsNavItem {
+  const FsNavItem({required this.icon, required this.label});
+
+  final IconData icon;
+  final String label;
+}
+
+/// `.botnav` — the bottom bar. Stateless on purpose: it reports a tap and
+/// renders the index it is given, so the shell owns which tab is current.
+class FsNav extends StatelessWidget {
+  const FsNav({
+    super.key,
+    required this.currentIndex,
+    required this.onSelect,
+    required this.items,
+  });
+
+  final int currentIndex;
+  final ValueChanged<int> onSelect;
+  final List<FsNavItem> items;
+
+  @override
+  Widget build(BuildContext context) {
+    final t = context.fs;
+
+    return Container(
+      decoration: BoxDecoration(
+        color: t.surface,
+        border: Border(top: BorderSide(color: t.line)),
+      ),
+      child: SafeArea(
+        top: false,
+        child: SizedBox(
+          height: 58,
+          child: Row(
+            children: [
+              for (final (index, item) in items.indexed)
+                Expanded(
+                  child: InkWell(
+                    key: Key('nav.$index'),
+                    onTap: () => onSelect(index),
+                    child: Column(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        Icon(
+                          item.icon,
+                          size: 21,
+                          color: index == currentIndex ? t.accent : t.text3,
+                        ),
+                        const SizedBox(height: 3),
+                        Text(
+                          item.label,
+                          style: TextStyle(
+                            fontSize: 10,
+                            fontWeight: FontWeight.w600,
+                            color: index == currentIndex ? t.accent : t.text3,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
 /// The onboarding progress strip: one bar per step, filled up to [step].
 /// The prototype uses discrete segments rather than a continuous bar.
 class FsStepBars extends StatelessWidget {

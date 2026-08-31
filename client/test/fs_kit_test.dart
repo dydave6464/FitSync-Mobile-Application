@@ -136,6 +136,28 @@ void main() {
     expect(chipWidth, lessThan(100),
         reason: 'a short label must not stretch to the Wrap width');
   });
+
+  testWidgets('FsNav reports the tapped index and marks the current one',
+      (tester) async {
+    final taps = <int>[];
+    await tester.pumpWidget(_host(
+      FsNav(
+        currentIndex: 0,
+        onSelect: taps.add,
+        items: const [
+          FsNavItem(icon: Icons.home_outlined, label: 'Home'),
+          FsNavItem(icon: Icons.fitness_center_outlined, label: 'Train'),
+        ],
+      ),
+    ));
+
+    expect(find.text('Home'), findsOneWidget);
+    expect(find.text('Train'), findsOneWidget);
+
+    await tester.tap(find.text('Train'));
+    await tester.pump();
+    expect(taps, [1], reason: 'the bar reports selection, it does not own it');
+  });
 }
 
 void _noop() {}
