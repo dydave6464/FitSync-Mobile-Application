@@ -24,7 +24,11 @@ const MACHINE = new Set(['cable', 'leverage machine', 'smith machine']);
 // SAYS_BENCH matches the plural too: 'triceps dip (between benches)' is live.
 const SAYS_BENCH = /\bbenche?s?\b/;
 const IMPLIES_BENCH = /\b(incline|decline|lying|prone|supine)\b/;
-const SAYS_BAR = /\b(pull[\s-]?ups?|chin[\s-]?ups?)\b/;
+// Bar-dependent is wider than the words "pull-up": a muscle-up, a front lever,
+// a hanging leg raise and skin-the-cat all need a bar and none say "pull-up".
+const SAYS_BAR = /\b(pull[\s-]?ups?|chin[\s-]?ups?)\b|\bhanging\b|muscle[\s-]?up|front lever|back lever|skin the cat|arm slingers|on straight bar|\bring dips\b/;
+// 'lying'/'incline' does not mean a bench when the name says otherwise.
+const NOT_A_BENCH = /\bfloor\b|exercise ball|stability ball|bosu/;
 
 // Names the patterns above get wrong. Each value is the final answer for that
 // exercise, returned verbatim -- not a hint the patterns then refine.
@@ -44,11 +48,12 @@ function classifyRequirements(exercise) {
 
   if (equipment === 'body weight') {
     if (SAYS_BAR.test(name)) return ['pull-up bar'];
-    if (SAYS_BENCH.test(name)) return ['bench'];
+    if (SAYS_BENCH.test(name) && !NOT_A_BENCH.test(name)) return ['bench'];
     return [];
   }
 
-  if (FREE_WEIGHT.has(equipment) && (SAYS_BENCH.test(name) || IMPLIES_BENCH.test(name))) {
+  if (FREE_WEIGHT.has(equipment) && !NOT_A_BENCH.test(name)
+      && (SAYS_BENCH.test(name) || IMPLIES_BENCH.test(name))) {
     return ['bench'];
   }
 

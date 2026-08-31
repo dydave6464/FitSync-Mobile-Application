@@ -31,6 +31,27 @@ test('a bodyweight pull-up or chin-up requires a bar', () => {
   assert.deepEqual(req('l-pull-up', 'body weight'), ['pull-up bar']);
 });
 
+test('bar-dependent bodyweight moves need a pull-up bar even without the word "pull-up"', () => {
+  // These are live, promoted rows that need a bar and say nothing like
+  // "pull-up" -- the old SAYS_BAR pattern returned [] for all of them.
+  for (const name of [
+    'hanging leg raise', 'muscle up', 'front lever', 'back lever', 'skin the cat',
+    'arm slingers', 'chest dip on straight bar', 'ring dips',
+  ]) {
+    assert.deepEqual(req(name, 'body weight'), ['pull-up bar'], name);
+  }
+});
+
+test('a name that says floor or exercise ball is never a bench, even alongside "lying"', () => {
+  // Folded into the same fix: NOT_A_BENCH stops IMPLIES_BENCH ("lying") from
+  // overriding what the exercise's own name says.
+  assert.deepEqual(req('dumbbell lying pronation on floor', 'dumbbell'), []);
+  assert.deepEqual(req('dumbbell prone incline row on exercise ball', 'dumbbell'), []);
+  // The guard must not break ordinary bench rows.
+  assert.deepEqual(req('barbell bench press', 'barbell'), ['bench']);
+  assert.deepEqual(req('dumbbell incline fly', 'dumbbell'), ['bench']);
+});
+
 test('a bodyweight exercise naming a bench requires one', () => {
   assert.deepEqual(req('bench dip (knees bent)', 'body weight'), ['bench']);
   assert.deepEqual(req('inverted row on bench', 'body weight'), ['bench']);
