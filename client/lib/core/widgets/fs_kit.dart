@@ -95,13 +95,25 @@ class FsButton extends StatelessWidget {
                             ),
                             const SizedBox(width: 8),
                           ],
-                          Text(
-                            label,
-                            style: TextStyle(
-                              fontSize: small ? 13.5 : 15,
-                              fontWeight: FontWeight.w700,
-                              letterSpacing: -0.15,
-                              color: fg,
+                          // Flexible so the label shrinks to an ellipsis
+                          // instead of overflowing the row at large
+                          // accessibility text scales on narrow screens —
+                          // the same remedy already used for FsChip and the
+                          // eyebrow row. maxLines: 1 rather than letting it
+                          // wrap, as FsNav does, because this Row sits in a
+                          // fixed-height button and a second line would
+                          // overflow that instead.
+                          Flexible(
+                            child: Text(
+                              label,
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: TextStyle(
+                                fontSize: small ? 13.5 : 15,
+                                fontWeight: FontWeight.w700,
+                                letterSpacing: -0.15,
+                                color: fg,
+                              ),
                             ),
                           ),
                         ],

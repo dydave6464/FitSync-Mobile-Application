@@ -191,6 +191,36 @@ void main() {
 
     expect(tester.takeException(), isNull);
   });
+
+  testWidgets(
+      'FsButton does not overflow on narrow screens at 2.0x text scale',
+      (tester) async {
+    // The label sits inside a Row alongside the optional icon, and RenderFlex
+    // gives non-flex children unbounded main-axis constraints, so the label
+    // could not soft-wrap or shrink to the button's bounded width — the same
+    // failure mode already fixed for FsChip and FsNav. 290dp mirrors the
+    // width left inside a card on a 320dp phone after its padding; 2.0x
+    // mirrors Android 14's maximum text scale.
+    await tester.pumpWidget(_host(
+      MediaQuery(
+        data: const MediaQueryData(
+          size: Size(320, 800),
+          textScaler: TextScaler.linear(2.0),
+        ),
+        child: SizedBox(
+          width: 290,
+          child: FsButton(
+            label: 'Start workout',
+            small: true,
+            icon: const Icon(Icons.play_arrow),
+            onPressed: _noop,
+          ),
+        ),
+      ),
+    ));
+
+    expect(tester.takeException(), isNull);
+  });
 }
 
 void _noop() {}
