@@ -98,9 +98,9 @@ class FsButton extends StatelessWidget {
                           // Flexible so the label shrinks to an ellipsis
                           // instead of overflowing the row at large
                           // accessibility text scales on narrow screens —
-                          // the same remedy already used for FsChip and the
+                          // the same remedy already used for FsNav and the
                           // eyebrow row. maxLines: 1 rather than letting it
-                          // wrap, as FsNav does, because this Row sits in a
+                          // wrap, as FsChip does, because this Row sits in a
                           // fixed-height button and a second line would
                           // overflow that instead.
                           Flexible(
@@ -330,8 +330,12 @@ class FsEyebrow extends StatelessWidget {
   final String text;
 
   @override
-  Widget build(BuildContext context) =>
-      Text(text.toUpperCase(), style: fsEyebrow(context.fs));
+  Widget build(BuildContext context) => Text(
+        text.toUpperCase(),
+        maxLines: 1,
+        overflow: TextOverflow.ellipsis,
+        style: fsEyebrow(context.fs),
+      );
 }
 
 /// `.tag` — the small count pill the design puts opposite a section eyebrow.
@@ -353,6 +357,8 @@ class FsTag extends StatelessWidget {
       ),
       child: Text(
         text,
+        maxLines: 1,
+        overflow: TextOverflow.ellipsis,
         style: TextStyle(
           fontSize: 10.5,
           fontWeight: FontWeight.w600,

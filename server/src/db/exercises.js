@@ -7,6 +7,17 @@ const MAX_LIMIT = 50;
 // queue, not catalogue content.
 const LIVE = "x.status = 'live'";
 
+// Every `equipment` field this file returns (listExercises, getExerciseById,
+// listFilters) is the raw catalogue tag — `e.name`, e.g. 'body weight' or
+// 'cable' — not the curated display name a user picks from during
+// onboarding. `GET /plans/active` (src/db/plans.js) returns that curated
+// name instead (e.g. 'Bodyweight', with 'cable' folded into 'Machines'),
+// because that is what the client's plan_energy.dart MET table keys on.
+// Nothing today joins these two vocabularies for the same exercise, but a
+// future feature — e.g. "browse the catalogue for this plan exercise's
+// equipment" — would silently return no results if it queried this file's
+// raw tag against the curated name plans.js hands back, or vice versa.
+
 function buildWhere({ muscleGroup, equipment }) {
   const clauses = [LIVE];
   const params = [];

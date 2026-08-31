@@ -12,6 +12,7 @@ import 'package:fitsync/features/exercises/domain/exercise_filters.dart';
 import 'package:fitsync/features/exercises/presentation/exercise_list_screen.dart';
 import 'package:fitsync/features/exercises/presentation/providers.dart';
 import 'package:fitsync/features/home/presentation/nav_shell.dart';
+import 'package:fitsync/features/plans/presentation/plan_screen.dart';
 import 'package:fitsync/features/plans/presentation/providers.dart';
 import 'package:fitsync/features/profile/domain/profile.dart';
 import 'package:fitsync/features/profile/presentation/providers.dart';
@@ -144,6 +145,73 @@ void main() {
         tester.state<ScrollableState>(_catalogueScrollable).position;
     expect(positionAfterReturn.pixels, 400,
         reason: 'IndexedStack must keep the tab mounted, not rebuild it');
+  });
+
+  testWidgets(
+      'a tab never visited does not build at cold start, but a visited tab '
+      'stays mounted (even offstage) after leaving it', (tester) async {
+    await _pumpShell(tester);
+
+    // find.byType defaults to skipOffstage: true, which for an IndexedStack
+    // relies on its own debugVisitOnstageChildren override to reveal only
+    // the *selected* child. That means a default finder reports findsNothing
+    // for every non-current tab regardless of whether that tab was ever
+    // built — both before and after this fix — so it cannot discriminate
+    // "never mounted" from "mounted and sitting offstage". skipOffstage:
+    // false walks the whole element tree instead, so it actually sees a tab
+    // IndexedStack is hiding rather than one that was never built.
+    expect(
+      find.byType(PlanScreen, skipOffstage: false), findsNothing,
+      reason: 'Train must not mount until the user visits it',
+    );
+    expect(
+      find.byType(ExerciseListScreen, skipOffstage: false), findsNothing,
+      reason: 'Browse must not mount until the user visits it',
+    );
+    expect(
+      find.byType(SettingsScreen, skipOffstage: false), findsNothing,
+      reason: 'Profile must not mount until the user visits it',
+    );
+
+    // Visit Browse, then leave it for Home. It must still be mounted (just
+    // offstage), so the state-preservation IndexedStack exists for keeps
+    // working — this half is also covered by the scroll-preservation test
+    // above, but asserted here too since it is the other side of the same
+    // change.
+    await tester.tap(find.byKey(const Key('nav.2')));
+    await tester.pumpAndSettle();
+    expect(find.byType(ExerciseListScreen), findsOneWidget);
+
+    await tester.tap(find.byKey(const Key('nav.0')));
+    await tester.pumpAndSettle();
+    expect(
+      find.byType(ExerciseListScreen, skipOffstage: false), findsOneWidget,
+      reason: 'once visited, Browse must stay mounted underneath (offstage), '
+          'not be torn down when another tab is selected',
+    );
+
+    // Train and Profile remain unvisited throughout.
+    expect(find.byType(PlanScreen, skipOffstage: false), findsNothing);
+    expect(find.byType(SettingsScreen, skipOffstage: false), findsNothing);
+  });
+
+  testWidgets('tapping Train reaches the workout plan', (tester) async {
+    // nav.0, nav.2 and nav.3 were already exercised above; nav.1 (Train) was
+    // not, so nothing connected FsNav's index 1 to PlanScreen. home_screen_
+    // test.dart proves onGoToTrain fires and nav_shell.dart wires it to
+    // `_index = 1`, but nothing tied those two facts together — reordering
+    // the tab list would send "Start workout" to the wrong screen with every
+    // existing test still green. find.byType(PlanScreen) is discriminating
+    // here because IndexedStack's debugVisitOnstageChildren override means a
+    // default finder only ever sees the *selected* child — so this can only
+    // be satisfied by PlanScreen actually being the current tab, not merely
+    // present offstage somewhere in the tree.
+    await _pumpShell(tester);
+
+    await tester.tap(find.byKey(const Key('nav.1')));
+    await tester.pumpAndSettle();
+
+    expect(find.byType(PlanScreen), findsOneWidget);
   });
 
   testWidgets('tapping Browse reaches the exercise catalogue', (tester) async {

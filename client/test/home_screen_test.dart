@@ -115,17 +115,23 @@ void main() {
     await _pumpHome(tester, plan: null);
     expect(find.text('Start workout'), findsNothing);
     expect(find.textContaining('no active plan'), findsOneWidget);
+    expect(find.byKey(const Key('home.noPlan')), findsOneWidget,
+        reason: 'the descendant check below is vacuous if this key does not '
+            'resolve to the no-plan card');
     // Absence of the one specific label is not enough — a relabelled
     // "Generate plan" button would satisfy both assertions above. The
     // no-plan state must offer no action at all, so nothing tappable may
     // exist inside it: there is no on-demand generate endpoint, so a
-    // button here would call nothing. Scoped to the noPlan-keyed subtree
-    // (matching PlanScreen's own _NoPlanYet key), not the whole screen, so
-    // this can't be satisfied or defeated by an unrelated FsButton
-    // elsewhere (e.g. a retry button in another state).
+    // button here would call nothing. Scoped to the home.noPlan-keyed
+    // subtree, not the whole screen, so this can't be satisfied or defeated
+    // by an unrelated FsButton elsewhere (e.g. a retry button in another
+    // state). This key is distinct from PlanScreen's own 'noPlan' key —
+    // both tabs build eagerly once visited, and with no active plan both
+    // no-plan states can exist in the tree at once, so a shared key would
+    // leave any finder using it ambiguous.
     expect(
       find.descendant(
-        of: find.byKey(const Key('noPlan')),
+        of: find.byKey(const Key('home.noPlan')),
         matching: find.byType(FsButton),
       ),
       findsNothing,

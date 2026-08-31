@@ -1,4 +1,4 @@
-import '../../plans/domain/workout_plan.dart';
+import 'workout_plan.dart';
 
 /// MET values for resistance training, from the Compendium of Physical
 /// Activities, keyed on the curated equipment names the server resolves.
@@ -19,6 +19,15 @@ const _mets = <String, double>{
 /// The mid value, so an equipment name this table has never heard of cannot
 /// skew the estimate in either direction.
 const _defaultMet = 4.0;
+
+/// The equipment names [_mets] is keyed on, exposed only so a test can pin
+/// this vocabulary against `OPTIONS[].displayName` in
+/// `server/src/db/seed-equipment.js` — the server-curated names this table
+/// assumes it will be given. The two lists are otherwise unconnected: a chip
+/// renamed on the server is a pure presentation change there, and nothing
+/// else here would notice that every exercise using it just silently fell
+/// back to the 4.0 default MET.
+Set<String> get metTableEquipmentNames => _mets.keys.toSet();
 
 /// Approximate energy for one session of [plan], or null when it cannot be
 /// estimated honestly.

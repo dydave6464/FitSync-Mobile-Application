@@ -50,7 +50,37 @@ test('equipment curation schema', async (t) => {
   });
 });
 
-const { seedEquipment } = require('../src/db/seed-equipment');
+const { seedEquipment, OPTIONS } = require('../src/db/seed-equipment');
+
+// Mirrors `_pinnedEquipmentNames` in client/test/plan_energy_test.dart, which
+// asserts this same list against the client's MET table in
+// features/plans/domain/plan_energy.dart.
+//
+// These two lists are what pin the client's MET table to this file's
+// OPTIONS. Nothing else connects them — the client cannot import this JS
+// module, so without this test a display_name rename here (a pure
+// presentation change, and every other test in this file only checks
+// `selectable()`'s order and membership, not the literal strings a client
+// depends on) would silently reclassify every exercise using that equipment
+// to the 4.0 fallback MET, with all existing tests — including this file's
+// own — still green. Bench and Pull-up bar are deliberately not in this
+// list: seed-equipment.js creates them with no exercises attached (see the
+// design doc, section 8), so no plan exercise can ever resolve to either one
+// and the client's MET table has no reason to key on them.
+const PLAN_ENERGY_EQUIPMENT_NAMES = [
+  'Barbell', 'Machines', 'Dumbbells', 'Kettlebell', 'Bodyweight', 'Bands',
+];
+
+test('the equipment names the client\'s MET table keys on', () => {
+  const displayNames = new Set(OPTIONS.map((o) => o.displayName));
+  for (const name of PLAN_ENERGY_EQUIPMENT_NAMES) {
+    assert.ok(displayNames.has(name),
+      `OPTIONS must have a chip named '${name}' — client/lib/features/plans/`
+      + 'domain/plan_energy.dart keys its MET table on it, and renaming it '
+      + 'here would silently reclassify every plan exercise using it to the '
+      + '4.0 fallback MET');
+  }
+});
 
 // The catalogue tags this feature cares about, as the upstream dataset spells
 // them. Inserted directly so the test does not need the real 1324-row seed.

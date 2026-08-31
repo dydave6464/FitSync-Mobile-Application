@@ -25,6 +25,25 @@ class NavShell extends StatefulWidget {
 class _NavShellState extends State<NavShell> {
   int _index = 0;
 
+  /// Every index ever selected, including 0 (the tab mounted at cold start).
+  ///
+  /// IndexedStack builds every one of its children immediately, offstage or
+  /// not — it does not build lazily on its own. Left alone, that means all
+  /// four tabs' data providers (two catalogue requests for Browse, on top of
+  /// Home's own profile and plan) fire the moment the shell first builds,
+  /// for tabs the user may never open. Tracking visited indices here and
+  /// swapping an unvisited slot's real screen for a cheap placeholder is
+  /// what makes the mount actually lazy, without touching the "keep a
+  /// visited tab's state alive" behaviour IndexedStack is here for — once an
+  /// index is added, this widget always renders that slot's real screen
+  /// again, so its Element (and State) is never torn down.
+  final Set<int> _visited = {0};
+
+  void _select(int index) => setState(() {
+        _index = index;
+        _visited.add(index);
+      });
+
   static const _items = [
     FsNavItem(icon: Icons.home_outlined, label: 'Home'),
     FsNavItem(icon: Icons.fitness_center_outlined, label: 'Train'),
@@ -32,24 +51,30 @@ class _NavShellState extends State<NavShell> {
     FsNavItem(icon: Icons.person_outline, label: 'Profile'),
   ];
 
+  Widget _tab(int index, Widget Function() builder) =>
+      _visited.contains(index) ? builder() : const SizedBox.shrink();
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       body: IndexedStack(
         index: _index,
         children: [
-          HomeScreen(
-            onGoToTrain: () => setState(() => _index = 1),
-            onGoToProfile: () => setState(() => _index = 3),
+          _tab(
+            0,
+            () => HomeScreen(
+              onGoToTrain: () => _select(1),
+              onGoToProfile: () => _select(3),
+            ),
           ),
-          const PlanScreen(),
-          const ExerciseListScreen(),
-          const SettingsScreen(),
+          _tab(1, () => const PlanScreen()),
+          _tab(2, () => const ExerciseListScreen()),
+          _tab(3, () => const SettingsScreen()),
         ],
       ),
       bottomNavigationBar: FsNav(
         currentIndex: _index,
-        onSelect: (index) => setState(() => _index = index),
+        onSelect: _select,
         items: _items,
       ),
     );

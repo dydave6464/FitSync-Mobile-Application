@@ -2,8 +2,8 @@ import 'package:flutter/material.dart';
 
 import '../../../../core/theme.dart';
 import '../../../../core/widgets/fs_kit.dart';
+import '../../../plans/domain/plan_energy.dart';
 import '../../../plans/domain/workout_plan.dart';
-import '../../domain/plan_energy.dart';
 
 /// The today's-plan card.
 ///
@@ -28,8 +28,9 @@ class PlanCard extends StatelessWidget {
     final theme = Theme.of(context);
     final kcal = estimateSessionKcal(plan: plan, weightKg: weightKg);
 
+    final exerciseCount = plan.exercises.length;
     final meta = [
-      '${plan.exercises.length} exercises',
+      '$exerciseCount exercise${exerciseCount == 1 ? '' : 's'}',
       '~${plan.sessionLengthMin} min',
       // Omitted rather than guessed when body weight is unknown.
       if (kcal != null) '~$kcal kcal',

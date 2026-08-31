@@ -85,7 +85,11 @@ class _NoPlan extends StatelessWidget {
     final t = context.fs;
 
     return FsCard(
-      key: const Key('noPlan'),
+      // Distinct from PlanScreen's own 'noPlan' key: both tabs build eagerly
+      // once visited, so with no active plan both no-plan states exist in
+      // the tree at once, and a shared key would leave any finder that uses
+      // it ambiguous between the two screens.
+      key: const Key('home.noPlan'),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [

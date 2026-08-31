@@ -96,6 +96,15 @@ async function getActivePlan(pool, userId) {
     // that was never adopted has no parent. COALESCE walks curated parent ->
     // curated self -> raw tag, so an adopted child like 'cable' reports
     // 'Machines' while an unadopted tag still reports something usable.
+    //
+    // This `equipment` is therefore a *curated* display name (e.g.
+    // 'Bodyweight'), a different vocabulary from the raw catalogue tag (e.g.
+    // 'body weight') that `GET /exercises` returns from src/db/exercises.js.
+    // The client's plan_energy.dart MET table keys on this curated name.
+    // Nothing today joins the two vocabularies for the same exercise, but a
+    // future feature that tried — e.g. "browse the catalogue for this plan
+    // exercise's equipment" — would silently return no results comparing
+    // one against the other.
     `SELECT pe.order_no, pe.target_sets, pe.target_reps,
             x.exercise_id, x.name, x.muscle_group, x.thumbnail_url,
             COALESCE(parent.display_name, eq.display_name, eq.name) AS equipment

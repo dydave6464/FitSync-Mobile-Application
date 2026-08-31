@@ -116,24 +116,65 @@ test('plan endpoints', async (t) => {
     );
     const raw = rows[0];
 
-    await pool.query(
-      "INSERT IGNORE INTO equipment (name, display_name, display_order, "
-      + "is_user_selectable) VALUES ('planmet', 'PlanMet', 99, 1)",
-    );
-    const [[parent]] = await pool.query(
-      "SELECT equipment_id FROM equipment WHERE name = 'planmet'",
-    );
-
-    await pool.query(
-      'UPDATE equipment SET parent_equipment_id = ?, is_user_selectable = 0, '
-      + 'display_name = NULL WHERE name = ?',
-      [parent.equipment_id, raw.raw],
+    // This test mutates a real catalogue row (the one at `raw.raw`) to
+    // simulate curation having adopted it. Captured here so the finally
+    // block below can put it back — otherwise this row stays reparented to
+    // a fake 'planmet' equipment row forever, and whatever test happens to
+    // be appended after this one in the file inherits a corrupted fixture
+    // instead of the pristine one it expects.
+    const [[originalRow]] = await pool.query(
+      'SELECT display_name, display_order, is_user_selectable, parent_equipment_id '
+      + 'FROM equipment WHERE name = ?',
+      [raw.raw],
     );
 
-    const res = await request(app).get('/api/v1/plans/active')
-      .set('Authorization', auth).expect(200);
-    const names = res.body.data.plan.exercises.map((e) => e.equipment);
-    assert.ok(names.includes('PlanMet'),
-      'an adopted child must report its curated parent, not its raw tag');
+    try {
+      await pool.query(
+        "INSERT IGNORE INTO equipment (name, display_name, display_order, "
+        + "is_user_selectable) VALUES ('planmet', 'PlanMet', 99, 1)",
+      );
+      const [[parent]] = await pool.query(
+        "SELECT equipment_id FROM equipment WHERE name = 'planmet'",
+      );
+
+      await pool.query(
+        'UPDATE equipment SET parent_equipment_id = ?, is_user_selectable = 0, '
+        + 'display_name = NULL WHERE name = ?',
+        [parent.equipment_id, raw.raw],
+      );
+
+      const res = await request(app).get('/api/v1/plans/active')
+        .set('Authorization', auth).expect(200);
+      const names = res.body.data.plan.exercises.map((e) => e.equipment);
+      assert.ok(names.includes('PlanMet'),
+        'an adopted child must report its curated parent, not its raw tag');
+    } finally {
+      await pool.query(
+        'UPDATE equipment SET display_name = ?, display_order = ?, '
+        + 'is_user_selectable = ?, parent_equipment_id = ? WHERE name = ?',
+        [
+          originalRow.display_name, originalRow.display_order,
+          originalRow.is_user_selectable, originalRow.parent_equipment_id,
+          raw.raw,
+        ],
+      );
+      // No FK reference is left pointing at it once the row above is
+      // un-parented, so this can simply be removed rather than restored.
+      await pool.query("DELETE FROM equipment WHERE name = 'planmet'");
+    }
+
+    // Proves the finally block actually put the row back, rather than
+    // merely running without throwing.
+    const [[restoredRow]] = await pool.query(
+      'SELECT display_name, display_order, is_user_selectable, parent_equipment_id '
+      + 'FROM equipment WHERE name = ?',
+      [raw.raw],
+    );
+    assert.deepEqual(restoredRow, originalRow,
+      'the mutated catalogue row must be restored for whatever test runs next');
+    const [[planmet]] = await pool.query(
+      "SELECT COUNT(*) AS n FROM equipment WHERE name = 'planmet'",
+    );
+    assert.equal(planmet.n, 0, 'the fixture equipment row must not leak');
   });
 });

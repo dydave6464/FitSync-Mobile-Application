@@ -76,12 +76,23 @@ class Greeting extends StatelessWidget {
             shape: BoxShape.circle,
             border: Border.all(color: t.line),
           ),
-          child: Text(
-            _initials,
-            style: TextStyle(
-              fontSize: 13,
-              fontWeight: FontWeight.w700,
-              color: t.text2,
+          // `alignment: Alignment.center` above gives the child a loose
+          // max-size constraint rather than clipping or complaining when it
+          // wants more — so at large accessibility text scales, two wide
+          // uppercase initials can need more than the ~38px this circle
+          // actually has, and would otherwise paint past its edge silently
+          // (no thrown exception, and the reported layout size stays within
+          // bounds regardless, so neither shows up as a guard failure).
+          // FittedBox scales the initials down to fit instead.
+          child: FittedBox(
+            fit: BoxFit.scaleDown,
+            child: Text(
+              _initials,
+              style: TextStyle(
+                fontSize: 13,
+                fontWeight: FontWeight.w700,
+                color: t.text2,
+              ),
             ),
           ),
         ),
