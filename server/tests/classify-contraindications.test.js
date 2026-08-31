@@ -34,6 +34,45 @@ test('the other spinal-load movements are caught too', () => {
   }
 });
 
+test('push press variants are spine-unsafe, matching their thruster and jerk siblings', () => {
+  // These three real catalogue rows came out spine-safe under the old
+  // pattern -- 'push press' matched neither 'overhead' nor 'military' -- while
+  // their mechanically identical siblings were correctly blocked.
+  for (const name of [
+    'dumbbell push press', 'kettlebell double push press', 'kettlebell one arm push press',
+    'kettlebell thruster', 'kettlebell double jerk',
+  ]) {
+    assert.equal(isSpineSafe(ex(name, 'delts', 'shoulders')), false, name);
+  }
+});
+
+test('alternate overhead spellings are caught even without the word "overhead"', () => {
+  // 'over head' and 'above head' are live catalogue spellings that the old
+  // pattern's bare 'overhead' missed entirely.
+  assert.equal(
+    isSpineSafe(ex('barbell standing front raise over head', 'delts', 'shoulders')), false,
+  );
+  assert.equal(
+    isSpineSafe(ex('dumbbell standing front raise above head', 'delts', 'shoulders')), false,
+  );
+});
+
+test('glute-ham raise blocks Hamstring despite the catalogue spelling it with a hyphen', () => {
+  // DENY's Hamstring pattern said 'glute ham' (a space); the catalogue spells
+  // the exercise 'glute-ham raise', so the old pattern never matched it.
+  assert.ok(blocks(ex('glute-ham raise', 'hamstrings', 'upper legs'), 'Hamstring'));
+});
+
+test('isSpineSafe lowercases muscle_group and body_part, not just name', () => {
+  // A casing mismatch here fails toward spine-SAFE, which is the wrong
+  // direction to be wrong for a safety table. Both are real failure shapes:
+  // an un-lowered muscle_group misses the SPINE_TARGET set, and an un-lowered
+  // body_part misses the back/waist check -- either lets a supported-position
+  // name (e.g. 'seated') fall through to a false "safe".
+  assert.equal(isSpineSafe(ex('lever seated back extension', 'Spine', 'Back')), false);
+  assert.equal(isSpineSafe(ex('seated side crunch', 'obliques', 'Waist')), false);
+});
+
 test('an elbow injury blocks curls and extensions, which no group-level rule caught', () => {
   assert.ok(blocks(ex('dumbbell biceps curl', 'biceps', 'upper arms'), 'Elbow'));
   assert.ok(blocks(ex('cable triceps pushdown', 'triceps', 'upper arms'), 'Elbow'));

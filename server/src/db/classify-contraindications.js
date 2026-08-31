@@ -48,7 +48,7 @@ const DENY = [
   { region: 'Groin', pattern: 'adductor_load',
     re: /adduction|adductor|sumo|wide stance|lateral lunge|side lunge|cossack|split squat|straddle/ },
   { region: 'Hamstring', pattern: 'hamstring_load',
-    re: /deadlift|leg curl|good morning|sprint|lunge|swing|romanian|stiff leg|hyperextension|glute ham/ },
+    re: /deadlift|leg curl|good morning|sprint|lunge|swing|romanian|stiff leg|hyperextension|glute.?ham/ },
   { region: 'Quadriceps', pattern: 'quad_load',
     re: /squat|lunge|leg extension|step[\s-]?up|jump|leg press|sissy|pistol/ },
   { region: 'Knee', pattern: 'knee_load',
@@ -80,14 +80,18 @@ const LIMB_ISOLATION = new Set([
 // is the same category error as trusting muscle_group, recurring inside the
 // allow-list built to avoid it.
 const SUPPORTED = /seated|lying|supine|prone|on bench|bench |floor|wall|preacher|kneeling/;
-const SPINE_RISK = /deadlift|good morning|bent.?over|clean|snatch|jerk|squat|lunge|overhead|military|standing.*press|carry|walk|swing|twist|side bend|hanging|\brow\b|thruster|farmer|pull[\s-]?ups?|chin[\s-]?ups?|pull through|hyperextension|hip thrust|romanian|stiff leg/;
+const SPINE_RISK = /deadlift|good morning|bent.?over|clean|snatch|jerk|squat|lunge|overhead|over.?head|above head|military|push press|standing.*press|carry|walk|swing|twist|side bend|hanging|\brow\b|thruster|farmer|pull[\s-]?ups?|chin[\s-]?ups?|pull through|hyperextension|hip thrust|romanian|stiff leg/;
 
 function isSpineSafe(exercise) {
   const name = String(exercise.name || '').toLowerCase();
-  if (SPINE_TARGET.has(exercise.muscle_group)) return false;
-  if (exercise.body_part === 'back' || exercise.body_part === 'waist') return false;
+  // Lowercased for the same reason `name` is: the failure direction of a casing
+  // mismatch here is spine-SAFE, which is the wrong way to be wrong.
+  const muscleGroup = String(exercise.muscle_group || '').toLowerCase();
+  const bodyPart = String(exercise.body_part || '').toLowerCase();
+  if (SPINE_TARGET.has(muscleGroup)) return false;
+  if (bodyPart === 'back' || bodyPart === 'waist') return false;
   if (SPINE_RISK.test(name)) return false;
-  return SUPPORTED.test(name) || LIMB_ISOLATION.has(exercise.muscle_group);
+  return SUPPORTED.test(name) || LIMB_ISOLATION.has(muscleGroup);
 }
 
 function classifyContraindications(exercise) {
