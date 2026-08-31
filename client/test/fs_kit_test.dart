@@ -156,7 +156,40 @@ void main() {
 
     await tester.tap(find.text('Train'));
     await tester.pump();
-    expect(taps, [1], reason: 'the bar reports selection, it does not own it');
+    await tester.tap(find.text('Home'));
+    await tester.pump();
+    expect(taps, [1, 0],
+        reason: 'the bar reports each tap with its correct index');
+  });
+
+  testWidgets('FsNav does not overflow on narrow screens at 2.0x text scale',
+      (tester) async {
+    // Nav bar items have unguarded text that could wrap and overflow the
+    // fixed 58px height at accessibility text scales. Constrain with
+    // maxLines: 1 and overflow: TextOverflow.ellipsis.
+    // 320dp mirrors a small phone; 2.0x mirrors Android 14's maximum text scale.
+    await tester.pumpWidget(_host(
+      MediaQuery(
+        data: const MediaQueryData(
+          size: Size(320, 800),
+          textScaler: TextScaler.linear(2.0),
+        ),
+        child: FsNav(
+          currentIndex: 0,
+          onSelect: (_) {},
+          items: const [
+            FsNavItem(icon: Icons.home_outlined, label: 'Home'),
+            FsNavItem(
+                icon: Icons.fitness_center_outlined,
+                label: 'Adjustable resistance training'),
+            FsNavItem(icon: Icons.settings_outlined, label: 'Settings'),
+            FsNavItem(icon: Icons.person_outlined, label: 'Profile'),
+          ],
+        ),
+      ),
+    ));
+
+    expect(tester.takeException(), isNull);
   });
 }
 
