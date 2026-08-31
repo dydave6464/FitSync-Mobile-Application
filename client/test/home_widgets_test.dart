@@ -4,12 +4,40 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:fitsync/core/theme.dart';
 import 'package:fitsync/core/widgets/fs_kit.dart';
 import 'package:fitsync/features/home/presentation/widgets/greeting.dart';
+import 'package:fitsync/features/home/presentation/widgets/plan_card.dart';
 import 'package:fitsync/features/home/presentation/widgets/profile_nudge.dart';
+import 'package:fitsync/features/plans/domain/workout_plan.dart';
 import 'package:fitsync/features/profile/domain/profile.dart';
 
 Widget _host(Widget child) => MaterialApp(
       theme: fsLightTheme(),
       home: Scaffold(body: Center(child: child)),
+    );
+
+WorkoutPlan _plan({
+  required int sessionLengthMin,
+  required List<String?> equipment,
+  String name = 'Upper Body · Push',
+}) =>
+    WorkoutPlan(
+      planId: 1,
+      name: name,
+      splitStyle: 'upper_lower',
+      daysPerWeek: 3,
+      sessionLengthMin: sessionLengthMin,
+      weekNo: 1,
+      exercises: [
+        for (final (index, item) in equipment.indexed)
+          PlanExercise(
+            exerciseId: index + 1,
+            name: 'Exercise ${index + 1}',
+            muscleGroup: 'chest',
+            orderNo: index + 1,
+            targetSets: 3,
+            targetReps: '8-12',
+            equipment: item,
+          ),
+      ],
     );
 
 const _someEquipment = [EquipmentOption(equipmentId: 1, name: 'Dumbbells')];
@@ -165,5 +193,57 @@ void main() {
     expect(find.text('Finish your profile'), findsNothing);
     expect(find.byType(FsCard), findsNothing,
         reason: 'nothing, not an empty card');
+  });
+
+  testWidgets('the card hides the kcal chip without a body weight',
+      (tester) async {
+    await tester.pumpWidget(_host(PlanCard(
+      plan: _plan(sessionLengthMin: 48, equipment: const ['Barbell']),
+      weightKg: null,
+      onStart: () {},
+    )));
+    expect(find.textContaining('kcal'), findsNothing);
+    expect(find.textContaining('48 min'), findsOneWidget,
+        reason: 'the rest of the meta row still renders');
+  });
+
+  testWidgets(
+      'the plan card does not overflow on a narrow phone at 2.0x text scale',
+      (tester) async {
+    // The eyebrow sits in the fixed-height 116dp gradient band, and the
+    // exercise/duration/kcal figures sit in a joined meta row below the
+    // name — either could, in principle, be pushed past its bounds by a
+    // long plan name or a long equipment mix at accessibility text scales.
+    // 320dp mirrors a small phone; 2.0x mirrors Android 14's maximum scale.
+    // A SingleChildScrollView stands in for the scrollable dashboard body
+    // Task 7 embeds this card in, so the card is free to grow taller under
+    // the doubled text rather than being squeezed against a fixed test
+    // viewport height that no real screen here would impose on it.
+    await tester.pumpWidget(_host(
+      MediaQuery(
+        data: const MediaQueryData(
+          size: Size(320, 800),
+          textScaler: TextScaler.linear(2.0),
+        ),
+        child: SingleChildScrollView(
+          child: SizedBox(
+            width: 320,
+            child: PlanCard(
+              plan: _plan(
+                sessionLengthMin: 48,
+                name: 'Upper Body · Push, Pull and Legs',
+                equipment: const [
+                  'Barbell', 'Dumbbells', 'Bodyweight', 'Bands', 'Machines',
+                ],
+              ),
+              weightKg: 70,
+              onStart: () {},
+            ),
+          ),
+        ),
+      ),
+    ));
+
+    expect(tester.takeException(), isNull);
   });
 }
