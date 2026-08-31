@@ -122,6 +122,12 @@ pinned to commit `7455efae`. Two phases:
 ```bash
 npm run seed:fetch   # downloads 1,324 animations + thumbnails into storage/, writes the manifest
 npm run seed         # upserts equipment, exercises and coaching_cues from the manifest
+npm run seed:safety     # requirements + contraindications; run LAST, after
+                        # seed, seed:equipment AND seed:injuries. It resolves
+                        # curated equipment names and the 16 injury region
+                        # names to ids; anything it cannot resolve is skipped
+                        # and reported, and a skipped contraindication is a
+                        # safety row that never got written.
 ```
 
 `seed:fetch` needs a network and takes several minutes; it is resumable and

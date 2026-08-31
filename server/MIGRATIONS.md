@@ -131,3 +131,23 @@ partial state before retrying. There is also no checksum on applied
 migrations, so an already-applied file that is edited afterwards will not
 be re-applied and will not be flagged as changed. Both are known gaps, not
 yet built.
+
+## The ML service's read-only grant
+
+Migration 009 adds two tables the Python plan generator reads. It gets a
+read-only account scoped to the seed-driven reference tables and nothing else
+— it never reads `users`, `workout_plans`, or any other user row. Apply this
+by hand after running the migration:
+
+```sql
+CREATE USER IF NOT EXISTS 'fitsync_ml'@'%' IDENTIFIED BY '<password>';
+GRANT SELECT ON fitsync.exercises TO 'fitsync_ml'@'%';
+GRANT SELECT ON fitsync.equipment TO 'fitsync_ml'@'%';
+GRANT SELECT ON fitsync.exercise_equipment_requirements TO 'fitsync_ml'@'%';
+GRANT SELECT ON fitsync.exercise_contraindications TO 'fitsync_ml'@'%';
+FLUSH PRIVILEGES;
+```
+
+The grant is deliberately not `GRANT SELECT ON fitsync.*`. If the service ever
+needs another table, adding a line here should be a decision someone makes,
+not something that already happened.

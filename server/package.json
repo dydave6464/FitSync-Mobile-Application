@@ -12,7 +12,8 @@
     "seed": "node scripts/seed-exercises.js",
     "seed:injuries": "node scripts/seed-injuries.js",
     "seed:equipment": "node scripts/seed-equipment.js",
-    "seed:safety": "node scripts/seed-exercise-safety.js"
+    "seed:safety": "node scripts/seed-exercise-safety.js",
+    "review:safety": "node scripts/review-exercise-safety.js"
   },
   "keywords": [],
   "author": "",
