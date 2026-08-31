@@ -4,6 +4,7 @@ import '../../../core/widgets/fs_kit.dart';
 import '../../exercises/presentation/exercise_list_screen.dart';
 import '../../plans/presentation/plan_screen.dart';
 import '../../settings/presentation/settings_screen.dart';
+import 'home_screen.dart';
 
 /// The signed-in shell: four tabs over an IndexedStack.
 ///
@@ -36,12 +37,14 @@ class _NavShellState extends State<NavShell> {
     return Scaffold(
       body: IndexedStack(
         index: _index,
-        children: const [
-          // Task 7 replaces this with the real HomeScreen.
-          Scaffold(body: Center(child: Text('Home'))),
-          PlanScreen(),
-          ExerciseListScreen(),
-          SettingsScreen(),
+        children: [
+          HomeScreen(
+            onGoToTrain: () => setState(() => _index = 1),
+            onGoToProfile: () => setState(() => _index = 3),
+          ),
+          const PlanScreen(),
+          const ExerciseListScreen(),
+          const SettingsScreen(),
         ],
       ),
       bottomNavigationBar: FsNav(
