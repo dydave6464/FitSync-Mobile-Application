@@ -4,26 +4,116 @@ Node calls this service; it never calls Node. Every user field arrives in the
 request body -- this process holds a read-only grant on four reference tables
 and reads no user row at request time. See the design, section 3.
 """
+import logging
 import os
 
 from dotenv import load_dotenv
 from fastapi import FastAPI
 
+from app.catalogue import fetch_candidates
 from app.config import Settings
+from app.db import create_engine_from
+from app.ranker import Ranker
+from app.rules import parameters, selection
+from app.schemas import (
+    GOAL_LABELS,
+    INJURY_MUSCLE_GROUPS,
+    InjuryRiskRequest,
+    InjuryRiskResponse,
+    PlanExercise,
+    PlanResponse,
+    ProfileRequest,
+)
+
+logger = logging.getLogger(__name__)
+
+BODY_WEIGHT = "body weight"
+
+
+def _plan_name(profile: ProfileRequest) -> str:
+    goal = GOAL_LABELS.get(profile.mainGoal or "", "General Fitness")
+    return "Full Body — {}".format(goal)
 
 
 def create_app(settings: Settings) -> FastAPI:
     app = FastAPI(title="FitSync ML service")
     app.state.settings = settings
+    app.state.engine = None
+    app.state.ranker = Ranker.load(settings)
+
+    def engine():
+        # Built lazily so /health answers with MySQL down, and so a test that
+        # never generates a plan never opens a connection.
+        if app.state.engine is None:
+            app.state.engine = create_engine_from(settings)
+        return app.state.engine
 
     @app.get("/health")
     def health():
-        # Deliberately does not touch MySQL: this is what a load balancer polls,
-        # and a health check that needs the database only reports the database.
-        # The model slot is empty until a trained model exists -- see section 8.
-        return {"status": "ok", "model": "absent", "mode": "rules"}
+        ranker = app.state.ranker
+        return {"status": "ok", "model": ranker.status, "mode": ranker.mode}
+
+    @app.post("/generate-plan", response_model=PlanResponse)
+    def generate_plan(profile: ProfileRequest):
+        params = parameters.derive(profile.dict())
+
+        owned = [e.equipmentId for e in profile.equipment]
+        if not owned:
+            # A user reaches Home with no equipment -- profile_nudge.dart calls
+            # that a supported state. Body weight is the honest reading of it.
+            owned = _body_weight_ids(engine())
+
+        excluded = []
+        for injury in profile.injuries:
+            excluded.extend(INJURY_MUSCLE_GROUPS.get(injury.regionGroup or "", ()))
+
+        candidates = fetch_candidates(
+            engine(),
+            owned,
+            [i.injuryId for i in profile.injuries],
+            sorted(set(excluded)),
+        )
+        ranked = app.state.ranker.rank(candidates)
+        chosen = selection.select(ranked, params.exercise_count)
+
+        return PlanResponse(
+            name=_plan_name(profile),
+            splitStyle=params.split_style,
+            daysPerWeek=params.days_per_week,
+            sessionLengthMin=params.session_length_min,
+            weekNo=1,
+            exercises=[
+                PlanExercise(
+                    name=candidate.name,
+                    orderNo=index + 1,
+                    targetSets=params.target_sets,
+                    targetReps=params.target_reps,
+                )
+                for index, candidate in enumerate(chosen)
+            ],
+        )
+
+    @app.post("/injury-risk", response_model=InjuryRiskResponse)
+    def injury_risk(payload: InjuryRiskRequest):
+        return _estimate_injury_risk(payload)
 
     return app
+
+
+def _body_weight_ids(engine_obj):
+    from sqlalchemy import text
+
+    with engine_obj.connect() as conn:
+        rows = conn.execute(
+            text("SELECT equipment_id FROM equipment WHERE name = :n"),
+            {"n": BODY_WEIGHT},
+        ).fetchall()
+    return [row[0] for row in rows]
+
+
+def _estimate_injury_risk(payload: InjuryRiskRequest) -> InjuryRiskResponse:
+    # Task 7 replaces this with the real estimate.
+    return InjuryRiskResponse(riskLevel="low", trainingLoadScore=0.0)
 
 
 def build() -> FastAPI:
