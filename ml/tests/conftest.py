@@ -1,10 +1,17 @@
 import os
+from pathlib import Path
 
 import pytest
+from dotenv import load_dotenv
 from sqlalchemy import text
 
 from app.config import Settings
 from app.db import create_engine_from
+
+# Load ml/.env (gitignored) so the test password is set once in a file rather
+# than typed on every pytest run -- a command-line environment variable lands in
+# shell history and in any transcript of the run.
+load_dotenv(Path(__file__).resolve().parents[1] / ".env")
 
 TEST_ENV = {
     "FITSYNC_DB_HOST": os.environ.get("FITSYNC_DB_HOST", "127.0.0.1"),

@@ -73,3 +73,21 @@ def test_results_are_ordered_by_exercise_id_for_determinism(engine, catalogue):
     result = fetch_candidates(engine, [eq["body weight"], eq["dumbbell"]], [], [])
     ids = [c.exercise_id for c in result]
     assert ids == sorted(ids)
+
+
+def test_a_password_with_url_metacharacters_survives_the_connection_url():
+    # Built by hand this would misparse: '@' would look like a host separator.
+    from app.config import Settings
+    from app.db import create_engine_from
+
+    settings = Settings.from_env({
+        "FITSYNC_DB_HOST": "127.0.0.1",
+        "FITSYNC_DB_PORT": "3306",
+        "FITSYNC_DB_USER": "fitsync",
+        "FITSYNC_DB_PASSWORD": "p@ss:w/rd#1%2",
+        "FITSYNC_DB_NAME": "fitsync_test",
+    })
+    engine = create_engine_from(settings)
+    assert engine.url.password == "p@ss:w/rd#1%2"
+    assert engine.url.host == "127.0.0.1"
+    assert engine.url.database == "fitsync_test"
