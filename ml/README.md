@@ -44,17 +44,58 @@ curl localhost:8000/health
 
 ## Test
 
+The ML suite owns its own database. Create it once, as a MySQL admin:
+
+```sql
+CREATE DATABASE fitsync_ml_test
+  CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
+GRANT ALL PRIVILEGES ON fitsync_ml_test.* TO 'fitsync'@'localhost';
+FLUSH PRIVILEGES;
+```
+
+Set `FITSYNC_TEST_DB_NAME=fitsync_ml_test` in `ml/.env`, then:
+
 ```bash
-DB_NAME=fitsync_test npm run migrate      # from server/
+DB_NAME=fitsync_ml_test npm run migrate   # from server/
 cd ml && .venv/bin/python -m pytest tests/ -v
 ```
 
 The integration tests create and remove their own fixture rows; they do not
-need the catalogue seed. If they skip, the test database has not been migrated.
+need the catalogue seed.
 
-Note: the Node suite drops these tables at teardown, so `DB_NAME=fitsync_test
-npm run migrate` must be re-run after any `npm test` from `server/`, not just
-once.
+### Why a separate database
+
+The Node suite drops **every** table in `fitsync_test`
+(`server/tests/helpers/test-db.js`). While both suites shared that database,
+`npm test` removed the tables these tests need -- and a missing table made them
+*skip*, which exits 0. Twenty tests stopped running and the suite still
+reported success. Owning a database the Node suite never touches removes the
+collision entirely.
+
+Until `fitsync_ml_test` exists, `FITSYNC_TEST_DB_NAME=fitsync_test` still
+works, but then `DB_NAME=fitsync_test npm run migrate` has to be re-run after
+every `npm test`.
+
+### Why that is still not enough
+
+Separation does not help if nobody migrated the new database: that skips too,
+and still exits 0. CI therefore sets
+
+```bash
+FITSYNC_TEST_REQUIRE_DB=1 .venv/bin/python -m pytest tests/
+```
+
+which turns "cannot use the database" into a failure instead of a skip. Leave
+it unset locally, so a machine with no MySQL can still run the tests that need
+none.
+
+### The write guard
+
+The fixtures INSERT and DELETE, so the suite refuses any `FITSYNC_TEST_DB_NAME`
+that does not end in `_test`, regardless of the flag above. This is why the
+test database is configured separately from `FITSYNC_DB_NAME`: that one points
+at the live `fitsync` in `.env.example`, and inheriting it would have written
+fixture exercises straight into the real catalogue.
 
 ## Point Node at it
 

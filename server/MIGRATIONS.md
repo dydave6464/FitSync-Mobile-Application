@@ -151,3 +151,29 @@ FLUSH PRIVILEGES;
 The grant is deliberately not `GRANT SELECT ON fitsync.*`. If the service ever
 needs another table, adding a line here should be a decision someone makes,
 not something that already happened.
+
+## The ML service's test database
+
+The Python suite must not share `fitsync_test` with the Node suite. The Node
+helper `server/tests/helpers/test-db.js` drops every table in it, so `npm test`
+removed the tables the Python integration tests need -- and those tests
+answered a missing table with a *skip*, which exits 0. Twenty tests silently
+stopped running while both suites reported success.
+
+Give the ML suite its own database. Apply this by hand, as an admin:
+
+```sql
+CREATE DATABASE IF NOT EXISTS fitsync_ml_test
+  CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
+GRANT ALL PRIVILEGES ON fitsync_ml_test.* TO 'fitsync'@'localhost';
+FLUSH PRIVILEGES;
+```
+
+Then migrate it like any other: `DB_NAME=fitsync_ml_test npm run migrate`. It
+is a throwaway schema on the same terms as `fitsync_test` -- drop and
+re-migrate it freely.
+
+Unlike `fitsync_ml`, this grant is deliberately **not** read-only: the Python
+fixtures create and delete their own catalogue rows. That is also why it must
+never point at `fitsync`; `ml/tests/dbgate.py` refuses any test database whose
+name does not end in `_test`.

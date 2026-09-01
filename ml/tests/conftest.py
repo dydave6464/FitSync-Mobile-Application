@@ -7,6 +7,7 @@ from sqlalchemy import text
 
 from app.config import Settings
 from app.db import create_engine_from
+from tests.dbgate import is_disposable, resolve_db_name, unavailable
 
 # Load ml/.env (gitignored) so the test password is set once in a file rather
 # than typed on every pytest run -- a command-line environment variable lands in
@@ -18,7 +19,11 @@ TEST_ENV = {
     "FITSYNC_DB_PORT": os.environ.get("FITSYNC_DB_PORT", "3306"),
     "FITSYNC_DB_USER": os.environ.get("FITSYNC_DB_USER", "fitsync"),
     "FITSYNC_DB_PASSWORD": os.environ.get("FITSYNC_DB_PASSWORD", ""),
-    "FITSYNC_DB_NAME": os.environ.get("FITSYNC_DB_NAME", "fitsync_test"),
+    # Deliberately NOT FITSYNC_DB_NAME. That variable aims the service at a
+    # database; these fixtures INSERT and DELETE, so the one they write to is
+    # configured separately and can never be inherited from a service pointed
+    # at the live catalogue. See tests/dbgate.py.
+    "FITSYNC_DB_NAME": resolve_db_name(os.environ),
 }
 
 REQUIRED_TABLES = (
@@ -36,6 +41,15 @@ def settings():
 
 @pytest.fixture(scope="session")
 def engine(settings):
+    # Not conditional on FITSYNC_TEST_REQUIRE_DB: a suite aimed at a database
+    # it may not write to is a misconfiguration, never something to skip past.
+    if not is_disposable(settings.db_name):
+        raise RuntimeError(
+            "refusing to run destructive fixtures against {!r}: the ML test "
+            "database name must end in `_test`. Set FITSYNC_TEST_DB_NAME."
+            .format(settings.db_name)
+        )
+
     try:
         eng = create_engine_from(settings)
         with eng.connect() as conn:
@@ -50,13 +64,17 @@ def engine(settings):
                 )
             }
     except Exception as err:  # pragma: no cover - environment problem, not a bug
-        pytest.skip("cannot reach {}: {}".format(settings.db_name, err))
+        unavailable(
+            "cannot reach {}: {}".format(settings.db_name, err), os.environ
+        )
 
     missing = [t for t in REQUIRED_TABLES if t not in present]
     if missing:
-        pytest.skip(
+        unavailable(
             "missing tables {} in {} -- run `DB_NAME={} npm run migrate` from "
-            "server/ first".format(missing, settings.db_name, settings.db_name)
+            "server/ first (create the database first if it does not exist; "
+            "see ml/README.md)".format(missing, settings.db_name, settings.db_name),
+            os.environ,
         )
     return eng
 
