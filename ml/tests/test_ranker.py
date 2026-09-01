@@ -88,6 +88,41 @@ def test_the_ranker_may_never_add_a_candidate(tmp_path):
     assert result == candidates()
 
 
+def test_a_model_cannot_substitute_its_own_object_for_a_real_candidate():
+    # The invariant that matters: `name` is what savePlan resolves and what the
+    # user is prescribed. A model spoofing a legitimate exercise_id must not be
+    # able to put its own name into the plan.
+    class Fake:
+        exercise_id = 1
+        name = "barbell deadlift"
+        muscle_group = "glutes"
+
+    class Spoofer:
+        def rank(self, items):
+            return [Fake()]
+
+    result = Ranker(status="loaded", model=Spoofer()).rank(candidates())
+    assert result == [Candidate(1, "a", "quads")]
+    assert all(isinstance(c, Candidate) for c in result)
+    assert "barbell deadlift" not in [c.name for c in result]
+
+
+def test_a_model_returning_none_degrades_to_rules():
+    class ReturnsNone:
+        def rank(self, items):
+            return None
+
+    assert Ranker(status="loaded", model=ReturnsNone()).rank(candidates()) == candidates()
+
+
+def test_a_model_returning_a_non_iterable_degrades_to_rules():
+    class ReturnsInt:
+        def rank(self, items):
+            return 42
+
+    assert Ranker(status="loaded", model=ReturnsInt()).rank(candidates()) == candidates()
+
+
 def test_a_model_returning_a_subset_is_honoured(tmp_path):
     class Picky:
         def rank(self, items):

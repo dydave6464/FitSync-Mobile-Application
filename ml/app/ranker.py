@@ -48,20 +48,34 @@ class Ranker:
         original = list(candidates)
         if self.status != "loaded" or self._model is None:
             return original
+
+        # Only the trusted originals may leave this method. A model that returns
+        # an object of its own -- even one spoofing a legitimate exercise_id --
+        # must not get its `name` into the plan, because `name` is exactly what
+        # savePlan resolves and what the user is told to do.
+        by_id = {c.exercise_id: c for c in original}
+
         try:
             proposed = self._model.rank(original)
+            seen = set()
+            result = []
+            for candidate in proposed:
+                key = getattr(candidate, "exercise_id", None)
+                if key in by_id and key not in seen:
+                    seen.add(key)
+                    result.append(by_id[key])
         except Exception as err:
-            logger.error("model raised while ranking, serving rules: %s", err)
+            # Covers the call AND the consumption of its result: a model whose
+            # rank() forgets to return leaves `proposed` as None, and iterating
+            # None must degrade to rules like every other model failure.
+            logger.error("model failed while ranking, serving rules: %s", err)
             return original
 
-        # Subset or permutation only. Anything the model invented is dropped,
-        # and order follows the model's preference among what survives.
-        allowed = {c.exercise_id for c in original}
-        seen = set()
-        result = []
-        for candidate in proposed:
-            key = getattr(candidate, "exercise_id", None)
-            if key in allowed and key not in seen:
-                seen.add(key)
-                result.append(candidate)
-        return result or original
+        if not result:
+            # A model narrowing to nothing is indistinguishable from a model bug,
+            # and serving a user zero exercises is worse than serving the rules
+            # baseline -- which is already injury- and equipment-filtered. Log it
+            # so the two cases can be told apart.
+            logger.warning("model returned no usable candidates, serving rules")
+            return original
+        return result
