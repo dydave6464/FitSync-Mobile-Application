@@ -5,9 +5,10 @@ request model is permissive on purpose: a profile can be almost empty during
 onboarding, and rejecting it would block a user rather than give them a plan.
 See the design, section 4.
 """
+import math
 from typing import Any, Dict, List, Optional, Tuple
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 
 
 class EquipmentRef(BaseModel):
@@ -58,8 +59,25 @@ class PlanResponse(BaseModel):
 
 class InjuryRiskRequest(BaseModel):
     checkins: List[Dict[str, Any]] = Field(default_factory=list)
-    load: float = 0.0
+    # allow_inf_nan=False so NaN and Infinity are a 422 rather than reaching the
+    # clamp. NaN defeats min/max entirely -- every comparison with it is False --
+    # and would otherwise produce a NaN score that crashes JSON serialisation.
+    load: float = Field(0.0, allow_inf_nan=False)
     injuryHistory: List[Dict[str, Any]] = Field(default_factory=list)
+
+    @field_validator("load", mode="before")
+    @classmethod
+    def _sanitise_non_finite_load(cls, v):
+        # allow_inf_nan=False alone rejects NaN/Infinity, but pydantic's
+        # ValidationError echoes the raw rejected value back as `input`, and
+        # Starlette's JSONResponse always serialises with allow_nan=False --
+        # so a raw NaN/Infinity surviving into the 422 body would crash the
+        # *error* response too, turning a clean 422 into an unhandled 500.
+        # Swap it for None before the finite check runs, so whichever error
+        # fires carries a JSON-safe `input` instead.
+        if isinstance(v, float) and not math.isfinite(v):
+            return None
+        return v
 
 
 class InjuryRiskResponse(BaseModel):

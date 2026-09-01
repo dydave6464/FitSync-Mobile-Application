@@ -58,3 +58,18 @@ def test_an_unrecognised_checkin_value_does_not_raise():
         load=50.0, checkins=[{"sleepQuality": "banana"}]
     ))
     assert result.riskLevel in ("low", "moderate", "high")
+
+
+def test_a_non_finite_load_is_refused_rather_than_clamped():
+    # NaN passes through min/max untouched because every comparison with it is
+    # False, so the clamp cannot catch it. Refusing beats inventing a risk level.
+    import math
+
+    import pytest
+
+    for bad in (float("nan"), float("inf"), float("-inf")):
+        with pytest.raises(ValueError):
+            estimate(InjuryRiskRequest.model_construct(
+                checkins=[], load=bad, injuryHistory=[]
+            ))
+        assert not math.isfinite(bad)

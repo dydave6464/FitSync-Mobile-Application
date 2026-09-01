@@ -7,6 +7,8 @@ observable today. See the design, section 13.
 
 This is guidance bounded by self-reported input, not a clinical assessment.
 """
+import math
+
 from app.schemas import InjuryRiskRequest, InjuryRiskResponse
 
 # Each scale runs worst -> best; the value is how much it adds to the score.
@@ -34,6 +36,17 @@ def _recovery_penalty(checkin) -> float:
 
 
 def estimate(payload: InjuryRiskRequest) -> InjuryRiskResponse:
+    if not math.isfinite(payload.load):
+        # Checked on the raw load, not the derived score: max(-inf, 0.0) is a
+        # well-defined comparison that legitimately evaluates to 0.0, so -inf
+        # would otherwise be coerced to a finite score before a later
+        # isfinite(score) check ever saw it -- only NaN and +inf survive that
+        # form of the guard. NaN defeats min/max entirely (every comparison
+        # with it is False) and Infinity would otherwise clamp silently.
+        # Neither is a risk estimate, so refuse rather than invent one -- the
+        # schema rejects these, and this guards a caller that bypasses it.
+        raise ValueError("training load must be a finite number")
+
     score = max(payload.load, 0.0) / 2.0
     if payload.checkins:
         penalties = [_recovery_penalty(c) for c in payload.checkins]

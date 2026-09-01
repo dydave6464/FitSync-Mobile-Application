@@ -145,3 +145,14 @@ def test_an_empty_session_fails_loudly_rather_than_returning_an_empty_plan(
     })
     assert response.status_code == 503
     assert "catalogue" in response.json()["detail"].lower()
+
+
+def test_a_non_finite_load_is_rejected_by_the_schema(client):
+    # A NaN score would crash JSON serialisation with a 500; the schema turns it
+    # into a clean 422 before estimate() ever sees it.
+    response = client.post(
+        "/injury-risk",
+        content='{"checkins": [], "load": NaN, "injuryHistory": []}',
+        headers={"Content-Type": "application/json"},
+    )
+    assert response.status_code == 422
