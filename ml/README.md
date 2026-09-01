@@ -17,6 +17,8 @@ service; it never calls Node.
 
 ## Install
 
+Requires Python 3.9 or later.
+
 ```bash
 cd ml
 python3 -m venv .venv
@@ -43,12 +45,16 @@ curl localhost:8000/health
 ## Test
 
 ```bash
-DB_NAME=fitsync_test npm run migrate      # from server/, once
+DB_NAME=fitsync_test npm run migrate      # from server/
 cd ml && .venv/bin/python -m pytest tests/ -v
 ```
 
 The integration tests create and remove their own fixture rows; they do not
 need the catalogue seed. If they skip, the test database has not been migrated.
+
+Note: the Node suite drops these tables at teardown, so `DB_NAME=fitsync_test
+npm run migrate` must be re-run after any `npm test` from `server/`, not just
+once.
 
 ## Point Node at it
 
@@ -59,6 +65,15 @@ ML_MODE=http
 ML_SERVICE_URL=http://localhost:8000
 ```
 
+Note: the profile Node sends still contains identifying fields — email, full
+name, city, date of birth. The service ignores them, but in `http` mode they
+cross the wire and land in request logs. The mapper that strips them is spec
+§9, not yet built. Bear that in mind before pointing a production Node at
+this.
+
 Restart the Node server. `ML_MODE=stub` is the default and remains valid — the
-two are interchangeable by design, and every assertion in
-`server/tests/ml-service.test.js` holds against both.
+two are interchangeable by design, and `server/tests/ml-service.test.js`
+exercises the stub directly and two of its assertions expect the plan to echo
+a requested `splitStyle` — this service always returns `full_body` (see spec
+§7), so those two are stub-specific. Everything the Node route actually
+depends on is identical across both modes.
