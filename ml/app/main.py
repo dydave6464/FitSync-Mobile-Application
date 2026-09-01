@@ -37,6 +37,10 @@ def _plan_name(profile: ProfileRequest) -> str:
 
 
 def create_app(settings: Settings) -> FastAPI:
+    logging.basicConfig(
+        level=getattr(logging, settings.log_level.upper(), logging.INFO),
+        format="%(asctime)s %(levelname)s %(name)s %(message)s",
+    )
     app = FastAPI(title="FitSync ML service")
     app.state.settings = settings
     app.state.engine = None
@@ -56,24 +60,40 @@ def create_app(settings: Settings) -> FastAPI:
 
     @app.post("/generate-plan", response_model=PlanResponse)
     def generate_plan(profile: ProfileRequest):
-        params = parameters.derive(profile.dict())
+        params = parameters.derive(profile.model_dump())
 
-        owned = [e.equipmentId for e in profile.equipment]
-        if not owned:
-            # A user reaches Home with no equipment -- profile_nudge.dart calls
-            # that a supported state. Body weight is the honest reading of it.
-            owned = _body_weight_ids(engine())
+        # Body weight is unioned in unconditionally, never only when the user
+        # selected nothing: spec section 5's predicate is "(primary equipment
+        # owned OR the exercise is body weight) AND every requirement owned".
+        # Without this a user who ticks only Bench -- a curated chip with zero
+        # exercises tagged to it -- gets no candidates at all and can never
+        # finish onboarding, and a dumbbell owner loses every push-up.
+        owned = list({e.equipmentId for e in profile.equipment} | set(_body_weight_ids(engine())))
 
+        injury_ids = [i.injuryId for i in profile.injuries]
         excluded = []
         for injury in profile.injuries:
             excluded.extend(INJURY_MUSCLE_GROUPS.get(injury.regionGroup or "", ()))
 
-        candidates = fetch_candidates(
-            engine(),
-            owned,
-            [i.injuryId for i in profile.injuries],
-            sorted(set(excluded)),
-        )
+        candidates = fetch_candidates(engine(), owned, injury_ids, sorted(set(excluded)))
+
+        if excluded and len(candidates) < params.exercise_count:
+            # Target exclusion is advisory. The three region_group lists together
+            # name 17 of the catalogue's 18 muscle groups, so a user reporting one
+            # injury per group is left with nothing -- 64 of 128 such combinations
+            # returned no exercises at all. Section 6.5 argues at length that
+            # muscle_group cannot be trusted for inclusion; the same holds for
+            # exclusion. The contraindication table is the precise instrument and
+            # is never relaxed here -- only the coarse group map is.
+            relaxed = fetch_candidates(engine(), owned, injury_ids, [])
+            if len(relaxed) > len(candidates):
+                logger.warning(
+                    "target-muscle exclusion left %d candidates for %d injuries; "
+                    "relaxing to contraindications only (%d candidates)",
+                    len(candidates), len(profile.injuries), len(relaxed),
+                )
+                candidates = relaxed
+
         ranked = app.state.ranker.rank(candidates)
         chosen = selection.select(ranked, params.exercise_count)
 
@@ -94,8 +114,9 @@ def create_app(settings: Settings) -> FastAPI:
             raise HTTPException(
                 status_code=503,
                 detail=(
-                    "No exercises available for this profile. "
-                    "The catalogue may not be seeded."
+                    "No exercises could be selected for this profile. If the "
+                    "catalogue is seeded, the reported injuries and available "
+                    "equipment leave nothing suitable."
                 ),
             )
 
