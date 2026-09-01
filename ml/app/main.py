@@ -8,7 +8,7 @@ import logging
 import os
 
 from dotenv import load_dotenv
-from fastapi import FastAPI
+from fastapi import FastAPI, HTTPException
 
 from app.catalogue import fetch_candidates
 from app.config import Settings
@@ -76,6 +76,28 @@ def create_app(settings: Settings) -> FastAPI:
         ranked = app.state.ranker.rank(candidates)
         chosen = selection.select(ranked, params.exercise_count)
 
+        if not chosen:
+            # A plan with no exercises is not a plan. Every realistic profile has
+            # candidates -- even a body-weight-only user with a back injury has 89
+            # across 10 muscle groups -- so an empty session means something
+            # upstream is broken, most likely an unseeded catalogue. Fail loudly:
+            # complete-onboarding generates before it marks the user complete, so
+            # a 503 leaves them able to retry rather than finishing onboarding
+            # holding an empty plan.
+            logger.error(
+                "no candidates for profile (owned=%s, injuries=%s) -- is the "
+                "catalogue seeded?",
+                owned,
+                [i.injuryId for i in profile.injuries],
+            )
+            raise HTTPException(
+                status_code=503,
+                detail=(
+                    "No exercises available for this profile. "
+                    "The catalogue may not be seeded."
+                ),
+            )
+
         return PlanResponse(
             name=_plan_name(profile),
             splitStyle=params.split_style,
@@ -108,6 +130,12 @@ def _body_weight_ids(engine_obj):
             text("SELECT equipment_id FROM equipment WHERE name = :n"),
             {"n": BODY_WEIGHT},
         ).fetchall()
+    if not rows:
+        # Distinct from "no candidates": this one means seed-equipment.js has
+        # not run, and says so rather than leaving an empty plan to explain.
+        logger.error(
+            "no '%s' row in equipment -- seed-equipment.js has not run", BODY_WEIGHT
+        )
     return [row[0] for row in rows]
 
 

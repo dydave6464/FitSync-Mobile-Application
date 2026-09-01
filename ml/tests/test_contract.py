@@ -73,11 +73,13 @@ def test_every_generated_name_exists_in_the_live_catalogue(client, engine, catal
     )
     with engine.connect() as conn:
         live = {
-            row[0].lower()
+            row[0]
             for row in conn.execute(text("SELECT name FROM exercises WHERE status = 'live'"))
         }
     for exercise in plan["exercises"]:
-        assert exercise["name"].lower() in live
+        # Exact, not case-insensitive: the spec requires the catalogue's own
+        # casing, and the stored name is what the user is shown.
+        assert exercise["name"] in live
 
 
 def test_equipment_the_user_lacks_never_appears(client, catalogue):
@@ -125,3 +127,21 @@ def test_no_equipment_is_treated_as_body_weight_not_as_no_filter(client, catalog
     plan = post_plan(client, mainGoal="build_muscle", equipment=[])
     assert plan["exercises"]
     assert "fixture dumbbell curl" not in [e["name"] for e in plan["exercises"]]
+
+
+def test_an_empty_session_fails_loudly_rather_than_returning_an_empty_plan(
+    client, catalogue
+):
+    # Excluding both muscle groups the fixture catalogue can offer leaves nothing
+    # selectable. That must be a retryable error, not a 200 with no exercises.
+    eq, inj = catalogue["equipment"], catalogue["injuries"]
+    response = client.post("/generate-plan", json={
+        "mainGoal": "build_muscle",
+        "equipment": [{"equipmentId": eq["body weight"], "name": "Bodyweight"}],
+        "injuries": [
+            {"injuryId": inj["Knee"], "regionGroup": "lower_body"},
+            {"injuryId": inj["Lower back"], "regionGroup": "upper_body"},
+        ],
+    })
+    assert response.status_code == 503
+    assert "catalogue" in response.json()["detail"].lower()
