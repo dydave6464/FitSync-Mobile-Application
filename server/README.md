@@ -214,6 +214,13 @@ catalogue, the command prints a warning naming it.
 Without it, `is_user_selectable` stays `0` on every row and `GET
 /api/v1/equipment` returns `[]` — no error, just an empty onboarding step.
 
+## Plan generation
+
+Plans come from the Python service in `ml/`. With `ML_MODE=stub` (the default)
+the Node process serves a fixed four-exercise body-weight plan; with
+`ML_MODE=http` and `ML_SERVICE_URL` set it calls the real generator. See
+`ml/README.md` to run it.
+
 ## Response envelope
 
 Every JSON response is one of exactly two shapes:

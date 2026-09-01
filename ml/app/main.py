@@ -14,6 +14,7 @@ from app.catalogue import fetch_candidates
 from app.config import Settings
 from app.db import create_engine_from
 from app.ranker import Ranker
+from app.risk import estimate as estimate_injury_risk
 from app.rules import parameters, selection
 from app.schemas import (
     GOAL_LABELS,
@@ -117,7 +118,7 @@ def create_app(settings: Settings) -> FastAPI:
 
     @app.post("/injury-risk", response_model=InjuryRiskResponse)
     def injury_risk(payload: InjuryRiskRequest):
-        return _estimate_injury_risk(payload)
+        return estimate_injury_risk(payload)
 
     return app
 
@@ -137,11 +138,6 @@ def _body_weight_ids(engine_obj):
             "no '%s' row in equipment -- seed-equipment.js has not run", BODY_WEIGHT
         )
     return [row[0] for row in rows]
-
-
-def _estimate_injury_risk(payload: InjuryRiskRequest) -> InjuryRiskResponse:
-    # Task 7 replaces this with the real estimate.
-    return InjuryRiskResponse(riskLevel="low", trainingLoadScore=0.0)
 
 
 def build() -> FastAPI:
