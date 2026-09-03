@@ -91,3 +91,24 @@ def test_a_password_with_url_metacharacters_survives_the_connection_url():
     assert engine.url.password == "p@ss:w/rd#1%2"
     assert engine.url.host == "127.0.0.1"
     assert engine.url.database == "fitsync_test"
+
+
+def test_a_stretch_is_not_a_candidate(engine, catalogue):
+    eq = catalogue["equipment"]
+    result = fetch_candidates(engine, [eq["body weight"]], [], [])
+    assert "fixture quad stretch" not in names(result), "a categorised stretch must not be offered"
+
+
+def test_an_uncategorised_exercise_is_still_a_candidate(engine, catalogue):
+    # The COALESCE path. A missing row must degrade to today's behaviour, not
+    # remove the exercise -- an unseeded database must not empty the catalogue.
+    # `fixture push-up` has no category row and no equipment requirement.
+    eq = catalogue["equipment"]
+    result = fetch_candidates(engine, [eq["body weight"]], [], [])
+    assert "fixture push-up" in names(result)
+
+
+def test_an_explicit_strength_exercise_is_still_a_candidate(engine, catalogue):
+    eq = catalogue["equipment"]
+    result = fetch_candidates(engine, [eq["body weight"], eq["dumbbell"]], [], [])
+    assert "fixture dumbbell curl" in names(result)

@@ -6,6 +6,10 @@ Two filters, both of which must pass:
                requirement (bench, pull-up bar, machines) is owned too
   injury    -- the exercise is not contraindicated for any reported region,
                and does not target a muscle group that region rules out
+  category  -- the exercise is strength training, not a stretch, a mobility
+               drill or a skill hold. An exercise with no category row counts
+               as strength: a missing row must never silently remove an
+               exercise. See the design, section 7.
 
 The equipment tree is why the primary check walks parent_equipment_id:
 `user_equipment` holds curated rows ('machines'), while `exercises` points at
@@ -29,7 +33,9 @@ _BASE = """
 SELECT x.exercise_id, x.name, x.muscle_group
   FROM exercises x
   JOIN equipment eq ON eq.equipment_id = x.equipment_id
+  LEFT JOIN exercise_categories c ON c.exercise_id = x.exercise_id
  WHERE x.status = 'live'
+   AND COALESCE(c.category, 'strength') = 'strength'
    AND COALESCE(eq.parent_equipment_id, eq.equipment_id) IN :owned
    AND NOT EXISTS (
          SELECT 1 FROM exercise_equipment_requirements r

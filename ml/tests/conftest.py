@@ -103,6 +103,7 @@ def catalogue(engine):
         ("fixture dumbbell bench press", "pectorals", "chest", "dumbbell"),
         ("fixture cable row", "upper back", "back", "cable"),
         ("fixture squat", "quads", "upper legs", "body weight"),
+        ("fixture quad stretch", "quads", "upper legs", "body weight"),
     ]
     # (exercise name, required curated equipment name)
     requirements = [
@@ -111,6 +112,16 @@ def catalogue(engine):
     ]
     # (exercise name, injury region name)
     contraindications = [("fixture squat", "Knee")]
+
+    # (exercise name, category). `fixture push-up` is deliberately absent: it
+    # is the uncategorised row that proves the COALESCE path still offers an
+    # exercise with no category. Do NOT categorise `fixture pull-up` here --
+    # it requires a pull-up bar, so an owned=[body weight] test would exclude
+    # it on equipment and prove nothing about categories.
+    categories = [
+        ("fixture dumbbell curl", "strength"),
+        ("fixture quad stretch", "stretch"),
+    ]
 
     ids = {"equipment": {}, "exercises": {}, "injuries": {}}
     # Equipment names are globally unique (uq_equipment_name), and the test
@@ -174,6 +185,14 @@ def catalogue(engine):
                     "(exercise_id, injury_id, pattern) VALUES (:x, :i, 'fixture')"
                 ),
                 {"x": ids["exercises"][ex_name], "i": ids["injuries"][region]},
+            )
+        for ex_name, category in categories:
+            conn.execute(
+                text(
+                    "INSERT INTO exercise_categories (exercise_id, category) "
+                    "VALUES (:x, :c)"
+                ),
+                {"x": ids["exercises"][ex_name], "c": category},
             )
 
     yield ids
