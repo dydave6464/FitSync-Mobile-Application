@@ -8,7 +8,7 @@ const { classifyCategory, RULES } = require('../src/db/classify-categories');
 
 // Signals that are NOT trusted to demote (see classify-categories.js) but are
 // worth a human's eye. This is the classifier's deliberate blind spot.
-const BROAD = /\brotat(e|ing|ion)\b|\bbalanc(e|ing)\b|\bhang(ing)?\b|\bkick(ing)?\b|\bwalk(ing)?\b|\broll(ing|out)?\b|\btwist(ing)?\b|\bhold(ing)?\b|\bplank(ing)?\b/;
+const BROAD = /\brotat(e|ing|ion)\b|\bbalanc(e|ing)\b|\bhang(ing)?\b|\bkick(ing)?\b|\bwalk(ing)?\b|\broll\w*|\btwist(ing)?\b|\bhold(ing)?\b|\bplank(ing)?\b/;
 
 function ruleFor(name) {
   const n = String(name).toLowerCase().trim();

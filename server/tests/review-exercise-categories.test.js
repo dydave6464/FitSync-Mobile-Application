@@ -51,3 +51,12 @@ test('a row that is both demoted and a broad signal is listed only in section A'
   assert.match(md, /Demoted \(3\)/, 'demoted count includes the new row');
   assert.match(md, /Flagged, not demoted \(2\)/, 'flagged count must NOT also include it');
 });
+
+test('BROAD keeps matching any word beginning with roll, including fused forms like rollerout', () => {
+  assert.match('band assisted wheel rollerout', BROAD);
+  assert.match('barbell rollerout', BROAD);
+  assert.match('barbell rollerout from bench', BROAD);
+  assert.match('barbell standing ab rollerout', BROAD);
+  assert.match('foam rolling', BROAD, 'rolling must still match');
+  assert.match('ab rollout', BROAD, 'rollout must still match');
+});
