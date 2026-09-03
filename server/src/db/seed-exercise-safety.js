@@ -2,6 +2,7 @@
 const { createPool } = require('./pool');
 const { classifyRequirements } = require('./classify-requirements');
 const { classifyContraindications } = require('./classify-contraindications');
+const { reconcile } = require('./reconcile');
 
 // Reads every live exercise, recomputes its safety rows, and reconciles the
 // tables to match. Rows with is_manual = 1 are a human's judgement and are
@@ -19,36 +20,6 @@ const LIVE_EXERCISES = `
     LEFT JOIN equipment eq ON eq.equipment_id = x.equipment_id
    WHERE x.status = 'live'
 `;
-
-async function reconcile(pool, table, keyColumns, computed, existing) {
-  const keyOf = (row) => keyColumns.map((c) => row[c]).join(' ');
-  const wanted = new Map(computed.map((r) => [keyOf(r), r]));
-  const have = new Map(existing.map((r) => [keyOf(r), r]));
-
-  let removed = 0;
-  for (const [key, row] of have) {
-    if (wanted.has(key)) continue;
-    await pool.query(
-      `DELETE FROM ${table} WHERE ${keyColumns.map((c) => `${c} = ?`).join(' AND ')}
-        AND is_manual = 0`,
-      keyColumns.map((c) => row[c]),
-    );
-    removed += 1;
-  }
-
-  let inserted = 0;
-  for (const [key, row] of wanted) {
-    if (have.has(key)) continue;
-    const columns = Object.keys(row);
-    await pool.query(
-      `INSERT INTO ${table} (${columns.join(', ')})
-       VALUES (${columns.map(() => '?').join(', ')})`,
-      columns.map((c) => row[c]),
-    );
-    inserted += 1;
-  }
-  return { inserted, removed };
-}
 
 async function seedExerciseSafety(dbConfig) {
   const pool = createPool(dbConfig);
