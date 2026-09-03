@@ -8,10 +8,10 @@ const { classifyCategory, RULES } = require('../src/db/classify-categories');
 
 // Signals that are NOT trusted to demote (see classify-categories.js) but are
 // worth a human's eye. This is the classifier's deliberate blind spot.
-const BROAD = /\brotation\b|\bbalance\b|\bhang\b|\bkick\b|walking|\broll|\btwist\b|\bhold\b|\bplank\b/;
+const BROAD = /\brotat(e|ing|ion)\b|\bbalanc(e|ing)\b|\bhang(ing)?\b|\bkick(ing)?\b|\bwalk(ing)?\b|\broll(ing|out)?\b|\btwist(ing)?\b|\bhold(ing)?\b|\bplank(ing)?\b/;
 
 function ruleFor(name) {
-  const n = String(name).toLowerCase();
+  const n = String(name).toLowerCase().trim();
   const hit = RULES.find((r) => r.pattern.test(n));
   return hit ? String(hit.pattern) : '';
 }
@@ -58,6 +58,7 @@ async function main() {
       "SELECT exercise_id, name, muscle_group FROM exercises WHERE status = 'live' ORDER BY name",
     );
     const out = path.join(__dirname, '..', '..', 'docs', 'exercise-category-review.md');
+    fs.mkdirSync(path.dirname(out), { recursive: true });
     fs.writeFileSync(out, buildReport(rows));
     console.log(`wrote ${out}`);
   } finally {

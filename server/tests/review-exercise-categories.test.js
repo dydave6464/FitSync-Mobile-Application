@@ -1,7 +1,7 @@
 'use strict';
 const test = require('node:test');
 const assert = require('node:assert/strict');
-const { buildReport } = require('../scripts/review-exercise-categories');
+const { buildReport, BROAD } = require('../scripts/review-exercise-categories');
 
 const rows = [
   { exercise_id: 1, name: 'barbell bench press', muscle_group: 'pectorals' },
@@ -32,4 +32,22 @@ test('the report states both section counts', () => {
   const md = buildReport(rows);
   assert.match(md, /Demoted \(2\)/);
   assert.match(md, /Flagged, not demoted \(2\)/);
+});
+
+test('BROAD also matches gerund forms, not just the bare stem', () => {
+  assert.match('hanging leg raise', BROAD, 'hanging should match the hang stem');
+  assert.match('twisting lunge', BROAD, 'twisting should match the twist stem');
+});
+
+test('ruleFor normalizes the same way classifyCategory does, so an anchored rule still resolves with surrounding whitespace', () => {
+  const md = buildReport([{ exercise_id: 7, name: '  balance board  ', muscle_group: 'core' }]);
+  assert.match(md, /\*\*other\*\*/, 'demoted via the balance board rule');
+  assert.match(md, /\/\^balance board\$\//, 'the rule column must resolve, not fall back to empty');
+});
+
+test('a row that is both demoted and a broad signal is listed only in section A', () => {
+  const md = buildReport([...rows, { exercise_id: 6, name: 'hanging pike stretch', muscle_group: 'abs' }]);
+  assert.match(md, /hanging pike stretch/, 'the demoted row should appear');
+  assert.match(md, /Demoted \(3\)/, 'demoted count includes the new row');
+  assert.match(md, /Flagged, not demoted \(2\)/, 'flagged count must NOT also include it');
 });
