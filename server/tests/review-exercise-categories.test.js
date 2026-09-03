@@ -60,3 +60,19 @@ test('BROAD keeps matching any word beginning with roll, including fused forms l
   assert.match('foam rolling', BROAD, 'rolling must still match');
   assert.match('ab rollout', BROAD, 'rollout must still match');
 });
+
+test('section C lists a manual override alongside what the classifier would say', () => {
+  // Pinned to stretch by a human even though the classifier calls it strength.
+  const manual = [{ exercise_id: 42, name: 'single leg bridge with outstretched leg', category: 'stretch' }];
+  const md = buildReport(rows, manual);
+  assert.match(md, /## C\. Manual overrides \(1\)/);
+  assert.match(md, /42/);
+  assert.match(md, /single leg bridge with outstretched leg/);
+  assert.match(md, /stretch/, 'the stored category must appear');
+  assert.match(md, /strength/, "the classifier's own opinion must appear too");
+});
+
+test('section C still renders, with a count of 0, when there are no manual rows', () => {
+  const md = buildReport(rows);
+  assert.match(md, /## C\. Manual overrides \(0\)/);
+});

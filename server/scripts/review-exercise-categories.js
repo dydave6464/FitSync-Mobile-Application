@@ -16,7 +16,7 @@ function ruleFor(name) {
   return hit ? String(hit.pattern) : '';
 }
 
-function buildReport(exercises) {
+function buildReport(exercises, manualRows = []) {
   const demoted = [];
   const flagged = [];
   for (const x of exercises) {
@@ -47,6 +47,16 @@ function buildReport(exercises) {
   for (const x of flagged) {
     L.push(`| ${x.exercise_id} | ${x.name} | ${x.muscle_group} |`);
   }
+  L.push('');
+  L.push(`## C. Manual overrides (${manualRows.length})`, '');
+  L.push('Rows a human pinned with `is_manual = 1`. The seed never touches these,');
+  L.push('so a stale override that disagrees with the classifier is invisible');
+  L.push('everywhere else in this report — this is the only place it can be seen.', '');
+  L.push('| id | Exercise | Stored category | Classifier says |');
+  L.push('|---|---|---|---|');
+  for (const x of manualRows) {
+    L.push(`| ${x.exercise_id} | ${x.name} | **${x.category}** | ${classifyCategory(x)} |`);
+  }
   return L.join('\n') + '\n';
 }
 
@@ -57,9 +67,14 @@ async function main() {
     const [rows] = await pool.query(
       "SELECT exercise_id, name, muscle_group FROM exercises WHERE status = 'live' ORDER BY name",
     );
+    const [manualRows] = await pool.query(
+      "SELECT ec.exercise_id, x.name, ec.category FROM exercise_categories ec " +
+      "JOIN exercises x ON x.exercise_id = ec.exercise_id " +
+      "WHERE ec.is_manual = 1 ORDER BY x.name",
+    );
     const out = path.join(__dirname, '..', '..', 'docs', 'exercise-category-review.md');
     fs.mkdirSync(path.dirname(out), { recursive: true });
-    fs.writeFileSync(out, buildReport(rows));
+    fs.writeFileSync(out, buildReport(rows, manualRows));
     console.log(`wrote ${out}`);
   } finally {
     await pool.end();
