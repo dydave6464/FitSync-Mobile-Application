@@ -112,3 +112,44 @@ def test_an_explicit_strength_exercise_is_still_a_candidate(engine, catalogue):
     eq = catalogue["equipment"]
     result = fetch_candidates(engine, [eq["body weight"], eq["dumbbell"]], [], [])
     assert "fixture dumbbell curl" in names(result)
+
+
+def ordered(candidates):
+    """Names in returned order. `names()` sorts, which would hide the ordering."""
+    return [c.name for c in candidates]
+
+
+def test_equipment_the_user_selected_is_offered_before_body_weight(engine, catalogue):
+    # Body weight is unioned into `owned` unconditionally so a bench-only user
+    # can still finish onboarding (main.py). That makes body-weight exercises
+    # eligible for everyone -- and because they cluster at low exercise_ids,
+    # ordering by id alone hands a dumbbell owner a plan of push-ups.
+    eq = catalogue["equipment"]
+    owned = [eq["body weight"], eq["dumbbell"]]
+    result = ordered(fetch_candidates(engine, owned, [], [], [eq["dumbbell"]]))
+    assert result[0] == "fixture dumbbell curl"
+
+
+def test_selecting_nothing_reproduces_the_exercise_id_order(engine, catalogue):
+    eq = catalogue["equipment"]
+    owned = [eq["body weight"], eq["dumbbell"]]
+    assert ordered(fetch_candidates(engine, owned, [], [], [])) == ordered(
+        fetch_candidates(engine, owned, [], [])
+    )
+
+
+def test_selecting_a_parent_prefers_its_children(engine, catalogue):
+    # 'machines' is the curated onboarding chip; 'cable' is a child of it. The
+    # preference must walk the same parent link the eligibility filter does.
+    eq = catalogue["equipment"]
+    owned = [eq["body weight"], eq["machines"]]
+    result = ordered(fetch_candidates(engine, owned, [], [], [eq["machines"]]))
+    assert result[0] == "fixture cable row"
+
+
+def test_preference_never_changes_which_exercises_are_eligible(engine, catalogue):
+    eq = catalogue["equipment"]
+    owned = [eq["body weight"], eq["dumbbell"]]
+    assert sorted(ordered(fetch_candidates(engine, owned, [], [], [eq["dumbbell"]]))) == sorted(
+        ordered(fetch_candidates(engine, owned, [], []))
+    )

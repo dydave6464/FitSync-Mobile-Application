@@ -68,14 +68,22 @@ def create_app(settings: Settings) -> FastAPI:
         # Without this a user who ticks only Bench -- a curated chip with zero
         # exercises tagged to it -- gets no candidates at all and can never
         # finish onboarding, and a dumbbell owner loses every push-up.
-        owned = list({e.equipmentId for e in profile.equipment} | set(_body_weight_ids(engine())))
+        # Kept separate from `owned` on purpose. `owned` decides ELIGIBILITY and
+        # includes the implicit body weight above; `selected` is only what the
+        # user actually ticked, and decides ORDER. Collapsing the two is what
+        # made a dumbbell owner's plan five-sixths push-ups: body weight passes
+        # every equipment filter and sorts early by exercise_id.
+        selected = sorted({e.equipmentId for e in profile.equipment})
+        owned = list(set(selected) | set(_body_weight_ids(engine())))
 
         injury_ids = [i.injuryId for i in profile.injuries]
         excluded = []
         for injury in profile.injuries:
             excluded.extend(INJURY_MUSCLE_GROUPS.get(injury.regionGroup or "", ()))
 
-        candidates = fetch_candidates(engine(), owned, injury_ids, sorted(set(excluded)))
+        candidates = fetch_candidates(
+            engine(), owned, injury_ids, sorted(set(excluded)), selected
+        )
 
         if excluded and len(candidates) < params.exercise_count:
             # Target exclusion is advisory. The three region_group lists together
@@ -85,7 +93,7 @@ def create_app(settings: Settings) -> FastAPI:
             # muscle_group cannot be trusted for inclusion; the same holds for
             # exclusion. The contraindication table is the precise instrument and
             # is never relaxed here -- only the coarse group map is.
-            relaxed = fetch_candidates(engine(), owned, injury_ids, [])
+            relaxed = fetch_candidates(engine(), owned, injury_ids, [], selected)
             if len(relaxed) > len(candidates):
                 logger.warning(
                     "target-muscle exclusion left %d candidates for %d injuries; "

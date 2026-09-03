@@ -60,12 +60,38 @@ _ORDER = """
  ORDER BY x.exercise_id ASC
 """
 
+# Body weight is unioned into `owned` unconditionally (see main.py), so
+# body-weight exercises are eligible for every user -- and they cluster at low
+# exercise_ids, so ordering by id alone hands a dumbbell owner a plan of
+# push-ups. Their onboarding answer then has almost no effect on the plan.
+#
+# This tiers what the user actually SELECTED above what was merely unioned in
+# for them. It changes only the ORDER, never which rows are eligible, so a user
+# whose owned equipment covers a muscle group still falls back to body weight
+# when nothing they own trains it.
+#
+# The COALESCE walks parent_equipment_id exactly as the eligibility filter
+# does, so selecting the curated 'machines' chip also prefers its children
+# ('cable', 'smith machine').
+#
+# Ordering, not ranking: fetch_candidates supplies the default order and a
+# loaded model may reorder afterwards -- select() honours its caller's order.
+# Tiering inside select() would silently override any future ranker.
+_PREFER_SELECTED = """
+ ORDER BY CASE
+            WHEN COALESCE(eq.parent_equipment_id, eq.equipment_id) IN :selected
+            THEN 0 ELSE 1
+          END,
+          x.exercise_id ASC
+"""
+
 
 def fetch_candidates(
     engine: Engine,
     owned_equipment_ids: Sequence[int],
     injury_ids: Sequence[int],
     excluded_muscle_groups: Sequence[str],
+    selected_equipment_ids: Sequence[int] = (),
 ) -> List[Candidate]:
     # An empty ownership list means the user owns nothing, not that no filter
     # applies. Returning [] is the safe reading; the caller substitutes body
@@ -82,7 +108,13 @@ def fetch_candidates(
     if excluded_muscle_groups:
         sql += _MUSCLE
         params["excluded_muscle_groups"] = tuple(excluded_muscle_groups)
-    sql += _ORDER
+    if selected_equipment_ids:
+        sql += _PREFER_SELECTED
+        params["selected"] = tuple(selected_equipment_ids)
+    else:
+        # An empty IN () is not valid SQL, and a user who selected nothing has
+        # no preference to express -- fall back to the plain id order.
+        sql += _ORDER
 
     # expanding=True is what turns a Python tuple into a safely-parameterised
     # IN (...) list. Without it the tuple is bound as a single opaque value and

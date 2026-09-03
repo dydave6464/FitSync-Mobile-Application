@@ -105,6 +105,12 @@ def catalogue(engine):
         ("fixture cable row", "upper back", "back", "cable"),
         ("fixture squat", "quads", "upper legs", "body weight"),
         ("fixture quad stretch", "quads", "upper legs", "body weight"),
+        # Pectorals deliberately has BOTH a body-weight option (fixture push-up,
+        # a lower exercise_id) and a dumbbell one. Listed last so it sorts last
+        # by id: without the selected-equipment preference push-up wins the
+        # bucket, with it the dumbbell fly does. That is what makes the
+        # preference tests discriminating rather than decorative.
+        ("fixture dumbbell fly", "pectorals", "chest", "dumbbell"),
     ]
     # (exercise name, required curated equipment name)
     requirements = [

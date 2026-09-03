@@ -193,3 +193,33 @@ def test_a_non_finite_load_is_rejected_by_the_schema(client):
         headers={"Content-Type": "application/json"},
     )
     assert response.status_code == 422
+
+
+def test_a_plan_uses_the_equipment_the_user_selected(client, catalogue):
+    # The product failure this guards: a user tells onboarding they own a
+    # dumbbell and gets a plan of push-ups, because body weight is unioned into
+    # eligibility for everyone and sorts first by exercise_id. Measured against
+    # the real catalogue before this rule, a dumbbell owner's six-exercise plan
+    # contained one dumbbell exercise.
+    eq = catalogue["equipment"]
+    plan = post_plan(
+        client,
+        mainGoal="build_muscle",
+        equipment=[{"equipmentId": eq["dumbbell"], "name": "Dumbbell"}],
+    )
+    names = [e["name"] for e in plan["exercises"]]
+    # Pectorals has both options. `fixture push-up` has the lower exercise_id,
+    # so it wins the bucket on id order alone; the dumbbell fly wins only if the
+    # user's selection is what decides.
+    assert "fixture dumbbell fly" in names, names
+    # Both are pectorals. push-up has the lower exercise_id, so on id order
+    # alone it takes the bucket first; the selection reverses that. (A short
+    # fixture catalogue means the round-robin reaches depth 2 and offers both,
+    # so assert the order rather than push-up's absence.)
+    assert names.index("fixture dumbbell fly") < names.index("fixture push-up"), names
+
+
+def test_selecting_nothing_still_produces_a_body_weight_plan(client, catalogue):
+    # The fallback must survive: no selection means no preference, not no plan.
+    plan = post_plan(client, mainGoal="build_muscle", equipment=[])
+    assert len(plan["exercises"]) > 0
