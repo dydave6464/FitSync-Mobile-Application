@@ -95,3 +95,29 @@ test('a valid JPEG is accepted and anything else is rejected', () => {
   assert.equal(isJpeg(Buffer.from('<!DOCTYPE html>')), false);
   assert.equal(isJpeg(Buffer.alloc(0)), false);
 });
+
+test('a miscategorised upstream equipment tag is corrected on the way in', () => {
+  const { EQUIPMENT_OVERRIDES, correctEquipment } = require('../src/db/seeds/normalize');
+
+  // 'deep push up' (source_id 1274) is tagged `dumbbell` upstream, but its own
+  // instruction steps describe a plain bodyweight push-up: "Start in a high
+  // plank position... Push through your palms". Left uncorrected it makes a
+  // dumbbell owner's plan look equipment-matched when it is not.
+  assert.equal(EQUIPMENT_OVERRIDES.get('1274'), 'body weight');
+  assert.equal(
+    correctEquipment({ source_id: '1274', equipment: 'dumbbell' }),
+    'body weight',
+  );
+});
+
+test('an exercise with no override keeps its upstream equipment', () => {
+  const { correctEquipment } = require('../src/db/seeds/normalize');
+  assert.equal(
+    correctEquipment({ source_id: '0001', equipment: 'body weight' }),
+    'body weight',
+  );
+  assert.equal(
+    correctEquipment({ source_id: '9999', equipment: 'barbell' }),
+    'barbell',
+  );
+});

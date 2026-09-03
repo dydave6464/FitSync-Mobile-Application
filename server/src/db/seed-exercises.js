@@ -1,5 +1,6 @@
 'use strict';
 const mysql = require('mysql2/promise');
+const { correctEquipment } = require('./seeds/normalize');
 
 // MySQL 8.0.46: the row-alias form. VALUES() is deprecated since 8.0.20.
 const UPSERT_EQUIPMENT = `
@@ -47,9 +48,17 @@ async function seedExercises(dbConfig, manifest, { logger = null } = {}) {
   try {
     await connection.beginTransaction();
 
+    // Corrections first, before anything reads an equipment tag. Applying them
+    // only at the per-exercise lookup below would still upsert an equipment row
+    // for the wrong tag, leaving an orphan nothing references. See
+    // EQUIPMENT_OVERRIDES in seeds/normalize.js.
+    const exercises = manifest.exercises.map(
+      (e) => ({ ...e, equipment: correctEquipment(e) }),
+    );
+
     // Equipment first: exercises.equipment_id is ON DELETE RESTRICT, so the
     // referenced row has to exist before any exercise insert.
-    const names = [...new Set(manifest.exercises.map((e) => e.equipment))].sort();
+    const names = [...new Set(exercises.map((e) => e.equipment))].sort();
     for (const name of names) {
       await connection.query(UPSERT_EQUIPMENT, [name]);
     }
@@ -58,7 +67,7 @@ async function seedExercises(dbConfig, manifest, { logger = null } = {}) {
     const [equipmentRows] = await connection.query('SELECT equipment_id, name FROM equipment');
     const equipmentIds = new Map(equipmentRows.map((r) => [r.name, r.equipment_id]));
 
-    for (const exercise of manifest.exercises) {
+    for (const exercise of exercises) {
       if (!exercise.animation_url) {
         summary.skipped += 1;
         continue;

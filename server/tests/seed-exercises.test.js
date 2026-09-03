@@ -63,6 +63,42 @@ test('exercise catalogue seed', async (t) => {
     assert.deepEqual(pending.map((r) => r.source_id), ['0005']);
   });
 
+  await t.test('an overridden equipment tag reaches the database corrected', async () => {
+    // A wrong primary tag is not cosmetic: the candidate query filters on it,
+    // and the plan generator prefers exercises whose equipment the user chose
+    // at onboarding, so a bodyweight movement mislabelled `dumbbell` fills a
+    // dumbbell owner's plan with work their dumbbell does not do.
+    const { EQUIPMENT_OVERRIDES } = require('../src/db/seeds/normalize');
+    const [sourceId, corrected] = [...EQUIPMENT_OVERRIDES.entries()][0];
+
+    const m = manifest();
+    m.exercises = [{
+      ...m.exercises[0],
+      source_id: sourceId,
+      name: 'override probe',
+      equipment: 'dumbbell',
+    }];
+    await seedExercises(testDbConfig(), m);
+
+    const [rows] = await pool.query(
+      `SELECT eq.name AS equipment FROM exercises x
+         JOIN equipment eq ON eq.equipment_id = x.equipment_id
+        WHERE x.source_id = ?`,
+      [sourceId],
+    );
+    assert.equal(rows[0].equipment, corrected);
+
+    // The upsert must not have created an orphan 'dumbbell' row for a tag
+    // nothing ends up using -- the correction has to apply before the
+    // equipment upsert, not only at the per-exercise lookup.
+    const [orphan] = await pool.query(
+      `SELECT COUNT(*) AS n FROM equipment eq
+        WHERE eq.name = 'dumbbell'
+          AND NOT EXISTS (SELECT 1 FROM exercises x WHERE x.equipment_id = eq.equipment_id)`,
+    );
+    assert.equal(orphan[0].n, 0, 'no unused equipment row created by the override');
+  });
+
   await t.test('cues are numbered from 1 in manifest order', async () => {
     await reset();
     await seedExercises(testDbConfig(), manifest());

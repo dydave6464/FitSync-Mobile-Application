@@ -24,6 +24,28 @@ function shouldPromote(record) {
   return record.body_part !== 'cardio' && !NICHE_EQUIPMENT.has(record.equipment);
 }
 
+// Upstream equipment tags this project has judged wrong, keyed by source_id.
+// Applied by seed-exercises.js as records leave the manifest for the database,
+// so the vendored dataset stays a faithful copy of upstream and every
+// correction we make is visible in one place.
+//
+// A wrong primary tag is not cosmetic: the candidate query filters on it, and
+// the plan generator prefers exercises whose equipment the user actually
+// selected during onboarding. A bodyweight movement mislabelled `dumbbell`
+// therefore fills a dumbbell owner's plan with work their dumbbell does not do.
+//
+// '1274' deep push up -- tagged `dumbbell`, but its own instruction steps
+// describe a plain bodyweight push-up: "Start in a high plank position with
+// your hands slightly wider than shoulder-width apart... Push through your
+// palms to extend your arms."
+const EQUIPMENT_OVERRIDES = new Map([
+  ['1274', 'body weight'],
+]);
+
+function correctEquipment(record) {
+  return EQUIPMENT_OVERRIDES.get(String(record.source_id)) || record.equipment;
+}
+
 function storageKeys(sourceId) {
   return {
     animation: `exercises/${sourceId}/animation.gif`,
@@ -71,6 +93,8 @@ function isJpeg(buffer) {
 
 module.exports = {
   NICHE_EQUIPMENT,
+  EQUIPMENT_OVERRIDES,
+  correctEquipment,
   shouldPromote,
   storageKeys,
   normalizeRecord,
