@@ -3,6 +3,8 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../core/api_exception.dart';
 import '../../../core/token_store.dart';
 import '../../exercises/presentation/providers.dart';
+import '../../plans/presentation/providers.dart';
+import '../../profile/presentation/providers.dart';
 import '../data/auth_repository.dart';
 import '../data/google_sign_in_gateway.dart';
 import '../domain/auth_user.dart';
@@ -73,7 +75,12 @@ class AuthController extends AsyncNotifier<AuthState> {
 
   /// Called by the sign-in screen once a token is already stored, so the
   /// shell moves on without a second round trip to `/auth/me`.
-  void onAuthenticated(AuthUser user) => state = AsyncData(_forUser(user));
+  void onAuthenticated(AuthUser user) {
+    // Belt and braces: clearing on the way in as well means a session that
+    // begins without a clean sign-out cannot inherit the previous one either.
+    _clearUserScopedCaches();
+    state = AsyncData(_forUser(user));
+  }
 
   /// Called when onboarding finishes. Without it the shell would keep showing
   /// the wizard until something else re-read `/auth/me`.
@@ -83,8 +90,24 @@ class AuthController extends AsyncNotifier<AuthState> {
     state = AsyncData(AuthState(AuthStatus.ready, user));
   }
 
+  /// Drop every cache that belongs to one signed-in user.
+  ///
+  /// `profileProvider` is an AsyncNotifierProvider and `activePlanProvider` a
+  /// FutureProvider, and neither is autoDispose -- once built they live as long
+  /// as the app does. Clearing the token alone therefore leaves the previous
+  /// user's profile and plan sitting in memory, and the next account to sign in
+  /// on the same device is handed them.
+  ///
+  /// Lookup data (`equipmentOptionsProvider`, `injuryOptionsProvider`, the
+  /// exercise catalogue) is the same for everyone and is deliberately kept.
+  void _clearUserScopedCaches() {
+    ref.invalidate(profileProvider);
+    ref.invalidate(activePlanProvider);
+  }
+
   Future<void> signOut() async {
     await ref.read(authRepositoryProvider).signOut();
+    _clearUserScopedCaches();
     state = const AsyncData(AuthState.signedOut);
   }
 }
