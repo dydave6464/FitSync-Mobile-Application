@@ -81,3 +81,13 @@ test('kick compounds stay strength (all 4 live rows)', () => {
 test('walking lunge stays strength', () => {
   assert.equal(cat('walking lunge'), 'strength');
 });
+
+test('`outstretched` is not a stretch: the pattern needs a word-start boundary (live row 1146)', () => {
+  assert.equal(cat('single leg bridge with outstretched leg'), 'strength');
+});
+
+test('the word-start boundary still catches every real stretch form', () => {
+  assert.equal(cat('back pec stretch'), 'stretch');
+  assert.equal(cat('hamstring stretches'), 'stretch');
+  assert.equal(cat('standing quad stretching'), 'stretch');
+});

@@ -27,7 +27,7 @@
 // Order matters: first match wins. 'circles knee stretch' is a stretch, not
 // mobility, because the stretch rule is listed first.
 const RULES = [
-  { category: 'stretch',  pattern: /stretch/ },
+  { category: 'stretch',  pattern: /\bstretch/ },
   { category: 'stretch',  pattern: /\byoga\b|\bpose\b/ },
   { category: 'mobility', pattern: /\bcircles\b/ },
   { category: 'mobility', pattern: /toe touch/ },

@@ -1,5 +1,5 @@
 -- The catalogue records what muscle an exercise trains, not what kind of
--- movement it is. 55 of 1203 live rows are stretches, mobility drills or skill
+-- movement it is. 54 of 1203 live rows are stretches, mobility drills or skill
 -- holds, and the plan generator prescribed them at 3 sets of 8-12 reps. See the
 -- design, section 3.
 --
