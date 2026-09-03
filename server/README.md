@@ -110,9 +110,11 @@ This destroys every row in `DB_NAME`. Re-run `npm run seed` and then
 exercise catalogue and the curated equipment list — `seed:equipment`'s
 catalogue adoption step needs the catalogue's rows to already exist (see
 [Equipment options](#equipment-options)) — then `npm run seed:injuries` to
-restore the injury regions lookup (see [Injury regions](#injury-regions)).
-`npm test` migrates `<DB_NAME>_test` from scratch on every run, so the test
-database needs nothing done to it.
+restore the injury regions lookup (see [Injury regions](#injury-regions)),
+and `npm run seed:categories` to restore the exercise category assignments
+(see [Exercise catalogue](#exercise-catalogue)) — it depends only on `seed`,
+so it can run any time after it. `npm test` migrates `<DB_NAME>_test` from
+scratch on every run, so the test database needs nothing done to it.
 
 ## Exercise catalogue
 
@@ -139,14 +141,28 @@ npm run seed:safety   # requirements + contraindications; run LAST, after
                        # names to ids; anything it cannot resolve is skipped
                        # and reported, and a skipped contraindication is a
                        # safety row that never got written.
+
+npm run seed:categories   # classifies every live exercise as strength,
+                           # stretch, mobility or other, so the plan
+                           # generator can offer only strength exercises.
+                           # Depends only on seed. Must be re-run after
+                           # npm run seed: seed-exercises.js upserts on
+                           # source_id and updates `name` in place while
+                           # keeping exercise_id stable, so a renamed
+                           # exercise keeps its old, now-wrong category row
+                           # until categories are re-seeded.
 ```
 
 To review what the classifier decided before trusting it, run:
 
 ```bash
-npm run review:safety   # writes docs/exercise-safety-review.md, a table of
-                         # every requirement and contraindication row the
-                         # classifier produced, for a human to read
+npm run review:safety      # writes docs/exercise-safety-review.md, a table
+                            # of every requirement and contraindication row
+                            # the classifier produced, for a human to read
+
+npm run review:categories  # writes docs/exercise-category-review.md, a
+                            # table of every category decision (and manual
+                            # override) for a human to read
 ```
 
 Of the 1,324 exercises, 1,203 are seeded `live` and 121 `pending` — cardio
