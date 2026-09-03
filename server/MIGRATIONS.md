@@ -145,8 +145,12 @@ GRANT SELECT ON fitsync.exercises TO 'fitsync_ml'@'%';
 GRANT SELECT ON fitsync.equipment TO 'fitsync_ml'@'%';
 GRANT SELECT ON fitsync.exercise_equipment_requirements TO 'fitsync_ml'@'%';
 GRANT SELECT ON fitsync.exercise_contraindications TO 'fitsync_ml'@'%';
+GRANT SELECT ON fitsync.exercise_categories TO 'fitsync_ml'@'%';
 FLUSH PRIVILEGES;
 ```
+
+Migration 010 adds a fifth reference table. The service still reads no user
+row.
 
 The grant is deliberately not `GRANT SELECT ON fitsync.*`. If the service ever
 needs another table, adding a line here should be a decision someone makes,

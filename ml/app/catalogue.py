@@ -1,6 +1,6 @@
 """The candidate query: which live exercises may this user be offered?
 
-Two filters, both of which must pass:
+Three filters, all of which must pass:
 
   equipment -- the exercise's own implement is owned, AND every extra
                requirement (bench, pull-up bar, machines) is owned too
