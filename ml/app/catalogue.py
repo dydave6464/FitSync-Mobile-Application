@@ -33,9 +33,9 @@ _BASE = """
 SELECT x.exercise_id, x.name, x.muscle_group
   FROM exercises x
   JOIN equipment eq ON eq.equipment_id = x.equipment_id
-  LEFT JOIN exercise_categories c ON c.exercise_id = x.exercise_id
+  LEFT JOIN exercise_categories cat ON cat.exercise_id = x.exercise_id
  WHERE x.status = 'live'
-   AND COALESCE(c.category, 'strength') = 'strength'
+   AND COALESCE(cat.category, 'strength') = 'strength'
    AND COALESCE(eq.parent_equipment_id, eq.equipment_id) IN :owned
    AND NOT EXISTS (
          SELECT 1 FROM exercise_equipment_requirements r
