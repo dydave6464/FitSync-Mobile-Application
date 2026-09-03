@@ -1,6 +1,7 @@
 """The two guards over the test database. See tests/dbgate.py for why."""
 import pytest
 
+from tests.conftest import REQUIRED_TABLES
 from tests.dbgate import (
     NODE_TEST_DB,
     is_disposable,
@@ -8,6 +9,17 @@ from tests.dbgate import (
     resolve_db_name,
     unavailable,
 )
+
+
+def test_required_tables_covers_every_table_the_catalogue_fixture_writes_to():
+    # The `catalogue` fixture inserts into exercise_categories. If a table it
+    # writes to is missing from REQUIRED_TABLES, a database that predates the
+    # migration adding that table gets a raw ProgrammingError from inside the
+    # fixture instead of the actionable "missing tables [...] -- run
+    # `npm run migrate`" message this guard exists to give, and the
+    # skip/fail contract (skip without FITSYNC_TEST_REQUIRE_DB, fail with it)
+    # never engages.
+    assert "exercise_categories" in REQUIRED_TABLES
 
 
 def test_an_unusable_database_skips_by_default():

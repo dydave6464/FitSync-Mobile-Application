@@ -31,6 +31,7 @@ REQUIRED_TABLES = (
     "equipment",
     "exercise_equipment_requirements",
     "exercise_contraindications",
+    "exercise_categories",
 )
 
 
