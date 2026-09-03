@@ -13,6 +13,7 @@
     "seed:injuries": "node scripts/seed-injuries.js",
     "seed:equipment": "node scripts/seed-equipment.js",
     "seed:safety": "node scripts/seed-exercise-safety.js",
+    "seed:categories": "node scripts/seed-exercise-categories.js",
     "review:safety": "node scripts/review-exercise-safety.js"
   },
   "keywords": [],
