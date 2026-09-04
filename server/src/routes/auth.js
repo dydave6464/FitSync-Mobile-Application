@@ -182,13 +182,21 @@ module.exports = function buildAuthRouter({
     } catch (err) { next(err); }
   });
 
+  // Opened straight out of a mail client, so a stale, reused or mistyped
+  // token must fail into a page a human can read, not the JSON error
+  // envelope the rest of the API uses. This route never hands the browser a
+  // token to hold onto, so it does not need Cache-Control: no-store -- see
+  // the two password-reset handlers below, which do.
   router.get('/verify-email', async (req, res, next) => {
     try {
       const result = await consumeToken(pool, { token: req.query.token, purpose: 'verify_email' });
       if (!result) {
-        throw AppError.badRequest(
-          'INVALID_VERIFICATION_TOKEN', 'This verification link is invalid or has expired.',
-        );
+        res.status(400).send(renderPage({
+          title: 'Verification link invalid',
+          body: '<p>This verification link is invalid or has expired. '
+            + 'Request a new one from the app and try again.</p>',
+        }));
+        return;
       }
       await markEmailVerified(pool, result.userId);
       res.status(200).send(renderPage({
@@ -248,14 +256,15 @@ module.exports = function buildAuthRouter({
     } catch (err) { next(err); }
   });
 
-  // Renders the form only -- does NOT consume the token. Only the POST below
-  // does. If the GET consumed it, merely opening the link (or a mail client
-  // prefetching it) would burn the reset before the user typed anything.
-  router.get('/password-reset', (req, res) => {
-    const token = typeof req.query.token === 'string' ? req.query.token : '';
-    res.status(200).send(renderPage({
+  // Shared by the GET form below and the POST handler's own validation-
+  // failure re-render, so a rejected password does not throw the user out of
+  // the form -- they retry with the same token, still on the page, without
+  // reopening the email.
+  function renderResetForm({ token, message = null }) {
+    return renderPage({
       title: 'Reset your password',
       body: `
+${message ? `<p>${escapeHtml(message)}</p>` : ''}
 <p>Choose a new password for your FitSync account.</p>
 <form method="POST" action="/api/v1/auth/password-reset">
   <input type="hidden" name="token" value="${escapeHtml(token)}">
@@ -264,7 +273,18 @@ module.exports = function buildAuthRouter({
          minlength="${MIN_PASSWORD_LENGTH}" maxlength="${MAX_PASSWORD_LENGTH}">
   <button type="submit">Reset password</button>
 </form>`,
-    }));
+    });
+  }
+
+  // Renders the form only -- does NOT consume the token. Only the POST below
+  // does. If the GET consumed it, merely opening the link (or a mail client
+  // prefetching it) would burn the reset before the user typed anything.
+  router.get('/password-reset', (req, res) => {
+    const token = typeof req.query.token === 'string' ? req.query.token : '';
+    // Carries a live, single-use token in a hidden field -- must never be
+    // cached (by a shared proxy, a browser's back/forward cache, ...) where
+    // a later visitor to the same URL could read it out of the page.
+    res.status(200).set('Cache-Control', 'no-store').send(renderResetForm({ token }));
   });
 
   // The only route that spends a reset token. Deliberately server-rendered,
@@ -273,19 +293,36 @@ module.exports = function buildAuthRouter({
   // way to spend a high-value credential.
   router.post('/password-reset', express.urlencoded({ extended: false }), async (req, res, next) => {
     try {
+      const token = typeof req.body.token === 'string' ? req.body.token : '';
       // Validate BEFORE consuming. consumeToken marks the row spent
       // unconditionally, so if a too-short password were checked after, a
       // mistyped password would irreversibly burn the one-time link over a
       // mistake that has nothing to do with the token's validity. Validation
       // is pure and touches no state, so it is safe to run first.
-      const password = requireString('password', req.body.password, {
-        minLength: MIN_PASSWORD_LENGTH, maxLength: MAX_PASSWORD_LENGTH,
-      });
+      //
+      // Opened straight out of a mail client: on failure, re-render the same
+      // form with the token intact and a message, rather than throwing --
+      // otherwise the user loses both the form and what they typed, over a
+      // mistake that has nothing to do with the link itself.
+      let password;
+      try {
+        password = requireString('password', req.body.password, {
+          minLength: MIN_PASSWORD_LENGTH, maxLength: MAX_PASSWORD_LENGTH,
+        });
+      } catch (validationErr) {
+        if (!(validationErr instanceof AppError)) throw validationErr;
+        res.status(400).set('Cache-Control', 'no-store')
+          .send(renderResetForm({ token, message: validationErr.message }));
+        return;
+      }
       const result = await consumeToken(pool, { token: req.body.token, purpose: 'reset_password' });
       if (!result) {
-        throw AppError.badRequest(
-          'INVALID_RESET_TOKEN', 'This password reset link is invalid or has expired.',
-        );
+        res.status(400).send(renderPage({
+          title: 'Reset link invalid',
+          body: '<p>This password reset link is invalid or has expired. '
+            + 'Request a new one and try again.</p>',
+        }));
+        return;
       }
       await updatePasswordHash(pool, result.userId, await hashPassword(password));
       res.status(200).send(renderPage({

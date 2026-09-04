@@ -75,6 +75,8 @@ test('password reset', async (t) => {
     const form = await request(app).get(`/api/v1/auth/password-reset?token=${token}`);
     assert.equal(form.status, 200);
     assert.match(form.headers['content-type'], /html/);
+    assert.equal(form.headers['cache-control'], 'no-store',
+      'this page embeds a live reset token in a hidden field and must never be cached');
 
     const done = await request(app).post('/api/v1/auth/password-reset')
       .type('form').send({ token, password: 'a whole new password' });
@@ -105,6 +107,11 @@ test('password reset', async (t) => {
     const res = await request(app).post('/api/v1/auth/password-reset')
       .type('form').send({ token: vToken, password: 'should not work' });
     assert.equal(res.status, 400);
+    // This route is opened straight from an emailed link -- a rejected
+    // (here: wrong-purpose) token must fail into a page, not the JSON error
+    // envelope the JSON API uses everywhere else.
+    assert.match(res.headers['content-type'], /html/,
+      'a browser-facing route must fail into a page, not a JSON error object');
   });
 
   await t.test('a too-short password does not spend the token', async () => {
@@ -120,6 +127,12 @@ test('password reset', async (t) => {
       .type('form').send({ token, password: 'short' });
     assert.equal(tooShort.status, 400,
       'a rejected password must not look like a successful reset');
+    assert.match(tooShort.headers['content-type'], /html/,
+      'the retry must be a page the user can act on, not a JSON error object');
+    assert.match(tooShort.text, new RegExp(`value="${token}"`),
+      'the token must survive into the retry form so the user does not have to reopen the email');
+    assert.equal(tooShort.headers['cache-control'], 'no-store',
+      'this page embeds a live reset token and must never be cached');
 
     const retry = await request(app).post('/api/v1/auth/password-reset')
       .type('form').send({ token, password: 'a good password this time' });

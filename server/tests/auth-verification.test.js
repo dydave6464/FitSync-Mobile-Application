@@ -67,6 +67,12 @@ test('email verification gate', async (t) => {
     const token = mail.sent[0].text.match(/token=([a-f0-9]{64})/)[1];
     const page = await request(app).get(`/api/v1/auth/verify-email?token=${token}`);
     assert.equal(page.status, 400);
+    // This link arrives by email and is opened straight in a browser -- a
+    // stale or reused link (expired, already used, mistyped) must fail into
+    // a page, not the JSON error envelope the JSON API uses everywhere else.
+    assert.match(page.headers['content-type'], /html/,
+      'a browser-facing route must fail into a page, not a JSON error object');
+    assert.doesNotMatch(page.text, /^\s*\{/, 'must not be a raw JSON error object');
   });
 
   await t.test('a resend requires the password, and is quiet either way', async () => {
