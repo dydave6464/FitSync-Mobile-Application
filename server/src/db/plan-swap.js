@@ -1,4 +1,5 @@
 'use strict';
+const AppError = require('../lib/app-error');
 
 // Candidate rules mirror ml/app/catalogue.py. An alternative the generator
 // would never have been allowed to pick is not a legitimate substitute, so the
@@ -138,9 +139,10 @@ async function isAllowedTarget(pool, ctx, exerciseId) {
 
 async function swapPlanExercise(pool, ctx, exerciseId) {
   if (!(await isAllowedTarget(pool, ctx, exerciseId))) {
-    const err = new Error('That exercise is not available for this plan.');
-    err.code = 'EXERCISE_NOT_ALLOWED';
-    throw err;
+    throw AppError.badRequest(
+      'EXERCISE_NOT_ALLOWED',
+      'That exercise is not available for this plan.',
+    );
   }
   // order_no, target_sets and target_reps are deliberately untouched: volume
   // comes from the user's goal (ml/app/rules/parameters.py), not the exercise.
