@@ -66,19 +66,19 @@ migrations (or an equivalent forward-only mechanism) with a real rollback
 and data-migration story. That transition is an **open item for a later
 sub-project** — it has not been designed yet.
 
-## Exceptions: `007_auth_identities.sql`, `008_equipment_curation.sql`
+## Exceptions: `007_auth_identities.sql`, `008_equipment_curation.sql`, `011_email_verification.sql`
 
-Both files break the rule above on purpose, for the same reason: each needs
-to change tables that migrations `001`–`006` already defined and that may
-already be applied on someone's database. The runner has no checksum (see the
-gap recorded below): it decides whether to apply a file solely by filename,
-so editing e.g. `001_account_and_profile.sql` in place to add these columns
-would not be replayed on a database where `001` was already recorded as
-applied — the edit would be silently invisible there, exactly the failure
-mode the pre-release policy above depends on nobody hitting. A new,
-forward-only file sidesteps that. The tradeoff is the one below: unlike a
-`CREATE TABLE IF NOT EXISTS`-only file, neither of these is safe to replay
-after a partial failure.
+All three files break the rule above on purpose, for the same reason: each
+needs to change tables that migrations `001`–`006` already defined and that
+may already be applied on someone's database. The runner has no checksum
+(see the gap recorded below): it decides whether to apply a file solely by
+filename, so editing e.g. `001_account_and_profile.sql` in place to add
+these columns would not be replayed on a database where `001` was already
+recorded as applied — the edit would be silently invisible there, exactly
+the failure mode the pre-release policy above depends on nobody hitting. A
+new, forward-only file sidesteps that. The tradeoff is the one below: unlike
+a `CREATE TABLE IF NOT EXISTS`-only file, none of these three is safe to
+replay after a partial failure.
 
 **`007_auth_identities.sql`** — alongside its
 `CREATE TABLE IF NOT EXISTS user_identities`, it contains six `ALTER TABLE`
@@ -94,21 +94,31 @@ contains a standalone `CREATE INDEX idx_equipment_selectable ON equipment
 (is_user_selectable, display_order)` — the other forbidden shape, alongside
 `ALTER TABLE` itself.
 
-**Consequence: neither is replay-safe.** Unlike every other migration file,
-if 007 or 008 fails partway through, `IF NOT EXISTS` does not protect the
-`ALTER TABLE` (or, for 008, the trailing `CREATE INDEX`) statements — a
-second run will hit `ER_DUP_FIELDNAME` (or, for the index, the equivalent
-"duplicate key name" error) on whichever statement had already committed.
-Because `ALTER TABLE` and `CREATE INDEX` both implicitly commit, a partial
-failure is not rolled back by the runner failing to record the version.
+**`011_email_verification.sql`** — alongside its
+`CREATE TABLE IF NOT EXISTS auth_tokens`, it contains one
+`ALTER TABLE users ADD COLUMN email_verified` statement. Verification is a
+hard gate (an unverified account is issued no token and cannot sign in), so
+this column decides access, not merely data quality — see the design,
+section 2.
 
-**If 007 or 008 fails partway through**, recovery is manual:
+**Consequence: none of the three is replay-safe.** Unlike every other
+migration file, if 007, 008, or 011 fails partway through, `IF NOT EXISTS`
+does not protect the `ALTER TABLE` (or, for 008, the trailing
+`CREATE INDEX`) statements — a second run will hit `ER_DUP_FIELDNAME` (or,
+for 008's index, the equivalent "duplicate key name" error) on whichever
+statement had already committed. Because `ALTER TABLE` and `CREATE INDEX`
+both implicitly commit, a partial failure is not rolled back by the runner
+failing to record the version.
+
+**If 007, 008, or 011 fails partway through**, recovery is manual:
 
 1. Inspect the actual table shape to see exactly which statements already
    committed: for 007, `DESCRIBE users;`, `DESCRIBE injuries;`, `DESCRIBE
    user_injuries;`, `DESCRIBE exercises;`, and confirm whether
    `user_identities` exists; for 008, `DESCRIBE equipment;` and `SHOW INDEX
-   FROM equipment;`.
+   FROM equipment;`; for 011, `DESCRIBE users;` to see whether
+   `email_verified` already landed, and confirm whether `auth_tokens`
+   exists.
 2. Comment out (or delete) the statements in a local copy of the migration
    file that already applied, leaving only the ones that did not.
 3. Re-run `npm run migrate`. Since the runner never recorded the file as

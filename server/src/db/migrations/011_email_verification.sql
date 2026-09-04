@@ -2,7 +2,7 @@
 -- `requireString` checks type and length only, so someone.else@gmail.com
 -- registered as readily as a real address. Verification is a HARD gate --
 -- an unverified account is issued no token and cannot sign in -- so this
--- column decides access, not merely data quality. See the design, section 3.
+-- column decides access, not merely data quality. See the design, section 2.
 --
 -- POLICY EXCEPTION. MIGRATIONS.md permits CREATE TABLE IF NOT EXISTS and
 -- nothing else. The ALTER below makes this the third deliberate exception
