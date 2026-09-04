@@ -7,6 +7,7 @@ const { createPool } = require('../src/db/pool');
 const { buildTestApp } = require('./helpers/test-app');
 const { testDbConfig, dropAllTables } = require('./helpers/test-db');
 const { seedExercises } = require('../src/db/seed-exercises');
+const { markEmailVerified } = require('../src/db/users');
 const FIXTURE = require('./fixtures/seeds/manifest-fixture.json');
 
 test('plan endpoints', async (t) => {
@@ -43,7 +44,15 @@ test('plan endpoints', async (t) => {
     await pool.query('DELETE FROM users');
     const res = await request(app).post('/api/v1/auth/register')
       .send({ email: 'w@example.com', password: 's3cret-pass', fullName: 'W' }).expect(201);
-    auth = `Bearer ${res.body.data.token}`;
+    // These tests exercise plan endpoints behind requireAuth, not the
+    // verification gate itself (that belongs to auth-verification.test.js),
+    // so verify the throwaway account directly rather than routing it
+    // through the mail flow. Registration alone no longer grants a session,
+    // so sign in afterward for a real token.
+    await markEmailVerified(pool, res.body.data.user.userId);
+    const login = await request(app).post('/api/v1/auth/login')
+      .send({ email: 'w@example.com', password: 's3cret-pass' }).expect(200);
+    auth = `Bearer ${login.body.data.token}`;
   };
 
   await t.test('completing onboarding generates and returns a plan', async () => {

@@ -8,6 +8,7 @@ const { buildTestApp } = require('./helpers/test-app');
 const { testDbConfig, dropAllTables } = require('./helpers/test-db');
 const { seedInjuries } = require('../src/db/seed-injuries');
 const { seedEquipment } = require('../src/db/seed-equipment');
+const { markEmailVerified } = require('../src/db/users');
 
 test('profile endpoints', async (t) => {
   const pool = createPool(testDbConfig());
@@ -30,7 +31,15 @@ test('profile endpoints', async (t) => {
     await pool.query('DELETE FROM users');
     const res = await request(app).post('/api/v1/auth/register')
       .send({ email: 'p@example.com', password: 's3cret-pass', fullName: 'P' }).expect(201);
-    auth = `Bearer ${res.body.data.token}`;
+    // These tests exercise profile endpoints behind requireAuth, not the
+    // verification gate itself (that belongs to auth-verification.test.js),
+    // so verify the throwaway account directly rather than routing it
+    // through the mail flow. Registration alone no longer grants a session,
+    // so sign in afterward for a real token.
+    await markEmailVerified(pool, res.body.data.user.userId);
+    const login = await request(app).post('/api/v1/auth/login')
+      .send({ email: 'p@example.com', password: 's3cret-pass' }).expect(200);
+    auth = `Bearer ${login.body.data.token}`;
   };
 
   await t.test('requires a token', async () => {

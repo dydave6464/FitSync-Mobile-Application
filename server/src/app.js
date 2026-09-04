@@ -11,6 +11,7 @@ const buildRoutes = require('./routes');
 
 function createApp({
   config, logger, pool, ml = null, storage = null, extraRouter = null, jwt = null, google = null,
+  mail = null, publicBaseUrl = null,
 }) {
   const app = express();
 
@@ -56,7 +57,9 @@ function createApp({
     );
   }
 
-  app.use('/api/v1', buildRoutes({ config, logger, pool, ml, storage, extraRouter, jwt, google }));
+  app.use('/api/v1', buildRoutes({
+    config, logger, pool, ml, storage, extraRouter, jwt, google, mail, publicBaseUrl,
+  }));
 
   app.use(notFound);
   app.use(errorHandler(logger));
