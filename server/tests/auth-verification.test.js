@@ -69,6 +69,9 @@ test('email verification gate', async (t) => {
   });
 
   await t.test('a resend requires the password, and is quiet either way', async () => {
+    // gate@example.com is already verified by this point in the file, so
+    // ok && !user.email_verified is false on both calls below -- this only
+    // exercises the no-op path. See the next test for the actual send.
     const good = await request(app).post('/api/v1/auth/verify-email/request')
       .send({ email: 'gate@example.com', password: 'correct horse' });
     const bad = await request(app).post('/api/v1/auth/verify-email/request')
@@ -76,6 +79,31 @@ test('email verification gate', async (t) => {
     assert.equal(good.status, 202);
     assert.equal(bad.status, 202);
     assert.deepEqual(good.body, bad.body);
+  });
+
+  await t.test('a correct-credential resend on a still-unverified account actually sends a link', async () => {
+    // Under a hard gate this is the only recovery path for a user whose
+    // first verification email was lost, so the route must actually send
+    // one -- a fresh, still-unverified account is required to exercise that
+    // branch at all; gate@example.com above cannot, once verified.
+    await request(app).post('/api/v1/auth/register').send({
+      email: 'resend@example.com', password: 'correct horse battery', fullName: 'Resend Me',
+    });
+    const before = mail.sent.length;
+
+    const good = await request(app).post('/api/v1/auth/verify-email/request')
+      .send({ email: 'resend@example.com', password: 'correct horse battery' });
+    const bad = await request(app).post('/api/v1/auth/verify-email/request')
+      .send({ email: 'resend@example.com', password: 'wrong' });
+
+    assert.equal(good.status, 202);
+    assert.equal(bad.status, 202);
+    assert.equal(good.text, bad.text,
+      'must stay indistinguishable by credential correctness even while actually sending');
+
+    const resent = mail.sent.slice(before);
+    assert.equal(resent.length, 1, 'only the correct-credential call should have sent anything');
+    assert.match(resent[0].text, /\/auth\/verify-email\?token=[a-f0-9]{64}/);
   });
 
   await t.test('an unparseable email is refused outright', async () => {
