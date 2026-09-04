@@ -57,19 +57,26 @@ class _ExerciseSwapSheetState extends ConsumerState<ExerciseSwapSheet> {
       _busy = true;
       _error = null;
     });
+
+    // Captured before the await: a completed swap has changed server state,
+    // so the plan must be refreshed even if this sheet is dismissed
+    // mid-request. Reading `ref` after the await throws once the widget is
+    // disposed, and the refresh would be silently lost.
+    final container = ProviderScope.containerOf(context, listen: false);
+
     try {
       await ref.read(planRepositoryProvider).swap(widget.planExerciseId, alt.exerciseId);
-      ref.invalidate(activePlanProvider);
-      if (mounted) Navigator.of(context).pop(alt.name);
+      container.invalidate(activePlanProvider);
+      if (!mounted) return;
+      Navigator.of(context).pop(alt.name);
     } catch (err) {
       // Stay open with the message: closing would throw away the choice they
       // just made, exactly as onboarding stays on a rejected step.
-      if (mounted) {
-        setState(() {
-          _error = describeError(err);
-          _busy = false;
-        });
-      }
+      if (!mounted) return;
+      setState(() {
+        _error = describeError(err);
+        _busy = false;
+      });
     }
   }
 
