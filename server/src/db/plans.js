@@ -105,7 +105,7 @@ async function getActivePlan(pool, userId) {
     // future feature that tried — e.g. "browse the catalogue for this plan
     // exercise's equipment" — would silently return no results comparing
     // one against the other.
-    `SELECT pe.order_no, pe.target_sets, pe.target_reps,
+    `SELECT pe.plan_exercise_id, pe.order_no, pe.target_sets, pe.target_reps,
             x.exercise_id, x.name, x.muscle_group, x.thumbnail_url,
             COALESCE(parent.display_name, eq.display_name, eq.name) AS equipment
        FROM plan_exercises pe
@@ -123,6 +123,7 @@ async function getActivePlan(pool, userId) {
     sessionLengthMin: p.session_length_min,
     weekNo: p.week_no,
     exercises: exercises.map((e) => ({
+      planExerciseId: e.plan_exercise_id,
       exerciseId: e.exercise_id,
       name: e.name,
       muscleGroup: e.muscle_group,
