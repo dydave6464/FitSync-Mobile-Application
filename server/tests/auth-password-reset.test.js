@@ -20,17 +20,37 @@ test('password reset', async (t) => {
   const ask = (email) =>
     request(app).post('/api/v1/auth/password-reset/request').send({ email });
 
-  await t.test('the response is identical for every kind of address', async () => {
+  await t.test('the response is identical for every kind of address, including verified', async () => {
     await request(app).post('/api/v1/auth/register').send({
       email: 'known@example.com', password: 'correct horse', fullName: 'K',
     });
+    await request(app).post('/api/v1/auth/register').send({
+      email: 'verified@example.com', password: 'correct horse', fullName: 'V',
+    });
+    const verifyLink = mail.sent.find((m) => /verify-email/.test(m.text) && m.to === 'verified@example.com');
+    const verifyToken = verifyLink.text.match(/token=([a-f0-9]{64})/)[1];
+    await request(app).get(`/api/v1/auth/verify-email?token=${verifyToken}`);
+
     const unknown = await ask('nobody@example.com');
     const unverified = await ask('known@example.com');
+    // The verified branch is the only one of the three that actually does
+    // something different -- it issues a token and sends mail -- so it is
+    // the only branch that can actually reveal a difference. Comparing just
+    // unknown vs. unverified (as this test used to) would still pass even if
+    // the verified branch returned a different status entirely.
+    const verified = await ask('verified@example.com');
 
     assert.equal(unknown.status, 202);
     assert.equal(unverified.status, 202);
-    assert.deepEqual(unknown.body, unverified.body,
+    assert.equal(verified.status, 202);
+    // Byte-identical, not just deepEqual on the parsed body: the spec asks
+    // for responses an observer cannot tell apart, and comparing raw text
+    // also catches a difference in headers/whitespace that JSON parsing
+    // would silently normalize away.
+    assert.equal(unknown.text, unverified.text,
       'any difference here makes this an account-enumeration oracle');
+    assert.equal(unverified.text, verified.text,
+      'the verified branch actually sends mail, but must still look identical');
   });
 
   await t.test('an unverified account is sent no reset link', async () => {
