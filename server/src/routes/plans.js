@@ -29,6 +29,14 @@ module.exports = function buildPlansRouter(deps) {
   router.get('/exercises/:planExerciseId/alternatives', requireAuth(deps), async (req, res, next) => {
     try {
       const id = Number.parseInt(req.params.planExerciseId, 10);
+      // A non-numeric id parses to NaN, and mysql2 passes NaN through as the
+      // bare token NaN rather than converting it -- MySQL then reads it as an
+      // unknown column and throws ER_BAD_FIELD_ERROR, which is not an
+      // AppError and would otherwise surface as a 500. Reject it as the same
+      // "no such row" 404 up front, before it reaches the query.
+      if (!Number.isInteger(id)) {
+        throw AppError.notFound('PLAN_EXERCISE_NOT_FOUND', 'No such plan exercise.');
+      }
       const ctx = await loadSwapContext(deps.pool, req.user.userId, id);
       // 404 for both "no such row" and "not yours", so the response cannot be
       // used to discover which plan rows exist.
@@ -43,6 +51,12 @@ module.exports = function buildPlansRouter(deps) {
   router.patch('/exercises/:planExerciseId', requireAuth(deps), async (req, res, next) => {
     try {
       const id = Number.parseInt(req.params.planExerciseId, 10);
+      // See the alternatives route above: NaN reaches MySQL as a bare
+      // identifier and throws ER_BAD_FIELD_ERROR, not an AppError. Reject it
+      // here as the same 404 the "not found / not yours" branch below uses.
+      if (!Number.isInteger(id)) {
+        throw AppError.notFound('PLAN_EXERCISE_NOT_FOUND', 'No such plan exercise.');
+      }
       const ctx = await loadSwapContext(deps.pool, req.user.userId, id);
       if (!ctx) throw AppError.notFound('PLAN_EXERCISE_NOT_FOUND', 'No such plan exercise.');
 

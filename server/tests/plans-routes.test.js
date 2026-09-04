@@ -240,4 +240,18 @@ test('plan endpoints', async (t) => {
       .send({ exerciseId: row.exerciseId })   // already in the plan
       .expect(400);
   });
+
+  await t.test('a malformed plan exercise id is a 404, not a 500', async () => {
+    await reset();
+    await request(app)
+      .get('/api/v1/plans/exercises/abc/alternatives')
+      .set('Authorization', auth)
+      .expect(404);
+
+    await request(app)
+      .patch('/api/v1/plans/exercises/abc')
+      .set('Authorization', auth)
+      .send({ exerciseId: 1 })
+      .expect(404);
+  });
 });
