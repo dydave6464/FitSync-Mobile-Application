@@ -19,6 +19,7 @@ const _planJson = {
   'weekNo': 1,
   'exercises': [
     {
+      'planExerciseId': 701,
       'exerciseId': 101,
       'name': 'Goblet squat',
       'muscleGroup': 'quadriceps',
@@ -30,6 +31,7 @@ const _planJson = {
       'targetReps': '8-12',
     },
     {
+      'planExerciseId': 702,
       'exerciseId': 102,
       'name': 'Push-up',
       'muscleGroup': 'chest',
@@ -72,6 +74,7 @@ void main() {
       ..._planJson,
       'exercises': [
         {
+          'planExerciseId': 703,
           'exerciseId': 101,
           'name': 'Goblet squat',
           'muscleGroup': 'quadriceps',

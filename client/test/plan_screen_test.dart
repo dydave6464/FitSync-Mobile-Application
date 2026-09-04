@@ -21,6 +21,7 @@ const _plan = WorkoutPlan(
   weekNo: 1,
   exercises: [
     PlanExercise(
+      planExerciseId: 601,
       exerciseId: 101,
       name: 'Goblet squat',
       muscleGroup: 'quadriceps',
@@ -29,6 +30,7 @@ const _plan = WorkoutPlan(
       targetReps: '8-12',
     ),
     PlanExercise(
+      planExerciseId: 602,
       exerciseId: 102,
       name: 'Push-up',
       muscleGroup: 'chest',

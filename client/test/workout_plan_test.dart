@@ -15,6 +15,7 @@ Map<String, dynamic> _profileJson(Map<String, dynamic> extra) => {
 void main() {
   test('PlanExercise reads equipment, and tolerates its absence', () {
     final withEquipment = PlanExercise.fromJson(const {
+      'planExerciseId': 201,
       'exerciseId': 1, 'name': 'Bench press', 'muscleGroup': 'chest',
       'orderNo': 1, 'targetSets': 3, 'targetReps': '8-12',
       'equipment': 'Barbell',
@@ -23,10 +24,25 @@ void main() {
 
     // exercises.equipment_id is nullable server-side, so this is a real state.
     final without = PlanExercise.fromJson(const {
+      'planExerciseId': 202,
       'exerciseId': 2, 'name': 'Plank', 'muscleGroup': 'core',
       'orderNo': 2, 'targetSets': 3, 'targetReps': '30s',
     });
     expect(without.equipment, isNull);
+  });
+
+  test('a plan exercise keeps the id of its row in the plan', () {
+    final ex = PlanExercise.fromJson(const {
+      'planExerciseId': 77,
+      'exerciseId': 12,
+      'name': 'Push-up',
+      'muscleGroup': 'pectorals',
+      'orderNo': 1,
+      'targetSets': 3,
+      'targetReps': '8-12',
+    });
+
+    expect(ex.planExerciseId, 77);
   });
 
   test('Profile reads joinedAt, and tolerates its absence', () {

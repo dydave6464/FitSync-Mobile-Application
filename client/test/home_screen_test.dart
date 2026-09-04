@@ -42,6 +42,7 @@ const _defaultPlan = WorkoutPlan(
   weekNo: 1,
   exercises: [
     PlanExercise(
+      planExerciseId: 301,
       exerciseId: 1,
       name: 'Bench press',
       muscleGroup: 'chest',

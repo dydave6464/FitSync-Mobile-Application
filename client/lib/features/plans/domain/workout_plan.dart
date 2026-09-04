@@ -1,6 +1,7 @@
 /// One prescribed exercise within a plan.
 class PlanExercise {
   const PlanExercise({
+    required this.planExerciseId,
     required this.exerciseId,
     required this.name,
     required this.muscleGroup,
@@ -10,6 +11,10 @@ class PlanExercise {
     this.thumbnailUrl,
     this.equipment,
   });
+
+  /// Identifies this row within the plan. Swapping addresses this, not
+  /// [exerciseId], because the row survives the exercise being replaced.
+  final int planExerciseId;
 
   final int exerciseId;
   final String name;
@@ -31,6 +36,7 @@ class PlanExercise {
   final String? equipment;
 
   factory PlanExercise.fromJson(Map<String, dynamic> json) => PlanExercise(
+        planExerciseId: json['planExerciseId'] as int,
         exerciseId: json['exerciseId'] as int,
         name: json['name'] as String,
         muscleGroup: json['muscleGroup'] as String? ?? '',
