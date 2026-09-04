@@ -46,6 +46,22 @@ function load(env = process.env) {
     );
   }
 
+  const publicBaseUrl = env.PUBLIC_BASE_URL || 'http://localhost:3000';
+  // Every emailed verification and password-reset link is built from this.
+  // Left unset (or still pointing at localhost) it boots without error,
+  // sends real mail, and every link in it points at a phone's own loopback
+  // address -- every new registration and password reset is silently locked
+  // out, with nothing in the response or the logs to say why. Same reasoning
+  // as the two guards above: fail at startup, not in an incident.
+  if (nodeEnv === 'production' && /^https?:\/\/(localhost|127(?:\.\d{1,3}){3})(?::\d+)?(?:\/|$)/i.test(publicBaseUrl)) {
+    throw new Error(
+      'PUBLIC_BASE_URL is unset or still points at localhost while NODE_ENV is '
+        + '"production". Emailed links would be unreachable and every new '
+        + 'registration or password reset would be silently locked out — set '
+        + 'PUBLIC_BASE_URL to the public origin.',
+    );
+  }
+
   return {
     env: nodeEnv,
     port: env.PORT ? parsePositiveInteger('PORT', env.PORT) : 3000,
@@ -88,7 +104,7 @@ function load(env = process.env) {
     },
     // Absolute base for links that arrive by email. localhost is right for a
     // desktop browser and wrong for a phone; see TODO-dave.md.
-    publicBaseUrl: env.PUBLIC_BASE_URL || 'http://localhost:3000',
+    publicBaseUrl,
   };
 }
 

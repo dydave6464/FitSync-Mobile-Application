@@ -105,7 +105,10 @@ test('allows GOOGLE_MODE=stub outside production', () => {
 });
 
 test('allows GOOGLE_MODE=http in production', () => {
-  const cfg = load({ ...validEnv, NODE_ENV: 'production', GOOGLE_MODE: 'http', MAIL_MODE: 'smtp' });
+  const cfg = load({
+    ...validEnv, NODE_ENV: 'production', GOOGLE_MODE: 'http', MAIL_MODE: 'smtp',
+    PUBLIC_BASE_URL: 'https://fitsync.example.com',
+  });
   assert.equal(cfg.google.mode, 'http');
 });
 
@@ -113,4 +116,41 @@ test('defaulting GOOGLE_MODE (unset) is refused in production, same as an explic
   const env = { ...validEnv, NODE_ENV: 'production' };
   delete env.GOOGLE_MODE;
   assert.throws(() => load(env), /GOOGLE_MODE/);
+});
+
+const prodEnv = { ...validEnv, NODE_ENV: 'production', GOOGLE_MODE: 'http', MAIL_MODE: 'smtp' };
+
+test('refuses to start with PUBLIC_BASE_URL unset in production', () => {
+  assert.throws(
+    () => load({ ...prodEnv }),
+    (err) => {
+      assert.match(err.message, /PUBLIC_BASE_URL/);
+      assert.match(err.message, /NODE_ENV/);
+      return true;
+    },
+  );
+});
+
+test('refuses to start with PUBLIC_BASE_URL still pointing at localhost in production', () => {
+  assert.throws(
+    () => load({ ...prodEnv, PUBLIC_BASE_URL: 'http://localhost:3000' }),
+    /PUBLIC_BASE_URL/,
+  );
+});
+
+test('refuses to start with a PUBLIC_BASE_URL of 127.0.0.1 in production', () => {
+  assert.throws(
+    () => load({ ...prodEnv, PUBLIC_BASE_URL: 'http://127.0.0.1:3000' }),
+    /PUBLIC_BASE_URL/,
+  );
+});
+
+test('allows a real PUBLIC_BASE_URL in production', () => {
+  const cfg = load({ ...prodEnv, PUBLIC_BASE_URL: 'https://fitsync.example.com' });
+  assert.equal(cfg.publicBaseUrl, 'https://fitsync.example.com');
+});
+
+test('allows PUBLIC_BASE_URL to default to localhost outside production', () => {
+  const cfg = load({ ...validEnv, NODE_ENV: 'development' });
+  assert.equal(cfg.publicBaseUrl, 'http://localhost:3000');
 });
