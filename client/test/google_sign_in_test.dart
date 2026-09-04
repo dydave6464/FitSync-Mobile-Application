@@ -50,7 +50,7 @@ class FakeAuthRepository implements AuthRepository {
       throw UnimplementedError();
 
   @override
-  Future<AuthUser> register({
+  Future<void> register({
     required String email,
     required String password,
     required String fullName,
@@ -62,6 +62,16 @@ class FakeAuthRepository implements AuthRepository {
 
   @override
   Future<void> signOut() => throw UnimplementedError();
+
+  @override
+  Future<void> requestPasswordReset(String email) => throw UnimplementedError();
+
+  @override
+  Future<void> resendVerification({
+    required String email,
+    required String password,
+  }) =>
+      throw UnimplementedError();
 }
 
 class RecordingAuthController extends AuthController {
