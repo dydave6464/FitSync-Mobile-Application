@@ -47,6 +47,17 @@ a long, random value of your own — never commit it. `GOOGLE_MODE` and
 `.env.example`), but `GOOGLE_MODE=stub` is refused outright when
 `NODE_ENV=production`.
 
+`MAIL_MODE` works the same way: it defaults to `stub`, which logs the
+email-verification and password-reset links to the console instead of
+sending mail, so local development just means clicking the logged link.
+`smtp` sends real mail through the five `SMTP_HOST`/`SMTP_PORT`/`SMTP_USER`/
+`SMTP_PASSWORD`/`MAIL_FROM` keys, and `MAIL_MODE=stub` (or unset) is refused
+outright when `NODE_ENV=production` — verification is a hard gate, so a
+production server that could never send mail could never let anyone
+register. `PUBLIC_BASE_URL` sets the origin used to build those links
+(defaults to `http://localhost:3000`). See `docs/production.md` for the
+production setup and rollout checklist.
+
 ## Install, migrate, run
 
 ```

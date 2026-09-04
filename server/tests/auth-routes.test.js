@@ -6,6 +6,7 @@ const { migrate } = require('../src/db/migrate');
 const { createPool } = require('../src/db/pool');
 const { buildTestApp } = require('./helpers/test-app');
 const { testDbConfig, dropAllTables } = require('./helpers/test-db');
+const { markEmailVerified } = require('../src/db/users');
 
 test('auth endpoints', async (t) => {
   const pool = createPool(testDbConfig());
@@ -27,11 +28,14 @@ test('auth endpoints', async (t) => {
     email: 'juan@example.com', password: 's3cret-pass', fullName: 'Juan Dela Cruz',
   });
 
-  await t.test('registers and returns a token', async () => {
+  await t.test('registers with no token and an unverified account', async () => {
     await reset();
     const res = await register().expect(201);
     assert.equal(res.body.data.user.email, 'juan@example.com');
-    assert.ok(res.body.data.token);
+    // Hard gate: registration proves nothing about the address yet, so no
+    // session is issued until the verification link is followed.
+    assert.equal(res.body.data.token, undefined);
+    assert.equal(res.body.data.user.emailVerified, false);
     // A vacuous form of this assertion — checking only that passwordHash (the
     // camelCase name) is undefined — would still pass if toPublicUser were
     // ever replaced by a naive spread of the database row, which carries the
@@ -40,7 +44,7 @@ test('auth endpoints', async (t) => {
     // that regression.
     assert.deepEqual(
       Object.keys(res.body.data.user).sort(),
-      ['email', 'fullName', 'isPremium', 'onboardingCompleted', 'userId'].sort(),
+      ['email', 'emailVerified', 'fullName', 'isPremium', 'onboardingCompleted', 'userId'].sort(),
     );
     assert.ok(
       !Object.prototype.hasOwnProperty.call(res.body.data.user, 'password_hash'),
@@ -95,7 +99,11 @@ test('auth endpoints', async (t) => {
 
   await t.test('logs in with the right password', async () => {
     await reset();
-    await register().expect(201);
+    const registered = await register().expect(201);
+    // Registration alone no longer grants sign-in; prove the address the way
+    // production does, by consuming the mailed link, not by reaching past the
+    // gate under test.
+    await markEmailVerified(pool, registered.body.data.user.userId);
     const res = await request(app).post('/api/v1/auth/login')
       .send({ email: 'juan@example.com', password: 's3cret-pass' }).expect(200);
     assert.ok(res.body.data.token);
@@ -148,8 +156,11 @@ test('auth endpoints', async (t) => {
   await t.test('me returns the signed-in user', async () => {
     await reset();
     const { body } = await register().expect(201);
+    await markEmailVerified(pool, body.data.user.userId);
+    const login = await request(app).post('/api/v1/auth/login')
+      .send({ email: 'juan@example.com', password: 's3cret-pass' }).expect(200);
     const res = await request(app).get('/api/v1/auth/me')
-      .set('Authorization', `Bearer ${body.data.token}`).expect(200);
+      .set('Authorization', `Bearer ${login.body.data.token}`).expect(200);
     assert.equal(res.body.data.user.email, 'juan@example.com');
     assert.equal(res.body.data.user.onboardingCompleted, false);
   });

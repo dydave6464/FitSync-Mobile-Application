@@ -66,6 +66,30 @@ test('user queries', async (t) => {
     assert.equal(second.user.user_id, first.user.user_id);
   });
 
+  await t.test('a stale Google identity must not re-verify on a token for a different address', async () => {
+    await reset();
+    // users.email is deliberately never re-synced (see "matches on subject
+    // even after the email changes" below), so once it goes stale it stays
+    // stale. If branch 1 stamped it verified on the strength of a token for
+    // a DIFFERENT address, a later password reset would mail a live link to
+    // that stale address -- which, if ever reassigned to someone else, is a
+    // full account takeover with no credentials involved.
+    const { user: created } = await findOrCreateGoogleUser(pool, {
+      subject: 'sub-drift', email: 'old@example.com', emailVerified: true, fullName: 'Drift',
+    });
+    // Simulate the account having drifted back to unverified through some
+    // other path, so the assertion below actually distinguishes "left alone"
+    // from "already verified anyway".
+    await pool.query('UPDATE users SET email_verified = 0 WHERE user_id = ?', [created.user_id]);
+
+    const { user } = await findOrCreateGoogleUser(pool, {
+      subject: 'sub-drift', email: 'new@example.com', emailVerified: true, fullName: 'Drift',
+    });
+    assert.equal(user.email, 'old@example.com', 'users.email is never re-synced');
+    assert.equal(Boolean(user.email_verified), false,
+      'a token for a different address must not verify the stale one');
+  });
+
   await t.test('matches on subject even after the email changes', async () => {
     await reset();
     const first = await findOrCreateGoogleUser(pool, {

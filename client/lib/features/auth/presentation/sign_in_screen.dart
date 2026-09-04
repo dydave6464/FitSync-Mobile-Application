@@ -4,17 +4,21 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../core/api_exception.dart';
 import '../../../core/theme.dart';
 import '../../../core/widgets/fs_kit.dart';
-import '../domain/auth_user.dart';
 import 'auth_controller.dart';
+import 'check_email_screen.dart';
+import 'forgot_password_screen.dart';
 
 /// One screen for both signing in and registering.
 ///
 /// Register takes the same two fields plus a name, so splitting them into two
 /// screens would duplicate the whole form and both error paths for one extra
-/// input. Per the design: no Apple button, and no "Forgot password?" — the
-/// prototype shows both, but there is no Apple sign-in on the server and no
-/// password reset in this milestone, and offering a control that does nothing
-/// is worse than not offering it.
+/// input. Per the design: still no Apple button — the prototype shows one,
+/// but there is no Apple sign-in on the server, and offering a control that
+/// does nothing is worse than not offering it.
+///
+/// A successful registration and an `EMAIL_NOT_VERIFIED` login both push
+/// [CheckEmailScreen] rather than proceeding further: under the hard
+/// verification gate neither leaves the caller with a session.
 class SignInScreen extends ConsumerStatefulWidget {
   const SignInScreen({super.key});
 
@@ -92,27 +96,60 @@ class _SignInScreenState extends ConsumerState<SignInScreen> {
       _error = null;
     });
 
+    final email = _email.text.trim();
+    final password = _password.text;
+
     try {
       final repo = ref.read(authRepositoryProvider);
-      final AuthUser user = _registering
-          ? await repo.register(
-              email: _email.text.trim(),
-              password: _password.text,
-              fullName: _fullName.text.trim(),
-            )
-          : await repo.login(_email.text.trim(), _password.text);
-      if (!mounted) return;
-      // The token is already stored by the repository, so the shell can move
-      // on without a second round trip.
-      ref.read(authControllerProvider.notifier).onAuthenticated(user);
+      if (_registering) {
+        await repo.register(
+          email: email,
+          password: password,
+          fullName: _fullName.text.trim(),
+        );
+        if (!mounted) return;
+        // Registration returns no token any more — the account exists but
+        // cannot sign in until the address is verified — so there is no
+        // user to hand the controller. Send the way forward instead.
+        _pushCheckEmail(email, password);
+      } else {
+        final user = await repo.login(email, password);
+        if (!mounted) return;
+        // The token is already stored by the repository, so the shell can
+        // move on without a second round trip.
+        ref.read(authControllerProvider.notifier).onAuthenticated(user);
+      }
     } on ApiException catch (error) {
       if (!mounted) return;
-      // The fields keep their text on purpose — a wrong password should cost
-      // one character, not the whole form.
-      setState(() => _error = error.message);
+      if (error.code == 'EMAIL_NOT_VERIFIED') {
+        // Same screen as a fresh registration: the way forward is identical
+        // (open the email, verify, come back), so a generic error message
+        // would only leave the user guessing what the code means.
+        _pushCheckEmail(email, password);
+      } else {
+        // The fields keep their text on purpose — a wrong password should
+        // cost one character, not the whole form.
+        setState(() => _error = error.message);
+      }
     } finally {
       if (mounted) setState(() => _busy = false);
     }
+  }
+
+  void _pushCheckEmail(String email, String password) {
+    Navigator.of(context).push(
+      MaterialPageRoute<void>(
+        builder: (_) => CheckEmailScreen(email: email, password: password),
+      ),
+    );
+  }
+
+  void _openForgotPassword() {
+    Navigator.of(context).push(
+      MaterialPageRoute<void>(
+        builder: (_) => const ForgotPasswordScreen(),
+      ),
+    );
   }
 
   @override
@@ -170,6 +207,22 @@ class _SignInScreenState extends ConsumerState<SignInScreen> {
                   icon: Icons.lock_outline,
                   obscure: true,
                 ),
+                // Only in sign-in mode, matching the prototype: there is no
+                // password to reset for an account that does not exist yet.
+                if (!_registering) ...[
+                  const SizedBox(height: 10),
+                  Align(
+                    alignment: Alignment.centerRight,
+                    child: InkWell(
+                      key: const Key('forgotPassword'),
+                      onTap: _busy ? null : _openForgotPassword,
+                      child: Text(
+                        'Forgot password?',
+                        style: TextStyle(fontSize: 11.5, color: t.text2),
+                      ),
+                    ),
+                  ),
+                ],
                 if (_error != null) ...[
                   const SizedBox(height: 16),
                   // Inline rather than a SnackBar: a snack bar times out, and

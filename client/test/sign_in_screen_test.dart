@@ -8,6 +8,8 @@ import 'package:fitsync/core/api_exception.dart';
 import 'package:fitsync/features/auth/data/auth_repository.dart';
 import 'package:fitsync/features/auth/domain/auth_user.dart';
 import 'package:fitsync/features/auth/presentation/auth_controller.dart';
+import 'package:fitsync/features/auth/presentation/check_email_screen.dart';
+import 'package:fitsync/features/auth/presentation/forgot_password_screen.dart';
 import 'package:fitsync/features/auth/presentation/sign_in_screen.dart';
 
 AuthUser _user() => const AuthUser(
@@ -24,7 +26,7 @@ class FakeAuthRepository implements AuthRepository {
   FakeAuthRepository({this.onLogin, this.onRegister});
 
   final Future<AuthUser> Function()? onLogin;
-  final Future<AuthUser> Function()? onRegister;
+  final Future<void> Function()? onRegister;
 
   int loginCalls = 0;
   int registerCalls = 0;
@@ -39,7 +41,7 @@ class FakeAuthRepository implements AuthRepository {
   }
 
   @override
-  Future<AuthUser> register({
+  Future<void> register({
     required String email,
     required String password,
     required String fullName,
@@ -58,6 +60,16 @@ class FakeAuthRepository implements AuthRepository {
 
   @override
   Future<AuthUser> signInWithGoogle(String idToken) =>
+      throw UnimplementedError();
+
+  @override
+  Future<void> requestPasswordReset(String email) => throw UnimplementedError();
+
+  @override
+  Future<void> resendVerification({
+    required String email,
+    required String password,
+  }) =>
       throw UnimplementedError();
 }
 
@@ -194,7 +206,7 @@ void main() {
 
   testWidgets('a double tap on register cannot create two accounts',
       (tester) async {
-    final pending = Completer<AuthUser>();
+    final pending = Completer<void>();
     final repo = FakeAuthRepository(onRegister: () => pending.future);
     await _pump(tester, repo);
     await tester.pumpAndSettle();
@@ -211,7 +223,63 @@ void main() {
     expect(repo.registerCalls, 1,
         reason: 'the button must be disabled while a request is in flight');
 
-    pending.complete(_user());
+    pending.complete();
     await tester.pumpAndSettle();
+  });
+
+  testWidgets('a successful registration shows the check-your-email screen',
+      (tester) async {
+    final seen = <AuthUser>[];
+    final repo = FakeAuthRepository(onRegister: () async {});
+    await _pump(tester, repo, seen: seen);
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.byKey(const Key('toggleMode')));
+    await tester.pumpAndSettle();
+    await tester.enterText(find.byKey(const Key('fullName')), 'Juan Dela Cruz');
+    await _fillAndSubmit(tester);
+    await tester.pumpAndSettle();
+
+    expect(find.byType(CheckEmailScreen), findsOneWidget,
+        reason: 'there is no token yet, so onboarding must not start');
+    expect(seen, isEmpty,
+        reason: 'a registration with no session must never reach the controller');
+  });
+
+  testWidgets('EMAIL_NOT_VERIFIED on login shows the check-your-email screen',
+      (tester) async {
+    final repo = FakeAuthRepository(
+      onLogin: () async => throw const ApiException(
+          'EMAIL_NOT_VERIFIED', 'Verify your email before signing in.'),
+    );
+    await _pump(tester, repo);
+    await tester.pumpAndSettle();
+
+    await _fillAndSubmit(tester);
+    await tester.pumpAndSettle();
+
+    expect(find.byType(CheckEmailScreen), findsOneWidget,
+        reason: 'the way forward should be obvious, not a generic error');
+    expect(find.text('Verify your email before signing in.'), findsNothing);
+  });
+
+  testWidgets('Forgot password? opens the reset screen', (tester) async {
+    await _pump(tester, FakeAuthRepository());
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.byKey(const Key('forgotPassword')));
+    await tester.pumpAndSettle();
+
+    expect(find.byType(ForgotPasswordScreen), findsOneWidget);
+  });
+
+  testWidgets('Forgot password? is hidden while registering', (tester) async {
+    await _pump(tester, FakeAuthRepository());
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.byKey(const Key('toggleMode')));
+    await tester.pumpAndSettle();
+
+    expect(find.byKey(const Key('forgotPassword')), findsNothing);
   });
 }

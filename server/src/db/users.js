@@ -5,7 +5,7 @@ const USER_COLUMNS = `
   user_id, email, password_hash, full_name, sex, date_of_birth,
   height_cm, weight_kg, goal_weight_kg, main_goal, fitness_level,
   activity_level, training_location, city, is_premium,
-  notifications_enabled, onboarding_completed_at, created_at
+  notifications_enabled, onboarding_completed_at, email_verified, created_at
 `;
 
 async function findUserByEmail(pool, email) {
@@ -32,6 +32,20 @@ async function createUserWithPassword(pool, { email, passwordHash, fullName }) {
   return findUserById(pool, result.insertId);
 }
 
+// The one place email_verified flips from 0 to 1. Used both by the
+// verify-email route (a token proved the address) and by
+// findOrCreateGoogleUser (Google already vouched for it).
+async function markEmailVerified(pool, userId) {
+  await pool.query('UPDATE users SET email_verified = 1 WHERE user_id = ?', [userId]);
+}
+
+// The one place password_hash changes outside registration. Used by the
+// password-reset confirm route once consumeToken has already proven the
+// caller holds a live reset_password token for this user.
+async function updatePasswordHash(pool, userId, passwordHash) {
+  await pool.query('UPDATE users SET password_hash = ? WHERE user_id = ?', [passwordHash, userId]);
+}
+
 async function findOrCreateGoogleUser(pool, identity) {
   const { subject, email, emailVerified, fullName } = identity;
 
@@ -43,7 +57,20 @@ async function findOrCreateGoogleUser(pool, identity) {
     [subject],
   );
   if (existing.length > 0) {
-    return { user: await findUserById(pool, existing[0].user_id), isNew: false };
+    const user = await findUserById(pool, existing[0].user_id);
+    // Google re-vouches for the address on every sign-in, not only the
+    // first -- but only when the token actually names the address on file.
+    // users.email is deliberately never re-synced here (a returning user can
+    // keep signing in after changing their Google address; see
+    // tests/users-db.test.js), so a token for a DIFFERENT address must not
+    // stamp the stale one verified. Otherwise, if that stale address is ever
+    // reassigned to someone else, a password reset mails them a live link to
+    // an account they never proved they own -- a takeover, not a recovery.
+    if (emailVerified && email && email.toLowerCase() === user.email.toLowerCase()) {
+      await markEmailVerified(pool, user.user_id);
+      return { user: await findUserById(pool, user.user_id), isNew: false };
+    }
+    return { user, isNew: false };
   }
 
   // From here on, every branch either links to an account found by email or
@@ -72,12 +99,18 @@ async function findOrCreateGoogleUser(pool, identity) {
       'INSERT INTO user_identities (user_id, provider, provider_subject) VALUES (?, ?, ?)',
       [byEmail.user_id, 'google', subject],
     );
+    // This account may have been created by password registration and never
+    // verified. Google has now proven the same address, so the account is as
+    // verified as a brand-new Google signup would be.
+    await markEmailVerified(pool, byEmail.user_id);
     return { user: await findUserById(pool, byEmail.user_id), isNew: false };
   }
 
   // 3. Brand new person. password_hash stays NULL — there is no password.
+  // Google already vouched for the address (checked above), so the account
+  // is created verified — no separate email loop for a Google signup.
   const [result] = await pool.query(
-    'INSERT INTO users (email, password_hash, full_name) VALUES (?, NULL, ?)',
+    'INSERT INTO users (email, password_hash, full_name, email_verified) VALUES (?, NULL, ?, 1)',
     [email, fullName || 'FitSync user'],
   );
   await pool.query(
@@ -88,5 +121,10 @@ async function findOrCreateGoogleUser(pool, identity) {
 }
 
 module.exports = {
-  findUserByEmail, findUserById, createUserWithPassword, findOrCreateGoogleUser,
+  findUserByEmail,
+  findUserById,
+  createUserWithPassword,
+  findOrCreateGoogleUser,
+  markEmailVerified,
+  updatePasswordHash,
 };
