@@ -25,7 +25,7 @@ class _FailingRepo implements PlanRepository {
 
   @override
   Future<List<ExerciseAlternative>> alternatives(int planExerciseId,
-          {String? q}) async =>
+          {String? q, bool bodyweightOnly = false}) async =>
       const [];
 
   @override
@@ -92,5 +92,35 @@ void main() {
     expect(find.byType(ExerciseSwapSheet), findsOneWidget,
         reason: 'closing would discard the choice the user just made');
     expect(find.textContaining('not available'), findsOneWidget);
+  });
+
+  testWidgets('offers a bodyweight-only filter', (tester) async {
+    await _pump(tester, const [_alt]);
+
+    expect(find.text('Bodyweight only'), findsOneWidget);
+  });
+
+  testWidgets('tapping the filter re-queries with it set', (tester) async {
+    final asked = <bool>[];
+    await tester.pumpWidget(ProviderScope(
+      overrides: [
+        alternativesProvider.overrideWith((ref, key) async {
+          asked.add(key.bodyweightOnly);
+          return const [_alt];
+        }),
+      ],
+      child: const MaterialApp(
+        home: Scaffold(
+          body: ExerciseSwapSheet(planExerciseId: 77, exerciseName: 'Cable Fly'),
+        ),
+      ),
+    ));
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.text('Bodyweight only'));
+    await tester.pumpAndSettle();
+
+    expect(asked, [false, true],
+        reason: 'the filter has to reach the server, not filter the fetched page');
   });
 }

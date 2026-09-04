@@ -16,14 +16,16 @@ final activePlanProvider = FutureProvider<WorkoutPlan?>(
   retry: apiRetryPolicy,
 );
 
-typedef AlternativesQuery = ({int planExerciseId, String query});
+typedef AlternativesQuery = ({int planExerciseId, String query, bool bodyweightOnly});
 
-/// Swap candidates for one plan row. Keyed on the query too, so typing does
-/// not discard the unfiltered list Riverpod already holds.
+/// Swap candidates for one plan row. Keyed on the query and the filter too,
+/// so neither discards the list Riverpod already holds for the other state.
 final alternativesProvider =
     FutureProvider.family<List<ExerciseAlternative>, AlternativesQuery>(
-  (ref, key) => ref
-      .watch(planRepositoryProvider)
-      .alternatives(key.planExerciseId, q: key.query.isEmpty ? null : key.query),
+  (ref, key) => ref.watch(planRepositoryProvider).alternatives(
+        key.planExerciseId,
+        q: key.query.isEmpty ? null : key.query,
+        bodyweightOnly: key.bodyweightOnly,
+      ),
   retry: apiRetryPolicy,
 );

@@ -43,7 +43,10 @@ module.exports = function buildPlansRouter(deps) {
       if (!ctx) throw AppError.notFound('PLAN_EXERCISE_NOT_FOUND', 'No such plan exercise.');
 
       const q = typeof req.query.q === 'string' && req.query.q.trim() ? req.query.q.trim() : null;
-      const alternatives = await listAlternatives(deps.pool, ctx, { q, limit: parseLimit(req.query.limit) });
+      const bodyweightOnly = req.query.bodyweightOnly === '1';
+      const alternatives = await listAlternatives(deps.pool, ctx, {
+        q, limit: parseLimit(req.query.limit), bodyweightOnly,
+      });
       res.json({ data: { alternatives } });
     } catch (err) { next(err); }
   });

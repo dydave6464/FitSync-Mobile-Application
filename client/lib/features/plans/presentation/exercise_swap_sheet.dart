@@ -33,6 +33,7 @@ class _ExerciseSwapSheetState extends ConsumerState<ExerciseSwapSheet> {
   final _controller = TextEditingController();
   Timer? _timer;
   String _query = '';
+  bool _bodyweightOnly = false;
   String? _error;
   bool _busy = false;
 
@@ -83,9 +84,11 @@ class _ExerciseSwapSheetState extends ConsumerState<ExerciseSwapSheet> {
   @override
   Widget build(BuildContext context) {
     final t = context.fs;
-    final alternatives = ref.watch(
-      alternativesProvider((planExerciseId: widget.planExerciseId, query: _query)),
-    );
+    final alternatives = ref.watch(alternativesProvider((
+      planExerciseId: widget.planExerciseId,
+      query: _query,
+      bodyweightOnly: _bodyweightOnly,
+    )));
 
     return SafeArea(
       child: Padding(
@@ -107,6 +110,16 @@ class _ExerciseSwapSheetState extends ConsumerState<ExerciseSwapSheet> {
               decoration: const InputDecoration(
                 prefixIcon: Icon(Icons.search),
                 hintText: 'Search all exercises',
+              ),
+            ),
+            const SizedBox(height: 12),
+            Align(
+              alignment: Alignment.centerLeft,
+              child: FilterChip(
+                key: const Key('swap.bodyweightOnly'),
+                label: const Text('Bodyweight only'),
+                selected: _bodyweightOnly,
+                onSelected: (on) => setState(() => _bodyweightOnly = on),
               ),
             ),
             if (_error != null) ...[

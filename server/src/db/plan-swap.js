@@ -77,7 +77,7 @@ function safetyClauses(ctx, params) {
   return sql;
 }
 
-async function listAlternatives(pool, ctx, { q = null, limit = 20 } = {}) {
+async function listAlternatives(pool, ctx, { q = null, limit = 20, bodyweightOnly = false } = {}) {
   const params = [];
   let sql = `
     SELECT x.exercise_id, x.name, x.muscle_group, x.thumbnail_url,
@@ -97,6 +97,13 @@ async function listAlternatives(pool, ctx, { q = null, limit = 20 } = {}) {
   } else {
     sql += ' AND x.muscle_group = ?';
     params.push(ctx.muscleGroup);
+  }
+
+  if (bodyweightOnly) {
+    // eq.name is the raw catalogue tag here, which is the right vocabulary for
+    // this join -- the curated display name is only computed for output.
+    sql += ' AND eq.name = ?';
+    params.push(BODY_WEIGHT);
   }
 
   // Equipment the user actually selected outranks the body-weight fallback,

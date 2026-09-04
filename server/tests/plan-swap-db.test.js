@@ -163,4 +163,21 @@ test('swap candidates', async (t) => {
       'the client list is a suggestion; the server decides',
     );
   });
+
+  await t.test('bodyweightOnly returns nothing that needs equipment', async () => {
+    const planExerciseId = await reset();
+    const ctx = await loadSwapContext(pool, userId, planExerciseId);
+
+    const rows = await listAlternatives(pool, ctx, { q: null, limit: 50, bodyweightOnly: true });
+
+    for (const row of rows) {
+      const [check] = await pool.query(
+        `SELECT eq.name FROM exercises x
+           JOIN equipment eq ON eq.equipment_id = x.equipment_id
+          WHERE x.exercise_id = ?`, [row.exerciseId],
+      );
+      assert.equal(check[0].name, 'body weight',
+        'a user filtering for bodyweight cannot be offered a barbell lift');
+    }
+  });
 });
