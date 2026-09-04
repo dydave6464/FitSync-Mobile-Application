@@ -4,10 +4,12 @@ const AppError = require('../lib/app-error');
 const { signToken } = require('../lib/tokens');
 const { hashPassword, verifyPassword, DUMMY_HASH } = require('../lib/passwords');
 const {
-  findUserByEmail, findUserById, createUserWithPassword, findOrCreateGoogleUser, markEmailVerified,
+  findUserByEmail, findUserById, createUserWithPassword, findOrCreateGoogleUser,
+  markEmailVerified, updatePasswordHash,
 } = require('../db/users');
 const { issueToken, consumeToken } = require('../lib/auth-tokens');
 const requireAuth = require('../middleware/require-auth');
+const { renderPage, escapeHtml } = require('./auth-pages');
 
 const MIN_PASSWORD_LENGTH = 8;
 // bcrypt (via bcryptjs) only reads the first 72 bytes of its input — anything
@@ -67,21 +69,6 @@ function requireEmail(value) {
     );
   }
   return email;
-}
-
-// Minimal, self-contained response for the verify-email link -- Task 5 will
-// factor this out into a shared page helper (server/src/routes/auth-pages.js)
-// used by the password-reset pages too. Kept deliberately plain: this is
-// clicked from a mail client, not part of the app's own UI.
-function renderMinimalPage(title, message) {
-  return `<!doctype html>
-<html lang="en">
-<head><meta charset="utf-8"><title>${title}</title></head>
-<body>
-<h1>${title}</h1>
-<p>${message}</p>
-</body>
-</html>`;
 }
 
 module.exports = function buildAuthRouter({
@@ -204,9 +191,91 @@ module.exports = function buildAuthRouter({
         );
       }
       await markEmailVerified(pool, result.userId);
-      res.status(200).send(renderMinimalPage(
-        'Email verified', 'Your address is verified. You can sign in to FitSync now.',
-      ));
+      res.status(200).send(renderPage({
+        title: 'Email verified',
+        body: '<p>Your address is verified. You can sign in to FitSync now.</p>',
+      }));
+    } catch (err) { next(err); }
+  });
+
+  // Mirrors sendVerification above: issue the token, mail the link, and
+  // never let a mail failure fail the caller -- the token is already stored,
+  // so a mail outage should leave the account askable-again, not broken.
+  async function sendPasswordReset(req, user) {
+    const token = await issueToken(pool, { userId: user.user_id, purpose: 'reset_password' });
+    const link = `${publicBaseUrl}/api/v1/auth/password-reset?token=${token}`;
+    try {
+      await mail.send({
+        to: user.email,
+        subject: 'Reset your FitSync password',
+        text: `Use this link to reset your FitSync password:\n\n${link}\n\n`
+          + 'This link works once and expires in 1 hour.',
+      });
+    } catch (err) {
+      req.log?.error({ err }, 'password reset email failed to send');
+    }
+  }
+
+  // Always 202 with the same body, whether the address is unknown, known but
+  // unverified, or known and verified. See the identical reasoning on
+  // /verify-email/request and on login's INVALID_CREDENTIALS: anything that
+  // differs by case here becomes an account-existence oracle.
+  //
+  // An unverified account is refused too, but silently, inside that same
+  // 202 -- mailing a reset link to an address nobody has proven they own
+  // would be a takeover path, not a recovery path.
+  router.post('/password-reset/request', async (req, res, next) => {
+    try {
+      const email = requireString('email', req.body.email).toLowerCase();
+      const user = await findUserByEmail(pool, email);
+      if (user && user.email_verified) {
+        await sendPasswordReset(req, user);
+      }
+      res.status(202).json({
+        data: { message: 'If that account can receive a reset link, it is on its way.' },
+      });
+    } catch (err) { next(err); }
+  });
+
+  // Renders the form only -- does NOT consume the token. Only the POST below
+  // does. If the GET consumed it, merely opening the link (or a mail client
+  // prefetching it) would burn the reset before the user typed anything.
+  router.get('/password-reset', (req, res) => {
+    const token = typeof req.query.token === 'string' ? req.query.token : '';
+    res.status(200).send(renderPage({
+      title: 'Reset your password',
+      body: `
+<p>Choose a new password for your FitSync account.</p>
+<form method="POST" action="/api/v1/auth/password-reset">
+  <input type="hidden" name="token" value="${escapeHtml(token)}">
+  <label for="password">New password</label>
+  <input type="password" id="password" name="password" required
+         minlength="${MIN_PASSWORD_LENGTH}" maxlength="${MAX_PASSWORD_LENGTH}">
+  <button type="submit">Reset password</button>
+</form>`,
+    }));
+  });
+
+  // The only route that spends a reset token. Deliberately server-rendered,
+  // not JSON: the spec chose this over a deep link into the Flutter client,
+  // so there is no JSON twin of this route -- that would be a second, unused
+  // way to spend a high-value credential.
+  router.post('/password-reset', express.urlencoded({ extended: false }), async (req, res, next) => {
+    try {
+      const result = await consumeToken(pool, { token: req.body.token, purpose: 'reset_password' });
+      if (!result) {
+        throw AppError.badRequest(
+          'INVALID_RESET_TOKEN', 'This password reset link is invalid or has expired.',
+        );
+      }
+      const password = requireString('password', req.body.password, {
+        minLength: MIN_PASSWORD_LENGTH, maxLength: MAX_PASSWORD_LENGTH,
+      });
+      await updatePasswordHash(pool, result.userId, await hashPassword(password));
+      res.status(200).send(renderPage({
+        title: 'Password reset',
+        body: '<p>Your password has been reset. You can sign in to FitSync now.</p>',
+      }));
     } catch (err) { next(err); }
   });
 

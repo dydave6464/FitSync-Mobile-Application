@@ -39,6 +39,13 @@ async function markEmailVerified(pool, userId) {
   await pool.query('UPDATE users SET email_verified = 1 WHERE user_id = ?', [userId]);
 }
 
+// The one place password_hash changes outside registration. Used by the
+// password-reset confirm route once consumeToken has already proven the
+// caller holds a live reset_password token for this user.
+async function updatePasswordHash(pool, userId, passwordHash) {
+  await pool.query('UPDATE users SET password_hash = ? WHERE user_id = ?', [passwordHash, userId]);
+}
+
 async function findOrCreateGoogleUser(pool, identity) {
   const { subject, email, emailVerified, fullName } = identity;
 
@@ -105,5 +112,10 @@ async function findOrCreateGoogleUser(pool, identity) {
 }
 
 module.exports = {
-  findUserByEmail, findUserById, createUserWithPassword, findOrCreateGoogleUser, markEmailVerified,
+  findUserByEmail,
+  findUserById,
+  createUserWithPassword,
+  findOrCreateGoogleUser,
+  markEmailVerified,
+  updatePasswordHash,
 };
