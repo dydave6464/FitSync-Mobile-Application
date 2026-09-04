@@ -50,6 +50,11 @@ async function consumeToken(pool, { token, purpose }) {
   const [rows] = await pool.query(
     'SELECT user_id FROM auth_tokens WHERE token_hash = ?', [hash(token)],
   );
+  // The UPDATE above reported success, so this row existed a moment ago. If
+  // the owning user were deleted in that window, ON DELETE CASCADE would
+  // have removed it too -- treat that the same as any other unusable token
+  // rather than throwing, to honour the "returns null" contract.
+  if (rows.length === 0) return null;
   const userId = rows[0].user_id;
 
   if (purpose === 'reset_password') {
