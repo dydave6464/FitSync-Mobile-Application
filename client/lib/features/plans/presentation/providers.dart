@@ -20,8 +20,11 @@ typedef AlternativesQuery = ({int planExerciseId, String query, bool bodyweightO
 
 /// Swap candidates for one plan row. Keyed on the query and the filter too,
 /// so neither discards the list Riverpod already holds for the other state.
-final alternativesProvider =
-    FutureProvider.family<List<ExerciseAlternative>, AlternativesQuery>(
+///
+/// `autoDispose`: every keystroke debounces into a new key, so without this
+/// each one would leak a permanent provider element for the app's lifetime.
+final alternativesProvider = FutureProvider.autoDispose
+    .family<List<ExerciseAlternative>, AlternativesQuery>(
   (ref, key) => ref.watch(planRepositoryProvider).alternatives(
         key.planExerciseId,
         q: key.query.isEmpty ? null : key.query,

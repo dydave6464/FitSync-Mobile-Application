@@ -68,6 +68,12 @@ class _ExerciseSwapSheetState extends ConsumerState<ExerciseSwapSheet> {
     try {
       await ref.read(planRepositoryProvider).swap(widget.planExerciseId, alt.exerciseId);
       container.invalidate(activePlanProvider);
+      // A swap changes which exercises are already in the plan for every
+      // row, not just this one — a cached alternatives list for any other
+      // row may now be offering the exercise this swap just placed, or
+      // hiding the one it just freed up. `invalidate` on a family
+      // invalidates every element of it, not one keyed instance.
+      container.invalidate(alternativesProvider);
       if (!mounted) return;
       Navigator.of(context).pop(alt.name);
     } catch (err) {
@@ -139,9 +145,18 @@ class _ExerciseSwapSheetState extends ConsumerState<ExerciseSwapSheet> {
                     ? Padding(
                         padding: const EdgeInsets.symmetric(vertical: 24),
                         child: Text(
-                          _query.isEmpty
-                              ? 'Nothing you can do with your equipment trains this muscle.'
-                              : 'Nothing you can do matches that search.',
+                          // Bodyweight-only is checked first: with it on, the
+                          // filter is what emptied the list, not the user's
+                          // equipment — delts has no body-weight strength
+                          // exercises at all, so a full-gym owner ticking
+                          // this chip for a shoulder exercise would otherwise
+                          // be told their equipment is the problem when it
+                          // is not.
+                          _bodyweightOnly
+                              ? 'Nothing body-weight trains this muscle. Turn off "Bodyweight only" to see what your equipment can do.'
+                              : _query.isEmpty
+                                  ? 'Nothing you can do with your equipment trains this muscle.'
+                                  : 'Nothing you can do matches that search.',
                           style: TextStyle(color: t.text2),
                           textAlign: TextAlign.center,
                         ),
