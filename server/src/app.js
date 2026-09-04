@@ -4,10 +4,30 @@ const express = require('express');
 const helmet = require('helmet');
 const cors = require('cors');
 const pinoHttp = require('pino-http');
+const { stdSerializers } = pinoHttp;
 const requestId = require('./middleware/request-id');
 const notFound = require('./middleware/not-found');
 const errorHandler = require('./middleware/error-handler');
 const buildRoutes = require('./routes');
+
+// pino-http's default req serializer logs req.url from req.originalUrl,
+// which is the path AND the query string as one literal string. The emailed
+// verify-email and password-reset links both carry their token as a query
+// parameter, so that raw string carries a live credential straight into the
+// logs -- untouched by the redact rules in src/lib/logger.js, which can only
+// match structured fields (they do redact req.query.token, see below) and
+// have no way to reach into the middle of a string. Wrapping the standard
+// serializer to drop everything from the first '?' keeps the path, which is
+// still worth logging, while keeping the query string (and any token in it)
+// out of req.url entirely.
+function reqSerializer(req) {
+  const serialized = stdSerializers.req(req);
+  if (typeof serialized.url === 'string') {
+    const queryIndex = serialized.url.indexOf('?');
+    if (queryIndex !== -1) serialized.url = serialized.url.slice(0, queryIndex);
+  }
+  return serialized;
+}
 
 function createApp({
   config, logger, pool, ml = null, storage = null, extraRouter = null, jwt = null, google = null,
@@ -19,7 +39,7 @@ function createApp({
   app.use(helmet());
   app.use(cors());
   app.use(requestId);
-  app.use(pinoHttp({ logger, genReqId: (req) => req.id }));
+  app.use(pinoHttp({ logger, genReqId: (req) => req.id, serializers: { req: reqSerializer } }));
   app.use(express.json({ limit: '1mb' }));
 
   app.use((req, _res, next) => {
