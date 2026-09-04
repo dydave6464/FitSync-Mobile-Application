@@ -105,7 +105,7 @@ test('allows GOOGLE_MODE=stub outside production', () => {
 });
 
 test('allows GOOGLE_MODE=http in production', () => {
-  const cfg = load({ ...validEnv, NODE_ENV: 'production', GOOGLE_MODE: 'http' });
+  const cfg = load({ ...validEnv, NODE_ENV: 'production', GOOGLE_MODE: 'http', MAIL_MODE: 'smtp' });
   assert.equal(cfg.google.mode, 'http');
 });
 
