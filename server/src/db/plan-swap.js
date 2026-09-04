@@ -12,11 +12,16 @@ const BODY_WEIGHT = 'body weight';
 
 async function loadSwapContext(pool, userId, planExerciseId) {
   const [rows] = await pool.query(
+    // savePlan sets is_active = FALSE on a user's previous plan rather than
+    // deleting it, so a superseded plan's rows survive indefinitely. Without
+    // this clause a client still holding ids from an old plan -- e.g. after
+    // POST /profile/complete-onboarding is re-issued -- could PATCH a swap
+    // onto a plan that is no longer the user's active one.
     `SELECT pe.plan_exercise_id, pe.plan_id, pe.exercise_id, x.muscle_group
        FROM plan_exercises pe
        JOIN workout_plans wp ON wp.plan_id = pe.plan_id
        JOIN exercises x ON x.exercise_id = pe.exercise_id
-      WHERE pe.plan_exercise_id = ? AND wp.user_id = ?`,
+      WHERE pe.plan_exercise_id = ? AND wp.user_id = ? AND wp.is_active = TRUE`,
     [planExerciseId, userId],
   );
   // Null, not throw: the route turns this into a 404 so a probe cannot tell

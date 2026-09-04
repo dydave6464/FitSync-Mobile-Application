@@ -72,6 +72,20 @@ test('swap candidates', async (t) => {
       'one user must not read another user’s plan row');
   });
 
+  await t.test('refuses a row on a plan that has been superseded', async () => {
+    const planExerciseId = await reset();
+    // savePlan sets is_active = FALSE on the previous plan but leaves its
+    // rows in place -- exactly what a re-issued POST
+    // /profile/complete-onboarding produces. A client still holding ids from
+    // that now-archived plan must not be able to write through them.
+    await savePlan(pool, userId, {
+      name: 'P2', splitStyle: 'full_body', daysPerWeek: 3, sessionLengthMin: 45, weekNo: 1,
+      exercises: [{ name: inPlan.name, orderNo: 1, targetSets: 3, targetReps: '8-12' }],
+    });
+    assert.equal(await loadSwapContext(pool, userId, planExerciseId), null,
+      'a superseded plan row must 404 like any other unreachable row');
+  });
+
   await t.test('offers a same-muscle exercise that is not already in the plan', async () => {
     const planExerciseId = await reset();
     const ctx = await loadSwapContext(pool, userId, planExerciseId);
