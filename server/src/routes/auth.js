@@ -198,22 +198,26 @@ module.exports = function buildAuthRouter({
     } catch (err) { next(err); }
   });
 
-  // Mirrors sendVerification above: issue the token, mail the link, and
-  // never let a mail failure fail the caller -- the token is already stored,
-  // so a mail outage should leave the account askable-again, not broken.
+  // Mirrors sendVerification above, with one deliberate difference: the mail
+  // send itself is not awaited. See the comment on the send below.
   async function sendPasswordReset(req, user) {
     const token = await issueToken(pool, { userId: user.user_id, purpose: 'reset_password' });
     const link = `${publicBaseUrl}/api/v1/auth/password-reset?token=${token}`;
-    try {
-      await mail.send({
-        to: user.email,
-        subject: 'Reset your FitSync password',
-        text: `Use this link to reset your FitSync password:\n\n${link}\n\n`
-          + 'This link works once and expires in 1 hour.',
-      });
-    } catch (err) {
+    // Not awaited, deliberately. Awaiting makes the verified branch
+    // measurably slower than the unknown and unverified ones, which turns an
+    // endpoint whose whole purpose is an indistinguishable 202 into a timing
+    // oracle. The stub pushes to `sent` synchronously before it suspends, so
+    // tests stay deterministic. (issueToken's DB insert above is still
+    // awaited -- see the note on /password-reset/request for why that
+    // residual timing difference is left alone rather than "fixed".)
+    void mail.send({
+      to: user.email,
+      subject: 'Reset your FitSync password',
+      text: `Use this link to reset your FitSync password:\n\n${link}\n\n`
+        + 'This link works once and expires in 1 hour.',
+    }).catch((err) => {
       req.log?.error({ err }, 'password reset email failed to send');
-    }
+    });
   }
 
   // Always 202 with the same body, whether the address is unknown, known but
@@ -224,6 +228,13 @@ module.exports = function buildAuthRouter({
   // An unverified account is refused too, but silently, inside that same
   // 202 -- mailing a reset link to an address nobody has proven they own
   // would be a takeover path, not a recovery path.
+  //
+  // Known residual: the verified branch still awaits issueToken's INSERT
+  // before responding, so it is marginally slower than the unknown/unverified
+  // branches, which return after a single SELECT. Not closed here -- closing
+  // it would mean a dummy INSERT (or similar) on every miss, which buys
+  // nothing while POST /register already answers EMAIL_TAKEN for a known
+  // address in one request. Recorded as a known limitation, not fixed.
   router.post('/password-reset/request', async (req, res, next) => {
     try {
       const email = requireString('email', req.body.email).toLowerCase();
@@ -262,15 +273,20 @@ module.exports = function buildAuthRouter({
   // way to spend a high-value credential.
   router.post('/password-reset', express.urlencoded({ extended: false }), async (req, res, next) => {
     try {
+      // Validate BEFORE consuming. consumeToken marks the row spent
+      // unconditionally, so if a too-short password were checked after, a
+      // mistyped password would irreversibly burn the one-time link over a
+      // mistake that has nothing to do with the token's validity. Validation
+      // is pure and touches no state, so it is safe to run first.
+      const password = requireString('password', req.body.password, {
+        minLength: MIN_PASSWORD_LENGTH, maxLength: MAX_PASSWORD_LENGTH,
+      });
       const result = await consumeToken(pool, { token: req.body.token, purpose: 'reset_password' });
       if (!result) {
         throw AppError.badRequest(
           'INVALID_RESET_TOKEN', 'This password reset link is invalid or has expired.',
         );
       }
-      const password = requireString('password', req.body.password, {
-        minLength: MIN_PASSWORD_LENGTH, maxLength: MAX_PASSWORD_LENGTH,
-      });
       await updatePasswordHash(pool, result.userId, await hashPassword(password));
       res.status(200).send(renderPage({
         title: 'Password reset',

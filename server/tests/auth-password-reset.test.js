@@ -86,4 +86,24 @@ test('password reset', async (t) => {
       .type('form').send({ token: vToken, password: 'should not work' });
     assert.equal(res.status, 400);
   });
+
+  await t.test('a too-short password does not spend the token', async () => {
+    // consumeToken marks the row spent unconditionally, so a rejected
+    // password must be validated BEFORE the token is consumed -- otherwise a
+    // simple mistake burns the one-time link and forces a whole new email.
+    const before = mail.sent.length;
+    await ask('known@example.com');
+    const token = mail.sent.slice(before)
+      .find((m) => /password-reset/.test(m.text)).text.match(/token=([a-f0-9]{64})/)[1];
+
+    const tooShort = await request(app).post('/api/v1/auth/password-reset')
+      .type('form').send({ token, password: 'short' });
+    assert.equal(tooShort.status, 400,
+      'a rejected password must not look like a successful reset');
+
+    const retry = await request(app).post('/api/v1/auth/password-reset')
+      .type('form').send({ token, password: 'a good password this time' });
+    assert.equal(retry.status, 200,
+      'the same token must still work -- the failed attempt must not have spent it');
+  });
 });
