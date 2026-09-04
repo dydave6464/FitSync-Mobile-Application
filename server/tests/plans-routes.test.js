@@ -205,6 +205,15 @@ test('plan endpoints', async (t) => {
       .get(`/api/v1/plans/exercises/${planExerciseId}/alternatives`)
       .set('Authorization', `Bearer ${login.body.data.token}`)
       .expect(404);
+
+    // Spec §4's first PATCH validation rule is what makes this a route
+    // rather than an IDOR: without it, any authenticated user could rewrite
+    // any other user's plan row by guessing a plan_exercise_id.
+    await request(app)
+      .patch(`/api/v1/plans/exercises/${planExerciseId}`)
+      .set('Authorization', `Bearer ${login.body.data.token}`)
+      .send({ exerciseId: 1 })
+      .expect(404);
   });
 
   await t.test('a swap returns the updated plan', async () => {

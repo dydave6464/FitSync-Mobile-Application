@@ -178,6 +178,100 @@ test('swap candidates', async (t) => {
     );
   });
 
+  // Spec §5 ordering key #1 -- equipment the user actually selected outranks
+  // the body-weight fallback -- has no assertion anywhere else in this file,
+  // and no single muscle group in this fixture has both a body-weight row
+  // and a non-body-weight row among its live strength exercises: `abs` is
+  // two body-weight rows, `biceps` is one barbell row and one dumbbell row
+  // (see the subtest below). A same-muscle version of this test would need
+  // to plant a fabricated body-weight biceps exercise, which is exactly the
+  // kind of contrived fixture data this suite avoids elsewhere. Instead,
+  // this reaches both muscle groups through the search path -- which drops
+  // the muscle filter but runs through the exact same `ORDER BY` as every
+  // other path in listAlternatives -- so the comparison is between real
+  // catalogue rows, not fabricated ones.
+  await t.test(
+    'search ranks a candidate on selected equipment ahead of a body-weight candidate',
+    async () => {
+      await pool.query('DELETE FROM plan_exercises');
+      await pool.query('DELETE FROM workout_plans');
+      await pool.query('DELETE FROM user_equipment');
+      await pool.query('DELETE FROM user_injuries');
+      await pool.query('DELETE FROM exercise_contraindications');
+      await pool.query('DELETE FROM users');
+
+      const [ins] = await pool.query(
+        "INSERT INTO users (email, password_hash, full_name) VALUES ('ord@example.com','x','O')",
+      );
+      const ordUserId = ins.insertId;
+
+      // The dumbbell biceps exercise is the one the user will select. The
+      // body-weight abs exercise is the always-available fallback. Both
+      // names contain 'e', which is what the search below matches; the
+      // third live exercise (barbell biceps) owns equipment this user does
+      // not have, so it is excluded regardless of the query text.
+      const [[dumbbell]] = await pool.query(
+        `SELECT x.exercise_id, COALESCE(eq.parent_equipment_id, eq.equipment_id) AS owned_id
+           FROM exercises x JOIN equipment eq ON eq.equipment_id = x.equipment_id
+          WHERE x.status = 'live' AND eq.name = 'dumbbell' AND x.muscle_group = 'biceps'
+          LIMIT 1`,
+      );
+      const [[barbell]] = await pool.query(
+        `SELECT x.exercise_id
+           FROM exercises x JOIN equipment eq ON eq.equipment_id = x.equipment_id
+          WHERE x.status = 'live' AND eq.name = 'barbell' AND x.muscle_group = 'biceps'
+          LIMIT 1`,
+      );
+      const [[bodyweightAbs]] = await pool.query(
+        `SELECT x.exercise_id
+           FROM exercises x JOIN equipment eq ON eq.equipment_id = x.equipment_id
+          WHERE x.status = 'live' AND eq.name = 'body weight' AND x.muscle_group = 'abs'
+            AND x.name LIKE '%e%'
+          LIMIT 1`,
+      );
+      assert.ok(dumbbell && barbell && bodyweightAbs,
+        'fixture must carry a selectable dumbbell biceps exercise, a barbell biceps exercise, '
+        + 'and a body-weight abs exercise whose name matches the query below');
+
+      await pool.query(
+        'INSERT INTO user_equipment (user_id, equipment_id) VALUES (?, ?)',
+        [ordUserId, dumbbell.owned_id],
+      );
+
+      // The barbell exercise occupies the plan slot being replaced -- it
+      // would be excluded from safetyClauses by ownership alone, but is
+      // planted here too so the exclusion is not the only thing keeping it
+      // out of the result.
+      const [planResult] = await pool.query(
+        `INSERT INTO workout_plans
+           (user_id, name, split_style, days_per_week, session_length_min, week_no, is_active)
+         VALUES (?, 'P', 'full_body', 3, 45, 1, TRUE)`,
+        [ordUserId],
+      );
+      await pool.query(
+        `INSERT INTO plan_exercises (plan_id, exercise_id, order_no, target_sets, target_reps)
+         VALUES (?, ?, 1, 3, '8-12')`,
+        [planResult.insertId, barbell.exercise_id],
+      );
+
+      const plan = await getActivePlan(pool, ordUserId);
+      const ctx = await loadSwapContext(pool, ordUserId, plan.exercises[0].planExerciseId);
+
+      const rows = await listAlternatives(pool, ctx, { q: 'e', limit: 50 });
+      const ids = rows.map((r) => r.exerciseId);
+
+      assert.ok(!ids.includes(barbell.exercise_id),
+        'the plan slot being replaced must not offer itself back');
+      assert.ok(ids.includes(dumbbell.exercise_id) && ids.includes(bodyweightAbs.exercise_id),
+        'both the selected-equipment and body-weight candidates must be in the result '
+        + 'for the ordering between them to mean anything');
+      assert.ok(
+        ids.indexOf(dumbbell.exercise_id) < ids.indexOf(bodyweightAbs.exercise_id),
+        'equipment the user selected must outrank the body-weight fallback',
+      );
+    },
+  );
+
   // Deliberately last and does its own setup rather than calling reset():
   // reset() always builds its plan on `abs` (see the diagnostic in the task
   // report), and every live `abs` exercise in the fixture is body weight, so
