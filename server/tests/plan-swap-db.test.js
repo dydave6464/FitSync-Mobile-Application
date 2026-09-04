@@ -164,13 +164,90 @@ test('swap candidates', async (t) => {
     );
   });
 
-  await t.test('bodyweightOnly returns nothing that needs equipment', async () => {
-    const planExerciseId = await reset();
-    const ctx = await loadSwapContext(pool, userId, planExerciseId);
+  // Deliberately last and does its own setup rather than calling reset():
+  // reset() always builds its plan on `abs` (see the diagnostic in the task
+  // report), and every live `abs` exercise in the fixture is body weight, so
+  // a bodyweightOnly assertion there cannot tell "filter implemented" apart
+  // from "filter absent" -- the pre-existing ownership clause already
+  // restricts everything to body weight when nothing else is owned.
+  // `biceps` is the only muscle group in the fixture with a non-bodyweight
+  // live strength exercise, so this subtest plants its plan there instead.
+  //
+  // Every other subtest in this file starts with reset(), whose unscoped
+  // DELETEs wipe plan_exercises/workout_plans/user_equipment/users
+  // regardless of what came before -- so nothing here can leak into an
+  // earlier-running subtest. Keeping this one last means nothing runs after
+  // it either, so no cleanup beyond dropAllTables (already run in t.after)
+  // is needed.
+  await t.test('bodyweightOnly excludes equipment the user owns', async () => {
+    await pool.query('DELETE FROM plan_exercises');
+    await pool.query('DELETE FROM workout_plans');
+    await pool.query('DELETE FROM user_equipment');
+    await pool.query('DELETE FROM user_injuries');
+    await pool.query('DELETE FROM exercise_contraindications');
+    await pool.query('DELETE FROM users');
 
-    const rows = await listAlternatives(pool, ctx, { q: null, limit: 50, bodyweightOnly: true });
+    const [ins] = await pool.query(
+      "INSERT INTO users (email, password_hash, full_name) VALUES ('bw@example.com','x','B')",
+    );
+    const bwUserId = ins.insertId;
 
-    for (const row of rows) {
+    // Two biceps exercises: one to sit in the plan, one non-bodyweight to be
+    // offered as an alternative. The plan exercise's own equipment does not
+    // matter -- loadSwapContext only reads its muscle group.
+    const [bicepsRows] = await pool.query(
+      `SELECT x.exercise_id, x.name, eq.name AS equip,
+              COALESCE(eq.parent_equipment_id, eq.equipment_id) AS owned_id
+         FROM exercises x
+         JOIN equipment eq ON eq.equipment_id = x.equipment_id
+         LEFT JOIN exercise_categories cat ON cat.exercise_id = x.exercise_id
+        WHERE x.status = 'live'
+          AND COALESCE(cat.category,'strength') = 'strength'
+          AND x.muscle_group = 'biceps'
+        ORDER BY x.exercise_id`,
+    );
+    assert.ok(
+      bicepsRows.length >= 2 && bicepsRows.some((r) => r.equip !== 'body weight'),
+      'fixture must carry two live biceps exercises with a non-bodyweight one to test against',
+    );
+    const kit = bicepsRows.find((r) => r.equip !== 'body weight');
+    const inPlanRow = bicepsRows.find((r) => r.exercise_id !== kit.exercise_id);
+
+    // Inserted directly rather than through savePlan: both fixture biceps
+    // rows are literally named "Shared Name", and savePlan/resolveExerciseIds
+    // resolves a name to its lowest live exercise_id -- with this fixture it
+    // would silently plant `kit` in the plan instead of `inPlanRow` no matter
+    // which of the two names is passed, since they are identical strings.
+    const [planResult] = await pool.query(
+      `INSERT INTO workout_plans
+         (user_id, name, split_style, days_per_week, session_length_min, week_no, is_active)
+       VALUES (?, 'P', 'full_body', 3, 45, 1, TRUE)`,
+      [bwUserId],
+    );
+    await pool.query(
+      `INSERT INTO plan_exercises (plan_id, exercise_id, order_no, target_sets, target_reps)
+       VALUES (?, ?, 1, 3, '8-12')`,
+      [planResult.insertId, inPlanRow.exercise_id],
+    );
+
+    // Own the equipment the alternative needs -- the COALESCE'd parent id is
+    // what the ownership clause compares against.
+    await pool.query(
+      'INSERT INTO user_equipment (user_id, equipment_id) VALUES (?, ?)',
+      [bwUserId, kit.owned_id],
+    );
+
+    const plan = await getActivePlan(pool, bwUserId);
+    const ctx = await loadSwapContext(pool, bwUserId, plan.exercises[0].planExerciseId);
+
+    const unfiltered = await listAlternatives(pool, ctx, { q: null, limit: 50 });
+    assert.ok(unfiltered.some((r) => r.exerciseId === kit.exercise_id),
+      'without this the filtered assertion below passes whether or not the filter exists');
+
+    const filtered = await listAlternatives(pool, ctx, { q: null, limit: 50, bodyweightOnly: true });
+    assert.ok(!filtered.some((r) => r.exerciseId === kit.exercise_id),
+      'a user filtering for bodyweight must not be offered equipment work');
+    for (const row of filtered) {
       const [check] = await pool.query(
         `SELECT eq.name FROM exercises x
            JOIN equipment eq ON eq.equipment_id = x.equipment_id
