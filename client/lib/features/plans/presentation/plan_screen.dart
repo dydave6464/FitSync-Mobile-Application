@@ -6,6 +6,7 @@ import '../../../core/widgets/fs_kit.dart';
 import '../../exercises/presentation/exercise_detail_screen.dart';
 import '../../exercises/presentation/exercise_list_screen.dart' show describeError;
 import '../domain/workout_plan.dart';
+import 'exercise_swap_sheet.dart';
 import 'providers.dart';
 
 class PlanScreen extends ConsumerWidget {
@@ -174,7 +175,31 @@ class _PlanExerciseCard extends StatelessWidget {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(exercise.name, style: theme.textTheme.titleMedium),
+                Row(
+                  children: [
+                    Expanded(
+                      child: Text(exercise.name, style: theme.textTheme.titleMedium),
+                    ),
+                    TextButton(
+                      key: Key('swap.open.${exercise.planExerciseId}'),
+                      onPressed: () => showModalBottomSheet<String>(
+                        context: context,
+                        isScrollControlled: true,
+                        builder: (_) => ExerciseSwapSheet(
+                          planExerciseId: exercise.planExerciseId,
+                          exerciseName: exercise.name,
+                        ),
+                      ).then((swappedTo) {
+                        if (swappedTo != null && context.mounted) {
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            SnackBar(content: Text('Swapped to $swappedTo')),
+                          );
+                        }
+                      }),
+                      child: const Text('Change'),
+                    ),
+                  ],
+                ),
                 const SizedBox(height: 3),
                 Text(
                   '${exercise.muscleGroup} · '
