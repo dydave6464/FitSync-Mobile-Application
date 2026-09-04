@@ -7,6 +7,7 @@ const { createPool } = require('../src/db/pool');
 const { buildTestApp } = require('./helpers/test-app');
 const { testDbConfig, dropAllTables } = require('./helpers/test-db');
 const { createMailService } = require('../src/services/mail');
+const { findUserByEmail } = require('../src/db/users');
 
 test('email verification gate', async (t) => {
   const pool = createPool(testDbConfig());
@@ -110,5 +111,28 @@ test('email verification gate', async (t) => {
     const res = await request(app).post('/api/v1/auth/register')
       .send({ email: 'notanemail', password: 'correct horse', fullName: 'X' });
     assert.equal(res.status, 400);
+  });
+
+  await t.test('registration survives a mail outage', async () => {
+    // Spec section 10: a mail outage must not make accounts uncreatable. The
+    // try/catch inside sendVerification is the mechanism -- this is what
+    // proves it actually works, on a fresh app instance (sharing the same
+    // pool) wired to a mail double whose send always rejects.
+    const failingMail = { send: async () => { throw new Error('smtp is down'); } };
+    const failingApp = buildTestApp({ pool, mail: failingMail });
+
+    const res = await request(failingApp).post('/api/v1/auth/register').send({
+      email: 'outage@example.com', password: 'correct horse', fullName: 'Outage',
+    });
+    assert.equal(res.status, 201, 'a mail outage must not fail registration');
+
+    const user = await findUserByEmail(pool, 'outage@example.com');
+    assert.ok(user, 'the user row must still be created');
+
+    const [tokens] = await pool.query(
+      "SELECT * FROM auth_tokens WHERE user_id = ? AND purpose = 'verify_email'",
+      [user.user_id],
+    );
+    assert.equal(tokens.length, 1, 'the verify_email token must still be issued');
   });
 });
