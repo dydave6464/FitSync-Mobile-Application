@@ -119,4 +119,35 @@ async function listAlternatives(pool, ctx, { q = null, limit = 20 } = {}) {
   }));
 }
 
-module.exports = { loadSwapContext, listAlternatives };
+// Re-derived server-side rather than trusting the sheet: a stale client could
+// otherwise write an exercise that has since been depromoted or ruled out.
+async function isAllowedTarget(pool, ctx, exerciseId) {
+  const params = [];
+  let sql = `
+    SELECT x.exercise_id
+      FROM exercises x
+      LEFT JOIN equipment eq ON eq.equipment_id = x.equipment_id
+      LEFT JOIN exercise_categories cat ON cat.exercise_id = x.exercise_id`;
+  sql += safetyClauses(ctx, params);
+  sql += ' AND x.exercise_id = ? LIMIT 1';
+  params.push(exerciseId);
+
+  const [rows] = await pool.query(sql, params);
+  return rows.length === 1;
+}
+
+async function swapPlanExercise(pool, ctx, exerciseId) {
+  if (!(await isAllowedTarget(pool, ctx, exerciseId))) {
+    const err = new Error('That exercise is not available for this plan.');
+    err.code = 'EXERCISE_NOT_ALLOWED';
+    throw err;
+  }
+  // order_no, target_sets and target_reps are deliberately untouched: volume
+  // comes from the user's goal (ml/app/rules/parameters.py), not the exercise.
+  await pool.query(
+    'UPDATE plan_exercises SET exercise_id = ? WHERE plan_exercise_id = ?',
+    [exerciseId, ctx.planExerciseId],
+  );
+}
+
+module.exports = { loadSwapContext, listAlternatives, swapPlanExercise };

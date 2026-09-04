@@ -7,7 +7,7 @@ const { testDbConfig, dropAllTables } = require('./helpers/test-db');
 const { seedExercises } = require('../src/db/seed-exercises');
 const { seedInjuries } = require('../src/db/seed-injuries');
 const { savePlan, getActivePlan } = require('../src/db/plans');
-const { loadSwapContext, listAlternatives } = require('../src/db/plan-swap');
+const { loadSwapContext, listAlternatives, swapPlanExercise } = require('../src/db/plan-swap');
 const FIXTURE = require('./fixtures/seeds/manifest-fixture.json');
 
 test('swap candidates', async (t) => {
@@ -117,5 +117,50 @@ test('swap candidates', async (t) => {
 
     assert.ok(!rows.some((r) => r.exerciseId === other.exercise_id),
       'searching by name must not route around the injury filter');
+  });
+
+  await t.test('swapping keeps the prescribed volume and slot', async () => {
+    const planExerciseId = await reset();
+    const ctx = await loadSwapContext(pool, userId, planExerciseId);
+
+    await swapPlanExercise(pool, ctx, other.exercise_id);
+
+    const [rows] = await pool.query(
+      'SELECT exercise_id, order_no, target_sets, target_reps FROM plan_exercises WHERE plan_exercise_id = ?',
+      [planExerciseId],
+    );
+    assert.equal(rows[0].exercise_id, other.exercise_id);
+    assert.equal(rows[0].order_no, 1, 'the slot in the session must not move');
+    assert.equal(rows[0].target_sets, 3, 'volume comes from the goal, not the exercise');
+    assert.equal(rows[0].target_reps, '8-12');
+  });
+
+  await t.test('refuses an exercise already in the plan', async () => {
+    const planExerciseId = await reset();
+    const ctx = await loadSwapContext(pool, userId, planExerciseId);
+
+    await assert.rejects(
+      () => swapPlanExercise(pool, ctx, inPlan.exercise_id),
+      (err) => err.code === 'EXERCISE_NOT_ALLOWED',
+      'a duplicate would give the user the same movement twice',
+    );
+  });
+
+  await t.test('refuses a contraindicated exercise even when asked directly', async () => {
+    const planExerciseId = await reset();
+    const [inj] = await pool.query('SELECT injury_id FROM injuries LIMIT 1');
+    await pool.query('INSERT INTO user_injuries (user_id, injury_id) VALUES (?, ?)',
+      [userId, inj[0].injury_id]);
+    await pool.query(
+      `INSERT INTO exercise_contraindications (exercise_id, injury_id, pattern)
+       VALUES (?, ?, 'test')`, [other.exercise_id, inj[0].injury_id],
+    );
+    const ctx = await loadSwapContext(pool, userId, planExerciseId);
+
+    await assert.rejects(
+      () => swapPlanExercise(pool, ctx, other.exercise_id),
+      (err) => err.code === 'EXERCISE_NOT_ALLOWED',
+      'the client list is a suggestion; the server decides',
+    );
   });
 });
