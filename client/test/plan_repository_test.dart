@@ -52,6 +52,25 @@ PlanRepository _repoReturning(Object body, {int status = 200}) => PlanRepository
       ),
     );
 
+/// Captures the outgoing request so a test can assert on the URL and body,
+/// not just on what came back.
+PlanRepository _repoCapturing(
+  Object body,
+  List<http.Request> seen, {
+  int status = 200,
+}) =>
+    PlanRepository(
+      ApiClient(
+        baseUrl: 'http://test.local',
+        tokens: TokenStore(backing: InMemorySecureStore()),
+        client: MockClient((req) async {
+          seen.add(req);
+          return http.Response(jsonEncode(body), status,
+              headers: {'content-type': 'application/json'});
+        }),
+      ),
+    );
+
 void main() {
   test('parses a plan and its exercises in order', () {
     final plan = WorkoutPlan.fromJson(Map<String, dynamic>.from(_planJson));
@@ -112,5 +131,48 @@ void main() {
     });
 
     expect(plan.exercises, isEmpty);
+  });
+
+  test('alternatives are parsed into candidates', () async {
+    final repo = _repoReturning({
+      'data': {
+        'alternatives': [
+          {
+            'exerciseId': 12,
+            'name': 'Push-up',
+            'muscleGroup': 'pectorals',
+            'equipment': 'Bodyweight',
+            'thumbnailUrl': null,
+          },
+        ],
+      },
+    });
+
+    final result = await repo.alternatives(77);
+
+    expect(result.single.name, 'Push-up');
+    expect(result.single.equipment, 'Bodyweight');
+  });
+
+  test('a search term is sent as q on that row\'s path', () async {
+    final seen = <http.Request>[];
+    final repo = _repoCapturing({'data': {'alternatives': []}}, seen);
+
+    await repo.alternatives(77, q: 'press');
+
+    expect(seen.single.url.path, '/api/v1/plans/exercises/77/alternatives');
+    expect(seen.single.url.queryParameters['q'], 'press');
+  });
+
+  test('a swap PATCHes the row and returns the updated plan', () async {
+    final seen = <http.Request>[];
+    final repo = _repoCapturing({'data': {'plan': _planJson}}, seen);
+
+    final plan = await repo.swap(701, 12);
+
+    expect(seen.single.method, 'PATCH');
+    expect(seen.single.url.path, '/api/v1/plans/exercises/701');
+    expect(jsonDecode(seen.single.body), {'exerciseId': 12});
+    expect(plan.planId, 42);
   });
 }
