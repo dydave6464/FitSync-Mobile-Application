@@ -57,11 +57,20 @@ async function findOrCreateGoogleUser(pool, identity) {
     [subject],
   );
   if (existing.length > 0) {
-    // Google re-vouches for the address on every sign-in, not only the first.
-    // If the account was ever created or later changed to be unverified
-    // through some other path, a fresh Google sign-in is itself proof.
-    await markEmailVerified(pool, existing[0].user_id);
-    return { user: await findUserById(pool, existing[0].user_id), isNew: false };
+    const user = await findUserById(pool, existing[0].user_id);
+    // Google re-vouches for the address on every sign-in, not only the
+    // first -- but only when the token actually names the address on file.
+    // users.email is deliberately never re-synced here (a returning user can
+    // keep signing in after changing their Google address; see
+    // tests/users-db.test.js), so a token for a DIFFERENT address must not
+    // stamp the stale one verified. Otherwise, if that stale address is ever
+    // reassigned to someone else, a password reset mails them a live link to
+    // an account they never proved they own -- a takeover, not a recovery.
+    if (emailVerified && email && email.toLowerCase() === user.email.toLowerCase()) {
+      await markEmailVerified(pool, user.user_id);
+      return { user: await findUserById(pool, user.user_id), isNew: false };
+    }
+    return { user, isNew: false };
   }
 
   // From here on, every branch either links to an account found by email or
