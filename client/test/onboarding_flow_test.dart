@@ -8,6 +8,7 @@ import 'package:fitsync/core/api_exception.dart';
 import 'package:fitsync/core/widgets/fs_kit.dart';
 import 'package:fitsync/features/auth/domain/auth_user.dart';
 import 'package:fitsync/features/auth/presentation/auth_controller.dart';
+import 'package:fitsync/features/onboarding/presentation/generating_view.dart';
 import 'package:fitsync/features/onboarding/presentation/onboarding_flow.dart';
 import 'package:fitsync/features/profile/data/profile_repository.dart';
 import 'package:fitsync/features/profile/domain/profile.dart';
@@ -452,6 +453,34 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(completed, [true], reason: 'the hold delays the hand-off, never skips it');
+  });
+
+  testWidgets('every row has ticked before the plan takes the screen',
+      (tester) async {
+    final completed = <bool>[];
+    await _pumpFlow(tester, patches: [], completed: completed);
+
+    await _skip(tester);
+    await _skip(tester);
+    await _skip(tester);
+    await tester.tap(find.byKey(const Key('continue')));
+    await tester.pump();
+
+    // Just past the last slot: with every write already resolved, all three
+    // gates are open, so this is the moment the list is complete.
+    await tester.pump(GeneratingView.revealAt.last +
+        const Duration(milliseconds: 100));
+
+    for (final row in ['saved', 'avoiding', 'exercises']) {
+      expect(find.byKey(Key('gen.$row.done')), findsOneWidget,
+          reason: 'row $row should have ticked by the last slot');
+    }
+    expect(completed, isEmpty,
+        reason: 'a hold shorter than the schedule would hand off mid-sequence '
+            'and the last tick would never be seen');
+
+    await tester.pumpAndSettle();
+    expect(completed, [true]);
   });
 
   testWidgets('back returns to the previous step', (tester) async {

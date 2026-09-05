@@ -28,14 +28,6 @@ class OnboardingFlow extends ConsumerStatefulWidget {
 class _OnboardingFlowState extends ConsumerState<OnboardingFlow> {
   static const _total = 4;
 
-  /// How long the generating screen stays up at minimum. The whole round trip
-  /// can finish in well under a second, which is too quick to read: the screen
-  /// appears and vanishes before the ring has turned once, and the checklist
-  /// never gets seen at all. Five seconds is long enough to take the rows in.
-  ///
-  /// A floor, not a fixed duration -- a build that genuinely takes longer is
-  /// shown for as long as it takes.
-  static const _minGenerating = Duration(seconds: 5);
 
   int _index = 0;
   bool _busy = false;
@@ -46,6 +38,7 @@ class _OnboardingFlowState extends ConsumerState<OnboardingFlow> {
   /// on the generating screen, which is why it is a separate flag from [_busy]
   /// — that one flips before anything has been written.
   bool _saved = false;
+  bool _planReady = false;
   DateTime? _generatingSince;
 
   // The working answers. Seeded once from the loaded profile so a returning
@@ -122,6 +115,9 @@ class _OnboardingFlowState extends ConsumerState<OnboardingFlow> {
       // _continue's catch, the user stays on this step, and tapping again is a
       // genuine retry rather than a resubmission.
       await notifier.completeOnboarding();
+      // The last row describes this call; it may tick now, and the hold below
+      // is what gives the user time to see it do so.
+      if (mounted) setState(() => _planReady = true);
       // Held before the hand-off, not after: the hand-off swaps this screen
       // out, so a wait on the far side of it would not be seen.
       await _holdGenerating();
@@ -129,13 +125,24 @@ class _OnboardingFlowState extends ConsumerState<OnboardingFlow> {
     }
   }
 
-  /// Keeps the generating screen up for [_minGenerating] measured from the tap.
-  /// Only the success path waits — holding an error back would delay the one
-  /// thing the user needs to see.
+  /// Holds the generating screen until its last row has ticked and been seen.
+  ///
+  /// The screen paces its own reveals, so handing off on the server's timing
+  /// alone would cut the list off mid-sequence — usually before a single row
+  /// had ticked, since the round trip can finish in under a second. Two cases:
+  /// a fast build waits out the whole schedule, and a slow one has already
+  /// passed the last slot, so it only owes the tail.
+  ///
+  /// Only the success path waits. Holding an error back would delay the one
+  /// thing the user actually needs to see.
   Future<void> _holdGenerating() async {
     final since = _generatingSince;
     if (since == null) return;
-    final remaining = _minGenerating - DateTime.now().difference(since);
+
+    final elapsed = DateTime.now().difference(since);
+    final remaining = elapsed < GeneratingView.revealAt.last
+        ? GeneratingView.minimumRun - elapsed
+        : GeneratingView.tail;
     if (remaining > Duration.zero) await Future<void>.delayed(remaining);
   }
 
@@ -159,6 +166,7 @@ class _OnboardingFlowState extends ConsumerState<OnboardingFlow> {
       _busy = true;
       _error = null;
       _saved = false;
+      _planReady = false;
     });
     _generatingSince = DateTime.now();
 
@@ -241,7 +249,11 @@ class _OnboardingFlowState extends ConsumerState<OnboardingFlow> {
         // The plan build takes over the whole screen: the wizard chrome would
         // offer a Back and a Skip that cannot be honoured mid-write.
         if (_busy && _index == _total - 1) {
-          return GeneratingView(saved: _saved, avoiding: _avoidingNames());
+          return GeneratingView(
+            saved: _saved,
+            planReady: _planReady,
+            avoiding: _avoidingNames(),
+          );
         }
 
         return OnboardingScaffold(
