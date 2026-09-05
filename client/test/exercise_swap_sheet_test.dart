@@ -311,65 +311,8 @@ void main() {
     );
   });
 
-  testWidgets('offers a bodyweight-only filter', (tester) async {
-    await _pump(tester, const [_alt]);
 
-    expect(find.text('Bodyweight only'), findsOneWidget);
-  });
 
-  testWidgets('tapping the filter re-queries with it set', (tester) async {
-    final asked = <bool>[];
-    await tester.pumpWidget(ProviderScope(
-      overrides: [
-        alternativesProvider.overrideWith((ref, key) async {
-          asked.add(key.bodyweightOnly);
-          return const [_alt];
-        }),
-      ],
-      child: const MaterialApp(
-        home: Scaffold(
-          body: ExerciseSwapSheet(planExerciseId: 77, exerciseName: 'Cable Fly'),
-        ),
-      ),
-    ));
-    await tester.pumpAndSettle();
-
-    await tester.tap(find.text('Bodyweight only'));
-    await tester.pumpAndSettle();
-
-    expect(asked, [false, true],
-        reason: 'the filter has to reach the server, not filter the fetched page');
-  });
-
-  testWidgets(
-      'the empty state names bodyweight-only as the cause when that filter emptied the list',
-      (tester) async {
-    await tester.pumpWidget(ProviderScope(
-      overrides: [
-        alternativesProvider.overrideWith(
-            (ref, key) async => key.bodyweightOnly ? const [] : const [_alt]),
-      ],
-      child: const MaterialApp(
-        home: Scaffold(
-          body: ExerciseSwapSheet(planExerciseId: 77, exerciseName: 'Lateral Raise'),
-        ),
-      ),
-    ));
-    await tester.pumpAndSettle();
-
-    await tester.tap(find.byKey(const Key('swap.bodyweightOnly')));
-    await tester.pumpAndSettle();
-
-    // Reachable in production per spec §7: delts has no body-weight strength
-    // rows at all, so a user with a full gym who ticks this chip for a
-    // shoulder exercise gets zero alternatives. The filter they just set
-    // emptied the list, not their equipment, so the equipment-cause message
-    // must not appear here.
-    expect(find.textContaining('Nothing you can do with your equipment'), findsNothing,
-        reason: 'the filter, not the equipment, is why the list is empty');
-    expect(find.textContaining('Bodyweight only'), findsWidgets,
-        reason: 'the empty state must name the filter as the cause');
-  });
 
   testWidgets(
       'a successful swap invalidates every cached alternatives list, not just this row',
@@ -390,7 +333,7 @@ void main() {
     // isolating the family-wide invalidate in `_choose` from auto-dispose,
     // which would also eventually reclaim a genuinely-unwatched entry on
     // its own and could make this pass for the wrong reason.
-    const key = (planExerciseId: 77, query: '', bodyweightOnly: false);
+    const key = (planExerciseId: 77, query: '');
     container.listen(alternativesProvider(key), (_, _) {});
 
     await tester.pumpWidget(UncontrolledProviderScope(
@@ -523,6 +466,27 @@ void main() {
     expect(tester.getBottomLeft(find.text('Alternative 1')).dy,
         lessThanOrEqualTo(screen - keyboard),
         reason: 'the first row has to sit above the keyboard, not behind it');
+  });
+
+  testWidgets('the demo is not stretched far past the pixels it has',
+      (tester) async {
+    // Every animation in the store is 180x180. Filling the pane asked the
+    // renderer for roughly five times that on a modern phone, which is the
+    // whole of the blur — there is no more detail in the file to find.
+    tester.view.physicalSize = _screen;
+    tester.view.devicePixelRatio = _dpr;
+    addTearDown(tester.view.reset);
+
+    await _pumpWithPreview(tester);
+    await tester.tap(find.byKey(const Key('swap.alt.12')));
+    await tester.pumpAndSettle();
+
+    final painted = tester.getSize(find.byType(Image)).width * _dpr;
+    expect(painted, lessThanOrEqualTo(180 * 3),
+        reason: 'asking for more than 3x the source resolution buys nothing '
+            'but blur');
+    expect(painted, greaterThan(180.0),
+        reason: 'nor should it be shrunk below the detail it does have');
   });
 
   testWidgets('tapping an alternative previews it instead of swapping it',

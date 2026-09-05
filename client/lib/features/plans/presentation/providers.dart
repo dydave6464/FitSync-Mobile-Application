@@ -16,10 +16,10 @@ final activePlanProvider = FutureProvider<WorkoutPlan?>(
   retry: apiRetryPolicy,
 );
 
-typedef AlternativesQuery = ({int planExerciseId, String query, bool bodyweightOnly});
+typedef AlternativesQuery = ({int planExerciseId, String query});
 
-/// Swap candidates for one plan row. Keyed on the query and the filter too,
-/// so neither discards the list Riverpod already holds for the other state.
+/// Swap candidates for one plan row. Keyed on the query as well, so typing
+/// does not discard the list Riverpod already holds for the empty search.
 ///
 /// `autoDispose`: every keystroke debounces into a new key, so without this
 /// each one would leak a permanent provider element for the app's lifetime.
@@ -28,7 +28,6 @@ final alternativesProvider = FutureProvider.autoDispose
   (ref, key) => ref.watch(planRepositoryProvider).alternatives(
         key.planExerciseId,
         q: key.query.isEmpty ? null : key.query,
-        bodyweightOnly: key.bodyweightOnly,
       ),
   retry: apiRetryPolicy,
 );

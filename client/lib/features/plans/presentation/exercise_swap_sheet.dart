@@ -49,10 +49,22 @@ class _ExerciseSwapSheetState extends ConsumerState<ExerciseSwapSheet> {
   /// showed — the same action looking like two different screens.
   static const _heightFraction = 0.66;
 
+  /// Every animation in the catalogue store is 180x180.
+  static const _demoSourcePx = 180.0;
+
+  /// How far past its own resolution the demo may be blown up.
+  ///
+  /// Filling the pane asked for roughly five times the source on a modern
+  /// phone, and a renderer given a 180px file and 975px of box has nothing to
+  /// put in the gap but interpolation — which is exactly what "blurry" means
+  /// here. Three is a compromise: still upscaled, but the demo stays large
+  /// enough to read at arm's length. Anything genuinely sharper has to come
+  /// from higher-resolution source files, not from this widget.
+  static const _maxDemoUpscale = 3.0;
+
   final _controller = TextEditingController();
   Timer? _timer;
   String _query = '';
-  bool _bodyweightOnly = false;
   String? _error;
   bool _busy = false;
 
@@ -224,15 +236,33 @@ class _ExerciseSwapSheetState extends ConsumerState<ExerciseSwapSheet> {
                       style: TextStyle(color: t.text2),
                     ),
                   )
-                // Flutter's Image plays animated GIFs natively, as the
-                // catalogue's detail screen already relies on.
-                : Image.network(
-                    '$baseUrl'
-                    '${exercise.animationUrl!.startsWith('/') ? '' : '/'}'
-                    '${exercise.animationUrl}',
-                    fit: BoxFit.contain,
-                    errorBuilder: (_, _, _) => Center(
-                      child: Icon(Icons.fitness_center, size: 44, color: t.text3),
+                : Center(
+                    child: LayoutBuilder(
+                      builder: (context, constraints) {
+                        final side = math.min(
+                          _demoSourcePx *
+                              _maxDemoUpscale /
+                              MediaQuery.devicePixelRatioOf(context),
+                          math.min(constraints.maxWidth, constraints.maxHeight),
+                        );
+                        return SizedBox(
+                          width: side,
+                          height: side,
+                          // Flutter's Image plays animated GIFs natively, as
+                          // the catalogue's detail screen already relies on.
+                          child: Image.network(
+                            '$baseUrl'
+                            '${exercise.animationUrl!.startsWith('/') ? '' : '/'}'
+                            '${exercise.animationUrl}',
+                            fit: BoxFit.contain,
+                            filterQuality: FilterQuality.medium,
+                            errorBuilder: (_, _, _) => Center(
+                              child: Icon(Icons.fitness_center,
+                                  size: 44, color: t.text3),
+                            ),
+                          ),
+                        );
+                      },
                     ),
                   ),
           ),
@@ -258,7 +288,6 @@ class _ExerciseSwapSheetState extends ConsumerState<ExerciseSwapSheet> {
     final alternatives = ref.watch(alternativesProvider((
       planExerciseId: widget.planExerciseId,
       query: _query,
-      bodyweightOnly: _bodyweightOnly,
     )));
 
     // The route anchors the sheet to the bottom of the screen and never lifts
@@ -300,16 +329,6 @@ class _ExerciseSwapSheetState extends ConsumerState<ExerciseSwapSheet> {
                   hintText: 'Search all exercises',
                 ),
               ),
-              const SizedBox(height: 12),
-              Align(
-                alignment: Alignment.centerLeft,
-                child: FilterChip(
-                  key: const Key('swap.bodyweightOnly'),
-                  label: const Text('Bodyweight only'),
-                  selected: _bodyweightOnly,
-                  onSelected: (on) => setState(() => _bodyweightOnly = on),
-                ),
-              ),
               if (_error != null) ...[
                 const SizedBox(height: 12),
                 Text(_error!, style: TextStyle(color: Theme.of(context).colorScheme.error)),
@@ -327,18 +346,9 @@ class _ExerciseSwapSheetState extends ConsumerState<ExerciseSwapSheet> {
                       ? Padding(
                           padding: const EdgeInsets.symmetric(vertical: 24),
                           child: Text(
-                            // Bodyweight-only is checked first: with it on, the
-                            // filter is what emptied the list, not the user's
-                            // equipment — delts has no body-weight strength
-                            // exercises at all, so a full-gym owner ticking
-                            // this chip for a shoulder exercise would otherwise
-                            // be told their equipment is the problem when it
-                            // is not.
-                            _bodyweightOnly
-                                ? 'Nothing body-weight trains this muscle. Turn off "Bodyweight only" to see what your equipment can do.'
-                                : _query.isEmpty
-                                    ? 'Nothing you can do with your equipment trains this muscle.'
-                                    : 'Nothing you can do matches that search.',
+                            _query.isEmpty
+                                ? 'Nothing you can do with your equipment trains this muscle.'
+                                : 'Nothing you can do matches that search.',
                             style: TextStyle(color: t.text2),
                             textAlign: TextAlign.center,
                           ),
