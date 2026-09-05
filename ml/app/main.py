@@ -36,6 +36,31 @@ def _plan_name(profile: ProfileRequest) -> str:
     return "Full Body — {}".format(goal)
 
 
+def _candidates(engine, owned, selected, injury_ids, excluded):
+    """Candidates with body weight confined to groups the user cannot train.
+
+    `owned` is what is ELIGIBLE and already includes the implicit body weight;
+    `selected` is only what the user ticked. Preferring `selected` inside a
+    group was not enough. select() round-robins and comes back for a second
+    exercise from the same group, so a dumbbell owner's second pectorals slot
+    went to a push-up -- and a list whose top is dumbbells and whose tail is
+    body weight still reads as the app ignoring the answer.
+
+    So: ask for the user's own equipment first, and let body weight in only for
+    the groups that returned nothing. Five real catalogue groups -- lats,
+    abductors, adductors, spine, levator scapulae -- have no dumbbell exercise
+    at all, and dropping them outright would quietly shrink the plan rather
+    than fill those slots honestly.
+    """
+    everything = fetch_candidates(engine, owned, injury_ids, excluded, selected)
+    if not selected:
+        return everything
+
+    strict = fetch_candidates(engine, selected, injury_ids, excluded, selected)
+    covered = {c.muscle_group for c in strict}
+    return strict + [c for c in everything if c.muscle_group not in covered]
+
+
 def create_app(settings: Settings) -> FastAPI:
     logging.basicConfig(
         level=getattr(logging, settings.log_level.upper(), logging.INFO),
@@ -81,8 +106,8 @@ def create_app(settings: Settings) -> FastAPI:
         for injury in profile.injuries:
             excluded.extend(INJURY_MUSCLE_GROUPS.get(injury.regionGroup or "", ()))
 
-        candidates = fetch_candidates(
-            engine(), owned, injury_ids, sorted(set(excluded)), selected
+        candidates = _candidates(
+            engine(), owned, selected, injury_ids, sorted(set(excluded))
         )
 
         if excluded and len(candidates) < params.exercise_count:
@@ -93,7 +118,7 @@ def create_app(settings: Settings) -> FastAPI:
             # muscle_group cannot be trusted for inclusion; the same holds for
             # exclusion. The contraindication table is the precise instrument and
             # is never relaxed here -- only the coarse group map is.
-            relaxed = fetch_candidates(engine(), owned, injury_ids, [], selected)
+            relaxed = _candidates(engine(), owned, selected, injury_ids, [])
             if len(relaxed) > len(candidates):
                 logger.warning(
                     "target-muscle exclusion left %d candidates for %d injuries; "

@@ -212,14 +212,42 @@ def test_a_plan_uses_the_equipment_the_user_selected(client, catalogue):
     # so it wins the bucket on id order alone; the dumbbell fly wins only if the
     # user's selection is what decides.
     assert "fixture dumbbell fly" in names, names
-    # Both are pectorals. push-up has the lower exercise_id, so on id order
-    # alone it takes the bucket first; the selection reverses that. (A short
-    # fixture catalogue means the round-robin reaches depth 2 and offers both,
-    # so assert the order rather than push-up's absence.)
-    assert names.index("fixture dumbbell fly") < names.index("fixture push-up"), names
+    # Both are pectorals. Ranking the fly above the push-up was the old rule
+    # and was not enough: the round-robin reaches depth 2 in this short
+    # fixture and took the push-up as a second pectorals exercise anyway. A
+    # group the user's own equipment can train no longer offers body weight at
+    # all.
+    assert "fixture push-up" not in names, names
 
 
 def test_selecting_nothing_still_produces_a_body_weight_plan(client, catalogue):
     # The fallback must survive: no selection means no preference, not no plan.
     plan = post_plan(client, mainGoal="build_muscle", equipment=[])
     assert len(plan["exercises"]) > 0
+
+
+def test_body_weight_still_fills_a_group_the_user_cannot_train(client, catalogue):
+    """Strictness must not quietly shrink the plan.
+
+    Five real catalogue groups -- lats, abductors, adductors, spine, levator
+    scapulae -- have no dumbbell exercise at all. The fixture's quads is the
+    stand-in: body weight only. Dropping such a group instead of filling it
+    would hand a dumbbell owner a shorter plan and call it respect for their
+    equipment.
+    """
+    eq = catalogue["equipment"]
+    plan = post_plan(
+        client,
+        mainGoal="build_muscle",
+        fitnessLevel="intermediate",
+        activityLevel="moderate",
+        equipment=[{"equipmentId": eq["dumbbell"], "name": "Dumbbells"}],
+        injuries=[],
+    )
+    names = [e["name"] for e in plan["exercises"]]
+
+    # The test above covers the strict half: no push-up for a dumbbell owner.
+    # This is the other half, and the reason the rule has a fallback at all.
+    assert any(n in ("fixture squat", "fixture quad stretch") for n in names), (
+        f"quads has no dumbbell option at all and must not be dropped: {names}"
+    )
