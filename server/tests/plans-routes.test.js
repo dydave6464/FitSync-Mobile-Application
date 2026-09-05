@@ -5,6 +5,7 @@ const request = require('supertest');
 const { migrate } = require('../src/db/migrate');
 const { createPool } = require('../src/db/pool');
 const { buildTestApp } = require('./helpers/test-app');
+const { createStorage } = require('../src/services/storage');
 const { testDbConfig, dropAllTables } = require('./helpers/test-db');
 const { seedExercises } = require('../src/db/seed-exercises');
 const { markEmailVerified } = require('../src/db/users');
@@ -29,7 +30,12 @@ test('plan endpoints', async (t) => {
     estimateInjuryRisk: async () => ({ riskLevel: 'low', trainingLoadScore: 0 }),
   };
 
-  const app = buildTestApp({ pool, ml });
+  // Storage supplied for the same reason exercises-routes.test.js supplies it:
+  // without it the router cannot resolve a key into a URL and the assertion
+  // below would pass on a null.
+  const app = buildTestApp({
+    pool, ml, storage: createStorage({ mode: 'local', localDir: 'storage' }),
+  });
 
   t.after(async () => {
     await dropAllTables(pool);
@@ -185,6 +191,40 @@ test('plan endpoints', async (t) => {
       "SELECT COUNT(*) AS n FROM equipment WHERE name = 'planmet'",
     );
     assert.equal(planmet.n, 0, 'the fixture equipment row must not leak');
+  });
+
+  await t.test('plan exercises carry resolved URLs, not storage keys', async () => {
+    await reset();
+    await request(app).post('/api/v1/profile/complete-onboarding')
+      .set('Authorization', auth).expect(200);
+    const res = await request(app).get('/api/v1/plans/active')
+      .set('Authorization', auth).expect(200);
+
+    const row = res.body.data.plan.exercises[0];
+    // The catalogue endpoint already resolves these (see exercises-routes
+    // test 'list items carry resolved URLs'); the plan path returned the raw
+    // key, so every thumbnail in the Train tab 404'd and the app fell back to
+    // a placeholder icon for exercises that all have artwork.
+    assert.match(row.thumbnailUrl, /^\/storage\/exercises\//,
+      `expected a resolved URL, got ${row.thumbnailUrl}`);
+  });
+
+  await t.test('alternatives carry resolved URLs too', async () => {
+    await reset();
+    await request(app).post('/api/v1/profile/complete-onboarding')
+      .set('Authorization', auth).expect(200);
+    const mine = await request(app).get('/api/v1/plans/active')
+      .set('Authorization', auth).expect(200);
+    const { planExerciseId } = mine.body.data.plan.exercises[0];
+
+    const res = await request(app)
+      .get(`/api/v1/plans/exercises/${planExerciseId}/alternatives`)
+      .set('Authorization', auth).expect(200);
+
+    for (const alt of res.body.data.alternatives) {
+      assert.match(alt.thumbnailUrl, /^\/storage\/exercises\//,
+        `expected a resolved URL, got ${alt.thumbnailUrl}`);
+    }
   });
 
   await t.test('alternatives require the caller to own the plan', async () => {

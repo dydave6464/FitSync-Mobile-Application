@@ -18,11 +18,25 @@ function parseLimit(raw) {
 module.exports = function buildPlansRouter(deps) {
   const router = express.Router();
 
+  // The database stores keys; callers get URLs -- the same contract
+  // routes/exercises.js states, and the same storage.url() behind it. The plan
+  // paths returned the raw key, so a client concatenating it onto the API
+  // origin asked for /exercises/0001/thumb.jpg instead of
+  // /storage/exercises/0001/thumb.jpg: every thumbnail in the plan 404'd and
+  // fell back to a placeholder, for exercises that all have artwork.
+  const toUrl = (key) => (key && deps.storage ? deps.storage.url(key) : null);
+  const withUrls = (plan) => (plan === null ? null : {
+    ...plan,
+    exercises: plan.exercises.map((e) => ({ ...e, thumbnailUrl: toUrl(e.thumbnailUrl) })),
+  });
+
   router.get('/active', requireAuth(deps), async (req, res, next) => {
     try {
       // Null rather than 404: "you have no plan yet" is a normal state during
       // onboarding, not a missing resource.
-      res.json({ data: { plan: await getActivePlan(deps.pool, req.user.userId) } });
+      res.json({
+        data: { plan: withUrls(await getActivePlan(deps.pool, req.user.userId)) },
+      });
     } catch (err) { next(err); }
   });
 
@@ -47,7 +61,13 @@ module.exports = function buildPlansRouter(deps) {
       const alternatives = await listAlternatives(deps.pool, ctx, {
         q, limit: parseLimit(req.query.limit), bodyweightOnly,
       });
-      res.json({ data: { alternatives } });
+      res.json({
+        data: {
+          alternatives: alternatives.map(
+            (a) => ({ ...a, thumbnailUrl: toUrl(a.thumbnailUrl) }),
+          ),
+        },
+      });
     } catch (err) { next(err); }
   });
 
@@ -74,7 +94,9 @@ module.exports = function buildPlansRouter(deps) {
       // error handler unchanged. Do not add a translating try/catch here.
       await swapPlanExercise(deps.pool, ctx, exerciseId);
 
-      res.json({ data: { plan: await getActivePlan(deps.pool, req.user.userId) } });
+      res.json({
+        data: { plan: withUrls(await getActivePlan(deps.pool, req.user.userId)) },
+      });
     } catch (err) { next(err); }
   });
 
