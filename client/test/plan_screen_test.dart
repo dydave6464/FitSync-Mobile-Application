@@ -8,7 +8,9 @@ import 'package:fitsync/core/api_client.dart';
 import 'package:fitsync/core/token_store.dart';
 import 'package:fitsync/features/exercises/presentation/exercise_detail_screen.dart';
 import 'package:fitsync/features/exercises/presentation/providers.dart';
+import 'package:fitsync/features/plans/domain/exercise_alternative.dart';
 import 'package:fitsync/features/plans/domain/workout_plan.dart';
+import 'package:fitsync/features/plans/presentation/exercise_swap_sheet.dart';
 import 'package:fitsync/features/plans/presentation/plan_screen.dart';
 import 'package:fitsync/features/plans/presentation/providers.dart';
 
@@ -21,6 +23,7 @@ const _plan = WorkoutPlan(
   weekNo: 1,
   exercises: [
     PlanExercise(
+      planExerciseId: 601,
       exerciseId: 101,
       name: 'Goblet squat',
       muscleGroup: 'quadriceps',
@@ -29,6 +32,7 @@ const _plan = WorkoutPlan(
       targetReps: '8-12',
     ),
     PlanExercise(
+      planExerciseId: 602,
       exerciseId: 102,
       name: 'Push-up',
       muscleGroup: 'chest',
@@ -46,11 +50,20 @@ ApiClient _hermeticClient() => ApiClient(
       client: MockClient((_) async => http.Response('{"data":{}}', 200)),
     );
 
-Future<void> _pump(WidgetTester tester, WorkoutPlan? plan) async {
+Future<void> _pump(
+  WidgetTester tester,
+  WorkoutPlan? plan, {
+  List<ExerciseAlternative>? alternatives,
+}) async {
   await tester.pumpWidget(ProviderScope(
     overrides: [
       apiClientProvider.overrideWithValue(_hermeticClient()),
       activePlanProvider.overrideWith((ref) async => plan),
+      // Only stubbed for the tests that open the sheet; the others never
+      // reach it, and an unconditional override would hide a regression
+      // where the sheet fetches when it should not.
+      if (alternatives != null)
+        alternativesProvider.overrideWith((ref, key) async => alternatives),
     ],
     child: const MaterialApp(home: PlanScreen()),
   ));
@@ -90,5 +103,24 @@ void main() {
 
     expect(find.byKey(const Key('noPlan')), findsOneWidget);
     expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('every plan exercise offers a way to change it', (tester) async {
+    await _pump(tester, _plan);
+
+    expect(find.text('Change'), findsNWidgets(_plan.exercises.length));
+  });
+
+  testWidgets('Change opens the swap sheet for that exercise', (tester) async {
+    await _pump(tester, _plan, alternatives: const []);
+
+    // Keyed by plan row, not by index: tapping the second card must open the
+    // sheet for the second exercise, which a `find.text('Change').first` tap
+    // could never catch.
+    await tester.tap(find.byKey(const Key('swap.open.602')));
+    await tester.pumpAndSettle();
+
+    expect(find.byType(ExerciseSwapSheet), findsOneWidget);
+    expect(find.text('Replace Push-up'), findsOneWidget);
   });
 }

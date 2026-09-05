@@ -142,4 +142,20 @@ test('plan persistence', async (t) => {
     );
     assert.equal(active[0].n, 1);
   });
+
+  await t.test('the active plan addresses each row by plan_exercise_id', async () => {
+    await reset();
+    await savePlan(pool, userId, {
+      name: 'P', splitStyle: 'full_body', daysPerWeek: 3, sessionLengthMin: 45, weekNo: 1,
+      exercises: [{ name: known, orderNo: 1, targetSets: 3, targetReps: '8-12' }],
+    });
+
+    const plan = await getActivePlan(pool, userId);
+    const [rows] = await pool.query(
+      'SELECT plan_exercise_id FROM plan_exercises WHERE plan_id = ?', [plan.planId],
+    );
+
+    assert.equal(plan.exercises[0].planExerciseId, rows[0].plan_exercise_id,
+      'without this the client cannot name the row it wants to swap');
+  });
 });

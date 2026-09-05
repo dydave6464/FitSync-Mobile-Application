@@ -186,4 +186,81 @@ test('plan endpoints', async (t) => {
     );
     assert.equal(planmet.n, 0, 'the fixture equipment row must not leak');
   });
+
+  await t.test('alternatives require the caller to own the plan', async () => {
+    await reset();
+    await request(app).post('/api/v1/profile/complete-onboarding').set('Authorization', auth).expect(200);
+    const mine = await request(app).get('/api/v1/plans/active').set('Authorization', auth).expect(200);
+    const planExerciseId = mine.body.data.plan.exercises[0].planExerciseId;
+
+    // A second account must not reach the first account's row.
+    await request(app).post('/api/v1/auth/register')
+      .send({ email: 'intruder@example.com', password: 's3cret-pass', fullName: 'I' }).expect(201);
+    const [u] = await pool.query("SELECT user_id FROM users WHERE email='intruder@example.com'");
+    await markEmailVerified(pool, u[0].user_id);
+    const login = await request(app).post('/api/v1/auth/login')
+      .send({ email: 'intruder@example.com', password: 's3cret-pass' }).expect(200);
+
+    await request(app)
+      .get(`/api/v1/plans/exercises/${planExerciseId}/alternatives`)
+      .set('Authorization', `Bearer ${login.body.data.token}`)
+      .expect(404);
+
+    // Spec §4's first PATCH validation rule is what makes this a route
+    // rather than an IDOR: without it, any authenticated user could rewrite
+    // any other user's plan row by guessing a plan_exercise_id.
+    await request(app)
+      .patch(`/api/v1/plans/exercises/${planExerciseId}`)
+      .set('Authorization', `Bearer ${login.body.data.token}`)
+      .send({ exerciseId: 1 })
+      .expect(404);
+  });
+
+  await t.test('a swap returns the updated plan', async () => {
+    await reset();
+    await request(app).post('/api/v1/profile/complete-onboarding').set('Authorization', auth).expect(200);
+    const before = await request(app).get('/api/v1/plans/active').set('Authorization', auth).expect(200);
+    const row = before.body.data.plan.exercises[0];
+
+    const alts = await request(app)
+      .get(`/api/v1/plans/exercises/${row.planExerciseId}/alternatives`)
+      .set('Authorization', auth).expect(200);
+
+    const target = alts.body.data.alternatives[0];
+    const res = await request(app)
+      .patch(`/api/v1/plans/exercises/${row.planExerciseId}`)
+      .set('Authorization', auth).send({ exerciseId: target.exerciseId }).expect(200);
+
+    const swapped = res.body.data.plan.exercises
+      .find((e) => e.planExerciseId === row.planExerciseId);
+    assert.equal(swapped.exerciseId, target.exerciseId);
+    assert.equal(swapped.targetSets, row.targetSets, 'volume survives the swap');
+  });
+
+  await t.test('a rejected target answers 400, not 500', async () => {
+    await reset();
+    await request(app).post('/api/v1/profile/complete-onboarding').set('Authorization', auth).expect(200);
+    const before = await request(app).get('/api/v1/plans/active').set('Authorization', auth).expect(200);
+    const row = before.body.data.plan.exercises[0];
+
+    await request(app)
+      .patch(`/api/v1/plans/exercises/${row.planExerciseId}`)
+      .set('Authorization', auth)
+      .send({ exerciseId: row.exerciseId })   // already in the plan
+      .expect(400);
+  });
+
+  await t.test('a malformed plan exercise id is a 404, not a 500', async () => {
+    await reset();
+    await request(app)
+      .get('/api/v1/plans/exercises/abc/alternatives')
+      .set('Authorization', auth)
+      .expect(404);
+
+    await request(app)
+      .patch('/api/v1/plans/exercises/abc')
+      .set('Authorization', auth)
+      .send({ exerciseId: 1 })
+      .expect(404);
+  });
 });

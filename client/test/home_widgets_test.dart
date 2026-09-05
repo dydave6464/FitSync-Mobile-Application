@@ -30,6 +30,7 @@ WorkoutPlan _plan({
       exercises: [
         for (final (index, item) in equipment.indexed)
           PlanExercise(
+            planExerciseId: 500 + index,
             exerciseId: index + 1,
             name: 'Exercise ${index + 1}',
             muscleGroup: 'chest',

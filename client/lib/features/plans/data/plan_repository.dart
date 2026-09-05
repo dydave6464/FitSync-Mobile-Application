@@ -1,4 +1,5 @@
 import '../../../core/api_client.dart';
+import '../domain/exercise_alternative.dart';
 import '../domain/workout_plan.dart';
 
 class PlanRepository {
@@ -17,5 +18,34 @@ class PlanRepository {
     final plan = data['plan'];
     if (plan == null) return null;
     return WorkoutPlan.fromJson(plan as Map<String, dynamic>);
+  }
+
+  /// Swap candidates for one plan row. [q] searches by name across every
+  /// muscle group; without it the server returns same-muscle alternatives.
+  /// [bodyweightOnly] filters server-side: alternatives come back with
+  /// `LIMIT 20`, so filtering the fetched page in the client could render an
+  /// empty list while matching rows sit unfetched.
+  Future<List<ExerciseAlternative>> alternatives(
+    int planExerciseId, {
+    String? q,
+    bool bodyweightOnly = false,
+  }) async {
+    final params = <String>[
+      if (q != null && q.isNotEmpty) 'q=${Uri.encodeQueryComponent(q)}',
+      if (bodyweightOnly) 'bodyweightOnly=1',
+    ];
+    final query = params.isEmpty ? '' : '?${params.join('&')}';
+    final data = await _api.getJson('/api/v1/plans/exercises/$planExerciseId/alternatives$query');
+    final rows = (data['alternatives'] as List).cast<Map<String, dynamic>>();
+    return rows.map(ExerciseAlternative.fromJson).toList(growable: false);
+  }
+
+  /// Replaces one exercise and returns the whole updated plan, so the caller
+  /// replaces state in a single hop rather than reconciling a partial update.
+  Future<WorkoutPlan> swap(int planExerciseId, int exerciseId) async {
+    final data = await _api.patchJson(
+      '/api/v1/plans/exercises/$planExerciseId', {'exerciseId': exerciseId},
+    );
+    return WorkoutPlan.fromJson(data['plan'] as Map<String, dynamic>);
   }
 }
