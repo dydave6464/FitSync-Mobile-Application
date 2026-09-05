@@ -693,3 +693,41 @@ class FsIconTile extends StatelessWidget {
     );
   }
 }
+
+/// The prototype's progress ring (`kit.jsx` Ring), with [child] centred.
+///
+/// Indeterminate on purpose. The prototype draws a determinate arc at 72%,
+/// but the server builds a plan in a single call and reports no progress, so
+/// a filled fraction would be a number we invented.
+class FsRing extends StatelessWidget {
+  const FsRing({super.key, this.size = 120, this.stroke = 10, this.child});
+
+  final double size;
+  final double stroke;
+  final Widget? child;
+
+  @override
+  Widget build(BuildContext context) {
+    final t = context.fs;
+
+    return SizedBox(
+      width: size,
+      height: size,
+      child: Stack(
+        alignment: Alignment.center,
+        children: [
+          SizedBox(
+            width: size,
+            height: size,
+            child: CircularProgressIndicator(
+              strokeWidth: stroke,
+              color: t.accent,
+              backgroundColor: t.surface2,
+            ),
+          ),
+          ?child,
+        ],
+      ),
+    );
+  }
+}

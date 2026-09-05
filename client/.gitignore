@@ -46,3 +46,7 @@ app.*.map.json
 
 # Widget Preview related
 .widget_preview/
+
+# Local run configuration (dart-defines). Same idea as server/.env:
+# holds machine-specific values, never committed.
+env.json

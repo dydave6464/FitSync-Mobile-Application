@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -384,6 +386,72 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(completions, hasLength(2));
+  });
+
+  testWidgets('generating replaces the step with the plan-building screen',
+      (tester) async {
+    final gate = Completer<void>();
+    await _pumpFlow(tester, patches: [], onComplete: (_) => gate.future);
+
+    await _skip(tester);
+    await _skip(tester);
+    await _skip(tester);
+    await tester.tap(find.byKey(const Key('continue')));
+    await tester.pump();
+
+    expect(find.text('Building your plan…'), findsOneWidget);
+    expect(find.text('STEP 4 / 4'), findsNothing,
+        reason: 'the wizard chrome has no place on the generating screen');
+
+    gate.complete();
+    await tester.pumpAndSettle();
+  });
+
+  testWidgets('the generating screen names the injuries the user reported',
+      (tester) async {
+    final gate = Completer<void>();
+    await _pumpFlow(tester, patches: [], onComplete: (_) => gate.future);
+
+    await _skip(tester);
+    await _skip(tester);
+    await _skip(tester);
+    await _tapKey(tester, const Key('injury.1'));
+    await tester.tap(find.byKey(const Key('continue')));
+    await tester.pump();
+
+    // Resolved from injuryOptionsProvider — SelectedInjury carries only an id,
+    // so a flow that forgot to look the name up would render an id or nothing.
+    expect(find.text('Avoiding Shoulder'), findsOneWidget);
+
+    gate.complete();
+    await tester.pumpAndSettle();
+  });
+
+  testWidgets('holds the generating screen so a fast build cannot flash past',
+      (tester) async {
+    final completed = <bool>[];
+    // Nothing is gated here: every write resolves on the next microtask, which
+    // is the case the hold exists for.
+    await _pumpFlow(tester, patches: [], completed: completed);
+
+    await _skip(tester);
+    await _skip(tester);
+    await _skip(tester);
+    await tester.tap(find.byKey(const Key('continue')));
+    await tester.pump();
+    // Well past the point where the writes have all resolved, and far enough
+    // in that a sub-second floor would already have handed off. Deliberately
+    // short of the real floor so the exact duration stays a tunable number
+    // rather than something this test pins down.
+    await tester.pump(const Duration(seconds: 3));
+
+    expect(find.text('Building your plan…'), findsOneWidget);
+    expect(completed, isEmpty,
+        reason: 'the screen is meant to be readable, not merely non-zero');
+
+    await tester.pumpAndSettle();
+
+    expect(completed, [true], reason: 'the hold delays the hand-off, never skips it');
   });
 
   testWidgets('back returns to the previous step', (tester) async {

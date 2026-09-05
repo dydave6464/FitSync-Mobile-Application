@@ -6,6 +6,7 @@ import '../../auth/presentation/auth_controller.dart';
 import '../../exercises/presentation/exercise_list_screen.dart' show describeError;
 import '../../profile/domain/profile.dart';
 import '../../profile/presentation/providers.dart';
+import 'generating_view.dart';
 import 'onboarding_scaffold.dart';
 import 'steps/about_step.dart';
 import 'steps/goal_step.dart';
@@ -27,10 +28,25 @@ class OnboardingFlow extends ConsumerStatefulWidget {
 class _OnboardingFlowState extends ConsumerState<OnboardingFlow> {
   static const _total = 4;
 
+  /// How long the generating screen stays up at minimum. The whole round trip
+  /// can finish in well under a second, which is too quick to read: the screen
+  /// appears and vanishes before the ring has turned once, and the checklist
+  /// never gets seen at all. Five seconds is long enough to take the rows in.
+  ///
+  /// A floor, not a fixed duration -- a build that genuinely takes longer is
+  /// shown for as long as it takes.
+  static const _minGenerating = Duration(seconds: 5);
+
   int _index = 0;
   bool _busy = false;
   String? _error;
   bool _seeded = false;
+
+  /// Whether the profile and injury writes have landed. Drives the first tick
+  /// on the generating screen, which is why it is a separate flag from [_busy]
+  /// — that one flips before anything has been written.
+  bool _saved = false;
+  DateTime? _generatingSince;
 
   // The working answers. Seeded once from the loaded profile so a returning
   // user sees what they already chose.
@@ -98,13 +114,42 @@ class _OnboardingFlowState extends ConsumerState<OnboardingFlow> {
 
     if (_index == _total - 1) {
       await notifier.setInjuries(_injuries);
+      // Everything the user answered is now on the server, which is what the
+      // generating screen's first row claims — so it may only tick here.
+      if (mounted) setState(() => _saved = true);
       // Generating the plan is the last thing that happens, and the server
       // leaves onboarding incomplete if it fails — so a failure here lands in
       // _continue's catch, the user stays on this step, and tapping again is a
       // genuine retry rather than a resubmission.
       await notifier.completeOnboarding();
+      // Held before the hand-off, not after: the hand-off swaps this screen
+      // out, so a wait on the far side of it would not be seen.
+      await _holdGenerating();
       if (mounted) ref.read(authControllerProvider.notifier).onOnboardingCompleted();
     }
+  }
+
+  /// Keeps the generating screen up for [_minGenerating] measured from the tap.
+  /// Only the success path waits — holding an error back would delay the one
+  /// thing the user needs to see.
+  Future<void> _holdGenerating() async {
+    final since = _generatingSince;
+    if (since == null) return;
+    final remaining = _minGenerating - DateTime.now().difference(since);
+    if (remaining > Duration.zero) await Future<void>.delayed(remaining);
+  }
+
+  /// The reported injuries, by name. [SelectedInjury] carries only an id, so
+  /// the names come from the same options list the step rendered; an injury
+  /// whose option is missing is dropped rather than shown as a number.
+  List<String> _avoidingNames() {
+    final options = ref.read(injuryOptionsProvider).value;
+    if (options == null) return const [];
+    final byId = {for (final o in options) o.injuryId: o.name};
+    return [
+      for (final injury in _injuries)
+        if (byId[injury.injuryId] != null) byId[injury.injuryId]!,
+    ];
   }
 
   Future<void> _continue() async {
@@ -113,7 +158,9 @@ class _OnboardingFlowState extends ConsumerState<OnboardingFlow> {
     setState(() {
       _busy = true;
       _error = null;
+      _saved = false;
     });
+    _generatingSince = DateTime.now();
 
     try {
       await _saveCurrentStep();
@@ -190,6 +237,13 @@ class _OnboardingFlowState extends ConsumerState<OnboardingFlow> {
       ),
       data: (loaded) {
         _seedFrom(loaded);
+
+        // The plan build takes over the whole screen: the wizard chrome would
+        // offer a Back and a Skip that cannot be honoured mid-write.
+        if (_busy && _index == _total - 1) {
+          return GeneratingView(saved: _saved, avoiding: _avoidingNames());
+        }
+
         return OnboardingScaffold(
           step: _index + 1,
           total: _total,
