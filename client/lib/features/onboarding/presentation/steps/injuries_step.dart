@@ -103,7 +103,7 @@ class InjuriesStep extends ConsumerWidget {
         Text(
           'Tell us where you have had trouble, past or present. Your answers '
           'are recorded with your profile and passed to the plan generator. '
-          'This is not a medical diagnosis — if something hurts, see a '
+          'This is not a medical diagnosis. If something hurts, see a '
           'professional.',
           style: TextStyle(fontSize: 12.5, color: t.text2, height: 1.5),
         ),

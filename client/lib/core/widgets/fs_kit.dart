@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 
 import '../theme.dart';
 
@@ -399,6 +400,15 @@ class FsSegmented extends StatelessWidget {
   }
 }
 
+/// Three whole digits and at most one decimal place.
+///
+/// No height in centimetres, weight or goal weight in kilograms needs a fourth
+/// digit, and refusing the keystroke is quieter than taking 1750 and failing
+/// validation after the step is submitted. The decimal survives because half a
+/// kilogram is a real measurement — the cap is about absurd values, not
+/// precision.
+final _measurement = RegExp(r'^\d{0,3}(\.\d?)?$');
+
 /// The design's measurement card: a dim label over a big mono number.
 ///
 /// The number is the input rather than a rendering of one — the mockup is
@@ -451,6 +461,12 @@ class FsStatField extends StatelessWidget {
                   controller: controller,
                   keyboardType:
                       const TextInputType.numberWithOptions(decimal: true),
+                  inputFormatters: [
+                    TextInputFormatter.withFunction(
+                      (previous, next) =>
+                          _measurement.hasMatch(next.text) ? next : previous,
+                    ),
+                  ],
                   style: TextStyle(
                     fontFamily: fsMonoFamily,
                     fontSize: 22,

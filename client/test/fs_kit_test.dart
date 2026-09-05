@@ -285,6 +285,50 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
+  testWidgets('a stat field refuses a fourth digit', (tester) async {
+    final controller = TextEditingController();
+    addTearDown(controller.dispose);
+    await tester.pumpWidget(_host(
+      FsStatField(
+        fieldKey: const Key('heightCm'),
+        label: 'Height',
+        unit: 'cm',
+        controller: controller,
+      ),
+    ));
+    final field = find.byKey(const Key('heightCm'));
+
+    await tester.enterText(field, '175');
+    expect(controller.text, '175');
+
+    // No height, weight or goal weight is four digits. Refusing the keystroke
+    // is quieter than accepting 1750 and failing validation later.
+    await tester.enterText(field, '1750');
+    expect(controller.text, '175');
+  });
+
+  testWidgets('a stat field still takes one decimal place', (tester) async {
+    final controller = TextEditingController();
+    addTearDown(controller.dispose);
+    await tester.pumpWidget(_host(
+      FsStatField(
+        fieldKey: const Key('weightKg'),
+        label: 'Weight',
+        unit: 'kg',
+        controller: controller,
+      ),
+    ));
+    final field = find.byKey(const Key('weightKg'));
+
+    // Half a kilogram is a real measurement; the digit cap is about absurd
+    // values, not about precision.
+    await tester.enterText(field, '72.5');
+    expect(controller.text, '72.5');
+
+    await tester.enterText(field, '72.55');
+    expect(controller.text, '72.5', reason: 'one decimal place is enough');
+  });
+
   testWidgets('a stat field types into the big number', (tester) async {
     final controller = TextEditingController(text: '175');
     addTearDown(controller.dispose);
