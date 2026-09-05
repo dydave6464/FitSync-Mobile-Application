@@ -10,6 +10,7 @@ import 'package:fitsync/features/onboarding/presentation/steps/about_step.dart';
 import 'package:fitsync/features/onboarding/presentation/steps/goal_step.dart';
 import 'package:fitsync/features/onboarding/presentation/steps/injuries_step.dart';
 import 'package:fitsync/features/onboarding/presentation/steps/level_step.dart';
+import 'package:fitsync/core/api_exception.dart';
 import 'package:fitsync/features/profile/domain/profile.dart';
 import 'package:fitsync/features/profile/presentation/providers.dart';
 import 'package:fitsync/features/settings/presentation/settings_screen.dart';
@@ -38,15 +39,23 @@ const _injuryOptions = [
 ];
 
 class FakeProfileNotifier extends ProfileNotifier {
-  FakeProfileNotifier(this.patches);
+  FakeProfileNotifier(this.patches, {this.failPatch = false});
 
   final List<Map<String, dynamic>> patches;
+
+  /// Rejects the write, so a test can tell "saved" from "tried to save".
+  final bool failPatch;
 
   @override
   Future<Profile> build() async => _profile;
 
   @override
-  Future<void> patch(Map<String, dynamic> fields) async => patches.add(fields);
+  Future<void> patch(Map<String, dynamic> fields) async {
+    if (failPatch) {
+      throw const ApiException('PROFILE_INVALID', 'That could not be saved.');
+    }
+    patches.add(fields);
+  }
 
   @override
   Future<void> setEquipment(List<int> equipmentIds) async {}
@@ -83,10 +92,12 @@ Future<void> _pump(
   WidgetTester tester, {
   required List<Map<String, dynamic>> patches,
   List<bool>? signOuts,
+  bool failPatch = false,
 }) async {
   await tester.pumpWidget(ProviderScope(
     overrides: [
-      profileProvider.overrideWith(() => FakeProfileNotifier(patches)),
+      profileProvider.overrideWith(
+          () => FakeProfileNotifier(patches, failPatch: failPatch)),
       authControllerProvider
           .overrideWith(() => RecordingAuthController(signOuts ?? [])),
       equipmentOptionsProvider.overrideWith((ref) async => _equipment),
@@ -154,6 +165,48 @@ void main() {
     expect(patches.single, {'mainGoal': 'build_muscle'});
     expect(find.byType(EditScaffold), findsNothing,
         reason: 'a successful save should return to Settings');
+  });
+
+  testWidgets('a save says so, naming what was saved', (tester) async {
+    await _pump(tester, patches: []);
+
+    await _openRow(tester, const Key('edit.goal'));
+    await tester.tap(find.byKey(const Key('goal.build_muscle')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const Key('save')));
+    await tester.pumpAndSettle();
+
+    // Returning to Settings was the only signal a write had happened, which
+    // looks the same as a screen that closed without doing anything.
+    expect(find.text('Goal saved'), findsOneWidget);
+  });
+
+  testWidgets('the message names the section, not a generic success',
+      (tester) async {
+    await _pump(tester, patches: []);
+
+    await _openRow(tester, const Key('edit.injuries'));
+    await tester.tap(find.byKey(const Key('save')));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Injuries saved'), findsOneWidget);
+  });
+
+  testWidgets('a failed save says nothing about having saved', (tester) async {
+    await _pump(tester, patches: [], failPatch: true);
+
+    await _openRow(tester, const Key('edit.goal'));
+    await tester.tap(find.byKey(const Key('goal.build_muscle')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const Key('save')));
+    await tester.pumpAndSettle();
+
+    // Not textContaining('saved') — the rejection message itself reads "That
+    // could not be saved", which such a matcher would catch and call a pass.
+    expect(find.text('Goal saved'), findsNothing);
+    expect(find.byType(SnackBar), findsNothing);
+    expect(find.byKey(const Key('error')), findsOneWidget,
+        reason: 'the failure is reported where the user is, on the editor');
   });
 
   testWidgets('the notifications toggle writes the new value', (tester) async {

@@ -287,6 +287,12 @@ abstract class _EditorState<W extends ConsumerStatefulWidget>
       _error = null;
     });
 
+    // Captured before the await: this screen pops itself on success, and
+    // ScaffoldMessenger.of() reads the nearest messenger, which by then is
+    // gone. The app-level messenger outlives the pop, so the confirmation
+    // lands on Settings rather than on a route being torn down.
+    final messenger = ScaffoldMessenger.of(context);
+
     try {
       await save(ref.read(profileProvider.notifier));
     } on ApiException catch (error) {
@@ -299,6 +305,10 @@ abstract class _EditorState<W extends ConsumerStatefulWidget>
     }
     if (!mounted) return;
     Navigator.of(context).pop();
+    // Named, not a bare "Saved": these editors all look alike once closed,
+    // and returning to Settings was previously the only sign anything had
+    // been written — indistinguishable from a screen that closed on its own.
+    messenger.showSnackBar(SnackBar(content: Text('$title saved')));
   }
 
   @override
