@@ -35,22 +35,17 @@ class LevelAnswers {
 }
 
 /// `fitness_level` ENUM values. The schema offers two; there is no "advanced".
-const _levels = <({String value, String label, String blurb, IconData icon})>[
-  (
-    value: 'beginner',
-    label: 'Beginner',
-    blurb: 'New to training, or coming back after a long break',
-    icon: Icons.eco_outlined,
-  ),
-  (
-    value: 'intermediate',
-    label: 'Intermediate',
-    blurb: 'Training consistently and comfortable with the basic lifts',
-    icon: Icons.trending_up,
-  ),
+const _levels = <({String value, String label})>[
+  (value: 'beginner', label: 'Beginner'),
+  (value: 'intermediate', label: 'Intermediate'),
 ];
 
 /// `training_location` ENUM values.
+///
+/// Behind a picker rather than on the step: the design gives location a single
+/// row at the foot of the screen, so a second chip strip cannot compete with
+/// the equipment set — the one place on this step where chips mean
+/// "choose several".
 const _locations = <({String value, String label})>[
   (value: 'home_gym', label: 'Home gym'),
   (value: 'commercial_gym', label: 'Commercial gym'),
@@ -75,6 +70,36 @@ class LevelStep extends ConsumerWidget {
     onChanged(value.copyWith(equipmentIds: next));
   }
 
+  String get _locationLabel {
+    for (final location in _locations) {
+      if (location.value == value.trainingLocation) return location.label;
+    }
+    return 'Not set';
+  }
+
+  Future<void> _pickLocation(BuildContext context) async {
+    final picked = await showModalBottomSheet<String>(
+      context: context,
+      builder: (sheet) => SafeArea(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            for (final location in _locations)
+              ListTile(
+                key: Key('location.${location.value}'),
+                title: Text(location.label),
+                trailing: location.value == value.trainingLocation
+                    ? Icon(Icons.check, size: 18, color: sheet.fs.accent)
+                    : null,
+                onTap: () => Navigator.of(sheet).pop(location.value),
+              ),
+          ],
+        ),
+      ),
+    );
+    if (picked != null) onChanged(value.copyWith(trainingLocation: picked));
+  }
+
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final t = context.fs;
@@ -85,61 +110,14 @@ class LevelStep extends ConsumerWidget {
       crossAxisAlignment: CrossAxisAlignment.stretch,
       mainAxisSize: MainAxisSize.min,
       children: [
-        Text('Your experience', style: theme.textTheme.headlineSmall),
-        const SizedBox(height: 8),
-        Text(
-          'Sets your starting volume and how quickly it climbs.',
-          style: TextStyle(fontSize: 12.5, color: t.text2, height: 1.5),
-        ),
-        const SizedBox(height: 20),
-        for (final level in _levels) ...[
-          FsCard(
-            key: Key('level.${level.value}'),
-            small: true,
-            accent: value.fitnessLevel == level.value,
-            onTap: () => onChanged(value.copyWith(fitnessLevel: level.value)),
-            child: Row(
-              children: [
-                FsIconTile(
-                  icon: level.icon,
-                  selected: value.fitnessLevel == level.value,
-                ),
-                const SizedBox(width: 13),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(level.label, style: theme.textTheme.titleMedium),
-                      const SizedBox(height: 2),
-                      Text(
-                        level.blurb,
-                        style: TextStyle(fontSize: 11, color: t.text3),
-                      ),
-                    ],
-                  ),
-                ),
-                FsRadioDot(selected: value.fitnessLevel == level.value),
-              ],
-            ),
-          ),
-          const SizedBox(height: 8),
-        ],
-        const SizedBox(height: 14),
-        const FsEyebrow('Where do you train?'),
+        Text('Your level & equipment', style: theme.textTheme.headlineSmall),
+        const SizedBox(height: 22),
+        const FsEyebrow('Experience'),
         const SizedBox(height: 10),
-        Wrap(
-          spacing: 8,
-          runSpacing: 8,
-          children: [
-            for (final location in _locations)
-              FsChip(
-                key: Key('location.${location.value}'),
-                label: location.label,
-                selected: value.trainingLocation == location.value,
-                onTap: () =>
-                    onChanged(value.copyWith(trainingLocation: location.value)),
-              ),
-          ],
+        FsSegmented(
+          options: _levels,
+          selected: value.fitnessLevel,
+          onSelected: (level) => onChanged(value.copyWith(fitnessLevel: level)),
         ),
         const SizedBox(height: 22),
         Row(
@@ -193,6 +171,30 @@ class LevelStep extends ConsumerWidget {
                       ),
                   ],
                 ),
+        ),
+        const SizedBox(height: 22),
+        FsCard(
+          key: const Key('trainingLocation'),
+          small: true,
+          onTap: () => _pickLocation(context),
+          child: Row(
+            children: [
+              Icon(Icons.home_outlined, size: 18, color: t.text2),
+              const SizedBox(width: 11),
+              const Expanded(child: Text('Training location',
+                  style: TextStyle(fontSize: 13.5))),
+              Text(
+                _locationLabel,
+                style: TextStyle(
+                  fontSize: 13.5,
+                  fontWeight: FontWeight.w600,
+                  color: value.trainingLocation == null ? t.text3 : t.text,
+                ),
+              ),
+              const SizedBox(width: 6),
+              Icon(Icons.chevron_right, size: 16, color: t.text3),
+            ],
+          ),
         ),
       ],
     );

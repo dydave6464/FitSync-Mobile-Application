@@ -57,7 +57,7 @@ void main() {
     await _pump(tester);
 
     for (final value in _fitnessLevels) {
-      expect(find.byKey(Key('level.$value')), findsOneWidget);
+      expect(find.byKey(Key('segment.$value')), findsOneWidget);
     }
   });
 
@@ -80,17 +80,60 @@ void main() {
     ));
     await tester.pumpAndSettle();
 
-    await _tapKey(tester, const Key('level.intermediate'));
+    await _tapKey(tester, const Key('segment.intermediate'));
 
     expect(emitted!.fitnessLevel, 'intermediate');
   });
 
-  testWidgets('offers exactly the four training locations', (tester) async {
+  testWidgets('names the chosen training location on its row', (tester) async {
+    await _pump(tester,
+        value: const LevelAnswers(trainingLocation: 'commercial_gym'));
+
+    // The design gives location a row at the foot of the screen showing its
+    // current value, not a chip strip competing with the equipment set above.
+    expect(find.byKey(const Key('trainingLocation')), findsOneWidget);
+    expect(find.text('Commercial gym'), findsOneWidget);
+    expect(find.byKey(const Key('location.commercial_gym')), findsNothing,
+        reason: 'the options live in the picker the row opens, not on the step');
+  });
+
+  testWidgets('the location row opens a picker offering exactly four',
+      (tester) async {
     await _pump(tester);
+
+    await _tapKey(tester, const Key('trainingLocation'));
 
     for (final value in _locations) {
       expect(find.byKey(Key('location.$value')), findsOneWidget);
     }
+  });
+
+  testWidgets('picking a location emits it and closes the picker',
+      (tester) async {
+    LevelAnswers? emitted;
+    await tester.pumpWidget(ProviderScope(
+      overrides: [
+        equipmentOptionsProvider.overrideWith((ref) async => _serverEquipment),
+      ],
+      child: MaterialApp(
+        home: Scaffold(
+          body: SingleChildScrollView(
+            child: LevelStep(
+              value: const LevelAnswers(),
+              onChanged: (v) => emitted = v,
+            ),
+          ),
+        ),
+      ),
+    ));
+    await tester.pumpAndSettle();
+
+    await _tapKey(tester, const Key('trainingLocation'));
+    await _tapKey(tester, const Key('location.both'));
+
+    expect(emitted!.trainingLocation, 'both');
+    expect(find.byKey(const Key('location.both')), findsNothing,
+        reason: 'a picker left open would cover the step it just edited');
   });
 
   testWidgets('renders the equipment the server returned, not the mockup list',
@@ -185,9 +228,9 @@ void main() {
 
     expect(find.text('No equipment options are available right now.'),
         findsOneWidget);
-    expect(find.byType(FsChip), findsNWidgets(4),
-        reason: 'only the four location chips should remain; no equipment '
-            'chip has anything to render');
+    expect(find.byType(FsChip), findsNothing,
+        reason: 'equipment chips are the only chips on this step now, and '
+            'there is nothing to render one from');
   });
 
   for (final scale in [1.5, 2.0]) {

@@ -234,7 +234,7 @@ void main() {
     await _skip(tester);
     expect(find.text('STEP 3 / 4'), findsOneWidget);
 
-    await _tapKey(tester, const Key('level.beginner'));
+    await _tapKey(tester, const Key('segment.beginner'));
     await _tapKey(tester, const Key('equipment.3'));
     await tester.tap(find.byKey(const Key('continue')));
     await tester.pumpAndSettle();
