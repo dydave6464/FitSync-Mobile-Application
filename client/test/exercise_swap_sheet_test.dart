@@ -5,6 +5,8 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import 'package:fitsync/core/api_exception.dart';
+import 'package:fitsync/features/exercises/domain/exercise.dart';
+import 'package:fitsync/features/exercises/presentation/providers.dart';
 import 'package:fitsync/features/plans/data/plan_repository.dart';
 import 'package:fitsync/features/plans/domain/exercise_alternative.dart';
 import 'package:fitsync/features/plans/domain/workout_plan.dart';
@@ -39,6 +41,60 @@ class _FailingRepo implements PlanRepository {
   Future<WorkoutPlan> swap(int planExerciseId, int exerciseId) async =>
       throw const ApiException(
           'EXERCISE_NOT_ALLOWED', 'That exercise is not available for this plan.');
+}
+
+/// What the catalogue knows about the alternative under preview.
+const _detail = ExerciseDetail(
+  exerciseId: 12,
+  name: 'Push-up',
+  muscleGroup: 'pectorals',
+  equipment: 'Bodyweight',
+  thumbnailUrl: null,
+  animationUrl: '/media/push-up.gif',
+  cues: ['Set your hands under your shoulders'],
+);
+
+/// Records every swap it is asked for, so a test can prove one did *not*
+/// happen — the point of putting a preview in front of it.
+class _RecordingRepo implements PlanRepository {
+  final swaps = <({int planExerciseId, int exerciseId})>[];
+
+  @override
+  String get baseUrl => 'http://test.local';
+
+  @override
+  Future<WorkoutPlan?> activePlan() async => _plan;
+
+  @override
+  Future<List<ExerciseAlternative>> alternatives(int planExerciseId,
+          {String? q, bool bodyweightOnly = false}) async =>
+      const [_alt];
+
+  @override
+  Future<WorkoutPlan> swap(int planExerciseId, int exerciseId) async {
+    swaps.add((planExerciseId: planExerciseId, exerciseId: exerciseId));
+    return _plan;
+  }
+}
+
+/// Pumps the sheet with a repository that records swaps and a catalogue that
+/// answers with [_detail].
+Future<_RecordingRepo> _pumpWithPreview(WidgetTester tester) async {
+  final repo = _RecordingRepo();
+  await tester.pumpWidget(ProviderScope(
+    overrides: [
+      planRepositoryProvider.overrideWithValue(repo),
+      alternativesProvider.overrideWith((ref, key) async => const [_alt]),
+      exerciseDetailProvider.overrideWith((ref, id) async => _detail),
+    ],
+    child: const MaterialApp(
+      home: Scaffold(
+        body: ExerciseSwapSheet(planExerciseId: 77, exerciseName: 'Cable Fly'),
+      ),
+    ),
+  ));
+  await tester.pumpAndSettle();
+  return repo;
 }
 
 /// A [PlanRepository] whose swap always succeeds immediately.
@@ -194,6 +250,7 @@ void main() {
       overrides: [
         alternativesProvider.overrideWith((ref, key) async => const [_alt]),
         planRepositoryProvider.overrideWithValue(_FailingRepo()),
+        exerciseDetailProvider.overrideWith((ref, id) async => _detail),
       ],
       child: const MaterialApp(
         home: Scaffold(
@@ -205,9 +262,14 @@ void main() {
 
     await tester.tap(find.byKey(const Key('swap.alt.12')));
     await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const Key('swap.preview.confirm')));
+    await tester.pumpAndSettle();
 
     expect(find.byType(ExerciseSwapSheet), findsOneWidget,
         reason: 'closing would discard the choice the user just made');
+    expect(find.byKey(const Key('swap.preview')), findsOneWidget,
+        reason: 'the rejected candidate stays on screen to be retried or '
+            'backed out of, rather than dumping the user in the list');
     expect(find.textContaining('not available'), findsOneWidget);
   });
 
@@ -319,6 +381,7 @@ void main() {
         return const [_alt];
       }),
       planRepositoryProvider.overrideWithValue(_SucceedingRepo()),
+      exerciseDetailProvider.overrideWith((ref, id) async => _detail),
     ]);
     addTearDown(container.dispose);
 
@@ -343,6 +406,8 @@ void main() {
 
     await tester.tap(find.byKey(const Key('swap.alt.12')));
     await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const Key('swap.preview.confirm')));
+    await tester.pumpAndSettle();
 
     expect(fetches, 2,
         reason: 'a swap changes inPlanIds for every row in the plan, so every '
@@ -356,6 +421,7 @@ void main() {
     var activePlanFetches = 0;
     final container = ProviderContainer(overrides: [
       planRepositoryProvider.overrideWithValue(_SlowRepo(completer)),
+      exerciseDetailProvider.overrideWith((ref, id) async => _detail),
       alternativesProvider.overrideWith((ref, key) async => const [_alt]),
       activePlanProvider.overrideWith((ref) {
         activePlanFetches++;
@@ -383,6 +449,8 @@ void main() {
     await tester.pumpAndSettle();
 
     await tester.tap(find.byKey(const Key('swap.alt.12')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const Key('swap.preview.confirm')));
     await tester.pump(); // starts the swap; it awaits the completer, so it does not resolve yet
 
     // Dismiss the sheet by replacing the whole widget tree under it — the
@@ -455,5 +523,59 @@ void main() {
     expect(tester.getBottomLeft(find.text('Alternative 1')).dy,
         lessThanOrEqualTo(screen - keyboard),
         reason: 'the first row has to sit above the keyboard, not behind it');
+  });
+
+  testWidgets('tapping an alternative previews it instead of swapping it',
+      (tester) async {
+    final repo = await _pumpWithPreview(tester);
+
+    await tester.tap(find.byKey(const Key('swap.alt.12')));
+    await tester.pumpAndSettle();
+
+    expect(repo.swaps, isEmpty,
+        reason: 'a tap used to be the commitment; now it only opens a look');
+    expect(find.byKey(const Key('swap.preview')), findsOneWidget);
+    expect(find.byKey(const Key('swap.search')), findsNothing,
+        reason: 'the preview takes the whole sheet, list and search included');
+  });
+
+  testWidgets('the preview plays the catalogue demo', (tester) async {
+    await _pumpWithPreview(tester);
+
+    await tester.tap(find.byKey(const Key('swap.alt.12')));
+    await tester.pumpAndSettle();
+
+    final image = tester.widget<Image>(find.byType(Image));
+    expect((image.image as NetworkImage).url,
+        'http://test.local/media/push-up.gif',
+        reason: 'the demo is the whole point of the preview');
+  });
+
+  testWidgets('confirming from the preview is what swaps', (tester) async {
+    final repo = await _pumpWithPreview(tester);
+
+    await tester.tap(find.byKey(const Key('swap.alt.12')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const Key('swap.preview.confirm')));
+    await tester.pumpAndSettle();
+
+    expect(repo.swaps, [(planExerciseId: 77, exerciseId: 12)]);
+  });
+
+  testWidgets('backing out of the preview keeps the search that found it',
+      (tester) async {
+    await _pumpWithPreview(tester);
+    await tester.enterText(find.byKey(const Key('swap.search')), 'push');
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.byKey(const Key('swap.alt.12')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const Key('swap.preview.back')));
+    await tester.pumpAndSettle();
+
+    // Re-running the search after a look at one candidate would be tedious
+    // exactly when someone is comparing several.
+    expect(find.text('push'), findsOneWidget);
+    expect(find.byKey(const Key('swap.alt.12')), findsOneWidget);
   });
 }

@@ -5,7 +5,9 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../core/theme.dart';
+import '../../../core/widgets/fs_kit.dart';
 import '../../exercises/presentation/exercise_list_screen.dart' show describeError;
+import '../../exercises/presentation/providers.dart' show exerciseDetailProvider;
 import '../domain/exercise_alternative.dart';
 import 'providers.dart';
 
@@ -53,6 +55,13 @@ class _ExerciseSwapSheetState extends ConsumerState<ExerciseSwapSheet> {
   bool _bodyweightOnly = false;
   String? _error;
   bool _busy = false;
+
+  /// The candidate being looked at, or null while the list is showing.
+  ///
+  /// Holding the alternative rather than a bool keeps the list pane's state —
+  /// the query, the filter, the scroll offset — untouched underneath, so
+  /// backing out of a preview returns to the search that found it.
+  ExerciseAlternative? _previewing;
 
   @override
   void dispose() {
@@ -150,6 +159,99 @@ class _ExerciseSwapSheetState extends ConsumerState<ExerciseSwapSheet> {
     );
   }
 
+  /// A look at one candidate before it replaces anything.
+  ///
+  /// The name and equipment come from the row that was tapped, so the pane
+  /// can identify itself while the catalogue call is still in flight; only
+  /// the demo needs [exerciseDetailProvider].
+  Widget _preview(FsTokens t, ExerciseAlternative alt) {
+    final theme = Theme.of(context);
+    final detail = ref.watch(exerciseDetailProvider(alt.exerciseId));
+    final baseUrl = ref.read(planRepositoryProvider).baseUrl;
+
+    return Column(
+      key: const Key('swap.preview'),
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        Row(
+          children: [
+            IconButton(
+              key: const Key('swap.preview.back'),
+              icon: const Icon(Icons.arrow_back, size: 20),
+              padding: EdgeInsets.zero,
+              constraints: const BoxConstraints(minWidth: 36, minHeight: 36),
+              onPressed: _busy ? null : () => setState(() => _previewing = null),
+            ),
+            const SizedBox(width: 8),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(alt.name, style: theme.textTheme.titleLarge),
+                  Text(
+                    alt.equipment ?? alt.muscleGroup,
+                    style: TextStyle(fontSize: 11.5, color: t.text3),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
+        const SizedBox(height: 12),
+        Expanded(
+          child: detail.when(
+            loading: () => const Center(child: CircularProgressIndicator()),
+            error: (err, _) => Center(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Text(describeError(err), textAlign: TextAlign.center),
+                  const SizedBox(height: 12),
+                  FsButton(
+                    label: 'Retry',
+                    small: true,
+                    kind: FsButtonKind.secondary,
+                    onPressed: () =>
+                        ref.invalidate(exerciseDetailProvider(alt.exerciseId)),
+                  ),
+                ],
+              ),
+            ),
+            data: (exercise) => exercise.animationUrl == null
+                ? Center(
+                    child: Text(
+                      'No demo for this one yet.',
+                      style: TextStyle(color: t.text2),
+                    ),
+                  )
+                // Flutter's Image plays animated GIFs natively, as the
+                // catalogue's detail screen already relies on.
+                : Image.network(
+                    '$baseUrl'
+                    '${exercise.animationUrl!.startsWith('/') ? '' : '/'}'
+                    '${exercise.animationUrl}',
+                    fit: BoxFit.contain,
+                    errorBuilder: (_, _, _) => Center(
+                      child: Icon(Icons.fitness_center, size: 44, color: t.text3),
+                    ),
+                  ),
+          ),
+        ),
+        if (_error != null) ...[
+          const SizedBox(height: 12),
+          Text(_error!, style: TextStyle(color: Theme.of(context).colorScheme.error)),
+        ],
+        const SizedBox(height: 12),
+        FsButton(
+          key: const Key('swap.preview.confirm'),
+          label: 'Use this exercise',
+          busy: _busy,
+          onPressed: () => _choose(alt),
+        ),
+      ],
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final t = context.fs;
@@ -168,6 +270,8 @@ class _ExerciseSwapSheetState extends ConsumerState<ExerciseSwapSheet> {
     final insets = MediaQuery.viewInsetsOf(context).bottom;
     final visible = math.min(screen * _heightFraction, screen - insets);
 
+    final previewing = _previewing;
+
     return SizedBox(
       height: visible + insets,
       child: SafeArea(
@@ -176,7 +280,12 @@ class _ExerciseSwapSheetState extends ConsumerState<ExerciseSwapSheet> {
             left: 20, right: 20, top: 16,
             bottom: insets + 16,
           ),
-          child: Column(
+          // The list pane is replaced rather than covered, so its query, its
+          // filter and its scroll offset are all still here when the preview
+          // is dismissed.
+          child: previewing != null
+              ? _preview(t, previewing)
+              : Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
               Text('Replace ${widget.exerciseName}',
@@ -244,7 +353,16 @@ class _ExerciseSwapSheetState extends ConsumerState<ExerciseSwapSheet> {
                               contentPadding: EdgeInsets.zero,
                               title: Text(alt.name),
                               subtitle: Text(alt.equipment ?? alt.muscleGroup),
-                              onTap: _busy ? null : () => _choose(alt),
+                              trailing:
+                                  Icon(Icons.chevron_right, size: 16, color: t.text3),
+                              // Opens a look at it. The swap itself now waits
+                              // for the confirm button on the preview: a tap
+                              // here used to replace an exercise outright,
+                              // before the user had seen what they were
+                              // taking on.
+                              onTap: _busy
+                                  ? null
+                                  : () => setState(() => _previewing = alt),
                             );
                           },
                         ),
