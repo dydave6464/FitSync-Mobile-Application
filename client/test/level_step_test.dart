@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 
+import 'package:fitsync/core/theme.dart';
 import 'package:fitsync/core/widgets/fs_kit.dart';
 import 'package:fitsync/features/onboarding/presentation/steps/level_step.dart';
 import 'package:fitsync/features/profile/domain/profile.dart';
@@ -34,6 +35,11 @@ Future<LevelAnswers?> _pump(
       ),
     ],
     child: MaterialApp(
+      // The real theme, not a bare MaterialApp: its ListTile contentPadding
+      // is 4dp, and a default-themed harness silently substitutes Flutter's
+      // roomier 16dp — hiding exactly the kind of inset defect this step's
+      // picker shipped with.
+      theme: fsLightTheme(),
       home: Scaffold(
         body: SingleChildScrollView(
           child: LevelStep(value: value, onChanged: (v) => emitted = v),
@@ -106,6 +112,26 @@ void main() {
     for (final value in _locations) {
       expect(find.byKey(Key('location.$value')), findsOneWidget);
     }
+  });
+
+  testWidgets('the picker insets its options from the sheet edge',
+      (tester) async {
+    await _pump(tester);
+
+    await _tapKey(tester, const Key('trainingLocation'));
+
+    // The app theme gives every ListTile 4dp of horizontal content padding,
+    // which suits tiles inside a card that brings its own inset. Dropped
+    // straight into a sheet, that leaves the labels against the screen edge.
+    // Measured against the sheet's own edge, not the screen's: the test
+    // viewport is 800dp wide, so the sheet is capped at 640 and centred, and
+    // a screen-relative assertion passes on 80dp of dead margin that no
+    // phone ever has.
+    final sheetEdge =
+        tester.getTopLeft(find.byKey(const Key('location.home_gym'))).dx;
+    expect(tester.getTopLeft(find.text('Home gym')).dx - sheetEdge,
+        greaterThanOrEqualTo(16.0),
+        reason: 'options have to clear the edge the sheet is flush with');
   });
 
   testWidgets('picking a location emits it and closes the picker',

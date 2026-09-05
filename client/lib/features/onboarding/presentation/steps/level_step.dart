@@ -84,9 +84,15 @@ class LevelStep extends ConsumerWidget {
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
+            const SizedBox(height: 8),
             for (final location in _locations)
               ListTile(
                 key: Key('location.${location.value}'),
+                // The app theme insets tile content by 4dp, which reads as
+                // padding only inside a card that brings its own. In a sheet
+                // flush with the screen it puts the labels against the edge,
+                // so this matches the 20dp the swap sheet uses.
+                contentPadding: const EdgeInsets.symmetric(horizontal: 20),
                 title: Text(location.label),
                 trailing: location.value == value.trainingLocation
                     ? Icon(Icons.check, size: 18, color: sheet.fs.accent)
