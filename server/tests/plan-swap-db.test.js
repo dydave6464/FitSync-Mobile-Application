@@ -191,7 +191,7 @@ test('swap candidates', async (t) => {
   // other path in listAlternatives -- so the comparison is between real
   // catalogue rows, not fabricated ones.
   await t.test(
-    'search ranks a candidate on selected equipment ahead of a body-weight candidate',
+    'search offers only selected equipment while any of it matches',
     async () => {
       await pool.query('DELETE FROM plan_exercises');
       await pool.query('DELETE FROM workout_plans');
@@ -262,13 +262,47 @@ test('swap candidates', async (t) => {
 
       assert.ok(!ids.includes(barbell.exercise_id),
         'the plan slot being replaced must not offer itself back');
-      assert.ok(ids.includes(dumbbell.exercise_id) && ids.includes(bodyweightAbs.exercise_id),
-        'both the selected-equipment and body-weight candidates must be in the result '
-        + 'for the ordering between them to mean anything');
-      assert.ok(
-        ids.indexOf(dumbbell.exercise_id) < ids.indexOf(bodyweightAbs.exercise_id),
-        'equipment the user selected must outrank the body-weight fallback',
+      assert.ok(ids.includes(dumbbell.exercise_id),
+        'the candidate on equipment the user selected must be offered');
+      // Body weight used to rank below selected equipment and appear anyway.
+      // Ranking is not enough: a dumbbell owner scrolling a list of push-ups
+      // reasonably concludes the app ignored what they own.
+      assert.ok(!ids.includes(bodyweightAbs.exercise_id),
+        'body weight is a fallback for when the user owns nothing that fits, '
+        + 'not a permanent tenant of every list',
       );
+    },
+  );
+
+  // The other half of the rule: strictness must not create dead ends. Five
+  // of the catalogue's muscle groups -- lats, abductors, adductors, spine,
+  // levator scapulae -- have no dumbbell exercise at all, so a strict filter
+  // with no fallback would offer a dumbbell owner nothing whatsoever there.
+  // `abs` is this fixture's stand-in: every live abs row is body weight.
+  await t.test('falls back to body weight when nothing owned trains the group',
+    async () => {
+      await reset();
+      const [[dumbbell]] = await pool.query(
+        `SELECT COALESCE(eq.parent_equipment_id, eq.equipment_id) AS owned_id
+           FROM exercises x JOIN equipment eq ON eq.equipment_id = x.equipment_id
+          WHERE x.status = 'live' AND eq.name = 'dumbbell' LIMIT 1`,
+      );
+      await pool.query(
+        'INSERT INTO user_equipment (user_id, equipment_id) VALUES (?, ?)',
+        [userId, dumbbell.owned_id],
+      );
+
+      const plan = await getActivePlan(pool, userId);
+      const ctx = await loadSwapContext(pool, userId, plan.exercises[0].planExerciseId);
+      const rows = await listAlternatives(pool, ctx, { q: null, limit: 20 });
+
+      assert.ok(rows.length > 0,
+        'an abs row for a dumbbell owner must still offer something: the '
+        + 'catalogue has no dumbbell abs exercise, and an empty list is a '
+        + 'dead end, not a filter',
+      );
+      assert.ok(rows.every((r) => r.exerciseId !== inPlan.exercise_id),
+        'still never the row being replaced');
     },
   );
 

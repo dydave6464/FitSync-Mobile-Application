@@ -59,7 +59,7 @@ async function loadSwapContext(pool, userId, planExerciseId) {
   };
 }
 
-function safetyClauses(ctx, params) {
+function safetyClauses(ctx, params, eligibleIds) {
   let sql = `
      WHERE x.status = 'live'
        AND COALESCE(cat.category, 'strength') = 'strength'
@@ -69,7 +69,11 @@ function safetyClauses(ctx, params) {
               WHERE r.exercise_id = x.exercise_id AND r.equipment_id NOT IN (?)
            )
        AND x.exercise_id NOT IN (?)`;
-  params.push(ctx.ownedIds, ctx.ownedIds, ctx.inPlanIds);
+  // Requirements stay against ownedIds: classifyRequirements only ever emits
+  // 'bench' and 'pull-up bar', never body weight, so this list is already
+  // effectively the user's own selection -- narrowing it would change nothing
+  // except to make that non-obvious.
+  params.push(eligibleIds, ctx.ownedIds, ctx.inPlanIds);
 
   if (ctx.injuryIds.length > 0) {
     sql += `
@@ -82,7 +86,36 @@ function safetyClauses(ctx, params) {
   return sql;
 }
 
+/// Body weight is offered only where the user's own equipment cannot train
+/// the muscle group at all.
+///
+/// The union of selected equipment and body weight is what makes onboarding
+/// survivable -- a user who ticks only Bench, a curated chip with no exercises
+/// tagged to it, must still get a plan. But applied to every list it reads as
+/// the app ignoring the answer: five of the catalogue's muscle groups (lats,
+/// abductors, adductors, spine, levator scapulae) have no dumbbell exercise,
+/// while pectorals, delts, biceps and triceps have dozens, and a dumbbell
+/// owner was offered push-ups in all of them. Ordering alone did not fix that:
+/// a list whose first screen is dumbbells and whose second is body weight
+/// still looks like a list of push-ups.
+///
+/// So: ask for the user's own equipment first, and fall back to the union only
+/// when that returns nothing. The fallback is what keeps a lats row from being
+/// a dead end.
 async function listAlternatives(pool, ctx, { q = null, limit = 20, bodyweightOnly = false } = {}) {
+  // bodyweightOnly asks for the opposite of strictness, so it skips the strict
+  // pass entirely. Nothing in the app sends it any more; the parameter and its
+  // test remain because the endpoint's contract is public.
+  if (!bodyweightOnly && ctx.selectedIds.length > 0) {
+    const strict = await queryAlternatives(
+      pool, ctx, ctx.selectedIds, { q, limit, bodyweightOnly },
+    );
+    if (strict.length > 0) return strict;
+  }
+  return queryAlternatives(pool, ctx, ctx.ownedIds, { q, limit, bodyweightOnly });
+}
+
+async function queryAlternatives(pool, ctx, eligibleIds, { q, limit, bodyweightOnly }) {
   const params = [];
   let sql = `
     SELECT x.exercise_id, x.name, x.muscle_group, x.thumbnail_url,
@@ -92,7 +125,7 @@ async function listAlternatives(pool, ctx, { q = null, limit = 20, bodyweightOnl
       LEFT JOIN equipment parent ON parent.equipment_id = eq.parent_equipment_id
       LEFT JOIN exercise_categories cat ON cat.exercise_id = x.exercise_id`;
 
-  sql += safetyClauses(ctx, params);
+  sql += safetyClauses(ctx, params, eligibleIds);
 
   if (q) {
     // Search spans every muscle group: a gym missing a machine may call for a
@@ -141,7 +174,10 @@ async function isAllowedTarget(pool, ctx, exerciseId) {
       FROM exercises x
       LEFT JOIN equipment eq ON eq.equipment_id = x.equipment_id
       LEFT JOIN exercise_categories cat ON cat.exercise_id = x.exercise_id`;
-  sql += safetyClauses(ctx, params);
+  // Permissive on purpose: the list is strict, but a target that a slightly
+  // stale sheet still offers -- or one the fallback legitimately produced --
+  // must not be refused for equipment reasons it cannot see.
+  sql += safetyClauses(ctx, params, ctx.ownedIds);
   sql += ' AND x.exercise_id = ? LIMIT 1';
   params.push(exerciseId);
 
