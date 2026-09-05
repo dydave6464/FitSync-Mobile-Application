@@ -12,6 +12,8 @@ import 'package:fitsync/features/exercises/domain/exercise_filters.dart';
 import 'package:fitsync/features/exercises/presentation/exercise_list_screen.dart';
 import 'package:fitsync/features/exercises/presentation/providers.dart';
 import 'package:fitsync/features/home/presentation/nav_shell.dart';
+import 'package:fitsync/features/plans/domain/exercise_alternative.dart';
+import 'package:fitsync/features/plans/domain/workout_plan.dart';
 import 'package:fitsync/features/plans/presentation/plan_screen.dart';
 import 'package:fitsync/features/plans/presentation/providers.dart';
 import 'package:fitsync/features/profile/domain/profile.dart';
@@ -76,7 +78,28 @@ class StubProfileNotifier extends ProfileNotifier {
       );
 }
 
-Future<void> _pumpShell(WidgetTester tester) => tester.pumpWidget(
+/// One row is enough to reach the swap sheet from the Train tab.
+const _plan = WorkoutPlan(
+  planId: 1,
+  name: 'Week 1',
+  splitStyle: 'full_body',
+  daysPerWeek: 3,
+  sessionLengthMin: 45,
+  weekNo: 1,
+  exercises: [
+    PlanExercise(
+      planExerciseId: 601,
+      exerciseId: 101,
+      name: 'Goblet squat',
+      muscleGroup: 'quadriceps',
+      orderNo: 1,
+      targetSets: 3,
+      targetReps: '8-12',
+    ),
+  ],
+);
+
+Future<void> _pumpShell(WidgetTester tester, {WorkoutPlan? plan}) => tester.pumpWidget(
       ProviderScope(
         overrides: [
           // Defensive: nothing here should actually reach it, since every
@@ -90,7 +113,15 @@ Future<void> _pumpShell(WidgetTester tester) => tester.pumpWidget(
           // Train tab (PlanScreen). No plan keeps it on the simple empty
           // state, which is also what avoids a stray "Exercises" eyebrow
           // label competing with the Browse tab's AppBar title below.
-          activePlanProvider.overrideWith((ref) async => null),
+          activePlanProvider.overrideWith((ref) async => plan),
+          alternativesProvider.overrideWith((ref, key) async => const [
+                ExerciseAlternative(
+                  exerciseId: 12,
+                  name: 'Push-up',
+                  muscleGroup: 'quadriceps',
+                  equipment: 'Bodyweight',
+                ),
+              ]),
           // Browse tab (ExerciseListScreen).
           exerciseRepositoryProvider.overrideWithValue(FakeExerciseRepository()),
           // Profile tab (SettingsScreen).
@@ -235,5 +266,27 @@ void main() {
     expect(find.byType(SettingsScreen), findsOneWidget,
         reason: 'Profile must still reach Settings now that the gear icon '
             'plan_screen_test.dart tested is gone');
+  });
+
+  testWidgets("the swap sheet's equipment note lands on the Profile tab",
+      (tester) async {
+    // The one test that crosses all three files. The sheet's note, the
+    // callback PlanScreen forwards and the index NavShell selects are each
+    // covered on their own; only here does a wrong index in nav_shell.dart —
+    // or a tab list reordered around it — actually show up as landing on the
+    // wrong screen.
+    await _pumpShell(tester, plan: _plan);
+
+    await tester.tap(find.byKey(const Key('nav.1')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const Key('swap.open.601')));
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.byKey(const Key('swap.equipmentHint')));
+    await tester.pumpAndSettle();
+
+    // As above: IndexedStack only shows the selected child to a default
+    // finder, so this holds only if Profile is genuinely the current tab.
+    expect(find.byType(SettingsScreen), findsOneWidget);
   });
 }

@@ -54,6 +54,7 @@ Future<void> _pump(
   WidgetTester tester,
   WorkoutPlan? plan, {
   List<ExerciseAlternative>? alternatives,
+  VoidCallback? onGoToProfile,
 }) async {
   await tester.pumpWidget(ProviderScope(
     overrides: [
@@ -65,7 +66,7 @@ Future<void> _pump(
       if (alternatives != null)
         alternativesProvider.overrideWith((ref, key) async => alternatives),
     ],
-    child: const MaterialApp(home: PlanScreen()),
+    child: MaterialApp(home: PlanScreen(onGoToProfile: onGoToProfile)),
   ));
   await tester.pumpAndSettle();
 }
@@ -122,5 +123,45 @@ void main() {
 
     expect(find.byType(ExerciseSwapSheet), findsOneWidget);
     expect(find.text('Replace Push-up'), findsOneWidget);
+  });
+
+  testWidgets('the sheet opens just below the Exercises heading', (tester) async {
+    // Pins the sheet's height fraction to the thing it was chosen for. The
+    // constant lives in exercise_swap_sheet.dart, but what makes 0.66 right
+    // is this screen: the heading stays visible and the plan behind it is
+    // still recognisable. Anyone retuning the constant sees this fail rather
+    // than discovering on a device that the sheet swallowed the page.
+    tester.view.physicalSize = const Size(1080, 2340);
+    tester.view.devicePixelRatio = 2.625;
+    addTearDown(tester.view.reset);
+
+    await _pump(tester, _plan, alternatives: const []);
+    await tester.tap(find.byKey(const Key('swap.open.601')));
+    await tester.pumpAndSettle();
+
+    final heading = tester.getBottomLeft(find.text('EXERCISES')).dy;
+    final sheetTop = tester.getTopLeft(find.byType(ExerciseSwapSheet)).dy;
+
+    // Only the "stays visible" half is asserted: the exact gap moves with the
+    // plan card above it, which grows a line whenever a plan name wraps, so
+    // pinning the distance would fail on a long plan name and prove nothing.
+    expect(sheetTop, greaterThanOrEqualTo(heading),
+        reason: 'the sheet must not swallow the heading it opens under');
+  });
+
+  testWidgets("the sheet's equipment note closes it and heads for Profile",
+      (tester) async {
+    var asked = 0;
+    await _pump(tester, _plan, alternatives: const [], onGoToProfile: () => asked++);
+
+    await tester.tap(find.byKey(const Key('swap.open.602')));
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.byKey(const Key('swap.equipmentHint')));
+    await tester.pumpAndSettle();
+
+    expect(asked, 1, reason: 'the note has to reach the screen that owns the tabs');
+    expect(find.byType(ExerciseSwapSheet), findsNothing,
+        reason: 'a sheet left open would cover the tab it just switched to');
   });
 }

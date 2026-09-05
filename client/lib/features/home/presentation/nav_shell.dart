@@ -67,7 +67,7 @@ class _NavShellState extends State<NavShell> {
               onGoToProfile: () => _select(3),
             ),
           ),
-          _tab(1, () => const PlanScreen()),
+          _tab(1, () => PlanScreen(onGoToProfile: () => _select(3))),
           _tab(2, () => const ExerciseListScreen()),
           _tab(3, () => const SettingsScreen()),
         ],

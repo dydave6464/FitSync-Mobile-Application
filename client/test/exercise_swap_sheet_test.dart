@@ -80,18 +80,89 @@ class _SlowRepo implements PlanRepository {
   Future<WorkoutPlan> swap(int planExerciseId, int exerciseId) => completer.future;
 }
 
-Future<void> _pump(WidgetTester tester, List<ExerciseAlternative> rows) async {
+Future<void> _pump(
+  WidgetTester tester,
+  List<ExerciseAlternative> rows, {
+  VoidCallback? onGoToProfile,
+}) async {
   await tester.pumpWidget(ProviderScope(
     overrides: [
       alternativesProvider.overrideWith((ref, key) async => rows),
     ],
-    child: const MaterialApp(
+    child: MaterialApp(
       home: Scaffold(
-        body: ExerciseSwapSheet(planExerciseId: 77, exerciseName: 'Cable Fly'),
+        body: ExerciseSwapSheet(
+          planExerciseId: 77,
+          exerciseName: 'Cable Fly',
+          onGoToProfile: onGoToProfile,
+        ),
       ),
     ),
   ));
   await tester.pumpAndSettle();
+}
+
+/// A Pixel-class phone, so a fraction-of-the-screen height means something.
+const _screen = Size(1080, 2340);
+const _dpr = 2.625;
+
+List<ExerciseAlternative> _many(int n) => List.generate(
+      n,
+      (i) => ExerciseAlternative(
+        exerciseId: i + 1,
+        name: 'Alternative ${i + 1}',
+        muscleGroup: 'pectorals',
+        equipment: 'Barbell',
+      ),
+    );
+
+/// Opens the sheet the way [PlanScreen] does — through a real modal route.
+///
+/// The bare [_pump] above hands the sheet a Scaffold body, whose tight
+/// constraints would stretch any height it asks for to fill the screen. Only
+/// a modal sheet's loose constraints let it size itself, so every height
+/// assertion has to come through here.
+Future<double> _pumpAsSheet(
+  WidgetTester tester,
+  List<ExerciseAlternative> rows, {
+  double keyboard = 0,
+}) async {
+  tester.view.physicalSize = _screen;
+  tester.view.devicePixelRatio = _dpr;
+  tester.view.viewInsets = FakeViewPadding(bottom: keyboard * _dpr);
+  addTearDown(tester.view.reset);
+
+  await tester.pumpWidget(ProviderScope(
+    overrides: [
+      alternativesProvider.overrideWith((ref, key) async => rows),
+    ],
+    child: MaterialApp(
+      // A fresh key per call: without it a second `_pumpAsSheet` in the same
+      // test reuses the Navigator's element, which still holds the first
+      // sheet's route — the "open" button would then be behind a modal
+      // barrier and the tap would dismiss the sheet instead.
+      key: ValueKey('${rows.length}:$keyboard'),
+      home: Scaffold(
+        body: Builder(
+          builder: (context) => TextButton(
+            onPressed: () => showModalBottomSheet<String>(
+              context: context,
+              isScrollControlled: true,
+              builder: (_) => const ExerciseSwapSheet(
+                planExerciseId: 77,
+                exerciseName: 'Cable Fly',
+              ),
+            ),
+            child: const Text('open'),
+          ),
+        ),
+      ),
+    ),
+  ));
+
+  await tester.tap(find.text('open'));
+  await tester.pumpAndSettle();
+  return tester.getSize(find.byType(ExerciseSwapSheet)).height;
 }
 
 void main() {
@@ -138,6 +209,44 @@ void main() {
     expect(find.byType(ExerciseSwapSheet), findsOneWidget,
         reason: 'closing would discard the choice the user just made');
     expect(find.textContaining('not available'), findsOneWidget);
+  });
+
+  testWidgets('points at Profile even when the list is not empty', (tester) async {
+    await _pump(tester, const [_alt]);
+
+    // The pool is filtered to the equipment picked at onboarding, and until
+    // the list runs dry nothing on the sheet says so: a user who owns a cable
+    // machine reads a page of body-weight rows as the whole catalogue rather
+    // than as the consequence of a setting they can change.
+    expect(find.textContaining("Don't see your equipment?"), findsOneWidget);
+  });
+
+  testWidgets('tapping the equipment note asks for the Profile tab',
+      (tester) async {
+    var asked = 0;
+    await _pump(tester, const [_alt], onGoToProfile: () => asked++);
+
+    await tester.tap(find.byKey(const Key('swap.equipmentHint')));
+    await tester.pumpAndSettle();
+
+    expect(asked, 1);
+  });
+
+  testWidgets('the equipment note is inert when nothing wired a way to Profile',
+      (tester) async {
+    await _pump(tester, const [_alt]);
+
+    // The advice still holds without a route to act on it — a sheet pumped
+    // outside the shell has no tab to switch to — but a link that goes
+    // nowhere is worse than plain text, so only the tappability drops.
+    expect(find.byKey(const Key('swap.equipmentHint')), findsOneWidget);
+    expect(
+      find.ancestor(
+        of: find.byKey(const Key('swap.equipmentHint')),
+        matching: find.byType(InkWell),
+      ),
+      findsNothing,
+    );
   });
 
   testWidgets('offers a bodyweight-only filter', (tester) async {
@@ -292,5 +401,59 @@ void main() {
         reason: 'completing the swap after disposal must not throw');
     expect(activePlanFetches, 2,
         reason: 'the refresh must survive the sheet being disposed mid-request');
+  });
+
+  testWidgets('opens at the same height whether there are two candidates or twelve',
+      (tester) async {
+    final two = await _pumpAsSheet(tester, _many(2));
+    final twelve = await _pumpAsSheet(tester, _many(12));
+
+    // The point of the fixed height: a muscle with a dozen alternatives used
+    // to grow the sheet until it covered the plan entirely, so the same
+    // action looked like a different screen depending on the exercise.
+    expect(twelve, two);
+    final screen = _screen.height / _dpr;
+    expect(twelve / screen, closeTo(0.66, 0.01),
+        reason: 'two thirds puts the top edge just under the Exercises heading');
+  });
+
+  testWidgets('a list too long for the sheet scrolls inside it', (tester) async {
+    await _pumpAsSheet(tester, _many(12));
+
+    expect(find.text('Alternative 12'), findsNothing,
+        reason: 'twelve rows cannot fit; the last must start off-screen');
+
+    await tester.scrollUntilVisible(
+      find.text('Alternative 12'),
+      200,
+      // Scoped to the list: the search field's EditableText is a Scrollable
+      // too, so a sheet-wide finder matches two.
+      scrollable: find.descendant(
+        of: find.byType(ListView),
+        matching: find.byType(Scrollable),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.text('Alternative 12'), findsOneWidget);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('gives the keyboard room instead of overflowing behind it',
+      (tester) async {
+    // Guards the fix rather than driving it: a content-sized sheet already
+    // survived this, but a rigid two thirds would not. The route anchors the
+    // sheet to the bottom of the screen and never lifts it, so with a 400pt
+    // keyboard up a 66%-tall box leaves ~170pt for a title, a search field,
+    // a chip, a list and a footnote — a RenderFlex overflow, and rows the
+    // user cannot reach.
+    const keyboard = 400.0;
+    await _pumpAsSheet(tester, _many(12), keyboard: keyboard);
+
+    final screen = _screen.height / _dpr;
+    expect(tester.takeException(), isNull);
+    expect(tester.getBottomLeft(find.text('Alternative 1')).dy,
+        lessThanOrEqualTo(screen - keyboard),
+        reason: 'the first row has to sit above the keyboard, not behind it');
   });
 }

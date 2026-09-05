@@ -10,7 +10,11 @@ import 'exercise_swap_sheet.dart';
 import 'providers.dart';
 
 class PlanScreen extends ConsumerWidget {
-  const PlanScreen({super.key});
+  const PlanScreen({super.key, this.onGoToProfile});
+
+  /// Switches the shell to the Profile tab. Handed down to the swap sheet,
+  /// whose equipment note is the only thing here that leaves this tab.
+  final VoidCallback? onGoToProfile;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -41,8 +45,9 @@ class PlanScreen extends ConsumerWidget {
             ),
           ),
         ),
-        data: (loaded) =>
-            loaded == null ? const _NoPlanYet() : _PlanView(plan: loaded),
+        data: (loaded) => loaded == null
+            ? const _NoPlanYet()
+            : _PlanView(plan: loaded, onGoToProfile: onGoToProfile),
       ),
     );
   }
@@ -79,9 +84,10 @@ class _NoPlanYet extends StatelessWidget {
 }
 
 class _PlanView extends ConsumerWidget {
-  const _PlanView({required this.plan});
+  const _PlanView({required this.plan, this.onGoToProfile});
 
   final WorkoutPlan plan;
+  final VoidCallback? onGoToProfile;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -115,7 +121,11 @@ class _PlanView extends ConsumerWidget {
         const FsEyebrow('Exercises'),
         const SizedBox(height: 10),
         for (final exercise in plan.exercises) ...[
-          _PlanExerciseCard(exercise: exercise, baseUrl: baseUrl),
+          _PlanExerciseCard(
+            exercise: exercise,
+            baseUrl: baseUrl,
+            onGoToProfile: onGoToProfile,
+          ),
           const SizedBox(height: 8),
         ],
       ],
@@ -128,10 +138,15 @@ class _PlanView extends ConsumerWidget {
 /// instead. Reusing it would mean adding a subtitle override to a widget that
 /// has one job.
 class _PlanExerciseCard extends StatelessWidget {
-  const _PlanExerciseCard({required this.exercise, required this.baseUrl});
+  const _PlanExerciseCard({
+    required this.exercise,
+    required this.baseUrl,
+    this.onGoToProfile,
+  });
 
   final PlanExercise exercise;
   final String baseUrl;
+  final VoidCallback? onGoToProfile;
 
   @override
   Widget build(BuildContext context) {
@@ -188,6 +203,7 @@ class _PlanExerciseCard extends StatelessWidget {
                         builder: (_) => ExerciseSwapSheet(
                           planExerciseId: exercise.planExerciseId,
                           exerciseName: exercise.name,
+                          onGoToProfile: onGoToProfile,
                         ),
                       ).then((swappedTo) {
                         if (swappedTo != null && context.mounted) {
