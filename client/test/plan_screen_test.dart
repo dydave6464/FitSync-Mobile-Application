@@ -125,6 +125,30 @@ void main() {
     expect(find.text('Replace Push-up'), findsOneWidget);
   });
 
+  testWidgets('a row with no artwork falls back to its equipment, not a dumbbell',
+      (tester) async {
+    // Network images never load in a widget test, so what renders here is the
+    // same fallback a missing file produces in the app. A body-weight exercise
+    // showing a dumbbell was the complaint; it now shows a body.
+    await _pump(
+      tester,
+      const WorkoutPlan(
+        planId: 42, name: 'W', splitStyle: 'full_body', daysPerWeek: 3,
+        sessionLengthMin: 45, weekNo: 1,
+        exercises: [
+          PlanExercise(
+            planExerciseId: 601, exerciseId: 101, name: 'Push-up',
+            muscleGroup: 'pectorals', orderNo: 1, targetSets: 3,
+            targetReps: '8-12', equipment: 'Bodyweight',
+          ),
+        ],
+      ),
+    );
+
+    expect(find.byIcon(Icons.accessibility_new), findsOneWidget);
+    expect(find.byIcon(Icons.fitness_center), findsNothing);
+  });
+
   testWidgets('the sheet opens just below the Exercises heading', (tester) async {
     // Pins the sheet's height fraction to the thing it was chosen for. The
     // constant lives in exercise_swap_sheet.dart, but what makes 0.66 right

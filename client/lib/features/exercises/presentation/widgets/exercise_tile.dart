@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 
+import '../equipment_icon.dart';
+
 import '../../domain/exercise.dart';
 
 class ExerciseTile extends StatelessWidget {
@@ -22,12 +24,13 @@ class ExerciseTile extends StatelessWidget {
         width: 56,
         height: 56,
         child: exercise.thumbnailUrl == null
-            ? const _ThumbPlaceholder()
+            ? _ThumbPlaceholder(equipment: exercise.equipment)
             : Image.network(
                 '$baseUrl${exercise.thumbnailUrl}',
                 fit: BoxFit.cover,
                 // One unreachable thumbnail must not take the row down with it.
-                errorBuilder: (_, _, _) => const _ThumbPlaceholder(),
+                errorBuilder: (_, _, _) =>
+                    _ThumbPlaceholder(equipment: exercise.equipment),
               ),
       ),
       title: Text(exercise.name),
@@ -41,11 +44,13 @@ class ExerciseTile extends StatelessWidget {
 }
 
 class _ThumbPlaceholder extends StatelessWidget {
-  const _ThumbPlaceholder();
+  const _ThumbPlaceholder({this.equipment});
+
+  final String? equipment;
 
   @override
   Widget build(BuildContext context) => Container(
         color: Theme.of(context).colorScheme.surfaceContainerHighest,
-        child: const Icon(Icons.fitness_center, size: 20),
+        child: Icon(equipmentIcon(equipment), size: 20),
       );
 }

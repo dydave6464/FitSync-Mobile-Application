@@ -1,4 +1,6 @@
 import 'package:flutter/material.dart';
+
+import 'equipment_icon.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../core/api_exception.dart';
@@ -55,8 +57,8 @@ class ExerciseDetailScreen extends ConsumerWidget {
                   // Flutter's Image plays animated GIFs natively — no package.
                   // flutter_lints (this SDK) flags __/___ as unnecessary now
                   // that repeated `_` is a valid wildcard for each parameter.
-                  errorBuilder: (_, _, _) => const Center(
-                    child: Icon(Icons.fitness_center, size: 48),
+                  errorBuilder: (_, _, _) => Center(
+                    child: Icon(equipmentIcon(exercise.equipment), size: 48),
                   ),
                 ),
               ),

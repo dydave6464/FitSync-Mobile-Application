@@ -6,6 +6,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../core/theme.dart';
 import '../../../core/widgets/fs_kit.dart';
+import '../../exercises/presentation/equipment_icon.dart';
 import '../../exercises/presentation/exercise_list_screen.dart' show describeError;
 import '../../exercises/presentation/providers.dart' show exerciseDetailProvider;
 import '../domain/exercise_alternative.dart';
@@ -257,7 +258,7 @@ class _ExerciseSwapSheetState extends ConsumerState<ExerciseSwapSheet> {
                             fit: BoxFit.contain,
                             filterQuality: FilterQuality.medium,
                             errorBuilder: (_, _, _) => Center(
-                              child: Icon(Icons.fitness_center,
+                              child: Icon(equipmentIcon(alt.equipment),
                                   size: 44, color: t.text3),
                             ),
                           ),
