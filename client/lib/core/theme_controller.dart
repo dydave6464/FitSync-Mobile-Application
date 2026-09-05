@@ -32,8 +32,13 @@ class ThemeStore {
 
 final themeStoreProvider = Provider<ThemeStore>((ref) => ThemeStore());
 
-/// The design is dark-first, so that is what an unconfigured install gets.
-const _defaultMode = ThemeMode.dark;
+/// Light, so a first launch looks like every other app on the phone.
+///
+/// The prototype is drawn dark and the palette is still dark-first, but a
+/// fresh install arriving in dark mode reads as a setting the user did not
+/// choose. Dark is one toggle away in Settings, and a stored choice always
+/// wins over this — an existing user who picked dark keeps it.
+const _defaultMode = ThemeMode.light;
 
 class ThemeController extends Notifier<ThemeMode> {
   /// Completes once the stored preference has been applied.

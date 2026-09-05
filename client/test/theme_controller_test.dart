@@ -14,25 +14,29 @@ ProviderContainer _containerWith(ThemeStore store) {
 }
 
 void main() {
-  test('defaults to dark, because the design is dark-first', () async {
+  test('defaults to light, and dark is a choice the user makes', () async {
     final container =
         _containerWith(ThemeStore(backing: InMemorySecureStore()));
 
-    expect(container.read(themeModeProvider), ThemeMode.dark);
+    expect(container.read(themeModeProvider), ThemeMode.light);
   });
 
-  test('restores a saved light preference', () async {
+  test('restores a saved dark preference', () async {
     final backing = InMemorySecureStore();
     final store = ThemeStore(backing: backing);
-    await store.write(ThemeMode.light);
+    // Saved value deliberately opposite the default: if they matched, the
+    // final assertion would pass whether or not anything was restored.
+    await store.write(ThemeMode.dark);
 
     final container = _containerWith(store);
     // build() returns the default synchronously and loads the stored value
     // right after, so the restored mode lands on the next microtask.
-    expect(container.read(themeModeProvider), ThemeMode.dark);
+    expect(container.read(themeModeProvider), ThemeMode.light);
     await container.read(themeModeProvider.notifier).ready;
 
-    expect(container.read(themeModeProvider), ThemeMode.light);
+    expect(container.read(themeModeProvider), ThemeMode.dark,
+        reason: 'an existing user who chose dark keeps it across the change '
+            'of default');
   });
 
   test('choosing light persists it', () async {
@@ -64,6 +68,6 @@ void main() {
 
     await container.read(themeModeProvider.notifier).ready;
 
-    expect(container.read(themeModeProvider), ThemeMode.dark);
+    expect(container.read(themeModeProvider), ThemeMode.light);
   });
 }
