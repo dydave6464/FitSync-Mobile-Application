@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../../../../core/theme.dart';
 import '../../../../core/widgets/fs_kit.dart';
+import '../../domain/daily_targets.dart';
 
 /// The answers step 2 collects.
 ///
@@ -29,25 +30,59 @@ class AboutAnswers {
   final String? activityLevel;
 }
 
-/// `sex` ENUM values. `prefer_not_to_say` is absent from the mockup but present
-/// in the schema, and a user who does not want to answer needs somewhere to go
-/// that is not a wrong answer.
+/// The two `sex` values the design offers.
+///
+/// The schema also has `prefer_not_to_say`, and profiles answered under the
+/// older three-chip control still carry it. It is not offered here, but a
+/// stored one is left alone: [FsSegmented] lights no segment for a value it
+/// does not know, and nothing rewrites it until the user picks.
 const _sexes = <({String value, String label})>[
   (value: 'male', label: 'Male'),
   (value: 'female', label: 'Female'),
-  (value: 'prefer_not_to_say', label: 'Prefer not to say'),
 ];
 
-/// `activity_level` ENUM values. `active` is likewise missing from the mockup;
-/// leaving it out would push those users onto a neighbouring value and skew
-/// their plan.
-const _activityLevels = <({String value, String label, String blurb})>[
-  (value: 'sedentary', label: 'Sedentary', blurb: 'Desk work, little walking'),
-  (value: 'light', label: 'Lightly active', blurb: 'Light exercise 1-3 days a week'),
-  (value: 'moderate', label: 'Moderately active', blurb: 'Exercise 3-5 days a week'),
-  (value: 'active', label: 'Active', blurb: 'Exercise 6-7 days a week'),
-  (value: 'very_active', label: 'Very active', blurb: 'Physical job or twice-daily training'),
+/// `activity_level` ENUM values. The mockup draws four chips and no "Active";
+/// leaving it out would push those users onto a neighbouring multiplier and
+/// skew both their plan and the estimate below.
+const _activityLevels = <({String value, String label})>[
+  (value: 'sedentary', label: 'Sedentary'),
+  (value: 'light', label: 'Light'),
+  (value: 'moderate', label: 'Moderate'),
+  (value: 'active', label: 'Active'),
+  (value: 'very_active', label: 'Very active'),
 ];
+
+const _months = <String>[
+  'January', 'February', 'March', 'April', 'May', 'June',
+  'July', 'August', 'September', 'October', 'November', 'December',
+];
+
+/// `1998-03-14` as `14 March 1998` — the wire format is not something to read.
+String? _readableDate(String? iso) {
+  final date = iso == null ? null : DateTime.tryParse(iso);
+  if (date == null) return null;
+  return '${date.day} ${_months[date.month - 1]} ${date.year}';
+}
+
+/// Whole years since [iso], or null when it is unset or unreadable.
+int? _ageFrom(String? iso) {
+  final born = iso == null ? null : DateTime.tryParse(iso);
+  if (born == null) return null;
+
+  final now = DateTime.now();
+  final hadBirthday = now.month > born.month ||
+      (now.month == born.month && now.day >= born.day);
+  return now.year - born.year - (hadBirthday ? 0 : 1);
+}
+
+/// 2300 as `2,300`. One separator is enough: nobody's daily target reaches
+/// seven figures.
+String _grouped(int value) {
+  final digits = value.toString();
+  if (digits.length <= 3) return digits;
+  return '${digits.substring(0, digits.length - 3)},'
+      '${digits.substring(digits.length - 3)}';
+}
 
 /// Step 2: the body and lifestyle facts the plan generator needs.
 ///
@@ -77,12 +112,15 @@ class _AboutStepState extends State<AboutStep> {
     _sex = widget.value.sex;
     _dateOfBirth = widget.value.dateOfBirth;
     _activityLevel = widget.value.activityLevel;
+    // `_onNumberChanged` rather than `_emit`: the estimate card is computed
+    // from these controllers, so a typed digit has to rebuild this step as
+    // well as report upwards.
     _height = TextEditingController(text: _format(widget.value.heightCm))
-      ..addListener(_emit);
+      ..addListener(_onNumberChanged);
     _weight = TextEditingController(text: _format(widget.value.weightKg))
-      ..addListener(_emit);
+      ..addListener(_onNumberChanged);
     _goalWeight = TextEditingController(text: _format(widget.value.goalWeightKg))
-      ..addListener(_emit);
+      ..addListener(_onNumberChanged);
   }
 
   @override
@@ -108,6 +146,11 @@ class _AboutStepState extends State<AboutStep> {
     final trimmed = text.trim();
     if (trimmed.isEmpty) return null;
     return double.tryParse(trimmed);
+  }
+
+  void _onNumberChanged() {
+    if (mounted) setState(() {});
+    _emit();
   }
 
   void _emit() => widget.onChanged(AboutAnswers(
@@ -140,17 +183,14 @@ class _AboutStepState extends State<AboutStep> {
     _emit();
   }
 
-  Widget _measurement(Key key, TextEditingController controller, String label,
-          String suffix) =>
-      Padding(
-        padding: const EdgeInsets.only(bottom: 10),
-        child: FsField(
-          fieldKey: key,
-          controller: controller,
-          hint: label,
-          suffix: suffix,
-          keyboardType: const TextInputType.numberWithOptions(decimal: true),
-        ),
+  Widget _statField(Key key, TextEditingController controller, String label,
+          String unit, {bool accent = false}) =>
+      FsStatField(
+        fieldKey: key,
+        label: label,
+        unit: unit,
+        controller: controller,
+        accent: accent,
       );
 
   @override
@@ -158,36 +198,37 @@ class _AboutStepState extends State<AboutStep> {
     final t = context.fs;
     final theme = Theme.of(context);
 
+    final age = _ageFrom(_dateOfBirth);
+    final targets = estimateDailyTargets(
+      sex: _sex,
+      dateOfBirth: _dateOfBirth,
+      heightCm: _parse(_height.text),
+      weightKg: _parse(_weight.text),
+      activityLevel: _activityLevel,
+    );
+
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       mainAxisSize: MainAxisSize.min,
       children: [
-        Text('About you', style: theme.textTheme.headlineSmall),
+        Text('A bit about you', style: theme.textTheme.headlineSmall),
         const SizedBox(height: 8),
         Text(
-          'Used to size your starting loads and calorie targets.',
+          'Powers your calorie targets, recovery and progress tracking.',
           style: TextStyle(fontSize: 12.5, color: t.text2, height: 1.5),
         ),
         const SizedBox(height: 22),
         const FsEyebrow('Sex'),
         const SizedBox(height: 10),
-        Wrap(
-          spacing: 8,
-          runSpacing: 8,
-          children: [
-            for (final option in _sexes)
-              FsChip(
-                key: Key('sex.${option.value}'),
-                label: option.label,
-                selected: _sex == option.value,
-                onTap: () {
-                  setState(() => _sex = option.value);
-                  _emit();
-                },
-              ),
-          ],
+        FsSegmented(
+          options: _sexes,
+          selected: _sex,
+          onSelected: (value) {
+            setState(() => _sex = value);
+            _emit();
+          },
         ),
-        const SizedBox(height: 22),
+        const SizedBox(height: 18),
         const FsEyebrow('Date of birth'),
         const SizedBox(height: 10),
         FsCard(
@@ -196,59 +237,97 @@ class _AboutStepState extends State<AboutStep> {
           onTap: _pickDate,
           child: Row(
             children: [
-              const FsIconTile(icon: Icons.cake_outlined, size: 32),
+              const FsIconTile(icon: Icons.calendar_today_outlined, size: 38),
               const SizedBox(width: 12),
               Expanded(
-                child: Text(
-                  _dateOfBirth ?? 'Not set',
-                  style: TextStyle(
-                    fontSize: 14,
-                    color: _dateOfBirth == null ? t.text3 : t.text,
-                  ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      _readableDate(_dateOfBirth) ?? 'Not set',
+                      style: TextStyle(
+                        fontSize: 13.5,
+                        fontWeight: FontWeight.w600,
+                        color: _dateOfBirth == null ? t.text3 : t.text,
+                      ),
+                    ),
+                    const SizedBox(height: 1),
+                    Text(
+                      'Used for age-based targets',
+                      style: TextStyle(fontSize: 11, color: t.text3),
+                    ),
+                  ],
                 ),
               ),
-              Icon(Icons.edit_calendar_outlined, size: 17, color: t.text3),
+              if (age != null) ...[
+                FsTag('$age yrs'),
+                const SizedBox(width: 8),
+              ],
+              Icon(Icons.chevron_right, size: 16, color: t.text3),
             ],
           ),
         ),
-        const SizedBox(height: 22),
-        const FsEyebrow('Measurements'),
+        const SizedBox(height: 14),
+        Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Expanded(
+              child: _statField(
+                  const Key('heightCm'), _height, 'Height', 'cm'),
+            ),
+            const SizedBox(width: 10),
+            Expanded(
+              child: _statField(
+                  const Key('weightKg'), _weight, 'Weight', 'kg'),
+            ),
+          ],
+        ),
         const SizedBox(height: 10),
-        _measurement(const Key('heightCm'), _height, 'Height', 'cm'),
-        _measurement(const Key('weightKg'), _weight, 'Weight', 'kg'),
-        _measurement(const Key('goalWeightKg'), _goalWeight, 'Goal weight', 'kg'),
-        const SizedBox(height: 12),
-        const FsEyebrow('How active are you?'),
+        _statField(const Key('goalWeightKg'), _goalWeight, 'Goal weight', 'kg',
+            accent: true),
+        const SizedBox(height: 18),
+        const FsEyebrow('Daily activity level'),
         const SizedBox(height: 10),
-        for (final option in _activityLevels) ...[
+        Wrap(
+          spacing: 9,
+          runSpacing: 9,
+          children: [
+            for (final option in _activityLevels)
+              FsChip(
+                key: Key('activity.${option.value}'),
+                label: option.label,
+                selected: _activityLevel == option.value,
+                onTap: () {
+                  setState(() => _activityLevel = option.value);
+                  _emit();
+                },
+              ),
+          ],
+        ),
+        // Absent until every term of the equation is answered — the same rule
+        // `estimateSessionKcal` follows for an unknown body weight. A card
+        // that filled its gaps with population averages would show a
+        // confident target belonging to nobody.
+        if (targets != null) ...[
+          const SizedBox(height: 18),
           FsCard(
-            key: Key('activity.${option.value}'),
+            key: const Key('dailyTargets'),
             small: true,
-            accent: _activityLevel == option.value,
-            onTap: () {
-              setState(() => _activityLevel = option.value);
-              _emit();
-            },
+            accent: true,
             child: Row(
               children: [
+                Icon(Icons.auto_awesome, size: 18, color: t.accent),
+                const SizedBox(width: 11),
                 Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(option.label, style: theme.textTheme.titleMedium),
-                      const SizedBox(height: 2),
-                      Text(
-                        option.blurb,
-                        style: TextStyle(fontSize: 11, color: t.text3),
-                      ),
-                    ],
+                  child: Text(
+                    'Estimated daily target \u2248 ${_grouped(targets.kcal)} kcal'
+                    ' \u00b7 ${targets.proteinG}g protein',
+                    style: TextStyle(fontSize: 11.5, color: t.text, height: 1.45),
                   ),
                 ),
-                FsRadioDot(selected: _activityLevel == option.value),
               ],
             ),
           ),
-          const SizedBox(height: 8),
         ],
       ],
     );

@@ -323,6 +323,168 @@ class FsField extends StatelessWidget {
   }
 }
 
+/// `.seg` — the pill track whose selected segment is filled with accent.
+///
+/// Single-select and always visible, unlike a [Wrap] of [FsChip]s: the design
+/// uses it where the choices are two sides of one question (sex, experience)
+/// rather than a set the user picks through.
+class FsSegmented extends StatelessWidget {
+  const FsSegmented({
+    super.key,
+    required this.options,
+    required this.selected,
+    required this.onSelected,
+  });
+
+  final List<({String value, String label})> options;
+
+  /// The enum value that is on, or null. A value matching no option — a
+  /// profile saved under a choice since withdrawn — simply lights nothing.
+  final String? selected;
+
+  final ValueChanged<String> onSelected;
+
+  @override
+  Widget build(BuildContext context) {
+    final t = context.fs;
+
+    return Material(
+      color: t.surface,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(FsRadius.pill),
+        side: BorderSide(color: t.line),
+      ),
+      child: Padding(
+        padding: const EdgeInsets.all(4),
+        child: Row(
+          children: [
+            for (final option in options) ...[
+              if (option != options.first) const SizedBox(width: 2),
+              Expanded(
+                child: InkWell(
+                  key: Key('segment.${option.value}'),
+                  onTap: () => onSelected(option.value),
+                  borderRadius: BorderRadius.circular(FsRadius.pill),
+                  child: DecoratedBox(
+                    decoration: BoxDecoration(
+                      color: selected == option.value
+                          ? t.accent
+                          : Colors.transparent,
+                      borderRadius: BorderRadius.circular(FsRadius.pill),
+                    ),
+                    child: Padding(
+                      padding: const EdgeInsets.symmetric(vertical: 8),
+                      child: Text(
+                        option.label,
+                        textAlign: TextAlign.center,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: TextStyle(
+                          fontSize: 12.5,
+                          fontWeight: FontWeight.w600,
+                          color: selected == option.value
+                              ? t.onAccent
+                              : t.text2,
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+            ],
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+/// The design's measurement card: a dim label over a big mono number.
+///
+/// The number is the input rather than a rendering of one — the mockup is
+/// static, but the step this appears on has to collect these — so the card
+/// reads as designed and still types.
+class FsStatField extends StatelessWidget {
+  const FsStatField({
+    super.key,
+    required this.label,
+    required this.unit,
+    required this.controller,
+    this.fieldKey,
+    this.accent = false,
+  });
+
+  final String label;
+  final String unit;
+  final TextEditingController controller;
+
+  /// Applied to the inner [TextField], so `tester.enterText` finds an
+  /// editable rather than this wrapper.
+  final Key? fieldKey;
+
+  /// Accent border and accent digits, which the design gives goal weight.
+  final bool accent;
+
+  @override
+  Widget build(BuildContext context) {
+    final t = context.fs;
+
+    return Container(
+      padding: const EdgeInsets.fromLTRB(14, 9, 14, 5),
+      decoration: BoxDecoration(
+        color: t.surface,
+        borderRadius: BorderRadius.circular(FsRadius.sm),
+        border: Border.all(color: accent ? t.accentLine : t.line),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          FsEyebrow(label),
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.baseline,
+            textBaseline: TextBaseline.alphabetic,
+            children: [
+              Expanded(
+                child: TextField(
+                  key: fieldKey,
+                  controller: controller,
+                  keyboardType:
+                      const TextInputType.numberWithOptions(decimal: true),
+                  style: TextStyle(
+                    fontFamily: fsMonoFamily,
+                    fontSize: 22,
+                    fontWeight: FontWeight.w600,
+                    letterSpacing: -0.22,
+                    color: accent ? t.accent : t.text,
+                  ),
+                  cursorColor: t.accent,
+                  decoration: InputDecoration(
+                    isDense: true,
+                    border: InputBorder.none,
+                    enabledBorder: InputBorder.none,
+                    focusedBorder: InputBorder.none,
+                    contentPadding: EdgeInsets.zero,
+                    hintText: '--',
+                    hintStyle: TextStyle(
+                      fontFamily: fsMonoFamily,
+                      fontSize: 22,
+                      fontWeight: FontWeight.w600,
+                      color: t.text3,
+                    ),
+                  ),
+                ),
+              ),
+              const SizedBox(width: 4),
+              Text(unit, style: TextStyle(fontSize: 11, color: t.text3)),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+}
+
 /// `.eyebrow` — the mono, uppercase, wide-tracked section label.
 class FsEyebrow extends StatelessWidget {
   const FsEyebrow(this.text, {super.key});

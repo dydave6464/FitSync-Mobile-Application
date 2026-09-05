@@ -221,6 +221,93 @@ void main() {
 
     expect(tester.takeException(), isNull);
   });
+
+  testWidgets('a segmented control marks only the chosen segment', (tester) async {
+    await tester.pumpWidget(_host(
+      const FsSegmented(
+        options: [(value: 'male', label: 'Male'), (value: 'female', label: 'Female')],
+        selected: 'female',
+        onSelected: _noopString,
+      ),
+    ));
+
+    // The fill is the whole affordance — there is no tick and no radio — so
+    // reading it back off the painted decoration is the only honest check
+    // that the right half is on.
+    final t = fsLightTheme().extension<FsTokens>()!;
+    Color fillOf(String label) {
+      final box = tester.widget<DecoratedBox>(find.ancestor(
+        of: find.text(label),
+        matching: find.byType(DecoratedBox),
+      ).first);
+      return (box.decoration as BoxDecoration).color!;
+    }
+
+    expect(fillOf('Female'), t.accent);
+    expect(fillOf('Male'), isNot(t.accent));
+  });
+
+  testWidgets('tapping a segment reports its value, not its label',
+      (tester) async {
+    final picked = <String>[];
+    await tester.pumpWidget(_host(
+      FsSegmented(
+        options: const [
+          (value: 'beginner', label: 'Beginner'),
+          (value: 'intermediate', label: 'Intermediate'),
+        ],
+        selected: 'beginner',
+        onSelected: picked.add,
+      ),
+    ));
+
+    await tester.tap(find.text('Intermediate'));
+
+    expect(picked, ['intermediate'],
+        reason: 'the label is display text; the enum value is what is stored');
+  });
+
+  testWidgets('a segmented control with nothing selected still renders',
+      (tester) async {
+    // Profiles saved before an option was withdrawn — sex 'prefer_not_to_say'
+    // — arrive here matching no segment at all, and must not blank the
+    // control or throw.
+    await tester.pumpWidget(_host(
+      const FsSegmented(
+        options: [(value: 'male', label: 'Male'), (value: 'female', label: 'Female')],
+        selected: 'prefer_not_to_say',
+        onSelected: _noopString,
+      ),
+    ));
+
+    expect(find.text('Male'), findsOneWidget);
+    expect(find.text('Female'), findsOneWidget);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('a stat field types into the big number', (tester) async {
+    final controller = TextEditingController(text: '175');
+    addTearDown(controller.dispose);
+
+    await tester.pumpWidget(_host(
+      FsStatField(
+        fieldKey: const Key('heightCm'),
+        label: 'Height',
+        unit: 'cm',
+        controller: controller,
+      ),
+    ));
+
+    await tester.enterText(find.byKey(const Key('heightCm')), '182');
+
+    expect(controller.text, '182',
+        reason: 'the number in the card is the input, not a rendering of one');
+    expect(find.text('cm'), findsOneWidget);
+    expect(find.text('HEIGHT'), findsOneWidget,
+        reason: 'the design labels these in the eyebrow treatment');
+  });
 }
 
 void _noop() {}
+
+void _noopString(String _) {}
