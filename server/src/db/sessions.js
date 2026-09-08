@@ -235,6 +235,74 @@ async function abandonSession(pool, userId, sessionId) {
   return true;
 }
 
+const MAX_LAST_PERFORMANCE_IDS = 50;
+
+/// The heaviest set of the most recent COMPLETED session, per exercise.
+///
+/// Heaviest rather than last: the final set of an exercise is usually the one
+/// where form broke down, and prefilling that number tells the user to start
+/// their next session lighter than they finished.
+///
+/// The subquery picks the latest session per exercise; the outer query returns
+/// every set from those sessions and the reduce below keeps the heaviest. Done
+/// in JS rather than SQL to stay clear of window functions.
+async function lastPerformance(pool, userId, exerciseIds) {
+  const ids = [...new Set(exerciseIds)]
+    .filter(Number.isInteger)
+    .slice(0, MAX_LAST_PERFORMANCE_IDS);
+  if (ids.length === 0) return [];
+
+  const [rows] = await pool.query(
+    `SELECT sl.exercise_id, sl.weight_kg, sl.reps, ws.session_date
+     FROM set_logs sl
+     JOIN workout_sessions ws ON ws.session_id = sl.session_id
+     JOIN (
+       SELECT sl2.exercise_id, MAX(ws2.session_id) AS session_id
+       FROM set_logs sl2
+       JOIN workout_sessions ws2 ON ws2.session_id = sl2.session_id
+       WHERE ws2.user_id = ?
+         AND ws2.status = 'completed'
+         AND sl2.is_completed = TRUE
+         AND sl2.exercise_id IN (?)
+       GROUP BY sl2.exercise_id
+     ) latest
+       ON latest.exercise_id = sl.exercise_id
+      AND latest.session_id = sl.session_id
+     WHERE sl.is_completed = TRUE`,
+    [userId, ids],
+  );
+
+  const best = new Map();
+  for (const row of rows) {
+    const weight = toNumber(row.weight_kg) ?? 0;
+    const current = best.get(row.exercise_id);
+    if (!current || weight > current.weightKg) {
+      best.set(row.exercise_id, {
+        exerciseId: row.exercise_id,
+        weightKg: toNumber(row.weight_kg),
+        reps: row.reps,
+        sessionDate: formatDate(row.session_date),
+      });
+    }
+  }
+  return [...best.values()];
+}
+
+/// WEEKDAY() is 0 on Monday, so subtracting it lands on this week's Monday --
+/// which is where the Plan tab's strip starts.
+async function completedThisWeek(pool, userId) {
+  const [rows] = await pool.query(
+    `SELECT DISTINCT session_date
+     FROM workout_sessions
+     WHERE user_id = ?
+       AND status = 'completed'
+       AND session_date >= DATE_SUB(CURDATE(), INTERVAL WEEKDAY(CURDATE()) DAY)
+     ORDER BY session_date`,
+    [userId],
+  );
+  return rows.map((row) => formatDate(row.session_date));
+}
+
 module.exports = {
   formatDate,
   toNumber,
@@ -245,4 +313,6 @@ module.exports = {
   deleteSet,
   completeSession,
   abandonSession,
+  lastPerformance,
+  completedThisWeek,
 };

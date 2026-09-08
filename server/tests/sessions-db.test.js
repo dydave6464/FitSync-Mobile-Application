@@ -6,7 +6,7 @@ const { createPool } = require('../src/db/pool');
 const { testDbConfig, dropAllTables } = require('./helpers/test-db');
 const {
   startSession, getActiveSession, getSessionById, logSet, deleteSet,
-  completeSession, abandonSession,
+  completeSession, abandonSession, lastPerformance, completedThisWeek,
 } = require('../src/db/sessions');
 
 test('session db', async (t) => {
@@ -366,5 +366,114 @@ test('session db', async (t) => {
       abandonSession(pool, userId, session.sessionId),
       (err) => err.code === 'SESSION_NOT_IN_PROGRESS' && err.status === 409,
     );
+  });
+
+  await t.test('last performance is the heaviest set of the latest completed session', async () => {
+    const { userId, exerciseId } = await seed();
+
+    // An older session, heavier -- must lose to the more recent one.
+    const older = await startSession(pool, userId);
+    await logSet(pool, userId, older.session.sessionId, { exerciseId, setNumber: 1, weightKg: 40, reps: 5 });
+    await completeSession(pool, userId, older.session.sessionId, 30);
+
+    // The latest session: 25 is the heaviest set in it, even though set 3 came last.
+    const latest = await startSession(pool, userId);
+    await logSet(pool, userId, latest.session.sessionId, { exerciseId, setNumber: 1, weightKg: 22.5, reps: 10 });
+    await logSet(pool, userId, latest.session.sessionId, { exerciseId, setNumber: 2, weightKg: 25, reps: 8 });
+    await logSet(pool, userId, latest.session.sessionId, { exerciseId, setNumber: 3, weightKg: 20, reps: 6 });
+    await completeSession(pool, userId, latest.session.sessionId, 45);
+
+    const rows = await lastPerformance(pool, userId, [exerciseId]);
+    assert.equal(rows.length, 1);
+    assert.strictEqual(rows[0].weightKg, 25);
+    assert.strictEqual(rows[0].reps, 8);
+    assert.match(rows[0].sessionDate, /^\d{4}-\d{2}-\d{2}$/);
+  });
+
+  await t.test('an in-progress session does not count as a last performance', async () => {
+    const { userId, exerciseId } = await seed();
+    const { session } = await startSession(pool, userId);
+    await logSet(pool, userId, session.sessionId, { exerciseId, setNumber: 1, weightKg: 30, reps: 10 });
+
+    assert.deepEqual(await lastPerformance(pool, userId, [exerciseId]), []);
+  });
+
+  await t.test('never-logged exercises are omitted, not returned as nulls', async () => {
+    const { userId, exerciseId } = await seed();
+    assert.deepEqual(await lastPerformance(pool, userId, [exerciseId, 999999]), []);
+  });
+
+  await t.test('an empty id list queries nothing', async () => {
+    const { userId } = await seed();
+    assert.deepEqual(await lastPerformance(pool, userId, []), []);
+  });
+
+  await t.test("lastPerformance is user-scoped", async () => {
+    const a = await seed();
+    const b = await seed();
+    const { session } = await startSession(pool, a.userId);
+    await logSet(pool, a.userId, session.sessionId, { exerciseId: a.exerciseId, setNumber: 1, weightKg: 30, reps: 10 });
+    await completeSession(pool, a.userId, session.sessionId, 30);
+
+    // Same exercise id, a different caller: user B's logger must not be
+    // prefilled with user A's weight. Dropping `ws2.user_id = ?` from the
+    // subquery would leak it straight through.
+    assert.deepEqual(await lastPerformance(pool, b.userId, [a.exerciseId]), []);
+  });
+
+  await t.test('lastPerformance caps ids at 50', async () => {
+    const { userId, exerciseId } = await seed();
+    const { session } = await startSession(pool, userId);
+    await logSet(pool, userId, session.sessionId, { exerciseId, setNumber: 1, weightKg: 30, reps: 10 });
+    await completeSession(pool, userId, session.sessionId, 30);
+
+    // 50 ids that carry no data, followed by the one exercise that does --
+    // the cap keeps only the first 50, so the real exercise at position 51
+    // never reaches the query and its performance is silently dropped.
+    const fillerIds = Array.from({ length: 50 }, (_, i) => 900000 + i);
+    const rows = await lastPerformance(pool, userId, [...fillerIds, exerciseId]);
+    assert.deepEqual(rows, []);
+  });
+
+  await t.test('the week lists completed session dates only', async () => {
+    const { userId } = await seed();
+
+    const done = await startSession(pool, userId);
+    await completeSession(pool, userId, done.session.sessionId, 40);
+
+    // An abandoned session must not appear -- placed tomorrow rather than
+    // today, so its date survives the `SELECT DISTINCT`. Same-day would
+    // collapse into the completed row regardless of the status filter,
+    // making the assertion below pass even with that filter deleted.
+    const [extra] = await pool.query(
+      `INSERT INTO workout_sessions (user_id, status, session_date)
+       VALUES (?, 'abandoned', DATE_ADD(CURDATE(), INTERVAL 1 DAY))`,
+      [userId],
+    );
+    assert.ok(extra.insertId);
+
+    const dates = await completedThisWeek(pool, userId);
+    assert.equal(dates.length, 1);
+    assert.match(dates[0], /^\d{4}-\d{2}-\d{2}$/);
+  });
+
+  await t.test('last week is outside the window', async () => {
+    const { userId } = await seed();
+    await pool.query(
+      `INSERT INTO workout_sessions (user_id, status, session_date)
+       VALUES (?, 'completed', DATE_SUB(CURDATE(), INTERVAL 14 DAY))`,
+      [userId],
+    );
+    assert.deepEqual(await completedThisWeek(pool, userId), []);
+  });
+
+  await t.test('completedThisWeek is user-scoped', async () => {
+    const a = await seed();
+    const b = await seed();
+    const { session } = await startSession(pool, a.userId);
+    await completeSession(pool, a.userId, session.sessionId, 30);
+
+    // User A trained today; user B's week strip must stay empty.
+    assert.deepEqual(await completedThisWeek(pool, b.userId), []);
   });
 });
