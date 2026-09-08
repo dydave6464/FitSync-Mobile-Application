@@ -421,7 +421,7 @@ test('session db', async (t) => {
     assert.deepEqual(await lastPerformance(pool, b.userId, [a.exerciseId]), []);
   });
 
-  await t.test('lastPerformance caps ids at 50', async () => {
+  await t.test('lastPerformance drops an id past position 50', async () => {
     const { userId, exerciseId } = await seed();
     const { session } = await startSession(pool, userId);
     await logSet(pool, userId, session.sessionId, { exerciseId, setNumber: 1, weightKg: 30, reps: 10 });
@@ -433,6 +433,22 @@ test('session db', async (t) => {
     const fillerIds = Array.from({ length: 50 }, (_, i) => 900000 + i);
     const rows = await lastPerformance(pool, userId, [...fillerIds, exerciseId]);
     assert.deepEqual(rows, []);
+  });
+
+  await t.test('lastPerformance keeps an id at position 50', async () => {
+    const { userId, exerciseId } = await seed();
+    const { session } = await startSession(pool, userId);
+    await logSet(pool, userId, session.sessionId, { exerciseId, setNumber: 1, weightKg: 30, reps: 10 });
+    await completeSession(pool, userId, session.sessionId, 30);
+
+    // Only 49 fillers this time, so the real exercise lands at position 50 --
+    // inside the cap. Paired with the position-51 case above, this pins the
+    // boundary at exactly 50 rather than merely proving "no more than 50".
+    const fillerIds = Array.from({ length: 49 }, (_, i) => 900000 + i);
+    const rows = await lastPerformance(pool, userId, [...fillerIds, exerciseId]);
+    assert.equal(rows.length, 1);
+    assert.equal(rows[0].exerciseId, exerciseId);
+    assert.strictEqual(rows[0].weightKg, 30);
   });
 
   await t.test('the week lists completed session dates only', async () => {

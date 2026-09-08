@@ -268,10 +268,14 @@ async function lastPerformance(pool, userId, exerciseIds) {
      ) latest
        ON latest.exercise_id = sl.exercise_id
       AND latest.session_id = sl.session_id
-     WHERE sl.is_completed = TRUE`,
+     WHERE sl.is_completed = TRUE
+     ORDER BY sl.exercise_id, sl.set_number`,
     [userId, ids],
   );
 
+  // When sets tie on weight -- always true for a bodyweight exercise, where
+  // every set has a NULL weight -- the ORDER BY above makes set_number 1 the
+  // deterministic winner instead of whatever order MySQL happened to return.
   const best = new Map();
   for (const row of rows) {
     const weight = toNumber(row.weight_kg) ?? 0;
