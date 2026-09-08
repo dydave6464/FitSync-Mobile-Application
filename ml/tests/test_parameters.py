@@ -14,26 +14,20 @@ def profile(**overrides):
 
 
 @pytest.mark.parametrize(
-    "activity,expected",
-    [
-        ("sedentary", 3),
-        ("light", 3),
-        ("moderate", 4),
-        ("active", 5),
-        ("very_active", 5),
-        (None, 3),
-    ],
+    "activity",
+    ["sedentary", "light", "moderate", "active", "very_active", None],
 )
-def test_days_per_week_follows_activity_level(activity, expected):
-    assert derive(profile(activityLevel=activity)).days_per_week == expected
+def test_every_plan_is_three_days_a_week(activity):
+    # Activity level used to raise this to four or five. One session is
+    # generated and repeated, so more days meant the same six exercises more
+    # often rather than more training -- and a plan nobody keeps to.
+    assert derive(profile(activityLevel=activity)).days_per_week == 3
 
 
-def test_a_beginner_is_capped_at_four_days():
+@pytest.mark.parametrize("level", ["beginner", "intermediate"])
+def test_experience_does_not_change_the_days_either(level):
     assert derive(profile(activityLevel="very_active",
-                          fitnessLevel="beginner")).days_per_week == 4
-    # and is not raised to the cap when their activity implies fewer
-    assert derive(profile(activityLevel="sedentary",
-                          fitnessLevel="beginner")).days_per_week == 3
+                          fitnessLevel=level)).days_per_week == 3
 
 
 @pytest.mark.parametrize(

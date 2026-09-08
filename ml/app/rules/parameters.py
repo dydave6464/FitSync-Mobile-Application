@@ -6,15 +6,17 @@ See the design, sections 6.1 to 6.3.
 """
 from typing import Any, Mapping, NamedTuple
 
-DAYS_BY_ACTIVITY = {
-    "sedentary": 3,
-    "light": 3,
-    "moderate": 4,
-    "active": 5,
-    "very_active": 5,
-}
-DEFAULT_DAYS = 3
-BEGINNER_DAY_CAP = 4
+# Three days for everyone, whatever their activity level says.
+#
+# It used to scale to four or five. That reads as a reward for being active and
+# is not one: a single session is generated and repeated, so a fifth day is the
+# same six exercises a fifth time, not more training. Three is also the
+# schedule a beginner keeps to, and the one full-body programmes are written
+# around -- a day between sessions for the muscle worked to recover.
+#
+# Activity level still shapes the calorie estimate the About step shows; it no
+# longer shapes the plan.
+DAYS_PER_WEEK = 3
 
 LONG_SESSION_GOALS = ("gain_strength", "build_muscle")
 LONG_SESSION_MIN = 60
@@ -47,10 +49,6 @@ class PlanParameters(NamedTuple):
 def derive(profile: Mapping[str, Any]) -> PlanParameters:
     is_beginner = profile.get("fitnessLevel") == "beginner"
 
-    days = DAYS_BY_ACTIVITY.get(profile.get("activityLevel"), DEFAULT_DAYS)
-    if is_beginner:
-        days = min(days, BEGINNER_DAY_CAP)
-
     goal = profile.get("mainGoal")
     session = LONG_SESSION_MIN if goal in LONG_SESSION_GOALS else SHORT_SESSION_MIN
     if is_beginner:
@@ -65,7 +63,7 @@ def derive(profile: Mapping[str, Any]) -> PlanParameters:
         # ordered list and any other value would be a label its own rows
         # contradict. The choice is revisited when that column exists.
         split_style="full_body",
-        days_per_week=days,
+        days_per_week=DAYS_PER_WEEK,
         session_length_min=session,
         target_sets=sets,
         target_reps=reps,
