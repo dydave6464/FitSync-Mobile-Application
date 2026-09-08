@@ -280,6 +280,28 @@ test('session db', async (t) => {
     assert.strictEqual(done.totalVolumeKg, 0);
   });
 
+  await t.test("completing volume is scoped to its own session, not a user's earlier one", async () => {
+    const { userId, exerciseId } = await seed();
+
+    const { session: first } = await startSession(pool, userId);
+    await logSet(pool, userId, first.sessionId, { exerciseId, setNumber: 1, weightKg: 10, reps: 10 });
+    const doneFirst = await completeSession(pool, userId, first.sessionId, 15);
+    // 10*10 = 100 -- left behind as a completed row in set_logs once this
+    // session closes.
+    assert.strictEqual(doneFirst.totalVolumeKg, 100);
+
+    const { session: second } = await startSession(pool, userId);
+    await logSet(pool, userId, second.sessionId, { exerciseId, setNumber: 1, weightKg: 5, reps: 6 });
+    const doneSecond = await completeSession(pool, userId, second.sessionId, 20);
+
+    // 5*6 = 30. If the aggregate query were not scoped by session_id, this
+    // would also pick up the first session's 100kg row (same user, same
+    // exercise, both completed), landing on 130 instead of 30 -- a sum that
+    // does not equal either session's true volume, so no coincidental
+    // predicate could make this pass by accident.
+    assert.strictEqual(doneSecond.totalVolumeKg, 30);
+  });
+
   await t.test('completing twice is a conflict', async () => {
     const { userId } = await seed();
     const { session } = await startSession(pool, userId);
@@ -296,6 +318,15 @@ test('session db', async (t) => {
     const b = await seed();
     const { session } = await startSession(pool, a.userId);
     assert.equal(await completeSession(pool, b.userId, session.sessionId, 30), null);
+
+    // Same mutate-before-check concern as abandonSession's non-owner guard --
+    // a return-value check alone would not catch an UPDATE that ran before
+    // the ownership check completed. Confirm the real owner's session is
+    // untouched: still in progress, with no duration or volume stamped.
+    const reread = await getSessionById(pool, a.userId, session.sessionId);
+    assert.equal(reread.status, 'in_progress');
+    assert.equal(reread.durationMin, null);
+    assert.equal(reread.totalVolumeKg, null);
   });
 
   await t.test('abandoning closes the session without recording volume', async () => {
