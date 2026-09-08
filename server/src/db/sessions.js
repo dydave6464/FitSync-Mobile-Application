@@ -79,28 +79,58 @@ async function getActiveSession(pool, userId) {
 /// Idempotent. Tapping Start, losing the response and tapping again must not
 /// split one workout into two sessions -- every volume figure computed from
 /// them would then be half right.
+///
+/// A plain "check, then insert" is not enough: two genuinely concurrent
+/// calls (two devices, a double-tap) can both see "no active session" before
+/// either has inserted, and both would insert. MySQL has no partial unique
+/// index to enforce "at most one in_progress row per user" at the schema
+/// level, and a plain UNIQUE (user_id, status) would also forbid a second
+/// *completed* session, which is wrong. So the invariant is enforced here:
+/// a per-user row lock (`SELECT ... FOR UPDATE` on the user's own row)
+/// serializes concurrent starts for that user, and the active-session check
+/// is redone inside that lock, on the same connection, before deciding to
+/// insert.
 async function startSession(pool, userId) {
-  const existing = await getActiveSession(pool, userId);
-  if (existing) return { session: existing, created: false };
+  const conn = await pool.getConnection();
+  try {
+    await conn.beginTransaction();
 
-  const [plans] = await pool.query(
-    `SELECT plan_id FROM workout_plans
-     WHERE user_id = ? AND is_active = TRUE
-     ORDER BY plan_id DESC
-     LIMIT 1`,
-    [userId],
-  );
-  if (plans.length === 0) {
-    throw AppError.conflict('NO_ACTIVE_PLAN', 'You have no active plan to train.');
+    // Serializes concurrent startSession calls for this user. Everything
+    // below runs on `conn`, not `pool`, so it participates in this lock.
+    await conn.query('SELECT user_id FROM users WHERE user_id = ? FOR UPDATE', [userId]);
+
+    const existing = await getActiveSession(conn, userId);
+    if (existing) {
+      await conn.commit();
+      return { session: existing, created: false };
+    }
+
+    const [plans] = await conn.query(
+      `SELECT plan_id FROM workout_plans
+       WHERE user_id = ? AND is_active = TRUE
+       ORDER BY plan_id DESC
+       LIMIT 1`,
+      [userId],
+    );
+    if (plans.length === 0) {
+      throw AppError.conflict('NO_ACTIVE_PLAN', 'You have no active plan to train.');
+    }
+
+    const [res] = await conn.query(
+      `INSERT INTO workout_sessions (user_id, plan_id, status, session_date, started_at)
+       VALUES (?, ?, 'in_progress', CURDATE(), NOW())`,
+      [userId, plans[0].plan_id],
+    );
+
+    const session = await getSessionById(conn, userId, res.insertId);
+    await conn.commit();
+    return { session, created: true };
+  } catch (err) {
+    await conn.rollback();
+    throw err;
+  } finally {
+    conn.release();
   }
-
-  const [res] = await pool.query(
-    `INSERT INTO workout_sessions (user_id, plan_id, status, session_date, started_at)
-     VALUES (?, ?, 'in_progress', CURDATE(), NOW())`,
-    [userId, plans[0].plan_id],
-  );
-
-  return { session: await getSessionById(pool, userId, res.insertId), created: true };
 }
 
 module.exports = {

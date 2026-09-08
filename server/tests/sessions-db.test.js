@@ -4,7 +4,7 @@ const assert = require('node:assert/strict');
 const { migrate } = require('../src/db/migrate');
 const { createPool } = require('../src/db/pool');
 const { testDbConfig, dropAllTables } = require('./helpers/test-db');
-const { startSession, getActiveSession } = require('../src/db/sessions');
+const { startSession, getActiveSession, getSessionById } = require('../src/db/sessions');
 
 test('session db', async (t) => {
   const pool = createPool(testDbConfig());
@@ -84,5 +84,41 @@ test('session db', async (t) => {
     const b = await seed();
     await startSession(pool, a.userId);
     assert.equal(await getActiveSession(pool, b.userId), null);
+  });
+
+  await t.test('getSessionById returns null for a session id that does not exist', async () => {
+    const { userId } = await seed();
+    assert.equal(await getSessionById(pool, userId, 999999), null);
+  });
+
+  await t.test('getSessionById is invisible to a non-owner but visible to the owner', async () => {
+    const a = await seed();
+    const b = await seed();
+    const { session } = await startSession(pool, a.userId);
+
+    assert.equal(await getSessionById(pool, b.userId, session.sessionId), null);
+
+    const own = await getSessionById(pool, a.userId, session.sessionId);
+    assert.equal(own.sessionId, session.sessionId);
+  });
+
+  await t.test('starting picks the active plan even when a newer plan is inactive', async () => {
+    const [u] = await pool.query(
+      "INSERT INTO users (email, password_hash, full_name) VALUES (CONCAT('u', UUID(), '@b.com'), 'x', 'U')",
+    );
+    const [activePlan] = await pool.query(
+      `INSERT INTO workout_plans (user_id, name, split_style, days_per_week, session_length_min)
+       VALUES (?, 'Active Plan', 'full_body', 3, 45)`,
+      [u.insertId],
+    );
+    const [inactivePlan] = await pool.query(
+      `INSERT INTO workout_plans (user_id, name, split_style, days_per_week, session_length_min, is_active)
+       VALUES (?, 'Inactive Plan', 'full_body', 3, 45, FALSE)`,
+      [u.insertId],
+    );
+    assert.ok(inactivePlan.insertId > activePlan.insertId, 'inactive plan has the higher id');
+
+    const { session } = await startSession(pool, u.insertId);
+    assert.equal(session.planId, activePlan.insertId);
   });
 });
