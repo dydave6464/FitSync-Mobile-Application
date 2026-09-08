@@ -313,6 +313,89 @@ test('session db', async (t) => {
     );
   });
 
+  // A pool proxy, not a real second connection: the two windows below are
+  // sub-millisecond in practice, and reproducing them by timing would be a
+  // flaky test that proves nothing when it passes. Intercepting the exact
+  // statement the race turns on makes them deterministic.
+  const poolRacing = (matches, race, when = 'before') => {
+    let raced = false;
+    return {
+      query: async (...args) => {
+        const hit = !raced && matches(String(args[0]));
+        if (hit) raced = true;
+        if (hit && when === 'before') await race();
+        const result = await pool.query(...args);
+        if (hit && when === 'after') await race();
+        return result;
+      },
+    };
+  };
+
+  await t.test('a set logged just before the UPDATE is inside the volume it stamps',
+      async () => {
+    // The aggregate used to be its own SELECT, one statement ahead of the
+    // UPDATE. Tick the last set and tap Finish a few hundred ms later and the
+    // sum could be taken before that INSERT committed: total_volume_kg short
+    // by that set, permanently, while set_logs and lastPerformance still
+    // returned it. Computing the sum INSIDE the UPDATE closes the window.
+    const { userId, exerciseId } = await seed();
+    const { session } = await startSession(pool, userId);
+    await logSet(pool, userId, session.sessionId, { exerciseId, setNumber: 1, weightKg: 20, reps: 10 });
+
+    const racing = poolRacing(
+      (sql) => /^\s*UPDATE workout_sessions/.test(sql),
+      () => pool.query(
+        `INSERT INTO set_logs (session_id, exercise_id, set_number, weight_kg, reps, is_completed)
+         VALUES (?, ?, 2, 30, 5, TRUE)`,
+        [session.sessionId, exerciseId],
+      ),
+    );
+
+    const done = await completeSession(racing, userId, session.sessionId, 30);
+
+    // 20*10 + 30*5 = 350. A stamped 200 would mean the second set was summed
+    // out of existence even though set_logs still holds it.
+    assert.strictEqual(done.totalVolumeKg, 350);
+  });
+
+  await t.test('a session closed between the guard and the UPDATE is a conflict, not an overwrite',
+      async () => {
+    // requireInProgress and the UPDATE are separate round trips, so two
+    // concurrent completes could both pass the guard and both write. The
+    // UPDATE's own `status = 'in_progress'` predicate is what makes the
+    // second one lose, and lose loudly.
+    const { userId, exerciseId } = await seed();
+    const { session } = await startSession(pool, userId);
+    await logSet(pool, userId, session.sessionId, { exerciseId, setNumber: 1, weightKg: 20, reps: 10 });
+
+    // AFTER the guard's own SELECT, not before it: racing ahead of that read
+    // would simply make requireInProgress throw, which proves nothing about
+    // the UPDATE. The window this closes is the one the guard has already
+    // passed through.
+    const racing = poolRacing(
+      (sql) => /FROM workout_sessions/.test(sql),
+      () => pool.query(
+        `UPDATE workout_sessions
+            SET status = 'completed', duration_min = 61, total_volume_kg = 999
+          WHERE session_id = ?`,
+        [session.sessionId],
+      ),
+      'after',
+    );
+
+    await assert.rejects(
+      completeSession(racing, userId, session.sessionId, 30),
+      (err) => err.code === 'SESSION_NOT_IN_PROGRESS' && err.status === 409,
+    );
+
+    // The winner's numbers stand. Without the predicate this would read
+    // 30 minutes and 200 kg -- silently overwritten.
+    const reread = await getSessionById(pool, userId, session.sessionId);
+    assert.equal(reread.status, 'completed');
+    assert.equal(reread.durationMin, 61);
+    assert.strictEqual(reread.totalVolumeKg, 999);
+  });
+
   await t.test("completing another user's session returns null", async () => {
     const a = await seed();
     const b = await seed();

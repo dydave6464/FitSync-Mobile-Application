@@ -29,14 +29,23 @@ const notFound = () => AppError.notFound('SESSION_NOT_FOUND', 'No such session.'
 
 /// Null and undefined both mean "not recorded" -- a bodyweight set has no
 /// weight, and an AMRAP set may have no counted reps.
+///
+/// Anything else has to be an actual JSON number. Number() and
+/// Number.parseInt() coerce far too willingly for a guard whose whole job is
+/// rejection: Number('') and Number([]) are both 0 and Number(true) is 1, so
+/// `weightKg: ""` used to be STORED as a recorded 0.00 kg lift instead of
+/// being rejected or left unrecorded -- while this function read as though it
+/// rejected it.
 function optionalNumber(value, { code, message, min, max, integer }) {
   if (value === null || value === undefined) return null;
-  const parsed = integer ? Number.parseInt(value, 10) : Number(value);
-  if (!Number.isFinite(parsed) || parsed < min || parsed > max) {
+  if (typeof value !== 'number' || !Number.isFinite(value)) {
     throw AppError.badRequest(code, message);
   }
-  if (integer && !Number.isInteger(parsed)) throw AppError.badRequest(code, message);
-  return parsed;
+  if (value < min || value > max) throw AppError.badRequest(code, message);
+  // Truncating a fractional rep count would contradict the message this
+  // throws, which promises a whole number.
+  if (integer && !Number.isInteger(value)) throw AppError.badRequest(code, message);
+  return value;
 }
 
 module.exports = function buildSessionsRouter(deps) {

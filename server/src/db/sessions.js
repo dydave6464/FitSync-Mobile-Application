@@ -201,23 +201,48 @@ async function deleteSet(pool, userId, sessionId, exerciseId, setNumber) {
 /// SUM skips NULLs, so a bodyweight set contributes nothing and COALESCE turns
 /// an all-bodyweight session into 0 rather than NULL -- "I trained and lifted
 /// no external load" is a different statement from "unknown".
+///
+/// ONE statement, deliberately. Summing in a separate SELECT left two windows
+/// open, because [requireInProgress] and the write are separate round trips
+/// and nothing here holds a transaction:
+///
+///  * a set INSERT committing between the sum and the UPDATE was left out of
+///    total_volume_kg permanently -- short by that set for good, while
+///    set_logs and lastPerformance still returned it. Tick the last set, tap
+///    Finish ~300ms later, and the client does not disable Finish meanwhile.
+///  * two concurrent completes could both pass the guard and both write,
+///    where the second must lose with a 409.
+///
+/// Summing inside the UPDATE closes the first; `status = 'in_progress'` in
+/// its WHERE closes the second. `set_logs` is a different table from the one
+/// being updated, so MySQL allows the subquery. [requireInProgress] stays for
+/// the ownership check: it must still return null for someone else's session
+/// so the route answers 404 rather than admitting the id exists.
 async function completeSession(pool, userId, sessionId, durationMin) {
   const session = await requireInProgress(pool, userId, sessionId);
   if (!session) return null;
 
-  const [[agg]] = await pool.query(
-    `SELECT COALESCE(SUM(weight_kg * reps), 0) AS volume
-     FROM set_logs
-     WHERE session_id = ? AND is_completed = TRUE`,
-    [sessionId],
+  const [res] = await pool.query(
+    `UPDATE workout_sessions
+        SET status = 'completed',
+            duration_min = ?,
+            total_volume_kg = (SELECT COALESCE(SUM(weight_kg * reps), 0)
+                                 FROM set_logs
+                                WHERE session_id = ? AND is_completed = TRUE)
+      WHERE session_id = ? AND status = 'in_progress'`,
+    [durationMin, sessionId, sessionId],
   );
 
-  await pool.query(
-    `UPDATE workout_sessions
-     SET status = 'completed', duration_min = ?, total_volume_kg = ?
-     WHERE session_id = ?`,
-    [durationMin, toNumber(agg.volume), sessionId],
-  );
+  // Matched nothing: the guard passed, then someone else closed the session
+  // before this landed. Same answer the guard itself would have given a
+  // moment later -- never a silent overwrite of the winner's numbers.
+  // (status always changes here, so a matched row is always an affected one.)
+  if (res.affectedRows === 0) {
+    throw AppError.conflict(
+      'SESSION_NOT_IN_PROGRESS',
+      'This session has already been closed.',
+    );
+  }
 
   return getSessionById(pool, userId, sessionId);
 }

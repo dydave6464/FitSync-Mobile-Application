@@ -225,6 +225,18 @@ test('session endpoints', async (t) => {
       [{ exerciseId, setNumber: 0, weightKg: 1000, reps: 1000 }, 'SET_NUMBER_INVALID'],
       [{ exerciseId, setNumber: 1, weightKg: 1000, reps: 1000 }, 'WEIGHT_INVALID'],
       [{ setNumber: 1, weightKg: 20, reps: 1000 }, 'REPS_INVALID'],
+      // Not a number at all. Number('') and Number([]) are both 0 and
+      // Number(true) is 1, so these used to be COERCED and stored -- an empty
+      // weight field arriving as '' became a recorded 0.00 kg lift rather
+      // than "not recorded". Only null and undefined mean not recorded.
+      [{ exerciseId, setNumber: 1, weightKg: '', reps: 8 }, 'WEIGHT_INVALID'],
+      [{ exerciseId, setNumber: 1, weightKg: '   ', reps: 8 }, 'WEIGHT_INVALID'],
+      [{ exerciseId, setNumber: 1, weightKg: [], reps: 8 }, 'WEIGHT_INVALID'],
+      [{ exerciseId, setNumber: 1, weightKg: true, reps: 8 }, 'WEIGHT_INVALID'],
+      [{ exerciseId, setNumber: 1, weightKg: '22.5', reps: 8 }, 'WEIGHT_INVALID'],
+      [{ exerciseId, setNumber: 1, weightKg: 20, reps: '' }, 'REPS_INVALID'],
+      [{ exerciseId, setNumber: 1, weightKg: 20, reps: '8' }, 'REPS_INVALID'],
+      [{ exerciseId, setNumber: 1, weightKg: 20, reps: 8.5 }, 'REPS_INVALID'],
     ];
     for (const [body, code] of cases) {
       const res = await put().send(body).expect(400);
