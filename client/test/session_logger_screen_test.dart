@@ -6,6 +6,8 @@ import 'package:flutter_test/flutter_test.dart';
 
 import 'package:fitsync/core/api_exception.dart';
 import 'package:fitsync/core/theme.dart';
+import 'package:fitsync/features/exercises/domain/exercise.dart';
+import 'package:fitsync/features/exercises/presentation/providers.dart' show exerciseDetailProvider;
 import 'package:fitsync/features/plans/domain/workout_plan.dart';
 import 'package:fitsync/features/plans/presentation/providers.dart';
 import 'package:fitsync/features/sessions/domain/active_session.dart';
@@ -138,6 +140,20 @@ Future<FakeSessionController> _pump(
       activePlanProvider.overrideWith((ref) async => _plan),
       activeSessionProvider.overrideWith(() => controller),
       lastPerformanceProvider.overrideWith((ref, key) async => const {}),
+      // Only exercised by the demo-affordance navigation test below; every
+      // other test here never opens the pushed screen, so this override is
+      // inert for them.
+      exerciseDetailProvider.overrideWith(
+        (ref, id) async => ExerciseDetail(
+          exerciseId: id,
+          name: 'Detail $id',
+          muscleGroup: 'x',
+          equipment: null,
+          thumbnailUrl: null,
+          animationUrl: null,
+          cues: const [],
+        ),
+      ),
     ],
     child: MaterialApp(
       theme: fsLightTheme(),
@@ -212,6 +228,24 @@ void main() {
     // Push-up has 2 target sets; a third row would mean the squat is still open.
     expect(find.byKey(const Key('set.3.weight')), findsNothing);
     expect(find.byKey(const Key('set.2.weight')), findsOneWidget);
+  });
+
+  // Beyond the brief -- the card and the pushed screen are each tested in
+  // isolation, but nothing exercised the glue in session_logger_screen.dart
+  // that turns a card's list index into the pushed screen's position/total.
+  // Using the SECOND card specifically: an off-by-one that passed `index`
+  // instead of `index + 1` would show "Exercise 1 of 2" here too, the same
+  // text a correct first-card tap would produce -- so only the second card
+  // can tell the two apart.
+  testWidgets('opening the demo from the second card shows its real position',
+      (tester) async {
+    await _pump(tester);
+
+    await tester.tap(find.byKey(const Key('logcard.demo.102')));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Exercise 2 of 2'), findsOneWidget);
+    expect(find.text('2 × 10-15'), findsOneWidget);
   });
 
   testWidgets('finishing sends the elapsed minutes and shows a summary', (tester) async {

@@ -36,14 +36,15 @@ Widget _host(Widget child) => MaterialApp(
 final _demoButton = find.byKey(const Key('logcard.demo.101'));
 
 void main() {
-  testWidgets('tapping the demo affordance invokes onOpenDemo', (tester) async {
+  testWidgets('tapping the demo affordance invokes onOpenDemo, not onExpand', (tester) async {
     var opened = false;
+    var expandCalled = false;
 
     await tester.pumpWidget(_host(ExerciseLogCard(
       exercise: _exercise,
       expanded: false,
       session: _session(),
-      onExpand: () {},
+      onExpand: () => expandCalled = true,
       onCompleteSet: (_, _, _) async {},
       onUndoSet: (_) async {},
       onOpenDemo: () => opened = true,
@@ -53,8 +54,10 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(opened, isTrue);
-    // Tapping the demo affordance is not the same gesture as tapping the
-    // collapsed card: it must not also trigger onExpand.
+    // The whole collapsed card is itself tappable (FsCard(onTap: onExpand)
+    // in exercise_log_card.dart) and the demo button sits inside it, so a
+    // tap that bubbled up would fire both callbacks. It must not.
+    expect(expandCalled, isFalse);
   });
 
   testWidgets('with no onOpenDemo, the affordance renders disabled rather than absent',
