@@ -35,6 +35,25 @@ MUSCLE_PRIORITY: Tuple[str, ...] = (
 
 _UNLISTED = len(MUSCLE_PRIORITY)
 
+# Arms are reserved rather than ranked.
+#
+# They sit 8th and 9th in MUSCLE_PRIORITY while a session is six or eight
+# exercises, so the priority walk ended before reaching them: triceps appeared
+# only in an eight-exercise plan and biceps could not appear at any length. As
+# every training day repeats the one session, that is a week with no direct arm
+# work in a plan the app calls full body.
+ARM_GROUPS: Tuple[str, ...] = ("triceps", "biceps")
+
+
+def _arm_reservation(count: int) -> int:
+    """How many slots to hold back for arms.
+
+    One per three exercises, capped at both: a six-exercise session reserves
+    two, and a three-exercise one reserves a single arm rather than handing two
+    thirds of the session to isolation work.
+    """
+    return min(len(ARM_GROUPS), count // 3)
+
 
 def _rank(muscle_group: str) -> int:
     try:
@@ -57,17 +76,27 @@ def select(candidates: Sequence[Candidate], count: int) -> List[Candidate]:
     for group in by_group:
         by_group[group].sort(key=lambda x: (order[x.exercise_id], x.exercise_id))
 
-    groups = sorted(by_group, key=lambda g: (_rank(g), g))
+    # Taken before the priority walk, and only where the catalogue actually
+    # offers one -- a user whose equipment rules out every arm exercise gets a
+    # full session of what is left, not one two exercises short.
+    reserved = [by_group[group][0]
+                for group in ARM_GROUPS[:_arm_reservation(count)]
+                if by_group.get(group)]
+    spoken_for = {x.muscle_group for x in reserved}
+
+    groups = sorted((g for g in by_group if g not in spoken_for),
+                    key=lambda g: (_rank(g), g))
 
     chosen: List[Candidate] = []
     depth = 0
+    limit = count - len(reserved)
     # Round-robin: one exercise from each group in priority order, then round
     # again if the count is not met. A group that runs dry is skipped rather
     # than padded from another -- fewer exercises beats a wrong one.
-    while len(chosen) < count:
+    while len(chosen) < limit:
         added_this_pass = False
         for group in groups:
-            if len(chosen) >= count:
+            if len(chosen) >= limit:
                 break
             bucket = by_group[group]
             if depth < len(bucket):
@@ -77,4 +106,6 @@ def select(candidates: Sequence[Candidate], count: int) -> List[Candidate]:
             break
         depth += 1
 
-    return chosen
+    # Arms last: compounds while fresh, isolation after. The slot is reserved,
+    # not promoted.
+    return chosen + reserved

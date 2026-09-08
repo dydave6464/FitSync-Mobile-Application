@@ -79,3 +79,67 @@ def test_the_callers_order_is_honoured_so_a_ranker_can_reorder():
     assert select(ranked, 1)[0].exercise_id == 30
     # and with the natural (id-ascending) order, the lowest id still wins
     assert select([c(10, "quads"), c(20, "quads"), c(30, "quads")], 1)[0].exercise_id == 10
+
+
+def _one_per_group():
+    """A candidate in every named group, ids ascending in priority order."""
+    return [c(100 + i, g) for i, g in enumerate(MUSCLE_PRIORITY)]
+
+
+def test_every_plan_reserves_an_arm_slot():
+    # Arms sit 8th and 9th in MUSCLE_PRIORITY, and a session is 6 or 8
+    # exercises, so the list was cut off before reaching them: biceps could
+    # not appear in any plan at any session length, and triceps only in an
+    # 8-exercise one. A full-body plan with no direct arm work all week is not
+    # what "full body" means to anyone reading it.
+    groups = [x.muscle_group for x in select(_one_per_group(), 6)]
+
+    assert "biceps" in groups, groups
+    assert "triceps" in groups, groups
+
+
+def test_the_arms_come_last_in_the_session():
+    groups = [x.muscle_group for x in select(_one_per_group(), 6)]
+
+    # Compounds first while fresh, isolation after: the arm slots are reserved,
+    # not promoted.
+    assert groups[-2:] == ["triceps", "biceps"], groups
+
+
+def test_the_big_movements_still_lead():
+    groups = [x.muscle_group for x in select(_one_per_group(), 6)]
+
+    assert groups[:4] == ["quads", "pectorals", "lats", "hamstrings"], groups
+
+
+def test_no_arm_candidates_means_no_reserved_slots_wasted():
+    # A dumbbell-free user, or any catalogue filter that leaves no arm
+    # exercise: the session must still be full rather than two short.
+    candidates = [x for x in _one_per_group()
+                  if x.muscle_group not in ("biceps", "triceps")]
+
+    chosen = select(candidates, 6)
+
+    assert len(chosen) == 6
+    assert not {"biceps", "triceps"} & {x.muscle_group for x in chosen}
+
+
+def test_a_short_session_is_not_swamped_by_arms():
+    # Reserving two of three slots for arms would be a worse plan than the one
+    # it replaced. Scale the reservation with the session.
+    groups = [x.muscle_group for x in select(_one_per_group(), 3)]
+
+    assert groups.count("biceps") + groups.count("triceps") <= 1, groups
+    assert groups[0] == "quads", groups
+
+
+def test_arms_are_not_duplicated_when_the_count_runs_deep():
+    # With a second pass available, the reserved arm must not also be taken by
+    # the round-robin.
+    candidates = _one_per_group() + [c(500, "biceps"), c(501, "triceps")]
+
+    chosen = select(candidates, 10)
+
+    ids = [x.exercise_id for x in chosen]
+    assert len(ids) == len(set(ids)), ids
+
