@@ -43,12 +43,19 @@ class _ExerciseSwapSheetState extends ConsumerState<ExerciseSwapSheet> {
 
   /// How much of the screen the sheet takes, whatever it holds.
   ///
-  /// Two thirds is measured rather than guessed: it puts the top edge just
-  /// under the plan screen's "Exercises" heading, so the plan stays
-  /// recognisable behind the sheet. Sizing to content instead meant a muscle
-  /// with a dozen alternatives covered the screen while one with two barely
-  /// showed — the same action looking like two different screens.
-  static const _heightFraction = 0.66;
+  /// Measured, not guessed, against the Training shell's Plan tab: at the
+  /// pinned 1080x2340@2.625 test device (891.4 logical px tall), the
+  /// "Exercises" heading this sheet must not cover sits at y=326 with the
+  /// plan name on one line and y=390 with it wrapped to two -- the
+  /// WeekStrip and SessionCard above it pushed both down from where a
+  /// shorter plan-summary card used to leave them. 0.52 puts the sheet's top
+  /// edge at y=428, which is ~102px below the one-line heading and ~38px
+  /// below the two-line one -- comfortably past the ~24px floor a wrapped
+  /// plan name needs, without giving up more sheet height than that costs.
+  /// Sizing to content instead meant a muscle with a dozen alternatives
+  /// covered the screen while one with two barely showed — the same action
+  /// looking like two different screens.
+  static const _heightFraction = 0.52;
 
   /// Every animation in the catalogue store is 180x180.
   static const _demoSourcePx = 180.0;

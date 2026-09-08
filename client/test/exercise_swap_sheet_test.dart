@@ -424,8 +424,10 @@ void main() {
     // action looked like a different screen depending on the exercise.
     expect(twelve, two);
     final screen = _screen.height / _dpr;
-    expect(twelve / screen, closeTo(0.66, 0.01),
-        reason: 'two thirds puts the top edge just under the Exercises heading');
+    expect(twelve / screen, closeTo(0.52, 0.01),
+        reason: 'the fraction is tuned to clear the Exercises heading below '
+            'the Plan tab\'s WeekStrip and SessionCard, with headroom for a '
+            'wrapped plan name -- see exercise_swap_sheet.dart');
   });
 
   testWidgets('a list too long for the sheet scrolls inside it', (tester) async {
