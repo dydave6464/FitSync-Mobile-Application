@@ -193,6 +193,27 @@ test('session db', async (t) => {
     assert.equal(result, null);
   });
 
+  await t.test("deleting from another user's session returns false and leaves the row", async () => {
+    const a = await seed();
+    const b = await seed();
+    const { session } = await startSession(pool, a.userId);
+    await logSet(pool, a.userId, session.sessionId, {
+      exerciseId: a.exerciseId, setNumber: 1, weightKg: 20, reps: 10,
+    });
+
+    const result = await deleteSet(pool, b.userId, session.sessionId, a.exerciseId, 1);
+    assert.equal(result, false);
+
+    // The guard being tested is `if (!session) return false;` -- proving the
+    // call returns false is not enough on its own, since a DELETE that ran
+    // and simply matched nothing would also return false. The row must
+    // still be there, read back as its actual owner.
+    const reread = await getSessionById(pool, a.userId, session.sessionId);
+    assert.deepEqual(reread.sets, [{
+      exerciseId: a.exerciseId, setNumber: 1, weightKg: 20, reps: 10,
+    }]);
+  });
+
   await t.test('un-ticking removes the row, and doing it twice is not an error', async () => {
     const { userId, exerciseId } = await seed();
     const { session } = await startSession(pool, userId);
