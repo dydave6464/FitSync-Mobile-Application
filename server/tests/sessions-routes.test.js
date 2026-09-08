@@ -192,8 +192,162 @@ test('session endpoints', async (t) => {
     assert.equal(active.body.data.session, null);
   });
 
+  await t.test('a set round-trips as numbers', async () => {
+    const { token, exerciseId } = await freshUser('sets@example.com');
+    const started = await auth(request(app).post('/api/v1/sessions'), token).expect(201);
+    const id = started.body.data.session.sessionId;
+
+    const res = await auth(request(app).put(`/api/v1/sessions/${id}/sets`), token)
+      .send({ exerciseId, setNumber: 1, weightKg: 22.5, reps: 10 }).expect(200);
+    assert.deepEqual(res.body.data.set, { exerciseId, setNumber: 1, weightKg: 22.5, reps: 10 });
+
+    const active = await auth(request(app).get('/api/v1/sessions/active'), token).expect(200);
+    assert.strictEqual(active.body.data.session.sets[0].weightKg, 22.5);
+  });
+
+  await t.test('validation rejects each bad field with its own code', async () => {
+    const { token, exerciseId } = await freshUser('bad@example.com');
+    const started = await auth(request(app).post('/api/v1/sessions'), token).expect(201);
+    const id = started.body.data.session.sessionId;
+    const put = () => auth(request(app).put(`/api/v1/sessions/${id}/sets`), token);
+
+    const cases = [
+      [{ exerciseId, setNumber: 0, weightKg: 20, reps: 8 }, 'SET_NUMBER_INVALID'],
+      [{ exerciseId, setNumber: 1, weightKg: 20, reps: 1000 }, 'REPS_INVALID'],
+      [{ exerciseId, setNumber: 1, weightKg: 1000, reps: 8 }, 'WEIGHT_INVALID'],
+      [{ exerciseId, setNumber: 1, weightKg: -1, reps: 8 }, 'WEIGHT_INVALID'],
+      [{ setNumber: 1, weightKg: 20, reps: 8 }, 'EXERCISE_NOT_IN_PLAN'],
+      // Below: more than one field is bad at once, so the code returned
+      // actually pins the CHECK ORDER (setNumber, weightKg, reps,
+      // exerciseId) rather than merely confirming each field has its own
+      // bound. A reordered implementation would report a different code for
+      // at least one of these three.
+      [{ exerciseId, setNumber: 0, weightKg: 1000, reps: 1000 }, 'SET_NUMBER_INVALID'],
+      [{ exerciseId, setNumber: 1, weightKg: 1000, reps: 1000 }, 'WEIGHT_INVALID'],
+      [{ setNumber: 1, weightKg: 20, reps: 1000 }, 'REPS_INVALID'],
+    ];
+    for (const [body, code] of cases) {
+      const res = await put().send(body).expect(400);
+      assert.equal(res.body.error.code, code, `expected ${code} for ${JSON.stringify(body)}`);
+    }
+  });
+
+  await t.test('null weight and null reps are accepted', async () => {
+    const { token, exerciseId } = await freshUser('bw@example.com');
+    const started = await auth(request(app).post('/api/v1/sessions'), token).expect(201);
+    const id = started.body.data.session.sessionId;
+
+    const res = await auth(request(app).put(`/api/v1/sessions/${id}/sets`), token)
+      .send({ exerciseId, setNumber: 1, weightKg: null, reps: null }).expect(200);
+    assert.equal(res.body.data.set.weightKg, null);
+  });
+
+  await t.test('un-ticking returns 200 twice, never 204', async () => {
+    const { token, exerciseId } = await freshUser('untick@example.com');
+    const started = await auth(request(app).post('/api/v1/sessions'), token).expect(201);
+    const id = started.body.data.session.sessionId;
+    await auth(request(app).put(`/api/v1/sessions/${id}/sets`), token)
+      .send({ exerciseId, setNumber: 1, weightKg: 20, reps: 10 }).expect(200);
+
+    const path = `/api/v1/sessions/${id}/sets/${exerciseId}/1`;
+    const first = await auth(request(app).delete(path), token).expect(200);
+    assert.equal(first.body.data.deleted, true);
+    await auth(request(app).delete(path), token).expect(200);
+
+    const active = await auth(request(app).get('/api/v1/sessions/active'), token).expect(200);
+    assert.deepEqual(active.body.data.session.sets, []);
+  });
+
+  await t.test("another user's session cannot get a set logged either: 404", async () => {
+    const mine = await freshUser('setmine@example.com');
+    const theirs = await freshUser('settheirs@example.com');
+    const started = await auth(request(app).post('/api/v1/sessions'), mine.token).expect(201);
+    const id = started.body.data.session.sessionId;
+
+    const stolen = await auth(request(app).put(`/api/v1/sessions/${id}/sets`), theirs.token)
+      .send({ exerciseId: mine.exerciseId, setNumber: 1, weightKg: 20, reps: 8 }).expect(404);
+    assert.equal(stolen.body.error.code, 'SESSION_NOT_FOUND');
+  });
+
+  await t.test("another user's set cannot be deleted either: 404, and it survives", async () => {
+    const mine = await freshUser('delmine@example.com');
+    const theirs = await freshUser('deltheirs@example.com');
+    const started = await auth(request(app).post('/api/v1/sessions'), mine.token).expect(201);
+    const id = started.body.data.session.sessionId;
+    await auth(request(app).put(`/api/v1/sessions/${id}/sets`), mine.token)
+      .send({ exerciseId: mine.exerciseId, setNumber: 1, weightKg: 20, reps: 8 }).expect(200);
+
+    const stolen = await auth(
+      request(app).delete(`/api/v1/sessions/${id}/sets/${mine.exerciseId}/1`), theirs.token,
+    ).expect(404);
+    assert.equal(stolen.body.error.code, 'SESSION_NOT_FOUND');
+
+    // A return-value check alone would pass even if the DELETE actually ran
+    // against the row -- confirm the owner's set is still there.
+    const active = await auth(request(app).get('/api/v1/sessions/active'), mine.token).expect(200);
+    assert.equal(active.body.data.session.sets.length, 1);
+  });
+
+  await t.test('logging a set on a closed session is 409 SESSION_NOT_IN_PROGRESS', async () => {
+    const { token, exerciseId } = await freshUser('closedset@example.com');
+    const started = await auth(request(app).post('/api/v1/sessions'), token).expect(201);
+    const id = started.body.data.session.sessionId;
+    await auth(request(app).post(`/api/v1/sessions/${id}/complete`), token)
+      .send({ durationMin: 20 }).expect(200);
+
+    const res = await auth(request(app).put(`/api/v1/sessions/${id}/sets`), token)
+      .send({ exerciseId, setNumber: 1, weightKg: 20, reps: 8 }).expect(409);
+    assert.equal(res.body.error.code, 'SESSION_NOT_IN_PROGRESS');
+  });
+
+  await t.test('last performance comes back for the exercises asked for', async () => {
+    const { token, exerciseId } = await freshUser('prev@example.com');
+    const started = await auth(request(app).post('/api/v1/sessions'), token).expect(201);
+    const id = started.body.data.session.sessionId;
+    await auth(request(app).put(`/api/v1/sessions/${id}/sets`), token)
+      .send({ exerciseId, setNumber: 1, weightKg: 30, reps: 6 }).expect(200);
+    await auth(request(app).post(`/api/v1/sessions/${id}/complete`), token)
+      .send({ durationMin: 40 }).expect(200);
+
+    const res = await auth(
+      request(app).get(`/api/v1/sessions/last-performance?exerciseIds=${exerciseId}`), token,
+    ).expect(200);
+    assert.equal(res.body.data.performances.length, 1);
+    assert.strictEqual(res.body.data.performances[0].weightKg, 30);
+  });
+
+  await t.test('last performance with no ids returns an empty list, not an error', async () => {
+    const { token } = await freshUser('noids@example.com');
+    const res = await auth(request(app).get('/api/v1/sessions/last-performance'), token).expect(200);
+    assert.deepEqual(res.body.data.performances, []);
+  });
+
+  await t.test('last performance with an empty exerciseIds string also returns an empty list', async () => {
+    const { token } = await freshUser('emptyids@example.com');
+    const res = await auth(
+      request(app).get('/api/v1/sessions/last-performance?exerciseIds='), token,
+    ).expect(200);
+    assert.deepEqual(res.body.data.performances, []);
+  });
+
+  await t.test('the week lists the completed day', async () => {
+    const { token } = await freshUser('week@example.com');
+    const started = await auth(request(app).post('/api/v1/sessions'), token).expect(201);
+    await auth(request(app).post(`/api/v1/sessions/${started.body.data.session.sessionId}/complete`), token)
+      .send({ durationMin: 35 }).expect(200);
+
+    const res = await auth(request(app).get('/api/v1/sessions/week'), token).expect(200);
+    assert.equal(res.body.data.dates.length, 1);
+  });
+
   await t.test('every route requires a token', async () => {
     await request(app).get('/api/v1/sessions/active').expect(401);
     await request(app).post('/api/v1/sessions').expect(401);
+    await request(app).post('/api/v1/sessions/1/complete').expect(401);
+    await request(app).post('/api/v1/sessions/1/abandon').expect(401);
+    await request(app).put('/api/v1/sessions/1/sets').expect(401);
+    await request(app).delete('/api/v1/sessions/1/sets/1/1').expect(401);
+    await request(app).get('/api/v1/sessions/last-performance').expect(401);
+    await request(app).get('/api/v1/sessions/week').expect(401);
   });
 });

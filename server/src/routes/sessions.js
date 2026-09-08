@@ -7,6 +7,10 @@ const {
   startSession,
   completeSession,
   abandonSession,
+  logSet,
+  deleteSet,
+  lastPerformance,
+  completedThisWeek,
 } = require('../db/sessions');
 
 /// A non-numeric id reaches MySQL as a bare NaN token and throws
@@ -23,6 +27,18 @@ function sessionIdOr404(raw) {
 
 const notFound = () => AppError.notFound('SESSION_NOT_FOUND', 'No such session.');
 
+/// Null and undefined both mean "not recorded" -- a bodyweight set has no
+/// weight, and an AMRAP set may have no counted reps.
+function optionalNumber(value, { code, message, min, max, integer }) {
+  if (value === null || value === undefined) return null;
+  const parsed = integer ? Number.parseInt(value, 10) : Number(value);
+  if (!Number.isFinite(parsed) || parsed < min || parsed > max) {
+    throw AppError.badRequest(code, message);
+  }
+  if (integer && !Number.isInteger(parsed)) throw AppError.badRequest(code, message);
+  return parsed;
+}
+
 module.exports = function buildSessionsRouter(deps) {
   const router = express.Router();
   const auth = requireAuth(deps);
@@ -32,6 +48,24 @@ module.exports = function buildSessionsRouter(deps) {
       // Null rather than 404: having no session in progress is the normal
       // state, the same contract GET /plans/active states.
       res.json({ data: { session: await getActiveSession(deps.pool, req.user.userId) } });
+    } catch (err) { next(err); }
+  });
+
+  router.get('/week', auth, async (req, res, next) => {
+    try {
+      res.json({ data: { dates: await completedThisWeek(deps.pool, req.user.userId) } });
+    } catch (err) { next(err); }
+  });
+
+  router.get('/last-performance', auth, async (req, res, next) => {
+    try {
+      const raw = typeof req.query.exerciseIds === 'string' ? req.query.exerciseIds : '';
+      const ids = raw.split(',')
+        .map((part) => Number.parseInt(part, 10))
+        .filter(Number.isInteger);
+      res.json({
+        data: { performances: await lastPerformance(deps.pool, req.user.userId, ids) },
+      });
     } catch (err) { next(err); }
   });
 
@@ -66,6 +100,57 @@ module.exports = function buildSessionsRouter(deps) {
       const ok = await abandonSession(deps.pool, req.user.userId, id);
       if (!ok) throw notFound();
       res.json({ data: { abandoned: true } });
+    } catch (err) { next(err); }
+  });
+
+  router.put('/:sessionId/sets', auth, async (req, res, next) => {
+    try {
+      const id = sessionIdOr404(req.params.sessionId);
+
+      const setNumber = Number.parseInt(req.body?.setNumber, 10);
+      if (!Number.isInteger(setNumber) || setNumber < 1 || setNumber > 99) {
+        throw AppError.badRequest('SET_NUMBER_INVALID', 'setNumber must be a whole number from 1 to 99.');
+      }
+
+      // DECIMAL(6,2) overflows above 9999.99, and a mistyped 2255 for 22.5
+      // should be a message rather than a MySQL error.
+      const weightKg = optionalNumber(req.body?.weightKg, {
+        code: 'WEIGHT_INVALID',
+        message: 'weightKg must be between 0 and 999.99, or null.',
+        min: 0, max: 999.99, integer: false,
+      });
+      const reps = optionalNumber(req.body?.reps, {
+        code: 'REPS_INVALID',
+        message: 'reps must be a whole number from 0 to 999, or null.',
+        min: 0, max: 999, integer: true,
+      });
+
+      const exerciseId = Number.parseInt(req.body?.exerciseId, 10);
+      if (!Number.isInteger(exerciseId)) {
+        // Same code as an id that is real but not in this plan: from the
+        // client's side both mean "you cannot log that here".
+        throw AppError.badRequest('EXERCISE_NOT_IN_PLAN', 'That exercise is not part of this session.');
+      }
+
+      const set = await logSet(deps.pool, req.user.userId, id, { exerciseId, setNumber, weightKg, reps });
+      if (!set) throw notFound();
+      res.json({ data: { set } });
+    } catch (err) { next(err); }
+  });
+
+  router.delete('/:sessionId/sets/:exerciseId/:setNumber', auth, async (req, res, next) => {
+    try {
+      const id = sessionIdOr404(req.params.sessionId);
+      const exerciseId = Number.parseInt(req.params.exerciseId, 10);
+      const setNumber = Number.parseInt(req.params.setNumber, 10);
+      if (!Number.isInteger(exerciseId) || !Number.isInteger(setNumber)) throw notFound();
+
+      const ok = await deleteSet(deps.pool, req.user.userId, id, exerciseId, setNumber);
+      if (!ok) throw notFound();
+
+      // 200 with a body, never 204: ApiClient._unwrap requires a `data` object
+      // on every response and throws INVALID_RESPONSE without one.
+      res.json({ data: { deleted: true } });
     } catch (err) { next(err); }
   });
 
