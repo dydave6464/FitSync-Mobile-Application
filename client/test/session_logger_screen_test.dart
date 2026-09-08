@@ -103,6 +103,12 @@ class FakeSessionController extends ActiveSessionController {
     if (abandonError != null) throw abandonError!;
     state = const AsyncValue.data(null);
   }
+
+  /// The session the controller is still holding, for tests that assert a
+  /// failed write left it in progress. Exposed as a getter because `state` is
+  /// protected: reading it from the test body directly would be an
+  /// invalid_use_of_protected_member analyzer failure.
+  ActiveSession? get heldSession => state.value;
 }
 
 ActiveSession _session({List<LoggedSet> sets = const []}) => ActiveSession(
@@ -216,7 +222,13 @@ void main() {
     await tester.tap(find.byKey(const Key('logger.finish')));
     await tester.pumpAndSettle();
 
-    expect(controller.calls.any((call) => call.startsWith('complete:')), isTrue);
+    // The exact minute count, not just the prefix: the fixture started 12
+    // minutes ago, and a startsWith('complete:') check is satisfied just as
+    // well by 'complete:0' -- so a duration that was hardcoded, negated or
+    // lost with the start time would sail straight through it. The summary
+    // assertion below cannot cover for that either; 380 is totalVolumeKg,
+    // and durationMin is never read anywhere else in the suite.
+    expect(controller.calls, contains('complete:12'));
     expect(find.byKey(const Key('logger.summary')), findsOneWidget);
     expect(find.textContaining('380'), findsOneWidget);
   });
@@ -313,6 +325,54 @@ void main() {
     expect(find.byKey(const Key('logger.finish')), findsNothing);
     expect(find.text('open logger'), findsOneWidget);
   });
+
+  // A named global constraint of this task: a failed finish leaves the session
+  // in progress and resumable. Every other finish test either succeeds or
+  // fails down the 409 / StateError already-closed path, both of which pop on
+  // purpose -- so the generic branch, the one that must NOT pop, is otherwise
+  // never taken. The controller keeps state intact today because complete()
+  // only nulls it after its await; this is what stops a later edit from
+  // adding a pop or an invalidate here and stranding a live session.
+  //
+  // Run over both failing branches. A named ApiException lands in the
+  // `on ApiException` clause and an unnamed error in the generic `catch`;
+  // they are separate code paths with the same obligation, and a test that
+  // only ever threw one of them would leave the other free to grow a pop.
+  for (final (kind, error, message) in <(String, Object, String)>[
+    ('a named API failure', const ApiException('NETWORK', 'No connection.'),
+        'No connection.'),
+    ('an unnamed failure', Exception('offline'), 'Something went wrong.'),
+  ]) {
+    testWidgets('a finish that fails with $kind leaves the session in progress',
+        (tester) async {
+      final controller = await _pump(tester, session: _session(sets: const [
+        LoggedSet(exerciseId: 101, setNumber: 1, weightKg: 20, reps: 10),
+      ]));
+      controller.completeError = error;
+
+      await tester.tap(find.byKey(const Key('logger.finish')));
+      await tester.pumpAndSettle();
+
+      expect(find.text(message), findsOneWidget);
+      // Not closed, not summarised, and above all not navigated away from:
+      // the logger is still the route on top and the session is in progress.
+      expect(find.byKey(const Key('logger.finish')), findsOneWidget);
+      expect(find.byKey(const Key('logger.summary')), findsNothing);
+      expect(controller.heldSession, isNotNull);
+      expect(tester.takeException(), isNull);
+
+      // Resumable in practice, not just in state: the _finishing guard was
+      // released, so a second attempt actually reaches the controller. A
+      // guard left stuck would leave a session that can never be finished
+      // from here. The SnackBar has to clear first -- it sits at the bottom
+      // of the Scaffold over the Finish button and would swallow the tap.
+      await tester.pump(const Duration(seconds: 5));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const Key('logger.finish')));
+      await tester.pumpAndSettle();
+      expect(controller.calls.where((c) => c.startsWith('complete:')).length, 2);
+    });
+  }
 
   // Beyond the brief -- Discard is destructive and its request can simply
   // fail. Without a handler the future's error is unhandled, the screen does
