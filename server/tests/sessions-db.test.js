@@ -202,4 +202,35 @@ test('session db', async (t) => {
     assert.deepEqual((await getActiveSession(pool, userId)).sets, []);
     assert.equal(await deleteSet(pool, userId, session.sessionId, exerciseId, 1), true);
   });
+
+  await t.test('logSet on a closed session throws SESSION_NOT_IN_PROGRESS', async () => {
+    const { userId, exerciseId } = await seed();
+    const { session } = await startSession(pool, userId);
+    await pool.query(
+      "UPDATE workout_sessions SET status = 'completed' WHERE session_id = ?",
+      [session.sessionId],
+    );
+
+    await assert.rejects(
+      logSet(pool, userId, session.sessionId, {
+        exerciseId, setNumber: 1, weightKg: 10, reps: 10,
+      }),
+      (err) => err.code === 'SESSION_NOT_IN_PROGRESS' && err.status === 409,
+    );
+  });
+
+  await t.test('deleteSet on a closed session throws SESSION_NOT_IN_PROGRESS', async () => {
+    const { userId, exerciseId } = await seed();
+    const { session } = await startSession(pool, userId);
+    await logSet(pool, userId, session.sessionId, { exerciseId, setNumber: 1, weightKg: 20, reps: 10 });
+    await pool.query(
+      "UPDATE workout_sessions SET status = 'abandoned' WHERE session_id = ?",
+      [session.sessionId],
+    );
+
+    await assert.rejects(
+      deleteSet(pool, userId, session.sessionId, exerciseId, 1),
+      (err) => err.code === 'SESSION_NOT_IN_PROGRESS' && err.status === 409,
+    );
+  });
 });
