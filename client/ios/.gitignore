@@ -27,6 +27,12 @@ Flutter/flutter_export_environment.sh
 ServiceDefinitions.json
 Runner/GeneratedPluginRegistrant.*
 
+# Xcode resolves the plugins' Swift packages and writes these pins. Flutter
+# regenerates them from pubspec.lock, which is committed and is the real
+# source of truth for plugin versions — two lockfiles that can disagree is
+# worse than one.
+**/xcshareddata/swiftpm/
+
 # Exceptions to above rules.
 !default.mode1v3
 !default.mode2v3
