@@ -8,6 +8,7 @@ import 'package:fitsync/core/api_client.dart';
 import 'package:fitsync/core/api_exception.dart';
 import 'package:fitsync/core/token_store.dart';
 import 'package:fitsync/features/sessions/data/session_repository.dart';
+import 'package:fitsync/features/sessions/domain/active_session.dart';
 
 /// The exact shape `server/src/db/sessions.js` returns.
 const _sessionJson = {
@@ -152,6 +153,23 @@ void main() {
     expect(done.totalVolumeKg, 380.0);
   });
 
+  test('complete() parses a whole-number totalVolumeKg as a double', () async {
+    final repo = _repo(MockClient((_) async => http.Response(
+          jsonEncode({
+            'data': {
+              // jsonDecode gives an int here when the server's DECIMAL
+              // happens to round to a whole number -- this must not throw.
+              'session': {..._sessionJson, 'status': 'completed', 'totalVolumeKg': 380},
+            },
+          }),
+          200,
+        )));
+
+    final done = await repo.complete(7, 47);
+
+    expect(done.totalVolumeKg, 380.0);
+  });
+
   test('abandon() posts to the abandon route and completes without throwing', () async {
     late String method;
     late String path;
@@ -190,6 +208,25 @@ void main() {
     expect(byExercise[102], isNull);
   });
 
+  test('lastPerformance() parses a whole-number weightKg as a double', () async {
+    final repo = _repo(MockClient((_) async => http.Response(
+          jsonEncode({
+            'data': {
+              'performances': [
+                // jsonDecode gives an int here, not a double -- casting
+                // straight to double? would throw.
+                {'exerciseId': 101, 'weightKg': 20, 'reps': 8, 'sessionDate': '2026-09-05'},
+              ],
+            },
+          }),
+          200,
+        )));
+
+    final byExercise = await repo.lastPerformance([101]);
+
+    expect(byExercise[101]!.weightKg, 20.0);
+  });
+
   test('lastPerformance() with no ids never reaches the network', () async {
     var called = false;
     final repo = _repo(MockClient((_) async {
@@ -220,5 +257,94 @@ void main() {
       () => repo.start(),
       throwsA(isA<ApiException>().having((e) => e.code, 'code', 'NO_ACTIVE_PLAN')),
     );
+  });
+
+  // ActiveSession.withSet / withoutSet -- the fold-without-refetch the
+  // controller uses so one logged set updates state without a second round
+  // trip. Pure in-memory model logic: no HTTP involved.
+
+  test('withSet replaces an existing set for the same exerciseId/setNumber', () {
+    const session = ActiveSession(
+      sessionId: 7,
+      status: 'in_progress',
+      sessionDate: '2026-09-08',
+      sets: [LoggedSet(exerciseId: 101, setNumber: 1, weightKg: 20, reps: 8)],
+    );
+
+    final updated =
+        session.withSet(const LoggedSet(exerciseId: 101, setNumber: 1, weightKg: 25, reps: 10));
+
+    expect(updated.sets, hasLength(1));
+    expect(updated.setFor(101, 1)!.weightKg, 25);
+    expect(updated.setFor(101, 1)!.reps, 10);
+  });
+
+  test('withSet appends a new set and keeps the list ordered by exerciseId then setNumber', () {
+    // 102 sorts after 101 by construction; inserting 101 here would land at
+    // the end of the list if withSet only appended, so this only stays
+    // ordered if the sort is actually running.
+    const session = ActiveSession(
+      sessionId: 7,
+      status: 'in_progress',
+      sessionDate: '2026-09-08',
+      sets: [
+        LoggedSet(exerciseId: 101, setNumber: 1, weightKg: 20, reps: 8),
+        LoggedSet(exerciseId: 103, setNumber: 1, weightKg: 30, reps: 6),
+      ],
+    );
+
+    final updated =
+        session.withSet(const LoggedSet(exerciseId: 102, setNumber: 1, weightKg: 25, reps: 10));
+
+    expect(updated.sets, hasLength(3));
+    expect(
+      updated.sets.map((s) => s.exerciseId).toList(),
+      [101, 102, 103],
+    );
+  });
+
+  test('withoutSet removes only the matching set, not others sharing its setNumber', () {
+    // Same setNumber, different exerciseId -- the case a one-field match
+    // would wrongly delete.
+    const session = ActiveSession(
+      sessionId: 7,
+      status: 'in_progress',
+      sessionDate: '2026-09-08',
+      sets: [
+        LoggedSet(exerciseId: 101, setNumber: 1, weightKg: 20, reps: 8),
+        LoggedSet(exerciseId: 102, setNumber: 1, weightKg: 30, reps: 6),
+      ],
+    );
+
+    final updated = session.withoutSet(101, 1);
+
+    expect(updated.sets, hasLength(1));
+    expect(updated.setFor(101, 1), isNull);
+    expect(updated.setFor(102, 1)!.weightKg, 30);
+  });
+
+  test('withSet preserves every other field on the session', () {
+    final startedAt = DateTime.utc(2026, 9, 8, 9, 15);
+    final session = ActiveSession(
+      sessionId: 7,
+      status: 'in_progress',
+      sessionDate: '2026-09-08',
+      planId: 42,
+      startedAt: startedAt,
+      durationMin: 30,
+      totalVolumeKg: 500.0,
+      sets: const [],
+    );
+
+    final updated =
+        session.withSet(const LoggedSet(exerciseId: 101, setNumber: 1, weightKg: 20, reps: 8));
+
+    expect(updated.sessionId, 7);
+    expect(updated.status, 'in_progress');
+    expect(updated.sessionDate, '2026-09-08');
+    expect(updated.planId, 42);
+    expect(updated.startedAt, startedAt);
+    expect(updated.durationMin, 30);
+    expect(updated.totalVolumeKg, 500.0);
   });
 }
