@@ -34,27 +34,36 @@ class ActiveSessionController extends AsyncNotifier<ActiveSession?> {
   /// Write-through. The caller awaits this and only then shows a tick, so a
   /// visible tick always means a stored set. A failure rethrows with state
   /// unchanged, leaving the row for the user to retry.
+  ///
+  /// State is rebuilt from [_current] read AFTER the await, not from the
+  /// snapshot taken before it. Two rows can each have an in-flight write at
+  /// once; if the write issued second happens to resolve last and folds it
+  /// into a pre-await snapshot, that snapshot predates the first write too,
+  /// so it would silently erase it. Reading current state fresh after the
+  /// await always folds onto whatever the other call already stored.
   Future<void> logSet({
     required int exerciseId,
     required int setNumber,
     double? weightKg,
     int? reps,
   }) async {
-    final session = _current;
+    final sessionId = _current.sessionId;
     final stored = await _repo.logSet(
-      session.sessionId,
+      sessionId,
       exerciseId: exerciseId,
       setNumber: setNumber,
       weightKg: weightKg,
       reps: reps,
     );
-    state = AsyncValue.data(session.withSet(stored));
+    state = AsyncValue.data(_current.withSet(stored));
   }
 
+  /// Same reasoning as [logSet]: [_current] is read again after the await so
+  /// a concurrent write in flight for a different set is not clobbered.
   Future<void> unlogSet({required int exerciseId, required int setNumber}) async {
-    final session = _current;
-    await _repo.deleteSet(session.sessionId, exerciseId: exerciseId, setNumber: setNumber);
-    state = AsyncValue.data(session.withoutSet(exerciseId, setNumber));
+    final sessionId = _current.sessionId;
+    await _repo.deleteSet(sessionId, exerciseId: exerciseId, setNumber: setNumber);
+    state = AsyncValue.data(_current.withoutSet(exerciseId, setNumber));
   }
 
   Future<ActiveSession> complete(int durationMin) async {
