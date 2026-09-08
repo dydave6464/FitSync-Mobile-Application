@@ -146,6 +146,35 @@ test('002 training schema', async (t) => {
     );
   });
 
+  await t.test('a session starts in progress with no start time', async () => {
+    const { userId } = await seed();
+    const [res] = await pool.query(
+      'INSERT INTO workout_sessions (user_id, session_date) VALUES (?, CURDATE())',
+      [userId],
+    );
+    const [rows] = await pool.query(
+      `SELECT status, started_at, duration_min, total_volume_kg
+       FROM workout_sessions WHERE session_id = ?`,
+      [res.insertId],
+    );
+    assert.equal(rows[0].status, 'in_progress');
+    assert.equal(rows[0].started_at, null);
+    assert.equal(rows[0].duration_min, null);
+    assert.equal(rows[0].total_volume_kg, null);
+  });
+
+  await t.test('status rejects a value outside the enum', async () => {
+    const { userId } = await seed();
+    await assert.rejects(
+      pool.query(
+        `INSERT INTO workout_sessions (user_id, session_date, status)
+         VALUES (?, CURDATE(), 'paused')`,
+        [userId],
+      ),
+      /Data truncated|WARN_DATA_TRUNCATED/,
+    );
+  });
+
   await t.test('coaching cues cascade when their exercise is removed', async () => {
     const { exerciseId } = await seed();
     await pool.query(

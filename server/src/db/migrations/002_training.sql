@@ -57,13 +57,17 @@ CREATE TABLE IF NOT EXISTS workout_sessions (
   session_id      INT AUTO_INCREMENT PRIMARY KEY,
   user_id         INT NOT NULL,
   plan_id         INT NULL,
+  status          ENUM('in_progress','completed','abandoned')
+                    NOT NULL DEFAULT 'in_progress',
   session_date    DATE NOT NULL,
+  started_at      TIMESTAMP NULL,
   duration_min    INT NULL,
   total_volume_kg DECIMAL(10,2) NULL,
   created_at      TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
   CONSTRAINT fk_workout_sessions_user FOREIGN KEY (user_id) REFERENCES users(user_id) ON DELETE CASCADE,
   CONSTRAINT fk_workout_sessions_plan FOREIGN KEY (plan_id) REFERENCES workout_plans(plan_id) ON DELETE SET NULL,
   INDEX idx_workout_sessions_user_date (user_id, session_date),
+  INDEX idx_workout_sessions_user_status (user_id, status),
   INDEX idx_workout_sessions_plan (plan_id)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
