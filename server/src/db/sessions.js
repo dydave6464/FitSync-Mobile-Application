@@ -133,10 +133,73 @@ async function startSession(pool, userId) {
   }
 }
 
+/// Shared by both writers: a session you do not own is indistinguishable from
+/// one that does not exist, and a closed session accepts no edits.
+async function requireInProgress(pool, userId, sessionId) {
+  const session = await getSessionById(pool, userId, sessionId);
+  if (!session) return null;
+  if (session.status !== 'in_progress') {
+    throw AppError.conflict(
+      'SESSION_NOT_IN_PROGRESS',
+      'This session has already been closed.',
+    );
+  }
+  return session;
+}
+
+async function logSet(pool, userId, sessionId, { exerciseId, setNumber, weightKg, reps }) {
+  const session = await requireInProgress(pool, userId, sessionId);
+  if (!session) return null;
+
+  const [inPlan] = await pool.query(
+    `SELECT 1 FROM plan_exercises
+     WHERE plan_id = ? AND exercise_id = ?
+     LIMIT 1`,
+    [session.planId, exerciseId],
+  );
+  if (inPlan.length === 0) {
+    throw AppError.badRequest(
+      'EXERCISE_NOT_IN_PLAN',
+      'That exercise is not part of this session.',
+    );
+  }
+
+  // The unique key (session_id, exercise_id, set_number) from migration 002 is
+  // what makes this idempotent: a retried request updates one row instead of
+  // adding a second. VALUES() is deprecated in MySQL 8.0.20+ in favour of a row
+  // alias, but still supported and kept here for the wider version floor.
+  await pool.query(
+    `INSERT INTO set_logs (session_id, exercise_id, set_number, weight_kg, reps, is_completed)
+     VALUES (?, ?, ?, ?, ?, TRUE)
+     ON DUPLICATE KEY UPDATE
+       weight_kg = VALUES(weight_kg),
+       reps = VALUES(reps),
+       is_completed = TRUE`,
+    [sessionId, exerciseId, setNumber, weightKg, reps],
+  );
+
+  return { exerciseId, setNumber, weightKg: toNumber(weightKg), reps };
+}
+
+/// Deletes rather than flagging: a mis-tapped set did not happen, and a zeroed
+/// row would have to be filtered out of every aggregate downstream forever.
+async function deleteSet(pool, userId, sessionId, exerciseId, setNumber) {
+  const session = await requireInProgress(pool, userId, sessionId);
+  if (!session) return false;
+
+  await pool.query(
+    'DELETE FROM set_logs WHERE session_id = ? AND exercise_id = ? AND set_number = ?',
+    [sessionId, exerciseId, setNumber],
+  );
+  return true;
+}
+
 module.exports = {
   formatDate,
   toNumber,
   getSessionById,
   getActiveSession,
   startSession,
+  logSet,
+  deleteSet,
 };

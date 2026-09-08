@@ -4,7 +4,9 @@ const assert = require('node:assert/strict');
 const { migrate } = require('../src/db/migrate');
 const { createPool } = require('../src/db/pool');
 const { testDbConfig, dropAllTables } = require('./helpers/test-db');
-const { startSession, getActiveSession, getSessionById } = require('../src/db/sessions');
+const {
+  startSession, getActiveSession, getSessionById, logSet, deleteSet,
+} = require('../src/db/sessions');
 
 test('session db', async (t) => {
   const pool = createPool(testDbConfig());
@@ -120,5 +122,84 @@ test('session db', async (t) => {
 
     const { session } = await startSession(pool, u.insertId);
     assert.equal(session.planId, activePlan.insertId);
+  });
+
+  await t.test('a set is stored and read back as numbers, not strings', async () => {
+    const { userId, exerciseId } = await seed();
+    const { session } = await startSession(pool, userId);
+
+    const stored = await logSet(pool, userId, session.sessionId, {
+      exerciseId, setNumber: 1, weightKg: 22.5, reps: 10,
+    });
+    assert.deepEqual(stored, { exerciseId, setNumber: 1, weightKg: 22.5, reps: 10 });
+
+    const reread = await getActiveSession(pool, userId);
+    assert.equal(reread.sets.length, 1);
+    // Not '22.50'. DECIMAL comes out of mysql2 as a string.
+    assert.strictEqual(reread.sets[0].weightKg, 22.5);
+    assert.strictEqual(reread.sets[0].reps, 10);
+  });
+
+  await t.test('logging the same set twice updates it rather than duplicating', async () => {
+    const { userId, exerciseId } = await seed();
+    const { session } = await startSession(pool, userId);
+
+    await logSet(pool, userId, session.sessionId, { exerciseId, setNumber: 1, weightKg: 20, reps: 10 });
+    await logSet(pool, userId, session.sessionId, { exerciseId, setNumber: 1, weightKg: 25, reps: 8 });
+
+    const reread = await getActiveSession(pool, userId);
+    assert.equal(reread.sets.length, 1);
+    assert.equal(reread.sets[0].weightKg, 25);
+    assert.equal(reread.sets[0].reps, 8);
+  });
+
+  await t.test('a bodyweight set with no weight and no reps still counts', async () => {
+    const { userId, exerciseId } = await seed();
+    const { session } = await startSession(pool, userId);
+
+    await logSet(pool, userId, session.sessionId, {
+      exerciseId, setNumber: 1, weightKg: null, reps: null,
+    });
+
+    const reread = await getActiveSession(pool, userId);
+    assert.equal(reread.sets.length, 1);
+    assert.equal(reread.sets[0].weightKg, null);
+    assert.equal(reread.sets[0].reps, null);
+  });
+
+  await t.test('a set for an exercise outside the plan is rejected', async () => {
+    const { userId } = await seed();
+    const [other] = await pool.query(
+      "INSERT INTO exercises (name, muscle_group, status) VALUES (CONCAT('Ex ', UUID()), 'chest', 'live')",
+    );
+    const { session } = await startSession(pool, userId);
+
+    await assert.rejects(
+      logSet(pool, userId, session.sessionId, {
+        exerciseId: other.insertId, setNumber: 1, weightKg: 10, reps: 10,
+      }),
+      (err) => err.code === 'EXERCISE_NOT_IN_PLAN' && err.status === 400,
+    );
+  });
+
+  await t.test("logging into another user's session returns null", async () => {
+    const a = await seed();
+    const b = await seed();
+    const { session } = await startSession(pool, a.userId);
+
+    const result = await logSet(pool, b.userId, session.sessionId, {
+      exerciseId: b.exerciseId, setNumber: 1, weightKg: 10, reps: 10,
+    });
+    assert.equal(result, null);
+  });
+
+  await t.test('un-ticking removes the row, and doing it twice is not an error', async () => {
+    const { userId, exerciseId } = await seed();
+    const { session } = await startSession(pool, userId);
+    await logSet(pool, userId, session.sessionId, { exerciseId, setNumber: 1, weightKg: 20, reps: 10 });
+
+    assert.equal(await deleteSet(pool, userId, session.sessionId, exerciseId, 1), true);
+    assert.deepEqual((await getActiveSession(pool, userId)).sets, []);
+    assert.equal(await deleteSet(pool, userId, session.sessionId, exerciseId, 1), true);
   });
 });
