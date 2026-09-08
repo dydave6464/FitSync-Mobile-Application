@@ -22,6 +22,7 @@ class ExerciseLogCard extends StatelessWidget {
     required this.onCompleteSet,
     required this.onUndoSet,
     this.last,
+    this.onOpenDemo,
   });
 
   final PlanExercise exercise;
@@ -31,6 +32,11 @@ class ExerciseLogCard extends StatelessWidget {
   final VoidCallback onExpand;
   final Future<void> Function(int setNumber, double? weightKg, int? reps) onCompleteSet;
   final Future<void> Function(int setNumber) onUndoSet;
+
+  /// Opens the same demo and cues the Browse tab shows, mid-workout. Null
+  /// renders the affordance disabled rather than hiding it, so the header
+  /// row's layout stays identical whether or not a caller wires it up.
+  final VoidCallback? onOpenDemo;
 
   int get _doneCount {
     final current = session;
@@ -95,6 +101,11 @@ class ExerciseLogCard extends StatelessWidget {
                   fontSize: 11.5,
                   color: _doneCount >= exercise.targetSets ? t.accent : t.text3,
                 ),
+              ),
+              IconButton(
+                key: Key('logcard.demo.${exercise.exerciseId}'),
+                icon: const Icon(Icons.play_circle_outline),
+                onPressed: onOpenDemo,
               ),
             ],
           ),

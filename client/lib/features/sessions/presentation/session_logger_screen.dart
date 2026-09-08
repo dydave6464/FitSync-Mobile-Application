@@ -7,6 +7,7 @@ import '../../../core/widgets/fs_kit.dart';
 import '../../exercises/presentation/exercise_list_screen.dart' show describeError;
 import '../../plans/presentation/providers.dart';
 import '../domain/active_session.dart';
+import 'in_session_exercise_screen.dart';
 import 'providers.dart';
 import 'widgets/exercise_log_card.dart';
 import 'widgets/rest_timer.dart';
@@ -248,6 +249,15 @@ class _SessionLoggerScreenState extends ConsumerState<SessionLoggerScreen> {
                   onUndoSet: (setNumber) => ref
                       .read(activeSessionProvider.notifier)
                       .unlogSet(exerciseId: exercise.exerciseId, setNumber: setNumber),
+                  onOpenDemo: () => Navigator.of(context).push(
+                    MaterialPageRoute<void>(
+                      builder: (_) => InSessionExerciseScreen(
+                        exercise: exercise,
+                        position: index + 1,
+                        total: exercises.length,
+                      ),
+                    ),
+                  ),
                 );
               },
             ),
