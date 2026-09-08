@@ -6,6 +6,7 @@ const { createPool } = require('../src/db/pool');
 const { testDbConfig, dropAllTables } = require('./helpers/test-db');
 const {
   startSession, getActiveSession, getSessionById, logSet, deleteSet,
+  completeSession, abandonSession,
 } = require('../src/db/sessions');
 
 test('session db', async (t) => {
@@ -251,6 +252,87 @@ test('session db', async (t) => {
 
     await assert.rejects(
       deleteSet(pool, userId, session.sessionId, exerciseId, 1),
+      (err) => err.code === 'SESSION_NOT_IN_PROGRESS' && err.status === 409,
+    );
+  });
+
+  await t.test('completing stamps duration and a server-computed volume', async () => {
+    const { userId, exerciseId } = await seed();
+    const { session } = await startSession(pool, userId);
+    await logSet(pool, userId, session.sessionId, { exerciseId, setNumber: 1, weightKg: 20, reps: 10 });
+    await logSet(pool, userId, session.sessionId, { exerciseId, setNumber: 2, weightKg: 22.5, reps: 8 });
+
+    const done = await completeSession(pool, userId, session.sessionId, 47);
+
+    assert.equal(done.status, 'completed');
+    assert.equal(done.durationMin, 47);
+    // 20*10 + 22.5*8 = 380
+    assert.strictEqual(done.totalVolumeKg, 380);
+    assert.equal(await getActiveSession(pool, userId), null);
+  });
+
+  await t.test('a bodyweight-only session completes with zero volume', async () => {
+    const { userId, exerciseId } = await seed();
+    const { session } = await startSession(pool, userId);
+    await logSet(pool, userId, session.sessionId, { exerciseId, setNumber: 1, weightKg: null, reps: 15 });
+
+    const done = await completeSession(pool, userId, session.sessionId, 20);
+    assert.strictEqual(done.totalVolumeKg, 0);
+  });
+
+  await t.test('completing twice is a conflict', async () => {
+    const { userId } = await seed();
+    const { session } = await startSession(pool, userId);
+    await completeSession(pool, userId, session.sessionId, 30);
+
+    await assert.rejects(
+      completeSession(pool, userId, session.sessionId, 30),
+      (err) => err.code === 'SESSION_NOT_IN_PROGRESS' && err.status === 409,
+    );
+  });
+
+  await t.test("completing another user's session returns null", async () => {
+    const a = await seed();
+    const b = await seed();
+    const { session } = await startSession(pool, a.userId);
+    assert.equal(await completeSession(pool, b.userId, session.sessionId, 30), null);
+  });
+
+  await t.test('abandoning closes the session without recording volume', async () => {
+    const { userId, exerciseId } = await seed();
+    const { session } = await startSession(pool, userId);
+    await logSet(pool, userId, session.sessionId, { exerciseId, setNumber: 1, weightKg: 20, reps: 10 });
+
+    assert.equal(await abandonSession(pool, userId, session.sessionId), true);
+
+    const closed = await getSessionById(pool, userId, session.sessionId);
+    assert.equal(closed.status, 'abandoned');
+    assert.equal(closed.totalVolumeKg, null);
+    assert.equal(await getActiveSession(pool, userId), null);
+  });
+
+  await t.test("abandoning another user's session returns false and leaves the status unchanged", async () => {
+    const a = await seed();
+    const b = await seed();
+    const { session } = await startSession(pool, a.userId);
+
+    assert.equal(await abandonSession(pool, b.userId, session.sessionId), false);
+
+    // The guard being tested is `if (!session) return false;` -- a return-value
+    // check alone would still pass if the UPDATE ran before that check was
+    // reached. The session must still be the real owner's, read back as
+    // still in progress.
+    const reread = await getSessionById(pool, a.userId, session.sessionId);
+    assert.equal(reread.status, 'in_progress');
+  });
+
+  await t.test('abandoning an already-closed session throws SESSION_NOT_IN_PROGRESS', async () => {
+    const { userId } = await seed();
+    const { session } = await startSession(pool, userId);
+    await abandonSession(pool, userId, session.sessionId);
+
+    await assert.rejects(
+      abandonSession(pool, userId, session.sessionId),
       (err) => err.code === 'SESSION_NOT_IN_PROGRESS' && err.status === 409,
     );
   });

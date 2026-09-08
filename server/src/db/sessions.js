@@ -194,6 +194,47 @@ async function deleteSet(pool, userId, sessionId, exerciseId, setNumber) {
   return true;
 }
 
+/// Volume is computed here, never accepted from the client. Progress, personal
+/// records and eventually the plan ranker all read this number, so it has to
+/// mean one thing computed one way.
+///
+/// SUM skips NULLs, so a bodyweight set contributes nothing and COALESCE turns
+/// an all-bodyweight session into 0 rather than NULL -- "I trained and lifted
+/// no external load" is a different statement from "unknown".
+async function completeSession(pool, userId, sessionId, durationMin) {
+  const session = await requireInProgress(pool, userId, sessionId);
+  if (!session) return null;
+
+  const [[agg]] = await pool.query(
+    `SELECT COALESCE(SUM(weight_kg * reps), 0) AS volume
+     FROM set_logs
+     WHERE session_id = ? AND is_completed = TRUE`,
+    [sessionId],
+  );
+
+  await pool.query(
+    `UPDATE workout_sessions
+     SET status = 'completed', duration_min = ?, total_volume_kg = ?
+     WHERE session_id = ?`,
+    [durationMin, toNumber(agg.volume), sessionId],
+  );
+
+  return getSessionById(pool, userId, sessionId);
+}
+
+/// No volume is stamped: an abandoned session is not a training record, and
+/// giving it one would put it into every total that filters on status alone.
+async function abandonSession(pool, userId, sessionId) {
+  const session = await requireInProgress(pool, userId, sessionId);
+  if (!session) return false;
+
+  await pool.query(
+    "UPDATE workout_sessions SET status = 'abandoned' WHERE session_id = ?",
+    [sessionId],
+  );
+  return true;
+}
+
 module.exports = {
   formatDate,
   toNumber,
@@ -202,4 +243,6 @@ module.exports = {
   startSession,
   logSet,
   deleteSet,
+  completeSession,
+  abandonSession,
 };
