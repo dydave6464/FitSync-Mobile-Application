@@ -122,6 +122,7 @@ class ApiClient {
         'POST' => _client.post(uri, headers: headers, body: encoded),
         'PATCH' => _client.patch(uri, headers: headers, body: encoded),
         'PUT' => _client.put(uri, headers: headers, body: encoded),
+        'DELETE' => _client.delete(uri, headers: headers, body: encoded),
         _ => throw ArgumentError('Unsupported method: $method'),
       }
           .timeout(_timeout);
@@ -137,4 +138,8 @@ class ApiClient {
       _send('PATCH', path, body);
   Future<Map<String, dynamic>> putJson(String path, Map<String, dynamic> body) =>
       _send('PUT', path, body);
+
+  /// The server answers a delete with `{ data: { … } }` like every other
+  /// route — never 204 — because [_unwrap] requires a `data` object.
+  Future<Map<String, dynamic>> deleteJson(String path) => _send('DELETE', path, const {});
 }
