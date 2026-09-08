@@ -14,11 +14,11 @@ import 'package:fitsync/features/exercises/presentation/providers.dart';
 import 'package:fitsync/features/home/presentation/nav_shell.dart';
 import 'package:fitsync/features/plans/domain/exercise_alternative.dart';
 import 'package:fitsync/features/plans/domain/workout_plan.dart';
-import 'package:fitsync/features/plans/presentation/plan_screen.dart';
 import 'package:fitsync/features/plans/presentation/providers.dart';
 import 'package:fitsync/features/profile/domain/profile.dart';
 import 'package:fitsync/features/profile/presentation/providers.dart';
 import 'package:fitsync/features/settings/presentation/settings_screen.dart';
+import 'package:fitsync/features/training/presentation/training_shell.dart';
 
 /// Enough rows that the catalogue's list is taller than the test viewport,
 /// so it actually has somewhere to scroll to.
@@ -110,9 +110,10 @@ Future<void> _pumpShell(WidgetTester tester, {WorkoutPlan? plan}) => tester.pump
             tokens: TokenStore(backing: InMemorySecureStore()),
             client: MockClient((_) async => http.Response('{"data":{}}', 200)),
           )),
-          // Train tab (PlanScreen). No plan keeps it on the simple empty
-          // state, which is also what avoids a stray "Exercises" eyebrow
-          // label competing with the Browse tab's AppBar title below.
+          // Train tab (the Training shell, wrapping PlanScreen as its Plan
+          // tab body). No plan keeps it on the simple empty state, which is
+          // also what avoids a stray "Exercises" eyebrow label competing
+          // with the Browse tab's AppBar title below.
           activePlanProvider.overrideWith((ref) async => plan),
           alternativesProvider.overrideWith((ref, key) async => const [
                 ExerciseAlternative(
@@ -192,7 +193,7 @@ void main() {
     // false walks the whole element tree instead, so it actually sees a tab
     // IndexedStack is hiding rather than one that was never built.
     expect(
-      find.byType(PlanScreen, skipOffstage: false), findsNothing,
+      find.byType(TrainingShell, skipOffstage: false), findsNothing,
       reason: 'Train must not mount until the user visits it',
     );
     expect(
@@ -222,27 +223,27 @@ void main() {
     );
 
     // Train and Profile remain unvisited throughout.
-    expect(find.byType(PlanScreen, skipOffstage: false), findsNothing);
+    expect(find.byType(TrainingShell, skipOffstage: false), findsNothing);
     expect(find.byType(SettingsScreen, skipOffstage: false), findsNothing);
   });
 
-  testWidgets('tapping Train reaches the workout plan', (tester) async {
+  testWidgets('tapping Train reaches the Training shell', (tester) async {
     // nav.0, nav.2 and nav.3 were already exercised above; nav.1 (Train) was
-    // not, so nothing connected FsNav's index 1 to PlanScreen. home_screen_
-    // test.dart proves onGoToTrain fires and nav_shell.dart wires it to
-    // `_index = 1`, but nothing tied those two facts together — reordering
-    // the tab list would send "Start workout" to the wrong screen with every
-    // existing test still green. find.byType(PlanScreen) is discriminating
-    // here because IndexedStack's debugVisitOnstageChildren override means a
-    // default finder only ever sees the *selected* child — so this can only
-    // be satisfied by PlanScreen actually being the current tab, not merely
-    // present offstage somewhere in the tree.
+    // not, so nothing connected FsNav's index 1 to the Training shell.
+    // home_screen_test.dart proves onGoToTrain fires and nav_shell.dart
+    // wires it to `_index = 1`, but nothing tied those two facts together —
+    // reordering the tab list would send "Start workout" to the wrong
+    // screen with every existing test still green. find.byType(TrainingShell)
+    // is discriminating here because IndexedStack's debugVisitOnstageChildren
+    // override means a default finder only ever sees the *selected* child —
+    // so this can only be satisfied by the shell actually being the current
+    // tab, not merely present offstage somewhere in the tree.
     await _pumpShell(tester);
 
     await tester.tap(find.byKey(const Key('nav.1')));
     await tester.pumpAndSettle();
 
-    expect(find.byType(PlanScreen), findsOneWidget);
+    expect(find.byType(TrainingShell), findsOneWidget);
   });
 
   testWidgets('tapping Browse reaches the exercise catalogue', (tester) async {

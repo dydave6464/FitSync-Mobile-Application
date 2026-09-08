@@ -6,10 +6,17 @@ import '../../../core/widgets/fs_kit.dart';
 import '../../exercises/presentation/equipment_icon.dart';
 import '../../exercises/presentation/exercise_detail_screen.dart';
 import '../../exercises/presentation/exercise_list_screen.dart' show describeError;
+import '../../sessions/presentation/providers.dart';
+import '../../sessions/presentation/session_logger_screen.dart';
 import '../domain/workout_plan.dart';
 import 'exercise_swap_sheet.dart';
 import 'providers.dart';
+import 'widgets/session_card.dart';
+import 'widgets/week_strip.dart';
 
+/// The Plan tab's body. No longer brings its own `Scaffold`/`AppBar` — the
+/// Training shell now supplies both, so this is what the shell's Plan tab
+/// renders inside them.
 class PlanScreen extends ConsumerWidget {
   const PlanScreen({super.key, this.onGoToProfile});
 
@@ -19,37 +26,30 @@ class PlanScreen extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final t = context.fs;
     final plan = ref.watch(activePlanProvider);
 
-    return Scaffold(
-      backgroundColor: t.bg,
-      appBar: AppBar(
-        title: const Text('Your plan'),
-      ),
-      body: plan.when(
-        loading: () => const Center(child: CircularProgressIndicator()),
-        error: (error, _) => Center(
-          child: Padding(
-            padding: const EdgeInsets.all(24),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Text(describeError(error), textAlign: TextAlign.center),
-                const SizedBox(height: 16),
-                FsButton(
-                  label: 'Retry',
-                  small: true,
-                  onPressed: () => ref.invalidate(activePlanProvider),
-                ),
-              ],
-            ),
+    return plan.when(
+      loading: () => const Center(child: CircularProgressIndicator()),
+      error: (error, _) => Center(
+        child: Padding(
+          padding: const EdgeInsets.all(24),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Text(describeError(error), textAlign: TextAlign.center),
+              const SizedBox(height: 16),
+              FsButton(
+                label: 'Retry',
+                small: true,
+                onPressed: () => ref.invalidate(activePlanProvider),
+              ),
+            ],
           ),
         ),
-        data: (loaded) => loaded == null
-            ? const _NoPlanYet()
-            : _PlanView(plan: loaded, onGoToProfile: onGoToProfile),
       ),
+      data: (loaded) => loaded == null
+          ? const _NoPlanYet()
+          : _PlanView(plan: loaded, onGoToProfile: onGoToProfile),
     );
   }
 }
@@ -84,39 +84,65 @@ class _NoPlanYet extends StatelessWidget {
   }
 }
 
-class _PlanView extends ConsumerWidget {
+class _PlanView extends ConsumerStatefulWidget {
   const _PlanView({required this.plan, this.onGoToProfile});
 
   final WorkoutPlan plan;
   final VoidCallback? onGoToProfile;
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    final t = context.fs;
-    final theme = Theme.of(context);
-    final baseUrl = ref.watch(planRepositoryProvider).baseUrl;
+  ConsumerState<_PlanView> createState() => _PlanViewState();
+}
 
-    final facts = [
-      describeSplit(plan.splitStyle),
-      '${plan.daysPerWeek} days a week',
-      '${plan.sessionLengthMin} min a session',
-    ].where((part) => part.isNotEmpty).join(' · ');
+class _PlanViewState extends ConsumerState<_PlanView> {
+  /// True while a Start/Resume tap's request is in flight. Kept off the
+  /// controller: it is purely this button's own affordance, not session
+  /// state anything else needs to read.
+  bool _starting = false;
+
+  /// Starts a session (skipped when one is already in progress) and opens
+  /// the logger on it. A session that fails to start must not leave the
+  /// button stuck disabled -- `_starting` always clears in the `finally`,
+  /// whether the attempt succeeded, failed, or the logger was already
+  /// pushed.
+  Future<void> _startOrResume() async {
+    final controller = ref.read(activeSessionProvider.notifier);
+    final messenger = ScaffoldMessenger.of(context);
+    setState(() => _starting = true);
+    try {
+      if (ref.read(activeSessionProvider).value == null) {
+        await controller.start();
+      }
+      if (!mounted) return;
+      await Navigator.of(context).push(MaterialPageRoute<void>(
+        builder: (_) => const SessionLoggerScreen(),
+      ));
+    } catch (error) {
+      messenger.showSnackBar(SnackBar(content: Text(describeError(error))));
+    } finally {
+      if (mounted) setState(() => _starting = false);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final plan = widget.plan;
+    final baseUrl = ref.watch(planRepositoryProvider).baseUrl;
 
     return ListView(
       padding: const EdgeInsets.fromLTRB(20, 8, 20, 24),
       children: [
-        FsCard(
-          accent: true,
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              FsEyebrow('Week ${plan.weekNo}'),
-              const SizedBox(height: 8),
-              Text(plan.name, style: theme.textTheme.headlineSmall),
-              const SizedBox(height: 8),
-              Text(facts, style: TextStyle(fontSize: 12.5, color: t.text2)),
-            ],
-          ),
+        WeekStrip(
+          daysPerWeek: plan.daysPerWeek,
+          completedDates: ref.watch(completedDaysProvider).value ?? const {},
+          today: DateTime.now(),
+        ),
+        const SizedBox(height: 14),
+        SessionCard(
+          plan: plan,
+          hasActiveSession: ref.watch(activeSessionProvider).value != null,
+          starting: _starting,
+          onStart: _startOrResume,
         ),
         const SizedBox(height: 22),
         const FsEyebrow('Exercises'),
@@ -125,7 +151,7 @@ class _PlanView extends ConsumerWidget {
           _PlanExerciseCard(
             exercise: exercise,
             baseUrl: baseUrl,
-            onGoToProfile: onGoToProfile,
+            onGoToProfile: widget.onGoToProfile,
           ),
           const SizedBox(height: 8),
         ],

@@ -2,8 +2,8 @@ import 'package:flutter/material.dart';
 
 import '../../../core/widgets/fs_kit.dart';
 import '../../exercises/presentation/exercise_list_screen.dart';
-import '../../plans/presentation/plan_screen.dart';
 import '../../settings/presentation/settings_screen.dart';
+import '../../training/presentation/training_shell.dart';
 import 'home_screen.dart';
 
 /// The signed-in shell: four tabs over an IndexedStack.
@@ -67,7 +67,7 @@ class _NavShellState extends State<NavShell> {
               onGoToProfile: () => _select(3),
             ),
           ),
-          _tab(1, () => PlanScreen(onGoToProfile: () => _select(3))),
+          _tab(1, () => TrainingShell(onGoToProfile: () => _select(3))),
           _tab(2, () => const ExerciseListScreen()),
           _tab(3, () => const SettingsScreen()),
         ],

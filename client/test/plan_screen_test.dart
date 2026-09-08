@@ -13,6 +13,8 @@ import 'package:fitsync/features/plans/domain/workout_plan.dart';
 import 'package:fitsync/features/plans/presentation/exercise_swap_sheet.dart';
 import 'package:fitsync/features/plans/presentation/plan_screen.dart';
 import 'package:fitsync/features/plans/presentation/providers.dart';
+import 'package:fitsync/features/sessions/domain/active_session.dart';
+import 'package:fitsync/features/sessions/presentation/providers.dart';
 
 const _plan = WorkoutPlan(
   planId: 42,
@@ -43,6 +45,14 @@ const _plan = WorkoutPlan(
   ],
 );
 
+/// No session in progress -- every test in this file exercises the exercise
+/// list and swap sheet, not Start/Resume, which session_logger_screen_test
+/// and training_shell_test already cover.
+class _NoSessionController extends ActiveSessionController {
+  @override
+  Future<ActiveSession?> build() async => null;
+}
+
 /// Keeps anything downstream of the API client off the platform channel.
 ApiClient _hermeticClient() => ApiClient(
       baseUrl: 'http://test.local',
@@ -60,13 +70,22 @@ Future<void> _pump(
     overrides: [
       apiClientProvider.overrideWithValue(_hermeticClient()),
       activePlanProvider.overrideWith((ref) async => plan),
+      // The screen now also watches these two -- the session card's
+      // Start/Resume label and the week strip's filled dots.
+      activeSessionProvider.overrideWith(() => _NoSessionController()),
+      completedDaysProvider.overrideWith((ref) async => const <String>{}),
       // Only stubbed for the tests that open the sheet; the others never
       // reach it, and an unconditional override would hide a regression
       // where the sheet fetches when it should not.
       if (alternatives != null)
         alternativesProvider.overrideWith((ref, key) async => alternatives),
     ],
-    child: MaterialApp(home: PlanScreen(onGoToProfile: onGoToProfile)),
+    child: MaterialApp(
+      // PlanScreen no longer brings its own Scaffold/AppBar -- the Training
+      // shell supplies both now -- so this test supplies a bare Scaffold to
+      // stand in for it.
+      home: Scaffold(body: PlanScreen(onGoToProfile: onGoToProfile)),
+    ),
   ));
   await tester.pumpAndSettle();
 }
