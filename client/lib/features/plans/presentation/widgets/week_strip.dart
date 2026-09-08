@@ -117,13 +117,19 @@ class WeekStrip extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final prescribed = trainingWeekdays(daysPerWeek).toSet();
-    final monday = today.subtract(Duration(days: today.weekday - 1));
+    // Calendar arithmetic, not absolute-time arithmetic: subtract(Duration)
+    // subtracts exact hours, so on a week containing a DST change the whole
+    // strip can slide a day. The DateTime constructor normalises out-of-range
+    // day numbers over month and year ends and stays on the intended date.
+    final monday = DateTime(today.year, today.month, today.day - (today.weekday - 1));
 
     return Row(
       children: [
         for (var offset = 0; offset < 7; offset++)
           Builder(builder: (_) {
-            final date = monday.add(Duration(days: offset));
+            // Same reason as `monday` above -- add(Duration) would re-open
+            // the DST slide for the individual days.
+            final date = DateTime(monday.year, monday.month, monday.day + offset);
             final weekday = offset + 1;
             return WeekDayCell(
               key: Key('day.$weekday'),

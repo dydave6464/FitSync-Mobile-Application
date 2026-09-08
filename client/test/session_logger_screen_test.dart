@@ -41,6 +41,7 @@ class FakeSessionController extends ActiveSessionController {
   final ActiveSession? initial;
   final List<String> calls = [];
   Object? logSetError;
+  Object? unlogSetError;
   Object? completeError;
   Object? abandonError;
 
@@ -73,6 +74,7 @@ class FakeSessionController extends ActiveSessionController {
   @override
   Future<void> unlogSet({required int exerciseId, required int setNumber}) async {
     calls.add('unlog:$exerciseId:$setNumber');
+    if (unlogSetError != null) throw unlogSetError!;
     state = AsyncValue.data(state.value!.withoutSet(exerciseId, setNumber));
   }
 
@@ -461,5 +463,69 @@ void main() {
     expect(controller.calls, isNot(contains('abandon')));
     expect(find.text('Discard this session?'), findsNothing);
     expect(find.byKey(const Key('logger.finish')), findsOneWidget);
+  });
+
+  // Beyond the brief -- spec section 8 says a SESSION_NOT_IN_PROGRESS response
+  // closes the logger and refetches. That was wired for Finish and Discard but
+  // not for the set writes, where SetRow's blanket catch turned the 409 into an
+  // inline Retry that can never succeed: a session closed on another device
+  // left the user tapping Retry forever.
+  testWidgets('a 409 on a set write closes the logger instead of offering a dead retry',
+      (tester) async {
+    final controller = await _pump(tester);
+    controller.logSetError = const ApiException(
+      'SESSION_NOT_IN_PROGRESS', 'This session has already been closed.',
+    );
+
+    await tester.enterText(find.byKey(const Key('set.1.reps')), '8');
+    await tester.tap(find.byKey(const Key('set.1.tick')));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Retry'), findsNothing);
+    expect(find.byKey(const Key('logger.finish')), findsNothing);
+    expect(find.text('open logger'), findsOneWidget);
+    expect(find.text('This session was already finished.'), findsOneWidget);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('a 409 on an undo closes the logger too', (tester) async {
+    final controller = await _pump(tester, session: _session(sets: const [
+      LoggedSet(exerciseId: 101, setNumber: 1, weightKg: 20, reps: 10),
+    ]));
+    controller.unlogSetError = const ApiException(
+      'SESSION_NOT_IN_PROGRESS', 'This session has already been closed.',
+    );
+
+    await tester.tap(find.byKey(const Key('set.1.tick')));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Retry'), findsNothing);
+    expect(find.byKey(const Key('logger.finish')), findsNothing);
+    expect(find.text('open logger'), findsOneWidget);
+    expect(find.text('This session was already finished.'), findsOneWidget);
+    expect(tester.takeException(), isNull);
+  });
+
+  // Beyond the brief -- startedAt is the SERVER's NOW(). A phone clock behind
+  // it makes DateTime.now().difference(startedAt) negative, and the route
+  // rejects a negative durationMin with 400 DURATION_INVALID: the one failure
+  // mode where a session genuinely cannot be finished from the phone.
+  testWidgets('a clock behind the server still finishes, at zero minutes',
+      (tester) async {
+    final controller = await _pump(tester, session: ActiveSession(
+      sessionId: 7,
+      status: 'in_progress',
+      sessionDate: '2026-09-08',
+      startedAt: DateTime.now().add(const Duration(minutes: 90)),
+    ));
+
+    // The header must not read "-90 min" either.
+    expect(find.text('0 min'), findsOneWidget);
+
+    await tester.tap(find.byKey(const Key('logger.finish')));
+    await tester.pumpAndSettle();
+
+    expect(controller.calls, contains('complete:0'));
+    expect(find.byKey(const Key('logger.summary')), findsOneWidget);
   });
 }

@@ -76,6 +76,30 @@ void main() {
     expect(sunday.prescribed, isFalse);
   });
 
+  testWidgets('the strip marks exactly the days the plan prescribes', (tester) async {
+    // Positive AND negative: `sunday.prescribed, isFalse` above is satisfied
+    // just as well by a hardcoded `false`, and with daysPerWeek 3 the
+    // prescribed set is {1,3,5} -- so passing `offset` instead of `offset + 1`
+    // leaves Sunday false too. Only asserting a prescribed day IS marked and
+    // an adjacent rest day is NOT pins the mapping down.
+    await tester.pumpWidget(_host(WeekStrip(
+      daysPerWeek: 3,
+      completedDates: const {},
+      today: DateTime(2026, 9, 8),
+    )));
+
+    bool prescribed(int weekday) =>
+        tester.widget<WeekDayCell>(find.byKey(Key('day.$weekday'))).prescribed;
+
+    expect(prescribed(DateTime.monday), isTrue);
+    expect(prescribed(DateTime.tuesday), isFalse);
+    expect(prescribed(DateTime.wednesday), isTrue);
+    expect(prescribed(DateTime.thursday), isFalse);
+    expect(prescribed(DateTime.friday), isTrue);
+    expect(prescribed(DateTime.saturday), isFalse);
+    expect(prescribed(DateTime.sunday), isFalse);
+  });
+
   testWidgets('today is marked', (tester) async {
     await tester.pumpWidget(_host(WeekStrip(
       daysPerWeek: 3,
@@ -109,6 +133,27 @@ void main() {
     expect(wednesday.completed, isFalse);
     final today = tester.widget<WeekDayCell>(find.byKey(const Key('day.4')));
     expect(today.completed, isFalse);
+  });
+
+  testWidgets('a week spanning a year boundary walks back into the prior year',
+      (tester) async {
+    // Friday 2027-01-01: its Monday is 2026-12-28. The Monday is now computed
+    // as DateTime(year, month, day - (weekday - 1)) -- calendar arithmetic
+    // rather than subtract(Duration), which slides a day across a DST change.
+    // Day 1 - 4 is negative, so this also proves the constructor's
+    // normalisation carries back over both the month and the year.
+    await tester.pumpWidget(_host(WeekStrip(
+      daysPerWeek: 3,
+      completedDates: const {'2026-12-28', '2027-01-01'},
+      today: DateTime(2027, 1, 1),
+    )));
+
+    expect(tester.widget<WeekDayCell>(find.byKey(const Key('day.1'))).completed,
+        isTrue);
+    expect(tester.widget<WeekDayCell>(find.byKey(const Key('day.5'))).completed,
+        isTrue);
+    expect(tester.widget<WeekDayCell>(find.byKey(const Key('day.4'))).completed,
+        isFalse);
   });
 
   testWidgets('the card offers Start with no session and Resume with one', (tester) async {

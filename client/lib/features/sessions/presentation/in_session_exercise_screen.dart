@@ -28,6 +28,11 @@ class InSessionExerciseScreen extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final t = context.fs;
     final detail = ref.watch(exerciseDetailProvider(exercise.exerciseId));
+    // animationUrl is a server-relative '/storage/...' key. Without the API
+    // base URL the demo resolves to a relative "null/storage/..." URI, fails,
+    // and falls through to the equipment icon -- the same wiring
+    // ExerciseDetailScreen does.
+    final baseUrl = ref.watch(exerciseRepositoryProvider).baseUrl;
 
     return Scaffold(
       backgroundColor: t.bg,
@@ -46,6 +51,7 @@ class InSessionExerciseScreen extends ConsumerWidget {
         ),
         data: (loaded) => ExerciseDemoBody(
           exercise: loaded,
+          baseUrl: baseUrl,
           header: Row(
             children: [
               // Not FsEyebrow: that widget forces its text to uppercase,

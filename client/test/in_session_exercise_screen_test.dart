@@ -3,7 +3,9 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import 'package:fitsync/core/theme.dart';
+import 'package:fitsync/features/exercises/data/exercise_repository.dart';
 import 'package:fitsync/features/exercises/domain/exercise.dart';
+import 'package:fitsync/features/exercises/domain/exercise_filters.dart';
 import 'package:fitsync/features/exercises/presentation/providers.dart';
 import 'package:fitsync/features/plans/domain/workout_plan.dart';
 import 'package:fitsync/features/sessions/presentation/in_session_exercise_screen.dart';
@@ -23,10 +25,41 @@ const _detail = ExerciseDetail(
   cues: ['Sit between your hips', 'Keep your chest tall'],
 );
 
-Future<void> _pump(WidgetTester tester) async {
+/// The same exercise as the catalogue actually stores it: `animationUrl` is a
+/// server-relative `/storage/...` key, meaningless without the API base URL.
+const _detailWithAnimation = ExerciseDetail(
+  exerciseId: 101,
+  name: 'Goblet squat',
+  muscleGroup: 'quadriceps',
+  equipment: 'dumbbell',
+  thumbnailUrl: null,
+  animationUrl: '/storage/exercises/0101/animation.gif',
+  cues: ['Sit between your hips'],
+);
+
+/// Only [baseUrl] matters here -- the detail itself is injected through
+/// [exerciseDetailProvider], so no fetch ever reaches this.
+class _BaseUrlRepository implements ExerciseRepository {
+  @override
+  String get baseUrl => 'http://test.local';
+
+  @override
+  Future<ExercisePage> list({
+    String? muscleGroup, String? equipment, int page = 1, int limit = 20,
+  }) async => throw UnimplementedError();
+
+  @override
+  Future<ExerciseDetail> byId(int id) async => throw UnimplementedError();
+
+  @override
+  Future<ExerciseFilters> filters() async => throw UnimplementedError();
+}
+
+Future<void> _pump(WidgetTester tester, {ExerciseDetail detail = _detail}) async {
   await tester.pumpWidget(ProviderScope(
     overrides: [
-      exerciseDetailProvider.overrideWith((ref, id) async => _detail),
+      exerciseRepositoryProvider.overrideWithValue(_BaseUrlRepository()),
+      exerciseDetailProvider.overrideWith((ref, id) async => detail),
     ],
     child: MaterialApp(
       theme: fsLightTheme(),
@@ -67,6 +100,7 @@ void main() {
       (tester) async {
     await tester.pumpWidget(ProviderScope(
       overrides: [
+        exerciseRepositoryProvider.overrideWithValue(_BaseUrlRepository()),
         exerciseDetailProvider.overrideWith(
           (ref, id) async => throw Exception('offline'),
         ),
@@ -93,5 +127,19 @@ void main() {
     await tester.tap(find.byKey(const Key('insession.done')));
     await tester.pumpAndSettle();
     expect(find.byKey(const Key('insession.done')), findsNothing);
+  });
+
+  testWidgets('the demo image is built against the API base URL', (tester) async {
+    // The whole reason this screen exists mid-workout. animationUrl is a
+    // server-relative '/storage/...' key, so without the base URL the widget
+    // requests "null/storage/..." and silently falls through to the equipment
+    // icon -- a plausible-looking placeholder where the demo should be.
+    await _pump(tester, detail: _detailWithAnimation);
+
+    final image = tester.widget<Image>(find.byType(Image));
+    expect(
+      (image.image as NetworkImage).url,
+      'http://test.local/storage/exercises/0101/animation.gif',
+    );
   });
 }

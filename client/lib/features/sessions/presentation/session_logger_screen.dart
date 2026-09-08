@@ -43,9 +43,14 @@ class _SessionLoggerScreenState extends ConsumerState<SessionLoggerScreen> {
   /// controller's _current getter and throwing a raw StateError.
   bool _finishing = false;
 
+  /// Clamped, because [startedAt] is the SERVER's NOW() while [DateTime.now]
+  /// is the phone's. A phone clock behind the server makes the difference
+  /// negative, and POST /complete rejects a negative durationMin with
+  /// 400 DURATION_INVALID -- the one failure mode where a session genuinely
+  /// cannot be finished from the phone. The upper bound is the route's own.
   int _elapsedMinutes(DateTime? startedAt) {
     if (startedAt == null) return 0;
-    return DateTime.now().difference(startedAt).inMinutes;
+    return DateTime.now().difference(startedAt).inMinutes.clamp(0, 1440);
   }
 
   /// The session was closed by someone/something else -- another device, an
@@ -59,6 +64,23 @@ class _SessionLoggerScreenState extends ConsumerState<SessionLoggerScreen> {
     messenger.showSnackBar(
       const SnackBar(content: Text('This session was already finished.')),
     );
+  }
+
+  /// A set write the server refused because the session is no longer in
+  /// progress. Spec section 8: the logger closes and the Plan tab refetches,
+  /// rather than leaving a screen editing a session that accepts no writes.
+  ///
+  /// [SetRow]'s own blanket catch would otherwise turn the 409 into an inline
+  /// Retry that can never succeed -- a session closed on another device would
+  /// leave the user tapping it forever. Nothing is rethrown once this handles
+  /// it: SetRow clears its busy flag as the route pops.
+  bool _handledSetWriteClosure(
+    ApiException error,
+    ScaffoldMessengerState messenger,
+  ) {
+    if (error.code != 'SESSION_NOT_IN_PROGRESS') return false;
+    if (mounted) _handleAlreadyClosed(messenger);
+    return true;
   }
 
   Future<void> _finish() async {
@@ -236,19 +258,37 @@ class _SessionLoggerScreenState extends ConsumerState<SessionLoggerScreen> {
                   onExpand: () =>
                       setState(() => _expandedExerciseId = exercise.exerciseId),
                   onCompleteSet: (setNumber, weightKg, reps) async {
-                    await ref.read(activeSessionProvider.notifier).logSet(
-                          exerciseId: exercise.exerciseId,
-                          setNumber: setNumber,
-                          weightKg: weightKg,
-                          reps: reps,
-                        );
+                    final messenger = ScaffoldMessenger.of(context);
+                    try {
+                      await ref.read(activeSessionProvider.notifier).logSet(
+                            exerciseId: exercise.exerciseId,
+                            setNumber: setNumber,
+                            weightKg: weightKg,
+                            reps: reps,
+                          );
+                    } on ApiException catch (error) {
+                      // Every other failure still rethrows, so the row keeps
+                      // its own retry -- that one CAN succeed.
+                      if (!_handledSetWriteClosure(error, messenger)) rethrow;
+                      return;
+                    }
                     // Only on success: a rest timer after a failed write would
                     // be counting down from a set that was never recorded.
                     if (mounted) setState(() => _resting = true);
                   },
-                  onUndoSet: (setNumber) => ref
-                      .read(activeSessionProvider.notifier)
-                      .unlogSet(exerciseId: exercise.exerciseId, setNumber: setNumber),
+                  onUndoSet: (setNumber) async {
+                    final messenger = ScaffoldMessenger.of(context);
+                    try {
+                      await ref
+                          .read(activeSessionProvider.notifier)
+                          .unlogSet(
+                            exerciseId: exercise.exerciseId,
+                            setNumber: setNumber,
+                          );
+                    } on ApiException catch (error) {
+                      if (!_handledSetWriteClosure(error, messenger)) rethrow;
+                    }
+                  },
                   onOpenDemo: () => Navigator.of(context).push(
                     MaterialPageRoute<void>(
                       builder: (_) => InSessionExerciseScreen(
