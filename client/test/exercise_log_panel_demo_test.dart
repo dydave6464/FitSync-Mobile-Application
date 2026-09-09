@@ -1,4 +1,4 @@
-// exercise_log_card_test.dart is the extraction's safety net and must stay
+// exercise_log_panel_test.dart is the extraction's safety net and must stay
 // unmodified, so the new onOpenDemo affordance -- added after that file was
 // written -- gets its own coverage here. Without this, onOpenDemo could be
 // wired to nothing (or never rendered) and every test in the other file
@@ -9,7 +9,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:fitsync/core/theme.dart';
 import 'package:fitsync/features/plans/domain/workout_plan.dart';
 import 'package:fitsync/features/sessions/domain/active_session.dart';
-import 'package:fitsync/features/sessions/presentation/widgets/exercise_log_card.dart';
+import 'package:fitsync/features/sessions/presentation/widgets/exercise_log_panel.dart';
 
 const _exercise = PlanExercise(
   planExerciseId: 601,
@@ -33,18 +33,15 @@ Widget _host(Widget child) => MaterialApp(
       home: Scaffold(body: SingleChildScrollView(child: child)),
     );
 
-final _demoButton = find.byKey(const Key('logcard.demo.101'));
+final _demoButton = find.byKey(const Key('logpanel.demo.101'));
 
 void main() {
-  testWidgets('tapping the demo affordance invokes onOpenDemo, not onExpand', (tester) async {
+  testWidgets('tapping the demo affordance invokes onOpenDemo', (tester) async {
     var opened = false;
-    var expandCalled = false;
 
-    await tester.pumpWidget(_host(ExerciseLogCard(
+    await tester.pumpWidget(_host(ExerciseLogPanel(
       exercise: _exercise,
-      expanded: false,
       session: _session(),
-      onExpand: () => expandCalled = true,
       onCompleteSet: (_, _, _) async {},
       onUndoSet: (_) async {},
       onOpenDemo: () => opened = true,
@@ -54,19 +51,13 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(opened, isTrue);
-    // The whole collapsed card is itself tappable (FsCard(onTap: onExpand)
-    // in exercise_log_card.dart) and the demo button sits inside it, so a
-    // tap that bubbled up would fire both callbacks. It must not.
-    expect(expandCalled, isFalse);
   });
 
   testWidgets('with no onOpenDemo, the affordance renders disabled rather than absent',
       (tester) async {
-    await tester.pumpWidget(_host(ExerciseLogCard(
+    await tester.pumpWidget(_host(ExerciseLogPanel(
       exercise: _exercise,
-      expanded: false,
       session: _session(),
-      onExpand: () {},
       onCompleteSet: (_, _, _) async {},
       onUndoSet: (_) async {},
     )));

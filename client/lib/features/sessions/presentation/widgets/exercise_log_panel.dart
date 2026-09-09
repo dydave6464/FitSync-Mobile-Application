@@ -6,19 +6,17 @@ import '../../../plans/domain/workout_plan.dart';
 import '../../domain/active_session.dart';
 import 'set_row.dart';
 
-/// One exercise in the scrolling logger: collapsed to a progress line, or
-/// expanded into its set table.
+/// The exercise on screen in the paged logger: its prescription, what was
+/// lifted last time, and its set table.
 ///
-/// The scrolling shape is a deliberate departure from the mockup's paged
-/// logger — see section 5 of the design. It is what lets someone whose squat
-/// rack is busy start elsewhere without swiping past four screens.
-class ExerciseLogCard extends StatelessWidget {
-  const ExerciseLogCard({
+/// Always open. The collapsed state this widget used to carry belonged to the
+/// scrolling list it lived in; the logger shows one exercise at a time now,
+/// and ExerciseJumpSheet is what reaches the others.
+class ExerciseLogPanel extends StatelessWidget {
+  const ExerciseLogPanel({
     super.key,
     required this.exercise,
-    required this.expanded,
     required this.session,
-    required this.onExpand,
     required this.onCompleteSet,
     required this.onUndoSet,
     this.last,
@@ -26,10 +24,8 @@ class ExerciseLogCard extends StatelessWidget {
   });
 
   final PlanExercise exercise;
-  final bool expanded;
   final ActiveSession? session;
   final LastPerformance? last;
-  final VoidCallback onExpand;
   final Future<void> Function(int setNumber, double? weightKg, int? reps) onCompleteSet;
   final Future<void> Function(int setNumber) onUndoSet;
 
@@ -69,9 +65,8 @@ class ExerciseLogCard extends StatelessWidget {
     final theme = Theme.of(context);
 
     return FsCard(
-      key: Key('logcard.${exercise.exerciseId}'),
+      key: Key('logpanel.${exercise.exerciseId}'),
       small: true,
-      onTap: expanded ? null : onExpand,
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -103,59 +98,70 @@ class ExerciseLogCard extends StatelessWidget {
                 ),
               ),
               IconButton(
-                key: Key('logcard.demo.${exercise.exerciseId}'),
+                key: Key('logpanel.demo.${exercise.exerciseId}'),
                 icon: const Icon(Icons.play_circle_outline),
                 onPressed: onOpenDemo,
               ),
             ],
           ),
-          if (expanded) ...[
-            if (last != null && last!.weightKg != null) ...[
-              const SizedBox(height: 8),
-              Text(
-                'Last ${_trim(last!.weightKg!)} kg'
-                '${last!.reps != null ? ' × ${last!.reps}' : ''}',
-                style: TextStyle(fontSize: 11, color: t.text2),
-              ),
-            ],
-            if (_overload != null) ...[
-              const SizedBox(height: 8),
-              Container(
-                padding: const EdgeInsets.symmetric(horizontal: 11, vertical: 9),
-                decoration: BoxDecoration(
-                  color: t.accentDim,
-                  borderRadius: BorderRadius.circular(FsRadius.sm),
-                  border: Border.all(color: t.accentLine),
-                ),
-                child: Row(
-                  children: [
-                    Icon(Icons.trending_up, size: 15, color: t.accent),
-                    const SizedBox(width: 8),
-                    Text(
-                      '+${_trim(_overload!)} kg vs last session',
-                      style: TextStyle(fontSize: 11, color: t.text),
-                    ),
-                  ],
-                ),
-              ),
-            ],
-            const SizedBox(height: 10),
-            for (var setNumber = 1; setNumber <= exercise.targetSets; setNumber++)
-              SetRow(
-                // Keyed on the stored set's presence so the row rebuilds its
-                // controllers when a set is ticked or un-ticked, rather than
-                // keeping stale text.
-                key: ValueKey(
-                  'set-${exercise.exerciseId}-$setNumber-'
-                  '${session?.setFor(exercise.exerciseId, setNumber) != null}',
-                ),
-                setNumber: setNumber,
-                logged: session?.setFor(exercise.exerciseId, setNumber),
-                prefillWeightKg: last?.weightKg,
-                onComplete: (weightKg, reps) => onCompleteSet(setNumber, weightKg, reps),
-                onUndo: () => onUndoSet(setNumber),
-              ),
+          if (last != null && last!.weightKg != null) ...[
+            const SizedBox(height: 8),
+            Text(
+              'Last ${_trim(last!.weightKg!)} kg'
+              '${last!.reps != null ? ' × ${last!.reps}' : ''}',
+              style: TextStyle(fontSize: 11, color: t.text2),
+            ),
           ],
+          if (_overload != null) ...[
+            const SizedBox(height: 8),
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 11, vertical: 9),
+              decoration: BoxDecoration(
+                color: t.accentDim,
+                borderRadius: BorderRadius.circular(FsRadius.sm),
+                border: Border.all(color: t.accentLine),
+              ),
+              child: Row(
+                children: [
+                  Icon(Icons.trending_up, size: 15, color: t.accent),
+                  const SizedBox(width: 8),
+                  Text(
+                    '+${_trim(_overload!)} kg vs last session',
+                    style: TextStyle(fontSize: 11, color: t.text),
+                  ),
+                ],
+              ),
+            ),
+          ],
+          const SizedBox(height: 10),
+          Padding(
+            key: const Key('logpanel.columns'),
+            padding: const EdgeInsets.only(bottom: 5),
+            child: Row(
+              children: [
+                SizedBox(width: SetRow.numberWidth, child: Text('Set', style: fsEyebrow(t))),
+                Expanded(child: Center(child: Text('kg', style: fsEyebrow(t)))),
+                const SizedBox(width: SetRow.columnGap),
+                Expanded(child: Center(child: Text('reps', style: fsEyebrow(t)))),
+                const SizedBox(width: SetRow.tickWidth),
+              ],
+            ),
+          ),
+          for (var setNumber = 1; setNumber <= exercise.targetSets; setNumber++)
+            SetRow(
+              // Keyed on the stored set's presence so the row rebuilds its
+              // controllers when a set is ticked or un-ticked, rather than
+              // keeping stale text.
+              key: ValueKey(
+                'set-${exercise.exerciseId}-$setNumber-'
+                '${session?.setFor(exercise.exerciseId, setNumber) != null}',
+              ),
+              setNumber: setNumber,
+              logged: session?.setFor(exercise.exerciseId, setNumber),
+              prefillWeightKg: last?.weightKg,
+              onComplete: (weightKg, reps) => onCompleteSet(setNumber, weightKg, reps),
+              onUndo: () => onUndoSet(setNumber),
+            ),
         ],
       ),
     );

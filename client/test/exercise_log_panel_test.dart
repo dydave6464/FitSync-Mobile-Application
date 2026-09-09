@@ -6,7 +6,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:fitsync/core/theme.dart';
 import 'package:fitsync/features/plans/domain/workout_plan.dart';
 import 'package:fitsync/features/sessions/domain/active_session.dart';
-import 'package:fitsync/features/sessions/presentation/widgets/exercise_log_card.dart';
+import 'package:fitsync/features/sessions/presentation/widgets/exercise_log_panel.dart';
 
 const _exercise = PlanExercise(
   planExerciseId: 601,
@@ -31,14 +31,12 @@ Widget _host(Widget child) => MaterialApp(
     );
 
 void main() {
-  testWidgets('collapsed shows the prescription and how many sets are done', (tester) async {
-    await tester.pumpWidget(_host(ExerciseLogCard(
+  testWidgets('shows the prescription and how many sets are done', (tester) async {
+    await tester.pumpWidget(_host(ExerciseLogPanel(
       exercise: _exercise,
-      expanded: false,
       session: _session(sets: const [
         LoggedSet(exerciseId: 101, setNumber: 1, weightKg: 20, reps: 10),
       ]),
-      onExpand: () {},
       onCompleteSet: (_, _, _) async {},
       onUndoSet: (_) async {},
     )));
@@ -46,31 +44,30 @@ void main() {
     expect(find.text('Goblet squat'), findsOneWidget);
     expect(find.text('3 × 8-12'), findsOneWidget);
     expect(find.text('1/3'), findsOneWidget);
-    // Collapsed means no editable fields on screen.
-    expect(find.byKey(const Key('set.1.weight')), findsNothing);
   });
 
-  testWidgets('tapping a collapsed card asks to expand', (tester) async {
-    var expanded = false;
-    await tester.pumpWidget(_host(ExerciseLogCard(
+  // The unit only ever existed as the weight field's hint, which disappears
+  // the moment a value is typed -- so a logged set showed a bare number with
+  // nothing on screen saying what it measured. The header is what keeps the
+  // columns named whatever the fields contain.
+  testWidgets('the set table labels its columns', (tester) async {
+    await tester.pumpWidget(_host(ExerciseLogPanel(
       exercise: _exercise,
-      expanded: false,
       session: _session(),
-      onExpand: () => expanded = true,
       onCompleteSet: (_, _, _) async {},
       onUndoSet: (_) async {},
     )));
 
-    await tester.tap(find.byKey(const Key('logcard.101')));
-    expect(expanded, isTrue);
+    final header = find.byKey(const Key('logpanel.columns'));
+    expect(find.descendant(of: header, matching: find.text('Set')), findsOneWidget);
+    expect(find.descendant(of: header, matching: find.text('kg')), findsOneWidget);
+    expect(find.descendant(of: header, matching: find.text('reps')), findsOneWidget);
   });
 
-  testWidgets('expanded shows one row per target set', (tester) async {
-    await tester.pumpWidget(_host(ExerciseLogCard(
+  testWidgets('shows one row per target set', (tester) async {
+    await tester.pumpWidget(_host(ExerciseLogPanel(
       exercise: _exercise,
-      expanded: true,
       session: _session(),
-      onExpand: () {},
       onCompleteSet: (_, _, _) async {},
       onUndoSet: (_) async {},
     )));
@@ -81,14 +78,12 @@ void main() {
   });
 
   testWidgets('the weight field is prefilled from the last session', (tester) async {
-    await tester.pumpWidget(_host(ExerciseLogCard(
+    await tester.pumpWidget(_host(ExerciseLogPanel(
       exercise: _exercise,
-      expanded: true,
       session: _session(),
       last: const LastPerformance(
         exerciseId: 101, weightKg: 22.5, reps: 10, sessionDate: '2026-09-05',
       ),
-      onExpand: () {},
       onCompleteSet: (_, _, _) async {},
       onUndoSet: (_) async {},
     )));
@@ -99,11 +94,9 @@ void main() {
   });
 
   testWidgets('a first session prefills nothing and says nothing', (tester) async {
-    await tester.pumpWidget(_host(ExerciseLogCard(
+    await tester.pumpWidget(_host(ExerciseLogPanel(
       exercise: _exercise,
-      expanded: true,
       session: _session(),
-      onExpand: () {},
       onCompleteSet: (_, _, _) async {},
       onUndoSet: (_) async {},
     )));
@@ -118,11 +111,9 @@ void main() {
     double? gotWeight;
     int? gotReps;
 
-    await tester.pumpWidget(_host(ExerciseLogCard(
+    await tester.pumpWidget(_host(ExerciseLogPanel(
       exercise: _exercise,
-      expanded: true,
       session: _session(),
-      onExpand: () {},
       onCompleteSet: (setNumber, weightKg, reps) async {
         gotSet = setNumber;
         gotWeight = weightKg;
@@ -143,11 +134,9 @@ void main() {
 
   testWidgets('an empty weight is sent as null, not zero', (tester) async {
     double? gotWeight = 99;
-    await tester.pumpWidget(_host(ExerciseLogCard(
+    await tester.pumpWidget(_host(ExerciseLogPanel(
       exercise: _exercise,
-      expanded: true,
       session: _session(),
-      onExpand: () {},
       onCompleteSet: (_, weightKg, _) async => gotWeight = weightKg,
       onUndoSet: (_) async {},
     )));
@@ -162,11 +151,9 @@ void main() {
   });
 
   testWidgets('a failed write leaves the row unticked and shows a retry', (tester) async {
-    await tester.pumpWidget(_host(ExerciseLogCard(
+    await tester.pumpWidget(_host(ExerciseLogPanel(
       exercise: _exercise,
-      expanded: true,
       session: _session(),
-      onExpand: () {},
       onCompleteSet: (_, _, _) async => throw Exception('offline'),
       onUndoSet: (_) async {},
     )));
@@ -179,16 +166,14 @@ void main() {
   });
 
   testWidgets('beating the last session shows the overload nudge', (tester) async {
-    await tester.pumpWidget(_host(ExerciseLogCard(
+    await tester.pumpWidget(_host(ExerciseLogPanel(
       exercise: _exercise,
-      expanded: true,
       session: _session(sets: const [
         LoggedSet(exerciseId: 101, setNumber: 1, weightKg: 25, reps: 8),
       ]),
       last: const LastPerformance(
         exerciseId: 101, weightKg: 22.5, reps: 10, sessionDate: '2026-09-05',
       ),
-      onExpand: () {},
       onCompleteSet: (_, _, _) async {},
       onUndoSet: (_) async {},
     )));
@@ -197,16 +182,14 @@ void main() {
   });
 
   testWidgets('matching or missing the last weight shows no nudge', (tester) async {
-    await tester.pumpWidget(_host(ExerciseLogCard(
+    await tester.pumpWidget(_host(ExerciseLogPanel(
       exercise: _exercise,
-      expanded: true,
       session: _session(sets: const [
         LoggedSet(exerciseId: 101, setNumber: 1, weightKg: 22.5, reps: 8),
       ]),
       last: const LastPerformance(
         exerciseId: 101, weightKg: 22.5, reps: 10, sessionDate: '2026-09-05',
       ),
-      onExpand: () {},
       onCompleteSet: (_, _, _) async {},
       onUndoSet: (_) async {},
     )));
@@ -217,13 +200,11 @@ void main() {
   });
 
   testWidgets('a first session never nudges', (tester) async {
-    await tester.pumpWidget(_host(ExerciseLogCard(
+    await tester.pumpWidget(_host(ExerciseLogPanel(
       exercise: _exercise,
-      expanded: true,
       session: _session(sets: const [
         LoggedSet(exerciseId: 101, setNumber: 1, weightKg: 40, reps: 8),
       ]),
-      onExpand: () {},
       onCompleteSet: (_, _, _) async {},
       onUndoSet: (_) async {},
     )));
@@ -232,13 +213,11 @@ void main() {
   });
 
   testWidgets('a stored set renders ticked and read-only', (tester) async {
-    await tester.pumpWidget(_host(ExerciseLogCard(
+    await tester.pumpWidget(_host(ExerciseLogPanel(
       exercise: _exercise,
-      expanded: true,
       session: _session(sets: const [
         LoggedSet(exerciseId: 101, setNumber: 1, weightKg: 22.5, reps: 10),
       ]),
-      onExpand: () {},
       onCompleteSet: (_, _, _) async {},
       onUndoSet: (_) async {},
     )));
@@ -250,13 +229,11 @@ void main() {
 
   testWidgets('tapping a ticked set un-ticks it', (tester) async {
     int? undone;
-    await tester.pumpWidget(_host(ExerciseLogCard(
+    await tester.pumpWidget(_host(ExerciseLogPanel(
       exercise: _exercise,
-      expanded: true,
       session: _session(sets: const [
         LoggedSet(exerciseId: 101, setNumber: 1, weightKg: 22.5, reps: 10),
       ]),
-      onExpand: () {},
       onCompleteSet: (_, _, _) async {},
       onUndoSet: (setNumber) async => undone = setNumber,
     )));
@@ -276,11 +253,9 @@ void main() {
     ActiveSession session = _session();
 
     await tester.pumpWidget(StatefulBuilder(
-      builder: (context, setState) => _host(ExerciseLogCard(
+      builder: (context, setState) => _host(ExerciseLogPanel(
         exercise: _exercise,
-        expanded: true,
         session: session,
-        onExpand: () {},
         onCompleteSet: (setNumber, weightKg, reps) async {
           await completer.future;
           setState(() {
@@ -323,11 +298,9 @@ void main() {
     ]);
 
     await tester.pumpWidget(StatefulBuilder(
-      builder: (context, setState) => _host(ExerciseLogCard(
+      builder: (context, setState) => _host(ExerciseLogPanel(
         exercise: _exercise,
-        expanded: true,
         session: session,
-        onExpand: () {},
         onCompleteSet: (_, _, _) async {},
         onUndoSet: (setNumber) async {
           setState(() {

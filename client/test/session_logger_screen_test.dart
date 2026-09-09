@@ -178,14 +178,117 @@ Future<FakeSessionController> _pump(
   return controller;
 }
 
+/// Finish and Discard moved into the app bar's overflow menu, so reaching
+/// either takes the two taps a user makes rather than one. The menu route's
+/// dismissal is what carries the selection to onSelected, so this settles
+/// before returning -- a bare tap on the item would leave the action pending.
+Future<void> _menu(WidgetTester tester, String action) async {
+  await tester.tap(find.byKey(const Key('logger.menu')));
+  await tester.pumpAndSettle();
+  await tester.tap(find.byKey(Key('logger.$action')));
+  await tester.pumpAndSettle();
+}
+
 void main() {
-  testWidgets('lists every exercise in the plan with the first expanded', (tester) async {
+  testWidgets('shows one exercise at a time, not the whole plan', (tester) async {
     await _pump(tester);
 
     expect(find.text('Goblet squat'), findsOneWidget);
+    expect(find.text('Push-up'), findsNothing);
+  });
+
+  testWidgets('the footer advances to the next exercise', (tester) async {
+    await _pump(tester);
+
+    await tester.tap(find.byKey(const Key('logger.primary')));
+    await tester.pumpAndSettle();
+
     expect(find.text('Push-up'), findsOneWidget);
-    // The first card opens on arrival; the second stays collapsed.
-    expect(find.byKey(const Key('set.1.weight')), findsOneWidget);
+    expect(find.text('Goblet squat'), findsNothing);
+  });
+
+  testWidgets('the header names the position in the workout', (tester) async {
+    await _pump(tester);
+    expect(find.text('Exercise 1 / 2'), findsOneWidget);
+
+    await tester.tap(find.byKey(const Key('logger.primary')));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Exercise 2 / 2'), findsOneWidget);
+  });
+
+  testWidgets(
+      'the position counter opens a sheet listing every exercise with its progress',
+      (tester) async {
+    await _pump(tester, session: _session(sets: const [
+      LoggedSet(exerciseId: 101, setNumber: 1, weightKg: 20, reps: 10),
+    ]));
+
+    await tester.tap(find.byKey(const Key('logger.position')));
+    await tester.pumpAndSettle();
+
+    expect(find.byKey(const Key('jump.101')), findsOneWidget);
+    expect(find.byKey(const Key('jump.102')), findsOneWidget);
+    // Counted per exercise against its own target, not session-wide: the
+    // squat has one of its three, the push-up none of its two. Scoped to the
+    // row, because the panel behind the sheet carries the same text for
+    // whichever exercise is on screen.
+    expect(
+      find.descendant(
+        of: find.byKey(const Key('jump.101')),
+        matching: find.text('1/3'),
+      ),
+      findsOneWidget,
+    );
+    expect(
+      find.descendant(
+        of: find.byKey(const Key('jump.102')),
+        matching: find.text('0/2'),
+      ),
+      findsOneWidget,
+    );
+  });
+
+  testWidgets('choosing an exercise from the sheet goes straight to it',
+      (tester) async {
+    await _pump(tester);
+
+    await tester.tap(find.byKey(const Key('logger.position')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const Key('jump.102')));
+    await tester.pumpAndSettle();
+
+    // Both, deliberately: the counter alone would pass if the sheet moved the
+    // index without the body following, and the name alone would pass if the
+    // body moved without the header.
+    expect(find.text('Exercise 2 / 2'), findsOneWidget);
+    expect(find.text('Push-up'), findsOneWidget);
+  });
+
+  testWidgets('back steps to the previous exercise before leaving the logger',
+      (tester) async {
+    await _pump(tester);
+    await tester.tap(find.byKey(const Key('logger.primary')));
+    await tester.pumpAndSettle();
+    expect(find.text('Exercise 2 / 2'), findsOneWidget);
+
+    await tester.pageBack();
+    await tester.pumpAndSettle();
+
+    expect(find.text('Exercise 1 / 2'), findsOneWidget);
+    expect(find.byType(SessionLoggerScreen), findsOneWidget);
+  });
+
+  // The other half of the PopScope: blocking the pop unconditionally would
+  // trap someone on the first exercise with no way out but Finish or Discard.
+  testWidgets('back from the first exercise leaves the logger', (tester) async {
+    await _pump(tester);
+
+    await tester.pageBack();
+    await tester.pumpAndSettle();
+
+    expect(find.byType(SessionLoggerScreen), findsNothing);
+    expect(find.text('open logger'), findsOneWidget);
   });
 
   testWidgets('progress counts sets across the whole session', (tester) async {
@@ -221,29 +324,20 @@ void main() {
     expect(find.byKey(const Key('rest.remaining')), findsNothing);
   });
 
-  testWidgets('tapping a collapsed card expands it and collapses the other', (tester) async {
-    await _pump(tester);
-
-    await tester.tap(find.byKey(const Key('logcard.102')));
-    await tester.pumpAndSettle();
-
-    // Push-up has 2 target sets; a third row would mean the squat is still open.
-    expect(find.byKey(const Key('set.3.weight')), findsNothing);
-    expect(find.byKey(const Key('set.2.weight')), findsOneWidget);
-  });
-
-  // Beyond the brief -- the card and the pushed screen are each tested in
+  // Beyond the brief -- the panel and the pushed screen are each tested in
   // isolation, but nothing exercised the glue in session_logger_screen.dart
-  // that turns a card's list index into the pushed screen's position/total.
-  // Using the SECOND card specifically: an off-by-one that passed `index`
-  // instead of `index + 1` would show "Exercise 1 of 2" here too, the same
-  // text a correct first-card tap would produce -- so only the second card
-  // can tell the two apart.
-  testWidgets('opening the demo from the second card shows its real position',
+  // that turns the exercise on screen into the pushed screen's position and
+  // total. Advancing to the SECOND exercise first is what makes it bite: an
+  // off-by-one passing `index` instead of `index + 1` would read
+  // "Exercise 1 of 2" here, the same text a correct first-exercise tap
+  // produces -- so only the second exercise tells the two apart.
+  testWidgets('opening the demo shows the exercise on screen, not the first',
       (tester) async {
     await _pump(tester);
+    await tester.tap(find.byKey(const Key('logger.primary')));
+    await tester.pumpAndSettle();
 
-    await tester.tap(find.byKey(const Key('logcard.demo.102')));
+    await tester.tap(find.byKey(const Key('logpanel.demo.102')));
     await tester.pumpAndSettle();
 
     expect(find.text('Exercise 2 of 2'), findsOneWidget);
@@ -255,8 +349,7 @@ void main() {
       LoggedSet(exerciseId: 101, setNumber: 1, weightKg: 20, reps: 10),
     ]));
 
-    await tester.tap(find.byKey(const Key('logger.finish')));
-    await tester.pumpAndSettle();
+    await _menu(tester, 'finish');
 
     // The exact minute count, not just the prefix: the fixture started 12
     // minutes ago, and a startsWith('complete:') check is satisfied just as
@@ -275,12 +368,11 @@ void main() {
       'SESSION_NOT_IN_PROGRESS', 'This session has already been closed.',
     );
 
-    await tester.tap(find.byKey(const Key('logger.finish')));
-    await tester.pumpAndSettle();
+    await _menu(tester, 'finish');
 
     expect(find.byKey(const Key('logger.summary')), findsNothing);
     // Gone from the stack, not merely summary-less: the host route is back.
-    expect(find.byKey(const Key('logger.finish')), findsNothing);
+    expect(find.byType(SessionLoggerScreen), findsNothing);
     expect(find.text('open logger'), findsOneWidget);
     expect(find.text('This session was already finished.'), findsOneWidget);
   });
@@ -288,8 +380,7 @@ void main() {
   testWidgets('discarding asks first, then abandons', (tester) async {
     final controller = await _pump(tester);
 
-    await tester.tap(find.byKey(const Key('logger.discard')));
-    await tester.pumpAndSettle();
+    await _menu(tester, 'discard');
     expect(find.text('Discard this session?'), findsOneWidget);
 
     await tester.tap(find.text('Discard'));
@@ -312,8 +403,8 @@ void main() {
     final gate = Completer<void>();
     controller.completeGate = gate;
 
-    await tester.tap(find.byKey(const Key('logger.finish')));
-    await tester.tap(find.byKey(const Key('logger.finish')));
+    await _menu(tester, 'finish');
+    await _menu(tester, 'finish');
     gate.complete();
     await tester.pumpAndSettle();
 
@@ -335,13 +426,12 @@ void main() {
     final controller = await _pump(tester);
     controller.completeError = StateError('No session is in progress.');
 
-    await tester.tap(find.byKey(const Key('logger.finish')));
-    await tester.pumpAndSettle();
+    await _menu(tester, 'finish');
 
     expect(find.text('This session was already finished.'), findsOneWidget);
     expect(find.text('Something went wrong.'), findsNothing);
     expect(find.byKey(const Key('logger.summary')), findsNothing);
-    expect(find.byKey(const Key('logger.finish')), findsNothing);
+    expect(find.byType(SessionLoggerScreen), findsNothing);
     expect(find.text('open logger'), findsOneWidget);
   });
 
@@ -351,14 +441,13 @@ void main() {
     final controller = await _pump(tester);
     controller.abandonError = StateError('No session is in progress.');
 
-    await tester.tap(find.byKey(const Key('logger.discard')));
-    await tester.pumpAndSettle();
+    await _menu(tester, 'discard');
     await tester.tap(find.text('Discard'));
     await tester.pumpAndSettle();
 
     expect(controller.calls, contains('abandon'));
     expect(find.text('This session was already finished.'), findsOneWidget);
-    expect(find.byKey(const Key('logger.finish')), findsNothing);
+    expect(find.byType(SessionLoggerScreen), findsNothing);
     expect(find.text('open logger'), findsOneWidget);
   });
 
@@ -386,13 +475,12 @@ void main() {
       ]));
       controller.completeError = error;
 
-      await tester.tap(find.byKey(const Key('logger.finish')));
-      await tester.pumpAndSettle();
+      await _menu(tester, 'finish');
 
       expect(find.text(message), findsOneWidget);
       // Not closed, not summarised, and above all not navigated away from:
       // the logger is still the route on top and the session is in progress.
-      expect(find.byKey(const Key('logger.finish')), findsOneWidget);
+      expect(find.byType(SessionLoggerScreen), findsOneWidget);
       expect(find.byKey(const Key('logger.summary')), findsNothing);
       expect(controller.heldSession, isNotNull);
       expect(tester.takeException(), isNull);
@@ -400,12 +488,9 @@ void main() {
       // Resumable in practice, not just in state: the _finishing guard was
       // released, so a second attempt actually reaches the controller. A
       // guard left stuck would leave a session that can never be finished
-      // from here. The SnackBar has to clear first -- it sits at the bottom
-      // of the Scaffold over the Finish button and would swallow the tap.
-      await tester.pump(const Duration(seconds: 5));
-      await tester.pumpAndSettle();
-      await tester.tap(find.byKey(const Key('logger.finish')));
-      await tester.pumpAndSettle();
+      // from here. No wait for the SnackBar to clear any more: Finish moved
+      // to the app bar's menu, which a bottom-anchored SnackBar never covers.
+      await _menu(tester, 'finish');
       expect(controller.calls.where((c) => c.startsWith('complete:')).length, 2);
     });
   }
@@ -417,14 +502,13 @@ void main() {
     final controller = await _pump(tester);
     controller.abandonError = const ApiException('NETWORK', 'No connection.');
 
-    await tester.tap(find.byKey(const Key('logger.discard')));
-    await tester.pumpAndSettle();
+    await _menu(tester, 'discard');
     await tester.tap(find.text('Discard'));
     await tester.pumpAndSettle();
 
     expect(find.text('No connection.'), findsOneWidget);
     // Still on the logger, still logging: nothing was thrown away.
-    expect(find.byKey(const Key('logger.finish')), findsOneWidget);
+    expect(find.byType(SessionLoggerScreen), findsOneWidget);
     expect(tester.takeException(), isNull);
   });
 
@@ -453,8 +537,7 @@ void main() {
   testWidgets('cancelling discard leaves the logger open without abandoning', (tester) async {
     final controller = await _pump(tester);
 
-    await tester.tap(find.byKey(const Key('logger.discard')));
-    await tester.pumpAndSettle();
+    await _menu(tester, 'discard');
     expect(find.text('Discard this session?'), findsOneWidget);
 
     await tester.tap(find.text('Keep going'));
@@ -462,7 +545,7 @@ void main() {
 
     expect(controller.calls, isNot(contains('abandon')));
     expect(find.text('Discard this session?'), findsNothing);
-    expect(find.byKey(const Key('logger.finish')), findsOneWidget);
+    expect(find.byType(SessionLoggerScreen), findsOneWidget);
   });
 
   // Beyond the brief -- spec section 8 says a SESSION_NOT_IN_PROGRESS response
@@ -482,7 +565,7 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.text('Retry'), findsNothing);
-    expect(find.byKey(const Key('logger.finish')), findsNothing);
+    expect(find.byType(SessionLoggerScreen), findsNothing);
     expect(find.text('open logger'), findsOneWidget);
     expect(find.text('This session was already finished.'), findsOneWidget);
     expect(tester.takeException(), isNull);
@@ -500,7 +583,7 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.text('Retry'), findsNothing);
-    expect(find.byKey(const Key('logger.finish')), findsNothing);
+    expect(find.byType(SessionLoggerScreen), findsNothing);
     expect(find.text('open logger'), findsOneWidget);
     expect(find.text('This session was already finished.'), findsOneWidget);
     expect(tester.takeException(), isNull);
@@ -522,8 +605,7 @@ void main() {
     // The header must not read "-90 min" either.
     expect(find.text('0 min'), findsOneWidget);
 
-    await tester.tap(find.byKey(const Key('logger.finish')));
-    await tester.pumpAndSettle();
+    await _menu(tester, 'finish');
 
     expect(controller.calls, contains('complete:0'));
     expect(find.byKey(const Key('logger.summary')), findsOneWidget);

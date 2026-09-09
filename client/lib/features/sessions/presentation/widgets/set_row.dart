@@ -20,6 +20,13 @@ class SetRow extends StatefulWidget {
     this.prefillWeightKg,
   });
 
+  /// Column geometry, shared with the panel's header row above it. Two
+  /// hand-tuned numbers that happened to agree would drift the first time
+  /// either changed.
+  static const numberWidth = 22.0;
+  static const columnGap = 8.0;
+  static const tickWidth = 44.0;
+
   final int setNumber;
 
   /// Non-null once the server holds this set.
@@ -113,7 +120,7 @@ class _SetRowState extends State<SetRow> {
       child: Row(
         children: [
           SizedBox(
-            width: 22,
+            width: SetRow.numberWidth,
             child: Text(
               '${widget.setNumber}',
               style: TextStyle(fontFamily: fsMonoFamily, fontSize: 12, color: t.text3),
@@ -135,7 +142,7 @@ class _SetRowState extends State<SetRow> {
               style: TextStyle(fontFamily: fsMonoFamily, fontSize: 13.5, color: t.text),
             ),
           ),
-          const SizedBox(width: 8),
+          const SizedBox(width: SetRow.columnGap),
           Expanded(
             child: TextField(
               key: Key('set.${widget.setNumber}.reps'),
@@ -151,7 +158,7 @@ class _SetRowState extends State<SetRow> {
             ),
           ),
           SizedBox(
-            width: _failed ? 74 : 44,
+            width: _failed ? 74 : SetRow.tickWidth,
             child: _failed
                 ? TextButton(
                     key: Key('set.${widget.setNumber}.tick'),

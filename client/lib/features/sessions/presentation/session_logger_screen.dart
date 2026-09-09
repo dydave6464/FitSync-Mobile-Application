@@ -5,14 +5,17 @@ import '../../../core/api_exception.dart';
 import '../../../core/theme.dart';
 import '../../../core/widgets/fs_kit.dart';
 import '../../exercises/presentation/exercise_list_screen.dart' show describeError;
+import '../../plans/domain/workout_plan.dart';
 import '../../plans/presentation/providers.dart';
 import '../domain/active_session.dart';
 import 'in_session_exercise_screen.dart';
 import 'providers.dart';
-import 'widgets/exercise_log_card.dart';
+import 'widgets/exercise_jump_sheet.dart';
+import 'widgets/exercise_log_panel.dart';
 import 'widgets/rest_timer.dart';
 
-/// The active workout: every exercise on one scroll, the current one expanded.
+/// The active workout, one exercise at a time: its set table, Continue to
+/// the next, and the jump sheet for anything out of order.
 class SessionLoggerScreen extends ConsumerStatefulWidget {
   const SessionLoggerScreen({super.key});
 
@@ -23,7 +26,12 @@ class SessionLoggerScreen extends ConsumerStatefulWidget {
 class _SessionLoggerScreenState extends ConsumerState<SessionLoggerScreen> {
   static const _restDuration = Duration(seconds: 90);
 
-  int? _expandedExerciseId;
+  /// Which exercise is on screen.
+  ///
+  /// Read through a clamp rather than corrected on write: the active plan can
+  /// change under a resumed session, and an index left past the end of a
+  /// shortened plan would throw on the next build.
+  int _index = 0;
   bool _resting = false;
 
   /// The session as last seen from the controller.
@@ -81,6 +89,30 @@ class _SessionLoggerScreenState extends ConsumerState<SessionLoggerScreen> {
     if (error.code != 'SESSION_NOT_IN_PROGRESS') return false;
     if (mounted) _handleAlreadyClosed(messenger);
     return true;
+  }
+
+  /// Opens the jump sheet and moves to whatever it returns.
+  ///
+  /// [current] is the clamped index, so the row highlighted as current is
+  /// always one that exists.
+  Future<void> _jumpTo(
+    List<PlanExercise> exercises,
+    ActiveSession? session,
+    int current,
+  ) async {
+    final chosen = await showModalBottomSheet<int>(
+      context: context,
+      backgroundColor: context.fs.surface,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(22)),
+      ),
+      builder: (_) => ExerciseJumpSheet(
+        exercises: exercises,
+        session: session,
+        currentIndex: current,
+      ),
+    );
+    if (chosen != null && mounted) setState(() => _index = chosen);
   }
 
   Future<void> _finish() async {
@@ -197,8 +229,12 @@ class _SessionLoggerScreenState extends ConsumerState<SessionLoggerScreen> {
     }
 
     final exercises = plan.exercises;
-    final expandedId = _expandedExerciseId ??
-        (exercises.isEmpty ? null : exercises.first.exerciseId);
+    if (exercises.isEmpty) {
+      return const Scaffold(body: Center(child: CircularProgressIndicator()));
+    }
+    final index = _index.clamp(0, exercises.length - 1);
+    final exercise = exercises[index];
+    final isLast = index == exercises.length - 1;
 
     final targetSets =
         exercises.fold<int>(0, (total, exercise) => total + exercise.targetSets);
@@ -210,53 +246,107 @@ class _SessionLoggerScreenState extends ConsumerState<SessionLoggerScreen> {
         ))
         .value;
 
-    return Scaffold(
-      backgroundColor: t.bg,
-      appBar: AppBar(
-        title: Text(plan.name),
-        actions: [
-          TextButton(
-            key: const Key('logger.discard'),
-            onPressed: _discard,
-            child: const Text('Discard session'),
-          ),
-        ],
-      ),
-      body: Column(
-        children: [
-          Padding(
-            padding: const EdgeInsets.fromLTRB(20, 4, 20, 12),
-            child: Row(
-              children: [
-                Text(
-                  '$doneSets of $targetSets sets',
-                  key: const Key('logger.progress'),
-                  style: TextStyle(fontSize: 11.5, color: t.text2),
+    // Back steps through the workout before it leaves it. PopScope
+    // rather than an AppBar leading override, because the Android system
+    // back gesture arrives the same way -- two routes back that disagreed
+    // about what "back" means would be worse than either alone. At the
+    // first exercise it pops for real, leaving the session in progress and
+    // resumable, exactly as it did before paging.
+    return PopScope(
+      canPop: index == 0,
+      onPopInvokedWithResult: (didPop, _) {
+        if (didPop) return;
+        setState(() => _index = index - 1);
+      },
+      child: Scaffold(
+        backgroundColor: t.bg,
+        appBar: AppBar(
+          title: Text(plan.name),
+          actions: [
+            // Finish lives here as well as on the footer button, so stopping a
+            // workout early does not mean paging to the end of it first.
+            PopupMenuButton<String>(
+              key: const Key('logger.menu'),
+              onSelected: (value) => value == 'finish' ? _finish() : _discard(),
+              itemBuilder: (_) => const [
+                PopupMenuItem(
+                  key: Key('logger.finish'),
+                  value: 'finish',
+                  child: Text('Finish session'),
                 ),
-                const Spacer(),
-                Text(
-                  '${_elapsedMinutes(session.startedAt)} min',
-                  style: TextStyle(
-                    fontFamily: fsMonoFamily, fontSize: 11.5, color: t.text3,
-                  ),
+                PopupMenuItem(
+                  key: Key('logger.discard'),
+                  value: 'discard',
+                  child: Text('Discard session'),
                 ),
               ],
             ),
-          ),
-          Expanded(
-            child: ListView.separated(
-              padding: const EdgeInsets.fromLTRB(20, 0, 20, 20),
-              itemCount: exercises.length,
-              separatorBuilder: (_, _) => const SizedBox(height: 8),
-              itemBuilder: (_, index) {
-                final exercise = exercises[index];
-                return ExerciseLogCard(
+          ],
+        ),
+        body: Column(
+          children: [
+            Padding(
+              padding: const EdgeInsets.fromLTRB(20, 4, 20, 12),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    children: [
+                      InkWell(
+                        key: const Key('logger.position'),
+                        onTap: () => _jumpTo(exercises, session, index),
+                        child: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Text(
+                              'Exercise ${index + 1} / ${exercises.length}',
+                              style: TextStyle(fontSize: 11.5, color: t.text2),
+                            ),
+                            Icon(Icons.arrow_drop_down, size: 18, color: t.text3),
+                          ],
+                        ),
+                      ),
+                      const Spacer(),
+                      Text(
+                        '$doneSets of $targetSets sets',
+                        key: const Key('logger.progress'),
+                        style: TextStyle(fontSize: 11.5, color: t.text2),
+                      ),
+                      Text(
+                        '  \u00b7  ',
+                        style: TextStyle(fontSize: 11.5, color: t.text3),
+                      ),
+                      Text(
+                        '${_elapsedMinutes(session.startedAt)} min',
+                        style: TextStyle(
+                          fontFamily: fsMonoFamily, fontSize: 11.5, color: t.text3,
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 9),
+                  // Session-wide, not per-exercise. Paging costs the sense of
+                  // how much of the workout is left that one long scroll gave
+                  // away for free; this is what buys it back.
+                  ClipRRect(
+                    borderRadius: BorderRadius.circular(99),
+                    child: LinearProgressIndicator(
+                      value: targetSets == 0 ? 0 : doneSets / targetSets,
+                      minHeight: 4,
+                      backgroundColor: t.surface2,
+                      valueColor: AlwaysStoppedAnimation<Color>(t.accent),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            Expanded(
+              child: SingleChildScrollView(
+                padding: const EdgeInsets.fromLTRB(20, 0, 20, 20),
+                child: ExerciseLogPanel(
                   exercise: exercise,
-                  expanded: exercise.exerciseId == expandedId,
                   session: session,
                   last: last?[exercise.exerciseId],
-                  onExpand: () =>
-                      setState(() => _expandedExerciseId = exercise.exerciseId),
                   onCompleteSet: (setNumber, weightKg, reps) async {
                     final messenger = ScaffoldMessenger.of(context);
                     try {
@@ -298,36 +388,38 @@ class _SessionLoggerScreenState extends ConsumerState<SessionLoggerScreen> {
                       ),
                     ),
                   ),
-                );
-              },
-            ),
-          ),
-          SafeArea(
-            top: false,
-            child: Padding(
-              padding: const EdgeInsets.fromLTRB(20, 0, 20, 12),
-              child: Column(
-                children: [
-                  if (_resting) ...[
-                    RestTimer(
-                      // A fresh key restarts the countdown on each new set.
-                      key: ValueKey('rest-$doneSets'),
-                      duration: _restDuration,
-                      onDone: () => setState(() => _resting = false),
-                      onSkip: () => setState(() => _resting = false),
-                    ),
-                    const SizedBox(height: 10),
-                  ],
-                  FsButton(
-                    key: const Key('logger.finish'),
-                    label: 'Finish session',
-                    onPressed: _finishing ? null : _finish,
-                  ),
-                ],
+                ),
               ),
             ),
-          ),
-        ],
+            SafeArea(
+              top: false,
+              child: Padding(
+                padding: const EdgeInsets.fromLTRB(20, 0, 20, 12),
+                child: Column(
+                  children: [
+                    if (_resting) ...[
+                      RestTimer(
+                        // A fresh key restarts the countdown on each new set.
+                        key: ValueKey('rest-$doneSets'),
+                        duration: _restDuration,
+                        onDone: () => setState(() => _resting = false),
+                        onSkip: () => setState(() => _resting = false),
+                      ),
+                      const SizedBox(height: 10),
+                    ],
+                    FsButton(
+                      key: const Key('logger.primary'),
+                      label: isLast ? 'Finish session' : 'Continue',
+                      onPressed: isLast
+                          ? (_finishing ? null : _finish)
+                          : () => setState(() => _index = index + 1),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }
