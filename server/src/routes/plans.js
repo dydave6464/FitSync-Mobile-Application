@@ -2,7 +2,9 @@
 const express = require('express');
 const requireAuth = require('../middleware/require-auth');
 const AppError = require('../lib/app-error');
-const { getActivePlan } = require('../db/plans');
+const { getActivePlan, savePlan } = require('../db/plans');
+const { getProfile } = require('../db/profile');
+const { getActiveSession } = require('../db/sessions');
 const { loadSwapContext, listAlternatives, swapPlanExercise } = require('../db/plan-swap');
 
 const DEFAULT_LIMIT = 20;
@@ -13,6 +15,48 @@ function parseLimit(raw) {
   const n = Number.parseInt(raw, 10);
   if (!Number.isInteger(n) || n < 1) return DEFAULT_LIMIT;
   return Math.min(n, MAX_LIMIT);
+}
+
+const SPLIT_STYLES = ['full_body', 'push_pull_legs', 'upper_lower', 'cardio_core'];
+const MIN_DAYS = 1;
+const MAX_DAYS = 7;
+const MIN_SESSION_MIN = 20;
+const MAX_SESSION_MIN = 120;
+
+function invalidPlanField(field, message) {
+  return AppError.badRequest('INVALID_PLAN_FIELD', message, [{ field }]);
+}
+
+// Validated here rather than in the ML service, which is deliberately
+// permissive: a bad value from OUR OWN client is a bug worth reporting, while
+// a bad value reaching the generator should still produce a plan.
+function validateOverrides(body) {
+  const overrides = {};
+
+  if (body?.splitStyle !== undefined && body.splitStyle !== null) {
+    if (!SPLIT_STYLES.includes(body.splitStyle)) {
+      throw invalidPlanField('splitStyle', `splitStyle must be one of ${SPLIT_STYLES.join(', ')}.`);
+    }
+    overrides.splitStyle = body.splitStyle;
+  }
+
+  if (body?.daysPerWeek !== undefined && body.daysPerWeek !== null) {
+    const days = body.daysPerWeek;
+    if (!Number.isInteger(days) || days < MIN_DAYS || days > MAX_DAYS) {
+      throw invalidPlanField('daysPerWeek', `daysPerWeek must be a whole number from ${MIN_DAYS} to ${MAX_DAYS}.`);
+    }
+    overrides.daysPerWeek = days;
+  }
+
+  if (body?.sessionLengthMin !== undefined && body.sessionLengthMin !== null) {
+    const length = body.sessionLengthMin;
+    if (!Number.isInteger(length) || length < MIN_SESSION_MIN || length > MAX_SESSION_MIN) {
+      throw invalidPlanField('sessionLengthMin', `sessionLengthMin must be a whole number from ${MIN_SESSION_MIN} to ${MAX_SESSION_MIN}.`);
+    }
+    overrides.sessionLengthMin = length;
+  }
+
+  return overrides;
 }
 
 module.exports = function buildPlansRouter(deps) {
@@ -37,6 +81,30 @@ module.exports = function buildPlansRouter(deps) {
       res.json({
         data: { plan: withUrls(await getActivePlan(deps.pool, req.user.userId)) },
       });
+    } catch (err) { next(err); }
+  });
+
+  router.post('/regenerate', requireAuth(deps), async (req, res, next) => {
+    try {
+      const userId = req.user.userId;
+      const overrides = validateOverrides(req.body);
+
+      // Replacing the plan under a running workout would strand the logger on
+      // exercises no longer in it. Refusing is honest; finish or discard first.
+      if (await getActiveSession(deps.pool, userId)) {
+        throw AppError.conflict(
+          'SESSION_IN_PROGRESS',
+          'Finish or discard your current session before changing your plan.',
+        );
+      }
+
+      // Read server-side, so the client cannot regenerate against someone
+      // else's profile by sending one.
+      const profile = await getProfile(deps.pool, userId);
+      const generated = await deps.ml.generatePlan({ ...profile, overrides });
+      await savePlan(deps.pool, userId, generated);
+
+      res.json({ data: { plan: await getActivePlan(deps.pool, userId) } });
     } catch (err) { next(err); }
   });
 

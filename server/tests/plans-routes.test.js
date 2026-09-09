@@ -20,13 +20,30 @@ test('plan endpoints', async (t) => {
   const [live] = await pool.query("SELECT name FROM exercises WHERE status='live' LIMIT 1");
   const known = live[0].name;
 
+  const SPLIT_DAYS = { full_body: 1, push_pull_legs: 3, upper_lower: 2, cardio_core: 1 };
+
   // A stub whose exercise names exist in the fixture catalogue.
   const ml = {
-    generatePlan: async () => ({
-      name: 'Starter Plan', splitStyle: 'full_body', daysPerWeek: 3,
-      sessionLengthMin: 45, weekNo: 1,
-      exercises: [{ name: known, orderNo: 1, targetSets: 3, targetReps: '8-12' }],
-    }),
+    generatePlan: async (profile = {}) => {
+      const overrides = profile.overrides || {};
+      const splitStyle = overrides.splitStyle || 'full_body';
+      const rotation = SPLIT_DAYS[splitStyle] || 1;
+      const exercises = [];
+      // The same name on every day is fine and deliberate: plan_exercises has
+      // no unique key on (plan_id, exercise_id), and the fixture catalogue is
+      // too small to give each day its own movement.
+      for (let dayNo = 1; dayNo <= rotation; dayNo += 1) {
+        exercises.push({ name: known, dayNo, orderNo: 1, targetSets: 3, targetReps: '8-12' });
+      }
+      return {
+        name: 'Starter Plan',
+        splitStyle,
+        daysPerWeek: overrides.daysPerWeek || 3,
+        sessionLengthMin: overrides.sessionLengthMin || 45,
+        weekNo: 1,
+        exercises,
+      };
+    },
     estimateInjuryRisk: async () => ({ riskLevel: 'low', trainingLoadScore: 0 }),
   };
 
@@ -302,5 +319,77 @@ test('plan endpoints', async (t) => {
       .set('Authorization', auth)
       .send({ exerciseId: 1 })
       .expect(404);
+  });
+
+  const withPlan = async () => {
+    await reset();
+    await request(app).post('/api/v1/profile/complete-onboarding')
+      .set('Authorization', auth).expect(200);
+  };
+
+  await t.test('regenerating replaces the active plan', async () => {
+    await withPlan();
+    const before = await request(app).get('/api/v1/plans/active')
+      .set('Authorization', auth).expect(200);
+
+    const res = await request(app).post('/api/v1/plans/regenerate')
+      .set('Authorization', auth)
+      .send({ splitStyle: 'push_pull_legs', daysPerWeek: 4 }).expect(200);
+
+    const plan = res.body.data.plan;
+    assert.equal(plan.splitStyle, 'push_pull_legs');
+    assert.equal(plan.daysPerWeek, 4);
+    assert.notEqual(plan.planId, before.body.data.plan.planId, 'a new plan row');
+    assert.deepEqual(plan.days.map((d) => d.name), ['Push', 'Pull', 'Legs']);
+    assert.deepEqual([...new Set(plan.exercises.map((e) => e.dayNo))], [1, 2, 3]);
+
+    // And it is the one the app now reads.
+    const after = await request(app).get('/api/v1/plans/active')
+      .set('Authorization', auth).expect(200);
+    assert.equal(after.body.data.plan.planId, plan.planId);
+  });
+
+  await t.test('regenerating is refused while a session is in progress', async () => {
+    await withPlan();
+    await request(app).post('/api/v1/sessions').set('Authorization', auth).expect(201);
+
+    const res = await request(app).post('/api/v1/plans/regenerate')
+      .set('Authorization', auth)
+      .send({ splitStyle: 'push_pull_legs' }).expect(409);
+    assert.equal(res.body.error.code, 'SESSION_IN_PROGRESS');
+
+    // The refusal changed nothing: the plan the running session logs against
+    // is still the one it started with.
+    const after = await request(app).get('/api/v1/plans/active')
+      .set('Authorization', auth).expect(200);
+    assert.equal(after.body.data.plan.splitStyle, 'full_body');
+  });
+
+  for (const [field, value] of [
+    ['splitStyle', 'sideways'],
+    ['daysPerWeek', 0],
+    ['daysPerWeek', 8],
+    ['daysPerWeek', 'four'],
+    ['sessionLengthMin', 5],
+  ]) {
+    await t.test(`regenerating rejects ${field}=${value}`, async () => {
+      await withPlan();
+      const res = await request(app).post('/api/v1/plans/regenerate')
+        .set('Authorization', auth).send({ [field]: value }).expect(400);
+      assert.equal(res.body.error.code, 'INVALID_PLAN_FIELD');
+      assert.equal(res.body.error.details[0].field, field);
+    });
+  }
+
+  await t.test('an empty body regenerates the same shape rather than failing', async () => {
+    // Every override is optional; sending none is "give me a fresh plan".
+    await withPlan();
+    const res = await request(app).post('/api/v1/plans/regenerate')
+      .set('Authorization', auth).send({}).expect(200);
+    assert.equal(res.body.data.plan.splitStyle, 'full_body');
+  });
+
+  await t.test('regenerating requires a token', async () => {
+    await request(app).post('/api/v1/plans/regenerate').send({}).expect(401);
   });
 });
