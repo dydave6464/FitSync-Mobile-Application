@@ -1,5 +1,6 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../../core/units.dart';
 import '../../exercises/presentation/providers.dart' show apiClientProvider, apiRetryPolicy;
 import '../data/profile_repository.dart';
 import '../domain/profile.dart';
@@ -57,4 +58,13 @@ final equipmentOptionsProvider = FutureProvider<List<EquipmentOption>>(
 final injuryOptionsProvider = FutureProvider<List<InjuryOption>>(
   (ref) => ref.watch(profileRepositoryProvider).injuryOptions(),
   retry: apiRetryPolicy,
+);
+
+/// The unit every weight in the app is rendered in and typed in.
+///
+/// Kilograms until the profile arrives, and if it fails: that is the column's
+/// own NOT NULL default, and it beats holding every weight on screen behind a
+/// request that has nothing to do with them.
+final weightUnitProvider = Provider<WeightUnit>(
+  (ref) => ref.watch(profileProvider).value?.weightUnit ?? WeightUnit.kg,
 );

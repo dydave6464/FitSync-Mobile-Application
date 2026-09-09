@@ -6,9 +6,12 @@ import 'package:flutter_test/flutter_test.dart';
 
 import 'package:fitsync/core/api_exception.dart';
 import 'package:fitsync/core/theme.dart';
+import 'package:fitsync/core/units.dart';
 import 'package:fitsync/features/exercises/domain/exercise.dart';
 import 'package:fitsync/features/exercises/presentation/providers.dart' show exerciseDetailProvider;
 import 'package:fitsync/features/plans/domain/workout_plan.dart';
+import 'package:fitsync/features/profile/domain/profile.dart';
+import 'package:fitsync/features/profile/presentation/providers.dart';
 import 'package:fitsync/features/plans/presentation/providers.dart';
 import 'package:fitsync/features/sessions/domain/active_session.dart';
 import 'package:fitsync/features/sessions/presentation/providers.dart';
@@ -115,6 +118,29 @@ class FakeSessionController extends ActiveSessionController {
   ActiveSession? get heldSession => state.value;
 }
 
+class FakeProfileNotifier extends ProfileNotifier {
+  FakeProfileNotifier(this.unit, this.patches);
+
+  final WeightUnit unit;
+  final List<Map<String, dynamic>> patches;
+
+  @override
+  Future<Profile> build() async => Profile(
+        userId: 7,
+        email: 'j@example.com',
+        fullName: 'J',
+        onboardingCompleted: true,
+        isPremium: false,
+        notificationsEnabled: true,
+        equipment: const [],
+        injuries: const [],
+        weightUnit: unit,
+      );
+
+  @override
+  Future<void> patch(Map<String, dynamic> fields) async => patches.add(fields);
+}
+
 ActiveSession _session({List<LoggedSet> sets = const []}) => ActiveSession(
       sessionId: 7,
       status: 'in_progress',
@@ -134,12 +160,15 @@ ActiveSession _session({List<LoggedSet> sets = const []}) => ActiveSession(
 Future<FakeSessionController> _pump(
   WidgetTester tester, {
   ActiveSession? session,
+  WeightUnit unit = WeightUnit.kg,
+  List<Map<String, dynamic>>? patches,
 }) async {
   final controller = FakeSessionController(session ?? _session());
 
   await tester.pumpWidget(ProviderScope(
     overrides: [
       activePlanProvider.overrideWith((ref) async => _plan),
+      profileProvider.overrideWith(() => FakeProfileNotifier(unit, patches ?? [])),
       activeSessionProvider.overrideWith(() => controller),
       lastPerformanceProvider.overrideWith((ref, key) async => const {}),
       // Only exercised by the demo-affordance navigation test below; every
@@ -289,6 +318,31 @@ void main() {
 
     expect(find.byType(SessionLoggerScreen), findsNothing);
     expect(find.text('open logger'), findsOneWidget);
+  });
+
+  testWidgets('the summary reports the volume in the chosen unit',
+      (tester) async {
+    await _pump(tester, unit: WeightUnit.lb, session: _session(sets: const [
+      LoggedSet(exerciseId: 101, setNumber: 1, weightKg: 20, reps: 10),
+    ]));
+
+    await _menu(tester, 'finish');
+
+    // The closed session comes back at 380 kg, which is 837.75... lb.
+    expect(find.textContaining('838 lb lifted'), findsOneWidget);
+  });
+
+  testWidgets('switching the unit in the header saves it to the profile',
+      (tester) async {
+    final patches = <Map<String, dynamic>>[];
+    await _pump(tester, patches: patches);
+
+    await tester.tap(find.byKey(const Key('unit.lb')));
+    await tester.pumpAndSettle();
+
+    expect(patches, [
+      {'weightUnit': 'lb'},
+    ]);
   });
 
   testWidgets('progress counts sets across the whole session', (tester) async {

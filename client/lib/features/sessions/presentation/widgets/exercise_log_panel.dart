@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../../../../core/theme.dart';
+import '../../../../core/units.dart';
 import '../../../../core/widgets/fs_kit.dart';
 import '../../../plans/domain/workout_plan.dart';
 import '../../domain/active_session.dart';
@@ -21,6 +22,8 @@ class ExerciseLogPanel extends StatelessWidget {
     required this.onUndoSet,
     this.last,
     this.onOpenDemo,
+    this.unit = WeightUnit.kg,
+    this.onUnitChanged,
   });
 
   final PlanExercise exercise;
@@ -28,6 +31,13 @@ class ExerciseLogPanel extends StatelessWidget {
   final LastPerformance? last;
   final Future<void> Function(int setNumber, double? weightKg, int? reps) onCompleteSet;
   final Future<void> Function(int setNumber) onUndoSet;
+
+  /// Which unit every weight here is shown in and typed in.
+  final WeightUnit unit;
+
+  /// Null renders the header's toggle inert rather than absent, on the same
+  /// reasoning as [onOpenDemo] below.
+  final ValueChanged<WeightUnit>? onUnitChanged;
 
   /// Opens the same demo and cues the Browse tab shows, mid-workout. Null
   /// renders the affordance disabled rather than hiding it, so the header
@@ -107,7 +117,7 @@ class ExerciseLogPanel extends StatelessWidget {
           if (last != null && last!.weightKg != null) ...[
             const SizedBox(height: 8),
             Text(
-              'Last ${_trim(last!.weightKg!)} kg'
+              'Last ${formatWeightWithUnit(last!.weightKg!, unit)}'
               '${last!.reps != null ? ' × ${last!.reps}' : ''}',
               style: TextStyle(fontSize: 11, color: t.text2),
             ),
@@ -126,7 +136,7 @@ class ExerciseLogPanel extends StatelessWidget {
                   Icon(Icons.trending_up, size: 15, color: t.accent),
                   const SizedBox(width: 8),
                   Text(
-                    '+${_trim(_overload!)} kg vs last session',
+                    '+${formatWeightWithUnit(_overload!, unit)} vs last session',
                     style: TextStyle(fontSize: 11, color: t.text),
                   ),
                 ],
@@ -140,7 +150,11 @@ class ExerciseLogPanel extends StatelessWidget {
             child: Row(
               children: [
                 SizedBox(width: SetRow.numberWidth, child: Text('Set', style: fsEyebrow(t))),
-                Expanded(child: Center(child: Text('kg', style: fsEyebrow(t)))),
+                Expanded(
+                  child: Center(
+                    child: FsUnitToggle(value: unit, onChanged: onUnitChanged),
+                  ),
+                ),
                 const SizedBox(width: SetRow.columnGap),
                 Expanded(child: Center(child: Text('reps', style: fsEyebrow(t)))),
                 const SizedBox(width: SetRow.tickWidth),
@@ -159,6 +173,7 @@ class ExerciseLogPanel extends StatelessWidget {
               setNumber: setNumber,
               logged: session?.setFor(exercise.exerciseId, setNumber),
               prefillWeightKg: last?.weightKg,
+              unit: unit,
               onComplete: (weightKg, reps) => onCompleteSet(setNumber, weightKg, reps),
               onUndo: () => onUndoSet(setNumber),
             ),
@@ -166,7 +181,4 @@ class ExerciseLogPanel extends StatelessWidget {
       ),
     );
   }
-
-  static String _trim(double value) =>
-      value.toStringAsFixed(2).replaceFirst(RegExp(r'\.?0+$'), '');
 }

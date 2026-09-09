@@ -115,7 +115,7 @@ test('complete FitSync schema', async (t) => {
     assert.equal(rows[0].added_by, null);
   });
 
-  await t.test('all eleven migrations are recorded', async () => {
+  await t.test('all twelve migrations are recorded', async () => {
     const [rows] = await pool.query('SELECT version FROM schema_migrations ORDER BY version');
     assert.deepEqual(rows.map((r) => r.version), [
       '001_account_and_profile.sql',
@@ -129,6 +129,7 @@ test('complete FitSync schema', async (t) => {
       '009_exercise_safety.sql',
       '010_exercise_categories.sql',
       '011_email_verification.sql',
+      '012_weight_unit.sql',
     ]);
   });
 });

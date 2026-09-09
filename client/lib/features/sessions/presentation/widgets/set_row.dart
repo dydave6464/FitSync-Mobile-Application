@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
 import '../../../../core/theme.dart';
+import '../../../../core/units.dart';
 import '../../domain/active_session.dart';
 
 /// One line of the set table: number, kg, reps, tick.
@@ -18,6 +19,7 @@ class SetRow extends StatefulWidget {
     required this.onComplete,
     required this.onUndo,
     this.prefillWeightKg,
+    this.unit = WeightUnit.kg,
   });
 
   /// Column geometry, shared with the panel's header row above it. Two
@@ -38,6 +40,10 @@ class SetRow extends StatefulWidget {
   final Future<void> Function(double? weightKg, int? reps) onComplete;
   final Future<void> Function() onUndo;
 
+  /// What the field shows and how its text is read back. Stored values are
+  /// kilograms either way -- see [WeightUnit].
+  final WeightUnit unit;
+
   @override
   State<SetRow> createState() => _SetRowState();
 }
@@ -48,24 +54,41 @@ class _SetRowState extends State<SetRow> {
   bool _busy = false;
   bool _failed = false;
 
-  /// Trailing zeros read as noise on a phone: 22.5, not 22.50; 20, not 20.0.
-  static String _formatWeight(double value) {
-    final text = value.toStringAsFixed(2);
-    return text.replaceFirst(RegExp(r'\.?0+$'), '');
-  }
-
   @override
   void initState() {
     super.initState();
     final logged = widget.logged;
     _weight = TextEditingController(
       text: logged?.weightKg != null
-          ? _formatWeight(logged!.weightKg!)
+          ? formatWeight(logged!.weightKg!, widget.unit)
           : widget.prefillWeightKg != null
-              ? _formatWeight(widget.prefillWeightKg!)
+              ? formatWeight(widget.prefillWeightKg!, widget.unit)
               : '',
     );
     _reps = TextEditingController(text: logged?.reps?.toString() ?? '');
+  }
+
+  /// Carries a value already in the field across a unit change.
+  ///
+  /// The row is keyed on the stored set's presence, not on the unit, so
+  /// flipping kg/lb rebuilds this widget without rebuilding its State -- and
+  /// text typed under the old unit would otherwise sit there meaning
+  /// something else entirely. Anything unparseable (an empty field, a lone
+  /// decimal point mid-type) is left exactly as typed.
+  @override
+  void didUpdateWidget(SetRow oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.unit == widget.unit) return;
+
+    final kg = parseWeight(_weight.text, oldWidget.unit);
+    if (kg == null) return;
+    final converted = formatWeight(kg, widget.unit);
+    _weight.value = TextEditingValue(
+      text: converted,
+      // Assigning `.text` alone drops the cursor to offset 0, which puts the
+      // caret in front of a number the user may still be typing.
+      selection: TextSelection.collapsed(offset: converted.length),
+    );
   }
 
   @override
@@ -86,7 +109,7 @@ class _SetRowState extends State<SetRow> {
       } else {
         // An empty field is "not recorded", never zero.
         await widget.onComplete(
-          double.tryParse(_weight.text.trim()),
+          parseWeight(_weight.text, widget.unit),
           int.tryParse(_reps.text.trim()),
         );
       }
@@ -138,7 +161,7 @@ class _SetRowState extends State<SetRow> {
                 // the server rejects anything above 999.99 anyway.
                 FilteringTextInputFormatter.allow(RegExp(r'^\d{0,3}\.?\d{0,2}')),
               ],
-              decoration: decoration('kg'),
+              decoration: decoration(widget.unit.api),
               style: TextStyle(fontFamily: fsMonoFamily, fontSize: 13.5, color: t.text),
             ),
           ),

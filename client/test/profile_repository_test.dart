@@ -7,6 +7,7 @@ import 'package:http/testing.dart';
 import 'package:fitsync/core/api_client.dart';
 import 'package:fitsync/core/api_exception.dart';
 import 'package:fitsync/core/token_store.dart';
+import 'package:fitsync/core/units.dart';
 import 'package:fitsync/features/profile/data/profile_repository.dart';
 import 'package:fitsync/features/profile/domain/profile.dart';
 
@@ -108,6 +109,19 @@ void main() {
     expect(profile.equipment, isEmpty);
     expect(profile.injuries, isEmpty);
     expect(profile.onboardingCompleted, isFalse);
+  });
+
+  test('parses the weight unit, defaulting to kilograms', () {
+    final pounds = Profile.fromJson(
+      {...Map<String, dynamic>.from(_fullProfileJson), 'weightUnit': 'lb'},
+    );
+    expect(pounds.weightUnit, WeightUnit.lb);
+
+    // The fixture carries no weightUnit at all -- a server older than the
+    // column, which must read as metric rather than throw on the profile.
+    final missing =
+        Profile.fromJson(Map<String, dynamic>.from(_emptyProfileJson));
+    expect(missing.weightUnit, WeightUnit.kg);
   });
 
   test('normalises a date of birth the server returned as a timestamp', () {

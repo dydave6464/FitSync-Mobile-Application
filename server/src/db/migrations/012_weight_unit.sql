@@ -1,0 +1,22 @@
+-- Which unit the app renders weights in, and reads typed input as.
+--
+-- Every stored figure stays metric: users.weight_kg, users.goal_weight_kg and
+-- set_logs.weight_kg are untouched, and the ML service keeps being handed
+-- kilograms. Converting at rest instead would rewrite a user's entire logged
+-- history the moment they flipped this, and would desync the plan generator
+-- from the units its inputs are defined in. So this column decides display
+-- and parsing only -- it is a presentation preference that happens to live
+-- with the account so it follows the user to a new phone.
+--
+-- POLICY EXCEPTION. MIGRATIONS.md permits CREATE TABLE IF NOT EXISTS and
+-- nothing else. The ALTER below is the fourth deliberate exception after 007,
+-- 008 and 011, for the identical reason those three gave: it changes a table
+-- 001 already defined and that is already applied on existing databases,
+-- where an in-place edit to 001 would be silently invisible because the
+-- runner has no checksum. Like those three it is NOT replay-safe -- a partial
+-- failure leaves the ALTER committed and a re-run hits ER_DUP_FIELDNAME.
+-- Recovery steps are in MIGRATIONS.md.
+--
+-- NOT NULL with a default rather than nullable: everyone reads weights in
+-- some unit, and a null would leave every display site inventing a fallback.
+ALTER TABLE users ADD COLUMN weight_unit ENUM('kg','lb') NOT NULL DEFAULT 'kg';

@@ -1,3 +1,5 @@
+import '../../../core/units.dart';
+
 /// A piece of equipment the user can own, as the server names it.
 class EquipmentOption {
   const EquipmentOption({required this.equipmentId, required this.name});
@@ -82,6 +84,10 @@ class Profile {
     this.trainingLocation,
     this.city,
     this.joinedAt,
+    // Defaulted rather than required, mirroring the column's own
+    // NOT NULL DEFAULT 'kg': a fixture that does not care about units
+    // should not have to name one.
+    this.weightUnit = WeightUnit.kg,
   });
 
   final int userId;
@@ -90,6 +96,10 @@ class Profile {
   final bool onboardingCompleted;
   final bool isPremium;
   final bool notificationsEnabled;
+
+  /// Which unit every weight in the app is shown in and typed in. Storage
+  /// stays metric whatever this says -- see [WeightUnit].
+  final WeightUnit weightUnit;
   final List<EquipmentOption> equipment;
   final List<SelectedInjury> injuries;
 
@@ -147,6 +157,7 @@ class Profile {
         onboardingCompleted: json['onboardingCompleted'] as bool? ?? false,
         isPremium: json['isPremium'] as bool? ?? false,
         notificationsEnabled: json['notificationsEnabled'] as bool? ?? true,
+        weightUnit: WeightUnit.fromApi(json['weightUnit'] as String?),
         equipment: ((json['equipment'] as List<dynamic>?) ?? const [])
             .map((e) => EquipmentOption.fromJson(e as Map<String, dynamic>))
             .toList(growable: false),

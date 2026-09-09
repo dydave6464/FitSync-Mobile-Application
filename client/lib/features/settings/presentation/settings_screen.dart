@@ -171,6 +171,16 @@ class _SettingsList extends ConsumerWidget {
           child: Column(
             children: [
               _SettingsRow(
+                icon: Icons.monitor_weight_outlined,
+                label: 'Weight unit',
+                trailing: FsUnitToggle(
+                  value: profile.weightUnit,
+                  onChanged: (unit) => ref
+                      .read(profileProvider.notifier)
+                      .patch({'weightUnit': unit.api}),
+                ),
+              ),
+              _SettingsRow(
                 icon: Icons.notifications_outlined,
                 label: 'Notifications & reminders',
                 trailing: Switch(
@@ -401,7 +411,16 @@ class _AboutEditorState extends _EditorState<_AboutEditor> {
         activityLevel: profile.activityLevel,
       );
     }
-    return AboutStep(value: _value, onChanged: (value) => _value = value);
+    return AboutStep(
+      value: _value,
+      onChanged: (value) => _value = value,
+      // Not part of the form's working value: it is a display preference, so
+      // it saves on tap and survives a cancelled edit rather than sitting in
+      // _value waiting for Save.
+      unit: profile.weightUnit,
+      onUnitChanged: (unit) =>
+          ref.read(profileProvider.notifier).patch({'weightUnit': unit.api}),
+    );
   }
 
   @override

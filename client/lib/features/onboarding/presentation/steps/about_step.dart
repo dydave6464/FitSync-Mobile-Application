@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../../../../core/theme.dart';
+import '../../../../core/units.dart';
 import '../../../../core/widgets/fs_kit.dart';
 import '../../domain/daily_targets.dart';
 
@@ -88,10 +89,24 @@ String _grouped(int value) {
 ///
 /// Like [GoalStep], it reads no providers and saves nothing.
 class AboutStep extends StatefulWidget {
-  const AboutStep({super.key, required this.value, required this.onChanged});
+  const AboutStep({
+    super.key,
+    required this.value,
+    required this.onChanged,
+    this.unit = WeightUnit.kg,
+    this.onUnitChanged,
+  });
 
   final AboutAnswers value;
   final ValueChanged<AboutAnswers> onChanged;
+
+  /// The unit the two weight cards display and read. [AboutAnswers] stays in
+  /// kilograms whatever this is -- the estimate below the cards and the plan
+  /// generator both define their inputs that way.
+  final WeightUnit unit;
+
+  /// Null renders the weight card's toggle inert rather than absent.
+  final ValueChanged<WeightUnit>? onUnitChanged;
 
   @override
   State<AboutStep> createState() => _AboutStepState();
@@ -117,10 +132,29 @@ class _AboutStepState extends State<AboutStep> {
     // well as report upwards.
     _height = TextEditingController(text: _format(widget.value.heightCm))
       ..addListener(_onNumberChanged);
-    _weight = TextEditingController(text: _format(widget.value.weightKg))
+    _weight = TextEditingController(text: _formatKg(widget.value.weightKg))
       ..addListener(_onNumberChanged);
-    _goalWeight = TextEditingController(text: _format(widget.value.goalWeightKg))
-      ..addListener(_onNumberChanged);
+    _goalWeight =
+        TextEditingController(text: _formatKg(widget.value.goalWeightKg))
+          ..addListener(_onNumberChanged);
+  }
+
+  /// Carries whatever is already typed across a unit change, so a number does
+  /// not silently start meaning something else. See SetRow's own
+  /// didUpdateWidget -- same hazard, same resolution.
+  @override
+  void didUpdateWidget(AboutStep oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.unit == widget.unit) return;
+    for (final controller in [_weight, _goalWeight]) {
+      final kg = parseWeight(controller.text, oldWidget.unit);
+      if (kg == null) continue;
+      final converted = formatWeight(kg, widget.unit);
+      controller.value = TextEditingValue(
+        text: converted,
+        selection: TextSelection.collapsed(offset: converted.length),
+      );
+    }
   }
 
   @override
@@ -130,6 +164,13 @@ class _AboutStepState extends State<AboutStep> {
     _goalWeight.dispose();
     super.dispose();
   }
+
+  /// A stored kilogram figure as the chosen unit shows it.
+  String _formatKg(double? kg) =>
+      kg == null ? '' : formatWeight(kg, widget.unit);
+
+  /// What is typed in the weight cards, back in kilograms.
+  double? _parseKg(String text) => parseWeight(text, widget.unit);
 
   static String _format(double? value) {
     if (value == null) return '';
@@ -157,8 +198,8 @@ class _AboutStepState extends State<AboutStep> {
         sex: _sex,
         dateOfBirth: _dateOfBirth,
         heightCm: _parse(_height.text),
-        weightKg: _parse(_weight.text),
-        goalWeightKg: _parse(_goalWeight.text),
+        weightKg: _parseKg(_weight.text),
+        goalWeightKg: _parseKg(_goalWeight.text),
         activityLevel: _activityLevel,
       ));
 
@@ -184,13 +225,14 @@ class _AboutStepState extends State<AboutStep> {
   }
 
   Widget _statField(Key key, TextEditingController controller, String label,
-          String unit, {bool accent = false}) =>
+          String unit, {bool accent = false, Widget? unitControl}) =>
       FsStatField(
         fieldKey: key,
         label: label,
         unit: unit,
         controller: controller,
         accent: accent,
+        unitControl: unitControl,
       );
 
   @override
@@ -203,7 +245,7 @@ class _AboutStepState extends State<AboutStep> {
       sex: _sex,
       dateOfBirth: _dateOfBirth,
       heightCm: _parse(_height.text),
-      weightKg: _parse(_weight.text),
+      weightKg: _parseKg(_weight.text),
       activityLevel: _activityLevel,
     );
 
@@ -278,12 +320,24 @@ class _AboutStepState extends State<AboutStep> {
             const SizedBox(width: 10),
             Expanded(
               child: _statField(
-                  const Key('weightKg'), _weight, 'Weight', 'kg'),
+                const Key('weightKg'),
+                _weight,
+                'Weight',
+                widget.unit.api,
+                // Only this card carries the toggle. Goal weight follows it,
+                // and two identical switches side by side would be noise
+                // rather than a second choice.
+                unitControl: FsUnitToggle(
+                  value: widget.unit,
+                  onChanged: widget.onUnitChanged,
+                ),
+              ),
             ),
           ],
         ),
         const SizedBox(height: 10),
-        _statField(const Key('goalWeightKg'), _goalWeight, 'Goal weight', 'kg',
+        _statField(const Key('goalWeightKg'), _goalWeight, 'Goal weight',
+            widget.unit.api,
             accent: true),
         const SizedBox(height: 18),
         const FsEyebrow('Daily activity level'),

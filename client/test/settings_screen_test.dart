@@ -123,6 +123,25 @@ void main() {
     expect(find.textContaining('Cebu City'), findsOneWidget);
   });
 
+  // Reachable when you are not mid-workout: the logger's header toggle is the
+  // discoverable one, but nobody goes there to change a setting.
+  testWidgets('the weight unit row saves what it is switched to',
+      (tester) async {
+    final patches = <Map<String, dynamic>>[];
+    await _pump(tester, patches: patches);
+
+    await tester.ensureVisible(find.byKey(const Key('unit.lb')));
+    await tester.tap(find.byKey(const Key('unit.lb')));
+    await tester.pumpAndSettle();
+
+    // Whole-list equality, not `contains`: Dart maps compare by identity, so
+    // contains() would miss an equal-but-distinct map. This also pins that
+    // flipping the unit writes nothing else.
+    expect(patches, [
+      {'weightUnit': 'lb'},
+    ]);
+  });
+
   testWidgets('offers no language row', (tester) async {
     await _pump(tester, patches: []);
 

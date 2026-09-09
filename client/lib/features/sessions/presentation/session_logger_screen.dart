@@ -3,10 +3,12 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../core/api_exception.dart';
 import '../../../core/theme.dart';
+import '../../../core/units.dart';
 import '../../../core/widgets/fs_kit.dart';
 import '../../exercises/presentation/exercise_list_screen.dart' show describeError;
 import '../../plans/domain/workout_plan.dart';
 import '../../plans/presentation/providers.dart';
+import '../../profile/presentation/providers.dart';
 import '../domain/active_session.dart';
 import 'in_session_exercise_screen.dart';
 import 'providers.dart';
@@ -95,6 +97,23 @@ class _SessionLoggerScreenState extends ConsumerState<SessionLoggerScreen> {
   ///
   /// [current] is the clamped index, so the row highlighted as current is
   /// always one that exists.
+  /// Saves the unit chosen on the set table's header.
+  ///
+  /// A preference, not a session mode: nobody wants to re-pick this every
+  /// workout, so it goes to the account. A failed write leaves the display on
+  /// the old unit, which is honest -- the toggle reflects stored state rather
+  /// than optimistically flipping and silently reverting.
+  Future<void> _setUnit(WeightUnit unit) async {
+    final messenger = ScaffoldMessenger.of(context);
+    try {
+      await ref.read(profileProvider.notifier).patch({'weightUnit': unit.api});
+    } catch (error) {
+      if (mounted) {
+        messenger.showSnackBar(SnackBar(content: Text(describeError(error))));
+      }
+    }
+  }
+
   Future<void> _jumpTo(
     List<PlanExercise> exercises,
     ActiveSession? session,
@@ -157,6 +176,7 @@ class _SessionLoggerScreenState extends ConsumerState<SessionLoggerScreen> {
   }
 
   Future<void> _showSummary(ActiveSession done) async {
+    final unit = ref.read(weightUnitProvider);
     await showDialog<void>(
       context: context,
       builder: (dialogContext) => AlertDialog(
@@ -164,7 +184,10 @@ class _SessionLoggerScreenState extends ConsumerState<SessionLoggerScreen> {
         title: const Text('Session complete'),
         content: Text(
           '${done.durationMin} min · ${done.completedSetCount} sets · '
-          '${(done.totalVolumeKg ?? 0).toStringAsFixed(0)} kg lifted',
+          // Whole numbers: a session's total volume runs to hundreds, where
+          // formatWeight's decimal place would be noise rather than precision.
+          '${convertFromKg(done.totalVolumeKg ?? 0, unit).toStringAsFixed(0)} '
+          '${unit.api} lifted',
         ),
         actions: [
           TextButton(
@@ -221,6 +244,7 @@ class _SessionLoggerScreenState extends ConsumerState<SessionLoggerScreen> {
     final t = context.fs;
     final plan = ref.watch(activePlanProvider).value;
     final live = ref.watch(activeSessionProvider).value;
+    final unit = ref.watch(weightUnitProvider);
     if (live != null) _lastSeenSession = live;
     final session = live ?? _lastSeenSession;
 
@@ -347,6 +371,8 @@ class _SessionLoggerScreenState extends ConsumerState<SessionLoggerScreen> {
                   exercise: exercise,
                   session: session,
                   last: last?[exercise.exerciseId],
+                  unit: unit,
+                  onUnitChanged: _setUnit,
                   onCompleteSet: (setNumber, weightKg, reps) async {
                     final messenger = ScaffoldMessenger.of(context);
                     try {

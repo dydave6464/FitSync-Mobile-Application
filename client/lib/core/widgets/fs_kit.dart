@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
 import '../theme.dart';
+import '../units.dart';
 
 /// The FitSync component kit, mirroring the prototype's `kit.jsx` and the
 /// `.btn` / `.card` / `.chip` / `.field` rules in `styles.css`.
@@ -422,10 +423,16 @@ class FsStatField extends StatelessWidget {
     required this.controller,
     this.fieldKey,
     this.accent = false,
+    this.unitControl,
   });
 
   final String label;
   final String unit;
+
+  /// Replaces the static [unit] label. The unit belongs next to the number it
+  /// describes, so a field whose unit the user chooses puts the control right
+  /// there rather than somewhere else on the step.
+  final Widget? unitControl;
   final TextEditingController controller;
 
   /// Applied to the inner [TextField], so `tester.enterText` finds an
@@ -492,7 +499,8 @@ class FsStatField extends StatelessWidget {
                 ),
               ),
               const SizedBox(width: 4),
-              Text(unit, style: TextStyle(fontSize: 11, color: t.text3)),
+              unitControl ??
+                  Text(unit, style: TextStyle(fontSize: 11, color: t.text3)),
             ],
           ),
         ],
@@ -744,6 +752,55 @@ class FsRing extends StatelessWidget {
           ?child,
         ],
       ),
+    );
+  }
+}
+
+/// A compact kg / lb switch, sized to sit inside a table's column header.
+///
+/// It lives on the header of the column it governs rather than off in a
+/// settings screen, because that is where the number it describes is. The
+/// weight field's hint was the only place the unit ever appeared, and a hint
+/// disappears the moment a value is typed.
+class FsUnitToggle extends StatelessWidget {
+  const FsUnitToggle({super.key, required this.value, this.onChanged});
+
+  final WeightUnit value;
+
+  /// Null renders the toggle inert rather than absent, so a host with nowhere
+  /// to write the change still says which unit is in force.
+  final ValueChanged<WeightUnit>? onChanged;
+
+  @override
+  Widget build(BuildContext context) {
+    final t = context.fs;
+
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        for (final unit in WeightUnit.values) ...[
+          if (unit != WeightUnit.values.first)
+            Text('/', style: fsEyebrow(t).copyWith(letterSpacing: 0)),
+          InkWell(
+            key: Key('unit.${unit.api}'),
+            // The unit already in force is not a destination, so it takes no
+            // tap -- and reads as the label it also is.
+            onTap: onChanged == null || unit == value
+                ? null
+                : () => onChanged!(unit),
+            borderRadius: BorderRadius.circular(FsRadius.sm),
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 2),
+              child: Text(
+                unit.api,
+                style: fsEyebrow(t).copyWith(
+                  color: unit == value ? t.accent : t.text3,
+                ),
+              ),
+            ),
+          ),
+        ],
+      ],
     );
   }
 }

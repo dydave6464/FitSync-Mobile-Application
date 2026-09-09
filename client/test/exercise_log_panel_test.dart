@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import 'package:fitsync/core/theme.dart';
+import 'package:fitsync/core/units.dart';
 import 'package:fitsync/features/plans/domain/workout_plan.dart';
 import 'package:fitsync/features/sessions/domain/active_session.dart';
 import 'package:fitsync/features/sessions/presentation/widgets/exercise_log_panel.dart';
@@ -62,6 +63,110 @@ void main() {
     expect(find.descendant(of: header, matching: find.text('Set')), findsOneWidget);
     expect(find.descendant(of: header, matching: find.text('kg')), findsOneWidget);
     expect(find.descendant(of: header, matching: find.text('reps')), findsOneWidget);
+  });
+
+  testWidgets('the column header switches the unit', (tester) async {
+    WeightUnit? chosen;
+    await tester.pumpWidget(_host(ExerciseLogPanel(
+      exercise: _exercise,
+      session: _session(),
+      unit: WeightUnit.kg,
+      onUnitChanged: (unit) => chosen = unit,
+      onCompleteSet: (_, _, _) async {},
+      onUndoSet: (_) async {},
+    )));
+
+    await tester.tap(find.byKey(const Key('unit.lb')));
+    expect(chosen, WeightUnit.lb);
+  });
+
+  // One pound is 0.45359237 kg exactly, so 22.5 kg is 49.6039... lb, 25 kg is
+  // 55.1155... lb and the 2.5 kg gain between them is 5.5115... lb. Derived by
+  // hand: an expectation run through the same conversion the widget uses
+  // would pass whatever factor that was.
+  testWidgets('in pounds, every weight on the panel reads in pounds',
+      (tester) async {
+    await tester.pumpWidget(_host(ExerciseLogPanel(
+      exercise: _exercise,
+      session: _session(sets: const [
+        LoggedSet(exerciseId: 101, setNumber: 1, weightKg: 25, reps: 8),
+      ]),
+      last: const LastPerformance(
+        exerciseId: 101, weightKg: 22.5, reps: 10, sessionDate: '2026-09-05',
+      ),
+      unit: WeightUnit.lb,
+      onCompleteSet: (_, _, _) async {},
+      onUndoSet: (_) async {},
+    )));
+
+    expect(find.text('Last 49.6 lb × 10'), findsOneWidget);
+    expect(find.text('+5.5 lb vs last session'), findsOneWidget);
+    // The stored set, and the next row prefilled from last week.
+    expect(
+      tester.widget<TextField>(find.byKey(const Key('set.1.weight'))).controller!.text,
+      '55.1',
+    );
+    expect(
+      tester.widget<TextField>(find.byKey(const Key('set.2.weight'))).controller!.text,
+      '49.6',
+    );
+  });
+
+  // The storage contract: whatever unit is on screen, the server is handed
+  // kilograms. A conversion missing here silently records a 100 lb lift as
+  // 100 kg and corrupts every figure downstream of it.
+  testWidgets('a weight typed in pounds is reported in kilograms',
+      (tester) async {
+    double? sentKg;
+    await tester.pumpWidget(_host(ExerciseLogPanel(
+      exercise: _exercise,
+      session: _session(),
+      unit: WeightUnit.lb,
+      onCompleteSet: (_, weightKg, _) async => sentKg = weightKg,
+      onUndoSet: (_) async {},
+    )));
+
+    await tester.enterText(find.byKey(const Key('set.1.weight')), '100');
+    await tester.enterText(find.byKey(const Key('set.1.reps')), '8');
+    await tester.tap(find.byKey(const Key('set.1.tick')));
+    await tester.pumpAndSettle();
+
+    expect(sentKg, closeTo(45.359237, 1e-9));
+  });
+
+  // Flipping the unit must carry the number across, not leave it sitting
+  // there meaning something else. Someone who has typed 100 kg and then
+  // realises the app is in the wrong unit would otherwise log 100 lb.
+  testWidgets('switching the unit converts a half-typed weight in place',
+      (tester) async {
+    var unit = WeightUnit.kg;
+    await tester.pumpWidget(MaterialApp(
+      theme: fsLightTheme(),
+      home: Scaffold(
+        body: StatefulBuilder(
+          builder: (context, setState) => SingleChildScrollView(
+            child: ExerciseLogPanel(
+              exercise: _exercise,
+              session: _session(),
+              unit: unit,
+              onUnitChanged: (chosen) => setState(() => unit = chosen),
+              onCompleteSet: (_, _, _) async {},
+              onUndoSet: (_) async {},
+            ),
+          ),
+        ),
+      ),
+    ));
+
+    await tester.enterText(find.byKey(const Key('set.1.weight')), '100');
+    await tester.tap(find.byKey(const Key('unit.lb')));
+    await tester.pumpAndSettle();
+
+    // 100 kg is 220.462... lb.
+    expect(
+      tester.widget<TextField>(find.byKey(const Key('set.1.weight'))).controller!.text,
+      '220.5',
+    );
   });
 
   testWidgets('shows one row per target set', (tester) async {

@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
+import 'package:fitsync/core/units.dart';
 import 'package:fitsync/features/onboarding/presentation/steps/about_step.dart';
 
 /// Pinned as literals for the same reason as the goal step's: these are the
@@ -36,12 +37,17 @@ Future<AboutAnswers?> _pumpAndEdit(
   WidgetTester tester,
   Future<void> Function(WidgetTester) interact, {
   AboutAnswers value = const AboutAnswers(),
+  WeightUnit unit = WeightUnit.kg,
 }) async {
   AboutAnswers? emitted;
   await tester.pumpWidget(MaterialApp(
     home: Scaffold(
       body: SingleChildScrollView(
-        child: AboutStep(value: value, onChanged: (v) => emitted = v),
+        child: AboutStep(
+          value: value,
+          unit: unit,
+          onChanged: (v) => emitted = v,
+        ),
       ),
     ),
   ));
@@ -216,6 +222,37 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(tester.takeException(), isNull);
+  });
+
+  // The first weight the app ever asks for, and the one the plan generator is
+  // fed. Someone thinking in pounds who typed 150 into a field labelled kg
+  // would hand the ML service a body weight out by a factor of 2.2.
+  testWidgets('a weight typed in pounds is reported in kilograms',
+      (tester) async {
+    final emitted = await _pumpAndEdit(
+      tester,
+      (t) async => t.enterText(find.byKey(const Key('weightKg')), '150'),
+      unit: WeightUnit.lb,
+    );
+
+    // 150 lb is 68.0388555 kg exactly.
+    expect(emitted!.weightKg, closeTo(68.0388555, 1e-7));
+  });
+
+  testWidgets('the weight card shows the stored kilograms in the unit in force',
+      (tester) async {
+    await _pumpAndEdit(
+      tester,
+      (t) async {},
+      value: _complete,
+      unit: WeightUnit.lb,
+    );
+
+    // The fixture's 72 kg is 158.7... lb.
+    expect(
+      tester.widget<TextField>(find.byKey(const Key('weightKg'))).controller!.text,
+      '158.7',
+    );
   });
 }
 

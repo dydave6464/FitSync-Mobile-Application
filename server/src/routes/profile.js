@@ -14,13 +14,15 @@ const ENUMS = {
   fitnessLevel: ['beginner', 'intermediate'],
   activityLevel: ['sedentary', 'light', 'moderate', 'active', 'very_active'],
   trainingLocation: ['home_gym', 'commercial_gym', 'both', 'other'],
+  weightUnit: ['kg', 'lb'],
 };
 const NUMERIC = ['heightCm', 'weightKg', 'goalWeightKg'];
 const SIDES = ['left', 'right', 'both'];
 
-// users.full_name and users.notifications_enabled are NOT NULL. Every other
+// users.full_name, users.notifications_enabled and users.weight_unit are
+// NOT NULL. Every other
 // WRITABLE column allows NULL, and clearing an optional field is legitimate.
-const REQUIRED_NOT_NULL = ['fullName', 'notificationsEnabled'];
+const REQUIRED_NOT_NULL = ['fullName', 'notificationsEnabled', 'weightUnit'];
 
 // Both columns are VARCHAR(255). An over-length string must be rejected here,
 // not discovered as ER_DATA_TOO_LONG from the database.

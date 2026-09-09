@@ -88,6 +88,29 @@ test('profile endpoints', async (t) => {
     assert.equal(res.body.error.code, 'INVALID_PROFILE_FIELD');
   });
 
+  // Weights are stored in kilograms whatever this says -- it decides what the
+  // app renders and how it reads typed input, nothing about the column.
+  await t.test('a new profile measures weight in kilograms', async () => {
+    await reset();
+    const res = await request(app).get('/api/v1/profile').set('Authorization', auth).expect(200);
+    assert.equal(res.body.data.profile.weightUnit, 'kg');
+  });
+
+  await t.test('the weight unit can be switched to pounds', async () => {
+    await reset();
+    await request(app).patch('/api/v1/profile').set('Authorization', auth)
+      .send({ weightUnit: 'lb' }).expect(200);
+    const res = await request(app).get('/api/v1/profile').set('Authorization', auth).expect(200);
+    assert.equal(res.body.data.profile.weightUnit, 'lb');
+  });
+
+  await t.test('rejects a weight unit outside the enum', async () => {
+    await reset();
+    const res = await request(app).patch('/api/v1/profile').set('Authorization', auth)
+      .send({ weightUnit: 'stones' }).expect(400);
+    assert.equal(res.body.error.code, 'INVALID_PROFILE_FIELD');
+  });
+
   await t.test('refuses to write a field that is not editable', async () => {
     await reset();
     await request(app).patch('/api/v1/profile').set('Authorization', auth)
@@ -130,6 +153,10 @@ test('profile endpoints', async (t) => {
     const res2 = await request(app).patch('/api/v1/profile').set('Authorization', auth)
       .send({ notificationsEnabled: null }).expect(400);
     assert.equal(res2.body.error.code, 'INVALID_PROFILE_FIELD');
+
+    const res3 = await request(app).patch('/api/v1/profile').set('Authorization', auth)
+      .send({ weightUnit: null }).expect(400);
+    assert.equal(res3.body.error.code, 'INVALID_PROFILE_FIELD');
   });
 
   await t.test('rejects a value longer than the column allows', async () => {

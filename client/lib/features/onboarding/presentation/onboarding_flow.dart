@@ -206,6 +206,13 @@ class _OnboardingFlowState extends ConsumerState<OnboardingFlow> {
         1 => AboutStep(
             value: _about,
             onChanged: (value) => _about = value,
+            // Saved to the account as it is tapped rather than held with the
+            // rest of the step: it changes what the two cards on screen say
+            // right now, so it cannot wait for Continue.
+            unit: ref.watch(weightUnitProvider),
+            onUnitChanged: (unit) => ref
+                .read(profileProvider.notifier)
+                .patch({'weightUnit': unit.api}),
           ),
         2 => LevelStep(
             value: _level,
