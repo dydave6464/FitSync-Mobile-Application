@@ -82,13 +82,21 @@ void main() {
       'planId': 1, 'name': 'Old', 'splitStyle': 'full_body',
       'daysPerWeek': 3, 'sessionLengthMin': 45, 'weekNo': 1,
       'exercises': [
+        // No dayNo -- what an old server sends -- so this one reads as day 1.
         {'planExerciseId': 1, 'exerciseId': 10, 'name': 'Squat', 'muscleGroup': 'quads',
          'orderNo': 1, 'targetSets': 3, 'targetReps': '8-12'},
+        // A second, explicit day. Its presence is what makes the assertion
+        // below mean something: a filter that ignored dayNo and returned
+        // every exercise for a null day would pass a one-exercise fixture
+        // just as well as a correct one.
+        {'planExerciseId': 2, 'exerciseId': 11, 'name': 'Row', 'muscleGroup': 'lats',
+         'dayNo': 2, 'orderNo': 1, 'targetSets': 3, 'targetReps': '8-12'},
       ],
     });
 
-    expect(plan.exercises.single.dayNo, 1);
-    // Null day -- a session stamped before migration 013 -- is day 1.
+    expect(plan.exercises.first.dayNo, 1);
+    // Null day -- a session stamped before migration 013 -- is day 1, not
+    // every day: Row must not leak in alongside Squat.
     expect(plan.exercisesForDay(null).map((e) => e.name), ['Squat']);
   });
 }

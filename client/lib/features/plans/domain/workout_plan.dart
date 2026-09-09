@@ -65,7 +65,7 @@ class PlanDay {
   final String name;
 
   factory PlanDay.fromJson(Map<String, dynamic> json) => PlanDay(
-        dayNo: json['dayNo'] as int,
+        dayNo: json['dayNo'] as int? ?? 1,
         name: json['name'] as String? ?? '',
       );
 }

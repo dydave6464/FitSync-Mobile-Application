@@ -709,4 +709,16 @@ void main() {
     expect(find.text('Goblet squat'), findsNothing);
     expect(find.textContaining('Exercise 1 / 1'), findsOneWidget);
   });
+
+  // A session stamped before migration 013 carries no planDayNo at all --
+  // this is where that lands in the wiring, not just the model: the logger
+  // must read the null as day 1, the same as exercisesForDay does on its own.
+  testWidgets('a session with no planDayNo shows day 1 of the rotation',
+      (tester) async {
+    await _pump(tester, plan: _rotationPlan, session: _session());
+
+    expect(find.text('Goblet squat'), findsOneWidget);
+    expect(find.textContaining('Push-up'), findsNothing);
+    expect(find.textContaining('Exercise 1 / 1'), findsOneWidget);
+  });
 }

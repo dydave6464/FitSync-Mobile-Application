@@ -334,6 +334,7 @@ void main() {
       durationMin: 30,
       totalVolumeKg: 500.0,
       sets: const [],
+      planDayNo: 2,
     );
 
     final updated =
@@ -346,5 +347,9 @@ void main() {
     expect(updated.startedAt, startedAt);
     expect(updated.durationMin, 30);
     expect(updated.totalVolumeKg, 500.0);
+    // The copy-helper trap: dropping planDayNo here would blank the day on
+    // the first logged set, and a day-2 session would re-filter to day 1
+    // mid-workout.
+    expect(updated.planDayNo, 2);
   });
 }
