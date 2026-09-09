@@ -74,9 +74,12 @@ def test_sets_never_fall_below_two():
     assert params.target_sets == 2
 
 
-def test_split_style_is_always_full_body_in_this_phase():
-    # plan_exercises has no day_no, so a plan is one flat ordered list. Any
-    # other split value would be a label the rows contradict -- spec section 7.
+def test_no_profile_field_changes_the_default_split():
+    # The split is the caller's choice, never inferred from the profile: with
+    # no override, every goal and every experience level lands on full body.
+    # Migration 013 added day_no and derive can return any of the four styles
+    # now, so what this pins is the DEFAULT -- across the whole goal and level
+    # matrix, which the single-profile onboarding test below does not cover.
     for goal in ("gain_strength", "build_muscle", "lose_weight", "general_fitness"):
         for level in ("beginner", "intermediate"):
             params = derive(profile(mainGoal=goal, fitnessLevel=level))

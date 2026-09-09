@@ -8,17 +8,21 @@ from typing import Any, Mapping, NamedTuple, Optional
 
 from app.rules.splits import resolve as resolve_split
 
-# Three days for everyone, whatever their activity level says.
+# Three days by default, whatever the activity level says.
 #
 # It used to scale to four or five. That reads as a reward for being active and
-# is not one: a single session is generated and repeated, so a fifth day is the
-# same six exercises a fifth time, not more training. Three is also the
-# schedule a beginner keeps to, and the one full-body programmes are written
-# around -- a day between sessions for the muscle worked to recover.
+# is not one: this is the default, and the default plan is full body -- a
+# rotation of one day -- so a fifth day is that same session a fifth time, not
+# more training. Three is also the schedule a beginner keeps to, and the one
+# full-body programmes are written around: a day between sessions for the
+# muscle worked to recover.
+#
+# A split with a longer rotation does have distinct days to spread across,
+# which is why days per week is an override rather than a constant now. Nothing
+# sends one during onboarding, so a first plan still lands here.
 #
 # Activity level still shapes the calorie estimate the About step shows; it no
-# longer shapes the plan. This is now only the default, used when the caller
-# supplies no daysPerWeek override.
+# longer shapes the plan.
 DAYS_PER_WEEK = 3
 
 LONG_SESSION_GOALS = ("gain_strength", "build_muscle")
