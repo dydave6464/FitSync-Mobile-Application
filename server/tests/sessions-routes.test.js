@@ -427,9 +427,12 @@ test('session endpoints', async (t) => {
     const { token } = await freshUserWithRotation('daywrap@example.com', 3);
 
     // Three completed sessions, then the fourth is day 1 again -- which is
-    // what a four-day push/pull/legs week is.
+    // what a four-day push/pull/legs week is. Pin every day of the cycle,
+    // not just the wrap point, so a rotation that drifts partway through
+    // still fails here.
     for (let i = 0; i < 3; i += 1) {
       const s = await auth(request(app).post('/api/v1/sessions'), token).expect(201);
+      assert.equal(s.body.data.session.planDayNo, i + 1);
       await auth(
         request(app).post(`/api/v1/sessions/${s.body.data.session.sessionId}/complete`),
         token,
@@ -437,6 +440,42 @@ test('session endpoints', async (t) => {
     }
     const fourth = await auth(request(app).post('/api/v1/sessions'), token).expect(201);
     assert.equal(fourth.body.data.session.planDayNo, 1);
+  });
+
+  // freshUser gives every plan days_per_week = 3, and every rotation test
+  // above also happens to use a 3-day rotation -- so an implementation that
+  // read days_per_week off the plan row, or one that simply hardcoded 3,
+  // would pass every test above too. Rotation 2 against days_per_week 3
+  // makes the two numbers disagree: the correct MAX(day_no) implementation
+  // gives 2 mod 2 + 1 = 1 for the third session, where a days_per_week
+  // implementation would give 2 mod 3 + 1 = 3.
+  await t.test('the rotation comes from the plan exercise rows, not from days_per_week', async () => {
+    const { token } = await freshUserWithRotation('dayrowsource@example.com', 2);
+
+    for (let i = 0; i < 2; i += 1) {
+      const s = await auth(request(app).post('/api/v1/sessions'), token).expect(201);
+      await auth(
+        request(app).post(`/api/v1/sessions/${s.body.data.session.sessionId}/complete`),
+        token,
+      ).send({ durationMin: 30 }).expect(200);
+    }
+
+    const third = await auth(request(app).post('/api/v1/sessions'), token).expect(201);
+    assert.equal(third.body.data.session.planDayNo, 1);
+  });
+
+  // MAX(day_no) is NULL when a plan has no plan_exercises rows at all --
+  // freshUserWithRotation never produces this on its own, since it always
+  // inserts at least one row per day, so it takes its own raw-SQL setup.
+  // nextPlanDayNo's `!rotation || rotation < 1` guard and startSession's
+  // `Number(...) || 1` are what stand between that NULL and a stamped 0.
+  await t.test('a plan with no exercise rows still stamps day one, not zero or null', async () => {
+    const { token, userId } = await freshUser('dayempty@example.com');
+    await pool.query('DELETE FROM plan_exercises WHERE plan_id IN '
+      + '(SELECT plan_id FROM workout_plans WHERE user_id = ?)', [userId]);
+
+    const res = await auth(request(app).post('/api/v1/sessions'), token).expect(201);
+    assert.equal(res.body.data.session.planDayNo, 1);
   });
 
   await t.test('an abandoned session does not advance the rotation', async () => {
