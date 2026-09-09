@@ -21,6 +21,38 @@ const _plan = WorkoutPlan(
   ],
 );
 
+/// A two-day rotation whose days hold different numbers of exercises, so a
+/// count of the whole plan cannot pass for a count of today's day.
+const _rotationPlan = WorkoutPlan(
+  planId: 43,
+  name: 'Upper / Lower — Build Muscle',
+  splitStyle: 'upper_lower',
+  daysPerWeek: 4,
+  sessionLengthMin: 45,
+  weekNo: 1,
+  days: [
+    PlanDay(dayNo: 1, name: 'Upper'),
+    PlanDay(dayNo: 2, name: 'Lower'),
+  ],
+  exercises: [
+    PlanExercise(
+      planExerciseId: 611, exerciseId: 111, name: 'Bench press',
+      muscleGroup: 'pectorals', orderNo: 1, targetSets: 3, targetReps: '8-12',
+      dayNo: 1,
+    ),
+    PlanExercise(
+      planExerciseId: 612, exerciseId: 112, name: 'Back squat',
+      muscleGroup: 'quads', orderNo: 1, targetSets: 3, targetReps: '8-12',
+      dayNo: 2,
+    ),
+    PlanExercise(
+      planExerciseId: 613, exerciseId: 113, name: 'Leg curl',
+      muscleGroup: 'hamstrings', orderNo: 2, targetSets: 3, targetReps: '8-12',
+      dayNo: 2,
+    ),
+  ],
+);
+
 Widget _host(Widget child) => MaterialApp(
       theme: fsLightTheme(),
       home: Scaffold(body: child),
@@ -188,5 +220,27 @@ void main() {
 
     await tester.tap(find.byKey(const Key('session.start')), warnIfMissed: false);
     expect(taps, 0);
+  });
+
+  testWidgets("the card counts today's day, not the whole rotation",
+      (tester) async {
+    // The card sat directly above the Plan tab's exercise list, which shows
+    // one day: "3 exercises" over a list of one is the card disagreeing with
+    // the screen it is on.
+    await tester.pumpWidget(_host(SessionCard(
+      plan: _rotationPlan, hasActiveSession: false, onStart: () {},
+    )));
+
+    expect(find.textContaining('1 exercise'), findsOneWidget);
+    expect(find.textContaining('3 exercises'), findsNothing);
+
+    // And it is the day it was handed, not day 1 for everyone: Lower holds
+    // two of the three. Without this, a filter hardcoded to day 1 would pass
+    // the assertion above just as well as a correct one.
+    await tester.pumpWidget(_host(SessionCard(
+      plan: _rotationPlan, hasActiveSession: false, dayNo: 2, onStart: () {},
+    )));
+
+    expect(find.textContaining('2 exercises'), findsOneWidget);
   });
 }

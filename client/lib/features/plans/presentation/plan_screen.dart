@@ -131,20 +131,13 @@ class _PlanViewState extends ConsumerState<_PlanView> {
     final baseUrl = ref.watch(planRepositoryProvider).baseUrl;
     final completedDays = ref.watch(completedDaysProvider).value ?? const <String>{};
 
-    // Mirrors nextPlanDayNo in server/src/db/sessions.js: the day advances
-    // with completed sessions, not with the calendar. Computed here only to
-    // show the right list before a session exists -- once one is started the
-    // server's stamped plan_day_no is the authority.
-    //
-    // completedDays counts DISTINCT completed session dates, while the server
-    // counts completed sessions with COUNT(*). Those disagree for someone who
-    // completes two sessions on the same calendar date: the server advances
-    // the rotation twice, this preview only once. It is a display-only
-    // preview, not a source of truth, and is superseded the moment a session
-    // starts: the logger reads that session's own stamped day, not this
-    // preview.
+    // The rule itself lives on WorkoutPlan.todayDayNo, with the caveat about
+    // distinct dates: the Home tab's plan card needs the same number, and two
+    // screens computing it apart is how they come to disagree. Computed here
+    // only to show the right list before a session exists -- once one is
+    // started the server's stamped plan_day_no is the authority.
     final rotation = plan.days.isEmpty ? 1 : plan.days.length;
-    final todayDayNo = (completedDays.length % rotation) + 1;
+    final todayDayNo = plan.todayDayNo(completedDays.length);
     final exercises = plan.exercisesForDay(todayDayNo);
     final dayName = rotation == 1
         ? null
@@ -164,6 +157,7 @@ class _PlanViewState extends ConsumerState<_PlanView> {
         const SizedBox(height: 14),
         SessionCard(
           plan: plan,
+          dayNo: todayDayNo,
           hasActiveSession: ref.watch(activeSessionProvider).value != null,
           starting: _starting,
           onStart: _startOrResume,

@@ -109,6 +109,28 @@ class WorkoutPlan {
             .toList(growable: false),
       );
 
+  /// Which rotation day today falls on, from how many sessions are already
+  /// complete this week.
+  ///
+  /// Mirrors nextPlanDayNo in `server/src/db/sessions.js`: the day advances
+  /// with completed sessions, not with the calendar, so a missed day costs a
+  /// day rather than a session. The fourth session of a three-day rotation
+  /// is day 1 again, which is what a four-day push/pull/legs week is.
+  ///
+  /// This is a display-only preview and can disagree with the server by one
+  /// step: its callers pass the number of DISTINCT completed session dates,
+  /// while the server counts sessions with COUNT(*), so someone who trains
+  /// twice on one date advances the server's rotation twice and this
+  /// preview's once. It is superseded the moment a session starts -- the
+  /// logger reads that session's own stamped `planDayNo`, never this.
+  ///
+  /// A plan with no [days] is a one-day plan, which is what a flat ordered
+  /// list already means -- and what stops a zero rotation dividing by zero.
+  int todayDayNo(int completedSessions) {
+    final rotation = days.isEmpty ? 1 : days.length;
+    return (completedSessions % rotation) + 1;
+  }
+
   /// The exercises for one rotation day, in order.
   ///
   /// A null day is a session stamped before migration 013; it reads as day 1,

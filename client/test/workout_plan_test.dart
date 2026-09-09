@@ -99,4 +99,43 @@ void main() {
     // every day: Row must not leak in alongside Squat.
     expect(plan.exercisesForDay(null).map((e) => e.name), ['Squat']);
   });
+
+  group('todayDayNo', () {
+    const ppl = WorkoutPlan(
+      planId: 1, name: 'PPL', splitStyle: 'push_pull_legs',
+      daysPerWeek: 3, sessionLengthMin: 45, weekNo: 1,
+      exercises: [],
+      days: [
+        PlanDay(dayNo: 1, name: 'Push'),
+        PlanDay(dayNo: 2, name: 'Pull'),
+        PlanDay(dayNo: 3, name: 'Legs'),
+      ],
+    );
+
+    test('the first session of a week is day one', () {
+      expect(ppl.todayDayNo(0), 1);
+    });
+
+    test('the rotation advances with each completed session', () {
+      expect(ppl.todayDayNo(1), 2);
+      expect(ppl.todayDayNo(2), 3);
+    });
+
+    test('a fourth session wraps back to the start of the rotation', () {
+      // A four-day push/pull/legs week is Push, Pull, Legs, Push -- four
+      // sessions drawn from three days, not a fourth day that does not exist.
+      expect(ppl.todayDayNo(3), 1);
+    });
+
+    test('a plan from a server without days is always day one', () {
+      const flat = WorkoutPlan(
+        planId: 1, name: 'Old', splitStyle: 'full_body',
+        daysPerWeek: 3, sessionLengthMin: 45, weekNo: 1, exercises: [],
+      );
+      // Rotation length zero would divide by zero; a plan with no days is a
+      // one-day plan, which is what a flat ordered list already means.
+      expect(flat.todayDayNo(0), 1);
+      expect(flat.todayDayNo(7), 1);
+    });
+  });
 }

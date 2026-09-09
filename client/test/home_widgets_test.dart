@@ -42,6 +42,45 @@ WorkoutPlan _plan({
       ],
     );
 
+/// A three-day rotation with a different number of exercises on each day,
+/// so a count that reports the whole plan cannot be mistaken for one that
+/// reports today's day.
+const _rotationPlan = WorkoutPlan(
+  planId: 2,
+  name: 'Push / Pull / Legs — Build Muscle',
+  splitStyle: 'push_pull_legs',
+  daysPerWeek: 3,
+  sessionLengthMin: 45,
+  weekNo: 1,
+  days: [
+    PlanDay(dayNo: 1, name: 'Push'),
+    PlanDay(dayNo: 2, name: 'Pull'),
+    PlanDay(dayNo: 3, name: 'Legs'),
+  ],
+  exercises: [
+    PlanExercise(
+      planExerciseId: 701, exerciseId: 201, name: 'Bench press',
+      muscleGroup: 'pectorals', orderNo: 1, targetSets: 3, targetReps: '8-12',
+      dayNo: 1,
+    ),
+    PlanExercise(
+      planExerciseId: 702, exerciseId: 202, name: 'Barbell row',
+      muscleGroup: 'lats', orderNo: 1, targetSets: 3, targetReps: '8-12',
+      dayNo: 2,
+    ),
+    PlanExercise(
+      planExerciseId: 703, exerciseId: 203, name: 'Lat pulldown',
+      muscleGroup: 'lats', orderNo: 2, targetSets: 3, targetReps: '8-12',
+      dayNo: 2,
+    ),
+    PlanExercise(
+      planExerciseId: 704, exerciseId: 204, name: 'Back squat',
+      muscleGroup: 'quads', orderNo: 1, targetSets: 3, targetReps: '8-12',
+      dayNo: 3,
+    ),
+  ],
+);
+
 const _someEquipment = [EquipmentOption(equipmentId: 1, name: 'Dumbbells')];
 
 Profile _profile({
@@ -417,5 +456,32 @@ void main() {
         reason: 'maxLines: 1 must cap the eyebrow to one line, not let it '
             'wrap and silently spill past the 86px available inside the '
             'band');
+  });
+
+  testWidgets("the card counts today's day, not the whole rotation",
+      (tester) async {
+    // The card is titled "Today's plan" and sits above a Start button that
+    // opens one session. Counting all four exercises of a three-day rotation
+    // promises a workout twice the length of the one that starts.
+    await tester.pumpWidget(_host(PlanCard(
+      plan: _rotationPlan,
+      weightKg: 70,
+      onStart: () {},
+    )));
+
+    expect(find.textContaining('1 exercise'), findsOneWidget);
+    expect(find.textContaining('4 exercises'), findsNothing);
+
+    // And it is the day it was handed, not day 1 for everyone: Pull holds
+    // two of the four. Without this, a filter hardcoded to day 1 would pass
+    // the assertion above just as well as a correct one.
+    await tester.pumpWidget(_host(PlanCard(
+      plan: _rotationPlan,
+      weightKg: 70,
+      dayNo: 2,
+      onStart: () {},
+    )));
+
+    expect(find.textContaining('2 exercises'), findsOneWidget);
   });
 }

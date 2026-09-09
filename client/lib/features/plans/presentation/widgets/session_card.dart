@@ -12,9 +12,16 @@ class SessionCard extends StatelessWidget {
     required this.hasActiveSession,
     required this.onStart,
     this.starting = false,
+    this.dayNo,
   });
 
   final WorkoutPlan plan;
+
+  /// Which rotation day this card is describing — the caller works it out
+  /// with [WorkoutPlan.todayDayNo], since it depends on how many sessions
+  /// are already complete this week. Null reads as day 1, which is what a
+  /// plan from a server predating per-day plans is.
+  final int? dayNo;
 
   /// True when a session is already in progress — the button then resumes it
   /// rather than starting a second.
@@ -27,7 +34,11 @@ class SessionCard extends StatelessWidget {
   Widget build(BuildContext context) {
     final t = context.fs;
     final theme = Theme.of(context);
-    final count = plan.exercises.length;
+    // Today's day, not the whole rotation. This card sits directly above the
+    // Plan tab's exercise list, which shows one day: on a three-day rotation
+    // it read "24 exercises" over a list of eight. exercisesForDay is the
+    // single home of that filtering.
+    final count = plan.exercisesForDay(dayNo).length;
 
     final facts = [
       describeSplit(plan.splitStyle),

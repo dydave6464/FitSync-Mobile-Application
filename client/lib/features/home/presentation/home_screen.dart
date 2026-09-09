@@ -6,6 +6,7 @@ import '../../../core/widgets/fs_kit.dart';
 import '../../exercises/presentation/exercise_list_screen.dart'
     show describeError;
 import '../../plans/presentation/providers.dart';
+import '../../sessions/presentation/providers.dart' show completedDaysProvider;
 import '../../profile/presentation/providers.dart';
 import 'widgets/greeting.dart';
 import 'widgets/plan_card.dart';
@@ -27,6 +28,10 @@ class HomeScreen extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final profile = ref.watch(profileProvider);
     final plan = ref.watch(activePlanProvider);
+    // Only to place the plan in its rotation -- see WorkoutPlan.todayDayNo.
+    // An unread count is an empty week, which is day 1: the card names one
+    // day either way, never the whole rotation.
+    final completedDays = ref.watch(completedDaysProvider).value ?? const <String>{};
 
     return Scaffold(
       backgroundColor: context.fs.bg,
@@ -63,6 +68,7 @@ class HomeScreen extends ConsumerWidget {
                     : PlanCard(
                         plan: workoutPlan,
                         weightKg: p.weightKg,
+                        dayNo: workoutPlan.todayDayNo(completedDays.length),
                         onStart: () => onGoToTrain?.call(),
                       ),
               ),

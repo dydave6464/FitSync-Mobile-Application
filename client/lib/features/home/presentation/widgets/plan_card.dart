@@ -16,11 +16,18 @@ class PlanCard extends StatelessWidget {
     required this.plan,
     required this.weightKg,
     required this.onStart,
+    this.dayNo,
   });
 
   final WorkoutPlan plan;
   final double? weightKg;
   final VoidCallback onStart;
+
+  /// Which rotation day this card is describing — the caller works it out
+  /// with [WorkoutPlan.todayDayNo], since it depends on how many sessions
+  /// are already complete this week. Null reads as day 1, which is what a
+  /// plan from a server predating per-day plans is.
+  final int? dayNo;
 
   @override
   Widget build(BuildContext context) {
@@ -28,7 +35,11 @@ class PlanCard extends StatelessWidget {
     final theme = Theme.of(context);
     final kcal = estimateSessionKcal(plan: plan, weightKg: weightKg);
 
-    final exerciseCount = plan.exercises.length;
+    // Today's day, not the whole rotation: this card is titled "Today's
+    // plan" and its button starts one session, so counting a three-day
+    // rotation's exercises promised a workout three times the one that
+    // starts. exercisesForDay is the single home of that filtering.
+    final exerciseCount = plan.exercisesForDay(dayNo).length;
     final meta = [
       '$exerciseCount exercise${exerciseCount == 1 ? '' : 's'}',
       '~${plan.sessionLengthMin} min',
