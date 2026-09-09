@@ -174,10 +174,24 @@ test('plan persistence', async (t) => {
       weekNo: 1,
       exercises: [
         // Deliberately out of order, so the ORDER BY is doing the work rather
-        // than the insertion sequence.
+        // than the insertion sequence. Day 1's orderNo 2 row is inserted (and
+        // so gets the lower plan_exercise_id) before its orderNo 1 row, which
+        // rules out plain insertion/primary-key order as an accidental
+        // stand-in for ORDER BY's order_no term.
+        //
+        // It does NOT rule out every accidental pass: idx_plan_exercises_plan
+        // is (plan_id, order_no), so MySQL satisfies `WHERE pe.plan_id = ?`
+        // by scanning that index and hands the day_no filesort its input
+        // already in order_no order, regardless of insertion sequence --
+        // confirmed with EXPLAIN, which shows "Using filesort" off that key.
+        // Dropping ", pe.order_no" from the query's ORDER BY still passed
+        // this test with this fixture. Proving order_no is truly load-bearing
+        // would need defeating that index (a query hint, or a schema change),
+        // which is out of scope here; this ordering is worth keeping because
+        // it is still strictly more honest than sorting by insertion order.
         { name: b, dayNo: 2, orderNo: 1, targetSets: 3, targetReps: '8-12' },
-        { name: a, dayNo: 1, orderNo: 1, targetSets: 3, targetReps: '8-12' },
         { name: c, dayNo: 1, orderNo: 2, targetSets: 3, targetReps: '8-12' },
+        { name: a, dayNo: 1, orderNo: 1, targetSets: 3, targetReps: '8-12' },
       ],
     });
 
@@ -212,6 +226,11 @@ test('plan persistence', async (t) => {
 
     const plan = await getActivePlan(pool, userId);
     assert.equal(plan.exercises.length, 2);
+    // Proves savePlan actually stored dayNo for each row rather than the
+    // test passing on row count alone -- which would pass even if dayNo
+    // were silently dropped.
+    assert.deepEqual(plan.exercises.map((e) => e.dayNo), [1, 2]);
+    assert.deepEqual(plan.days, [{ dayNo: 1, name: 'Upper' }, { dayNo: 2, name: 'Lower' }]);
   });
 
   await t.test('a plan saved without days reads as one full-body day', async () => {

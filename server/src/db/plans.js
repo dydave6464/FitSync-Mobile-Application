@@ -5,10 +5,14 @@ const AppError = require('../lib/app-error');
 // nothing lets anyone type one: generated and custom plans both PICK a split,
 // and the split is what names its days. See the design, sections 3 and 4.
 //
-// This must agree with ml/app/rules/splits.py, which decides day 2 is a pull
-// day by the muscles it draws from. Two services in different languages that
-// cannot share code, so the agreement is pinned by a test asserting day 1 of a
-// push_pull_legs plan holds push MUSCLES -- not merely that a day 1 exists.
+// This is the server half of a hand-maintained contract with
+// ml/app/rules/splits.py, which decides day 2 is a pull day by the muscles
+// it draws from. The two services share no code, so nothing here can see
+// splits.py and nothing there can see this file: each side pins its own
+// literals against its own tests (this file's labels here, the muscle
+// tuples in ml/tests/test_splits.py and test_contract.py on that side), and
+// drift is caught only if one side is edited and the other is not -- no
+// test spans both processes.
 const SPLIT_DAY_NAMES = {
   full_body: ['Full body'],
   push_pull_legs: ['Push', 'Pull', 'Legs'],
@@ -17,7 +21,9 @@ const SPLIT_DAY_NAMES = {
 };
 
 function dayNamesFor(splitStyle) {
-  return SPLIT_DAY_NAMES[splitStyle] || SPLIT_DAY_NAMES.full_body;
+  // .slice(): this is exported, so a caller mutating the returned array
+  // must not corrupt the module-level map for every plan after it.
+  return (SPLIT_DAY_NAMES[splitStyle] || SPLIT_DAY_NAMES.full_body).slice();
 }
 
 // The ML service names exercises; plan_exercises needs ids, and the column is
