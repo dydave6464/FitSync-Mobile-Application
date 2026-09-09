@@ -262,7 +262,7 @@ class _SessionLoggerScreenState extends ConsumerState<SessionLoggerScreen> {
       return const Scaffold(body: Center(child: CircularProgressIndicator()));
     }
 
-    final exercises = plan.exercises;
+    final exercises = plan.exercisesForDay(session.planDayNo);
     if (exercises.isEmpty) {
       return const Scaffold(body: Center(child: CircularProgressIndicator()));
     }

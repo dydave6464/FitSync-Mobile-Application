@@ -10,6 +10,7 @@ class PlanExercise {
     required this.targetReps,
     this.thumbnailUrl,
     this.equipment,
+    this.dayNo = 1,
   });
 
   /// Identifies this row within the plan. Swapping addresses this, not
@@ -21,6 +22,10 @@ class PlanExercise {
   final String muscleGroup;
   final int orderNo;
   final int targetSets;
+
+  /// Which rotation day this exercise belongs to. 1 for every plan generated
+  /// before per-day splits, and for every full-body plan since.
+  final int dayNo;
 
   /// A string, not a number: `plan_exercises.target_reps` is `VARCHAR(255)`
   /// and the generator writes ranges like "8-12". Typing this as an int
@@ -47,6 +52,21 @@ class PlanExercise {
         targetReps: json['targetReps']?.toString() ?? '',
         thumbnailUrl: json['thumbnailUrl'] as String?,
         equipment: json['equipment'] as String?,
+        dayNo: json['dayNo'] as int? ?? 1,
+      );
+}
+
+/// One day of a plan's rotation. The name is derived server-side from the
+/// split style; the client only displays it.
+class PlanDay {
+  const PlanDay({required this.dayNo, required this.name});
+
+  final int dayNo;
+  final String name;
+
+  factory PlanDay.fromJson(Map<String, dynamic> json) => PlanDay(
+        dayNo: json['dayNo'] as int,
+        name: json['name'] as String? ?? '',
       );
 }
 
@@ -59,6 +79,7 @@ class WorkoutPlan {
     required this.sessionLengthMin,
     required this.weekNo,
     required this.exercises,
+    this.days = const [],
   });
 
   final int planId;
@@ -68,6 +89,10 @@ class WorkoutPlan {
   final int sessionLengthMin;
   final int weekNo;
   final List<PlanExercise> exercises;
+
+  /// The full rotation. Empty from a server that predates per-day plans, in
+  /// which case the plan is a single unnamed day.
+  final List<PlanDay> days;
 
   factory WorkoutPlan.fromJson(Map<String, dynamic> json) => WorkoutPlan(
         planId: json['planId'] as int,
@@ -79,7 +104,19 @@ class WorkoutPlan {
         exercises: ((json['exercises'] as List<dynamic>?) ?? const [])
             .map((e) => PlanExercise.fromJson(e as Map<String, dynamic>))
             .toList(growable: false),
+        days: ((json['days'] as List<dynamic>?) ?? const [])
+            .map((d) => PlanDay.fromJson(d as Map<String, dynamic>))
+            .toList(growable: false),
       );
+
+  /// The exercises for one rotation day, in order.
+  ///
+  /// A null day is a session stamped before migration 013; it reads as day 1,
+  /// which is what its plan was.
+  List<PlanExercise> exercisesForDay(int? dayNo) {
+    final day = dayNo ?? 1;
+    return exercises.where((e) => e.dayNo == day).toList(growable: false);
+  }
 }
 
 /// Turns a `split_style` slug into something readable without pretending to

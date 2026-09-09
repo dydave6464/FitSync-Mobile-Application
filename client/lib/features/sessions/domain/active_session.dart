@@ -36,6 +36,7 @@ class ActiveSession {
     this.durationMin,
     this.totalVolumeKg,
     this.sets = const [],
+    this.planDayNo,
   });
 
   final int sessionId;
@@ -54,6 +55,10 @@ class ActiveSession {
   final int? durationMin;
   final double? totalVolumeKg;
   final List<LoggedSet> sets;
+
+  /// Which rotation day of the plan this session is. Null for sessions
+  /// stamped before migration 013; read as day 1.
+  final int? planDayNo;
 
   bool get isInProgress => status == 'in_progress';
 
@@ -96,6 +101,7 @@ class ActiveSession {
         durationMin: durationMin,
         totalVolumeKg: totalVolumeKg,
         sets: sets ?? this.sets,
+        planDayNo: planDayNo,
       );
 
   factory ActiveSession.fromJson(Map<String, dynamic> json) => ActiveSession(
@@ -111,6 +117,7 @@ class ActiveSession {
         sets: ((json['sets'] as List<dynamic>?) ?? const [])
             .map((e) => LoggedSet.fromJson(e as Map<String, dynamic>))
             .toList(growable: false),
+        planDayNo: json['planDayNo'] as int?,
       );
 }
 

@@ -52,4 +52,43 @@ void main() {
     );
     expect(Profile.fromJson(_profileJson({})).joinedAt, isNull);
   });
+
+  test('a plan exposes only one day of exercises at a time', () {
+    final plan = WorkoutPlan.fromJson({
+      'planId': 1,
+      'name': 'PPL',
+      'splitStyle': 'push_pull_legs',
+      'daysPerWeek': 3,
+      'sessionLengthMin': 45,
+      'weekNo': 1,
+      'days': [
+        {'dayNo': 1, 'name': 'Push'},
+        {'dayNo': 2, 'name': 'Pull'},
+      ],
+      'exercises': [
+        {'planExerciseId': 1, 'exerciseId': 10, 'name': 'Bench', 'muscleGroup': 'pectorals',
+         'dayNo': 1, 'orderNo': 1, 'targetSets': 3, 'targetReps': '8-12'},
+        {'planExerciseId': 2, 'exerciseId': 11, 'name': 'Row', 'muscleGroup': 'lats',
+         'dayNo': 2, 'orderNo': 1, 'targetSets': 3, 'targetReps': '8-12'},
+      ],
+    });
+
+    expect(plan.days.map((d) => d.name), ['Push', 'Pull']);
+    expect(plan.exercisesForDay(2).map((e) => e.name), ['Row']);
+  });
+
+  test('a plan from a server without days reads as one day', () {
+    final plan = WorkoutPlan.fromJson({
+      'planId': 1, 'name': 'Old', 'splitStyle': 'full_body',
+      'daysPerWeek': 3, 'sessionLengthMin': 45, 'weekNo': 1,
+      'exercises': [
+        {'planExerciseId': 1, 'exerciseId': 10, 'name': 'Squat', 'muscleGroup': 'quads',
+         'orderNo': 1, 'targetSets': 3, 'targetReps': '8-12'},
+      ],
+    });
+
+    expect(plan.exercises.single.dayNo, 1);
+    // Null day -- a session stamped before migration 013 -- is day 1.
+    expect(plan.exercisesForDay(null).map((e) => e.name), ['Squat']);
+  });
 }

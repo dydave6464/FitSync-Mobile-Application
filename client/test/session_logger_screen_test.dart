@@ -36,6 +36,34 @@ const _plan = WorkoutPlan(
   ],
 );
 
+/// Same two exercises as [_plan], split across two rotation days -- for the
+/// one test that needs the logger to filter rather than show everything.
+/// Kept separate from [_plan] rather than folding the day split into it:
+/// every other test in this file pumps [_plan] through a session with no
+/// planDayNo, and a filtered logger can only ever show one day at a time --
+/// splitting the shared fixture would silently drop Push-up out of every one
+/// of those, since none of them would resolve to day 2.
+const _rotationPlan = WorkoutPlan(
+  planId: 42,
+  name: 'Week 1 — Full body',
+  splitStyle: 'push_pull_legs',
+  daysPerWeek: 3,
+  sessionLengthMin: 45,
+  weekNo: 1,
+  exercises: [
+    PlanExercise(
+      planExerciseId: 601, exerciseId: 101, name: 'Goblet squat',
+      muscleGroup: 'quadriceps', orderNo: 1, targetSets: 3, targetReps: '8-12',
+      dayNo: 1,
+    ),
+    PlanExercise(
+      planExerciseId: 602, exerciseId: 102, name: 'Push-up',
+      muscleGroup: 'chest', orderNo: 2, targetSets: 2, targetReps: '10-15',
+      dayNo: 2,
+    ),
+  ],
+);
+
 /// Stands in for the real controller so the screen can be driven without a
 /// network. Records what the screen asked for.
 class FakeSessionController extends ActiveSessionController {
@@ -141,12 +169,13 @@ class FakeProfileNotifier extends ProfileNotifier {
   Future<void> patch(Map<String, dynamic> fields) async => patches.add(fields);
 }
 
-ActiveSession _session({List<LoggedSet> sets = const []}) => ActiveSession(
+ActiveSession _session({List<LoggedSet> sets = const [], int? planDayNo}) => ActiveSession(
       sessionId: 7,
       status: 'in_progress',
       sessionDate: '2026-09-08',
       startedAt: DateTime.now().subtract(const Duration(minutes: 12)),
       sets: sets,
+      planDayNo: planDayNo,
     );
 
 /// Pushes the logger the way the Training shell does, rather than mounting it
@@ -162,12 +191,13 @@ Future<FakeSessionController> _pump(
   ActiveSession? session,
   WeightUnit unit = WeightUnit.kg,
   List<Map<String, dynamic>>? patches,
+  WorkoutPlan plan = _plan,
 }) async {
   final controller = FakeSessionController(session ?? _session());
 
   await tester.pumpWidget(ProviderScope(
     overrides: [
-      activePlanProvider.overrideWith((ref) async => _plan),
+      activePlanProvider.overrideWith((ref) async => plan),
       profileProvider.overrideWith(() => FakeProfileNotifier(unit, patches ?? [])),
       activeSessionProvider.overrideWith(() => controller),
       lastPerformanceProvider.overrideWith((ref, key) async => const {}),
@@ -667,5 +697,16 @@ void main() {
 
     expect(controller.calls, contains('complete:0'));
     expect(find.byKey(const Key('logger.summary')), findsOneWidget);
+  });
+
+  // The logger reads the whole plan today. With a rotation it must show only
+  // the day the session is on, or a Push session lists the Pull exercises too.
+  testWidgets('the logger shows only the session day, not the whole plan',
+      (tester) async {
+    await _pump(tester, plan: _rotationPlan, session: _session(planDayNo: 2));
+
+    expect(find.textContaining('Push-up'), findsOneWidget);
+    expect(find.text('Goblet squat'), findsNothing);
+    expect(find.textContaining('Exercise 1 / 1'), findsOneWidget);
   });
 }
