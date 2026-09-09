@@ -6,6 +6,7 @@ and reads no user row at request time. See the design, section 3.
 """
 import logging
 import os
+from typing import List
 
 from dotenv import load_dotenv
 from fastapi import FastAPI, HTTPException
@@ -16,6 +17,7 @@ from app.db import create_engine_from
 from app.ranker import Ranker
 from app.risk import estimate as estimate_injury_risk
 from app.rules import parameters, selection
+from app.rules.splits import resolve as resolve_split
 from app.schemas import (
     GOAL_LABELS,
     INJURY_MUSCLE_GROUPS,
@@ -85,7 +87,9 @@ def create_app(settings: Settings) -> FastAPI:
 
     @app.post("/generate-plan", response_model=PlanResponse)
     def generate_plan(profile: ProfileRequest):
-        params = parameters.derive(profile.model_dump())
+        overrides = profile.overrides.model_dump() if profile.overrides else None
+        params = parameters.derive(profile.model_dump(), overrides)
+        _, split = resolve_split(params.split_style)
 
         # Body weight is unioned in unconditionally, never only when the user
         # selected nothing: spec section 5's predicate is "(primary equipment
@@ -128,21 +132,47 @@ def create_app(settings: Settings) -> FastAPI:
                 candidates = relaxed
 
         ranked = app.state.ranker.rank(candidates)
-        chosen = selection.select(ranked, params.exercise_count)
 
-        if not chosen:
-            # A plan with no exercises is not a plan. Every realistic profile has
-            # candidates -- even a body-weight-only user with a back injury has 89
-            # across 10 muscle groups -- so an empty session means something
-            # upstream is broken, most likely an unseeded catalogue. Fail loudly:
-            # complete-onboarding generates before it marks the user complete, so
-            # a 503 leaves them able to retry rather than finishing onboarding
-            # holding an empty plan.
+        # One session per rotation day, each from that day's muscle pool. The
+        # pools within a rotation are disjoint (see app/rules/splits), so an
+        # exercise cannot land on two days and no de-duplication is needed.
+        # select() itself is untouched: its priority walk and arm reservation
+        # are exactly what each day needs, and a group with nothing in it is
+        # already skipped rather than padded -- which is what lets a Legs day
+        # tolerate having no arms to reserve.
+        exercises: List[PlanExercise] = []
+        for day_index, day in enumerate(split.days, start=1):
+            pool = ranked if not day.muscle_groups else [
+                c for c in ranked if c.muscle_group in day.muscle_groups
+            ]
+            chosen = selection.select(pool, params.exercise_count)
+            exercises.extend(
+                PlanExercise(
+                    name=candidate.name,
+                    dayNo=day_index,
+                    # Restarts at 1 on each day: order_no is position WITHIN a
+                    # day now, not within the plan.
+                    orderNo=index + 1,
+                    targetSets=params.target_sets,
+                    targetReps=params.target_reps,
+                )
+                for index, candidate in enumerate(chosen)
+            )
+
+        if not exercises:
+            # A plan with no exercises is not a plan. Every realistic profile
+            # has candidates -- even a body-weight-only user with a back
+            # injury has 89 across 10 muscle groups -- so an empty plan means
+            # something upstream is broken, most likely an unseeded catalogue.
+            # Fail loudly: complete-onboarding generates before it marks the
+            # user complete, so a 503 leaves them able to retry rather than
+            # finishing onboarding holding an empty plan.
             logger.error(
-                "no candidates for profile (owned=%s, injuries=%s) -- is the "
-                "catalogue seeded?",
+                "no candidates for profile (owned=%s, injuries=%s, split=%s) -- "
+                "is the catalogue seeded?",
                 owned,
                 [i.injuryId for i in profile.injuries],
+                params.split_style,
             )
             raise HTTPException(
                 status_code=503,
@@ -159,15 +189,7 @@ def create_app(settings: Settings) -> FastAPI:
             daysPerWeek=params.days_per_week,
             sessionLengthMin=params.session_length_min,
             weekNo=1,
-            exercises=[
-                PlanExercise(
-                    name=candidate.name,
-                    orderNo=index + 1,
-                    targetSets=params.target_sets,
-                    targetReps=params.target_reps,
-                )
-                for index, candidate in enumerate(chosen)
-            ],
+            exercises=exercises,
         )
 
     @app.post("/injury-risk", response_model=InjuryRiskResponse)

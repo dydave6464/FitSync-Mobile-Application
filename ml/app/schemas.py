@@ -27,6 +27,20 @@ class InjuryRef(BaseModel):
     side: Optional[str] = None
 
 
+class PlanOverrides(BaseModel):
+    """What the generator screen lets someone choose.
+
+    Every field optional and unvalidated here on purpose: the request model is
+    permissive (see this module's docstring), and app.rules.parameters.derive
+    is where an out-of-range day count is clamped and an unknown split style
+    falls back to full body. Rejecting here would block a user from getting a
+    plan at all.
+    """
+    splitStyle: Optional[str] = None
+    daysPerWeek: Optional[int] = None
+    sessionLengthMin: Optional[int] = None
+
+
 class ProfileRequest(BaseModel):
     sex: Optional[str] = None
     dateOfBirth: Optional[Any] = None
@@ -39,10 +53,14 @@ class ProfileRequest(BaseModel):
     trainingLocation: Optional[str] = None
     equipment: List[EquipmentRef] = Field(default_factory=list)
     injuries: List[InjuryRef] = Field(default_factory=list)
+    overrides: Optional[PlanOverrides] = None
 
 
 class PlanExercise(BaseModel):
     name: str
+    # Which rotation day this exercise belongs to, 1-based. Always 1 for a
+    # full-body plan, which is every plan onboarding produces.
+    dayNo: int = 1
     orderNo: int
     targetSets: int
     targetReps: str

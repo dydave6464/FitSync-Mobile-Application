@@ -111,6 +111,12 @@ def catalogue(engine):
         # bucket, with it the dumbbell fly does. That is what makes the
         # preference tests discriminating rather than decorative.
         ("fixture dumbbell fly", "pectorals", "chest", "dumbbell"),
+        # Every Pull-tagged row above needs equipment beyond body weight
+        # (pull-up bar, dumbbell, cable), so a body-weight-only user could
+        # train Push (fixture push-up) and Legs (fixture squat) but not Pull.
+        # This is what makes Pull reachable on body weight alone, matching
+        # Push and Legs. traps because no existing test asserts against it.
+        ("fixture inverted row", "traps", "back", "body weight"),
     ]
     # (exercise name, required curated equipment name)
     requirements = [

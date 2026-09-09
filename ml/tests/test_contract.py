@@ -251,3 +251,88 @@ def test_body_weight_still_fills_a_group_the_user_cannot_train(client, catalogue
     assert any(n in ("fixture squat", "fixture quad stretch") for n in names), (
         f"quads has no dumbbell option at all and must not be dropped: {names}"
     )
+
+
+def test_a_plan_with_no_overrides_is_one_day(client):
+    body = client.post("/generate-plan", json={"mainGoal": "build_muscle"}).json()
+    assert body["splitStyle"] == "full_body"
+    assert {e["dayNo"] for e in body["exercises"]} == {1}
+
+
+def test_push_pull_legs_returns_three_distinct_days(client):
+    body = client.post("/generate-plan", json={
+        "mainGoal": "build_muscle",
+        "overrides": {"splitStyle": "push_pull_legs"},
+    }).json()
+
+    assert body["splitStyle"] == "push_pull_legs"
+    assert {e["dayNo"] for e in body["exercises"]} == {1, 2, 3}
+    # Order restarts per day, so every day begins at 1.
+    for day in (1, 2, 3):
+        orders = [e["orderNo"] for e in body["exercises"] if e["dayNo"] == day]
+        assert orders == sorted(orders)
+        assert orders[0] == 1
+
+
+def test_no_exercise_appears_on_two_days(client):
+    body = client.post("/generate-plan", json={
+        "mainGoal": "build_muscle",
+        "overrides": {"splitStyle": "push_pull_legs"},
+    }).json()
+    names = [e["name"] for e in body["exercises"]]
+    assert len(names) == len(set(names))
+
+
+def test_four_days_a_week_still_has_a_rotation_of_three(client):
+    # days_per_week is the schedule; the rotation is the plan. A four-day PPL
+    # week is Push, Pull, Legs, Push -- four sessions from three days.
+    body = client.post("/generate-plan", json={
+        "mainGoal": "build_muscle",
+        "overrides": {"splitStyle": "push_pull_legs", "daysPerWeek": 4},
+    }).json()
+    assert body["daysPerWeek"] == 4
+    assert {e["dayNo"] for e in body["exercises"]} == {1, 2, 3}
+
+
+def test_the_same_request_twice_gives_the_same_plan(client):
+    payload = {"mainGoal": "build_muscle",
+               "overrides": {"splitStyle": "upper_lower"}}
+    first = client.post("/generate-plan", json=payload).json()
+    second = client.post("/generate-plan", json=payload).json()
+    assert first == second
+
+
+def test_day_one_of_push_pull_legs_is_actually_push_muscles(client, engine):
+    """The cross-service contract, and the only test that can see it break.
+
+    The ML service decides day 2 is a pull day by the muscles it draws from;
+    server/src/db/plans.js decides day 2 is CALLED "Pull" by a lookup table.
+    Nothing structurally binds the two -- they are different languages and
+    cannot share code. Asserting muscles rather than the label is what makes
+    this fail on real drift instead of on a rename.
+
+    PlanResponse carries no muscle group, so the group is read back out of the
+    catalogue by name -- which is also what proves the names resolve.
+    """
+    from sqlalchemy import bindparam, text
+    from app.rules.splits import resolve
+
+    body = client.post("/generate-plan", json={
+        "mainGoal": "build_muscle",
+        "overrides": {"splitStyle": "push_pull_legs"},
+    }).json()
+
+    _, split = resolve("push_pull_legs")
+    for day_index, day in enumerate(split.days, start=1):
+        names = [e["name"] for e in body["exercises"] if e["dayNo"] == day_index]
+        assert names, f"day {day_index} ({day.name}) came back empty"
+
+        statement = text(
+            "SELECT DISTINCT muscle_group FROM exercises WHERE name IN :names"
+        ).bindparams(bindparam("names", expanding=True))
+        with engine.connect() as conn:
+            groups = {row[0] for row in conn.execute(statement, {"names": names})}
+
+        assert groups <= set(day.muscle_groups), (
+            f"day {day_index} is named {day.name} but drew from {groups}"
+        )
