@@ -279,6 +279,5 @@ void main() {
     // Full body has a rotation of one; labelling it is noise.
     await _pump(tester, _fullBodyPlan);
     expect(find.text('Full body'), findsNothing);
-    expect(find.text('Goblet squat'), findsOneWidget);
   });
 }

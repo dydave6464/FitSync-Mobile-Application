@@ -140,8 +140,9 @@ class _PlanViewState extends ConsumerState<_PlanView> {
     // counts completed sessions with COUNT(*). Those disagree for someone who
     // completes two sessions on the same calendar date: the server advances
     // the rotation twice, this preview only once. It is a display-only
-    // preview, not a source of truth, and self-corrects the moment a session
-    // starts and the logger reads the session's own stamped day instead.
+    // preview, not a source of truth, and is superseded the moment a session
+    // starts: the logger reads that session's own stamped day, not this
+    // preview.
     final rotation = plan.days.isEmpty ? 1 : plan.days.length;
     final todayDayNo = (completedDays.length % rotation) + 1;
     final exercises = plan.exercisesForDay(todayDayNo);
