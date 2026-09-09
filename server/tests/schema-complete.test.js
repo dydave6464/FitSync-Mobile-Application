@@ -115,7 +115,42 @@ test('complete FitSync schema', async (t) => {
     assert.equal(rows[0].added_by, null);
   });
 
-  await t.test('all twelve migrations are recorded', async () => {
+  await t.test('a plan exercise defaults to day one', async () => {
+    const [u] = await pool.query(
+      "INSERT INTO users (email, password_hash, full_name) VALUES ('day@b.com', 'x', 'D')",
+    );
+    const [p] = await pool.query(
+      `INSERT INTO workout_plans (user_id, name, split_style, days_per_week, session_length_min, week_no, is_active)
+       VALUES (?, 'P', 'full_body', 3, 45, 1, TRUE)`,
+      [u.insertId],
+    );
+    const [x] = await pool.query(
+      "INSERT INTO exercises (name, muscle_group) VALUES ('Squat', 'legs')",
+    );
+    // Inserted WITHOUT day_no, exactly as a pre-013 row was: the default is
+    // what makes every existing plan read as a one-day plan with no backfill.
+    const [pe] = await pool.query(
+      `INSERT INTO plan_exercises (plan_id, exercise_id, order_no, target_sets, target_reps)
+       VALUES (?, ?, 1, 3, '8-12')`,
+      [p.insertId, x.insertId],
+    );
+    const [rows] = await pool.query(
+      'SELECT day_no FROM plan_exercises WHERE plan_exercise_id = ?', [pe.insertId],
+    );
+    assert.equal(rows[0].day_no, 1);
+
+    const [s] = await pool.query(
+      `INSERT INTO workout_sessions (user_id, plan_id, status, session_date)
+       VALUES (?, ?, 'in_progress', CURDATE())`,
+      [u.insertId, p.insertId],
+    );
+    const [srows] = await pool.query(
+      'SELECT plan_day_no FROM workout_sessions WHERE session_id = ?', [s.insertId],
+    );
+    assert.equal(srows[0].plan_day_no, null, 'a session predating 013 has no day');
+  });
+
+  await t.test('all thirteen migrations are recorded', async () => {
     const [rows] = await pool.query('SELECT version FROM schema_migrations ORDER BY version');
     assert.deepEqual(rows.map((r) => r.version), [
       '001_account_and_profile.sql',
@@ -130,6 +165,7 @@ test('complete FitSync schema', async (t) => {
       '010_exercise_categories.sql',
       '011_email_verification.sql',
       '012_weight_unit.sql',
+      '013_plan_days.sql',
     ]);
   });
 });

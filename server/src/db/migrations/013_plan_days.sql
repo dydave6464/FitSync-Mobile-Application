@@ -1,0 +1,32 @@
+-- A plan becomes a rotation of days instead of one flat list.
+--
+-- day_no is what lets split_style mean something. ml/app/rules/parameters.py
+-- has hardcoded split_style="full_body" since 002 with the comment "any other
+-- value would be a label its own rows contradict" -- this is the column that
+-- comment is waiting for. See the design, sections 3 and 4.
+--
+-- POLICY EXCEPTION. MIGRATIONS.md permits CREATE TABLE IF NOT EXISTS and
+-- nothing else. These ALTERs are the fifth deliberate exception after 007,
+-- 008, 011 and 012, for the identical reason: both tables are defined in 002
+-- and already applied on existing databases, where an in-place edit to 002
+-- would be silently invisible because the runner has no checksum. Like those
+-- four this file is NOT replay-safe -- a partial failure leaves the first
+-- ALTER committed and a re-run hits ER_DUP_FIELDNAME. Recovery is in
+-- MIGRATIONS.md.
+--
+-- NOT NULL DEFAULT 1 backfills itself: every plan that exists becomes a
+-- one-day plan, which is exactly what a flat ordered list already means. No
+-- backfill script and no behaviour change for anyone holding a plan today.
+-- order_no becomes ordering WITHIN a day.
+ALTER TABLE plan_exercises ADD COLUMN day_no INT NOT NULL DEFAULT 1;
+
+-- Which rotation day this session was, stamped once when it starts.
+--
+-- Nullable because sessions predating this migration have no day and
+-- inventing one would be a lie; read as day 1 where a number is needed.
+--
+-- Stored rather than recomputed: the day is derived from how many sessions
+-- are complete this week, and that number can change DURING a session --
+-- another device finishing one, or midnight passing. A logger recomputing on
+-- every rebuild would swap the exercise list under someone mid-set.
+ALTER TABLE workout_sessions ADD COLUMN plan_day_no INT NULL;
