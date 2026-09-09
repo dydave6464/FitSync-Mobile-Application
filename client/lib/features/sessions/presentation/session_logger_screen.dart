@@ -60,6 +60,14 @@ class _SessionLoggerScreenState extends ConsumerState<SessionLoggerScreen> {
   /// negative, and POST /complete rejects a negative durationMin with
   /// 400 DURATION_INVALID -- the one failure mode where a session genuinely
   /// cannot be finished from the phone. The upper bound is the route's own.
+  ///
+  /// The clamp is a guard, not a correction, and it hid a real defect for a
+  /// while: the server was sending startedAt eight hours in the future on a
+  /// UTC+8 host, so every workout read "0 min elapsed" and every completed
+  /// session stored durationMin 0. That was a server-side timezone bug --
+  /// see SESSION_COLUMNS in src/db/sessions.js -- and is fixed there. A
+  /// clamp that silently swallows a whole class of wrong answers is worth
+  /// being suspicious of when the number it produces is always the bound.
   int _elapsedMinutes(DateTime? startedAt) {
     if (startedAt == null) return 0;
     return DateTime.now().difference(startedAt).inMinutes.clamp(0, 1440);

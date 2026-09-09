@@ -4,6 +4,7 @@ import '../../../core/api_exception.dart';
 import '../../../core/token_store.dart';
 import '../../exercises/presentation/providers.dart';
 import '../../plans/presentation/providers.dart';
+import '../../sessions/presentation/providers.dart';
 import '../../profile/presentation/providers.dart';
 import '../data/auth_repository.dart';
 import '../data/google_sign_in_gateway.dart';
@@ -92,17 +93,26 @@ class AuthController extends AsyncNotifier<AuthState> {
 
   /// Drop every cache that belongs to one signed-in user.
   ///
-  /// `profileProvider` is an AsyncNotifierProvider and `activePlanProvider` a
-  /// FutureProvider, and neither is autoDispose -- once built they live as long
-  /// as the app does. Clearing the token alone therefore leaves the previous
-  /// user's profile and plan sitting in memory, and the next account to sign in
-  /// on the same device is handed them.
+  /// None of these is autoDispose -- once built they live as long as the app
+  /// does. Clearing the token alone therefore leaves the previous user's data
+  /// sitting in memory, and the next account to sign in on the same device is
+  /// handed it.
+  ///
+  /// `activeSessionProvider` is the one that leaks most visibly: an in-progress
+  /// session carries its logged sets, so the next account opened the logger
+  /// onto someone else's weights and reps already ticked into the table.
+  ///
+  /// Anything user-scoped added later belongs on this list. `autoDispose`
+  /// providers do not -- `lastPerformanceProvider` and `alternativesProvider`
+  /// are dropped when the screen holding them goes away, which sign-out does.
   ///
   /// Lookup data (`equipmentOptionsProvider`, `injuryOptionsProvider`, the
   /// exercise catalogue) is the same for everyone and is deliberately kept.
   void _clearUserScopedCaches() {
     ref.invalidate(profileProvider);
     ref.invalidate(activePlanProvider);
+    ref.invalidate(activeSessionProvider);
+    ref.invalidate(completedDaysProvider);
   }
 
   Future<void> signOut() async {
