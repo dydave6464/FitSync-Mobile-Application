@@ -8,6 +8,7 @@ import 'package:fitsync/core/units.dart';
 import 'package:fitsync/features/plans/domain/workout_plan.dart';
 import 'package:fitsync/features/sessions/domain/active_session.dart';
 import 'package:fitsync/features/sessions/presentation/widgets/exercise_log_panel.dart';
+import 'package:fitsync/features/sessions/presentation/widgets/set_row.dart';
 
 const _exercise = PlanExercise(
   planExerciseId: 601,
@@ -32,7 +33,10 @@ Widget _host(Widget child) => MaterialApp(
     );
 
 void main() {
-  testWidgets('shows the prescription and how many sets are done', (tester) async {
+  // How many sets are done is not repeated here: the ticks down the table say
+  // it, and the jump sheet carries it per exercise. The card header is the
+  // name and the prescription, as the mockup draws it.
+  testWidgets('names the exercise and its prescription', (tester) async {
     await tester.pumpWidget(_host(ExerciseLogPanel(
       exercise: _exercise,
       session: _session(sets: const [
@@ -43,8 +47,7 @@ void main() {
     )));
 
     expect(find.text('Goblet squat'), findsOneWidget);
-    expect(find.text('3 × 8-12'), findsOneWidget);
-    expect(find.text('1/3'), findsOneWidget);
+    expect(find.text('Target 3 × 8-12'), findsOneWidget);
   });
 
   // The unit only ever existed as the weight field's hint, which disappears
@@ -60,9 +63,9 @@ void main() {
     )));
 
     final header = find.byKey(const Key('logpanel.columns'));
-    expect(find.descendant(of: header, matching: find.text('Set')), findsOneWidget);
-    expect(find.descendant(of: header, matching: find.text('kg')), findsOneWidget);
-    expect(find.descendant(of: header, matching: find.text('reps')), findsOneWidget);
+    expect(find.descendant(of: header, matching: find.text('SET')), findsOneWidget);
+    expect(find.descendant(of: header, matching: find.text('KG')), findsOneWidget);
+    expect(find.descendant(of: header, matching: find.text('REPS')), findsOneWidget);
   });
 
   testWidgets('the column header switches the unit', (tester) async {
@@ -99,8 +102,11 @@ void main() {
       onUndoSet: (_) async {},
     )));
 
-    expect(find.text('Last 49.6 lb × 10'), findsOneWidget);
-    expect(find.text('+5.5 lb vs last session'), findsOneWidget);
+    expect(find.text('Target 3 × 8-12 · last 49.6 lb'), findsOneWidget);
+    expect(
+      find.text('+5.5 lb vs last session — nice progressive overload.'),
+      findsOneWidget,
+    );
     // The stored set, and the next row prefilled from last week.
     expect(
       tester.widget<TextField>(find.byKey(const Key('set.1.weight'))).controller!.text,
@@ -169,6 +175,44 @@ void main() {
     );
   });
 
+  // The mockup highlights the set you are about to do, not the ones already
+  // finished. Without it every empty row looks the same and nothing on screen
+  // says which one is next.
+  testWidgets('the next unlogged set is the highlighted one', (tester) async {
+    await tester.pumpWidget(_host(ExerciseLogPanel(
+      exercise: _exercise,
+      session: _session(sets: const [
+        LoggedSet(exerciseId: 101, setNumber: 1, weightKg: 20, reps: 10),
+      ]),
+      onCompleteSet: (_, _, _) async {},
+      onUndoSet: (_) async {},
+    )));
+
+    // Three target sets: the first is done, so the second is next.
+    expect(
+      tester.widgetList<SetRow>(find.byType(SetRow)).map((row) => row.active),
+      [false, true, false],
+    );
+  });
+
+  testWidgets('a finished exercise highlights nothing', (tester) async {
+    await tester.pumpWidget(_host(ExerciseLogPanel(
+      exercise: _exercise,
+      session: _session(sets: const [
+        LoggedSet(exerciseId: 101, setNumber: 1, weightKg: 20, reps: 10),
+        LoggedSet(exerciseId: 101, setNumber: 2, weightKg: 20, reps: 10),
+        LoggedSet(exerciseId: 101, setNumber: 3, weightKg: 20, reps: 10),
+      ]),
+      onCompleteSet: (_, _, _) async {},
+      onUndoSet: (_) async {},
+    )));
+
+    expect(
+      tester.widgetList<SetRow>(find.byType(SetRow)).map((row) => row.active),
+      [false, false, false],
+    );
+  });
+
   testWidgets('shows one row per target set', (tester) async {
     await tester.pumpWidget(_host(ExerciseLogPanel(
       exercise: _exercise,
@@ -193,7 +237,7 @@ void main() {
       onUndoSet: (_) async {},
     )));
 
-    expect(find.text('Last 22.5 kg × 10'), findsOneWidget);
+    expect(find.text('Target 3 × 8-12 · last 22.5 kg'), findsOneWidget);
     final field = tester.widget<TextField>(find.byKey(const Key('set.1.weight')));
     expect(field.controller!.text, '22.5');
   });
@@ -283,7 +327,10 @@ void main() {
       onUndoSet: (_) async {},
     )));
 
-    expect(find.text('+2.5 kg vs last session'), findsOneWidget);
+    expect(
+      find.text('+2.5 kg vs last session — nice progressive overload.'),
+      findsOneWidget,
+    );
   });
 
   testWidgets('matching or missing the last weight shows no nudge', (tester) async {
@@ -384,13 +431,14 @@ void main() {
     // Still in flight: nothing on this row can be touched.
     expect(tester.widget<TextField>(find.byKey(const Key('set.1.weight'))).enabled, isFalse);
     expect(tester.widget<TextField>(find.byKey(const Key('set.1.reps'))).enabled, isFalse);
-    expect(tester.widget<IconButton>(find.byKey(const Key('set.1.tick'))).onPressed, isNull);
+    expect(tester.widget<InkWell>(find.byKey(const Key('set.1.tick'))).onTap, isNull);
 
     completer.complete();
     await tester.pumpAndSettle();
 
     // Resolved: the write-through guarantee held, so now it ticks.
-    expect(find.byIcon(Icons.check_circle), findsOneWidget);
+    // The mockup's mark: a bare accent check, not a filled circle.
+    expect(find.byIcon(Icons.check), findsOneWidget);
     final field = tester.widget<TextField>(find.byKey(const Key('set.1.weight')));
     expect(field.enabled, isFalse);
     expect(field.controller!.text, '25');

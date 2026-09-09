@@ -65,7 +65,7 @@ void main() {
     // If onOpenDemo were ever wired to a hardcoded no-op instead of passed
     // straight through, this would still find the icon but onPressed would
     // no longer be null.
-    final button = tester.widget<IconButton>(_demoButton);
-    expect(button.onPressed, isNull);
+    final tile = tester.widget<InkWell>(_demoButton);
+    expect(tile.onTap, isNull);
   });
 }

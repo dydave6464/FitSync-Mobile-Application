@@ -4,7 +4,11 @@ import 'package:flutter/material.dart';
 
 import '../../../../core/theme.dart';
 
-/// The countdown between sets.
+/// The countdown between sets, as the mockup's amber app-bar tag.
+///
+/// It sits in the bar rather than over the content because that is the one
+/// place a workout screen has room for it without pushing the set table
+/// around every time a set is ticked.
 ///
 /// Client-only and deliberately not persisted: a rest period that elapsed
 /// while the app was closed has already elapsed, so restoring one after a
@@ -62,42 +66,39 @@ class _RestTimerState extends State<RestTimer> {
   Widget build(BuildContext context) {
     final t = context.fs;
 
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 11),
+    final tag = Container(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
       decoration: BoxDecoration(
         color: t.amber.withValues(alpha: 0.14),
-        borderRadius: BorderRadius.circular(FsRadius.md),
-        border: Border.all(color: t.amber.withValues(alpha: 0.35)),
+        borderRadius: BorderRadius.circular(7),
       ),
       child: Row(
+        mainAxisSize: MainAxisSize.min,
         children: [
-          Icon(Icons.timer_outlined, size: 17, color: t.amber),
-          const SizedBox(width: 9),
-          Text(
-            'Rest',
-            style: TextStyle(fontSize: 12.5, fontWeight: FontWeight.w600, color: t.text),
-          ),
-          const Spacer(),
-          Text(
-            _label,
-            key: const Key('rest.remaining'),
-            style: TextStyle(
-              fontFamily: fsMonoFamily,
-              fontSize: 14,
-              fontWeight: FontWeight.w700,
-              color: t.amber,
-            ),
-          ),
-          if (widget.onSkip != null) ...[
-            const SizedBox(width: 12),
-            TextButton(
-              key: const Key('rest.skip'),
-              onPressed: widget.onSkip,
-              child: const Text('Skip'),
-            ),
-          ],
+          Text('REST', style: _tagStyle(t)),
+          const SizedBox(width: 5),
+          Text(_label, key: const Key('rest.remaining'), style: _tagStyle(t)),
         ],
       ),
     );
+
+    // The tag is the skip: the mockup draws no separate control, and a rest
+    // timer you cannot cut short is a timer people wait out with their thumb
+    // over the screen.
+    if (widget.onSkip == null) return tag;
+    return InkWell(
+      key: const Key('rest.skip'),
+      onTap: widget.onSkip,
+      borderRadius: BorderRadius.circular(7),
+      child: tag,
+    );
   }
+
+  TextStyle _tagStyle(FsTokens t) => TextStyle(
+        fontFamily: fsMonoFamily,
+        fontSize: 10,
+        fontWeight: FontWeight.w600,
+        letterSpacing: 0.6,
+        color: t.amber,
+      );
 }

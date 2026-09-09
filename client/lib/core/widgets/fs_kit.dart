@@ -792,7 +792,7 @@ class FsUnitToggle extends StatelessWidget {
             child: Padding(
               padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 2),
               child: Text(
-                unit.api,
+                unit.api.toUpperCase(),
                 style: fsEyebrow(t).copyWith(
                   color: unit == value ? t.accent : t.text3,
                 ),

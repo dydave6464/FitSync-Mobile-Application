@@ -5,6 +5,8 @@ import '../../../core/api_exception.dart';
 import '../../../core/theme.dart';
 import '../../../core/units.dart';
 import '../../../core/widgets/fs_kit.dart';
+import '../../exercises/presentation/providers.dart'
+    show exerciseRepositoryProvider;
 import '../../exercises/presentation/exercise_list_screen.dart' show describeError;
 import '../../plans/domain/workout_plan.dart';
 import '../../plans/presentation/providers.dart';
@@ -285,8 +287,55 @@ class _SessionLoggerScreenState extends ConsumerState<SessionLoggerScreen> {
       child: Scaffold(
         backgroundColor: t.bg,
         appBar: AppBar(
-          title: Text(plan.name),
+          // The mockup's 38px rounded-square icon button, not Material's bare
+          // arrow. Tooltipped 'Back' so the platform affordance -- and
+          // tester.pageBack -- still finds it, and maybePop routes it through
+          // the PopScope above, which is what steps an exercise back.
+          leadingWidth: 58,
+          leading: Padding(
+            padding: const EdgeInsets.only(left: 20),
+            child: Tooltip(
+              message: 'Back',
+              child: InkWell(
+                key: const Key('logger.back'),
+                onTap: () => Navigator.maybePop(context),
+                borderRadius: BorderRadius.circular(FsRadius.sm),
+                child: Container(
+                  width: 38,
+                  height: 38,
+                  decoration: BoxDecoration(
+                    color: t.surface,
+                    borderRadius: BorderRadius.circular(FsRadius.sm),
+                    border: Border.all(color: t.line),
+                  ),
+                  child: Icon(Icons.chevron_left, size: 19, color: t.text),
+                ),
+              ),
+            ),
+          ),
+          titleSpacing: 10,
+          title: Text(
+            'Logging',
+            style: TextStyle(
+              fontSize: 21,
+              fontWeight: FontWeight.w700,
+              letterSpacing: -0.74,
+              color: t.text,
+            ),
+          ),
           actions: [
+            // The rest countdown is a tag up here rather than a card over the
+            // content, so ticking a set does not shove the set table down.
+            if (_resting) ...[
+              RestTimer(
+                // A fresh key restarts the countdown on each new set.
+                key: ValueKey('rest-$doneSets'),
+                duration: _restDuration,
+                onDone: () => setState(() => _resting = false),
+                onSkip: () => setState(() => _resting = false),
+              ),
+              const SizedBox(width: 6),
+            ],
             // Finish lives here as well as on the footer button, so stopping a
             // workout early does not mean paging to the end of it first.
             PopupMenuButton<String>(
@@ -305,60 +354,69 @@ class _SessionLoggerScreenState extends ConsumerState<SessionLoggerScreen> {
                 ),
               ],
             ),
+            const SizedBox(width: 8),
           ],
         ),
         body: Column(
           children: [
             Padding(
-              padding: const EdgeInsets.fromLTRB(20, 4, 20, 12),
+              padding: const EdgeInsets.fromLTRB(20, 0, 20, 16),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Row(
                     children: [
-                      InkWell(
-                        key: const Key('logger.position'),
-                        onTap: () => _jumpTo(exercises, session, index),
-                        child: Row(
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            Text(
-                              'Exercise ${index + 1} / ${exercises.length}',
-                              style: TextStyle(fontSize: 11.5, color: t.text2),
-                            ),
-                            Icon(Icons.arrow_drop_down, size: 18, color: t.text3),
-                          ],
+                      Flexible(
+                        child: InkWell(
+                          key: const Key('logger.position'),
+                          onTap: () => _jumpTo(exercises, session, index),
+                          child: Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Flexible(
+                                child: Text(
+                                  'Exercise ${index + 1} / ${exercises.length}'
+                                  ' · ${plan.name}',
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                  style: TextStyle(fontSize: 11, color: t.text3),
+                                ),
+                              ),
+                              Icon(
+                                Icons.arrow_drop_down,
+                                size: 16,
+                                color: t.text3,
+                              ),
+                            ],
+                          ),
                         ),
                       ),
-                      const Spacer(),
+                      const SizedBox(width: 10),
                       Text(
-                        '$doneSets of $targetSets sets',
-                        key: const Key('logger.progress'),
-                        style: TextStyle(fontSize: 11.5, color: t.text2),
-                      ),
-                      Text(
-                        '  \u00b7  ',
-                        style: TextStyle(fontSize: 11.5, color: t.text3),
-                      ),
-                      Text(
-                        '${_elapsedMinutes(session.startedAt)} min',
+                        '${_elapsedMinutes(session.startedAt)} min elapsed',
                         style: TextStyle(
-                          fontFamily: fsMonoFamily, fontSize: 11.5, color: t.text3,
+                          fontFamily: fsMonoFamily,
+                          fontSize: 11,
+                          color: t.text3,
                         ),
                       ),
                     ],
                   ),
-                  const SizedBox(height: 9),
-                  // Session-wide, not per-exercise. Paging costs the sense of
-                  // how much of the workout is left that one long scroll gave
-                  // away for free; this is what buys it back.
-                  ClipRRect(
-                    borderRadius: BorderRadius.circular(99),
-                    child: LinearProgressIndicator(
-                      value: targetSets == 0 ? 0 : doneSets / targetSets,
-                      minHeight: 4,
-                      backgroundColor: t.surface2,
-                      valueColor: AlwaysStoppedAnimation<Color>(t.accent),
+                  const SizedBox(height: 12),
+                  // The mockup carries no set count in the meta row -- the bar
+                  // is the whole story there. Kept as a semantic label, since
+                  // a bar is the one thing a screen reader cannot read.
+                  Semantics(
+                    key: const Key('logger.progress'),
+                    label: '$doneSets of $targetSets sets',
+                    child: ClipRRect(
+                      borderRadius: BorderRadius.circular(99),
+                      child: LinearProgressIndicator(
+                        value: targetSets == 0 ? 0 : doneSets / targetSets,
+                        minHeight: 8,
+                        backgroundColor: t.surface2,
+                        valueColor: AlwaysStoppedAnimation<Color>(t.accent),
+                      ),
                     ),
                   ),
                 ],
@@ -373,6 +431,7 @@ class _SessionLoggerScreenState extends ConsumerState<SessionLoggerScreen> {
                   last: last?[exercise.exerciseId],
                   unit: unit,
                   onUnitChanged: _setUnit,
+                  baseUrl: ref.watch(exerciseRepositoryProvider).baseUrl,
                   onCompleteSet: (setNumber, weightKg, reps) async {
                     final messenger = ScaffoldMessenger.of(context);
                     try {
@@ -420,27 +479,14 @@ class _SessionLoggerScreenState extends ConsumerState<SessionLoggerScreen> {
             SafeArea(
               top: false,
               child: Padding(
-                padding: const EdgeInsets.fromLTRB(20, 0, 20, 12),
-                child: Column(
-                  children: [
-                    if (_resting) ...[
-                      RestTimer(
-                        // A fresh key restarts the countdown on each new set.
-                        key: ValueKey('rest-$doneSets'),
-                        duration: _restDuration,
-                        onDone: () => setState(() => _resting = false),
-                        onSkip: () => setState(() => _resting = false),
-                      ),
-                      const SizedBox(height: 10),
-                    ],
-                    FsButton(
-                      key: const Key('logger.primary'),
-                      label: isLast ? 'Finish session' : 'Continue',
-                      onPressed: isLast
-                          ? (_finishing ? null : _finish)
-                          : () => setState(() => _index = index + 1),
-                    ),
-                  ],
+                padding: const EdgeInsets.fromLTRB(20, 0, 20, 16),
+                child: FsButton(
+                  key: const Key('logger.primary'),
+                  label: isLast ? 'Finish session' : 'Continue',
+                  icon: Icon(isLast ? Icons.check : Icons.arrow_forward),
+                  onPressed: isLast
+                      ? (_finishing ? null : _finish)
+                      : () => setState(() => _index = index + 1),
                 ),
               ),
             ),

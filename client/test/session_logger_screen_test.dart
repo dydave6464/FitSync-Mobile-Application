@@ -238,12 +238,12 @@ void main() {
 
   testWidgets('the header names the position in the workout', (tester) async {
     await _pump(tester);
-    expect(find.text('Exercise 1 / 2'), findsOneWidget);
+    expect(find.textContaining('Exercise 1 / 2'), findsOneWidget);
 
     await tester.tap(find.byKey(const Key('logger.primary')));
     await tester.pumpAndSettle();
 
-    expect(find.text('Exercise 2 / 2'), findsOneWidget);
+    expect(find.textContaining('Exercise 2 / 2'), findsOneWidget);
   });
 
   testWidgets(
@@ -290,7 +290,7 @@ void main() {
     // Both, deliberately: the counter alone would pass if the sheet moved the
     // index without the body following, and the name alone would pass if the
     // body moved without the header.
-    expect(find.text('Exercise 2 / 2'), findsOneWidget);
+    expect(find.textContaining('Exercise 2 / 2'), findsOneWidget);
     expect(find.text('Push-up'), findsOneWidget);
   });
 
@@ -299,12 +299,12 @@ void main() {
     await _pump(tester);
     await tester.tap(find.byKey(const Key('logger.primary')));
     await tester.pumpAndSettle();
-    expect(find.text('Exercise 2 / 2'), findsOneWidget);
+    expect(find.textContaining('Exercise 2 / 2'), findsOneWidget);
 
     await tester.pageBack();
     await tester.pumpAndSettle();
 
-    expect(find.text('Exercise 1 / 2'), findsOneWidget);
+    expect(find.textContaining('Exercise 1 / 2'), findsOneWidget);
     expect(find.byType(SessionLoggerScreen), findsOneWidget);
   });
 
@@ -350,8 +350,12 @@ void main() {
       LoggedSet(exerciseId: 101, setNumber: 1, weightKg: 20, reps: 10),
     ]));
 
-    // 3 target sets + 2 target sets = 5.
-    expect(find.text('1 of 5 sets'), findsOneWidget);
+    // 3 target sets + 2 target sets = 5. Asserted through semantics because
+    // the mockup's meta row shows only the bar -- a screen reader still has
+    // to be able to get the number out of it.
+    final semantics = tester.ensureSemantics();
+    expect(find.bySemanticsLabel('1 of 5 sets'), findsOneWidget);
+    semantics.dispose();
   });
 
   testWidgets('ticking a set reaches the controller and starts the rest timer', (tester) async {
@@ -656,8 +660,8 @@ void main() {
       startedAt: DateTime.now().add(const Duration(minutes: 90)),
     ));
 
-    // The header must not read "-90 min" either.
-    expect(find.text('0 min'), findsOneWidget);
+    // The header must not read "-90 min elapsed" either.
+    expect(find.text('0 min elapsed'), findsOneWidget);
 
     await _menu(tester, 'finish');
 

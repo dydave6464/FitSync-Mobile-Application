@@ -20,14 +20,20 @@ class SetRow extends StatefulWidget {
     required this.onUndo,
     this.prefillWeightKg,
     this.unit = WeightUnit.kg,
+    this.active = false,
   });
 
   /// Column geometry, shared with the panel's header row above it. Two
   /// hand-tuned numbers that happened to agree would drift the first time
   /// either changed.
-  static const numberWidth = 22.0;
-  static const columnGap = 8.0;
-  static const tickWidth = 44.0;
+  static const numberWidth = 28.0;
+  static const columnGap = 10.0;
+  static const tickWidth = 28.0;
+
+  /// The mockup's set cells are rounded 9px -- between FsRadius.sm and a
+  /// square, and small enough that borrowing either reads as a different
+  /// table. Local rather than a token because nothing else uses it.
+  static const cellRadius = 9.0;
 
   final int setNumber;
 
@@ -43,6 +49,11 @@ class SetRow extends StatefulWidget {
   /// What the field shows and how its text is read back. Stored values are
   /// kilograms either way -- see [WeightUnit].
   final WeightUnit unit;
+
+  /// The set about to be done: the first one with nothing logged against it.
+  /// Drawn in accent, which is the only thing on the table saying which row
+  /// is next -- every empty row is otherwise identical.
+  final bool active;
 
   @override
   State<SetRow> createState() => _SetRowState();
@@ -130,23 +141,45 @@ class _SetRowState extends State<SetRow> {
           hintText: hint,
           isDense: true,
           filled: true,
-          fillColor: done ? t.accentDim : t.surface2,
-          contentPadding: const EdgeInsets.symmetric(vertical: 10, horizontal: 8),
+          fillColor: widget.active ? t.accentDim : t.surface2,
+          contentPadding: const EdgeInsets.symmetric(vertical: 9),
+          hintStyle: TextStyle(
+            fontFamily: fsMonoFamily, fontSize: 13, color: t.text3,
+          ),
           border: OutlineInputBorder(
-            borderRadius: BorderRadius.circular(FsRadius.sm),
+            borderRadius: BorderRadius.circular(SetRow.cellRadius),
+            borderSide: BorderSide.none,
+          ),
+          enabledBorder: OutlineInputBorder(
+            borderRadius: BorderRadius.circular(SetRow.cellRadius),
+            borderSide: BorderSide(
+              color: widget.active ? t.accentLine : Colors.transparent,
+            ),
+          ),
+          focusedBorder: OutlineInputBorder(
+            borderRadius: BorderRadius.circular(SetRow.cellRadius),
+            borderSide: BorderSide(color: t.accentLine),
+          ),
+          disabledBorder: OutlineInputBorder(
+            borderRadius: BorderRadius.circular(SetRow.cellRadius),
             borderSide: BorderSide.none,
           ),
         );
 
     return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 3),
+      padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 5),
       child: Row(
         children: [
           SizedBox(
             width: SetRow.numberWidth,
             child: Text(
               '${widget.setNumber}',
-              style: TextStyle(fontFamily: fsMonoFamily, fontSize: 12, color: t.text3),
+              style: TextStyle(
+                fontFamily: fsMonoFamily,
+                fontSize: 13,
+                fontWeight: FontWeight.w600,
+                color: t.text3,
+              ),
             ),
           ),
           Expanded(
@@ -162,7 +195,12 @@ class _SetRowState extends State<SetRow> {
                 FilteringTextInputFormatter.allow(RegExp(r'^\d{0,3}\.?\d{0,2}')),
               ],
               decoration: decoration(widget.unit.api),
-              style: TextStyle(fontFamily: fsMonoFamily, fontSize: 13.5, color: t.text),
+              style: TextStyle(
+                fontFamily: fsMonoFamily,
+                fontSize: 14,
+                fontWeight: FontWeight.w600,
+                color: t.text,
+              ),
             ),
           ),
           const SizedBox(width: SetRow.columnGap),
@@ -177,9 +215,17 @@ class _SetRowState extends State<SetRow> {
                 FilteringTextInputFormatter.allow(RegExp(r'^\d{0,3}')),
               ],
               decoration: decoration('reps'),
-              style: TextStyle(fontFamily: fsMonoFamily, fontSize: 13.5, color: t.text),
+              style: TextStyle(
+                fontFamily: fsMonoFamily,
+                fontSize: 14,
+                fontWeight: FontWeight.w600,
+                color: t.text,
+              ),
             ),
           ),
+          const SizedBox(width: SetRow.columnGap),
+          // Failure widens the column: Retry is a word, and an error state is
+          // the one place the mockup's 28px mark cannot carry the meaning.
           SizedBox(
             width: _failed ? 74 : SetRow.tickWidth,
             child: _failed
@@ -188,23 +234,38 @@ class _SetRowState extends State<SetRow> {
                     onPressed: _busy ? null : _tick,
                     child: const Text('Retry'),
                   )
-                : IconButton(
+                : InkWell(
                     key: Key('set.${widget.setNumber}.tick'),
-                    onPressed: _busy ? null : _tick,
-                    icon: _busy
-                        ? const SizedBox(
-                            width: 16,
-                            height: 16,
-                            child: CircularProgressIndicator(strokeWidth: 2),
-                          )
-                        : Icon(
-                            done ? Icons.check_circle : Icons.circle_outlined,
-                            size: 20,
-                            color: done ? t.accent : t.line2,
-                          ),
+                    onTap: _busy ? null : _tick,
+                    customBorder: const CircleBorder(),
+                    child: SizedBox(
+                      height: 38,
+                      child: Center(child: _mark(t, done)),
+                    ),
                   ),
           ),
         ],
+      ),
+    );
+  }
+
+  /// The mockup's two states: an accent check once the set is stored, and an
+  /// empty ring before that.
+  Widget _mark(FsTokens t, bool done) {
+    if (_busy) {
+      return const SizedBox(
+        width: 16,
+        height: 16,
+        child: CircularProgressIndicator(strokeWidth: 2),
+      );
+    }
+    if (done) return Icon(Icons.check, size: 16, color: t.accent);
+    return Container(
+      width: 16,
+      height: 16,
+      decoration: BoxDecoration(
+        shape: BoxShape.circle,
+        border: Border.all(color: t.line2, width: 2),
       ),
     );
   }

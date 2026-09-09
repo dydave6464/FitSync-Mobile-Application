@@ -3,7 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../core/theme.dart';
 import '../../../core/widgets/fs_kit.dart';
-import '../../exercises/presentation/equipment_icon.dart';
+import '../../exercises/presentation/exercise_thumb.dart';
 import '../../exercises/presentation/exercise_detail_screen.dart';
 import '../../exercises/presentation/exercise_list_screen.dart' show describeError;
 import '../../sessions/presentation/providers.dart';
@@ -189,30 +189,11 @@ class _PlanExerciseCard extends StatelessWidget {
       ),
       child: Row(
         children: [
-          ClipRRect(
-            borderRadius: BorderRadius.circular(FsRadius.sm),
-            child: SizedBox(
-              width: 48,
-              height: 48,
-              child: exercise.thumbnailUrl == null
-                  ? _ThumbPlaceholder(equipment: exercise.equipment)
-                  // `/plans/active` returns a bare relative path
-                  // ("exercises/1460/thumb.jpg") while `/exercises` returns an
-                  // absolute one ("/storage/exercises/0001/thumb.jpg"). Joining
-                  // naively produced "http://host:3000exercises/...". The
-                  // server now resolves plan assets through storage.url() as
-                  // the catalogue always did, so these arrive as
-                  // "/storage/exercises/...": the guard is kept because the
-                  // join should not depend on that, and errorBuilder still
-                  // covers a genuinely missing file.
-                  : Image.network(
-                      '$baseUrl${exercise.thumbnailUrl!.startsWith('/') ? '' : '/'}'
-                      '${exercise.thumbnailUrl}',
-                      fit: BoxFit.cover,
-                      errorBuilder: (_, _, _) =>
-                          _ThumbPlaceholder(equipment: exercise.equipment),
-                    ),
-            ),
+          ExerciseThumb(
+            size: 48,
+            baseUrl: baseUrl,
+            thumbnailUrl: exercise.thumbnailUrl,
+            equipment: exercise.equipment,
           ),
           const SizedBox(width: 12),
           Expanded(
@@ -265,18 +246,3 @@ class _PlanExerciseCard extends StatelessWidget {
   }
 }
 
-class _ThumbPlaceholder extends StatelessWidget {
-  const _ThumbPlaceholder({this.equipment});
-
-  final String? equipment;
-
-  @override
-  Widget build(BuildContext context) {
-    final t = context.fs;
-
-    return Container(
-      color: t.surface2,
-      child: Icon(equipmentIcon(equipment), size: 20, color: t.text3),
-    );
-  }
-}
