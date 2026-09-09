@@ -267,11 +267,11 @@ def test_push_pull_legs_returns_three_distinct_days(client):
 
     assert body["splitStyle"] == "push_pull_legs"
     assert {e["dayNo"] for e in body["exercises"]} == {1, 2, 3}
-    # Order restarts per day, so every day begins at 1.
+    # Order restarts per day, so every day begins at 1 and is dense -- a
+    # sequence like [1, 1, 2, 2] must not pass.
     for day in (1, 2, 3):
         orders = [e["orderNo"] for e in body["exercises"] if e["dayNo"] == day]
-        assert orders == sorted(orders)
-        assert orders[0] == 1
+        assert orders == list(range(1, len(orders) + 1))
 
 
 def test_no_exercise_appears_on_two_days(client):
@@ -303,16 +303,20 @@ def test_the_same_request_twice_gives_the_same_plan(client):
 
 
 def test_day_one_of_push_pull_legs_is_actually_push_muscles(client, engine):
-    """The cross-service contract, and the only test that can see it break.
+    """Binds generate_plan's day order to splits.py's tuple order, by muscle.
 
-    The ML service decides day 2 is a pull day by the muscles it draws from;
-    server/src/db/plans.js decides day 2 is CALLED "Pull" by a lookup table.
-    Nothing structurally binds the two -- they are different languages and
-    cannot share code. Asserting muscles rather than the label is what makes
-    this fail on real drift instead of on a rename.
+    This is the ML half of a two-part pin, not a test that spans both
+    services -- ML and server share no code, so nothing here can see
+    server/src/db/plans.js. The other half is two hand-maintained literal
+    lists: test_splits.py:19 pins ["Push", "Pull", "Legs"] on this side, and
+    the server pins the same literals in its own day-name test. Drift is
+    caught only when one list is edited and the other is not; it is NOT
+    caught if splits.py and plans.js are both updated and nobody checks them
+    against each other.
 
-    PlanResponse carries no muscle group, so the group is read back out of the
-    catalogue by name -- which is also what proves the names resolve.
+    Muscles, not labels, because PlanResponse carries no muscle group -- the
+    group is read back out of the catalogue by name, which is also what
+    proves the names resolve.
     """
     from sqlalchemy import bindparam, text
     from app.rules.splits import resolve
@@ -332,6 +336,14 @@ def test_day_one_of_push_pull_legs_is_actually_push_muscles(client, engine):
         ).bindparams(bindparam("names", expanding=True))
         with engine.connect() as conn:
             groups = {row[0] for row in conn.execute(statement, {"names": names})}
+
+        # Without this, a plan of names absent from the catalogue would pass
+        # vacuously -- groups <= anything is true when groups is empty. This
+        # test requests engine but not catalogue by name; the fixture rows
+        # exist only because client transitively depends on catalogue, and
+        # this is what keeps a severed dependency a failure instead of a
+        # silent always-green.
+        assert groups, f"day {day_index} names resolved to nothing: {names}"
 
         assert groups <= set(day.muscle_groups), (
             f"day {day_index} is named {day.name} but drew from {groups}"

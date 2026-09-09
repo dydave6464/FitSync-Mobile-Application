@@ -146,6 +146,16 @@ def create_app(settings: Settings) -> FastAPI:
                 c for c in ranked if c.muscle_group in day.muscle_groups
             ]
             chosen = selection.select(pool, params.exercise_count)
+            if not chosen:
+                # The 503 guard below only fires when every day is empty, so
+                # a single hole in an otherwise fine rotation would otherwise
+                # ship silently. Diagnosability only -- the guard and the
+                # partial-rotation behaviour it protects both stay as they are.
+                logger.warning(
+                    "split %s day %d (%s) came back empty -- no eligible "
+                    "candidates in its muscle pool",
+                    params.split_style, day_index, day.name,
+                )
             exercises.extend(
                 PlanExercise(
                     name=candidate.name,
