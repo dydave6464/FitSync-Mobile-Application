@@ -349,3 +349,45 @@ def test_day_one_of_push_pull_legs_is_actually_push_muscles(client, engine):
         assert groups <= set(day.muscle_groups), (
             f"day {day_index} is named {day.name} but drew from {groups}"
         )
+
+
+def test_a_split_whose_day_cannot_be_filled_is_refused(client, catalogue):
+    """A hole in the rotation is not a shippable plan.
+
+    Section 4's pools are disjoint, so an injury that empties one group's
+    worth of them empties a whole training day while the rest of the split
+    fills normally. The 503 below used to fire only when EVERY day came back
+    empty, so this shipped a `push_pull_legs` plan with no Legs day at all --
+    and POST /sessions had already created the session row by the time the
+    logger discovered there was nothing to train.
+
+    The equipment list is deliberately everything the fixture offers. The
+    advisory relaxation in main.py compares the TOTAL candidate count against
+    `exercise_count`, which is a per-day number: the six upper-body candidates
+    this equipment reaches are exactly `exercise_count`, and owning one item
+    less drops the total below it, relaxes the exclusion away and refills Legs
+    -- which is the fixture being small, not the guard being wrong. Against
+    the real catalogue hundreds of legs candidates survive an `upper_body`
+    injury and the relaxation never triggers at all. `machines` rather than
+    `cable`: ownership reaches a child of what you own, not a parent, so the
+    cable row needs the parent chip.
+    """
+    eq, inj = catalogue["equipment"], catalogue["injuries"]
+    response = client.post("/generate-plan", json={
+        # 45 minutes, so exercise_count is 6 -- the smallest the table knows.
+        "mainGoal": "lose_weight",
+        "equipment": [
+            {"equipmentId": eq[name], "name": name}
+            for name in ("dumbbell", "machines", "bench", "pull-up bar")
+        ],
+        "injuries": [{"injuryId": inj["Lower back"], "regionGroup": "lower_body"}],
+        "overrides": {"splitStyle": "push_pull_legs"},
+    })
+
+    assert response.status_code == 503, response.text
+    detail = response.json()["detail"]
+    # Named, not just counted: "nothing suitable" leaves a user with no move,
+    # while "nothing for the Legs day of this split" tells them to pick a
+    # different split.
+    assert "Legs" in detail, detail
+    assert "day 3" in detail, detail

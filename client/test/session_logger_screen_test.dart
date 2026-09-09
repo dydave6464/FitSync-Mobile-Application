@@ -721,4 +721,23 @@ void main() {
     expect(find.textContaining('Push-up'), findsNothing);
     expect(find.textContaining('Exercise 1 / 1'), findsOneWidget);
   });
+
+  // The ML service now refuses to generate a split with a day it cannot
+  // fill, so this should not arise from a fresh plan -- but a plan saved
+  // before that guard, or one whose rows were edited, still can, and
+  // POST /sessions has already created the session row by the time this
+  // screen sees the day is empty. A bare spinner would strand the user on a
+  // screen with no AppBar, no back button and nothing to wait for.
+  testWidgets('a session on a day with no exercises offers a way out, not a spinner',
+      (tester) async {
+    await _pump(tester, plan: _rotationPlan, session: _session(planDayNo: 3));
+
+    expect(find.byType(CircularProgressIndicator), findsNothing,
+        reason: 'an empty day is a settled state, not a loading one');
+    expect(find.byKey(const Key('logger.emptyDay')), findsOneWidget);
+    // The same chrome as the loaded state: back out, or finish/discard the
+    // session the server has already opened.
+    expect(find.byKey(const Key('logger.back')), findsOneWidget);
+    expect(find.byKey(const Key('logger.menu')), findsOneWidget);
+  });
 }

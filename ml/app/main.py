@@ -141,21 +141,19 @@ def create_app(settings: Settings) -> FastAPI:
         # already skipped rather than padded -- which is what lets a Legs day
         # tolerate having no arms to reserve.
         exercises: List[PlanExercise] = []
+        unfillable: List[str] = []
         for day_index, day in enumerate(split.days, start=1):
             pool = ranked if not day.muscle_groups else [
                 c for c in ranked if c.muscle_group in day.muscle_groups
             ]
             chosen = selection.select(pool, params.exercise_count)
             if not chosen:
-                # The 503 guard below only fires when every day is empty, so
-                # a single hole in an otherwise fine rotation would otherwise
-                # ship silently. Diagnosability only -- the guard and the
-                # partial-rotation behaviour it protects both stay as they are.
                 logger.warning(
                     "split %s day %d (%s) came back empty -- no eligible "
                     "candidates in its muscle pool",
                     params.split_style, day_index, day.name,
                 )
+                unfillable.append("day {} ({})".format(day_index, day.name))
             exercises.extend(
                 PlanExercise(
                     name=candidate.name,
@@ -169,17 +167,33 @@ def create_app(settings: Settings) -> FastAPI:
                 for index, candidate in enumerate(chosen)
             )
 
-        if not exercises:
-            # A plan with no exercises is not a plan. Every realistic profile
-            # has candidates -- even a body-weight-only user with a back
-            # injury has 89 across 10 muscle groups -- so an empty plan means
-            # something upstream is broken, most likely an unseeded catalogue.
+        if unfillable:
+            # ONE empty day is enough to refuse, not just all of them. A plan
+            # with a hole in it cannot be trained: nothing downstream handles
+            # a rotation day with no exercises, and POST /sessions has already
+            # created the session row by the time the logger finds out. The
+            # honest alternatives are both worse -- filling a "Push" day from
+            # the legs pool would label the rows something they are not, and
+            # dropping the day would hand back a rotation whose length no
+            # longer matches the split the caller asked for.
+            #
+            # This subsumes the older every-day-empty case: every split has at
+            # least one day, so a plan with no exercises at all always has an
+            # empty day 1 and lands here. Every realistic profile has
+            # candidates -- even a body-weight-only user with a back injury has
+            # 89 across 10 muscle groups -- so that case still means something
+            # upstream is broken, most likely an unseeded catalogue.
+            #
             # Fail loudly: complete-onboarding generates before it marks the
             # user complete, so a 503 leaves them able to retry rather than
-            # finishing onboarding holding an empty plan.
+            # finishing onboarding holding an unusable plan. Naming the day is
+            # what makes it actionable -- "nothing suitable" leaves a user with
+            # no move, while "nothing for the Push day of this split" tells
+            # them to choose a split their injuries leave room for.
             logger.error(
-                "no candidates for profile (owned=%s, injuries=%s, split=%s) -- "
+                "%s could not be filled (owned=%s, injuries=%s, split=%s) -- "
                 "is the catalogue seeded?",
+                ", ".join(unfillable),
                 owned,
                 [i.injuryId for i in profile.injuries],
                 params.split_style,
@@ -187,10 +201,10 @@ def create_app(settings: Settings) -> FastAPI:
             raise HTTPException(
                 status_code=503,
                 detail=(
-                    "No exercises could be selected for this profile. If the "
-                    "catalogue is seeded, the reported injuries and available "
-                    "equipment leave nothing suitable."
-                ),
+                    "No exercises could be selected for {} of the {} split. "
+                    "If the catalogue is seeded, the reported injuries and "
+                    "available equipment leave nothing suitable for it."
+                ).format(" and ".join(unfillable), params.split_style),
             )
 
         return PlanResponse(

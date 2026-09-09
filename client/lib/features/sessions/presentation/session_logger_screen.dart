@@ -249,6 +249,87 @@ class _SessionLoggerScreenState extends ConsumerState<SessionLoggerScreen> {
     }
   }
 
+  /// The logger's chrome, shared by the loaded state and the empty-day
+  /// one below. Both need the same way out: back steps through the
+  /// workout, and the overflow still carries Finish and Discard. The
+  /// empty state needs them most -- POST /sessions has already created
+  /// the session row by the time this screen can see the day is empty,
+  /// so a screen without them would strand a real session.
+  ///
+  /// [doneSets] only keys the rest countdown, which restarts on each
+  /// new set; the empty state never rests, so it passes zero.
+  PreferredSizeWidget _appBar(FsTokens t, {int doneSets = 0}) => AppBar(
+      // The mockup's 38px rounded-square icon button, not Material's bare
+      // arrow. Tooltipped 'Back' so the platform affordance -- and
+      // tester.pageBack -- still finds it, and maybePop routes it through
+      // the PopScope above, which is what steps an exercise back.
+      leadingWidth: 58,
+      leading: Padding(
+        padding: const EdgeInsets.only(left: 20),
+        child: Tooltip(
+          message: 'Back',
+          child: InkWell(
+            key: const Key('logger.back'),
+            onTap: () => Navigator.maybePop(context),
+            borderRadius: BorderRadius.circular(FsRadius.sm),
+            child: Container(
+              width: 38,
+              height: 38,
+              decoration: BoxDecoration(
+                color: t.surface,
+                borderRadius: BorderRadius.circular(FsRadius.sm),
+                border: Border.all(color: t.line),
+              ),
+              child: Icon(Icons.chevron_left, size: 19, color: t.text),
+            ),
+          ),
+        ),
+      ),
+      titleSpacing: 10,
+      title: Text(
+        'Logging',
+        style: TextStyle(
+          fontSize: 21,
+          fontWeight: FontWeight.w700,
+          letterSpacing: -0.74,
+          color: t.text,
+        ),
+      ),
+      actions: [
+        // The rest countdown is a tag up here rather than a card over the
+        // content, so ticking a set does not shove the set table down.
+        if (_resting) ...[
+          RestTimer(
+            // A fresh key restarts the countdown on each new set.
+            key: ValueKey('rest-$doneSets'),
+            duration: _restDuration,
+            onDone: () => setState(() => _resting = false),
+            onSkip: () => setState(() => _resting = false),
+          ),
+          const SizedBox(width: 6),
+        ],
+        // Finish lives here as well as on the footer button, so stopping a
+        // workout early does not mean paging to the end of it first.
+        PopupMenuButton<String>(
+          key: const Key('logger.menu'),
+          onSelected: (value) => value == 'finish' ? _finish() : _discard(),
+          itemBuilder: (_) => const [
+            PopupMenuItem(
+              key: Key('logger.finish'),
+              value: 'finish',
+              child: Text('Finish session'),
+            ),
+            PopupMenuItem(
+              key: Key('logger.discard'),
+              value: 'discard',
+              child: Text('Discard session'),
+            ),
+          ],
+        ),
+        const SizedBox(width: 8),
+      ],
+  );
+
   @override
   Widget build(BuildContext context) {
     final t = context.fs;
@@ -264,7 +345,40 @@ class _SessionLoggerScreenState extends ConsumerState<SessionLoggerScreen> {
 
     final exercises = plan.exercisesForDay(session.planDayNo);
     if (exercises.isEmpty) {
-      return const Scaffold(body: Center(child: CircularProgressIndicator()));
+      // Not a spinner: the plan and the session are both loaded, so there is
+      // nothing left to wait for -- this day of the rotation simply holds no
+      // exercises. A spinner here promised a list that was never coming, on a
+      // bare Scaffold with no AppBar and no way back, after POST /sessions
+      // had already opened the session. The ML service refuses to generate
+      // such a plan now, so this is the older-plan and edited-rows case
+      // rather than the everyday one, but it is still a session someone has
+      // to be able to leave or discard.
+      return Scaffold(
+        backgroundColor: t.bg,
+        appBar: _appBar(t),
+        body: Center(
+          key: const Key('logger.emptyDay'),
+          child: Padding(
+            padding: const EdgeInsets.all(24),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                FsIconTile(icon: Icons.fitness_center, size: 56),
+                const SizedBox(height: 16),
+                Text('Nothing to train here',
+                    style: Theme.of(context).textTheme.titleLarge),
+                const SizedBox(height: 8),
+                Text(
+                  'This day of your plan has no exercises. Go back, or '
+                  'discard the session from the menu above.',
+                  textAlign: TextAlign.center,
+                  style: TextStyle(fontSize: 12.5, color: t.text2),
+                ),
+              ],
+            ),
+          ),
+        ),
+      );
     }
     final index = _index.clamp(0, exercises.length - 1);
     final exercise = exercises[index];
@@ -294,77 +408,7 @@ class _SessionLoggerScreenState extends ConsumerState<SessionLoggerScreen> {
       },
       child: Scaffold(
         backgroundColor: t.bg,
-        appBar: AppBar(
-          // The mockup's 38px rounded-square icon button, not Material's bare
-          // arrow. Tooltipped 'Back' so the platform affordance -- and
-          // tester.pageBack -- still finds it, and maybePop routes it through
-          // the PopScope above, which is what steps an exercise back.
-          leadingWidth: 58,
-          leading: Padding(
-            padding: const EdgeInsets.only(left: 20),
-            child: Tooltip(
-              message: 'Back',
-              child: InkWell(
-                key: const Key('logger.back'),
-                onTap: () => Navigator.maybePop(context),
-                borderRadius: BorderRadius.circular(FsRadius.sm),
-                child: Container(
-                  width: 38,
-                  height: 38,
-                  decoration: BoxDecoration(
-                    color: t.surface,
-                    borderRadius: BorderRadius.circular(FsRadius.sm),
-                    border: Border.all(color: t.line),
-                  ),
-                  child: Icon(Icons.chevron_left, size: 19, color: t.text),
-                ),
-              ),
-            ),
-          ),
-          titleSpacing: 10,
-          title: Text(
-            'Logging',
-            style: TextStyle(
-              fontSize: 21,
-              fontWeight: FontWeight.w700,
-              letterSpacing: -0.74,
-              color: t.text,
-            ),
-          ),
-          actions: [
-            // The rest countdown is a tag up here rather than a card over the
-            // content, so ticking a set does not shove the set table down.
-            if (_resting) ...[
-              RestTimer(
-                // A fresh key restarts the countdown on each new set.
-                key: ValueKey('rest-$doneSets'),
-                duration: _restDuration,
-                onDone: () => setState(() => _resting = false),
-                onSkip: () => setState(() => _resting = false),
-              ),
-              const SizedBox(width: 6),
-            ],
-            // Finish lives here as well as on the footer button, so stopping a
-            // workout early does not mean paging to the end of it first.
-            PopupMenuButton<String>(
-              key: const Key('logger.menu'),
-              onSelected: (value) => value == 'finish' ? _finish() : _discard(),
-              itemBuilder: (_) => const [
-                PopupMenuItem(
-                  key: Key('logger.finish'),
-                  value: 'finish',
-                  child: Text('Finish session'),
-                ),
-                PopupMenuItem(
-                  key: Key('logger.discard'),
-                  value: 'discard',
-                  child: Text('Discard session'),
-                ),
-              ],
-            ),
-            const SizedBox(width: 8),
-          ],
-        ),
+        appBar: _appBar(t, doneSets: doneSets),
         body: Column(
           children: [
             Padding(
