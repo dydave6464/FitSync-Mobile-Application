@@ -63,6 +63,29 @@ test('session endpoints', async (t) => {
     return { token, userId, exerciseId: ex[0].exercise_id };
   };
 
+  // freshUser's plan, but with `rotation` days. Raw SQL for the same reason
+  // freshUser uses it: the plans router and the ML stub are another file's
+  // business, and a session test that depended on them would fail for
+  // reasons that have nothing to do with sessions.
+  const freshUserWithRotation = async (email, rotation) => {
+    const made = await freshUser(email);
+    await pool.query('DELETE FROM plan_exercises');
+    await pool.query('UPDATE workout_plans SET split_style = ? WHERE user_id = ?',
+      ['push_pull_legs', made.userId]);
+    const [plan] = await pool.query(
+      'SELECT plan_id FROM workout_plans WHERE user_id = ? AND is_active = TRUE',
+      [made.userId],
+    );
+    for (let dayNo = 1; dayNo <= rotation; dayNo += 1) {
+      await pool.query(
+        `INSERT INTO plan_exercises (plan_id, exercise_id, day_no, order_no, target_sets, target_reps)
+         VALUES (?, ?, ?, 1, 3, '8-12')`,
+        [plan[0].plan_id, made.exerciseId, dayNo],
+      );
+    }
+    return made;
+  };
+
   const auth = (req, token) => req.set('Authorization', `Bearer ${token}`);
 
   await t.test('no session in progress reads as null, not 404', async () => {
@@ -375,6 +398,58 @@ test('session endpoints', async (t) => {
 
     const res = await auth(request(app).get('/api/v1/sessions/week'), token).expect(200);
     assert.equal(res.body.data.dates.length, 1);
+  });
+
+  // today's day = (sessions completed this week mod rotation) + 1. Counting
+  // completions rather than mapping weekdays is what stops a missed Monday
+  // stranding someone on Push until next week.
+  await t.test('the first session of the week is day one', async () => {
+    const { token } = await freshUser('day1@example.com');
+    const res = await auth(request(app).post('/api/v1/sessions'), token).expect(201);
+    assert.equal(res.body.data.session.planDayNo, 1);
+  });
+
+  await t.test('the next session is the next day in the rotation', async () => {
+    const { token } = await freshUserWithRotation('day2@example.com', 3);
+
+    const first = await auth(request(app).post('/api/v1/sessions'), token).expect(201);
+    assert.equal(first.body.data.session.planDayNo, 1);
+    await auth(
+      request(app).post(`/api/v1/sessions/${first.body.data.session.sessionId}/complete`),
+      token,
+    ).send({ durationMin: 30 }).expect(200);
+
+    const second = await auth(request(app).post('/api/v1/sessions'), token).expect(201);
+    assert.equal(second.body.data.session.planDayNo, 2);
+  });
+
+  await t.test('the rotation wraps inside one week', async () => {
+    const { token } = await freshUserWithRotation('daywrap@example.com', 3);
+
+    // Three completed sessions, then the fourth is day 1 again -- which is
+    // what a four-day push/pull/legs week is.
+    for (let i = 0; i < 3; i += 1) {
+      const s = await auth(request(app).post('/api/v1/sessions'), token).expect(201);
+      await auth(
+        request(app).post(`/api/v1/sessions/${s.body.data.session.sessionId}/complete`),
+        token,
+      ).send({ durationMin: 30 }).expect(200);
+    }
+    const fourth = await auth(request(app).post('/api/v1/sessions'), token).expect(201);
+    assert.equal(fourth.body.data.session.planDayNo, 1);
+  });
+
+  await t.test('an abandoned session does not advance the rotation', async () => {
+    const { token } = await freshUserWithRotation('dayabandon@example.com', 3);
+
+    const first = await auth(request(app).post('/api/v1/sessions'), token).expect(201);
+    await auth(
+      request(app).post(`/api/v1/sessions/${first.body.data.session.sessionId}/abandon`),
+      token,
+    ).expect(200);
+
+    const retry = await auth(request(app).post('/api/v1/sessions'), token).expect(201);
+    assert.equal(retry.body.data.session.planDayNo, 1, 'giving up does not cost a day');
   });
 
   await t.test('every route requires a token', async () => {

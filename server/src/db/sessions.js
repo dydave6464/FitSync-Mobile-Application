@@ -54,6 +54,7 @@ function toSession(row, setRows) {
       ? new Date(Number(row.started_at_epoch) * 1000).toISOString()
       : null,
     durationMin: row.duration_min,
+    planDayNo: row.plan_day_no,
     totalVolumeKg: toNumber(row.total_volume_kg),
     sets: setRows.map(toLoggedSet),
   };
@@ -93,6 +94,31 @@ async function getActiveSession(pool, userId) {
   );
   if (rows.length === 0) return null;
   return toSession(rows[0], await loadSets(pool, rows[0].session_id));
+}
+
+/// Which rotation day today's session is.
+///
+/// (sessions completed this week mod rotation) + 1. Counting completions
+/// rather than mapping days onto weekdays is what stops a missed Monday
+/// stranding someone: the rotation advances when you actually train, so a
+/// skipped day costs a day rather than a session. It also wraps inside a week
+/// with no special case -- the fourth session of a four-day push/pull/legs
+/// week is 3 mod 3 + 1, Push again.
+///
+/// Abandoned and in-progress sessions do not count, which is what makes the
+/// first session of a week day 1 and lets someone abandon one and start again
+/// onto the same day.
+async function nextPlanDayNo(conn, userId, rotation) {
+  if (!rotation || rotation < 1) return 1;
+  const [rows] = await conn.query(
+    `SELECT COUNT(*) AS done
+       FROM workout_sessions
+      WHERE user_id = ?
+        AND status = 'completed'
+        AND session_date >= DATE_SUB(CURDATE(), INTERVAL WEEKDAY(CURDATE()) DAY)`,
+    [userId],
+  );
+  return (Number(rows[0].done) % rotation) + 1;
 }
 
 /// Idempotent. Tapping Start, losing the response and tapping again must not
@@ -135,10 +161,20 @@ async function startSession(pool, userId) {
       throw AppError.conflict('NO_ACTIVE_PLAN', 'You have no active plan to train.');
     }
 
+    // The rotation is a property of the split, not of days_per_week. Reading
+    // it from the rows rather than from the split name keeps the stamped day
+    // within what the plan actually contains, in case its generator produced
+    // fewer days than the split name implies.
+    const [dayRows] = await conn.query(
+      'SELECT MAX(day_no) AS rotation FROM plan_exercises WHERE plan_id = ?',
+      [plans[0].plan_id],
+    );
+    const planDayNo = await nextPlanDayNo(conn, userId, Number(dayRows[0].rotation) || 1);
+
     const [res] = await conn.query(
-      `INSERT INTO workout_sessions (user_id, plan_id, status, session_date, started_at)
-       VALUES (?, ?, 'in_progress', CURDATE(), NOW())`,
-      [userId, plans[0].plan_id],
+      `INSERT INTO workout_sessions (user_id, plan_id, plan_day_no, status, session_date, started_at)
+       VALUES (?, ?, ?, 'in_progress', CURDATE(), NOW())`,
+      [userId, plans[0].plan_id, planDayNo],
     );
 
     const session = await getSessionById(conn, userId, res.insertId);
