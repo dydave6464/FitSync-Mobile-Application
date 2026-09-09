@@ -4,7 +4,9 @@ Nothing collects days per week or session length from the user -- those columns
 exist only on workout_plans, never on users -- so the service derives them.
 See the design, sections 6.1 to 6.3.
 """
-from typing import Any, Mapping, NamedTuple
+from typing import Any, Mapping, NamedTuple, Optional
+
+from app.rules.splits import resolve as resolve_split
 
 # Three days for everyone, whatever their activity level says.
 #
@@ -15,7 +17,8 @@ from typing import Any, Mapping, NamedTuple
 # around -- a day between sessions for the muscle worked to recover.
 #
 # Activity level still shapes the calorie estimate the About step shows; it no
-# longer shapes the plan.
+# longer shapes the plan. This is now only the default, used when the caller
+# supplies no daysPerWeek override.
 DAYS_PER_WEEK = 3
 
 LONG_SESSION_GOALS = ("gain_strength", "build_muscle")
@@ -36,6 +39,9 @@ MIN_SETS = 2
 # A 60-minute session carries two more exercises than a 45-minute one.
 EXERCISES_BY_SESSION = {LONG_SESSION_MIN: 8, SHORT_SESSION_MIN: 6}
 
+MIN_DAYS_PER_WEEK = 1
+MAX_DAYS_PER_WEEK = 7
+
 
 class PlanParameters(NamedTuple):
     split_style: str
@@ -46,7 +52,19 @@ class PlanParameters(NamedTuple):
     exercise_count: int
 
 
-def derive(profile: Mapping[str, Any]) -> PlanParameters:
+def _nearest_session_length(requested: int) -> int:
+    """Snap to a length EXERCISES_BY_SESSION actually knows.
+
+    The generator's slider is continuous and this table has two entries, so an
+    unsnapped value would KeyError the whole request. Ties go to the shorter
+    session: a plan someone finishes beats one they abandon.
+    """
+    return min(EXERCISES_BY_SESSION, key=lambda known: (abs(known - requested), known))
+
+
+def derive(profile: Mapping[str, Any],
+           overrides: Optional[Mapping[str, Any]] = None) -> PlanParameters:
+    overrides = overrides or {}
     is_beginner = profile.get("fitnessLevel") == "beginner"
 
     goal = profile.get("mainGoal")
@@ -54,16 +72,28 @@ def derive(profile: Mapping[str, Any]) -> PlanParameters:
     if is_beginner:
         session = min(session, BEGINNER_SESSION_CAP)
 
+    # An explicit choice wins over the derived one, beginner cap included: the
+    # cap shapes a default, and silently overriding a value the user moved a
+    # slider to would make the slider a lie.
+    requested_length = overrides.get("sessionLengthMin")
+    if requested_length is not None:
+        session = _nearest_session_length(int(requested_length))
+
     sets, reps = VOLUME.get(goal, DEFAULT_VOLUME)
     if is_beginner:
         sets = max(sets - 1, MIN_SETS)
 
+    # Resolved, not passed through: an unrecognised value becomes full_body
+    # here, so nothing downstream stores a split_style it cannot read back.
+    split_style, _ = resolve_split(overrides.get("splitStyle"))
+
+    days = overrides.get("daysPerWeek")
+    days = DAYS_PER_WEEK if days is None else int(days)
+    days = max(MIN_DAYS_PER_WEEK, min(MAX_DAYS_PER_WEEK, days))
+
     return PlanParameters(
-        # Always full_body: plan_exercises has no day_no, so a plan is one flat
-        # ordered list and any other value would be a label its own rows
-        # contradict. The choice is revisited when that column exists.
-        split_style="full_body",
-        days_per_week=DAYS_PER_WEEK,
+        split_style=split_style,
+        days_per_week=days,
         session_length_min=session,
         target_sets=sets,
         target_reps=reps,

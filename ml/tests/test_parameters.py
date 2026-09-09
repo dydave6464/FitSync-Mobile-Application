@@ -110,3 +110,55 @@ def test_parameters_are_immutable():
     with pytest.raises(Exception):
         params.days_per_week = 7
     assert isinstance(params, PlanParameters)
+
+
+def test_no_overrides_is_still_full_body_three_days():
+    # The onboarding path. POST /profile/complete-onboarding sends no
+    # overrides, and someone's first plan must stay the simplest thing that
+    # works -- see the design, section 2.
+    params = derive(profile())
+    assert params.split_style == "full_body"
+    assert params.days_per_week == 3
+
+
+def test_an_override_chooses_the_split():
+    params = derive(profile(), {"splitStyle": "push_pull_legs"}).split_style
+    assert params == "push_pull_legs"
+
+
+def test_days_per_week_is_taken_from_the_override():
+    params = derive(profile(), {"daysPerWeek": 5})
+    assert params.days_per_week == 5
+
+
+def test_days_per_week_is_clamped_to_a_real_week():
+    assert derive(profile(), {"daysPerWeek": 0}).days_per_week == 1
+    assert derive(profile(), {"daysPerWeek": 99}).days_per_week == 7
+
+
+def test_session_length_override_changes_the_exercise_count():
+    # 60 minutes carries two more exercises than 45 -- EXERCISES_BY_SESSION.
+    short = derive(profile(), {"sessionLengthMin": 45})
+    long = derive(profile(), {"sessionLengthMin": 60})
+    assert short.session_length_min == 45 and short.exercise_count == 6
+    assert long.session_length_min == 60 and long.exercise_count == 8
+
+
+def test_an_unknown_session_length_snaps_to_the_nearest_supported_one():
+    # EXERCISES_BY_SESSION only knows 45 and 60; a slider that sends 52 must
+    # not KeyError the whole request.
+    assert derive(profile(), {"sessionLengthMin": 52}).session_length_min == 45
+    assert derive(profile(), {"sessionLengthMin": 58}).session_length_min == 60
+
+
+def test_an_unknown_split_style_falls_back_without_raising():
+    # derive reports the RESOLVED slug, so a bad value never reaches the
+    # database as a split_style no reader knows.
+    assert derive(profile(), {"splitStyle": "sideways"}).split_style == "full_body"
+
+
+def test_a_beginner_override_is_still_honoured():
+    # The beginner session cap shapes the DERIVED length. An explicit choice
+    # is the user's, and overriding it silently would make the slider lie.
+    params = derive(profile(fitnessLevel="beginner"), {"sessionLengthMin": 60})
+    assert params.session_length_min == 60
