@@ -307,9 +307,11 @@ def test_day_one_of_push_pull_legs_is_actually_push_muscles(client, engine):
 
     This is the ML half of a two-part pin, not a test that spans both
     services -- ML and server share no code, so nothing here can see
-    server/src/db/plans.js. The other half is two hand-maintained literal
-    lists: test_splits.py:19 pins ["Push", "Pull", "Legs"] on this side, and
-    the server pins the same literals in its own day-name test. Drift is
+    server/src/db/plans.js. test_splits.py:19 pins ["Push", "Pull", "Legs"]
+    on this side; the server derives its day NAMES from split_style
+    independently, in its own layer, with no code shared with this module.
+    Keeping the two in step is a hand-maintained contract -- which is
+    precisely why this test asserts muscles rather than labels. Drift is
     caught only when one list is edited and the other is not; it is NOT
     caught if splits.py and plans.js are both updated and nobody checks them
     against each other.
