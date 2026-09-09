@@ -17,6 +17,13 @@ def test_push_pull_legs_is_three_named_days():
     _, split = resolve("push_pull_legs")
     assert split.rotation == 3
     assert [d.name for d in split.days] == ["Push", "Pull", "Legs"]
+    # Push is pinned separately below; pin Pull and Legs here too so a typo
+    # in either pool (e.g. "upper_back" for "upper back") fails loudly
+    # instead of silently emptying a training day at filter time.
+    assert split.days[1].muscle_groups == ("lats", "upper back", "biceps", "traps")
+    assert split.days[2].muscle_groups == (
+        "quads", "glutes", "hamstrings", "calves", "adductors", "abductors",
+    )
 
 
 def test_push_day_is_push_muscles():
