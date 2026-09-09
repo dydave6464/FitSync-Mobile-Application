@@ -126,15 +126,38 @@ class _PlanViewState extends ConsumerState<_PlanView> {
 
   @override
   Widget build(BuildContext context) {
+    final t = context.fs;
     final plan = widget.plan;
     final baseUrl = ref.watch(planRepositoryProvider).baseUrl;
+    final completedDays = ref.watch(completedDaysProvider).value ?? const <String>{};
+
+    // Mirrors nextPlanDayNo in server/src/db/sessions.js: the day advances
+    // with completed sessions, not with the calendar. Computed here only to
+    // show the right list before a session exists -- once one is started the
+    // server's stamped plan_day_no is the authority.
+    //
+    // completedDays counts DISTINCT completed session dates, while the server
+    // counts completed sessions with COUNT(*). Those disagree for someone who
+    // completes two sessions on the same calendar date: the server advances
+    // the rotation twice, this preview only once. It is a display-only
+    // preview, not a source of truth, and self-corrects the moment a session
+    // starts and the logger reads the session's own stamped day instead.
+    final rotation = plan.days.isEmpty ? 1 : plan.days.length;
+    final todayDayNo = (completedDays.length % rotation) + 1;
+    final exercises = plan.exercisesForDay(todayDayNo);
+    final dayName = rotation == 1
+        ? null
+        : plan.days
+            .firstWhere((d) => d.dayNo == todayDayNo,
+                orElse: () => PlanDay(dayNo: todayDayNo, name: ''))
+            .name;
 
     return ListView(
       padding: const EdgeInsets.fromLTRB(20, 8, 20, 24),
       children: [
         WeekStrip(
           daysPerWeek: plan.daysPerWeek,
-          completedDates: ref.watch(completedDaysProvider).value ?? const {},
+          completedDates: completedDays,
           today: DateTime.now(),
         ),
         const SizedBox(height: 14),
@@ -146,8 +169,16 @@ class _PlanViewState extends ConsumerState<_PlanView> {
         ),
         const SizedBox(height: 22),
         const FsEyebrow('Exercises'),
+        if (dayName != null && dayName.isNotEmpty) ...[
+          const SizedBox(height: 4),
+          // Not FsEyebrow: that widget forces its text to uppercase, and this
+          // has to match the day name the server sent ("Push", not "PUSH").
+          // The eyebrow *style* -- mono, wide tracking -- still applies via
+          // fsEyebrow(t).
+          Text(dayName, style: fsEyebrow(t)),
+        ],
         const SizedBox(height: 10),
-        for (final exercise in plan.exercises) ...[
+        for (final exercise in exercises) ...[
           _PlanExerciseCard(
             exercise: exercise,
             baseUrl: baseUrl,

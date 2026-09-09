@@ -45,6 +45,48 @@ const _plan = WorkoutPlan(
   ],
 );
 
+const _pplPlan = WorkoutPlan(
+  planId: 43,
+  name: 'Week 1 — Push/Pull/Legs',
+  splitStyle: 'push_pull_legs',
+  daysPerWeek: 4,
+  sessionLengthMin: 45,
+  weekNo: 1,
+  days: [
+    PlanDay(dayNo: 1, name: 'Push'),
+    PlanDay(dayNo: 2, name: 'Pull'),
+  ],
+  exercises: [
+    PlanExercise(
+      planExerciseId: 701, exerciseId: 201, name: 'Bench press',
+      muscleGroup: 'pectorals', dayNo: 1, orderNo: 1,
+      targetSets: 3, targetReps: '8-12',
+    ),
+    PlanExercise(
+      planExerciseId: 702, exerciseId: 202, name: 'Barbell row',
+      muscleGroup: 'lats', dayNo: 2, orderNo: 1,
+      targetSets: 3, targetReps: '8-12',
+    ),
+  ],
+);
+
+const _fullBodyPlan = WorkoutPlan(
+  planId: 44,
+  name: 'Week 1 — Full body',
+  splitStyle: 'full_body',
+  daysPerWeek: 3,
+  sessionLengthMin: 45,
+  weekNo: 1,
+  days: [PlanDay(dayNo: 1, name: 'Full body')],
+  exercises: [
+    PlanExercise(
+      planExerciseId: 703, exerciseId: 203, name: 'Goblet squat',
+      muscleGroup: 'quads', dayNo: 1, orderNo: 1,
+      targetSets: 3, targetReps: '8-12',
+    ),
+  ],
+);
+
 /// No session in progress -- every test in this file exercises the exercise
 /// list and swap sheet, not Start/Resume, which session_logger_screen_test
 /// and training_shell_test already cover.
@@ -65,6 +107,7 @@ Future<void> _pump(
   WorkoutPlan? plan, {
   List<ExerciseAlternative>? alternatives,
   VoidCallback? onGoToProfile,
+  Set<String> completedDays = const <String>{},
 }) async {
   await tester.pumpWidget(ProviderScope(
     overrides: [
@@ -73,7 +116,7 @@ Future<void> _pump(
       // The screen now also watches these two -- the session card's
       // Start/Resume label and the week strip's filled dots.
       activeSessionProvider.overrideWith(() => _NoSessionController()),
-      completedDaysProvider.overrideWith((ref) async => const <String>{}),
+      completedDaysProvider.overrideWith((ref) async => completedDays),
       // Only stubbed for the tests that open the sheet; the others never
       // reach it, and an unconditional override would hide a regression
       // where the sheet fetches when it should not.
@@ -206,5 +249,36 @@ void main() {
     expect(asked, 1, reason: 'the note has to reach the screen that owns the tabs');
     expect(find.byType(ExerciseSwapSheet), findsNothing,
         reason: 'a sheet left open would cover the tab it just switched to');
+  });
+
+  testWidgets("names today's day and lists only its exercises", (tester) async {
+    // Two days, nothing completed this week, so today is day 1: Push.
+    await _pump(tester, _pplPlan);
+
+    expect(find.text('Push'), findsOneWidget);
+    expect(find.text('Bench press'), findsOneWidget);
+    expect(find.text('Barbell row'), findsNothing);
+  });
+
+  testWidgets('one session done this week moves it to day two', (tester) async {
+    await _pump(tester, _pplPlan, completedDays: const {'2026-09-07'});
+
+    expect(find.text('Pull'), findsOneWidget);
+    expect(find.text('Barbell row'), findsOneWidget);
+    expect(find.text('Bench press'), findsNothing);
+  });
+
+  testWidgets('a completed rotation wraps back to day one', (tester) async {
+    // Two days done on a two-day rotation: 2 mod 2 + 1 = 1.
+    await _pump(tester, _pplPlan,
+        completedDays: const {'2026-09-07', '2026-09-08'});
+    expect(find.text('Push'), findsOneWidget);
+  });
+
+  testWidgets('a one-day plan names no day', (tester) async {
+    // Full body has a rotation of one; labelling it is noise.
+    await _pump(tester, _fullBodyPlan);
+    expect(find.text('Full body'), findsNothing);
+    expect(find.text('Goblet squat'), findsOneWidget);
   });
 }
