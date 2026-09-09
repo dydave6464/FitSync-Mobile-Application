@@ -104,7 +104,7 @@ module.exports = function buildPlansRouter(deps) {
       const generated = await deps.ml.generatePlan({ ...profile, overrides });
       await savePlan(deps.pool, userId, generated);
 
-      res.json({ data: { plan: await getActivePlan(deps.pool, userId) } });
+      res.json({ data: { plan: withUrls(await getActivePlan(deps.pool, userId)) } });
     } catch (err) { next(err); }
   });
 

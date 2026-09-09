@@ -349,6 +349,21 @@ test('plan endpoints', async (t) => {
     assert.equal(after.body.data.plan.planId, plan.planId);
   });
 
+  await t.test('regenerating carries resolved thumbnail URLs, not storage keys', async () => {
+    // Same contract GET /active and the swap PATCH already hold themselves
+    // to (see 'plan exercises carry resolved URLs, not storage keys' above):
+    // a raw storage key here means every thumbnail 404s the moment a plan is
+    // regenerated, even though it works fine on GET /active for that same
+    // plan a moment later.
+    await withPlan();
+    const res = await request(app).post('/api/v1/plans/regenerate')
+      .set('Authorization', auth).send({}).expect(200);
+
+    const row = res.body.data.plan.exercises[0];
+    assert.match(row.thumbnailUrl, /^\/storage\/exercises\//,
+      `expected a resolved URL, got ${row.thumbnailUrl}`);
+  });
+
   await t.test('regenerating is refused while a session is in progress', async () => {
     await withPlan();
     await request(app).post('/api/v1/sessions').set('Authorization', auth).expect(201);

@@ -19,13 +19,12 @@ const SPLIT_DAYS = {
 };
 
 async function generatePlan(profile = {}) {
+  // `overrides` is how a chosen split arrives -- /plans/regenerate sends
+  // { ...profile, overrides }, and complete-onboarding sends a bare profile
+  // with none, which is why an absent overrides object defaults every field
+  // below rather than throwing.
   const overrides = profile.overrides || {};
-  // `overrides` is how /plans/regenerate sends a chosen split; a bare
-  // top-level field is this stub's own older direct-call contract (see
-  // tests/ml-service.test.js, which still exercises the stub that way).
-  // Both are honoured, with overrides taking priority, so neither caller
-  // regresses.
-  const splitStyle = overrides.splitStyle || profile.splitStyle || 'full_body';
+  const splitStyle = overrides.splitStyle || 'full_body';
   const rotation = SPLIT_DAYS[splitStyle] || 1;
 
   // Every day gets the same four body-weight exercises. The stub is a
@@ -42,8 +41,8 @@ async function generatePlan(profile = {}) {
   return {
     name: 'Starter Plan',
     splitStyle,
-    daysPerWeek: overrides.daysPerWeek || profile.daysPerWeek || 3,
-    sessionLengthMin: overrides.sessionLengthMin || profile.sessionLengthMin || 45,
+    daysPerWeek: overrides.daysPerWeek || 3,
+    sessionLengthMin: overrides.sessionLengthMin || 45,
     weekNo: 1,
     exercises,
   };

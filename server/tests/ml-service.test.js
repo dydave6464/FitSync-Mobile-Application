@@ -14,7 +14,9 @@ test('stub mode is the default', () => {
 
 test('generatePlan returns a plan matching the workout_plans shape', async () => {
   const ml = createMlService({ mode: 'stub' });
-  const plan = await ml.generatePlan({ splitStyle: 'upper_lower', daysPerWeek: 4, sessionLengthMin: 60 });
+  const plan = await ml.generatePlan({
+    overrides: { splitStyle: 'upper_lower', daysPerWeek: 4, sessionLengthMin: 60 },
+  });
 
   assert.equal(typeof plan.name, 'string');
   assert.ok(SPLITS.includes(plan.splitStyle));
@@ -34,7 +36,9 @@ test('generatePlan returns a plan matching the workout_plans shape', async () =>
 
 test('generatePlan honours FR-2.3 preferences it is given', async () => {
   const ml = createMlService({ mode: 'stub' });
-  const plan = await ml.generatePlan({ splitStyle: 'push_pull_legs', daysPerWeek: 6, sessionLengthMin: 30 });
+  const plan = await ml.generatePlan({
+    overrides: { splitStyle: 'push_pull_legs', daysPerWeek: 6, sessionLengthMin: 30 },
+  });
   assert.equal(plan.splitStyle, 'push_pull_legs');
   assert.equal(plan.daysPerWeek, 6);
   assert.equal(plan.sessionLengthMin, 30);
