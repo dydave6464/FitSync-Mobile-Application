@@ -1,0 +1,37 @@
+-- Cardio & core joins the split styles workout_plans can hold.
+--
+-- The approved design defines four split styles -- full_body, push_pull_legs,
+-- upper_lower, cardio_core -- and ml/app/rules/splits.py already implements
+-- all four. 002_training.sql only ever listed three plus the retired
+-- bro_split, so choosing Cardio & core fails with "Data truncated for column
+-- 'split_style'" under STRICT_TRANS_TABLES rather than saving. This migration
+-- closes that gap so POST /plans/regenerate can hand cardio_core to savePlan.
+--
+-- bro_split stays. Live rows may still hold it, and splits.py already
+-- resolves it to full body, so dropping it here would gain nothing and could
+-- strand those rows.
+--
+-- cardio_core is appended to the END of the list, not inserted where it
+-- would read alphabetically. MySQL stores an ENUM as an index into its value
+-- list, so appending leaves every existing row's stored value untouched;
+-- inserting in the middle would renumber the values after it and silently
+-- change what every existing row means.
+--
+-- POLICY EXCEPTION. MIGRATIONS.md permits CREATE TABLE IF NOT EXISTS and
+-- nothing else. This ALTER is the sixth deliberate exception after 007, 008,
+-- 011, 012 and 013, for the identical reason those gave: split_style is
+-- defined on a table 002 already created and that is already applied on
+-- existing databases, where an in-place edit to 002 would be silently
+-- invisible because the runner has no checksum.
+--
+-- Unlike 007, 008, 011, 012 and 013, this one IS replay-safe. MODIFY COLUMN
+-- restates the column's entire definition rather than adding to it, so
+-- running it twice leaves the same five-value ENUM both times -- there is no
+-- ER_DUP_FIELDNAME to hit on a re-run. MIGRATIONS.md still documents the
+-- runner as having no checksum and recording a migration only once the file
+-- fully succeeds, which is why that property is worth stating rather than
+-- assumed: this file earns replay-safety on its own, not because the runner
+-- guarantees it.
+ALTER TABLE workout_plans
+  MODIFY COLUMN split_style
+  ENUM('full_body','upper_lower','push_pull_legs','bro_split','cardio_core') NOT NULL;

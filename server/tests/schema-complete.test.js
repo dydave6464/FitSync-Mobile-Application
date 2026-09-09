@@ -150,7 +150,7 @@ test('complete FitSync schema', async (t) => {
     assert.equal(srows[0].plan_day_no, null, 'a session predating 013 has no day');
   });
 
-  await t.test('all thirteen migrations are recorded', async () => {
+  await t.test('all fourteen migrations are recorded', async () => {
     const [rows] = await pool.query('SELECT version FROM schema_migrations ORDER BY version');
     assert.deepEqual(rows.map((r) => r.version), [
       '001_account_and_profile.sql',
@@ -166,6 +166,22 @@ test('complete FitSync schema', async (t) => {
       '011_email_verification.sql',
       '012_weight_unit.sql',
       '013_plan_days.sql',
+      '014_cardio_core_split.sql',
     ]);
+  });
+
+  await t.test('a plan can use the cardio_core split style', async () => {
+    const [u] = await pool.query(
+      "INSERT INTO users (email, password_hash, full_name) VALUES ('cardio@b.com', 'x', 'C')",
+    );
+    const [p] = await pool.query(
+      `INSERT INTO workout_plans (user_id, name, split_style, days_per_week, session_length_min, week_no, is_active)
+       VALUES (?, 'P', 'cardio_core', 3, 45, 1, TRUE)`,
+      [u.insertId],
+    );
+    const [rows] = await pool.query(
+      'SELECT split_style FROM workout_plans WHERE plan_id = ?', [p.insertId],
+    );
+    assert.equal(rows[0].split_style, 'cardio_core');
   });
 });
