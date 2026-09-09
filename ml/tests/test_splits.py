@@ -1,6 +1,6 @@
 import pytest
 
-from app.rules.splits import SPLITS, resolve
+from app.rules.splits import SPLITS, label, resolve
 
 
 def test_full_body_is_one_day_over_every_group():
@@ -70,3 +70,32 @@ def test_days_within_a_rotation_do_not_share_muscles():
         for day in split.days:
             assert not (seen & set(day.muscle_groups)), f"{slug}: {day.name} repeats a group"
             seen |= set(day.muscle_groups)
+
+
+@pytest.mark.parametrize("slug,expected", [
+    # full_body is the one that must not move. "Full Body — {goal}" was
+    # hardcoded as every plan's name before per-day plans existed, so this
+    # half of it is what every plan a user already holds is called.
+    ("full_body", "Full Body"),
+    ("push_pull_legs", "Push / Pull / Legs"),
+    ("upper_lower", "Upper / Lower"),
+    ("cardio_core", "Cardio & Core"),
+])
+def test_a_label_is_built_from_the_days_the_split_actually_has(slug, expected):
+    _, split = resolve(slug)
+    assert label(split) == expected
+
+
+def test_every_split_can_be_named():
+    # A split style with no label would be a plan with no name, and the name
+    # is a NOT NULL column on workout_plans.
+    for slug, split in SPLITS.items():
+        assert label(split), slug
+
+
+def test_a_label_capitalises_without_touching_the_words_themselves():
+    # Title case per word, not str.title(): the day names are the source of
+    # truth for the wording, and only their casing is the label's business.
+    _, split = resolve("cardio_core")
+    assert split.days[0].name == "Cardio & core"
+    assert label(split) == "Cardio & Core"

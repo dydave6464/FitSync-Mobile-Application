@@ -17,7 +17,7 @@ from app.db import create_engine_from
 from app.ranker import Ranker
 from app.risk import estimate as estimate_injury_risk
 from app.rules import parameters, selection
-from app.rules.splits import resolve as resolve_split
+from app.rules.splits import Split, label as split_label, resolve as resolve_split
 from app.schemas import (
     GOAL_LABELS,
     INJURY_MUSCLE_GROUPS,
@@ -33,9 +33,20 @@ logger = logging.getLogger(__name__)
 BODY_WEIGHT = "body weight"
 
 
-def _plan_name(profile: ProfileRequest) -> str:
+def _plan_name(profile: ProfileRequest, split: Split) -> str:
+    """The plan's name: the split, an em dash, then the goal.
+
+    "Push / Pull / Legs — Build Muscle", say.
+
+    The split half was hardcoded to "Full Body" while every plan was one,
+    which outlived that: a push/pull/legs plan was literally named "Full
+    Body — Build Muscle" on a card that also carried a "Push Pull Legs"
+    label and a "Push" day eyebrow. splits.label derives it from the day
+    names the plan is actually built from, and leaves full_body reading
+    exactly as it always has.
+    """
     goal = GOAL_LABELS.get(profile.mainGoal or "", "General Fitness")
-    return "Full Body — {}".format(goal)
+    return "{} — {}".format(split_label(split), goal)
 
 
 def _candidates(engine, owned, selected, injury_ids, excluded):
@@ -208,7 +219,7 @@ def create_app(settings: Settings) -> FastAPI:
             )
 
         return PlanResponse(
-            name=_plan_name(profile),
+            name=_plan_name(profile, split),
             splitStyle=params.split_style,
             daysPerWeek=params.days_per_week,
             sessionLengthMin=params.session_length_min,

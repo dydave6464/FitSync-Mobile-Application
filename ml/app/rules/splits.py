@@ -50,6 +50,33 @@ SPLITS: Dict[str, Split] = {
 }
 
 
+def _titled(name: str) -> str:
+    """Capitalise each word, leaving the words themselves alone.
+
+    Not str.title(), which also lowercases the rest of every word and
+    mangles anything with an apostrophe in it. Only the casing of the first
+    letter is this function's business -- the wording belongs to the day.
+    """
+    return " ".join(word[:1].upper() + word[1:] for word in name.split(" "))
+
+
+def label(split: Split) -> str:
+    """What a plan built from this split is called, before the goal suffix.
+
+    Derived from the day names rather than a second table keyed on split
+    style: the days are already the vocabulary, and a parallel table is one
+    more thing that can fall out of step with them -- a "Full Body" plan
+    whose only day is called "Push" is exactly the contradiction this
+    replaces.
+
+    Day names are stored sentence-cased ("Full body") because that is how
+    they read as an eyebrow above an exercise list. A plan NAME is a title,
+    so it is title-cased here -- which is also what keeps `full_body`
+    reading exactly as the "Full Body" every existing plan is named.
+    """
+    return " / ".join(_titled(day.name) for day in split.days)
+
+
 def resolve(split_style: Optional[str]) -> Tuple[str, Split]:
     """The split to build, and the slug that was actually used.
 

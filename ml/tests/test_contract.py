@@ -391,3 +391,26 @@ def test_a_split_whose_day_cannot_be_filled_is_refused(client, catalogue):
     # different split.
     assert "Legs" in detail, detail
     assert "day 3" in detail, detail
+
+
+def test_a_full_body_plan_is_named_exactly_what_it_always_was(client):
+    # The name was hardcoded "Full Body — {goal}" before splits could differ.
+    # Onboarding still sends no overrides, so this is what every first plan
+    # is called and it must not move under anyone.
+    plan = post_plan(client, mainGoal="build_muscle")
+    assert plan["name"] == "Full Body — Build Muscle"
+
+
+def test_a_plan_is_named_after_the_split_it_actually_is(client):
+    # It used to read "Full Body — Build Muscle" on a push/pull/legs plan,
+    # four lines above the card's own "Push Pull Legs" label and its "Push"
+    # day eyebrow -- the card contradicted itself twice in one glance.
+    plan = post_plan(client, mainGoal="build_muscle",
+                     overrides={"splitStyle": "push_pull_legs"})
+    assert plan["name"] == "Push / Pull / Legs — Build Muscle"
+
+
+def test_the_goal_suffix_survives_the_split_becoming_part_of_the_name(client):
+    plan = post_plan(client, mainGoal="lose_weight",
+                     overrides={"splitStyle": "upper_lower"})
+    assert plan["name"] == "Upper / Lower — Lose Weight"
