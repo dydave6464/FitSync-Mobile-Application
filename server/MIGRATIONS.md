@@ -66,9 +66,13 @@ migrations (or an equivalent forward-only mechanism) with a real rollback
 and data-migration story. That transition is an **open item for a later
 sub-project** — it has not been designed yet.
 
-## Exceptions: `007_auth_identities.sql`, `008_equipment_curation.sql`, `011_email_verification.sql`
+## Exceptions: `007`, `008`, `011`, `012`, `013` and `014`
 
-All three files break the rule above on purpose, for the same reason: each
+`007_auth_identities.sql`, `008_equipment_curation.sql`,
+`011_email_verification.sql`, `012_weight_unit.sql`, `013_plan_days.sql` and
+`014_cardio_core_split.sql`.
+
+All six files break the rule above on purpose, for the same reason: each
 needs to change tables that migrations `001`–`006` already defined and that
 may already be applied on someone's database. The runner has no checksum
 (see the gap recorded below): it decides whether to apply a file solely by
@@ -77,8 +81,11 @@ these columns would not be replayed on a database where `001` was already
 recorded as applied — the edit would be silently invisible there, exactly
 the failure mode the pre-release policy above depends on nobody hitting. A
 new, forward-only file sidesteps that. The tradeoff is the one below: unlike
-a `CREATE TABLE IF NOT EXISTS`-only file, none of these three is safe to
-replay after a partial failure.
+a `CREATE TABLE IF NOT EXISTS`-only file, five of the six are not safe to
+replay after a partial failure. `014` is the exception to the exception: it
+restates a column definition rather than adding to one, so it replays
+cleanly. Which of the six you are holding is the thing to know before
+retrying one.
 
 **`007_auth_identities.sql`** — alongside its
 `CREATE TABLE IF NOT EXISTS user_identities`, it contains six `ALTER TABLE`
@@ -101,16 +108,41 @@ hard gate (an unverified account is issued no token and cannot sign in), so
 this column decides access, not merely data quality — see the design,
 section 2.
 
-**Consequence: none of the three is replay-safe.** Unlike every other
-migration file, if 007, 008, or 011 fails partway through, `IF NOT EXISTS`
-does not protect the `ALTER TABLE` (or, for 008, the trailing
+**`012_weight_unit.sql`** — one
+`ALTER TABLE users ADD COLUMN weight_unit` statement. Every stored figure
+stays metric; the column decides display and input parsing only, which is
+why it lives with the account rather than the device.
+
+**`013_plan_days.sql`** — two `ALTER TABLE ... ADD COLUMN` statements, one
+against `plan_exercises` (`day_no`) and one against `workout_sessions`
+(`plan_day_no`), so a plan becomes a rotation of days instead of one flat
+list. This is the file whose own comment points here for recovery, which is
+what makes its absence from this section worth correcting.
+
+**`014_cardio_core_split.sql`** — one
+`ALTER TABLE workout_plans MODIFY COLUMN split_style` statement, appending
+`cardio_core` to the enum `002` defined. Appended at the END of the value
+list: MySQL stores an enum as an index into that list, so inserting in the
+middle would renumber the values after it and silently change what every
+existing row means.
+
+**Consequence: five of the six are not replay-safe.** Unlike every other
+migration file, if 007, 008, 011, 012 or 013 fails partway through, `IF NOT
+EXISTS` does not protect the `ALTER TABLE` (or, for 008, the trailing
 `CREATE INDEX`) statements — a second run will hit `ER_DUP_FIELDNAME` (or,
 for 008's index, the equivalent "duplicate key name" error) on whichever
 statement had already committed. Because `ALTER TABLE` and `CREATE INDEX`
 both implicitly commit, a partial failure is not rolled back by the runner
 failing to record the version.
 
-**If 007, 008, or 011 fails partway through**, recovery is manual:
+**014 is the one that can simply be re-run.** `MODIFY COLUMN` restates the
+column's whole definition rather than adding to it, so running it twice
+leaves the same five-value enum both times and there is no
+`ER_DUP_FIELDNAME` to hit. That is a property of the statement, not of the
+runner — the runner still has no checksum and still records a file only once
+it fully succeeds — so it applies to this file and not to the other five.
+
+**If 007, 008, 011, 012 or 013 fails partway through**, recovery is manual:
 
 1. Inspect the actual table shape to see exactly which statements already
    committed: for 007, `DESCRIBE users;`, `DESCRIBE injuries;`, `DESCRIBE
@@ -118,7 +150,9 @@ failing to record the version.
    `user_identities` exists; for 008, `DESCRIBE equipment;` and `SHOW INDEX
    FROM equipment;`; for 011, `DESCRIBE users;` to see whether
    `email_verified` already landed, and confirm whether `auth_tokens`
-   exists.
+   exists; for 012, `DESCRIBE users;` for `weight_unit`; for 013,
+   `DESCRIBE plan_exercises;` for `day_no` and `DESCRIBE workout_sessions;`
+   for `plan_day_no`.
 2. Comment out (or delete) the statements in a local copy of the migration
    file that already applied, leaving only the ones that did not.
 3. Re-run `npm run migrate`. Since the runner never recorded the file as
