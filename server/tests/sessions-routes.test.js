@@ -87,6 +87,31 @@ test('session endpoints', async (t) => {
     assert.equal(second.body.data.session.sessionId, first.body.data.session.sessionId);
   });
 
+  // started_at is a TIMESTAMP, and MySQL renders TIMESTAMP columns in the
+  // session's time_zone -- 'SYSTEM' on a default install -- on the way out.
+  // The pool's mysql2 `timezone: 'Z'` then LABELS that local wall-clock string
+  // as UTC, so a server running at UTC+8 reports a session as having started
+  // eight hours in the future. The phone subtracts that from its own clock,
+  // gets a negative, clamps it to zero, and the workout shows "0 min elapsed"
+  // forever -- and stores durationMin: 0 on completion. getProfile already
+  // solved this for created_at with UNIX_TIMESTAMP(); this pins it for
+  // started_at too.
+  await t.test('startedAt is the real instant, not the server wall clock', async () => {
+    const { token } = await freshUser('clock@example.com');
+
+    const before = Date.now();
+    const res = await auth(request(app).post('/api/v1/sessions'), token).expect(201);
+    const startedAt = Date.parse(res.body.data.session.startedAt);
+
+    // The row was inserted between these two readings, so its instant has to
+    // fall between them. A timezone-mislabelled value misses by whole hours.
+    assert.ok(
+      startedAt >= before - 1000 && startedAt <= Date.now() + 1000,
+      `startedAt ${res.body.data.session.startedAt} is not within the request `
+      + `window (${new Date(before).toISOString()} .. ${new Date().toISOString()})`,
+    );
+  });
+
   await t.test('starting without a plan is 409 NO_ACTIVE_PLAN', async () => {
     const res = await request(app).post('/api/v1/auth/register')
       .send({ email: 'noplan@example.com', password: 's3cret-pass', fullName: 'W' }).expect(201);

@@ -19,6 +19,22 @@ function toNumber(value) {
   return value === null || value === undefined ? null : Number(value);
 }
 
+/// TIMESTAMP columns come back rendered in the SESSION's time_zone -- 'SYSTEM'
+/// on a default install -- and the pool's mysql2 `timezone: 'Z'` then LABELS
+/// that local wall-clock string as UTC. It cannot undo a conversion the server
+/// already did. On a UTC+8 host that reports a session as having started eight
+/// hours in the future: the phone subtracts it from its own clock, gets a
+/// negative, clamps to zero, and shows "0 min elapsed" for the whole workout
+/// while storing durationMin: 0 on completion.
+///
+/// UNIX_TIMESTAMP() sidesteps the conversion rather than reversing it -- for a
+/// TIMESTAMP argument MySQL hands back the internally stored UTC epoch
+/// directly, consulting neither @@session.time_zone nor the zone-name tables.
+/// getProfile uses the same remedy for created_at.
+///
+/// Every query whose rows reach toSession must select this.
+const SESSION_COLUMNS = '*, UNIX_TIMESTAMP(started_at) AS started_at_epoch';
+
 function toLoggedSet(row) {
   return {
     exerciseId: row.exercise_id,
@@ -34,7 +50,9 @@ function toSession(row, setRows) {
     planId: row.plan_id,
     status: row.status,
     sessionDate: formatDate(row.session_date),
-    startedAt: row.started_at ? new Date(row.started_at).toISOString() : null,
+    startedAt: row.started_at_epoch
+      ? new Date(Number(row.started_at_epoch) * 1000).toISOString()
+      : null,
     durationMin: row.duration_min,
     totalVolumeKg: toNumber(row.total_volume_kg),
     sets: setRows.map(toLoggedSet),
@@ -57,7 +75,8 @@ async function loadSets(pool, sessionId) {
 async function getSessionById(pool, userId, sessionId) {
   if (!Number.isInteger(sessionId)) return null;
   const [rows] = await pool.query(
-    'SELECT * FROM workout_sessions WHERE session_id = ? AND user_id = ?',
+    `SELECT ${SESSION_COLUMNS} FROM workout_sessions
+     WHERE session_id = ? AND user_id = ?`,
     [sessionId, userId],
   );
   if (rows.length === 0) return null;
@@ -66,7 +85,7 @@ async function getSessionById(pool, userId, sessionId) {
 
 async function getActiveSession(pool, userId) {
   const [rows] = await pool.query(
-    `SELECT * FROM workout_sessions
+    `SELECT ${SESSION_COLUMNS} FROM workout_sessions
      WHERE user_id = ? AND status = 'in_progress'
      ORDER BY session_id DESC
      LIMIT 1`,
