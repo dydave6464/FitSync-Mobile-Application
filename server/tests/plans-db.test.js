@@ -158,4 +158,77 @@ test('plan persistence', async (t) => {
     assert.equal(plan.exercises[0].planExerciseId, rows[0].plan_exercise_id,
       'without this the client cannot name the row it wants to swap');
   });
+
+  await t.test('a plan round-trips its days, ordered by day then position', async () => {
+    await reset();
+    const [rows] = await pool.query(
+      "SELECT name FROM exercises WHERE status='live' ORDER BY exercise_id LIMIT 3",
+    );
+    const [a, b, c] = rows.map((r) => r.name);
+
+    await savePlan(pool, userId, {
+      name: 'PPL',
+      splitStyle: 'push_pull_legs',
+      daysPerWeek: 4,
+      sessionLengthMin: 45,
+      weekNo: 1,
+      exercises: [
+        // Deliberately out of order, so the ORDER BY is doing the work rather
+        // than the insertion sequence.
+        { name: b, dayNo: 2, orderNo: 1, targetSets: 3, targetReps: '8-12' },
+        { name: a, dayNo: 1, orderNo: 1, targetSets: 3, targetReps: '8-12' },
+        { name: c, dayNo: 1, orderNo: 2, targetSets: 3, targetReps: '8-12' },
+      ],
+    });
+
+    const plan = await getActivePlan(pool, userId);
+    assert.deepEqual(plan.exercises.map((e) => [e.dayNo, e.orderNo]), [[1, 1], [1, 2], [2, 1]]);
+    assert.deepEqual(plan.days, [
+      { dayNo: 1, name: 'Push' },
+      { dayNo: 2, name: 'Pull' },
+      { dayNo: 3, name: 'Legs' },
+    ]);
+  });
+
+  await t.test('the same exercise may appear on two days', async () => {
+    // plan_exercises has no unique key on (plan_id, exercise_id) -- only the
+    // two non-unique indexes from 002 -- so a rotation that reuses a movement
+    // stores two rows rather than failing. Pinned because it would be an easy
+    // and wrong "fix" to add that key while adding day_no.
+    await reset();
+    const [rows] = await pool.query(
+      "SELECT name FROM exercises WHERE status='live' ORDER BY exercise_id LIMIT 1",
+    );
+    const only = rows[0].name;
+
+    await savePlan(pool, userId, {
+      name: 'Repeat', splitStyle: 'upper_lower', daysPerWeek: 4,
+      sessionLengthMin: 45, weekNo: 1,
+      exercises: [
+        { name: only, dayNo: 1, orderNo: 1, targetSets: 3, targetReps: '8-12' },
+        { name: only, dayNo: 2, orderNo: 1, targetSets: 3, targetReps: '8-12' },
+      ],
+    });
+
+    const plan = await getActivePlan(pool, userId);
+    assert.equal(plan.exercises.length, 2);
+  });
+
+  await t.test('a plan saved without days reads as one full-body day', async () => {
+    await reset();
+    const [rows] = await pool.query(
+      "SELECT name FROM exercises WHERE status='live' ORDER BY exercise_id LIMIT 1",
+    );
+
+    await savePlan(pool, userId, {
+      name: 'Old', splitStyle: 'full_body', daysPerWeek: 3,
+      sessionLengthMin: 45, weekNo: 1,
+      // No dayNo at all, exactly as a pre-013 generator sent it.
+      exercises: [{ name: rows[0].name, orderNo: 1, targetSets: 3, targetReps: '8-12' }],
+    });
+
+    const plan = await getActivePlan(pool, userId);
+    assert.equal(plan.exercises[0].dayNo, 1);
+    assert.deepEqual(plan.days, [{ dayNo: 1, name: 'Full body' }]);
+  });
 });

@@ -1,6 +1,25 @@
 'use strict';
 const AppError = require('../lib/app-error');
 
+// Day names are derived from the split style rather than stored, because
+// nothing lets anyone type one: generated and custom plans both PICK a split,
+// and the split is what names its days. See the design, sections 3 and 4.
+//
+// This must agree with ml/app/rules/splits.py, which decides day 2 is a pull
+// day by the muscles it draws from. Two services in different languages that
+// cannot share code, so the agreement is pinned by a test asserting day 1 of a
+// push_pull_legs plan holds push MUSCLES -- not merely that a day 1 exists.
+const SPLIT_DAY_NAMES = {
+  full_body: ['Full body'],
+  push_pull_legs: ['Push', 'Pull', 'Legs'],
+  upper_lower: ['Upper', 'Lower'],
+  cardio_core: ['Cardio & core'],
+};
+
+function dayNamesFor(splitStyle) {
+  return SPLIT_DAY_NAMES[splitStyle] || SPLIT_DAY_NAMES.full_body;
+}
+
 // The ML service names exercises; plan_exercises needs ids, and the column is
 // NOT NULL with a foreign key. Everything here exists to bridge that gap
 // safely — see the spec, section 6.
@@ -67,9 +86,11 @@ async function savePlan(pool, userId, plan) {
     );
     for (const ex of plan.exercises) {
       await conn.query(
-        `INSERT INTO plan_exercises (plan_id, exercise_id, order_no, target_sets, target_reps)
-         VALUES (?, ?, ?, ?, ?)`,
-        [result.insertId, resolved.get(ex.name), ex.orderNo, ex.targetSets, ex.targetReps],
+        `INSERT INTO plan_exercises (plan_id, exercise_id, day_no, order_no, target_sets, target_reps)
+         VALUES (?, ?, ?, ?, ?, ?)`,
+        // A generator that sends no dayNo is a one-day plan, which is what
+        // every plan was before migration 013.
+        [result.insertId, resolved.get(ex.name), ex.dayNo || 1, ex.orderNo, ex.targetSets, ex.targetReps],
       );
     }
     await conn.commit();
@@ -105,14 +126,14 @@ async function getActivePlan(pool, userId) {
     // future feature that tried — e.g. "browse the catalogue for this plan
     // exercise's equipment" — would silently return no results comparing
     // one against the other.
-    `SELECT pe.plan_exercise_id, pe.order_no, pe.target_sets, pe.target_reps,
+    `SELECT pe.plan_exercise_id, pe.day_no, pe.order_no, pe.target_sets, pe.target_reps,
             x.exercise_id, x.name, x.muscle_group, x.thumbnail_url,
             COALESCE(parent.display_name, eq.display_name, eq.name) AS equipment
        FROM plan_exercises pe
        JOIN exercises x ON x.exercise_id = pe.exercise_id
        LEFT JOIN equipment eq ON eq.equipment_id = x.equipment_id
        LEFT JOIN equipment parent ON parent.equipment_id = eq.parent_equipment_id
-      WHERE pe.plan_id = ? ORDER BY pe.order_no`, [p.plan_id],
+      WHERE pe.plan_id = ? ORDER BY pe.day_no, pe.order_no`, [p.plan_id],
   );
 
   return {
@@ -122,12 +143,17 @@ async function getActivePlan(pool, userId) {
     daysPerWeek: p.days_per_week,
     sessionLengthMin: p.session_length_min,
     weekNo: p.week_no,
+    // The full rotation, not merely the days that have exercises: a day that
+    // came back empty is still a day of the plan, and the Plan tab needs to
+    // name it rather than silently renumbering the ones that survived.
+    days: dayNamesFor(p.split_style).map((name, index) => ({ dayNo: index + 1, name })),
     exercises: exercises.map((e) => ({
       planExerciseId: e.plan_exercise_id,
       exerciseId: e.exercise_id,
       name: e.name,
       muscleGroup: e.muscle_group,
       thumbnailUrl: e.thumbnail_url,
+      dayNo: e.day_no,
       orderNo: e.order_no,
       targetSets: e.target_sets,
       targetReps: e.target_reps,
@@ -136,4 +162,4 @@ async function getActivePlan(pool, userId) {
   };
 }
 
-module.exports = { resolveExerciseIds, savePlan, getActivePlan };
+module.exports = { resolveExerciseIds, savePlan, getActivePlan, dayNamesFor };
