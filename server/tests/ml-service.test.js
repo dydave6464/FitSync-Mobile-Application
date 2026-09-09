@@ -4,7 +4,7 @@ const assert = require('node:assert/strict');
 const { createMlService } = require('../src/services/ml');
 
 const RISK_LEVELS = ['low', 'moderate', 'high'];
-const SPLITS = ['full_body', 'upper_lower', 'push_pull_legs', 'bro_split'];
+const SPLITS = ['full_body', 'upper_lower', 'push_pull_legs', 'cardio_core'];
 
 test('stub mode is the default', () => {
   const ml = createMlService({ mode: undefined });
@@ -25,6 +25,11 @@ test('generatePlan returns a plan matching the workout_plans shape', async () =>
   assert.equal(plan.sessionLengthMin, 60);
   assert.ok(Array.isArray(plan.exercises));
   assert.ok(plan.exercises.length > 0);
+  // upper_lower is a two-day rotation; the stub's four default exercises
+  // repeat once per day, not once for the whole plan, so this must be 8, not
+  // 4 -- and both days must actually appear, not just day 1 four times over.
+  assert.equal(plan.exercises.length, 8);
+  assert.deepEqual([...new Set(plan.exercises.map((e) => e.dayNo))], [1, 2]);
 
   for (const ex of plan.exercises) {
     assert.equal(typeof ex.name, 'string');

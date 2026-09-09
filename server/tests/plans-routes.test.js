@@ -366,6 +366,8 @@ test('plan endpoints', async (t) => {
 
   await t.test('regenerating is refused while a session is in progress', async () => {
     await withPlan();
+    const before = await request(app).get('/api/v1/plans/active')
+      .set('Authorization', auth).expect(200);
     await request(app).post('/api/v1/sessions').set('Authorization', auth).expect(201);
 
     const res = await request(app).post('/api/v1/plans/regenerate')
@@ -374,9 +376,12 @@ test('plan endpoints', async (t) => {
     assert.equal(res.body.error.code, 'SESSION_IN_PROGRESS');
 
     // The refusal changed nothing: the plan the running session logs against
-    // is still the one it started with.
+    // is still the SAME ROW it started with, not merely a row that happens to
+    // read 'full_body' -- an implementation that wrote a fresh full_body plan
+    // before refusing would satisfy a splitStyle-only check.
     const after = await request(app).get('/api/v1/plans/active')
       .set('Authorization', auth).expect(200);
+    assert.equal(after.body.data.plan.planId, before.body.data.plan.planId);
     assert.equal(after.body.data.plan.splitStyle, 'full_body');
   });
 
@@ -386,6 +391,7 @@ test('plan endpoints', async (t) => {
     ['daysPerWeek', 8],
     ['daysPerWeek', 'four'],
     ['sessionLengthMin', 5],
+    ['sessionLengthMin', 'sixty'],
   ]) {
     await t.test(`regenerating rejects ${field}=${value}`, async () => {
       await withPlan();
@@ -397,11 +403,43 @@ test('plan endpoints', async (t) => {
   }
 
   await t.test('an empty body regenerates the same shape rather than failing', async () => {
-    // Every override is optional; sending none is "give me a fresh plan".
+    // Every override is optional; sending none is "give me a fresh plan" --
+    // a genuinely fresh one, not the existing plan handed back unchanged, so
+    // this needs a new plan row as evidence and not merely a familiar shape.
     await withPlan();
+    const before = await request(app).get('/api/v1/plans/active')
+      .set('Authorization', auth).expect(200);
     const res = await request(app).post('/api/v1/plans/regenerate')
       .set('Authorization', auth).send({}).expect(200);
     assert.equal(res.body.data.plan.splitStyle, 'full_body');
+    assert.notEqual(res.body.data.plan.planId, before.body.data.plan.planId, 'a new plan row');
+  });
+
+  await t.test("regenerating cannot touch another user's plan", async () => {
+    await withPlan();
+    const before = await request(app).get('/api/v1/plans/active')
+      .set('Authorization', auth).expect(200);
+
+    // A second account, reached the same way 'alternatives require the
+    // caller to own the plan' above reaches one.
+    await request(app).post('/api/v1/auth/register')
+      .send({ email: 'regen-intruder@example.com', password: 's3cret-pass', fullName: 'I' }).expect(201);
+    const [u] = await pool.query("SELECT user_id FROM users WHERE email='regen-intruder@example.com'");
+    await markEmailVerified(pool, u[0].user_id);
+    const login = await request(app).post('/api/v1/auth/login')
+      .send({ email: 'regen-intruder@example.com', password: 's3cret-pass' }).expect(200);
+
+    // Regenerating under the second account's own token can only ever act
+    // on the second account's own profile and plan -- userId comes from the
+    // token, never the body.
+    await request(app).post('/api/v1/plans/regenerate')
+      .set('Authorization', `Bearer ${login.body.data.token}`)
+      .send({ splitStyle: 'push_pull_legs' }).expect(200);
+
+    const after = await request(app).get('/api/v1/plans/active')
+      .set('Authorization', auth).expect(200);
+    assert.equal(after.body.data.plan.planId, before.body.data.plan.planId);
+    assert.equal(after.body.data.plan.splitStyle, 'full_body');
   });
 
   await t.test('regenerating requires a token', async () => {
