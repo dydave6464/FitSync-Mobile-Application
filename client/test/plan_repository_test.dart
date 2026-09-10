@@ -203,6 +203,7 @@ void main() {
       sessionLengthMin: 60,
     );
 
+    expect(seen.single.method, 'POST');
     expect(seen.single.url.path, '/api/v1/plans/regenerate');
     expect(jsonDecode(seen.single.body), {
       'splitStyle': 'push_pull_legs',
