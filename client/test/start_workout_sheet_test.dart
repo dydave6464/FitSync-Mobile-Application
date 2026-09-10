@@ -1,4 +1,8 @@
+import 'dart:io';
+import 'dart:typed_data';
+
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart' show FontLoader;
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 
@@ -8,7 +12,21 @@ import 'package:fitsync/features/plans/presentation/generator_screen.dart';
 import 'package:fitsync/features/plans/presentation/providers.dart';
 import 'package:fitsync/features/plans/presentation/start_workout_sheet.dart';
 
-Future<void> _open(WidgetTester tester, {WorkoutPlan? plan}) async {
+/// The real face, not the test harness's. The default test font renders
+/// FsTag('Recommended') at 136dp against Space Grotesk's ~62dp, which is
+/// enough to invert a conclusion about whether this sheet fits.
+Future<void> _loadFont() async {
+  final bytes = await File('assets/fonts/SpaceGrotesk-Variable.ttf').readAsBytes();
+  await (FontLoader('SpaceGrotesk')
+        ..addFont(Future.value(ByteData.view(bytes.buffer))))
+      .load();
+}
+
+Future<void> _open(
+  WidgetTester tester, {
+  WorkoutPlan? plan,
+  TextScaler textScaler = TextScaler.noScaling,
+}) async {
   await tester.pumpWidget(
     ProviderScope(
       overrides: [
@@ -16,6 +34,12 @@ Future<void> _open(WidgetTester tester, {WorkoutPlan? plan}) async {
       ],
       child: MaterialApp(
         theme: fsLightTheme(),
+        // Above the Navigator on purpose: the sheet is a route, so a
+        // MediaQuery under `home` would not reach it.
+        builder: (context, child) => MediaQuery(
+          data: MediaQuery.of(context).copyWith(textScaler: textScaler),
+          child: child!,
+        ),
         home: Builder(
           builder: (context) => Scaffold(
             body: ElevatedButton(
@@ -32,6 +56,63 @@ Future<void> _open(WidgetTester tester, {WorkoutPlan? plan}) async {
 }
 
 void main() {
+  setUpAll(_loadFont);
+
+  /// Both rows visible and hit-testable, which is what a clipped sheet
+  /// costs: `showModalBottomSheet` caps its child at 9/16 of the screen and
+  /// a bare Column has nowhere to put the remainder, so the second row goes
+  /// off the bottom edge -- a debug stripe, and in release nothing at all.
+  void expectBothRowsUsable(WidgetTester tester) {
+    expect(find.byKey(const Key('start.generator')).hitTestable(), findsOneWidget);
+    expect(find.byKey(const Key('start.manual')).hitTestable(), findsOneWidget);
+  }
+
+  testWidgets('both rows survive a landscape viewport', (tester) async {
+    // 844x390: an iPhone 14 turned sideways. Every other test in this file
+    // runs at the harness's 800x600, where 9/16 leaves room to spare.
+    tester.view.physicalSize = const Size(844, 390);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.reset);
+
+    await _open(tester);
+
+    expectBothRowsUsable(tester);
+  });
+
+  testWidgets('both rows survive a small landscape viewport', (tester) async {
+    // 640x360: the smallest Android phone the app targets, sideways.
+    tester.view.physicalSize = const Size(640, 360);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.reset);
+
+    await _open(tester);
+
+    expectBothRowsUsable(tester);
+  });
+
+  testWidgets('the largest text scale scrolls rather than clipping',
+      (tester) async {
+    // 2.0x on a 390x844 phone -- Android's largest font setting. At this
+    // scale the two rows are taller than the whole screen, so no cap and no
+    // amount of full-height sheet can show both at once: the remainder has
+    // to be reachable rather than cut off. (1.5x fits with the real face
+    // loaded; it only overflows under the test harness's much wider default
+    // font, which is why this file loads Space Grotesk.)
+    tester.view.physicalSize = const Size(390, 844);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.reset);
+
+    await _open(tester, textScaler: const TextScaler.linear(2));
+
+    expect(find.byKey(const Key('start.generator')).hitTestable(), findsOneWidget);
+
+    await tester.drag(find.byKey(const Key('start.generator')), const Offset(0, -400));
+    await tester.pumpAndSettle();
+
+    expect(find.byKey(const Key('start.manual')).hitTestable(), findsOneWidget,
+        reason: 'the second row must scroll into reach, not be clipped away');
+  });
+
   testWidgets('the sheet offers both rows from the design', (tester) async {
     await _open(tester);
 

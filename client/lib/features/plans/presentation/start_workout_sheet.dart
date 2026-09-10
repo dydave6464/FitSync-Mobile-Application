@@ -14,6 +14,13 @@ Future<void> showStartWorkoutSheet(BuildContext context) {
   return showModalBottomSheet<void>(
     context: context,
     backgroundColor: Colors.transparent,
+    // A modal sheet is capped at 9/16 of the screen unless it is told
+    // otherwise, and this one's content does not shrink: sideways on a
+    // phone that cap lands "Log manually" past the bottom edge, where debug
+    // draws a stripe and release quietly clips it. Full height covers every
+    // orientation; the scroll view inside covers the accessibility text
+    // scales that no height can fit.
+    isScrollControlled: true,
     builder: (_) => const _StartWorkoutSheet(),
   );
 }
@@ -33,60 +40,69 @@ class _StartWorkoutSheet extends StatelessWidget {
       padding: const EdgeInsets.fromLTRB(18, 10, 18, 22),
       child: SafeArea(
         top: false,
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            Center(
-              child: Container(
-                width: 38,
-                height: 4,
-                margin: const EdgeInsets.only(bottom: 16),
-                decoration: BoxDecoration(
-                  color: t.line2,
-                  borderRadius: BorderRadius.circular(99),
+        child: SingleChildScrollView(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Center(
+                child: Container(
+                  width: 38,
+                  height: 4,
+                  margin: const EdgeInsets.only(bottom: 16),
+                  decoration: BoxDecoration(
+                    color: t.line2,
+                    borderRadius: BorderRadius.circular(99),
+                  ),
                 ),
               ),
-            ),
-            Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [
-                Text('Start a workout',
-                    style: TextStyle(fontSize: 20, fontWeight: FontWeight.w700, color: t.text)),
-                IconButton(
-                  key: const Key('start.close'),
-                  icon: const Icon(Icons.close, size: 18),
-                  color: t.text3,
-                  onPressed: () => Navigator.of(context).pop(),
-                ),
-              ],
-            ),
-            const SizedBox(height: 14),
-            _Row(
-              rowKey: const Key('start.generator'),
-              icon: Icons.auto_awesome,
-              title: 'AI Workout Generator',
-              body: 'Auto-build a plan from your profile, goals & recovery.',
-              tag: 'Recommended',
-              accent: true,
-              onTap: () {
-                Navigator.of(context).pop();
-                Navigator.of(context).push(
-                  MaterialPageRoute<void>(builder: (_) => const GeneratorScreen()),
-                );
-              },
-            ),
-            const SizedBox(height: 10),
-            _Row(
-              rowKey: const Key('start.manual'),
-              icon: Icons.fitness_center,
-              title: 'Log manually',
-              body: 'Pick exercises from the library and track your own sets.',
-              tag: 'Coming soon',
-              accent: false,
-              onTap: null,
-            ),
-          ],
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  // Expanded, not bare: at a 2x text scale the title and
+                  // the close button together are wider than a phone, and
+                  // a Row hands an unflexed child unbounded width to
+                  // overflow in. Wrapping to a second line is the same
+                  // remedy FsButton and the eyebrow rows already use.
+                  Expanded(
+                    child: Text('Start a workout',
+                        style: TextStyle(fontSize: 20, fontWeight: FontWeight.w700, color: t.text)),
+                  ),
+                  IconButton(
+                    key: const Key('start.close'),
+                    icon: const Icon(Icons.close, size: 18),
+                    color: t.text3,
+                    onPressed: () => Navigator.of(context).pop(),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 14),
+              _Row(
+                rowKey: const Key('start.generator'),
+                icon: Icons.auto_awesome,
+                title: 'AI Workout Generator',
+                body: 'Auto-build a plan from your profile, goals & recovery.',
+                tag: 'Recommended',
+                accent: true,
+                onTap: () {
+                  Navigator.of(context).pop();
+                  Navigator.of(context).push(
+                    MaterialPageRoute<void>(builder: (_) => const GeneratorScreen()),
+                  );
+                },
+              ),
+              const SizedBox(height: 10),
+              _Row(
+                rowKey: const Key('start.manual'),
+                icon: Icons.fitness_center,
+                title: 'Log manually',
+                body: 'Pick exercises from the library and track your own sets.',
+                tag: 'Coming soon',
+                accent: false,
+                onTap: null,
+              ),
+            ],
+          ),
         ),
       ),
     );
