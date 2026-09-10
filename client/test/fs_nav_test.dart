@@ -172,4 +172,34 @@ void main() {
       );
     }
   });
+
+  testWidgets('the fab casts the accent drop shadow the design gives it',
+      (tester) async {
+    // styles.css puts a glow under the raised circle, the same one it puts
+    // under .btn.primary. A bare Material has none: the circle reads as
+    // painted onto the bar rather than lifted off it, which is the whole
+    // point of the shape.
+    await _pump(tester, onFabTap: () {});
+
+    final shadowed = tester
+        .widgetList<DecoratedBox>(
+          find.descendant(of: find.byType(FsNav), matching: find.byType(DecoratedBox)),
+        )
+        .map((d) => d.decoration)
+        .whereType<BoxDecoration>()
+        .where((d) => d.boxShadow?.isNotEmpty ?? false)
+        .toList();
+
+    expect(shadowed, hasLength(1),
+        reason: 'the raised fab is the one thing in this bar that lifts off it');
+    // Round, not square: a rectangular glow under a circle is worse than none.
+    expect(shadowed.single.shape, BoxShape.circle);
+
+    final accent = fsLightTheme().extension<FsTokens>()!.accent;
+    final shadow = shadowed.single.boxShadow!.single;
+    expect(shadow.color, accent.withValues(alpha: 0.45));
+    expect(shadow.offset, const Offset(0, 10));
+    expect(shadow.blurRadius, 24);
+    expect(shadow.spreadRadius, -10);
+  });
 }

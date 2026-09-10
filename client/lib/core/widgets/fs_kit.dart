@@ -10,6 +10,19 @@ import '../units.dart';
 /// Screens compose these instead of styling Material widgets inline, which is
 /// what keeps the look consistent and the screens readable.
 
+/// `box-shadow: 0 10px 24px -10px` in the accent — the glow the design puts
+/// under anything raised and accent-coloured. `.btn.primary` and the nav's
+/// centre fab both carry it in `styles.css`; one list here is what stops the
+/// two drifting apart.
+List<BoxShadow> fsAccentGlow(FsTokens t) => [
+      BoxShadow(
+        color: t.accent.withValues(alpha: 0.45),
+        blurRadius: 24,
+        offset: const Offset(0, 10),
+        spreadRadius: -10,
+      ),
+    ];
+
 enum FsButtonKind { primary, secondary, ghost }
 
 /// `.btn` — 52px, full-pill, 15/700. The primary variant carries the accent
@@ -54,16 +67,8 @@ class FsButton extends StatelessWidget {
       child: DecoratedBox(
         decoration: BoxDecoration(
           borderRadius: BorderRadius.circular(FsRadius.pill),
-          boxShadow: kind == FsButtonKind.primary && enabled
-              ? [
-                  BoxShadow(
-                    color: t.accent.withValues(alpha: 0.45),
-                    blurRadius: 24,
-                    offset: const Offset(0, 10),
-                    spreadRadius: -10,
-                  ),
-                ]
-              : null,
+          boxShadow:
+              kind == FsButtonKind.primary && enabled ? fsAccentGlow(t) : null,
         ),
         child: Material(
           color: bg,
@@ -688,17 +693,24 @@ class FsNav extends StatelessWidget {
   /// The raised centre circle itself — sized but not positioned; [build]
   /// places it via [Positioned] rather than [Transform], since a transform
   /// would reintroduce the hit-test dead zone this shape exists to avoid.
-  Widget _fab(FsTokens t) => Material(
-        color: t.accent,
-        shape: const CircleBorder(),
-        child: InkWell(
-          key: const Key('nav.fab'),
-          customBorder: const CircleBorder(),
-          onTap: onFabTap,
-          child: SizedBox(
-            width: 50,
-            height: 50,
-            child: Icon(Icons.add, size: 26, color: t.onAccent),
+  Widget _fab(FsTokens t) => DecoratedBox(
+        // Circle, not the default rectangle: the glow has to follow the
+        // shape it falls from. Painted outside the Material rather than
+        // through its `elevation`, so it is the design's accent glow and
+        // not Material's own grey ambient shadow.
+        decoration: BoxDecoration(shape: BoxShape.circle, boxShadow: fsAccentGlow(t)),
+        child: Material(
+          color: t.accent,
+          shape: const CircleBorder(),
+          child: InkWell(
+            key: const Key('nav.fab'),
+            customBorder: const CircleBorder(),
+            onTap: onFabTap,
+            child: SizedBox(
+              width: 50,
+              height: 50,
+              child: Icon(Icons.add, size: 26, color: t.onAccent),
+            ),
           ),
         ),
       );
