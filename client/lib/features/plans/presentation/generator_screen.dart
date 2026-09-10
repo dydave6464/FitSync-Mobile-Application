@@ -93,6 +93,13 @@ class _GeneratorScreenState extends ConsumerState<GeneratorScreen> {
       // provider is invalidated rather than patched: the Plan tab re-reads and
       // renders the new day.
       container.invalidate(activePlanProvider);
+      // Before the pop, and on the messenger captured above rather than one
+      // looked up after it, so the message survives the screen leaving. The
+      // "+" is global: generating from Home or Browse pops back to Home or
+      // Browse, where the new plan is invisible and the only irreversible
+      // action in this slice would otherwise finish with no evidence it
+      // happened at all.
+      messenger.showSnackBar(const SnackBar(content: Text('New plan generated')));
       if (mounted) navigator.pop();
     } on ApiException catch (error) {
       if (!mounted) return;

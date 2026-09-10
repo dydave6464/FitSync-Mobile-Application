@@ -133,6 +133,10 @@ bool _dayFilled(WidgetTester tester, int d) {
   return (container.decoration as BoxDecoration).color == accent;
 }
 
+/// What the screen says on the way out. Spelled once here so the assertion
+/// and the widget cannot drift apart while both still pass.
+const _generatedMessage = 'New plan generated';
+
 void main() {
   testWidgets('the four split styles are offered', (tester) async {
     await _pump(tester, plan: _pplPlan);
@@ -353,6 +357,8 @@ void main() {
 
     expect(find.byType(GeneratorScreen), findsOneWidget,
         reason: 'the user must be able to retry or change their choices');
+    expect(find.text(_generatedMessage), findsNothing,
+        reason: 'nothing was generated, so nothing should say it was');
   });
 
   testWidgets('a successful generation refreshes the active plan', (tester) async {
@@ -381,6 +387,50 @@ void main() {
     expect(calls, 2,
         reason: 'the plan must be refetched so every screen reading it sees the new one');
     expect(find.byType(GeneratorScreen), findsNothing);
+  });
+
+  testWidgets('a successful generation says so on the way out', (tester) async {
+    // The "+" is in the bottom bar, so this screen is reachable from Home,
+    // Browse and Profile as well as Train, and popping returns to whichever
+    // one the user came from. Without a word from the app, the one
+    // irreversible thing on this screen -- it replaces the current plan --
+    // completes with nothing on screen changing at all.
+    final repo = FakePlanRepository();
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          activePlanProvider.overrideWith((ref) async => _pplPlan),
+          planRepositoryProvider.overrideWithValue(repo),
+        ],
+        child: MaterialApp(
+          theme: fsLightTheme(),
+          home: Builder(
+            builder: (context) => Scaffold(
+              body: Center(
+                child: ElevatedButton(
+                  onPressed: () => Navigator.of(context).push(
+                    MaterialPageRoute<void>(builder: (_) => const GeneratorScreen()),
+                  ),
+                  child: const Text('open'),
+                ),
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('open'));
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.byKey(const Key('gen.generate')));
+    await tester.pumpAndSettle();
+
+    expect(find.byType(GeneratorScreen), findsNothing);
+    // On the screen behind, not the one that just left: the messenger is
+    // captured before the await precisely so the message outlives the pop.
+    expect(find.text('open'), findsOneWidget);
+    expect(find.text(_generatedMessage), findsOneWidget);
   });
 
   testWidgets(
