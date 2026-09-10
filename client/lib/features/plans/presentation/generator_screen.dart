@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../../core/api_exception.dart';
 import '../../../core/theme.dart';
 import '../../../core/widgets/fs_kit.dart';
 import '../../exercises/presentation/exercise_list_screen.dart' show describeError;
@@ -38,6 +39,42 @@ class _GeneratorScreenState extends ConsumerState<GeneratorScreen> {
   String? _splitStyle;
   int? _daysPerWeek;
   int? _sessionLengthMin;
+  bool _busy = false;
+
+  /// Takes the resolved split/days/length the caller already has in scope
+  /// rather than re-resolving from the provider -- `_buildControls` only
+  /// runs in the data branch, so those values are the ones the user is
+  /// actually looking at. Re-reading `activePlanProvider` here would revive
+  /// the loading/error-flattening bug the debug getters still carry: a
+  /// failed fetch reads null and falls back to full_body/3/45, and that
+  /// fallback would go out as the generate payload.
+  Future<void> _generate(String split, int days, int length) async {
+    final messenger = ScaffoldMessenger.of(context);
+    final navigator = Navigator.of(context);
+    setState(() => _busy = true);
+    try {
+      await ref.read(planRepositoryProvider).regenerate(
+            splitStyle: split,
+            daysPerWeek: days,
+            sessionLengthMin: length,
+          );
+      // The plan changed underneath every screen that reads it, so the whole
+      // provider is invalidated rather than patched: the Plan tab re-reads and
+      // renders the new day.
+      ref.invalidate(activePlanProvider);
+      if (mounted) navigator.pop();
+    } on ApiException catch (error) {
+      if (!mounted) return;
+      setState(() => _busy = false);
+      messenger.showSnackBar(SnackBar(content: Text(error.message)));
+    } catch (_) {
+      if (!mounted) return;
+      setState(() => _busy = false);
+      messenger.showSnackBar(
+        const SnackBar(content: Text('Could not reach the server. Try again.')),
+      );
+    }
+  }
 
   /// The one place the fallback chain is written. Pure: two calls with the
   /// same plan always agree, so nothing needs to cache what a previous build
@@ -142,6 +179,13 @@ class _GeneratorScreenState extends ConsumerState<GeneratorScreen> {
         Text(
           'Generating replaces your current plan.',
           style: TextStyle(fontSize: 12, color: t.text3, height: 1.4),
+        ),
+        const SizedBox(height: 18),
+        FsButton(
+          key: const Key('gen.generate'),
+          label: 'Generate plan',
+          busy: _busy,
+          onPressed: () => _generate(split, days, length),
         ),
       ],
     );

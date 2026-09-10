@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../../../core/theme.dart';
 import '../../../core/widgets/fs_kit.dart';
+import 'generator_screen.dart';
 
 /// The "+" chooser: how a workout starts.
 ///
@@ -68,7 +69,12 @@ class _StartWorkoutSheet extends StatelessWidget {
               body: 'Auto-build a plan from your profile, goals & recovery.',
               tag: 'Recommended',
               accent: true,
-              onTap: () {},
+              onTap: () {
+                Navigator.of(context).pop();
+                Navigator.of(context).push(
+                  MaterialPageRoute<void>(builder: (_) => const GeneratorScreen()),
+                );
+              },
             ),
             const SizedBox(height: 10),
             _Row(

@@ -4,8 +4,10 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 
+import 'package:fitsync/core/api_exception.dart';
 import 'package:fitsync/core/theme.dart';
 import 'package:fitsync/core/widgets/fs_kit.dart';
+import 'package:fitsync/features/plans/data/plan_repository.dart';
 import 'package:fitsync/features/plans/domain/workout_plan.dart';
 import 'package:fitsync/features/plans/presentation/generator_screen.dart';
 import 'package:fitsync/features/plans/presentation/providers.dart';
@@ -25,11 +27,41 @@ const _pplPlan = WorkoutPlan(
   exercises: [],
 );
 
-Future<void> _pump(WidgetTester tester, {WorkoutPlan? plan}) async {
+class FakePlanRepository implements PlanRepository {
+  FakePlanRepository({this.error});
+
+  final Object? error;
+  Map<String, dynamic>? sent;
+
+  @override
+  String get baseUrl => 'http://test.local';
+
+  @override
+  Future<WorkoutPlan> regenerate({
+    required String splitStyle,
+    required int daysPerWeek,
+    required int sessionLengthMin,
+  }) async {
+    sent = {
+      'splitStyle': splitStyle,
+      'daysPerWeek': daysPerWeek,
+      'sessionLengthMin': sessionLengthMin,
+    };
+    if (error != null) throw error!;
+    return _pplPlan;
+  }
+
+  @override
+  dynamic noSuchMethod(Invocation invocation) =>
+      throw UnimplementedError('${invocation.memberName} is not used by these tests');
+}
+
+Future<void> _pump(WidgetTester tester, {WorkoutPlan? plan, PlanRepository? repo}) async {
   await tester.pumpWidget(
     ProviderScope(
       overrides: [
         activePlanProvider.overrideWith((ref) async => plan),
+        if (repo != null) planRepositoryProvider.overrideWithValue(repo),
       ],
       child: MaterialApp(
         theme: fsLightTheme(),
@@ -238,5 +270,50 @@ void main() {
 
     expect(calls, 2, reason: 'retry must actually refetch');
     expect(find.text('Push / Pull / Legs'), findsOneWidget);
+  });
+
+  testWidgets('generate sends exactly what the controls show', (tester) async {
+    final repo = FakePlanRepository();
+    await _pump(tester, plan: _pplPlan, repo: repo);
+
+    await tester.tap(find.text('Upper / Lower'));
+    await tester.pump();
+    await tester.tap(find.byKey(const Key('gen.day.5')));
+    await tester.pump();
+    await tester.tap(find.byKey(const Key('gen.generate')));
+    await tester.pumpAndSettle();
+
+    expect(repo.sent, {
+      'splitStyle': 'upper_lower',
+      'daysPerWeek': 5,
+      'sessionLengthMin': 60,
+    });
+  });
+
+  testWidgets('a session in progress is refused with a reason', (tester) async {
+    // The endpoint refuses so that replacing the plan cannot strand a running
+    // logger on exercises that no longer exist.
+    final repo = FakePlanRepository(
+      error: const ApiException('SESSION_IN_PROGRESS', 'Finish or discard.'),
+    );
+    await _pump(tester, plan: _pplPlan, repo: repo);
+
+    await tester.tap(find.byKey(const Key('gen.generate')));
+    await tester.pumpAndSettle();
+
+    expect(find.textContaining('Finish or discard'), findsOneWidget);
+  });
+
+  testWidgets('a failed generation leaves the screen open', (tester) async {
+    final repo = FakePlanRepository(
+      error: const ApiException('PLAN_GENERATION_FAILED', 'Could not build a plan.'),
+    );
+    await _pump(tester, plan: _pplPlan, repo: repo);
+
+    await tester.tap(find.byKey(const Key('gen.generate')));
+    await tester.pumpAndSettle();
+
+    expect(find.byType(GeneratorScreen), findsOneWidget,
+        reason: 'the user must be able to retry or change their choices');
   });
 }
