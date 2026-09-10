@@ -34,6 +34,12 @@ void main() {
     for (var i = 0; i < 4; i += 1) {
       expect(find.byKey(Key('nav.$i')), findsOneWidget);
     }
+    // Pins the bar's height so a fab-present layout change (the extra space
+    // above the bar for the raised circle) can't silently leak into the
+    // no-fab path, which every screen's body height still depends on. 59,
+    // not 58: Container already pads its child by the top BorderSide's own
+    // width, pre-existing and unrelated to the fab.
+    expect(tester.getSize(find.byType(FsNav)).height, 59);
   });
 
   testWidgets('the fab renders and reports taps', (tester) async {
@@ -62,5 +68,17 @@ void main() {
     final browse = tester.getCenter(find.byKey(const Key('nav.2'))).dx;
     expect(fab, greaterThan(train));
     expect(fab, lessThan(browse));
+  });
+
+  testWidgets('the raised top of the fab is tappable', (tester) async {
+    var taps = 0;
+    await _pump(tester, onFabTap: () => taps += 1);
+
+    final rect = tester.getRect(find.byKey(const Key('nav.fab')));
+    // Near the top edge of the circle -- the part that rises above the bar.
+    // A Transform.translate moves paint but not the ancestors' hit-test box,
+    // so this is precisely where a naive raise stops registering.
+    await tester.tapAt(Offset(rect.center.dx, rect.top + 6));
+    expect(taps, 1);
   });
 }

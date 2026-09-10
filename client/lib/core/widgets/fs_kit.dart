@@ -586,77 +586,110 @@ class FsNav extends StatelessWidget {
   /// shell's tests tap.
   final VoidCallback? onFabTap;
 
+  static const double _barHeight = 58;
+
+  /// `margin-top: -14px` in the prototype: how far the fab's circle rises
+  /// above the bar's top edge.
+  static const double _fabOverhang = 14;
+
+  /// The fab's footprint when it lived inline in the [Row] — kept as a
+  /// spacer so the tab cells still reserve the same gap for it.
+  static const double _fabSlotWidth = 62;
+
   @override
   Widget build(BuildContext context) {
     final t = context.fs;
+    final bar = _bar(t);
 
-    return Container(
-      decoration: BoxDecoration(
-        color: t.surface,
-        border: Border(top: BorderSide(color: t.line)),
-      ),
-      child: SafeArea(
-        top: false,
-        child: SizedBox(
-          height: 58,
-          child: Row(
-            children: [
-              for (final (index, item) in items.indexed) ...[
-                if (index == 2 && onFabTap != null) _fab(t),
-                Expanded(
-                  child: InkWell(
-                    key: Key('nav.$index'),
-                    onTap: () => onSelect(index),
-                    child: Column(
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      children: [
-                        Icon(
-                          item.icon,
-                          size: 21,
-                          color: index == currentIndex ? t.accent : t.text3,
-                        ),
-                        const SizedBox(height: 3),
-                        Text(
-                          item.label,
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                          style: TextStyle(
-                            fontSize: 10,
-                            fontWeight: FontWeight.w600,
-                            color: index == currentIndex ? t.accent : t.text3,
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                ),
-              ],
-            ],
+    if (onFabTap == null) return bar;
+
+    // The decorated bar stays exactly `_barHeight` tall and bottom-aligned —
+    // only the transparent space above it grows, so the fab's raised top
+    // gets a real box for ancestors to hit-test against instead of paint
+    // that spills outside one. A `Transform.translate` moves paint only: the
+    // `SizedBox(height: _barHeight)` it used to sit inside still reports
+    // `_barHeight` to its own parent, so any tap above that box is rejected
+    // before it ever reaches the fab's `InkWell`.
+    return SizedBox(
+      height: _barHeight + _fabOverhang,
+      child: Stack(
+        children: [
+          Positioned(left: 0, right: 0, bottom: 0, child: bar),
+          Positioned(
+            top: 0,
+            left: 0,
+            right: 0,
+            height: 50,
+            child: Center(child: _fab(t)),
           ),
-        ),
+        ],
       ),
     );
   }
 
-  /// The raised centre circle. `margin-top: -14px` in the prototype, so it
-  /// breaks the bar's top edge rather than sitting inside it.
-  Widget _fab(FsTokens t) => Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 6),
-        child: Transform.translate(
-          offset: const Offset(0, -14),
-          child: Material(
-            color: t.accent,
-            shape: const CircleBorder(),
-            child: InkWell(
-              key: const Key('nav.fab'),
-              customBorder: const CircleBorder(),
-              onTap: onFabTap,
-              child: SizedBox(
-                width: 50,
-                height: 50,
-                child: Icon(Icons.add, size: 26, color: t.onAccent),
-              ),
+  Widget _bar(FsTokens t) => Container(
+        decoration: BoxDecoration(
+          color: t.surface,
+          border: Border(top: BorderSide(color: t.line)),
+        ),
+        child: SafeArea(
+          top: false,
+          child: SizedBox(
+            height: _barHeight,
+            child: Row(
+              children: [
+                for (final (index, item) in items.indexed) ...[
+                  if (index == 2 && onFabTap != null)
+                    const SizedBox(width: _fabSlotWidth),
+                  Expanded(
+                    child: InkWell(
+                      key: Key('nav.$index'),
+                      onTap: () => onSelect(index),
+                      child: Column(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          Icon(
+                            item.icon,
+                            size: 21,
+                            color: index == currentIndex ? t.accent : t.text3,
+                          ),
+                          const SizedBox(height: 3),
+                          Text(
+                            item.label,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: TextStyle(
+                              fontSize: 10,
+                              fontWeight: FontWeight.w600,
+                              color:
+                                  index == currentIndex ? t.accent : t.text3,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                ],
+              ],
             ),
+          ),
+        ),
+      );
+
+  /// The raised centre circle itself — sized but not positioned; [build]
+  /// places it via [Positioned] rather than [Transform], since a transform
+  /// would reintroduce the hit-test dead zone this shape exists to avoid.
+  Widget _fab(FsTokens t) => Material(
+        color: t.accent,
+        shape: const CircleBorder(),
+        child: InkWell(
+          key: const Key('nav.fab'),
+          customBorder: const CircleBorder(),
+          onTap: onFabTap,
+          child: SizedBox(
+            width: 50,
+            height: 50,
+            child: Icon(Icons.add, size: 26, color: t.onAccent),
           ),
         ),
       );
