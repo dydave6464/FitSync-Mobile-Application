@@ -571,11 +571,20 @@ class FsNav extends StatelessWidget {
     required this.currentIndex,
     required this.onSelect,
     required this.items,
+    this.onFabTap,
   });
 
   final int currentIndex;
   final ValueChanged<int> onSelect;
   final List<FsNavItem> items;
+
+  /// Opens the start-workout sheet. Null on any bar that has no fab.
+  ///
+  /// Deliberately NOT an [FsNavItem]: the fab selects nothing, has no label
+  /// and no active state, and adding it to `items` would shift Browse from 2
+  /// to 3 and Profile from 3 to 4 — renumbering every `nav.$index` key the
+  /// shell's tests tap.
+  final VoidCallback? onFabTap;
 
   @override
   Widget build(BuildContext context) {
@@ -592,7 +601,8 @@ class FsNav extends StatelessWidget {
           height: 58,
           child: Row(
             children: [
-              for (final (index, item) in items.indexed)
+              for (final (index, item) in items.indexed) ...[
+                if (index == 2 && onFabTap != null) _fab(t),
                 Expanded(
                   child: InkWell(
                     key: Key('nav.$index'),
@@ -620,12 +630,36 @@ class FsNav extends StatelessWidget {
                     ),
                   ),
                 ),
+              ],
             ],
           ),
         ),
       ),
     );
   }
+
+  /// The raised centre circle. `margin-top: -14px` in the prototype, so it
+  /// breaks the bar's top edge rather than sitting inside it.
+  Widget _fab(FsTokens t) => Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 6),
+        child: Transform.translate(
+          offset: const Offset(0, -14),
+          child: Material(
+            color: t.accent,
+            shape: const CircleBorder(),
+            child: InkWell(
+              key: const Key('nav.fab'),
+              customBorder: const CircleBorder(),
+              onTap: onFabTap,
+              child: SizedBox(
+                width: 50,
+                height: 50,
+                child: Icon(Icons.add, size: 26, color: t.onAccent),
+              ),
+            ),
+          ),
+        ),
+      );
 }
 
 /// The onboarding progress strip: one bar per step, filled up to [step].
