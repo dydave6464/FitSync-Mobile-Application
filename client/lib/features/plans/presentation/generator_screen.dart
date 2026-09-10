@@ -3,6 +3,8 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../core/theme.dart';
 import '../../../core/widgets/fs_kit.dart';
+import '../../exercises/presentation/exercise_list_screen.dart' show describeError;
+import '../domain/workout_plan.dart';
 import 'providers.dart';
 
 /// The four split styles, and the labels the design gives them.
@@ -37,33 +39,27 @@ class _GeneratorScreenState extends ConsumerState<GeneratorScreen> {
   int? _daysPerWeek;
   int? _sessionLengthMin;
 
-  // The resolved values the last build used -- set at the top of build below,
-  // so these can never drift from what actually rendered.
-  String _resolvedSplit = _defaultSplit;
-  int _resolvedDays = _defaultDays;
-  int _resolvedLength = _defaultLength;
+  /// The one place the fallback chain is written. Pure: two calls with the
+  /// same plan always agree, so nothing needs to cache what a previous build
+  /// computed for the debug getters below to stay honest.
+  ({String split, int days, int length}) _resolve(WorkoutPlan? plan) => (
+        split: _splitStyle ?? plan?.splitStyle ?? _defaultSplit,
+        days: _daysPerWeek ?? plan?.daysPerWeek ?? _defaultDays,
+        length: _sessionLengthMin ?? plan?.sessionLengthMin ?? _defaultLength,
+      );
 
   // Read by the widget tests, which drive the controls and assert the state
   // they produce rather than reaching into private fields by name.
-  String get debugSplitStyle => _resolvedSplit;
-  int get debugDaysPerWeek => _resolvedDays;
-  int get debugSessionLengthMin => _resolvedLength;
+  String get debugSplitStyle =>
+      _resolve(ref.read(activePlanProvider).value).split;
+  int get debugDaysPerWeek =>
+      _resolve(ref.read(activePlanProvider).value).days;
+  int get debugSessionLengthMin =>
+      _resolve(ref.read(activePlanProvider).value).length;
 
   @override
   Widget build(BuildContext context) {
-    final t = context.fs;
-    final plan = ref.watch(activePlanProvider).value;
-
-    // The screen opens describing the plan the user already has, so
-    // generating without touching anything changes nothing. With no plan --
-    // a state /regenerate supports, having no NO_ACTIVE_PLAN check -- it
-    // falls back to the generator's own defaults rather than rendering blank.
-    final split = _splitStyle ?? plan?.splitStyle ?? _defaultSplit;
-    final days = _daysPerWeek ?? plan?.daysPerWeek ?? _defaultDays;
-    final length = _sessionLengthMin ?? plan?.sessionLengthMin ?? _defaultLength;
-    _resolvedSplit = split;
-    _resolvedDays = days;
-    _resolvedLength = length;
+    final asyncPlan = ref.watch(activePlanProvider);
 
     return Scaffold(
       appBar: AppBar(
@@ -72,45 +68,82 @@ class _GeneratorScreenState extends ConsumerState<GeneratorScreen> {
           Padding(padding: EdgeInsets.only(right: 16), child: Center(child: FsTag('Beta'))),
         ],
       ),
-      body: ListView(
-        padding: const EdgeInsets.fromLTRB(20, 12, 20, 24),
-        children: [
-          const FsEyebrow('Split style'),
-          const SizedBox(height: 10),
-          Wrap(
-            spacing: 8,
-            runSpacing: 8,
-            children: [
-              for (final s in _splits)
-                FsChip(
-                  label: s.label,
-                  selected: s.value == split,
-                  onTap: () => setState(() => _splitStyle = s.value),
+      // Loading and error both used to collapse into "no plan" -- plan?.x on
+      // a null value reads the same whether the fetch is still in flight or
+      // failed outright. That made a transient fetch failure show the
+      // full_body/3/45 defaults under "Generating replaces your current
+      // plan", so generating really would discard whatever plan the user
+      // has. Both states are handled explicitly here, before the fallback
+      // chain -- and therefore the controls -- ever runs.
+      body: asyncPlan.when(
+        loading: () => const Center(child: CircularProgressIndicator()),
+        error: (error, _) => Center(
+          child: Padding(
+            padding: const EdgeInsets.all(24),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                const Text("Couldn't load your current plan.", textAlign: TextAlign.center),
+                const SizedBox(height: 6),
+                Text(describeError(error), textAlign: TextAlign.center),
+                const SizedBox(height: 12),
+                FsButton(
+                  label: 'Retry',
+                  small: true,
+                  kind: FsButtonKind.secondary,
+                  onPressed: () => ref.invalidate(activePlanProvider),
                 ),
-            ],
+              ],
+            ),
           ),
-          const SizedBox(height: 22),
-          const FsEyebrow('Days / week'),
-          const SizedBox(height: 10),
-          _DaysRow(
-            selected: days,
-            onSelected: (d) => setState(() => _daysPerWeek = d),
-          ),
-          const SizedBox(height: 22),
-          const FsEyebrow('Session length'),
-          const SizedBox(height: 10),
-          FsSegmented(
-            options: _lengths,
-            selected: '$length',
-            onSelected: (v) => setState(() => _sessionLengthMin = int.parse(v)),
-          ),
-          const SizedBox(height: 22),
-          Text(
-            'Generating replaces your current plan.',
-            style: TextStyle(fontSize: 12, color: t.text3, height: 1.4),
-          ),
-        ],
+        ),
+        data: (plan) => _buildControls(context, plan),
       ),
+    );
+  }
+
+  Widget _buildControls(BuildContext context, WorkoutPlan? plan) {
+    final t = context.fs;
+    final (:split, :days, :length) = _resolve(plan);
+
+    return ListView(
+      padding: const EdgeInsets.fromLTRB(20, 12, 20, 24),
+      children: [
+        const FsEyebrow('Split style'),
+        const SizedBox(height: 10),
+        Wrap(
+          spacing: 8,
+          runSpacing: 8,
+          children: [
+            for (final s in _splits)
+              FsChip(
+                label: s.label,
+                selected: s.value == split,
+                onTap: () => setState(() => _splitStyle = s.value),
+              ),
+          ],
+        ),
+        const SizedBox(height: 22),
+        const FsEyebrow('Days / week'),
+        const SizedBox(height: 10),
+        _DaysRow(
+          selected: days,
+          onSelected: (d) => setState(() => _daysPerWeek = d),
+        ),
+        const SizedBox(height: 22),
+        const FsEyebrow('Session length'),
+        const SizedBox(height: 10),
+        FsSegmented(
+          options: _lengths,
+          selected: '$length',
+          onSelected: (v) => setState(() => _sessionLengthMin = int.parse(v)),
+        ),
+        const SizedBox(height: 22),
+        Text(
+          'Generating replaces your current plan.',
+          style: TextStyle(fontSize: 12, color: t.text3, height: 1.4),
+        ),
+      ],
     );
   }
 }
