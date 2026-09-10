@@ -51,6 +51,12 @@ class _GeneratorScreenState extends ConsumerState<GeneratorScreen> {
   Future<void> _generate(String split, int days, int length) async {
     final messenger = ScaffoldMessenger.of(context);
     final navigator = Navigator.of(context);
+    // Captured for the same reason as messenger and navigator above: regenerate
+    // is the slowest call in the app and nothing blocks the user backing out
+    // while it runs, so by the time the await below returns this State may
+    // already be disposed. ref.invalidate would throw in that case -- the
+    // container outlives the widget, so the refresh does too.
+    final container = ProviderScope.containerOf(context, listen: false);
     setState(() => _busy = true);
     try {
       await ref.read(planRepositoryProvider).regenerate(
@@ -61,7 +67,7 @@ class _GeneratorScreenState extends ConsumerState<GeneratorScreen> {
       // The plan changed underneath every screen that reads it, so the whole
       // provider is invalidated rather than patched: the Plan tab re-reads and
       // renders the new day.
-      ref.invalidate(activePlanProvider);
+      container.invalidate(activePlanProvider);
       if (mounted) navigator.pop();
     } on ApiException catch (error) {
       if (!mounted) return;
@@ -71,7 +77,7 @@ class _GeneratorScreenState extends ConsumerState<GeneratorScreen> {
       if (!mounted) return;
       setState(() => _busy = false);
       messenger.showSnackBar(
-        const SnackBar(content: Text('Could not reach the server. Try again.')),
+        const SnackBar(content: Text('Something went wrong generating your plan. Try again.')),
       );
     }
   }

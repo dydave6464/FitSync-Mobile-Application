@@ -28,9 +28,15 @@ const _pplPlan = WorkoutPlan(
 );
 
 class FakePlanRepository implements PlanRepository {
-  FakePlanRepository({this.error});
+  FakePlanRepository({this.error, this.pending});
 
   final Object? error;
+
+  /// When set, `regenerate` awaits this instead of resolving immediately --
+  /// lets a test hold a request open and control exactly when it completes,
+  /// e.g. to pop the screen while the request is still in flight.
+  final Future<WorkoutPlan>? pending;
+
   Map<String, dynamic>? sent;
 
   @override
@@ -47,6 +53,7 @@ class FakePlanRepository implements PlanRepository {
       'daysPerWeek': daysPerWeek,
       'sessionLengthMin': sessionLengthMin,
     };
+    if (pending != null) return pending!;
     if (error != null) throw error!;
     return _pplPlan;
   }
@@ -316,4 +323,101 @@ void main() {
     expect(find.byType(GeneratorScreen), findsOneWidget,
         reason: 'the user must be able to retry or change their choices');
   });
+
+  testWidgets('a successful generation refreshes the active plan', (tester) async {
+    // Nothing else in the handler exercises this line -- deleting it left
+    // every other assertion in this file green.
+    var calls = 0;
+    final repo = FakePlanRepository();
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          activePlanProvider.overrideWith((ref) async {
+            calls += 1;
+            return _pplPlan;
+          }),
+          planRepositoryProvider.overrideWithValue(repo),
+        ],
+        child: MaterialApp(theme: fsLightTheme(), home: const GeneratorScreen()),
+      ),
+    );
+    await tester.pumpAndSettle();
+    expect(calls, 1);
+
+    await tester.tap(find.byKey(const Key('gen.generate')));
+    await tester.pumpAndSettle();
+
+    expect(calls, 2,
+        reason: 'the plan must be refetched so every screen reading it sees the new one');
+    expect(find.byType(GeneratorScreen), findsNothing);
+  });
+
+  testWidgets(
+    'a slow generation still refreshes the plan after the user backs out',
+    (tester) async {
+      // The request outlives the screen: regenerate is the slowest call in
+      // the app and nothing blocks the user backing out while it runs. A
+      // ProviderContainer we hold directly, rather than relying on some
+      // other widget happening to stay mounted and watching, lets the test
+      // force the read the Plan tab would do next time it's shown -- proving
+      // the provider was actually invalidated, not just that nothing crashed.
+      final done = Completer<WorkoutPlan>();
+      final repo = FakePlanRepository(pending: done.future);
+      var calls = 0;
+      final container = ProviderContainer(
+        overrides: [
+          activePlanProvider.overrideWith((ref) async {
+            calls += 1;
+            return _pplPlan;
+          }),
+          planRepositoryProvider.overrideWithValue(repo),
+        ],
+      );
+      addTearDown(container.dispose);
+
+      await tester.pumpWidget(
+        UncontrolledProviderScope(
+          container: container,
+          child: MaterialApp(
+            theme: fsLightTheme(),
+            home: Builder(
+              builder: (context) => Scaffold(
+                body: Center(
+                  child: ElevatedButton(
+                    onPressed: () => Navigator.of(context).push(
+                      MaterialPageRoute<void>(builder: (_) => const GeneratorScreen()),
+                    ),
+                    child: const Text('open'),
+                  ),
+                ),
+              ),
+            ),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+      expect(calls, 0, reason: 'activePlanProvider is not read until the generator opens');
+
+      await tester.tap(find.text('open'));
+      await tester.pumpAndSettle();
+      expect(calls, 1);
+
+      await tester.tap(find.byKey(const Key('gen.generate')));
+      await tester.pump(); // regenerate is now in flight, awaiting `done`
+
+      await tester.pageBack();
+      await tester.pumpAndSettle(); // the screen is gone before the request finishes
+
+      done.complete(_pplPlan);
+      await tester.pump();
+
+      // Nothing is watching activePlanProvider once the generator screen is
+      // gone, so a bare invalidate leaves it merely marked dirty -- force the
+      // read that would otherwise wait for the Plan tab to reappear.
+      await container.read(activePlanProvider.future);
+
+      expect(calls, 2,
+          reason: 'the refresh must survive the screen being popped mid-request');
+    },
+  );
 }
