@@ -11,6 +11,8 @@ import 'package:fitsync/features/plans/data/plan_repository.dart';
 import 'package:fitsync/features/plans/domain/workout_plan.dart';
 import 'package:fitsync/features/plans/presentation/generator_screen.dart';
 import 'package:fitsync/features/plans/presentation/providers.dart';
+import 'package:fitsync/features/profile/domain/profile.dart';
+import 'package:fitsync/features/profile/presentation/providers.dart';
 
 const _pplPlan = WorkoutPlan(
   planId: 7,
@@ -63,12 +65,41 @@ class FakePlanRepository implements PlanRepository {
       throw UnimplementedError('${invocation.memberName} is not used by these tests');
 }
 
-Future<void> _pump(WidgetTester tester, {WorkoutPlan? plan, PlanRepository? repo}) async {
+/// A profile carrying exactly the injuries a test wants the card to render.
+/// Everything else is a fixed stand-in -- the card only ever reads
+/// `.injuries`.
+class _FakeProfileNotifier extends ProfileNotifier {
+  _FakeProfileNotifier(this.injuries);
+
+  final List<SelectedInjury> injuries;
+
+  @override
+  Future<Profile> build() async => Profile(
+        userId: 1,
+        email: 'test@example.com',
+        fullName: 'Test User',
+        onboardingCompleted: true,
+        isPremium: false,
+        notificationsEnabled: true,
+        equipment: const [],
+        injuries: injuries,
+      );
+}
+
+Future<void> _pump(
+  WidgetTester tester, {
+  WorkoutPlan? plan,
+  PlanRepository? repo,
+  List<SelectedInjury> injuries = const [],
+  List<InjuryOption> injuryOptions = const [],
+}) async {
   await tester.pumpWidget(
     ProviderScope(
       overrides: [
         activePlanProvider.overrideWith((ref) async => plan),
         if (repo != null) planRepositoryProvider.overrideWithValue(repo),
+        profileProvider.overrideWith(() => _FakeProfileNotifier(injuries)),
+        injuryOptionsProvider.overrideWith((ref) async => injuryOptions),
       ],
       child: MaterialApp(
         theme: fsLightTheme(),
@@ -420,4 +451,43 @@ void main() {
           reason: 'the refresh must survive the screen being popped mid-request');
     },
   );
+
+  testWidgets('the avoiding card names the profile injuries', (tester) async {
+    // The card displays state and sends nothing: /regenerate reads the
+    // profile server-side, which is what stops a client generating against
+    // someone else's.
+    await _pump(
+      tester,
+      plan: _pplPlan,
+      injuries: const [SelectedInjury(injuryId: 3, side: 'right')],
+      injuryOptions: const [
+        InjuryOption(injuryId: 3, name: 'Knee', isLateral: true, regionGroup: 'leg'),
+        InjuryOption(injuryId: 9, name: 'Lower back', isLateral: false, regionGroup: 'back'),
+      ],
+    );
+
+    expect(find.textContaining('Right knee'), findsOneWidget);
+  });
+
+  testWidgets('a non-lateral injury carries no side', (tester) async {
+    await _pump(
+      tester,
+      plan: _pplPlan,
+      injuries: const [SelectedInjury(injuryId: 9)],
+      injuryOptions: const [
+        InjuryOption(injuryId: 9, name: 'Lower back', isLateral: false, regionGroup: 'back'),
+      ],
+    );
+
+    expect(find.textContaining('Lower back'), findsOneWidget);
+    expect(find.textContaining('Right'), findsNothing);
+  });
+
+  testWidgets('with no injuries the card is absent', (tester) async {
+    // An "Avoiding: nothing" card is noise on a screen that already has
+    // three controls competing for attention.
+    await _pump(tester, plan: _pplPlan, injuries: const []);
+
+    expect(find.byKey(const Key('gen.avoiding')), findsNothing);
+  });
 }

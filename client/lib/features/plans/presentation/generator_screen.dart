@@ -5,6 +5,8 @@ import '../../../core/api_exception.dart';
 import '../../../core/theme.dart';
 import '../../../core/widgets/fs_kit.dart';
 import '../../exercises/presentation/exercise_list_screen.dart' show describeError;
+import '../../profile/domain/profile.dart';
+import '../../profile/presentation/providers.dart';
 import '../domain/workout_plan.dart';
 import 'providers.dart';
 
@@ -27,6 +29,18 @@ const _lengths = <({String value, String label})>[
 const _defaultSplit = 'full_body';
 const _defaultDays = 3;
 const _defaultLength = 45;
+
+/// "Right knee", or just "Lower back" where the region has no sides.
+///
+/// Laterality comes from the catalogue's `isLateral`, never from guessing
+/// which regions have sides -- the same rule the onboarding step follows.
+String _injuryLabel(InjuryOption option, SelectedInjury selected) {
+  final name = option.name.toLowerCase();
+  if (!option.isLateral || selected.side == null) return option.name;
+  final side = selected.side!;
+  final prefix = side == 'both' ? 'Both' : (side == 'left' ? 'Left' : 'Right');
+  return '$prefix $name';
+}
 
 class GeneratorScreen extends ConsumerStatefulWidget {
   const GeneratorScreen({super.key});
@@ -149,6 +163,14 @@ class _GeneratorScreenState extends ConsumerState<GeneratorScreen> {
     final t = context.fs;
     final (:split, :days, :length) = _resolve(plan);
 
+    final injuries = ref.watch(profileProvider).value?.injuries ?? const <SelectedInjury>[];
+    final options = ref.watch(injuryOptionsProvider).value ?? const <InjuryOption>[];
+    final avoiding = [
+      for (final selected in injuries)
+        for (final option in options)
+          if (option.injuryId == selected.injuryId) _injuryLabel(option, selected),
+    ];
+
     return ListView(
       padding: const EdgeInsets.fromLTRB(20, 12, 20, 24),
       children: [
@@ -181,6 +203,24 @@ class _GeneratorScreenState extends ConsumerState<GeneratorScreen> {
           selected: '$length',
           onSelected: (v) => setState(() => _sessionLengthMin = int.parse(v)),
         ),
+        if (avoiding.isNotEmpty) ...[
+          const SizedBox(height: 22),
+          FsCard(
+            key: const Key('gen.avoiding'),
+            child: Row(
+              children: [
+                Icon(Icons.shield_outlined, size: 18, color: t.red),
+                const SizedBox(width: 11),
+                Expanded(
+                  child: Text(
+                    'Avoiding: ${avoiding.join(', ')}',
+                    style: TextStyle(fontSize: 12, color: t.text2, height: 1.35),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
         const SizedBox(height: 22),
         Text(
           'Generating replaces your current plan.',
