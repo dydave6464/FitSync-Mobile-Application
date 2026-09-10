@@ -603,27 +603,36 @@ class FsNav extends StatelessWidget {
 
     if (onFabTap == null) return bar;
 
-    // The decorated bar stays exactly `_barHeight` tall and bottom-aligned —
-    // only the transparent space above it grows, so the fab's raised top
-    // gets a real box for ancestors to hit-test against instead of paint
-    // that spills outside one. A `Transform.translate` moves paint only: the
-    // `SizedBox(height: _barHeight)` it used to sit inside still reports
-    // `_barHeight` to its own parent, so any tap above that box is rejected
-    // before it ever reaches the fab's `InkWell`.
-    return SizedBox(
-      height: _barHeight + _fabOverhang,
-      child: Stack(
-        children: [
-          Positioned(left: 0, right: 0, bottom: 0, child: bar),
-          Positioned(
-            top: 0,
-            left: 0,
-            right: 0,
-            height: 50,
-            child: Center(child: _fab(t)),
-          ),
-        ],
-      ),
+    // The bar sizes the Stack; the Padding above it is the only thing this
+    // branch adds, so the fab's raised top gets a real box for ancestors to
+    // hit-test against instead of paint that spills outside one. A
+    // `Transform.translate` moves paint only: the box it used to sit inside
+    // still reports its own height to its parent, so any tap above that box
+    // is rejected before it ever reaches the fab's `InkWell`.
+    //
+    // Deliberately NOT a fixed `SizedBox(height: _barHeight + _fabOverhang)`
+    // with the bar `Positioned(bottom: 0)`: that leaves the bar vertically
+    // unbounded, so it lays out at its natural height — which includes the
+    // device's bottom inset via [SafeArea] — anchors to the bottom and grows
+    // straight out of the top of a box pinned to 72. `Stack`'s default
+    // `Clip.hardEdge` then eats the difference: at a 34dp home indicator
+    // half a tab icon, at a 48dp Android nav bar the whole icon. Nothing
+    // asserts, because no [Flex] is involved. Letting the bar size the Stack
+    // is what makes the inset additive instead of destructive.
+    return Stack(
+      children: [
+        Padding(
+          padding: const EdgeInsets.only(top: _fabOverhang),
+          child: bar,
+        ),
+        Positioned(
+          top: 0,
+          left: 0,
+          right: 0,
+          height: 50,
+          child: Center(child: _fab(t)),
+        ),
+      ],
     );
   }
 

@@ -27,6 +27,33 @@ Future<void> _pump(WidgetTester tester, {VoidCallback? onFabTap}) async {
   );
 }
 
+
+/// The same bar, pumped at a real phone's viewport and bottom inset rather
+/// than the harness default of 800x600 with a zero inset. The inset is the
+/// one axis nothing in this repo varies, and it is the axis the bar's own
+/// SafeArea grows on.
+Future<void> _pumpInset(WidgetTester tester, double inset) async {
+  await tester.pumpWidget(
+    MaterialApp(
+      theme: fsLightTheme(),
+      home: MediaQuery(
+        data: MediaQueryData(
+          size: const Size(390, 844),
+          padding: EdgeInsets.only(bottom: inset),
+        ),
+        child: Scaffold(
+          bottomNavigationBar: FsNav(
+            currentIndex: 0,
+            onSelect: (_) {},
+            items: _items,
+            onFabTap: () {},
+          ),
+        ),
+      ),
+    ),
+  );
+}
+
 void main() {
   testWidgets('without onFabTap the bar is unchanged', (tester) async {
     await _pump(tester);
@@ -80,5 +107,69 @@ void main() {
     // so this is precisely where a naive raise stops registering.
     await tester.tapAt(Offset(rect.center.dx, rect.top + 6));
     expect(taps, 1);
+  });
+
+  testWidgets('the fab bar grows with the bottom inset', (tester) async {
+    // The bar is Container(1px top border) + SafeArea(inset) + 58, and the
+    // fab needs _fabOverhang above that. Pinning the total to a constant
+    // 58 + 14 instead makes the bar taller than the box that holds it at
+    // every real inset -- iPhone home indicator 34, Android 3-button 48 --
+    // and Stack's default Clip.hardEdge eats the difference silently.
+    for (final inset in [0.0, 24.0, 34.0, 48.0]) {
+      await _pumpInset(tester, inset);
+      expect(
+        tester.getSize(find.byType(FsNav)).height,
+        59 + 14 + inset,
+        reason: 'the fab bar must reserve the inset, not swallow it (inset $inset)',
+      );
+    }
+  });
+
+  testWidgets('a bottom inset does not clip the tab icons', (tester) async {
+    // What the height above actually costs when it is wrong: the bar
+    // bottom-anchors inside a box too short for it, so its top -- the tab
+    // icons -- is pushed above the box and clipped away. No RenderFlex
+    // assertion fires, so takeException() stays null and the suite stays
+    // green while a phone shows half an icon.
+    for (final inset in [34.0, 48.0]) {
+      await _pumpInset(tester, inset);
+      final bar = tester.getRect(find.byType(FsNav));
+      final icon = tester.getRect(
+        find.descendant(
+          of: find.byKey(const Key('nav.0')),
+          matching: find.byType(Icon),
+        ),
+      );
+      expect(
+        icon.top,
+        greaterThanOrEqualTo(bar.top),
+        reason: 'the tab icon is cut off at the top of the bar (inset $inset)',
+      );
+      expect(icon.bottom, lessThanOrEqualTo(bar.bottom));
+    }
+  });
+
+  testWidgets('the fab overhangs the bar by exactly _fabOverhang at any inset',
+      (tester) async {
+    // The design's `margin-top: -14px`. Measured against the bar's own top
+    // edge rather than a constant, so this stays true as the bar grows.
+    for (final inset in [0.0, 34.0, 48.0]) {
+      await _pumpInset(tester, inset);
+      final fab = tester.getRect(find.byKey(const Key('nav.fab')));
+      final barTop = tester.getRect(find.byType(FsNav)).top;
+      // The bar's decorated top edge starts _fabOverhang below the widget's
+      // own top; the fab's circle starts at the widget's top.
+      expect(fab.top, barTop);
+      final decorated = find.descendant(
+        of: find.byType(FsNav),
+        matching: find.byType(Container),
+      );
+      expect(decorated, findsOneWidget, reason: 'the bar is one decorated box');
+      expect(
+        tester.getRect(decorated).top - fab.top,
+        14,
+        reason: 'the raised circle must break the bar edge by 14 (inset $inset)',
+      );
+    }
   });
 }
