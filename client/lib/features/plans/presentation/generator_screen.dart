@@ -30,16 +30,27 @@ const _defaultSplit = 'full_body';
 const _defaultDays = 3;
 const _defaultLength = 45;
 
-/// "Right knee", or just "Lower back" where the region has no sides.
+/// "Knee (right)", or just "Lower back" where the region has no sides.
 ///
 /// Laterality comes from the catalogue's `isLateral`, never from guessing
 /// which regions have sides -- the same rule the onboarding step follows.
+///
+/// The side is parenthetical rather than a prefix, which is what keeps the
+/// name exactly as the catalogue spells it: a prefix reads as a sentence
+/// ("Left SI joint") and invites lowercasing the name to match, which
+/// mangles every acronym and leaves "Left si joint" sitting next to a
+/// non-lateral "Lower back" that kept its capital. It also gives 'both'
+/// somewhere grammatical to go -- "Both shoulder" is not English.
+///
+/// A side this client does not recognise renders no side at all. Falling
+/// back to one, as an if/else chain does by construction, names the wrong
+/// side of the user's body with complete confidence on the one screen whose
+/// job is saying what is being protected.
 String _injuryLabel(InjuryOption option, SelectedInjury selected) {
-  final name = option.name.toLowerCase();
   if (!option.isLateral || selected.side == null) return option.name;
-  final side = selected.side!;
-  final prefix = side == 'both' ? 'Both' : (side == 'left' ? 'Left' : 'Right');
-  return '$prefix $name';
+  const labels = {'left': 'left', 'right': 'right', 'both': 'both sides'};
+  final side = labels[selected.side];
+  return side == null ? option.name : '${option.name} ($side)';
 }
 
 class GeneratorScreen extends ConsumerStatefulWidget {

@@ -466,7 +466,7 @@ void main() {
       ],
     );
 
-    expect(find.textContaining('Right knee'), findsOneWidget);
+    expect(find.text('Avoiding: Knee (right)'), findsOneWidget);
   });
 
   testWidgets('a non-lateral injury carries no side', (tester) async {
@@ -509,8 +509,44 @@ void main() {
       );
 
       // The complete string, not a substring -- the unselected entry's
-      // absence is part of what this asserts.
-      expect(find.text('Avoiding: Left si joint'), findsOneWidget);
+      // absence is part of what this asserts. The name keeps the case the
+      // catalogue gave it: lowercasing it renders "si joint" beside a
+      // non-lateral "Lower back" that kept its own capital, inconsistent
+      // inside a single sentence.
+      expect(find.text('Avoiding: SI joint (left)'), findsOneWidget);
     },
   );
+
+  testWidgets('an injury on both sides says so', (tester) async {
+    // "Both shoulder" is not English. The parenthetical is the one form
+    // that reads for every side the catalogue can send.
+    await _pump(
+      tester,
+      plan: _pplPlan,
+      injuries: const [SelectedInjury(injuryId: 4, side: 'both')],
+      injuryOptions: const [
+        InjuryOption(injuryId: 4, name: 'Shoulder', isLateral: true, regionGroup: 'arm'),
+      ],
+    );
+
+    expect(find.text('Avoiding: Shoulder (both sides)'), findsOneWidget);
+  });
+
+  testWidgets('an unrecognised side degrades to the bare name', (tester) async {
+    // The old form tested for 'both', then 'left', and called everything
+    // else 'Right' -- so a value this client does not know about named the
+    // wrong side of the user's body with total confidence, on the one
+    // screen whose job is saying what is being protected. Saying less is
+    // the only honest answer.
+    await _pump(
+      tester,
+      plan: _pplPlan,
+      injuries: const [SelectedInjury(injuryId: 4, side: 'bilateral')],
+      injuryOptions: const [
+        InjuryOption(injuryId: 4, name: 'Shoulder', isLateral: true, regionGroup: 'arm'),
+      ],
+    );
+
+    expect(find.text('Avoiding: Shoulder'), findsOneWidget);
+  });
 }
