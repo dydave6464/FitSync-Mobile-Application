@@ -207,7 +207,21 @@ class _GeneratorScreenState extends ConsumerState<GeneratorScreen> {
           ],
         ),
         const SizedBox(height: 22),
-        const FsEyebrow('Days / week'),
+        // Label and count on one line, as the mockup draws them and as
+        // level_step.dart already pairs an eyebrow with its value. Seven
+        // identical cells filled up to a boundary is a bar chart; the
+        // number is the part a user can read without counting.
+        Row(
+          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          children: [
+            const Flexible(child: FsEyebrow('Days / week')),
+            Text(
+              '$days',
+              key: const Key('gen.days.value'),
+              style: fsNum(t).copyWith(color: t.accent),
+            ),
+          ],
+        ),
         const SizedBox(height: 10),
         _DaysRow(
           selected: days,

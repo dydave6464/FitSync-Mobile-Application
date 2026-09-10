@@ -237,6 +237,23 @@ void main() {
     expect(find.byKey(const Key('gen.day.8')), findsNothing);
   });
 
+  testWidgets('the days label carries the number chosen', (tester) async {
+    // The mockup pairs the label with the count -- seven identical cells
+    // filled up to a boundary is a bar chart, not a readout, and counting
+    // the filled ones is work the screen can do for the user.
+    await _pump(tester, plan: _pplPlan); // opens on 4
+
+    final readout = find.byKey(const Key('gen.days.value'));
+    expect(readout, findsOneWidget);
+    expect(tester.widget<Text>(readout).data, '4');
+
+    await tester.tap(find.byKey(const Key('gen.day.6')));
+    await tester.pump();
+
+    expect(tester.widget<Text>(readout).data, '6',
+        reason: 'a readout that does not follow the control is worse than none');
+  });
+
   testWidgets('tapping a day selects it', (tester) async {
     await _pump(tester, plan: _pplPlan);
 
