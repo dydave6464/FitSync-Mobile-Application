@@ -41,6 +41,14 @@ class _FailingRepo implements PlanRepository {
   Future<WorkoutPlan> swap(int planExerciseId, int exerciseId) async =>
       throw const ApiException(
           'EXERCISE_NOT_ALLOWED', 'That exercise is not available for this plan.');
+
+  @override
+  Future<WorkoutPlan> regenerate({
+    required String splitStyle,
+    required int daysPerWeek,
+    required int sessionLengthMin,
+  }) async =>
+      throw UnimplementedError('the swap sheet never regenerates a plan');
 }
 
 /// What the catalogue knows about the alternative under preview.
@@ -75,6 +83,14 @@ class _RecordingRepo implements PlanRepository {
     swaps.add((planExerciseId: planExerciseId, exerciseId: exerciseId));
     return _plan;
   }
+
+  @override
+  Future<WorkoutPlan> regenerate({
+    required String splitStyle,
+    required int daysPerWeek,
+    required int sessionLengthMin,
+  }) async =>
+      throw UnimplementedError('the swap sheet never regenerates a plan');
 }
 
 /// Pumps the sheet with a repository that records swaps and a catalogue that
@@ -112,6 +128,14 @@ class _SucceedingRepo implements PlanRepository {
 
   @override
   Future<WorkoutPlan> swap(int planExerciseId, int exerciseId) async => _plan;
+
+  @override
+  Future<WorkoutPlan> regenerate({
+    required String splitStyle,
+    required int daysPerWeek,
+    required int sessionLengthMin,
+  }) async =>
+      throw UnimplementedError('the swap sheet never regenerates a plan');
 }
 
 /// A [PlanRepository] whose swap does not resolve until [completer] does —
@@ -134,6 +158,14 @@ class _SlowRepo implements PlanRepository {
 
   @override
   Future<WorkoutPlan> swap(int planExerciseId, int exerciseId) => completer.future;
+
+  @override
+  Future<WorkoutPlan> regenerate({
+    required String splitStyle,
+    required int daysPerWeek,
+    required int sessionLengthMin,
+  }) async =>
+      throw UnimplementedError('the swap sheet never regenerates a plan');
 }
 
 Future<void> _pump(
