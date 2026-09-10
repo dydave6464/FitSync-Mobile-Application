@@ -175,4 +175,41 @@ void main() {
     expect(jsonDecode(seen.single.body), {'exerciseId': 12});
     expect(plan.planId, 42);
   });
+
+  test('regenerate posts exactly the three overrides', () async {
+    final seen = <http.Request>[];
+    final repo = _repoCapturing({
+      'data': {
+        'plan': {
+          'planId': 1,
+          'name': 'Push/Pull/Legs — Build Muscle',
+          'splitStyle': 'push_pull_legs',
+          'daysPerWeek': 4,
+          'sessionLengthMin': 60,
+          'weekNo': 1,
+          'days': [
+            {'dayNo': 1, 'name': 'Push'},
+            {'dayNo': 2, 'name': 'Pull'},
+            {'dayNo': 3, 'name': 'Legs'},
+          ],
+          'exercises': [],
+        },
+      },
+    }, seen);
+
+    final plan = await repo.regenerate(
+      splitStyle: 'push_pull_legs',
+      daysPerWeek: 4,
+      sessionLengthMin: 60,
+    );
+
+    expect(seen.single.url.path, '/api/v1/plans/regenerate');
+    expect(jsonDecode(seen.single.body), {
+      'splitStyle': 'push_pull_legs',
+      'daysPerWeek': 4,
+      'sessionLengthMin': 60,
+    });
+    expect(plan.splitStyle, 'push_pull_legs');
+    expect(plan.days.map((d) => d.name).toList(), ['Push', 'Pull', 'Legs']);
+  });
 }

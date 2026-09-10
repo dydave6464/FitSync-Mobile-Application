@@ -43,4 +43,22 @@ class PlanRepository {
     );
     return WorkoutPlan.fromJson(data['plan'] as Map<String, dynamic>);
   }
+
+  /// Replaces the active plan with a freshly generated one and returns it.
+  ///
+  /// The three overrides are all this endpoint takes: goals, injuries,
+  /// equipment and level are read from the profile server-side, which is what
+  /// stops a client generating against someone else's.
+  Future<WorkoutPlan> regenerate({
+    required String splitStyle,
+    required int daysPerWeek,
+    required int sessionLengthMin,
+  }) async {
+    final data = await _api.postJson('/api/v1/plans/regenerate', {
+      'splitStyle': splitStyle,
+      'daysPerWeek': daysPerWeek,
+      'sessionLengthMin': sessionLengthMin,
+    });
+    return WorkoutPlan.fromJson(data['plan'] as Map<String, dynamic>);
+  }
 }
