@@ -65,6 +65,12 @@ class FlowRepository implements PlanRepository {
 
   final VoidCallback onRegenerate;
 
+  /// What `activePlanProvider`'s override reads back, so the plan the Plan
+  /// tab renders is keyed off what was actually requested -- not off a bare
+  /// "was regenerate called" flag, which a hard-coded splitStyle would still
+  /// flip.
+  WorkoutPlan? lastPlan;
+
   @override
   String get baseUrl => 'http://test.local';
 
@@ -75,7 +81,8 @@ class FlowRepository implements PlanRepository {
     required int sessionLengthMin,
   }) async {
     onRegenerate();
-    return _ppl;
+    lastPlan = splitStyle == 'push_pull_legs' ? _ppl : _fullBody;
+    return lastPlan!;
   }
 
   @override
@@ -95,7 +102,7 @@ void main() {
       ProviderScope(
         overrides: [
           apiClientProvider.overrideWithValue(_hermeticClient()),
-          activePlanProvider.overrideWith((ref) async => generated ? _ppl : _fullBody),
+          activePlanProvider.overrideWith((ref) async => repo.lastPlan ?? _fullBody),
           activeSessionProvider.overrideWith(() => _NoSessionController()),
           completedDaysProvider.overrideWith((ref) async => const <String>{}),
           planRepositoryProvider.overrideWithValue(repo),

@@ -490,4 +490,27 @@ void main() {
 
     expect(find.byKey(const Key('gen.avoiding')), findsNothing);
   });
+
+  testWidgets(
+    'the avoiding text is the exact join for a region whose group disagrees with its laterality',
+    (tester) async {
+      // regionGroup is 'back' -- normally non-lateral -- but this option is
+      // marked isLateral: true, so laterality must come from that flag, not
+      // a region guess. The unselected Lower back option must not leak into
+      // the join, and the side must render as given, not a hard-coded one.
+      await _pump(
+        tester,
+        plan: _pplPlan,
+        injuries: const [SelectedInjury(injuryId: 12, side: 'left')],
+        injuryOptions: const [
+          InjuryOption(injuryId: 12, name: 'SI joint', isLateral: true, regionGroup: 'back'),
+          InjuryOption(injuryId: 9, name: 'Lower back', isLateral: false, regionGroup: 'back'),
+        ],
+      );
+
+      // The complete string, not a substring -- the unselected entry's
+      // absence is part of what this asserts.
+      expect(find.text('Avoiding: Left si joint'), findsOneWidget);
+    },
+  );
 }
