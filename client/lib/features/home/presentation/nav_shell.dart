@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../../../core/widgets/fs_kit.dart';
 import '../../exercises/presentation/exercise_list_screen.dart';
+import '../../plans/presentation/start_workout_sheet.dart';
 import '../../settings/presentation/settings_screen.dart';
 import '../../training/presentation/training_shell.dart';
 import 'home_screen.dart';
@@ -76,6 +77,7 @@ class _NavShellState extends State<NavShell> {
         currentIndex: _index,
         onSelect: _select,
         items: _items,
+        onFabTap: () => showStartWorkoutSheet(context),
       ),
     );
   }

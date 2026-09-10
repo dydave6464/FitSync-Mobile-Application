@@ -290,4 +290,13 @@ void main() {
     // finder, so this holds only if Profile is genuinely the current tab.
     expect(find.byType(SettingsScreen), findsOneWidget);
   });
+
+  testWidgets('the centre button opens the start sheet', (tester) async {
+    await _pumpShell(tester);
+
+    await tester.tap(find.byKey(const Key('nav.fab')));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Start a workout'), findsOneWidget);
+  });
 }
