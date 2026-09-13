@@ -37,7 +37,9 @@ const CONTRAINDICATED = `EXISTS (
 ///
 /// The parameter belongs to the SELECT list, so it binds BEFORE anything in
 /// the WHERE clause. Ordering the two the other way round does not error --
-/// it silently matches the muscle group against a user id.
+/// it silently matches the muscle group against a user id, and a muscle-group
+/// list is one parameter that expands to as many values as it holds, so there
+/// is no placeholder count to notice the mistake for us.
 function contraindicatedSelect(userId) {
   return userId === undefined || userId === null
       ? { sql: '0 AS contraindicated', params: [] }
@@ -47,9 +49,21 @@ function contraindicatedSelect(userId) {
 function buildWhere({ muscleGroup, equipment }) {
   const clauses = [LIVE];
   const params = [];
-  if (muscleGroup) {
-    clauses.push('x.muscle_group = ?');
-    params.push(muscleGroup);
+  // An empty list is not an empty result: ml/app/rules/splits.py gives the
+  // same shape the same meaning -- "Empty means no filter at all: every group
+  // is eligible. That is full body." A caller mapping a split day to its
+  // groups hands us exactly that, and `IN ()` is a syntax error rather than a
+  // query that matches nothing.
+  const groups = Array.isArray(muscleGroup) && muscleGroup.length === 0
+      ? null
+      : muscleGroup;
+  if (groups) {
+    // `IN (?)`, not `= ?`: a caller filtering a training split passes the
+    // whole day's groups as one array, and mysql2 formats an array as a comma
+    // list -- a value list here, a syntax error after `=`. A plain string
+    // formats as a one-element list, so both shapes share this predicate.
+    clauses.push('x.muscle_group IN (?)');
+    params.push(groups);
   }
   if (equipment) {
     clauses.push('e.name = ?');

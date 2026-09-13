@@ -124,13 +124,74 @@ test('exercise endpoints', async (t) => {
     assert.equal(res.body.data, undefined);
   });
 
-  await t.test('rejects a repeated muscleGroup query param instead of erroring on the array', async () => {
+  await t.test('filters by several muscle groups in one request', async () => {
+    // A split's whole day in one call: 'Push' is pectorals + delts + triceps.
     const res = await request(app)
       .get('/api/v1/exercises?muscleGroup=abs&muscleGroup=biceps')
+      .set('Authorization', auth)
+      .expect(200);
+    assert.equal(res.body.data.total, 4);
+    assert.equal(res.body.data.exercises.length, 4);
+    assert.deepEqual(
+      [...new Set(res.body.data.exercises.map((e) => e.muscleGroup))].sort(),
+      ['abs', 'biceps'],
+    );
+  });
+
+  await t.test('several muscle groups still count only the filtered set', async () => {
+    // 'quads' is pending-only in the fixture, so the total has to disagree
+    // with the unfiltered 4 -- the COUNT query and the page query have to be
+    // built from the same clause and the same parameters.
+    const res = await request(app)
+      .get('/api/v1/exercises?muscleGroup=abs&muscleGroup=quads')
+      .set('Authorization', auth)
+      .expect(200);
+    assert.equal(res.body.data.total, 2);
+    assert.equal(res.body.data.exercises.length, 2);
+    assert.ok(res.body.data.exercises.every((e) => e.muscleGroup === 'abs'));
+  });
+
+  await t.test('rejects an empty muscleGroup among several', async () => {
+    const res = await request(app)
+      .get('/api/v1/exercises?muscleGroup=abs&muscleGroup=')
       .set('Authorization', auth)
       .expect(400);
     assert.equal(res.body.error.code, 'INVALID_QUERY_PARAM');
     assert.match(res.body.error.message, /muscleGroup/);
+    assert.equal(res.body.data, undefined);
+  });
+
+  await t.test('rejects a muscleGroup that is neither a string nor a list of strings', async () => {
+    // The default 'simple' parser only ever produces strings, so this shape
+    // needs the nested parser to reach the route at all. It is worth guarding
+    // anyway: now that a list is legal, a naive check sees an object as "not a
+    // string, so a list" and mysql2 formats its VALUES as a comma list of
+    // fields -- or, for a bare object, the literal '[object Object]'.
+    const nested = buildTestApp({
+      pool,
+      storage: createStorage({ mode: 'local', localDir: 'storage' }),
+    });
+    nested.set('query parser', 'extended');
+
+    for (const query of ['muscleGroup[0]=abs&muscleGroup[1][deep]=x', 'muscleGroup[deep]=x']) {
+      const res = await request(nested)
+        .get(`/api/v1/exercises?${query}`)
+        .set('Authorization', auth)
+        .expect(400);
+      assert.equal(res.body.error.code, 'INVALID_QUERY_PARAM');
+      assert.match(res.body.error.message, /muscleGroup/);
+    }
+  });
+
+  await t.test('rejects a repeated equipment query param', async () => {
+    // Only muscleGroup takes a list: one equipment tag per exercise, so a
+    // list there asks for rows that cannot exist.
+    const res = await request(app)
+      .get('/api/v1/exercises?equipment=dumbbell&equipment=barbell')
+      .set('Authorization', auth)
+      .expect(400);
+    assert.equal(res.body.error.code, 'INVALID_QUERY_PARAM');
+    assert.match(res.body.error.message, /equipment/);
     assert.equal(res.body.data, undefined);
   });
 

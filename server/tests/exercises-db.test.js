@@ -110,6 +110,23 @@ test('exercise queries', async (t) => {
     assert.equal(Boolean(rows.find((r) => r.exercise_id === blockedId).contraindicated), true);
   });
 
+  await t.test('the flag survives a multi-group filter', async () => {
+    // Same hazard as above, with more to get wrong: the group list expands to
+    // as many placeholders as it has values, so a swap binds the user id into
+    // `IN (?)` and a muscle group into the EXISTS subquery. Neither errors --
+    // the page just comes back empty with nothing flagged.
+    const { userId, blockedId } = await seedInjured();
+
+    const { rows, total } = await listExercises(pool, {
+      page: 1, limit: 20, userId, muscleGroup: ['abs', 'biceps'],
+    });
+
+    assert.equal(total, 4);
+    assert.deepEqual([...new Set(rows.map((r) => r.muscle_group))].sort(), ['abs', 'biceps']);
+    assert.equal(Boolean(rows.find((r) => r.exercise_id === blockedId).contraindicated), true);
+    assert.ok(rows.filter((r) => r.exercise_id !== blockedId).every((r) => !r.contraindicated));
+  });
+
   await t.test('the detail view agrees with the list', async () => {
     const { userId, blockedId } = await seedInjured();
 
@@ -122,6 +139,48 @@ test('exercise queries', async (t) => {
     const { rows, total } = await listExercises(pool, { muscleGroup: 'biceps', page: 1, limit: 20 });
     assert.equal(total, 2);
     assert.ok(rows.every((r) => r.muscle_group === 'biceps'));
+  });
+
+  await t.test('filters by several muscle groups at once', async () => {
+    // A training split asks for a whole day in one go: 'Push' is pectorals,
+    // delts and triceps, not three round trips.
+    const { rows, total } = await listExercises(pool, {
+      muscleGroup: ['abs', 'biceps'], page: 1, limit: 20,
+    });
+    assert.equal(total, 4);
+    assert.equal(rows.length, 4);
+    assert.deepEqual([...new Set(rows.map((r) => r.muscle_group))].sort(), ['abs', 'biceps']);
+  });
+
+  await t.test('a group list still only matches live rows', async () => {
+    // 'quads' exists in the fixture only as a pending exercise, so widening
+    // the group list must not widen anything else with it.
+    const { rows, total } = await listExercises(pool, {
+      muscleGroup: ['abs', 'quads'], page: 1, limit: 20,
+    });
+    assert.equal(total, 2);
+    assert.ok(rows.every((r) => r.muscle_group === 'abs'));
+  });
+
+  await t.test('a single-element group list matches that one group', async () => {
+    const { rows, total } = await listExercises(pool, {
+      muscleGroup: ['biceps'], page: 1, limit: 20,
+    });
+    assert.equal(total, 2);
+    assert.ok(rows.every((r) => r.muscle_group === 'biceps'));
+  });
+
+  await t.test('an empty group list filters nothing, rather than erroring', async () => {
+    // ml/app/rules/splits.py already gives "empty" this meaning: "Empty means
+    // no filter at all: every group is eligible. That is full body." A caller
+    // mapping a split day to its groups hands us exactly that for full body,
+    // and `IN ()` is a syntax error, not an empty result.
+    const { rows, total } = await listExercises(pool, {
+      page: 1, limit: 20, muscleGroup: [],
+    });
+
+    assert.equal(total, 4);
+    assert.equal(rows.length, 4);
   });
 
   await t.test('filters by equipment', async () => {

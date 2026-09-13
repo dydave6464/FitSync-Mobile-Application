@@ -31,17 +31,39 @@ function parsePositiveInt(name, raw, fallback, max = null) {
   return value;
 }
 
-// Express 5's default query parser turns a repeated key (?muscleGroup=a&
-// muscleGroup=b) into an array. mysql2 happily formats an array as a comma
+// Express 5's default query parser turns a repeated key (?equipment=a&
+// equipment=b) into an array. mysql2 happily formats an array as a comma
 // list, which reaches the database as a syntax error instead of a 400 — so
-// this must reject anything that isn't a plain string before it gets near
-// pool.query.
+// a parameter whose predicate is written for a single value must reject
+// anything that isn't a plain string before it gets near pool.query.
 function parseOptionalString(name, raw) {
   if (raw === undefined || raw === '') return null;
   if (typeof raw !== 'string') {
     throw AppError.badRequest(
       'INVALID_QUERY_PARAM',
       `${name} must be a single string value.`,
+      [{ field: name, value: String(raw) }],
+    );
+  }
+  return raw;
+}
+
+// muscleGroup is the one filter that may repeat, so a caller can ask for a
+// whole training day at once — a 'Push' day is pectorals + delts + triceps.
+// The array goes to a predicate written for a list (`IN (?)`, see
+// src/db/exercises.js), where mysql2's comma expansion is exactly right, but
+// only for non-empty strings: an object element would format as the literal
+// '[object Object]' and an empty one as '', both of which match nothing while
+// looking like a filter that worked.
+function parseOptionalStringList(name, raw) {
+  if (raw === undefined || raw === '') return null;
+  if (typeof raw === 'string') return raw;
+  const isListOfValues = Array.isArray(raw) && raw.length > 0
+    && raw.every((value) => typeof value === 'string' && value !== '');
+  if (!isListOfValues) {
+    throw AppError.badRequest(
+      'INVALID_QUERY_PARAM',
+      `${name} must be a string, or several non-empty strings.`,
       [{ field: name, value: String(raw) }],
     );
   }
@@ -84,7 +106,7 @@ module.exports = function buildExercisesRouter({ pool, storage }) {
       const limit = parsePositiveInt('limit', req.query.limit, DEFAULT_LIMIT, MAX_LIMIT);
 
       const { rows, total } = await listExercises(pool, {
-        muscleGroup: parseOptionalString('muscleGroup', req.query.muscleGroup),
+        muscleGroup: parseOptionalStringList('muscleGroup', req.query.muscleGroup),
         equipment: parseOptionalString('equipment', req.query.equipment),
         // Marks the rows that load a region this caller has reported an
         // injury in. The router is mounted behind requireAuth, so there is
