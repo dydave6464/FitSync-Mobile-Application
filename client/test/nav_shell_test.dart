@@ -33,7 +33,7 @@ class FakeExerciseRepository implements ExerciseRepository {
 
   @override
   Future<ExercisePage> list({
-    String? muscleGroup,
+    List<String> muscleGroups = const [],
     String? equipment,
     int page = 1,
     int limit = 20,

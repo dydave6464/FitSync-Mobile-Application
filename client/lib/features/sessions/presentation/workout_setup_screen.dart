@@ -4,7 +4,8 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../core/theme.dart';
 import '../../../core/widgets/fs_kit.dart';
 import '../../exercises/presentation/exercise_list_screen.dart';
-import '../../plans/domain/split_style.dart';
+import '../../exercises/presentation/providers.dart';
+import '../../plans/domain/training_day.dart';
 import '../../plans/domain/week_description.dart' show injuryLabel;
 import '../../plans/presentation/providers.dart';
 import '../../profile/domain/profile.dart';
@@ -50,14 +51,35 @@ class WorkoutSetupScreen extends ConsumerStatefulWidget {
 }
 
 class _WorkoutSetupScreenState extends ConsumerState<WorkoutSetupScreen> {
+  /// Which day's worth of training this workout is.
+  ///
+  /// A day, not a split: a split is a rotation of days, and filtering the
+  /// catalogue by a whole one barely filters -- push_pull_legs covers 997 of
+  /// 1,203 live exercises and upper_lower covers the identical set. One day
+  /// is 422.
+  ///
   /// Not seeded from the active plan, unlike the generator's chips: the plan
   /// says what the week looks like, and this screen starts a single workout
   /// that need not be the next one in that rotation.
+  TrainingDay _day = trainingDays.first;
+
+  /// Narrows the catalogue to the chosen day for as long as the library is
+  /// open, and no longer.
   ///
-  /// Nothing downstream reads it yet -- the catalogue endpoint cannot filter
-  /// by split -- so the chips hold the choice for the filtering that lands
-  /// next rather than a library that already honours it.
-  String _splitStyle = splitStyles.first.value;
+  /// Set and cleared here rather than inside the library: the Browse tab
+  /// renders the same list from the same provider and stays mounted in the
+  /// shell's IndexedStack, so a constraint left behind would silently narrow
+  /// browsing to whatever day was last trained. Doing it in the library's own
+  /// dispose is not an option -- that runs while the tree is being finalised,
+  /// which is a build-phase provider write.
+  Future<void> _openLibrary() async {
+    final constraint = ref.read(catalogueConstraintProvider.notifier);
+    constraint.set(_day.muscleGroups);
+    await Navigator.of(context).push(MaterialPageRoute<void>(
+      builder: (_) => const ExerciseListScreen(selecting: true),
+    ));
+    constraint.set(const []);
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -88,18 +110,18 @@ class _WorkoutSetupScreenState extends ConsumerState<WorkoutSetupScreen> {
       body: ListView(
         padding: const EdgeInsets.fromLTRB(20, 12, 20, 24),
         children: [
-          const FsEyebrow('Split style'),
+          const FsEyebrow('Training today'),
           const SizedBox(height: 10),
           Wrap(
             key: const Key('setup.splits'),
             spacing: 8,
             runSpacing: 8,
             children: [
-              for (final s in splitStyles)
+              for (final day in trainingDays)
                 FsChip(
-                  label: s.label,
-                  selected: s.value == _splitStyle,
-                  onTap: () => setState(() => _splitStyle = s.value),
+                  label: day.label,
+                  selected: day.label == _day.label,
+                  onTap: () => setState(() => _day = day),
                 ),
             ],
           ),
@@ -160,11 +182,7 @@ class _WorkoutSetupScreenState extends ConsumerState<WorkoutSetupScreen> {
             // Pushed rather than replacing this route: backing out of the
             // library lands on the choices made here, not on whichever tab
             // the "+" sheet was opened from.
-            onPressed: () => Navigator.of(context).push(
-              MaterialPageRoute<void>(
-                builder: (_) => const ExerciseListScreen(selecting: true),
-              ),
-            ),
+            onPressed: _openLibrary,
           ),
         ],
       ),

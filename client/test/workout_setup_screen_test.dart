@@ -5,6 +5,8 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:fitsync/core/theme.dart';
 import 'package:fitsync/core/widgets/fs_kit.dart';
 import 'package:fitsync/features/exercises/presentation/exercise_list_screen.dart';
+import 'package:fitsync/features/exercises/presentation/providers.dart';
+import 'package:fitsync/features/plans/domain/training_day.dart';
 import 'package:fitsync/features/plans/domain/workout_plan.dart';
 import 'package:fitsync/features/plans/presentation/providers.dart';
 import 'package:fitsync/features/profile/domain/profile.dart';
@@ -91,33 +93,44 @@ bool _chipOn(WidgetTester tester, String label) => tester
     .firstWhere((c) => c.label == label)
     .selected;
 
+/// What the catalogue is currently narrowed to. Read from the live tree
+/// rather than a captured container, because the setup screen sets it around
+/// the push and clears it on the way back.
+List<String> _constraintIn(WidgetTester tester) => ProviderScope.containerOf(
+      // skipOffstage: false -- once the library is pushed the setup screen is
+      // still mounted behind an opaque route, which find hides by default.
+      tester.element(find.byType(WorkoutSetupScreen, skipOffstage: false)),
+    ).read(catalogueConstraintProvider);
+
 void main() {
-  testWidgets('the four split styles are offered', (tester) async {
+  testWidgets('every training day is offered', (tester) async {
+    // Days, not splits. A split is a rotation of days, and filtering by a
+    // whole one barely filters: push_pull_legs covered 997 of 1,203 live
+    // exercises and upper_lower covered the identical set.
     await _pump(tester, plan: _plan);
 
-    expect(find.text('Full body'), findsOneWidget);
-    expect(find.text('Push / Pull / Legs'), findsOneWidget);
-    expect(find.text('Upper / Lower'), findsOneWidget);
-    expect(find.text('Cardio + core'), findsOneWidget);
+    for (final day in trainingDays) {
+      expect(find.text(day.label), findsOneWidget);
+    }
   });
 
-  testWidgets('full body is the split the screen opens on', (tester) async {
-    // Deliberately not the plan's split, unlike the generator: this screen
-    // starts one workout rather than describing the week the plan already
-    // holds, so nothing about the plan says what today should be.
+  testWidgets('full body is the day the screen opens on', (tester) async {
+    // Deliberately not derived from the plan: this screen starts one workout
+    // rather than describing the week the plan already holds, so nothing
+    // about the plan says what today should be.
     await _pump(tester, plan: _plan);
 
     expect(_chipOn(tester, 'Full body'), isTrue);
-    expect(_chipOn(tester, 'Push / Pull / Legs'), isFalse);
+    expect(_chipOn(tester, 'Push'), isFalse);
   });
 
-  testWidgets('tapping a split selects it', (tester) async {
+  testWidgets('tapping a day selects it', (tester) async {
     await _pump(tester, plan: _plan);
 
-    await tester.tap(find.text('Upper / Lower'));
+    await tester.tap(find.text('Push'));
     await tester.pumpAndSettle();
 
-    expect(_chipOn(tester, 'Upper / Lower'), isTrue);
+    expect(_chipOn(tester, 'Push'), isTrue);
     expect(_chipOn(tester, 'Full body'), isFalse);
   });
 
@@ -229,6 +242,23 @@ void main() {
     final picker = tester.widget<ExerciseListScreen>(find.byType(ExerciseListScreen));
     expect(picker.selecting, isTrue,
         reason: 'the same list, but picking rather than browsing');
+    expect(_constraintIn(tester), isEmpty,
+        reason: 'full body filters nothing, as splits.py defines it');
+  });
+
+  testWidgets('the chosen day is what the library gets filtered by',
+      (tester) async {
+    await _pump(tester, plan: _plan);
+
+    await tester.tap(find.text('Push'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const Key('setup.select')));
+    await tester.pump();
+    await tester.pump(const Duration(seconds: 1));
+
+    expect(find.byType(ExerciseListScreen), findsOneWidget);
+    expect(_constraintIn(tester),
+        ['pectorals', 'delts', 'triceps']);
   });
 
   testWidgets('the setup screen stays behind the picker', (tester) async {

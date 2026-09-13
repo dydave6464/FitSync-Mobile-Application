@@ -9,14 +9,17 @@ class ExerciseRepository {
 
   String get baseUrl => _api.baseUrl;
 
+  /// [muscleGroups] is sent as a repeated `muscleGroup` key, which the
+  /// endpoint reads as "any of these" -- a training day is a set of groups,
+  /// not one. Empty means no filter, the same thing an absent key means.
   Future<ExercisePage> list({
-    String? muscleGroup,
+    List<String> muscleGroups = const [],
     String? equipment,
     int page = 1,
     int limit = 20,
   }) async {
     final data = await _api.getJson('/api/v1/exercises', query: {
-      'muscleGroup': muscleGroup,
+      if (muscleGroups.isNotEmpty) 'muscleGroup': muscleGroups,
       'equipment': equipment,
       'page': '$page',
       'limit': '$limit',

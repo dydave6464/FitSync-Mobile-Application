@@ -28,20 +28,20 @@ class FakeRepository implements ExerciseRepository {
 
   @override
   Future<ExercisePage> list({
-    String? muscleGroup,
+    List<String> muscleGroups = const [],
     String? equipment,
     int page = 1,
     int limit = 20,
   }) async {
     listCalls++;
-    lastMuscleGroup = muscleGroup;
+    lastMuscleGroup = muscleGroups.isEmpty ? null : muscleGroups.first;
     if (failWith != null) throw failWith!;
     return ExercisePage(
       items: [
         ExerciseSummary(
           exerciseId: page,
-          name: muscleGroup == null ? 'Sit-up $page' : 'Curl $page',
-          muscleGroup: muscleGroup ?? 'abs',
+          name: muscleGroups.isEmpty ? 'Sit-up $page' : 'Curl $page',
+          muscleGroup: muscleGroups.isEmpty ? 'abs' : muscleGroups.first,
           equipment: 'body weight',
           thumbnailUrl: '/storage/exercises/000$page/thumb.jpg',
         ),

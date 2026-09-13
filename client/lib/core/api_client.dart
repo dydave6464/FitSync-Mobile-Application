@@ -84,13 +84,22 @@ class ApiClient {
     return data;
   }
 
+  /// A value may be a single [String] or a [List] of them; a list is sent as
+  /// a repeated key, which is what a filter meaning "any of these" looks like
+  /// on the wire. Empty strings and empty lists are dropped, so an absent
+  /// filter and a blank one mean the same thing.
   Future<Map<String, dynamic>> getJson(
     String path, {
-    Map<String, String?> query = const {},
+    Map<String, Object?> query = const {},
   }) async {
-    final params = <String, String>{};
+    final params = <String, dynamic>{};
     query.forEach((key, value) {
-      if (value != null && value.isNotEmpty) params[key] = value;
+      if (value is List<String>) {
+        final kept = value.where((v) => v.isNotEmpty).toList(growable: false);
+        if (kept.isNotEmpty) params[key] = kept;
+      } else if (value is String && value.isNotEmpty) {
+        params[key] = value;
+      }
     });
 
     final uri = Uri.parse('$_baseUrl$path')

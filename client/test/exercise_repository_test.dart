@@ -55,7 +55,7 @@ void main() {
       onRequest: (r) => seen = r.url,
     );
 
-    await repo.list(muscleGroup: 'biceps', equipment: 'dumbbell', page: 2);
+    await repo.list(muscleGroups: const ['biceps'], equipment: 'dumbbell', page: 2);
 
     expect(seen!.path, '/api/v1/exercises');
     expect(seen!.queryParameters['muscleGroup'], 'biceps');

@@ -97,6 +97,29 @@ class ExerciseListState {
       );
 }
 
+/// Muscle groups the whole catalogue view is confined to, set by the picker
+/// from the training day the user chose. Empty on the Browse tab.
+class CatalogueConstraintNotifier extends Notifier<List<String>> {
+  @override
+  List<String> build() => const [];
+
+  void set(List<String> groups) => state = groups;
+}
+
+final catalogueConstraintProvider =
+    NotifierProvider<CatalogueConstraintNotifier, List<String>>(
+  CatalogueConstraintNotifier.new,
+);
+
+/// What to actually ask the catalogue for.
+///
+/// A chip picks one group; the training day constrains the whole list to
+/// several. Resolved here into a single request rather than sent as two
+/// parameters the server would AND together: the chip is a refinement WITHIN
+/// the day, so a chosen chip simply wins.
+List<String> resolveMuscleGroups(String? chip, List<String> constraint) =>
+    chip != null ? [chip] : constraint;
+
 class ExerciseListNotifier extends AsyncNotifier<ExerciseListState> {
   @override
   Future<ExerciseListState> build() async {
@@ -104,10 +127,11 @@ class ExerciseListNotifier extends AsyncNotifier<ExerciseListState> {
     // from scratch — which is exactly the "reset to page 1" behaviour we want,
     // with no manual reset logic to forget.
     final filters = ref.watch(selectedFiltersProvider);
+    final constraint = ref.watch(catalogueConstraintProvider);
     final repo = ref.watch(exerciseRepositoryProvider);
 
     final result = await repo.list(
-      muscleGroup: filters.muscleGroup,
+      muscleGroups: resolveMuscleGroups(filters.muscleGroup, constraint),
       equipment: filters.equipment,
       page: 1,
     );
@@ -127,11 +151,12 @@ class ExerciseListNotifier extends AsyncNotifier<ExerciseListState> {
     state = AsyncData(current.copyWith(loadingMore: true));
 
     final filters = ref.read(selectedFiltersProvider);
+    final constraint = ref.read(catalogueConstraintProvider);
     final repo = ref.read(exerciseRepositoryProvider);
 
     try {
       final next = await repo.list(
-        muscleGroup: filters.muscleGroup,
+        muscleGroups: resolveMuscleGroups(filters.muscleGroup, constraint),
         equipment: filters.equipment,
         page: current.page + 1,
       );

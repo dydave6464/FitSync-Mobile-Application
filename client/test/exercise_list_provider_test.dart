@@ -25,15 +25,16 @@ class FakeExerciseRepository implements ExerciseRepository {
 
   @override
   Future<ExercisePage> list({
-    String? muscleGroup,
+    List<String> muscleGroups = const [],
     String? equipment,
     int page = 1,
     int limit = 20,
   }) {
     if (page == 1) {
-      final page1 = pageOneByMuscleGroup[muscleGroup ?? ''];
+      final key = muscleGroups.isEmpty ? '' : muscleGroups.first;
+      final page1 = pageOneByMuscleGroup[key];
       if (page1 == null) {
-        throw StateError('no page-1 fixture for muscleGroup "$muscleGroup"');
+        throw StateError('no page-1 fixture for muscleGroup "$key"');
       }
       return Future.value(page1);
     }

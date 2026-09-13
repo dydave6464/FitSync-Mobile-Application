@@ -18,17 +18,20 @@ import 'package:fitsync/features/sessions/presentation/providers.dart';
 import 'package:fitsync/features/sessions/presentation/session_logger_screen.dart';
 
 class FakeExerciseRepository implements ExerciseRepository {
+  List<String>? asked;
+
   @override
   String get baseUrl => 'http://test.local';
 
   @override
   Future<ExercisePage> list({
-    String? muscleGroup,
+    List<String> muscleGroups = const [],
     String? equipment,
     int page = 1,
     int limit = 20,
-  }) async =>
-      ExercisePage(
+  }) async {
+    asked = muscleGroups;
+    return ExercisePage(
         items: const [
           ExerciseSummary(
             exerciseId: 101, name: 'Goblet squat', muscleGroup: 'quadriceps',
@@ -39,10 +42,11 @@ class FakeExerciseRepository implements ExerciseRepository {
             equipment: 'Cable', thumbnailUrl: null,
           ),
         ],
-        page: page,
-        limit: limit,
-        total: 2,
-      );
+      page: page,
+      limit: limit,
+      total: 2,
+    );
+  }
 
   @override
   Future<ExerciseFilters> filters() async =>
@@ -107,10 +111,17 @@ Future<void> _pump(
   WidgetTester tester, {
   bool selecting = true,
   FakeSessionRepository? sessions,
+  FakeExerciseRepository? exercises,
+  List<String> muscleGroups = const [],
 }) async {
   await tester.pumpWidget(ProviderScope(
     overrides: [
-      exerciseRepositoryProvider.overrideWithValue(FakeExerciseRepository()),
+      exerciseRepositoryProvider
+          .overrideWithValue(exercises ?? FakeExerciseRepository()),
+      if (muscleGroups.isNotEmpty)
+        catalogueConstraintProvider.overrideWith(
+          () => _ConstrainedTo(muscleGroups),
+        ),
       sessionRepositoryProvider
           .overrideWithValue(sessions ?? FakeSessionRepository()),
       // A manual session has none; the logger must not need one.
@@ -122,6 +133,16 @@ Future<void> _pump(
     ),
   ));
   await tester.pumpAndSettle();
+}
+
+/// The catalogue narrowed to a training day, as the setup screen leaves it.
+class _ConstrainedTo extends CatalogueConstraintNotifier {
+  _ConstrainedTo(this.groups);
+
+  final List<String> groups;
+
+  @override
+  List<String> build() => groups;
 }
 
 Finder _start() => find.byKey(const Key('picker.start'));
@@ -232,5 +253,25 @@ void main() {
     expect(find.textContaining('Could not start that'), findsOneWidget);
     expect(find.textContaining('1 added'), findsOneWidget);
     expect(find.byType(SessionLoggerScreen), findsNothing);
+  });
+
+  testWidgets("the training day's groups are what the catalogue is asked for",
+      (tester) async {
+    // The day chosen on the setup screen has to reach the request, or the
+    // library shows all 1,203 exercises under a heading that says Push.
+    final exercises = FakeExerciseRepository();
+
+    await _pump(tester, exercises: exercises,
+        muscleGroups: const ['pectorals', 'delts', 'triceps']);
+
+    expect(exercises.asked, ['pectorals', 'delts', 'triceps']);
+  });
+
+  testWidgets('browsing asks for the whole catalogue', (tester) async {
+    final exercises = FakeExerciseRepository();
+
+    await _pump(tester, selecting: false, exercises: exercises);
+
+    expect(exercises.asked, isEmpty);
   });
 }
