@@ -1,3 +1,5 @@
+import 'dart:math';
+
 import '../../profile/domain/profile.dart';
 import 'workout_plan.dart';
 
@@ -117,6 +119,54 @@ final _goalPattern = RegExp(
 
 final _sidePattern = RegExp(r'\b(left|right|both)\b');
 
+/// Other words for a catalogue region, keyed by the catalogue's own name.
+///
+/// Every entry is injury language -- a clinical term or an explicit complaint.
+/// Bare muscle names are deliberately absent: "abs", "quads" and "hamstrings"
+/// are what people say about what they want to TRAIN, and reading "I want to
+/// work my abs" as a core injury would block 608 exercises on the strength of
+/// an ambition.
+///
+/// The table is this client's; the regions are the server's. An alias only
+/// ever resolves to a catalogue row that already exists, never conjures one.
+const _injuryAliases = <String, List<String>>{
+  'lower back': [
+    'lumbar', 'bad back', 'back pain', 'sore back', 'spine',
+    'slipped disc', 'herniated disc', 'sciatica',
+  ],
+  'shoulder': ['rotator cuff', 'frozen shoulder'],
+  'elbow': ['tennis elbow', 'golfers elbow', "golfer's elbow"],
+  'wrist': ['carpal tunnel'],
+  'knee': ['acl', 'mcl', 'meniscus', 'patella', 'runners knee', "runner's knee"],
+  'ankle': ['achilles'],
+  'foot': ['plantar fasciitis'],
+  'calf': ['shin splints'],
+  'hip': ['hip flexor'],
+  'neck': ['cervical'],
+};
+
+/// A region can be named in order to rule it OUT. Both cues are narrow on
+/// purpose.
+///
+/// This is NOT a general negation test. "my knee is not good" means injured,
+/// and reading a bare "not" as absence would drop a real injury -- which errs
+/// toward a plan that loads it. Under-reading is the unsafe direction here, so
+/// the resolution word has to follow its linking verb immediately: "is fine"
+/// rules the region out, "is not fine" does not.
+final _absentCue = RegExp(r'\b(?:no|without|used to)\b');
+final _resolvedCue = RegExp(
+  r'\b(?:is|are|was|were|feels?|felt)\s+(?:fine|ok|okay|healed|recovered|cleared)\b'
+  r'|\bno longer\b|\b(?:healed|recovered)\b',
+);
+
+/// How far either side of the region a rule-out cue may sit.
+///
+/// Short before, because an unrelated "no" earlier in the sentence ("I have no
+/// time, protect my knee") must not reach it. Longer after, because the
+/// resolution follows the region it describes.
+const _ruleOutBefore = 16;
+const _ruleOutAfter = 30;
+
 /// How far from a region's name a side word may sit and still describe it.
 /// Wide enough for "protect my right knee" and "Knee (right)", narrow enough
 /// that the next clause's side does not bleed across.
@@ -167,15 +217,35 @@ String? _split(String lower) {
   return null;
 }
 
+/// The region's own name, or any word the alias table maps onto it.
+RegExpMatch? _nameMatch(String lower, InjuryOption option) {
+  final canonical = option.name.toLowerCase();
+  for (final term in [canonical, ...?_injuryAliases[canonical]]) {
+    final match =
+        RegExp(r'\b' + RegExp.escape(term) + r's?\b').firstMatch(lower);
+    if (match != null) return match;
+  }
+  return null;
+}
+
+/// Whether the sentence names this region in order to dismiss it.
+bool _ruledOut(String lower, RegExpMatch name) {
+  final before = lower.substring(max(0, name.start - _ruleOutBefore), name.start);
+  final after =
+      lower.substring(name.end, min(lower.length, name.end + _ruleOutAfter));
+  return _absentCue.hasMatch(before) || _resolvedCue.hasMatch(after);
+}
+
 List<SelectedInjury> _injuries(String lower, List<InjuryOption> options) {
   final sides = _sidePattern.allMatches(lower).toList();
   final found = <SelectedInjury>[];
 
+  // One pass per option, so a region named twice -- "lumbar / lower back" --
+  // is offered once rather than producing two identical Add buttons.
   for (final option in options) {
-    final name = RegExp(
-      r'\b' + RegExp.escape(option.name.toLowerCase()) + r's?\b',
-    ).firstMatch(lower);
+    final name = _nameMatch(lower, option);
     if (name == null) continue;
+    if (_ruledOut(lower, name)) continue;
 
     // A region the catalogue says has no sides takes none, whatever the
     // sentence says: the server rejects a side on one, and a region group is

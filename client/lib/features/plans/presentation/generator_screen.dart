@@ -540,9 +540,14 @@ class _DescribeCardState extends ConsumerState<_DescribeCard> {
                 const SizedBox(width: 9),
                 Expanded(
                   child: Text(
+                    // Names the consequence, not the database state. Whether a
+                    // row exists in the profile is not what the user is
+                    // deciding; whether their plan stops loading the region
+                    // is, and only the profile drives that -- /regenerate
+                    // reads injuries server-side and never from this screen.
                     '${injuryLabel(offer.option, offer.injury)} '
-                    'is not in your injuries yet, so the plan will not work '
-                    'around it.',
+                    'is not in your injuries. Add it and every plan from now '
+                    'on will skip the exercises that load it.',
                     style: note,
                   ),
                 ),

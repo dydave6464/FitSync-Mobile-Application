@@ -115,6 +115,58 @@ void main() {
     });
   });
 
+  group('other words for the same region', () {
+    test('reads a common name for the lower back', () {
+      expect(_parse('careful, bad back').injuries.single.injuryId, 9);
+    });
+
+    test('reads a clinical name', () {
+      expect(_parse('sciatica flaring up').injuries.single.injuryId, 9);
+    });
+
+    test('reads an anatomical name', () {
+      expect(_parse('lumbar issues').injuries.single.injuryId, 9);
+    });
+
+    test('names a region only once when the text uses two words for it', () {
+      // "lower back" and "lumbar" are the same row; offering it twice would
+      // put two identical Add buttons on the card.
+      expect(_parse('lumbar / lower back trouble').injuries, hasLength(1));
+    });
+
+    test('an alias for a region the catalogue does not carry reads as nothing',
+        () {
+      // The alias table is this client's, the regions are the server's. An
+      // alias may never conjure a row the catalogue has no id for.
+      expect(parseWeekDescription('sciatica', const []).injuries, isEmpty);
+    });
+  });
+
+  group('regions the sentence rules out', () {
+    test('ignores a region described as recovered', () {
+      expect(_parse('my knee is fine now').injuries, isEmpty);
+    });
+
+    test('ignores a region described as absent', () {
+      expect(_parse('no lower back problems at all').injuries, isEmpty);
+    });
+
+    test('ignores a region described as past', () {
+      expect(_parse('I used to have knee trouble').injuries, isEmpty);
+    });
+
+    test('still reads a region the sentence complains about', () {
+      // The one that must not regress. "not good" means injured, and reading
+      // a bare "not" as absence would drop a real injury -- which errs toward
+      // a plan that loads it. Under-blocking is the unsafe direction here.
+      expect(_parse('my knee is not good').injuries.single.injuryId, 3);
+    });
+
+    test('still reads a region named plainly', () {
+      expect(_parse('protect my right knee').injuries.single.injuryId, 3);
+    });
+  });
+
   group('topics this screen does not own', () {
     test('notices a session length', () {
       expect(_parse('about 50 min a session').elsewhere,

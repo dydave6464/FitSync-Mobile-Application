@@ -720,6 +720,20 @@ void main() {
           reason: 'nothing is being avoided until the profile says so');
     });
 
+    testWidgets('the offer says what adding the region will do', (tester) async {
+      // "Not in your injuries yet" states a fact about a database. What the
+      // user is deciding is whether their plan avoids the movement, and the
+      // offer should say so -- 608 exercises are contraindicated for the
+      // lower back alone, and none of them are skipped until this is tapped.
+      await _pump(tester, plan: _pplPlan, injuryOptions: const [knee, back]);
+
+      await write(tester, 'protect my right knee');
+      await apply(tester);
+
+      expect(find.textContaining('skip the exercises that load it'),
+          findsOneWidget);
+    });
+
     testWidgets('adding an offered region sends it to the profile',
         (tester) async {
       final profileRepo = FakeProfileRepository();
