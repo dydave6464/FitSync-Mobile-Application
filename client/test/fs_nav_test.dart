@@ -111,17 +111,16 @@ void main() {
 
   testWidgets('the fab bar grows with the bottom inset', (tester) async {
     // The bar is Container(1px top border) + SafeArea(inset) + 58, and the
-    // fab needs its RISE above that -- 10, the 14 margin less the 4 the
-    // circle already sits below the bar's top edge once centred. Pinning the
-    // total to a constant instead makes the bar taller than the box that
-    // holds it at every real inset -- iPhone home indicator 34, Android
-    // 3-button 48 -- and Stack's default Clip.hardEdge eats the difference
-    // silently.
+    // fab needs its RISE above that -- 4, which is all it takes to put the
+    // circle's centre on the tab icons' line. Pinning the total to a constant
+    // instead makes the bar taller than the box that holds it at every real
+    // inset -- iPhone home indicator 34, Android 3-button 48 -- and Stack's
+    // default Clip.hardEdge eats the difference silently.
     for (final inset in [0.0, 24.0, 34.0, 48.0]) {
       await _pumpInset(tester, inset);
       expect(
         tester.getSize(find.byType(FsNav)).height,
-        59 + 10 + inset,
+        59 + 4 + inset,
         reason: 'the fab bar must reserve the inset, not swallow it (inset $inset)',
       );
     }
@@ -151,7 +150,7 @@ void main() {
     }
   });
 
-  testWidgets('the fab is raised from the bar\'s centreline, not its top edge',
+  testWidgets('the fab centres on the tab icons rather than riding above them',
       (tester) async {
     // The design's `margin-top: -14px` is measured from CENTRED, not from the
     // bar's top edge: `.botnav` centres the circle like every other item and
@@ -174,9 +173,9 @@ void main() {
       );
       expect(
         icon.center.dy - fab.center.dy,
-        closeTo(6.5, 0.5),
-        reason: 'the circle must clear the tab icons by the design\'s lift, '
-            'not twice it (inset $inset)',
+        closeTo(0, 1.5),
+        reason: 'the circle must sit on the icons\' line, not above it '
+            '(inset $inset)',
       );
     }
   });

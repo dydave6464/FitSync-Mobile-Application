@@ -610,20 +610,32 @@ class FsNav extends StatelessWidget {
   /// The diameter the prototype gives the circle.
   static const double _fabSize = 50;
 
-  /// `margin-top: -14px` in the prototype, and measured from CENTRED -- the
-  /// fab is a flex child of `.botnav`, so `align-items: center` places it on
-  /// the bar's centreline like every other item and the negative margin
-  /// lifts it from there.
-  static const double _fabRaise = 14;
+  /// A tab cell's own stack, named so [_tabIconCentre] cannot drift from what
+  /// [_bar] actually renders.
+  static const double _tabIconSize = 21;
+  static const double _tabGap = 3;
 
-  /// How far the circle actually breaks the bar's top edge, which is NOT
-  /// [_fabRaise]: centring already seats the circle half the difference
-  /// between the bar and itself below that edge, and the raise spends that
-  /// before it clears anything.
+  /// The label's line box: 10px at the default height. Approximate by nature
+  /// -- it is a rendered font metric -- which is why the fab's placement is
+  /// asserted against the icon's measured position rather than this number.
+  static const double _tabLabelHeight = 13;
+
+  static const double _tabContentHeight =
+      _tabIconSize + _tabGap + _tabLabelHeight;
+
+  /// Where a tab icon's centre falls, measured down from the top of the bar's
+  /// row: the cell centres its icon-and-label stack, and the icon is the top
+  /// of that stack.
+  static const double _tabIconCentre =
+      (_barHeight - _tabContentHeight) / 2 + _tabIconSize / 2;
+
+  /// How far the circle breaks the bar's top edge.
   ///
-  /// Conflating the two is what put the "+" a full 14 above the bar instead
-  /// of 10, floating clear of the tabs rather than breaking their line.
-  static const double _fabRise = _fabRaise - (_barHeight - _fabSize) / 2;
+  /// Derived, not chosen: exactly enough to put the circle's centre on the
+  /// tab icons' line, so the "+" reads as one of the row rather than floating
+  /// over it. The prototype's `margin-top: -14px` lifts it further, and on a
+  /// device that consistently read as the one item out of line.
+  static const double _fabRise = _fabSize / 2 - _tabIconCentre;
 
   /// The fab's footprint when it lived inline in the [Row] — kept as a
   /// spacer so the tab cells still reserve the same gap for it.
@@ -692,10 +704,10 @@ class FsNav extends StatelessWidget {
                         children: [
                           Icon(
                             item.icon,
-                            size: 21,
+                            size: _tabIconSize,
                             color: index == currentIndex ? t.accent : t.text3,
                           ),
-                          const SizedBox(height: 3),
+                          const SizedBox(height: _tabGap),
                           Text(
                             item.label,
                             maxLines: 1,
