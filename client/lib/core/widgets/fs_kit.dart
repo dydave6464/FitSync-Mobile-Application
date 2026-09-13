@@ -277,6 +277,7 @@ class FsField extends StatelessWidget {
     this.keyboardType,
     this.textCapitalization = TextCapitalization.none,
     this.suffix,
+    this.maxLines = 1,
   });
 
   /// Applied to the inner [TextField] rather than to this wrapper, so
@@ -291,6 +292,11 @@ class FsField extends StatelessWidget {
   final TextCapitalization textCapitalization;
   final String? suffix;
 
+  /// Lines the box may grow to before it scrolls. One, as every field in the
+  /// app has been, until something needs to hold a sentence: typed into a
+  /// single line, a sentence scrolls sideways and hides its own beginning.
+  final int maxLines;
+
   @override
   Widget build(BuildContext context) {
     final t = context.fs;
@@ -299,6 +305,7 @@ class FsField extends StatelessWidget {
       key: fieldKey,
       controller: controller,
       obscureText: obscure,
+      maxLines: maxLines,
       keyboardType: keyboardType,
       textCapitalization: textCapitalization,
       autocorrect: false,

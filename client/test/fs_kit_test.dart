@@ -222,6 +222,34 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
+  testWidgets('FsField is single line unless told otherwise', (tester) async {
+    final controller = TextEditingController();
+    addTearDown(controller.dispose);
+
+    await tester.pumpWidget(MaterialApp(
+      theme: fsLightTheme(),
+      home: Scaffold(body: FsField(controller: controller, hint: 'Name')),
+    ));
+
+    expect(tester.widget<TextField>(find.byType(TextField)).maxLines, 1);
+  });
+
+  testWidgets('FsField grows to the line count it is given', (tester) async {
+    // A sentence typed into a one-line field scrolls sideways, which hides
+    // the beginning of what the user wrote.
+    final controller = TextEditingController();
+    addTearDown(controller.dispose);
+
+    await tester.pumpWidget(MaterialApp(
+      theme: fsLightTheme(),
+      home: Scaffold(
+        body: FsField(controller: controller, hint: 'Describe', maxLines: 3),
+      ),
+    ));
+
+    expect(tester.widget<TextField>(find.byType(TextField)).maxLines, 3);
+  });
+
   testWidgets('a segmented control marks only the chosen segment', (tester) async {
     await tester.pumpWidget(_host(
       const FsSegmented(

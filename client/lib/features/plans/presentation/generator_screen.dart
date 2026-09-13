@@ -156,7 +156,12 @@ class _GeneratorScreenState extends ConsumerState<GeneratorScreen> {
     final (:split, :days, :length) = _resolve(plan);
 
     final injuries = ref.watch(profileProvider).value?.injuries ?? const <SelectedInjury>[];
-    final options = ref.watch(injuryOptionsProvider).value ?? const <InjuryOption>[];
+    // The AsyncValue, not `.value ?? const []`: that flattening reads the
+    // same for "still loading", "failed" and "no regions exist", and the
+    // describe card reports what it recognised -- so under a failed
+    // catalogue it would state that nothing the user typed matched.
+    final asyncOptions = ref.watch(injuryOptionsProvider);
+    final options = asyncOptions.value ?? const <InjuryOption>[];
     final avoiding = [
       for (final selected in injuries)
         for (final option in options)
@@ -166,9 +171,32 @@ class _GeneratorScreenState extends ConsumerState<GeneratorScreen> {
     return ListView(
       padding: const EdgeInsets.fromLTRB(20, 12, 20, 24),
       children: [
+        _DescribeCard(
+          key: const Key('gen.describe'),
+          // Rebuilt from scratch whenever the plan or profile it describes
+          // changes, so a sentence the user has not touched never describes a
+          // plan they no longer have.
+          composed: composeWeekDescription(
+            profile: ref.watch(profileProvider).value,
+            plan: plan,
+            options: options,
+          ),
+          options: options,
+          catalogueFailed: asyncOptions.hasError,
+          onApply: (parsed) => setState(() {
+            // Only what the sentence actually resolved. Assigning a null
+            // through would reset a control the user set by hand to the
+            // fallback chain's default, which is the one thing a vague
+            // sentence must not do.
+            _splitStyle = parsed.splitStyle ?? _splitStyle;
+            _daysPerWeek = parsed.daysPerWeek ?? _daysPerWeek;
+          }),
+        ),
+        const SizedBox(height: 22),
         const FsEyebrow('Split style'),
         const SizedBox(height: 10),
         Wrap(
+          key: const Key('gen.splits'),
           spacing: 8,
           runSpacing: 8,
           children: [
@@ -313,4 +341,241 @@ class _DaysRow extends StatelessWidget {
       ],
     );
   }
+}
+
+
+/// The prototype's "Describe your week" card.
+///
+/// Everything it understands lands in the controls below it, where the user
+/// can see and correct it before generating. Nothing here reaches the
+/// generator directly: the payload carries the controls, not this sentence.
+class _DescribeCard extends ConsumerStatefulWidget {
+  const _DescribeCard({
+    super.key,
+    required this.composed,
+    required this.options,
+    required this.catalogueFailed,
+    required this.onApply,
+  });
+
+  /// The sentence "From profile" writes, composed from the live profile and
+  /// plan.
+  final String composed;
+
+  final List<InjuryOption> options;
+
+  /// Whether the injury catalogue failed to load. Distinct from an empty
+  /// catalogue: one means "nothing matched", the other means "nothing could
+  /// be checked", and only one of those is safe to say.
+  final bool catalogueFailed;
+
+  final ValueChanged<WeekDescription> onApply;
+
+  @override
+  ConsumerState<_DescribeCard> createState() => _DescribeCardState();
+}
+
+class _DescribeCardState extends ConsumerState<_DescribeCard> {
+  late final TextEditingController _controller =
+      TextEditingController(text: widget.composed);
+
+  /// The last applied parse, or null before the first Apply. Held so the
+  /// offers and notes below the field survive rebuilds without re-parsing
+  /// text the user may have edited since.
+  WeekDescription? _applied;
+
+  /// Regions the user has dismissed by adding them, kept so the offer goes
+  /// away the moment the write succeeds rather than waiting for the profile
+  /// to come back round.
+  final Set<int> _added = {};
+
+  int? _adding;
+
+  @override
+  void didUpdateWidget(_DescribeCard old) {
+    super.didUpdateWidget(old);
+    // The profile is fetched separately from the plan, so the first build of
+    // this card routinely happens before there is a goal to write about. The
+    // box has to follow what it describes until the user takes it over --
+    // comparing against the PREVIOUS sentence is what tells those apart:
+    // still untouched means still ours to fill, edited means hands off.
+    if (widget.composed != old.composed && _controller.text == old.composed) {
+      _controller.text = widget.composed;
+    }
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  void _apply() {
+    final parsed = parseWeekDescription(_controller.text, widget.options);
+    setState(() => _applied = parsed);
+    widget.onApply(parsed);
+  }
+
+  Future<void> _add(SelectedInjury injury) async {
+    final messenger = ScaffoldMessenger.of(context);
+    final current = ref.read(profileProvider).value?.injuries ?? const <SelectedInjury>[];
+    setState(() => _adding = injury.injuryId);
+    try {
+      // PUT /profile/injuries replaces the whole set, so the existing
+      // injuries go back with it. Sending only the new region would delete
+      // every other injury the user has.
+      await ref.read(profileProvider.notifier).setInjuries([...current, injury]);
+      if (!mounted) return;
+      setState(() {
+        _added.add(injury.injuryId);
+        _adding = null;
+      });
+    } catch (error) {
+      if (!mounted) return;
+      // The offer stays: nothing was saved, so nothing should look saved.
+      setState(() => _adding = null);
+      messenger.showSnackBar(SnackBar(content: Text(describeError(error))));
+    }
+  }
+
+  /// Regions the sentence named that the profile does not already carry.
+  List<({InjuryOption option, SelectedInjury injury})> get _offers {
+    final parsed = _applied;
+    if (parsed == null) return const [];
+    final held = {
+      for (final i in ref.watch(profileProvider).value?.injuries ?? const <SelectedInjury>[])
+        i.injuryId,
+    };
+
+    return [
+      for (final injury in parsed.injuries)
+        if (!held.contains(injury.injuryId) && !_added.contains(injury.injuryId))
+          for (final option in widget.options)
+            if (option.injuryId == injury.injuryId)
+              (option: option, injury: injury),
+    ];
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final t = context.fs;
+    final parsed = _applied;
+
+    return FsCard(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const FsEyebrow('Describe your week'),
+          const SizedBox(height: 8),
+          FsField(
+            key: const Key('gen.describe.field'),
+            controller: _controller,
+            hint: 'e.g. full body, 4 days a week, protecting my lower back',
+            maxLines: 3,
+            textCapitalization: TextCapitalization.sentences,
+          ),
+          const SizedBox(height: 10),
+          Wrap(
+            spacing: 8,
+            runSpacing: 8,
+            children: [
+              FsChip(
+                key: const Key('gen.describe.apply'),
+                label: 'Apply',
+                selected: true,
+                onTap: _apply,
+              ),
+              FsChip(
+                key: const Key('gen.describe.fromProfile'),
+                label: 'From profile',
+                selected: false,
+                onTap: () => setState(() {
+                  _controller.text = widget.composed;
+                  _applied = null;
+                  _added.clear();
+                }),
+              ),
+            ],
+          ),
+          if (parsed != null) ...[
+            const SizedBox(height: 12),
+            _result(t, parsed),
+          ],
+        ],
+      ),
+    );
+  }
+
+  Widget _result(FsTokens t, WeekDescription parsed) {
+    final note = TextStyle(fontSize: 12, color: t.text3, height: 1.35);
+
+    return Column(
+      key: const Key('gen.describe.result'),
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        if (parsed.isEmpty && !widget.catalogueFailed)
+          Text("Nothing in that changed your plan -- the controls below are "
+              "unchanged.", style: note),
+
+        // Said whatever else was parsed: the catalogue is what injury
+        // matching depends on, so without it "no regions matched" is a claim
+        // this card cannot support.
+        if (widget.catalogueFailed)
+          Padding(
+            key: const Key('gen.describe.catalogueError'),
+            padding: const EdgeInsets.only(bottom: 6),
+            child: Text(
+              "Couldn't check that against your injuries. Anything you wrote "
+              'about them has been left alone.',
+              style: note.copyWith(color: t.red),
+            ),
+          ),
+
+        for (final offer in _offers)
+          Padding(
+            padding: const EdgeInsets.only(top: 6),
+            child: Row(
+              children: [
+                Icon(Icons.shield_outlined, size: 16, color: t.red),
+                const SizedBox(width: 9),
+                Expanded(
+                  child: Text(
+                    '${injuryLabel(offer.option, offer.injury)} '
+                    'is not in your injuries yet, so the plan will not work '
+                    'around it.',
+                    style: note,
+                  ),
+                ),
+                const SizedBox(width: 8),
+                FsButton(
+                  key: Key('gen.describe.add.${offer.option.injuryId}'),
+                  label: 'Add',
+                  small: true,
+                  kind: FsButtonKind.secondary,
+                  busy: _adding == offer.option.injuryId,
+                  onPressed: () => _add(offer.injury),
+                ),
+              ],
+            ),
+          ),
+
+        if (parsed.elsewhere.isNotEmpty)
+          Padding(
+            key: const Key('gen.describe.elsewhere'),
+            padding: const EdgeInsets.only(top: 6),
+            child: Text(
+              parsed.elsewhere.map(_topicNote).join(' '),
+              style: note,
+            ),
+          ),
+      ],
+    );
+  }
+
+  /// The domain reports a topic; the wording lives here.
+  static String _topicNote(WeekTopic topic) => switch (topic) {
+        WeekTopic.sessionLength =>
+          'Session length follows your plan, so it is shown rather than chosen.',
+        WeekTopic.goal => 'Your goal is set in your profile.',
+      };
 }

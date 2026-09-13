@@ -11,6 +11,7 @@ import 'package:fitsync/features/plans/data/plan_repository.dart';
 import 'package:fitsync/features/plans/domain/workout_plan.dart';
 import 'package:fitsync/features/plans/presentation/generator_screen.dart';
 import 'package:fitsync/features/plans/presentation/providers.dart';
+import 'package:fitsync/features/profile/data/profile_repository.dart';
 import 'package:fitsync/features/profile/domain/profile.dart';
 import 'package:fitsync/features/profile/presentation/providers.dart';
 
@@ -69,37 +70,73 @@ class FakePlanRepository implements PlanRepository {
 /// Everything else is a fixed stand-in -- the card only ever reads
 /// `.injuries`.
 class _FakeProfileNotifier extends ProfileNotifier {
-  _FakeProfileNotifier(this.injuries);
+  _FakeProfileNotifier(this.injuries, {this.goal});
 
   final List<SelectedInjury> injuries;
+  final String? goal;
 
   @override
-  Future<Profile> build() async => Profile(
-        userId: 1,
-        email: 'test@example.com',
-        fullName: 'Test User',
-        onboardingCompleted: true,
-        isPremium: false,
-        notificationsEnabled: true,
-        equipment: const [],
-        injuries: injuries,
-      );
+  Future<Profile> build() async => _profileWith(injuries, goal);
+}
+
+Profile _profileWith(List<SelectedInjury> injuries, String? goal) => Profile(
+      userId: 1,
+      email: 'test@example.com',
+      fullName: 'Test User',
+      onboardingCompleted: true,
+      isPremium: false,
+      notificationsEnabled: true,
+      equipment: const [],
+      injuries: injuries,
+      mainGoal: goal,
+    );
+
+/// Records what the screen asks the profile to store. Only setInjuries is
+/// implemented -- the generator writes nothing else to the profile, and a
+/// fake that answers more than that hides the day it starts to.
+class FakeProfileRepository implements ProfileRepository {
+  FakeProfileRepository({this.error, this.goal});
+
+  final Object? error;
+  final String? goal;
+
+  List<SelectedInjury>? sent;
+
+  @override
+  Future<Profile> setInjuries(List<SelectedInjury> injuries) async {
+    sent = injuries;
+    if (error != null) throw error!;
+    return _profileWith(injuries, goal);
+  }
+
+  @override
+  dynamic noSuchMethod(Invocation invocation) =>
+      throw UnimplementedError('${invocation.memberName} is not used by these tests');
 }
 
 Future<void> _pump(
   WidgetTester tester, {
   WorkoutPlan? plan,
   PlanRepository? repo,
+  ProfileRepository? profileRepo,
   List<SelectedInjury> injuries = const [],
   List<InjuryOption> injuryOptions = const [],
+  bool injuryOptionsFail = false,
+  String? goal,
 }) async {
   await tester.pumpWidget(
     ProviderScope(
       overrides: [
         activePlanProvider.overrideWith((ref) async => plan),
         if (repo != null) planRepositoryProvider.overrideWithValue(repo),
-        profileProvider.overrideWith(() => _FakeProfileNotifier(injuries)),
-        injuryOptionsProvider.overrideWith((ref) async => injuryOptions),
+        if (profileRepo != null)
+          profileRepositoryProvider.overrideWithValue(profileRepo),
+        profileProvider
+            .overrideWith(() => _FakeProfileNotifier(injuries, goal: goal)),
+        injuryOptionsProvider.overrideWith((ref) async {
+          if (injuryOptionsFail) throw Exception('catalogue down');
+          return injuryOptions;
+        }),
       ],
       child: MaterialApp(
         theme: fsLightTheme(),
@@ -184,7 +221,13 @@ void main() {
     expect(screen.debugDaysPerWeek, 3);
     expect(screen.debugSessionLengthMin, 45);
 
-    expect(find.byType(FsChip), findsNWidgets(4));
+    expect(
+      find.descendant(
+        of: find.byKey(const Key('gen.splits')),
+        matching: find.byType(FsChip),
+      ),
+      findsNWidgets(4),
+    );
     expect(_chipOn(tester, 'Full body'), isTrue);
     expect(_dayFilled(tester, 3), isTrue);
     expect(_dayFilled(tester, 4), isFalse);
@@ -574,6 +617,212 @@ void main() {
     },
   );
 
+  group('describe your week', () {
+    const knee =
+        InjuryOption(injuryId: 3, name: 'Knee', isLateral: true, regionGroup: 'leg');
+    const back = InjuryOption(
+        injuryId: 9, name: 'Lower back', isLateral: false, regionGroup: 'back');
+
+    /// The editable inside the card. The key sits on the FsField wrapper, so
+    /// both reading and typing have to reach through it.
+    Finder field() => find.descendant(
+          of: find.byKey(const Key('gen.describe.field')),
+          matching: find.byType(TextField),
+        );
+
+    String fieldText(WidgetTester tester) =>
+        tester.widget<TextField>(field()).controller!.text;
+
+    Future<void> write(WidgetTester tester, String text) async {
+      await tester.enterText(field(), text);
+      await tester.pump();
+    }
+
+    Future<void> apply(WidgetTester tester) async {
+      await tester.tap(find.byKey(const Key('gen.describe.apply')));
+      await tester.pumpAndSettle();
+    }
+
+    testWidgets('opens with a sentence composed from the profile and plan',
+        (tester) async {
+      await _pump(tester, plan: _pplPlan, goal: 'build_muscle');
+
+      final text = fieldText(tester);
+      expect(text, contains('build muscle'));
+      expect(text, contains('4 days'));
+      expect(text, contains('push / pull / legs'));
+    });
+
+    testWidgets('an edited sentence is not overwritten when the profile arrives',
+        (tester) async {
+      // The box follows the profile and plan only until the user takes it
+      // over. Re-composing over their words would delete what they typed.
+      await _pump(tester, plan: _pplPlan, goal: 'build_muscle');
+
+      await write(tester, 'my own words');
+      await tester.pumpAndSettle();
+
+      expect(fieldText(tester), 'my own words');
+    });
+
+    testWidgets('applying the sentence moves the split and the day count',
+        (tester) async {
+      await _pump(tester, plan: _pplPlan); // opens on push/pull/legs, 4 days
+
+      await write(tester, 'full body, 2 days a week');
+      await apply(tester);
+
+      final screen = tester.state(find.byType(GeneratorScreen)) as dynamic;
+      expect(screen.debugSplitStyle, 'full_body');
+      expect(screen.debugDaysPerWeek, 2);
+      expect(_chipOn(tester, 'Full body'), isTrue);
+      expect(_dayFilled(tester, 2), isTrue);
+      expect(_dayFilled(tester, 3), isFalse);
+    });
+
+    testWidgets('a sentence it cannot read leaves the controls alone',
+        (tester) async {
+      // Resolving nothing must not read as "full body, 3 days" -- that is
+      // the flattening this screen already refuses for its loading state.
+      await _pump(tester, plan: _pplPlan);
+
+      await write(tester, 'asdf qwer zxcv');
+      await apply(tester);
+
+      final screen = tester.state(find.byType(GeneratorScreen)) as dynamic;
+      expect(screen.debugSplitStyle, 'push_pull_legs');
+      expect(screen.debugDaysPerWeek, 4);
+    });
+
+    testWidgets('from profile rewrites the sentence after an edit',
+        (tester) async {
+      await _pump(tester, plan: _pplPlan, goal: 'build_muscle');
+
+      await write(tester, 'nonsense');
+      await tester.tap(find.byKey(const Key('gen.describe.fromProfile')));
+      await tester.pumpAndSettle();
+
+      expect(fieldText(tester), contains('push / pull / legs'));
+    });
+
+    testWidgets('a region the profile lacks is offered, not applied',
+        (tester) async {
+      // The generator reads injuries from the profile server-side. Treating a
+      // typed region as already honoured would promise protection the plan
+      // does not have.
+      await _pump(tester, plan: _pplPlan, injuryOptions: const [knee, back]);
+
+      await write(tester, 'protect my right knee');
+      await apply(tester);
+
+      expect(find.byKey(const Key('gen.describe.add.3')), findsOneWidget);
+      expect(find.byKey(const Key('gen.avoiding')), findsNothing,
+          reason: 'nothing is being avoided until the profile says so');
+    });
+
+    testWidgets('adding an offered region sends it to the profile',
+        (tester) async {
+      final profileRepo = FakeProfileRepository();
+      await _pump(
+        tester,
+        plan: _pplPlan,
+        profileRepo: profileRepo,
+        injuryOptions: const [knee, back],
+      );
+
+      await write(tester, 'protect my right knee');
+      await apply(tester);
+      await tester.tap(find.byKey(const Key('gen.describe.add.3')));
+      await tester.pumpAndSettle();
+
+      expect(profileRepo.sent, hasLength(1));
+      expect(profileRepo.sent!.single.injuryId, 3);
+      expect(profileRepo.sent!.single.side, 'right');
+    });
+
+    testWidgets('adding keeps the injuries the profile already had',
+        (tester) async {
+      // PUT /profile/injuries replaces the whole set, so an add that sends
+      // only the new region silently deletes every other injury the user has.
+      final profileRepo = FakeProfileRepository();
+      await _pump(
+        tester,
+        plan: _pplPlan,
+        profileRepo: profileRepo,
+        injuries: const [SelectedInjury(injuryId: 9)],
+        injuryOptions: const [knee, back],
+      );
+
+      await write(tester, 'protect my right knee');
+      await apply(tester);
+      await tester.tap(find.byKey(const Key('gen.describe.add.3')));
+      await tester.pumpAndSettle();
+
+      expect(profileRepo.sent!.map((i) => i.injuryId), containsAll(<int>[9, 3]));
+    });
+
+    testWidgets('a region already in the profile is not offered again',
+        (tester) async {
+      await _pump(
+        tester,
+        plan: _pplPlan,
+        injuries: const [SelectedInjury(injuryId: 3, side: 'right')],
+        injuryOptions: const [knee, back],
+      );
+
+      await write(tester, 'protect my right knee');
+      await apply(tester);
+
+      expect(find.byKey(const Key('gen.describe.add.3')), findsNothing);
+    });
+
+    testWidgets('a failed add says so and keeps the offer', (tester) async {
+      final profileRepo = FakeProfileRepository(
+        error: const ApiException('VALIDATION_ERROR', 'Could not save that.'),
+      );
+      await _pump(
+        tester,
+        plan: _pplPlan,
+        profileRepo: profileRepo,
+        injuryOptions: const [knee, back],
+      );
+
+      await write(tester, 'protect my right knee');
+      await apply(tester);
+      await tester.tap(find.byKey(const Key('gen.describe.add.3')));
+      await tester.pumpAndSettle();
+
+      expect(find.textContaining('Could not save that'), findsOneWidget);
+      expect(find.byKey(const Key('gen.describe.add.3')), findsOneWidget,
+          reason: 'nothing was saved, so the offer must still stand');
+    });
+
+    testWidgets('a catalogue that failed to load does not claim nothing matched',
+        (tester) async {
+      // value ?? const [] reads the same for "still loading", "failed" and
+      // "no regions exist". With a card that reports what it recognised, that
+      // silence becomes a false statement about the user's injuries.
+      await _pump(tester, plan: _pplPlan, injuryOptionsFail: true);
+
+      await write(tester, 'protect my right knee');
+      await apply(tester);
+
+      expect(find.byKey(const Key('gen.describe.catalogueError')), findsOneWidget);
+      expect(find.byKey(const Key('gen.describe.add.3')), findsNothing);
+    });
+
+    testWidgets('a topic this screen does not own is named, not dropped',
+        (tester) async {
+      await _pump(tester, plan: _pplPlan);
+
+      await write(tester, 'about 50 min a session');
+      await apply(tester);
+
+      expect(find.byKey(const Key('gen.describe.elsewhere')), findsOneWidget);
+      expect(find.textContaining('Session length'), findsOneWidget);
+    });
+  });
+
   testWidgets('the avoiding card names the profile injuries', (tester) async {
     // The card displays state and sends nothing: /regenerate reads the
     // profile server-side, which is what stops a client generating against
@@ -601,7 +850,15 @@ void main() {
       ],
     );
 
-    expect(find.textContaining('Lower back'), findsOneWidget);
+    // Scoped to the avoiding card: the describe box composes a sentence from
+    // the same profile, so an unscoped finder now matches both.
+    expect(
+      find.descendant(
+        of: find.byKey(const Key('gen.avoiding')),
+        matching: find.textContaining('Lower back'),
+      ),
+      findsOneWidget,
+    );
     expect(find.textContaining('Right'), findsNothing);
   });
 
