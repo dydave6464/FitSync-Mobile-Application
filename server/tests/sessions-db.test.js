@@ -211,6 +211,40 @@ test('session db', async (t) => {
     );
   });
 
+  await t.test('a manual session carries its exercises, in order', async () => {
+    // This is what lets the logger stop deriving its list from the plan:
+    // plan.exercisesForDay(null) returns nothing for a manual session.
+    const { userId, first, second } = await seedPlanless();
+
+    const { session } = await startSession(pool, userId, [second, first]);
+
+    assert.deepEqual(session.exercises.map((e) => e.exerciseId), [second, first]);
+    assert.deepEqual(session.exercises.map((e) => e.orderNo), [1, 2]);
+    assert.equal(session.exercises[0].targetSets, 3);
+    assert.equal(session.exercises[0].targetReps, '8-12');
+  });
+
+  await t.test('a plan session carries an empty list', async () => {
+    // Empty rather than populated: filling it for every session would rewrite
+    // the working plan-session path and everything that tests it.
+    const { userId } = await seed();
+
+    const { session } = await startSession(pool, userId);
+
+    assert.deepEqual(session.exercises, []);
+  });
+
+  await t.test('the active session carries the list too', async () => {
+    // getActiveSession is what the client reads on reopening the app. A list
+    // present only at creation would vanish on the next launch.
+    const { userId, first } = await seedPlanless();
+    await startSession(pool, userId, [first]);
+
+    const active = await getActiveSession(pool, userId);
+
+    assert.deepEqual(active.exercises.map((e) => e.exerciseId), [first]);
+  });
+
   await t.test('a set is stored and read back as numbers, not strings', async () => {
     const { userId, exerciseId } = await seed();
     const { session } = await startSession(pool, userId);

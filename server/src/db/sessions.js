@@ -44,10 +44,14 @@ function toLoggedSet(row) {
   };
 }
 
-function toSession(row, setRows) {
+function toSession(row, setRows, exerciseRows = []) {
   return {
     sessionId: row.session_id,
     planId: row.plan_id,
+    // Empty for a plan-backed session, whose list still comes from the plan.
+    // Present so a manual session -- which has neither a plan nor a rotation
+    // day -- can say what it contains.
+    exercises: exerciseRows,
     status: row.status,
     sessionDate: formatDate(row.session_date),
     startedAt: row.started_at_epoch
@@ -71,6 +75,23 @@ async function loadSets(pool, sessionId) {
   return rows;
 }
 
+/// A session's own chosen exercises, empty for a plan-backed session.
+async function loadSessionExercises(pool, sessionId) {
+  const [rows] = await pool.query(
+    `SELECT exercise_id, order_no, target_sets, target_reps
+     FROM session_exercises
+     WHERE session_id = ?
+     ORDER BY order_no`,
+    [sessionId],
+  );
+  return rows.map((row) => ({
+    exerciseId: row.exercise_id,
+    orderNo: row.order_no,
+    targetSets: row.target_sets,
+    targetReps: row.target_reps,
+  }));
+}
+
 /// Null when the id does not exist OR belongs to someone else -- the caller
 /// cannot tell the two apart, which is what keeps ids unguessable.
 async function getSessionById(pool, userId, sessionId) {
@@ -81,7 +102,11 @@ async function getSessionById(pool, userId, sessionId) {
     [sessionId, userId],
   );
   if (rows.length === 0) return null;
-  return toSession(rows[0], await loadSets(pool, rows[0].session_id));
+  return toSession(
+    rows[0],
+    await loadSets(pool, rows[0].session_id),
+    await loadSessionExercises(pool, rows[0].session_id),
+  );
 }
 
 async function getActiveSession(pool, userId) {
@@ -93,7 +118,11 @@ async function getActiveSession(pool, userId) {
     [userId],
   );
   if (rows.length === 0) return null;
-  return toSession(rows[0], await loadSets(pool, rows[0].session_id));
+  return toSession(
+    rows[0],
+    await loadSets(pool, rows[0].session_id),
+    await loadSessionExercises(pool, rows[0].session_id),
+  );
 }
 
 /// Which rotation day today's session is.
