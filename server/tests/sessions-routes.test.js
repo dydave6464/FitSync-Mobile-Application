@@ -146,6 +146,84 @@ test('session endpoints', async (t) => {
     assert.equal(started.body.error.code, 'NO_ACTIVE_PLAN');
   });
 
+  await t.test('starting from a posted list ignores the plan', async () => {
+    // The posted list wins over whatever plan this user happens to have:
+    // that is what makes it a manual session rather than today's workout.
+    const { token, exerciseId } = await freshUser('manual-start@example.com');
+
+    const res = await auth(request(app).post('/api/v1/sessions'), token)
+      .send({ exerciseIds: [exerciseId] })
+      .expect(201);
+
+    assert.equal(res.body.data.session.planId, null);
+    assert.equal(res.body.data.session.planDayNo, null);
+    assert.deepEqual(
+      res.body.data.session.exercises.map((e) => e.exerciseId),
+      [exerciseId],
+    );
+  });
+
+  await t.test('a posted list needs no plan at all', async () => {
+    // The whole point: someone with no plan can still log a workout, where
+    // the bodyless start is a 409 for them.
+    const reg = await request(app).post('/api/v1/auth/register')
+      .send({ email: 'manual-noplan@example.com', password: 's3cret-pass', fullName: 'W' }).expect(201);
+    await markEmailVerified(pool, reg.body.data.user.userId);
+    const login = await request(app).post('/api/v1/auth/login')
+      .send({ email: 'manual-noplan@example.com', password: 's3cret-pass' }).expect(200);
+    const [ex] = await pool.query("SELECT exercise_id FROM exercises WHERE status='live' LIMIT 1");
+
+    const res = await auth(request(app).post('/api/v1/sessions'), login.body.data.token)
+      .send({ exerciseIds: [ex[0].exercise_id] })
+      .expect(201);
+
+    assert.equal(res.body.data.session.planId, null);
+  });
+
+  await t.test('refuses an empty list rather than starting the plan session', async () => {
+    // Falling through to the plan-backed path would silently start a
+    // different workout than the one that was asked for.
+    const { token } = await freshUser('manual-empty@example.com');
+
+    const res = await auth(request(app).post('/api/v1/sessions'), token)
+      .send({ exerciseIds: [] })
+      .expect(400);
+
+    assert.equal(res.body.error.code, 'INVALID_EXERCISE_IDS');
+  });
+
+  await t.test('refuses a duplicate id', async () => {
+    // The library's add/remove toggle cannot produce one, but the endpoint is
+    // not the library. Left to the unique key this would surface as a 500.
+    const { token, exerciseId } = await freshUser('manual-dupe@example.com');
+
+    const res = await auth(request(app).post('/api/v1/sessions'), token)
+      .send({ exerciseIds: [exerciseId, exerciseId] })
+      .expect(400);
+
+    assert.equal(res.body.error.code, 'INVALID_EXERCISE_IDS');
+  });
+
+  await t.test('refuses a non-integer id', async () => {
+    const { token } = await freshUser('manual-string@example.com');
+
+    const res = await auth(request(app).post('/api/v1/sessions'), token)
+      .send({ exerciseIds: ['12'] })
+      .expect(400);
+
+    assert.equal(res.body.error.code, 'INVALID_EXERCISE_IDS');
+  });
+
+  await t.test('refuses exerciseIds that is not an array', async () => {
+    const { token } = await freshUser('manual-scalar@example.com');
+
+    const res = await auth(request(app).post('/api/v1/sessions'), token)
+      .send({ exerciseIds: 12 })
+      .expect(400);
+
+    assert.equal(res.body.error.code, 'INVALID_EXERCISE_IDS');
+  });
+
   await t.test('completing returns the closed session and clears active', async () => {
     const { token } = await freshUser('done@example.com');
     const started = await auth(request(app).post('/api/v1/sessions'), token).expect(201);

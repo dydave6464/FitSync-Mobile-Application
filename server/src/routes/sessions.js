@@ -78,9 +78,36 @@ module.exports = function buildSessionsRouter(deps) {
     } catch (err) { next(err); }
   });
 
+  // Shape only. Existence and status are checked inside startSession's
+  // transaction, so a curator retiring an exercise mid-request cannot slip
+  // between a check here and the insert there.
+  //
+  // An absent key means "start today's plan session", which is the behaviour
+  // that predates this. An empty array is a different thing and is refused:
+  // falling through to the plan would silently start a different workout than
+  // the one that was asked for.
+  const parseExerciseIds = (body) => {
+    if (body?.exerciseIds === undefined) return null;
+
+    const ids = body.exerciseIds;
+    const bad = () => AppError.badRequest(
+      'INVALID_EXERCISE_IDS',
+      'exerciseIds must be a non-empty array of exercise ids, without duplicates.',
+    );
+
+    if (!Array.isArray(ids) || ids.length === 0) throw bad();
+    if (!ids.every((id) => Number.isInteger(id) && id > 0)) throw bad();
+    // Left to the unique key this would surface as a 500.
+    if (new Set(ids).size !== ids.length) throw bad();
+    return ids;
+  };
+
   router.post('/', auth, async (req, res, next) => {
     try {
-      const { session, created } = await startSession(deps.pool, req.user.userId);
+      const exerciseIds = parseExerciseIds(req.body);
+      const { session, created } = await startSession(
+        deps.pool, req.user.userId, exerciseIds,
+      );
       res.status(created ? 201 : 200).json({ data: { session } });
     } catch (err) { next(err); }
   });
