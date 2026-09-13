@@ -125,6 +125,92 @@ test('session db', async (t) => {
     assert.equal(session.planId, activePlan.insertId);
   });
 
+  // A user and two live exercises, with NO plan -- the case manual logging
+  // exists for, and the one startSession used to refuse outright.
+  const seedPlanless = async () => {
+    const [u] = await pool.query(
+      "INSERT INTO users (email, password_hash, full_name) VALUES (CONCAT('u', UUID(), '@b.com'), 'x', 'U')",
+    );
+    const [a] = await pool.query(
+      "INSERT INTO exercises (name, muscle_group, status) VALUES (CONCAT('Ex ', UUID()), 'legs', 'live')",
+    );
+    const [b] = await pool.query(
+      "INSERT INTO exercises (name, muscle_group, status) VALUES (CONCAT('Ex ', UUID()), 'chest', 'live')",
+    );
+    return { userId: u.insertId, first: a.insertId, second: b.insertId };
+  };
+
+  await t.test('starts a session from a chosen list with no plan at all', async () => {
+    const { userId, first, second } = await seedPlanless();
+
+    const { session, created } = await startSession(pool, userId, [second, first]);
+
+    assert.equal(created, true);
+    assert.equal(session.planId, null);
+    assert.equal(session.planDayNo, null);
+  });
+
+  await t.test('keeps the order the exercises were chosen in', async () => {
+    // The user picked an order in the library and the logger walks it.
+    // Ordering by exercise_id instead would silently reshuffle their session.
+    const { userId, first, second } = await seedPlanless();
+
+    const { session } = await startSession(pool, userId, [second, first]);
+    const [rows] = await pool.query(
+      'SELECT exercise_id AS id, order_no AS n FROM session_exercises WHERE session_id = ? ORDER BY order_no',
+      [session.sessionId],
+    );
+
+    assert.deepEqual(rows.map((r) => r.id), [second, first]);
+    assert.deepEqual(rows.map((r) => r.n), [1, 2]);
+  });
+
+  await t.test('an in-progress session wins over a chosen list', async () => {
+    // One session at a time is an existing rule. Sending a list must not be a
+    // way around it, and must not write rows for a session it did not create.
+    const { userId, first } = await seedPlanless();
+    const opened = await startSession(pool, userId, [first]);
+
+    const again = await startSession(pool, userId, [first]);
+
+    assert.equal(again.created, false);
+    assert.equal(again.session.sessionId, opened.session.sessionId);
+    const [rows] = await pool.query(
+      'SELECT COUNT(*) AS n FROM session_exercises WHERE session_id = ?',
+      [opened.session.sessionId],
+    );
+    assert.equal(Number(rows[0].n), 1);
+  });
+
+  await t.test('refuses an exercise that is not live, and writes nothing', async () => {
+    // status='pending' is the 121 exercises still awaiting curation. Putting
+    // one in a session would train someone on an unreviewed movement.
+    const { userId, first } = await seedPlanless();
+    const [pending] = await pool.query(
+      "INSERT INTO exercises (name, muscle_group, status) VALUES (CONCAT('Ex ', UUID()), 'legs', 'pending')",
+    );
+
+    await assert.rejects(
+      () => startSession(pool, userId, [first, pending.insertId]),
+      (err) => err.code === 'INVALID_EXERCISE_IDS' && err.status === 400,
+    );
+
+    const [sessions] = await pool.query(
+      'SELECT COUNT(*) AS n FROM workout_sessions WHERE user_id = ?',
+      [userId],
+    );
+    assert.equal(Number(sessions[0].n), 0, 'the whole start must roll back');
+  });
+
+  await t.test('refuses an exercise id that does not exist', async () => {
+    const { userId, first } = await seedPlanless();
+
+    await assert.rejects(
+      () => startSession(pool, userId, [first, 9_999_999]),
+      (err) => err.code === 'INVALID_EXERCISE_IDS',
+    );
+  });
+
   await t.test('a set is stored and read back as numbers, not strings', async () => {
     const { userId, exerciseId } = await seed();
     const { session } = await startSession(pool, userId);

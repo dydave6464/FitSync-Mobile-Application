@@ -135,7 +135,8 @@ async function nextPlanDayNo(conn, userId, rotation) {
 /// serializes concurrent starts for that user, and the active-session check
 /// is redone inside that lock, on the same connection, before deciding to
 /// insert.
-async function startSession(pool, userId) {
+async function startSession(pool, userId, exerciseIds = null) {
+  const manual = Array.isArray(exerciseIds) && exerciseIds.length > 0;
   const conn = await pool.getConnection();
   try {
     await conn.beginTransaction();
@@ -150,32 +151,62 @@ async function startSession(pool, userId) {
       return { session: existing, created: false };
     }
 
-    const [plans] = await conn.query(
-      `SELECT plan_id FROM workout_plans
-       WHERE user_id = ? AND is_active = TRUE
-       ORDER BY plan_id DESC
-       LIMIT 1`,
-      [userId],
-    );
-    if (plans.length === 0) {
-      throw AppError.conflict('NO_ACTIVE_PLAN', 'You have no active plan to train.');
-    }
+    // A chosen list is its own session: no plan, and so no rotation day to
+    // stamp. NO_ACTIVE_PLAN stays on the other path, which is the one that
+    // actually needs a plan.
+    let planId = null;
+    let planDayNo = null;
 
-    // The rotation is a property of the split, not of days_per_week. Reading
-    // it from the rows rather than from the split name keeps the stamped day
-    // within what the plan actually contains, in case its generator produced
-    // fewer days than the split name implies.
-    const [dayRows] = await conn.query(
-      'SELECT MAX(day_no) AS rotation FROM plan_exercises WHERE plan_id = ?',
-      [plans[0].plan_id],
-    );
-    const planDayNo = await nextPlanDayNo(conn, userId, Number(dayRows[0].rotation) || 1);
+    if (!manual) {
+      const [plans] = await conn.query(
+        `SELECT plan_id FROM workout_plans
+         WHERE user_id = ? AND is_active = TRUE
+         ORDER BY plan_id DESC
+         LIMIT 1`,
+        [userId],
+      );
+      if (plans.length === 0) {
+        throw AppError.conflict('NO_ACTIVE_PLAN', 'You have no active plan to train.');
+      }
+      planId = plans[0].plan_id;
+
+      // The rotation is a property of the split, not of days_per_week. Reading
+      // it from the rows rather than from the split name keeps the stamped day
+      // within what the plan actually contains, in case its generator produced
+      // fewer days than the split name implies.
+      const [dayRows] = await conn.query(
+        'SELECT MAX(day_no) AS rotation FROM plan_exercises WHERE plan_id = ?',
+        [planId],
+      );
+      planDayNo = await nextPlanDayNo(conn, userId, Number(dayRows[0].rotation) || 1);
+    }
 
     const [res] = await conn.query(
       `INSERT INTO workout_sessions (user_id, plan_id, plan_day_no, status, session_date, started_at)
        VALUES (?, ?, ?, 'in_progress', CURDATE(), NOW())`,
-      [userId, plans[0].plan_id, planDayNo],
+      [userId, planId, planDayNo],
     );
+
+    if (manual) {
+      // Checked inside the transaction so a bad id rolls the session back with
+      // it. Validating first and inserting after would leave a window for a
+      // curator to retire an exercise between the two.
+      const [live] = await conn.query(
+        "SELECT exercise_id FROM exercises WHERE exercise_id IN (?) AND status = 'live'",
+        [exerciseIds],
+      );
+      if (live.length !== exerciseIds.length) {
+        throw AppError.badRequest(
+          'INVALID_EXERCISE_IDS',
+          'Every exercise must be one from the library.',
+        );
+      }
+
+      await conn.query(
+        'INSERT INTO session_exercises (session_id, exercise_id, order_no) VALUES ?',
+        [exerciseIds.map((id, index) => [res.insertId, id, index + 1])],
+      );
+    }
 
     const session = await getSessionById(conn, userId, res.insertId);
     await conn.commit();
