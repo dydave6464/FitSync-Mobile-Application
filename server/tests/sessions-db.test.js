@@ -224,6 +224,35 @@ test('session db', async (t) => {
     assert.equal(session.exercises[0].targetReps, '8-12');
   });
 
+  await t.test('a manual session names its exercises and carries their art', async () => {
+    // The logger renders exercise.name and exercise.thumbnailUrl. An id alone
+    // leaves it drawing blank rows for a session the user just chose.
+    const { userId } = await seedPlanless();
+    const [ex] = await pool.query(
+      `INSERT INTO exercises (name, muscle_group, thumbnail_url, status)
+       VALUES (CONCAT('Ex ', UUID()), 'quads', 'exercises/0001/thumb.jpg', 'live')`,
+    );
+
+    const { session } = await startSession(pool, userId, [ex.insertId]);
+    const only = session.exercises[0];
+
+    assert.match(only.name, /^Ex /);
+    assert.equal(only.muscleGroup, 'quads');
+    // The raw key, as the db layer everywhere returns it -- the route is what
+    // turns a key into a URL.
+    assert.equal(only.thumbnailUrl, 'exercises/0001/thumb.jpg');
+  });
+
+  await t.test('a manual exercise carries a row identity for the client', async () => {
+    // PlanExercise.planExerciseId is required client-side and a session
+    // exercise has no plan row, so the session row's own id stands in.
+    const { userId, first } = await seedPlanless();
+
+    const { session } = await startSession(pool, userId, [first]);
+
+    assert.ok(Number.isInteger(session.exercises[0].sessionExerciseId));
+  });
+
   await t.test('a plan session carries an empty list', async () => {
     // Empty rather than populated: filling it for every session would rewrite
     // the working plan-session path and everything that tests it.

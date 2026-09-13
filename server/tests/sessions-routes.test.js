@@ -163,6 +163,26 @@ test('session endpoints', async (t) => {
     );
   });
 
+  await t.test('the posted session resolves its thumbnails to URLs', async () => {
+    // The db layer returns the stored key; a client concatenating that onto
+    // the API origin asks for /exercises/... instead of /storage/exercises/...
+    // and every thumbnail 404s. The plans route already learned this.
+    const { token } = await freshUser('manual-thumb@example.com');
+    const [ex] = await pool.query(
+      `INSERT INTO exercises (name, muscle_group, thumbnail_url, status)
+       VALUES (CONCAT('Ex ', UUID()), 'quads', 'exercises/0001/thumb.jpg', 'live')`,
+    );
+
+    const res = await auth(request(app).post('/api/v1/sessions'), token)
+      .send({ exerciseIds: [ex.insertId] })
+      .expect(201);
+
+    const only = res.body.data.session.exercises[0];
+    assert.match(only.thumbnailUrl, /^\/storage\/exercises\//,
+      `expected a resolved URL, got ${only.thumbnailUrl}`);
+    assert.match(only.name, /^Ex /);
+  });
+
   await t.test('a posted list needs no plan at all', async () => {
     // The whole point: someone with no plan can still log a workout, where
     // the bodyless start is a 409 for them.

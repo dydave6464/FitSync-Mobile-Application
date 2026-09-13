@@ -77,18 +77,32 @@ async function loadSets(pool, sessionId) {
 
 /// A session's own chosen exercises, empty for a plan-backed session.
 async function loadSessionExercises(pool, sessionId) {
+  // Joined rather than id-only: the logger draws each exercise's name and its
+  // artwork, so a list of bare ids leaves it rendering blank rows for a
+  // session the user just picked by name.
+  //
+  // thumbnail_url comes back as the stored key. Turning a key into a URL is
+  // the route's job here exactly as it is for plans -- the db layer does not
+  // know the storage origin.
   const [rows] = await pool.query(
-    `SELECT exercise_id, order_no, target_sets, target_reps
-     FROM session_exercises
-     WHERE session_id = ?
-     ORDER BY order_no`,
+    `SELECT se.session_exercise_id, se.exercise_id, se.order_no,
+            se.target_sets, se.target_reps,
+            x.name, x.muscle_group, x.thumbnail_url
+       FROM session_exercises se
+       JOIN exercises x ON x.exercise_id = se.exercise_id
+      WHERE se.session_id = ?
+      ORDER BY se.order_no`,
     [sessionId],
   );
   return rows.map((row) => ({
+    sessionExerciseId: row.session_exercise_id,
     exerciseId: row.exercise_id,
     orderNo: row.order_no,
     targetSets: row.target_sets,
     targetReps: row.target_reps,
+    name: row.name,
+    muscleGroup: row.muscle_group,
+    thumbnailUrl: row.thumbnail_url,
   }));
 }
 

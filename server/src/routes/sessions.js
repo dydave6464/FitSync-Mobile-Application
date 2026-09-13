@@ -52,11 +52,24 @@ module.exports = function buildSessionsRouter(deps) {
   const router = express.Router();
   const auth = requireAuth(deps);
 
+  // The database stores keys; callers get URLs -- the same contract
+  // routes/plans.js states, and the same storage.url() behind it. A client
+  // concatenating the raw key onto the API origin asks for
+  // /exercises/0001/thumb.jpg instead of /storage/exercises/0001/thumb.jpg,
+  // and every thumbnail 404s onto a placeholder for art that exists.
+  const toUrl = (key) => (key && deps.storage ? deps.storage.url(key) : null);
+  const withUrls = (session) => (session === null || session === undefined ? session : {
+    ...session,
+    exercises: session.exercises.map((e) => ({ ...e, thumbnailUrl: toUrl(e.thumbnailUrl) })),
+  });
+
   router.get('/active', auth, async (req, res, next) => {
     try {
       // Null rather than 404: having no session in progress is the normal
       // state, the same contract GET /plans/active states.
-      res.json({ data: { session: await getActiveSession(deps.pool, req.user.userId) } });
+      res.json({
+        data: { session: withUrls(await getActiveSession(deps.pool, req.user.userId)) },
+      });
     } catch (err) { next(err); }
   });
 
@@ -108,7 +121,7 @@ module.exports = function buildSessionsRouter(deps) {
       const { session, created } = await startSession(
         deps.pool, req.user.userId, exerciseIds,
       );
-      res.status(created ? 201 : 200).json({ data: { session } });
+      res.status(created ? 201 : 200).json({ data: { session: withUrls(session) } });
     } catch (err) { next(err); }
   });
 
@@ -126,7 +139,7 @@ module.exports = function buildSessionsRouter(deps) {
 
       const session = await completeSession(deps.pool, req.user.userId, id, durationMin);
       if (!session) throw notFound();
-      res.json({ data: { session } });
+      res.json({ data: { session: withUrls(session) } });
     } catch (err) { next(err); }
   });
 
