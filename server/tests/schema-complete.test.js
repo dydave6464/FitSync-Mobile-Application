@@ -10,7 +10,7 @@ const EXPECTED_TABLES = [
   'equipment', 'exercise_categories', 'exercise_contraindications', 'exercise_equipment_requirements',
   'exercises', 'food_recognitions', 'foods', 'goals', 'injuries',
   'injury_risk_estimates', 'meal_logs', 'morning_checkins', 'plan_exercises',
-  'progress_reports', 'reminders', 'routine_items', 'set_logs', 'streaks',
+  'progress_reports', 'reminders', 'routine_items', 'session_exercises', 'set_logs', 'streaks',
   'subscriptions', 'user_equipment', 'user_identities', 'user_injuries', 'users',
   'workout_plans', 'workout_sessions',
 ];
@@ -25,10 +25,10 @@ test('complete FitSync schema', async (t) => {
     await pool.end();
   });
 
-  await t.test('creates exactly the 31 tables from the data dictionary', async () => {
+  await t.test('creates exactly the 32 tables from the data dictionary', async () => {
     const names = (await tableNames(pool)).filter((n) => n !== 'schema_migrations');
     assert.deepEqual(names.sort(), [...EXPECTED_TABLES].sort());
-    assert.equal(names.length, 31);
+    assert.equal(names.length, 32);
   });
 
   await t.test('every table is InnoDB and utf8mb4', async () => {
@@ -53,7 +53,7 @@ test('complete FitSync schema', async (t) => {
     );
     const composite = rows.filter((r) => r.cols > 1 && r.t !== 'schema_migrations');
     assert.deepEqual(composite, [], 'no table may use a composite primary key');
-    assert.equal(rows.length, 32); // 31 tables + schema_migrations
+    assert.equal(rows.length, 33); // 32 tables + schema_migrations
   });
 
   await t.test('a user has exactly one streak record', async () => {
@@ -150,7 +150,7 @@ test('complete FitSync schema', async (t) => {
     assert.equal(srows[0].plan_day_no, null, 'a session predating 013 has no day');
   });
 
-  await t.test('all fourteen migrations are recorded', async () => {
+  await t.test('all fifteen migrations are recorded', async () => {
     const [rows] = await pool.query('SELECT version FROM schema_migrations ORDER BY version');
     assert.deepEqual(rows.map((r) => r.version), [
       '001_account_and_profile.sql',
@@ -167,6 +167,7 @@ test('complete FitSync schema', async (t) => {
       '012_weight_unit.sql',
       '013_plan_days.sql',
       '014_cardio_core_split.sql',
+      '015_session_exercises.sql',
     ]);
   });
 
