@@ -254,6 +254,33 @@ test('session db', async (t) => {
     assert.equal(reread.sets[0].reps, null);
   });
 
+  await t.test('logs a set against an exercise in the manual list', async () => {
+    // Without this the whole feature is decorative: every set in a manual
+    // session was refused, because the guard asked plan_exercises and a
+    // manual session has no rows there.
+    const { userId, first } = await seedPlanless();
+    const { session } = await startSession(pool, userId, [first]);
+
+    const logged = await logSet(pool, userId, session.sessionId, {
+      exerciseId: first, setNumber: 1, weightKg: 60, reps: 8,
+    });
+
+    assert.equal(logged.exerciseId, first);
+    assert.equal(logged.reps, 8);
+  });
+
+  await t.test('refuses a set for an exercise outside the manual list', async () => {
+    const { userId, first, second } = await seedPlanless();
+    const { session } = await startSession(pool, userId, [first]);
+
+    await assert.rejects(
+      () => logSet(pool, userId, session.sessionId, {
+        exerciseId: second, setNumber: 1, weightKg: 60, reps: 8,
+      }),
+      (err) => err.code === 'EXERCISE_NOT_IN_SESSION' && err.status === 400,
+    );
+  });
+
   await t.test('a set for an exercise outside the plan is rejected', async () => {
     const { userId } = await seed();
     const [other] = await pool.query(

@@ -237,17 +237,40 @@ async function logSet(pool, userId, sessionId, { exerciseId, setNumber, weightKg
   const session = await requireInProgress(pool, userId, sessionId);
   if (!session) return null;
 
-  const [inPlan] = await pool.query(
-    `SELECT 1 FROM plan_exercises
-     WHERE plan_id = ? AND exercise_id = ?
-     LIMIT 1`,
-    [session.planId, exerciseId],
+  // Which list this session is FOR decides which list to ask. A manual
+  // session carries its own; a plan-backed one derives it. Asking
+  // plan_exercises unconditionally refused every set in a manual session,
+  // whose planId is null so the lookup matched nothing.
+  const [chosen] = await pool.query(
+    'SELECT 1 FROM session_exercises WHERE session_id = ? AND exercise_id = ? LIMIT 1',
+    [sessionId, exerciseId],
   );
-  if (inPlan.length === 0) {
-    throw AppError.badRequest(
-      'EXERCISE_NOT_IN_PLAN',
-      'That exercise is not part of this session.',
+  if (chosen.length === 0) {
+    const [anyChosen] = await pool.query(
+      'SELECT 1 FROM session_exercises WHERE session_id = ? LIMIT 1',
+      [sessionId],
     );
+    if (anyChosen.length > 0) {
+      // This session has a list of its own and the exercise is not on it.
+      // Naming a plan here would describe something it does not have.
+      throw AppError.badRequest(
+        'EXERCISE_NOT_IN_SESSION',
+        'That exercise is not part of this session.',
+      );
+    }
+
+    const [inPlan] = await pool.query(
+      `SELECT 1 FROM plan_exercises
+       WHERE plan_id = ? AND exercise_id = ?
+       LIMIT 1`,
+      [session.planId, exerciseId],
+    );
+    if (inPlan.length === 0) {
+      throw AppError.badRequest(
+        'EXERCISE_NOT_IN_PLAN',
+        'That exercise is not part of this session.',
+      );
+    }
   }
 
   // The unique key (session_id, exercise_id, set_number) from migration 002 is
