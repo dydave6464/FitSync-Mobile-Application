@@ -7,17 +7,10 @@ import '../../../core/widgets/fs_kit.dart';
 import '../../exercises/presentation/exercise_list_screen.dart' show describeError;
 import '../../profile/domain/profile.dart';
 import '../../profile/presentation/providers.dart';
+import '../domain/split_style.dart';
 import '../domain/week_description.dart';
 import '../domain/workout_plan.dart';
 import 'providers.dart';
-
-/// The four split styles, and the labels the design gives them.
-const _splits = <({String value, String label})>[
-  (value: 'full_body', label: 'Full body'),
-  (value: 'push_pull_legs', label: 'Push / Pull / Legs'),
-  (value: 'upper_lower', label: 'Upper / Lower'),
-  (value: 'cardio_core', label: 'Cardio + core'),
-];
 
 const _defaultSplit = 'full_body';
 const _defaultDays = 3;
@@ -200,7 +193,7 @@ class _GeneratorScreenState extends ConsumerState<GeneratorScreen> {
           spacing: 8,
           runSpacing: 8,
           children: [
-            for (final s in _splits)
+            for (final s in splitStyles)
               FsChip(
                 label: s.label,
                 selected: s.value == split,

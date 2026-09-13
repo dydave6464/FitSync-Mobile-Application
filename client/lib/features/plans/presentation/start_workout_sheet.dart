@@ -1,17 +1,17 @@
 import 'package:flutter/material.dart';
 
 import '../../../core/theme.dart';
-import '../../exercises/presentation/exercise_list_screen.dart';
 import '../../../core/widgets/fs_kit.dart';
+import '../../sessions/presentation/workout_setup_screen.dart';
 import 'generator_screen.dart';
 
 /// The "+" chooser: how a workout starts.
 ///
 /// Two rows, as the design draws them, and both live: the generator
-/// replaces the plan, while "Log manually" opens the catalogue to pick a
-/// one-off workout from. It was inert while the exercise library was a later
-/// slice; the library and the sessions endpoint that accepts a chosen list
-/// both exist now.
+/// replaces the plan, while "Log manually" opens the setup screen a one-off
+/// workout is described on before its exercises are picked. It was inert
+/// while the exercise library was a later slice; the library and the sessions
+/// endpoint that accepts a chosen list both exist now.
 Future<void> showStartWorkoutSheet(BuildContext context) {
   return showModalBottomSheet<void>(
     context: context,
@@ -105,7 +105,7 @@ class _StartWorkoutSheet extends StatelessWidget {
                   Navigator.of(context).pop();
                   Navigator.of(context).push(
                     MaterialPageRoute<void>(
-                      builder: (_) => const ExerciseListScreen(selecting: true),
+                      builder: (_) => const WorkoutSetupScreen(),
                     ),
                   );
                 },

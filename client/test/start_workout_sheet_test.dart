@@ -13,6 +13,7 @@ import 'package:fitsync/features/plans/domain/workout_plan.dart';
 import 'package:fitsync/features/plans/presentation/generator_screen.dart';
 import 'package:fitsync/features/plans/presentation/providers.dart';
 import 'package:fitsync/features/plans/presentation/start_workout_sheet.dart';
+import 'package:fitsync/features/sessions/presentation/workout_setup_screen.dart';
 
 /// The real face, not the test harness's. The default test font renders
 /// FsTag('Recommended') at 136dp against Space Grotesk's ~62dp, which is
@@ -137,21 +138,33 @@ void main() {
     expect(row.onTap, isNotNull);
   });
 
-  testWidgets('log manually opens the library to pick from', (tester) async {
+  testWidgets('log manually opens the setup screen', (tester) async {
+    // The library is now a step further in: the setup screen is where the
+    // split, length and injuries that describe the workout are shown, and
+    // its own button opens the picker.
     await _open(tester);
 
     await tester.tap(find.byKey(const Key('start.manual')));
-    // Pumped rather than settled: the pushed list shows a progress indicator
-    // while it fetches, and that animates forever, so pumpAndSettle would
-    // wait out the timeout instead of the route transition.
+    // Pumped rather than settled: a regression that pushes the library
+    // instead lands on a progress indicator that animates forever, and
+    // pumpAndSettle would report a timeout rather than which screen arrived.
     await tester.pump();
     await tester.pump(const Duration(seconds: 1));
 
-    final picker = tester.widget<ExerciseListScreen>(
-      find.byType(ExerciseListScreen),
-    );
-    expect(picker.selecting, isTrue,
-        reason: 'the same list, but picking rather than browsing');
+    expect(find.byType(WorkoutSetupScreen), findsOneWidget);
+    expect(find.byType(ExerciseListScreen), findsNothing,
+        reason: 'the picker is reached from the setup screen, not the sheet');
+
+    // The sheet must have been popped, not left stacked underneath: a
+    // Navigator route that is merely covered by an opaque route above it is
+    // absent from find.text either way, so the only way to tell is to go
+    // back and see what resurfaces.
+    await tester.pageBack();
+    await tester.pump();
+    await tester.pump(const Duration(seconds: 1));
+
+    expect(find.text('Start a workout'), findsNothing);
+    expect(find.text('open'), findsOneWidget);
   });
 
   testWidgets('the generator row is tappable', (tester) async {
