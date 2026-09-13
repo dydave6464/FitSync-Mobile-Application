@@ -7,6 +7,7 @@ class ExerciseSummary {
     required this.muscleGroup,
     required this.equipment,
     required this.thumbnailUrl,
+    this.contraindicated = false,
   });
 
   final int exerciseId;
@@ -15,12 +16,21 @@ class ExerciseSummary {
   final String? equipment;
   final String? thumbnailUrl;
 
+  /// Whether this exercise loads a region the signed-in user has reported an
+  /// injury in. The catalogue marks rather than hides them, so the decision
+  /// stays with whoever is picking.
+  ///
+  /// Defaults to false so a payload from before the field existed reads as
+  /// "nothing known", never as a crash.
+  final bool contraindicated;
+
   factory ExerciseSummary.fromJson(Map<String, dynamic> json) => ExerciseSummary(
         exerciseId: json['exerciseId'] as int,
         name: json['name'] as String,
         muscleGroup: json['muscleGroup'] as String,
         equipment: json['equipment'] as String?,
         thumbnailUrl: json['thumbnailUrl'] as String?,
+        contraindicated: json['contraindicated'] as bool? ?? false,
       );
 }
 

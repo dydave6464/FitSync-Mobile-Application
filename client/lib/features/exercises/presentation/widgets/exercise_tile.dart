@@ -45,9 +45,29 @@ class ExerciseTile extends StatelessWidget {
               ),
       ),
       title: Text(exercise.name),
-      subtitle: Text(
-        [exercise.muscleGroup, if (exercise.equipment != null) exercise.equipment!]
-            .join(' · '),
+      subtitle: Row(
+        children: [
+          if (exercise.contraindicated) ...[
+            Icon(
+              Icons.shield_outlined,
+              key: Key('tile.risk.${exercise.exerciseId}'),
+              size: 14,
+              color: context.fs.red,
+            ),
+            const SizedBox(width: 5),
+          ],
+          Flexible(
+            child: Text(
+              [
+                if (exercise.contraindicated) 'Loads an injury you reported',
+                exercise.muscleGroup,
+                if (exercise.equipment != null) exercise.equipment!,
+              ].join(' · '),
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+            ),
+          ),
+        ],
       ),
       trailing: selected == null
           ? const Icon(Icons.chevron_right)
