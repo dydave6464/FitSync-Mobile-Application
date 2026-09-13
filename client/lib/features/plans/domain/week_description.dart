@@ -213,6 +213,18 @@ String? _nearestSide(List<RegExpMatch> sides, RegExpMatch name) {
   return best;
 }
 
+/// A catalogue name as it reads inside a sentence.
+///
+/// "Knee" is a capital only because it heads a list, and "protecting my Knee"
+/// is not a sentence anyone writes. A name carrying a capital anywhere past
+/// the first letter earned it -- "SI joint", "IT band" -- and is left exactly
+/// as the catalogue spells it, which is the whole reason [injuryLabel] does
+/// not lowercase in the first place.
+String _midSentence(String label) =>
+    label.substring(1).contains(RegExp(r'[A-Z]'))
+        ? label
+        : label[0].toLowerCase() + label.substring(1);
+
 /// Writes the sentence the "From profile" chip fills the box with.
 ///
 /// Uses the same spellings [parseWeekDescription] reads, so the round trip
@@ -242,7 +254,7 @@ String composeWeekDescription({
     for (final selected in profile?.injuries ?? const <SelectedInjury>[])
       for (final option in options)
         if (option.injuryId == selected.injuryId)
-          injuryLabel(option, selected),
+          _midSentence(injuryLabel(option, selected)),
   ];
   if (protecting.isNotEmpty) {
     clauses.add('protecting my ${protecting.join(' and ')}');

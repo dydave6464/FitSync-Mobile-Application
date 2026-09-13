@@ -193,10 +193,37 @@ void main() {
         plan: plan,
         options: _options,
       );
-      // The catalogue's own casing, not lowercased to fit the sentence:
-      // "si joint" beside a non-lateral "Lower back" is the inconsistency
-      // injuryLabel exists to avoid.
-      expect(text, contains('Knee (right)'));
+      // The side, parenthetically. Casing inside a sentence is its own rule,
+      // covered by the two tests below.
+      expect(text, contains('knee (right)'));
+    });
+
+    test('lowercases an ordinary region name mid-sentence', () {
+      final text = composeWeekDescription(
+        profile: profileWith(
+          goal: 'build_muscle',
+          injuries: const [SelectedInjury(injuryId: 3, side: 'right')],
+        ),
+        plan: plan,
+        options: _options,
+      );
+      expect(text, contains('protecting my knee (right)'));
+    });
+
+    test('leaves a name carrying an acronym alone', () {
+      // "si joint" is the reason injuryLabel keeps catalogue casing at all.
+      // Prose wants a lowercase "knee"; it must not buy that by mangling
+      // every name that is capitalised for a reason.
+      const si = InjuryOption(
+          injuryId: 12, name: 'SI joint', isLateral: true, regionGroup: 'back');
+      final text = composeWeekDescription(
+        profile: profileWith(
+          injuries: const [SelectedInjury(injuryId: 12, side: 'left')],
+        ),
+        plan: plan,
+        options: const [si],
+      );
+      expect(text, contains('SI joint (left)'));
     });
 
     test('omits what it does not know rather than inventing it', () {
