@@ -19,8 +19,17 @@ class SessionRepository {
 
   /// Idempotent server-side: calling this with a session already in progress
   /// returns that one rather than starting a second.
-  Future<ActiveSession> start() async {
-    final data = await _api.postJson('/api/v1/sessions', const {});
+  /// [exerciseIds] starts a manual session from that list, in that order.
+  /// Omitted, the server starts today's session from the active plan.
+  ///
+  /// The key is left out entirely rather than sent as null or as an empty
+  /// list: absent is what the endpoint reads as "use the plan", and an empty
+  /// array is a 400 by design, so that a lost list cannot quietly become a
+  /// different workout.
+  Future<ActiveSession> start({List<int>? exerciseIds}) async {
+    final data = await _api.postJson('/api/v1/sessions', {
+      'exerciseIds': ?exerciseIds,
+    });
     return ActiveSession.fromJson(data['session'] as Map<String, dynamic>);
   }
 

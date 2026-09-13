@@ -1,15 +1,17 @@
 import 'package:flutter/material.dart';
 
 import '../../../core/theme.dart';
+import '../../exercises/presentation/exercise_list_screen.dart';
 import '../../../core/widgets/fs_kit.dart';
 import 'generator_screen.dart';
 
 /// The "+" chooser: how a workout starts.
 ///
-/// Two rows, as the design draws them. "Log manually" is present and inert
-/// because the exercise library it needs is slice 3 -- a greyed row with a
-/// tag says the capability is planned, where omitting it would say nothing
-/// at all and a chooser with one choice would be a worse screen.
+/// Two rows, as the design draws them, and both live: the generator
+/// replaces the plan, while "Log manually" opens the catalogue to pick a
+/// one-off workout from. It was inert while the exercise library was a later
+/// slice; the library and the sessions endpoint that accepts a chosen list
+/// both exist now.
 Future<void> showStartWorkoutSheet(BuildContext context) {
   return showModalBottomSheet<void>(
     context: context,
@@ -97,9 +99,16 @@ class _StartWorkoutSheet extends StatelessWidget {
                 icon: Icons.fitness_center,
                 title: 'Log manually',
                 body: 'Pick exercises from the library and track your own sets.',
-                tag: 'Coming soon',
+                tag: 'Free',
                 accent: false,
-                onTap: null,
+                onTap: () {
+                  Navigator.of(context).pop();
+                  Navigator.of(context).push(
+                    MaterialPageRoute<void>(
+                      builder: (_) => const ExerciseListScreen(selecting: true),
+                    ),
+                  );
+                },
               ),
             ],
           ),

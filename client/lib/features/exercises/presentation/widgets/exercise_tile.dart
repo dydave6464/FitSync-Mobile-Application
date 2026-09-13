@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 
+import '../../../../core/theme.dart';
+
 import '../equipment_icon.dart';
 
 import '../../domain/exercise.dart';
@@ -10,11 +12,20 @@ class ExerciseTile extends StatelessWidget {
     required this.exercise,
     required this.baseUrl,
     required this.onTap,
+    this.selected,
   });
 
   final ExerciseSummary exercise;
   final String baseUrl;
   final VoidCallback onTap;
+
+  /// Whether this exercise is in the workout being put together, or null when
+  /// the list is being browsed rather than picked from.
+  ///
+  /// Nullable rather than defaulting to false: "not chosen" and "there is
+  /// nothing to choose for" look different, and a tick on the Browse tab
+  /// would promise a basket that does not exist there.
+  final bool? selected;
 
   @override
   Widget build(BuildContext context) {
@@ -38,7 +49,40 @@ class ExerciseTile extends StatelessWidget {
         [exercise.muscleGroup, if (exercise.equipment != null) exercise.equipment!]
             .join(' · '),
       ),
-      trailing: const Icon(Icons.chevron_right),
+      trailing: selected == null
+          ? const Icon(Icons.chevron_right)
+          : _SelectMark(
+              key: Key('tile.select.${exercise.exerciseId}'),
+              selected: selected!,
+            ),
+    );
+  }
+}
+
+/// The circular add/remove mark the prototype draws on a picked row.
+class _SelectMark extends StatelessWidget {
+  const _SelectMark({super.key, required this.selected});
+
+  final bool selected;
+
+  @override
+  Widget build(BuildContext context) {
+    final t = context.fs;
+
+    return Container(
+      width: 34,
+      height: 34,
+      alignment: Alignment.center,
+      decoration: BoxDecoration(
+        shape: BoxShape.circle,
+        color: selected ? t.accent : t.surface2,
+        border: Border.all(color: selected ? Colors.transparent : t.line2),
+      ),
+      child: Icon(
+        selected ? Icons.check : Icons.add,
+        size: 16,
+        color: selected ? t.onAccent : t.text2,
+      ),
     );
   }
 }

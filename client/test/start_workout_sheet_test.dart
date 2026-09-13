@@ -6,6 +6,8 @@ import 'package:flutter/services.dart' show FontLoader;
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 
+import 'package:fitsync/features/exercises/presentation/exercise_list_screen.dart';
+
 import 'package:fitsync/core/theme.dart';
 import 'package:fitsync/features/plans/domain/workout_plan.dart';
 import 'package:fitsync/features/plans/presentation/generator_screen.dart';
@@ -121,18 +123,35 @@ void main() {
     expect(find.text('Log manually'), findsOneWidget);
   });
 
-  testWidgets('log manually is disabled and says so', (tester) async {
-    // Slice 3 builds the exercise library. Until then the row is present and
-    // inert, so the capability reads as planned rather than missing --
-    // the same voice training_shell.dart's _ComingSoon already uses.
+  testWidgets('log manually is live now that the picker exists', (tester) async {
+    // It was inert while the exercise library was a later slice. The library
+    // and the sessions endpoint both exist now, so "Coming soon" would be
+    // saying the capability is missing when it is not.
     await _open(tester);
 
-    expect(find.text('Coming soon'), findsOneWidget);
+    expect(find.text('Coming soon'), findsNothing);
 
     final row = tester.widget<InkWell>(
       find.byKey(const Key('start.manual')),
     );
-    expect(row.onTap, isNull, reason: 'a disabled row must not be tappable');
+    expect(row.onTap, isNotNull);
+  });
+
+  testWidgets('log manually opens the library to pick from', (tester) async {
+    await _open(tester);
+
+    await tester.tap(find.byKey(const Key('start.manual')));
+    // Pumped rather than settled: the pushed list shows a progress indicator
+    // while it fetches, and that animates forever, so pumpAndSettle would
+    // wait out the timeout instead of the route transition.
+    await tester.pump();
+    await tester.pump(const Duration(seconds: 1));
+
+    final picker = tester.widget<ExerciseListScreen>(
+      find.byType(ExerciseListScreen),
+    );
+    expect(picker.selecting, isTrue,
+        reason: 'the same list, but picking rather than browsing');
   });
 
   testWidgets('the generator row is tappable', (tester) async {

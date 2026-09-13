@@ -155,6 +155,32 @@ void main() {
     expect(session.sessionId, 7);
   });
 
+  test('start() with exercises posts them in the chosen order', () async {
+    late Map<String, dynamic> body;
+    final repo = _repo(MockClient((request) async {
+      body = jsonDecode(request.body) as Map<String, dynamic>;
+      return http.Response(jsonEncode({'data': {'session': _sessionJson}}), 201);
+    }));
+
+    await repo.start(exerciseIds: const [303, 101, 202]);
+
+    expect(body['exerciseIds'], [303, 101, 202]);
+  });
+
+  test('start() with no exercises sends no list at all', () async {
+    // An absent key is what the endpoint reads as "start today's plan
+    // session". Sending an empty array instead is a 400.
+    late Map<String, dynamic> body;
+    final repo = _repo(MockClient((request) async {
+      body = jsonDecode(request.body) as Map<String, dynamic>;
+      return http.Response(jsonEncode({'data': {'session': _sessionJson}}), 201);
+    }));
+
+    await repo.start();
+
+    expect(body.containsKey('exerciseIds'), isFalse);
+  });
+
   test('logSet() puts the set and returns what the server stored', () async {
     late Map<String, dynamic> body;
     final repo = _repo(MockClient((request) async {

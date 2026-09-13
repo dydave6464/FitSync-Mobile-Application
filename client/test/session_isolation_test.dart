@@ -86,7 +86,7 @@ class SequenceSessionRepository implements SessionRepository {
   @override
   String get baseUrl => '';
   @override
-  Future<ActiveSession> start() => throw UnimplementedError();
+  Future<ActiveSession> start({List<int>? exerciseIds}) => throw UnimplementedError();
   @override
   Future<LoggedSet> logSet(
     int sessionId, {

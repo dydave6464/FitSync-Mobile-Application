@@ -2,6 +2,10 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../core/api_exception.dart';
+import '../../../core/widgets/fs_kit.dart';
+import '../../sessions/presentation/providers.dart';
+import '../../sessions/presentation/session_logger_screen.dart';
+import '../../sessions/presentation/workout_draft.dart';
 import 'exercise_detail_screen.dart';
 import 'providers.dart';
 import 'widgets/exercise_tile.dart';
@@ -11,7 +15,14 @@ String describeError(Object error) =>
     error is ApiException ? error.message : 'Something went wrong.';
 
 class ExerciseListScreen extends ConsumerStatefulWidget {
-  const ExerciseListScreen({super.key});
+  const ExerciseListScreen({super.key, this.selecting = false});
+
+  /// Whether rows are being picked for a workout rather than browsed.
+  ///
+  /// The Browse tab and the manual-logging picker are the same list over the
+  /// same catalogue, filters and pagination; only what a tap means differs.
+  /// A second screen would have to copy all of that to change one gesture.
+  final bool selecting;
 
   @override
   ConsumerState<ExerciseListScreen> createState() => _ExerciseListScreenState();
@@ -41,10 +52,65 @@ class _ExerciseListScreenState extends ConsumerState<ExerciseListScreen> {
     }
   }
 
+  /// Guards the start button against a second tap while the first is in
+  /// flight -- POST /sessions is idempotent, but a second logger pushed on
+  /// top of the first is not something the server can undo.
+  bool _starting = false;
+
+  /// Starts the chosen workout and opens the logger on it.
+  ///
+  /// A session already in progress is reported rather than resumed. The
+  /// server is idempotent here: it returns the running session and ignores
+  /// the list entirely, so pushing the logger anyway would drop everything
+  /// the user just picked and open a workout they did not choose.
+  Future<void> _start() async {
+    if (_starting) return;
+    final draft = ref.read(workoutDraftProvider);
+    if (draft.isEmpty) return;
+
+    final messenger = ScaffoldMessenger.of(context);
+    final navigator = Navigator.of(context);
+
+    if (ref.read(activeSessionProvider).value != null) {
+      messenger.showSnackBar(SnackBar(
+        content: const Text('You already have a workout in progress.'),
+        action: SnackBarAction(
+          label: 'Open',
+          onPressed: () => navigator.push(MaterialPageRoute<void>(
+            builder: (_) => const SessionLoggerScreen(),
+          )),
+        ),
+      ));
+      return;
+    }
+
+    setState(() => _starting = true);
+    try {
+      await ref.read(activeSessionProvider.notifier).start(exerciseIds: draft);
+      // Cleared only once the session exists. A failed start leaves the picks
+      // alone, so the user retries rather than choosing them all again.
+      ref.read(workoutDraftProvider.notifier).clear();
+      if (!mounted) return;
+      await navigator.push(MaterialPageRoute<void>(
+        builder: (_) => const SessionLoggerScreen(),
+      ));
+    } catch (error) {
+      messenger.showSnackBar(SnackBar(content: Text(describeError(error))));
+    } finally {
+      if (mounted) setState(() => _starting = false);
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final listing = ref.watch(exerciseListProvider);
     final baseUrl = ref.watch(exerciseRepositoryProvider).baseUrl;
+    final draft = widget.selecting ? ref.watch(workoutDraftProvider) : const <int>[];
+    // Watched, not read on demand: reading an unresolved AsyncNotifier hands
+    // back null while its first fetch is still in flight, so a session that
+    // IS running would look like none at the moment the user taps Start.
+    // Only while picking -- the Browse tab has no reason to ask.
+    if (widget.selecting) ref.watch(activeSessionProvider);
 
     // A pagination failure is reported without discarding the pages already on
     // screen, so it surfaces as a snack bar rather than an error page.
@@ -56,7 +122,30 @@ class _ExerciseListScreenState extends ConsumerState<ExerciseListScreen> {
     });
 
     return Scaffold(
-      appBar: AppBar(title: const Text('Exercises')),
+      appBar: AppBar(
+        title: Text(widget.selecting ? 'Exercise library' : 'Exercises'),
+        actions: [
+          if (widget.selecting)
+            Padding(
+              padding: const EdgeInsets.only(right: 16),
+              child: Center(child: FsTag('${draft.length} added')),
+            ),
+        ],
+      ),
+      bottomNavigationBar: !widget.selecting
+          ? null
+          : SafeArea(
+              minimum: const EdgeInsets.fromLTRB(20, 0, 20, 16),
+              child: FsButton(
+                key: const Key('picker.start'),
+                label: draft.length == 1
+                    ? 'Start workout · 1 exercise'
+                    : 'Start workout · ${draft.length} exercises',
+                busy: _starting,
+                // A workout of no exercises is not a workout.
+                onPressed: draft.isEmpty ? null : _start,
+              ),
+            ),
       body: Column(
         children: [
           const FilterBar(),
@@ -92,11 +181,20 @@ class _ExerciseListScreenState extends ConsumerState<ExerciseListScreen> {
                     return ExerciseTile(
                       exercise: exercise,
                       baseUrl: baseUrl,
-                      onTap: () => Navigator.of(context).push(
-                        MaterialPageRoute<void>(
-                          builder: (_) => ExerciseDetailScreen(exerciseId: exercise.exerciseId),
-                        ),
-                      ),
+                      selected: widget.selecting
+                          ? draft.contains(exercise.exerciseId)
+                          : null,
+                      onTap: widget.selecting
+                          ? () => ref
+                              .read(workoutDraftProvider.notifier)
+                              .toggle(exercise.exerciseId)
+                          : () => Navigator.of(context).push(
+                                MaterialPageRoute<void>(
+                                  builder: (_) => ExerciseDetailScreen(
+                                    exerciseId: exercise.exerciseId,
+                                  ),
+                                ),
+                              ),
                     );
                   },
                 );

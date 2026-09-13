@@ -27,8 +27,8 @@ class ActiveSessionController extends AsyncNotifier<ActiveSession?> {
     return session;
   }
 
-  Future<void> start() async {
-    state = AsyncValue.data(await _repo.start());
+  Future<void> start({List<int>? exerciseIds}) async {
+    state = AsyncValue.data(await _repo.start(exerciseIds: exerciseIds));
   }
 
   /// Write-through. The caller awaits this and only then shows a tick, so a

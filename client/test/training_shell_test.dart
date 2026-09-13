@@ -55,7 +55,7 @@ class _RecordingController extends ActiveSessionController {
   Future<ActiveSession?> build() async => null;
 
   @override
-  Future<void> start() async {
+  Future<void> start({List<int>? exerciseIds}) async {
     startCalls++;
     if (startError != null) throw startError!;
     state = const AsyncValue.data(ActiveSession(
