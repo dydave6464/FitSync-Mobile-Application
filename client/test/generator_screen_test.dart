@@ -168,7 +168,10 @@ void main() {
     for (var d = 5; d <= 7; d += 1) {
       expect(_dayFilled(tester, d), isFalse);
     }
-    expect(tester.widget<FsSegmented>(find.byType(FsSegmented)).selected, '60');
+    expect(
+      tester.widget<Text>(find.byKey(const Key('gen.length.value'))).data,
+      '60 min',
+    );
   });
 
   testWidgets('with no plan the controls fall back to defaults', (tester) async {
@@ -185,7 +188,10 @@ void main() {
     expect(_chipOn(tester, 'Full body'), isTrue);
     expect(_dayFilled(tester, 3), isTrue);
     expect(_dayFilled(tester, 4), isFalse);
-    expect(tester.widget<FsSegmented>(find.byType(FsSegmented)).selected, '45');
+    expect(
+      tester.widget<Text>(find.byKey(const Key('gen.length.value'))).data,
+      '45 min',
+    );
   });
 
   testWidgets('tapping a split chip selects it', (tester) async {
@@ -200,32 +206,36 @@ void main() {
     expect(_chipOn(tester, 'Push / Pull / Legs'), isFalse);
   });
 
-  testWidgets('session length offers exactly 45 and 60', (tester) async {
-    // EXERCISES_BY_SESSION knows two lengths and _nearest_session_length
-    // snaps everything else, so a slider reading 50 would build a 45-minute
-    // plan. Two stops is the honest control.
-    await _pump(tester, plan: _pplPlan);
+  testWidgets('the session length is a readout, not something to tap',
+      (tester) async {
+    // Length is derived, not chosen: the service reads it from goal and
+    // fitness level (LONG_SESSION_GOALS, BEGINNER_SESSION_CAP) and the
+    // override exists only so the prototype's slider would not lie. Offering
+    // two stops invited a choice the generator may not honour.
+    await _pump(tester, plan: _pplPlan); // a 60-minute plan
 
-    expect(find.text('45 min'), findsOneWidget);
-    expect(find.text('60 min'), findsOneWidget);
-    expect(find.text('50 min'), findsNothing);
-    // A find.text absence check alone would not catch a third valid-looking
-    // stop (e.g. "90 min") being added -- assert the option count directly.
-    expect(tester.widget<FsSegmented>(find.byType(FsSegmented)).options.length, 2);
+    expect(find.byType(FsSegmented), findsNothing);
+
+    final readout = find.byKey(const Key('gen.length.value'));
+    expect(readout, findsOneWidget);
+    expect(tester.widget<Text>(readout).data, '60 min');
+    expect(
+      find.ancestor(of: readout, matching: find.byType(InkWell)),
+      findsNothing,
+      reason: 'a readout that takes taps but changes nothing is worse than none',
+    );
   });
 
-  testWidgets('tapping a session length stop selects it', (tester) async {
-    // Split chips and days both get a real tap in other tests; this control
-    // never did, and its onSelected does an int.parse that would throw if
-    // a stop's value and label were ever transposed.
-    await _pump(tester, plan: _pplPlan); // opens on 60
+  testWidgets('the session length readout follows the plan', (tester) async {
+    // "It adjusts" means it tracks the plan the service built, so a plan
+    // whose length differs must read differently without anything on this
+    // screen being touched.
+    await _pump(tester, plan: null); // falls back to the 45-minute default
 
-    await tester.tap(find.byKey(const Key('segment.45')));
-    await tester.pump();
-
-    final screen = tester.state(find.byType(GeneratorScreen)) as dynamic;
-    expect(screen.debugSessionLengthMin, 45);
-    expect(tester.widget<FsSegmented>(find.byType(FsSegmented)).selected, '45');
+    expect(
+      tester.widget<Text>(find.byKey(const Key('gen.length.value'))).data,
+      '45 min',
+    );
   });
 
   testWidgets('days one through seven are offered', (tester) async {

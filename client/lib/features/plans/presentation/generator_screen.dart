@@ -18,14 +18,6 @@ const _splits = <({String value, String label})>[
   (value: 'cardio_core', label: 'Cardio + core'),
 ];
 
-/// The generator knows two session lengths and snaps anything else, so the
-/// control offers two stops rather than the prototype's slider. A slider
-/// reading 50 would quietly build a 45-minute plan.
-const _lengths = <({String value, String label})>[
-  (value: '45', label: '45 min'),
-  (value: '60', label: '60 min'),
-];
-
 const _defaultSplit = 'full_body';
 const _defaultDays = 3;
 const _defaultLength = 45;
@@ -63,7 +55,6 @@ class GeneratorScreen extends ConsumerStatefulWidget {
 class _GeneratorScreenState extends ConsumerState<GeneratorScreen> {
   String? _splitStyle;
   int? _daysPerWeek;
-  int? _sessionLengthMin;
   bool _busy = false;
 
   /// Takes the resolved split/days/length the caller already has in scope
@@ -120,7 +111,12 @@ class _GeneratorScreenState extends ConsumerState<GeneratorScreen> {
   ({String split, int days, int length}) _resolve(WorkoutPlan? plan) => (
         split: _splitStyle ?? plan?.splitStyle ?? _defaultSplit,
         days: _daysPerWeek ?? plan?.daysPerWeek ?? _defaultDays,
-        length: _sessionLengthMin ?? plan?.sessionLengthMin ?? _defaultLength,
+        // Still resolved and still sent, even though nothing on this screen
+        // sets it any more: omitting sessionLengthMin from the payload hands
+        // the service's `overrides.sessionLengthMin || 45` a 60-minute plan
+        // and silently shortens it. Removing the control must not change the
+        // plan the user gets.
+        length: plan?.sessionLengthMin ?? _defaultLength,
       );
 
   // Read by the widget tests, which drive the controls and assert the state
@@ -228,12 +224,24 @@ class _GeneratorScreenState extends ConsumerState<GeneratorScreen> {
           onSelected: (d) => setState(() => _daysPerWeek = d),
         ),
         const SizedBox(height: 22),
-        const FsEyebrow('Session length'),
-        const SizedBox(height: 10),
-        FsSegmented(
-          options: _lengths,
-          selected: '$length',
-          onSelected: (v) => setState(() => _sessionLengthMin = int.parse(v)),
+        // A readout, not a control. The service derives length from goal and
+        // fitness level and only honours an override so the prototype's
+        // slider would not lie; offering stops here invited a choice it may
+        // not keep. Shown rather than dropped because it is part of
+        // describing the plan about to be replaced.
+        //
+        // Same shape as the days readout above, which is the pattern this
+        // screen already uses for a label paired with its value.
+        Row(
+          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          children: [
+            const Flexible(child: FsEyebrow('Session length')),
+            Text(
+              '$length min',
+              key: const Key('gen.length.value'),
+              style: fsNum(t).copyWith(color: t.accent),
+            ),
+          ],
         ),
         if (avoiding.isNotEmpty) ...[
           const SizedBox(height: 22),
