@@ -7,6 +7,7 @@ import '../../../core/widgets/fs_kit.dart';
 import '../../exercises/presentation/exercise_list_screen.dart' show describeError;
 import '../../profile/domain/profile.dart';
 import '../../profile/presentation/providers.dart';
+import '../domain/week_description.dart';
 import '../domain/workout_plan.dart';
 import 'providers.dart';
 
@@ -21,29 +22,6 @@ const _splits = <({String value, String label})>[
 const _defaultSplit = 'full_body';
 const _defaultDays = 3;
 const _defaultLength = 45;
-
-/// "Knee (right)", or just "Lower back" where the region has no sides.
-///
-/// Laterality comes from the catalogue's `isLateral`, never from guessing
-/// which regions have sides -- the same rule the onboarding step follows.
-///
-/// The side is parenthetical rather than a prefix, which is what keeps the
-/// name exactly as the catalogue spells it: a prefix reads as a sentence
-/// ("Left SI joint") and invites lowercasing the name to match, which
-/// mangles every acronym and leaves "Left si joint" sitting next to a
-/// non-lateral "Lower back" that kept its capital. It also gives 'both'
-/// somewhere grammatical to go -- "Both shoulder" is not English.
-///
-/// A side this client does not recognise renders no side at all. Falling
-/// back to one, as an if/else chain does by construction, names the wrong
-/// side of the user's body with complete confidence on the one screen whose
-/// job is saying what is being protected.
-String _injuryLabel(InjuryOption option, SelectedInjury selected) {
-  if (!option.isLateral || selected.side == null) return option.name;
-  const labels = {'left': 'left', 'right': 'right', 'both': 'both sides'};
-  final side = labels[selected.side];
-  return side == null ? option.name : '${option.name} ($side)';
-}
 
 class GeneratorScreen extends ConsumerStatefulWidget {
   const GeneratorScreen({super.key});
@@ -182,7 +160,7 @@ class _GeneratorScreenState extends ConsumerState<GeneratorScreen> {
     final avoiding = [
       for (final selected in injuries)
         for (final option in options)
-          if (option.injuryId == selected.injuryId) _injuryLabel(option, selected),
+          if (option.injuryId == selected.injuryId) injuryLabel(option, selected),
     ];
 
     return ListView(
