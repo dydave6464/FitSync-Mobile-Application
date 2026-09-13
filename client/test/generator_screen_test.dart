@@ -268,6 +268,51 @@ void main() {
     expect(_dayFilled(tester, 7), isFalse);
   });
 
+  testWidgets('tapping the day count that is already chosen gives a day back',
+      (tester) async {
+    // The row fills 1..N, so tapping the lit top cell used to do nothing at
+    // all and only tapping a LOWER number appeared to deselect -- tap 3 when
+    // 3 is chosen and the control just sat there.
+    await _pump(tester, plan: _pplPlan); // opens on 4
+
+    await tester.tap(find.byKey(const Key('gen.day.4')));
+    await tester.pump();
+
+    final screen = tester.state(find.byType(GeneratorScreen)) as dynamic;
+    expect(screen.debugDaysPerWeek, 3);
+    expect(_dayFilled(tester, 3), isTrue);
+    expect(_dayFilled(tester, 4), isFalse);
+  });
+
+  testWidgets('a day below the count still selects rather than steps down',
+      (tester) async {
+    // Step-down applies only to the cell that IS the count. Tapping 2 when 4
+    // is chosen must land on 2, not 1.
+    await _pump(tester, plan: _pplPlan); // opens on 4
+
+    await tester.tap(find.byKey(const Key('gen.day.2')));
+    await tester.pump();
+
+    final screen = tester.state(find.byType(GeneratorScreen)) as dynamic;
+    expect(screen.debugDaysPerWeek, 2);
+  });
+
+  testWidgets('the day count floors at one', (tester) async {
+    // A plan with no days is not a plan, and parameters.derive clamps to
+    // MIN_DAYS_PER_WEEK regardless -- offering zero would lie about what the
+    // generator is going to build.
+    await _pump(tester, plan: _pplPlan);
+
+    await tester.tap(find.byKey(const Key('gen.day.1')));
+    await tester.pump();
+    await tester.tap(find.byKey(const Key('gen.day.1')));
+    await tester.pump();
+
+    final screen = tester.state(find.byType(GeneratorScreen)) as dynamic;
+    expect(screen.debugDaysPerWeek, 1);
+    expect(_dayFilled(tester, 1), isTrue);
+  });
+
   testWidgets('the screen says generating replaces the current plan',
       (tester) async {
     // savePlan deactivates the previous plan inside its transaction. That is

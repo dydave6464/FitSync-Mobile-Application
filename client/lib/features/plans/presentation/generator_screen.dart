@@ -275,7 +275,22 @@ class _DaysRow extends StatelessWidget {
   const _DaysRow({required this.selected, required this.onSelected});
 
   final int selected;
+
+  /// Reports the COUNT a tap produces, not the cell that was tapped -- the
+  /// two differ only on the lit top cell, and keeping the difference here
+  /// keeps it beside the fill rule it mirrors.
   final ValueChanged<int> onSelected;
+
+  /// Minimum days a plan can have. The service clamps to the same floor, so
+  /// stepping below it would promise something the generator will not build.
+  static const int _minDays = 1;
+
+  /// A row filled 1..N reads as one boundary, so the only cell a tap can
+  /// sensibly "unfill" is the boundary itself: tapping the count gives a day
+  /// back. Every lower cell still selects outright -- tapping 2 when 4 is
+  /// chosen means 2, not 1.
+  int _countFor(int tapped) =>
+      tapped == selected ? (tapped - 1).clamp(_minDays, tapped) : tapped;
 
   @override
   Widget build(BuildContext context) {
@@ -288,7 +303,7 @@ class _DaysRow extends StatelessWidget {
           Expanded(
             child: InkWell(
               key: Key('gen.day.$d'),
-              onTap: () => onSelected(d),
+              onTap: () => onSelected(_countFor(d)),
               borderRadius: BorderRadius.circular(8),
               child: Container(
                 height: 30,
