@@ -60,6 +60,44 @@ test('exercise endpoints', async (t) => {
     assert.equal(byEquipment.body.data.total, 1);
   });
 
+  await t.test('tells the caller which exercises load their injuries', async () => {
+    // The one place manual logging was less safe than a generated plan: the
+    // generator drops these outright, and the library said nothing at all.
+    const [inj] = await pool.query(
+      "INSERT INTO injuries (name, is_lateral, region_group) VALUES (CONCAT('Region ', UUID()), 0, 'back')",
+    );
+    const [live] = await pool.query(
+      "SELECT exercise_id FROM exercises WHERE status = 'live' ORDER BY exercise_id LIMIT 1",
+    );
+    await pool.query(
+      'INSERT INTO exercise_contraindications (exercise_id, injury_id, pattern) VALUES (?, ?, ?)',
+      [live[0].exercise_id, inj.insertId, 'test_pattern'],
+    );
+    await pool.query(
+      'INSERT INTO user_injuries (user_id, injury_id) VALUES (?, ?)',
+      [u.insertId, inj.insertId],
+    );
+
+    const res = await request(app).get('/api/v1/exercises')
+      .set('Authorization', auth).expect(200);
+
+    const items = res.body.data.exercises;
+    const blocked = items.find((i) => i.exerciseId === live[0].exercise_id);
+    assert.equal(blocked.contraindicated, true,
+      'a boolean the client can read, not MySQL\'s 1');
+    assert.ok(items.filter((i) => i.exerciseId !== live[0].exercise_id)
+      .every((i) => i.contraindicated === false));
+    await pool.query('DELETE FROM user_injuries WHERE user_id = ?', [u.insertId]);
+  });
+
+  await t.test('says nothing about injuries nobody reported', async () => {
+    const res = await request(app).get('/api/v1/exercises')
+      .set('Authorization', auth).expect(200);
+
+    assert.ok(res.body.data.exercises.every((i) => i.contraindicated === false),
+      'the flag must be a real boolean, not absent or 0');
+  });
+
   await t.test('rejects a limit above the cap rather than clamping it', async () => {
     const res = await request(app).get('/api/v1/exercises?limit=500').set('Authorization', auth).expect(400);
     assert.equal(res.body.error.code, 'INVALID_QUERY_PARAM');

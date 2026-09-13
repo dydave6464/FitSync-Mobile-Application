@@ -18,6 +18,32 @@ const LIVE = "x.status = 'live'";
 // equipment" — would silently return no results if it queried this file's
 // raw tag against the curated name plans.js hands back, or vice versa.
 
+// Whether this exercise loads a region the user has reported an injury in.
+//
+// A flag, not a filter: the generator refuses these outright, but someone
+// picking by hand may have been cleared for one, and 608 rows vanishing with
+// no explanation reads as a broken search rather than as protection. The
+// caller decides what to do with it.
+//
+// Selected rather than joined so a row cannot be duplicated by matching two
+// injuries at once.
+const CONTRAINDICATED = `EXISTS (
+         SELECT 1 FROM exercise_contraindications c
+           JOIN user_injuries ui ON ui.injury_id = c.injury_id
+          WHERE c.exercise_id = x.exercise_id AND ui.user_id = ?
+       )`;
+
+/// The flag's SELECT fragment and its parameter, or a constant 0 and none.
+///
+/// The parameter belongs to the SELECT list, so it binds BEFORE anything in
+/// the WHERE clause. Ordering the two the other way round does not error --
+/// it silently matches the muscle group against a user id.
+function contraindicatedSelect(userId) {
+  return userId === undefined || userId === null
+      ? { sql: '0 AS contraindicated', params: [] }
+      : { sql: `${CONTRAINDICATED} AS contraindicated`, params: [userId] };
+}
+
 function buildWhere({ muscleGroup, equipment }) {
   const clauses = [LIVE];
   const params = [];
@@ -33,8 +59,9 @@ function buildWhere({ muscleGroup, equipment }) {
 }
 
 async function listExercises(pool, options = {}) {
-  const { page = 1, limit = DEFAULT_LIMIT } = options;
+  const { page = 1, limit = DEFAULT_LIMIT, userId = null } = options;
   const { sql: where, params } = buildWhere(options);
+  const flag = contraindicatedSelect(userId);
   const offset = (page - 1) * limit;
 
   const [[{ total }]] = await pool.query(
@@ -48,26 +75,31 @@ async function listExercises(pool, options = {}) {
   // Ordering by name alone is not stable — the dataset has 6 duplicate names.
   // exercise_id breaks the tie so pages cannot overlap or skip rows.
   const [rows] = await pool.query(
-    `SELECT x.exercise_id, x.name, x.muscle_group, e.name AS equipment, x.thumbnail_url
+    `SELECT x.exercise_id, x.name, x.muscle_group, e.name AS equipment, x.thumbnail_url,
+            ${flag.sql}
        FROM exercises x
        LEFT JOIN equipment e ON e.equipment_id = x.equipment_id
       WHERE ${where}
       ORDER BY x.name ASC, x.exercise_id ASC
       LIMIT ? OFFSET ?`,
-    [...params, limit, offset],
+    // SELECT params first: see contraindicatedSelect.
+    [...flag.params, ...params, limit, offset],
   );
 
   return { rows, total };
 }
 
-async function getExerciseById(pool, exerciseId) {
+async function getExerciseById(pool, exerciseId, userId = null) {
+  const flag = contraindicatedSelect(userId);
   const [rows] = await pool.query(
     `SELECT x.exercise_id, x.name, x.muscle_group, e.name AS equipment,
-            x.thumbnail_url, x.animation_url
+            x.thumbnail_url, x.animation_url,
+            ${flag.sql}
        FROM exercises x
        LEFT JOIN equipment e ON e.equipment_id = x.equipment_id
       WHERE x.exercise_id = ? AND ${LIVE}`,
-    [exerciseId],
+    // SELECT params first: see contraindicatedSelect.
+    [...flag.params, exerciseId],
   );
   if (rows.length === 0) return null;
 

@@ -61,6 +61,10 @@ module.exports = function buildExercisesRouter({ pool, storage }) {
     muscleGroup: row.muscle_group,
     equipment: row.equipment,
     thumbnailUrl: toUrl(row.thumbnail_url),
+    // A real boolean: MySQL answers EXISTS with 1/0, and a client reading
+    // that as truthy-by-accident would be right today and wrong the moment
+    // the column is selected differently.
+    contraindicated: Boolean(row.contraindicated),
   });
 
   // MUST come before '/:id'. Registered after it, ':id' captures the literal
@@ -82,6 +86,10 @@ module.exports = function buildExercisesRouter({ pool, storage }) {
       const { rows, total } = await listExercises(pool, {
         muscleGroup: parseOptionalString('muscleGroup', req.query.muscleGroup),
         equipment: parseOptionalString('equipment', req.query.equipment),
+        // Marks the rows that load a region this caller has reported an
+        // injury in. The router is mounted behind requireAuth, so there is
+        // always someone to answer for.
+        userId: req.user.userId,
         page,
         limit,
       });
@@ -95,7 +103,7 @@ module.exports = function buildExercisesRouter({ pool, storage }) {
   router.get('/:id', async (req, res, next) => {
     try {
       const id = parsePositiveInt('id', req.params.id, null);
-      const row = await getExerciseById(pool, id);
+      const row = await getExerciseById(pool, id, req.user.userId);
       if (!row) {
         throw AppError.notFound(
           'EXERCISE_NOT_FOUND',

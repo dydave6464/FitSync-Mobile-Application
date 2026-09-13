@@ -29,6 +29,95 @@ test('exercise queries', async (t) => {
     assert.ok(!rows.some((r) => r.name === 'Sled push'), 'pending exercise must not appear');
   });
 
+  // A user with one injury, and the contraindication that blocks one of the
+  // fixture's exercises for it.
+  const seedInjured = async () => {
+    const [u] = await pool.query(
+      "INSERT INTO users (email, password_hash, full_name) VALUES (CONCAT('u', UUID(), '@b.com'), 'x', 'U')",
+    );
+    const [inj] = await pool.query(
+      "INSERT INTO injuries (name, is_lateral, region_group) VALUES (CONCAT('Region ', UUID()), 0, 'back')",
+    );
+    await pool.query(
+      'INSERT INTO user_injuries (user_id, injury_id) VALUES (?, ?)',
+      [u.insertId, inj.insertId],
+    );
+    const [live] = await pool.query(
+      "SELECT exercise_id FROM exercises WHERE status = 'live' ORDER BY exercise_id LIMIT 1",
+    );
+    await pool.query(
+      'INSERT INTO exercise_contraindications (exercise_id, injury_id, pattern) VALUES (?, ?, ?)',
+      [live[0].exercise_id, inj.insertId, 'test_pattern'],
+    );
+    return { userId: u.insertId, blockedId: live[0].exercise_id };
+  };
+
+  await t.test('marks the exercises that load a reported injury', async () => {
+    // The generator already refuses these; the library let someone pick one
+    // by hand with nothing said, which is the one place manual logging was
+    // less safe than a generated plan.
+    const { userId, blockedId } = await seedInjured();
+
+    const { rows } = await listExercises(pool, { page: 1, limit: 20, userId });
+
+    const blocked = rows.find((r) => r.exercise_id === blockedId);
+    assert.equal(Boolean(blocked.contraindicated), true);
+    const others = rows.filter((r) => r.exercise_id !== blockedId);
+    assert.ok(others.length > 0, 'the fixture must offer something safe too');
+    assert.ok(others.every((r) => !r.contraindicated));
+  });
+
+  await t.test('marks nothing for someone who reported no injuries', async () => {
+    const [u] = await pool.query(
+      "INSERT INTO users (email, password_hash, full_name) VALUES (CONCAT('u', UUID(), '@b.com'), 'x', 'U')",
+    );
+
+    const { rows } = await listExercises(pool, { page: 1, limit: 20, userId: u.insertId });
+
+    assert.ok(rows.every((r) => !r.contraindicated));
+  });
+
+  await t.test('marking changes neither the rows nor the total', async () => {
+    // A flag, not a filter. Hiding 608 rows with no explanation reads as a
+    // broken search, and the count has to keep describing the catalogue.
+    const { userId } = await seedInjured();
+
+    const anon = await listExercises(pool, { page: 1, limit: 20 });
+    const mine = await listExercises(pool, { page: 1, limit: 20, userId });
+
+    assert.equal(mine.total, anon.total);
+    assert.deepEqual(
+      mine.rows.map((r) => r.exercise_id),
+      anon.rows.map((r) => r.exercise_id),
+    );
+  });
+
+  await t.test('the flag survives a muscle-group filter', async () => {
+    // The user id binds in the SELECT list and the filter binds in the WHERE,
+    // so the two sets of parameters have to be ordered correctly. Swapped,
+    // the filter silently matches on a user id instead of erroring.
+    const { userId, blockedId } = await seedInjured();
+    const [[blocked]] = await pool.query(
+      'SELECT muscle_group FROM exercises WHERE exercise_id = ?', [blockedId],
+    );
+
+    const { rows } = await listExercises(pool, {
+      page: 1, limit: 20, userId, muscleGroup: blocked.muscle_group,
+    });
+
+    assert.ok(rows.length > 0, 'the filter must still match its group');
+    assert.ok(rows.every((r) => r.muscle_group === blocked.muscle_group));
+    assert.equal(Boolean(rows.find((r) => r.exercise_id === blockedId).contraindicated), true);
+  });
+
+  await t.test('the detail view agrees with the list', async () => {
+    const { userId, blockedId } = await seedInjured();
+
+    const row = await getExerciseById(pool, blockedId, userId);
+
+    assert.equal(Boolean(row.contraindicated), true);
+  });
+
   await t.test('filters by muscle group', async () => {
     const { rows, total } = await listExercises(pool, { muscleGroup: 'biceps', page: 1, limit: 20 });
     assert.equal(total, 2);
