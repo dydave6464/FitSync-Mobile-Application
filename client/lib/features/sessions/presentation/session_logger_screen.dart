@@ -333,17 +333,36 @@ class _SessionLoggerScreenState extends ConsumerState<SessionLoggerScreen> {
   @override
   Widget build(BuildContext context) {
     final t = context.fs;
-    final plan = ref.watch(activePlanProvider).value;
+    final asyncPlan = ref.watch(activePlanProvider);
+    final plan = asyncPlan.value;
     final live = ref.watch(activeSessionProvider).value;
     final unit = ref.watch(weightUnitProvider);
     if (live != null) _lastSeenSession = live;
     final session = live ?? _lastSeenSession;
 
-    if (plan == null || session == null) {
+    if (session == null) {
       return const Scaffold(body: Center(child: CircularProgressIndicator()));
     }
 
-    final exercises = plan.exercisesForDay(session.planDayNo);
+    // A session started from a chosen list carries its own exercises and has
+    // neither a plan nor a rotation day. Requiring a plan here is what left
+    // such a session on a bare spinner -- no AppBar, no way back -- after
+    // POST /sessions had already opened it.
+    final carried = session.exercises;
+
+    // Only a session that needs the plan waits for it. Falling through while
+    // it is still in flight would flash the empty state at a plan-backed
+    // session whose exercises are one frame away.
+    if (carried.isEmpty && asyncPlan.isLoading) {
+      return const Scaffold(body: Center(child: CircularProgressIndicator()));
+    }
+
+    // The session's own list wins: a manual session must not fall through to
+    // whatever plan the user happens to have and log against someone else's
+    // day.
+    final exercises = carried.isNotEmpty
+        ? carried
+        : (plan?.exercisesForDay(session.planDayNo) ?? const <PlanExercise>[]);
     if (exercises.isEmpty) {
       // Not a spinner: the plan and the session are both loaded, so there is
       // nothing left to wait for -- this day of the rotation simply holds no
@@ -428,7 +447,10 @@ class _SessionLoggerScreenState extends ConsumerState<SessionLoggerScreen> {
                               Flexible(
                                 child: Text(
                                   'Exercise ${index + 1} / ${exercises.length}'
-                                  ' · ${plan.name}',
+                                  // A session started from a chosen list has
+                                  // no plan to name, and trailing off after
+                                  // the separator reads as a rendering fault.
+                                  ' · ${plan?.name ?? 'Manual workout'}',
                                   maxLines: 1,
                                   overflow: TextOverflow.ellipsis,
                                   style: TextStyle(fontSize: 11, color: t.text3),

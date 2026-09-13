@@ -1,3 +1,5 @@
+import '../../plans/domain/workout_plan.dart';
+
 /// One set the user has completed and the server has stored.
 class LoggedSet {
   const LoggedSet({
@@ -37,6 +39,7 @@ class ActiveSession {
     this.totalVolumeKg,
     this.sets = const [],
     this.planDayNo,
+    this.exercises = const [],
   });
 
   final int sessionId;
@@ -59,6 +62,11 @@ class ActiveSession {
   /// Which rotation day of the plan this session is. Null for sessions
   /// stamped before migration 013; read as day 1.
   final int? planDayNo;
+
+  /// The exercises this session carries in its own right, for a session
+  /// started from a chosen list rather than from a plan. Empty for a
+  /// plan-backed session, whose exercises still come from the plan.
+  final List<PlanExercise> exercises;
 
   bool get isInProgress => status == 'in_progress';
 
@@ -102,6 +110,7 @@ class ActiveSession {
         totalVolumeKg: totalVolumeKg,
         sets: sets ?? this.sets,
         planDayNo: planDayNo,
+        exercises: exercises,
       );
 
   factory ActiveSession.fromJson(Map<String, dynamic> json) => ActiveSession(
@@ -118,8 +127,28 @@ class ActiveSession {
             .map((e) => LoggedSet.fromJson(e as Map<String, dynamic>))
             .toList(growable: false),
         planDayNo: json['planDayNo'] as int?,
+        exercises: ((json['exercises'] as List<dynamic>?) ?? const [])
+            .map((e) => _sessionExercise(e as Map<String, dynamic>))
+            .toList(growable: false),
       );
 }
+
+/// One row of a manual session's list, as the logger's widgets expect it.
+///
+/// [PlanExercise.planExerciseId] is a row identity -- what the swap sheet
+/// addresses when it replaces a row. A manually chosen exercise has no plan
+/// row, so the session row's own id stands in: it is unique per session and
+/// nothing here reads it as a plan reference.
+PlanExercise _sessionExercise(Map<String, dynamic> json) => PlanExercise(
+      planExerciseId: json['sessionExerciseId'] as int,
+      exerciseId: json['exerciseId'] as int,
+      name: json['name'] as String,
+      muscleGroup: json['muscleGroup'] as String? ?? '',
+      orderNo: json['orderNo'] as int,
+      targetSets: json['targetSets'] as int,
+      targetReps: json['targetReps'] as String,
+      thumbnailUrl: json['thumbnailUrl'] as String?,
+    );
 
 /// What the user last lifted on one exercise — the heaviest set of their most
 /// recent completed session.

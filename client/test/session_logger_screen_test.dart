@@ -169,14 +169,29 @@ class FakeProfileNotifier extends ProfileNotifier {
   Future<void> patch(Map<String, dynamic> fields) async => patches.add(fields);
 }
 
-ActiveSession _session({List<LoggedSet> sets = const [], int? planDayNo}) => ActiveSession(
+ActiveSession _session({
+  List<LoggedSet> sets = const [],
+  int? planDayNo,
+  List<PlanExercise> exercises = const [],
+}) =>
+    ActiveSession(
       sessionId: 7,
       status: 'in_progress',
       sessionDate: '2026-09-08',
       startedAt: DateTime.now().subtract(const Duration(minutes: 12)),
       sets: sets,
       planDayNo: planDayNo,
+      exercises: exercises,
     );
+
+/// A session started from a chosen list: no plan, no rotation day, and its
+/// exercises carried on the session itself.
+final _manualSession = _session(exercises: const [
+  PlanExercise(
+    planExerciseId: 5, exerciseId: 301, name: 'Cable fly',
+    muscleGroup: 'pectorals', orderNo: 1, targetSets: 3, targetReps: '10-12',
+  ),
+]);
 
 /// Pushes the logger the way the Training shell does, rather than mounting it
 /// as `home`. The screen pops itself on finish, on discard and when the
@@ -191,7 +206,7 @@ Future<FakeSessionController> _pump(
   ActiveSession? session,
   WeightUnit unit = WeightUnit.kg,
   List<Map<String, dynamic>>? patches,
-  WorkoutPlan plan = _plan,
+  WorkoutPlan? plan = _plan,
 }) async {
   final controller = FakeSessionController(session ?? _session());
 
@@ -249,6 +264,36 @@ Future<void> _menu(WidgetTester tester, String action) async {
 }
 
 void main() {
+  testWidgets('a session with no plan renders the exercises it carries',
+      (tester) async {
+    // A manual session has no plan at all. The screen used to require one and
+    // showed a bare spinner otherwise -- no AppBar, no way back, after
+    // POST /sessions had already opened the session.
+    await _pump(tester, session: _manualSession, plan: null);
+
+    expect(find.byType(CircularProgressIndicator), findsNothing);
+    expect(find.text('Cable fly'), findsOneWidget);
+  });
+
+  testWidgets('a session with no plan says so rather than naming nothing',
+      (tester) async {
+    // The header reads "Exercise 1 / 3 · <plan name>". With no plan that
+    // trails off after the separator, which looks like a rendering fault.
+    await _pump(tester, session: _manualSession, plan: null);
+
+    expect(find.textContaining('Manual workout'), findsOneWidget);
+  });
+
+  testWidgets('a session carrying exercises prefers them over the plan',
+      (tester) async {
+    // Belt and braces: a manual session must not fall through to whatever
+    // plan the user happens to have and log against someone else's day.
+    await _pump(tester, session: _manualSession, plan: _plan);
+
+    expect(find.text('Cable fly'), findsOneWidget);
+    expect(find.text('Goblet squat'), findsNothing);
+  });
+
   testWidgets('shows one exercise at a time, not the whole plan', (tester) async {
     await _pump(tester);
 

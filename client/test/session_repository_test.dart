@@ -33,7 +33,66 @@ SessionRepository _repo(MockClient client) => SessionRepository(
       ),
     );
 
+/// A manual session's exercise rows, exactly as
+/// `server/src/db/sessions.js` joins them and the route resolves them.
+const _manualExerciseJson = {
+  'sessionExerciseId': 5,
+  'exerciseId': 101,
+  'orderNo': 1,
+  'targetSets': 3,
+  'targetReps': '8-12',
+  'name': 'Incline DB Press',
+  'muscleGroup': 'pectorals',
+  'thumbnailUrl': '/storage/exercises/0001/thumb.jpg',
+};
+
 void main() {
+  group('a session carrying its own exercises', () {
+    test('reads them as plan exercises the logger can draw', () {
+      final session = ActiveSession.fromJson({
+        ..._sessionJson,
+        'planId': null,
+        'planDayNo': null,
+        'exercises': [_manualExerciseJson],
+      });
+
+      final only = session.exercises.single;
+      expect(only.exerciseId, 101);
+      expect(only.name, 'Incline DB Press');
+      expect(only.muscleGroup, 'pectorals');
+      expect(only.thumbnailUrl, '/storage/exercises/0001/thumb.jpg');
+      expect(only.targetSets, 3);
+      expect(only.targetReps, '8-12');
+      expect(only.orderNo, 1);
+    });
+
+    test('stands the session row in for the plan row identity', () {
+      // PlanExercise.planExerciseId is a row identity, and a manually chosen
+      // exercise has no plan row to take one from.
+      final session = ActiveSession.fromJson({
+        ..._sessionJson,
+        'exercises': [_manualExerciseJson],
+      });
+
+      expect(session.exercises.single.planExerciseId, 5);
+    });
+
+    test('a plan-backed session carries none', () {
+      // The server sends an empty list there; the logger falls back to the
+      // plan, which is still where a plan session's exercises live.
+      final session = ActiveSession.fromJson({..._sessionJson, 'exercises': []});
+
+      expect(session.exercises, isEmpty);
+    });
+
+    test('a payload predating the field reads as none, not as a crash', () {
+      final session = ActiveSession.fromJson(_sessionJson);
+
+      expect(session.exercises, isEmpty);
+    });
+  });
+
+
   test('active() returns null when nothing is in progress', () async {
     final repo = _repo(MockClient((_) async =>
         http.Response(jsonEncode({'data': {'session': null}}), 200)));
