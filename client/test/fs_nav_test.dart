@@ -111,15 +111,17 @@ void main() {
 
   testWidgets('the fab bar grows with the bottom inset', (tester) async {
     // The bar is Container(1px top border) + SafeArea(inset) + 58, and the
-    // fab needs _fabOverhang above that. Pinning the total to a constant
-    // 58 + 14 instead makes the bar taller than the box that holds it at
-    // every real inset -- iPhone home indicator 34, Android 3-button 48 --
-    // and Stack's default Clip.hardEdge eats the difference silently.
+    // fab needs its RISE above that -- 10, the 14 margin less the 4 the
+    // circle already sits below the bar's top edge once centred. Pinning the
+    // total to a constant instead makes the bar taller than the box that
+    // holds it at every real inset -- iPhone home indicator 34, Android
+    // 3-button 48 -- and Stack's default Clip.hardEdge eats the difference
+    // silently.
     for (final inset in [0.0, 24.0, 34.0, 48.0]) {
       await _pumpInset(tester, inset);
       expect(
         tester.getSize(find.byType(FsNav)).height,
-        59 + 14 + inset,
+        59 + 10 + inset,
         reason: 'the fab bar must reserve the inset, not swallow it (inset $inset)',
       );
     }
@@ -149,26 +151,59 @@ void main() {
     }
   });
 
-  testWidgets('the fab overhangs the bar by exactly _fabOverhang at any inset',
+  testWidgets('the fab is raised from the bar\'s centreline, not its top edge',
       (tester) async {
-    // The design's `margin-top: -14px`. Measured against the bar's own top
-    // edge rather than a constant, so this stays true as the bar grows.
+    // The design's `margin-top: -14px` is measured from CENTRED, not from the
+    // bar's top edge: `.botnav` centres the circle like every other item and
+    // the negative margin lifts it from there. Reading it as "14 above the
+    // edge" double-counts the half-difference between the bar and the circle
+    // and leaves the "+" floating over the tabs instead of breaking their
+    // line -- which is what a device showed.
+    //
+    // Asserted against the tab icons rather than a constant, because "aligned
+    // with the other items" is the thing that was wrong; the bar's own height
+    // is free to change without making this a lie.
     for (final inset in [0.0, 34.0, 48.0]) {
       await _pumpInset(tester, inset);
       final fab = tester.getRect(find.byKey(const Key('nav.fab')));
-      final barTop = tester.getRect(find.byType(FsNav)).top;
-      // The bar's decorated top edge starts _fabOverhang below the widget's
-      // own top; the fab's circle starts at the widget's top.
-      expect(fab.top, barTop);
+      final icon = tester.getRect(
+        find.descendant(
+          of: find.byKey(const Key('nav.0')),
+          matching: find.byType(Icon),
+        ),
+      );
+      expect(
+        icon.center.dy - fab.center.dy,
+        closeTo(6.5, 0.5),
+        reason: 'the circle must clear the tab icons by the design\'s lift, '
+            'not twice it (inset $inset)',
+      );
+    }
+  });
+
+  testWidgets('the raised cap of the fab stays inside the bar\'s own box',
+      (tester) async {
+    // The circle has to break the bar's edge to be the design's fab, but
+    // every pixel of it must still sit inside FsNav's reported box: a raised
+    // top that spills outside is painted, not hit-tested, and the tap dies
+    // before it reaches the InkWell.
+    for (final inset in [0.0, 34.0, 48.0]) {
+      await _pumpInset(tester, inset);
+      final fab = tester.getRect(find.byKey(const Key('nav.fab')));
+      final bar = tester.getRect(find.byType(FsNav));
       final decorated = find.descendant(
         of: find.byType(FsNav),
         matching: find.byType(Container),
       );
       expect(decorated, findsOneWidget, reason: 'the bar is one decorated box');
+
+      expect(fab.top, greaterThanOrEqualTo(bar.top),
+          reason: 'the raised cap is outside the hit-test box (inset $inset)');
       expect(
-        tester.getRect(decorated).top - fab.top,
-        14,
-        reason: 'the raised circle must break the bar edge by 14 (inset $inset)',
+        tester.getRect(decorated).top,
+        greaterThan(fab.top),
+        reason: 'the circle must break the bar edge, not sit under it '
+            '(inset $inset)',
       );
     }
   });

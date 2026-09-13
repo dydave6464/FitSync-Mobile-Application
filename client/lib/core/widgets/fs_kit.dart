@@ -593,9 +593,23 @@ class FsNav extends StatelessWidget {
 
   static const double _barHeight = 58;
 
-  /// `margin-top: -14px` in the prototype: how far the fab's circle rises
-  /// above the bar's top edge.
-  static const double _fabOverhang = 14;
+  /// The diameter the prototype gives the circle.
+  static const double _fabSize = 50;
+
+  /// `margin-top: -14px` in the prototype, and measured from CENTRED -- the
+  /// fab is a flex child of `.botnav`, so `align-items: center` places it on
+  /// the bar's centreline like every other item and the negative margin
+  /// lifts it from there.
+  static const double _fabRaise = 14;
+
+  /// How far the circle actually breaks the bar's top edge, which is NOT
+  /// [_fabRaise]: centring already seats the circle half the difference
+  /// between the bar and itself below that edge, and the raise spends that
+  /// before it clears anything.
+  ///
+  /// Conflating the two is what put the "+" a full 14 above the bar instead
+  /// of 10, floating clear of the tabs rather than breaking their line.
+  static const double _fabRise = _fabRaise - (_barHeight - _fabSize) / 2;
 
   /// The fab's footprint when it lived inline in the [Row] — kept as a
   /// spacer so the tab cells still reserve the same gap for it.
@@ -627,14 +641,14 @@ class FsNav extends StatelessWidget {
     return Stack(
       children: [
         Padding(
-          padding: const EdgeInsets.only(top: _fabOverhang),
+          padding: const EdgeInsets.only(top: _fabRise),
           child: bar,
         ),
         Positioned(
           top: 0,
           left: 0,
           right: 0,
-          height: 50,
+          height: _fabSize,
           child: Center(child: _fab(t)),
         ),
       ],
@@ -707,8 +721,8 @@ class FsNav extends StatelessWidget {
             customBorder: const CircleBorder(),
             onTap: onFabTap,
             child: SizedBox(
-              width: 50,
-              height: 50,
+              width: _fabSize,
+              height: _fabSize,
               child: Icon(Icons.add, size: 26, color: t.onAccent),
             ),
           ),
