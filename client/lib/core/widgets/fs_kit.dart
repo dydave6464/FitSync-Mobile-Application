@@ -81,50 +81,57 @@ class FsButton extends StatelessWidget {
             borderRadius: BorderRadius.circular(FsRadius.pill),
             child: SizedBox(
               height: height,
-              child: Center(
-                child: busy
-                    ? SizedBox(
-                        height: 20,
-                        width: 20,
-                        child: CircularProgressIndicator(
-                          strokeWidth: 2,
-                          color: kind == FsButtonKind.primary ? fg : t.accent,
-                        ),
-                      )
-                    : Row(
-                        mainAxisAlignment: MainAxisAlignment.center,
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          if (icon != null) ...[
-                            IconTheme(
-                              data: IconThemeData(color: fg, size: 18),
-                              child: icon!,
-                            ),
-                            const SizedBox(width: 8),
-                          ],
-                          // Flexible so the label shrinks to an ellipsis
-                          // instead of overflowing the row at large
-                          // accessibility text scales on narrow screens —
-                          // the same remedy already used for FsNav and the
-                          // eyebrow row. maxLines: 1 rather than letting it
-                          // wrap, as FsChip does, because this Row sits in a
-                          // fixed-height button and a second line would
-                          // overflow that instead.
-                          Flexible(
-                            child: Text(
-                              label,
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
-                              style: TextStyle(
-                                fontSize: small ? 13.5 : 15,
-                                fontWeight: FontWeight.w700,
-                                letterSpacing: -0.15,
-                                color: fg,
+              // Horizontal room for the label. Invisible on a full-width
+              // button -- Center already had all the space it needed -- but
+              // without it a button sized to its own content shrink-wraps to
+              // the bare word and the pill radius cuts into it.
+              child: Padding(
+                padding: EdgeInsets.symmetric(horizontal: small ? 16 : 20),
+                child: Center(
+                  child: busy
+                      ? SizedBox(
+                          height: 20,
+                          width: 20,
+                          child: CircularProgressIndicator(
+                            strokeWidth: 2,
+                            color: kind == FsButtonKind.primary ? fg : t.accent,
+                          ),
+                        )
+                      : Row(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            if (icon != null) ...[
+                              IconTheme(
+                                data: IconThemeData(color: fg, size: 18),
+                                child: icon!,
+                              ),
+                              const SizedBox(width: 8),
+                            ],
+                            // Flexible so the label shrinks to an ellipsis
+                            // instead of overflowing the row at large
+                            // accessibility text scales on narrow screens —
+                            // the same remedy already used for FsNav and the
+                            // eyebrow row. maxLines: 1 rather than letting it
+                            // wrap, as FsChip does, because this Row sits in a
+                            // fixed-height button and a second line would
+                            // overflow that instead.
+                            Flexible(
+                              child: Text(
+                                label,
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                                style: TextStyle(
+                                  fontSize: small ? 13.5 : 15,
+                                  fontWeight: FontWeight.w700,
+                                  letterSpacing: -0.15,
+                                  color: fg,
+                                ),
                               ),
                             ),
-                          ),
-                        ],
-                      ),
+                          ],
+                        ),
+                ),
               ),
             ),
           ),

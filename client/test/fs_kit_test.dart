@@ -222,6 +222,33 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
+  testWidgets('FsButton keeps room around its label at its natural width',
+      (tester) async {
+    // Every use so far has been full width, where Center hid the fact that
+    // there is no horizontal padding at all. Given intrinsic width -- beside
+    // a block of text in a Row -- it shrink-wraps to the bare label and the
+    // pill radius cuts into the word.
+    await tester.pumpWidget(MaterialApp(
+      theme: fsLightTheme(),
+      home: Scaffold(
+        body: Row(
+          children: [
+            const Expanded(child: Text('some explanatory copy')),
+            FsButton(label: 'Add', small: true, onPressed: () {}),
+          ],
+        ),
+      ),
+    ));
+
+    final button = tester.getSize(find.byType(FsButton));
+    final label = tester.getSize(find.text('Add'));
+    expect(
+      button.width - label.width,
+      greaterThanOrEqualTo(24),
+      reason: 'the label must not run to the edge of the pill',
+    );
+  });
+
   testWidgets('FsField is single line unless told otherwise', (tester) async {
     final controller = TextEditingController();
     addTearDown(controller.dispose);
