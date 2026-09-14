@@ -302,6 +302,14 @@ Future<FakeSessionController> _pump(
     overrides: [
       activePlanProvider.overrideWith((ref) async {
         onActivePlanRead?.call();
+        // Routed through the fake repository when one is supplied, mirroring
+        // the real provider (activePlanProvider just reads
+        // planRepositoryProvider.activePlan()) -- so a RecordingPlanRepository
+        // with its own `active` drives this the same way the server would,
+        // without a second, disconnected knob to keep in sync. Every test
+        // that only cares about the exercises on screen never sets `active`
+        // and keeps using `plan` as before.
+        if (plans != null) return plans.activePlan();
         return plan;
       }),
       profileProvider.overrideWith(() => FakeProfileNotifier(unit, patches ?? [])),
@@ -1029,5 +1037,34 @@ void main() {
 
     expect(tester.takeException(), isNull);
     expect(find.textContaining('Could not reach the server.'), findsNothing);
+  });
+
+  testWidgets('an existing custom plan asks which day the workout becomes',
+      (tester) async {
+    final plans = RecordingPlanRepository(
+      active: const WorkoutPlan(
+        planId: 9, name: 'My Full Body', splitStyle: 'full_body',
+        daysPerWeek: 1, sessionLengthMin: 45, weekNo: 1, source: 'custom',
+        exercises: [
+          PlanExercise(
+            planExerciseId: 1, exerciseId: 101, name: 'Bench press',
+            muscleGroup: 'chest', orderNo: 1, targetSets: 3,
+            targetReps: '8-12', dayNo: 1,
+          ),
+        ],
+      ),
+    );
+    await _pump(tester, session: _manualSessionWithSets(), plans: plans);
+
+    await _menu(tester, 'finish');
+    await tester.tap(find.byKey(const Key('summary.toPlan')));
+    await tester.pumpAndSettle();
+
+    expect(find.byKey(const Key('addToPlan.newDay')), findsOneWidget);
+
+    await tester.tap(find.byKey(const Key('addToPlan.day.1')));
+    await tester.pumpAndSettle();
+
+    expect(plans.lastDayNo, 1);
   });
 }

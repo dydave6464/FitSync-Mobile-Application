@@ -9,6 +9,7 @@ import '../../exercises/presentation/providers.dart'
     show exerciseRepositoryProvider;
 import '../../exercises/presentation/exercise_list_screen.dart' show describeError;
 import '../../plans/domain/workout_plan.dart';
+import '../../plans/presentation/add_to_plan_sheet.dart';
 import '../../plans/presentation/providers.dart';
 import '../../profile/presentation/providers.dart';
 import '../domain/active_session.dart';
@@ -188,7 +189,17 @@ class _SessionLoggerScreenState extends ConsumerState<SessionLoggerScreen> {
 
   Future<void> _showSummary(ActiveSession done) async {
     final unit = ref.read(weightUnitProvider);
-    await showDialog<void>(
+    // The dialog resolves to whether the button that closed it is already
+    // handling the screen's own pop. Done (and a barrier dismiss, which
+    // resolves null the same as false) is not, so this closes the screen
+    // itself below -- unchanged from before this dialog could lead anywhere
+    // else. _addToPlan resolves it true because, once an existing custom plan
+    // means it must show the add-to-plan sheet first, this dialog's own
+    // "popped" future -- decoupled from whatever _addToPlan does next --
+    // would otherwise race that sheet: it resolves as soon as the dialog
+    // closes, which lands while the sheet is now the topmost route, so an
+    // unconditional pop here would dismiss the sheet instead of the screen.
+    final addToPlanWillClose = await showDialog<bool>(
       context: context,
       builder: (dialogContext) => AlertDialog(
         key: const Key('logger.summary'),
@@ -214,35 +225,55 @@ class _SessionLoggerScreenState extends ConsumerState<SessionLoggerScreen> {
               child: const Text('Add to my plan'),
             ),
           TextButton(
-            onPressed: () => Navigator.of(dialogContext).pop(),
+            onPressed: () => Navigator.of(dialogContext).pop(false),
             child: const Text('Done'),
           ),
         ],
       ),
-    );
-    if (mounted) Navigator.of(context).pop();
+    ) ??
+        false;
+    if (!addToPlanWillClose && mounted) Navigator.of(context).pop();
   }
 
   /// Sends the finished workout to the user's own plan.
   ///
-  /// [dialogContext] is popped first so the summary does not sit over a
-  /// snack bar the user cannot read. The messenger and the container are both
-  /// captured before the await, but for different reasons: the summary dialog
-  /// closes synchronously on tap while `planFromSession` is still in flight,
-  /// so this State is routinely already disposed by the time it resolves.
-  /// `ref.invalidate` would throw against a disposed State -- the container
-  /// outlives the widget, so the refresh does too. Same pattern as
-  /// `generator_screen.dart`'s `_generate` and `exercise_swap_sheet.dart`'s
-  /// `_choose`, for the same reason.
+  /// [dialogContext] is popped first, with `true` -- see [_showSummary] --
+  /// so the summary does not sit over a snack bar the user cannot read, and
+  /// so that dialog's own pop does not race the add-to-plan sheet below.
+  /// This method closes the screen itself once there is nothing left for the
+  /// user to interact with: immediately when there is no day to choose, or
+  /// once the sheet resolves when there is. That pop, and the rest of this
+  /// method, still has to survive a disposed State: `showAddToPlanSheet`
+  /// keeps the screen alive for as long as it is open, but the write it
+  /// leads to does not wait for it, and neither did the version of this
+  /// method before the sheet existed. The messenger and the container are
+  /// both captured before any await, but for different reasons:
+  /// `planFromSession` can easily still be in flight after the screen (and
+  /// this State with it) is gone, and `ref.invalidate` would throw against a
+  /// disposed State -- the container outlives the widget, so the refresh
+  /// does too. Same pattern as `generator_screen.dart`'s `_generate` and
+  /// `exercise_swap_sheet.dart`'s `_choose`, for the same reason.
   Future<void> _addToPlan(BuildContext dialogContext, ActiveSession done) async {
     final messenger = ScaffoldMessenger.of(context);
     final container = ProviderScope.containerOf(context, listen: false);
-    Navigator.of(dialogContext).pop();
+    Navigator.of(dialogContext).pop(true);
+
+    final active = ref.read(activePlanProvider).value;
+    // Only an existing custom plan has days to choose between. A first
+    // workout, or one landing on top of a generated plan, creates the plan --
+    // there is nothing to place it among yet.
+    int? dayNo;
+    if (active != null && active.isCustom) {
+      if (!mounted) return;
+      dayNo = await showAddToPlanSheet(context, active);
+    }
+    if (mounted) Navigator.of(context).pop();
 
     try {
       final plan = await ref.read(planRepositoryProvider).planFromSession(
             sessionId: done.sessionId,
             splitStyle: ref.read(chosenSplitStyleProvider),
+            dayNo: dayNo,
           );
       // The Plan tab and Home both read this, and neither was watching while
       // the logger was open. Through the container, not ref -- see above.
