@@ -275,8 +275,19 @@ class _GeneratorScreenState extends ConsumerState<GeneratorScreen> {
     List<String> avoiding,
   ) {
     final t = context.fs;
-    final trainingDays =
-        ref.watch(profileProvider).value?.trainingDays ?? const <int>[];
+    // The AsyncValue, for the reason the plan's is unwrapped above: the plan
+    // can resolve while the profile has not, and `.value?.trainingDays ?? []`
+    // reads identically for "loading", "failed" and "none chosen". Only the
+    // last of those is an answer, and PUT /profile/training-days replaces the
+    // whole set -- so a tap on a row that is blank because nothing arrived
+    // sends one day and destroys the rest, with no undo.
+    //
+    // `hasValue` rather than a bare AsyncData check, so a refresh or a
+    // failure that still carries the last good profile keeps the row live:
+    // what it is showing then is real.
+    final asyncProfile = ref.watch(profileProvider);
+    final daysKnown = asyncProfile.hasValue;
+    final trainingDays = asyncProfile.value?.trainingDays ?? const <int>[];
     final (:split, :days, :length) = _resolve(plan, trainingDays);
 
     // The AsyncValue, not `.value ?? const []`: that flattening reads the
@@ -338,24 +349,42 @@ class _GeneratorScreenState extends ConsumerState<GeneratorScreen> {
         TrainingDaysRow(
           selected: trainingDays,
           busyWeekday: _savingWeekday,
+          enabled: daysKnown,
           onChanged: (next) {
             // The tapped day is the one that differs between the two sets.
+            // The row toggles exactly one, so there is always exactly one --
+            // but `.first` on an empty difference throws a StateError, and
+            // taking the whole screen down over two sets that merely matched
+            // is not a trade worth leaving open.
             final before = trainingDays.toSet();
             final after = next.toSet();
-            final tapped = before.difference(after).followedBy(
-                after.difference(before)).first;
-            _setTrainingDays(next, tapped);
+            final changed =
+                before.difference(after).followedBy(after.difference(before));
+            if (changed.isEmpty) return;
+            _setTrainingDays(next, changed.first);
           },
         ),
+        if (!daysKnown) ...[
+          const SizedBox(height: 8),
+          Text(
+            asyncProfile.hasError
+                ? "Couldn't load your training days, so they can't be changed "
+                    'here. ${describeError(asyncProfile.error!)}'
+                : 'Loading your training days…',
+            key: const Key('gen.trainingDays.unavailable'),
+            style: TextStyle(
+              fontSize: 12,
+              color: asyncProfile.hasError ? t.red : t.text3,
+              height: 1.35,
+            ),
+          ),
+        ],
         const SizedBox(height: 22),
         // A readout, not a control. The service derives length from goal and
         // fitness level and only honours an override so the prototype's
         // slider would not lie; offering stops here invited a choice it may
         // not keep. Shown rather than dropped because it is part of
         // describing the plan about to be replaced.
-        //
-        // Same shape as the days readout above, which is the pattern this
-        // screen already uses for a label paired with its value.
         Row(
           mainAxisAlignment: MainAxisAlignment.spaceBetween,
           children: [

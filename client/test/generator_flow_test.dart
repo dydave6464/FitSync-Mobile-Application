@@ -127,6 +127,12 @@ void main() {
 
     await tester.tap(find.text('Push / Pull / Legs'));
     await tester.pump();
+    // The hermetic client answers `{"data":{}}` to everything, so the profile
+    // fetch fails here and the generator honestly says the training days
+    // could not be loaded. That note lengthens the list past a 600px
+    // viewport; the button is built, just below the fold.
+    await tester.ensureVisible(find.byKey(const Key('gen.generate')));
+    await tester.pumpAndSettle();
     await tester.tap(find.byKey(const Key('gen.generate')));
     await tester.pumpAndSettle();
 

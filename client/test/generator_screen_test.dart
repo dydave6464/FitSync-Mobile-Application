@@ -72,6 +72,10 @@ class FakePlanRepository implements PlanRepository {
       throw UnimplementedError('${invocation.memberName} is not used by these tests');
 }
 
+/// How far the profile fetch got. The screen has to tell all three apart:
+/// only [loaded] means the blank cells on screen are the user's real answer.
+enum _ProfileLoad { loaded, pending, failed }
+
 /// A profile carrying exactly the injuries a test wants the card to render.
 /// Everything else is a fixed stand-in -- the card only ever reads
 /// `.injuries`.
@@ -81,6 +85,7 @@ class _FakeProfileNotifier extends ProfileNotifier {
     this.goal,
     this.trainingDays = const [],
     this.failTrainingDays = false,
+    this.load = _ProfileLoad.loaded,
   });
 
   final List<SelectedInjury> injuries;
@@ -91,13 +96,22 @@ class _FakeProfileNotifier extends ProfileNotifier {
   /// prove a failed write leaves the tapped day exactly as it was.
   final bool failTrainingDays;
 
+  final _ProfileLoad load;
+
   /// The weekdays the screen last asked to save, recorded whether or not the
   /// write went on to succeed.
   List<int>? lastTrainingDays;
 
   @override
-  Future<Profile> build() async =>
-      _profileWith(injuries, goal, trainingDays: trainingDays);
+  Future<Profile> build() async => switch (load) {
+        _ProfileLoad.loaded =>
+          _profileWith(injuries, goal, trainingDays: trainingDays),
+        _ProfileLoad.pending => Completer<Profile>().future,
+        // A plain Exception, not ApiException(NETWORK_ERROR): that is the one
+        // code apiRetryPolicy retries on its own, which would leave the
+        // provider looping rather than settling into the error state.
+        _ProfileLoad.failed => throw Exception('profile down'),
+      };
 
   @override
   Future<void> setTrainingDays(List<int> weekdays) async {
@@ -170,12 +184,14 @@ Future<void> _pump(
   String? goal,
   List<int> trainingDays = const [],
   bool failTrainingDays = false,
+  _ProfileLoad profileLoad = _ProfileLoad.loaded,
 }) async {
   _profile = _FakeProfileNotifier(
     injuries,
     goal: goal,
     trainingDays: trainingDays,
     failTrainingDays: failTrainingDays,
+    load: profileLoad,
   );
   // Installed even when the test supplies nothing of its own -- ticking a
   // weekday and hitting Generate with no repo passed in must still have
@@ -362,6 +378,78 @@ void main() {
     final storedCell = tester.widget<TrainingDayCell>(
         find.byKey(const Key('weekday.1')));
     expect(storedCell.selected, isTrue);
+  });
+
+  testWidgets('a set that changed nothing is not a crash', (tester) async {
+    // The screen works out which day was tapped from the symmetric
+    // difference of the two sets and takes `.first`. The row toggles exactly
+    // one day, so today there is always exactly one -- but an empty
+    // difference makes `.first` throw a StateError, and taking the whole
+    // generator down over two sets that merely matched is not a trade worth
+    // leaving open. Driven through the callback rather than a tap, because
+    // no tap can currently produce it.
+    await _pump(tester, plan: _pplPlan, trainingDays: const [1, 3]);
+
+    tester
+        .widget<TrainingDaysRow>(find.byType(TrainingDaysRow))
+        .onChanged(const [1, 3]);
+    await tester.pumpAndSettle();
+
+    expect(tester.takeException(), isNull);
+    expect(_profile.lastTrainingDays, isNull,
+        reason: 'nothing changed, so there is nothing to save');
+  });
+
+  testWidgets('a tap does nothing while the profile is still loading',
+      (tester) async {
+    // PUT /profile/training-days replaces the whole set. The plan can resolve
+    // while the profile has not, and the row then renders seven blank cells
+    // that say "none chosen" when the truth is "not known yet" -- one tap
+    // would send a single day and destroy whatever the user really had.
+    await _pump(tester, plan: _pplPlan, profileLoad: _ProfileLoad.pending);
+
+    await tester.tap(find.byKey(const Key('weekday.5')));
+    await tester.pump();
+
+    expect(_profile.lastTrainingDays, isNull,
+        reason: 'a blank row that is only blank because nothing arrived '
+            'must not be able to write');
+    expect(find.byKey(const Key('gen.trainingDays.unavailable')), findsOneWidget,
+        reason: 'a row that silently ignores taps reads as broken');
+  });
+
+  testWidgets('a failed profile leaves the row unusable and says why',
+      (tester) async {
+    // Same destructive tap, and the one state that never resolves on its own.
+    await _pump(tester, plan: _pplPlan, profileLoad: _ProfileLoad.failed);
+
+    await tester.tap(find.byKey(const Key('weekday.5')));
+    await tester.pump();
+
+    expect(_profile.lastTrainingDays, isNull);
+    expect(
+      tester
+          .widget<Text>(find.byKey(const Key('gen.trainingDays.unavailable')))
+          .data,
+      contains("Couldn't load"),
+    );
+    expect(
+      tester.widget<TrainingDaysRow>(find.byType(TrainingDaysRow)).enabled,
+      isFalse,
+    );
+  });
+
+  testWidgets('a loaded profile with no days chosen still takes taps',
+      (tester) async {
+    // Empty is a real answer, and the whole point of separating it from "not
+    // known": disabling on emptiness would make the first day unpickable.
+    await _pump(tester, plan: _pplPlan, trainingDays: const []);
+
+    await tester.tap(find.byKey(const Key('weekday.5')));
+    await tester.pumpAndSettle();
+
+    expect(_profile.lastTrainingDays, [5]);
+    expect(find.byKey(const Key('gen.trainingDays.unavailable')), findsNothing);
   });
 
   testWidgets('generate sends the number of chosen days', (tester) async {
@@ -616,6 +704,12 @@ void main() {
             return _pplPlan;
           }),
           planRepositoryProvider.overrideWithValue(repo),
+          // These three tests are about generate, refresh and pop, not about
+          // the profile -- but without an override it reaches for the network,
+          // fails, and the screen honestly grows a note saying the training
+          // days could not be loaded, which pushes Generate off a 600px
+          // viewport.
+          profileProvider.overrideWith(() => _FakeProfileNotifier(const [])),
         ],
         child: MaterialApp(theme: fsLightTheme(), home: const GeneratorScreen()),
       ),
@@ -643,6 +737,12 @@ void main() {
         overrides: [
           activePlanProvider.overrideWith((ref) async => _pplPlan),
           planRepositoryProvider.overrideWithValue(repo),
+          // These three tests are about generate, refresh and pop, not about
+          // the profile -- but without an override it reaches for the network,
+          // fails, and the screen honestly grows a note saying the training
+          // days could not be loaded, which pushes Generate off a 600px
+          // viewport.
+          profileProvider.overrideWith(() => _FakeProfileNotifier(const [])),
         ],
         child: MaterialApp(
           theme: fsLightTheme(),
@@ -694,6 +794,12 @@ void main() {
             return _pplPlan;
           }),
           planRepositoryProvider.overrideWithValue(repo),
+          // These three tests are about generate, refresh and pop, not about
+          // the profile -- but without an override it reaches for the network,
+          // fails, and the screen honestly grows a note saying the training
+          // days could not be loaded, which pushes Generate off a 600px
+          // viewport.
+          profileProvider.overrideWith(() => _FakeProfileNotifier(const [])),
         ],
       );
       addTearDown(container.dispose);

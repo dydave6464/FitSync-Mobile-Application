@@ -14,6 +14,7 @@ class TrainingDaysRow extends StatelessWidget {
     required this.selected,
     required this.onChanged,
     this.busyWeekday,
+    this.enabled = true,
   });
 
   /// Chosen weekdays, 1 = Monday .. 7 = Sunday.
@@ -27,13 +28,21 @@ class TrainingDaysRow extends StatelessWidget {
   /// taps so a second tap cannot race the first.
   final int? busyWeekday;
 
+  /// Whether the row may be tapped at all.
+  ///
+  /// False when the caller does not yet know what is stored. [selected] then
+  /// renders seven blank cells that read as "none chosen" while the truth is
+  /// "not known", and since the endpoint replaces the whole set rather than
+  /// patching it, one tap would send a single day and destroy the rest.
+  final bool enabled;
+
   static const _labels = ['M', 'T', 'W', 'T', 'F', 'S', 'S'];
 
   @override
   Widget build(BuildContext context) {
     final chosen = selected.toSet();
 
-    return Row(
+    final row = Row(
       children: [
         for (var weekday = 1; weekday <= 7; weekday += 1) ...[
           if (weekday > 1) const SizedBox(width: 6),
@@ -46,7 +55,7 @@ class TrainingDaysRow extends StatelessWidget {
               label: _labels[weekday - 1],
               selected: chosen.contains(weekday),
               busy: busyWeekday == weekday,
-              onTap: busyWeekday != null
+              onTap: !enabled || busyWeekday != null
                   ? null
                   : () {
                       final next = chosen.contains(weekday)
@@ -60,6 +69,10 @@ class TrainingDaysRow extends StatelessWidget {
         ],
       ],
     );
+
+    // Dimmed, not just inert: a row that looks live and silently swallows
+    // every tap reads as broken. The caller says why alongside it.
+    return enabled ? row : Opacity(opacity: 0.4, child: row);
   }
 }
 

@@ -11,6 +11,7 @@ Future<void> _pump(
   WidgetTester tester, {
   List<int> selected = const [],
   int? busyWeekday,
+  bool enabled = true,
   required ValueChanged<List<int>> onChanged,
 }) async {
   await tester.pumpWidget(
@@ -20,6 +21,7 @@ Future<void> _pump(
         body: TrainingDaysRow(
           selected: selected,
           busyWeekday: busyWeekday,
+          enabled: enabled,
           onChanged: onChanged,
         ),
       ),
@@ -87,6 +89,36 @@ void main() {
     await tester.pump();
 
     expect(emitted, [1, 5]);
+  });
+
+  testWidgets('a disabled row emits nothing, whichever cell is tapped',
+      (tester) async {
+    // The caller does not know what is stored. Since the endpoint replaces
+    // the whole set, one tap against a row that is blank only because
+    // nothing arrived would send a single day and wipe the rest.
+    var calls = 0;
+    await _pump(tester, enabled: false, onChanged: (_) => calls += 1);
+
+    for (var weekday = 1; weekday <= 7; weekday += 1) {
+      await tester.tap(find.byKey(Key('weekday.$weekday')));
+      await tester.pump();
+    }
+
+    expect(calls, 0);
+    for (var weekday = 1; weekday <= 7; weekday += 1) {
+      expect(_cell(tester, weekday).onTap, isNull, reason: 'weekday $weekday');
+    }
+  });
+
+  testWidgets('a disabled row reads as disabled rather than merely inert',
+      (tester) async {
+    // A control that looks live and silently swallows taps reads as broken.
+    await _pump(tester, enabled: false, onChanged: (_) {});
+    final off = tester.widget<Opacity>(find.byType(Opacity)).opacity;
+
+    await _pump(tester, onChanged: (_) {});
+    expect(find.byType(Opacity), findsNothing);
+    expect(off, lessThan(1.0));
   });
 
   testWidgets(
