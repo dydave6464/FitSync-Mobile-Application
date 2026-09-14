@@ -124,9 +124,17 @@ class WeekStrip extends StatelessWidget {
 
   final DateTime today;
 
-  /// Weekdays the user chose to train on, 1 = Monday .. 7 = Sunday. Empty
-  /// means none chosen, which is a real state and not a default schedule.
-  final List<int> trainingDays;
+  /// Weekdays the user chose to train on, 1 = Monday .. 7 = Sunday.
+  ///
+  /// Three states, which is why this is nullable. `[]` means none chosen -- a
+  /// real answer, and the one every user starts from. `null` means not known:
+  /// the profile is still in flight, or its fetch failed. Flattening those
+  /// two has a failed request assert "you chose no days" and hand the tally a
+  /// denominator off the plan's stale label.
+  ///
+  /// Defaults to `[]` rather than null so a caller with no notion of chosen
+  /// days at all reads as the state step 1 shipped.
+  final List<int>? trainingDays;
 
   static const _labels = ['M', 'T', 'W', 'T', 'F', 'S', 'S'];
 
@@ -162,7 +170,8 @@ class WeekStrip extends StatelessWidget {
     // wider range.
     final done = dates.where((date) => completedDates.contains(_key(date))).length;
 
-    final chosen = trainingDays.toSet();
+    final known = trainingDays != null;
+    final chosen = trainingDays?.toSet() ?? const <int>{};
     // Compared by date, not by index, so "past" survives a week that spans a
     // month or year boundary the same way the keys already do.
     final todayKey = _key(DateTime(today.year, today.month, today.day));
@@ -171,15 +180,24 @@ class WeekStrip extends StatelessWidget {
       if (completedDates.contains(_key(date))) return DayMark.trained;
       // No choice made is not the same as choosing nothing to do: every day
       // stays a possible training day, which is what the strip rendered
-      // before days could be chosen.
-      if (chosen.isEmpty) return DayMark.planned;
+      // before days could be chosen. Days that are not KNOWN read the same
+      // way for the opposite reason -- with no schedule to report against,
+      // the least this can claim is that any day might be one, and marking
+      // nothing at all would be as much of an assertion as marking a
+      // schedule.
+      if (!known || chosen.isEmpty) return DayMark.planned;
       if (!chosen.contains(weekday)) return DayMark.none;
       // Strictly before today. Today is never missed -- the day is not over.
       return _key(date).compareTo(todayKey) < 0 ? DayMark.missed : DayMark.planned;
     }
 
     final target = chosen.isNotEmpty ? chosen.length : daysPerWeek;
-    final hasTarget = target >= _minTarget && target <= _maxTarget;
+    // No target while the chosen days are unknown: the plan's count is the
+    // right denominator only once "none chosen" has been confirmed. Falling
+    // back to it before then makes the number move under the user when the
+    // profile lands, and the bare count is already how this row reports a
+    // week it cannot set a target for.
+    final hasTarget = known && target >= _minTarget && target <= _maxTarget;
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,

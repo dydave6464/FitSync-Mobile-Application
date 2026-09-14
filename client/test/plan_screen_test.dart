@@ -13,6 +13,8 @@ import 'package:fitsync/features/plans/domain/workout_plan.dart';
 import 'package:fitsync/features/plans/presentation/exercise_swap_sheet.dart';
 import 'package:fitsync/features/plans/presentation/plan_screen.dart';
 import 'package:fitsync/features/plans/presentation/providers.dart';
+import 'package:fitsync/features/profile/domain/profile.dart';
+import 'package:fitsync/features/profile/presentation/providers.dart';
 import 'package:fitsync/features/sessions/domain/active_session.dart';
 import 'package:fitsync/features/sessions/presentation/providers.dart';
 
@@ -95,6 +97,33 @@ class _NoSessionController extends ActiveSessionController {
   Future<ActiveSession?> build() async => null;
 }
 
+/// A profile that either carries chosen training days or never arrives. The
+/// strip has to tell those apart: only the first is an answer.
+class _FakeProfileNotifier extends ProfileNotifier {
+  _FakeProfileNotifier({this.trainingDays, this.fails = false});
+
+  final List<int>? trainingDays;
+  final bool fails;
+
+  @override
+  Future<Profile> build() async {
+    // A plain Exception, not ApiException(NETWORK_ERROR): that is the one
+    // code apiRetryPolicy retries, which would never settle.
+    if (fails) throw Exception('profile down');
+    return Profile(
+      userId: 1,
+      email: 'test@example.com',
+      fullName: 'Test User',
+      onboardingCompleted: true,
+      isPremium: false,
+      notificationsEnabled: true,
+      equipment: const [],
+      injuries: const [],
+      trainingDays: trainingDays ?? const [],
+    );
+  }
+}
+
 /// Keeps anything downstream of the API client off the platform channel.
 ApiClient _hermeticClient() => ApiClient(
       baseUrl: 'http://test.local',
@@ -108,10 +137,12 @@ Future<void> _pump(
   List<ExerciseAlternative>? alternatives,
   VoidCallback? onGoToProfile,
   Set<String> completedDays = const <String>{},
+  ProfileNotifier Function()? profile,
 }) async {
   await tester.pumpWidget(ProviderScope(
     overrides: [
       apiClientProvider.overrideWithValue(_hermeticClient()),
+      if (profile != null) profileProvider.overrideWith(profile),
       activePlanProvider.overrideWith((ref) async => plan),
       // The screen now also watches these two -- the session card's
       // Start/Resume label and the week strip's filled dots.
@@ -273,6 +304,27 @@ void main() {
     await _pump(tester, _pplPlan,
         completedDays: const {'2026-09-07', '2026-09-08'});
     expect(find.text('Push'), findsOneWidget);
+  });
+
+  testWidgets('the strip counts against the days the profile carries',
+      (tester) async {
+    await _pump(tester, _pplPlan,
+        profile: () => _FakeProfileNotifier(trainingDays: const [1, 3, 5]));
+
+    expect(find.text('0 of 3'), findsOneWidget);
+  });
+
+  testWidgets('a profile that never arrived is not read as no days chosen',
+      (tester) async {
+    // `.value?.trainingDays ?? const []` flattened "failed" into "the user
+    // chose nothing": the strip reverted to a dot on every day and the tally
+    // silently swapped its denominator for the plan's stale label. Display
+    // only, and still a claim the app cannot support.
+    await _pump(tester, _pplPlan,
+        profile: () => _FakeProfileNotifier(fails: true));
+
+    expect(find.text('0 sessions'), findsOneWidget);
+    expect(find.textContaining(' of '), findsNothing);
   });
 
   testWidgets('a one-day plan names no day', (tester) async {

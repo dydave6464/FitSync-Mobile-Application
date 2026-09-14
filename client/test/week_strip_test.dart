@@ -352,6 +352,43 @@ void main() {
     }
   });
 
+  testWidgets('days that are not known claim neither a schedule nor a target',
+      (tester) async {
+    // The third state, and the reason this is nullable: the profile is still
+    // loading, or its fetch failed. Reading that as "none chosen" asserts an
+    // answer the user never gave and hands the tally a denominator off the
+    // plan's stale label, both on the strength of a request that never
+    // landed -- and the number then changes under the user when it does.
+    await tester.pumpWidget(_host(WeekStrip(
+      daysPerWeek: 4,
+      trainingDays: null,
+      completedDates: const {'2026-09-07'},
+      today: DateTime(2026, 9, 10),
+    )));
+
+    expect(find.text('1 session'), findsOneWidget);
+    expect(find.textContaining(' of '), findsNothing);
+    for (var weekday = 1; weekday <= 7; weekday++) {
+      expect(markFor(tester, weekday), isNot(DayMark.missed),
+          reason: 'day $weekday cannot be missed against a schedule nobody '
+              'has managed to read');
+    }
+  });
+
+  testWidgets('none chosen still counts against the plan, unlike not known',
+      (tester) async {
+    // The pair to the test above: `[]` is an answer, and the plan's own count
+    // is then the best target there is.
+    await tester.pumpWidget(_host(WeekStrip(
+      daysPerWeek: 4,
+      trainingDays: const [],
+      completedDates: const {'2026-09-07'},
+      today: DateTime(2026, 9, 10),
+    )));
+
+    expect(find.text('1 of 4'), findsOneWidget);
+  });
+
   testWidgets('the tally counts against the chosen days, not the plan',
       (tester) async {
     // The user just said three days. The plan's stored label is a stale four
