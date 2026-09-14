@@ -79,6 +79,7 @@ class FlowRepository implements PlanRepository {
     required String splitStyle,
     required int daysPerWeek,
     required int sessionLengthMin,
+    bool replaceCustomPlan = false,
   }) async {
     onRegenerate();
     lastPlan = splitStyle == 'push_pull_legs' ? _ppl : _fullBody;

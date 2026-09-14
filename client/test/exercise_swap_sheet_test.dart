@@ -47,8 +47,17 @@ class _FailingRepo implements PlanRepository {
     required String splitStyle,
     required int daysPerWeek,
     required int sessionLengthMin,
+    bool replaceCustomPlan = false,
   }) async =>
       throw UnimplementedError('the swap sheet never regenerates a plan');
+
+  @override
+  Future<WorkoutPlan> planFromSession({
+    required int sessionId,
+    String? splitStyle,
+    int? dayNo,
+  }) async =>
+      throw UnimplementedError('the swap sheet never sends a workout to the plan');
 }
 
 /// What the catalogue knows about the alternative under preview.
@@ -89,8 +98,17 @@ class _RecordingRepo implements PlanRepository {
     required String splitStyle,
     required int daysPerWeek,
     required int sessionLengthMin,
+    bool replaceCustomPlan = false,
   }) async =>
       throw UnimplementedError('the swap sheet never regenerates a plan');
+
+  @override
+  Future<WorkoutPlan> planFromSession({
+    required int sessionId,
+    String? splitStyle,
+    int? dayNo,
+  }) async =>
+      throw UnimplementedError('the swap sheet never sends a workout to the plan');
 }
 
 /// Pumps the sheet with a repository that records swaps and a catalogue that
@@ -134,8 +152,17 @@ class _SucceedingRepo implements PlanRepository {
     required String splitStyle,
     required int daysPerWeek,
     required int sessionLengthMin,
+    bool replaceCustomPlan = false,
   }) async =>
       throw UnimplementedError('the swap sheet never regenerates a plan');
+
+  @override
+  Future<WorkoutPlan> planFromSession({
+    required int sessionId,
+    String? splitStyle,
+    int? dayNo,
+  }) async =>
+      throw UnimplementedError('the swap sheet never sends a workout to the plan');
 }
 
 /// A [PlanRepository] whose swap does not resolve until [completer] does —
@@ -164,8 +191,17 @@ class _SlowRepo implements PlanRepository {
     required String splitStyle,
     required int daysPerWeek,
     required int sessionLengthMin,
+    bool replaceCustomPlan = false,
   }) async =>
       throw UnimplementedError('the swap sheet never regenerates a plan');
+
+  @override
+  Future<WorkoutPlan> planFromSession({
+    required int sessionId,
+    String? splitStyle,
+    int? dayNo,
+  }) async =>
+      throw UnimplementedError('the swap sheet never sends a workout to the plan');
 }
 
 Future<void> _pump(

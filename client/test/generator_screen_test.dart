@@ -56,6 +56,7 @@ class FakePlanRepository implements PlanRepository {
     required String splitStyle,
     required int daysPerWeek,
     required int sessionLengthMin,
+    bool replaceCustomPlan = false,
   }) async {
     sent = {
       'splitStyle': splitStyle,
