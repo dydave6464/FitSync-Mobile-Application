@@ -13,7 +13,7 @@ import 'generator_screen.dart';
 /// The "+" chooser: how a workout starts.
 ///
 /// Two rows, as the design draws them, and both live: the generator
-/// replaces the plan, while "Log manually" opens the setup screen a one-off
+/// replaces the plan, while "Log a workout" opens the setup screen the
 /// workout is described on before its exercises are picked. It was inert
 /// while the exercise library was a later slice; the library and the sessions
 /// endpoint that accepts a chosen list both exist now.
@@ -23,7 +23,7 @@ Future<void> showStartWorkoutSheet(BuildContext context) {
     backgroundColor: Colors.transparent,
     // A modal sheet is capped at 9/16 of the screen unless it is told
     // otherwise, and this one's content does not shrink: sideways on a
-    // phone that cap lands "Log manually" past the bottom edge, where debug
+    // phone that cap lands "Log a workout" past the bottom edge, where debug
     // draws a stripe and release quietly clips it. Full height covers every
     // orientation; the scroll view inside covers the accessibility text
     // scales that no height can fit.
@@ -120,8 +120,9 @@ class _StartWorkoutSheet extends ConsumerWidget {
               _Row(
                 rowKey: const Key('start.manual'),
                 icon: Icons.fitness_center,
-                title: 'Log manually',
-                body: 'Pick exercises from the library and track your own sets.',
+                title: 'Log a workout',
+                body: 'Pick your own exercises. Keep it as part of your plan '
+                    'when you finish, or just log it.',
                 tag: 'Free',
                 accent: false,
                 onTap: () {

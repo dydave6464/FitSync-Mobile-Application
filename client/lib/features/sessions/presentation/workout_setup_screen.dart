@@ -11,7 +11,7 @@ import '../../profile/domain/profile.dart';
 import '../../profile/presentation/providers.dart';
 import 'workout_draft.dart' show chosenSplitStyleProvider;
 
-/// What "Log manually" opens before the library.
+/// What "Log a workout" opens before the library.
 ///
 /// Laid out like the generator minus the describe card, because the two
 /// screens answer the same question about the same workout and a user who

@@ -229,7 +229,17 @@ void main() {
 
     expect(find.text('Start a workout'), findsOneWidget);
     expect(find.text('AI Workout Generator'), findsOneWidget);
-    expect(find.text('Log manually'), findsOneWidget);
+    expect(find.text('Log a workout'), findsOneWidget);
+  });
+
+  testWidgets('the row says what it does, not how it is implemented',
+      (tester) async {
+    // "Log manually" described an implementation detail, and it stopped being
+    // only a one-off path the moment it could build a plan.
+    await _open(tester);
+
+    expect(find.text('Log a workout'), findsOneWidget);
+    expect(find.text('Log manually'), findsNothing);
   });
 
   testWidgets('log manually is live now that the picker exists', (tester) async {
