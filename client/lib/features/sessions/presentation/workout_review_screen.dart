@@ -11,6 +11,9 @@ import 'providers.dart';
 import 'session_logger_screen.dart';
 import 'workout_draft.dart';
 
+/// What the user chose to do about a workout that was already open.
+enum _Blocked { open, replace }
+
 /// The last look at a manual workout before it becomes a session.
 ///
 /// The library used to start the workout directly from its footer, which made
@@ -37,30 +40,90 @@ class _WorkoutReviewScreenState extends ConsumerState<WorkoutReviewScreen> {
 
   /// Starts the reviewed workout and opens the logger on it.
   ///
-  /// A session already in progress is reported rather than resumed. The
-  /// server is idempotent here: it returns the running session and ignores
-  /// the list entirely, so pushing the logger anyway would drop everything
-  /// the user just picked and open a workout they did not choose.
+  /// A session already in progress blocks this. The server is idempotent
+  /// here: it returns the running session and ignores the list entirely, so
+  /// pushing the logger anyway would drop everything the user just picked and
+  /// open a workout they did not choose.
+  ///
+  /// The block used to be a snack bar naming a workout the user often had no
+  /// memory of starting -- one left open by backing out of the logger, which
+  /// nothing else surfaced. It offered "Open" and nothing else, so the only
+  /// way to actually start the workout just built was to go and close the old
+  /// one from inside the logger's overflow menu. It asks now, and can clear
+  /// the way itself.
   Future<void> _start() async {
     if (_starting) return;
-    final draft = ref.read(workoutDraftProvider);
-    if (draft.isEmpty) return;
-
-    final messenger = ScaffoldMessenger.of(context);
-    final navigator = Navigator.of(context);
+    if (ref.read(workoutDraftProvider).isEmpty) return;
 
     if (ref.read(activeSessionProvider).value != null) {
-      messenger.showSnackBar(SnackBar(
-        content: const Text('You already have a workout in progress.'),
-        action: SnackBarAction(
-          label: 'Open',
-          onPressed: () => navigator.push(MaterialPageRoute<void>(
-            builder: (_) => const SessionLoggerScreen(),
-          )),
-        ),
-      ));
-      return;
+      final choice = await _askAboutOpenWorkout();
+      if (choice == null || !mounted) return;
+
+      if (choice == _Blocked.open) {
+        await Navigator.of(context).push(MaterialPageRoute<void>(
+          builder: (_) => const SessionLoggerScreen(),
+        ));
+        return;
+      }
+      // Discarding is a write that can fail on its own. Only once it lands is
+      // the way actually clear, so the start below waits for it.
+      if (!await _discardOpenWorkout()) return;
     }
+
+    await _createSession();
+  }
+
+  /// Names the workout in the way and offers the three honest answers.
+  Future<_Blocked?> _askAboutOpenWorkout() => showDialog<_Blocked>(
+        context: context,
+        builder: (dialogContext) => AlertDialog(
+          title: const Text('You already have a workout open'),
+          content: const Text(
+            'Only one workout can be open at a time. Discarding throws away '
+            'everything logged in the old one.',
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(dialogContext).pop(),
+              child: const Text('Cancel'),
+            ),
+            TextButton(
+              onPressed: () => Navigator.of(dialogContext).pop(_Blocked.open),
+              child: const Text('Open it'),
+            ),
+            TextButton(
+              onPressed: () => Navigator.of(dialogContext).pop(_Blocked.replace),
+              child: const Text('Discard it & start'),
+            ),
+          ],
+        ),
+      );
+
+  /// True when the old workout is gone and this one may start.
+  Future<bool> _discardOpenWorkout() async {
+    final messenger = ScaffoldMessenger.of(context);
+    setState(() => _starting = true);
+    try {
+      await ref.read(activeSessionProvider.notifier).abandon();
+      return true;
+    } on StateError {
+      // Already closed elsewhere between the tap and here. The way is clear,
+      // which is all this was for.
+      return true;
+    } catch (error) {
+      // Nothing was thrown away and the old workout is still open, so this
+      // one cannot start. Say so rather than failing silently.
+      messenger.showSnackBar(SnackBar(content: Text(describeError(error))));
+      return false;
+    } finally {
+      if (mounted) setState(() => _starting = false);
+    }
+  }
+
+  Future<void> _createSession() async {
+    final draft = ref.read(workoutDraftProvider);
+    final messenger = ScaffoldMessenger.of(context);
+    final navigator = Navigator.of(context);
 
     setState(() => _starting = true);
     try {

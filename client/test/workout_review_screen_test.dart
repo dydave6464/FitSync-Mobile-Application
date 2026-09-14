@@ -51,9 +51,21 @@ class FakeSessionRepository implements SessionRepository {
 
   List<int>? startedWith;
   int startCalls = 0;
+  int abandoned = 0;
+
+  /// Mutable, so abandoning the held session actually frees it the way the
+  /// server does -- a fake that kept answering with it would let a test pass
+  /// against a start that could never succeed in practice.
+  late ActiveSession? _held = existing;
 
   @override
-  Future<ActiveSession?> active() async => existing;
+  Future<ActiveSession?> active() async => _held;
+
+  @override
+  Future<void> abandon(int sessionId) async {
+    abandoned += 1;
+    _held = null;
+  }
 
   @override
   Future<ActiveSession> start({List<int>? exerciseIds}) async {
@@ -121,6 +133,13 @@ Future<ProviderContainer> _pump(
   await tester.pumpAndSettle();
   return container;
 }
+
+ActiveSession _openWorkout() => ActiveSession(
+      sessionId: 4,
+      status: 'in_progress',
+      sessionDate: '2026-09-14',
+      startedAt: DateTime.now(),
+    );
 
 Finder _start() => find.byKey(const Key('review.start'));
 
@@ -263,28 +282,69 @@ void main() {
     expect(find.byType(SessionLoggerScreen), findsNothing);
   });
 
-  testWidgets('a workout already in progress is reported, not replaced',
+  testWidgets('a workout already open is named rather than silently replaced',
       (tester) async {
     // The server is idempotent here: it returns the running session and
     // ignores the list, so opening the logger anyway would drop everything
     // just picked and show a workout the user did not choose.
-    final sessions = FakeSessionRepository(
-      existing: ActiveSession(
-        sessionId: 4,
-        status: 'in_progress',
-        sessionDate: '2026-09-14',
-        startedAt: DateTime.now(),
-      ),
-    );
+    final sessions = FakeSessionRepository(existing: _openWorkout());
     await _pump(tester, picks: const [_squat], sessions: sessions);
 
     await tester.tap(_start());
     await tester.pumpAndSettle();
 
-    expect(find.textContaining('already have a workout in progress'),
-        findsOneWidget);
+    expect(find.textContaining('already have a workout open'), findsOneWidget);
     expect(sessions.startCalls, 0);
     expect(find.byType(SessionLoggerScreen), findsNothing);
+  });
+
+  testWidgets('the workout in the way can be opened from the message',
+      (tester) async {
+    final sessions = FakeSessionRepository(existing: _openWorkout());
+    await _pump(tester, picks: const [_squat], sessions: sessions);
+
+    await tester.tap(_start());
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Open it'));
+    await tester.pumpAndSettle();
+
+    expect(find.byType(SessionLoggerScreen), findsOneWidget);
+    expect(sessions.startCalls, 0, reason: 'opening is not starting');
+    expect(sessions.abandoned, 0, reason: 'opening throws nothing away');
+  });
+
+  testWidgets('the workout in the way can be discarded and this one started',
+      (tester) async {
+    // Without this the message was a dead end: the only way out was to find
+    // the old session in another tab and close it from inside the logger.
+    final sessions = FakeSessionRepository(existing: _openWorkout());
+    await _pump(tester, picks: const [_squat, _fly], sessions: sessions);
+
+    await tester.tap(_start());
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Discard it & start'));
+    await tester.pumpAndSettle();
+
+    expect(sessions.abandoned, 1);
+    expect(sessions.startedWith, [101, 202], reason: 'the picks were kept');
+    expect(find.byType(SessionLoggerScreen), findsOneWidget);
+  });
+
+  testWidgets('backing out of the message leaves both workouts alone',
+      (tester) async {
+    final sessions = FakeSessionRepository(existing: _openWorkout());
+    final container =
+        await _pump(tester, picks: const [_squat], sessions: sessions);
+
+    await tester.tap(_start());
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Cancel'));
+    await tester.pumpAndSettle();
+
+    expect(sessions.abandoned, 0);
+    expect(sessions.startCalls, 0);
+    expect(container.read(workoutDraftProvider).exerciseIds, [101],
+        reason: 'the picks must survive a cancelled start');
   });
 
   testWidgets('an emptied workout cannot be started', (tester) async {
