@@ -23,7 +23,7 @@ class FilterBar extends ConsumerWidget {
           scrollDirection: Axis.horizontal,
           padding: const EdgeInsets.symmetric(horizontal: 8),
           children: [
-            if (!selected.isEmpty)
+            if (selected.hasChipFilter)
               Padding(
                 padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 8),
                 child: ActionChip(

@@ -45,7 +45,8 @@ class _BaseUrlRepository implements ExerciseRepository {
 
   @override
   Future<ExercisePage> list({
-    List<String> muscleGroups = const [], String? equipment, int page = 1, int limit = 20,
+    List<String> muscleGroups = const [], String? equipment, String? search,
+    int page = 1, int limit = 20,
   }) async => throw UnimplementedError();
 
   @override

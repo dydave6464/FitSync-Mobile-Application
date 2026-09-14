@@ -56,7 +56,11 @@ class SelectedFiltersNotifier extends Notifier<SelectedFilters> {
 
   void setMuscleGroup(String? value) => state = state.withMuscleGroup(value);
   void setEquipment(String? value) => state = state.withEquipment(value);
-  void clear() => state = const SelectedFilters();
+  void setSearch(String? value) => state = state.withSearch(value);
+
+  /// Clears the chips, keeping whatever is typed in the search box. See
+  /// [SelectedFilters.hasChipFilter] for why the box is not included.
+  void clear() => state = SelectedFilters(search: state.search);
 }
 
 final selectedFiltersProvider =
@@ -133,6 +137,7 @@ class ExerciseListNotifier extends AsyncNotifier<ExerciseListState> {
     final result = await repo.list(
       muscleGroups: resolveMuscleGroups(filters.muscleGroup, constraint),
       equipment: filters.equipment,
+      search: filters.search,
       page: 1,
     );
 
@@ -158,6 +163,7 @@ class ExerciseListNotifier extends AsyncNotifier<ExerciseListState> {
       final next = await repo.list(
         muscleGroups: resolveMuscleGroups(filters.muscleGroup, constraint),
         equipment: filters.equipment,
+        search: filters.search,
         page: current.page + 1,
       );
       // The selection may have changed while this request was in flight —

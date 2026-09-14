@@ -10,6 +10,7 @@ import 'exercise_detail_screen.dart';
 import 'providers.dart';
 import 'widgets/exercise_tile.dart';
 import 'widgets/filter_bar.dart';
+import 'widgets/search_field.dart';
 
 String describeError(Object error) =>
     error is ApiException ? error.message : 'Something went wrong.';
@@ -148,6 +149,11 @@ class _ExerciseListScreenState extends ConsumerState<ExerciseListScreen> {
             ),
       body: Column(
         children: [
+          // Above the chips, because it is the wider net: the chips narrow
+          // the catalogue by tag, the box finds one movement by name, and a
+          // user who knows what they are looking for should not have to
+          // scroll a chip strip first.
+          const ExerciseSearchField(),
           const FilterBar(),
           Expanded(
             child: listing.when(

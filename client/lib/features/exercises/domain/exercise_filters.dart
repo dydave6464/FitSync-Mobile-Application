@@ -29,25 +29,44 @@ class ExerciseFilters {
 
 /// The filter selection currently applied. Null means "no filter".
 class SelectedFilters {
-  const SelectedFilters({this.muscleGroup, this.equipment});
+  const SelectedFilters({this.muscleGroup, this.equipment, this.search});
 
   final String? muscleGroup;
   final String? equipment;
 
+  /// A name fragment, matched server-side against the whole catalogue rather
+  /// than against the pages already fetched -- the list arrives 20 rows at a
+  /// time, so filtering locally would only ever search what happens to have
+  /// been scrolled past.
+  final String? search;
+
   SelectedFilters withMuscleGroup(String? value) =>
-      SelectedFilters(muscleGroup: value, equipment: equipment);
+      SelectedFilters(muscleGroup: value, equipment: equipment, search: search);
 
   SelectedFilters withEquipment(String? value) =>
-      SelectedFilters(muscleGroup: muscleGroup, equipment: value);
+      SelectedFilters(muscleGroup: muscleGroup, equipment: value, search: search);
 
-  bool get isEmpty => muscleGroup == null && equipment == null;
+  SelectedFilters withSearch(String? value) => SelectedFilters(
+        muscleGroup: muscleGroup,
+        equipment: equipment,
+        search: value,
+      );
+
+  bool get isEmpty => muscleGroup == null && equipment == null && search == null;
+
+  /// Whether any CHIP is lit. Separate from [isEmpty] because the chip
+  /// strip's "Clear" answers for the chips only: the search box carries its
+  /// own clear button, and wiping text the user can still see from a control
+  /// that does not look attached to it is the more surprising behaviour.
+  bool get hasChipFilter => muscleGroup != null || equipment != null;
 
   @override
   bool operator ==(Object other) =>
       other is SelectedFilters &&
       other.muscleGroup == muscleGroup &&
-      other.equipment == equipment;
+      other.equipment == equipment &&
+      other.search == search;
 
   @override
-  int get hashCode => Object.hash(muscleGroup, equipment);
+  int get hashCode => Object.hash(muscleGroup, equipment, search);
 }

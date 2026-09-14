@@ -46,7 +46,23 @@ function contraindicatedSelect(userId) {
       : { sql: `${CONTRAINDICATED} AS contraindicated`, params: [userId] };
 }
 
-function buildWhere({ muscleGroup, equipment }) {
+// LIKE reads '%' and '_' as wildcards, so a search term has to be escaped
+// before it becomes a pattern: a user typing '%' would otherwise get the whole
+// catalogue back under a search box that looks like it filtered, and '_' would
+// quietly stand in for any single character ('3_4' matching '3/4 sit-up').
+//
+// '!' rather than the backslash MySQL defaults to: a backslash's meaning in a
+// string literal depends on the NO_BACKSLASH_ESCAPES sql_mode, so escaping
+// with one is correct on a server configured the usual way and silently wrong
+// on a server that is not. An explicit ESCAPE clause has one meaning
+// everywhere.
+const LIKE_ESCAPE = '!';
+
+function likeContains(term) {
+  return `%${term.replace(/[!%_]/g, (char) => LIKE_ESCAPE + char)}%`;
+}
+
+function buildWhere({ muscleGroup, equipment, search }) {
   const clauses = [LIVE];
   const params = [];
   // An empty list is not an empty result: ml/app/rules/splits.py gives the
@@ -68,6 +84,13 @@ function buildWhere({ muscleGroup, equipment }) {
   if (equipment) {
     clauses.push('e.name = ?');
     params.push(equipment);
+  }
+  // ANDed with the rest, like every other clause: the search box narrows the
+  // filtered list rather than replacing it. Widening it instead would leave
+  // the chips lit while the rows stopped obeying them.
+  if (search) {
+    clauses.push(`x.name LIKE ? ESCAPE '${LIKE_ESCAPE}'`);
+    params.push(likeContains(search));
   }
   return { sql: clauses.join(' AND '), params };
 }

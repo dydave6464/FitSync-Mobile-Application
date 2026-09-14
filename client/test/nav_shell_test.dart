@@ -35,6 +35,7 @@ class FakeExerciseRepository implements ExerciseRepository {
   Future<ExercisePage> list({
     List<String> muscleGroups = const [],
     String? equipment,
+    String? search,
     int page = 1,
     int limit = 20,
   }) async =>

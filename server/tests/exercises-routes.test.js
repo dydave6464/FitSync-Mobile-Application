@@ -183,6 +183,106 @@ test('exercise endpoints', async (t) => {
     }
   });
 
+  await t.test('searches exercise names', async () => {
+    const res = await request(app)
+      .get('/api/v1/exercises?search=sit')
+      .set('Authorization', auth)
+      .expect(200);
+    assert.equal(res.body.data.total, 1);
+    assert.equal(res.body.data.exercises[0].name, '3/4 sit-up');
+  });
+
+  await t.test('search matches anywhere in the name, not just the start',
+    async () => {
+      // The catalogue names movements as "<equipment> <movement>", so a user
+      // typing "bend" or "curl" is asking about the back half of the name.
+      const res = await request(app)
+        .get('/api/v1/exercises?search=bend')
+        .set('Authorization', auth)
+        .expect(200);
+      assert.equal(res.body.data.total, 1);
+      assert.equal(res.body.data.exercises[0].name, '45 degree side bend');
+    });
+
+  await t.test('search ignores case', async () => {
+    const res = await request(app)
+      .get('/api/v1/exercises?search=SHARED')
+      .set('Authorization', auth)
+      .expect(200);
+    assert.equal(res.body.data.total, 2);
+  });
+
+  await t.test('search counts only the matched set', async () => {
+    // The COUNT query and the page query have to be built from the same
+    // clause: a total that ignores the search reports pages that do not
+    // exist, and the list scrolls into an empty page 2.
+    const res = await request(app)
+      .get('/api/v1/exercises?search=Shared')
+      .set('Authorization', auth)
+      .expect(200);
+    assert.equal(res.body.data.total, 2);
+    assert.equal(res.body.data.exercises.length, 2);
+  });
+
+  await t.test('search narrows the other filters rather than replacing them',
+    async () => {
+      // Both 'Shared Name' rows are biceps, so an AND gives nothing and an OR
+      // gives two. Silently widening a filtered list is the worse failure:
+      // the chips stay lit while the rows stop obeying them.
+      const res = await request(app)
+        .get('/api/v1/exercises?search=Shared&muscleGroup=abs')
+        .set('Authorization', auth)
+        .expect(200);
+      assert.equal(res.body.data.total, 0);
+      assert.equal(res.body.data.exercises.length, 0);
+    });
+
+  await t.test('an empty search is no search at all', async () => {
+    // The client clears the box by sending it empty rather than by dropping
+    // the key, and '' must mean the same as absent -- not "match the empty
+    // string", which LIKE '%%' happens to answer correctly and a stricter
+    // predicate would not.
+    const res = await request(app)
+      .get('/api/v1/exercises?search=')
+      .set('Authorization', auth)
+      .expect(200);
+    assert.equal(res.body.data.total, 4);
+  });
+
+  await t.test('a search term is matched literally, not as a LIKE pattern',
+    async () => {
+      // '%' and '_' are wildcards inside LIKE. Unescaped, a user who types
+      // '%' gets the whole catalogue back under a search box that appears to
+      // have filtered it, and '_' quietly matches any single character.
+      const percent = await request(app)
+        .get('/api/v1/exercises?search=%25')
+        .set('Authorization', auth)
+        .expect(200);
+      assert.equal(percent.body.data.total, 0, 'a bare % must not match every row');
+
+      const underscore = await request(app)
+        .get('/api/v1/exercises?search=3_4')
+        .set('Authorization', auth)
+        .expect(200);
+      assert.equal(underscore.body.data.total, 0, "'_' must not stand in for '/'");
+
+      const literal = await request(app)
+        .get('/api/v1/exercises?search=3%2F4')
+        .set('Authorization', auth)
+        .expect(200);
+      assert.equal(literal.body.data.total, 1, 'the real name still matches');
+    });
+
+  await t.test('rejects a repeated search query param', async () => {
+    const res = await request(app)
+      .get('/api/v1/exercises?search=a&search=b')
+      .set('Authorization', auth)
+      .expect(400);
+    assert.equal(res.body.error.code, 'INVALID_QUERY_PARAM');
+    assert.match(res.body.error.message, /search/);
+    assert.equal(res.body.data, undefined);
+  });
+
   await t.test('rejects a repeated equipment query param', async () => {
     // Only muscleGroup takes a list: one equipment tag per exercise, so a
     // list there asks for rows that cannot exist.

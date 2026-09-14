@@ -108,6 +108,10 @@ module.exports = function buildExercisesRouter({ pool, storage }) {
       const { rows, total } = await listExercises(pool, {
         muscleGroup: parseOptionalStringList('muscleGroup', req.query.muscleGroup),
         equipment: parseOptionalString('equipment', req.query.equipment),
+        // An empty box is no filter, which is what parseOptionalString
+        // already makes of '': the client clears the search by sending the
+        // key empty rather than by dropping it.
+        search: parseOptionalString('search', req.query.search),
         // Marks the rows that load a region this caller has reported an
         // injury in. The router is mounted behind requireAuth, so there is
         // always someone to answer for.

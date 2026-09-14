@@ -63,6 +63,32 @@ void main() {
     expect(seen!.queryParameters['page'], '2');
   });
 
+  test('sends a search term as a query parameter', () async {
+    Uri? seen;
+    final repo = repoReturning(
+      {'data': {'exercises': [], 'page': 1, 'limit': 20, 'total': 0}},
+      onRequest: (r) => seen = r.url,
+    );
+
+    await repo.list(search: 'curl');
+
+    expect(seen!.queryParameters['search'], 'curl');
+  });
+
+  test('omits the search key when nothing is being searched for', () async {
+    // An absent key and an empty one mean the same thing to the endpoint, but
+    // only the absent one keeps the URL honest about what was asked.
+    Uri? seen;
+    final repo = repoReturning(
+      {'data': {'exercises': [], 'page': 1, 'limit': 20, 'total': 0}},
+      onRequest: (r) => seen = r.url,
+    );
+
+    await repo.list(search: '');
+
+    expect(seen!.queryParameters.containsKey('search'), isFalse);
+  });
+
   test('parses a detail with its cues in order', () async {
     final repo = repoReturning({
       'data': {
