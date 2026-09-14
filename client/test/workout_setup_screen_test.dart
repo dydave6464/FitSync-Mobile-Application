@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -7,6 +9,7 @@ import 'package:fitsync/core/widgets/fs_kit.dart';
 import 'package:fitsync/features/exercises/presentation/exercise_list_screen.dart';
 import 'package:fitsync/features/exercises/presentation/providers.dart';
 import 'package:fitsync/features/plans/domain/split_style.dart';
+import 'package:fitsync/features/plans/presentation/widgets/training_days_row.dart';
 import 'package:fitsync/features/plans/domain/workout_plan.dart';
 import 'package:fitsync/features/plans/presentation/providers.dart';
 import 'package:fitsync/features/profile/domain/profile.dart';
@@ -30,13 +33,32 @@ const _plan = WorkoutPlan(
 
 /// A profile carrying exactly the injuries a test wants the card to render.
 /// Everything else is a fixed stand-in -- this screen only reads `.injuries`.
+/// How far the profile fetch got. The screen has to tell all three apart:
+/// only [loaded] means the blank cells on screen are the user's real answer.
+enum _ProfileLoad { loaded, pending, failed }
+
 class _FakeProfileNotifier extends ProfileNotifier {
-  _FakeProfileNotifier(this.injuries);
+  _FakeProfileNotifier(
+    this.injuries, {
+    this.trainingDays = const [],
+    this.failTrainingDays = false,
+    this.load = _ProfileLoad.loaded,
+  });
 
   final List<SelectedInjury> injuries;
+  final List<int> trainingDays;
 
-  @override
-  Future<Profile> build() async => Profile(
+  /// When set, `setTrainingDays` throws instead of writing -- lets a test
+  /// prove a failed write leaves the tapped day exactly as it was.
+  final bool failTrainingDays;
+
+  final _ProfileLoad load;
+
+  /// The weekdays the screen last asked to save, recorded whether or not the
+  /// write went on to succeed.
+  List<int>? lastTrainingDays;
+
+  Profile _profileWith(List<int> days) => Profile(
         userId: 1,
         email: 'test@example.com',
         fullName: 'Test User',
@@ -45,20 +67,47 @@ class _FakeProfileNotifier extends ProfileNotifier {
         notificationsEnabled: true,
         equipment: const [],
         injuries: injuries,
+        trainingDays: days,
       );
+
+  @override
+  Future<Profile> build() async => switch (load) {
+        _ProfileLoad.loaded => _profileWith(trainingDays),
+        _ProfileLoad.pending => Completer<Profile>().future,
+        _ProfileLoad.failed => throw Exception('profile down'),
+      };
+
+  @override
+  Future<void> setTrainingDays(List<int> weekdays) async {
+    lastTrainingDays = weekdays;
+    if (failTrainingDays) throw Exception('could not save training days');
+    state = AsyncData(_profileWith(weekdays));
+  }
 }
+
+/// The profile notifier fake the running test's `_pump` installed.
+late _FakeProfileNotifier _profile;
 
 Future<void> _pump(
   WidgetTester tester, {
   WorkoutPlan? plan,
   List<SelectedInjury> injuries = const [],
   List<InjuryOption> injuryOptions = const [],
+  List<int> trainingDays = const [],
+  bool failTrainingDays = false,
+  _ProfileLoad profileLoad = _ProfileLoad.loaded,
 }) async {
+  _profile = _FakeProfileNotifier(
+    injuries,
+    trainingDays: trainingDays,
+    failTrainingDays: failTrainingDays,
+    load: profileLoad,
+  );
   await tester.pumpWidget(
     ProviderScope(
       overrides: [
         activePlanProvider.overrideWith((ref) async => plan),
-        profileProvider.overrideWith(() => _FakeProfileNotifier(injuries)),
+        profileProvider.overrideWith(() => _profile),
         injuryOptionsProvider.overrideWith((ref) async => injuryOptions),
       ],
       child: MaterialApp(
@@ -245,4 +294,85 @@ void main() {
 
     expect(find.text('Log a workout'), findsOneWidget);
   });
+  testWidgets('the screen offers the training days picker', (tester) async {
+    // Asked for here first: this is the screen a user reaches to log a
+    // workout, and "which days do I train" is a question they answer here as
+    // readily as in the generator. It edits the same profile rows either way.
+    await _pump(tester, plan: _plan, trainingDays: const [1, 3]);
+
+    // FsEyebrow renders its label uppercase, so match the words rather than
+    // the casing -- a styling change should not fail this.
+    expect(
+      find.textContaining(RegExp('training days', caseSensitive: false)),
+      findsOneWidget,
+    );
+    for (var weekday = 1; weekday <= 7; weekday++) {
+      expect(find.byKey(Key('weekday.$weekday')), findsOneWidget);
+    }
+    expect(
+      tester.widget<TrainingDayCell>(find.byKey(const Key('weekday.1'))).selected,
+      isTrue,
+    );
+    expect(
+      tester.widget<TrainingDayCell>(find.byKey(const Key('weekday.5'))).selected,
+      isFalse,
+    );
+  });
+
+  testWidgets('ticking a weekday writes the whole set to the profile',
+      (tester) async {
+    await _pump(tester, plan: _plan, trainingDays: const [1, 3]);
+
+    await tester.tap(find.byKey(const Key('weekday.5')));
+    await tester.pumpAndSettle();
+
+    expect(_profile.lastTrainingDays, [1, 3, 5]);
+  });
+
+  testWidgets('ticking a chosen weekday removes it', (tester) async {
+    await _pump(tester, plan: _plan, trainingDays: const [1, 3, 5]);
+
+    await tester.tap(find.byKey(const Key('weekday.3')));
+    await tester.pumpAndSettle();
+
+    expect(_profile.lastTrainingDays, [1, 5]);
+  });
+
+  testWidgets('a failed write leaves the day as it was and says so',
+      (tester) async {
+    await _pump(tester, plan: _plan, trainingDays: const [1],
+        failTrainingDays: true);
+
+    await tester.tap(find.byKey(const Key('weekday.5')));
+    await tester.pumpAndSettle();
+
+    expect(find.textContaining('Could not'), findsOneWidget);
+    expect(
+      tester.widget<TrainingDayCell>(find.byKey(const Key('weekday.5'))).selected,
+      isFalse,
+      reason: 'nothing may look saved that is not',
+    );
+    expect(
+      tester.widget<TrainingDayCell>(find.byKey(const Key('weekday.1'))).selected,
+      isTrue,
+      reason: 'and the day that WAS stored must still render chosen',
+    );
+  });
+
+  testWidgets('a profile that has not arrived refuses taps rather than '
+      'destroying the set', (tester) async {
+    // PUT /profile/training-days replaces the whole set, so a tap made
+    // against a row that is blank only because the profile is still in flight
+    // would wipe the user's real days. Same guard the generator carries.
+    for (final load in [_ProfileLoad.pending, _ProfileLoad.failed]) {
+      await _pump(tester, plan: _plan, profileLoad: load);
+
+      await tester.tap(find.byKey(const Key('weekday.5')));
+      await tester.pumpAndSettle();
+
+      expect(_profile.lastTrainingDays, isNull,
+          reason: 'a tap while the profile is $load must send nothing');
+    }
+  });
+
 }
