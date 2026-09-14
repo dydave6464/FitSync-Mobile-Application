@@ -226,11 +226,17 @@ class _SessionLoggerScreenState extends ConsumerState<SessionLoggerScreen> {
   /// Sends the finished workout to the user's own plan.
   ///
   /// [dialogContext] is popped first so the summary does not sit over a
-  /// snack bar the user cannot read, and the messenger is captured before the
-  /// await for the same reason every other write on this screen does: the
-  /// context may be gone by the time the request resolves.
+  /// snack bar the user cannot read. The messenger and the container are both
+  /// captured before the await, but for different reasons: the summary dialog
+  /// closes synchronously on tap while `planFromSession` is still in flight,
+  /// so this State is routinely already disposed by the time it resolves.
+  /// `ref.invalidate` would throw against a disposed State -- the container
+  /// outlives the widget, so the refresh does too. Same pattern as
+  /// `generator_screen.dart`'s `_generate` and `exercise_swap_sheet.dart`'s
+  /// `_choose`, for the same reason.
   Future<void> _addToPlan(BuildContext dialogContext, ActiveSession done) async {
     final messenger = ScaffoldMessenger.of(context);
+    final container = ProviderScope.containerOf(context, listen: false);
     Navigator.of(dialogContext).pop();
 
     try {
@@ -239,13 +245,14 @@ class _SessionLoggerScreenState extends ConsumerState<SessionLoggerScreen> {
             splitStyle: ref.read(chosenSplitStyleProvider),
           );
       // The Plan tab and Home both read this, and neither was watching while
-      // the logger was open.
-      ref.invalidate(activePlanProvider);
+      // the logger was open. Through the container, not ref -- see above.
+      container.invalidate(activePlanProvider);
       if (!mounted) return;
       messenger.showSnackBar(
         SnackBar(content: Text('Added to ${plan.name}.')),
       );
     } catch (error) {
+      if (!mounted) return;
       messenger.showSnackBar(SnackBar(content: Text(describeError(error))));
     }
   }

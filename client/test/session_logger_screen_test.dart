@@ -178,10 +178,17 @@ class FakeProfileNotifier extends ProfileNotifier {
 
 /// Records what the summary dialog asked the plan API to do.
 class RecordingPlanRepository implements PlanRepository {
-  RecordingPlanRepository({this.error, this.active});
+  RecordingPlanRepository({this.error, this.active, this.gate});
 
   final Object? error;
   final WorkoutPlan? active;
+
+  /// When set, `planFromSession` suspends here instead of resolving
+  /// immediately -- mirrors [FakeSessionController.completeGate], and for the
+  /// same kind of test: it lets a real network round trip outlive the
+  /// summary route, which pops synchronously on tap while this is still in
+  /// flight.
+  final Completer<WorkoutPlan>? gate;
 
   int fromSessionCalls = 0;
   int? lastSessionId;
@@ -201,6 +208,7 @@ class RecordingPlanRepository implements PlanRepository {
     lastSessionId = sessionId;
     lastDayNo = dayNo;
     lastSplitStyle = splitStyle;
+    if (gate != null) return gate!.future;
     if (error != null) throw error!;
     return const WorkoutPlan(
       planId: 9, name: 'My Full Body', splitStyle: 'full_body',
@@ -282,12 +290,20 @@ Future<FakeSessionController> _pump(
   List<Map<String, dynamic>>? patches,
   WorkoutPlan? plan = _plan,
   PlanRepository? plans,
+  // Called every time the override actually recomputes -- i.e. the provider
+  // was freshly built or freshly invalidated, not served from cache. Only
+  // the disposed-State invalidation test below reads it; every other test
+  // leaves it null.
+  VoidCallback? onActivePlanRead,
 }) async {
   final controller = FakeSessionController(session ?? _session());
 
   await tester.pumpWidget(ProviderScope(
     overrides: [
-      activePlanProvider.overrideWith((ref) async => plan),
+      activePlanProvider.overrideWith((ref) async {
+        onActivePlanRead?.call();
+        return plan;
+      }),
       profileProvider.overrideWith(() => FakeProfileNotifier(unit, patches ?? [])),
       activeSessionProvider.overrideWith(() => controller),
       lastPerformanceProvider.overrideWith((ref, key) async => const {}),
@@ -922,5 +938,96 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.textContaining('Could not reach the server.'), findsOneWidget);
+  });
+
+  // The summary dialog -- and the whole logger route behind it -- pops
+  // synchronously on tap, while planFromSession is still in flight. That is
+  // the ordinary case in production, not a rare race: nothing here holds the
+  // route open for the request. A refresh that depends on this State still
+  // being alive when the request resolves would be silently lost on every
+  // real tap -- and lost silently: invalidating through a disposed State's
+  // own `ref` throws, which is caught by the same handler and (if nothing
+  // else guards it) would surface as an unrelated error message for a write
+  // that actually succeeded.
+  //
+  // Asserting only on the absence of that message would not by itself prove
+  // the cache was refreshed: a handler that guards the catch block against a
+  // disposed State (stopping the wrong message) but still invalidates
+  // through `ref` would swallow the same throw just as quietly, and pass a
+  // test that checked only for the symptom. So this forces a fresh read of
+  // activePlanProvider afterwards and counts how many times its override
+  // actually ran -- invalidate() only marks a provider to recompute on its
+  // next access, so a read that does not re-run the override proves the
+  // invalidation never reached it.
+  testWidgets(
+      'accepting still invalidates the plan cache after the screen has already closed',
+      (tester) async {
+    final gate = Completer<WorkoutPlan>();
+    final plans = RecordingPlanRepository(gate: gate);
+    var activePlanReads = 0;
+    await _pump(
+      tester,
+      session: _manualSessionWithSets(),
+      plans: plans,
+      onActivePlanRead: () => activePlanReads++,
+    );
+    final readsBeforeAccept = activePlanReads;
+
+    await _menu(tester, 'finish');
+    await tester.tap(find.byKey(const Key('summary.toPlan')));
+    // Lets both pops -- the dialog's, and the logger route's behind it --
+    // actually finish. The request stays gated throughout, so nothing here
+    // depends on it resolving yet.
+    await tester.pumpAndSettle();
+
+    expect(find.byType(SessionLoggerScreen), findsNothing,
+        reason: 'the route, and the State handling this request, must '
+            'already be gone');
+    // Read from a surviving element -- the host screen behind the logger --
+    // since the logger's own context is exactly what is gone.
+    final container =
+        ProviderScope.containerOf(tester.element(find.text('open logger')));
+
+    gate.complete(const WorkoutPlan(
+      planId: 9, name: 'My Full Body', splitStyle: 'full_body',
+      daysPerWeek: 1, sessionLengthMin: 45, weekNo: 1,
+      exercises: [], source: 'custom',
+    ));
+    await tester.pumpAndSettle();
+
+    expect(tester.takeException(), isNull);
+    expect(find.text('Something went wrong.'), findsNothing);
+
+    await container.read(activePlanProvider.future);
+    expect(activePlanReads, greaterThan(readsBeforeAccept),
+        reason: 'the plan cache must be invalidated even though the State '
+            'handling the write is already gone');
+  });
+
+  // The same disposed-State race as above, but the request itself fails
+  // rather than succeeding. There is no `mounted` screen left to show the
+  // error on by the time it lands, so unlike the "a failed write says so"
+  // test above -- where the rejection outruns the route's own pop, and
+  // mounted is still true -- nothing must appear here.
+  testWidgets(
+      'a write that fails after the screen has already closed shows nothing',
+      (tester) async {
+    final gate = Completer<WorkoutPlan>();
+    final plans = RecordingPlanRepository(gate: gate);
+    await _pump(tester, session: _manualSessionWithSets(), plans: plans);
+
+    await _menu(tester, 'finish');
+    await tester.tap(find.byKey(const Key('summary.toPlan')));
+    await tester.pumpAndSettle();
+
+    expect(find.byType(SessionLoggerScreen), findsNothing);
+
+    gate.completeError(
+      const ApiException('NETWORK_ERROR', 'Could not reach the server.'),
+    );
+    await tester.pumpAndSettle();
+
+    expect(tester.takeException(), isNull);
+    expect(find.textContaining('Could not reach the server.'), findsNothing);
   });
 }
