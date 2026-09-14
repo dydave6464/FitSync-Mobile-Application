@@ -327,6 +327,47 @@ void main() {
     expect(find.textContaining(' of '), findsNothing);
   });
 
+  testWidgets('a one-day custom plan renders the day the user built',
+      (tester) async {
+    // The spec's "accepting creates the plan and the Plan tab then renders
+    // it", end to end from the wire: a user picks push/pull/legs, logs one
+    // workout and keeps it, and one completed session already exists this
+    // week -- so todayDayNo is (1 % rotation) + 1 and the rotation had
+    // better be the plan's real one.
+    //
+    // Built with fromJson from the payload GET /plans/active returns rather
+    // than from the WorkoutPlan constructor, deliberately: the fixtures above
+    // hand-write `days` to match their own exercises, which cannot catch a
+    // server that sends a rotation the plan does not have. This one is the
+    // server's own output for a one-day custom plan.
+    final plan = WorkoutPlan.fromJson(const {
+      'planId': 51,
+      'name': 'My Push / Pull / Legs',
+      'splitStyle': 'push_pull_legs',
+      'daysPerWeek': 3,
+      'sessionLengthMin': 45,
+      'weekNo': 1,
+      'source': 'custom',
+      'days': [
+        {'dayNo': 1, 'name': 'Push'},
+      ],
+      'exercises': [
+        {
+          'planExerciseId': 801, 'exerciseId': 301, 'name': 'Cable fly',
+          'muscleGroup': 'pectorals', 'dayNo': 1, 'orderNo': 1,
+          'targetSets': 3, 'targetReps': '10',
+        },
+      ],
+    });
+
+    await _pump(tester, plan, completedDays: const {'2026-09-07'});
+
+    expect(find.text('Cable fly'), findsOneWidget,
+        reason: 'the day the user just built is the day the tab must show');
+    expect(find.text('Pull'), findsNothing,
+        reason: 'a one-day plan has no day 2 to rotate onto');
+  });
+
   testWidgets('a one-day plan names no day', (tester) async {
     // Full body has a rotation of one; labelling it is noise.
     await _pump(tester, _fullBodyPlan);

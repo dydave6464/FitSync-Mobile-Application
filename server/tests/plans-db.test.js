@@ -197,10 +197,15 @@ test('plan persistence', async (t) => {
 
     const plan = await getActivePlan(pool, userId);
     assert.deepEqual(plan.exercises.map((e) => [e.dayNo, e.orderNo]), [[1, 1], [1, 2], [2, 1]]);
+    // Two days, not the split's three: the rotation is the plan's own
+    // MAX(day_no), which is what src/db/sessions.js stamps sessions from and
+    // what the client divides by. This fixture holds rows for days 1 and 2
+    // only, so a third day here would be a rotation the server would never
+    // actually send anyone to -- the disagreement a hand-built plan makes
+    // routine. The names still come from the split.
     assert.deepEqual(plan.days, [
       { dayNo: 1, name: 'Push' },
       { dayNo: 2, name: 'Pull' },
-      { dayNo: 3, name: 'Legs' },
     ]);
   });
 

@@ -5,7 +5,7 @@ const { migrate } = require('../src/db/migrate');
 const { createPool } = require('../src/db/pool');
 const { testDbConfig, dropAllTables } = require('./helpers/test-db');
 const { seedExercises } = require('../src/db/seed-exercises');
-const { createPlanFromSession } = require('../src/db/plans');
+const { createPlanFromSession, getActivePlan } = require('../src/db/plans');
 const { nextPlanDayNo } = require('../src/db/sessions');
 const FIXTURE = require('./fixtures/seeds/manifest-fixture.json');
 
@@ -521,6 +521,57 @@ test('building a plan out of a completed session', async (t) => {
     await createPlanFromSession(pool, userId, { sessionId: second });
 
     assert.equal((await activePlan(userId)).session_length_min, 40);
+  });
+
+  await t.test('a one-day custom plan reports one day, not the split\'s three', async () => {
+    // The payload's `days` is the whole rotation the client follows: it reads
+    // `rotation = days.length` and renders `exercisesForDay(todayDayNo)`. A
+    // custom plan is built one day at a time, so the split name is not the
+    // day count -- and a plan claiming three days on the strength of its name
+    // sends the Plan tab to a day that has no exercises in it.
+    const userId = await freshUser();
+    const sessionId = await completedManualSession(userId, [live[0].exercise_id]);
+
+    await createPlanFromSession(pool, userId, {
+      sessionId, splitStyle: 'push_pull_legs',
+    });
+
+    const plan = await getActivePlan(pool, userId);
+    assert.deepEqual(plan.days, [{ dayNo: 1, name: 'Push' }]);
+  });
+
+  await t.test('appending a day adds it to the reported rotation', async () => {
+    const userId = await freshUser();
+    const first = await completedManualSession(userId, [live[0].exercise_id]);
+    await createPlanFromSession(pool, userId, {
+      sessionId: first, splitStyle: 'push_pull_legs',
+    });
+    const second = await completedManualSession(userId, [live[1].exercise_id]);
+    await createPlanFromSession(pool, userId, { sessionId: second });
+
+    const plan = await getActivePlan(pool, userId);
+    assert.deepEqual(plan.days, [
+      { dayNo: 1, name: 'Push' }, { dayNo: 2, name: 'Pull' },
+    ]);
+  });
+
+  await t.test('a day past the split\'s own names is still named', async () => {
+    // A four-day push/pull/legs plan is a real thing to build; the split has
+    // only three names for it, and an unnamed day would render as a blank
+    // eyebrow over a real list of exercises.
+    const userId = await freshUser();
+    let planId = null;
+    for (let day = 1; day <= 4; day += 1) {
+      const sessionId = await completedManualSession(userId, [live[0].exercise_id]);
+      await createPlanFromSession(pool, userId, {
+        sessionId, splitStyle: 'push_pull_legs',
+      });
+      planId = (await activePlan(userId)).plan_id;
+    }
+    assert.equal((await planDays(planId)).length, 4);
+
+    const plan = await getActivePlan(pool, userId);
+    assert.deepEqual(plan.days.map((d) => d.name), ['Push', 'Pull', 'Legs', 'Day 4']);
   });
 
   await t.test('a wild duration is clamped to the generator\'s own bounds', async () => {

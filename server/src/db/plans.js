@@ -109,6 +109,26 @@ async function savePlan(pool, userId, plan) {
   }
 }
 
+/// The plan's rotation: one entry per day, named by the split.
+///
+/// [rows] are the plan's exercise rows; the rotation runs to the highest
+/// day_no among them, so a gap left by an exercise that was dropped stays a
+/// day rather than renumbering the days after it. A plan with no rows at all
+/// falls back to the split's own rotation -- there is nothing else to read,
+/// and that is what such a plan meant before day_no existed.
+///
+/// Days past the split's names get "Day N": a four-day push/pull/legs plan is
+/// a real thing to build by hand, and push_pull_legs only names three.
+function planDays(splitStyle, rows) {
+  const names = dayNamesFor(splitStyle);
+  const lastDay = rows.reduce((max, r) => Math.max(max, Number(r.day_no) || 1), 0);
+  const count = lastDay > 0 ? lastDay : names.length;
+  return Array.from({ length: count }, (_, index) => ({
+    dayNo: index + 1,
+    name: names[index] ?? `Day ${index + 1}`,
+  }));
+}
+
 async function getActivePlan(pool, userId) {
   const [plans] = await pool.query(
     `SELECT plan_id, name, split_style, days_per_week, session_length_min, week_no, source, created_at
@@ -154,8 +174,19 @@ async function getActivePlan(pool, userId) {
     source: p.source,
     // The full rotation, not merely the days that have exercises: a day that
     // came back empty is still a day of the plan, and the Plan tab needs to
-    // name it rather than silently renumbering the ones that survived.
-    days: dayNamesFor(p.split_style).map((name, index) => ({ dayNo: index + 1, name })),
+    // name it rather than silently renumbering the ones that survived --
+    // hence MAX(day_no) rather than the distinct days present.
+    //
+    // The COUNT comes from the plan, the NAMES from the split. Deriving the
+    // count from the split name too was right only while the generator was
+    // the only way to get a plan: the ML service emits exactly as many days
+    // as the split has. A custom plan is built one day at a time, so a
+    // one-day push/pull/legs plan really has one day -- and the client
+    // derives its whole rotation from this list (`rotation = days.length`
+    // in workout_plan.dart), so a `days` of three would send the Plan tab to
+    // a day with nothing in it. The server's own rotation, MAX(day_no) in
+    // src/db/sessions.js, has always counted it this way.
+    days: planDays(p.split_style, exercises),
     exercises: exercises.map((e) => ({
       planExerciseId: e.plan_exercise_id,
       exerciseId: e.exercise_id,
