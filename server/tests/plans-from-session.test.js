@@ -322,4 +322,150 @@ test('building a plan out of a completed session', async (t) => {
     assert.notEqual(plan.plan_id, firstPlanId, 'a fresh custom plan, not the old one');
     assert.deepEqual((await planDays(plan.plan_id)).map((d) => d.day_no), [1]);
   });
+
+  await t.test('the prescription is what the user actually did', async () => {
+    // More honest than the generator's guess: these are sets and reps this
+    // person performed, not a target somebody assumed for them.
+    const userId = await freshUser();
+    const sessionId = await completedManualSession(
+      userId, [live[0].exercise_id], { setsEach: 4, reps: 12 },
+    );
+
+    await createPlanFromSession(pool, userId, { sessionId, splitStyle: 'full_body' });
+
+    const [day] = await planDays((await activePlan(userId)).plan_id);
+    assert.equal(day.target_sets, 4);
+    assert.equal(day.target_reps, '12');
+  });
+
+  await t.test('the most frequent rep count wins, ties going to the higher', async () => {
+    const userId = await freshUser();
+    const [s] = await pool.query(
+      `INSERT INTO workout_sessions
+         (user_id, status, session_date, started_at, duration_min, total_volume_kg)
+       VALUES (?, 'completed', CURDATE(), NOW(), 45, 500)`,
+      [userId],
+    );
+    await pool.query(
+      'INSERT INTO session_exercises (session_id, exercise_id, order_no) VALUES (?, ?, 1)',
+      [s.insertId, live[0].exercise_id],
+    );
+    for (const [n, reps] of [[1, 8], [2, 10], [3, 10]]) {
+      await pool.query(
+        `INSERT INTO set_logs (session_id, exercise_id, set_number, weight_kg, reps)
+         VALUES (?, ?, ?, 20, ?)`,
+        [s.insertId, live[0].exercise_id, n, reps],
+      );
+    }
+
+    await createPlanFromSession(pool, userId, {
+      sessionId: s.insertId, splitStyle: 'full_body',
+    });
+
+    const [day] = await planDays((await activePlan(userId)).plan_id);
+    assert.equal(day.target_sets, 3);
+    assert.equal(day.target_reps, '10');
+  });
+
+  await t.test('a set with no reps falls back to the stock prescription', async () => {
+    // An AMRAP or an untracked bodyweight movement. "null reps" is not a
+    // prescription the logger can render.
+    const userId = await freshUser();
+    const [s] = await pool.query(
+      `INSERT INTO workout_sessions
+         (user_id, status, session_date, started_at, duration_min, total_volume_kg)
+       VALUES (?, 'completed', CURDATE(), NOW(), 45, 0)`,
+      [userId],
+    );
+    await pool.query(
+      'INSERT INTO session_exercises (session_id, exercise_id, order_no) VALUES (?, ?, 1)',
+      [s.insertId, live[0].exercise_id],
+    );
+    await pool.query(
+      `INSERT INTO set_logs (session_id, exercise_id, set_number, weight_kg, reps)
+       VALUES (?, ?, 1, NULL, NULL)`,
+      [s.insertId, live[0].exercise_id],
+    );
+
+    await createPlanFromSession(pool, userId, {
+      sessionId: s.insertId, splitStyle: 'full_body',
+    });
+
+    const [day] = await planDays((await activePlan(userId)).plan_id);
+    assert.equal(day.target_sets, 1, 'the set happened even if the reps were not counted');
+    assert.equal(day.target_reps, '8-12');
+  });
+
+  await t.test('an exercise with no logged set keeps the stock prescription', async () => {
+    const userId = await freshUser();
+    const [s] = await pool.query(
+      `INSERT INTO workout_sessions
+         (user_id, status, session_date, started_at, duration_min, total_volume_kg)
+       VALUES (?, 'completed', CURDATE(), NOW(), 45, 0)`,
+      [userId],
+    );
+    await pool.query(
+      'INSERT INTO session_exercises (session_id, exercise_id, order_no) VALUES (?, ?, 1)',
+      [s.insertId, live[0].exercise_id],
+    );
+
+    await createPlanFromSession(pool, userId, {
+      sessionId: s.insertId, splitStyle: 'full_body',
+    });
+
+    const [day] = await planDays((await activePlan(userId)).plan_id);
+    assert.equal(day.target_sets, 3);
+    assert.equal(day.target_reps, '8-12');
+  });
+
+  await t.test('days per week comes from the days the user trains', async () => {
+    const userId = await freshUser();
+    for (const weekday of [1, 3, 5]) {
+      await pool.query(
+        'INSERT INTO user_training_days (user_id, weekday) VALUES (?, ?)',
+        [userId, weekday],
+      );
+    }
+    const sessionId = await completedManualSession(userId, [live[0].exercise_id]);
+
+    await createPlanFromSession(pool, userId, { sessionId, splitStyle: 'push_pull_legs' });
+
+    assert.equal((await activePlan(userId)).days_per_week, 3);
+  });
+
+  await t.test('with no chosen days, the plan\'s own day count stands in', async () => {
+    const userId = await freshUser();
+    const sessionId = await completedManualSession(userId, [live[0].exercise_id]);
+
+    await createPlanFromSession(pool, userId, { sessionId, splitStyle: 'full_body' });
+
+    assert.equal((await activePlan(userId)).days_per_week, 1);
+  });
+
+  await t.test('session length is the mean of what the workouts took', async () => {
+    const userId = await freshUser();
+    const first = await completedManualSession(
+      userId, [live[0].exercise_id], { minutes: 30 },
+    );
+    await createPlanFromSession(pool, userId, {
+      sessionId: first, splitStyle: 'full_body',
+    });
+    const second = await completedManualSession(
+      userId, [live[1].exercise_id], { minutes: 50 },
+    );
+    await createPlanFromSession(pool, userId, { sessionId: second });
+
+    assert.equal((await activePlan(userId)).session_length_min, 40);
+  });
+
+  await t.test('a wild duration is clamped to the generator\'s own bounds', async () => {
+    const userId = await freshUser();
+    const sessionId = await completedManualSession(
+      userId, [live[0].exercise_id], { minutes: 600 },
+    );
+
+    await createPlanFromSession(pool, userId, { sessionId, splitStyle: 'full_body' });
+
+    assert.equal((await activePlan(userId)).session_length_min, 120);
+  });
 });

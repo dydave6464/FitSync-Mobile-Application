@@ -211,6 +211,60 @@ async function sessionExerciseIds(conn, session) {
   return fromPlan.map((r) => r.exercise_id);
 }
 
+/// The generator's own bounds, so a derived length cannot be something the
+/// generator itself would have refused. Mirrors MIN_SESSION_MIN and
+/// MAX_SESSION_MIN in src/routes/plans.js.
+const MIN_SESSION_MIN = 20;
+const MAX_SESSION_MIN = 120;
+
+/// What the user actually did, per exercise, as a prescription.
+///
+/// sets is the number of sets logged. reps is the most frequently logged rep
+/// value, ties broken by the higher -- a user who did 8, 10, 10 is prescribing
+/// 10, and one who did 8 then 10 is more likely chasing 10 than settling for 8.
+///
+/// Nulls are excluded from the rep vote but still counted as sets: an AMRAP or
+/// an untracked bodyweight movement happened even though nobody counted it.
+/// With no usable rep at all the session_exercises default stands in, because
+/// "null reps" is not something the logger can render.
+async function prescriptionFromLogs(conn, sessionId, exerciseIds) {
+  const [rows] = await conn.query(
+    `SELECT exercise_id, reps, COUNT(*) AS n
+       FROM set_logs
+      WHERE session_id = ? AND exercise_id IN (?)
+      GROUP BY exercise_id, reps`,
+    [sessionId, exerciseIds],
+  );
+
+  const byExercise = new Map();
+  for (const id of exerciseIds) byExercise.set(id, { sets: 0, best: null, bestN: 0 });
+
+  for (const row of rows) {
+    const entry = byExercise.get(row.exercise_id);
+    entry.sets += Number(row.n);
+    if (row.reps === null) continue;
+    const n = Number(row.n);
+    // Strictly greater, or equal with a higher rep count: ties go up.
+    if (n > entry.bestN || (n === entry.bestN && row.reps > entry.best)) {
+      entry.best = row.reps;
+      entry.bestN = n;
+    }
+  }
+
+  return byExercise;
+}
+
+/// How many days a week this user trains, from the days they chose.
+///
+/// A profile fact, not a plan one -- user_training_days survives every
+/// regenerate, which is exactly why it is the right source here.
+async function trainingDayCount(conn, userId) {
+  const [[{ chosen }]] = await conn.query(
+    'SELECT COUNT(*) AS chosen FROM user_training_days WHERE user_id = ?', [userId],
+  );
+  return Number(chosen);
+}
+
 /// Turns a completed session into a day of the user's own plan.
 ///
 /// One transaction throughout: a refusal partway must not leave a plan row
@@ -301,14 +355,46 @@ async function createPlanFromSession(pool, userId, { sessionId, splitStyle, dayN
       targetDay = 1;
     }
 
+    const prescription = await prescriptionFromLogs(conn, sessionId, exerciseIds);
+
     for (const [index, exerciseId] of exerciseIds.entries()) {
+      const logged = prescription.get(exerciseId);
       await conn.query(
         `INSERT INTO plan_exercises
            (plan_id, exercise_id, day_no, order_no, target_sets, target_reps)
-         VALUES (?, ?, ?, ?, 3, '8-12')`,
-        [planId, exerciseId, targetDay, index + 1],
+         VALUES (?, ?, ?, ?, ?, ?)`,
+        [
+          planId,
+          exerciseId,
+          targetDay,
+          index + 1,
+          logged.sets > 0 ? logged.sets : 3,
+          logged.best === null ? '8-12' : String(logged.best),
+        ],
       );
     }
+
+    // Recomputed on every write rather than only at creation: both are
+    // derivations from facts that change as the plan grows.
+    const [[{ dayCount }]] = await conn.query(
+      'SELECT COUNT(DISTINCT day_no) AS dayCount FROM plan_exercises WHERE plan_id = ?',
+      [planId],
+    );
+    const chosenDays = await trainingDayCount(conn, userId);
+    const [[{ meanMinutes }]] = await conn.query(
+      `SELECT AVG(duration_min) AS meanMinutes
+         FROM workout_sessions
+        WHERE user_id = ? AND status = 'completed' AND duration_min IS NOT NULL`,
+      [userId],
+    );
+    const length = meanMinutes === null
+      ? 45
+      : Math.min(MAX_SESSION_MIN, Math.max(MIN_SESSION_MIN, Math.round(Number(meanMinutes))));
+
+    await conn.query(
+      'UPDATE workout_plans SET days_per_week = ?, session_length_min = ? WHERE plan_id = ?',
+      [chosenDays > 0 ? chosenDays : Number(dayCount), length, planId],
+    );
 
     await conn.commit();
     return { planId };
