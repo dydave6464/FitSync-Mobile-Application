@@ -481,6 +481,109 @@ async function lastPerformance(pool, userId, exerciseIds) {
 
 /// WEEKDAY() is 0 on Monday, so subtracting it lands on this week's Monday --
 /// which is where the Plan tab's strip starts.
+
+/// How far back each summary window reaches, in days.
+///
+/// Rolling, not calendar. A calendar week starting Monday means that on a
+/// Monday "this week" holds only today, so the same code reports a wildly
+/// different number depending on which day it runs -- and a test asserting
+/// two sessions passes on a Wednesday and fails on a Monday. The week strip
+/// on Home is calendar-based because it draws named weekdays; a total is not
+/// a calendar, so it is not bound to one.
+const SUMMARY_WINDOWS = { week: 7, month: 30, year: 365 };
+
+/// How many sets a session holds. A correlated subquery rather than a GROUP
+/// BY: a session with no sets at all must still appear with a count of 0,
+/// which an inner join to set_logs would drop.
+const SET_COUNT = `(SELECT COUNT(*) FROM set_logs l WHERE l.session_id = s.session_id)`;
+
+/// How many exercises a session held.
+///
+/// Two sources, because sessions have two shapes: a hand-picked session owns
+/// its list in session_exercises, and a plan-backed one borrows the plan's
+/// rows for the rotation day it was stamped with. Coalescing on "did this
+/// session own any rows" keeps both honest without a UNION.
+const EXERCISE_COUNT = `(
+  CASE WHEN EXISTS (SELECT 1 FROM session_exercises se WHERE se.session_id = s.session_id)
+       THEN (SELECT COUNT(*) FROM session_exercises se WHERE se.session_id = s.session_id)
+       ELSE (SELECT COUNT(*) FROM plan_exercises pe
+              WHERE pe.plan_id = s.plan_id AND pe.day_no = COALESCE(s.plan_day_no, 1))
+  END)`;
+
+function toHistoryRow(row) {
+  return {
+    sessionId: row.session_id,
+    sessionDate: formatDate(row.session_date),
+    startedAt: row.started_at_epoch
+      ? new Date(Number(row.started_at_epoch) * 1000).toISOString()
+      : null,
+    durationMin: row.duration_min,
+    totalVolumeKg: toNumber(row.total_volume_kg),
+    setCount: Number(row.set_count),
+    exerciseCount: Number(row.exercise_count),
+    // Read from the plan the session actually ran under, not from whichever
+    // plan is active now: regenerating must not rewrite what you already did.
+    // Null is what lets the client name a hand-picked session as its own.
+    planName: row.plan_name ?? null,
+  };
+}
+
+/// Completed sessions, newest first.
+///
+/// Completed only: `in_progress` is the workout you are in and `abandoned` is
+/// one you threw away. Neither is something you did, and listing them would
+/// make the screen read as a log of attempts rather than of training.
+async function listHistory(pool, userId, { page = 1, limit = 20 } = {}) {
+  const offset = (page - 1) * limit;
+
+  const [[{ total }]] = await pool.query(
+    `SELECT COUNT(*) AS total FROM workout_sessions
+      WHERE user_id = ? AND status = 'completed'`,
+    [userId],
+  );
+
+  const [rows] = await pool.query(
+    `SELECT s.session_id, s.session_date, s.duration_min, s.total_volume_kg,
+            UNIX_TIMESTAMP(s.started_at) AS started_at_epoch,
+            p.name AS plan_name,
+            ${SET_COUNT} AS set_count,
+            ${EXERCISE_COUNT} AS exercise_count
+       FROM workout_sessions s
+       LEFT JOIN workout_plans p ON p.plan_id = s.plan_id
+      WHERE s.user_id = ? AND s.status = 'completed'
+      ORDER BY s.session_date DESC, s.session_id DESC
+      LIMIT ? OFFSET ?`,
+    [userId, limit, offset],
+  );
+
+  return { sessions: rows.map(toHistoryRow), total, page, limit };
+}
+
+/// What the last [period] added up to. Zeroes, never null, for an account
+/// that has trained nothing yet -- that is the state a new user is in, and it
+/// has to read as "nothing yet" rather than as a broken screen.
+async function summariseHistory(pool, userId, period = 'week') {
+  const days = SUMMARY_WINDOWS[period];
+  if (!days) return null;
+
+  const [[row]] = await pool.query(
+    `SELECT COUNT(*) AS session_count,
+            COALESCE(SUM(s.total_volume_kg), 0) AS total_volume_kg,
+            COALESCE(SUM(${SET_COUNT}), 0) AS set_count
+       FROM workout_sessions s
+      WHERE s.user_id = ? AND s.status = 'completed'
+        AND s.session_date >= DATE_SUB(CURDATE(), INTERVAL ? DAY)`,
+    [userId, days],
+  );
+
+  return {
+    sessionCount: Number(row.session_count),
+    setCount: Number(row.set_count),
+    totalVolumeKg: toNumber(row.total_volume_kg) ?? 0,
+  };
+}
+
+
 async function completedThisWeek(pool, userId) {
   const [rows] = await pool.query(
     `SELECT DISTINCT session_date
@@ -506,5 +609,8 @@ module.exports = {
   abandonSession,
   lastPerformance,
   completedThisWeek,
+  listHistory,
+  summariseHistory,
+  SUMMARY_WINDOWS,
   nextPlanDayNo,
 };

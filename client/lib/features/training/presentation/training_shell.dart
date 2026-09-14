@@ -3,13 +3,16 @@ import 'package:flutter/material.dart';
 import '../../../core/theme.dart';
 import '../../../core/widgets/fs_kit.dart';
 import '../../plans/presentation/plan_screen.dart';
+import '../../sessions/presentation/progress_screen.dart';
 
 /// Plan · Progress · Recovery under one header.
 ///
-/// Progress and Recovery ship as real tabs with empty states rather than being
-/// hidden: a tab bar that renders two of three tabs is worse than one that is
-/// honest about what is coming. Their content is the next slice, and Recovery
-/// additionally waits on a check-in that does not exist yet.
+/// Progress is live: it reads finished sessions and what they added up to.
+///
+/// Recovery still ships as a real tab with an empty state rather than being
+/// hidden -- a tab bar that renders two of three tabs is worse than one that
+/// is honest about what is coming -- and it waits on a daily check-in that
+/// does not exist yet.
 class TrainingShell extends StatefulWidget {
   const TrainingShell({super.key, this.onGoToProfile});
 
@@ -83,12 +86,7 @@ class _TrainingShellState extends State<TrainingShell> {
                 index: _index,
                 children: [
                   PlanScreen(onGoToProfile: widget.onGoToProfile),
-                  const _ComingSoon(
-                    icon: Icons.show_chart,
-                    title: 'Progress',
-                    body: 'Volume, sessions and personal records appear here '
-                        'once you have logged a few workouts.',
-                  ),
+                  const ProgressScreen(),
                   const _ComingSoon(
                     icon: Icons.favorite_outline,
                     title: 'Recovery',

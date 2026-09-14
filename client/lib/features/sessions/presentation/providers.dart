@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../exercises/presentation/providers.dart' show apiClientProvider, apiRetryPolicy;
 import '../data/session_repository.dart';
 import '../domain/active_session.dart';
+import '../domain/session_history.dart';
 
 final sessionRepositoryProvider = Provider<SessionRepository>(
   (ref) => SessionRepository(ref.watch(apiClientProvider)),
@@ -84,6 +85,36 @@ class ActiveSessionController extends AsyncNotifier<ActiveSession?> {
 final activeSessionProvider =
     AsyncNotifierProvider<ActiveSessionController, ActiveSession?>(
   ActiveSessionController.new,
+);
+
+/// Which window the Progress tab is summarising: 'week', 'month' or 'year'.
+///
+/// Rolling windows, not calendar ones -- see SUMMARY_WINDOWS in
+/// `server/src/db/sessions.js` for why.
+class TrainingPeriodNotifier extends Notifier<String> {
+  @override
+  String build() => 'week';
+
+  void set(String period) => state = period;
+}
+
+final trainingPeriodProvider =
+    NotifierProvider<TrainingPeriodNotifier, String>(TrainingPeriodNotifier.new);
+
+/// What the chosen window added up to. Rebuilt whenever the window changes,
+/// which is exactly the refetch we want with no manual reset logic.
+final trainingSummaryProvider = FutureProvider<TrainingSummary>(
+  (ref) => ref
+      .watch(sessionRepositoryProvider)
+      .summary(period: ref.watch(trainingPeriodProvider)),
+  retry: apiRetryPolicy,
+);
+
+/// Finished workouts, newest first. Not windowed: the list answers "what have
+/// I done", which a user reads independently of whichever total is on screen.
+final sessionHistoryProvider = FutureProvider<SessionHistoryPage>(
+  (ref) => ref.watch(sessionRepositoryProvider).history(),
+  retry: apiRetryPolicy,
 );
 
 /// `YYYY-MM-DD` for every completed session since Monday. Feeds the week strip.

@@ -11,7 +11,34 @@ const {
   deleteSet,
   lastPerformance,
   completedThisWeek,
+  listHistory,
+  summariseHistory,
+  SUMMARY_WINDOWS,
 } = require('../db/sessions');
+
+// A client sending nonsense should learn that it did, rather than have the
+// value silently clamped and get results it did not ask for. Same contract as
+// the exercises router's parser of the same name.
+function parsePositiveInt(name, raw, fallback, max = null) {
+  if (raw === undefined || raw === '') return fallback;
+  const value = Number(raw);
+  if (!Number.isSafeInteger(value) || value < 1) {
+    throw AppError.badRequest(
+      'INVALID_QUERY_PARAM',
+      `${name} must be a positive integer.`,
+      [{ field: name, value: String(raw) }],
+    );
+  }
+  if (max !== null && value > max) {
+    throw AppError.badRequest(
+      'INVALID_QUERY_PARAM',
+      `${name} must not exceed ${max}.`,
+      [{ field: name, value: String(raw) }],
+    );
+  }
+  return value;
+}
+
 
 /// A non-numeric id reaches MySQL as a bare NaN token and throws
 /// ER_BAD_FIELD_ERROR -- not an AppError, so it would surface as a 500. Reject
@@ -61,6 +88,43 @@ module.exports = function buildSessionsRouter(deps) {
   const withUrls = (session) => (session === null || session === undefined ? session : {
     ...session,
     exercises: session.exercises.map((e) => ({ ...e, thumbnailUrl: toUrl(e.thumbnailUrl) })),
+  });
+
+  // Before '/active' and the rest only by convention -- Express matches in
+  // declaration order and none of these collide, but history is the plain
+  // collection and reads first.
+  //
+  // Paginated the way GET /exercises is, and validated the same way: a client
+  // sending nonsense learns that it did rather than silently getting a page
+  // it did not ask for.
+  router.get('/', auth, async (req, res, next) => {
+    try {
+      const page = parsePositiveInt('page', req.query.page, 1);
+      const limit = parsePositiveInt('limit', req.query.limit, 20, 100);
+      res.json({
+        data: await listHistory(deps.pool, req.user.userId, { page, limit }),
+      });
+    } catch (err) { next(err); }
+  });
+
+  router.get('/summary', auth, async (req, res, next) => {
+    try {
+      const period = req.query.period === undefined || req.query.period === ''
+        ? 'week'
+        : req.query.period;
+      const summary = await summariseHistory(deps.pool, req.user.userId, period);
+      // Null means the period was not one we know. Refused rather than
+      // defaulted: a caller asking for a fortnight and silently getting a
+      // week would put a number on screen under the wrong label.
+      if (summary === null) {
+        throw AppError.badRequest(
+          'INVALID_QUERY_PARAM',
+          `period must be one of ${Object.keys(SUMMARY_WINDOWS).join(', ')}.`,
+          [{ field: 'period', value: String(period) }],
+        );
+      }
+      res.json({ data: { summary } });
+    } catch (err) { next(err); }
   });
 
   router.get('/active', auth, async (req, res, next) => {

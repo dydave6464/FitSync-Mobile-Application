@@ -12,6 +12,7 @@ import 'package:fitsync/features/profile/domain/profile.dart';
 import 'package:fitsync/features/profile/presentation/providers.dart';
 import 'package:fitsync/features/sessions/data/session_repository.dart';
 import 'package:fitsync/features/sessions/domain/active_session.dart';
+import 'package:fitsync/features/sessions/domain/session_history.dart';
 import 'package:fitsync/features/sessions/presentation/providers.dart';
 import 'package:fitsync/features/sessions/presentation/workout_draft.dart';
 
@@ -99,6 +100,12 @@ class SequenceSessionRepository implements SessionRepository {
 
   @override
   String get baseUrl => '';
+  @override
+  Future<SessionHistoryPage> history({int page = 1, int limit = 20}) =>
+      throw UnimplementedError();
+  @override
+  Future<TrainingSummary> summary({String period = 'week'}) =>
+      throw UnimplementedError();
   @override
   Future<ActiveSession> start({List<int>? exerciseIds}) => throw UnimplementedError();
   @override

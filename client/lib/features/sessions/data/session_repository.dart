@@ -1,5 +1,6 @@
 import '../../../core/api_client.dart';
 import '../domain/active_session.dart';
+import '../domain/session_history.dart';
 
 class SessionRepository {
   SessionRepository(this._api);
@@ -15,6 +16,20 @@ class SessionRepository {
     final session = data['session'];
     if (session == null) return null;
     return ActiveSession.fromJson(session as Map<String, dynamic>);
+  }
+
+  /// Finished workouts, newest first. The server lists completed ones only.
+  Future<SessionHistoryPage> history({int page = 1, int limit = 20}) async {
+    final data = await _api.getJson(
+      '/api/v1/sessions?page=$page&limit=$limit',
+    );
+    return SessionHistoryPage.fromJson(data);
+  }
+
+  /// What the last [period] ('week', 'month' or 'year') added up to.
+  Future<TrainingSummary> summary({String period = 'week'}) async {
+    final data = await _api.getJson('/api/v1/sessions/summary?period=$period');
+    return TrainingSummary.fromJson(data['summary'] as Map<String, dynamic>);
   }
 
   /// Idempotent server-side: calling this with a session already in progress

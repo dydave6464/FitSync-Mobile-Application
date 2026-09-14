@@ -7,6 +7,7 @@ import 'package:fitsync/core/theme.dart';
 import 'package:fitsync/features/plans/domain/workout_plan.dart';
 import 'package:fitsync/features/plans/presentation/providers.dart';
 import 'package:fitsync/features/sessions/domain/active_session.dart';
+import 'package:fitsync/features/sessions/domain/session_history.dart';
 import 'package:fitsync/features/sessions/presentation/providers.dart';
 import 'package:fitsync/features/sessions/presentation/session_logger_screen.dart';
 import 'package:fitsync/features/training/presentation/training_shell.dart';
@@ -28,6 +29,13 @@ Future<void> _pump(WidgetTester tester, {ActiveSession? session}) async {
       activePlanProvider.overrideWith((ref) async => _plan),
       activeSessionProvider.overrideWith(() => _StubController(session)),
       completedDaysProvider.overrideWith((ref) async => const <String>{}),
+      // The Progress tab is built eagerly with the rest of the shell. Stubbed
+      // at the provider rather than the repository: this file is about the
+      // tab bar, and Progress has its own test.
+      trainingSummaryProvider.overrideWith((ref) async =>
+          const TrainingSummary(sessionCount: 0, setCount: 0, totalVolumeKg: 0)),
+      sessionHistoryProvider.overrideWith((ref) async =>
+          const SessionHistoryPage(sessions: [], total: 0, page: 1, limit: 20)),
     ],
     child: MaterialApp(theme: fsLightTheme(), home: const TrainingShell()),
   ));
@@ -73,6 +81,13 @@ Future<void> _pumpWithController(
       activePlanProvider.overrideWith((ref) async => _plan),
       activeSessionProvider.overrideWith(controller),
       completedDaysProvider.overrideWith((ref) async => const <String>{}),
+      // The Progress tab is built eagerly with the rest of the shell. Stubbed
+      // at the provider rather than the repository: this file is about the
+      // tab bar, and Progress has its own test.
+      trainingSummaryProvider.overrideWith((ref) async =>
+          const TrainingSummary(sessionCount: 0, setCount: 0, totalVolumeKg: 0)),
+      sessionHistoryProvider.overrideWith((ref) async =>
+          const SessionHistoryPage(sessions: [], total: 0, page: 1, limit: 20)),
       // The logger this pushes into watches this too; without stubbing it,
       // the real repository would reach for a live ApiClient this test
       // never configured.
@@ -94,12 +109,22 @@ void main() {
     expect(find.text('Week 1 — Full body'), findsOneWidget);
   });
 
-  testWidgets('Progress and Recovery say what is coming rather than nothing', (tester) async {
+  testWidgets('Progress is a real tab now, and says so honestly when empty',
+      (tester) async {
+    // It used to read "once you have logged a few workouts" over a screen
+    // that was never wired up, so a user who HAD logged one went looking for
+    // a bug in their session instead.
     await _pump(tester);
 
     await tester.tap(find.byKey(const Key('tab.progress')));
     await tester.pumpAndSettle();
-    expect(find.textContaining('once you have logged'), findsOneWidget);
+    expect(find.textContaining('once you have logged'), findsNothing);
+    expect(find.byKey(const Key('progress.empty')), findsOneWidget);
+  });
+
+  testWidgets('Recovery still says what is coming rather than nothing',
+      (tester) async {
+    await _pump(tester);
 
     await tester.tap(find.byKey(const Key('tab.recovery')));
     await tester.pumpAndSettle();
