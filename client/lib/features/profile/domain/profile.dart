@@ -73,6 +73,7 @@ class Profile {
     required this.notificationsEnabled,
     required this.equipment,
     required this.injuries,
+    this.trainingDays = const [],
     this.sex,
     this.dateOfBirth,
     this.heightCm,
@@ -102,6 +103,14 @@ class Profile {
   final WeightUnit weightUnit;
   final List<EquipmentOption> equipment;
   final List<SelectedInjury> injuries;
+
+  /// Weekdays the user trains on, 1 = Monday .. 7 = Sunday, ascending.
+  ///
+  /// Empty is a real answer and means "none chosen", which the week strip
+  /// renders as it did before days could be chosen at all. Defaulted rather
+  /// than required so a server predating the field reads as none rather than
+  /// throwing.
+  final List<int> trainingDays;
 
   final String? sex;
 
@@ -163,6 +172,9 @@ class Profile {
             .toList(growable: false),
         injuries: ((json['injuries'] as List<dynamic>?) ?? const [])
             .map((e) => SelectedInjury.fromJson(e as Map<String, dynamic>))
+            .toList(growable: false),
+        trainingDays: ((json['trainingDays'] as List<dynamic>?) ?? const [])
+            .map((d) => (d as num).toInt())
             .toList(growable: false),
         sex: json['sex'] as String?,
         dateOfBirth: _toDate(json['dateOfBirth']),
