@@ -5,12 +5,14 @@ import 'package:fitsync/core/token_store.dart';
 import 'package:fitsync/features/auth/data/auth_repository.dart';
 import 'package:fitsync/features/auth/domain/auth_user.dart';
 import 'package:fitsync/features/auth/presentation/auth_controller.dart';
+import 'package:fitsync/features/exercises/domain/exercise.dart';
 import 'package:fitsync/features/profile/data/profile_repository.dart';
 import 'package:fitsync/features/profile/domain/profile.dart';
 import 'package:fitsync/features/profile/presentation/providers.dart';
 import 'package:fitsync/features/sessions/data/session_repository.dart';
 import 'package:fitsync/features/sessions/domain/active_session.dart';
 import 'package:fitsync/features/sessions/presentation/providers.dart';
+import 'package:fitsync/features/sessions/presentation/workout_draft.dart';
 
 /// Signing out must not leave one account's data readable by the next.
 ///
@@ -18,6 +20,15 @@ import 'package:fitsync/features/sessions/presentation/providers.dart';
 /// FutureProvider; neither is autoDispose, so both cache for the lifetime of
 /// the app. Clearing the token alone leaves that cache intact, and the next
 /// user to sign in is handed the previous user's profile.
+
+/// A catalogue row as the library hands it to the draft.
+ExerciseSummary _picked(int id) => ExerciseSummary(
+      exerciseId: id,
+      name: 'Exercise $id',
+      muscleGroup: 'chest',
+      equipment: 'barbell',
+      thumbnailUrl: null,
+    );
 
 Profile _profile({required int userId, required String email}) => Profile(
       userId: userId,
@@ -230,6 +241,34 @@ void main() {
 
     expect(await container.read(completedDaysProvider.future), {'2026-09-02'},
         reason: "the next account kept the previous account's week strip");
+  });
+
+  // The manual picker landed after the caches above, and brought a third one
+  // with it. The draft is not autoDispose, so exercises ticked in the library
+  // and never started survive the sign-out: the next account opens "Log
+  // manually" to someone else's picks already selected, an "N added" count
+  // and a live Start button.
+  test("signing out drops the previous account's unstarted picks", () async {
+    final tokens = TokenStore(backing: InMemorySecureStore());
+    await tokens.write('token-for-juan');
+
+    final container = ProviderContainer(overrides: [
+      tokenStoreProvider.overrideWithValue(tokens),
+      authRepositoryProvider.overrideWithValue(FakeAuthRepository(tokens)),
+      profileRepositoryProvider.overrideWithValue(
+          SequenceProfileRepository([_profile(userId: 1, email: 'a@b.c')])),
+    ]);
+    addTearDown(container.dispose);
+
+    // Juan picks two exercises in the library and walks away without starting.
+    container.read(workoutDraftProvider.notifier).toggle(_picked(101));
+    container.read(workoutDraftProvider.notifier).toggle(_picked(202));
+    expect(container.read(workoutDraftProvider), hasLength(2));
+
+    await container.read(authControllerProvider.notifier).signOut();
+
+    expect(container.read(workoutDraftProvider), isEmpty,
+        reason: "the next account was handed the previous account's picks");
   });
 
   test('signing out clears the stored token', () async {

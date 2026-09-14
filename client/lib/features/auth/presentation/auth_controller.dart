@@ -5,6 +5,7 @@ import '../../../core/token_store.dart';
 import '../../exercises/presentation/providers.dart';
 import '../../plans/presentation/providers.dart';
 import '../../sessions/presentation/providers.dart';
+import '../../sessions/presentation/workout_draft.dart';
 import '../../profile/presentation/providers.dart';
 import '../data/auth_repository.dart';
 import '../data/google_sign_in_gateway.dart';
@@ -102,6 +103,11 @@ class AuthController extends AsyncNotifier<AuthState> {
   /// session carries its logged sets, so the next account opened the logger
   /// onto someone else's weights and reps already ticked into the table.
   ///
+  /// `workoutDraftProvider` leaks the same way one step earlier: exercises
+  /// ticked in the library and never started stayed ticked, so the next
+  /// account opened "Log manually" to someone else's picks and a live Start
+  /// button.
+  ///
   /// Anything user-scoped added later belongs on this list. `autoDispose`
   /// providers do not -- `lastPerformanceProvider` and `alternativesProvider`
   /// are dropped when the screen holding them goes away, which sign-out does.
@@ -113,6 +119,7 @@ class AuthController extends AsyncNotifier<AuthState> {
     ref.invalidate(activePlanProvider);
     ref.invalidate(activeSessionProvider);
     ref.invalidate(completedDaysProvider);
+    ref.invalidate(workoutDraftProvider);
   }
 
   Future<void> signOut() async {
