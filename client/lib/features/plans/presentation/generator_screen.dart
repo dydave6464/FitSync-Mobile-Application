@@ -5,6 +5,7 @@ import '../../../core/api_exception.dart';
 import '../../../core/theme.dart';
 import '../../../core/widgets/fs_kit.dart';
 import '../../exercises/presentation/exercise_list_screen.dart' show describeError;
+import '../../onboarding/presentation/generating_view.dart';
 import '../../profile/domain/profile.dart';
 import '../../profile/presentation/providers.dart';
 import '../domain/split_style.dart';
@@ -29,6 +30,16 @@ class _GeneratorScreenState extends ConsumerState<GeneratorScreen> {
   int? _daysPerWeek;
   bool _busy = false;
   int? _savingWeekday;
+
+  /// True once /regenerate has answered. Separate from [_busy], which flips
+  /// before anything has been asked for: the building screen's last row
+  /// claims the plan exists, so only this may tick it.
+  bool _planReady = false;
+
+  /// The building screen's lead row, captured when Generate is tapped rather
+  /// than recomputed while it is up -- the plan is invalidated the moment the
+  /// rebuild lands, and the row must go on describing what was actually sent.
+  String _leadLabel = '';
 
   /// Writes the whole set, then lets the profile provider re-render the row.
   /// The cell is never optimistically ticked: a failed write must not leave a
@@ -55,7 +66,12 @@ class _GeneratorScreenState extends ConsumerState<GeneratorScreen> {
   /// the loading/error-flattening bug the debug getters still carry: a
   /// failed fetch reads null and falls back to full_body/3/45, and that
   /// fallback would go out as the generate payload.
-  Future<void> _generate(String split, int days, int length) async {
+  Future<void> _generate(
+    String split,
+    int days,
+    int length,
+    List<int> trainingDays,
+  ) async {
     final messenger = ScaffoldMessenger.of(context);
     final navigator = Navigator.of(context);
     // Captured for the same reason as messenger and navigator above: regenerate
@@ -64,7 +80,14 @@ class _GeneratorScreenState extends ConsumerState<GeneratorScreen> {
     // already be disposed. ref.invalidate would throw in that case -- the
     // container outlives the widget, so the refresh does too.
     final container = ProviderScope.containerOf(context, listen: false);
-    setState(() => _busy = true);
+    // The building screen's first frame is the one this setState schedules,
+    // so the hold below is measured from here.
+    final since = DateTime.now();
+    setState(() {
+      _busy = true;
+      _planReady = false;
+      _leadLabel = _describeChoice(split, trainingDays, days);
+    });
     try {
       await ref.read(planRepositoryProvider).regenerate(
             splitStyle: split,
@@ -73,8 +96,18 @@ class _GeneratorScreenState extends ConsumerState<GeneratorScreen> {
           );
       // The plan changed underneath every screen that reads it, so the whole
       // provider is invalidated rather than patched: the Plan tab re-reads and
-      // renders the new day.
+      // renders the new day. Before the hold, so a user who backed out still
+      // gets the refresh at the moment the request lands.
       container.invalidate(activePlanProvider);
+      if (mounted) {
+        // The last row describes this call; it may tick now, and the hold is
+        // what gives the user time to see it do so. Held before the pop, not
+        // after: the pop swaps this screen out, so a wait on the far side of
+        // it would not be seen. Skipped when the user has already backed out
+        // -- there is no list left to read.
+        setState(() => _planReady = true);
+        await GeneratingPace.regenerate.hold(since);
+      }
       // Before the pop, and on the messenger captured above rather than one
       // looked up after it, so the message survives the screen leaving. The
       // "+" is global: generating from Home or Browse pops back to Home or
@@ -119,6 +152,40 @@ class _GeneratorScreenState extends ConsumerState<GeneratorScreen> {
         length: plan?.sessionLengthMin ?? _defaultLength,
       );
 
+  /// The lead row's sentence: what is actually being applied.
+  ///
+  /// Named days when there are any, because that is the choice the user made;
+  /// a count only when there are none, because a count is then all there is
+  /// to say.
+  static String _describeChoice(String split, List<int> days, int count) {
+    final label = splitStyles
+        .firstWhere((s) => s.value == split,
+            orElse: () => (value: split, label: describeSplit(split)))
+        .label;
+    if (days.isEmpty) {
+      return '$label, $count day${count == 1 ? '' : 's'} a week';
+    }
+    const names = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
+    return '$label, ${(days.toList()..sort()).map((d) => names[d - 1]).join(' · ')}';
+  }
+
+  /// The injuries this plan is being built around, spelled as the catalogue
+  /// spells them. Read in `build` rather than only in the controls: the
+  /// building screen names them too, and it is on screen at the one moment
+  /// the plan provider is mid-refetch.
+  List<String> _avoidingNames() {
+    final injuries =
+        ref.watch(profileProvider).value?.injuries ?? const <SelectedInjury>[];
+    final options =
+        ref.watch(injuryOptionsProvider).value ?? const <InjuryOption>[];
+    return [
+      for (final selected in injuries)
+        for (final option in options)
+          if (option.injuryId == selected.injuryId)
+            injuryLabel(option, selected),
+    ];
+  }
+
   // Read by the widget tests, which drive the controls and assert the state
   // they produce rather than reaching into private fields by name.
   String get debugSplitStyle => _resolve(
@@ -137,6 +204,7 @@ class _GeneratorScreenState extends ConsumerState<GeneratorScreen> {
   @override
   Widget build(BuildContext context) {
     final asyncPlan = ref.watch(activePlanProvider);
+    final avoiding = _avoidingNames();
 
     return Scaffold(
       appBar: AppBar(
@@ -152,51 +220,71 @@ class _GeneratorScreenState extends ConsumerState<GeneratorScreen> {
       // plan", so generating really would discard whatever plan the user
       // has. Both states are handled explicitly here, before the fallback
       // chain -- and therefore the controls -- ever runs.
-      body: asyncPlan.when(
-        loading: () => const Center(child: CircularProgressIndicator()),
-        error: (error, _) => Center(
-          child: Padding(
-            padding: const EdgeInsets.all(24),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                const Text("Couldn't load your current plan.", textAlign: TextAlign.center),
-                const SizedBox(height: 6),
-                Text(describeError(error), textAlign: TextAlign.center),
-                const SizedBox(height: 12),
-                FsButton(
-                  label: 'Retry',
-                  small: true,
-                  kind: FsButtonKind.secondary,
-                  onPressed: () => ref.invalidate(activePlanProvider),
+      //
+      // A rebuild takes the body over rather than spinning inside the button:
+      // it is the same wait onboarding already explains, and a button that
+      // has been busy for eight seconds says nothing about what is being
+      // built. Checked ahead of `asyncPlan.when` deliberately -- the plan is
+      // invalidated the instant the rebuild lands, and reading it first would
+      // replace the finished checklist with a spinner just as its last row
+      // ticks. Poppable, unlike onboarding's: nothing here is half-written,
+      // and backing out of the slowest call in the app has always been
+      // allowed.
+      body: _busy
+          ? GeneratingView(
+              title: 'Rebuilding your plan…',
+              subtitle: 'Matching exercises to your split, your equipment, '
+                  'and your injuries.',
+              leadLabel: _leadLabel,
+              leadDone: true,
+              avoiding: avoiding,
+              planReady: _planReady,
+              pace: GeneratingPace.regenerate,
+              canPop: true,
+            )
+          : asyncPlan.when(
+              loading: () => const Center(child: CircularProgressIndicator()),
+              error: (error, _) => Center(
+                child: Padding(
+                  padding: const EdgeInsets.all(24),
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      const Text("Couldn't load your current plan.", textAlign: TextAlign.center),
+                      const SizedBox(height: 6),
+                      Text(describeError(error), textAlign: TextAlign.center),
+                      const SizedBox(height: 12),
+                      FsButton(
+                        label: 'Retry',
+                        small: true,
+                        kind: FsButtonKind.secondary,
+                        onPressed: () => ref.invalidate(activePlanProvider),
+                      ),
+                    ],
+                  ),
                 ),
-              ],
+              ),
+              data: (plan) => _buildControls(context, plan, avoiding),
             ),
-          ),
-        ),
-        data: (plan) => _buildControls(context, plan),
-      ),
     );
   }
 
-  Widget _buildControls(BuildContext context, WorkoutPlan? plan) {
+  Widget _buildControls(
+    BuildContext context,
+    WorkoutPlan? plan,
+    List<String> avoiding,
+  ) {
     final t = context.fs;
     final trainingDays =
         ref.watch(profileProvider).value?.trainingDays ?? const <int>[];
     final (:split, :days, :length) = _resolve(plan, trainingDays);
 
-    final injuries = ref.watch(profileProvider).value?.injuries ?? const <SelectedInjury>[];
     // The AsyncValue, not `.value ?? const []`: that flattening reads the
     // same for "still loading", "failed" and "no regions exist", and the
     // describe card reports what it recognised -- so under a failed
     // catalogue it would state that nothing the user typed matched.
     final asyncOptions = ref.watch(injuryOptionsProvider);
     final options = asyncOptions.value ?? const <InjuryOption>[];
-    final avoiding = [
-      for (final selected in injuries)
-        for (final option in options)
-          if (option.injuryId == selected.injuryId) injuryLabel(option, selected),
-    ];
 
     return ListView(
       padding: const EdgeInsets.fromLTRB(20, 12, 20, 24),
@@ -300,8 +388,9 @@ class _GeneratorScreenState extends ConsumerState<GeneratorScreen> {
         FsButton(
           key: const Key('gen.generate'),
           label: 'Generate plan',
-          busy: _busy,
-          onPressed: () => _generate(split, days, length),
+          // No in-button spinner: `_busy` takes the whole body over with the
+          // building screen, so this button is not on screen to spin.
+          onPressed: () => _generate(split, days, length, trainingDays),
         ),
       ],
     );

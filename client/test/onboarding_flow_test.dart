@@ -468,10 +468,10 @@ void main() {
 
     // Just past the last slot: with every write already resolved, all three
     // gates are open, so this is the moment the list is complete.
-    await tester.pump(GeneratingView.revealAt.last +
+    await tester.pump(GeneratingPace.onboarding.revealAt.last +
         const Duration(milliseconds: 100));
 
-    for (final row in ['saved', 'avoiding', 'exercises']) {
+    for (final row in ['lead', 'avoiding', 'exercises']) {
       expect(find.byKey(Key('gen.$row.done')), findsOneWidget,
           reason: 'row $row should have ticked by the last slot');
     }

@@ -7,6 +7,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:fitsync/core/api_exception.dart';
 import 'package:fitsync/core/theme.dart';
 import 'package:fitsync/core/widgets/fs_kit.dart';
+import 'package:fitsync/features/onboarding/presentation/generating_view.dart';
 import 'package:fitsync/features/plans/data/plan_repository.dart';
 import 'package:fitsync/features/plans/domain/workout_plan.dart';
 import 'package:fitsync/features/plans/presentation/generator_screen.dart';
@@ -373,6 +374,116 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(_plans.lastDaysPerWeek, _pplPlan.daysPerWeek);
+  });
+
+  testWidgets('generating shows the building screen, not just a busy button',
+      (tester) async {
+    await _pump(tester, plan: _pplPlan, trainingDays: const [1, 3, 5]);
+
+    await tester.tap(find.byKey(const Key('gen.generate')));
+    await tester.pump();
+
+    expect(find.text('Rebuilding your plan…'), findsOneWidget);
+    expect(find.textContaining('Mon · Wed · Fri'), findsOneWidget);
+
+    await tester.pumpAndSettle();
+  });
+
+  testWidgets('with no days chosen the lead row counts them instead',
+      (tester) async {
+    // The lead row has one job -- say what is being applied -- and the plan's
+    // own count is what is being applied when no weekday is ticked.
+    await _pump(tester, plan: _pplPlan, trainingDays: const []);
+
+    await tester.tap(find.byKey(const Key('gen.generate')));
+    await tester.pump();
+
+    expect(find.text('Push / Pull / Legs, 4 days a week'), findsOneWidget);
+
+    await tester.pumpAndSettle();
+  });
+
+  testWidgets('the building screen names the injuries it is working around',
+      (tester) async {
+    // Row two is the injury row in both of its states, whether or not the
+    // user has chosen weekdays.
+    await _pump(
+      tester,
+      plan: _pplPlan,
+      trainingDays: const [2, 4],
+      injuries: const [SelectedInjury(injuryId: 3, side: 'right')],
+      injuryOptions: const [
+        InjuryOption(
+            injuryId: 3, name: 'Knee', isLateral: true, regionGroup: 'leg'),
+      ],
+    );
+
+    // The avoiding card pushes the button below the fold, and a ListView does
+    // not build what it is not showing.
+    // The list's own Scrollable, not the describe field's: `.first` is the
+    // outermost in tree order.
+    await tester.scrollUntilVisible(
+      find.byKey(const Key('gen.generate')),
+      200,
+      scrollable: find.byType(Scrollable).first,
+    );
+    await tester.tap(find.byKey(const Key('gen.generate')));
+    await tester.pump();
+
+    expect(find.text('Full body, Tue · Thu'), findsNothing,
+        reason: 'the split is the plan\'s, not a default');
+    expect(find.text('Push / Pull / Legs, Tue · Thu'), findsOneWidget);
+    expect(find.text('Avoiding Knee (right)'), findsOneWidget);
+
+    await tester.pumpAndSettle();
+  });
+
+  testWidgets('the building screen is held so a fast rebuild cannot flash past',
+      (tester) async {
+    await _pump(tester, plan: _pplPlan, trainingDays: const [1, 3, 5]);
+
+    await tester.tap(find.byKey(const Key('gen.generate')));
+    // Nothing is gated: regenerate resolves on the next microtask, which is
+    // the case the hold exists for.
+    await tester.pump();
+    await tester.pump(GeneratingPace.regenerate.revealAt.last +
+        const Duration(milliseconds: 100));
+
+    for (final row in ['lead', 'avoiding', 'exercises']) {
+      expect(find.byKey(Key('gen.$row.done')), findsOneWidget,
+          reason: 'row $row should have ticked by the last slot');
+    }
+    expect(find.byType(GeneratorScreen), findsOneWidget,
+        reason: 'a hold shorter than the schedule would hand off mid-sequence '
+            'and the last tick would never be seen');
+
+    await tester.pumpAndSettle();
+    expect(find.byType(GeneratorScreen), findsNothing,
+        reason: 'the hold delays the hand-off, never skips it');
+  });
+
+  testWidgets('the exercises row waits for the plan, not just for its slot',
+      (tester) async {
+    // Pacing, never progress. The request is held open past every slot; the
+    // row that describes it must not tick until it answers.
+    final done = Completer<WorkoutPlan>();
+    await _pump(
+      tester,
+      plan: _pplPlan,
+      repo: FakePlanRepository(pending: done.future),
+      trainingDays: const [1, 3, 5],
+    );
+
+    await tester.tap(find.byKey(const Key('gen.generate')));
+    await tester.pump();
+    await tester.pump(GeneratingPace.regenerate.minimumRun * 2);
+
+    expect(find.byKey(const Key('gen.lead.done')), findsOneWidget);
+    expect(find.byKey(const Key('gen.exercises.done')), findsNothing,
+        reason: 'this row is the work still running; ticking it would be a lie');
+
+    done.complete(_pplPlan);
+    await tester.pumpAndSettle();
   });
 
   testWidgets('the screen says generating replaces the current plan',
