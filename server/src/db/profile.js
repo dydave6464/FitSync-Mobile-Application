@@ -58,6 +58,10 @@ async function getProfile(pool, userId) {
        JOIN injuries i ON i.injury_id = ui.injury_id
       WHERE ui.user_id = ? ORDER BY i.name`, [userId],
   );
+  const [trainingDays] = await pool.query(
+    'SELECT weekday FROM user_training_days WHERE user_id = ? ORDER BY weekday',
+    [userId],
+  );
 
   return {
     userId: u.user_id,
@@ -92,6 +96,9 @@ async function getProfile(pool, userId) {
       regionGroup: i.region_group,
       side: i.side,
     })),
+    // Display only: which days the week strip may call missed. The rotation
+    // does not consult them -- see nextPlanDayNo in src/db/sessions.js.
+    trainingDays: trainingDays.map((d) => d.weekday),
   };
 }
 
@@ -149,6 +156,32 @@ async function setInjuries(pool, userId, entries) {
   }
 }
 
+/// Replaces the whole set of weekdays this user trains on.
+///
+/// Replacement rather than add/remove, for the same reason setInjuries works
+/// that way: the client holds the entire set on screen, and a partial verb
+/// invites the stored set and the rendered one to drift. An empty list is a
+/// real instruction -- it clears them.
+async function setTrainingDays(pool, userId, weekdays) {
+  const conn = await pool.getConnection();
+  try {
+    await conn.beginTransaction();
+    await conn.query('DELETE FROM user_training_days WHERE user_id = ?', [userId]);
+    for (const weekday of weekdays) {
+      await conn.query(
+        'INSERT INTO user_training_days (user_id, weekday) VALUES (?, ?)',
+        [userId, weekday],
+      );
+    }
+    await conn.commit();
+  } catch (err) {
+    await conn.rollback();
+    throw err;
+  } finally {
+    conn.release();
+  }
+}
+
 async function listEquipment(pool) {
   // Only the curated chips. Raw catalogue tags stay out of onboarding; see
   // seed-equipment.js for what promotes a row into this list.
@@ -179,6 +212,6 @@ async function markOnboardingComplete(pool, userId) {
 }
 
 module.exports = {
-  getProfile, updateProfile, setEquipment, setInjuries,
+  getProfile, updateProfile, setEquipment, setInjuries, setTrainingDays,
   listEquipment, listInjuries, markOnboardingComplete, WRITABLE,
 };
