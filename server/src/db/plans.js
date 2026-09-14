@@ -215,7 +215,7 @@ async function sessionExerciseIds(conn, session) {
 ///
 /// One transaction throughout: a refusal partway must not leave a plan row
 /// with no exercises, which the Plan tab would render as an empty week.
-async function createPlanFromSession(pool, userId, { sessionId, splitStyle }) {
+async function createPlanFromSession(pool, userId, { sessionId, splitStyle, dayNo = null }) {
   const conn = await pool.getConnection();
   try {
     await conn.beginTransaction();
@@ -246,33 +246,72 @@ async function createPlanFromSession(pool, userId, { sessionId, splitStyle }) {
       );
     }
 
-    await conn.query(
-      'UPDATE workout_plans SET is_active = FALSE WHERE user_id = ?', [userId],
+    // Every decision reads the ACTIVE plan's source. A custom plan the
+    // generator has already replaced is deactivated, and reviving it is out of
+    // scope -- so a user in that position gets a fresh custom plan rather than
+    // silently resurrecting an old one.
+    const [active] = await conn.query(
+      `SELECT plan_id, source FROM workout_plans
+        WHERE user_id = ? AND is_active = TRUE ORDER BY plan_id DESC LIMIT 1`,
+      [userId],
     );
-    const [plan] = await conn.query(
-      `INSERT INTO workout_plans
-         (user_id, name, split_style, days_per_week, session_length_min, week_no, is_active, source)
-       VALUES (?, ?, ?, ?, ?, 1, TRUE, 'custom')`,
-      [
-        userId,
-        `My ${SPLIT_LABELS[splitStyle] ?? splitStyle}`,
-        splitStyle,
-        1,
-        session.duration_min ?? 45,
-      ],
-    );
+    const extending = active.length > 0 && active[0].source === 'custom';
+
+    let planId;
+    let targetDay;
+
+    if (extending) {
+      planId = active[0].plan_id;
+      const [[{ lastDay }]] = await conn.query(
+        'SELECT COALESCE(MAX(day_no), 0) AS lastDay FROM plan_exercises WHERE plan_id = ?',
+        [planId],
+      );
+      targetDay = dayNo ?? lastDay + 1;
+      if (targetDay < 1 || targetDay > lastDay + 1) {
+        // A gap would leave nextPlanDayNo rotating through a day that has no
+        // exercises, which the logger renders as an empty workout.
+        throw AppError.badRequest(
+          'INVALID_DAY_NO',
+          `dayNo must be between 1 and ${lastDay + 1}.`,
+          [{ field: 'dayNo', value: String(dayNo) }],
+        );
+      }
+      // Replacing a day means replacing it, not merging into it.
+      await conn.query(
+        'DELETE FROM plan_exercises WHERE plan_id = ? AND day_no = ?',
+        [planId, targetDay],
+      );
+    } else {
+      await conn.query(
+        'UPDATE workout_plans SET is_active = FALSE WHERE user_id = ?', [userId],
+      );
+      const [plan] = await conn.query(
+        `INSERT INTO workout_plans
+           (user_id, name, split_style, days_per_week, session_length_min, week_no, is_active, source)
+         VALUES (?, ?, ?, ?, ?, 1, TRUE, 'custom')`,
+        [
+          userId,
+          `My ${SPLIT_LABELS[splitStyle] ?? splitStyle}`,
+          splitStyle,
+          1,
+          session.duration_min ?? 45,
+        ],
+      );
+      planId = plan.insertId;
+      targetDay = 1;
+    }
 
     for (const [index, exerciseId] of exerciseIds.entries()) {
       await conn.query(
         `INSERT INTO plan_exercises
            (plan_id, exercise_id, day_no, order_no, target_sets, target_reps)
-         VALUES (?, ?, 1, ?, 3, '8-12')`,
-        [plan.insertId, exerciseId, index + 1],
+         VALUES (?, ?, ?, ?, 3, '8-12')`,
+        [planId, exerciseId, targetDay, index + 1],
       );
     }
 
     await conn.commit();
-    return { planId: plan.insertId };
+    return { planId };
   } catch (err) {
     await conn.rollback();
     throw err;

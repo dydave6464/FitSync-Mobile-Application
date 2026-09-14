@@ -197,4 +197,129 @@ test('building a plan out of a completed session', async (t) => {
     );
     assert.equal(plans.length, 0);
   });
+
+  await t.test('a second workout becomes day 2 of the same plan', async () => {
+    const userId = await freshUser();
+    const first = await completedManualSession(userId, [live[0].exercise_id]);
+    await createPlanFromSession(pool, userId, {
+      sessionId: first, splitStyle: 'push_pull_legs',
+    });
+    const planId = (await activePlan(userId)).plan_id;
+
+    const second = await completedManualSession(userId, [live[1].exercise_id]);
+    await createPlanFromSession(pool, userId, { sessionId: second });
+
+    // The same plan row, not a second one: the plan accumulates.
+    assert.equal((await activePlan(userId)).plan_id, planId);
+    const days = await planDays(planId);
+    assert.deepEqual(days.map((d) => d.day_no), [1, 2]);
+    assert.deepEqual(days.map((d) => d.exercise_id),
+      [live[0].exercise_id, live[1].exercise_id]);
+  });
+
+  await t.test('only one plan row exists after appending', async () => {
+    const userId = await freshUser();
+    const first = await completedManualSession(userId, [live[0].exercise_id]);
+    await createPlanFromSession(pool, userId, {
+      sessionId: first, splitStyle: 'full_body',
+    });
+    const second = await completedManualSession(userId, [live[1].exercise_id]);
+    await createPlanFromSession(pool, userId, { sessionId: second });
+
+    const [plans] = await pool.query(
+      'SELECT plan_id FROM workout_plans WHERE user_id = ?', [userId],
+    );
+    assert.equal(plans.length, 1);
+  });
+
+  await t.test('a named day is replaced, and the others are left alone', async () => {
+    const userId = await freshUser();
+    const first = await completedManualSession(userId, [live[0].exercise_id]);
+    await createPlanFromSession(pool, userId, {
+      sessionId: first, splitStyle: 'full_body',
+    });
+    const second = await completedManualSession(userId, [live[1].exercise_id]);
+    await createPlanFromSession(pool, userId, { sessionId: second });
+    const planId = (await activePlan(userId)).plan_id;
+
+    const third = await completedManualSession(userId, [live[2].exercise_id]);
+    await createPlanFromSession(pool, userId, { sessionId: third, dayNo: 1 });
+
+    const days = await planDays(planId);
+    assert.deepEqual(days.map((d) => d.day_no), [1, 2]);
+    assert.equal(days[0].exercise_id, live[2].exercise_id, 'day 1 was replaced');
+    assert.equal(days[1].exercise_id, live[1].exercise_id, 'day 2 untouched');
+  });
+
+  await t.test('a day beyond the end of the plan is refused', async () => {
+    // Accepting it would leave a gap -- day 1 and day 5 with nothing between,
+    // which nextPlanDayNo would rotate through as if the gap were trainable.
+    const userId = await freshUser();
+    const first = await completedManualSession(userId, [live[0].exercise_id]);
+    await createPlanFromSession(pool, userId, {
+      sessionId: first, splitStyle: 'full_body',
+    });
+
+    const second = await completedManualSession(userId, [live[1].exercise_id]);
+    await assert.rejects(
+      () => createPlanFromSession(pool, userId, { sessionId: second, dayNo: 5 }),
+      (err) => err.code === 'INVALID_DAY_NO',
+    );
+  });
+
+  await t.test('a custom plan rotates exactly as a generated one does', async () => {
+    // Spec section 5's claim, proven rather than asserted: nothing that
+    // FOLLOWS a plan changes, because a custom plan is the same shape as a
+    // generated one. nextPlanDayNo derives the day from MAX(day_no) and the
+    // week's completed-session count, neither of which knows about source.
+    const userId = await freshUser();
+    for (let day = 0; day < 3; day += 1) {
+      const s = await completedManualSession(userId, [live[day].exercise_id]);
+      // The first call creates the plan; splitStyle is ignored by the two
+      // that extend it.
+      await createPlanFromSession(pool, userId, {
+        sessionId: s, splitStyle: 'push_pull_legs',
+      });
+    }
+
+    const planId = (await activePlan(userId)).plan_id;
+    const [[{ rotation }]] = await pool.query(
+      'SELECT MAX(day_no) AS rotation FROM plan_exercises WHERE plan_id = ?', [planId],
+    );
+    assert.equal(Number(rotation), 3, 'three days were built');
+
+    // Three sessions were completed this week building it, so the next day is
+    // (3 % 3) + 1 = 1 -- the rotation wrapping, exactly as it would for a
+    // generated three-day plan.
+    assert.equal(await nextPlanDayNo(pool, userId, Number(rotation)), 1);
+  });
+
+  await t.test('a generated active plan is replaced, not extended', async () => {
+    // "Does a custom plan exist" is the wrong question -- one the generator
+    // already replaced is deactivated, and reviving it is out of scope.
+    const userId = await freshUser();
+    const first = await completedManualSession(userId, [live[0].exercise_id]);
+    await createPlanFromSession(pool, userId, {
+      sessionId: first, splitStyle: 'full_body',
+    });
+    const firstPlanId = (await activePlan(userId)).plan_id;
+
+    await pool.query('UPDATE workout_plans SET is_active = FALSE WHERE user_id = ?', [userId]);
+    await pool.query(
+      `INSERT INTO workout_plans
+         (user_id, name, split_style, days_per_week, session_length_min, is_active, source)
+       VALUES (?, 'Generated', 'full_body', 3, 45, TRUE, 'generated')`,
+      [userId],
+    );
+
+    const second = await completedManualSession(userId, [live[1].exercise_id]);
+    await createPlanFromSession(pool, userId, {
+      sessionId: second, splitStyle: 'full_body',
+    });
+
+    const plan = await activePlan(userId);
+    assert.equal(plan.source, 'custom');
+    assert.notEqual(plan.plan_id, firstPlanId, 'a fresh custom plan, not the old one');
+    assert.deepEqual((await planDays(plan.plan_id)).map((d) => d.day_no), [1]);
+  });
 });
