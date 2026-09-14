@@ -151,6 +151,16 @@ async function getActiveSession(pool, userId) {
 /// Abandoned and in-progress sessions do not count, which is what makes the
 /// first session of a week day 1 and lets someone abandon one and start again
 /// onto the same day.
+///
+/// Chosen training days (user_training_days) are deliberately NOT consulted
+/// here. They drive the week strip's missed marker and nothing else. Pinning
+/// the workout to the weekday would leave the rotation with no answer for
+/// someone who trains on a day they did not choose, and would turn a missed
+/// session into a lost one rather than a late one. See
+/// docs/superpowers/specs/2026-09-14-training-days-design.md, section 0.
+///
+/// Exported for tests/sessions-db.test.js, which pins the decision above by
+/// asserting that changing chosen days never changes this function's output.
 async function nextPlanDayNo(conn, userId, rotation) {
   if (!rotation || rotation < 1) return 1;
   const [rows] = await conn.query(
@@ -496,4 +506,5 @@ module.exports = {
   abandonSession,
   lastPerformance,
   completedThisWeek,
+  nextPlanDayNo,
 };

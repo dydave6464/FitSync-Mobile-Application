@@ -6,6 +6,7 @@ import '../../../core/widgets/fs_kit.dart';
 import '../../exercises/presentation/exercise_thumb.dart';
 import '../../exercises/presentation/exercise_detail_screen.dart';
 import '../../exercises/presentation/exercise_list_screen.dart' show describeError;
+import '../../profile/presentation/providers.dart';
 import '../../sessions/presentation/providers.dart';
 import '../../sessions/presentation/session_logger_screen.dart';
 import '../domain/workout_plan.dart';
@@ -153,6 +154,11 @@ class _PlanViewState extends ConsumerState<_PlanView> {
           daysPerWeek: plan.daysPerWeek,
           completedDates: completedDays,
           today: DateTime.now(),
+          // No `?? const []`: an empty list means the user chose no days,
+          // which is an answer. While the profile is loading or its fetch has
+          // failed the truth is "not known", and the strip must not report a
+          // schedule -- or a target -- off a request that never landed.
+          trainingDays: ref.watch(profileProvider).value?.trainingDays,
         ),
         const SizedBox(height: 14),
         SessionCard(

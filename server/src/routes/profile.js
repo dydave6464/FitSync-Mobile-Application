@@ -3,7 +3,7 @@ const express = require('express');
 const AppError = require('../lib/app-error');
 const requireAuth = require('../middleware/require-auth');
 const {
-  getProfile, updateProfile, setEquipment, setInjuries,
+  getProfile, updateProfile, setEquipment, setInjuries, setTrainingDays,
   listEquipment, listInjuries, markOnboardingComplete, WRITABLE,
 } = require('../db/profile');
 const { savePlan, getActivePlan } = require('../db/plans');
@@ -206,6 +206,32 @@ module.exports = function buildProfileRouter(deps) {
       }
 
       await setInjuries(pool, req.user.userId, entries);
+      await respond(res, req.user.userId);
+    } catch (err) { next(err); }
+  });
+
+  router.put('/profile/training-days', auth, async (req, res, next) => {
+    try {
+      const raw = (req.body || {}).trainingDays;
+      if (!Array.isArray(raw)) {
+        throw invalid('trainingDays', 'trainingDays must be an array.');
+      }
+      for (const weekday of raw) {
+        // Number.isInteger, not Number(): '1' and 1.5 both have to fail. A
+        // string reaching the INSERT would be coerced by MySQL and stored as
+        // a day the user never picked.
+        if (!Number.isInteger(weekday) || weekday < 1 || weekday > 7) {
+          throw invalid(
+            'trainingDays',
+            'trainingDays must contain whole numbers from 1 (Monday) to 7 (Sunday).',
+          );
+        }
+      }
+      if (new Set(raw).size !== raw.length) {
+        throw invalid('trainingDays', 'trainingDays must not contain duplicates.');
+      }
+
+      await setTrainingDays(pool, req.user.userId, raw);
       await respond(res, req.user.userId);
     } catch (err) { next(err); }
   });

@@ -6,7 +6,7 @@ const { createPool } = require('../src/db/pool');
 const { testDbConfig, dropAllTables } = require('./helpers/test-db');
 const { seedInjuries } = require('../src/db/seed-injuries');
 const {
-  getProfile, updateProfile, setEquipment, setInjuries, listInjuries,
+  getProfile, updateProfile, setEquipment, setInjuries, listInjuries, setTrainingDays,
 } = require('../src/db/profile');
 
 test('profile queries', async (t) => {
@@ -76,5 +76,30 @@ test('profile queries', async (t) => {
     assert.equal(all.find((i) => i.name === 'Knee').isLateral, true);
     assert.equal(all.find((i) => i.name === 'Neck').isLateral, false);
     assert.equal(all.find((i) => i.name === 'Knee').regionGroup, 'lower_body');
+  });
+
+  await t.test('a profile with no chosen days reports an empty list', async () => {
+    const profile = await getProfile(pool, userId);
+    assert.deepEqual(profile.trainingDays, []);
+  });
+
+  await t.test('setTrainingDays stores the set and reads it back ascending', async () => {
+    await setTrainingDays(pool, userId, [5, 1, 3]);
+    const profile = await getProfile(pool, userId);
+    assert.deepEqual(profile.trainingDays, [1, 3, 5]);
+  });
+
+  await t.test('setTrainingDays replaces rather than appends', async () => {
+    // The client holds the whole set on screen; an append verb would let the
+    // two drift. Same contract as setInjuries.
+    await setTrainingDays(pool, userId, [2]);
+    const profile = await getProfile(pool, userId);
+    assert.deepEqual(profile.trainingDays, [2]);
+  });
+
+  await t.test('setTrainingDays with an empty list clears them', async () => {
+    await setTrainingDays(pool, userId, []);
+    const profile = await getProfile(pool, userId);
+    assert.deepEqual(profile.trainingDays, []);
   });
 });

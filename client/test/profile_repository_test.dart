@@ -197,6 +197,71 @@ void main() {
     });
   });
 
+  test('parses the chosen training days', () async {
+    final (repo, _) = _repoReturning({
+      'data': {
+        'profile': {
+          'userId': 1,
+          'email': 'a@b.c',
+          'fullName': 'A',
+          'onboardingCompleted': true,
+          'isPremium': false,
+          'notificationsEnabled': true,
+          'equipment': <dynamic>[],
+          'injuries': <dynamic>[],
+          'trainingDays': [1, 3, 5],
+        }
+      }
+    });
+
+    expect((await repo.setTrainingDays([1, 3, 5])).trainingDays, [1, 3, 5]);
+  });
+
+  test('a profile with no trainingDays key reads as none chosen', () async {
+    // A server that predates the field must not throw. "None chosen" is the
+    // state the week strip already renders correctly.
+    final (repo, _) = _repoReturning({
+      'data': {
+        'profile': {
+          'userId': 1,
+          'email': 'a@b.c',
+          'fullName': 'A',
+          'onboardingCompleted': true,
+          'isPremium': false,
+          'notificationsEnabled': true,
+          'equipment': <dynamic>[],
+          'injuries': <dynamic>[],
+        }
+      }
+    });
+
+    expect((await repo.setTrainingDays(const [])).trainingDays, isEmpty);
+  });
+
+  test('sends the days to the training-days endpoint', () async {
+    final (repo, captured) = _repoReturning({
+      'data': {
+        'profile': {
+          'userId': 1,
+          'email': 'a@b.c',
+          'fullName': 'A',
+          'onboardingCompleted': true,
+          'isPremium': false,
+          'notificationsEnabled': true,
+          'equipment': <dynamic>[],
+          'injuries': <dynamic>[],
+          'trainingDays': <dynamic>[],
+        }
+      }
+    });
+
+    await repo.setTrainingDays([2, 4]);
+
+    final seen = captured.requests.single;
+    expect(seen.url.path, '/api/v1/profile/training-days');
+    expect(jsonDecode(seen.body), {'trainingDays': [2, 4]});
+  });
+
   test('completeOnboarding returns the profile and the plan', () async {
     final (repo, _) = _repoReturning({
       'data': {

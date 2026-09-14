@@ -5,7 +5,70 @@ import 'package:flutter/material.dart';
 import '../../../core/theme.dart';
 import '../../../core/widgets/fs_kit.dart';
 
-/// The full-screen state shown while the server builds the first plan.
+/// How long the checklist takes to reveal itself.
+///
+/// Pacing, never progress: the gates decide how EARLY a row may tick, never
+/// whether it has been earned. A round trip can finish in under a second, and
+/// three ticks landing in one frame reads as a flicker rather than as a system
+/// doing something.
+enum GeneratingPace {
+  /// Once, at the end of onboarding, where the wait is the product
+  /// introducing itself.
+  onboarding(
+    revealAt: [
+      Duration(milliseconds: 1500),
+      Duration(milliseconds: 3500),
+      Duration(milliseconds: 5500),
+    ],
+    tail: Duration(milliseconds: 1200),
+  ),
+
+  /// From the generator, which a user may run repeatedly while tuning a
+  /// split. Roughly half, because the same seven seconds that reassure once
+  /// grate on the fourth attempt.
+  regenerate(
+    revealAt: [
+      Duration(milliseconds: 800),
+      Duration(milliseconds: 1800),
+      Duration(milliseconds: 2800),
+    ],
+    tail: Duration(milliseconds: 600),
+  );
+
+  const GeneratingPace({required this.revealAt, required this.tail});
+
+  /// The earliest each row may tick, measured from the first frame.
+  final List<Duration> revealAt;
+
+  /// How long the completed list stays up before the hand-off, so the last
+  /// tick is seen rather than replaced in the same breath.
+  final Duration tail;
+
+  /// The shortest this screen can be on show.
+  Duration get minimumRun => revealAt.last + tail;
+
+  /// How much longer the screen still owes the user, given the moment it
+  /// first appeared.
+  ///
+  /// One definition rather than one per caller: the screen paces its own
+  /// reveals, so handing off on the server's timing alone would cut the list
+  /// off mid-sequence — usually before a single row had ticked, since the
+  /// round trip can finish in under a second. Two cases: a fast build waits
+  /// out the whole schedule, and a slow one has already passed the last slot,
+  /// so it only owes the tail.
+  Duration remainingFrom(DateTime since) {
+    final elapsed = DateTime.now().difference(since);
+    return elapsed < revealAt.last ? minimumRun - elapsed : tail;
+  }
+
+  /// Waits out [remainingFrom], or returns at once when nothing is owed.
+  Future<void> hold(DateTime since) async {
+    final remaining = remainingFrom(since);
+    if (remaining > Duration.zero) await Future<void>.delayed(remaining);
+  }
+}
+
+/// The full-screen state shown while the server builds a plan.
 ///
 /// Mirrors the prototype's generating artboard (`ScreenOnbInjury` rendered
 /// with `generating`), with two deliberate departures from it:
@@ -15,45 +78,58 @@ import '../../../core/widgets/fs_kit.dart';
 ///   ticks three rows on a schedule and hardcodes "Avoiding lower-back load"
 ///   for a user whose injuries it cannot know.
 ///
-/// The schedule below is pacing, not progress. Every gate is still real: the
-/// slots decide how early a tick may appear, never whether it is earned. The
-/// round trip can finish in under a second, and three ticks landing in one
-/// frame reads as a flicker rather than as a system doing something.
+/// The schedule is pacing, not progress — see [GeneratingPace].
 ///
-/// It cannot be popped: the profile and injury writes have already landed by
+/// Three rows, each with one job and no fallback between them: [leadLabel]
+/// says what is being applied, the second row always reports the injuries
+/// being worked around (in both of its states), and the third waits for the
+/// plan itself.
+///
+/// Used from two places. Onboarding runs it at [GeneratingPace.onboarding]
+/// and cannot be popped: the profile and injury writes have already landed by
 /// the time it appears, and backing out would strand the account mid-write
-/// with onboarding still incomplete.
+/// with onboarding still incomplete. The generator runs it at
+/// [GeneratingPace.regenerate], where nothing is half-written and backing out
+/// is allowed.
 class GeneratingView extends StatefulWidget {
   const GeneratingView({
     super.key,
-    required this.saved,
-    required this.planReady,
+    required this.title,
+    required this.subtitle,
+    required this.leadLabel,
+    required this.leadDone,
     required this.avoiding,
+    required this.planReady,
+    this.pace = GeneratingPace.onboarding,
+    this.canPop = false,
   });
 
-  /// The earliest each row may tick, measured from the first frame.
-  static const revealAt = <Duration>[
-    Duration(milliseconds: 1500),
-    Duration(milliseconds: 3500),
-    Duration(milliseconds: 5500),
-  ];
+  /// The headline: what is happening.
+  final String title;
 
-  /// How long the completed list stays up before the hand-off, so the last
-  /// tick is seen rather than replaced by the plan in the same breath.
-  static const tail = Duration(milliseconds: 1200);
+  /// The line under it: how it is being decided.
+  final String subtitle;
 
-  /// The shortest this screen can be on show.
-  static const minimumRun = Duration(milliseconds: 6700);
+  /// The first row's sentence. Onboarding reports the write it just made;
+  /// the generator states the split and schedule being applied.
+  final String leadLabel;
 
-  /// True once the profile and injury writes have returned.
-  final bool saved;
-
-  /// True once the server has answered with a plan.
-  final bool planReady;
+  /// True once whatever [leadLabel] claims has actually happened.
+  final bool leadDone;
 
   /// The names of the injuries the user reported. Empty is a real answer and
   /// gets its own wording rather than dropping the row.
   final List<String> avoiding;
+
+  /// True once the server has answered with a plan.
+  final bool planReady;
+
+  /// How early the rows may tick.
+  final GeneratingPace pace;
+
+  /// Whether a back gesture may leave the screen. False where leaving would
+  /// strand a half-written account.
+  final bool canPop;
 
   @override
   State<GeneratingView> createState() => _GeneratingViewState();
@@ -69,8 +145,9 @@ class _GeneratingViewState extends State<GeneratingView> {
   @override
   void initState() {
     super.initState();
-    for (var i = 0; i < GeneratingView.revealAt.length; i++) {
-      _timers.add(Timer(GeneratingView.revealAt[i], () {
+    final revealAt = widget.pace.revealAt;
+    for (var i = 0; i < revealAt.length; i++) {
+      _timers.add(Timer(revealAt[i], () {
         if (mounted) setState(() => _open = i + 1);
       }));
     }
@@ -90,7 +167,7 @@ class _GeneratingViewState extends State<GeneratingView> {
     final avoiding = widget.avoiding;
 
     return PopScope(
-      canPop: false,
+      canPop: widget.canPop,
       child: Scaffold(
         backgroundColor: t.bg,
         body: SafeArea(
@@ -105,29 +182,28 @@ class _GeneratingViewState extends State<GeneratingView> {
                   ),
                   const SizedBox(height: 28),
                   Text(
-                    'Building your plan…',
+                    widget.title,
                     style: Theme.of(context).textTheme.headlineSmall,
                     textAlign: TextAlign.center,
                   ),
                   const SizedBox(height: 10),
                   Text(
-                    'Matching exercises to your goals, equipment, '
-                    'and injury history.',
+                    widget.subtitle,
                     textAlign: TextAlign.center,
                     style: TextStyle(fontSize: 13, height: 1.5, color: t.text2),
                   ),
                   const SizedBox(height: 28),
                   _CheckRow(
-                    id: 'saved',
-                    label: 'Profile saved',
-                    done: widget.saved && _open > 0,
+                    id: 'lead',
+                    label: widget.leadLabel,
+                    done: widget.leadDone && _open > 0,
                   ),
                   _CheckRow(
                     id: 'avoiding',
                     label: avoiding.isEmpty
                         ? 'No injuries to work around'
                         : 'Avoiding ${avoiding.join(', ')}',
-                    done: widget.saved && _open > 1,
+                    done: widget.leadDone && _open > 1,
                   ),
                   _CheckRow(
                     id: 'exercises',

@@ -35,6 +35,12 @@ class ProfileRepository {
           {'injuries': injuries.map((i) => i.toJson()).toList()}))['profile']
           as Map<String, dynamic>);
 
+  /// Replaces the whole set. An empty list clears the days, which is a real
+  /// instruction rather than a no-op.
+  Future<Profile> setTrainingDays(List<int> weekdays) async =>
+      Profile.fromJson((await _api.putJson('/api/v1/profile/training-days',
+          {'trainingDays': weekdays}))['profile'] as Map<String, dynamic>);
+
   Future<CompletedOnboarding> completeOnboarding() async {
     final data =
         await _api.postJson('/api/v1/profile/complete-onboarding', const {});

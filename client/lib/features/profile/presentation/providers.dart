@@ -35,6 +35,11 @@ class ProfileNotifier extends AsyncNotifier<Profile> {
         await ref.read(profileRepositoryProvider).setInjuries(injuries));
   }
 
+  Future<void> setTrainingDays(List<int> weekdays) async {
+    state = AsyncData(
+        await ref.read(profileRepositoryProvider).setTrainingDays(weekdays));
+  }
+
   Future<CompletedOnboarding> completeOnboarding() async {
     final result =
         await ref.read(profileRepositoryProvider).completeOnboarding();

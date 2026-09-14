@@ -5,12 +5,14 @@ import '../../../core/api_exception.dart';
 import '../../../core/theme.dart';
 import '../../../core/widgets/fs_kit.dart';
 import '../../exercises/presentation/exercise_list_screen.dart' show describeError;
+import '../../onboarding/presentation/generating_view.dart';
 import '../../profile/domain/profile.dart';
 import '../../profile/presentation/providers.dart';
 import '../domain/split_style.dart';
 import '../domain/week_description.dart';
 import '../domain/workout_plan.dart';
 import 'providers.dart';
+import 'widgets/training_days_row.dart';
 
 const _defaultSplit = 'full_body';
 const _defaultDays = 3;
@@ -27,6 +29,35 @@ class _GeneratorScreenState extends ConsumerState<GeneratorScreen> {
   String? _splitStyle;
   int? _daysPerWeek;
   bool _busy = false;
+  int? _savingWeekday;
+
+  /// True once /regenerate has answered. Separate from [_busy], which flips
+  /// before anything has been asked for: the building screen's last row
+  /// claims the plan exists, so only this may tick it.
+  bool _planReady = false;
+
+  /// The building screen's lead row, captured when Generate is tapped rather
+  /// than recomputed while it is up -- the plan is invalidated the moment the
+  /// rebuild lands, and the row must go on describing what was actually sent.
+  String _leadLabel = '';
+
+  /// Writes the whole set, then lets the profile provider re-render the row.
+  /// The cell is never optimistically ticked: a failed write must not leave a
+  /// day looking chosen.
+  Future<void> _setTrainingDays(List<int> next, int tapped) async {
+    final messenger = ScaffoldMessenger.of(context);
+    setState(() => _savingWeekday = tapped);
+    try {
+      await ref.read(profileProvider.notifier).setTrainingDays(next);
+    } catch (error) {
+      if (!mounted) return;
+      messenger.showSnackBar(SnackBar(
+        content: Text('Could not save your training days. ${describeError(error)}'),
+      ));
+    } finally {
+      if (mounted) setState(() => _savingWeekday = null);
+    }
+  }
 
   /// Takes the resolved split/days/length the caller already has in scope
   /// rather than re-resolving from the provider -- `_buildControls` only
@@ -35,7 +66,12 @@ class _GeneratorScreenState extends ConsumerState<GeneratorScreen> {
   /// the loading/error-flattening bug the debug getters still carry: a
   /// failed fetch reads null and falls back to full_body/3/45, and that
   /// fallback would go out as the generate payload.
-  Future<void> _generate(String split, int days, int length) async {
+  Future<void> _generate(
+    String split,
+    int days,
+    int length,
+    List<int> trainingDays,
+  ) async {
     final messenger = ScaffoldMessenger.of(context);
     final navigator = Navigator.of(context);
     // Captured for the same reason as messenger and navigator above: regenerate
@@ -44,7 +80,14 @@ class _GeneratorScreenState extends ConsumerState<GeneratorScreen> {
     // already be disposed. ref.invalidate would throw in that case -- the
     // container outlives the widget, so the refresh does too.
     final container = ProviderScope.containerOf(context, listen: false);
-    setState(() => _busy = true);
+    // The building screen's first frame is the one this setState schedules,
+    // so the hold below is measured from here.
+    final since = DateTime.now();
+    setState(() {
+      _busy = true;
+      _planReady = false;
+      _leadLabel = _describeChoice(split, trainingDays, days);
+    });
     try {
       await ref.read(planRepositoryProvider).regenerate(
             splitStyle: split,
@@ -53,8 +96,18 @@ class _GeneratorScreenState extends ConsumerState<GeneratorScreen> {
           );
       // The plan changed underneath every screen that reads it, so the whole
       // provider is invalidated rather than patched: the Plan tab re-reads and
-      // renders the new day.
+      // renders the new day. Before the hold, so a user who backed out still
+      // gets the refresh at the moment the request lands.
       container.invalidate(activePlanProvider);
+      if (mounted) {
+        // The last row describes this call; it may tick now, and the hold is
+        // what gives the user time to see it do so. Held before the pop, not
+        // after: the pop swaps this screen out, so a wait on the far side of
+        // it would not be seen. Skipped when the user has already backed out
+        // -- there is no list left to read.
+        setState(() => _planReady = true);
+        await GeneratingPace.regenerate.hold(since);
+      }
       // Before the pop, and on the messenger captured above rather than one
       // looked up after it, so the message survives the screen leaving. The
       // "+" is global: generating from Home or Browse pops back to Home or
@@ -77,11 +130,20 @@ class _GeneratorScreenState extends ConsumerState<GeneratorScreen> {
   }
 
   /// The one place the fallback chain is written. Pure: two calls with the
-  /// same plan always agree, so nothing needs to cache what a previous build
-  /// computed for the debug getters below to stay honest.
-  ({String split, int days, int length}) _resolve(WorkoutPlan? plan) => (
+  /// same plan and trainingDays always agree, so nothing needs to cache what
+  /// a previous build computed for the debug getters below to stay honest.
+  ({String split, int days, int length}) _resolve(
+    WorkoutPlan? plan,
+    List<int> trainingDays,
+  ) =>
+      (
         split: _splitStyle ?? plan?.splitStyle ?? _defaultSplit,
-        days: _daysPerWeek ?? plan?.daysPerWeek ?? _defaultDays,
+        // The chosen days are what the user just said; the plan's stored count
+        // is a stale label until the next regeneration. Falling back to it
+        // when nothing is chosen is what stops an empty schedule being sent.
+        days: trainingDays.isNotEmpty
+            ? trainingDays.length
+            : (_daysPerWeek ?? plan?.daysPerWeek ?? _defaultDays),
         // Still resolved and still sent, even though nothing on this screen
         // sets it any more: omitting sessionLengthMin from the payload hands
         // the service's `overrides.sessionLengthMin || 45` a 60-minute plan
@@ -90,18 +152,59 @@ class _GeneratorScreenState extends ConsumerState<GeneratorScreen> {
         length: plan?.sessionLengthMin ?? _defaultLength,
       );
 
+  /// The lead row's sentence: what is actually being applied.
+  ///
+  /// Named days when there are any, because that is the choice the user made;
+  /// a count only when there are none, because a count is then all there is
+  /// to say.
+  static String _describeChoice(String split, List<int> days, int count) {
+    final label = splitStyles
+        .firstWhere((s) => s.value == split,
+            orElse: () => (value: split, label: describeSplit(split)))
+        .label;
+    if (days.isEmpty) {
+      return '$label, $count day${count == 1 ? '' : 's'} a week';
+    }
+    const names = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
+    return '$label, ${(days.toList()..sort()).map((d) => names[d - 1]).join(' · ')}';
+  }
+
+  /// The injuries this plan is being built around, spelled as the catalogue
+  /// spells them. Read in `build` rather than only in the controls: the
+  /// building screen names them too, and it is on screen at the one moment
+  /// the plan provider is mid-refetch.
+  List<String> _avoidingNames() {
+    final injuries =
+        ref.watch(profileProvider).value?.injuries ?? const <SelectedInjury>[];
+    final options =
+        ref.watch(injuryOptionsProvider).value ?? const <InjuryOption>[];
+    return [
+      for (final selected in injuries)
+        for (final option in options)
+          if (option.injuryId == selected.injuryId)
+            injuryLabel(option, selected),
+    ];
+  }
+
   // Read by the widget tests, which drive the controls and assert the state
   // they produce rather than reaching into private fields by name.
-  String get debugSplitStyle =>
-      _resolve(ref.read(activePlanProvider).value).split;
-  int get debugDaysPerWeek =>
-      _resolve(ref.read(activePlanProvider).value).days;
-  int get debugSessionLengthMin =>
-      _resolve(ref.read(activePlanProvider).value).length;
+  String get debugSplitStyle => _resolve(
+        ref.read(activePlanProvider).value,
+        ref.read(profileProvider).value?.trainingDays ?? const [],
+      ).split;
+  int get debugDaysPerWeek => _resolve(
+        ref.read(activePlanProvider).value,
+        ref.read(profileProvider).value?.trainingDays ?? const [],
+      ).days;
+  int get debugSessionLengthMin => _resolve(
+        ref.read(activePlanProvider).value,
+        ref.read(profileProvider).value?.trainingDays ?? const [],
+      ).length;
 
   @override
   Widget build(BuildContext context) {
     final asyncPlan = ref.watch(activePlanProvider);
+    final avoiding = _avoidingNames();
 
     return Scaffold(
       appBar: AppBar(
@@ -117,49 +220,82 @@ class _GeneratorScreenState extends ConsumerState<GeneratorScreen> {
       // plan", so generating really would discard whatever plan the user
       // has. Both states are handled explicitly here, before the fallback
       // chain -- and therefore the controls -- ever runs.
-      body: asyncPlan.when(
-        loading: () => const Center(child: CircularProgressIndicator()),
-        error: (error, _) => Center(
-          child: Padding(
-            padding: const EdgeInsets.all(24),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                const Text("Couldn't load your current plan.", textAlign: TextAlign.center),
-                const SizedBox(height: 6),
-                Text(describeError(error), textAlign: TextAlign.center),
-                const SizedBox(height: 12),
-                FsButton(
-                  label: 'Retry',
-                  small: true,
-                  kind: FsButtonKind.secondary,
-                  onPressed: () => ref.invalidate(activePlanProvider),
+      //
+      // A rebuild takes the body over rather than spinning inside the button:
+      // it is the same wait onboarding already explains, and a button that
+      // has been busy for eight seconds says nothing about what is being
+      // built. Checked ahead of `asyncPlan.when` deliberately -- the plan is
+      // invalidated the instant the rebuild lands, and reading it first would
+      // replace the finished checklist with a spinner just as its last row
+      // ticks. Poppable, unlike onboarding's: nothing here is half-written,
+      // and backing out of the slowest call in the app has always been
+      // allowed.
+      body: _busy
+          ? GeneratingView(
+              title: 'Rebuilding your plan…',
+              subtitle: 'Matching exercises to your split, your equipment, '
+                  'and your injuries.',
+              leadLabel: _leadLabel,
+              leadDone: true,
+              avoiding: avoiding,
+              planReady: _planReady,
+              pace: GeneratingPace.regenerate,
+              canPop: true,
+            )
+          : asyncPlan.when(
+              loading: () => const Center(child: CircularProgressIndicator()),
+              error: (error, _) => Center(
+                child: Padding(
+                  padding: const EdgeInsets.all(24),
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      const Text("Couldn't load your current plan.", textAlign: TextAlign.center),
+                      const SizedBox(height: 6),
+                      Text(describeError(error), textAlign: TextAlign.center),
+                      const SizedBox(height: 12),
+                      FsButton(
+                        label: 'Retry',
+                        small: true,
+                        kind: FsButtonKind.secondary,
+                        onPressed: () => ref.invalidate(activePlanProvider),
+                      ),
+                    ],
+                  ),
                 ),
-              ],
+              ),
+              data: (plan) => _buildControls(context, plan, avoiding),
             ),
-          ),
-        ),
-        data: (plan) => _buildControls(context, plan),
-      ),
     );
   }
 
-  Widget _buildControls(BuildContext context, WorkoutPlan? plan) {
+  Widget _buildControls(
+    BuildContext context,
+    WorkoutPlan? plan,
+    List<String> avoiding,
+  ) {
     final t = context.fs;
-    final (:split, :days, :length) = _resolve(plan);
+    // The AsyncValue, for the reason the plan's is unwrapped above: the plan
+    // can resolve while the profile has not, and `.value?.trainingDays ?? []`
+    // reads identically for "loading", "failed" and "none chosen". Only the
+    // last of those is an answer, and PUT /profile/training-days replaces the
+    // whole set -- so a tap on a row that is blank because nothing arrived
+    // sends one day and destroys the rest, with no undo.
+    //
+    // `hasValue` rather than a bare AsyncData check, so a refresh or a
+    // failure that still carries the last good profile keeps the row live:
+    // what it is showing then is real.
+    final asyncProfile = ref.watch(profileProvider);
+    final daysKnown = asyncProfile.hasValue;
+    final trainingDays = asyncProfile.value?.trainingDays ?? const <int>[];
+    final (:split, :days, :length) = _resolve(plan, trainingDays);
 
-    final injuries = ref.watch(profileProvider).value?.injuries ?? const <SelectedInjury>[];
     // The AsyncValue, not `.value ?? const []`: that flattening reads the
     // same for "still loading", "failed" and "no regions exist", and the
     // describe card reports what it recognised -- so under a failed
     // catalogue it would state that nothing the user typed matched.
     final asyncOptions = ref.watch(injuryOptionsProvider);
     final options = asyncOptions.value ?? const <InjuryOption>[];
-    final avoiding = [
-      for (final selected in injuries)
-        for (final option in options)
-          if (option.injuryId == selected.injuryId) injuryLabel(option, selected),
-    ];
 
     return ListView(
       padding: const EdgeInsets.fromLTRB(20, 12, 20, 24),
@@ -176,6 +312,12 @@ class _GeneratorScreenState extends ConsumerState<GeneratorScreen> {
           ),
           options: options,
           catalogueFailed: asyncOptions.hasError,
+          // So the card can say when a day count it read has been overruled
+          // by the picker below it. Still assigned to `_daysPerWeek` either
+          // way -- it is what the fallback chain takes the moment the last
+          // weekday is unticked -- but a value that changes nothing the user
+          // can currently see has to be named rather than swallowed.
+          trainingDays: trainingDays,
           onApply: (parsed) => setState(() {
             // Only what the sentence actually resolved. Assigning a null
             // through would reset a control the user set by hand to the
@@ -202,35 +344,47 @@ class _GeneratorScreenState extends ConsumerState<GeneratorScreen> {
           ],
         ),
         const SizedBox(height: 22),
-        // Label and count on one line, as the mockup draws them and as
-        // level_step.dart already pairs an eyebrow with its value. Seven
-        // identical cells filled up to a boundary is a bar chart; the
-        // number is the part a user can read without counting.
-        Row(
-          mainAxisAlignment: MainAxisAlignment.spaceBetween,
-          children: [
-            const Flexible(child: FsEyebrow('Days / week')),
-            Text(
-              '$days',
-              key: const Key('gen.days.value'),
-              style: fsNum(t).copyWith(color: t.accent),
-            ),
-          ],
-        ),
+        const FsEyebrow('Training days'),
         const SizedBox(height: 10),
-        _DaysRow(
-          selected: days,
-          onSelected: (d) => setState(() => _daysPerWeek = d),
+        TrainingDaysRow(
+          selected: trainingDays,
+          busyWeekday: _savingWeekday,
+          enabled: daysKnown,
+          onChanged: (next) {
+            // The tapped day is the one that differs between the two sets.
+            // The row toggles exactly one, so there is always exactly one --
+            // but `.first` on an empty difference throws a StateError, and
+            // taking the whole screen down over two sets that merely matched
+            // is not a trade worth leaving open.
+            final before = trainingDays.toSet();
+            final after = next.toSet();
+            final changed =
+                before.difference(after).followedBy(after.difference(before));
+            if (changed.isEmpty) return;
+            _setTrainingDays(next, changed.first);
+          },
         ),
+        if (!daysKnown) ...[
+          const SizedBox(height: 8),
+          Text(
+            asyncProfile.hasError
+                ? "Couldn't load your training days, so they can't be changed "
+                    'here. ${describeError(asyncProfile.error!)}'
+                : 'Loading your training days…',
+            key: const Key('gen.trainingDays.unavailable'),
+            style: TextStyle(
+              fontSize: 12,
+              color: asyncProfile.hasError ? t.red : t.text3,
+              height: 1.35,
+            ),
+          ),
+        ],
         const SizedBox(height: 22),
         // A readout, not a control. The service derives length from goal and
         // fitness level and only honours an override so the prototype's
         // slider would not lie; offering stops here invited a choice it may
         // not keep. Shown rather than dropped because it is part of
         // describing the plan about to be replaced.
-        //
-        // Same shape as the days readout above, which is the pattern this
-        // screen already uses for a label paired with its value.
         Row(
           mainAxisAlignment: MainAxisAlignment.spaceBetween,
           children: [
@@ -269,73 +423,14 @@ class _GeneratorScreenState extends ConsumerState<GeneratorScreen> {
         FsButton(
           key: const Key('gen.generate'),
           label: 'Generate plan',
-          busy: _busy,
-          onPressed: () => _generate(split, days, length),
+          // No in-button spinner: `_busy` takes the whole body over with the
+          // building screen, so this button is not on screen to spin.
+          onPressed: () => _generate(split, days, length, trainingDays),
         ),
       ],
     );
   }
 }
-
-/// The 1-7 row, filled up to the selection as the prototype draws it.
-class _DaysRow extends StatelessWidget {
-  const _DaysRow({required this.selected, required this.onSelected});
-
-  final int selected;
-
-  /// Reports the COUNT a tap produces, not the cell that was tapped -- the
-  /// two differ only on the lit top cell, and keeping the difference here
-  /// keeps it beside the fill rule it mirrors.
-  final ValueChanged<int> onSelected;
-
-  /// Minimum days a plan can have. The service clamps to the same floor, so
-  /// stepping below it would promise something the generator will not build.
-  static const int _minDays = 1;
-
-  /// A row filled 1..N reads as one boundary, so the only cell a tap can
-  /// sensibly "unfill" is the boundary itself: tapping the count gives a day
-  /// back. Every lower cell still selects outright -- tapping 2 when 4 is
-  /// chosen means 2, not 1.
-  int _countFor(int tapped) =>
-      tapped == selected ? (tapped - 1).clamp(_minDays, tapped) : tapped;
-
-  @override
-  Widget build(BuildContext context) {
-    final t = context.fs;
-
-    return Row(
-      children: [
-        for (var d = 1; d <= 7; d += 1) ...[
-          if (d > 1) const SizedBox(width: 6),
-          Expanded(
-            child: InkWell(
-              key: Key('gen.day.$d'),
-              onTap: () => onSelected(_countFor(d)),
-              borderRadius: BorderRadius.circular(8),
-              child: Container(
-                height: 30,
-                alignment: Alignment.center,
-                decoration: BoxDecoration(
-                  color: d <= selected ? t.accent : t.surface2,
-                  borderRadius: BorderRadius.circular(8),
-                ),
-                child: Text(
-                  '$d',
-                  style: TextStyle(
-                    fontSize: 11,
-                    fontWeight: FontWeight.w600,
-                    color: d <= selected ? t.onAccent : t.text3,
-                  ),
-                ),
-              ),
-            ),
-          ),
-        ],
-      ],
-    );
-  }
-}
-
 
 /// The prototype's "Describe your week" card.
 ///
@@ -348,6 +443,7 @@ class _DescribeCard extends ConsumerStatefulWidget {
     required this.composed,
     required this.options,
     required this.catalogueFailed,
+    required this.trainingDays,
     required this.onApply,
   });
 
@@ -361,6 +457,10 @@ class _DescribeCard extends ConsumerStatefulWidget {
   /// catalogue: one means "nothing matched", the other means "nothing could
   /// be checked", and only one of those is safe to say.
   final bool catalogueFailed;
+
+  /// The weekdays currently ticked below. Read only to decide whether a day
+  /// count in the sentence has anywhere to land.
+  final List<int> trainingDays;
 
   final ValueChanged<WeekDescription> onApply;
 
@@ -502,6 +602,16 @@ class _DescribeCardState extends ConsumerState<_DescribeCard> {
   Widget _result(FsTokens t, WeekDescription parsed) {
     final note = TextStyle(fontSize: 12, color: t.text3, height: 1.35);
 
+    // The parser's topics plus the one only this screen can see. Recomputed
+    // on every build rather than captured at Apply, because ticking a
+    // weekday afterwards changes whether the count landed -- and a note that
+    // went stale would be the same silent contradiction it exists to stop.
+    final notes = [
+      ...parsed.elsewhere,
+      if (parsed.daysPerWeek != null && widget.trainingDays.isNotEmpty)
+        WeekTopic.dayCount,
+    ];
+
     return Column(
       key: const Key('gen.describe.result'),
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -557,12 +667,12 @@ class _DescribeCardState extends ConsumerState<_DescribeCard> {
             ),
           ),
 
-        if (parsed.elsewhere.isNotEmpty)
+        if (notes.isNotEmpty)
           Padding(
             key: const Key('gen.describe.elsewhere'),
             padding: const EdgeInsets.only(top: 6),
             child: Text(
-              parsed.elsewhere.map(_topicNote).join(' '),
+              notes.map(_topicNote).join(' '),
               style: note,
             ),
           ),
@@ -575,5 +685,8 @@ class _DescribeCardState extends ConsumerState<_DescribeCard> {
         WeekTopic.sessionLength =>
           'Session length follows your plan, so it is shown rather than chosen.',
         WeekTopic.goal => 'Your goal is set in your profile.',
+        WeekTopic.dayCount =>
+          'How many days you train follows the weekdays you have chosen '
+              'below, so that count was not applied.',
       };
 }

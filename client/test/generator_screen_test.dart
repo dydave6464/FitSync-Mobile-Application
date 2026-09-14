@@ -7,10 +7,12 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:fitsync/core/api_exception.dart';
 import 'package:fitsync/core/theme.dart';
 import 'package:fitsync/core/widgets/fs_kit.dart';
+import 'package:fitsync/features/onboarding/presentation/generating_view.dart';
 import 'package:fitsync/features/plans/data/plan_repository.dart';
 import 'package:fitsync/features/plans/domain/workout_plan.dart';
 import 'package:fitsync/features/plans/presentation/generator_screen.dart';
 import 'package:fitsync/features/plans/presentation/providers.dart';
+import 'package:fitsync/features/plans/presentation/widgets/training_days_row.dart';
 import 'package:fitsync/features/profile/data/profile_repository.dart';
 import 'package:fitsync/features/profile/domain/profile.dart';
 import 'package:fitsync/features/profile/presentation/providers.dart';
@@ -42,6 +44,10 @@ class FakePlanRepository implements PlanRepository {
 
   Map<String, dynamic>? sent;
 
+  /// The days-per-week value the last `regenerate` call carried, read out of
+  /// [sent] so a test does not have to know its key.
+  int? get lastDaysPerWeek => sent?['daysPerWeek'] as int?;
+
   @override
   String get baseUrl => 'http://test.local';
 
@@ -66,20 +72,63 @@ class FakePlanRepository implements PlanRepository {
       throw UnimplementedError('${invocation.memberName} is not used by these tests');
 }
 
+/// How far the profile fetch got. The screen has to tell all three apart:
+/// only [loaded] means the blank cells on screen are the user's real answer.
+enum _ProfileLoad { loaded, pending, failed }
+
 /// A profile carrying exactly the injuries a test wants the card to render.
 /// Everything else is a fixed stand-in -- the card only ever reads
 /// `.injuries`.
 class _FakeProfileNotifier extends ProfileNotifier {
-  _FakeProfileNotifier(this.injuries, {this.goal});
+  _FakeProfileNotifier(
+    this.injuries, {
+    this.goal,
+    this.trainingDays = const [],
+    this.failTrainingDays = false,
+    this.load = _ProfileLoad.loaded,
+  });
 
   final List<SelectedInjury> injuries;
   final String? goal;
+  final List<int> trainingDays;
+
+  /// When set, `setTrainingDays` throws instead of writing -- lets a test
+  /// prove a failed write leaves the tapped day exactly as it was.
+  final bool failTrainingDays;
+
+  final _ProfileLoad load;
+
+  /// The weekdays the screen last asked to save, recorded whether or not the
+  /// write went on to succeed.
+  List<int>? lastTrainingDays;
 
   @override
-  Future<Profile> build() async => _profileWith(injuries, goal);
+  Future<Profile> build() async => switch (load) {
+        _ProfileLoad.loaded =>
+          _profileWith(injuries, goal, trainingDays: trainingDays),
+        _ProfileLoad.pending => Completer<Profile>().future,
+        // A plain Exception, not ApiException(NETWORK_ERROR): that is the one
+        // code apiRetryPolicy retries on its own, which would leave the
+        // provider looping rather than settling into the error state.
+        _ProfileLoad.failed => throw Exception('profile down'),
+      };
+
+  @override
+  Future<void> setTrainingDays(List<int> weekdays) async {
+    lastTrainingDays = weekdays;
+    if (failTrainingDays) {
+      throw Exception('could not save training days');
+    }
+    state = AsyncData(_profileWith(injuries, goal, trainingDays: weekdays));
+  }
 }
 
-Profile _profileWith(List<SelectedInjury> injuries, String? goal) => Profile(
+Profile _profileWith(
+  List<SelectedInjury> injuries,
+  String? goal, {
+  List<int> trainingDays = const [],
+}) =>
+    Profile(
       userId: 1,
       email: 'test@example.com',
       fullName: 'Test User',
@@ -88,6 +137,7 @@ Profile _profileWith(List<SelectedInjury> injuries, String? goal) => Profile(
       notificationsEnabled: true,
       equipment: const [],
       injuries: injuries,
+      trainingDays: trainingDays,
       mainGoal: goal,
     );
 
@@ -114,6 +164,15 @@ class FakeProfileRepository implements ProfileRepository {
       throw UnimplementedError('${invocation.memberName} is not used by these tests');
 }
 
+/// The profile notifier fake the running test's `_pump` installed. Set fresh
+/// on every call so a test can assert what it recorded -- `_profile.
+/// lastTrainingDays` -- without threading the fake through by hand.
+late _FakeProfileNotifier _profile;
+
+/// The plan repository fake the running test's `_pump` installed, whether or
+/// not the test supplied its own.
+late FakePlanRepository _plans;
+
 Future<void> _pump(
   WidgetTester tester, {
   WorkoutPlan? plan,
@@ -123,16 +182,30 @@ Future<void> _pump(
   List<InjuryOption> injuryOptions = const [],
   bool injuryOptionsFail = false,
   String? goal,
+  List<int> trainingDays = const [],
+  bool failTrainingDays = false,
+  _ProfileLoad profileLoad = _ProfileLoad.loaded,
 }) async {
+  _profile = _FakeProfileNotifier(
+    injuries,
+    goal: goal,
+    trainingDays: trainingDays,
+    failTrainingDays: failTrainingDays,
+    load: profileLoad,
+  );
+  // Installed even when the test supplies nothing of its own -- ticking a
+  // weekday and hitting Generate with no repo passed in must still have
+  // somewhere real to land rather than reaching the network.
+  _plans = repo is FakePlanRepository ? repo : FakePlanRepository();
+
   await tester.pumpWidget(
     ProviderScope(
       overrides: [
         activePlanProvider.overrideWith((ref) async => plan),
-        if (repo != null) planRepositoryProvider.overrideWithValue(repo),
+        planRepositoryProvider.overrideWithValue(_plans),
         if (profileRepo != null)
           profileRepositoryProvider.overrideWithValue(profileRepo),
-        profileProvider
-            .overrideWith(() => _FakeProfileNotifier(injuries, goal: goal)),
+        profileProvider.overrideWith(() => _profile),
         injuryOptionsProvider.overrideWith((ref) async {
           if (injuryOptionsFail) throw Exception('catalogue down');
           return injuryOptions;
@@ -156,19 +229,13 @@ bool _chipOn(WidgetTester tester, String label) => tester
     .firstWhere((c) => c.label == label)
     .selected;
 
-/// Whether day [d]'s cell is painted in the accent colour, i.e. counted as
-/// part of the selected run. Every cell 1-7 always renders its number; fill
-/// colour is the only signal that a day is selected.
-bool _dayFilled(WidgetTester tester, int d) {
-  final container = tester.widget<Container>(
-    find.descendant(
-      of: find.byKey(Key('gen.day.$d')),
-      matching: find.byType(Container),
-    ),
-  );
-  final accent = fsLightTheme().extension<FsTokens>()!.accent;
-  return (container.decoration as BoxDecoration).color == accent;
-}
+/// How many weekday cells are rendered ticked. The sentence above the row
+/// and the row itself have to agree, and only a count read off the cells can
+/// say whether they do.
+int _ticked(WidgetTester tester) => tester
+    .widgetList<TrainingDayCell>(find.byType(TrainingDayCell))
+    .where((cell) => cell.selected)
+    .length;
 
 /// What the screen says on the way out. Spelled once here so the assertion
 /// and the widget cannot drift apart while both still pass.
@@ -199,12 +266,6 @@ void main() {
     // actually see.
     expect(_chipOn(tester, 'Push / Pull / Legs'), isTrue);
     expect(_chipOn(tester, 'Full body'), isFalse);
-    for (var d = 1; d <= 4; d += 1) {
-      expect(_dayFilled(tester, d), isTrue);
-    }
-    for (var d = 5; d <= 7; d += 1) {
-      expect(_dayFilled(tester, d), isFalse);
-    }
     expect(
       tester.widget<Text>(find.byKey(const Key('gen.length.value'))).data,
       '60 min',
@@ -229,8 +290,6 @@ void main() {
       findsNWidgets(4),
     );
     expect(_chipOn(tester, 'Full body'), isTrue);
-    expect(_dayFilled(tester, 3), isTrue);
-    expect(_dayFilled(tester, 4), isFalse);
     expect(
       tester.widget<Text>(find.byKey(const Key('gen.length.value'))).data,
       '45 min',
@@ -281,89 +340,246 @@ void main() {
     );
   });
 
-  testWidgets('days one through seven are offered', (tester) async {
-    await _pump(tester, plan: _pplPlan);
+  testWidgets('ticking a weekday adds just that day', (tester) async {
+    // The behaviour fill-to-N could not express: days are chosen
+    // individually, so a rest day in the middle of the week is expressible.
+    await _pump(tester, plan: _pplPlan, trainingDays: const [1, 3]);
 
-    for (var d = 1; d <= 7; d += 1) {
-      expect(find.byKey(Key('gen.day.$d')), findsOneWidget);
-    }
-    expect(find.byKey(const Key('gen.day.8')), findsNothing);
+    await tester.tap(find.byKey(const Key('weekday.5')));
+    await tester.pumpAndSettle();
+
+    expect(_profile.lastTrainingDays, [1, 3, 5]);
   });
 
-  testWidgets('the days label carries the number chosen', (tester) async {
-    // The mockup pairs the label with the count -- seven identical cells
-    // filled up to a boundary is a bar chart, not a readout, and counting
-    // the filled ones is work the screen can do for the user.
-    await _pump(tester, plan: _pplPlan); // opens on 4
+  testWidgets('ticking a chosen weekday removes it', (tester) async {
+    await _pump(tester, plan: _pplPlan, trainingDays: const [1, 3, 5]);
 
-    final readout = find.byKey(const Key('gen.days.value'));
-    expect(readout, findsOneWidget);
-    expect(tester.widget<Text>(readout).data, '4');
+    await tester.tap(find.byKey(const Key('weekday.3')));
+    await tester.pumpAndSettle();
 
-    await tester.tap(find.byKey(const Key('gen.day.6')));
-    await tester.pump();
-
-    expect(tester.widget<Text>(readout).data, '6',
-        reason: 'a readout that does not follow the control is worse than none');
+    expect(_profile.lastTrainingDays, [1, 5]);
   });
 
-  testWidgets('tapping a day selects it', (tester) async {
-    await _pump(tester, plan: _pplPlan);
-
-    await tester.tap(find.byKey(const Key('gen.day.6')));
-    await tester.pump();
-
-    final screen = tester.state(find.byType(GeneratorScreen)) as dynamic;
-    expect(screen.debugDaysPerWeek, 6);
-    for (var d = 1; d <= 6; d += 1) {
-      expect(_dayFilled(tester, d), isTrue);
-    }
-    expect(_dayFilled(tester, 7), isFalse);
-  });
-
-  testWidgets('tapping the day count that is already chosen gives a day back',
+  testWidgets('a failed write leaves the day as it was and says so',
       (tester) async {
-    // The row fills 1..N, so tapping the lit top cell used to do nothing at
-    // all and only tapping a LOWER number appeared to deselect -- tap 3 when
-    // 3 is chosen and the control just sat there.
-    await _pump(tester, plan: _pplPlan); // opens on 4
+    // Nothing may look saved that is not.
+    await _pump(tester, plan: _pplPlan, trainingDays: const [1],
+        failTrainingDays: true);
 
-    await tester.tap(find.byKey(const Key('gen.day.4')));
-    await tester.pump();
+    await tester.tap(find.byKey(const Key('weekday.5')));
+    await tester.pumpAndSettle();
 
-    final screen = tester.state(find.byType(GeneratorScreen)) as dynamic;
-    expect(screen.debugDaysPerWeek, 3);
-    expect(_dayFilled(tester, 3), isTrue);
-    expect(_dayFilled(tester, 4), isFalse);
+    expect(find.textContaining('Could not'), findsOneWidget);
+    final failedCell = tester.widget<TrainingDayCell>(
+        find.byKey(const Key('weekday.5')));
+    expect(failedCell.selected, isFalse);
+    // The day that WAS stored must still render selected -- proves the row
+    // reflects what is saved, not just that a failed tap stays untied.
+    final storedCell = tester.widget<TrainingDayCell>(
+        find.byKey(const Key('weekday.1')));
+    expect(storedCell.selected, isTrue);
   });
 
-  testWidgets('a day below the count still selects rather than steps down',
+  testWidgets('a set that changed nothing is not a crash', (tester) async {
+    // The screen works out which day was tapped from the symmetric
+    // difference of the two sets and takes `.first`. The row toggles exactly
+    // one day, so today there is always exactly one -- but an empty
+    // difference makes `.first` throw a StateError, and taking the whole
+    // generator down over two sets that merely matched is not a trade worth
+    // leaving open. Driven through the callback rather than a tap, because
+    // no tap can currently produce it.
+    await _pump(tester, plan: _pplPlan, trainingDays: const [1, 3]);
+
+    tester
+        .widget<TrainingDaysRow>(find.byType(TrainingDaysRow))
+        .onChanged(const [1, 3]);
+    await tester.pumpAndSettle();
+
+    expect(tester.takeException(), isNull);
+    expect(_profile.lastTrainingDays, isNull,
+        reason: 'nothing changed, so there is nothing to save');
+  });
+
+  testWidgets('a tap does nothing while the profile is still loading',
       (tester) async {
-    // Step-down applies only to the cell that IS the count. Tapping 2 when 4
-    // is chosen must land on 2, not 1.
-    await _pump(tester, plan: _pplPlan); // opens on 4
+    // PUT /profile/training-days replaces the whole set. The plan can resolve
+    // while the profile has not, and the row then renders seven blank cells
+    // that say "none chosen" when the truth is "not known yet" -- one tap
+    // would send a single day and destroy whatever the user really had.
+    await _pump(tester, plan: _pplPlan, profileLoad: _ProfileLoad.pending);
 
-    await tester.tap(find.byKey(const Key('gen.day.2')));
+    await tester.tap(find.byKey(const Key('weekday.5')));
     await tester.pump();
 
-    final screen = tester.state(find.byType(GeneratorScreen)) as dynamic;
-    expect(screen.debugDaysPerWeek, 2);
+    expect(_profile.lastTrainingDays, isNull,
+        reason: 'a blank row that is only blank because nothing arrived '
+            'must not be able to write');
+    expect(find.byKey(const Key('gen.trainingDays.unavailable')), findsOneWidget,
+        reason: 'a row that silently ignores taps reads as broken');
   });
 
-  testWidgets('the day count floors at one', (tester) async {
-    // A plan with no days is not a plan, and parameters.derive clamps to
-    // MIN_DAYS_PER_WEEK regardless -- offering zero would lie about what the
-    // generator is going to build.
-    await _pump(tester, plan: _pplPlan);
+  testWidgets('a failed profile leaves the row unusable and says why',
+      (tester) async {
+    // Same destructive tap, and the one state that never resolves on its own.
+    await _pump(tester, plan: _pplPlan, profileLoad: _ProfileLoad.failed);
 
-    await tester.tap(find.byKey(const Key('gen.day.1')));
-    await tester.pump();
-    await tester.tap(find.byKey(const Key('gen.day.1')));
+    await tester.tap(find.byKey(const Key('weekday.5')));
     await tester.pump();
 
-    final screen = tester.state(find.byType(GeneratorScreen)) as dynamic;
-    expect(screen.debugDaysPerWeek, 1);
-    expect(_dayFilled(tester, 1), isTrue);
+    expect(_profile.lastTrainingDays, isNull);
+    expect(
+      tester
+          .widget<Text>(find.byKey(const Key('gen.trainingDays.unavailable')))
+          .data,
+      contains("Couldn't load"),
+    );
+    expect(
+      tester.widget<TrainingDaysRow>(find.byType(TrainingDaysRow)).enabled,
+      isFalse,
+    );
+  });
+
+  testWidgets('a loaded profile with no days chosen still takes taps',
+      (tester) async {
+    // Empty is a real answer, and the whole point of separating it from "not
+    // known": disabling on emptiness would make the first day unpickable.
+    await _pump(tester, plan: _pplPlan, trainingDays: const []);
+
+    await tester.tap(find.byKey(const Key('weekday.5')));
+    await tester.pumpAndSettle();
+
+    expect(_profile.lastTrainingDays, [5]);
+    expect(find.byKey(const Key('gen.trainingDays.unavailable')), findsNothing);
+  });
+
+  testWidgets('generate sends the number of chosen days', (tester) async {
+    await _pump(tester, plan: _pplPlan, trainingDays: const [1, 3, 5]);
+
+    await tester.tap(find.byKey(const Key('gen.generate')));
+    await tester.pumpAndSettle();
+
+    expect(_plans.lastDaysPerWeek, 3);
+  });
+
+  testWidgets('with no days chosen generate falls back to the plan count',
+      (tester) async {
+    // The payload is never sent an empty schedule.
+    await _pump(tester, plan: _pplPlan, trainingDays: const []);
+
+    await tester.tap(find.byKey(const Key('gen.generate')));
+    await tester.pumpAndSettle();
+
+    expect(_plans.lastDaysPerWeek, _pplPlan.daysPerWeek);
+  });
+
+  testWidgets('generating shows the building screen, not just a busy button',
+      (tester) async {
+    await _pump(tester, plan: _pplPlan, trainingDays: const [1, 3, 5]);
+
+    await tester.tap(find.byKey(const Key('gen.generate')));
+    await tester.pump();
+
+    expect(find.text('Rebuilding your plan…'), findsOneWidget);
+    expect(find.textContaining('Mon · Wed · Fri'), findsOneWidget);
+
+    await tester.pumpAndSettle();
+  });
+
+  testWidgets('with no days chosen the lead row counts them instead',
+      (tester) async {
+    // The lead row has one job -- say what is being applied -- and the plan's
+    // own count is what is being applied when no weekday is ticked.
+    await _pump(tester, plan: _pplPlan, trainingDays: const []);
+
+    await tester.tap(find.byKey(const Key('gen.generate')));
+    await tester.pump();
+
+    expect(find.text('Push / Pull / Legs, 4 days a week'), findsOneWidget);
+
+    await tester.pumpAndSettle();
+  });
+
+  testWidgets('the building screen names the injuries it is working around',
+      (tester) async {
+    // Row two is the injury row in both of its states, whether or not the
+    // user has chosen weekdays.
+    await _pump(
+      tester,
+      plan: _pplPlan,
+      trainingDays: const [2, 4],
+      injuries: const [SelectedInjury(injuryId: 3, side: 'right')],
+      injuryOptions: const [
+        InjuryOption(
+            injuryId: 3, name: 'Knee', isLateral: true, regionGroup: 'leg'),
+      ],
+    );
+
+    // The avoiding card pushes the button below the fold, and a ListView does
+    // not build what it is not showing.
+    // The list's own Scrollable, not the describe field's: `.first` is the
+    // outermost in tree order.
+    await tester.scrollUntilVisible(
+      find.byKey(const Key('gen.generate')),
+      200,
+      scrollable: find.byType(Scrollable).first,
+    );
+    await tester.tap(find.byKey(const Key('gen.generate')));
+    await tester.pump();
+
+    expect(find.text('Full body, Tue · Thu'), findsNothing,
+        reason: 'the split is the plan\'s, not a default');
+    expect(find.text('Push / Pull / Legs, Tue · Thu'), findsOneWidget);
+    expect(find.text('Avoiding Knee (right)'), findsOneWidget);
+
+    await tester.pumpAndSettle();
+  });
+
+  testWidgets('the building screen is held so a fast rebuild cannot flash past',
+      (tester) async {
+    await _pump(tester, plan: _pplPlan, trainingDays: const [1, 3, 5]);
+
+    await tester.tap(find.byKey(const Key('gen.generate')));
+    // Nothing is gated: regenerate resolves on the next microtask, which is
+    // the case the hold exists for.
+    await tester.pump();
+    await tester.pump(GeneratingPace.regenerate.revealAt.last +
+        const Duration(milliseconds: 100));
+
+    for (final row in ['lead', 'avoiding', 'exercises']) {
+      expect(find.byKey(Key('gen.$row.done')), findsOneWidget,
+          reason: 'row $row should have ticked by the last slot');
+    }
+    expect(find.byType(GeneratorScreen), findsOneWidget,
+        reason: 'a hold shorter than the schedule would hand off mid-sequence '
+            'and the last tick would never be seen');
+
+    await tester.pumpAndSettle();
+    expect(find.byType(GeneratorScreen), findsNothing,
+        reason: 'the hold delays the hand-off, never skips it');
+  });
+
+  testWidgets('the exercises row waits for the plan, not just for its slot',
+      (tester) async {
+    // Pacing, never progress. The request is held open past every slot; the
+    // row that describes it must not tick until it answers.
+    final done = Completer<WorkoutPlan>();
+    await _pump(
+      tester,
+      plan: _pplPlan,
+      repo: FakePlanRepository(pending: done.future),
+      trainingDays: const [1, 3, 5],
+    );
+
+    await tester.tap(find.byKey(const Key('gen.generate')));
+    await tester.pump();
+    await tester.pump(GeneratingPace.regenerate.minimumRun * 2);
+
+    expect(find.byKey(const Key('gen.lead.done')), findsOneWidget);
+    expect(find.byKey(const Key('gen.exercises.done')), findsNothing,
+        reason: 'this row is the work still running; ticking it would be a lie');
+
+    done.complete(_pplPlan);
+    await tester.pumpAndSettle();
   });
 
   testWidgets('the screen says generating replaces the current plan',
@@ -431,11 +647,10 @@ void main() {
 
   testWidgets('generate sends exactly what the controls show', (tester) async {
     final repo = FakePlanRepository();
-    await _pump(tester, plan: _pplPlan, repo: repo);
+    await _pump(tester, plan: _pplPlan, repo: repo,
+        trainingDays: const [1, 2, 3, 4, 5]);
 
     await tester.tap(find.text('Upper / Lower'));
-    await tester.pump();
-    await tester.tap(find.byKey(const Key('gen.day.5')));
     await tester.pump();
     await tester.tap(find.byKey(const Key('gen.generate')));
     await tester.pumpAndSettle();
@@ -489,6 +704,12 @@ void main() {
             return _pplPlan;
           }),
           planRepositoryProvider.overrideWithValue(repo),
+          // These three tests are about generate, refresh and pop, not about
+          // the profile -- but without an override it reaches for the network,
+          // fails, and the screen honestly grows a note saying the training
+          // days could not be loaded, which pushes Generate off a 600px
+          // viewport.
+          profileProvider.overrideWith(() => _FakeProfileNotifier(const [])),
         ],
         child: MaterialApp(theme: fsLightTheme(), home: const GeneratorScreen()),
       ),
@@ -516,6 +737,12 @@ void main() {
         overrides: [
           activePlanProvider.overrideWith((ref) async => _pplPlan),
           planRepositoryProvider.overrideWithValue(repo),
+          // These three tests are about generate, refresh and pop, not about
+          // the profile -- but without an override it reaches for the network,
+          // fails, and the screen honestly grows a note saying the training
+          // days could not be loaded, which pushes Generate off a 600px
+          // viewport.
+          profileProvider.overrideWith(() => _FakeProfileNotifier(const [])),
         ],
         child: MaterialApp(
           theme: fsLightTheme(),
@@ -567,6 +794,12 @@ void main() {
             return _pplPlan;
           }),
           planRepositoryProvider.overrideWithValue(repo),
+          // These three tests are about generate, refresh and pop, not about
+          // the profile -- but without an override it reaches for the network,
+          // fails, and the screen honestly grows a note saying the training
+          // days could not be loaded, which pushes Generate off a 600px
+          // viewport.
+          profileProvider.overrideWith(() => _FakeProfileNotifier(const [])),
         ],
       );
       addTearDown(container.dispose);
@@ -676,8 +909,6 @@ void main() {
       expect(screen.debugSplitStyle, 'full_body');
       expect(screen.debugDaysPerWeek, 2);
       expect(_chipOn(tester, 'Full body'), isTrue);
-      expect(_dayFilled(tester, 2), isTrue);
-      expect(_dayFilled(tester, 3), isFalse);
     });
 
     testWidgets('a sentence it cannot read leaves the controls alone',
@@ -823,6 +1054,52 @@ void main() {
 
       expect(find.byKey(const Key('gen.describe.catalogueError')), findsOneWidget);
       expect(find.byKey(const Key('gen.describe.add.3')), findsNothing);
+    });
+
+    testWidgets('the sentence counts the days the picker shows', (tester) async {
+      // The plan's stored label still says four; the user has ticked three.
+      // The card sits directly above the picker, so composing from the plan
+      // puts "train 4 days a week" over three ticked cells -- a contradiction
+      // on one screen, not the stale label section 4 of the design allows
+      // for. Generate would meanwhile send 3.
+      await _pump(tester, plan: _pplPlan, trainingDays: const [1, 3, 5]);
+
+      expect(fieldText(tester), contains('train 3 days a week'));
+      expect(_ticked(tester), 3,
+          reason: 'the sentence and the cells must describe one schedule');
+    });
+
+    testWidgets('a day count the picker overrules is reported, not swallowed',
+        (tester) async {
+      // _resolve takes the count from the chosen days, so the applied number
+      // has nowhere to land. It cannot simply be dropped: parsed.isEmpty is
+      // false -- the split did land -- so "Nothing in that changed your plan"
+      // never prints either, and Apply looks like it did nothing at all.
+      await _pump(tester, plan: _pplPlan, trainingDays: const [1, 3, 5]);
+
+      await write(tester, 'full body, 5 days a week');
+      await apply(tester);
+
+      expect(find.byKey(const Key('gen.describe.elsewhere')), findsOneWidget);
+      expect(find.textContaining('weekdays you have chosen'), findsOneWidget);
+
+      final screen = tester.state(find.byType(GeneratorScreen)) as dynamic;
+      expect(screen.debugDaysPerWeek, 3,
+          reason: 'the picker sets the count while any day is chosen');
+    });
+
+    testWidgets('with no days chosen the count lands and nothing is reported',
+        (tester) async {
+      // The other half of the pair: with nothing ticked the sentence's count
+      // IS what the controls take, so saying it went nowhere would be false.
+      await _pump(tester, plan: _pplPlan, trainingDays: const []);
+
+      await write(tester, 'full body, 5 days a week');
+      await apply(tester);
+
+      expect(find.byKey(const Key('gen.describe.elsewhere')), findsNothing);
+      final screen = tester.state(find.byType(GeneratorScreen)) as dynamic;
+      expect(screen.debugDaysPerWeek, 5);
     });
 
     testWidgets('a topic this screen does not own is named, not dropped',

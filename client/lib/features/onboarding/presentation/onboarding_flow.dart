@@ -127,11 +127,8 @@ class _OnboardingFlowState extends ConsumerState<OnboardingFlow> {
 
   /// Holds the generating screen until its last row has ticked and been seen.
   ///
-  /// The screen paces its own reveals, so handing off on the server's timing
-  /// alone would cut the list off mid-sequence — usually before a single row
-  /// had ticked, since the round trip can finish in under a second. Two cases:
-  /// a fast build waits out the whole schedule, and a slow one has already
-  /// passed the last slot, so it only owes the tail.
+  /// The arithmetic lives on [GeneratingPace] because the generator screen
+  /// holds its own reveal the same way, at its own pace.
   ///
   /// Only the success path waits. Holding an error back would delay the one
   /// thing the user actually needs to see.
@@ -139,11 +136,7 @@ class _OnboardingFlowState extends ConsumerState<OnboardingFlow> {
     final since = _generatingSince;
     if (since == null) return;
 
-    final elapsed = DateTime.now().difference(since);
-    final remaining = elapsed < GeneratingView.revealAt.last
-        ? GeneratingView.minimumRun - elapsed
-        : GeneratingView.tail;
-    if (remaining > Duration.zero) await Future<void>.delayed(remaining);
+    await GeneratingPace.onboarding.hold(since);
   }
 
   /// The reported injuries, by name. [SelectedInjury] carries only an id, so
@@ -257,9 +250,13 @@ class _OnboardingFlowState extends ConsumerState<OnboardingFlow> {
         // offer a Back and a Skip that cannot be honoured mid-write.
         if (_busy && _index == _total - 1) {
           return GeneratingView(
-            saved: _saved,
-            planReady: _planReady,
+            title: 'Building your plan…',
+            subtitle: 'Matching exercises to your goals, equipment, '
+                'and injury history.',
+            leadLabel: 'Profile saved',
+            leadDone: _saved,
             avoiding: _avoidingNames(),
+            planReady: _planReady,
           );
         }
 

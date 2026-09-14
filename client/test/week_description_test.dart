@@ -212,7 +212,11 @@ void main() {
       exercises: [],
     );
 
-    Profile profileWith({String? goal, List<SelectedInjury> injuries = const []}) =>
+    Profile profileWith({
+      String? goal,
+      List<SelectedInjury> injuries = const [],
+      List<int> trainingDays = const [],
+    }) =>
         Profile(
           userId: 1,
           email: 'a@b.c',
@@ -222,6 +226,7 @@ void main() {
           notificationsEnabled: true,
           equipment: const [],
           injuries: injuries,
+          trainingDays: trainingDays,
           mainGoal: goal,
         );
 
@@ -234,6 +239,42 @@ void main() {
       expect(text, contains('build muscle'));
       expect(text, contains('4 days'));
       expect(text, contains('push / pull / legs'));
+    });
+
+    test('counts the chosen days rather than the plan\'s stale label', () {
+      // The profile is where the days live and the plan's count only catches
+      // up on the next regeneration. The generator renders this sentence
+      // directly above the picker, so the two must not disagree.
+      final text = composeWeekDescription(
+        profile: profileWith(trainingDays: const [1, 3, 5]),
+        plan: plan, // still labelled 4 days
+        options: _options,
+      );
+      expect(text, contains('train 3 days a week'));
+      expect(text, isNot(contains('4 days')));
+    });
+
+    test('falls back to the plan count when no day is chosen', () {
+      // None chosen is a real answer, not a missing one -- and it is exactly
+      // when the plan's own count is the best thing there is to say.
+      final text = composeWeekDescription(
+        profile: profileWith(trainingDays: const []),
+        plan: plan,
+        options: _options,
+      );
+      expect(text, contains('train 4 days a week'));
+    });
+
+    test('a sentence composed from chosen days reads back as that count', () {
+      // The round trip has to hold for the chosen-days sentence too,
+      // otherwise Apply resolves it into a different number than the one
+      // the picker is showing.
+      final text = composeWeekDescription(
+        profile: profileWith(trainingDays: const [2, 4]),
+        plan: plan,
+        options: _options,
+      );
+      expect(parseWeekDescription(text, _options).daysPerWeek, 2);
     });
 
     test('names the injuries being protected, with their sides', () {

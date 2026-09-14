@@ -54,6 +54,8 @@ class SequenceProfileRepository implements ProfileRepository {
   Future<Profile> setInjuries(List<SelectedInjury> injuries) =>
       throw UnimplementedError();
   @override
+  Future<Profile> setTrainingDays(List<int> weekdays) => throw UnimplementedError();
+  @override
   Future<CompletedOnboarding> completeOnboarding() => throw UnimplementedError();
   @override
   Future<List<EquipmentOption>> equipmentOptions() async => const [];
