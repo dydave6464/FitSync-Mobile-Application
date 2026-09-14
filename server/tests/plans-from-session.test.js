@@ -338,7 +338,7 @@ test('building a plan out of a completed session', async (t) => {
     assert.equal(day.target_reps, '12');
   });
 
-  await t.test('the most frequent rep count wins, ties going to the higher', async () => {
+  await t.test('the most frequently logged rep count wins', async () => {
     const userId = await freshUser();
     const [s] = await pool.query(
       `INSERT INTO workout_sessions
@@ -364,6 +364,71 @@ test('building a plan out of a completed session', async (t) => {
 
     const [day] = await planDays((await activePlan(userId)).plan_id);
     assert.equal(day.target_sets, 3);
+    // 10 appears twice against 8's once -- n=2 beats n=1 outright, so this
+    // is not a tie. See the two genuine-tie subtests below for that case.
+    assert.equal(day.target_reps, '10');
+  });
+
+  await t.test('a genuine tie between rep counts goes to the higher, logged low then high', async () => {
+    // One set at 8 reps, one set at 10 -- an honest tie in set count (n=1
+    // each), unlike the n=2-vs-n=1 case above. A user who did 8 then 10 is
+    // more likely chasing 10 than settling for 8, so the higher value wins.
+    const userId = await freshUser();
+    const [s] = await pool.query(
+      `INSERT INTO workout_sessions
+         (user_id, status, session_date, started_at, duration_min, total_volume_kg)
+       VALUES (?, 'completed', CURDATE(), NOW(), 45, 500)`,
+      [userId],
+    );
+    await pool.query(
+      'INSERT INTO session_exercises (session_id, exercise_id, order_no) VALUES (?, ?, 1)',
+      [s.insertId, live[0].exercise_id],
+    );
+    for (const [n, reps] of [[1, 8], [2, 10]]) {
+      await pool.query(
+        `INSERT INTO set_logs (session_id, exercise_id, set_number, weight_kg, reps)
+         VALUES (?, ?, ?, 20, ?)`,
+        [s.insertId, live[0].exercise_id, n, reps],
+      );
+    }
+
+    await createPlanFromSession(pool, userId, {
+      sessionId: s.insertId, splitStyle: 'full_body',
+    });
+
+    const [day] = await planDays((await activePlan(userId)).plan_id);
+    assert.equal(day.target_reps, '10');
+  });
+
+  await t.test('a genuine tie between rep counts goes to the higher, logged high then low', async () => {
+    // Same tie as above, logged in the opposite order. The comparator must
+    // not depend on which rep value the grouped query happens to hand it
+    // first -- a user who logged 10 then settled for 8 is still, on the
+    // balance of one set each, more plausibly chasing 10.
+    const userId = await freshUser();
+    const [s] = await pool.query(
+      `INSERT INTO workout_sessions
+         (user_id, status, session_date, started_at, duration_min, total_volume_kg)
+       VALUES (?, 'completed', CURDATE(), NOW(), 45, 500)`,
+      [userId],
+    );
+    await pool.query(
+      'INSERT INTO session_exercises (session_id, exercise_id, order_no) VALUES (?, ?, 1)',
+      [s.insertId, live[0].exercise_id],
+    );
+    for (const [n, reps] of [[1, 10], [2, 8]]) {
+      await pool.query(
+        `INSERT INTO set_logs (session_id, exercise_id, set_number, weight_kg, reps)
+         VALUES (?, ?, ?, 20, ?)`,
+        [s.insertId, live[0].exercise_id, n, reps],
+      );
+    }
+
+    await createPlanFromSession(pool, userId, {
+      sessionId: s.insertId, splitStyle: 'full_body',
+    });
+
+    const [day] = await planDays((await activePlan(userId)).plan_id);
     assert.equal(day.target_reps, '10');
   });
 
