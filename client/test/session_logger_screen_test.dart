@@ -1063,12 +1063,15 @@ void main() {
   });
 
   // The same disposed-State race as above, but the request itself fails
-  // rather than succeeding. There is no `mounted` screen left to show the
-  // error on by the time it lands, so unlike the "a failed write says so"
-  // test above -- where the rejection outruns the route's own pop, and
-  // mounted is still true -- nothing must appear here.
+  // rather than succeeding -- and this is the ORDINARY case, not a rare one:
+  // the route pops synchronously on tap, so on any connection slower than the
+  // pop animation there is no `mounted` screen left by the time the failure
+  // lands. That is precisely why the messenger is captured before the first
+  // await: it belongs to the host scaffold the pop returns to, which is still
+  // there. Gating the message on `mounted` as well threw that away and left
+  // the only irreversible action in this flow reporting nothing at all.
   testWidgets(
-      'a write that fails after the screen has already closed shows nothing',
+      'a write that fails after the screen has already closed still says so',
       (tester) async {
     final gate = Completer<WorkoutPlan>();
     final plans = RecordingPlanRepository(gate: gate);
@@ -1086,7 +1089,32 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(tester.takeException(), isNull);
-    expect(find.textContaining('Could not reach the server.'), findsNothing);
+    expect(find.textContaining('Could not reach the server.'), findsOneWidget);
+  });
+
+  testWidgets(
+      'a write that lands after the screen has already closed still confirms it',
+      (tester) async {
+    // The success half of the same race. A plan quietly rewritten with no
+    // acknowledgement is indistinguishable from one that was not.
+    final gate = Completer<WorkoutPlan>();
+    final plans = RecordingPlanRepository(gate: gate);
+    await _pump(tester, session: _manualSessionWithSets(), plans: plans);
+
+    await _menu(tester, 'finish');
+    await tester.tap(find.byKey(const Key('summary.toPlan')));
+    await tester.pumpAndSettle();
+
+    expect(find.byType(SessionLoggerScreen), findsNothing);
+
+    gate.complete(const WorkoutPlan(
+      planId: 9, name: 'My Full Body', splitStyle: 'full_body',
+      daysPerWeek: 1, sessionLengthMin: 45, weekNo: 1,
+      exercises: [], source: 'custom',
+    ));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Added to My Full Body.'), findsOneWidget);
   });
 
   testWidgets('with no plan of the user\'s own, the offer is to make one',

@@ -252,17 +252,20 @@ class _SessionLoggerScreenState extends ConsumerState<SessionLoggerScreen> {
   /// so that dialog's own pop does not race the add-to-plan sheet below.
   /// This method closes the screen itself once there is nothing left for the
   /// user to interact with: immediately when there is no day to choose, or
-  /// once the sheet resolves when there is. That pop, and the rest of this
-  /// method, still has to survive a disposed State: `showAddToPlanSheet`
-  /// keeps the screen alive for as long as it is open, but the write it
-  /// leads to does not wait for it, and neither did the version of this
-  /// method before the sheet existed. The messenger and the container are
-  /// both captured before any await, but for different reasons:
-  /// `planFromSession` can easily still be in flight after the screen (and
-  /// this State with it) is gone, and `ref.invalidate` would throw against a
-  /// disposed State -- the container outlives the widget, so the refresh
-  /// does too. Same pattern as `generator_screen.dart`'s `_generate` and
-  /// `exercise_swap_sheet.dart`'s `_choose`, for the same reason.
+  /// once the sheet (or the replace-my-plan question) resolves when there is.
+  /// That pop, and the rest of this method, still has to survive a disposed
+  /// State: `showAddToPlanSheet` keeps the screen alive for as long as it is
+  /// open, but the write it leads to does not wait for it, and neither did
+  /// the version of this method before the sheet existed. The messenger and
+  /// the container are both captured before any await, but for different
+  /// reasons: `planFromSession` can easily still be in flight after the
+  /// screen (and this State with it) is gone, and `ref.invalidate` would
+  /// throw against a disposed State -- the container outlives the widget, so
+  /// the refresh does too. Neither outcome's message is gated on `mounted`
+  /// for the same reason the messenger is captured at all: by the time one
+  /// lands there is usually no screen left, and the host scaffold below is
+  /// what shows it. Same pattern as `generator_screen.dart`'s `_generate`
+  /// and `exercise_swap_sheet.dart`'s `_choose`, for the same reason.
   Future<void> _addToPlan(BuildContext dialogContext, ActiveSession done) async {
     final messenger = ScaffoldMessenger.of(context);
     final container = ProviderScope.containerOf(context, listen: false);
@@ -302,12 +305,16 @@ class _SessionLoggerScreenState extends ConsumerState<SessionLoggerScreen> {
       // The Plan tab and Home both read this, and neither was watching while
       // the logger was open. Through the container, not ref -- see above.
       container.invalidate(activePlanProvider);
-      if (!mounted) return;
+      // Not gated on `mounted`: this State is normally already disposed by
+      // now -- the route pops on tap, while the request is still in flight --
+      // and the captured messenger belongs to the host scaffold the pop
+      // returned to, which is very much alive. Gating it here would mean
+      // nothing at all appeared on any connection slower than the pop
+      // animation, for either outcome. Same as generator_screen.dart.
       messenger.showSnackBar(
         SnackBar(content: Text('Added to ${plan.name}.')),
       );
     } catch (error) {
-      if (!mounted) return;
       messenger.showSnackBar(SnackBar(content: Text(describeError(error))));
     }
   }
