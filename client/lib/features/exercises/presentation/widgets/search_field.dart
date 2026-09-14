@@ -8,10 +8,17 @@ import '../providers.dart';
 
 /// The catalogue's search box.
 ///
-/// Sole writer of [SelectedFilters.search], which is what lets the box hold
-/// the text and the provider hold the query with no risk of the two
-/// disagreeing: nothing else clears the term, so nothing has to push a value
-/// back into this controller.
+/// Sole writer of [SelectedFilters.search] -- but not its owner. The term
+/// outlives this widget: the filter provider is not autoDispose, while the
+/// box is rebuilt every time the library screen is. Backing out of the
+/// library and going back in therefore used to give an empty box above a list
+/// still filtered by the old term, with no clear button (it only shows when
+/// the box has text) and so nothing on screen to explain the short list or
+/// undo it. Signing out and back in did the same.
+///
+/// So the box seeds itself from the provider instead of assuming it is the
+/// only thing that could have set it. The two can no longer disagree,
+/// whatever rebuilds the screen.
 class ExerciseSearchField extends ConsumerStatefulWidget {
   const ExerciseSearchField({super.key});
 
@@ -31,6 +38,15 @@ class _ExerciseSearchFieldState extends ConsumerState<ExerciseSearchField> {
 
   final _controller = TextEditingController();
   Timer? _timer;
+
+  @override
+  void initState() {
+    super.initState();
+    // read, not watch: this seeds the box once, at the moment it is built.
+    // Watching would fight the user's typing, since every keystroke this box
+    // applies would come straight back as a new value to overwrite it with.
+    _controller.text = ref.read(selectedFiltersProvider).search ?? '';
+  }
 
   @override
   void dispose() {

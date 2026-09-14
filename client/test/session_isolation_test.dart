@@ -6,6 +6,7 @@ import 'package:fitsync/features/auth/data/auth_repository.dart';
 import 'package:fitsync/features/auth/domain/auth_user.dart';
 import 'package:fitsync/features/auth/presentation/auth_controller.dart';
 import 'package:fitsync/features/exercises/domain/exercise.dart';
+import 'package:fitsync/features/exercises/presentation/providers.dart';
 import 'package:fitsync/features/profile/data/profile_repository.dart';
 import 'package:fitsync/features/profile/domain/profile.dart';
 import 'package:fitsync/features/profile/presentation/providers.dart';
@@ -269,6 +270,33 @@ void main() {
 
     expect(container.read(workoutDraftProvider), isEmpty,
         reason: "the next account was handed the previous account's picks");
+  });
+
+  test("signing out drops the previous account's catalogue filter", () async {
+    // Not user data in the way a logged set is, but still a trace of the
+    // previous account: the next one would open the library to a short list,
+    // narrowed by a word someone else typed.
+    final tokens = TokenStore(backing: InMemorySecureStore());
+    await tokens.write('token-for-juan');
+
+    final container = ProviderContainer(overrides: [
+      tokenStoreProvider.overrideWithValue(tokens),
+      authRepositoryProvider.overrideWithValue(FakeAuthRepository(tokens)),
+      profileRepositoryProvider.overrideWithValue(
+          SequenceProfileRepository([_profile(userId: 1, email: 'a@b.c')])),
+    ]);
+    addTearDown(container.dispose);
+
+    container.read(selectedFiltersProvider.notifier).setSearch('bench');
+    container.read(selectedFiltersProvider.notifier).setEquipment('barbell');
+
+    await container.read(authControllerProvider.notifier).signOut();
+
+    final filters = container.read(selectedFiltersProvider);
+    expect(filters.search, isNull,
+        reason: "the next account inherited a search term");
+    expect(filters.equipment, isNull,
+        reason: "the next account inherited an equipment filter");
   });
 
   test('signing out clears the stored token', () async {

@@ -112,14 +112,20 @@ class AuthController extends AsyncNotifier<AuthState> {
   /// providers do not -- `lastPerformanceProvider` and `alternativesProvider`
   /// are dropped when the screen holding them goes away, which sign-out does.
   ///
+  /// `selectedFiltersProvider` is not user data in the way a logged set is,
+  /// but it is still a trace of the previous account: the next one opened the
+  /// library to a list narrowed by a word someone else typed.
+  ///
   /// Lookup data (`equipmentOptionsProvider`, `injuryOptionsProvider`, the
-  /// exercise catalogue) is the same for everyone and is deliberately kept.
+  /// exercise catalogue itself) is the same for everyone and is deliberately
+  /// kept.
   void _clearUserScopedCaches() {
     ref.invalidate(profileProvider);
     ref.invalidate(activePlanProvider);
     ref.invalidate(activeSessionProvider);
     ref.invalidate(completedDaysProvider);
     ref.invalidate(workoutDraftProvider);
+    ref.invalidate(selectedFiltersProvider);
   }
 
   Future<void> signOut() async {

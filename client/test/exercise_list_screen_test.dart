@@ -389,6 +389,74 @@ void main() {
     expect(repo.lastSearch, 'curl');
   });
 
+  testWidgets('a re-opened library shows the term it is still filtering by',
+      (tester) async {
+    // The box is part of the screen; the term outlives it. Backing out of the
+    // library and going back in gave a fresh, empty box above a list still
+    // filtered to the old term -- and the clear button only appears when the
+    // box has text, so there was nothing on screen to explain the short list
+    // or undo it.
+    final repo = FakeRepository();
+    final container = ProviderContainer(
+      overrides: [exerciseRepositoryProvider.overrideWithValue(repo)],
+    );
+    addTearDown(container.dispose);
+
+    await tester.pumpWidget(UncontrolledProviderScope(
+      container: container,
+      child: const MaterialApp(home: ExerciseListScreen()),
+    ));
+    await tester.pumpAndSettle();
+    await search(tester, 'bench');
+    expect(repo.lastSearch, 'bench');
+
+    // Leave the library, then come back to a freshly built one.
+    await tester.pumpWidget(UncontrolledProviderScope(
+      container: container,
+      child: const MaterialApp(home: Scaffold(body: Text('elsewhere'))),
+    ));
+    await tester.pumpAndSettle();
+    await tester.pumpWidget(UncontrolledProviderScope(
+      container: container,
+      child: const MaterialApp(home: ExerciseListScreen()),
+    ));
+    await tester.pumpAndSettle();
+
+    expect(
+      tester.widget<TextField>(find.byKey(const Key('library.search'))).controller!.text,
+      'bench',
+      reason: 'the box must show the term the list is obeying',
+    );
+    expect(find.byKey(const Key('library.search.clear')), findsOneWidget,
+        reason: 'and it must be clearable');
+  });
+
+  testWidgets('clearing a restored term goes back to the whole catalogue',
+      (tester) async {
+    final repo = FakeRepository();
+    final container = ProviderContainer(
+      overrides: [exerciseRepositoryProvider.overrideWithValue(repo)],
+    );
+    addTearDown(container.dispose);
+
+    await tester.pumpWidget(UncontrolledProviderScope(
+      container: container,
+      child: const MaterialApp(home: ExerciseListScreen()),
+    ));
+    await tester.pumpAndSettle();
+    await search(tester, 'bench');
+
+    await tester.pumpWidget(UncontrolledProviderScope(
+      container: container,
+      child: const MaterialApp(home: ExerciseListScreen(selecting: true)),
+    ));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const Key('library.search.clear')));
+    await tester.pumpAndSettle();
+
+    expect(repo.lastSearch, isNull);
+  });
+
   testWidgets('an empty result says so rather than looking broken',
       (tester) async {
     final repo = FakeRepository(emptyResults: true);
