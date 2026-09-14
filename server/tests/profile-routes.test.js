@@ -359,4 +359,66 @@ test('profile endpoints', async (t) => {
     assert.equal(res.body.data.profile.joinedAt, knownDate.toISOString(),
       'joinedAt must equal the row\'s created_at, not Date.now()');
   });
+
+  await t.test('GET /profile carries the chosen training days', async () => {
+    await reset();
+    const res = await request(app).get('/api/v1/profile')
+      .set('Authorization', auth).expect(200);
+    assert.deepEqual(res.body.data.profile.trainingDays, []);
+  });
+
+  await t.test('PUT /profile/training-days stores the set, ascending', async () => {
+    await reset();
+    const res = await request(app).put('/api/v1/profile/training-days')
+      .set('Authorization', auth).send({ trainingDays: [5, 1, 3] }).expect(200);
+    assert.deepEqual(res.body.data.profile.trainingDays, [1, 3, 5]);
+  });
+
+  await t.test('PUT /profile/training-days replaces rather than appends', async () => {
+    await reset();
+    await request(app).put('/api/v1/profile/training-days')
+      .set('Authorization', auth).send({ trainingDays: [5, 1, 3] }).expect(200);
+    const res = await request(app).put('/api/v1/profile/training-days')
+      .set('Authorization', auth).send({ trainingDays: [2] }).expect(200);
+    assert.deepEqual(res.body.data.profile.trainingDays, [2]);
+  });
+
+  await t.test('an empty list is how the days are cleared', async () => {
+    await reset();
+    await request(app).put('/api/v1/profile/training-days')
+      .set('Authorization', auth).send({ trainingDays: [2] }).expect(200);
+    const res = await request(app).put('/api/v1/profile/training-days')
+      .set('Authorization', auth).send({ trainingDays: [] }).expect(200);
+    assert.deepEqual(res.body.data.profile.trainingDays, []);
+  });
+
+  await t.test('PUT /profile/training-days rejects bad input', async () => {
+    await reset();
+    // An absent key is a bad request; [] is the way to say "none". Duplicates
+    // are caught here rather than left to uq_user_training_day, which would
+    // surface as a 500.
+    const bad = [
+      undefined,
+      'monday',
+      [1, 1],
+      [0],
+      [8],
+      [1.5],
+      ['1'],
+      [null],
+    ];
+    for (const trainingDays of bad) {
+      const res = await request(app).put('/api/v1/profile/training-days')
+        .set('Authorization', auth).send({ trainingDays }).expect(400);
+      assert.equal(res.body.error.code, 'INVALID_PROFILE_FIELD');
+      assert.match(res.body.error.message, /trainingDays/);
+      assert.equal(res.body.data, undefined);
+    }
+  });
+
+  await t.test('PUT /profile/training-days needs a signed-in caller', async () => {
+    await reset();
+    await request(app).put('/api/v1/profile/training-days')
+      .send({ trainingDays: [1] }).expect(401);
+  });
 });
