@@ -171,4 +171,116 @@ async function getActivePlan(pool, userId) {
   };
 }
 
-module.exports = { resolveExerciseIds, savePlan, getActivePlan, dayNamesFor };
+/// The label a custom plan is named after, per split style.
+///
+/// Not derived from the enum value: 'push_pull_legs'.split('_') gives "Push
+/// Pull Legs", which is not how anybody writes it.
+const SPLIT_LABELS = {
+  full_body: 'Full Body',
+  push_pull_legs: 'Push / Pull / Legs',
+  upper_lower: 'Upper / Lower',
+  cardio_core: 'Cardio / Core',
+  bro_split: 'Bro Split',
+};
+
+/// The session's exercises, live ones only, in the order they were trained.
+///
+/// The same resolution lastCompletedWorkout performs: a hand-picked session
+/// owns rows in session_exercises, a plan-backed one borrows the plan's rows
+/// for the day it trained.
+async function sessionExerciseIds(conn, session) {
+  const [own] = await conn.query(
+    `SELECT se.exercise_id
+       FROM session_exercises se
+       JOIN exercises x ON x.exercise_id = se.exercise_id
+      WHERE se.session_id = ? AND x.status = 'live'
+      ORDER BY se.order_no`,
+    [session.session_id],
+  );
+  if (own.length > 0) return own.map((r) => r.exercise_id);
+  if (session.plan_id === null) return [];
+
+  const [fromPlan] = await conn.query(
+    `SELECT pe.exercise_id
+       FROM plan_exercises pe
+       JOIN exercises x ON x.exercise_id = pe.exercise_id
+      WHERE pe.plan_id = ? AND pe.day_no = ? AND x.status = 'live'
+      ORDER BY pe.order_no`,
+    [session.plan_id, session.plan_day_no ?? 1],
+  );
+  return fromPlan.map((r) => r.exercise_id);
+}
+
+/// Turns a completed session into a day of the user's own plan.
+///
+/// One transaction throughout: a refusal partway must not leave a plan row
+/// with no exercises, which the Plan tab would render as an empty week.
+async function createPlanFromSession(pool, userId, { sessionId, splitStyle }) {
+  const conn = await pool.getConnection();
+  try {
+    await conn.beginTransaction();
+
+    const [sessions] = await conn.query(
+      `SELECT session_id, status, plan_id, plan_day_no, duration_min
+         FROM workout_sessions WHERE session_id = ? AND user_id = ?`,
+      [sessionId, userId],
+    );
+    // Scoped to the caller, so another account's session is indistinguishable
+    // from one that does not exist -- which is what it should be.
+    if (sessions.length === 0) {
+      throw AppError.notFound('SESSION_NOT_FOUND', 'That workout does not exist.');
+    }
+    const session = sessions[0];
+    if (session.status !== 'completed') {
+      throw AppError.conflict(
+        'SESSION_NOT_COMPLETED',
+        'Only a finished workout can become part of your plan.',
+      );
+    }
+
+    const exerciseIds = await sessionExerciseIds(conn, session);
+    if (exerciseIds.length === 0) {
+      throw AppError.conflict(
+        'SESSION_HAS_NO_EXERCISES',
+        'That workout has no exercises left in the library.',
+      );
+    }
+
+    await conn.query(
+      'UPDATE workout_plans SET is_active = FALSE WHERE user_id = ?', [userId],
+    );
+    const [plan] = await conn.query(
+      `INSERT INTO workout_plans
+         (user_id, name, split_style, days_per_week, session_length_min, week_no, is_active, source)
+       VALUES (?, ?, ?, ?, ?, 1, TRUE, 'custom')`,
+      [
+        userId,
+        `My ${SPLIT_LABELS[splitStyle] ?? splitStyle}`,
+        splitStyle,
+        1,
+        session.duration_min ?? 45,
+      ],
+    );
+
+    for (const [index, exerciseId] of exerciseIds.entries()) {
+      await conn.query(
+        `INSERT INTO plan_exercises
+           (plan_id, exercise_id, day_no, order_no, target_sets, target_reps)
+         VALUES (?, ?, 1, ?, 3, '8-12')`,
+        [plan.insertId, exerciseId, index + 1],
+      );
+    }
+
+    await conn.commit();
+    return { planId: plan.insertId };
+  } catch (err) {
+    await conn.rollback();
+    throw err;
+  } finally {
+    conn.release();
+  }
+}
+
+module.exports = {
+  resolveExerciseIds, savePlan, getActivePlan, dayNamesFor, createPlanFromSession,
+};
