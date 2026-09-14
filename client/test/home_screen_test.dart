@@ -11,6 +11,10 @@ import 'package:fitsync/features/plans/domain/workout_plan.dart';
 import 'package:fitsync/features/plans/presentation/providers.dart';
 import 'package:fitsync/features/profile/domain/profile.dart';
 import 'package:fitsync/features/profile/presentation/providers.dart';
+import 'package:fitsync/features/sessions/data/session_repository.dart';
+import 'package:fitsync/features/sessions/domain/active_session.dart';
+import 'package:fitsync/features/sessions/presentation/providers.dart';
+import 'package:fitsync/features/sessions/presentation/session_logger_screen.dart';
 
 const _someEquipment = [EquipmentOption(equipmentId: 1, name: 'Dumbbells')];
 
@@ -53,6 +57,67 @@ const _defaultPlan = WorkoutPlan(
   ],
 );
 
+/// Answers with one session and records what was abandoned.
+class _FakeSessionRepository implements SessionRepository {
+  _FakeSessionRepository([this.session]);
+
+  ActiveSession? session;
+  int abandoned = 0;
+
+  @override
+  Future<ActiveSession?> active() async => session;
+
+  @override
+  Future<void> abandon(int sessionId) async {
+    abandoned += 1;
+    session = null;
+  }
+
+  @override
+  Future<Map<int, LastPerformance>> lastPerformance(List<int> ids) async => const {};
+
+  @override
+  Future<Set<String>> completedThisWeek() async => const {};
+
+  @override
+  String get baseUrl => 'http://test.local';
+
+  @override
+  dynamic noSuchMethod(Invocation i) =>
+      throw UnimplementedError('${i.memberName} is not used here');
+}
+
+/// A workout started from the plan: its exercises still come from the plan,
+/// so the session carries none of its own.
+ActiveSession _planSession({List<LoggedSet> sets = const []}) => ActiveSession(
+      sessionId: 7,
+      status: 'in_progress',
+      sessionDate: '2026-09-14',
+      planId: 1,
+      planDayNo: 1,
+      startedAt: DateTime.now(),
+      sets: sets,
+    );
+
+/// A workout picked by hand: no plan, and it carries its own exercises.
+ActiveSession _manualSession({List<LoggedSet> sets = const []}) => ActiveSession(
+      sessionId: 8,
+      status: 'in_progress',
+      sessionDate: '2026-09-14',
+      startedAt: DateTime.now(),
+      sets: sets,
+      exercises: const [
+        PlanExercise(
+          planExerciseId: 1, exerciseId: 101, name: 'Goblet squat',
+          muscleGroup: 'quadriceps', orderNo: 1, targetSets: 3, targetReps: '8-12',
+        ),
+        PlanExercise(
+          planExerciseId: 2, exerciseId: 202, name: 'Cable fly',
+          muscleGroup: 'pectorals', orderNo: 2, targetSets: 3, targetReps: '8-12',
+        ),
+      ],
+    );
+
 /// A fixed answer instead of a repository round trip — same shape as
 /// FakeProfileNotifier in onboarding_flow_test.dart.
 class _StubProfileNotifier extends ProfileNotifier {
@@ -71,6 +136,7 @@ Future<void> _pumpHome(
   Profile? profile,
   WorkoutPlan? plan = _defaultPlan,
   ApiException? planError,
+  _FakeSessionRepository? sessions,
 }) async {
   await tester.pumpWidget(
     ProviderScope(
@@ -81,6 +147,8 @@ Future<void> _pumpHome(
           if (planError != null) throw planError;
           return plan;
         }),
+        sessionRepositoryProvider
+            .overrideWithValue(sessions ?? _FakeSessionRepository()),
       ],
       child: MaterialApp(
         home: HomeScreen(
@@ -94,6 +162,120 @@ Future<void> _pumpHome(
 }
 
 void main() {
+  testWidgets('a running workout takes the plan card\'s place', (tester) async {
+    // Home showed "Today's plan" with a Start button while a workout was
+    // already open, so an unfinished session was invisible from the first
+    // screen -- and the only hint it existed was the manual picker refusing
+    // to start anything.
+    await _pumpHome(tester, sessions: _FakeSessionRepository(_planSession()));
+
+    expect(find.byKey(const Key('home.inProgress')), findsOneWidget);
+    expect(find.byType(PlanCard), findsNothing,
+        reason: 'the plan card must not offer to start a second workout');
+  });
+
+  testWidgets('nothing running leaves the plan card exactly as it was',
+      (tester) async {
+    await _pumpHome(tester);
+
+    expect(find.byType(PlanCard), findsOneWidget);
+    expect(find.byKey(const Key('home.inProgress')), findsNothing);
+  });
+
+  testWidgets('a hand-picked workout is named as one, not as the plan',
+      (tester) async {
+    // The whole point: the plan is still there underneath, but what is
+    // RUNNING is a one-off the user chose, and Home must say so rather than
+    // showing the generated plan's name over it.
+    await _pumpHome(tester, sessions: _FakeSessionRepository(_manualSession()));
+
+    expect(find.textContaining('Upper Body · Push'), findsNothing,
+        reason: 'this session did not come from the plan');
+    expect(find.textContaining('2 exercises'), findsOneWidget);
+  });
+
+  testWidgets('a plan workout is named after the plan', (tester) async {
+    await _pumpHome(tester, sessions: _FakeSessionRepository(_planSession()));
+
+    expect(find.textContaining('Upper Body · Push'), findsOneWidget);
+  });
+
+  testWidgets('the card says how much has been logged', (tester) async {
+    await _pumpHome(
+      tester,
+      sessions: _FakeSessionRepository(_manualSession(sets: const [
+        LoggedSet(exerciseId: 101, setNumber: 1, weightKg: 20, reps: 10),
+        LoggedSet(exerciseId: 101, setNumber: 2, weightKg: 20, reps: 9),
+      ])),
+    );
+
+    expect(find.textContaining('2 sets logged'), findsOneWidget);
+  });
+
+  testWidgets('a workout with nothing logged yet says so plainly',
+      (tester) async {
+    // "0 sets logged" reads like a failure; a just-started workout has simply
+    // not been touched yet.
+    await _pumpHome(tester, sessions: _FakeSessionRepository(_manualSession()));
+
+    expect(find.textContaining('Not started yet'), findsOneWidget);
+    expect(find.textContaining('0 sets'), findsNothing);
+  });
+
+  testWidgets('Continue opens the logger', (tester) async {
+    await _pumpHome(tester, sessions: _FakeSessionRepository(_planSession()));
+
+    await tester.tap(find.byKey(const Key('home.inProgress.continue')));
+    await tester.pumpAndSettle();
+
+    expect(find.byType(SessionLoggerScreen), findsOneWidget);
+  });
+
+  testWidgets('discarding asks before throwing the workout away',
+      (tester) async {
+    final sessions = _FakeSessionRepository(_planSession());
+    await _pumpHome(tester, sessions: sessions);
+
+    await tester.tap(find.byKey(const Key('home.inProgress.discard')));
+    await tester.pumpAndSettle();
+
+    expect(find.textContaining('Discard this workout?'), findsOneWidget);
+    expect(sessions.abandoned, 0, reason: 'asking is not doing');
+  });
+
+  testWidgets('backing out of the question keeps the workout', (tester) async {
+    final sessions = _FakeSessionRepository(_planSession());
+    await _pumpHome(tester, sessions: sessions);
+
+    await tester.tap(find.byKey(const Key('home.inProgress.discard')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Keep it'));
+    await tester.pumpAndSettle();
+
+    expect(sessions.abandoned, 0);
+    expect(find.byKey(const Key('home.inProgress')), findsOneWidget);
+  });
+
+  testWidgets('discarding brings today\'s plan back', (tester) async {
+    // The plan was never replaced, only covered. Finishing or dropping the
+    // workout has to uncover it without a restart.
+    final sessions = _FakeSessionRepository(_planSession());
+    await _pumpHome(tester, sessions: sessions);
+
+    await tester.tap(find.byKey(const Key('home.inProgress.discard')));
+    await tester.pumpAndSettle();
+    // The card's own button says "Discard" too, so target the dialog's.
+    await tester.tap(find.descendant(
+      of: find.byType(AlertDialog),
+      matching: find.text('Discard'),
+    ));
+    await tester.pumpAndSettle();
+
+    expect(sessions.abandoned, 1);
+    expect(find.byKey(const Key('home.inProgress')), findsNothing);
+    expect(find.byType(PlanCard), findsOneWidget);
+  });
+
   testWidgets('start workout and the nudge each select their tab',
       (tester) async {
     final selected = <String>[];

@@ -6,8 +6,13 @@ import '../../../core/widgets/fs_kit.dart';
 import '../../exercises/presentation/exercise_list_screen.dart'
     show describeError;
 import '../../plans/presentation/providers.dart';
-import '../../sessions/presentation/providers.dart' show completedDaysProvider;
+import '../../sessions/domain/active_session.dart';
+import '../../sessions/presentation/providers.dart'
+    show activeSessionProvider, completedDaysProvider;
+import '../../sessions/presentation/session_logger_screen.dart';
 import '../../profile/presentation/providers.dart';
+import '../../plans/domain/workout_plan.dart';
+import 'widgets/active_workout_card.dart';
 import 'widgets/greeting.dart';
 import 'widgets/plan_card.dart';
 import 'widgets/profile_nudge.dart';
@@ -32,6 +37,9 @@ class HomeScreen extends ConsumerWidget {
     // An unread count is an empty week, which is day 1: the card names one
     // day either way, never the whole rotation.
     final completedDays = ref.watch(completedDaysProvider).value ?? const <String>{};
+    // What is happening NOW outranks what was planned. A session left open is
+    // otherwise invisible here, and Home is where a user looks first.
+    final session = ref.watch(activeSessionProvider).value;
 
     return Scaffold(
       backgroundColor: context.fs.bg,
@@ -54,30 +62,107 @@ class HomeScreen extends ConsumerWidget {
                 ProfileNudge(profile: p, onTap: () => onGoToProfile?.call()),
                 const SizedBox(height: 14),
               ],
-              plan.when(
-                loading: () => const Padding(
-                  padding: EdgeInsets.symmetric(vertical: 24),
-                  child: Center(child: CircularProgressIndicator()),
+              // The plan is not replaced while a workout runs, only
+              // covered: finishing or discarding uncovers it with no reload,
+              // because activePlanProvider was never touched.
+              if (session != null)
+                _ActiveWorkout(session: session, plan: plan.value)
+              else
+                plan.when(
+                  loading: () => const Padding(
+                    padding: EdgeInsets.symmetric(vertical: 24),
+                    child: Center(child: CircularProgressIndicator()),
+                  ),
+                  error: (error, _) => _Retry(
+                    message: describeError(error),
+                    onRetry: () => ref.invalidate(activePlanProvider),
+                  ),
+                  data: (workoutPlan) => workoutPlan == null
+                      ? const _NoPlan()
+                      : PlanCard(
+                          plan: workoutPlan,
+                          weightKg: p.weightKg,
+                          dayNo: workoutPlan.todayDayNo(completedDays.length),
+                          onStart: () => onGoToTrain?.call(),
+                        ),
                 ),
-                error: (error, _) => _Retry(
-                  message: describeError(error),
-                  onRetry: () => ref.invalidate(activePlanProvider),
-                ),
-                data: (workoutPlan) => workoutPlan == null
-                    ? const _NoPlan()
-                    : PlanCard(
-                        plan: workoutPlan,
-                        weightKg: p.weightKg,
-                        dayNo: workoutPlan.todayDayNo(completedDays.length),
-                        onStart: () => onGoToTrain?.call(),
-                      ),
-              ),
             ],
           ),
         ),
       ),
     );
   }
+}
+
+/// Owns the discard flow, so HomeScreen itself stays a ConsumerWidget.
+class _ActiveWorkout extends ConsumerStatefulWidget {
+  const _ActiveWorkout({required this.session, required this.plan});
+
+  final ActiveSession session;
+  final WorkoutPlan? plan;
+
+  @override
+  ConsumerState<_ActiveWorkout> createState() => _ActiveWorkoutState();
+}
+
+class _ActiveWorkoutState extends ConsumerState<_ActiveWorkout> {
+  bool _discarding = false;
+
+  /// Asks first: this throws away every set already logged, and the tap sits
+  /// on the first screen of the app where it is easy to hit by accident.
+  Future<void> _discard() async {
+    if (_discarding) return;
+
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('Discard this workout?'),
+        content: const Text(
+          'Everything logged in it is thrown away. This cannot be undone.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(dialogContext).pop(false),
+            child: const Text('Keep it'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.of(dialogContext).pop(true),
+            child: const Text('Discard'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true || !mounted) return;
+
+    final messenger = ScaffoldMessenger.of(context);
+    setState(() => _discarding = true);
+    try {
+      await ref.read(activeSessionProvider.notifier).abandon();
+    } on StateError {
+      // Already closed elsewhere -- the logger, or another device. The card
+      // is about to disappear on its own, so there is nothing to report.
+    } catch (error) {
+      // The abandon did not land, so the workout is untouched and still
+      // resumable. Say so rather than letting a destructive tap look like it
+      // did nothing.
+      if (mounted) {
+        messenger.showSnackBar(SnackBar(content: Text(describeError(error))));
+      }
+    } finally {
+      if (mounted) setState(() => _discarding = false);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) => ActiveWorkoutCard(
+        session: widget.session,
+        plan: widget.plan,
+        discarding: _discarding,
+        onContinue: () => Navigator.of(context).push(
+          MaterialPageRoute<void>(builder: (_) => const SessionLoggerScreen()),
+        ),
+        onDiscard: _discard,
+      );
 }
 
 /// Plans are created only by `POST /profile/complete-onboarding`. There is no
