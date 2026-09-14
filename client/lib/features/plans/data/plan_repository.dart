@@ -53,11 +53,38 @@ class PlanRepository {
     required String splitStyle,
     required int daysPerWeek,
     required int sessionLengthMin,
+    bool replaceCustomPlan = false,
   }) async {
     final data = await _api.postJson('/api/v1/plans/regenerate', {
       'splitStyle': splitStyle,
       'daysPerWeek': daysPerWeek,
       'sessionLengthMin': sessionLengthMin,
+      // Sent only when the user has actually answered the question. Sending it
+      // unasked would defeat the server's guard for every caller at once.
+      if (replaceCustomPlan) 'replaceCustomPlan': true,
+    });
+    return WorkoutPlan.fromJson(data['plan'] as Map<String, dynamic>);
+  }
+
+  /// Makes a finished workout part of the user's own plan.
+  ///
+  /// [splitStyle] is required only when this call CREATES the plan — the
+  /// server reads the active plan's source to decide, so the caller does not
+  /// have to. [dayNo] replaces that day; omitted, the workout is appended as a
+  /// new one.
+  ///
+  /// Both are omitted from the body rather than sent as null: the endpoint
+  /// treats an absent key and an explicit null the same, and leaving them out
+  /// keeps the request describing only what the caller actually chose.
+  Future<WorkoutPlan> planFromSession({
+    required int sessionId,
+    String? splitStyle,
+    int? dayNo,
+  }) async {
+    final data = await _api.postJson('/api/v1/plans/from-session', {
+      'sessionId': sessionId,
+      'splitStyle': ?splitStyle,
+      'dayNo': ?dayNo,
     });
     return WorkoutPlan.fromJson(data['plan'] as Map<String, dynamic>);
   }
