@@ -6,16 +6,13 @@ import 'package:fitsync/core/theme.dart';
 import 'package:fitsync/core/widgets/fs_kit.dart';
 import 'package:fitsync/features/exercises/presentation/exercise_list_screen.dart';
 import 'package:fitsync/features/exercises/presentation/providers.dart';
-import 'package:fitsync/features/plans/domain/training_day.dart';
+import 'package:fitsync/features/plans/domain/split_style.dart';
 import 'package:fitsync/features/plans/domain/workout_plan.dart';
 import 'package:fitsync/features/plans/presentation/providers.dart';
 import 'package:fitsync/features/profile/domain/profile.dart';
 import 'package:fitsync/features/profile/presentation/providers.dart';
 import 'package:fitsync/features/sessions/presentation/workout_setup_screen.dart';
 
-/// A 60-minute plan: the length readout and the target count both read it,
-/// and 60 is the half of `EXERCISES_BY_SESSION` that is not the fallback, so
-/// a screen that quietly ignored the plan would still look right on 45.
 const _plan = WorkoutPlan(
   planId: 7,
   name: 'Week 1 — Push/Pull/Legs',
@@ -30,17 +27,6 @@ const _plan = WorkoutPlan(
   ],
   exercises: [],
 );
-
-WorkoutPlan _planOfLength(int minutes) => WorkoutPlan(
-      planId: 7,
-      name: 'Week 1',
-      splitStyle: 'full_body',
-      daysPerWeek: 3,
-      sessionLengthMin: minutes,
-      weekNo: 1,
-      days: const [PlanDay(dayNo: 1, name: 'Full body')],
-      exercises: const [],
-    );
 
 /// A profile carrying exactly the injuries a test wants the card to render.
 /// Everything else is a fixed stand-in -- this screen only reads `.injuries`.
@@ -94,112 +80,102 @@ bool _chipOn(WidgetTester tester, String label) => tester
     .selected;
 
 /// What the catalogue is currently narrowed to. Read from the live tree
-/// rather than a captured container, because the setup screen sets it around
-/// the push and clears it on the way back.
+/// rather than a captured container, because a screen that narrowed it would
+/// do so around the push.
 List<String> _constraintIn(WidgetTester tester) => ProviderScope.containerOf(
       // skipOffstage: false -- once the library is pushed the setup screen is
       // still mounted behind an opaque route, which find hides by default.
       tester.element(find.byType(WorkoutSetupScreen, skipOffstage: false)),
     ).read(catalogueConstraintProvider);
 
+Future<void> _openLibrary(WidgetTester tester) async {
+  await tester.tap(find.byKey(const Key('setup.select')));
+  // Pumped rather than settled: the pushed list shows a progress indicator
+  // while it fetches, and that animates forever, so pumpAndSettle would
+  // wait out the timeout instead of the route transition.
+  await tester.pump();
+  await tester.pump(const Duration(seconds: 1));
+}
+
 void main() {
-  testWidgets('every training day is offered', (tester) async {
-    // Days, not splits. A split is a rotation of days, and filtering by a
-    // whole one barely filters: push_pull_legs covered 997 of 1,203 live
-    // exercises and upper_lower covered the identical set.
+  testWidgets('every split style is offered', (tester) async {
+    // The same four the generator offers, from the same list, so a rename
+    // cannot land on one screen and not the other.
     await _pump(tester, plan: _plan);
 
-    for (final day in trainingDays) {
-      expect(find.text(day.label), findsOneWidget);
+    for (final style in splitStyles) {
+      expect(find.text(style.label), findsOneWidget);
     }
   });
 
-  testWidgets('full body is the day the screen opens on', (tester) async {
+  testWidgets('Push / Pull / Legs is one chip, not three', (tester) async {
+    // A split is named as the rotation it is. Three separate chips read as
+    // three choices when they are one.
+    await _pump(tester, plan: _plan);
+
+    expect(find.text('Push / Pull / Legs'), findsOneWidget);
+    expect(find.text('Push'), findsNothing);
+    expect(find.text('Pull'), findsNothing);
+    expect(find.text('Legs'), findsNothing);
+  });
+
+  testWidgets('full body is the split the screen opens on', (tester) async {
     // Deliberately not derived from the plan: this screen starts one workout
     // rather than describing the week the plan already holds, so nothing
     // about the plan says what today should be.
     await _pump(tester, plan: _plan);
 
     expect(_chipOn(tester, 'Full body'), isTrue);
-    expect(_chipOn(tester, 'Push'), isFalse);
+    expect(_chipOn(tester, 'Push / Pull / Legs'), isFalse);
   });
 
-  testWidgets('tapping a day selects it', (tester) async {
+  testWidgets('tapping a split selects it', (tester) async {
     await _pump(tester, plan: _plan);
 
-    await tester.tap(find.text('Push'));
+    await tester.tap(find.text('Push / Pull / Legs'));
     await tester.pumpAndSettle();
 
-    expect(_chipOn(tester, 'Push'), isTrue);
+    expect(_chipOn(tester, 'Push / Pull / Legs'), isTrue);
     expect(_chipOn(tester, 'Full body'), isFalse);
   });
 
-  testWidgets('the session length readout follows the active plan',
+  testWidgets('the screen does not state a session length', (tester) async {
+    // It drove nothing once the target count went: the service derives length
+    // from goal and fitness level, and this screen neither sends it nor lets
+    // it be changed. A number on screen that nothing here reads or writes is
+    // furniture the user has to rule out.
+    await _pump(tester, plan: _plan);
+
+    expect(find.byKey(const Key('setup.length.value')), findsNothing);
+    expect(find.text('60 min'), findsNothing);
+    expect(find.textContaining('Session length'), findsNothing);
+  });
+
+  testWidgets('the screen does not state a target exercise count',
       (tester) async {
     await _pump(tester, plan: _plan);
 
-    expect(
-      tester.widget<Text>(find.byKey(const Key('setup.length.value'))).data,
-      '60 min',
-    );
+    expect(find.byKey(const Key('setup.target.value')), findsNothing);
+    expect(find.textContaining('Target exercises'), findsNothing);
   });
 
-  testWidgets('with no plan the session length falls back to 45',
-      (tester) async {
-    // The service's own default for a session it was given no override for,
-    // so a plan-less user is shown the length they would actually get.
-    await _pump(tester, plan: null);
+  testWidgets('a failed plan fetch leaves the screen usable', (tester) async {
+    // Nothing on this screen reads the plan any more, so a plan that will not
+    // load must not cost the user the library. This is the regression guard
+    // for re-introducing a plan read without an error branch under it.
+    await tester.pumpWidget(ProviderScope(
+      overrides: [
+        activePlanProvider.overrideWith((ref) async => throw Exception('boom')),
+        profileProvider.overrideWith(() => _FakeProfileNotifier(const [])),
+        injuryOptionsProvider.overrideWith((ref) async => const <InjuryOption>[]),
+      ],
+      child: MaterialApp(theme: fsLightTheme(), home: const WorkoutSetupScreen()),
+    ));
+    await tester.pumpAndSettle();
 
-    expect(
-      tester.widget<Text>(find.byKey(const Key('setup.length.value'))).data,
-      '45 min',
-    );
+    expect(find.text('Full body'), findsOneWidget);
+    expect(find.byKey(const Key('setup.select')), findsOneWidget);
   });
-
-  testWidgets('the session length is a readout, not a control', (tester) async {
-    // The service derives length from goal and fitness level; this screen
-    // cannot change it and must not look like it can. Asserted on the
-    // gesture widgets rather than by tapping, because a tap that changes
-    // nothing passes whether or not the row invites one.
-    await _pump(tester, plan: _plan);
-
-    final value = find.byKey(const Key('setup.length.value'));
-    // Without this the two findsNothing below hold for a screen that has no
-    // length row at all.
-    expect(value, findsOneWidget);
-    expect(find.ancestor(of: value, matching: find.byType(InkWell)), findsNothing);
-    expect(
-      find.ancestor(of: value, matching: find.byType(GestureDetector)),
-      findsNothing,
-    );
-  });
-
-  /// What the target row says, for the lengths the ML service's
-  /// `EXERCISES_BY_SESSION` is keyed on and the ones it is not.
-  Future<String?> targetFor(WidgetTester tester, int minutes) async {
-    await _pump(tester, plan: _planOfLength(minutes));
-    return tester.widget<Text>(find.byKey(const Key('setup.target.value'))).data;
-  }
-
-  testWidgets('a 45-minute session aims for 6 exercises', (tester) async {
-    expect(await targetFor(tester, 45), '6');
-  });
-
-  testWidgets('a 60-minute session aims for 8 exercises', (tester) async {
-    expect(await targetFor(tester, 60), '8');
-  });
-
-  // The table has two entries and a plan's length is not required to be one
-  // of them, so the count is snapped the way `_snap` in
-  // ml/app/rules/parameters.py snaps it rather than left blank. One pump per
-  // length: re-pumping inside a single test leaves activePlanProvider on the
-  // value the first override produced.
-  for (final (minutes, target) in const [(30, '6'), (52, '6'), (53, '8'), (90, '8')]) {
-    testWidgets('a $minutes-minute session snaps to $target exercises',
-        (tester) async {
-      expect(await targetFor(tester, minutes), target);
-    });
-  }
 
   testWidgets('the avoiding card names the profile injuries', (tester) async {
     // Displayed, not sent: the library filters server-side from the profile,
@@ -231,34 +207,28 @@ void main() {
     await _pump(tester, plan: _plan);
 
     expect(find.text('Select Exercise'), findsOneWidget);
-
-    await tester.tap(find.byKey(const Key('setup.select')));
-    // Pumped rather than settled: the pushed list shows a progress indicator
-    // while it fetches, and that animates forever, so pumpAndSettle would
-    // wait out the timeout instead of the route transition.
-    await tester.pump();
-    await tester.pump(const Duration(seconds: 1));
+    await _openLibrary(tester);
 
     final picker = tester.widget<ExerciseListScreen>(find.byType(ExerciseListScreen));
     expect(picker.selecting, isTrue,
         reason: 'the same list, but picking rather than browsing');
-    expect(_constraintIn(tester), isEmpty,
-        reason: 'full body filters nothing, as splits.py defines it');
   });
 
-  testWidgets('the chosen day is what the library gets filtered by',
+  testWidgets('the library opens on the whole catalogue whatever the split',
       (tester) async {
+    // A split is a rotation of days, and constraining the catalogue to the
+    // whole of one barely constrains it: push_pull_legs left 997 of 1,203
+    // live exercises and upper_lower left the identical set. So the chip
+    // describes the workout and the library stays wide, to be narrowed by the
+    // filter chips and the search box instead.
     await _pump(tester, plan: _plan);
 
-    await tester.tap(find.text('Push'));
+    await tester.tap(find.text('Push / Pull / Legs'));
     await tester.pumpAndSettle();
-    await tester.tap(find.byKey(const Key('setup.select')));
-    await tester.pump();
-    await tester.pump(const Duration(seconds: 1));
+    await _openLibrary(tester);
 
     expect(find.byType(ExerciseListScreen), findsOneWidget);
-    expect(_constraintIn(tester),
-        ['pectorals', 'delts', 'triceps']);
+    expect(_constraintIn(tester), isEmpty);
   });
 
   testWidgets('the setup screen stays behind the picker', (tester) async {
@@ -267,35 +237,12 @@ void main() {
     // "+" sheet was opened.
     await _pump(tester, plan: _plan);
 
-    await tester.tap(find.byKey(const Key('setup.select')));
-    await tester.pump();
-    await tester.pump(const Duration(seconds: 1));
+    await _openLibrary(tester);
 
     await tester.pageBack();
     await tester.pump();
     await tester.pump(const Duration(seconds: 1));
 
     expect(find.text('Log a workout'), findsOneWidget);
-  });
-
-  testWidgets('a failed plan fetch is not reported as a 45-minute session',
-      (tester) async {
-    // Flattening loading and failure into "no plan" costs a flash while the
-    // fetch is in flight and a permanent falsehood when it fails: the screen
-    // states a length and a target it never read, about a plan the user does
-    // have. Saying nothing is the honest answer.
-    await tester.pumpWidget(ProviderScope(
-      overrides: [
-        activePlanProvider.overrideWith((ref) async => throw Exception('boom')),
-        profileProvider.overrideWith(() => _FakeProfileNotifier(const [])),
-        injuryOptionsProvider.overrideWith((ref) async => const <InjuryOption>[]),
-      ],
-      child: MaterialApp(theme: fsLightTheme(), home: const WorkoutSetupScreen()),
-    ));
-    await tester.pumpAndSettle();
-
-    expect(find.text('45 min'), findsNothing);
-    expect(tester.widget<Text>(find.byKey(const Key('setup.length.value'))).data, '—');
-    expect(tester.widget<Text>(find.byKey(const Key('setup.target.value'))).data, '—');
   });
 }
