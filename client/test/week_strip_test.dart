@@ -59,6 +59,9 @@ Widget _host(Widget child) => MaterialApp(
     );
 
 void main() {
+  DayMark markFor(WidgetTester tester, int weekday) =>
+      tester.widget<WeekDayCell>(find.byKey(Key('day.$weekday'))).mark;
+
   testWidgets('renders all seven days', (tester) async {
     await tester.pumpWidget(_host(WeekStrip(
       daysPerWeek: 3,
@@ -81,10 +84,10 @@ void main() {
       today: DateTime(2026, 9, 8),
     )));
 
-    expect(tester.widget<WeekDayCell>(find.byKey(const Key('day.7'))).completed,
-        isTrue);
-    expect(tester.widget<WeekDayCell>(find.byKey(const Key('day.1'))).completed,
-        isFalse);
+    expect(tester.widget<WeekDayCell>(find.byKey(const Key('day.7'))).mark,
+        DayMark.trained);
+    expect(tester.widget<WeekDayCell>(find.byKey(const Key('day.1'))).mark,
+        isNot(DayMark.trained));
   });
 
   testWidgets('the strip singles out no weekday, whatever the day count',
@@ -150,8 +153,8 @@ void main() {
 
     for (var weekday = 1; weekday <= 7; weekday++) {
       expect(
-        tester.widget<WeekDayCell>(find.byKey(Key('day.$weekday'))).completed,
-        isFalse,
+        tester.widget<WeekDayCell>(find.byKey(Key('day.$weekday'))).mark,
+        isNot(DayMark.trained),
         reason: 'day $weekday cannot be filled before anything was trained',
       );
     }
@@ -234,15 +237,15 @@ void main() {
     )));
 
     final monday = tester.widget<WeekDayCell>(find.byKey(const Key('day.1')));
-    expect(monday.completed, isTrue);
+    expect(monday.mark, DayMark.trained);
 
     // Neighbouring days must NOT also read as completed — otherwise a broken
     // key that happened to match everything would pass the assertion above
     // for the wrong reason.
     final wednesday = tester.widget<WeekDayCell>(find.byKey(const Key('day.3')));
-    expect(wednesday.completed, isFalse);
+    expect(wednesday.mark, isNot(DayMark.trained));
     final today = tester.widget<WeekDayCell>(find.byKey(const Key('day.4')));
-    expect(today.completed, isFalse);
+    expect(today.mark, isNot(DayMark.trained));
   });
 
   testWidgets('a week spanning a year boundary walks back into the prior year',
@@ -258,12 +261,110 @@ void main() {
       today: DateTime(2027, 1, 1),
     )));
 
-    expect(tester.widget<WeekDayCell>(find.byKey(const Key('day.1'))).completed,
-        isTrue);
-    expect(tester.widget<WeekDayCell>(find.byKey(const Key('day.5'))).completed,
-        isTrue);
-    expect(tester.widget<WeekDayCell>(find.byKey(const Key('day.4'))).completed,
-        isFalse);
+    expect(tester.widget<WeekDayCell>(find.byKey(const Key('day.1'))).mark,
+        DayMark.trained);
+    expect(tester.widget<WeekDayCell>(find.byKey(const Key('day.5'))).mark,
+        DayMark.trained);
+    expect(tester.widget<WeekDayCell>(find.byKey(const Key('day.4'))).mark,
+        isNot(DayMark.trained));
+  });
+
+  testWidgets('a chosen day that has passed untrained is missed',
+      (tester) async {
+    // Thursday. Monday and Wednesday were chosen and not trained.
+    await tester.pumpWidget(_host(WeekStrip(
+      daysPerWeek: 3,
+      trainingDays: const [1, 3, 5],
+      completedDates: const {},
+      today: DateTime(2026, 9, 10),
+    )));
+
+    expect(markFor(tester, DateTime.monday), DayMark.missed);
+    expect(markFor(tester, DateTime.wednesday), DayMark.missed);
+  });
+
+  testWidgets('today is never missed, however late in the day it is',
+      (tester) async {
+    // Wednesday, chosen, not yet trained. The day is not over.
+    await tester.pumpWidget(_host(WeekStrip(
+      daysPerWeek: 3,
+      trainingDays: const [1, 3, 5],
+      completedDates: const {},
+      today: DateTime(2026, 9, 9),
+    )));
+
+    expect(markFor(tester, DateTime.wednesday), DayMark.planned);
+  });
+
+  testWidgets('a chosen day still to come is planned, not missed',
+      (tester) async {
+    await tester.pumpWidget(_host(WeekStrip(
+      daysPerWeek: 3,
+      trainingDays: const [1, 3, 5],
+      completedDates: const {},
+      today: DateTime(2026, 9, 9),
+    )));
+
+    expect(markFor(tester, DateTime.friday), DayMark.planned);
+  });
+
+  testWidgets('a day nobody chose carries no mark at all', (tester) async {
+    // The schedule has to be visible BEFORE any of it is missed, so a chosen
+    // future day and an unchosen day cannot render the same.
+    await tester.pumpWidget(_host(WeekStrip(
+      daysPerWeek: 3,
+      trainingDays: const [1, 3, 5],
+      completedDates: const {},
+      today: DateTime(2026, 9, 9),
+    )));
+
+    expect(markFor(tester, DateTime.tuesday), DayMark.none);
+    expect(markFor(tester, DateTime.sunday), DayMark.none);
+  });
+
+  testWidgets('a trained day fills even on a weekday nobody chose',
+      (tester) async {
+    // The strip reports what happened, not only what was asked for.
+    await tester.pumpWidget(_host(WeekStrip(
+      daysPerWeek: 3,
+      trainingDays: const [1, 3, 5],
+      completedDates: const {'2026-09-08'},
+      today: DateTime(2026, 9, 10),
+    )));
+
+    expect(markFor(tester, DateTime.tuesday), DayMark.trained);
+  });
+
+  testWidgets('with nothing chosen every day is planned, as before',
+      (tester) async {
+    // Step 1's behaviour, unchanged: every day is one you might train, so the
+    // row keeps its rhythm and no day is singled out.
+    await tester.pumpWidget(_host(WeekStrip(
+      daysPerWeek: 3,
+      trainingDays: const [],
+      completedDates: const {},
+      today: DateTime(2026, 9, 10),
+    )));
+
+    for (var weekday = 1; weekday <= 7; weekday++) {
+      expect(markFor(tester, weekday), DayMark.planned,
+          reason: 'day $weekday must not be missed when no day was chosen');
+    }
+  });
+
+  testWidgets('the tally counts against the chosen days, not the plan',
+      (tester) async {
+    // The user just said three days. The plan's stored label is a stale four
+    // until the next regeneration, and the number on screen must follow what
+    // the user said.
+    await tester.pumpWidget(_host(WeekStrip(
+      daysPerWeek: 4,
+      trainingDays: const [1, 3, 5],
+      completedDates: const {'2026-09-07'},
+      today: DateTime(2026, 9, 10),
+    )));
+
+    expect(find.text('1 of 3'), findsOneWidget);
   });
 
   testWidgets('the card offers Start with no session and Resume with one', (tester) async {

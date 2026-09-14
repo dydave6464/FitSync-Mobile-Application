@@ -3,21 +3,41 @@ import 'package:flutter/material.dart';
 import '../../../../core/theme.dart';
 import '../../../../core/widgets/fs_kit.dart';
 
+/// What one day of the strip has to say for itself.
+///
+/// An enum rather than a pair of booleans: `missed && trained` and
+/// `missed && !chosen` are both nonsense, and a widget taking three flags
+/// cannot refuse them.
+enum DayMark {
+  /// A session was completed on this date.
+  trained,
+
+  /// The user chose this day, it has passed, and nothing was logged.
+  missed,
+
+  /// A training day that has not happened yet -- or, when no days have been
+  /// chosen at all, any day, because any day is then one you might train.
+  planned,
+
+  /// Not a training day.
+  none,
+}
+
 /// One cell. Public so tests can read its flags rather than infer them from
 /// colours, which would break the moment the palette moves.
 class WeekDayCell extends StatelessWidget {
   const WeekDayCell({
     super.key,
     required this.label,
-    required this.completed,
+    required this.mark,
     required this.isToday,
   });
 
   final String label;
 
-  /// Whether a session was completed on this date. The only thing a day is
-  /// marked for -- see [WeekStrip] for why there is no "prescribed" state.
-  final bool completed;
+  /// What this day is -- trained, missed, planned, or no mark at all. See
+  /// [DayMark] and [WeekStrip] for why there is no "prescribed" state.
+  final DayMark mark;
 
   final bool isToday;
 
@@ -55,12 +75,13 @@ class WeekDayCell extends StatelessWidget {
                 key: const Key('day.dot'),
                 decoration: BoxDecoration(
                   shape: BoxShape.circle,
-                  // Every day carries a dot, so the row keeps its rhythm and
-                  // no day is singled out before it has been trained. Only
-                  // two states exist: done, and not done yet.
-                  color: completed
-                      ? (isToday ? t.onAccent : t.accent)
-                      : (isToday ? t.onAccent.withValues(alpha: 0.45) : t.line2),
+                  color: switch (mark) {
+                    DayMark.trained => isToday ? t.onAccent : t.accent,
+                    DayMark.missed => t.red,
+                    DayMark.planned =>
+                      isToday ? t.onAccent.withValues(alpha: 0.45) : t.line2,
+                    DayMark.none => Colors.transparent,
+                  },
                 ),
               ),
             ),
@@ -72,29 +93,26 @@ class WeekDayCell extends StatelessWidget {
 }
 
 /// The week at a glance: what was trained, and how that stands against the
-/// plan's target.
+/// user's chosen schedule.
 ///
-/// It deliberately does NOT say which weekdays to train on. Nothing in the
-/// system knows: `workout_plans` stores `days_per_week` -- a count -- and
-/// never which days, and `nextPlanDayNo` on the server advances the rotation
-/// by completed sessions rather than by the calendar, so a missed Monday
-/// costs a day rather than a session.
-///
-/// This widget used to draw Mon/Wed/Fri from a hardcoded table anyway, which
-/// made it the only part of the app claiming the user had agreed to a
-/// schedule. It read worst on the case that matters most: install the app on
-/// a Tuesday and Monday was already marked, so the first thing a new user saw
+/// It used to draw Mon/Wed/Fri from a hardcoded table keyed on
+/// `days_per_week` -- a count, never a set of weekdays -- which made this the
+/// only part of the app claiming the user had agreed to a schedule they never
+/// chose. It read worst on the case that matters most: install the app on a
+/// Tuesday and Monday was already marked, so the first thing a new user saw
 /// was a day they had supposedly missed before they had signed up.
 ///
-/// Letting users choose their own days is the real answer, and it needs a
-/// schema change -- see `parkedquestion.md`. Until then the honest display is
-/// what happened, counted against the number the plan actually holds.
+/// `trainingDays` now carries the schedule the user actually picked. Empty
+/// means none chosen -- every day stays a possible training day, exactly what
+/// this widget rendered before days could be chosen at all -- rather than a
+/// default schedule nobody agreed to.
 class WeekStrip extends StatelessWidget {
   const WeekStrip({
     super.key,
     required this.daysPerWeek,
     required this.completedDates,
     required this.today,
+    this.trainingDays = const [],
   });
 
   /// The plan's target, used only as the denominator of the tally. Nothing
@@ -105,6 +123,10 @@ class WeekStrip extends StatelessWidget {
   final Set<String> completedDates;
 
   final DateTime today;
+
+  /// Weekdays the user chose to train on, 1 = Monday .. 7 = Sunday. Empty
+  /// means none chosen, which is a real state and not a default schedule.
+  final List<int> trainingDays;
 
   static const _labels = ['M', 'T', 'W', 'T', 'F', 'S', 'S'];
 
@@ -139,7 +161,25 @@ class WeekStrip extends StatelessWidget {
     // trusted that would silently overcount the moment anything handed it a
     // wider range.
     final done = dates.where((date) => completedDates.contains(_key(date))).length;
-    final hasTarget = daysPerWeek >= _minTarget && daysPerWeek <= _maxTarget;
+
+    final chosen = trainingDays.toSet();
+    // Compared by date, not by index, so "past" survives a week that spans a
+    // month or year boundary the same way the keys already do.
+    final todayKey = _key(DateTime(today.year, today.month, today.day));
+
+    DayMark markFor(int weekday, DateTime date) {
+      if (completedDates.contains(_key(date))) return DayMark.trained;
+      // No choice made is not the same as choosing nothing to do: every day
+      // stays a possible training day, which is what the strip rendered
+      // before days could be chosen.
+      if (chosen.isEmpty) return DayMark.planned;
+      if (!chosen.contains(weekday)) return DayMark.none;
+      // Strictly before today. Today is never missed -- the day is not over.
+      return _key(date).compareTo(todayKey) < 0 ? DayMark.missed : DayMark.planned;
+    }
+
+    final target = chosen.isNotEmpty ? chosen.length : daysPerWeek;
+    final hasTarget = target >= _minTarget && target <= _maxTarget;
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -152,7 +192,7 @@ class WeekStrip extends StatelessWidget {
               const Flexible(child: FsEyebrow('This week')),
               Text(
                 hasTarget
-                    ? '$done of $daysPerWeek'
+                    ? '$done of $target'
                     : (done == 1 ? '1 session' : '$done sessions'),
                 key: const Key('week.tally'),
                 style: TextStyle(
@@ -170,7 +210,7 @@ class WeekStrip extends StatelessWidget {
               WeekDayCell(
                 key: Key('day.${offset + 1}'),
                 label: _labels[offset],
-                completed: completedDates.contains(_key(date)),
+                mark: markFor(offset + 1, date),
                 isToday: offset + 1 == today.weekday,
               ),
           ],
