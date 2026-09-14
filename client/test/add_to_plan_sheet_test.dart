@@ -31,10 +31,10 @@ const _plan = WorkoutPlan(
 /// called* -- useful only after a caller has driven the sheet to a result,
 /// since right after [_open] returns the sheet is still open and nothing has
 /// resolved yet.
-typedef _Opened = ({int? Function() chosen});
+typedef _Opened = ({AddToPlanChoice? Function() chosen});
 
 Future<_Opened> _open(WidgetTester tester) async {
-  int? chosen;
+  AddToPlanChoice? chosen;
   await tester.pumpWidget(MaterialApp(
     theme: fsLightTheme(),
     home: Builder(
@@ -70,14 +70,14 @@ void main() {
     expect(find.textContaining('1 exercise'), findsWidgets);
   });
 
-  testWidgets('a new day resolves to null', (tester) async {
+  testWidgets('a new day is a choice with no day to replace', (tester) async {
     final opened = await _open(tester);
 
     await tester.tap(find.byKey(const Key('addToPlan.newDay')));
     await tester.pumpAndSettle();
 
     expect(find.byType(BottomSheet), findsNothing);
-    expect(opened.chosen(), isNull);
+    expect(opened.chosen(), (cancelled: false, dayNo: null));
   });
 
   testWidgets('choosing a day resolves to that day', (tester) async {
@@ -87,6 +87,21 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.byType(BottomSheet), findsNothing);
-    expect(opened.chosen(), 2);
+    expect(opened.chosen(), (cancelled: false, dayNo: 2));
+  });
+
+  testWidgets('dismissing the sheet is none of these, not a new day',
+      (tester) async {
+    // "As a new day" is a row the user can tap. Swiping the sheet away or
+    // tapping outside it conventionally means "none of these" -- and a day
+    // added by accident cannot be removed again: pruning a custom plan is
+    // explicitly out of scope, so the extra day is permanent.
+    final opened = await _open(tester);
+
+    await tester.tapAt(const Offset(5, 5));
+    await tester.pumpAndSettle();
+
+    expect(find.byType(BottomSheet), findsNothing);
+    expect(opened.chosen(), (cancelled: true, dayNo: null));
   });
 }

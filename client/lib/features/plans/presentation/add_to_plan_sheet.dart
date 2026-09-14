@@ -3,19 +3,30 @@ import 'package:flutter/material.dart';
 import '../../../core/theme.dart';
 import '../domain/workout_plan.dart';
 
-/// Where in the plan a finished workout should land.
+/// What the user chose to do with the finished workout.
 ///
-/// Resolves to the `dayNo` to replace, or null for "a new day at the end".
-/// Dismissing resolves to null as well, which is the same as choosing a new
-/// day -- deliberately: the caller reached this sheet by the user already
-/// accepting "add to my plan", so a dismissal is a choice about WHERE, not a
-/// change of mind about WHETHER. A caller that needs to distinguish them
-/// should ask before opening this.
-Future<int?> showAddToPlanSheet(BuildContext context, WorkoutPlan plan) async {
+/// [cancelled] is the whole reason this is a record rather than a bare
+/// `int?`: "a new day at the end" and "never mind" are different answers,
+/// and `dayNo: null` can only say one of them. "As a new day" is a row the
+/// user taps, so dismissing the sheet -- swiping it down, tapping outside it
+/// -- means none of the rows, the way dismissing any list of choices does.
+/// Reading it as a new day mattered because it is not undoable: removing a
+/// day from a custom plan is out of scope, so an accidental day stays.
+///
+/// [dayNo] is the day to replace, or null for a new day at the end. It is
+/// null whenever [cancelled] is true, and the caller must write nothing at
+/// all in that case rather than treating it as an append.
+typedef AddToPlanChoice = ({bool cancelled, int? dayNo});
+
+/// Where in the plan a finished workout should land, or that it should not.
+Future<AddToPlanChoice> showAddToPlanSheet(
+  BuildContext context,
+  WorkoutPlan plan,
+) async {
   final dayNumbers = <int>{for (final e in plan.exercises) e.dayNo}.toList()
     ..sort();
 
-  return showModalBottomSheet<int>(
+  final chosen = await showModalBottomSheet<AddToPlanChoice>(
     context: context,
     showDragHandle: true,
     builder: (sheetContext) {
@@ -44,7 +55,8 @@ Future<int?> showAddToPlanSheet(BuildContext context, WorkoutPlan plan) async {
                 'Day ${dayNumbers.length + 1} of your plan',
                 style: TextStyle(fontSize: 12, color: t.text3),
               ),
-              onTap: () => Navigator.of(sheetContext).pop(),
+              onTap: () => Navigator.of(sheetContext)
+                  .pop((cancelled: false, dayNo: null)),
             ),
             Divider(color: t.line2, height: 1),
             for (final dayNo in dayNumbers)
@@ -59,7 +71,8 @@ Future<int?> showAddToPlanSheet(BuildContext context, WorkoutPlan plan) async {
                     'Replaces $count ${count == 1 ? 'exercise' : 'exercises'}',
                     style: TextStyle(fontSize: 12, color: t.text3),
                   ),
-                  onTap: () => Navigator.of(sheetContext).pop(dayNo),
+                  onTap: () => Navigator.of(sheetContext)
+                      .pop((cancelled: false, dayNo: dayNo)),
                 );
               }),
             const SizedBox(height: 8),
@@ -68,4 +81,7 @@ Future<int?> showAddToPlanSheet(BuildContext context, WorkoutPlan plan) async {
       );
     },
   );
+  // A sheet closed without an answer -- the barrier, a swipe, the system back
+  // gesture -- resolves null, and null is the dismissal.
+  return chosen ?? const (cancelled: true, dayNo: null);
 }

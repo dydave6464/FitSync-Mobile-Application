@@ -1203,6 +1203,26 @@ void main() {
     expect(plans.lastSessionId, 9);
   });
 
+  testWidgets('dismissing the day sheet adds no day at all', (tester) async {
+    // Dismissal is not a vote for "a new day": that is its own row on the
+    // sheet. Removing a day from a custom plan is out of scope, so a day
+    // appended by a stray tap outside the sheet would be permanent.
+    final plans = RecordingPlanRepository(active: _customPlan);
+    await _pump(tester, session: _manualSessionWithSets(), plans: plans);
+
+    await _menu(tester, 'finish');
+    await tester.tap(find.byKey(const Key('summary.toPlan')));
+    await tester.pumpAndSettle();
+    expect(find.byKey(const Key('addToPlan.newDay')), findsOneWidget);
+
+    await tester.tapAt(const Offset(5, 5));
+    await tester.pumpAndSettle();
+
+    expect(plans.fromSessionCalls, 0);
+    expect(find.byType(SessionLoggerScreen), findsNothing,
+        reason: 'the session is finished either way');
+  });
+
   testWidgets('an existing custom plan asks which day the workout becomes',
       (tester) async {
     final plans = RecordingPlanRepository(

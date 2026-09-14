@@ -279,7 +279,9 @@ class _SessionLoggerScreenState extends ConsumerState<SessionLoggerScreen> {
     var cancelled = false;
     if (active != null && active.isCustom) {
       if (!mounted) return;
-      dayNo = await showAddToPlanSheet(context, active);
+      final choice = await showAddToPlanSheet(context, active);
+      cancelled = choice.cancelled;
+      dayNo = choice.dayNo;
     } else if (active != null) {
       // A generated plan is about to be deactivated and replaced by a
       // one-day plan built from this workout, and plan history is out of
