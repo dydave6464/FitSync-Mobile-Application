@@ -445,4 +445,14 @@ test('plan endpoints', async (t) => {
   await t.test('regenerating requires a token', async () => {
     await request(app).post('/api/v1/plans/regenerate').send({}).expect(401);
   });
+
+  await t.test('the active plan says it was generated', async () => {
+    await reset();
+    await request(app).post('/api/v1/plans/regenerate')
+      .set('Authorization', auth).send({}).expect(200);
+
+    const res = await request(app).get('/api/v1/plans/active')
+      .set('Authorization', auth).expect(200);
+    assert.equal(res.body.data.plan.source, 'generated');
+  });
 });

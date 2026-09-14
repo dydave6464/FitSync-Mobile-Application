@@ -111,7 +111,7 @@ async function savePlan(pool, userId, plan) {
 
 async function getActivePlan(pool, userId) {
   const [plans] = await pool.query(
-    `SELECT plan_id, name, split_style, days_per_week, session_length_min, week_no, created_at
+    `SELECT plan_id, name, split_style, days_per_week, session_length_min, week_no, source, created_at
        FROM workout_plans WHERE user_id = ? AND is_active = TRUE
       ORDER BY plan_id DESC LIMIT 1`, [userId],
   );
@@ -149,6 +149,9 @@ async function getActivePlan(pool, userId) {
     daysPerWeek: p.days_per_week,
     sessionLengthMin: p.session_length_min,
     weekNo: p.week_no,
+    // The client labels a custom plan "Your plan" and warns before the
+    // generator replaces one.
+    source: p.source,
     // The full rotation, not merely the days that have exercises: a day that
     // came back empty is still a day of the plan, and the Plan tab needs to
     // name it rather than silently renumbering the ones that survived.

@@ -150,7 +150,7 @@ test('complete FitSync schema', async (t) => {
     assert.equal(srows[0].plan_day_no, null, 'a session predating 013 has no day');
   });
 
-  await t.test('all sixteen migrations are recorded', async () => {
+  await t.test('all seventeen migrations are recorded', async () => {
     const [rows] = await pool.query('SELECT version FROM schema_migrations ORDER BY version');
     assert.deepEqual(rows.map((r) => r.version), [
       '001_account_and_profile.sql',
@@ -169,6 +169,7 @@ test('complete FitSync schema', async (t) => {
       '014_cardio_core_split.sql',
       '015_session_exercises.sql',
       '016_training_days.sql',
+      '017_plan_source.sql',
     ]);
   });
 
@@ -185,5 +186,21 @@ test('complete FitSync schema', async (t) => {
       'SELECT split_style FROM workout_plans WHERE plan_id = ?', [p.insertId],
     );
     assert.equal(rows[0].split_style, 'cardio_core');
+  });
+
+  await t.test('workout_plans records whether a plan was generated or written', async () => {
+    const [[row]] = await pool.query(
+      `SELECT column_type AS type, is_nullable AS nullable, column_default AS def
+         FROM information_schema.columns
+        WHERE table_schema = ? AND table_name = 'workout_plans'
+          AND column_name = 'source'`,
+      [testDbConfig().database],
+    );
+    assert.ok(row, 'workout_plans.source must exist');
+    assert.equal(row.type, "enum('generated','custom')");
+    assert.equal(row.nullable, 'NO');
+    // The default is what makes this safe without a backfill: every plan that
+    // already exists came from the generator.
+    assert.equal(row.def, 'generated');
   });
 });
