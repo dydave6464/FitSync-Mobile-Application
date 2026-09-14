@@ -542,6 +542,23 @@ test('plan endpoints', async (t) => {
     assert.equal(res.body.data.plan.exercises.filter((e) => e.dayNo === 2).length, 1);
   });
 
+  await t.test('a dayNo on a call that turns out to be creating is refused',
+    async () => {
+      // Reached through the route because the refusal is the db layer's --
+      // it is decided inside the transaction, where "creating" is actually
+      // known -- and this pins that it surfaces as a recoverable 400 rather
+      // than the silent plan replacement it used to be.
+      await reset();
+      const [[u]] = await pool.query("SELECT user_id FROM users WHERE email = 'w@example.com'");
+      const sessionId = await finishedWorkout(u.user_id);
+
+      const res = await request(app).post('/api/v1/plans/from-session')
+        .set('Authorization', auth)
+        .send({ sessionId, splitStyle: 'full_body', dayNo: 2 })
+        .expect(400);
+      assert.equal(res.body.error.code, 'INVALID_DAY_NO');
+    });
+
   await t.test('the plan cannot be changed under a running workout', async () => {
     // The same guard regenerate carries: swapping the plan out from under the
     // logger strands it on exercises no longer in it.

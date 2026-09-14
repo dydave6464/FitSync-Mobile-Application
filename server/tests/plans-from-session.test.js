@@ -267,6 +267,53 @@ test('building a plan out of a completed session', async (t) => {
     );
   });
 
+  await t.test('a dayNo the new plan cannot have is refused, not dropped', async () => {
+    // The client sends dayNo off its cached plan. If that cache is stale --
+    // the custom plan was regenerated away on another device -- the write
+    // turns out to be CREATING, and a create has exactly one day. Silently
+    // ignoring the dayNo replaced the plan the user thought they were
+    // editing, with nothing on screen to say so; a refusal is recoverable,
+    // a replaced plan is not.
+    const userId = await freshUser();
+    const [gen] = await pool.query(
+      `INSERT INTO workout_plans
+         (user_id, name, split_style, days_per_week, session_length_min, is_active, source)
+       VALUES (?, 'Generated', 'full_body', 3, 45, TRUE, 'generated')`,
+      [userId],
+    );
+    const sessionId = await completedManualSession(userId, [live[0].exercise_id]);
+
+    await assert.rejects(
+      () => createPlanFromSession(pool, userId, {
+        sessionId, splitStyle: 'full_body', dayNo: 2,
+      }),
+      (err) => err.code === 'INVALID_DAY_NO',
+    );
+
+    const [[untouched]] = await pool.query(
+      'SELECT is_active FROM workout_plans WHERE plan_id = ?', [gen.insertId],
+    );
+    assert.equal(untouched.is_active, 1, 'the plan being edited must survive');
+    const [plans] = await pool.query(
+      'SELECT plan_id FROM workout_plans WHERE user_id = ?', [userId],
+    );
+    assert.equal(plans.length, 1, 'and no custom plan may have been created');
+  });
+
+  await t.test('day 1 is accepted on a creating call', async () => {
+    // The one day a plan being created can have, so it is not a contradiction.
+    const userId = await freshUser();
+    const sessionId = await completedManualSession(userId, [live[0].exercise_id]);
+
+    await createPlanFromSession(pool, userId, {
+      sessionId, splitStyle: 'full_body', dayNo: 1,
+    });
+
+    const plan = await activePlan(userId);
+    assert.equal(plan.source, 'custom');
+    assert.deepEqual((await planDays(plan.plan_id)).map((d) => d.day_no), [1]);
+  });
+
   await t.test('a custom plan rotates exactly as a generated one does', async () => {
     // Spec section 5's claim, proven rather than asserted: nothing that
     // FOLLOWS a plan changes, because a custom plan is the same shape as a

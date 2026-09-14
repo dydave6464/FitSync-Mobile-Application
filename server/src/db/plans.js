@@ -367,6 +367,21 @@ async function createPlanFromSession(pool, userId, { sessionId, splitStyle, dayN
         [planId, targetDay],
       );
     } else {
+      // The branch decides this, not the route: the route reads the active
+      // plan outside this transaction, so its view of "creating" can be one
+      // request out of date by the time we get here -- and it is exactly
+      // that staleness this refusal exists for. A client picking "replace
+      // day 2" off a cached plan that has since been regenerated away would
+      // otherwise have its dayNo quietly discarded and get a brand-new
+      // one-day plan, deactivating the plan it thought it was editing, with
+      // nothing to say so. A 400 is recoverable; a replaced plan is not.
+      if (dayNo !== null && dayNo !== 1) {
+        throw AppError.badRequest(
+          'INVALID_DAY_NO',
+          'dayNo must be 1 when the plan is being created.',
+          [{ field: 'dayNo', value: String(dayNo) }],
+        );
+      }
       await conn.query(
         'UPDATE workout_plans SET is_active = FALSE WHERE user_id = ?', [userId],
       );
