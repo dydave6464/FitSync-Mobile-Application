@@ -759,15 +759,32 @@ test('session db', async (t) => {
     // never on the calendar, so a missed Monday costs a day rather than a
     // session. Wiring chosen days into nextPlanDayNo would silently reverse
     // that and every symptom would read as a feature.
+    //
+    // Three completions, not zero: with nothing completed the numerator is 0
+    // and 0 % N == 0 for every N, so a wiring that swapped the real rotation
+    // for trainingDays.length (3, then 4) would report day 1 both times and
+    // this test would not notice. 3 % 3 (=0) and 3 % 4 (=3) land on different
+    // days, so a substituted denominator actually changes the answer here.
     const { userId } = await seed();
+    await pool.query(
+      `INSERT INTO workout_sessions (user_id, status, session_date)
+       VALUES (?, 'completed', CURDATE()),
+              (?, 'completed', CURDATE()),
+              (?, 'completed', CURDATE())`,
+      [userId, userId, userId],
+    );
 
     await setTrainingDays(pool, userId, [1, 3, 5]);
     const before = await nextPlanDayNo(pool, userId, 3);
+    // 3 completions into a 3-day rotation: 3 % 3 + 1 = 1. Stated concretely so
+    // the test says what the rotation should be, not only that it held still.
+    assert.equal(before, 1, 'three completions into a 3-day rotation land on day 1');
 
     await setTrainingDays(pool, userId, [2, 4, 6, 7]);
     const after = await nextPlanDayNo(pool, userId, 3);
 
     assert.equal(after, before,
       'the rotation must not consult which weekdays were chosen');
+    assert.equal(after, 1, 'and specifically must still be day 1, not a value drawn from the new day count');
   });
 });
