@@ -213,6 +213,14 @@ bool _chipOn(WidgetTester tester, String label) => tester
     .firstWhere((c) => c.label == label)
     .selected;
 
+/// How many weekday cells are rendered ticked. The sentence above the row
+/// and the row itself have to agree, and only a count read off the cells can
+/// say whether they do.
+int _ticked(WidgetTester tester) => tester
+    .widgetList<TrainingDayCell>(find.byType(TrainingDayCell))
+    .where((cell) => cell.selected)
+    .length;
+
 /// What the screen says on the way out. Spelled once here so the assertion
 /// and the widget cannot drift apart while both still pass.
 const _generatedMessage = 'New plan generated';
@@ -940,6 +948,52 @@ void main() {
 
       expect(find.byKey(const Key('gen.describe.catalogueError')), findsOneWidget);
       expect(find.byKey(const Key('gen.describe.add.3')), findsNothing);
+    });
+
+    testWidgets('the sentence counts the days the picker shows', (tester) async {
+      // The plan's stored label still says four; the user has ticked three.
+      // The card sits directly above the picker, so composing from the plan
+      // puts "train 4 days a week" over three ticked cells -- a contradiction
+      // on one screen, not the stale label section 4 of the design allows
+      // for. Generate would meanwhile send 3.
+      await _pump(tester, plan: _pplPlan, trainingDays: const [1, 3, 5]);
+
+      expect(fieldText(tester), contains('train 3 days a week'));
+      expect(_ticked(tester), 3,
+          reason: 'the sentence and the cells must describe one schedule');
+    });
+
+    testWidgets('a day count the picker overrules is reported, not swallowed',
+        (tester) async {
+      // _resolve takes the count from the chosen days, so the applied number
+      // has nowhere to land. It cannot simply be dropped: parsed.isEmpty is
+      // false -- the split did land -- so "Nothing in that changed your plan"
+      // never prints either, and Apply looks like it did nothing at all.
+      await _pump(tester, plan: _pplPlan, trainingDays: const [1, 3, 5]);
+
+      await write(tester, 'full body, 5 days a week');
+      await apply(tester);
+
+      expect(find.byKey(const Key('gen.describe.elsewhere')), findsOneWidget);
+      expect(find.textContaining('weekdays you have chosen'), findsOneWidget);
+
+      final screen = tester.state(find.byType(GeneratorScreen)) as dynamic;
+      expect(screen.debugDaysPerWeek, 3,
+          reason: 'the picker sets the count while any day is chosen');
+    });
+
+    testWidgets('with no days chosen the count lands and nothing is reported',
+        (tester) async {
+      // The other half of the pair: with nothing ticked the sentence's count
+      // IS what the controls take, so saying it went nowhere would be false.
+      await _pump(tester, plan: _pplPlan, trainingDays: const []);
+
+      await write(tester, 'full body, 5 days a week');
+      await apply(tester);
+
+      expect(find.byKey(const Key('gen.describe.elsewhere')), findsNothing);
+      final screen = tester.state(find.byType(GeneratorScreen)) as dynamic;
+      expect(screen.debugDaysPerWeek, 5);
     });
 
     testWidgets('a topic this screen does not own is named, not dropped',

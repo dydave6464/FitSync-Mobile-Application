@@ -27,7 +27,7 @@ String injuryLabel(InjuryOption option, SelectedInjury selected) {
   return side == null ? option.name : '${option.name} ($side)';
 }
 
-/// Something a sentence raised that the generator screen does not own.
+/// Something a sentence raised that has nowhere to land.
 ///
 /// Reported as a topic rather than a phrase so the domain says WHAT was
 /// mentioned and the widget decides how to word it.
@@ -39,6 +39,13 @@ enum WeekTopic {
   /// A profile field. The generator reads it server-side; this screen cannot
   /// change it.
   goal,
+
+  /// A count of days, raised while particular weekdays are chosen. The
+  /// picker is then what sets the number -- the payload takes
+  /// `trainingDays.length` -- so the count in the sentence is understood and
+  /// then overruled. Unlike the two above it depends on live state rather
+  /// than on the words alone, so the screen raises it, not the parser.
+  dayCount,
 }
 
 /// What a sentence about the coming week resolved to.
@@ -314,7 +321,18 @@ String composeWeekDescription({
   final goal = _goalLabels[profile?.mainGoal];
   if (goal != null) clauses.add('I want to $goal');
 
-  final days = plan?.daysPerWeek;
+  // The chosen days first, and the plan's count only when there are none --
+  // the same order of preference the generator's `_resolve` applies to the
+  // payload. The plan's `days_per_week` is a label that only catches up on
+  // the next regeneration, and this sentence is rendered directly above the
+  // picker: composing from the label puts "train 4 days a week" over three
+  // ticked cells, which is a contradiction rather than a stale number.
+  //
+  // A count rather than the weekday names, because the round trip has to
+  // hold: [parseWeekDescription] reads counts, not "Mon · Wed · Fri", so a
+  // named-days sentence would resolve back to nothing.
+  final chosen = profile?.trainingDays ?? const <int>[];
+  final days = chosen.isNotEmpty ? chosen.length : plan?.daysPerWeek;
   if (days != null) clauses.add('train $days days a week');
 
   final split = _splitLabels[plan?.splitStyle];

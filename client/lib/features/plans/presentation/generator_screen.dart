@@ -301,6 +301,12 @@ class _GeneratorScreenState extends ConsumerState<GeneratorScreen> {
           ),
           options: options,
           catalogueFailed: asyncOptions.hasError,
+          // So the card can say when a day count it read has been overruled
+          // by the picker below it. Still assigned to `_daysPerWeek` either
+          // way -- it is what the fallback chain takes the moment the last
+          // weekday is unticked -- but a value that changes nothing the user
+          // can currently see has to be named rather than swallowed.
+          trainingDays: trainingDays,
           onApply: (parsed) => setState(() {
             // Only what the sentence actually resolved. Assigning a null
             // through would reset a control the user set by hand to the
@@ -408,6 +414,7 @@ class _DescribeCard extends ConsumerStatefulWidget {
     required this.composed,
     required this.options,
     required this.catalogueFailed,
+    required this.trainingDays,
     required this.onApply,
   });
 
@@ -421,6 +428,10 @@ class _DescribeCard extends ConsumerStatefulWidget {
   /// catalogue: one means "nothing matched", the other means "nothing could
   /// be checked", and only one of those is safe to say.
   final bool catalogueFailed;
+
+  /// The weekdays currently ticked below. Read only to decide whether a day
+  /// count in the sentence has anywhere to land.
+  final List<int> trainingDays;
 
   final ValueChanged<WeekDescription> onApply;
 
@@ -562,6 +573,16 @@ class _DescribeCardState extends ConsumerState<_DescribeCard> {
   Widget _result(FsTokens t, WeekDescription parsed) {
     final note = TextStyle(fontSize: 12, color: t.text3, height: 1.35);
 
+    // The parser's topics plus the one only this screen can see. Recomputed
+    // on every build rather than captured at Apply, because ticking a
+    // weekday afterwards changes whether the count landed -- and a note that
+    // went stale would be the same silent contradiction it exists to stop.
+    final notes = [
+      ...parsed.elsewhere,
+      if (parsed.daysPerWeek != null && widget.trainingDays.isNotEmpty)
+        WeekTopic.dayCount,
+    ];
+
     return Column(
       key: const Key('gen.describe.result'),
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -617,12 +638,12 @@ class _DescribeCardState extends ConsumerState<_DescribeCard> {
             ),
           ),
 
-        if (parsed.elsewhere.isNotEmpty)
+        if (notes.isNotEmpty)
           Padding(
             key: const Key('gen.describe.elsewhere'),
             padding: const EdgeInsets.only(top: 6),
             child: Text(
-              parsed.elsewhere.map(_topicNote).join(' '),
+              notes.map(_topicNote).join(' '),
               style: note,
             ),
           ),
@@ -635,5 +656,8 @@ class _DescribeCardState extends ConsumerState<_DescribeCard> {
         WeekTopic.sessionLength =>
           'Session length follows your plan, so it is shown rather than chosen.',
         WeekTopic.goal => 'Your goal is set in your profile.',
+        WeekTopic.dayCount =>
+          'How many days you train follows the weekdays you have chosen '
+              'below, so that count was not applied.',
       };
 }
