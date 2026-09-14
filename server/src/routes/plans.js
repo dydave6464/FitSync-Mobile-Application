@@ -98,6 +98,21 @@ module.exports = function buildPlansRouter(deps) {
         );
       }
 
+      // A generated plan is the machine's to replace. One the user built out
+      // of workouts they actually did is not, and savePlan deactivates the
+      // active plan inside its transaction -- so without this the work is gone
+      // on one tap. Refused server-side rather than warned client-side so the
+      // protection holds for any caller, not only a screen that remembered.
+      const current = await getActivePlan(deps.pool, userId);
+      if (current !== null && current.source === 'custom' && req.body?.replaceCustomPlan !== true) {
+        const dayCount = new Set(current.exercises.map((e) => e.dayNo)).size;
+        throw AppError.conflict(
+          'CUSTOM_PLAN_WOULD_BE_LOST',
+          `Generating a new plan replaces "${current.name}" and the `
+            + `${dayCount} ${dayCount === 1 ? 'day' : 'days'} you built in it.`,
+        );
+      }
+
       // Read server-side, so the client cannot regenerate against someone
       // else's profile by sending one.
       const profile = await getProfile(deps.pool, userId);

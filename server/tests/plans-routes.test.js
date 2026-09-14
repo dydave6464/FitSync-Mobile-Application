@@ -564,4 +564,55 @@ test('plan endpoints', async (t) => {
   await t.test('from-session needs a signed-in caller', async () => {
     await request(app).post('/api/v1/plans/from-session').send({ sessionId: 1 }).expect(401);
   });
+
+  await t.test('regenerating over your own plan is refused', async () => {
+    await reset();
+    const [[u]] = await pool.query("SELECT user_id FROM users WHERE email = 'w@example.com'");
+    const sessionId = await finishedWorkout(u.user_id);
+    await request(app).post('/api/v1/plans/from-session')
+      .set('Authorization', auth)
+      .send({ sessionId, splitStyle: 'full_body' }).expect(200);
+
+    const res = await request(app).post('/api/v1/plans/regenerate')
+      .set('Authorization', auth).send({}).expect(409);
+    assert.equal(res.body.error.code, 'CUSTOM_PLAN_WOULD_BE_LOST');
+  });
+
+  await t.test('the refusal names what would be lost', async () => {
+    // The client turns this into a dialog. A message that does not name the
+    // plan leaves the user guessing what they are about to throw away.
+    await reset();
+    const [[u]] = await pool.query("SELECT user_id FROM users WHERE email = 'w@example.com'");
+    const sessionId = await finishedWorkout(u.user_id);
+    await request(app).post('/api/v1/plans/from-session')
+      .set('Authorization', auth)
+      .send({ sessionId, splitStyle: 'push_pull_legs' }).expect(200);
+
+    const res = await request(app).post('/api/v1/plans/regenerate')
+      .set('Authorization', auth).send({}).expect(409);
+    assert.match(res.body.error.message, /My Push \/ Pull \/ Legs/);
+  });
+
+  await t.test('saying so explicitly regenerates anyway', async () => {
+    await reset();
+    const [[u]] = await pool.query("SELECT user_id FROM users WHERE email = 'w@example.com'");
+    const sessionId = await finishedWorkout(u.user_id);
+    await request(app).post('/api/v1/plans/from-session')
+      .set('Authorization', auth)
+      .send({ sessionId, splitStyle: 'full_body' }).expect(200);
+
+    const res = await request(app).post('/api/v1/plans/regenerate')
+      .set('Authorization', auth)
+      .send({ replaceCustomPlan: true }).expect(200);
+    assert.equal(res.body.data.plan.source, 'generated');
+  });
+
+  await t.test('a generated plan is replaced without asking', async () => {
+    // A regression guard on today's behaviour, not a new feature.
+    await reset();
+    await request(app).post('/api/v1/plans/regenerate')
+      .set('Authorization', auth).send({}).expect(200);
+    await request(app).post('/api/v1/plans/regenerate')
+      .set('Authorization', auth).send({}).expect(200);
+  });
 });
