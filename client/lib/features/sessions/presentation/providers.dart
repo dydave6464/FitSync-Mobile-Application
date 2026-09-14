@@ -117,6 +117,12 @@ final sessionHistoryProvider = FutureProvider<SessionHistoryPage>(
   retry: apiRetryPolicy,
 );
 
+/// The workout the "+" sheet offers to repeat, or null when there is none.
+final lastWorkoutProvider = FutureProvider<LastWorkout?>(
+  (ref) => ref.watch(sessionRepositoryProvider).lastWorkout(),
+  retry: apiRetryPolicy,
+);
+
 /// `YYYY-MM-DD` for every completed session since Monday. Feeds the week strip.
 final completedDaysProvider = FutureProvider<Set<String>>(
   (ref) => ref.watch(sessionRepositoryProvider).completedThisWeek(),

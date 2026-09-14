@@ -243,3 +243,195 @@ test('session history', async (t) => {
     await request(app).get('/api/v1/sessions/summary').expect(401);
   });
 });
+
+test('the last completed workout, for repeating', async (t) => {
+  const pool = createPool(testDbConfig());
+  await dropAllTables(pool);
+  await migrate(testDbConfig());
+  await seedExercises(testDbConfig(), JSON.parse(JSON.stringify(FIXTURE)));
+
+  const app = buildTestApp({
+    pool, storage: createStorage({ mode: 'local', localDir: 'storage' }),
+  });
+
+  t.after(async () => {
+    await dropAllTables(pool);
+    await pool.end();
+  });
+
+  const [live] = await pool.query(
+    "SELECT exercise_id, name FROM exercises WHERE status='live' ORDER BY exercise_id LIMIT 3",
+  );
+
+  const freshUser = async (email) => {
+    const res = await request(app).post('/api/v1/auth/register')
+      .send({ email, password: 's3cret-pass', fullName: 'W' }).expect(201);
+    await markEmailVerified(pool, res.body.data.user.userId);
+    const login = await request(app).post('/api/v1/auth/login')
+      .send({ email, password: 's3cret-pass' }).expect(200);
+    return { token: login.body.data.token, userId: res.body.data.user.userId };
+  };
+
+  const last = async (token) => {
+    const res = await request(app).get('/api/v1/sessions/last')
+      .set('Authorization', `Bearer ${token}`).expect(200);
+    return res.body.data.session;
+  };
+
+  /// A hand-picked session: owns its list in session_exercises.
+  const manualSession = async (userId, exerciseIds, { daysAgo = 0, status = 'completed' } = {}) => {
+    const [s] = await pool.query(
+      `INSERT INTO workout_sessions (user_id, status, session_date, started_at, duration_min, total_volume_kg)
+       VALUES (?, ?, DATE_SUB(CURDATE(), INTERVAL ? DAY), NOW(), 30, 500)`,
+      [userId, status, daysAgo],
+    );
+    for (const [i, id] of exerciseIds.entries()) {
+      await pool.query(
+        'INSERT INTO session_exercises (session_id, exercise_id, order_no) VALUES (?, ?, ?)',
+        [s.insertId, id, i + 1],
+      );
+    }
+    return s.insertId;
+  };
+
+  /// A plan-backed session: borrows the plan's rows for its rotation day.
+  const planSession = async (userId, exerciseIds, { dayNo = 1, daysAgo = 0 } = {}) => {
+    const [plan] = await pool.query(
+      `INSERT INTO workout_plans (user_id, name, split_style, days_per_week, session_length_min, is_active)
+       VALUES (?, 'Upper Body · Push', 'push_pull_legs', 3, 45, FALSE)`,
+      [userId],
+    );
+    for (const [i, id] of exerciseIds.entries()) {
+      await pool.query(
+        `INSERT INTO plan_exercises (plan_id, exercise_id, day_no, order_no, target_sets, target_reps)
+         VALUES (?, ?, ?, ?, 3, '8-12')`,
+        [plan.insertId, id, dayNo, i + 1],
+      );
+    }
+    // A different day nobody trained, to prove the day is respected.
+    await pool.query(
+      `INSERT INTO plan_exercises (plan_id, exercise_id, day_no, order_no, target_sets, target_reps)
+       VALUES (?, ?, ?, 9, 3, '8-12')`,
+      [plan.insertId, live[2].exercise_id, dayNo + 1],
+    );
+    const [s] = await pool.query(
+      `INSERT INTO workout_sessions (user_id, plan_id, plan_day_no, status, session_date, started_at, duration_min, total_volume_kg)
+       VALUES (?, ?, ?, 'completed', DATE_SUB(CURDATE(), INTERVAL ? DAY), NOW(), 40, 900)`,
+      [userId, plan.insertId, dayNo, daysAgo],
+    );
+    return s.insertId;
+  };
+
+  await t.test('a hand-picked workout comes back with its own list', async () => {
+    const u = await freshUser('l1@example.com');
+    await manualSession(u.userId, [live[0].exercise_id, live[1].exercise_id]);
+
+    const session = await last(u.token);
+    assert.equal(session.planName, null);
+    assert.deepEqual(session.exercises.map((e) => e.exerciseId),
+      [live[0].exercise_id, live[1].exercise_id]);
+  });
+
+  await t.test('the list keeps the order it was trained in', async () => {
+    const u = await freshUser('l2@example.com');
+    await manualSession(u.userId, [live[1].exercise_id, live[0].exercise_id]);
+
+    const session = await last(u.token);
+    assert.deepEqual(session.exercises.map((e) => e.exerciseId),
+      [live[1].exercise_id, live[0].exercise_id],
+      'repeating a workout in a different order is a different workout');
+  });
+
+  await t.test('each exercise carries what the picker needs to draw it', async () => {
+    // The review screen renders name, muscle group and equipment. Ids alone
+    // would leave it showing blank rows for a workout the user recognises.
+    const u = await freshUser('l3@example.com');
+    await manualSession(u.userId, [live[0].exercise_id]);
+
+    const only = (await last(u.token)).exercises[0];
+    assert.equal(typeof only.name, 'string');
+    assert.ok(only.name.length > 0);
+    assert.ok('muscleGroup' in only);
+    assert.ok('equipment' in only);
+    assert.ok('thumbnailUrl' in only);
+  });
+
+  await t.test('a plan workout comes back with that day\'s exercises', async () => {
+    // session_exercises is empty for a plan session by design, so the list has
+    // to be derived from the plan -- and from the rotation day it trained,
+    // not from the whole plan.
+    const u = await freshUser('l4@example.com');
+    await planSession(u.userId, [live[0].exercise_id, live[1].exercise_id], { dayNo: 2 });
+
+    const session = await last(u.token);
+    assert.equal(session.planName, 'Upper Body · Push');
+    assert.deepEqual(session.exercises.map((e) => e.exerciseId),
+      [live[0].exercise_id, live[1].exercise_id]);
+  });
+
+  await t.test('the newest completed workout is the one returned', async () => {
+    const u = await freshUser('l5@example.com');
+    await manualSession(u.userId, [live[0].exercise_id], { daysAgo: 5 });
+    await manualSession(u.userId, [live[1].exercise_id], { daysAgo: 0 });
+
+    const session = await last(u.token);
+    assert.deepEqual(session.exercises.map((e) => e.exerciseId), [live[1].exercise_id]);
+  });
+
+  await t.test('an abandoned workout is not something to repeat', async () => {
+    const u = await freshUser('l6@example.com');
+    await manualSession(u.userId, [live[0].exercise_id], { status: 'abandoned' });
+
+    assert.equal(await last(u.token), null);
+  });
+
+  await t.test('an untrained account has nothing to repeat', async () => {
+    // Null rather than 404: having trained nothing is the normal state a new
+    // account is in, the same contract GET /sessions/active states.
+    const u = await freshUser('l7@example.com');
+    assert.equal(await last(u.token), null);
+  });
+
+  await t.test('another account\'s workout is not yours to repeat', async () => {
+    const mine = await freshUser('l8@example.com');
+    const theirs = await freshUser('l9@example.com');
+    await manualSession(theirs.userId, [live[0].exercise_id]);
+
+    assert.equal(await last(mine.token), null);
+  });
+
+  await t.test('an exercise no longer live is dropped, not repeated', async () => {
+    // Exercises are never deleted -- set_logs holds a RESTRICT key to them --
+    // so one leaves the catalogue by being demoted back to 'pending'. A
+    // workout can be months old, and refusing the whole repeat because one
+    // movement was demoted leaves the user no way to do the rest of it.
+    const u = await freshUser('l10@example.com');
+    await manualSession(u.userId, [live[0].exercise_id, live[1].exercise_id]);
+    await pool.query("UPDATE exercises SET status='pending' WHERE exercise_id = ?",
+      [live[0].exercise_id]);
+
+    const session = await last(u.token);
+    assert.deepEqual(session.exercises.map((e) => e.exerciseId), [live[1].exercise_id]);
+
+    await pool.query("UPDATE exercises SET status='live' WHERE exercise_id = ?",
+      [live[0].exercise_id]);
+  });
+
+  await t.test('a workout with no live exercise left is not repeatable', async () => {
+    const u = await freshUser('l11@example.com');
+    await manualSession(u.userId, [live[0].exercise_id]);
+    await pool.query("UPDATE exercises SET status='pending' WHERE exercise_id = ?",
+      [live[0].exercise_id]);
+
+    // Null, not an empty list: a workout of no exercises is not a workout,
+    // and the sheet must not offer to repeat nothing.
+    assert.equal(await last(u.token), null);
+
+    await pool.query("UPDATE exercises SET status='live' WHERE exercise_id = ?",
+      [live[0].exercise_id]);
+  });
+
+  await t.test('repeating needs a signed-in caller', async () => {
+    await request(app).get('/api/v1/sessions/last').expect(401);
+  });
+});

@@ -52,6 +52,14 @@ class WorkoutDraftNotifier extends Notifier<List<ExerciseSummary>> {
     state = next;
   }
 
+  /// Swaps the whole draft for [exercises].
+  ///
+  /// Replaces rather than appends: repeating a workout means doing that
+  /// workout, and merging in whatever was left half-picked from an abandoned
+  /// visit to the library would quietly make it a different one.
+  void replaceWith(List<ExerciseSummary> exercises) =>
+      state = List.unmodifiable(exercises);
+
   void clear() => state = const [];
 
   List<ExerciseSummary> _without(int exerciseId) => [

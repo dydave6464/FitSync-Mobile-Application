@@ -13,6 +13,7 @@ const {
   completedThisWeek,
   listHistory,
   summariseHistory,
+  lastCompletedWorkout,
   SUMMARY_WINDOWS,
 } = require('../db/sessions');
 
@@ -124,6 +125,24 @@ module.exports = function buildSessionsRouter(deps) {
         );
       }
       res.json({ data: { summary } });
+    } catch (err) { next(err); }
+  });
+
+  router.get('/last', auth, async (req, res, next) => {
+    try {
+      const workout = await lastCompletedWorkout(deps.pool, req.user.userId);
+      // Null rather than 404: having trained nothing is the normal state, the
+      // same contract GET /sessions/active states.
+      res.json({
+        data: {
+          session: workout === null ? null : {
+            ...workout,
+            exercises: workout.exercises.map(
+              (e) => ({ ...e, thumbnailUrl: toUrl(e.thumbnailUrl) }),
+            ),
+          },
+        },
+      });
     } catch (err) { next(err); }
   });
 

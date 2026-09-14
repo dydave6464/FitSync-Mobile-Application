@@ -1,3 +1,5 @@
+import '../../exercises/domain/exercise.dart';
+
 /// One finished workout, as the Progress tab lists it.
 ///
 /// Deliberately not [ActiveSession]: that models a workout you are inside,
@@ -84,6 +86,45 @@ class SessionHistoryPage {
         total: json['total'] as int? ?? 0,
         page: json['page'] as int? ?? 1,
         limit: json['limit'] as int? ?? 20,
+      );
+}
+
+/// A workout already trained, ready to be done again.
+///
+/// Carries whole catalogue rows rather than ids because it feeds the draft
+/// directly, and the review screen renders names, thumbnails and equipment.
+/// The server resolves them from the session's own list when it had one and
+/// from the plan's rows for the day it trained otherwise -- so a repeat works
+/// whichever way the workout started.
+class LastWorkout {
+  const LastWorkout({
+    required this.sessionId,
+    required this.sessionDate,
+    required this.exercises,
+    this.planName,
+  });
+
+  final int sessionId;
+  final String sessionDate;
+  final List<ExerciseSummary> exercises;
+
+  /// The plan it ran under, or null when it was picked by hand.
+  final String? planName;
+
+  /// What to call it, the same way [SessionHistoryEntry] does.
+  String get title => planName ?? 'Your own workout';
+
+  /// "2 exercises", for the sheet's subtitle.
+  String get describeCount =>
+      '${exercises.length} ${exercises.length == 1 ? 'exercise' : 'exercises'}';
+
+  factory LastWorkout.fromJson(Map<String, dynamic> json) => LastWorkout(
+        sessionId: json['sessionId'] as int,
+        sessionDate: json['sessionDate'] as String,
+        planName: json['planName'] as String?,
+        exercises: (json['exercises'] as List<dynamic>? ?? const [])
+            .map((e) => ExerciseSummary.fromJson(e as Map<String, dynamic>))
+            .toList(growable: false),
       );
 }
 

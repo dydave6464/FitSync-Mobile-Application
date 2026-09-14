@@ -26,6 +26,17 @@ class SessionRepository {
     return SessionHistoryPage.fromJson(data);
   }
 
+  /// The most recent completed workout, or null when there is none.
+  ///
+  /// Null rather than an exception: having trained nothing is the normal state
+  /// a new account is in, the same contract [active] states.
+  Future<LastWorkout?> lastWorkout() async {
+    final data = await _api.getJson('/api/v1/sessions/last');
+    final session = data['session'];
+    if (session == null) return null;
+    return LastWorkout.fromJson(session as Map<String, dynamic>);
+  }
+
   /// What the last [period] ('week', 'month' or 'year') added up to.
   Future<TrainingSummary> summary({String period = 'week'}) async {
     final data = await _api.getJson('/api/v1/sessions/summary?period=$period');

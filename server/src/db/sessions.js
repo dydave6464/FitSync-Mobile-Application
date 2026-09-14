@@ -584,6 +584,76 @@ async function summariseHistory(pool, userId, period = 'week') {
 }
 
 
+/// The exercises of the most recently completed workout, for repeating it.
+///
+/// Two sources, the same split logSet already makes: a hand-picked session
+/// owns its list in session_exercises, and a plan-backed one borrows the
+/// plan's rows for the rotation day it trained. The day matters -- borrowing
+/// the whole plan would offer to repeat three days of training as one workout.
+///
+/// Live exercises only. Exercises are never deleted -- set_logs holds a
+/// RESTRICT key to them -- so one leaves the catalogue by being demoted back
+/// to 'pending'. A workout can be months old, so refusing the whole repeat
+/// because one movement was demoted would leave the user no way to do the
+/// rest of it. Everything the picker draws comes back with it, because a list
+/// of bare ids renders blank rows for a workout the user recognises by name.
+async function lastCompletedWorkout(pool, userId) {
+  const [rows] = await pool.query(
+    `SELECT s.session_id, s.session_date, s.plan_id, s.plan_day_no, p.name AS plan_name
+       FROM workout_sessions s
+       LEFT JOIN workout_plans p ON p.plan_id = s.plan_id
+      WHERE s.user_id = ? AND s.status = 'completed'
+      ORDER BY s.session_date DESC, s.session_id DESC
+      LIMIT 1`,
+    [userId],
+  );
+  if (rows.length === 0) return null;
+  const row = rows[0];
+
+  const [own] = await pool.query(
+    `SELECT x.exercise_id, x.name, x.muscle_group, x.thumbnail_url, e.name AS equipment
+       FROM session_exercises se
+       JOIN exercises x ON x.exercise_id = se.exercise_id
+       LEFT JOIN equipment e ON e.equipment_id = x.equipment_id
+      WHERE se.session_id = ? AND x.status = 'live'
+      ORDER BY se.order_no`,
+    [row.session_id],
+  );
+
+  let exercises = own;
+  if (exercises.length === 0 && row.plan_id !== null) {
+    const [fromPlan] = await pool.query(
+      `SELECT x.exercise_id, x.name, x.muscle_group, x.thumbnail_url, e.name AS equipment
+         FROM plan_exercises pe
+         JOIN exercises x ON x.exercise_id = pe.exercise_id
+         LEFT JOIN equipment e ON e.equipment_id = x.equipment_id
+        WHERE pe.plan_id = ? AND pe.day_no = ? AND x.status = 'live'
+        ORDER BY pe.order_no`,
+      [row.plan_id, row.plan_day_no ?? 1],
+    );
+    exercises = fromPlan;
+  }
+
+  // Null rather than an empty list: a workout of no exercises is not a
+  // workout, and the sheet must not offer to repeat nothing.
+  if (exercises.length === 0) return null;
+
+  return {
+    sessionId: row.session_id,
+    sessionDate: formatDate(row.session_date),
+    planName: row.plan_name ?? null,
+    exercises: exercises.map((e) => ({
+      exerciseId: e.exercise_id,
+      name: e.name,
+      muscleGroup: e.muscle_group,
+      equipment: e.equipment ?? null,
+      // The stored key. Turning it into a URL is the route's job, exactly as
+      // it is for the rest of the session payloads.
+      thumbnailUrl: e.thumbnail_url,
+    })),
+  };
+}
+
 async function completedThisWeek(pool, userId) {
   const [rows] = await pool.query(
     `SELECT DISTINCT session_date
@@ -611,6 +681,7 @@ module.exports = {
   completedThisWeek,
   listHistory,
   summariseHistory,
+  lastCompletedWorkout,
   SUMMARY_WINDOWS,
   nextPlanDayNo,
 };

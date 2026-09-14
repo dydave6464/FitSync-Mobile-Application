@@ -107,6 +107,8 @@ class SequenceSessionRepository implements SessionRepository {
   Future<TrainingSummary> summary({String period = 'week'}) =>
       throw UnimplementedError();
   @override
+  Future<LastWorkout?> lastWorkout() => throw UnimplementedError();
+  @override
   Future<ActiveSession> start({List<int>? exerciseIds}) => throw UnimplementedError();
   @override
   Future<LoggedSet> logSet(

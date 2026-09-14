@@ -1,7 +1,12 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../core/theme.dart';
 import '../../../core/widgets/fs_kit.dart';
+import '../../exercises/domain/exercise.dart';
+import '../../sessions/presentation/providers.dart' show lastWorkoutProvider;
+import '../../sessions/presentation/workout_draft.dart';
+import '../../sessions/presentation/workout_review_screen.dart';
 import '../../sessions/presentation/workout_setup_screen.dart';
 import 'generator_screen.dart';
 
@@ -27,12 +32,30 @@ Future<void> showStartWorkoutSheet(BuildContext context) {
   );
 }
 
-class _StartWorkoutSheet extends StatelessWidget {
+class _StartWorkoutSheet extends ConsumerWidget {
   const _StartWorkoutSheet();
 
+  /// Loads the workout into the draft and hands it to the review screen.
+  ///
+  /// Review rather than straight into the logger, which is where the
+  /// mockup's row pointed: a repeat is rarely identical, and the review
+  /// screen already owns starting -- including the guard for a workout that
+  /// is already open. Routing around it would mean a second copy of that.
+  void _repeat(BuildContext context, WidgetRef ref, List<ExerciseSummary> exercises) {
+    ref.read(workoutDraftProvider.notifier).replaceWith(exercises);
+    Navigator.of(context).pop();
+    Navigator.of(context).push(
+      MaterialPageRoute<void>(builder: (_) => const WorkoutReviewScreen()),
+    );
+  }
+
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
     final t = context.fs;
+    // Only the shortcut depends on this. A failure or an untrained account
+    // simply leaves the row out -- the two rows that start a workout from
+    // scratch must not depend on history loading.
+    final last = ref.watch(lastWorkoutProvider).value;
 
     return Container(
       decoration: BoxDecoration(
@@ -110,6 +133,57 @@ class _StartWorkoutSheet extends StatelessWidget {
                   );
                 },
               ),
+              if (last != null) ...[
+                const SizedBox(height: 14),
+                Row(
+                  children: [
+                    Expanded(child: Divider(color: t.line2, height: 1)),
+                    Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 12),
+                      child: Text(
+                        'or pick up where you left off',
+                        style: TextStyle(fontSize: 11, color: t.text3),
+                      ),
+                    ),
+                    Expanded(child: Divider(color: t.line2, height: 1)),
+                  ],
+                ),
+                const SizedBox(height: 10),
+                InkWell(
+                  key: const Key('start.repeat'),
+                  onTap: () => _repeat(context, ref, last.exercises),
+                  borderRadius: BorderRadius.circular(FsRadius.md),
+                  child: Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 8),
+                    child: Row(
+                      children: [
+                        Icon(Icons.history, size: 18, color: t.text2),
+                        const SizedBox(width: 12),
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              const Text(
+                                'Repeat last workout',
+                                style: TextStyle(
+                                    fontSize: 13, fontWeight: FontWeight.w600),
+                              ),
+                              const SizedBox(height: 2),
+                              Text(
+                                '${last.title} · ${last.describeCount}',
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                                style: TextStyle(fontSize: 11.5, color: t.text3),
+                              ),
+                            ],
+                          ),
+                        ),
+                        Icon(Icons.chevron_right, size: 16, color: t.text3),
+                      ],
+                    ),
+                  ),
+                ),
+              ],
             ],
           ),
         ),

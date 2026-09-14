@@ -13,6 +13,11 @@ import 'package:fitsync/features/plans/domain/workout_plan.dart';
 import 'package:fitsync/features/plans/presentation/generator_screen.dart';
 import 'package:fitsync/features/plans/presentation/providers.dart';
 import 'package:fitsync/features/plans/presentation/start_workout_sheet.dart';
+import 'package:fitsync/features/exercises/domain/exercise.dart';
+import 'package:fitsync/features/sessions/domain/session_history.dart';
+import 'package:fitsync/features/sessions/presentation/providers.dart';
+import 'package:fitsync/features/sessions/presentation/workout_draft.dart';
+import 'package:fitsync/features/sessions/presentation/workout_review_screen.dart';
 import 'package:fitsync/features/sessions/presentation/workout_setup_screen.dart';
 
 /// The real face, not the test harness's. The default test font renders
@@ -25,16 +30,41 @@ Future<void> _loadFont() async {
       .load();
 }
 
-Future<void> _open(
+/// A workout already trained, as GET /sessions/last reports it.
+const _lastWorkout = LastWorkout(
+  sessionId: 32,
+  sessionDate: '2026-09-14',
+  planName: null,
+  exercises: [
+    ExerciseSummary(
+      exerciseId: 101, name: 'Goblet squat', muscleGroup: 'quadriceps',
+      equipment: 'dumbbell', thumbnailUrl: null,
+    ),
+    ExerciseSummary(
+      exerciseId: 202, name: 'Cable fly', muscleGroup: 'pectorals',
+      equipment: 'cable', thumbnailUrl: null,
+    ),
+  ],
+);
+
+Future<ProviderContainer> _open(
   WidgetTester tester, {
   WorkoutPlan? plan,
   TextScaler textScaler = TextScaler.noScaling,
+  LastWorkout? last,
+  Object? lastError,
 }) async {
+  final container = ProviderContainer(overrides: [
+    activePlanProvider.overrideWith((ref) async => plan),
+    lastWorkoutProvider.overrideWith((ref) async {
+      if (lastError != null) throw lastError;
+      return last;
+    }),
+  ]);
+  addTearDown(container.dispose);
   await tester.pumpWidget(
-    ProviderScope(
-      overrides: [
-        activePlanProvider.overrideWith((ref) async => plan),
-      ],
+    UncontrolledProviderScope(
+      container: container,
       child: MaterialApp(
         theme: fsLightTheme(),
         // Above the Navigator on purpose: the sheet is a route, so a
@@ -56,6 +86,7 @@ Future<void> _open(
   );
   await tester.tap(find.text('open'));
   await tester.pumpAndSettle();
+  return container;
 }
 
 void main() {
@@ -69,6 +100,83 @@ void main() {
     expect(find.byKey(const Key('start.generator')).hitTestable(), findsOneWidget);
     expect(find.byKey(const Key('start.manual')).hitTestable(), findsOneWidget);
   }
+
+
+  testWidgets('offers to repeat the last workout', (tester) async {
+    // The row your mockup draws under "or pick up where you left off". Your
+    // last workout is the template you come back to, which is what makes
+    // manual logging feel like a first-class path rather than a detour.
+    await _open(tester, last: _lastWorkout);
+
+    expect(find.byKey(const Key('start.repeat')), findsOneWidget);
+    expect(find.text('Repeat last workout'), findsOneWidget);
+    expect(find.textContaining('Your own workout'), findsOneWidget);
+    expect(find.textContaining('2 exercises'), findsOneWidget);
+  });
+
+  testWidgets('a repeated plan workout is named after its plan', (tester) async {
+    await _open(tester, last: const LastWorkout(
+      sessionId: 30,
+      sessionDate: '2026-09-12',
+      planName: 'Upper Body · Push',
+      exercises: [
+        ExerciseSummary(
+          exerciseId: 1, name: 'Bench press', muscleGroup: 'chest',
+          equipment: 'barbell', thumbnailUrl: null,
+        ),
+      ],
+    ));
+
+    expect(find.textContaining('Upper Body · Push'), findsOneWidget);
+    expect(find.textContaining('1 exercise'), findsOneWidget);
+    expect(find.textContaining('1 exercises'), findsNothing);
+  });
+
+  testWidgets('nothing trained yet offers nothing to repeat', (tester) async {
+    await _open(tester, last: null);
+
+    expect(find.byKey(const Key('start.repeat')), findsNothing);
+    expect(find.textContaining('pick up where you left off'), findsNothing,
+        reason: 'a divider with nothing under it is furniture for nothing');
+  });
+
+  testWidgets('a failed lookup simply omits the row', (tester) async {
+    // The sheet's job is starting a workout. Losing the repeat shortcut must
+    // not cost the two rows that do not depend on it.
+    await _open(tester, lastError: Exception('offline'));
+
+    expect(find.byKey(const Key('start.repeat')), findsNothing);
+    expectBothRowsUsable(tester);
+  });
+
+  testWidgets('repeating loads the workout and opens review', (tester) async {
+    // Review rather than straight into the logger: a repeat is rarely
+    // identical, and the review screen already owns starting -- including the
+    // guard for a workout that is already open.
+    final container = await _open(tester, last: _lastWorkout);
+
+    await tester.tap(find.byKey(const Key('start.repeat')));
+    await tester.pumpAndSettle();
+
+    expect(find.byType(WorkoutReviewScreen), findsOneWidget);
+    expect(container.read(workoutDraftProvider).exerciseIds, [101, 202],
+        reason: 'in the order they were trained');
+  });
+
+  testWidgets('repeating replaces whatever was half-picked', (tester) async {
+    // Appending would silently merge an abandoned selection into a workout
+    // the user asked to repeat exactly.
+    final container = await _open(tester, last: _lastWorkout);
+    container.read(workoutDraftProvider.notifier).toggle(const ExerciseSummary(
+      exerciseId: 999, name: 'Leftover', muscleGroup: 'abs',
+      equipment: null, thumbnailUrl: null,
+    ));
+
+    await tester.tap(find.byKey(const Key('start.repeat')));
+    await tester.pumpAndSettle();
+
+    expect(container.read(workoutDraftProvider).exerciseIds, [101, 202]);
+  });
 
   testWidgets('both rows survive a landscape viewport', (tester) async {
     // 844x390: an iPhone 14 turned sideways. Every other test in this file
