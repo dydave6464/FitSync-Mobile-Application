@@ -11,6 +11,7 @@ import '../domain/split_style.dart';
 import '../domain/week_description.dart';
 import '../domain/workout_plan.dart';
 import 'providers.dart';
+import 'widgets/training_days_row.dart';
 
 const _defaultSplit = 'full_body';
 const _defaultDays = 3;
@@ -27,6 +28,25 @@ class _GeneratorScreenState extends ConsumerState<GeneratorScreen> {
   String? _splitStyle;
   int? _daysPerWeek;
   bool _busy = false;
+  int? _savingWeekday;
+
+  /// Writes the whole set, then lets the profile provider re-render the row.
+  /// The cell is never optimistically ticked: a failed write must not leave a
+  /// day looking chosen.
+  Future<void> _setTrainingDays(List<int> next, int tapped) async {
+    final messenger = ScaffoldMessenger.of(context);
+    setState(() => _savingWeekday = tapped);
+    try {
+      await ref.read(profileProvider.notifier).setTrainingDays(next);
+    } catch (error) {
+      if (!mounted) return;
+      messenger.showSnackBar(SnackBar(
+        content: Text('Could not save your training days. ${describeError(error)}'),
+      ));
+    } finally {
+      if (mounted) setState(() => _savingWeekday = null);
+    }
+  }
 
   /// Takes the resolved split/days/length the caller already has in scope
   /// rather than re-resolving from the provider -- `_buildControls` only
@@ -77,11 +97,20 @@ class _GeneratorScreenState extends ConsumerState<GeneratorScreen> {
   }
 
   /// The one place the fallback chain is written. Pure: two calls with the
-  /// same plan always agree, so nothing needs to cache what a previous build
-  /// computed for the debug getters below to stay honest.
-  ({String split, int days, int length}) _resolve(WorkoutPlan? plan) => (
+  /// same plan and trainingDays always agree, so nothing needs to cache what
+  /// a previous build computed for the debug getters below to stay honest.
+  ({String split, int days, int length}) _resolve(
+    WorkoutPlan? plan,
+    List<int> trainingDays,
+  ) =>
+      (
         split: _splitStyle ?? plan?.splitStyle ?? _defaultSplit,
-        days: _daysPerWeek ?? plan?.daysPerWeek ?? _defaultDays,
+        // The chosen days are what the user just said; the plan's stored count
+        // is a stale label until the next regeneration. Falling back to it
+        // when nothing is chosen is what stops an empty schedule being sent.
+        days: trainingDays.isNotEmpty
+            ? trainingDays.length
+            : (_daysPerWeek ?? plan?.daysPerWeek ?? _defaultDays),
         // Still resolved and still sent, even though nothing on this screen
         // sets it any more: omitting sessionLengthMin from the payload hands
         // the service's `overrides.sessionLengthMin || 45` a 60-minute plan
@@ -92,12 +121,18 @@ class _GeneratorScreenState extends ConsumerState<GeneratorScreen> {
 
   // Read by the widget tests, which drive the controls and assert the state
   // they produce rather than reaching into private fields by name.
-  String get debugSplitStyle =>
-      _resolve(ref.read(activePlanProvider).value).split;
-  int get debugDaysPerWeek =>
-      _resolve(ref.read(activePlanProvider).value).days;
-  int get debugSessionLengthMin =>
-      _resolve(ref.read(activePlanProvider).value).length;
+  String get debugSplitStyle => _resolve(
+        ref.read(activePlanProvider).value,
+        ref.read(profileProvider).value?.trainingDays ?? const [],
+      ).split;
+  int get debugDaysPerWeek => _resolve(
+        ref.read(activePlanProvider).value,
+        ref.read(profileProvider).value?.trainingDays ?? const [],
+      ).days;
+  int get debugSessionLengthMin => _resolve(
+        ref.read(activePlanProvider).value,
+        ref.read(profileProvider).value?.trainingDays ?? const [],
+      ).length;
 
   @override
   Widget build(BuildContext context) {
@@ -146,7 +181,9 @@ class _GeneratorScreenState extends ConsumerState<GeneratorScreen> {
 
   Widget _buildControls(BuildContext context, WorkoutPlan? plan) {
     final t = context.fs;
-    final (:split, :days, :length) = _resolve(plan);
+    final trainingDays =
+        ref.watch(profileProvider).value?.trainingDays ?? const <int>[];
+    final (:split, :days, :length) = _resolve(plan, trainingDays);
 
     final injuries = ref.watch(profileProvider).value?.injuries ?? const <SelectedInjury>[];
     // The AsyncValue, not `.value ?? const []`: that flattening reads the
@@ -202,25 +239,19 @@ class _GeneratorScreenState extends ConsumerState<GeneratorScreen> {
           ],
         ),
         const SizedBox(height: 22),
-        // Label and count on one line, as the mockup draws them and as
-        // level_step.dart already pairs an eyebrow with its value. Seven
-        // identical cells filled up to a boundary is a bar chart; the
-        // number is the part a user can read without counting.
-        Row(
-          mainAxisAlignment: MainAxisAlignment.spaceBetween,
-          children: [
-            const Flexible(child: FsEyebrow('Days / week')),
-            Text(
-              '$days',
-              key: const Key('gen.days.value'),
-              style: fsNum(t).copyWith(color: t.accent),
-            ),
-          ],
-        ),
+        const FsEyebrow('Training days'),
         const SizedBox(height: 10),
-        _DaysRow(
-          selected: days,
-          onSelected: (d) => setState(() => _daysPerWeek = d),
+        TrainingDaysRow(
+          selected: trainingDays,
+          busyWeekday: _savingWeekday,
+          onChanged: (next) {
+            // The tapped day is the one that differs between the two sets.
+            final before = trainingDays.toSet();
+            final after = next.toSet();
+            final tapped = before.difference(after).followedBy(
+                after.difference(before)).first;
+            _setTrainingDays(next, tapped);
+          },
         ),
         const SizedBox(height: 22),
         // A readout, not a control. The service derives length from goal and
@@ -276,66 +307,6 @@ class _GeneratorScreenState extends ConsumerState<GeneratorScreen> {
     );
   }
 }
-
-/// The 1-7 row, filled up to the selection as the prototype draws it.
-class _DaysRow extends StatelessWidget {
-  const _DaysRow({required this.selected, required this.onSelected});
-
-  final int selected;
-
-  /// Reports the COUNT a tap produces, not the cell that was tapped -- the
-  /// two differ only on the lit top cell, and keeping the difference here
-  /// keeps it beside the fill rule it mirrors.
-  final ValueChanged<int> onSelected;
-
-  /// Minimum days a plan can have. The service clamps to the same floor, so
-  /// stepping below it would promise something the generator will not build.
-  static const int _minDays = 1;
-
-  /// A row filled 1..N reads as one boundary, so the only cell a tap can
-  /// sensibly "unfill" is the boundary itself: tapping the count gives a day
-  /// back. Every lower cell still selects outright -- tapping 2 when 4 is
-  /// chosen means 2, not 1.
-  int _countFor(int tapped) =>
-      tapped == selected ? (tapped - 1).clamp(_minDays, tapped) : tapped;
-
-  @override
-  Widget build(BuildContext context) {
-    final t = context.fs;
-
-    return Row(
-      children: [
-        for (var d = 1; d <= 7; d += 1) ...[
-          if (d > 1) const SizedBox(width: 6),
-          Expanded(
-            child: InkWell(
-              key: Key('gen.day.$d'),
-              onTap: () => onSelected(_countFor(d)),
-              borderRadius: BorderRadius.circular(8),
-              child: Container(
-                height: 30,
-                alignment: Alignment.center,
-                decoration: BoxDecoration(
-                  color: d <= selected ? t.accent : t.surface2,
-                  borderRadius: BorderRadius.circular(8),
-                ),
-                child: Text(
-                  '$d',
-                  style: TextStyle(
-                    fontSize: 11,
-                    fontWeight: FontWeight.w600,
-                    color: d <= selected ? t.onAccent : t.text3,
-                  ),
-                ),
-              ),
-            ),
-          ),
-        ],
-      ],
-    );
-  }
-}
-
 
 /// The prototype's "Describe your week" card.
 ///
