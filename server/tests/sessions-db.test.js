@@ -7,7 +7,9 @@ const { testDbConfig, dropAllTables } = require('./helpers/test-db');
 const {
   startSession, getActiveSession, getSessionById, logSet, deleteSet,
   completeSession, abandonSession, lastPerformance, completedThisWeek,
+  nextPlanDayNo,
 } = require('../src/db/sessions');
+const { setTrainingDays } = require('../src/db/profile');
 
 test('session db', async (t) => {
   const pool = createPool(testDbConfig());
@@ -750,5 +752,22 @@ test('session db', async (t) => {
 
     // User A trained today; user B's week strip must stay empty.
     assert.deepEqual(await completedThisWeek(pool, b.userId), []);
+  });
+
+  await t.test('chosen training days do not move the rotation', async () => {
+    // The load-bearing decision: the rotation advances on completed sessions,
+    // never on the calendar, so a missed Monday costs a day rather than a
+    // session. Wiring chosen days into nextPlanDayNo would silently reverse
+    // that and every symptom would read as a feature.
+    const { userId } = await seed();
+
+    await setTrainingDays(pool, userId, [1, 3, 5]);
+    const before = await nextPlanDayNo(pool, userId, 3);
+
+    await setTrainingDays(pool, userId, [2, 4, 6, 7]);
+    const after = await nextPlanDayNo(pool, userId, 3);
+
+    assert.equal(after, before,
+      'the rotation must not consult which weekdays were chosen');
   });
 });
