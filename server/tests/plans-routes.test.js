@@ -455,4 +455,113 @@ test('plan endpoints', async (t) => {
       .set('Authorization', auth).expect(200);
     assert.equal(res.body.data.plan.source, 'generated');
   });
+
+  /// A finished hand-picked workout for the given user.
+  const finishedWorkout = async (userId) => {
+    const [ex] = await pool.query("SELECT exercise_id FROM exercises WHERE status='live' LIMIT 1");
+    const [s] = await pool.query(
+      `INSERT INTO workout_sessions
+         (user_id, status, session_date, started_at, duration_min, total_volume_kg)
+       VALUES (?, 'completed', CURDATE(), NOW(), 45, 500)`,
+      [userId],
+    );
+    await pool.query(
+      'INSERT INTO session_exercises (session_id, exercise_id, order_no) VALUES (?, ?, 1)',
+      [s.insertId, ex[0].exercise_id],
+    );
+    await pool.query(
+      `INSERT INTO set_logs (session_id, exercise_id, set_number, weight_kg, reps)
+       VALUES (?, ?, 1, 20, 10)`,
+      [s.insertId, ex[0].exercise_id],
+    );
+    return s.insertId;
+  };
+
+  await t.test('a finished workout becomes the user\'s own plan', async () => {
+    await reset();
+    const [[u]] = await pool.query("SELECT user_id FROM users WHERE email = 'w@example.com'");
+    const sessionId = await finishedWorkout(u.user_id);
+
+    const res = await request(app).post('/api/v1/plans/from-session')
+      .set('Authorization', auth)
+      .send({ sessionId, splitStyle: 'push_pull_legs' })
+      .expect(200);
+
+    assert.equal(res.body.data.plan.source, 'custom');
+    assert.equal(res.body.data.plan.name, 'My Push / Pull / Legs');
+    assert.equal(res.body.data.plan.exercises.length, 1);
+  });
+
+  await t.test('creating a plan without a split style is refused', async () => {
+    await reset();
+    const [[u]] = await pool.query("SELECT user_id FROM users WHERE email = 'w@example.com'");
+    const sessionId = await finishedWorkout(u.user_id);
+
+    const res = await request(app).post('/api/v1/plans/from-session')
+      .set('Authorization', auth)
+      .send({ sessionId })
+      .expect(400);
+    assert.equal(res.body.error.code, 'INVALID_PLAN_FIELD');
+  });
+
+  await t.test('an unknown split style is refused', async () => {
+    await reset();
+    const [[u]] = await pool.query("SELECT user_id FROM users WHERE email = 'w@example.com'");
+    const sessionId = await finishedWorkout(u.user_id);
+
+    const res = await request(app).post('/api/v1/plans/from-session')
+      .set('Authorization', auth)
+      .send({ sessionId, splitStyle: 'crossfit' })
+      .expect(400);
+    assert.equal(res.body.error.code, 'INVALID_PLAN_FIELD');
+  });
+
+  await t.test('a missing sessionId is refused', async () => {
+    await reset();
+    const res = await request(app).post('/api/v1/plans/from-session')
+      .set('Authorization', auth)
+      .send({ splitStyle: 'full_body' })
+      .expect(400);
+    assert.equal(res.body.error.code, 'INVALID_PLAN_FIELD');
+  });
+
+  await t.test('extending needs no split style', async () => {
+    await reset();
+    const [[u]] = await pool.query("SELECT user_id FROM users WHERE email = 'w@example.com'");
+    const first = await finishedWorkout(u.user_id);
+    await request(app).post('/api/v1/plans/from-session')
+      .set('Authorization', auth)
+      .send({ sessionId: first, splitStyle: 'full_body' }).expect(200);
+
+    const second = await finishedWorkout(u.user_id);
+    const res = await request(app).post('/api/v1/plans/from-session')
+      .set('Authorization', auth)
+      .send({ sessionId: second })
+      .expect(200);
+
+    assert.equal(res.body.data.plan.exercises.filter((e) => e.dayNo === 2).length, 1);
+  });
+
+  await t.test('the plan cannot be changed under a running workout', async () => {
+    // The same guard regenerate carries: swapping the plan out from under the
+    // logger strands it on exercises no longer in it.
+    await reset();
+    const [[u]] = await pool.query("SELECT user_id FROM users WHERE email = 'w@example.com'");
+    const sessionId = await finishedWorkout(u.user_id);
+    await pool.query(
+      `INSERT INTO workout_sessions (user_id, status, session_date, started_at)
+       VALUES (?, 'in_progress', CURDATE(), NOW())`,
+      [u.user_id],
+    );
+
+    const res = await request(app).post('/api/v1/plans/from-session')
+      .set('Authorization', auth)
+      .send({ sessionId, splitStyle: 'full_body' })
+      .expect(409);
+    assert.equal(res.body.error.code, 'SESSION_IN_PROGRESS');
+  });
+
+  await t.test('from-session needs a signed-in caller', async () => {
+    await request(app).post('/api/v1/plans/from-session').send({ sessionId: 1 }).expect(401);
+  });
 });

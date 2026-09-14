@@ -2,7 +2,7 @@
 const express = require('express');
 const requireAuth = require('../middleware/require-auth');
 const AppError = require('../lib/app-error');
-const { getActivePlan, savePlan } = require('../db/plans');
+const { getActivePlan, savePlan, createPlanFromSession } = require('../db/plans');
 const { getProfile } = require('../db/profile');
 const { getActiveSession } = require('../db/sessions');
 const { loadSwapContext, listAlternatives, swapPlanExercise } = require('../db/plan-swap');
@@ -103,6 +103,50 @@ module.exports = function buildPlansRouter(deps) {
       const profile = await getProfile(deps.pool, userId);
       const generated = await deps.ml.generatePlan({ ...profile, overrides });
       await savePlan(deps.pool, userId, generated);
+
+      res.json({ data: { plan: withUrls(await getActivePlan(deps.pool, userId)) } });
+    } catch (err) { next(err); }
+  });
+
+  router.post('/from-session', requireAuth(deps), async (req, res, next) => {
+    try {
+      const userId = req.user.userId;
+
+      const sessionId = req.body?.sessionId;
+      if (!Number.isInteger(sessionId) || sessionId < 1) {
+        throw invalidPlanField('sessionId', 'sessionId must be a positive integer.');
+      }
+
+      const dayNo = req.body?.dayNo ?? null;
+      if (dayNo !== null && (!Number.isInteger(dayNo) || dayNo < 1)) {
+        throw invalidPlanField('dayNo', 'dayNo must be a positive integer.');
+      }
+
+      // Required only when this call CREATES the plan. Checked here rather
+      // than in the db layer so the 400 names the field, and read from the
+      // active plan's source so the client need not track which case it is in.
+      const active = await getActivePlan(deps.pool, userId);
+      const creating = active === null || active.source !== 'custom';
+      const splitStyle = req.body?.splitStyle;
+      if (creating) {
+        if (typeof splitStyle !== 'string' || !SPLIT_STYLES.includes(splitStyle)) {
+          throw invalidPlanField(
+            'splitStyle',
+            `splitStyle must be one of ${SPLIT_STYLES.join(', ')}.`,
+          );
+        }
+      }
+
+      // Changing the plan under a running workout would strand the logger on
+      // exercises no longer in it. Same guard, same reason, as regenerate.
+      if (await getActiveSession(deps.pool, userId)) {
+        throw AppError.conflict(
+          'SESSION_IN_PROGRESS',
+          'Finish or discard your current session before changing your plan.',
+        );
+      }
+
+      await createPlanFromSession(deps.pool, userId, { sessionId, splitStyle, dayNo });
 
       res.json({ data: { plan: withUrls(await getActivePlan(deps.pool, userId)) } });
     } catch (err) { next(err); }
