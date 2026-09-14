@@ -932,6 +932,30 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(plans.fromSessionCalls, 0);
+    // Done resolves the summary dialog false (not the true _addToPlan sends),
+    // so _showSummary must still pop the screen itself -- the branch the
+    // add-to-plan race fix must leave untouched.
+    expect(find.byType(SessionLoggerScreen), findsNothing);
+  });
+
+  // A barrier dismiss never runs _addToPlan, so the summary dialog resolves
+  // null -- treated the same as Done's explicit false -- and _showSummary
+  // must still pop the screen itself. The add-to-plan race fix touches this
+  // path only by changing showDialog's type; nothing exercised it before.
+  testWidgets('dismissing the summary via the barrier still leaves the logger',
+      (tester) async {
+    await _pump(tester, session: _manualSessionWithSets());
+
+    await _menu(tester, 'finish');
+    expect(find.byKey(const Key('logger.summary')), findsOneWidget);
+
+    // Outside the AlertDialog's own bounds, on the modal barrier that
+    // showDialog leaves dismissible by default.
+    await tester.tapAt(const Offset(5, 5));
+    await tester.pumpAndSettle();
+
+    expect(find.byKey(const Key('logger.summary')), findsNothing);
+    expect(find.byType(SessionLoggerScreen), findsNothing);
   });
 
   testWidgets('a failed write says so and does not claim the plan changed',
@@ -1066,5 +1090,10 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(plans.lastDayNo, 1);
+    // The handoff this race fix depends on: _showSummary sees the dialog
+    // resolve true and skips its own pop, leaving _addToPlan to pop the
+    // screen itself once the sheet -- not the dialog -- has actually
+    // resolved. Nothing above proves that pop ever happened.
+    expect(find.byType(SessionLoggerScreen), findsNothing);
   });
 }
