@@ -266,10 +266,6 @@ void main() {
     // actually see.
     expect(_chipOn(tester, 'Push / Pull / Legs'), isTrue);
     expect(_chipOn(tester, 'Full body'), isFalse);
-    expect(
-      tester.widget<Text>(find.byKey(const Key('gen.length.value'))).data,
-      '60 min',
-    );
   });
 
   testWidgets('with no plan the controls fall back to defaults', (tester) async {
@@ -290,10 +286,6 @@ void main() {
       findsNWidgets(4),
     );
     expect(_chipOn(tester, 'Full body'), isTrue);
-    expect(
-      tester.widget<Text>(find.byKey(const Key('gen.length.value'))).data,
-      '45 min',
-    );
   });
 
   testWidgets('tapping a split chip selects it', (tester) async {
@@ -308,36 +300,19 @@ void main() {
     expect(_chipOn(tester, 'Push / Pull / Legs'), isFalse);
   });
 
-  testWidgets('the session length is a readout, not something to tap',
+  testWidgets('with no plan the derived session length still reaches the payload',
       (tester) async {
-    // Length is derived, not chosen: the service reads it from goal and
-    // fitness level (LONG_SESSION_GOALS, BEGINNER_SESSION_CAP) and the
-    // override exists only so the prototype's slider would not lie. Offering
-    // two stops invited a choice the generator may not honour.
-    await _pump(tester, plan: _pplPlan); // a 60-minute plan
+    // Length is no longer shown, so the only place it can be observed is the
+    // request. It still has to be RESOLVED and SENT: omitting sessionLengthMin
+    // hands the service's own `overrides.sessionLengthMin || 45` whatever it
+    // likes, and a 60-minute plan would come back silently shortened.
+    final repo = FakePlanRepository();
+    await _pump(tester, plan: null, repo: repo);
 
-    expect(find.byType(FsSegmented), findsNothing);
+    await tester.tap(find.byKey(const Key('gen.generate')));
+    await tester.pumpAndSettle();
 
-    final readout = find.byKey(const Key('gen.length.value'));
-    expect(readout, findsOneWidget);
-    expect(tester.widget<Text>(readout).data, '60 min');
-    expect(
-      find.ancestor(of: readout, matching: find.byType(InkWell)),
-      findsNothing,
-      reason: 'a readout that takes taps but changes nothing is worse than none',
-    );
-  });
-
-  testWidgets('the session length readout follows the plan', (tester) async {
-    // "It adjusts" means it tracks the plan the service built, so a plan
-    // whose length differs must read differently without anything on this
-    // screen being touched.
-    await _pump(tester, plan: null); // falls back to the 45-minute default
-
-    expect(
-      tester.widget<Text>(find.byKey(const Key('gen.length.value'))).data,
-      '45 min',
-    );
+    expect(repo.sent!['sessionLengthMin'], 45);
   });
 
   testWidgets('ticking a weekday adds just that day', (tester) async {
@@ -523,6 +498,11 @@ void main() {
       200,
       scrollable: find.byType(Scrollable).first,
     );
+    // scrollUntilVisible stops as soon as the ListView BUILDS the button,
+    // which can still leave it below the fold; ensureVisible finishes the job
+    // rather than relying on the page's exact height.
+    await tester.ensureVisible(find.byKey(const Key('gen.generate')));
+    await tester.pumpAndSettle();
     await tester.tap(find.byKey(const Key('gen.generate')));
     await tester.pump();
 
@@ -1112,6 +1092,18 @@ void main() {
       expect(find.byKey(const Key('gen.describe.elsewhere')), findsOneWidget);
       expect(find.textContaining('Session length'), findsOneWidget);
     });
+  });
+
+  testWidgets('the screen does not state a session length', (tester) async {
+    // The service derives length from goal and fitness level; this screen
+    // cannot change it and showing it only invited the question. It is still
+    // resolved and still sent -- dropping it from the payload would hand the
+    // service's own 45-minute default a 60-minute plan and shorten it.
+    await _pump(tester, plan: _pplPlan);
+
+    expect(find.byKey(const Key('gen.length.value')), findsNothing);
+    expect(find.textContaining('Session length'), findsNothing);
+    expect(find.text('60 min'), findsNothing);
   });
 
   testWidgets('the avoiding card names the profile injuries', (tester) async {

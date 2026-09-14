@@ -379,23 +379,12 @@ class _GeneratorScreenState extends ConsumerState<GeneratorScreen> {
             ),
           ),
         ],
-        const SizedBox(height: 22),
-        // A readout, not a control. The service derives length from goal and
-        // fitness level and only honours an override so the prototype's
-        // slider would not lie; offering stops here invited a choice it may
-        // not keep. Shown rather than dropped because it is part of
-        // describing the plan about to be replaced.
-        Row(
-          mainAxisAlignment: MainAxisAlignment.spaceBetween,
-          children: [
-            const Flexible(child: FsEyebrow('Session length')),
-            Text(
-              '$length min',
-              key: const Key('gen.length.value'),
-              style: fsNum(t).copyWith(color: t.accent),
-            ),
-          ],
-        ),
+        // Session length is deliberately not shown. The service derives it
+        // from goal and fitness level, so it is neither chosen here nor
+        // changeable here, and a number on screen that the user cannot move
+        // is one more thing to rule out. It is still resolved and still sent
+        // -- see `_resolve`, where dropping it from the payload would hand
+        // the service's own 45-minute default a 60-minute plan.
         if (avoiding.isNotEmpty) ...[
           const SizedBox(height: 22),
           FsCard(
@@ -683,7 +672,8 @@ class _DescribeCardState extends ConsumerState<_DescribeCard> {
   /// The domain reports a topic; the wording lives here.
   static String _topicNote(WeekTopic topic) => switch (topic) {
         WeekTopic.sessionLength =>
-          'Session length follows your plan, so it is shown rather than chosen.',
+          'Session length follows your goal and fitness level, so it is not '
+              'set here.',
         WeekTopic.goal => 'Your goal is set in your profile.',
         WeekTopic.dayCount =>
           'How many days you train follows the weekdays you have chosen '
