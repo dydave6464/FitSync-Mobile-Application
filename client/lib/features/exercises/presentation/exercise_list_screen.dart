@@ -9,7 +9,7 @@ import '../../sessions/presentation/workout_draft.dart';
 import 'exercise_detail_screen.dart';
 import 'providers.dart';
 import 'widgets/exercise_tile.dart';
-import 'widgets/filter_bar.dart';
+import 'widgets/equipment_filter_button.dart';
 import 'widgets/search_field.dart';
 
 String describeError(Object error) =>
@@ -149,12 +149,11 @@ class _ExerciseListScreenState extends ConsumerState<ExerciseListScreen> {
             ),
       body: Column(
         children: [
-          // Above the chips, because it is the wider net: the chips narrow
-          // the catalogue by tag, the box finds one movement by name, and a
-          // user who knows what they are looking for should not have to
-          // scroll a chip strip first.
+          // Above the equipment button, because it is the wider net: the
+          // button narrows the catalogue to one kind of gear, the box finds
+          // one movement by name.
           const ExerciseSearchField(),
-          const FilterBar(),
+          const EquipmentFilterButton(),
           Expanded(
             child: listing.when(
               loading: () => const Center(child: CircularProgressIndicator()),

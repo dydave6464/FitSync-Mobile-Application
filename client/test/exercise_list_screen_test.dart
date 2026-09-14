@@ -31,6 +31,7 @@ class FakeRepository implements ExerciseRepository {
   int listCalls = 0;
   int filtersCalls = 0;
   String? lastMuscleGroup;
+  String? lastEquipment;
   String? lastSearch;
 
   @override
@@ -46,6 +47,7 @@ class FakeRepository implements ExerciseRepository {
   }) async {
     listCalls++;
     lastMuscleGroup = muscleGroups.isEmpty ? null : muscleGroups.first;
+    lastEquipment = equipment;
     lastSearch = search;
     if (failWith != null) throw failWith!;
     if (emptyResults) {
@@ -57,9 +59,11 @@ class FakeRepository implements ExerciseRepository {
           exerciseId: page,
           name: search != null && search.isNotEmpty
               ? '$search $page'
-              : muscleGroups.isEmpty
-                  ? 'Sit-up $page'
-                  : 'Curl $page',
+              : equipment != null
+                  ? '$equipment press $page'
+                  : muscleGroups.isEmpty
+                      ? 'Sit-up $page'
+                      : 'Curl $page',
           muscleGroup: muscleGroups.isEmpty ? 'abs' : muscleGroups.first,
           equipment: 'body weight',
           thumbnailUrl: '/storage/exercises/000$page/thumb.jpg',
@@ -82,7 +86,12 @@ class FakeRepository implements ExerciseRepository {
     }
     return const ExerciseFilters(
       muscleGroups: [FilterOption(value: 'abs', count: 147), FilterOption(value: 'biceps', count: 150)],
-      equipment: [FilterOption(value: 'body weight', count: 304)],
+      equipment: [
+        FilterOption(value: 'barbell', count: 214),
+        FilterOption(value: 'body weight', count: 304),
+        FilterOption(value: 'dumbbell', count: 298),
+        FilterOption(value: 'smith machine', count: 41),
+      ],
     );
   }
 }
@@ -137,18 +146,105 @@ void main() {
     expect(repo.listCalls, 2, reason: 'retry must actually refetch');
   });
 
-  testWidgets('selecting a muscle group refetches with that filter', (tester) async {
+  testWidgets('the catalogue is narrowed by equipment, not by a chip strip',
+      (tester) async {
+    // The strip put every muscle group ahead of the equipment tags in one
+    // sideways scroller, so reaching "dumbbell" meant scrolling past all of
+    // them. Equipment now has its own labelled control and the strip is gone.
     final repo = FakeRepository();
     await tester.pumpWidget(harness(repo));
     await tester.pumpAndSettle();
 
-    expect(repo.lastMuscleGroup, isNull);
+    expect(find.byKey(const Key('library.equipment')), findsOneWidget);
+    expect(find.byType(FilterChip), findsNothing,
+        reason: 'the chip strip is gone');
+    expect(find.text('biceps'), findsNothing,
+        reason: 'muscle groups are no longer a filter control');
+  });
 
-    await tester.tap(find.text('biceps'));
+  testWidgets('choosing equipment refetches the list with it', (tester) async {
+    final repo = FakeRepository();
+    await tester.pumpWidget(harness(repo));
     await tester.pumpAndSettle();
 
-    expect(repo.lastMuscleGroup, 'biceps');
-    expect(find.text('Curl 1'), findsOneWidget);
+    expect(repo.lastEquipment, isNull);
+
+    await tester.tap(find.byKey(const Key('library.equipment')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const Key('equipment.option.dumbbell')));
+    await tester.pumpAndSettle();
+
+    expect(repo.lastEquipment, 'dumbbell');
+    expect(find.text('dumbbell press 1'), findsOneWidget);
+  });
+
+  testWidgets('the button names the equipment in force', (tester) async {
+    // The whole point of moving it out of the strip: what is filtering the
+    // list is readable without opening anything.
+    final repo = FakeRepository();
+    await tester.pumpWidget(harness(repo));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Equipment'), findsOneWidget);
+
+    await tester.tap(find.byKey(const Key('library.equipment')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const Key('equipment.option.barbell')));
+    await tester.pumpAndSettle();
+
+    expect(find.text('barbell'), findsOneWidget);
+    expect(find.text('Equipment'), findsNothing);
+  });
+
+  testWidgets('the sheet says how many exercises each tag has', (tester) async {
+    // A tag with 41 rows behind it and one with 304 are different choices,
+    // and the count is what tells them apart before committing to the fetch.
+    final repo = FakeRepository();
+    await tester.pumpWidget(harness(repo));
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.byKey(const Key('library.equipment')));
+    await tester.pumpAndSettle();
+
+    expect(find.text('304'), findsOneWidget);
+    expect(find.text('41'), findsOneWidget);
+  });
+
+  testWidgets('typing in the sheet narrows the tags', (tester) async {
+    final repo = FakeRepository();
+    await tester.pumpWidget(harness(repo));
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.byKey(const Key('library.equipment')));
+    await tester.pumpAndSettle();
+
+    expect(find.byKey(const Key('equipment.option.barbell')), findsOneWidget);
+
+    await tester.enterText(find.byKey(const Key('equipment.search')), 'mach');
+    await tester.pumpAndSettle();
+
+    expect(find.byKey(const Key('equipment.option.smith machine')), findsOneWidget);
+    expect(find.byKey(const Key('equipment.option.barbell')), findsNothing);
+  });
+
+  testWidgets('any equipment takes the filter back off', (tester) async {
+    final repo = FakeRepository();
+    await tester.pumpWidget(harness(repo));
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.byKey(const Key('library.equipment')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const Key('equipment.option.dumbbell')));
+    await tester.pumpAndSettle();
+    expect(repo.lastEquipment, 'dumbbell');
+
+    await tester.tap(find.byKey(const Key('library.equipment')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const Key('equipment.option.any')));
+    await tester.pumpAndSettle();
+
+    expect(repo.lastEquipment, isNull);
+    expect(find.text('Equipment'), findsOneWidget);
   });
 
   testWidgets('retry brings the filter bar back, not just the list', (tester) async {
@@ -165,14 +261,16 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.text('Retry'), findsOneWidget);
-    expect(find.text('biceps'), findsNothing, reason: 'filters failed too');
+    expect(find.byKey(const Key('library.equipment')), findsNothing,
+        reason: 'filters failed too');
 
     repo.failWith = null;
     await tester.tap(find.text('Retry'));
     await tester.pumpAndSettle();
 
     expect(find.text('Sit-up 1'), findsOneWidget, reason: 'list recovered');
-    expect(find.text('biceps'), findsOneWidget, reason: 'filter bar must recover too');
+    expect(find.byKey(const Key('library.equipment')), findsOneWidget,
+        reason: 'the equipment filter must recover too');
   });
 
   testWidgets('a missing thumbnail does not break the row', (tester) async {
@@ -241,18 +339,20 @@ void main() {
     expect(find.text('Sit-up 1'), findsOneWidget);
   });
 
-  testWidgets('the search narrows the chosen muscle group rather than '
+  testWidgets('the search narrows the chosen equipment rather than '
       'replacing it', (tester) async {
     final repo = FakeRepository();
     await tester.pumpWidget(harness(repo));
     await tester.pumpAndSettle();
 
-    await tester.tap(find.text('biceps'));
+    await tester.tap(find.byKey(const Key('library.equipment')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const Key('equipment.option.dumbbell')));
     await tester.pumpAndSettle();
     await search(tester, 'curl');
 
-    expect(repo.lastMuscleGroup, 'biceps',
-        reason: 'the lit chip must still be applied');
+    expect(repo.lastEquipment, 'dumbbell',
+        reason: 'the chosen equipment must still be applied');
     expect(repo.lastSearch, 'curl');
   });
 
