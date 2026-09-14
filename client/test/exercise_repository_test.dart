@@ -111,7 +111,9 @@ void main() {
     final repo = repoReturning({
       'data': {
         'muscleGroups': [{'value': 'abs', 'count': 147}],
-        'equipment': [{'value': 'body weight', 'count': 304}],
+        'equipment': [
+          {'value': 'body weight', 'label': 'Bodyweight', 'count': 304}
+        ],
       }
     });
 
@@ -119,6 +121,39 @@ void main() {
     expect(filters.muscleGroups.single.value, 'abs');
     expect(filters.muscleGroups.single.count, 147);
     expect(filters.equipment.single.value, 'body weight');
+  });
+
+  test('an equipment option keeps its label apart from its value', () async {
+    // The value is the API contract and the label is what the user reads.
+    // Folding them together would send 'Bodyweight' to an endpoint that only
+    // answers to 'body weight'.
+    final repo = repoReturning({
+      'data': {
+        'muscleGroups': const [],
+        'equipment': [
+          {'value': 'body weight', 'label': 'Bodyweight', 'count': 304}
+        ],
+      }
+    });
+
+    final option = (await repo.filters()).equipment.single;
+    expect(option.value, 'body weight');
+    expect(option.label, 'Bodyweight');
+  });
+
+  test('an option with no label reads as its own value', () async {
+    // Muscle groups never carry one, and neither does a server predating the
+    // equipment rollup. Either way the option has to render as something.
+    final repo = repoReturning({
+      'data': {
+        'muscleGroups': [{'value': 'abs', 'count': 147}],
+        'equipment': [{'value': 'kettlebell', 'count': 41}],
+      }
+    });
+
+    final filters = await repo.filters();
+    expect(filters.muscleGroups.single.label, 'abs');
+    expect(filters.equipment.single.label, 'kettlebell');
   });
 
   test('tolerates a null equipment on an exercise', () async {

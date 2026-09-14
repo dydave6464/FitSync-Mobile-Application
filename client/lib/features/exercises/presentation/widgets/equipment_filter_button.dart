@@ -35,6 +35,18 @@ class EquipmentFilterButton extends ConsumerWidget {
     final options = filters.value?.equipment;
     if (options == null || options.isEmpty) return const SizedBox(height: 8);
 
+    // The selection is stored as the API's value; the button shows the label
+    // that value was picked by. Falling back to the value means a filter set
+    // before the catalogue answered still names itself rather than going
+    // blank.
+    final chosen = selected == null
+        ? null
+        : options
+            .where((option) => option.value == selected)
+            .map((option) => option.label)
+            .firstOrNull ??
+            selected;
+
     return Align(
       alignment: Alignment.centerLeft,
       child: Padding(
@@ -46,7 +58,7 @@ class EquipmentFilterButton extends ConsumerWidget {
             size: 16,
             color: selected == null ? t.text2 : t.onAccent,
           ),
-          label: Text(selected ?? 'Equipment'),
+          label: Text(chosen ?? 'Equipment'),
           labelStyle: TextStyle(
             fontSize: 13,
             color: selected == null ? t.text2 : t.onAccent,
@@ -112,7 +124,7 @@ class _EquipmentSheetState extends State<_EquipmentSheet> {
   /// Filtered in memory, not through the API: the whole tag list is already
   /// here, so there is nothing to fetch and no debounce to wait out.
   List<FilterOption> get _visible => widget.options
-      .where((o) => o.value.toLowerCase().contains(_term))
+      .where((o) => o.label.toLowerCase().contains(_term))
       .toList(growable: false);
 
   @override
@@ -176,8 +188,10 @@ class _EquipmentSheetState extends State<_EquipmentSheet> {
                   for (final option in visible)
                     _OptionRow(
                       key: Key('equipment.option.${option.value}'),
+                      // Iconed by the value: the icon map keys on the raw
+                      // catalogue vocabulary, which the value still is.
                       icon: equipmentIcon(option.value),
-                      label: option.value,
+                      label: option.label,
                       count: option.count,
                       selected: widget.selected == option.value,
                       onTap: () =>

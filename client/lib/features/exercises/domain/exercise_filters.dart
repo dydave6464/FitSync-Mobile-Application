@@ -1,11 +1,23 @@
 class FilterOption {
-  const FilterOption({required this.value, required this.count});
+  /// [label] falls back to [value] because only equipment carries one: the
+  /// catalogue tags gear in its own vocabulary ('smith machine', 'ez
+  /// barbell') and the server rolls those up to the names onboarding uses,
+  /// while a muscle group is already the word the user would say.
+  const FilterOption({required this.value, required this.count, String? label})
+      : label = label ?? value;
 
+  /// What the API is sent. Stable, and not what the user reads.
   final String value;
+
+  /// What the user reads.
+  final String label;
+
   final int count;
 
   factory FilterOption.fromJson(Map<String, dynamic> json) => FilterOption(
         value: json['value'] as String,
+        // Absent on muscle groups, and on any server predating the rollup.
+        label: json['label'] as String?,
         count: (json['count'] as num).toInt(),
       );
 }

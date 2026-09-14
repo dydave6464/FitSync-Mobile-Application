@@ -87,10 +87,10 @@ class FakeRepository implements ExerciseRepository {
     return const ExerciseFilters(
       muscleGroups: [FilterOption(value: 'abs', count: 147), FilterOption(value: 'biceps', count: 150)],
       equipment: [
-        FilterOption(value: 'barbell', count: 214),
-        FilterOption(value: 'body weight', count: 304),
-        FilterOption(value: 'dumbbell', count: 298),
-        FilterOption(value: 'smith machine', count: 41),
+        FilterOption(value: 'barbell', label: 'Barbell', count: 214),
+        FilterOption(value: 'body weight', label: 'Bodyweight', count: 304),
+        FilterOption(value: 'dumbbell', label: 'Dumbbells', count: 298),
+        FilterOption(value: 'machines', label: 'Machines', count: 41),
       ],
     );
   }
@@ -192,8 +192,41 @@ void main() {
     await tester.tap(find.byKey(const Key('equipment.option.barbell')));
     await tester.pumpAndSettle();
 
-    expect(find.text('barbell'), findsOneWidget);
+    expect(find.text('Barbell'), findsOneWidget);
     expect(find.text('Equipment'), findsNothing);
+  });
+
+  testWidgets('the sheet names gear the way onboarding does', (tester) async {
+    // The catalogue tags gear as 'smith machine', 'ez barbell', 'cable'. The
+    // user picked 'Machines' and 'Barbell' during onboarding and has never
+    // been shown the dataset's vocabulary -- so the filter must not be the
+    // first place they meet it.
+    final repo = FakeRepository();
+    await tester.pumpWidget(harness(repo));
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.byKey(const Key('library.equipment')));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Machines'), findsOneWidget);
+    expect(find.text('Bodyweight'), findsOneWidget);
+    expect(find.text('body weight'), findsNothing,
+        reason: 'the raw catalogue tag is a key, not a label');
+  });
+
+  testWidgets('the key sent to the server is the value, not the label',
+      (tester) async {
+    final repo = FakeRepository();
+    await tester.pumpWidget(harness(repo));
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.byKey(const Key('library.equipment')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Bodyweight'));
+    await tester.pumpAndSettle();
+
+    expect(repo.lastEquipment, 'body weight',
+        reason: 'the label is for the user; the value is the API contract');
   });
 
   testWidgets('the sheet says how many exercises each tag has', (tester) async {
@@ -223,7 +256,7 @@ void main() {
     await tester.enterText(find.byKey(const Key('equipment.search')), 'mach');
     await tester.pumpAndSettle();
 
-    expect(find.byKey(const Key('equipment.option.smith machine')), findsOneWidget);
+    expect(find.byKey(const Key('equipment.option.machines')), findsOneWidget);
     expect(find.byKey(const Key('equipment.option.barbell')), findsNothing);
   });
 

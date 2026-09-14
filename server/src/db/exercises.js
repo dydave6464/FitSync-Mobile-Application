@@ -18,6 +18,16 @@ const LIVE = "x.status = 'live'";
 // equipment" — would silently return no results if it queried this file's
 // raw tag against the curated name plans.js hands back, or vice versa.
 
+// Resolves a raw catalogue tag to the curated option it was adopted under.
+//
+// LEFT JOIN, not INNER: a tag with no parent is a curated option itself, or
+// one curation never adopted, and both must survive the join.
+const EQUIPMENT_PARENT =
+  'LEFT JOIN equipment p ON p.equipment_id = e.parent_equipment_id';
+
+const sentenceCase = (text) =>
+  text.length === 0 ? text : text[0].toUpperCase() + text.slice(1);
+
 // Whether this exercise loads a region the user has reported an injury in.
 //
 // A flag, not a filter: the generator refuses these outright, but someone
@@ -82,7 +92,17 @@ function buildWhere({ muscleGroup, equipment, search }) {
     params.push(groups);
   }
   if (equipment) {
-    clauses.push('e.name = ?');
+    // The curated name, not the raw catalogue tag. The dataset tags gear as
+    // 'ez barbell', 'trap bar', 'smith machine'; onboarding asks for
+    // 'Barbell' and 'Machines'. Matching the tag alone offered the user a
+    // filter written in the dataset's vocabulary rather than their own, and
+    // split one piece of gear across four options.
+    //
+    // COALESCE reads both: an adopted tag answers to its parent's name, and
+    // one curation never adopted still answers to its own. It also catches a
+    // parent with no tag of its own -- nothing is tagged 'machines', which
+    // exists only to gather cable, smith machine and leverage machine.
+    clauses.push('COALESCE(p.name, e.name) = ?');
     params.push(equipment);
   }
   // ANDed with the rest, like every other clause: the search box narrows the
@@ -105,6 +125,7 @@ async function listExercises(pool, options = {}) {
     `SELECT COUNT(*) AS total
        FROM exercises x
        LEFT JOIN equipment e ON e.equipment_id = x.equipment_id
+       ${EQUIPMENT_PARENT}
       WHERE ${where}`,
     params,
   );
@@ -116,6 +137,7 @@ async function listExercises(pool, options = {}) {
             ${flag.sql}
        FROM exercises x
        LEFT JOIN equipment e ON e.equipment_id = x.equipment_id
+       ${EQUIPMENT_PARENT}
       WHERE ${where}
       ORDER BY x.name ASC, x.exercise_id ASC
       LIMIT ? OFFSET ?`,
@@ -157,16 +179,32 @@ async function listFilters(pool) {
       ORDER BY x.muscle_group ASC`,
   );
 
+  // Grouped by the curated name so the filter speaks the same vocabulary as
+  // onboarding: 14 raw tags become 8 options, and every exercise still lands
+  // in exactly one of them.
   const [equipment] = await pool.query(
-    `SELECT e.name AS value, COUNT(*) AS count
+    `SELECT COALESCE(p.name, e.name) AS value,
+            COALESCE(p.display_name, e.display_name) AS label,
+            COUNT(*) AS count
        FROM exercises x
        JOIN equipment e ON e.equipment_id = x.equipment_id
+       ${EQUIPMENT_PARENT}
       WHERE ${LIVE}
-      GROUP BY e.name
-      ORDER BY e.name ASC`,
+      GROUP BY value, label
+      ORDER BY value ASC`,
   );
 
-  return { muscleGroups, equipment };
+  return {
+    muscleGroups,
+    // A tag curation never adopted has no display name of its own. Sentence
+    // case rather than the raw tag, so 'medicine ball' does not sit in a list
+    // of capitalised options looking like a mistake.
+    equipment: equipment.map((row) => ({
+      value: row.value,
+      label: row.label || sentenceCase(row.value),
+      count: row.count,
+    })),
+  };
 }
 
 module.exports = {
