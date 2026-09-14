@@ -284,6 +284,10 @@ class FsField extends StatelessWidget {
     this.keyboardType,
     this.textCapitalization = TextCapitalization.none,
     this.suffix,
+    this.trailing,
+    this.onChanged,
+    this.onSubmitted,
+    this.textInputAction,
     this.maxLines = 1,
   });
 
@@ -298,6 +302,17 @@ class FsField extends StatelessWidget {
   final TextInputType? keyboardType;
   final TextCapitalization textCapitalization;
   final String? suffix;
+
+  /// A widget inside the field's own border, at its trailing edge -- a clear
+  /// button, a reveal toggle. Distinct from [suffix], which is a unit ('kg')
+  /// and cannot be tapped. Placing an affordance beside the field instead
+  /// leaves it outside the box it acts on, and outside the tap target the
+  /// border implies.
+  final Widget? trailing;
+
+  final ValueChanged<String>? onChanged;
+  final ValueChanged<String>? onSubmitted;
+  final TextInputAction? textInputAction;
 
   /// Lines the box may grow to before it scrolls. One, as every field in the
   /// app has been, until something needs to hold a sentence: typed into a
@@ -315,6 +330,9 @@ class FsField extends StatelessWidget {
       maxLines: maxLines,
       keyboardType: keyboardType,
       textCapitalization: textCapitalization,
+      onChanged: onChanged,
+      onSubmitted: onSubmitted,
+      textInputAction: textInputAction,
       autocorrect: false,
       style: TextStyle(fontSize: 14, color: t.text),
       cursorColor: t.accent,
@@ -324,6 +342,7 @@ class FsField extends StatelessWidget {
         prefixIcon: icon == null ? null : Icon(icon, size: 18, color: t.text3),
         suffixText: suffix,
         suffixStyle: TextStyle(fontSize: 13, color: t.text3),
+        suffixIcon: trailing,
         filled: true,
         fillColor: t.surface,
         contentPadding: const EdgeInsets.symmetric(horizontal: 15, vertical: 16),
@@ -610,76 +629,16 @@ class FsNav extends StatelessWidget {
   /// The diameter the prototype gives the circle.
   static const double _fabSize = 50;
 
-  /// A tab cell's own stack, named so [_tabIconCentre] cannot drift from what
-  /// [_bar] actually renders.
+  /// A tab cell's own stack: icon over label.
   static const double _tabIconSize = 21;
   static const double _tabGap = 3;
 
-  /// The label's line box: 10px at the default height. Approximate by nature
-  /// -- it is a rendered font metric -- which is why the fab's placement is
-  /// asserted against the icon's measured position rather than this number.
-  static const double _tabLabelHeight = 13;
-
-  static const double _tabContentHeight =
-      _tabIconSize + _tabGap + _tabLabelHeight;
-
-  /// Where a tab icon's centre falls, measured down from the top of the bar's
-  /// row: the cell centres its icon-and-label stack, and the icon is the top
-  /// of that stack.
-  static const double _tabIconCentre =
-      (_barHeight - _tabContentHeight) / 2 + _tabIconSize / 2;
-
-  /// How far the circle breaks the bar's top edge.
-  ///
-  /// Derived, not chosen: exactly enough to put the circle's centre on the
-  /// tab icons' line, so the "+" reads as one of the row rather than floating
-  /// over it. The prototype's `margin-top: -14px` lifts it further, and on a
-  /// device that consistently read as the one item out of line.
-  static const double _fabRise = _fabSize / 2 - _tabIconCentre;
-
-  /// The fab's footprint when it lived inline in the [Row] — kept as a
-  /// spacer so the tab cells still reserve the same gap for it.
+  /// The fab's footprint in the [Row]: wider than the circle, so the tab
+  /// cells either side of it keep their gap.
   static const double _fabSlotWidth = 62;
 
   @override
-  Widget build(BuildContext context) {
-    final t = context.fs;
-    final bar = _bar(t);
-
-    if (onFabTap == null) return bar;
-
-    // The bar sizes the Stack; the Padding above it is the only thing this
-    // branch adds, so the fab's raised top gets a real box for ancestors to
-    // hit-test against instead of paint that spills outside one. A
-    // `Transform.translate` moves paint only: the box it used to sit inside
-    // still reports its own height to its parent, so any tap above that box
-    // is rejected before it ever reaches the fab's `InkWell`.
-    //
-    // Deliberately NOT a fixed `SizedBox(height: _barHeight + _fabOverhang)`
-    // with the bar `Positioned(bottom: 0)`: that leaves the bar vertically
-    // unbounded, so it lays out at its natural height — which includes the
-    // device's bottom inset via [SafeArea] — anchors to the bottom and grows
-    // straight out of the top of a box pinned to 72. `Stack`'s default
-    // `Clip.hardEdge` then eats the difference: at a 34dp home indicator
-    // half a tab icon, at a 48dp Android nav bar the whole icon. Nothing
-    // asserts, because no [Flex] is involved. Letting the bar size the Stack
-    // is what makes the inset additive instead of destructive.
-    return Stack(
-      children: [
-        Padding(
-          padding: const EdgeInsets.only(top: _fabRise),
-          child: bar,
-        ),
-        Positioned(
-          top: 0,
-          left: 0,
-          right: 0,
-          height: _fabSize,
-          child: Center(child: _fab(t)),
-        ),
-      ],
-    );
-  }
+  Widget build(BuildContext context) => _bar(context.fs);
 
   Widget _bar(FsTokens t) => Container(
         decoration: BoxDecoration(
@@ -694,7 +653,7 @@ class FsNav extends StatelessWidget {
               children: [
                 for (final (index, item) in items.indexed) ...[
                   if (index == 2 && onFabTap != null)
-                    const SizedBox(width: _fabSlotWidth),
+                    SizedBox(width: _fabSlotWidth, child: Center(child: _fab(t))),
                   Expanded(
                     child: InkWell(
                       key: Key('nav.$index'),
@@ -730,9 +689,15 @@ class FsNav extends StatelessWidget {
         ),
       );
 
-  /// The raised centre circle itself — sized but not positioned; [build]
-  /// places it via [Positioned] rather than [Transform], since a transform
-  /// would reintroduce the hit-test dead zone this shape exists to avoid.
+  /// The centre circle.
+  ///
+  /// A plain child of the tab [Row], which is what puts it level with the
+  /// tabs: the row centres every child on its cross axis, so a 50px circle in
+  /// a 58px row lands on the same centreline as an icon-over-label cell with
+  /// no arithmetic to drift. It also means the whole circle is inside the
+  /// bar's own box, so all of it is hit-testable — the property a raised cap
+  /// had to be positioned carefully to keep, and a `Transform.translate`
+  /// would have lost outright.
   Widget _fab(FsTokens t) => DecoratedBox(
         // Circle, not the default rectangle: the glow has to follow the
         // shape it falls from. Painted outside the Material rather than

@@ -261,6 +261,42 @@ void main() {
     expect(tester.widget<TextField>(find.byType(TextField)).maxLines, 1);
   });
 
+  testWidgets('FsField renders a trailing widget inside the box',
+      (tester) async {
+    // suffixText holds a unit ('kg', 'cm') and nothing else -- it cannot be
+    // tapped. A field with a clear or reveal affordance needs a real widget
+    // inside the same border, not a second control alongside it.
+    final controller = TextEditingController();
+    addTearDown(controller.dispose);
+    var taps = 0;
+
+    await tester.pumpWidget(MaterialApp(
+      theme: fsLightTheme(),
+      home: Scaffold(
+        body: FsField(
+          controller: controller,
+          hint: 'Search',
+          trailing: IconButton(
+            key: const Key('field.trailing'),
+            icon: const Icon(Icons.close),
+            onPressed: () => taps += 1,
+          ),
+        ),
+      ),
+    ));
+
+    final trailing = find.byKey(const Key('field.trailing'));
+    expect(trailing, findsOneWidget);
+    expect(
+      find.ancestor(of: trailing, matching: find.byType(TextField)),
+      findsOneWidget,
+      reason: 'the affordance belongs inside the field, not beside it',
+    );
+
+    await tester.tap(trailing);
+    expect(taps, 1);
+  });
+
   testWidgets('FsField grows to the line count it is given', (tester) async {
     // A sentence typed into a one-line field scrolls sideways, which hides
     // the beginning of what the user wrote.

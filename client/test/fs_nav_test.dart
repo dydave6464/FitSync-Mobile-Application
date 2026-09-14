@@ -97,30 +97,30 @@ void main() {
     expect(fab, lessThan(browse));
   });
 
-  testWidgets('the raised top of the fab is tappable', (tester) async {
+  testWidgets('the top of the fab is tappable', (tester) async {
     var taps = 0;
     await _pump(tester, onFabTap: () => taps += 1);
 
     final rect = tester.getRect(find.byKey(const Key('nav.fab')));
-    // Near the top edge of the circle -- the part that rises above the bar.
-    // A Transform.translate moves paint but not the ancestors' hit-test box,
-    // so this is precisely where a naive raise stops registering.
+    // Near the top edge of the circle. Kept from when the circle rose above
+    // the bar and this was the exact spot a naive raise stopped registering:
+    // it is still the first place a layout change would break the tap.
     await tester.tapAt(Offset(rect.center.dx, rect.top + 6));
     expect(taps, 1);
   });
 
   testWidgets('the fab bar grows with the bottom inset', (tester) async {
     // The bar is Container(1px top border) + SafeArea(inset) + 58, and the
-    // fab needs its RISE above that -- 4, which is all it takes to put the
-    // circle's centre on the tab icons' line. Pinning the total to a constant
+    // fab now sits INSIDE that row rather than above it, so a fab bar and a
+    // fab-less bar are the same height. Pinning the total to a constant
     // instead makes the bar taller than the box that holds it at every real
-    // inset -- iPhone home indicator 34, Android 3-button 48 -- and Stack's
-    // default Clip.hardEdge eats the difference silently.
+    // inset -- iPhone home indicator 34, Android 3-button 48 -- and the
+    // difference is eaten silently.
     for (final inset in [0.0, 24.0, 34.0, 48.0]) {
       await _pumpInset(tester, inset);
       expect(
         tester.getSize(find.byType(FsNav)).height,
-        59 + 4 + inset,
+        59 + inset,
         reason: 'the fab bar must reserve the inset, not swallow it (inset $inset)',
       );
     }
@@ -150,42 +150,34 @@ void main() {
     }
   });
 
-  testWidgets('the fab centres on the tab icons rather than riding above them',
+  testWidgets('the fab centres on the tab cell, level with the row',
       (tester) async {
-    // The design's `margin-top: -14px` is measured from CENTRED, not from the
-    // bar's top edge: `.botnav` centres the circle like every other item and
-    // the negative margin lifts it from there. Reading it as "14 above the
-    // edge" double-counts the half-difference between the bar and the circle
-    // and leaves the "+" floating over the tabs instead of breaking their
-    // line -- which is what a device showed.
+    // Centred on the whole tab CELL -- icon over label -- not on the icon
+    // alone. Centring on the icon line is what two rounds of device feedback
+    // called out: it puts the circle's centre 8px above the block the tabs
+    // actually occupy, so the one item that is not a tab is the one item out
+    // of line.
     //
-    // Asserted against the tab icons rather than a constant, because "aligned
-    // with the other items" is the thing that was wrong; the bar's own height
-    // is free to change without making this a lie.
+    // Asserted against the tab cell rather than a constant, because "level
+    // with the other items" is the property; the bar's own height is free to
+    // change without making this a lie.
     for (final inset in [0.0, 34.0, 48.0]) {
       await _pumpInset(tester, inset);
       final fab = tester.getRect(find.byKey(const Key('nav.fab')));
-      final icon = tester.getRect(
-        find.descendant(
-          of: find.byKey(const Key('nav.0')),
-          matching: find.byType(Icon),
-        ),
-      );
+      final cell = tester.getRect(find.byKey(const Key('nav.0')));
       expect(
-        icon.center.dy - fab.center.dy,
-        closeTo(0, 1.5),
-        reason: 'the circle must sit on the icons\' line, not above it '
-            '(inset $inset)',
+        cell.center.dy - fab.center.dy,
+        closeTo(0, 0.5),
+        reason: 'the circle must sit level with the tab cells (inset $inset)',
       );
     }
   });
 
-  testWidgets('the raised cap of the fab stays inside the bar\'s own box',
-      (tester) async {
-    // The circle has to break the bar's edge to be the design's fab, but
-    // every pixel of it must still sit inside FsNav's reported box: a raised
-    // top that spills outside is painted, not hit-tested, and the tap dies
-    // before it reaches the InkWell.
+  testWidgets('the fab sits wholly inside the bar', (tester) async {
+    // The circle no longer breaks the bar's top edge: it is a child of the
+    // same row as the tabs, so every pixel of it is inside both FsNav's
+    // reported box and the decorated bar itself. Anything outside that box is
+    // painted but not hit-tested, and the tap dies before the InkWell.
     for (final inset in [0.0, 34.0, 48.0]) {
       await _pumpInset(tester, inset);
       final fab = tester.getRect(find.byKey(const Key('nav.fab')));
@@ -197,13 +189,14 @@ void main() {
       expect(decorated, findsOneWidget, reason: 'the bar is one decorated box');
 
       expect(fab.top, greaterThanOrEqualTo(bar.top),
-          reason: 'the raised cap is outside the hit-test box (inset $inset)');
+          reason: 'the fab is outside the hit-test box (inset $inset)');
       expect(
-        tester.getRect(decorated).top,
-        greaterThan(fab.top),
-        reason: 'the circle must break the bar edge, not sit under it '
+        fab.top,
+        greaterThanOrEqualTo(tester.getRect(decorated).top),
+        reason: 'the circle must sit inside the bar, not over its edge '
             '(inset $inset)',
       );
+      expect(fab.bottom, lessThanOrEqualTo(bar.bottom));
     }
   });
 
