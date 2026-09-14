@@ -32,8 +32,13 @@ const _pplPlan = WorkoutPlan(
   exercises: [],
 );
 
+/// The server's refusal message, shared by [FakePlanRepository] and the tests
+/// that check the dialog states it verbatim -- so the two never drift apart.
+const _customPlanMessage = 'Generating a new plan replaces "My Push / Pull / '
+    'Legs" and the 2 days you built in it.';
+
 class FakePlanRepository implements PlanRepository {
-  FakePlanRepository({this.error, this.pending});
+  FakePlanRepository({this.error, this.pending, this.refuseCustomPlan = false});
 
   final Object? error;
 
@@ -42,11 +47,24 @@ class FakePlanRepository implements PlanRepository {
   /// e.g. to pop the screen while the request is still in flight.
   final Future<WorkoutPlan>? pending;
 
+  /// Refuses every call that does not carry `replaceCustomPlan: true`, the
+  /// way the server does when a custom plan is in the way, then accepts the
+  /// one that does. Independent of [error]: this is the one refusal the
+  /// screen is supposed to catch and turn into a question rather than just
+  /// report.
+  final bool refuseCustomPlan;
+
   Map<String, dynamic>? sent;
 
   /// The days-per-week value the last `regenerate` call carried, read out of
   /// [sent] so a test does not have to know its key.
   int? get lastDaysPerWeek => sent?['daysPerWeek'] as int?;
+
+  int regenerateCalls = 0;
+
+  /// The `replaceCustomPlan` the last `regenerate` call carried. Kept apart
+  /// from [sent], whose exact-map assertions predate this flag.
+  bool? lastReplaceCustomPlan;
 
   @override
   String get baseUrl => 'http://test.local';
@@ -58,11 +76,16 @@ class FakePlanRepository implements PlanRepository {
     required int sessionLengthMin,
     bool replaceCustomPlan = false,
   }) async {
+    regenerateCalls += 1;
+    lastReplaceCustomPlan = replaceCustomPlan;
     sent = {
       'splitStyle': splitStyle,
       'daysPerWeek': daysPerWeek,
       'sessionLengthMin': sessionLengthMin,
     };
+    if (refuseCustomPlan && !replaceCustomPlan) {
+      throw const ApiException('CUSTOM_PLAN_WOULD_BE_LOST', _customPlanMessage);
+    }
     if (pending != null) return pending!;
     if (error != null) throw error!;
     return _pplPlan;
@@ -670,6 +693,60 @@ void main() {
         reason: 'the user must be able to retry or change their choices');
     expect(find.text(_generatedMessage), findsNothing,
         reason: 'nothing was generated, so nothing should say it was');
+  });
+
+  testWidgets('generating over your own plan asks first', (tester) async {
+    final repo = FakePlanRepository(refuseCustomPlan: true);
+    await _pump(tester, plan: _pplPlan, repo: repo);
+
+    await tester.tap(find.byKey(const Key('gen.generate')));
+    await tester.pumpAndSettle();
+
+    // The exact sentence the server sent, not a generic phrasing composed
+    // here -- the static "Generating replaces your current plan." disclaimer
+    // elsewhere on this screen also contains the word "replaces", so only the
+    // full sentence tells the two apart.
+    expect(find.text(_customPlanMessage), findsOneWidget);
+    expect(repo.regenerateCalls, 1, reason: 'the refusal is what raised it');
+  });
+
+  testWidgets('backing out of the warning keeps your plan', (tester) async {
+    final repo = FakePlanRepository(refuseCustomPlan: true);
+    await _pump(tester, plan: _pplPlan, repo: repo);
+
+    await tester.tap(find.byKey(const Key('gen.generate')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Keep my plan'));
+    await tester.pumpAndSettle();
+
+    expect(repo.regenerateCalls, 1, reason: 'no second attempt was made');
+    expect(repo.lastReplaceCustomPlan, isFalse);
+  });
+
+  testWidgets('confirming regenerates and says so explicitly', (tester) async {
+    final repo = FakePlanRepository(refuseCustomPlan: true);
+    await _pump(tester, plan: _pplPlan, repo: repo);
+
+    await tester.tap(find.byKey(const Key('gen.generate')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Replace it'));
+    await tester.pumpAndSettle();
+
+    expect(repo.regenerateCalls, 2);
+    expect(repo.lastReplaceCustomPlan, isTrue);
+  });
+
+  testWidgets('a generated plan is replaced without a question', (tester) async {
+    // A regression guard on today's behaviour: a plan the screen itself
+    // generated must never be second-guessed.
+    final repo = FakePlanRepository();
+    await _pump(tester, plan: _pplPlan, repo: repo);
+
+    await tester.tap(find.byKey(const Key('gen.generate')));
+    await tester.pumpAndSettle();
+
+    expect(find.byType(AlertDialog), findsNothing);
+    expect(repo.regenerateCalls, 1);
   });
 
   testWidgets('a successful generation refreshes the active plan', (tester) async {

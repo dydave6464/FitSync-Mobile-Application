@@ -66,12 +66,20 @@ class _GeneratorScreenState extends ConsumerState<GeneratorScreen> {
   /// the loading/error-flattening bug the debug getters still carry: a
   /// failed fetch reads null and falls back to full_body/3/45, and that
   /// fallback would go out as the generate payload.
+  ///
+  /// [replaceCustomPlan] is only ever true on the recursive call this makes
+  /// to itself once the user has confirmed replacing a plan they built by
+  /// hand -- see the CUSTOM_PLAN_WOULD_BE_LOST branch below. The server
+  /// refuses that case by default rather than trusting this screen to warn,
+  /// so the question is raised by the refusal itself: any other caller of
+  /// regenerate is protected too, and this screen cannot forget to ask.
   Future<void> _generate(
     String split,
     int days,
     int length,
-    List<int> trainingDays,
-  ) async {
+    List<int> trainingDays, {
+    bool replaceCustomPlan = false,
+  }) async {
     final messenger = ScaffoldMessenger.of(context);
     final navigator = Navigator.of(context);
     // Captured for the same reason as messenger and navigator above: regenerate
@@ -93,6 +101,7 @@ class _GeneratorScreenState extends ConsumerState<GeneratorScreen> {
             splitStyle: split,
             daysPerWeek: days,
             sessionLengthMin: length,
+            replaceCustomPlan: replaceCustomPlan,
           );
       // The plan changed underneath every screen that reads it, so the whole
       // provider is invalidated rather than patched: the Plan tab re-reads and
@@ -117,9 +126,48 @@ class _GeneratorScreenState extends ConsumerState<GeneratorScreen> {
       messenger.showSnackBar(const SnackBar(content: Text('New plan generated')));
       if (mounted) navigator.pop();
     } on ApiException catch (error) {
+      if (error.code != 'CUSTOM_PLAN_WOULD_BE_LOST') {
+        if (!mounted) return;
+        setState(() => _busy = false);
+        messenger.showSnackBar(SnackBar(content: Text(error.message)));
+        return;
+      }
+      // Reset before the dialog, not after: nothing has actually started
+      // building yet, and the indeterminate spinner on the building screen
+      // would otherwise spin behind the question for as long as it takes the
+      // user to answer.
       if (!mounted) return;
       setState(() => _busy = false);
-      messenger.showSnackBar(SnackBar(content: Text(error.message)));
+      final confirmed = await showDialog<bool>(
+        context: context,
+        builder: (dialogContext) => AlertDialog(
+          title: const Text('Replace your own plan?'),
+          // The server's message names the plan and how many days it holds.
+          // Rewording it here would mean keeping two copies of that sentence
+          // in step.
+          content: Text(error.message),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(dialogContext).pop(false),
+              child: const Text('Keep my plan'),
+            ),
+            TextButton(
+              onPressed: () => Navigator.of(dialogContext).pop(true),
+              child: const Text('Replace it'),
+            ),
+          ],
+        ),
+      );
+      // Backing out (confirmed == false or the dialog was dismissed) leaves
+      // busy already reset above, and asks for nothing further -- the plan
+      // the user built is untouched.
+      if (confirmed == true && mounted) {
+        // Recurses through this same method rather than re-sending the
+        // request inline, so the confirmed attempt gets the identical busy
+        // state and hold as the first -- there is exactly one place that
+        // logic lives.
+        await _generate(split, days, length, trainingDays, replaceCustomPlan: true);
+      }
     } catch (_) {
       if (!mounted) return;
       setState(() => _busy = false);
