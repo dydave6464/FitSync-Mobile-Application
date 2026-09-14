@@ -80,6 +80,7 @@ class WorkoutPlan {
     required this.weekNo,
     required this.exercises,
     this.days = const [],
+    this.source = 'generated',
   });
 
   final int planId;
@@ -94,6 +95,18 @@ class WorkoutPlan {
   /// which case the plan is a single unnamed day.
   final List<PlanDay> days;
 
+  /// `'generated'` or `'custom'`. A string rather than an enum for the same
+  /// reason `splitStyle` is: an unknown value from a newer server must degrade
+  /// to something renderable rather than throw on parse.
+  ///
+  /// Defaults to `'generated'`, matching the column's own default -- a payload
+  /// from before the column existed describes a generated plan.
+  final String source;
+
+  /// Whether the user built this plan out of their own workouts. Guards the
+  /// generator's warning and the label on the plan card.
+  bool get isCustom => source == 'custom';
+
   factory WorkoutPlan.fromJson(Map<String, dynamic> json) => WorkoutPlan(
         planId: json['planId'] as int,
         name: json['name'] as String,
@@ -107,6 +120,7 @@ class WorkoutPlan {
         days: ((json['days'] as List<dynamic>?) ?? const [])
             .map((d) => PlanDay.fromJson(d as Map<String, dynamic>))
             .toList(growable: false),
+        source: json['source'] as String? ?? 'generated',
       );
 
   /// Which rotation day today falls on, from how many sessions are already

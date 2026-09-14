@@ -213,4 +213,37 @@ void main() {
     expect(plan.splitStyle, 'push_pull_legs');
     expect(plan.days.map((d) => d.name).toList(), ['Push', 'Pull', 'Legs']);
   });
+
+  test('a plan says whether its user built it', () async {
+    final plan = WorkoutPlan.fromJson(const {
+      'planId': 1,
+      'name': 'My Push / Pull / Legs',
+      'splitStyle': 'push_pull_legs',
+      'daysPerWeek': 3,
+      'sessionLengthMin': 45,
+      'weekNo': 1,
+      'source': 'custom',
+      'exercises': <Map<String, dynamic>>[],
+    });
+
+    expect(plan.source, 'custom');
+    expect(plan.isCustom, isTrue);
+  });
+
+  test('a plan from a server predating the column reads as generated', () async {
+    // The column defaults to 'generated' server-side for the same reason: the
+    // generator was the only thing that could make one.
+    final plan = WorkoutPlan.fromJson(const {
+      'planId': 1,
+      'name': 'Week 1 — Full body',
+      'splitStyle': 'full_body',
+      'daysPerWeek': 3,
+      'sessionLengthMin': 45,
+      'weekNo': 1,
+      'exercises': <Map<String, dynamic>>[],
+    });
+
+    expect(plan.source, 'generated');
+    expect(plan.isCustom, isFalse);
+  });
 }
