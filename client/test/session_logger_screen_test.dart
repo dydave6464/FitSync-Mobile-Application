@@ -176,6 +176,32 @@ class FakeProfileNotifier extends ProfileNotifier {
   Future<void> patch(Map<String, dynamic> fields) async => patches.add(fields);
 }
 
+/// The plan the generator built: what "Add to my plan" would silently throw
+/// away, and what the confirmation has to name.
+const _generatedPlan = WorkoutPlan(
+  planId: 42, name: 'Week 1 — Full body', splitStyle: 'full_body',
+  daysPerWeek: 3, sessionLengthMin: 45, weekNo: 1, source: 'generated',
+  exercises: [
+    PlanExercise(
+      planExerciseId: 601, exerciseId: 101, name: 'Goblet squat',
+      muscleGroup: 'quadriceps', orderNo: 1, targetSets: 3, targetReps: '8-12',
+    ),
+  ],
+);
+
+/// A plan the user already built. Adding to this replaces nothing.
+const _customPlan = WorkoutPlan(
+  planId: 9, name: 'My Full Body', splitStyle: 'full_body',
+  daysPerWeek: 1, sessionLengthMin: 45, weekNo: 1, source: 'custom',
+  exercises: [
+    PlanExercise(
+      planExerciseId: 1, exerciseId: 101, name: 'Bench press',
+      muscleGroup: 'chest', orderNo: 1, targetSets: 3, targetReps: '8-12',
+      dayNo: 1,
+    ),
+  ],
+);
+
 /// Records what the summary dialog asked the plan API to do.
 class RecordingPlanRepository implements PlanRepository {
   RecordingPlanRepository({this.error, this.active, this.gate});
@@ -1061,6 +1087,92 @@ void main() {
 
     expect(tester.takeException(), isNull);
     expect(find.textContaining('Could not reach the server.'), findsNothing);
+  });
+
+  testWidgets('with no plan of the user\'s own, the offer is to make one',
+      (tester) async {
+    // Spec s4: "Make this my plan" when there is no custom plan yet. The two
+    // labels describe different acts -- one starts a plan, the other adds to
+    // the one already being followed -- and a single label for both hides a
+    // replacement behind the gentler of the two.
+    final plans = RecordingPlanRepository();
+    await _pump(tester, session: _manualSessionWithSets(), plans: plans);
+
+    await _menu(tester, 'finish');
+
+    expect(find.text('Make this my plan'), findsOneWidget);
+    expect(find.text('Add to my plan'), findsNothing);
+  });
+
+  testWidgets('with a plan of their own already, the offer is to add to it',
+      (tester) async {
+    final plans = RecordingPlanRepository(active: _customPlan);
+    await _pump(tester, session: _manualSessionWithSets(), plans: plans);
+
+    await _menu(tester, 'finish');
+
+    expect(find.text('Add to my plan'), findsOneWidget);
+    expect(find.text('Make this my plan'), findsNothing);
+  });
+
+  testWidgets('replacing a generated plan is asked for, and names it',
+      (tester) async {
+    // The destructive direction. Accepting over a generated plan deactivates
+    // it and puts a one-day custom plan in its place; plan history is out of
+    // scope, so it does not come back. The generator already asks before
+    // replacing a plan the user built -- this is the same question, asked in
+    // the direction that was silent.
+    final plans = RecordingPlanRepository(active: _generatedPlan);
+    await _pump(tester, session: _manualSessionWithSets(), plans: plans);
+
+    await _menu(tester, 'finish');
+    await tester.tap(find.byKey(const Key('summary.toPlan')));
+    await tester.pumpAndSettle();
+
+    expect(find.byKey(const Key('summary.replacePlan')), findsOneWidget);
+    // Scoped to the dialog: the logger's own chrome behind it also carries
+    // the plan name, so an unscoped finder would pass on the wrong widget.
+    expect(
+      find.descendant(
+        of: find.byKey(const Key('summary.replacePlan')),
+        matching: find.textContaining('Week 1 — Full body'),
+      ),
+      findsOneWidget,
+      reason: 'the question has to name what goes',
+    );
+    expect(plans.fromSessionCalls, 0, reason: 'nothing is written until asked');
+  });
+
+  testWidgets('keeping the generated plan writes nothing', (tester) async {
+    final plans = RecordingPlanRepository(active: _generatedPlan);
+    await _pump(tester, session: _manualSessionWithSets(), plans: plans);
+
+    await _menu(tester, 'finish');
+    await tester.tap(find.byKey(const Key('summary.toPlan')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Keep it'));
+    await tester.pumpAndSettle();
+
+    expect(plans.fromSessionCalls, 0);
+    // The session is finished either way, so the logger still has to leave --
+    // _showSummary handed its own pop to _addToPlan the moment the offer was
+    // tapped, and a cancelled write must not strand the user on a logger
+    // whose session is already closed.
+    expect(find.byType(SessionLoggerScreen), findsNothing);
+  });
+
+  testWidgets('confirming replaces the generated plan', (tester) async {
+    final plans = RecordingPlanRepository(active: _generatedPlan);
+    await _pump(tester, session: _manualSessionWithSets(), plans: plans);
+
+    await _menu(tester, 'finish');
+    await tester.tap(find.byKey(const Key('summary.toPlan')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Replace it'));
+    await tester.pumpAndSettle();
+
+    expect(plans.fromSessionCalls, 1);
+    expect(plans.lastSessionId, 9);
   });
 
   testWidgets('an existing custom plan asks which day the workout becomes',

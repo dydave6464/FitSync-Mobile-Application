@@ -199,6 +199,10 @@ class _SessionLoggerScreenState extends ConsumerState<SessionLoggerScreen> {
     // would otherwise race that sheet: it resolves as soon as the dialog
     // closes, which lands while the sheet is now the topmost route, so an
     // unconditional pop here would dismiss the sheet instead of the screen.
+    // Read once, before the dialog is built: the label describes which act
+    // the button performs, and the dialog's builder does not rebuild when the
+    // provider changes under it.
+    final active = ref.read(activePlanProvider).value;
     final addToPlanWillClose = await showDialog<bool>(
       context: context,
       builder: (dialogContext) => AlertDialog(
@@ -222,7 +226,13 @@ class _SessionLoggerScreenState extends ConsumerState<SessionLoggerScreen> {
             TextButton(
               key: const Key('summary.toPlan'),
               onPressed: () => _addToPlan(dialogContext, done),
-              child: const Text('Add to my plan'),
+              // Two acts, two labels -- see the design, section 4. "Add to my
+              // plan" over a plan the user has not built is a promise the
+              // action does not keep: there is nothing to add to, so the
+              // workout becomes the plan and whatever was active goes.
+              child: Text(active != null && active.isCustom
+                  ? 'Add to my plan'
+                  : 'Make this my plan'),
             ),
           TextButton(
             onPressed: () => Navigator.of(dialogContext).pop(false),
@@ -263,11 +273,25 @@ class _SessionLoggerScreenState extends ConsumerState<SessionLoggerScreen> {
     // workout, or one landing on top of a generated plan, creates the plan --
     // there is nothing to place it among yet.
     int? dayNo;
+    var cancelled = false;
     if (active != null && active.isCustom) {
       if (!mounted) return;
       dayNo = await showAddToPlanSheet(context, active);
+    } else if (active != null) {
+      // A generated plan is about to be deactivated and replaced by a
+      // one-day plan built from this workout, and plan history is out of
+      // scope -- nothing brings it back. The generator already asks before
+      // replacing a plan the user built; this is the same question in the
+      // direction that used to be silent.
+      if (!mounted) return;
+      cancelled = !await _confirmReplacing(active);
     }
+    // Either way the session is finished, so the logger leaves: _showSummary
+    // handed its own pop to this method the moment the offer was tapped, and
+    // backing out of the question must not strand the user on a logger whose
+    // session is already closed.
     if (mounted) Navigator.of(context).pop();
+    if (cancelled) return;
 
     try {
       final plan = await ref.read(planRepositoryProvider).planFromSession(
@@ -287,6 +311,35 @@ class _SessionLoggerScreenState extends ConsumerState<SessionLoggerScreen> {
       messenger.showSnackBar(SnackBar(content: Text(describeError(error))));
     }
   }
+
+  /// Asks before a plan the user did not build is replaced by one made from
+  /// this workout. Names the plan, because "your plan" is not enough to
+  /// decide by.
+  Future<bool> _confirmReplacing(WorkoutPlan plan) async =>
+      await showDialog<bool>(
+        context: context,
+        builder: (dialogContext) => AlertDialog(
+          key: const Key('summary.replacePlan'),
+          title: const Text('Replace your current plan?'),
+          content: Text(
+            'This workout becomes a plan of your own, and "${plan.name}" '
+            'goes. You cannot get it back.',
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(dialogContext).pop(false),
+              child: const Text('Keep it'),
+            ),
+            TextButton(
+              onPressed: () => Navigator.of(dialogContext).pop(true),
+              child: const Text('Replace it'),
+            ),
+          ],
+        ),
+        // A barrier dismiss is not an answer, and the destructive reading of
+        // silence is the wrong one here.
+      ) ??
+      false;
 
   Future<void> _discard() async {
     final confirmed = await showDialog<bool>(
