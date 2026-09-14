@@ -345,9 +345,14 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.textContaining('Could not'), findsOneWidget);
-    final cell = tester.widget<TrainingDayCell>(
+    final failedCell = tester.widget<TrainingDayCell>(
         find.byKey(const Key('weekday.5')));
-    expect(cell.selected, isFalse);
+    expect(failedCell.selected, isFalse);
+    // The day that WAS stored must still render selected -- proves the row
+    // reflects what is saved, not just that a failed tap stays untied.
+    final storedCell = tester.widget<TrainingDayCell>(
+        find.byKey(const Key('weekday.1')));
+    expect(storedCell.selected, isTrue);
   });
 
   testWidgets('generate sends the number of chosen days', (tester) async {
