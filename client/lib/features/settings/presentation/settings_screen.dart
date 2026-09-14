@@ -12,6 +12,7 @@ import '../../onboarding/presentation/steps/about_step.dart';
 import '../../onboarding/presentation/steps/goal_step.dart';
 import '../../onboarding/presentation/steps/injuries_step.dart';
 import '../../onboarding/presentation/steps/level_step.dart';
+import '../../plans/presentation/widgets/training_days_row.dart';
 import '../../profile/domain/profile.dart';
 import '../../profile/presentation/providers.dart';
 
@@ -158,6 +159,12 @@ class _SettingsList extends ConsumerWidget {
                 label: 'Injuries',
                 iconColor: t.red,
                 onTap: () => _open(context, const _InjuriesEditor()),
+              ),
+              _SettingsRow(
+                rowKey: const Key('edit.trainingDays'),
+                icon: Icons.event_available_outlined,
+                label: 'Training days',
+                onTap: () => _open(context, const _TrainingDaysEditor()),
                 last: true,
               ),
             ],
@@ -508,4 +515,52 @@ class _InjuriesEditorState extends _EditorState<_InjuriesEditor> {
 
   @override
   Future<void> save(ProfileNotifier notifier) => notifier.setInjuries(_value);
+}
+
+class _TrainingDaysEditor extends ConsumerStatefulWidget {
+  const _TrainingDaysEditor();
+
+  @override
+  ConsumerState<_TrainingDaysEditor> createState() =>
+      _TrainingDaysEditorState();
+}
+
+class _TrainingDaysEditorState extends _EditorState<_TrainingDaysEditor> {
+  List<int> _value = const [];
+  bool _seeded = false;
+
+  @override
+  String get title => 'Training days';
+
+  @override
+  Widget buildStep(Profile profile) {
+    // Seeded once, behind the flag the other editors use: re-reading the
+    // profile on every rebuild would discard the taps made since opening.
+    if (!_seeded) {
+      _seeded = true;
+      _value = profile.trainingDays;
+    }
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        const FsEyebrow('Which days do you train?'),
+        const SizedBox(height: 10),
+        TrainingDaysRow(
+          selected: _value,
+          onChanged: (next) => setState(() => _value = next),
+        ),
+        const SizedBox(height: 12),
+        Text(
+          'Leave every day off if your week varies. Your plan is the same '
+          'either way -- this only decides which days can be reported as '
+          'missed.',
+          style: TextStyle(fontSize: 12, color: context.fs.text3, height: 1.4),
+        ),
+      ],
+    );
+  }
+
+  @override
+  Future<void> save(ProfileNotifier notifier) =>
+      notifier.setTrainingDays(_value);
 }

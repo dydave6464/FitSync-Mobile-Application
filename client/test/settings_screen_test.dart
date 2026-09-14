@@ -11,11 +11,12 @@ import 'package:fitsync/features/onboarding/presentation/steps/goal_step.dart';
 import 'package:fitsync/features/onboarding/presentation/steps/injuries_step.dart';
 import 'package:fitsync/features/onboarding/presentation/steps/level_step.dart';
 import 'package:fitsync/core/api_exception.dart';
+import 'package:fitsync/features/plans/presentation/widgets/training_days_row.dart';
 import 'package:fitsync/features/profile/domain/profile.dart';
 import 'package:fitsync/features/profile/presentation/providers.dart';
 import 'package:fitsync/features/settings/presentation/settings_screen.dart';
 
-const _profile = Profile(
+const _baseProfile = Profile(
   userId: 7,
   email: 'juan@example.com',
   fullName: 'Juan Dela Cruz',
@@ -39,15 +40,45 @@ const _injuryOptions = [
 ];
 
 class FakeProfileNotifier extends ProfileNotifier {
-  FakeProfileNotifier(this.patches, {this.failPatch = false});
+  FakeProfileNotifier(
+    this.patches, {
+    this.failPatch = false,
+    this.trainingDays = const [],
+    this.failTrainingDays = false,
+  });
 
   final List<Map<String, dynamic>> patches;
 
   /// Rejects the write, so a test can tell "saved" from "tried to save".
   final bool failPatch;
 
+  /// Seeds the profile the editor opens with, mirroring how `injuries` seeds
+  /// `_InjuriesEditor` -- without this a picker test could never see a day
+  /// already selected.
+  final List<int> trainingDays;
+
+  /// Rejects `setTrainingDays`, so a test can prove a failed save reports the
+  /// error and leaves the editor open rather than looking saved.
+  final bool failTrainingDays;
+
+  /// The weekdays the screen last asked to save, recorded whether or not the
+  /// write went on to succeed.
+  List<int>? lastTrainingDays;
+
   @override
-  Future<Profile> build() async => _profile;
+  Future<Profile> build() async => Profile(
+        userId: _baseProfile.userId,
+        email: _baseProfile.email,
+        fullName: _baseProfile.fullName,
+        onboardingCompleted: _baseProfile.onboardingCompleted,
+        isPremium: _baseProfile.isPremium,
+        notificationsEnabled: _baseProfile.notificationsEnabled,
+        equipment: _baseProfile.equipment,
+        injuries: _baseProfile.injuries,
+        trainingDays: trainingDays,
+        city: _baseProfile.city,
+        mainGoal: _baseProfile.mainGoal,
+      );
 
   @override
   Future<void> patch(Map<String, dynamic> fields) async {
@@ -62,6 +93,14 @@ class FakeProfileNotifier extends ProfileNotifier {
 
   @override
   Future<void> setInjuries(List<SelectedInjury> injuries) async {}
+
+  @override
+  Future<void> setTrainingDays(List<int> weekdays) async {
+    lastTrainingDays = weekdays;
+    if (failTrainingDays) {
+      throw const ApiException('PROFILE_INVALID', 'That could not be saved.');
+    }
+  }
 }
 
 class RecordingAuthController extends AuthController {
@@ -88,16 +127,28 @@ class RecordingAuthController extends AuthController {
   }
 }
 
+/// The profile notifier fake the running test's `_pump` installed. Set fresh
+/// on every call so a test can assert what it recorded -- `_profile.
+/// lastTrainingDays` -- without threading the fake through by hand.
+late FakeProfileNotifier _profile;
+
 Future<void> _pump(
   WidgetTester tester, {
-  required List<Map<String, dynamic>> patches,
+  List<Map<String, dynamic>>? patches,
   List<bool>? signOuts,
   bool failPatch = false,
+  List<int> trainingDays = const [],
+  bool failTrainingDays = false,
 }) async {
+  _profile = FakeProfileNotifier(
+    patches ?? <Map<String, dynamic>>[],
+    failPatch: failPatch,
+    trainingDays: trainingDays,
+    failTrainingDays: failTrainingDays,
+  );
   await tester.pumpWidget(ProviderScope(
     overrides: [
-      profileProvider.overrideWith(
-          () => FakeProfileNotifier(patches, failPatch: failPatch)),
+      profileProvider.overrideWith(() => _profile),
       authControllerProvider
           .overrideWith(() => RecordingAuthController(signOuts ?? [])),
       equipmentOptionsProvider.overrideWith((ref) async => _equipment),
@@ -252,6 +303,61 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(signOuts, [true]);
+  });
+
+  testWidgets('settings offers a training days row', (tester) async {
+    await _pump(tester);
+
+    expect(find.byKey(const Key('edit.trainingDays')), findsOneWidget);
+    expect(find.text('Training days'), findsOneWidget);
+  });
+
+  testWidgets('the row opens a picker seeded from the profile',
+      (tester) async {
+    await _pump(tester, trainingDays: const [1, 3]);
+
+    await _openRow(tester, const Key('edit.trainingDays'));
+
+    expect(
+      tester
+          .widget<TrainingDayCell>(find.byKey(const Key('weekday.1')))
+          .selected,
+      isTrue,
+    );
+    expect(
+      tester
+          .widget<TrainingDayCell>(find.byKey(const Key('weekday.5')))
+          .selected,
+      isFalse,
+    );
+  });
+
+  testWidgets('saving the picker writes the whole set', (tester) async {
+    await _pump(tester, trainingDays: const [1]);
+
+    await _openRow(tester, const Key('edit.trainingDays'));
+    await tester.tap(find.byKey(const Key('weekday.3')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const Key('save')));
+    await tester.pumpAndSettle();
+
+    expect(_profile.lastTrainingDays, [1, 3]);
+  });
+
+  testWidgets('a failed save reports it and stays on the editor',
+      (tester) async {
+    // Same contract every other editor here has: nothing may look saved that
+    // is not, and the screen must not pop on failure.
+    await _pump(tester, trainingDays: const [1], failTrainingDays: true);
+
+    await _openRow(tester, const Key('edit.trainingDays'));
+    await tester.tap(find.byKey(const Key('weekday.3')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const Key('save')));
+    await tester.pumpAndSettle();
+
+    expect(find.byKey(const Key('error')), findsOneWidget);
+    expect(find.text('Training days'), findsOneWidget);
   });
 
   testWidgets('the same step widget renders under both scaffolds',
