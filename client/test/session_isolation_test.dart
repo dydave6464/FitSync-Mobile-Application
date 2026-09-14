@@ -7,6 +7,7 @@ import 'package:fitsync/features/auth/domain/auth_user.dart';
 import 'package:fitsync/features/auth/presentation/auth_controller.dart';
 import 'package:fitsync/features/exercises/domain/exercise.dart';
 import 'package:fitsync/features/exercises/presentation/providers.dart';
+import 'package:fitsync/features/plans/domain/split_style.dart';
 import 'package:fitsync/features/profile/data/profile_repository.dart';
 import 'package:fitsync/features/profile/domain/profile.dart';
 import 'package:fitsync/features/profile/presentation/providers.dart';
@@ -279,6 +280,34 @@ void main() {
 
     expect(container.read(workoutDraftProvider), isEmpty,
         reason: "the next account was handed the previous account's picks");
+  });
+
+  // The setup screen's split chip landed after the caches above, and brought
+  // a fourth one with it. Nothing persists it server-side -- workout_sessions
+  // has no column for it -- so the app is its only account boundary. Left off
+  // this list, the next account's setup screen would open on a split someone
+  // else picked, the same way an uncleared draft opened on someone else's
+  // exercises.
+  test("signing out drops the previous account's chosen split style",
+      () async {
+    final tokens = TokenStore(backing: InMemorySecureStore());
+    await tokens.write('token-for-juan');
+
+    final container = ProviderContainer(overrides: [
+      tokenStoreProvider.overrideWithValue(tokens),
+      authRepositoryProvider.overrideWithValue(FakeAuthRepository(tokens)),
+      profileRepositoryProvider.overrideWithValue(
+          SequenceProfileRepository([_profile(userId: 1, email: 'a@b.c')])),
+    ]);
+    addTearDown(container.dispose);
+
+    container.read(chosenSplitStyleProvider.notifier).set('push_pull_legs');
+    expect(container.read(chosenSplitStyleProvider), 'push_pull_legs');
+
+    await container.read(authControllerProvider.notifier).signOut();
+
+    expect(container.read(chosenSplitStyleProvider), splitStyles.first.value,
+        reason: "the next account was handed the previous account's split choice");
   });
 
   test("signing out drops the previous account's catalogue filter", () async {

@@ -17,6 +17,7 @@ import 'providers.dart';
 import 'widgets/exercise_jump_sheet.dart';
 import 'widgets/exercise_log_panel.dart';
 import 'widgets/rest_timer.dart';
+import 'workout_draft.dart' show chosenSplitStyleProvider;
 
 /// The active workout, one exercise at a time: its set table, Continue to
 /// the next, and the jump sheet for anything out of order.
@@ -200,6 +201,18 @@ class _SessionLoggerScreenState extends ConsumerState<SessionLoggerScreen> {
           '${unit.api} lifted',
         ),
         actions: [
+          // Only a hand-picked workout. A plan-backed one is already part of a
+          // plan, and offering to add it again would be offering nothing.
+          //
+          // Offered, never automatic: this workout may have been improvisation,
+          // and silently rewriting the plan the user follows is the kind of
+          // surprise that costs trust in the whole feature.
+          if (done.planId == null)
+            TextButton(
+              key: const Key('summary.toPlan'),
+              onPressed: () => _addToPlan(dialogContext, done),
+              child: const Text('Add to my plan'),
+            ),
           TextButton(
             onPressed: () => Navigator.of(dialogContext).pop(),
             child: const Text('Done'),
@@ -208,6 +221,33 @@ class _SessionLoggerScreenState extends ConsumerState<SessionLoggerScreen> {
       ),
     );
     if (mounted) Navigator.of(context).pop();
+  }
+
+  /// Sends the finished workout to the user's own plan.
+  ///
+  /// [dialogContext] is popped first so the summary does not sit over a
+  /// snack bar the user cannot read, and the messenger is captured before the
+  /// await for the same reason every other write on this screen does: the
+  /// context may be gone by the time the request resolves.
+  Future<void> _addToPlan(BuildContext dialogContext, ActiveSession done) async {
+    final messenger = ScaffoldMessenger.of(context);
+    Navigator.of(dialogContext).pop();
+
+    try {
+      final plan = await ref.read(planRepositoryProvider).planFromSession(
+            sessionId: done.sessionId,
+            splitStyle: ref.read(chosenSplitStyleProvider),
+          );
+      // The Plan tab and Home both read this, and neither was watching while
+      // the logger was open.
+      ref.invalidate(activePlanProvider);
+      if (!mounted) return;
+      messenger.showSnackBar(
+        SnackBar(content: Text('Added to ${plan.name}.')),
+      );
+    } catch (error) {
+      messenger.showSnackBar(SnackBar(content: Text(describeError(error))));
+    }
   }
 
   Future<void> _discard() async {

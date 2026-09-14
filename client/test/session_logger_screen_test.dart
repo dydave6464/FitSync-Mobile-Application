@@ -9,6 +9,7 @@ import 'package:fitsync/core/theme.dart';
 import 'package:fitsync/core/units.dart';
 import 'package:fitsync/features/exercises/domain/exercise.dart';
 import 'package:fitsync/features/exercises/presentation/providers.dart' show exerciseDetailProvider;
+import 'package:fitsync/features/plans/data/plan_repository.dart';
 import 'package:fitsync/features/plans/domain/workout_plan.dart';
 import 'package:fitsync/features/profile/domain/profile.dart';
 import 'package:fitsync/features/profile/presentation/providers.dart';
@@ -123,10 +124,16 @@ class FakeSessionController extends ActiveSessionController {
       throw StateError('No session is in progress.');
     }
     if (completeError != null) throw completeError!;
+    // sessionId and planId carried over from the session being closed, not
+    // hardcoded: the offer-to-keep tests finish sessions with their own
+    // sessionId and check what reached the plan API, and a plan-backed
+    // session's summary must still read as plan-backed.
+    final source = state.value!;
     final done = ActiveSession(
-      sessionId: 7, status: 'completed', sessionDate: '2026-09-08',
+      sessionId: source.sessionId, status: 'completed', sessionDate: '2026-09-08',
+      planId: source.planId,
       durationMin: durationMin, totalVolumeKg: 380,
-      sets: state.value!.sets,
+      sets: source.sets,
     );
     state = const AsyncValue.data(null);
     return done;
@@ -169,16 +176,60 @@ class FakeProfileNotifier extends ProfileNotifier {
   Future<void> patch(Map<String, dynamic> fields) async => patches.add(fields);
 }
 
+/// Records what the summary dialog asked the plan API to do.
+class RecordingPlanRepository implements PlanRepository {
+  RecordingPlanRepository({this.error, this.active});
+
+  final Object? error;
+  final WorkoutPlan? active;
+
+  int fromSessionCalls = 0;
+  int? lastSessionId;
+  int? lastDayNo;
+  String? lastSplitStyle;
+
+  @override
+  Future<WorkoutPlan?> activePlan() async => active;
+
+  @override
+  Future<WorkoutPlan> planFromSession({
+    required int sessionId,
+    String? splitStyle,
+    int? dayNo,
+  }) async {
+    fromSessionCalls += 1;
+    lastSessionId = sessionId;
+    lastDayNo = dayNo;
+    lastSplitStyle = splitStyle;
+    if (error != null) throw error!;
+    return const WorkoutPlan(
+      planId: 9, name: 'My Full Body', splitStyle: 'full_body',
+      daysPerWeek: 1, sessionLengthMin: 45, weekNo: 1,
+      exercises: [], source: 'custom',
+    );
+  }
+
+  @override
+  String get baseUrl => 'http://test.local';
+
+  @override
+  dynamic noSuchMethod(Invocation i) =>
+      throw UnimplementedError('${i.memberName} is not used here');
+}
+
 ActiveSession _session({
+  int sessionId = 7,
+  int? planId,
   List<LoggedSet> sets = const [],
   int? planDayNo,
   List<PlanExercise> exercises = const [],
 }) =>
     ActiveSession(
-      sessionId: 7,
+      sessionId: sessionId,
       status: 'in_progress',
       sessionDate: '2026-09-08',
       startedAt: DateTime.now().subtract(const Duration(minutes: 12)),
+      planId: planId,
       sets: sets,
       planDayNo: planDayNo,
       exercises: exercises,
@@ -192,6 +243,29 @@ final _manualSession = _session(exercises: const [
     muscleGroup: 'pectorals', orderNo: 1, targetSets: 3, targetReps: '10-12',
   ),
 ]);
+
+/// Same shape as [_manualSession], with a set already logged and its own
+/// sessionId -- what the offer-to-keep tests finish, since unlike every
+/// other test in this file they need to assert on which sessionId reached
+/// the plan API.
+ActiveSession _manualSessionWithSets() => _session(
+      sessionId: 9,
+      exercises: const [
+        PlanExercise(
+          planExerciseId: 5, exerciseId: 301, name: 'Cable fly',
+          muscleGroup: 'pectorals', orderNo: 1, targetSets: 3, targetReps: '10-12',
+        ),
+      ],
+      sets: const [LoggedSet(exerciseId: 301, setNumber: 1, weightKg: 20, reps: 10)],
+    );
+
+/// A plan-backed session with a set already logged -- already part of a
+/// plan, so the offer to keep it must not appear for this one.
+ActiveSession _planSessionWithSets() => _session(
+      sessionId: 9,
+      planId: 42,
+      sets: const [LoggedSet(exerciseId: 101, setNumber: 1, weightKg: 20, reps: 10)],
+    );
 
 /// Pushes the logger the way the Training shell does, rather than mounting it
 /// as `home`. The screen pops itself on finish, on discard and when the
@@ -207,6 +281,7 @@ Future<FakeSessionController> _pump(
   WeightUnit unit = WeightUnit.kg,
   List<Map<String, dynamic>>? patches,
   WorkoutPlan? plan = _plan,
+  PlanRepository? plans,
 }) async {
   final controller = FakeSessionController(session ?? _session());
 
@@ -216,6 +291,7 @@ Future<FakeSessionController> _pump(
       profileProvider.overrideWith(() => FakeProfileNotifier(unit, patches ?? [])),
       activeSessionProvider.overrideWith(() => controller),
       lastPerformanceProvider.overrideWith((ref, key) async => const {}),
+      if (plans != null) planRepositoryProvider.overrideWithValue(plans),
       // Only exercised by the demo-affordance navigation test below; every
       // other test here never opens the pushed screen, so this override is
       // inert for them.
@@ -784,5 +860,67 @@ void main() {
     // session the server has already opened.
     expect(find.byKey(const Key('logger.back')), findsOneWidget);
     expect(find.byKey(const Key('logger.menu')), findsOneWidget);
+  });
+
+  testWidgets('finishing a hand-picked workout offers to keep it',
+      (tester) async {
+    // The moment the user knows whether the workout was worth keeping. A
+    // decision asked later, on another screen, is asked when they have
+    // forgotten what was in it.
+    await _pump(tester, session: _manualSessionWithSets());
+
+    await _menu(tester, 'finish');
+
+    expect(find.byKey(const Key('logger.summary')), findsOneWidget);
+    expect(find.byKey(const Key('summary.toPlan')), findsOneWidget);
+  });
+
+  testWidgets('finishing a plan workout offers nothing — it is already in one',
+      (tester) async {
+    await _pump(tester, session: _planSessionWithSets());
+
+    await _menu(tester, 'finish');
+
+    expect(find.byKey(const Key('logger.summary')), findsOneWidget);
+    expect(find.byKey(const Key('summary.toPlan')), findsNothing);
+  });
+
+  testWidgets('accepting sends the workout to the plan', (tester) async {
+    final plans = RecordingPlanRepository();
+    await _pump(tester, session: _manualSessionWithSets(), plans: plans);
+
+    await _menu(tester, 'finish');
+    await tester.tap(find.byKey(const Key('summary.toPlan')));
+    await tester.pumpAndSettle();
+
+    expect(plans.fromSessionCalls, 1);
+    expect(plans.lastSessionId, 9);
+  });
+
+  testWidgets('declining changes nothing', (tester) async {
+    // The default. Finishing without accepting leaves the workout a one-off,
+    // which is what manual logging was always for.
+    final plans = RecordingPlanRepository();
+    await _pump(tester, session: _manualSessionWithSets(), plans: plans);
+
+    await _menu(tester, 'finish');
+    await tester.tap(find.text('Done'));
+    await tester.pumpAndSettle();
+
+    expect(plans.fromSessionCalls, 0);
+  });
+
+  testWidgets('a failed write says so and does not claim the plan changed',
+      (tester) async {
+    final plans = RecordingPlanRepository(
+      error: const ApiException('NETWORK_ERROR', 'Could not reach the server.'),
+    );
+    await _pump(tester, session: _manualSessionWithSets(), plans: plans);
+
+    await _menu(tester, 'finish');
+    await tester.tap(find.byKey(const Key('summary.toPlan')));
+    await tester.pumpAndSettle();
+
+    expect(find.textContaining('Could not reach the server.'), findsOneWidget);
   });
 }

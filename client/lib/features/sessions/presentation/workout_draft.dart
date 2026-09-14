@@ -1,6 +1,7 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../exercises/domain/exercise.dart';
+import '../../plans/domain/split_style.dart';
 
 /// The exercises chosen for a manual workout, before it is started.
 ///
@@ -82,4 +83,25 @@ extension WorkoutDraft on List<ExerciseSummary> {
 final workoutDraftProvider =
     NotifierProvider<WorkoutDraftNotifier, List<ExerciseSummary>>(
   WorkoutDraftNotifier.new,
+);
+
+/// The split the user picked on the setup screen before choosing exercises.
+///
+/// Lifted out of the setup screen's own state because nothing persists it:
+/// `workout_sessions` has no column for it, so the only way it can reach
+/// `POST /plans/from-session` — which needs it to name and shape a new custom
+/// plan — is to outlive the screen that asked for it.
+///
+/// Seeded with the first split rather than left null so a workout started by
+/// some other route still has an answer.
+class ChosenSplitStyleNotifier extends Notifier<String> {
+  @override
+  String build() => splitStyles.first.value;
+
+  void set(String value) => state = value;
+}
+
+final chosenSplitStyleProvider =
+    NotifierProvider<ChosenSplitStyleNotifier, String>(
+  ChosenSplitStyleNotifier.new,
 );

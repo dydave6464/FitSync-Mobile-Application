@@ -9,6 +9,7 @@ import '../../plans/presentation/widgets/training_days_row.dart';
 import '../../plans/domain/week_description.dart' show injuryLabel;
 import '../../profile/domain/profile.dart';
 import '../../profile/presentation/providers.dart';
+import 'workout_draft.dart' show chosenSplitStyleProvider;
 
 /// What "Log manually" opens before the library.
 ///
@@ -25,15 +26,6 @@ class WorkoutSetupScreen extends ConsumerStatefulWidget {
 }
 
 class _WorkoutSetupScreenState extends ConsumerState<WorkoutSetupScreen> {
-  /// Which split this workout belongs to, named the way the generator names
-  /// it -- one chip per rotation, so "Push / Pull / Legs" reads as the single
-  /// choice it is rather than three.
-  ///
-  /// Not seeded from the active plan, unlike the generator's chips: the plan
-  /// says what the week looks like, and this screen starts a single workout
-  /// that need not be the next one in that rotation.
-  String _splitStyle = splitStyles.first.value;
-
   /// The weekday whose profile write is in flight, if any.
   int? _savingWeekday;
 
@@ -87,6 +79,7 @@ class _WorkoutSetupScreenState extends ConsumerState<WorkoutSetupScreen> {
     final asyncProfile = ref.watch(profileProvider);
     final daysKnown = asyncProfile.hasValue;
     final trainingDays = asyncProfile.value?.trainingDays ?? const <int>[];
+    final splitStyle = ref.watch(chosenSplitStyleProvider);
 
     final injuries = asyncProfile.value?.injuries ?? const <SelectedInjury>[];
     final options = ref.watch(injuryOptionsProvider).value ?? const <InjuryOption>[];
@@ -113,8 +106,8 @@ class _WorkoutSetupScreenState extends ConsumerState<WorkoutSetupScreen> {
               for (final style in splitStyles)
                 FsChip(
                   label: style.label,
-                  selected: style.value == _splitStyle,
-                  onTap: () => setState(() => _splitStyle = style.value),
+                  selected: style.value == splitStyle,
+                  onTap: () => ref.read(chosenSplitStyleProvider.notifier).set(style.value),
                 ),
             ],
           ),
