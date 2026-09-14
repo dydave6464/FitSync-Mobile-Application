@@ -2,7 +2,6 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 
-import 'package:fitsync/core/api_exception.dart';
 import 'package:fitsync/core/theme.dart';
 import 'package:fitsync/core/widgets/fs_kit.dart';
 import 'package:fitsync/features/exercises/data/exercise_repository.dart';
@@ -15,7 +14,7 @@ import 'package:fitsync/features/plans/presentation/providers.dart';
 import 'package:fitsync/features/sessions/data/session_repository.dart';
 import 'package:fitsync/features/sessions/domain/active_session.dart';
 import 'package:fitsync/features/sessions/presentation/providers.dart';
-import 'package:fitsync/features/sessions/presentation/session_logger_screen.dart';
+import 'package:fitsync/features/sessions/presentation/workout_review_screen.dart';
 
 class FakeExerciseRepository implements ExerciseRepository {
   List<String>? asked;
@@ -146,7 +145,7 @@ class _ConstrainedTo extends CatalogueConstraintNotifier {
   List<String> build() => groups;
 }
 
-Finder _start() => find.byKey(const Key('picker.start'));
+Finder _review() => find.byKey(const Key('picker.review'));
 
 void main() {
   testWidgets('browsing offers nothing to start', (tester) async {
@@ -154,16 +153,16 @@ void main() {
     // a workout from a list nobody is picking from.
     await _pump(tester, selecting: false);
 
-    expect(_start(), findsNothing);
+    expect(_review(), findsNothing);
     expect(find.byIcon(Icons.chevron_right), findsWidgets);
   });
 
-  testWidgets('picking offers a start button, inert until something is chosen',
+  testWidgets('picking offers a review button, inert until something is chosen',
       (tester) async {
     await _pump(tester);
 
-    expect(_start(), findsOneWidget);
-    expect(tester.widget<FsButton>(_start()).onPressed, isNull,
+    expect(_review(), findsOneWidget);
+    expect(tester.widget<FsButton>(_review()).onPressed, isNull,
         reason: 'a workout of no exercises is not a workout');
   });
 
@@ -174,7 +173,7 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.textContaining('1 added'), findsOneWidget);
-    expect(tester.widget<FsButton>(_start()).onPressed, isNotNull);
+    expect(tester.widget<FsButton>(_review()).onPressed, isNotNull);
   });
 
   testWidgets('tapping a chosen row takes it back out', (tester) async {
@@ -186,74 +185,59 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.textContaining('1 added'), findsNothing);
-    expect(tester.widget<FsButton>(_start()).onPressed, isNull);
+    expect(tester.widget<FsButton>(_review()).onPressed, isNull);
   });
 
-  testWidgets('starting sends the exercises in the order they were picked',
+  testWidgets('the footer leads to the review screen, not straight to a session',
       (tester) async {
+    // Starting from here meant the picks were only ever reviewable as ticks
+    // scattered down a 1,200-row catalogue. The library hands off now.
     final sessions = FakeSessionRepository();
     await _pump(tester, sessions: sessions);
 
     await tester.tap(find.text('Cable fly'));
     await tester.pumpAndSettle();
-    await tester.tap(find.text('Goblet squat'));
-    await tester.pumpAndSettle();
-    await tester.tap(_start());
+    await tester.tap(_review());
     await tester.pumpAndSettle();
 
-    expect(sessions.startedWith, [202, 101]);
+    expect(find.byType(WorkoutReviewScreen), findsOneWidget);
+    expect(sessions.startCalls, 0, reason: 'reviewing is not starting');
   });
 
-  testWidgets('starting opens the logger on the new session', (tester) async {
-    final sessions = FakeSessionRepository();
-    await _pump(tester, sessions: sessions);
-
-    await tester.tap(find.text('Goblet squat'));
-    await tester.pumpAndSettle();
-    await tester.tap(_start());
-    await tester.pumpAndSettle();
-
-    expect(find.byType(SessionLoggerScreen), findsOneWidget);
-  });
-
-  testWidgets('a workout already in progress is named, not silently resumed',
+  testWidgets('the review screen shows the picks in the order they were made',
       (tester) async {
-    // The server is idempotent here: it returns the running session and
-    // ignores the list. Pushing the logger regardless would drop everything
-    // the user just picked and open a workout they did not choose.
-    final sessions = FakeSessionRepository(
-      existing: ActiveSession(
-        sessionId: 3, status: 'in_progress', sessionDate: '2026-09-13',
-        startedAt: DateTime.now(),
-      ),
-    );
-    await _pump(tester, sessions: sessions);
+    await _pump(tester);
 
+    await tester.tap(find.text('Cable fly'));
+    await tester.pumpAndSettle();
     await tester.tap(find.text('Goblet squat'));
     await tester.pumpAndSettle();
-    await tester.tap(_start());
+    await tester.tap(_review());
     await tester.pumpAndSettle();
 
-    expect(find.textContaining('already'), findsOneWidget);
-    expect(sessions.startCalls, 0, reason: 'nothing should have been started');
-    expect(find.byType(SessionLoggerScreen), findsNothing);
+    expect(
+      tester.getTopLeft(find.text('Cable fly')).dy,
+      lessThan(tester.getTopLeft(find.text('Goblet squat')).dy),
+    );
   });
 
-  testWidgets('a failed start keeps the picks so they can be retried',
+  testWidgets('adding more from the review screen lands back on the library',
       (tester) async {
-    final sessions = FakeSessionRepository(
-      error: const ApiException('SERVER_ERROR', 'Could not start that.'),
-    );
-    await _pump(tester, sessions: sessions);
+    // Popping rather than pushing: a second library would leave two of them
+    // on the stack and two ways back.
+    await _pump(tester);
 
     await tester.tap(find.text('Goblet squat'));
     await tester.pumpAndSettle();
-    await tester.tap(_start());
+    await tester.tap(_review());
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const Key('review.addMore')));
     await tester.pumpAndSettle();
 
-    expect(find.textContaining('Could not start that'), findsOneWidget);
-    expect(find.textContaining('1 added'), findsOneWidget);
-    expect(find.byType(SessionLoggerScreen), findsNothing);
+    expect(find.byType(WorkoutReviewScreen), findsNothing);
+    expect(find.text('Cable fly'), findsOneWidget, reason: 'back on the library');
+    expect(find.textContaining('1 added'), findsOneWidget,
+        reason: 'the picks survived the round trip');
   });
 
   testWidgets("the training day's groups are what the catalogue is asked for",
