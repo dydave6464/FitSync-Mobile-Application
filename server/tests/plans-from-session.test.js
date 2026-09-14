@@ -574,6 +574,59 @@ test('building a plan out of a completed session', async (t) => {
     assert.deepEqual(plan.days.map((d) => d.name), ['Push', 'Pull', 'Legs', 'Day 4']);
   });
 
+  await t.test('workouts from before the plan are not part of it', async () => {
+    // The spec says the mean of "the completed sessions making up the plan",
+    // not of everything the user has ever logged. Months of hour-long plan
+    // sessions behind them, and a plan built today out of two short manual
+    // workouts, must not read as an hour -- the number is also what the
+    // client's kcal estimate is computed from.
+    const userId = await freshUser();
+    const old = await completedManualSession(
+      userId, [live[0].exercise_id], { minutes: 100 },
+    );
+    await pool.query(
+      `UPDATE workout_sessions
+          SET session_date = DATE_SUB(CURDATE(), INTERVAL 90 DAY),
+              started_at = DATE_SUB(NOW(), INTERVAL 90 DAY)
+        WHERE session_id = ?`,
+      [old],
+    );
+
+    const first = await completedManualSession(
+      userId, [live[0].exercise_id], { minutes: 24 },
+    );
+    await createPlanFromSession(pool, userId, {
+      sessionId: first, splitStyle: 'full_body',
+    });
+    const second = await completedManualSession(
+      userId, [live[1].exercise_id], { minutes: 26 },
+    );
+    await createPlanFromSession(pool, userId, { sessionId: second });
+
+    assert.equal((await activePlan(userId)).session_length_min, 25);
+  });
+
+  await t.test('the workout being added counts even if it is an old one', async () => {
+    // from-session takes any completed sessionId, so the workout founding the
+    // plan can predate the window. It is a day of the plan by definition --
+    // it is the day being written -- so it counts whatever its date.
+    const userId = await freshUser();
+    const sessionId = await completedManualSession(
+      userId, [live[0].exercise_id], { minutes: 35 },
+    );
+    await pool.query(
+      `UPDATE workout_sessions
+          SET session_date = DATE_SUB(CURDATE(), INTERVAL 30 DAY),
+              started_at = DATE_SUB(NOW(), INTERVAL 30 DAY)
+        WHERE session_id = ?`,
+      [sessionId],
+    );
+
+    await createPlanFromSession(pool, userId, { sessionId, splitStyle: 'full_body' });
+
+    assert.equal((await activePlan(userId)).session_length_min, 35);
+  });
+
   await t.test('a wild duration is clamped to the generator\'s own bounds', async () => {
     const userId = await freshUser();
     const sessionId = await completedManualSession(

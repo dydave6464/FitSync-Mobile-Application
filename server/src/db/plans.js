@@ -412,11 +412,29 @@ async function createPlanFromSession(pool, userId, { sessionId, splitStyle, dayN
       [planId],
     );
     const chosenDays = await trainingDayCount(conn, userId);
+    // "The completed sessions making up the plan" -- as close as the schema
+    // allows. Nothing links a plan day to the session it was built from, so
+    // the window is the plan's own lifetime: sessions from the day it was
+    // created onwards, plus the session being written right now, which is a
+    // day of the plan by definition even when the caller sends an older one.
+    //
+    // Averaging the user's whole history instead was the bug this replaces: a
+    // user with months of hour-long plan sessions who builds a custom plan out
+    // of two 25-minute workouts got a plan claiming an hour, which is also
+    // what the client's kcal estimate is computed from.
+    //
+    // By DATE, not by timestamp: the session that CREATES the plan always
+    // started before the plan row existed -- the workout is finished first --
+    // so a timestamp window would exclude the founding day of every plan it
+    // is meant to describe.
     const [[{ meanMinutes }]] = await conn.query(
       `SELECT AVG(duration_min) AS meanMinutes
          FROM workout_sessions
-        WHERE user_id = ? AND status = 'completed' AND duration_min IS NOT NULL`,
-      [userId],
+        WHERE user_id = ? AND status = 'completed' AND duration_min IS NOT NULL
+          AND (session_date >= (SELECT DATE(created_at) FROM workout_plans
+                                 WHERE plan_id = ?)
+               OR session_id = ?)`,
+      [userId, planId, sessionId],
     );
     const length = meanMinutes === null
       ? 45
