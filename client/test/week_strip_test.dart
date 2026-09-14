@@ -59,29 +59,6 @@ Widget _host(Widget child) => MaterialApp(
     );
 
 void main() {
-  group('trainingWeekdays', () {
-    test('three days a week is Monday, Wednesday, Friday', () {
-      expect(trainingWeekdays(3), [DateTime.monday, DateTime.wednesday, DateTime.friday]);
-    });
-
-    test('spaces rest days across the other counts', () {
-      expect(trainingWeekdays(1), [DateTime.wednesday]);
-      expect(trainingWeekdays(2), [DateTime.monday, DateTime.thursday]);
-      expect(trainingWeekdays(4), [
-        DateTime.monday, DateTime.tuesday, DateTime.thursday, DateTime.friday,
-      ]);
-      expect(trainingWeekdays(6), hasLength(6));
-      expect(trainingWeekdays(7), hasLength(7));
-    });
-
-    test('a count outside 1-7 falls back to three days rather than throwing', () {
-      // days_per_week is an INT with no CHECK, so a bad row must not crash
-      // the tab that renders it.
-      expect(trainingWeekdays(0), [DateTime.monday, DateTime.wednesday, DateTime.friday]);
-      expect(trainingWeekdays(99), [DateTime.monday, DateTime.wednesday, DateTime.friday]);
-    });
-  });
-
   testWidgets('renders all seven days', (tester) async {
     await tester.pumpWidget(_host(WeekStrip(
       daysPerWeek: 3,
@@ -95,41 +72,142 @@ void main() {
     expect(find.text('M'), findsOneWidget);
   });
 
-  testWidgets('a day the user actually trained fills, prescribed or not', (tester) async {
+  testWidgets('a day the user trained fills, whatever day of the week it is',
+      (tester) async {
     await tester.pumpWidget(_host(WeekStrip(
       daysPerWeek: 3,
-      // Sunday of that week — not a prescribed day.
+      // Sunday of that week.
       completedDates: const {'2026-09-13'},
       today: DateTime(2026, 9, 8),
     )));
 
-    final sunday = tester.widget<WeekDayCell>(find.byKey(const Key('day.7')));
-    expect(sunday.completed, isTrue);
-    expect(sunday.prescribed, isFalse);
+    expect(tester.widget<WeekDayCell>(find.byKey(const Key('day.7'))).completed,
+        isTrue);
+    expect(tester.widget<WeekDayCell>(find.byKey(const Key('day.1'))).completed,
+        isFalse);
   });
 
-  testWidgets('the strip marks exactly the days the plan prescribes', (tester) async {
-    // Positive AND negative: `sunday.prescribed, isFalse` above is satisfied
-    // just as well by a hardcoded `false`, and with daysPerWeek 3 the
-    // prescribed set is {1,3,5} -- so passing `offset` instead of `offset + 1`
-    // leaves Sunday false too. Only asserting a prescribed day IS marked and
-    // an adjacent rest day is NOT pins the mapping down.
+  testWidgets('the strip singles out no weekday, whatever the day count',
+      (tester) async {
+    // The property the prescribed-weekday table broke. `workout_plans` stores
+    // how many days, never which ones, and the rotation advances on completed
+    // sessions rather than on the calendar -- so nothing in the system knows
+    // that Monday was supposed to be a training day. Drawing Mon/Wed/Fri from
+    // a hardcoded table told users they had agreed to a schedule they never
+    // chose, and told anyone who installed on a Tuesday they had already
+    // missed one.
+    //
+    // Asserted by comparing two different day counts rather than against a
+    // fixed set: identical output for 3 and for 5 is what "the count no longer
+    // decides which weekdays are marked" means.
+    // Read as painted colour, not as a flag: a `prescribed` field the strip
+    // still honoured would leave the flags identical while the dots differed,
+    // which is precisely the state this test exists to rule out.
+    List<Color?> dots() => [
+          for (var weekday = 1; weekday <= 7; weekday++)
+            (tester
+                    .widget<DecoratedBox>(find.descendant(
+                      of: find.byKey(Key('day.$weekday')),
+                      matching: find.byKey(const Key('day.dot')),
+                    ))
+                    .decoration as BoxDecoration)
+                .color,
+        ];
+
+    await tester.pumpWidget(_host(WeekStrip(
+      daysPerWeek: 3,
+      completedDates: const {'2026-09-09'},
+      today: DateTime(2026, 9, 8),
+    )));
+    final three = dots();
+
+    await tester.pumpWidget(_host(WeekStrip(
+      daysPerWeek: 5,
+      completedDates: const {'2026-09-09'},
+      today: DateTime(2026, 9, 8),
+    )));
+
+    expect(dots(), three,
+        reason: 'the day count must not change which weekdays are marked');
+    // Non-vacuous: the assertion above would also hold if every dot were
+    // identical. Wednesday was trained and Thursday was not, so those two must
+    // still differ -- today's cell is excluded because it is legitimately
+    // styled apart, which is what 'today is marked' covers.
+    expect(three[DateTime.wednesday - 1], isNot(three[DateTime.thursday - 1]),
+        reason: 'a trained day must still be distinguishable');
+  });
+
+  testWidgets('a fresh install mid-week accuses the user of nothing',
+      (tester) async {
+    // Tuesday, nothing trained, because the app was installed this morning.
+    // Under the prescribed table this rendered a marked Monday the user had
+    // no way to have honoured.
     await tester.pumpWidget(_host(WeekStrip(
       daysPerWeek: 3,
       completedDates: const {},
       today: DateTime(2026, 9, 8),
     )));
 
-    bool prescribed(int weekday) =>
-        tester.widget<WeekDayCell>(find.byKey(Key('day.$weekday'))).prescribed;
+    for (var weekday = 1; weekday <= 7; weekday++) {
+      expect(
+        tester.widget<WeekDayCell>(find.byKey(Key('day.$weekday'))).completed,
+        isFalse,
+        reason: 'day $weekday cannot be filled before anything was trained',
+      );
+    }
+    expect(find.text('0 of 3'), findsOneWidget);
+  });
 
-    expect(prescribed(DateTime.monday), isTrue);
-    expect(prescribed(DateTime.tuesday), isFalse);
-    expect(prescribed(DateTime.wednesday), isTrue);
-    expect(prescribed(DateTime.thursday), isFalse);
-    expect(prescribed(DateTime.friday), isTrue);
-    expect(prescribed(DateTime.saturday), isFalse);
-    expect(prescribed(DateTime.sunday), isFalse);
+  testWidgets('the strip counts the week against the plan target',
+      (tester) async {
+    await tester.pumpWidget(_host(WeekStrip(
+      daysPerWeek: 3,
+      completedDates: const {'2026-09-07', '2026-09-09'},
+      today: DateTime(2026, 9, 8),
+    )));
+
+    expect(find.text('2 of 3'), findsOneWidget);
+  });
+
+  testWidgets('the count is of days shown, not of dates handed in',
+      (tester) async {
+    // A date outside the rendered week must not inflate the tally. Counting
+    // the set's length would report 2 for a week with one session in it.
+    await tester.pumpWidget(_host(WeekStrip(
+      daysPerWeek: 3,
+      completedDates: const {'2026-09-09', '2026-08-31'},
+      today: DateTime(2026, 9, 8),
+    )));
+
+    expect(find.text('1 of 3'), findsOneWidget);
+  });
+
+  testWidgets('training more than the target reports what actually happened',
+      (tester) async {
+    // "3 of 3" would be a nicer number and a false one. The target is what
+    // the plan asks for, not a ceiling on what gets counted.
+    await tester.pumpWidget(_host(WeekStrip(
+      daysPerWeek: 2,
+      completedDates: const {'2026-09-07', '2026-09-08', '2026-09-09'},
+      today: DateTime(2026, 9, 8),
+    )));
+
+    expect(find.text('3 of 2'), findsOneWidget);
+  });
+
+  testWidgets('a plan with no usable day count states the tally alone',
+      (tester) async {
+    // days_per_week is an INT with no CHECK, and WorkoutPlan.fromJson defaults
+    // it to 0 when the key is absent. "1 of 0" is not a target, it is a bug
+    // rendered as a fraction.
+    await tester.pumpWidget(_host(WeekStrip(
+      daysPerWeek: 0,
+      completedDates: const {'2026-09-09'},
+      today: DateTime(2026, 9, 8),
+    )));
+
+    expect(find.text('1 session'), findsOneWidget);
+    expect(find.textContaining(' of '), findsNothing);
   });
 
   testWidgets('today is marked', (tester) async {
