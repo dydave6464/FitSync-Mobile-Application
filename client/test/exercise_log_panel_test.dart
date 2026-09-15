@@ -572,11 +572,15 @@ void main() {
         onUndoSet: (setNumber) async {
           setState(() {
             session = session.withoutSet(_exercise.exerciseId, setNumber);
-            // Releasing the draft on undo is the caller's job now that the
-            // panel no longer owns the fields -- session_logger_screen.dart
-            // does the same once it reaches this call (a later task).
-            // Without it, seed() has nothing to fill an empty field with,
-            // since it never overwrites one that already holds text.
+            // ExerciseLogPanel does not own `drafts` and has no way to reach
+            // whatever session_logger_screen.dart's real onUndoSet does --
+            // this test supplies its own, so calling release() here can only
+            // ever demonstrate the panel/SetDrafts *mechanism* (a released
+            // field re-seeds blank), never verify that the real screen's
+            // handler actually calls it. That real wiring is what
+            // session_logger_screen_test.dart's
+            // "undoing a set clears its typed values from the reopened row"
+            // now checks, against the actual handler.
             drafts.release(setNumber);
           });
         },

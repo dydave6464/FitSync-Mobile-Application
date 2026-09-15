@@ -46,6 +46,15 @@ class _SessionLoggerScreenState extends ConsumerState<SessionLoggerScreen> {
   SetDrafts _drafts = SetDrafts();
   int _draftsForIndex = 0;
 
+  /// The unit last confirmed on screen -- i.e. actually read back from
+  /// [weightUnitProvider], not merely requested. Null until the first build,
+  /// so the very first frame never "converts" against nothing. Converting
+  /// against this rather than in `_setUnit` itself means a failed profile
+  /// write leaves the typed text alone: the display stays on the old unit,
+  /// and so does whatever was typed under it, until the write actually lands
+  /// and this unit changes for real.
+  WeightUnit? _unitOnScreen;
+
   /// Swaps the store when the exercise changes. Called from build, which is
   /// the only place that knows the clamped index.
   void _syncDrafts(int index) {
@@ -137,8 +146,6 @@ class _SessionLoggerScreenState extends ConsumerState<SessionLoggerScreen> {
   /// the old unit, which is honest -- the toggle reflects stored state rather
   /// than optimistically flipping and silently reverting.
   Future<void> _setUnit(WeightUnit unit) async {
-    final previous = ref.read(profileProvider).value?.weightUnit ?? WeightUnit.kg;
-    if (previous != unit) _drafts.convert(previous, unit);
     final messenger = ScaffoldMessenger.of(context);
     try {
       await ref.read(profileProvider.notifier).patch({'weightUnit': unit.api});
@@ -500,6 +507,13 @@ class _SessionLoggerScreenState extends ConsumerState<SessionLoggerScreen> {
     final plan = asyncPlan.value;
     final live = ref.watch(activeSessionProvider).value;
     final unit = ref.watch(weightUnitProvider);
+    // Convert against the CONFIRMED unit only -- see [_unitOnScreen]. This is
+    // what SetRow.didUpdateWidget used to do before the refactor, firing only
+    // when the (confirmed) unit prop actually changed.
+    if (_unitOnScreen != null && _unitOnScreen != unit) {
+      _drafts.convert(_unitOnScreen!, unit);
+    }
+    _unitOnScreen = unit;
     if (live != null) _lastSeenSession = live;
     final session = live ?? _lastSeenSession;
 
@@ -701,7 +715,11 @@ class _SessionLoggerScreenState extends ConsumerState<SessionLoggerScreen> {
                           );
                     } on ApiException catch (error) {
                       if (!_handledSetWriteClosure(error, messenger)) rethrow;
+                      return;
                     }
+                    // The stored set is gone; let the table re-seed this row
+                    // from it on the next build.
+                    _drafts.release(setNumber);
                   },
                   onOpenDemo: () => Navigator.of(context).push(
                     MaterialPageRoute<void>(

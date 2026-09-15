@@ -877,6 +877,37 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
+  // Critical fix (review of task 2): _drafts.release(setNumber) has to run
+  // in session_logger_screen.dart's own onUndoSet, not just be documented as
+  // a later task's job -- otherwise a reopened row keeps showing the number
+  // that was just undone. This is the one test that can actually catch a
+  // regression here: exercise_log_panel_test.dart drives ExerciseLogPanel
+  // directly and supplies its own onUndoSet, so it can never see whether
+  // this screen's real handler calls release() or not.
+  testWidgets('undoing a set clears its typed values from the reopened row',
+      (tester) async {
+    await _pump(tester, session: _session(sets: const [
+      LoggedSet(exerciseId: 101, setNumber: 1, weightKg: 22.5, reps: 10),
+    ]));
+
+    expect(
+      tester.widget<TextField>(find.byKey(const Key('set.1.weight'))).controller!.text,
+      '22.5',
+    );
+
+    await tester.tap(find.byKey(const Key('set.1.tick')));
+    await tester.pumpAndSettle();
+
+    expect(
+      tester.widget<TextField>(find.byKey(const Key('set.1.weight'))).controller!.text,
+      isEmpty,
+    );
+    expect(
+      tester.widget<TextField>(find.byKey(const Key('set.1.reps'))).controller!.text,
+      isEmpty,
+    );
+  });
+
   testWidgets('a 409 on an undo closes the logger too', (tester) async {
     final controller = await _pump(tester, session: _session(sets: const [
       LoggedSet(exerciseId: 101, setNumber: 1, weightKg: 20, reps: 10),
