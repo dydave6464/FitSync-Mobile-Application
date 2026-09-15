@@ -15,6 +15,7 @@ import '../../profile/presentation/providers.dart';
 import '../domain/active_session.dart';
 import 'in_session_exercise_screen.dart';
 import 'providers.dart';
+import 'widgets/exercise_demo_stage.dart';
 import 'widgets/exercise_jump_sheet.dart';
 import 'widgets/exercise_log_panel.dart';
 import 'widgets/logger_action.dart';
@@ -31,6 +32,12 @@ class SessionLoggerScreen extends ConsumerStatefulWidget {
   ConsumerState<SessionLoggerScreen> createState() => _SessionLoggerScreenState();
 }
 
+/// Which face of the current exercise is on screen. Two faces of one
+/// exercise, which is why this is a field and not a second route: the
+/// session, the rest countdown and the draft store all live in the State
+/// below, and a pushed route would have to be handed every one of them.
+enum _LoggerStage { demo, logging }
+
 class _SessionLoggerScreenState extends ConsumerState<SessionLoggerScreen> {
   static const _restDuration = Duration(seconds: 90);
 
@@ -40,6 +47,12 @@ class _SessionLoggerScreenState extends ConsumerState<SessionLoggerScreen> {
   /// change under a resumed session, and an index left past the end of a
   /// shortened plan would throw on the next build.
   int _index = 0;
+
+  /// Which face of [_index]'s exercise is showing. Demo first: this
+  /// initialiser is what opens the workout on the first exercise's demo, and
+  /// every later move sets it explicitly at the point the move is made.
+  _LoggerStage _stage = _LoggerStage.demo;
+
   bool _resting = false;
 
   /// One store per exercise on screen. Rebuilt when the exercise changes, so
@@ -48,16 +61,26 @@ class _SessionLoggerScreenState extends ConsumerState<SessionLoggerScreen> {
   int _draftsForIndex = 0;
 
   /// The unit last confirmed on screen -- i.e. actually read back from
-  /// [weightUnitProvider], not merely requested. Null until the first build,
-  /// so the very first frame never "converts" against nothing. Converting
-  /// against this rather than in `_setUnit` itself means a failed profile
-  /// write leaves the typed text alone: the display stays on the old unit,
-  /// and so does whatever was typed under it, until the write actually lands
-  /// and this unit changes for real.
+  /// [weightUnitProvider], not merely requested. Null until the first build
+  /// that reaches the set table, so the very first frame never "converts"
+  /// against nothing, and a unit confirmed while the screen is still loading
+  /// (or sitting on an empty day) converts once there is a store to convert.
+  ///
+  /// Converting against this rather than in `_setUnit` itself means a
+  /// failed profile write leaves the typed text alone: the display stays on
+  /// the old unit, and so does whatever was typed under it, until the write
+  /// actually lands and this unit changes for real.
   WeightUnit? _unitOnScreen;
 
   /// Swaps the store when the exercise changes. Called from build, which is
   /// the only place that knows the clamped index.
+  ///
+  /// One job, deliberately. Resetting [_stage] from here as well would tie the
+  /// stage to the store's lifetime, and the back handler would then need the
+  /// early return below to keep the table it is stepping back to -- which
+  /// skips the swap too, and hands the previous exercise the kg and reps typed
+  /// against this one. Stage is an outcome of navigation, so every move sets
+  /// it where the move is made.
   void _syncDrafts(int index) {
     if (index == _draftsForIndex) return;
     _drafts.dispose();
@@ -478,7 +501,9 @@ class _SessionLoggerScreenState extends ConsumerState<SessionLoggerScreen> {
       actions: [
         // The rest countdown is a tag up here rather than a card over the
         // content, so ticking a set does not shove the set table down.
-        if (_resting) ...[
+        // Logging stage only: the demo has no sets on it, so a countdown
+        // between sets has nothing to count between there.
+        if (_resting && _stage == _LoggerStage.logging) ...[
           RestTimer(
             // A fresh key restarts the countdown on each new set.
             key: ValueKey('rest-$doneSets'),
@@ -517,13 +542,6 @@ class _SessionLoggerScreenState extends ConsumerState<SessionLoggerScreen> {
     final plan = asyncPlan.value;
     final live = ref.watch(activeSessionProvider).value;
     final unit = ref.watch(weightUnitProvider);
-    // Convert against the CONFIRMED unit only -- see [_unitOnScreen]. This is
-    // what SetRow.didUpdateWidget used to do before the refactor, firing only
-    // when the (confirmed) unit prop actually changed.
-    if (_unitOnScreen != null && _unitOnScreen != unit) {
-      _drafts.convert(_unitOnScreen!, unit);
-    }
-    _unitOnScreen = unit;
     if (live != null) _lastSeenSession = live;
     final session = live ?? _lastSeenSession;
 
@@ -588,6 +606,19 @@ class _SessionLoggerScreenState extends ConsumerState<SessionLoggerScreen> {
     }
     final index = _index.clamp(0, exercises.length - 1);
     _syncDrafts(index);
+    // After the swap above, never before it. An exercise change and a unit
+    // confirmation can land in the same frame -- the jump sheet is one tap
+    // away from the header's toggle -- and converting first would rewrite the
+    // text in the store _syncDrafts is about to throw away, leaving the store
+    // actually on screen holding kg under an lb heading.
+    //
+    // Convert against the CONFIRMED unit only -- see [_unitOnScreen]. This is
+    // what SetRow.didUpdateWidget used to do before the refactor, firing only
+    // when the (confirmed) unit prop actually changed.
+    if (_unitOnScreen != null && _unitOnScreen != unit) {
+      _drafts.convert(_unitOnScreen!, unit);
+    }
+    _unitOnScreen = unit;
     final exercise = exercises[index];
     final isLast = index == exercises.length - 1;
 
@@ -608,10 +639,19 @@ class _SessionLoggerScreenState extends ConsumerState<SessionLoggerScreen> {
     // first exercise it pops for real, leaving the session in progress and
     // resumable, exactly as it did before paging.
     return PopScope(
-      canPop: index == 0,
+      canPop: index == 0 && _stage == _LoggerStage.demo,
       onPopInvokedWithResult: (didPop, _) {
         if (didPop) return;
-        setState(() => _index = index - 1);
+        setState(() {
+          if (_stage == _LoggerStage.logging) {
+            _stage = _LoggerStage.demo;
+          } else {
+            // Stepping back lands on the previous exercise's table, not on a
+            // demo that has already been read.
+            _index = index - 1;
+            _stage = _LoggerStage.logging;
+          }
+        });
       },
       child: Scaffold(
         backgroundColor: t.bg,
@@ -685,73 +725,102 @@ class _SessionLoggerScreenState extends ConsumerState<SessionLoggerScreen> {
               ),
             ),
             Expanded(
-              child: SingleChildScrollView(
-                padding: const EdgeInsets.fromLTRB(20, 0, 20, 20),
-                child: ExerciseLogPanel(
-                  exercise: exercise,
-                  session: session,
-                  last: last?[exercise.exerciseId],
-                  drafts: _drafts,
-                  unit: unit,
-                  onUnitChanged: _setUnit,
-                  baseUrl: ref.watch(exerciseRepositoryProvider).baseUrl,
-                  onUndoSet: (setNumber) async {
-                    final messenger = ScaffoldMessenger.of(context);
-                    try {
-                      await ref
-                          .read(activeSessionProvider.notifier)
-                          .unlogSet(
-                            exerciseId: exercise.exerciseId,
-                            setNumber: setNumber,
-                          );
-                    } on ApiException catch (error) {
-                      if (!_handledSetWriteClosure(error, messenger)) rethrow;
-                      return;
-                    }
-                    // The stored set is gone; let the table re-seed this row
-                    // from it on the next build.
-                    _drafts.release(setNumber);
-                  },
-                  onOpenDemo: () => Navigator.of(context).push(
-                    MaterialPageRoute<void>(
-                      builder: (_) => InSessionExerciseScreen(
+              child: _stage == _LoggerStage.demo
+                  ? ExerciseDemoStage(
+                      key: const Key('logger.demo'),
+                      exercise: exercise,
+                      position: index + 1,
+                      total: exercises.length,
+                    )
+                  : SingleChildScrollView(
+                      padding: const EdgeInsets.fromLTRB(20, 0, 20, 20),
+                      child: ExerciseLogPanel(
                         exercise: exercise,
-                        position: index + 1,
-                        total: exercises.length,
+                        session: session,
+                        last: last?[exercise.exerciseId],
+                        drafts: _drafts,
+                        unit: unit,
+                        onUnitChanged: _setUnit,
+                        baseUrl: ref.watch(exerciseRepositoryProvider).baseUrl,
+                        onUndoSet: (setNumber) async {
+                          final messenger = ScaffoldMessenger.of(context);
+                          try {
+                            await ref
+                                .read(activeSessionProvider.notifier)
+                                .unlogSet(
+                                  exerciseId: exercise.exerciseId,
+                                  setNumber: setNumber,
+                                );
+                          } on ApiException catch (error) {
+                            if (!_handledSetWriteClosure(error, messenger)) {
+                              rethrow;
+                            }
+                            return;
+                          }
+                          // The stored set is gone; let the table re-seed
+                          // this row from it on the next build.
+                          _drafts.release(setNumber);
+                        },
+                        onOpenDemo: () => Navigator.of(context).push(
+                          MaterialPageRoute<void>(
+                            builder: (_) => InSessionExerciseScreen(
+                              exercise: exercise,
+                              position: index + 1,
+                              total: exercises.length,
+                            ),
+                          ),
+                        ),
                       ),
                     ),
-                  ),
-                ),
-              ),
             ),
             SafeArea(
               top: false,
               child: Padding(
                 padding: const EdgeInsets.fromLTRB(20, 0, 20, 16),
-                child: LoggerAction(
-                  activeSetNumber: _activeSetNumber(exercise, session),
-                  isLastExercise: isLast,
-                  drafts: _drafts,
-                  unit: unit,
-                  finishing: _finishing,
-                  onCompleteSet: (setNumber, weightKg, reps) async {
-                    final messenger = ScaffoldMessenger.of(context);
-                    try {
-                      await ref.read(activeSessionProvider.notifier).logSet(
-                            exerciseId: exercise.exerciseId,
-                            setNumber: setNumber,
-                            weightKg: weightKg,
-                            reps: reps,
-                          );
-                    } on ApiException catch (error) {
-                      if (!_handledSetWriteClosure(error, messenger)) rethrow;
-                      return;
-                    }
-                    if (mounted) setState(() => _resting = true);
-                  },
-                  onNextExercise: () => setState(() => _index = index + 1),
-                  onFinish: _finish,
-                ),
+                child: _stage == _LoggerStage.demo
+                    ? FsButton(
+                        // The same key as the logging stage's footer: one
+                        // primary action, in one place, whichever face of the
+                        // exercise is showing.
+                        key: const Key('logger.primary'),
+                        label: 'Start logging',
+                        icon: const Icon(Icons.arrow_forward),
+                        onPressed: () =>
+                            setState(() => _stage = _LoggerStage.logging),
+                      )
+                    : LoggerAction(
+                        activeSetNumber: _activeSetNumber(exercise, session),
+                        isLastExercise: isLast,
+                        drafts: _drafts,
+                        unit: unit,
+                        finishing: _finishing,
+                        onCompleteSet: (setNumber, weightKg, reps) async {
+                          final messenger = ScaffoldMessenger.of(context);
+                          try {
+                            await ref
+                                .read(activeSessionProvider.notifier)
+                                .logSet(
+                                  exerciseId: exercise.exerciseId,
+                                  setNumber: setNumber,
+                                  weightKg: weightKg,
+                                  reps: reps,
+                                );
+                          } on ApiException catch (error) {
+                            if (!_handledSetWriteClosure(error, messenger)) {
+                              rethrow;
+                            }
+                            return;
+                          }
+                          if (mounted) setState(() => _resting = true);
+                        },
+                        onNextExercise: () => setState(() {
+                          _index = index + 1;
+                          // The next exercise opens on its demo, the same
+                          // as the first one did.
+                          _stage = _LoggerStage.demo;
+                        }),
+                        onFinish: _finish,
+                      ),
               ),
             ),
           ],

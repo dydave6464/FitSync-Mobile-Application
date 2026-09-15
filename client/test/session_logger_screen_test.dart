@@ -17,6 +17,8 @@ import 'package:fitsync/features/plans/presentation/providers.dart';
 import 'package:fitsync/features/sessions/domain/active_session.dart';
 import 'package:fitsync/features/sessions/presentation/providers.dart';
 import 'package:fitsync/features/sessions/presentation/session_logger_screen.dart';
+import 'package:fitsync/features/sessions/presentation/widgets/rest_timer.dart';
+import 'package:fitsync/features/sessions/presentation/widgets/set_row.dart';
 
 const _plan = WorkoutPlan(
   planId: 42,
@@ -320,6 +322,12 @@ Future<FakeSessionController> _pump(
   // through an async override, as the real provider is -- so the logger's
   // first frame renders before it lands, exactly as it does on a phone.
   Map<int, LastPerformance> last = const {},
+  // Holds /sessions/last-performance open instead of answering [last]
+  // immediately. The set table is a tap away from the pump now, so a prefill
+  // supplied through [last] has always landed by the time the table is first
+  // drawn -- which is precisely the frame the prefill used to be lost in.
+  // Gating it is what puts that frame back.
+  Completer<Map<int, LastPerformance>>? lastGate,
   // Called every time the override actually recomputes -- i.e. the provider
   // was freshly built or freshly invalidated, not served from cache. Only
   // the disposed-State invalidation test below reads it; every other test
@@ -344,7 +352,9 @@ Future<FakeSessionController> _pump(
       }),
       profileProvider.overrideWith(() => FakeProfileNotifier(unit, patches ?? [])),
       activeSessionProvider.overrideWith(() => controller),
-      lastPerformanceProvider.overrideWith((ref, key) async => last),
+      lastPerformanceProvider.overrideWith(
+        (ref, key) async => lastGate != null ? lastGate.future : last,
+      ),
       if (plans != null) planRepositoryProvider.overrideWithValue(plans),
       // Only exercised by the demo-affordance navigation test below; every
       // other test here never opens the pushed screen, so this override is
@@ -382,6 +392,34 @@ Future<FakeSessionController> _pump(
   return controller;
 }
 
+/// Pumps the logger and advances past the demo stage to the set table, which
+/// is where most of these tests do their work.
+///
+/// Every exercise opens on its demo now, so a test that asserts on the table
+/// -- its fields, its rows, its unit toggle, or the footer's logging labels --
+/// has to walk the one tap a user walks to get there. What those tests assert
+/// is unchanged; only the way they reach the table is.
+Future<FakeSessionController> _pumpLogging(
+  WidgetTester tester, {
+  ActiveSession? session,
+  WeightUnit unit = WeightUnit.kg,
+  List<Map<String, dynamic>>? patches,
+  WorkoutPlan? plan = _plan,
+  Map<int, LastPerformance> last = const {},
+}) async {
+  final controller = await _pump(
+    tester,
+    session: session,
+    unit: unit,
+    patches: patches,
+    plan: plan,
+    last: last,
+  );
+  await tester.tap(find.byKey(const Key('logger.primary')));
+  await tester.pumpAndSettle();
+  return controller;
+}
+
 /// Finish and Discard moved into the app bar's overflow menu, so reaching
 /// either takes the two taps a user makes rather than one. The menu route's
 /// dismissal is what carries the selection to onSelected, so this settles
@@ -394,12 +432,79 @@ Future<void> _menu(WidgetTester tester, String action) async {
 }
 
 void main() {
+  // The mockup's screen 3. It is a stage of this screen, not a route, so the
+  // session and the rest timer survive moving between the two.
+  testWidgets('an exercise opens on its demo before its set table',
+      (tester) async {
+    await _pump(tester, session: _manualSession, plan: null);
+
+    expect(find.byKey(const Key('logger.demo')), findsOneWidget);
+    expect(find.byType(SetRow), findsNothing);
+    expect(find.text('Start logging'), findsOneWidget);
+  });
+
+  testWidgets('Start logging reveals the set table', (tester) async {
+    await _pump(tester, session: _manualSession, plan: null);
+
+    await tester.tap(find.byKey(const Key('logger.primary')));
+    await tester.pumpAndSettle();
+
+    expect(find.byKey(const Key('logger.demo')), findsNothing);
+    expect(find.byType(SetRow), findsWidgets);
+  });
+
+  testWidgets('the rest timer is not shown on the demo stage', (tester) async {
+    await _pump(tester, session: _manualSession, plan: null);
+
+    expect(find.byType(RestTimer), findsNothing);
+  });
+
+  // The same constraint with a rest actually running. The test above can only
+  // ever see a logger that has never rested, so it would pass just as well
+  // with the app bar's countdown left unguarded; this one is what the guard
+  // is for -- a set completed on the table starts the countdown, and stepping
+  // back to the demo must leave it behind rather than carry it onto a stage
+  // that has no sets on it.
+  testWidgets('a rest started on the table does not follow it onto the demo',
+      (tester) async {
+    await _pumpLogging(tester, session: _manualSession, plan: null);
+
+    await tester.enterText(find.byKey(const Key('set.1.weight')), '20');
+    await tester.enterText(find.byKey(const Key('set.1.reps')), '10');
+    await tester.tap(find.byKey(const Key('logger.primary')));
+    // Single frames rather than pumpAndSettle: settling runs the 90s
+    // countdown out, and a tag that left because it expired would prove
+    // nothing about the stage.
+    await tester.pump();
+    await tester.pump();
+    expect(find.byType(RestTimer), findsOneWidget);
+
+    await tester.tap(find.byKey(const Key('logger.back')));
+    await tester.pump();
+
+    expect(find.byKey(const Key('logger.demo')), findsOneWidget);
+    expect(find.byType(RestTimer), findsNothing);
+  });
+
+  testWidgets('back from the set table returns to the demo', (tester) async {
+    await _pump(tester, session: _manualSession, plan: null);
+
+    await tester.tap(find.byKey(const Key('logger.primary')));
+    await tester.pumpAndSettle();
+    expect(find.byType(SetRow), findsWidgets);
+
+    await tester.tap(find.byKey(const Key('logger.back')));
+    await tester.pumpAndSettle();
+
+    expect(find.byKey(const Key('logger.demo')), findsOneWidget);
+  });
+
   testWidgets('a session with no plan renders the exercises it carries',
       (tester) async {
     // A manual session has no plan at all. The screen used to require one and
     // showed a bare spinner otherwise -- no AppBar, no way back, after
     // POST /sessions had already opened the session.
-    await _pump(tester, session: _manualSession, plan: null);
+    await _pumpLogging(tester, session: _manualSession, plan: null);
 
     expect(find.byType(CircularProgressIndicator), findsNothing);
     expect(find.text('Cable fly'), findsOneWidget);
@@ -413,16 +518,19 @@ void main() {
   // handed its prefill up front never reproduces it.
   testWidgets('the last session\'s kg and reps reach the fields once they load',
       (tester) async {
-    await _pump(
-      tester,
-      session: _manualSession,
-      plan: null,
-      last: const {
-        301: LastPerformance(
-          exerciseId: 301, weightKg: 32.5, reps: 12, sessionDate: '2026-09-12',
-        ),
-      },
-    );
+    final gate = Completer<Map<int, LastPerformance>>();
+    await _pump(tester, session: _manualSession, plan: null, lastGate: gate);
+    // On the table before the prefill exists -- the exercise opens on its
+    // demo now, so reaching the table is a tap rather than a pump.
+    await tester.tap(find.byKey(const Key('logger.primary')));
+    await tester.pumpAndSettle();
+
+    gate.complete(const {
+      301: LastPerformance(
+        exerciseId: 301, weightKg: 32.5, reps: 12, sessionDate: '2026-09-12',
+      ),
+    });
+    await tester.pumpAndSettle();
 
     expect(
       tester.widget<TextField>(find.byKey(const Key('set.1.weight'))).controller!.text,
@@ -438,7 +546,7 @@ void main() {
       (tester) async {
     // The header reads "Exercise 1 / 3 · <plan name>". With no plan that
     // trails off after the separator, which looks like a rendering fault.
-    await _pump(tester, session: _manualSession, plan: null);
+    await _pumpLogging(tester, session: _manualSession, plan: null);
 
     expect(find.textContaining('Manual workout'), findsOneWidget);
   });
@@ -447,14 +555,14 @@ void main() {
       (tester) async {
     // Belt and braces: a manual session must not fall through to whatever
     // plan the user happens to have and log against someone else's day.
-    await _pump(tester, session: _manualSession, plan: _plan);
+    await _pumpLogging(tester, session: _manualSession, plan: _plan);
 
     expect(find.text('Cable fly'), findsOneWidget);
     expect(find.text('Goblet squat'), findsNothing);
   });
 
   testWidgets('shows one exercise at a time, not the whole plan', (tester) async {
-    await _pump(tester);
+    await _pumpLogging(tester);
 
     expect(find.text('Goblet squat'), findsOneWidget);
     expect(find.text('Push-up'), findsNothing);
@@ -463,12 +571,16 @@ void main() {
   testWidgets('the footer advances to the next exercise', (tester) async {
     // The footer now logs the active set; pre-loading every set on the
     // first exercise is what makes it read "Next exercise" instead.
-    await _pump(tester, session: _session(sets: const [
+    await _pumpLogging(tester, session: _session(sets: const [
       LoggedSet(exerciseId: 101, setNumber: 1, weightKg: 20, reps: 10),
       LoggedSet(exerciseId: 101, setNumber: 2, weightKg: 20, reps: 10),
       LoggedSet(exerciseId: 101, setNumber: 3, weightKg: 20, reps: 10),
     ]));
 
+    await tester.tap(find.byKey(const Key('logger.primary')));
+    await tester.pumpAndSettle();
+    // Next exercise lands on exercise 2's demo; its panel -- the only place
+    // the plan's own name for it is written -- is one Start logging away.
     await tester.tap(find.byKey(const Key('logger.primary')));
     await tester.pumpAndSettle();
 
@@ -479,7 +591,7 @@ void main() {
   testWidgets('the header names the position in the workout', (tester) async {
     // The footer now logs the active set; pre-loading every set on the
     // first exercise is what makes it read "Next exercise" instead.
-    await _pump(tester, session: _session(sets: const [
+    await _pumpLogging(tester, session: _session(sets: const [
       LoggedSet(exerciseId: 101, setNumber: 1, weightKg: 20, reps: 10),
       LoggedSet(exerciseId: 101, setNumber: 2, weightKg: 20, reps: 10),
       LoggedSet(exerciseId: 101, setNumber: 3, weightKg: 20, reps: 10),
@@ -526,7 +638,7 @@ void main() {
 
   testWidgets('choosing an exercise from the sheet goes straight to it',
       (tester) async {
-    await _pump(tester);
+    await _pumpLogging(tester);
 
     await tester.tap(find.byKey(const Key('logger.position')));
     await tester.pumpAndSettle();
@@ -544,7 +656,7 @@ void main() {
       (tester) async {
     // The footer now logs the active set; pre-loading every set on the
     // first exercise is what makes it read "Next exercise" instead.
-    await _pump(tester, session: _session(sets: const [
+    await _pumpLogging(tester, session: _session(sets: const [
       LoggedSet(exerciseId: 101, setNumber: 1, weightKg: 20, reps: 10),
       LoggedSet(exerciseId: 101, setNumber: 2, weightKg: 20, reps: 10),
       LoggedSet(exerciseId: 101, setNumber: 3, weightKg: 20, reps: 10),
@@ -587,7 +699,7 @@ void main() {
   testWidgets('switching the unit in the header saves it to the profile',
       (tester) async {
     final patches = <Map<String, dynamic>>[];
-    await _pump(tester, patches: patches);
+    await _pumpLogging(tester, patches: patches);
 
     await tester.tap(find.byKey(const Key('unit.lb')));
     await tester.pumpAndSettle();
@@ -616,7 +728,7 @@ void main() {
   // What is left to verify here is that an unlogged row's mark genuinely
   // reaches nothing: no call to the controller, no rest timer.
   testWidgets('an unlogged row\'s tick does not reach the controller', (tester) async {
-    final controller = await _pump(tester);
+    final controller = await _pumpLogging(tester);
 
     await tester.enterText(find.byKey(const Key('set.1.weight')), '25');
     await tester.enterText(find.byKey(const Key('set.1.reps')), '8');
@@ -632,7 +744,7 @@ void main() {
   // it no longer does.
   testWidgets('an unlogged row\'s tick does not reach a controller primed to fail',
       (tester) async {
-    final controller = await _pump(tester);
+    final controller = await _pumpLogging(tester);
     controller.logSetError = Exception('offline');
 
     await tester.enterText(find.byKey(const Key('set.1.reps')), '8');
@@ -655,11 +767,15 @@ void main() {
       (tester) async {
     // The footer now logs the active set; pre-loading every set on the
     // first exercise is what makes it read "Next exercise" instead.
-    await _pump(tester, session: _session(sets: const [
+    await _pumpLogging(tester, session: _session(sets: const [
       LoggedSet(exerciseId: 101, setNumber: 1, weightKg: 20, reps: 10),
       LoggedSet(exerciseId: 101, setNumber: 2, weightKg: 20, reps: 10),
       LoggedSet(exerciseId: 101, setNumber: 3, weightKg: 20, reps: 10),
     ]));
+    await tester.tap(find.byKey(const Key('logger.primary')));
+    await tester.pumpAndSettle();
+    // Next exercise lands on exercise 2's demo stage; the panel carrying the
+    // thumbnail this test taps is one Start logging away.
     await tester.tap(find.byKey(const Key('logger.primary')));
     await tester.pumpAndSettle();
 
@@ -847,7 +963,7 @@ void main() {
   testWidgets(
       'an unlogged row\'s tick does not reach a controller that would race mid-flight',
       (tester) async {
-    final controller = await _pump(tester);
+    final controller = await _pumpLogging(tester);
     controller.logSetError = StateError('No session is in progress.');
 
     await tester.enterText(find.byKey(const Key('set.1.reps')), '8');
@@ -885,7 +1001,7 @@ void main() {
   testWidgets(
       'an unlogged row\'s tick does not reach a controller primed to report the '
       'session closed', (tester) async {
-    final controller = await _pump(tester);
+    final controller = await _pumpLogging(tester);
     controller.logSetError = const ApiException(
       'SESSION_NOT_IN_PROGRESS', 'This session has already been closed.',
     );
@@ -910,7 +1026,7 @@ void main() {
   // this screen's real handler calls release() or not.
   testWidgets('undoing a set clears its typed values from the reopened row',
       (tester) async {
-    await _pump(tester, session: _session(sets: const [
+    await _pumpLogging(tester, session: _session(sets: const [
       LoggedSet(exerciseId: 101, setNumber: 1, weightKg: 22.5, reps: 10),
     ]));
 
@@ -933,7 +1049,7 @@ void main() {
   });
 
   testWidgets('a 409 on an undo closes the logger too', (tester) async {
-    final controller = await _pump(tester, session: _session(sets: const [
+    final controller = await _pumpLogging(tester, session: _session(sets: const [
       LoggedSet(exerciseId: 101, setNumber: 1, weightKg: 20, reps: 10),
     ]));
     controller.unlogSetError = const ApiException(
@@ -976,7 +1092,7 @@ void main() {
   // the day the session is on, or a Push session lists the Pull exercises too.
   testWidgets('the logger shows only the session day, not the whole plan',
       (tester) async {
-    await _pump(tester, plan: _rotationPlan, session: _session(planDayNo: 2));
+    await _pumpLogging(tester, plan: _rotationPlan, session: _session(planDayNo: 2));
 
     expect(find.textContaining('Push-up'), findsOneWidget);
     expect(find.text('Goblet squat'), findsNothing);
@@ -988,7 +1104,7 @@ void main() {
   // must read the null as day 1, the same as exercisesForDay does on its own.
   testWidgets('a session with no planDayNo shows day 1 of the rotation',
       (tester) async {
-    await _pump(tester, plan: _rotationPlan, session: _session());
+    await _pumpLogging(tester, plan: _rotationPlan, session: _session());
 
     expect(find.text('Goblet squat'), findsOneWidget);
     expect(find.textContaining('Push-up'), findsNothing);
