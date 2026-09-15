@@ -565,6 +565,48 @@ void main() {
     expect(find.byType(RestTimer), findsNothing);
   });
 
+  // _moveTo clears the rest on an index change as well as on entering the
+  // demo, and this is the only path where those two rules come apart: a jump
+  // to an exercise that already has sets logged against it lands on the
+  // TABLE, so the demo rule never fires and the index rule is the only thing
+  // left to stop exercise 1's countdown running on exercise 2's table. Every
+  // other rest test above is satisfied by the demo rule alone -- deleting
+  // `_resting = false` from the index branch leaves all of them green.
+  testWidgets('a rest does not follow a jump onto another exercise\'s table',
+      (tester) async {
+    await _pumpLogging(tester, session: _session(sets: const [
+      LoggedSet(exerciseId: 101, setNumber: 1, weightKg: 20, reps: 10),
+      LoggedSet(exerciseId: 101, setNumber: 2, weightKg: 20, reps: 10),
+      // Push-up already has a set, so the jump lands on its table rather
+      // than its demo. That is the whole point of this fixture.
+      LoggedSet(exerciseId: 102, setNumber: 1, weightKg: 0, reps: 12),
+    ]));
+
+    // The last set of exercise 1 starts the countdown.
+    await tester.enterText(find.byKey(const Key('set.3.weight')), '20');
+    await tester.enterText(find.byKey(const Key('set.3.reps')), '10');
+    await tester.tap(find.byKey(const Key('logger.primary')));
+    await tester.pump();
+    await tester.pump();
+    expect(find.byType(RestTimer), findsOneWidget);
+
+    // Single frames, never pumpAndSettle: settling runs the 90 seconds out
+    // and the tag would be gone for a reason that has nothing to do with the
+    // jump. 800ms is enough for the sheet in and out, and nowhere near 90s.
+    await tester.tap(find.byKey(const Key('logger.position')));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 400));
+    await tester.tap(find.byKey(const Key('jump.102')));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 400));
+
+    // Landed on the table, so the demo rule never fired -- the index rule is
+    // what cleared the countdown.
+    expect(find.byKey(const Key('logger.demo')), findsNothing);
+    expect(find.byType(SetRow), findsWidgets);
+    expect(find.byType(RestTimer), findsNothing);
+  });
+
   testWidgets('back from the set table returns to the demo', (tester) async {
     await _pump(tester, session: _manualSession, plan: null);
 
