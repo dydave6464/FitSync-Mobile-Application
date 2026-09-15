@@ -695,25 +695,6 @@ class _SessionLoggerScreenState extends ConsumerState<SessionLoggerScreen> {
                   unit: unit,
                   onUnitChanged: _setUnit,
                   baseUrl: ref.watch(exerciseRepositoryProvider).baseUrl,
-                  onCompleteSet: (setNumber, weightKg, reps) async {
-                    final messenger = ScaffoldMessenger.of(context);
-                    try {
-                      await ref.read(activeSessionProvider.notifier).logSet(
-                            exerciseId: exercise.exerciseId,
-                            setNumber: setNumber,
-                            weightKg: weightKg,
-                            reps: reps,
-                          );
-                    } on ApiException catch (error) {
-                      // Every other failure still rethrows, so the row keeps
-                      // its own retry -- that one CAN succeed.
-                      if (!_handledSetWriteClosure(error, messenger)) rethrow;
-                      return;
-                    }
-                    // Only on success: a rest timer after a failed write would
-                    // be counting down from a set that was never recorded.
-                    if (mounted) setState(() => _resting = true);
-                  },
                   onUndoSet: (setNumber) async {
                     final messenger = ScaffoldMessenger.of(context);
                     try {

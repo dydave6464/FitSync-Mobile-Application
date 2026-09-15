@@ -49,7 +49,6 @@ void main() {
         LoggedSet(exerciseId: 101, setNumber: 1, weightKg: 20, reps: 10),
       ]),
       drafts: _drafts(tester),
-      onCompleteSet: (_, _, _) async {},
       onUndoSet: (_) async {},
     )));
 
@@ -66,7 +65,6 @@ void main() {
       exercise: _exercise,
       session: _session(),
       drafts: _drafts(tester),
-      onCompleteSet: (_, _, _) async {},
       onUndoSet: (_) async {},
     )));
 
@@ -84,7 +82,6 @@ void main() {
       unit: WeightUnit.kg,
       onUnitChanged: (unit) => chosen = unit,
       drafts: _drafts(tester),
-      onCompleteSet: (_, _, _) async {},
       onUndoSet: (_) async {},
     )));
 
@@ -108,7 +105,6 @@ void main() {
       ),
       unit: WeightUnit.lb,
       drafts: _drafts(tester),
-      onCompleteSet: (_, _, _) async {},
       onUndoSet: (_) async {},
     )));
 
@@ -143,7 +139,6 @@ void main() {
       session: _session(),
       unit: WeightUnit.lb,
       drafts: _drafts(tester),
-      onCompleteSet: (_, weightKg, _) async => sentKg = weightKg,
       onUndoSet: (_) async {},
     )));
 
@@ -185,7 +180,6 @@ void main() {
                 unit = chosen;
               }),
               drafts: drafts,
-              onCompleteSet: (_, _, _) async {},
               onUndoSet: (_) async {},
             ),
           ),
@@ -214,7 +208,6 @@ void main() {
         LoggedSet(exerciseId: 101, setNumber: 1, weightKg: 20, reps: 10),
       ]),
       drafts: _drafts(tester),
-      onCompleteSet: (_, _, _) async {},
       onUndoSet: (_) async {},
     )));
 
@@ -234,7 +227,6 @@ void main() {
         LoggedSet(exerciseId: 101, setNumber: 3, weightKg: 20, reps: 10),
       ]),
       drafts: _drafts(tester),
-      onCompleteSet: (_, _, _) async {},
       onUndoSet: (_) async {},
     )));
 
@@ -249,7 +241,6 @@ void main() {
       exercise: _exercise,
       session: _session(),
       drafts: _drafts(tester),
-      onCompleteSet: (_, _, _) async {},
       onUndoSet: (_) async {},
     )));
 
@@ -266,7 +257,6 @@ void main() {
         exerciseId: 101, weightKg: 22.5, reps: 10, sessionDate: '2026-09-05',
       ),
       drafts: _drafts(tester),
-      onCompleteSet: (_, _, _) async {},
       onUndoSet: (_) async {},
     )));
 
@@ -283,7 +273,6 @@ void main() {
         exerciseId: 101, weightKg: 22.5, reps: 10, sessionDate: '2026-09-05',
       ),
       drafts: _drafts(tester),
-      onCompleteSet: (_, _, _) async {},
       onUndoSet: (_) async {},
     )));
 
@@ -305,7 +294,6 @@ void main() {
           session: _session(),
           last: last,
           drafts: drafts,
-          onCompleteSet: (_, _, _) async {},
           onUndoSet: (_) async {},
         ));
 
@@ -334,7 +322,6 @@ void main() {
           session: _session(),
           last: last,
           drafts: drafts,
-          onCompleteSet: (_, _, _) async {},
           onUndoSet: (_) async {},
         ));
 
@@ -361,7 +348,6 @@ void main() {
       exercise: _exercise,
       session: _session(),
       drafts: _drafts(tester),
-      onCompleteSet: (_, _, _) async {},
       onUndoSet: (_) async {},
     )));
 
@@ -383,11 +369,6 @@ void main() {
       exercise: _exercise,
       session: _session(),
       drafts: _drafts(tester),
-      onCompleteSet: (setNumber, weightKg, reps) async {
-        gotSet = setNumber;
-        gotWeight = weightKg;
-        gotReps = reps;
-      },
       onUndoSet: (_) async {},
     )));
 
@@ -415,7 +396,6 @@ void main() {
       exercise: _exercise,
       session: _session(),
       drafts: _drafts(tester),
-      onCompleteSet: (_, weightKg, _) async => gotWeight = weightKg,
       onUndoSet: (_) async {},
     )));
 
@@ -438,7 +418,6 @@ void main() {
       exercise: _exercise,
       session: _session(),
       drafts: _drafts(tester),
-      onCompleteSet: (_, _, _) async => throw Exception('offline'),
       onUndoSet: (_) async {},
     )));
 
@@ -459,7 +438,6 @@ void main() {
         exerciseId: 101, weightKg: 22.5, reps: 10, sessionDate: '2026-09-05',
       ),
       drafts: _drafts(tester),
-      onCompleteSet: (_, _, _) async {},
       onUndoSet: (_) async {},
     )));
 
@@ -479,7 +457,6 @@ void main() {
         exerciseId: 101, weightKg: 22.5, reps: 10, sessionDate: '2026-09-05',
       ),
       drafts: _drafts(tester),
-      onCompleteSet: (_, _, _) async {},
       onUndoSet: (_) async {},
     )));
 
@@ -495,7 +472,6 @@ void main() {
         LoggedSet(exerciseId: 101, setNumber: 1, weightKg: 40, reps: 8),
       ]),
       drafts: _drafts(tester),
-      onCompleteSet: (_, _, _) async {},
       onUndoSet: (_) async {},
     )));
 
@@ -509,7 +485,6 @@ void main() {
         LoggedSet(exerciseId: 101, setNumber: 1, weightKg: 22.5, reps: 10),
       ]),
       drafts: _drafts(tester),
-      onCompleteSet: (_, _, _) async {},
       onUndoSet: (_) async {},
     )));
 
@@ -526,7 +501,6 @@ void main() {
         LoggedSet(exerciseId: 101, setNumber: 1, weightKg: 22.5, reps: 10),
       ]),
       drafts: _drafts(tester),
-      onCompleteSet: (_, _, _) async {},
       onUndoSet: (setNumber) async => undone = setNumber,
     )));
 
@@ -534,6 +508,59 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(undone, 1);
+  });
+
+  // The tick reports that a set is stored. It is not how a set is stored --
+  // that is the footer button, which is a target several times the size.
+  testWidgets('the tick is an indicator, not a button', (tester) async {
+    var undos = 0;
+    await tester.pumpWidget(_host(ExerciseLogPanel(
+      exercise: _exercise,
+      session: _session(),
+      drafts: _drafts(tester),
+      onUndoSet: (_) async => undos++,
+    )));
+
+    // An unlogged row's mark does nothing at all.
+    await tester.tap(find.byKey(const Key('set.1.tick')));
+    await tester.pumpAndSettle();
+
+    expect(undos, 0);
+  });
+
+  testWidgets('tapping a stored row reopens it for editing', (tester) async {
+    var reopened = 0;
+    await tester.pumpWidget(_host(ExerciseLogPanel(
+      exercise: _exercise,
+      session: _session(sets: const [
+        LoggedSet(exerciseId: 101, setNumber: 1, weightKg: 22.5, reps: 10),
+      ]),
+      drafts: _drafts(tester),
+      onUndoSet: (setNumber) async {
+        expect(setNumber, 1);
+        reopened++;
+      },
+    )));
+
+    await tester.tap(find.byKey(const Key('set.1.row')));
+    await tester.pumpAndSettle();
+
+    expect(reopened, 1);
+  });
+
+  testWidgets('an unlogged row is not a reopen target', (tester) async {
+    var reopened = 0;
+    await tester.pumpWidget(_host(ExerciseLogPanel(
+      exercise: _exercise,
+      session: _session(),
+      drafts: _drafts(tester),
+      onUndoSet: (_) async => reopened++,
+    )));
+
+    await tester.tap(find.byKey(const Key('set.2.row')));
+    await tester.pumpAndSettle();
+
+    expect(reopened, 0);
   });
 
   // --- Additions beyond the brief's list ---
@@ -568,7 +595,6 @@ void main() {
         exercise: _exercise,
         session: session,
         drafts: drafts,
-        onCompleteSet: (_, _, _) async {},
         onUndoSet: (setNumber) async {
           setState(() {
             session = session.withoutSet(_exercise.exerciseId, setNumber);

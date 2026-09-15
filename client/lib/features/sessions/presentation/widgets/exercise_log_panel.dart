@@ -20,7 +20,6 @@ class ExerciseLogPanel extends StatelessWidget {
     super.key,
     required this.exercise,
     required this.session,
-    required this.onCompleteSet,
     required this.onUndoSet,
     required this.drafts,
     this.last,
@@ -33,7 +32,6 @@ class ExerciseLogPanel extends StatelessWidget {
   final PlanExercise exercise;
   final ActiveSession? session;
   final LastPerformance? last;
-  final Future<void> Function(int setNumber, double? weightKg, int? reps) onCompleteSet;
   final Future<void> Function(int setNumber) onUndoSet;
 
   /// Where the typed kg and reps live. Owned by the logger screen, because

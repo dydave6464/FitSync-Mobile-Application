@@ -64,105 +64,111 @@ class SetRow extends StatelessWidget {
     final editable = !done && !busy;
 
     InputDecoration decoration(String hint) => InputDecoration(
-          hintText: hint,
-          isDense: true,
-          filled: true,
-          fillColor: active ? t.accentDim : t.surface2,
-          contentPadding: const EdgeInsets.symmetric(vertical: 9),
-          hintStyle: TextStyle(
-            fontFamily: fsMonoFamily, fontSize: 13, color: t.text3,
-          ),
-          border: OutlineInputBorder(
-            borderRadius: BorderRadius.circular(SetRow.cellRadius),
-            borderSide: BorderSide.none,
-          ),
-          enabledBorder: OutlineInputBorder(
-            borderRadius: BorderRadius.circular(SetRow.cellRadius),
-            borderSide: BorderSide(
-              color: active ? t.accentLine : Colors.transparent,
-            ),
-          ),
-          focusedBorder: OutlineInputBorder(
-            borderRadius: BorderRadius.circular(SetRow.cellRadius),
-            borderSide: BorderSide(color: t.accentLine),
-          ),
-          disabledBorder: OutlineInputBorder(
-            borderRadius: BorderRadius.circular(SetRow.cellRadius),
-            borderSide: BorderSide.none,
-          ),
-        );
+      hintText: hint,
+      isDense: true,
+      filled: true,
+      fillColor: active ? t.accentDim : t.surface2,
+      contentPadding: const EdgeInsets.symmetric(vertical: 9),
+      hintStyle: TextStyle(
+        fontFamily: fsMonoFamily,
+        fontSize: 13,
+        color: t.text3,
+      ),
+      border: OutlineInputBorder(
+        borderRadius: BorderRadius.circular(SetRow.cellRadius),
+        borderSide: BorderSide.none,
+      ),
+      enabledBorder: OutlineInputBorder(
+        borderRadius: BorderRadius.circular(SetRow.cellRadius),
+        borderSide: BorderSide(
+          color: active ? t.accentLine : Colors.transparent,
+        ),
+      ),
+      focusedBorder: OutlineInputBorder(
+        borderRadius: BorderRadius.circular(SetRow.cellRadius),
+        borderSide: BorderSide(color: t.accentLine),
+      ),
+      disabledBorder: OutlineInputBorder(
+        borderRadius: BorderRadius.circular(SetRow.cellRadius),
+        borderSide: BorderSide.none,
+      ),
+    );
 
-    return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 5),
-      child: Row(
-        children: [
-          SizedBox(
-            width: SetRow.numberWidth,
-            child: Text(
-              '$setNumber',
-              style: TextStyle(
-                fontFamily: fsMonoFamily,
-                fontSize: 13,
-                fontWeight: FontWeight.w600,
-                color: t.text3,
+    return InkWell(
+      key: Key('set.$setNumber.row'),
+      // A stored row is the reopen target, and the whole row is it -- the
+      // 28px mark this replaces was under Material's 48dp minimum, on the
+      // control used most. An unlogged row has nothing to reopen.
+      onTap: done ? onReopen : null,
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 5),
+        child: Row(
+          children: [
+            SizedBox(
+              width: SetRow.numberWidth,
+              child: Text(
+                '$setNumber',
+                style: TextStyle(
+                  fontFamily: fsMonoFamily,
+                  fontSize: 13,
+                  fontWeight: FontWeight.w600,
+                  color: t.text3,
+                ),
               ),
             ),
-          ),
-          Expanded(
-            child: TextField(
-              key: Key('set.$setNumber.weight'),
-              controller: drafts.weight(setNumber),
-              enabled: editable,
-              textAlign: TextAlign.center,
-              keyboardType: const TextInputType.numberWithOptions(decimal: true),
-              inputFormatters: [
-                // Three digits and two decimals: weight_kg is DECIMAL(6,2) and
-                // the server rejects anything above 999.99 anyway.
-                FilteringTextInputFormatter.allow(RegExp(r'^\d{0,3}\.?\d{0,2}')),
-              ],
-              decoration: decoration(unit.api),
-              style: TextStyle(
-                fontFamily: fsMonoFamily,
-                fontSize: 14,
-                fontWeight: FontWeight.w600,
-                color: t.text,
+            Expanded(
+              child: TextField(
+                key: Key('set.$setNumber.weight'),
+                controller: drafts.weight(setNumber),
+                enabled: editable,
+                textAlign: TextAlign.center,
+                keyboardType: const TextInputType.numberWithOptions(
+                  decimal: true,
+                ),
+                inputFormatters: [
+                  // Three digits and two decimals: weight_kg is DECIMAL(6,2) and
+                  // the server rejects anything above 999.99 anyway.
+                  FilteringTextInputFormatter.allow(
+                    RegExp(r'^\d{0,3}\.?\d{0,2}'),
+                  ),
+                ],
+                decoration: decoration(unit.api),
+                style: TextStyle(
+                  fontFamily: fsMonoFamily,
+                  fontSize: 14,
+                  fontWeight: FontWeight.w600,
+                  color: t.text,
+                ),
               ),
             ),
-          ),
-          const SizedBox(width: SetRow.columnGap),
-          Expanded(
-            child: TextField(
-              key: Key('set.$setNumber.reps'),
-              controller: drafts.reps(setNumber),
-              enabled: editable,
-              textAlign: TextAlign.center,
-              keyboardType: TextInputType.number,
-              inputFormatters: [
-                FilteringTextInputFormatter.allow(RegExp(r'^\d{0,3}')),
-              ],
-              decoration: decoration('reps'),
-              style: TextStyle(
-                fontFamily: fsMonoFamily,
-                fontSize: 14,
-                fontWeight: FontWeight.w600,
-                color: t.text,
+            const SizedBox(width: SetRow.columnGap),
+            Expanded(
+              child: TextField(
+                key: Key('set.$setNumber.reps'),
+                controller: drafts.reps(setNumber),
+                enabled: editable,
+                textAlign: TextAlign.center,
+                keyboardType: TextInputType.number,
+                inputFormatters: [
+                  FilteringTextInputFormatter.allow(RegExp(r'^\d{0,3}')),
+                ],
+                decoration: decoration('reps'),
+                style: TextStyle(
+                  fontFamily: fsMonoFamily,
+                  fontSize: 14,
+                  fontWeight: FontWeight.w600,
+                  color: t.text,
+                ),
               ),
             ),
-          ),
-          const SizedBox(width: SetRow.columnGap),
-          SizedBox(
-            width: SetRow.tickWidth,
-            child: InkWell(
+            const SizedBox(width: SetRow.columnGap),
+            SizedBox(
               key: Key('set.$setNumber.tick'),
-              onTap: done ? onReopen : null,
-              customBorder: const CircleBorder(),
-              child: SizedBox(
-                height: 38,
-                child: Center(child: _mark(t, done)),
-              ),
+              width: SetRow.tickWidth,
+              child: SizedBox(height: 38, child: Center(child: _mark(t, done))),
             ),
-          ),
-        ],
+          ],
+        ),
       ),
     );
   }

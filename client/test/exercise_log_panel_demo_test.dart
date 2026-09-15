@@ -51,7 +51,6 @@ void main() {
       exercise: _exercise,
       session: _session(),
       drafts: _drafts(tester),
-      onCompleteSet: (_, _, _) async {},
       onUndoSet: (_) async {},
       onOpenDemo: () => opened = true,
     )));
@@ -68,7 +67,6 @@ void main() {
       exercise: _exercise,
       session: _session(),
       drafts: _drafts(tester),
-      onCompleteSet: (_, _, _) async {},
       onUndoSet: (_) async {},
     )));
 
