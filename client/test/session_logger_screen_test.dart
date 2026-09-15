@@ -328,6 +328,14 @@ Future<FakeSessionController> _pump(
   // drawn -- which is precisely the frame the prefill used to be lost in.
   // Gating it is what puts that frame back.
   Completer<Map<int, LastPerformance>>? lastGate,
+  // What /exercises/:id answers for the demo stage. Null takes the resolving
+  // stub below; a test drives the stage's loading and error branches by
+  // handing over a future that never completes, or one that fails.
+  Future<ExerciseDetail> Function(int id)? detail,
+  // False runs the push with explicit frames instead of pumpAndSettle. A demo
+  // still in flight shows a spinner, and a spinner schedules frames forever,
+  // so settling would time out rather than return.
+  bool settle = true,
   // Called every time the override actually recomputes -- i.e. the provider
   // was freshly built or freshly invalidated, not served from cache. Only
   // the disposed-State invalidation test below reads it; every other test
@@ -356,19 +364,20 @@ Future<FakeSessionController> _pump(
         (ref, key) async => lastGate != null ? lastGate.future : last,
       ),
       if (plans != null) planRepositoryProvider.overrideWithValue(plans),
-      // Only exercised by the demo-affordance navigation test below; every
-      // other test here never opens the pushed screen, so this override is
-      // inert for them.
+      // Live for every test in this file, not just the pushed-screen one:
+      // each exercise opens on a demo stage that reads this.
       exerciseDetailProvider.overrideWith(
-        (ref, id) async => ExerciseDetail(
-          exerciseId: id,
-          name: 'Detail $id',
-          muscleGroup: 'x',
-          equipment: null,
-          thumbnailUrl: null,
-          animationUrl: null,
-          cues: const [],
-        ),
+        (ref, id) => detail != null
+            ? detail(id)
+            : Future.value(ExerciseDetail(
+                exerciseId: id,
+                name: 'Detail $id',
+                muscleGroup: 'x',
+                equipment: null,
+                thumbnailUrl: null,
+                animationUrl: null,
+                cues: const [],
+              )),
       ),
     ],
     child: MaterialApp(
@@ -388,7 +397,12 @@ Future<FakeSessionController> _pump(
     ),
   ));
   await tester.tap(find.text('open logger'));
-  await tester.pumpAndSettle();
+  if (settle) {
+    await tester.pumpAndSettle();
+  } else {
+    await tester.pump();
+    await tester.pump(const Duration(seconds: 1));
+  }
   return controller;
 }
 
@@ -486,6 +500,41 @@ void main() {
     expect(find.byType(RestTimer), findsNothing);
   });
 
+  // The countdown used to run continuously through an exercise change and
+  // clear itself at zero. It cannot any more: the next exercise opens on its
+  // demo, the stage guard hides the tag, RestTimer unmounts and the countdown
+  // stops dead -- so onDone never fires and the flag is stuck true. Left
+  // alone, Start logging on the next exercise raises a fresh 90 seconds over
+  // an empty set table, having rested nothing.
+  testWidgets('the rest from one exercise does not carry into the next',
+      (tester) async {
+    await _pumpLogging(tester, session: _session(sets: const [
+      LoggedSet(exerciseId: 101, setNumber: 1, weightKg: 20, reps: 10),
+      LoggedSet(exerciseId: 101, setNumber: 2, weightKg: 20, reps: 10),
+    ]));
+
+    // The last set of exercise 1 starts the countdown.
+    await tester.enterText(find.byKey(const Key('set.3.weight')), '20');
+    await tester.enterText(find.byKey(const Key('set.3.reps')), '10');
+    await tester.tap(find.byKey(const Key('logger.primary')));
+    await tester.pump();
+    await tester.pump();
+    expect(find.byType(RestTimer), findsOneWidget);
+
+    // Next exercise, then its table. Single frames throughout: settling would
+    // run the 90 seconds out and take the tag away for a reason that has
+    // nothing to do with the exercise change.
+    await tester.tap(find.byKey(const Key('logger.primary')));
+    await tester.pump();
+    await tester.pump();
+    await tester.tap(find.byKey(const Key('logger.primary')));
+    await tester.pump();
+    await tester.pump();
+
+    expect(find.byType(SetRow), findsWidgets);
+    expect(find.byType(RestTimer), findsNothing);
+  });
+
   testWidgets('back from the set table returns to the demo', (tester) async {
     await _pump(tester, session: _manualSession, plan: null);
 
@@ -497,6 +546,50 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.byKey(const Key('logger.demo')), findsOneWidget);
+  });
+
+  // The stage's error branch carries a deliberate promise -- a demo that will
+  // not load must never be what stops someone logging their sets -- and
+  // nothing asserted either half of it. Every other test here stubs a detail
+  // that resolves.
+  testWidgets('a demo that will not load does not block the workout',
+      (tester) async {
+    await _pump(
+      tester,
+      session: _manualSession,
+      plan: null,
+      detail: (_) => Future<ExerciseDetail>.error(
+        const ApiException('EXERCISE_NOT_FOUND', 'No such exercise.'),
+      ),
+    );
+
+    expect(
+      find.text('Could not load this exercise. You can still log your sets.'),
+      findsOneWidget,
+    );
+    // Present is not enough: the way on has to still work.
+    expect(find.byKey(const Key('logger.primary')), findsOneWidget);
+
+    await tester.tap(find.byKey(const Key('logger.primary')));
+    await tester.pumpAndSettle();
+
+    expect(find.byType(SetRow), findsWidgets);
+  });
+
+  testWidgets('a demo still loading shows a spinner, not a blank stage',
+      (tester) async {
+    // Never completed, so the fetch is in flight for the whole test.
+    final gate = Completer<ExerciseDetail>();
+    await _pump(
+      tester,
+      session: _manualSession,
+      plan: null,
+      detail: (_) => gate.future,
+      settle: false,
+    );
+
+    expect(find.byKey(const Key('logger.demo')), findsOneWidget);
+    expect(find.byType(CircularProgressIndicator), findsOneWidget);
   });
 
   testWidgets('a session with no plan renders the exercises it carries',
@@ -644,11 +737,54 @@ void main() {
     await tester.pumpAndSettle();
     await tester.tap(find.byKey(const Key('jump.102')));
     await tester.pumpAndSettle();
+    // Nothing is logged against Push-up, so the jump lands on its demo; the
+    // panel -- the only place the plan's own name for it is written -- is one
+    // Start logging away.
+    await tester.tap(find.byKey(const Key('logger.primary')));
+    await tester.pumpAndSettle();
 
     // Both, deliberately: the counter alone would pass if the sheet moved the
     // index without the body following, and the name alone would pass if the
     // body moved without the header.
     expect(find.textContaining('Exercise 2 / 2'), findsOneWidget);
+    expect(find.text('Push-up'), findsOneWidget);
+  });
+
+  // The jump sheet is navigation, so it decides a stage rather than
+  // inheriting one. Started from exercise 1's TABLE on purpose: a jump that
+  // simply kept the stage it was on would land on a table here and pass a
+  // weaker test.
+  testWidgets('jumping to an exercise with nothing logged opens its demo',
+      (tester) async {
+    await _pumpLogging(tester, session: _session(sets: const [
+      LoggedSet(exerciseId: 101, setNumber: 1, weightKg: 20, reps: 10),
+    ]));
+
+    await tester.tap(find.byKey(const Key('logger.position')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const Key('jump.102')));
+    await tester.pumpAndSettle();
+
+    expect(find.byKey(const Key('logger.demo')), findsOneWidget);
+    expect(find.byType(SetRow), findsNothing);
+  });
+
+  // And the other direction, from exercise 1's DEMO, for the same reason. A
+  // set already logged against the target means the user was prepared for it
+  // once already -- going back to fix a number must not make them walk past
+  // cues they have read, the same judgement the back handler makes.
+  testWidgets('jumping to an exercise already logged against opens its table',
+      (tester) async {
+    await _pump(tester, session: _session(sets: const [
+      LoggedSet(exerciseId: 102, setNumber: 1, weightKg: 20, reps: 10),
+    ]));
+
+    await tester.tap(find.byKey(const Key('logger.position')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const Key('jump.102')));
+    await tester.pumpAndSettle();
+
+    expect(find.byKey(const Key('logger.demo')), findsNothing);
     expect(find.text('Push-up'), findsOneWidget);
   });
 

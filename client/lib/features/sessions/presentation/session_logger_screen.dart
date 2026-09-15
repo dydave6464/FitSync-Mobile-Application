@@ -168,6 +168,18 @@ class _SessionLoggerScreenState extends ConsumerState<SessionLoggerScreen> {
     return null;
   }
 
+  /// Whether anything at all has been logged against [exercise] in this
+  /// session. Not the inverse of [_activeSetNumber]: undoing a set leaves a
+  /// hole, so an exercise can have set 1 open and set 2 stored, and "the next
+  /// set to do is 1" would then read as untouched when it is not.
+  bool _hasLoggedSets(PlanExercise exercise, ActiveSession? session) {
+    if (session == null) return false;
+    for (var number = 1; number <= exercise.targetSets; number++) {
+      if (session.setFor(exercise.exerciseId, number) != null) return true;
+    }
+    return false;
+  }
+
   /// Opens the jump sheet and moves to whatever it returns.
   ///
   /// [current] is the clamped index, so the row highlighted as current is
@@ -206,7 +218,22 @@ class _SessionLoggerScreenState extends ConsumerState<SessionLoggerScreen> {
         currentIndex: current,
       ),
     );
-    if (chosen != null && mounted) setState(() => _index = chosen);
+    if (chosen != null && mounted) {
+      setState(() {
+        _index = chosen;
+        // The demo prepares you for a movement you are about to do. An
+        // exercise you have already logged sets against is one you were
+        // already prepared for, so jumping back to fix a set lands on the
+        // table -- matching the back handler -- while jumping forward to
+        // something untouched still shows its cues.
+        _stage = _hasLoggedSets(exercises[chosen], session)
+            ? _LoggerStage.logging
+            : _LoggerStage.demo;
+        // Rest is not shown between exercises at all, so a flag that survived
+        // the move would mean nothing. See onNextExercise.
+        _resting = false;
+      });
+    }
   }
 
   Future<void> _finish() async {
@@ -650,6 +677,7 @@ class _SessionLoggerScreenState extends ConsumerState<SessionLoggerScreen> {
             // demo that has already been read.
             _index = index - 1;
             _stage = _LoggerStage.logging;
+            _resting = false;
           }
         });
       },
@@ -818,6 +846,14 @@ class _SessionLoggerScreenState extends ConsumerState<SessionLoggerScreen> {
                           // The next exercise opens on its demo, the same
                           // as the first one did.
                           _stage = _LoggerStage.demo;
+                          // And it opens with no rest running. The demo
+                          // hides the countdown, which unmounts RestTimer
+                          // and stops it dead -- onDone can never fire, so
+                          // a flag left true here surfaces as a fresh 90
+                          // seconds over the next exercise's empty table,
+                          // having rested nothing. Rest is not shown
+                          // between exercises, so it does not survive one.
+                          _resting = false;
                         }),
                         onFinish: _finish,
                       ),
