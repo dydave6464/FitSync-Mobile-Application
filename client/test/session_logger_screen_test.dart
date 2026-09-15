@@ -930,6 +930,44 @@ void main() {
     semantics.dispose();
   });
 
+  // Which set is next is one value, derived once on this screen and handed
+  // to both the table and the footer. It used to be derived twice, in two
+  // identical getters, and two copies of a rule are two rules: a highlight
+  // that pointed at one row while the button named another would put back
+  // exactly the ambiguity "Complete set N" exists to remove.
+  testWidgets('the highlighted row is the set the button names', (tester) async {
+    await _pumpLogging(tester, session: _session(sets: const [
+      LoggedSet(exerciseId: 101, setNumber: 1, weightKg: 20, reps: 10),
+    ]));
+
+    // Three target sets, the first already stored: set 2 is next, and both
+    // the table and the footer have to say so.
+    expect(find.text('Complete set 2'), findsOneWidget);
+    expect(
+      tester.widgetList<SetRow>(find.byType(SetRow)).map((row) => row.active),
+      [false, true, false],
+    );
+  });
+
+  // The other end of the same derivation, which used to live in the panel:
+  // an exercise with every set stored has no next set, so nothing is
+  // highlighted and the footer offers the next exercise instead of naming a
+  // set that does not exist.
+  testWidgets('a finished exercise highlights nothing and offers the next one',
+      (tester) async {
+    await _pumpLogging(tester, session: _session(sets: const [
+      LoggedSet(exerciseId: 101, setNumber: 1, weightKg: 20, reps: 10),
+      LoggedSet(exerciseId: 101, setNumber: 2, weightKg: 20, reps: 10),
+      LoggedSet(exerciseId: 101, setNumber: 3, weightKg: 20, reps: 10),
+    ]));
+
+    expect(find.text('Next exercise'), findsOneWidget);
+    expect(
+      tester.widgetList<SetRow>(find.byType(SetRow)).map((row) => row.active),
+      [false, false, false],
+    );
+  });
+
   // The tick used to be what logged a set and started the rest timer; that
   // wiring moved off SetRow entirely in this task -- a footer button reads
   // the same drafted fields instead (logger_action.dart, a later task).

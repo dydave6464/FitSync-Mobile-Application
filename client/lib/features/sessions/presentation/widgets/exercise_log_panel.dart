@@ -22,6 +22,7 @@ class ExerciseLogPanel extends StatelessWidget {
     required this.session,
     required this.onUndoSet,
     required this.drafts,
+    this.activeSetNumber,
     this.last,
     this.onOpenDemo,
     this.unit = WeightUnit.kg,
@@ -41,18 +42,16 @@ class ExerciseLogPanel extends StatelessWidget {
   /// Which unit every weight here is shown in and typed in.
   final WeightUnit unit;
 
+  /// The set about to be done -- the lowest with nothing stored against it,
+  /// or null once the exercise is finished. Handed in rather than worked out
+  /// here: the footer button names this same set ("Complete set 3"), and the
+  /// logger screen derives it once so the highlighted row and the button
+  /// cannot disagree. A panel built without it highlights nothing.
+  final int? activeSetNumber;
+
   /// Resolves the exercise's artwork. Empty renders the equipment-icon
   /// fallback, which is what a panel built without a repository shows.
   final String baseUrl;
-
-  /// The next set to be done: the lowest set number with nothing stored
-  /// against it, or null once the exercise is finished.
-  int? get _activeSetNumber {
-    for (var number = 1; number <= exercise.targetSets; number++) {
-      if (session?.setFor(exercise.exerciseId, number) == null) return number;
-    }
-    return null;
-  }
 
   /// The mockup's single mono line under the exercise name.
   String get _targetLine {
@@ -93,7 +92,6 @@ class ExerciseLogPanel extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final t = context.fs;
-    final active = _activeSetNumber;
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -239,7 +237,7 @@ class ExerciseLogPanel extends StatelessWidget {
                           logged: stored,
                           drafts: drafts,
                           unit: unit,
-                          active: setNumber == active,
+                          active: setNumber == activeSetNumber,
                           onReopen: () => onUndoSet(setNumber),
                         );
                       }),

@@ -786,6 +786,8 @@ class _SessionLoggerScreenState extends ConsumerState<SessionLoggerScreen> {
                       child: ExerciseLogPanel(
                         exercise: exercise,
                         session: session,
+                        // The same value the footer button names below.
+                        activeSetNumber: _activeSetNumber(exercise, session),
                         last: last?[exercise.exerciseId],
                         drafts: _drafts,
                         unit: unit,

@@ -201,24 +201,35 @@ void main() {
   // The mockup highlights the set you are about to do, not the ones already
   // finished. Without it every empty row looks the same and nothing on screen
   // says which one is next.
-  testWidgets('the next unlogged set is the highlighted one', (tester) async {
+  //
+  // WHICH set that is, is the logger screen's to work out -- it hands the
+  // same number to the footer button, so the two cannot disagree. What is
+  // left here is that the panel marks the row it is handed and no other.
+  // session_logger_screen_test.dart's 'the highlighted row is the set the
+  // button names' is what covers the derivation itself.
+  testWidgets('the panel highlights the set it is handed', (tester) async {
     await tester.pumpWidget(_host(ExerciseLogPanel(
       exercise: _exercise,
       session: _session(sets: const [
         LoggedSet(exerciseId: 101, setNumber: 1, weightKg: 20, reps: 10),
       ]),
+      activeSetNumber: 2,
       drafts: _drafts(tester),
       onUndoSet: (_) async {},
     )));
 
-    // Three target sets: the first is done, so the second is next.
+    // Three target sets, and only the one named is drawn as next.
     expect(
       tester.widgetList<SetRow>(find.byType(SetRow)).map((row) => row.active),
       [false, true, false],
     );
   });
 
-  testWidgets('a finished exercise highlights nothing', (tester) async {
+  // Null is what a finished exercise is handed -- see the screen test named
+  // above. Passed explicitly rather than left to the default, so this says
+  // what it means.
+  testWidgets('handed no active set, the panel highlights nothing',
+      (tester) async {
     await tester.pumpWidget(_host(ExerciseLogPanel(
       exercise: _exercise,
       session: _session(sets: const [
@@ -226,6 +237,7 @@ void main() {
         LoggedSet(exerciseId: 101, setNumber: 2, weightKg: 20, reps: 10),
         LoggedSet(exerciseId: 101, setNumber: 3, weightKg: 20, reps: 10),
       ]),
+      activeSetNumber: null,
       drafts: _drafts(tester),
       onUndoSet: (_) async {},
     )));
