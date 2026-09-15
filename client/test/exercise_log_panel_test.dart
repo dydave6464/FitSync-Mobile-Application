@@ -369,14 +369,14 @@ void main() {
   });
 
   // The tick used to be what logged a set; it moved off SetRow entirely in
-  // this task (a footer button reads the same drafted fields instead, in a
-  // later task). What is left to verify at this layer is that an unlogged
-  // row's mark genuinely does nothing -- no report, no consumed text.
-  testWidgets('an unlogged row does not report anything on tap', (tester) async {
-    int? gotSet;
-    double? gotWeight;
-    int? gotReps;
-
+  // this task (a footer button reads the same drafted fields instead). What
+  // is left to verify at this layer is that a tap on an unlogged row does
+  // not CONSUME what has been typed -- the text survives for the footer
+  // button to read. Whether anything was reported is not observable from
+  // here: the panel's only callback is onUndoSet, and
+  // 'an unlogged row is not a reopen target' below is what asserts that.
+  testWidgets('a tap on an unlogged row leaves the typed weight in place',
+      (tester) async {
     await tester.pumpWidget(_host(ExerciseLogPanel(
       exercise: _exercise,
       session: _session(),
@@ -389,9 +389,6 @@ void main() {
     await tester.tap(find.byKey(const Key('set.1.tick')));
     await tester.pumpAndSettle();
 
-    expect(gotSet, isNull);
-    expect(gotWeight, isNull);
-    expect(gotReps, isNull);
     expect(
       tester.widget<TextField>(find.byKey(const Key('set.1.weight'))).controller!.text,
       '25',
@@ -400,10 +397,10 @@ void main() {
 
   // parseWeight('', ...) returning null -- so an empty field is never sent
   // as a zero -- is covered directly in units_test.dart. Here, the same as
-  // above: a tap on an unlogged row must not consume or report the field.
-  testWidgets('an unlogged row leaves an empty weight field alone on tap',
+  // above, for the field that was never filled in: a tap must not put
+  // anything into it either.
+  testWidgets('a tap on an unlogged row leaves an empty weight field empty',
       (tester) async {
-    double? gotWeight = 99;
     await tester.pumpWidget(_host(ExerciseLogPanel(
       exercise: _exercise,
       session: _session(),
@@ -415,29 +412,10 @@ void main() {
     await tester.tap(find.byKey(const Key('set.1.tick')));
     await tester.pumpAndSettle();
 
-    expect(gotWeight, 99);
     expect(
       tester.widget<TextField>(find.byKey(const Key('set.1.weight'))).controller!.text,
       isEmpty,
     );
-  });
-
-  // The inline Retry this used to show moved with the write itself -- there
-  // is no failure state left on SetRow to render it from. A tap that reaches
-  // nothing must leave no trace of one either.
-  testWidgets('an unlogged row shows no retry affordance after a tap', (tester) async {
-    await tester.pumpWidget(_host(ExerciseLogPanel(
-      exercise: _exercise,
-      session: _session(),
-      drafts: _drafts(tester),
-      onUndoSet: (_) async {},
-    )));
-
-    await tester.enterText(find.byKey(const Key('set.1.reps')), '8');
-    await tester.tap(find.byKey(const Key('set.1.tick')));
-    await tester.pumpAndSettle();
-
-    expect(find.text('Retry'), findsNothing);
   });
 
   // The mid-write edit. The footer button read '100' out of the field and
@@ -573,9 +551,19 @@ void main() {
     expect(undone, 1);
   });
 
-  // The tick reports that a set is stored. It is not how a set is stored --
-  // that is the footer button, which is a target several times the size.
-  testWidgets('the tick is an indicator, not a button', (tester) async {
+  // What this can actually check: the tick REGION of an unlogged row fires
+  // no callback -- a handler re-added to the mark itself would call
+  // onUndoSet and be caught here, where 'an unlogged row is not a reopen
+  // target' below taps the row's centre and would miss it.
+  //
+  // What it cannot: it does not prove the tick is an indicator rather than a
+  // button, because the row around it is inert too -- it cannot tell "the
+  // tick has no handler" from "the row has none". That property is proven
+  // where the row is live: 'tapping a ticked set un-ticks it' above shows a
+  // tap on a STORED row's tick resolving to the row's own reopen, and
+  // session_logger_screen_test.dart's two "an unlogged row's tick" tests
+  // prove it against a real controller.
+  testWidgets('an unlogged row\'s tick fires no callback', (tester) async {
     var undos = 0;
     await tester.pumpWidget(_host(ExerciseLogPanel(
       exercise: _exercise,
