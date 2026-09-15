@@ -17,6 +17,7 @@ import 'in_session_exercise_screen.dart';
 import 'providers.dart';
 import 'widgets/exercise_jump_sheet.dart';
 import 'widgets/exercise_log_panel.dart';
+import 'widgets/logger_action.dart';
 import 'widgets/rest_timer.dart';
 import 'widgets/set_drafts.dart';
 import 'workout_draft.dart' show chosenSplitStyleProvider;
@@ -133,6 +134,15 @@ class _SessionLoggerScreenState extends ConsumerState<SessionLoggerScreen> {
     if (error.code != 'SESSION_NOT_IN_PROGRESS') return false;
     if (mounted) _handleAlreadyClosed(messenger);
     return true;
+  }
+
+  /// The next set to be done: the lowest set number with nothing stored
+  /// against it, or null once the exercise is finished.
+  int? _activeSetNumber(PlanExercise exercise, ActiveSession session) {
+    for (var number = 1; number <= exercise.targetSets; number++) {
+      if (session.setFor(exercise.exerciseId, number) == null) return number;
+    }
+    return null;
   }
 
   /// Opens the jump sheet and moves to whatever it returns.
@@ -737,13 +747,29 @@ class _SessionLoggerScreenState extends ConsumerState<SessionLoggerScreen> {
               top: false,
               child: Padding(
                 padding: const EdgeInsets.fromLTRB(20, 0, 20, 16),
-                child: FsButton(
-                  key: const Key('logger.primary'),
-                  label: isLast ? 'Finish session' : 'Continue',
-                  icon: Icon(isLast ? Icons.check : Icons.arrow_forward),
-                  onPressed: isLast
-                      ? (_finishing ? null : _finish)
-                      : () => setState(() => _index = index + 1),
+                child: LoggerAction(
+                  activeSetNumber: _activeSetNumber(exercise, session),
+                  isLastExercise: isLast,
+                  drafts: _drafts,
+                  unit: unit,
+                  finishing: _finishing,
+                  onCompleteSet: (setNumber, weightKg, reps) async {
+                    final messenger = ScaffoldMessenger.of(context);
+                    try {
+                      await ref.read(activeSessionProvider.notifier).logSet(
+                            exerciseId: exercise.exerciseId,
+                            setNumber: setNumber,
+                            weightKg: weightKg,
+                            reps: reps,
+                          );
+                    } on ApiException catch (error) {
+                      if (!_handledSetWriteClosure(error, messenger)) rethrow;
+                      return;
+                    }
+                    if (mounted) setState(() => _resting = true);
+                  },
+                  onNextExercise: () => setState(() => _index = index + 1),
+                  onFinish: _finish,
                 ),
               ),
             ),

@@ -461,7 +461,13 @@ void main() {
   });
 
   testWidgets('the footer advances to the next exercise', (tester) async {
-    await _pump(tester);
+    // The footer now logs the active set; pre-loading every set on the
+    // first exercise is what makes it read "Next exercise" instead.
+    await _pump(tester, session: _session(sets: const [
+      LoggedSet(exerciseId: 101, setNumber: 1, weightKg: 20, reps: 10),
+      LoggedSet(exerciseId: 101, setNumber: 2, weightKg: 20, reps: 10),
+      LoggedSet(exerciseId: 101, setNumber: 3, weightKg: 20, reps: 10),
+    ]));
 
     await tester.tap(find.byKey(const Key('logger.primary')));
     await tester.pumpAndSettle();
@@ -471,7 +477,13 @@ void main() {
   });
 
   testWidgets('the header names the position in the workout', (tester) async {
-    await _pump(tester);
+    // The footer now logs the active set; pre-loading every set on the
+    // first exercise is what makes it read "Next exercise" instead.
+    await _pump(tester, session: _session(sets: const [
+      LoggedSet(exerciseId: 101, setNumber: 1, weightKg: 20, reps: 10),
+      LoggedSet(exerciseId: 101, setNumber: 2, weightKg: 20, reps: 10),
+      LoggedSet(exerciseId: 101, setNumber: 3, weightKg: 20, reps: 10),
+    ]));
     expect(find.textContaining('Exercise 1 / 2'), findsOneWidget);
 
     await tester.tap(find.byKey(const Key('logger.primary')));
@@ -530,7 +542,13 @@ void main() {
 
   testWidgets('back steps to the previous exercise before leaving the logger',
       (tester) async {
-    await _pump(tester);
+    // The footer now logs the active set; pre-loading every set on the
+    // first exercise is what makes it read "Next exercise" instead.
+    await _pump(tester, session: _session(sets: const [
+      LoggedSet(exerciseId: 101, setNumber: 1, weightKg: 20, reps: 10),
+      LoggedSet(exerciseId: 101, setNumber: 2, weightKg: 20, reps: 10),
+      LoggedSet(exerciseId: 101, setNumber: 3, weightKg: 20, reps: 10),
+    ]));
     await tester.tap(find.byKey(const Key('logger.primary')));
     await tester.pumpAndSettle();
     expect(find.textContaining('Exercise 2 / 2'), findsOneWidget);
@@ -635,7 +653,13 @@ void main() {
   // produces -- so only the second exercise tells the two apart.
   testWidgets('opening the demo shows the exercise on screen, not the first',
       (tester) async {
-    await _pump(tester);
+    // The footer now logs the active set; pre-loading every set on the
+    // first exercise is what makes it read "Next exercise" instead.
+    await _pump(tester, session: _session(sets: const [
+      LoggedSet(exerciseId: 101, setNumber: 1, weightKg: 20, reps: 10),
+      LoggedSet(exerciseId: 101, setNumber: 2, weightKg: 20, reps: 10),
+      LoggedSet(exerciseId: 101, setNumber: 3, weightKg: 20, reps: 10),
+    ]));
     await tester.tap(find.byKey(const Key('logger.primary')));
     await tester.pumpAndSettle();
 
