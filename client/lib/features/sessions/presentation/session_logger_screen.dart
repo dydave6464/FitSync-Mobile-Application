@@ -18,6 +18,7 @@ import 'providers.dart';
 import 'widgets/exercise_jump_sheet.dart';
 import 'widgets/exercise_log_panel.dart';
 import 'widgets/rest_timer.dart';
+import 'widgets/set_drafts.dart';
 import 'workout_draft.dart' show chosenSplitStyleProvider;
 
 /// The active workout, one exercise at a time: its set table, Continue to
@@ -39,6 +40,26 @@ class _SessionLoggerScreenState extends ConsumerState<SessionLoggerScreen> {
   /// shortened plan would throw on the next build.
   int _index = 0;
   bool _resting = false;
+
+  /// One store per exercise on screen. Rebuilt when the exercise changes, so
+  /// a set number means one thing at a time.
+  SetDrafts _drafts = SetDrafts();
+  int _draftsForIndex = 0;
+
+  /// Swaps the store when the exercise changes. Called from build, which is
+  /// the only place that knows the clamped index.
+  void _syncDrafts(int index) {
+    if (index == _draftsForIndex) return;
+    _drafts.dispose();
+    _drafts = SetDrafts();
+    _draftsForIndex = index;
+  }
+
+  @override
+  void dispose() {
+    _drafts.dispose();
+    super.dispose();
+  }
 
   /// The session as last seen from the controller.
   ///
@@ -116,6 +137,8 @@ class _SessionLoggerScreenState extends ConsumerState<SessionLoggerScreen> {
   /// the old unit, which is honest -- the toggle reflects stored state rather
   /// than optimistically flipping and silently reverting.
   Future<void> _setUnit(WeightUnit unit) async {
+    final previous = ref.read(profileProvider).value?.weightUnit ?? WeightUnit.kg;
+    if (previous != unit) _drafts.convert(previous, unit);
     final messenger = ScaffoldMessenger.of(context);
     try {
       await ref.read(profileProvider.notifier).patch({'weightUnit': unit.api});
@@ -540,6 +563,7 @@ class _SessionLoggerScreenState extends ConsumerState<SessionLoggerScreen> {
       );
     }
     final index = _index.clamp(0, exercises.length - 1);
+    _syncDrafts(index);
     final exercise = exercises[index];
     final isLast = index == exercises.length - 1;
 
@@ -643,6 +667,7 @@ class _SessionLoggerScreenState extends ConsumerState<SessionLoggerScreen> {
                   exercise: exercise,
                   session: session,
                   last: last?[exercise.exerciseId],
+                  drafts: _drafts,
                   unit: unit,
                   onUnitChanged: _setUnit,
                   baseUrl: ref.watch(exerciseRepositoryProvider).baseUrl,

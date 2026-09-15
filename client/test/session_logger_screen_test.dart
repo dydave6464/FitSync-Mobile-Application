@@ -592,7 +592,12 @@ void main() {
     semantics.dispose();
   });
 
-  testWidgets('ticking a set reaches the controller and starts the rest timer', (tester) async {
+  // The tick used to be what logged a set and started the rest timer; that
+  // wiring moved off SetRow entirely in this task -- a footer button reads
+  // the same drafted fields instead (logger_action.dart, a later task).
+  // What is left to verify here is that an unlogged row's mark genuinely
+  // reaches nothing: no call to the controller, no rest timer.
+  testWidgets('an unlogged row\'s tick does not reach the controller', (tester) async {
     final controller = await _pump(tester);
 
     await tester.enterText(find.byKey(const Key('set.1.weight')), '25');
@@ -600,11 +605,15 @@ void main() {
     await tester.tap(find.byKey(const Key('set.1.tick')));
     await tester.pumpAndSettle();
 
-    expect(controller.calls, contains('log:101:1:25.0:8'));
-    expect(find.byKey(const Key('rest.remaining')), findsOneWidget);
+    expect(controller.calls, isNot(contains('log:101:1:25.0:8')));
+    expect(find.byKey(const Key('rest.remaining')), findsNothing);
   });
 
-  testWidgets('a failed write shows a retry and no rest timer', (tester) async {
+  // Same point from the other side: even a controller primed to fail a
+  // write is never given the chance to, because the tap that used to reach
+  // it no longer does.
+  testWidgets('an unlogged row\'s tick does not reach a controller primed to fail',
+      (tester) async {
     final controller = await _pump(tester);
     controller.logSetError = Exception('offline');
 
@@ -612,7 +621,8 @@ void main() {
     await tester.tap(find.byKey(const Key('set.1.tick')));
     await tester.pumpAndSettle();
 
-    expect(find.text('Retry'), findsOneWidget);
+    expect(controller.calls, isEmpty);
+    expect(find.text('Retry'), findsNothing);
     expect(find.byKey(const Key('rest.remaining')), findsNothing);
   });
 
@@ -806,10 +816,12 @@ void main() {
 
   // Beyond the brief -- carried issue (b): task 9's race fix made logSet
   // re-read _current AFTER its await, so a completion landing mid-write makes
-  // that write throw the raw StateError. The set must fall back to the same
-  // retry affordance as any other failed write -- and, because the write did
-  // not store anything, must not start a rest countdown.
-  testWidgets('a set write the controller rejects mid-flight offers a retry',
+  // that write throw the raw StateError. That failure path is now reached
+  // through the footer button rather than the tick (a later task); what
+  // stays true of the row itself is that a tap never reaches the controller
+  // at all, mid-flight race or not, so nothing here can throw.
+  testWidgets(
+      'an unlogged row\'s tick does not reach a controller that would race mid-flight',
       (tester) async {
     final controller = await _pump(tester);
     controller.logSetError = StateError('No session is in progress.');
@@ -818,7 +830,8 @@ void main() {
     await tester.tap(find.byKey(const Key('set.1.tick')));
     await tester.pumpAndSettle();
 
-    expect(find.text('Retry'), findsOneWidget);
+    expect(controller.calls, isEmpty);
+    expect(find.text('Retry'), findsNothing);
     expect(find.byKey(const Key('rest.remaining')), findsNothing);
     expect(tester.takeException(), isNull);
   });
@@ -841,12 +854,13 @@ void main() {
   });
 
   // Beyond the brief -- spec section 8 says a SESSION_NOT_IN_PROGRESS response
-  // closes the logger and refetches. That was wired for Finish and Discard but
-  // not for the set writes, where SetRow's blanket catch turned the 409 into an
-  // inline Retry that can never succeed: a session closed on another device
-  // left the user tapping Retry forever.
-  testWidgets('a 409 on a set write closes the logger instead of offering a dead retry',
-      (tester) async {
+  // closes the logger and refetches. That handling sits behind the same write
+  // call as every other set-write test above, so it moves with it (a later
+  // task); an unlogged row's tick reaching nothing means this session stays
+  // open and untouched rather than closing on a write nothing triggered.
+  testWidgets(
+      'an unlogged row\'s tick does not reach a controller primed to report the '
+      'session closed', (tester) async {
     final controller = await _pump(tester);
     controller.logSetError = const ApiException(
       'SESSION_NOT_IN_PROGRESS', 'This session has already been closed.',
@@ -856,10 +870,10 @@ void main() {
     await tester.tap(find.byKey(const Key('set.1.tick')));
     await tester.pumpAndSettle();
 
+    expect(controller.calls, isEmpty);
     expect(find.text('Retry'), findsNothing);
-    expect(find.byType(SessionLoggerScreen), findsNothing);
-    expect(find.text('open logger'), findsOneWidget);
-    expect(find.text('This session was already finished.'), findsOneWidget);
+    expect(find.byType(SessionLoggerScreen), findsOneWidget);
+    expect(find.text('This session was already finished.'), findsNothing);
     expect(tester.takeException(), isNull);
   });
 

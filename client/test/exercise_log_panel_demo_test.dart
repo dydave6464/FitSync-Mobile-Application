@@ -10,6 +10,7 @@ import 'package:fitsync/core/theme.dart';
 import 'package:fitsync/features/plans/domain/workout_plan.dart';
 import 'package:fitsync/features/sessions/domain/active_session.dart';
 import 'package:fitsync/features/sessions/presentation/widgets/exercise_log_panel.dart';
+import 'package:fitsync/features/sessions/presentation/widgets/set_drafts.dart';
 
 const _exercise = PlanExercise(
   planExerciseId: 601,
@@ -35,6 +36,13 @@ Widget _host(Widget child) => MaterialApp(
 
 final _demoButton = find.byKey(const Key('logpanel.demo.101'));
 
+/// A fresh store per test, torn down with the test.
+SetDrafts _drafts(WidgetTester tester) {
+  final drafts = SetDrafts();
+  addTearDown(drafts.dispose);
+  return drafts;
+}
+
 void main() {
   testWidgets('tapping the demo affordance invokes onOpenDemo', (tester) async {
     var opened = false;
@@ -42,6 +50,7 @@ void main() {
     await tester.pumpWidget(_host(ExerciseLogPanel(
       exercise: _exercise,
       session: _session(),
+      drafts: _drafts(tester),
       onCompleteSet: (_, _, _) async {},
       onUndoSet: (_) async {},
       onOpenDemo: () => opened = true,
@@ -58,6 +67,7 @@ void main() {
     await tester.pumpWidget(_host(ExerciseLogPanel(
       exercise: _exercise,
       session: _session(),
+      drafts: _drafts(tester),
       onCompleteSet: (_, _, _) async {},
       onUndoSet: (_) async {},
     )));

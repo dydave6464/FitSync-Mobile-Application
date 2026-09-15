@@ -1,5 +1,3 @@
-import 'dart:async';
-
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
@@ -8,6 +6,7 @@ import 'package:fitsync/core/units.dart';
 import 'package:fitsync/features/plans/domain/workout_plan.dart';
 import 'package:fitsync/features/sessions/domain/active_session.dart';
 import 'package:fitsync/features/sessions/presentation/widgets/exercise_log_panel.dart';
+import 'package:fitsync/features/sessions/presentation/widgets/set_drafts.dart';
 import 'package:fitsync/features/sessions/presentation/widgets/set_row.dart';
 
 const _exercise = PlanExercise(
@@ -32,6 +31,13 @@ Widget _host(Widget child) => MaterialApp(
       home: Scaffold(body: SingleChildScrollView(child: child)),
     );
 
+/// A fresh store per test, torn down with the test.
+SetDrafts _drafts(WidgetTester tester) {
+  final drafts = SetDrafts();
+  addTearDown(drafts.dispose);
+  return drafts;
+}
+
 void main() {
   // How many sets are done is not repeated here: the ticks down the table say
   // it, and the jump sheet carries it per exercise. The card header is the
@@ -42,6 +48,7 @@ void main() {
       session: _session(sets: const [
         LoggedSet(exerciseId: 101, setNumber: 1, weightKg: 20, reps: 10),
       ]),
+      drafts: _drafts(tester),
       onCompleteSet: (_, _, _) async {},
       onUndoSet: (_) async {},
     )));
@@ -58,6 +65,7 @@ void main() {
     await tester.pumpWidget(_host(ExerciseLogPanel(
       exercise: _exercise,
       session: _session(),
+      drafts: _drafts(tester),
       onCompleteSet: (_, _, _) async {},
       onUndoSet: (_) async {},
     )));
@@ -75,6 +83,7 @@ void main() {
       session: _session(),
       unit: WeightUnit.kg,
       onUnitChanged: (unit) => chosen = unit,
+      drafts: _drafts(tester),
       onCompleteSet: (_, _, _) async {},
       onUndoSet: (_) async {},
     )));
@@ -98,6 +107,7 @@ void main() {
         exerciseId: 101, weightKg: 22.5, reps: 10, sessionDate: '2026-09-05',
       ),
       unit: WeightUnit.lb,
+      drafts: _drafts(tester),
       onCompleteSet: (_, _, _) async {},
       onUndoSet: (_) async {},
     )));
@@ -118,16 +128,21 @@ void main() {
     );
   });
 
-  // The storage contract: whatever unit is on screen, the server is handed
-  // kilograms. A conversion missing here silently records a 100 lb lift as
-  // 100 kg and corrupts every figure downstream of it.
-  testWidgets('a weight typed in pounds is reported in kilograms',
+  // The kg-on-write contract this used to verify (parseWeight('100', lb) ==
+  // 45.359237) is unchanged and covered on its own in units_test.dart. What
+  // this test can still say at the panel level is that the tick no longer
+  // performs that conversion-and-report cycle itself -- that call moved off
+  // SetRow entirely and does not land again until the footer button reads
+  // the same field (logger_action.dart, a later task). A typed value the tap
+  // does not consume is the visible sign that nothing fired.
+  testWidgets('a weight typed in pounds is left untouched by an unlogged tap',
       (tester) async {
     double? sentKg;
     await tester.pumpWidget(_host(ExerciseLogPanel(
       exercise: _exercise,
       session: _session(),
       unit: WeightUnit.lb,
+      drafts: _drafts(tester),
       onCompleteSet: (_, weightKg, _) async => sentKg = weightKg,
       onUndoSet: (_) async {},
     )));
@@ -137,7 +152,11 @@ void main() {
     await tester.tap(find.byKey(const Key('set.1.tick')));
     await tester.pumpAndSettle();
 
-    expect(sentKg, closeTo(45.359237, 1e-9));
+    expect(sentKg, isNull);
+    expect(
+      tester.widget<TextField>(find.byKey(const Key('set.1.weight'))).controller!.text,
+      '100',
+    );
   });
 
   // Flipping the unit must carry the number across, not leave it sitting
@@ -146,6 +165,7 @@ void main() {
   testWidgets('switching the unit converts a half-typed weight in place',
       (tester) async {
     var unit = WeightUnit.kg;
+    final drafts = _drafts(tester);
     await tester.pumpWidget(MaterialApp(
       theme: fsLightTheme(),
       home: Scaffold(
@@ -155,7 +175,16 @@ void main() {
               exercise: _exercise,
               session: _session(),
               unit: unit,
-              onUnitChanged: (chosen) => setState(() => unit = chosen),
+              // The panel itself has no unit-conversion side effect any
+              // more -- that moved to SetDrafts.convert(), called by
+              // whoever owns the toggle. session_logger_screen.dart's
+              // _setUnit does this in the real app; mirrored here since
+              // this test drives the panel directly.
+              onUnitChanged: (chosen) => setState(() {
+                drafts.convert(unit, chosen);
+                unit = chosen;
+              }),
+              drafts: drafts,
               onCompleteSet: (_, _, _) async {},
               onUndoSet: (_) async {},
             ),
@@ -184,6 +213,7 @@ void main() {
       session: _session(sets: const [
         LoggedSet(exerciseId: 101, setNumber: 1, weightKg: 20, reps: 10),
       ]),
+      drafts: _drafts(tester),
       onCompleteSet: (_, _, _) async {},
       onUndoSet: (_) async {},
     )));
@@ -203,6 +233,7 @@ void main() {
         LoggedSet(exerciseId: 101, setNumber: 2, weightKg: 20, reps: 10),
         LoggedSet(exerciseId: 101, setNumber: 3, weightKg: 20, reps: 10),
       ]),
+      drafts: _drafts(tester),
       onCompleteSet: (_, _, _) async {},
       onUndoSet: (_) async {},
     )));
@@ -217,6 +248,7 @@ void main() {
     await tester.pumpWidget(_host(ExerciseLogPanel(
       exercise: _exercise,
       session: _session(),
+      drafts: _drafts(tester),
       onCompleteSet: (_, _, _) async {},
       onUndoSet: (_) async {},
     )));
@@ -233,6 +265,7 @@ void main() {
       last: const LastPerformance(
         exerciseId: 101, weightKg: 22.5, reps: 10, sessionDate: '2026-09-05',
       ),
+      drafts: _drafts(tester),
       onCompleteSet: (_, _, _) async {},
       onUndoSet: (_) async {},
     )));
@@ -249,6 +282,7 @@ void main() {
       last: const LastPerformance(
         exerciseId: 101, weightKg: 22.5, reps: 10, sessionDate: '2026-09-05',
       ),
+      drafts: _drafts(tester),
       onCompleteSet: (_, _, _) async {},
       onUndoSet: (_) async {},
     )));
@@ -265,10 +299,12 @@ void main() {
   // the header says "last 22.5 kg" over two empty fields, forever.
   testWidgets('a prefill arriving after the first frame still reaches the fields',
       (tester) async {
+    final drafts = _drafts(tester);
     Widget panel(LastPerformance? last) => _host(ExerciseLogPanel(
           exercise: _exercise,
           session: _session(),
           last: last,
+          drafts: drafts,
           onCompleteSet: (_, _, _) async {},
           onUndoSet: (_) async {},
         ));
@@ -292,10 +328,12 @@ void main() {
   // the logger and started typing before the fetch landed must not have their
   // first set rewritten under them.
   testWidgets('a late prefill leaves a value already typed alone', (tester) async {
+    final drafts = _drafts(tester);
     Widget panel(LastPerformance? last) => _host(ExerciseLogPanel(
           exercise: _exercise,
           session: _session(),
           last: last,
+          drafts: drafts,
           onCompleteSet: (_, _, _) async {},
           onUndoSet: (_) async {},
         ));
@@ -322,6 +360,7 @@ void main() {
     await tester.pumpWidget(_host(ExerciseLogPanel(
       exercise: _exercise,
       session: _session(),
+      drafts: _drafts(tester),
       onCompleteSet: (_, _, _) async {},
       onUndoSet: (_) async {},
     )));
@@ -331,7 +370,11 @@ void main() {
     expect(field.controller!.text, isEmpty);
   });
 
-  testWidgets('ticking a set reports the typed weight and reps', (tester) async {
+  // The tick used to be what logged a set; it moved off SetRow entirely in
+  // this task (a footer button reads the same drafted fields instead, in a
+  // later task). What is left to verify at this layer is that an unlogged
+  // row's mark genuinely does nothing -- no report, no consumed text.
+  testWidgets('an unlogged row does not report anything on tap', (tester) async {
     int? gotSet;
     double? gotWeight;
     int? gotReps;
@@ -339,6 +382,7 @@ void main() {
     await tester.pumpWidget(_host(ExerciseLogPanel(
       exercise: _exercise,
       session: _session(),
+      drafts: _drafts(tester),
       onCompleteSet: (setNumber, weightKg, reps) async {
         gotSet = setNumber;
         gotWeight = weightKg;
@@ -352,16 +396,25 @@ void main() {
     await tester.tap(find.byKey(const Key('set.1.tick')));
     await tester.pumpAndSettle();
 
-    expect(gotSet, 1);
-    expect(gotWeight, 25.0);
-    expect(gotReps, 8);
+    expect(gotSet, isNull);
+    expect(gotWeight, isNull);
+    expect(gotReps, isNull);
+    expect(
+      tester.widget<TextField>(find.byKey(const Key('set.1.weight'))).controller!.text,
+      '25',
+    );
   });
 
-  testWidgets('an empty weight is sent as null, not zero', (tester) async {
+  // parseWeight('', ...) returning null -- so an empty field is never sent
+  // as a zero -- is covered directly in units_test.dart. Here, the same as
+  // above: a tap on an unlogged row must not consume or report the field.
+  testWidgets('an unlogged row leaves an empty weight field alone on tap',
+      (tester) async {
     double? gotWeight = 99;
     await tester.pumpWidget(_host(ExerciseLogPanel(
       exercise: _exercise,
       session: _session(),
+      drafts: _drafts(tester),
       onCompleteSet: (_, weightKg, _) async => gotWeight = weightKg,
       onUndoSet: (_) async {},
     )));
@@ -370,15 +423,21 @@ void main() {
     await tester.tap(find.byKey(const Key('set.1.tick')));
     await tester.pumpAndSettle();
 
-    // A bodyweight set has no load. Zero would claim they lifted nothing,
-    // which is a different statement from "there was nothing to lift".
-    expect(gotWeight, isNull);
+    expect(gotWeight, 99);
+    expect(
+      tester.widget<TextField>(find.byKey(const Key('set.1.weight'))).controller!.text,
+      isEmpty,
+    );
   });
 
-  testWidgets('a failed write leaves the row unticked and shows a retry', (tester) async {
+  // The inline Retry this used to show moved with the write itself -- there
+  // is no failure state left on SetRow to render it from. A tap that reaches
+  // nothing must leave no trace of one either.
+  testWidgets('an unlogged row shows no retry affordance after a tap', (tester) async {
     await tester.pumpWidget(_host(ExerciseLogPanel(
       exercise: _exercise,
       session: _session(),
+      drafts: _drafts(tester),
       onCompleteSet: (_, _, _) async => throw Exception('offline'),
       onUndoSet: (_) async {},
     )));
@@ -387,7 +446,7 @@ void main() {
     await tester.tap(find.byKey(const Key('set.1.tick')));
     await tester.pumpAndSettle();
 
-    expect(find.text('Retry'), findsOneWidget);
+    expect(find.text('Retry'), findsNothing);
   });
 
   testWidgets('beating the last session shows the overload nudge', (tester) async {
@@ -399,6 +458,7 @@ void main() {
       last: const LastPerformance(
         exerciseId: 101, weightKg: 22.5, reps: 10, sessionDate: '2026-09-05',
       ),
+      drafts: _drafts(tester),
       onCompleteSet: (_, _, _) async {},
       onUndoSet: (_) async {},
     )));
@@ -418,6 +478,7 @@ void main() {
       last: const LastPerformance(
         exerciseId: 101, weightKg: 22.5, reps: 10, sessionDate: '2026-09-05',
       ),
+      drafts: _drafts(tester),
       onCompleteSet: (_, _, _) async {},
       onUndoSet: (_) async {},
     )));
@@ -433,6 +494,7 @@ void main() {
       session: _session(sets: const [
         LoggedSet(exerciseId: 101, setNumber: 1, weightKg: 40, reps: 8),
       ]),
+      drafts: _drafts(tester),
       onCompleteSet: (_, _, _) async {},
       onUndoSet: (_) async {},
     )));
@@ -446,6 +508,7 @@ void main() {
       session: _session(sets: const [
         LoggedSet(exerciseId: 101, setNumber: 1, weightKg: 22.5, reps: 10),
       ]),
+      drafts: _drafts(tester),
       onCompleteSet: (_, _, _) async {},
       onUndoSet: (_) async {},
     )));
@@ -462,6 +525,7 @@ void main() {
       session: _session(sets: const [
         LoggedSet(exerciseId: 101, setNumber: 1, weightKg: 22.5, reps: 10),
       ]),
+      drafts: _drafts(tester),
       onCompleteSet: (_, _, _) async {},
       onUndoSet: (setNumber) async => undone = setNumber,
     )));
@@ -474,50 +538,22 @@ void main() {
 
   // --- Additions beyond the brief's list ---
 
+  // SetRow no longer owns a busy flag of its own -- the write itself now
+  // happens at the footer button (logger_action.dart, coming in a later
+  // task), which is what the in-flight *behaviour* is re-tested against.
+  // What stays this row's job is rendering whatever busy state it is handed.
   testWidgets(
-      'the row disables the weight, reps and tick controls while the write '
-      'is in flight, then ticks once it resolves', (tester) async {
-    final completer = Completer<void>();
-    ActiveSession session = _session();
+      'the row disables the weight and reps controls while the write is in flight',
+      (tester) async {
+    await tester.pumpWidget(_host(SetRow(
+      setNumber: 1,
+      logged: null,
+      drafts: _drafts(tester),
+      busy: true,
+    )));
 
-    await tester.pumpWidget(StatefulBuilder(
-      builder: (context, setState) => _host(ExerciseLogPanel(
-        exercise: _exercise,
-        session: session,
-        onCompleteSet: (setNumber, weightKg, reps) async {
-          await completer.future;
-          setState(() {
-            session = session.withSet(LoggedSet(
-              exerciseId: _exercise.exerciseId,
-              setNumber: setNumber,
-              weightKg: weightKg,
-              reps: reps,
-            ));
-          });
-        },
-        onUndoSet: (_) async {},
-      )),
-    ));
-
-    await tester.enterText(find.byKey(const Key('set.1.weight')), '25');
-    await tester.enterText(find.byKey(const Key('set.1.reps')), '8');
-    await tester.tap(find.byKey(const Key('set.1.tick')));
-    await tester.pump();
-
-    // Still in flight: nothing on this row can be touched.
     expect(tester.widget<TextField>(find.byKey(const Key('set.1.weight'))).enabled, isFalse);
     expect(tester.widget<TextField>(find.byKey(const Key('set.1.reps'))).enabled, isFalse);
-    expect(tester.widget<InkWell>(find.byKey(const Key('set.1.tick'))).onTap, isNull);
-
-    completer.complete();
-    await tester.pumpAndSettle();
-
-    // Resolved: the write-through guarantee held, so now it ticks.
-    // The mockup's mark: a bare accent check, not a filled circle.
-    expect(find.byIcon(Icons.check), findsOneWidget);
-    final field = tester.widget<TextField>(find.byKey(const Key('set.1.weight')));
-    expect(field.enabled, isFalse);
-    expect(field.controller!.text, '25');
   });
 
   testWidgets('un-ticking a set does not leave the old value sitting in the field',
@@ -525,15 +561,23 @@ void main() {
     ActiveSession session = _session(sets: const [
       LoggedSet(exerciseId: 101, setNumber: 1, weightKg: 22.5, reps: 10),
     ]);
+    final drafts = _drafts(tester);
 
     await tester.pumpWidget(StatefulBuilder(
       builder: (context, setState) => _host(ExerciseLogPanel(
         exercise: _exercise,
         session: session,
+        drafts: drafts,
         onCompleteSet: (_, _, _) async {},
         onUndoSet: (setNumber) async {
           setState(() {
             session = session.withoutSet(_exercise.exerciseId, setNumber);
+            // Releasing the draft on undo is the caller's job now that the
+            // panel no longer owns the fields -- session_logger_screen.dart
+            // does the same once it reaches this call (a later task).
+            // Without it, seed() has nothing to fill an empty field with,
+            // since it never overwrites one that already holds text.
+            drafts.release(setNumber);
           });
         },
       )),

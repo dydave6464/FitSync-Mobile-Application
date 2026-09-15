@@ -6,6 +6,7 @@ import '../../../../core/widgets/fs_kit.dart';
 import '../../../exercises/presentation/exercise_thumb.dart';
 import '../../../plans/domain/workout_plan.dart';
 import '../../domain/active_session.dart';
+import 'set_drafts.dart';
 import 'set_row.dart';
 
 /// The exercise on screen in the paged logger: its prescription, what was
@@ -21,6 +22,7 @@ class ExerciseLogPanel extends StatelessWidget {
     required this.session,
     required this.onCompleteSet,
     required this.onUndoSet,
+    required this.drafts,
     this.last,
     this.onOpenDemo,
     this.unit = WeightUnit.kg,
@@ -33,6 +35,10 @@ class ExerciseLogPanel extends StatelessWidget {
   final LastPerformance? last;
   final Future<void> Function(int setNumber, double? weightKg, int? reps) onCompleteSet;
   final Future<void> Function(int setNumber) onUndoSet;
+
+  /// Where the typed kg and reps live. Owned by the logger screen, because
+  /// the footer button reads the active row out of it.
+  final SetDrafts drafts;
 
   /// Which unit every weight here is shown in and typed in.
   final WeightUnit unit;
@@ -212,24 +218,29 @@ class ExerciseLogPanel extends StatelessWidget {
                     for (var setNumber = 1;
                         setNumber <= exercise.targetSets;
                         setNumber++)
-                      SetRow(
-                        // Keyed on the stored set's presence so the row
-                        // rebuilds its controllers when a set is ticked or
-                        // un-ticked, rather than keeping stale text.
-                        key: ValueKey(
-                          'set-${exercise.exerciseId}-$setNumber-'
-                          '${session?.setFor(exercise.exerciseId, setNumber) != null}',
-                        ),
-                        setNumber: setNumber,
-                        logged: session?.setFor(exercise.exerciseId, setNumber),
-                        prefillWeightKg: last?.weightKg,
-                        prefillReps: last?.reps,
-                        unit: unit,
-                        active: setNumber == active,
-                        onComplete: (weightKg, reps) =>
-                            onCompleteSet(setNumber, weightKg, reps),
-                        onUndo: () => onUndoSet(setNumber),
-                      ),
+                      Builder(builder: (context) {
+                        final stored =
+                            session?.setFor(exercise.exerciseId, setNumber);
+                        // Seed on every build. SetDrafts only fills an empty
+                        // field, so this is idempotent -- and it is what lets
+                        // a prefill that arrives from a fetch, one frame after
+                        // the table is first drawn, still reach the fields.
+                        drafts.seed(
+                          setNumber: setNumber,
+                          weightKg: stored?.weightKg ?? last?.weightKg,
+                          reps: stored?.reps ?? last?.reps,
+                          unit: unit,
+                        );
+                        return SetRow(
+                          key: ValueKey('set-${exercise.exerciseId}-$setNumber'),
+                          setNumber: setNumber,
+                          logged: stored,
+                          drafts: drafts,
+                          unit: unit,
+                          active: setNumber == active,
+                          onReopen: () => onUndoSet(setNumber),
+                        );
+                      }),
                   ],
                 ),
               ),
