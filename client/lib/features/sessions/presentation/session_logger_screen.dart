@@ -146,10 +146,10 @@ class _SessionLoggerScreenState extends ConsumerState<SessionLoggerScreen> {
   /// progress. Spec section 8: the logger closes and the Plan tab refetches,
   /// rather than leaving a screen editing a session that accepts no writes.
   ///
-  /// [SetRow]'s own blanket catch would otherwise turn the 409 into an inline
+  /// [LoggerAction]'s own blanket catch would otherwise turn the 409 into a
   /// Retry that can never succeed -- a session closed on another device would
   /// leave the user tapping it forever. Nothing is rethrown once this handles
-  /// it: SetRow clears its busy flag as the route pops.
+  /// it: the footer button clears its busy flag as the route pops.
   bool _handledSetWriteClosure(
     ApiException error,
     ScaffoldMessengerState messenger,

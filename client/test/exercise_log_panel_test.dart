@@ -428,6 +428,57 @@ void main() {
     expect(find.text('Retry'), findsNothing);
   });
 
+  // The mid-write edit. The footer button read '100' out of the field and
+  // sent it; the field was then corrected to '105' while that write was
+  // still in flight. Once the write lands the row is read-only, so whatever
+  // it shows is final -- and it has to be what the server actually took.
+  // Seeding that declined to correct the field would leave the table
+  // displaying 105 against a stored set of 100, permanently.
+  testWidgets('a stored set shows what was stored, not an edit made mid-write',
+      (tester) async {
+    ActiveSession session = _session();
+    final drafts = _drafts(tester);
+
+    await tester.pumpWidget(StatefulBuilder(
+      builder: (context, setState) => _host(Column(
+        children: [
+          ExerciseLogPanel(
+            exercise: _exercise,
+            session: session,
+            drafts: drafts,
+            onUndoSet: (_) async {},
+          ),
+          TextButton(
+            // Stands in for the write resolving: the set the server took
+            // arrives on the session one frame after the edit.
+            onPressed: () => setState(() {
+              session = session.withSet(const LoggedSet(
+                exerciseId: 101, setNumber: 1, weightKg: 100, reps: 8,
+              ));
+            }),
+            child: const Text('land the write'),
+          ),
+        ],
+      )),
+    ));
+
+    await tester.enterText(find.byKey(const Key('set.1.weight')), '105');
+    await tester.enterText(find.byKey(const Key('set.1.reps')), '5');
+    await tester.pump();
+
+    await tester.tap(find.text('land the write'));
+    await tester.pumpAndSettle();
+
+    expect(
+      tester.widget<TextField>(find.byKey(const Key('set.1.weight'))).controller!.text,
+      '100',
+    );
+    expect(
+      tester.widget<TextField>(find.byKey(const Key('set.1.reps'))).controller!.text,
+      '8',
+    );
+  });
+
   testWidgets('beating the last session shows the overload nudge', (tester) async {
     await tester.pumpWidget(_host(ExerciseLogPanel(
       exercise: _exercise,
@@ -564,24 +615,6 @@ void main() {
   });
 
   // --- Additions beyond the brief's list ---
-
-  // SetRow no longer owns a busy flag of its own -- the write itself now
-  // happens at the footer button (logger_action.dart, coming in a later
-  // task), which is what the in-flight *behaviour* is re-tested against.
-  // What stays this row's job is rendering whatever busy state it is handed.
-  testWidgets(
-      'the row disables the weight and reps controls while the write is in flight',
-      (tester) async {
-    await tester.pumpWidget(_host(SetRow(
-      setNumber: 1,
-      logged: null,
-      drafts: _drafts(tester),
-      busy: true,
-    )));
-
-    expect(tester.widget<TextField>(find.byKey(const Key('set.1.weight'))).enabled, isFalse);
-    expect(tester.widget<TextField>(find.byKey(const Key('set.1.reps'))).enabled, isFalse);
-  });
 
   testWidgets('un-ticking a set does not leave the old value sitting in the field',
       (tester) async {

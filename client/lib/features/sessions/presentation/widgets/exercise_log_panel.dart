@@ -219,15 +219,19 @@ class ExerciseLogPanel extends StatelessWidget {
                       Builder(builder: (context) {
                         final stored =
                             session?.setFor(exercise.exerciseId, setNumber);
-                        // Seed on every build. SetDrafts only fills an empty
-                        // field, so this is idempotent -- and it is what lets
-                        // a prefill that arrives from a fetch, one frame after
-                        // the table is first drawn, still reach the fields.
+                        // Seed on every build, which is what lets a prefill
+                        // arriving from a fetch -- one frame after the table
+                        // is first drawn -- still reach the fields.
+                        //
+                        // Authoritative exactly when the server holds the
+                        // set: a stored value corrects the field, a prefill
+                        // never does. See SetDrafts.seed.
                         drafts.seed(
                           setNumber: setNumber,
                           weightKg: stored?.weightKg ?? last?.weightKg,
                           reps: stored?.reps ?? last?.reps,
                           unit: unit,
+                          authoritative: stored != null,
                         );
                         return SetRow(
                           key: ValueKey('set-${exercise.exerciseId}-$setNumber'),

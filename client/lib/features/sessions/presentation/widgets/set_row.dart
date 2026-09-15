@@ -19,7 +19,6 @@ class SetRow extends StatelessWidget {
     required this.drafts,
     this.unit = WeightUnit.kg,
     this.active = false,
-    this.busy = false,
     this.onReopen,
   });
 
@@ -51,9 +50,6 @@ class SetRow extends StatelessWidget {
   /// is next -- every empty row is otherwise identical.
   final bool active;
 
-  /// A write is in flight for this row; its fields lock until it resolves.
-  final bool busy;
-
   /// Reopens a stored set for editing. Null leaves the row inert.
   final VoidCallback? onReopen;
 
@@ -61,7 +57,12 @@ class SetRow extends StatelessWidget {
   Widget build(BuildContext context) {
     final t = context.fs;
     final done = logged != null;
-    final editable = !done && !busy;
+    // A stored set is the record and is not typed over; anything else is.
+    // There is no in-flight lock here any more: the write happens at the
+    // footer button, and the row that a write is landing on stays editable
+    // until the set itself arrives -- at which point the panel re-seeds the
+    // fields from what was actually stored. See SetDrafts.seed.
+    final editable = !done;
 
     InputDecoration decoration(String hint) => InputDecoration(
       hintText: hint,
@@ -176,13 +177,6 @@ class SetRow extends StatelessWidget {
   /// The mockup's two states: an accent check once the set is stored, and an
   /// empty ring before that.
   Widget _mark(FsTokens t, bool done) {
-    if (busy) {
-      return const SizedBox(
-        width: 16,
-        height: 16,
-        child: CircularProgressIndicator(strokeWidth: 2),
-      );
-    }
     if (done) return Icon(Icons.check, size: 16, color: t.accent);
     return Container(
       width: 16,

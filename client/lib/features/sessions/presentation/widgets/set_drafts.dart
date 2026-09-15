@@ -24,23 +24,38 @@ class SetDrafts {
   /// Fills this set's fields from the last session, or from the set the
   /// server already holds.
   ///
-  /// Empty fields only. A prefill offers a starting point, it does not correct
-  /// one: someone who started typing before `/sessions/last-performance`
-  /// answered keeps what they typed, and a field they cleared on purpose stays
-  /// clear. Safe to call on every build for that reason.
+  /// [authoritative] says which of those two it is, and the rule differs:
+  ///
+  /// A *prefill* fills empty fields only. It offers a starting point, it does
+  /// not correct one: someone who started typing before
+  /// `/sessions/last-performance` answered keeps what they typed, and a field
+  /// they cleared on purpose stays clear.
+  ///
+  /// A *stored* set is not an offer, it is the record, and it overwrites.
+  /// Without that, a field corrected while its write was in flight -- typing
+  /// 105 over the 100 the button had already sent -- would survive the write
+  /// landing, and the row would lock read-only showing a number the server
+  /// does not hold. This is what SetRow's initState did before the fields
+  /// moved out of the row, and losing it was the whole defect.
+  ///
+  /// Safe to call on every build either way: a field already reading what it
+  /// is being seeded with is left alone, caret included.
   void seed({
     required int setNumber,
     double? weightKg,
     int? reps,
     required WeightUnit unit,
+    bool authoritative = false,
   }) {
     if (weightKg != null) {
       final field = weight(setNumber);
-      if (field.text.isEmpty) _write(field, formatWeight(weightKg, unit));
+      if (authoritative || field.text.isEmpty) {
+        _write(field, formatWeight(weightKg, unit));
+      }
     }
     if (reps != null) {
       final field = this.reps(setNumber);
-      if (field.text.isEmpty) _write(field, '$reps');
+      if (authoritative || field.text.isEmpty) _write(field, '$reps');
     }
   }
 
@@ -80,7 +95,13 @@ class SetDrafts {
 
   /// Assigning `.text` alone drops the caret to offset 0, which puts it in
   /// front of a number the user may still be typing.
+  ///
+  /// Writing text the field already holds is skipped entirely: an
+  /// authoritative seed runs on every build, and re-assigning the value each
+  /// frame would notify the field's listeners -- and reset the caret -- for
+  /// no change at all.
   void _write(TextEditingController controller, String text) {
+    if (controller.text == text) return;
     controller.value = TextEditingValue(
       text: text,
       selection: TextSelection.collapsed(offset: text.length),

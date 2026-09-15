@@ -36,6 +36,29 @@ void main() {
     expect(drafts.reps(1).text, '6');
   });
 
+  // The prefill rule above must not apply to a set the server already holds.
+  // A stored value is not an offer, it is the record: the row is read-only
+  // and what it shows has to be what was stored, or the table displays a
+  // number the session does not hold. This is what SetRow's initState did
+  // before the drafts store existed.
+  test('an authoritative seed overwrites a value already typed', () {
+    final drafts = SetDrafts();
+    addTearDown(drafts.dispose);
+
+    drafts.weight(1).text = '105';
+    drafts.reps(1).text = '6';
+    drafts.seed(
+      setNumber: 1,
+      weightKg: 100,
+      reps: 8,
+      unit: WeightUnit.kg,
+      authoritative: true,
+    );
+
+    expect(drafts.weight(1).text, '100');
+    expect(drafts.reps(1).text, '8');
+  });
+
   test('seeding formats the weight in the unit on screen', () {
     final drafts = SetDrafts();
     addTearDown(drafts.dispose);
