@@ -434,6 +434,17 @@ Future<FakeSessionController> _pumpLogging(
   return controller;
 }
 
+/// The meta row's position counter.
+///
+/// The demo stage carries a counter of its own and now spells it the same
+/// way (`Exercise 2 / 2`, matching the meta row rather than "2 of 2"), so a
+/// bare textContaining matches twice whenever the demo is the stage on
+/// screen. These assertions are about the header, so they say so.
+Finder _metaPosition(String text) => find.descendant(
+      of: find.byKey(const Key('logger.position')),
+      matching: find.textContaining(text),
+    );
+
 /// Finish and Discard moved into the app bar's overflow menu, so reaching
 /// either takes the two taps a user makes rather than one. The menu route's
 /// dismissal is what carries the selection to onSelected, so this settles
@@ -761,12 +772,12 @@ void main() {
       LoggedSet(exerciseId: 101, setNumber: 2, weightKg: 20, reps: 10),
       LoggedSet(exerciseId: 101, setNumber: 3, weightKg: 20, reps: 10),
     ]));
-    expect(find.textContaining('Exercise 1 / 2'), findsOneWidget);
+    expect(_metaPosition('Exercise 1 / 2'), findsOneWidget);
 
     await tester.tap(find.byKey(const Key('logger.primary')));
     await tester.pumpAndSettle();
 
-    expect(find.textContaining('Exercise 2 / 2'), findsOneWidget);
+    expect(_metaPosition('Exercise 2 / 2'), findsOneWidget);
   });
 
   testWidgets(
@@ -818,7 +829,7 @@ void main() {
     // Both, deliberately: the counter alone would pass if the sheet moved the
     // index without the body following, and the name alone would pass if the
     // body moved without the header.
-    expect(find.textContaining('Exercise 2 / 2'), findsOneWidget);
+    expect(_metaPosition('Exercise 2 / 2'), findsOneWidget);
     expect(find.text('Push-up'), findsOneWidget);
   });
 
@@ -871,12 +882,12 @@ void main() {
     ]));
     await tester.tap(find.byKey(const Key('logger.primary')));
     await tester.pumpAndSettle();
-    expect(find.textContaining('Exercise 2 / 2'), findsOneWidget);
+    expect(_metaPosition('Exercise 2 / 2'), findsOneWidget);
 
     await tester.pageBack();
     await tester.pumpAndSettle();
 
-    expect(find.textContaining('Exercise 1 / 2'), findsOneWidget);
+    expect(_metaPosition('Exercise 1 / 2'), findsOneWidget);
     expect(find.byType(SessionLoggerScreen), findsOneWidget);
   });
 
@@ -1342,7 +1353,7 @@ void main() {
 
     expect(find.textContaining('Push-up'), findsOneWidget);
     expect(find.text('Goblet squat'), findsNothing);
-    expect(find.textContaining('Exercise 1 / 1'), findsOneWidget);
+    expect(_metaPosition('Exercise 1 / 1'), findsOneWidget);
   });
 
   // A session stamped before migration 013 carries no planDayNo at all --
@@ -1354,7 +1365,7 @@ void main() {
 
     expect(find.text('Goblet squat'), findsOneWidget);
     expect(find.textContaining('Push-up'), findsNothing);
-    expect(find.textContaining('Exercise 1 / 1'), findsOneWidget);
+    expect(_metaPosition('Exercise 1 / 1'), findsOneWidget);
   });
 
   // The ML service now refuses to generate a split with a day it cannot

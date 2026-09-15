@@ -62,9 +62,11 @@ class _SessionLoggerScreenState extends ConsumerState<SessionLoggerScreen> {
 
   /// The unit last confirmed on screen -- i.e. actually read back from
   /// [weightUnitProvider], not merely requested. Null until the first build
-  /// that reaches the set table, so the very first frame never "converts"
-  /// against nothing, and a unit confirmed while the screen is still loading
-  /// (or sitting on an empty day) converts once there is a store to convert.
+  /// that gets as far as the exercise list, which the demo stage counts as
+  /// much as the set table does -- this is assigned before the stage is
+  /// chosen. So the very first frame never "converts" against nothing, and a
+  /// unit confirmed while the screen is still loading (or sitting on an empty
+  /// day) converts once there is a store to convert.
   ///
   /// Converting against this rather than in `_setUnit` itself means a
   /// failed profile write leaves the typed text alone: the display stays on
@@ -179,10 +181,19 @@ class _SessionLoggerScreenState extends ConsumerState<SessionLoggerScreen> {
   /// between two different exercises would not mean anything anyway.
   ///
   /// So the clearing hangs off the move rather than off any one call site.
-  /// Four paths lead here -- Next exercise, both halves of back, and the jump
-  /// sheet -- and a fifth added later is covered by construction rather than
-  /// by remembering. Pausing and resuming instead would be defensible, but it
-  /// is more machinery than a bar tag on one table needs.
+  /// Five paths lead here -- Start logging, Next exercise, both halves of
+  /// back, and the jump sheet -- and a sixth added later is covered by
+  /// construction rather than by remembering. Pausing and resuming instead
+  /// would be defensible, but it is more machinery than a bar tag on one
+  /// table needs.
+  ///
+  /// One route does NOT come through here, and is left alone deliberately:
+  /// the index clamp in build() reads [_index] against a plan that may have
+  /// shrunk under a resumed session, so the exercise on screen can change
+  /// without a move having been made -- [_stage] is not reset and [_resting]
+  /// is not cleared. It needs the active plan to lose exercises while a
+  /// session against it is open, and the result is no worse than it was
+  /// before this branch, so it is written down rather than fixed.
   void _moveTo({int? index, required _LoggerStage stage}) {
     if (index != null && index != _index) {
       _index = index;

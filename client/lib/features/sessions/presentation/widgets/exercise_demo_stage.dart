@@ -9,9 +9,15 @@ import '../../../plans/domain/workout_plan.dart';
 /// The mockup's screen 3: what the movement looks like, and how to do it,
 /// shown before its set table rather than behind a thumbnail nobody taps.
 ///
-/// A stage of the logger, not a route -- see the design, §5. The cues are the
-/// catalogue's, carried by `/exercises/:id`, so this stage costs one fetch the
-/// screen was already making and works with no network of its own.
+/// A stage of the logger, not a route -- see the design, §5.
+///
+/// The cues are the catalogue's, carried by `/exercises/:id`. That is a
+/// request the logger did not make before this branch: one per exercise
+/// entered, not a fetch the screen was already making. What makes it worth
+/// paying is that it is cached by `exerciseDetailProvider` for the rest of
+/// the session, never blocks the set table behind it -- Start logging is
+/// live whatever this shows -- and has its own error branch below, so a
+/// catalogue that will not answer costs the cues and nothing else.
 ///
 /// Deliberately not a replacement for [InSessionExerciseScreen]
 /// (`../in_session_exercise_screen.dart`), which stays: the set table's
@@ -57,10 +63,14 @@ class ExerciseDemoStage extends ConsumerWidget {
         header: Row(
           children: [
             // Not FsEyebrow: that widget forces its text to uppercase, which
-            // would render "EXERCISE 1 OF 6" instead of the position counter's
+            // would render "EXERCISE 1 / 6" instead of the position counter's
             // actual wording. The eyebrow *style* still applies via
             // fsEyebrow(t).
-            Text('Exercise $position of $total', style: fsEyebrow(t)),
+            //
+            // `n / N`, matching the meta row's counter directly above this
+            // stage on the logger -- the two are on screen together, and two
+            // spellings of one number read as two different numbers.
+            Text('Exercise $position / $total', style: fsEyebrow(t)),
             const Spacer(),
             Text(
               '${exercise.targetSets} × ${exercise.targetReps}',
