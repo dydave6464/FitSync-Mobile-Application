@@ -38,6 +38,13 @@ class SetDrafts {
   /// does not hold. This is what SetRow's initState did before the fields
   /// moved out of the row, and losing it was the whole defect.
   ///
+  /// A stored NULL is part of the record too. A bodyweight set is stored with
+  /// no weight and an uncounted one with no reps, so an authoritative null
+  /// empties the field rather than leaving it — skipping it would strand last
+  /// session's prefill in a row the user can no longer edit, claiming a lift
+  /// that never happened. A null *prefill* is merely the absence of a
+  /// suggestion and changes nothing.
+  ///
   /// Safe to call on every build either way: a field already reading what it
   /// is being seeded with is left alone, caret included.
   void seed({
@@ -47,16 +54,34 @@ class SetDrafts {
     required WeightUnit unit,
     bool authoritative = false,
   }) {
-    if (weightKg != null) {
-      final field = weight(setNumber);
-      if (authoritative || field.text.isEmpty) {
-        _write(field, formatWeight(weightKg, unit));
-      }
+    _seed(
+      weight(setNumber),
+      weightKg == null ? '' : formatWeight(weightKg, unit),
+      hasValue: weightKg != null,
+      authoritative: authoritative,
+    );
+    _seed(
+      // `this.` because the `reps` parameter shadows the reps() accessor.
+      this.reps(setNumber),
+      reps == null ? '' : '$reps',
+      hasValue: reps != null,
+      authoritative: authoritative,
+    );
+  }
+
+  /// [text] is what the field should read, empty when there is nothing to
+  /// show. The record is matched exactly; an offer only fills a blank.
+  void _seed(
+    TextEditingController field,
+    String text, {
+    required bool hasValue,
+    required bool authoritative,
+  }) {
+    if (!authoritative) {
+      if (hasValue && field.text.isEmpty) _write(field, text);
+      return;
     }
-    if (reps != null) {
-      final field = this.reps(setNumber);
-      if (authoritative || field.text.isEmpty) _write(field, '$reps');
-    }
+    if (field.text != text) _write(field, text);
   }
 
   /// Rewrites every weight typed under [from] to read in [to].

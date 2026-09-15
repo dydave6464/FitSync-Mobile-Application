@@ -226,8 +226,13 @@ class ExerciseLogPanel extends StatelessWidget {
                         // never does. See SetDrafts.seed.
                         drafts.seed(
                           setNumber: setNumber,
-                          weightKg: stored?.weightKg ?? last?.weightKg,
-                          reps: stored?.reps ?? last?.reps,
+                          // Not `stored?.weightKg ?? last?.weightKg`: a
+                          // bodyweight set is STORED with a null weight, and
+                          // `??` cannot tell that apart from having no stored
+                          // set at all -- so it fell through to last session's
+                          // number and wrote it into a read-only field.
+                          weightKg: stored != null ? stored.weightKg : last?.weightKg,
+                          reps: stored != null ? stored.reps : last?.reps,
                           unit: unit,
                           authoritative: stored != null,
                         );

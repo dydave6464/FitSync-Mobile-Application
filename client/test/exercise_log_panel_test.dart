@@ -355,6 +355,58 @@ void main() {
     );
   });
 
+  // Once the server holds a set, the row IS the record. A bodyweight set is
+  // stored with a null weight, and `stored?.weightKg ?? last?.weightKg` used
+  // to fall through to last session's number -- then write it authoritatively
+  // into a field the user cannot edit, claiming a lift that never happened.
+  testWidgets('a stored set with no weight shows no weight', (tester) async {
+    await tester.pumpWidget(_host(ExerciseLogPanel(
+      exercise: _exercise,
+      session: _session(sets: const [
+        LoggedSet(exerciseId: 101, setNumber: 1, reps: 12),
+      ]),
+      last: const LastPerformance(
+        exerciseId: 101, weightKg: 22.5, reps: 10, sessionDate: '2026-09-05',
+      ),
+      drafts: _drafts(tester),
+      onUndoSet: (_) async {},
+    )));
+
+    expect(
+      tester.widget<TextField>(find.byKey(const Key('set.1.weight'))).controller!.text,
+      isEmpty,
+      reason: 'the server holds no weight for this set',
+    );
+    // What it DOES hold is still shown.
+    expect(
+      tester.widget<TextField>(find.byKey(const Key('set.1.reps'))).controller!.text,
+      '12',
+    );
+  });
+
+  testWidgets('a stored set with no reps shows no reps', (tester) async {
+    await tester.pumpWidget(_host(ExerciseLogPanel(
+      exercise: _exercise,
+      session: _session(sets: const [
+        LoggedSet(exerciseId: 101, setNumber: 1, weightKg: 40),
+      ]),
+      last: const LastPerformance(
+        exerciseId: 101, weightKg: 22.5, reps: 10, sessionDate: '2026-09-05',
+      ),
+      drafts: _drafts(tester),
+      onUndoSet: (_) async {},
+    )));
+
+    expect(
+      tester.widget<TextField>(find.byKey(const Key('set.1.reps'))).controller!.text,
+      isEmpty,
+    );
+    expect(
+      tester.widget<TextField>(find.byKey(const Key('set.1.weight'))).controller!.text,
+      '40',
+    );
+  });
+
   testWidgets('a first session prefills nothing and says nothing', (tester) async {
     await tester.pumpWidget(_host(ExerciseLogPanel(
       exercise: _exercise,

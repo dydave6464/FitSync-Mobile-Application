@@ -96,6 +96,41 @@ void main() {
     expect(drafts.weight(2).text, '12.');
   });
 
+  // A bodyweight set is stored with no weight at all, and an uncounted set
+  // with no reps. The record saying "nothing here" has to reach the field --
+  // skipping a null leaves whatever the field happened to hold, which is last
+  // session's prefill.
+  test('an authoritative null empties the field', () {
+    final drafts = SetDrafts();
+    addTearDown(drafts.dispose);
+
+    drafts.weight(1).text = '22.5';
+    drafts.reps(1).text = '10';
+
+    drafts.seed(
+      setNumber: 1,
+      weightKg: null,
+      reps: null,
+      unit: WeightUnit.kg,
+      authoritative: true,
+    );
+
+    expect(drafts.weight(1).text, isEmpty);
+    expect(drafts.reps(1).text, isEmpty);
+  });
+
+  // The other half of the rule, which must not regress: a PREFILL of null is
+  // simply the absence of a suggestion and must leave typing alone.
+  test('a non-authoritative null leaves a typed value alone', () {
+    final drafts = SetDrafts();
+    addTearDown(drafts.dispose);
+
+    drafts.weight(1).text = '30';
+    drafts.seed(setNumber: 1, weightKg: null, reps: null, unit: WeightUnit.kg);
+
+    expect(drafts.weight(1).text, '30');
+  });
+
   test('releasing a set clears it so the row starts empty again', () {
     final drafts = SetDrafts();
     addTearDown(drafts.dispose);
