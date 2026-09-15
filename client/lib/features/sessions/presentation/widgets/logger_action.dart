@@ -49,6 +49,21 @@ class _LoggerActionState extends State<LoggerAction> {
   bool _busy = false;
   bool _failed = false;
 
+  /// A failure belongs to the set it happened on, and this State outlives a
+  /// change of set: reopening a stored row, or jumping to another exercise
+  /// that already has sets logged against it, both keep the logging stage
+  /// and rebuild this button in place rather than tearing it down. Left
+  /// standing, [_failed] would offer to "Retry set 2" for a set nobody has
+  /// tried.
+  @override
+  void didUpdateWidget(LoggerAction oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    // No setState: didUpdateWidget runs as part of this element's rebuild,
+    // so build() reads the cleared flag on the way through. Same shape as
+    // _DescribeCard in generator_screen.dart.
+    if (widget.activeSetNumber != oldWidget.activeSetNumber) _failed = false;
+  }
+
   Future<void> _complete(int setNumber) async {
     setState(() {
       _busy = true;

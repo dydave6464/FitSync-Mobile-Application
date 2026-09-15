@@ -188,4 +188,51 @@ void main() {
     await tester.pumpAndSettle();
     expect(attempts, 2);
   });
+
+  // The failure belongs to the set it happened on. This State outlives a
+  // change of set -- reopening a stored row, or jumping to another exercise
+  // that is already logged against, keeps the logging stage and rebuilds
+  // this button in place -- so a _failed left standing would offer to
+  // "Retry set 2" for a set nobody has tried.
+  testWidgets('a failure does not follow the button onto another set',
+      (tester) async {
+    final drafts = SetDrafts();
+    addTearDown(drafts.dispose);
+
+    var active = 1;
+    await tester.pumpWidget(StatefulBuilder(
+      builder: (context, setState) => _host(Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          LoggerAction(
+            activeSetNumber: active,
+            isLastExercise: false,
+            drafts: drafts,
+            unit: WeightUnit.kg,
+            onCompleteSet: (_, _, _) async {
+              throw Exception('network');
+            },
+            onNextExercise: () {},
+            onFinish: () {},
+          ),
+          TextButton(
+            // Stands in for whatever moved the active set without rebuilding
+            // this widget from scratch.
+            onPressed: () => setState(() => active = 2),
+            child: const Text('move to set 2'),
+          ),
+        ],
+      )),
+    ));
+
+    await tester.tap(find.byKey(const Key('logger.primary')));
+    await tester.pumpAndSettle();
+    expect(find.text('Retry set 1'), findsOneWidget);
+
+    await tester.tap(find.text('move to set 2'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Complete set 2'), findsOneWidget);
+    expect(find.text('Retry set 2'), findsNothing);
+  });
 }
