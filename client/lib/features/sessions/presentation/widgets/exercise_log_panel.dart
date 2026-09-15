@@ -223,6 +223,7 @@ class ExerciseLogPanel extends StatelessWidget {
                         setNumber: setNumber,
                         logged: session?.setFor(exercise.exerciseId, setNumber),
                         prefillWeightKg: last?.weightKg,
+                        prefillReps: last?.reps,
                         unit: unit,
                         active: setNumber == active,
                         onComplete: (weightKg, reps) =>

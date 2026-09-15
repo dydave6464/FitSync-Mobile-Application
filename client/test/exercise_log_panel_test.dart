@@ -242,6 +242,82 @@ void main() {
     expect(field.controller!.text, '22.5');
   });
 
+  testWidgets('the reps field is prefilled from the last session', (tester) async {
+    await tester.pumpWidget(_host(ExerciseLogPanel(
+      exercise: _exercise,
+      session: _session(),
+      last: const LastPerformance(
+        exerciseId: 101, weightKg: 22.5, reps: 10, sessionDate: '2026-09-05',
+      ),
+      onCompleteSet: (_, _, _) async {},
+      onUndoSet: (_) async {},
+    )));
+
+    final field = tester.widget<TextField>(find.byKey(const Key('set.1.reps')));
+    expect(field.controller!.text, '10');
+  });
+
+  // The regression that made repeating a workout feel like typing it from
+  // scratch. /sessions/last-performance is a fetch, so the first frame of the
+  // logger always renders with `last` still null -- and the row is keyed on the
+  // stored set's presence, not on the prefill, so its State survives the
+  // rebuild that brings the values in. Reading them in initState alone means
+  // the header says "last 22.5 kg" over two empty fields, forever.
+  testWidgets('a prefill arriving after the first frame still reaches the fields',
+      (tester) async {
+    Widget panel(LastPerformance? last) => _host(ExerciseLogPanel(
+          exercise: _exercise,
+          session: _session(),
+          last: last,
+          onCompleteSet: (_, _, _) async {},
+          onUndoSet: (_) async {},
+        ));
+
+    await tester.pumpWidget(panel(null));
+    await tester.pumpWidget(panel(const LastPerformance(
+      exerciseId: 101, weightKg: 22.5, reps: 10, sessionDate: '2026-09-05',
+    )));
+
+    expect(
+      tester.widget<TextField>(find.byKey(const Key('set.1.weight'))).controller!.text,
+      '22.5',
+    );
+    expect(
+      tester.widget<TextField>(find.byKey(const Key('set.1.reps'))).controller!.text,
+      '10',
+    );
+  });
+
+  // A late prefill fills a field, it does not correct one. Someone who opened
+  // the logger and started typing before the fetch landed must not have their
+  // first set rewritten under them.
+  testWidgets('a late prefill leaves a value already typed alone', (tester) async {
+    Widget panel(LastPerformance? last) => _host(ExerciseLogPanel(
+          exercise: _exercise,
+          session: _session(),
+          last: last,
+          onCompleteSet: (_, _, _) async {},
+          onUndoSet: (_) async {},
+        ));
+
+    await tester.pumpWidget(panel(null));
+    await tester.enterText(find.byKey(const Key('set.1.weight')), '30');
+    await tester.enterText(find.byKey(const Key('set.1.reps')), '6');
+
+    await tester.pumpWidget(panel(const LastPerformance(
+      exerciseId: 101, weightKg: 22.5, reps: 10, sessionDate: '2026-09-05',
+    )));
+
+    expect(
+      tester.widget<TextField>(find.byKey(const Key('set.1.weight'))).controller!.text,
+      '30',
+    );
+    expect(
+      tester.widget<TextField>(find.byKey(const Key('set.1.reps'))).controller!.text,
+      '6',
+    );
+  });
+
   testWidgets('a first session prefills nothing and says nothing', (tester) async {
     await tester.pumpWidget(_host(ExerciseLogPanel(
       exercise: _exercise,

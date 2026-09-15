@@ -316,6 +316,10 @@ Future<FakeSessionController> _pump(
   List<Map<String, dynamic>>? patches,
   WorkoutPlan? plan = _plan,
   PlanRepository? plans,
+  // What /sessions/last-performance answers, keyed by exercise. Supplied
+  // through an async override, as the real provider is -- so the logger's
+  // first frame renders before it lands, exactly as it does on a phone.
+  Map<int, LastPerformance> last = const {},
   // Called every time the override actually recomputes -- i.e. the provider
   // was freshly built or freshly invalidated, not served from cache. Only
   // the disposed-State invalidation test below reads it; every other test
@@ -340,7 +344,7 @@ Future<FakeSessionController> _pump(
       }),
       profileProvider.overrideWith(() => FakeProfileNotifier(unit, patches ?? [])),
       activeSessionProvider.overrideWith(() => controller),
-      lastPerformanceProvider.overrideWith((ref, key) async => const {}),
+      lastPerformanceProvider.overrideWith((ref, key) async => last),
       if (plans != null) planRepositoryProvider.overrideWithValue(plans),
       // Only exercised by the demo-affordance navigation test below; every
       // other test here never opens the pushed screen, so this override is
@@ -399,6 +403,35 @@ void main() {
 
     expect(find.byType(CircularProgressIndicator), findsNothing);
     expect(find.text('Cable fly'), findsOneWidget);
+  });
+
+  // The repeat-last-workout complaint, end to end. The shortcut loads the
+  // exercises but not the numbers, so the fields are the only place last
+  // week's kg and reps can come from -- and they are fetched, which means the
+  // table is already built and keyed by the time they arrive. Asserted through
+  // the screen rather than the panel because the async gap is the bug: a panel
+  // handed its prefill up front never reproduces it.
+  testWidgets('the last session\'s kg and reps reach the fields once they load',
+      (tester) async {
+    await _pump(
+      tester,
+      session: _manualSession,
+      plan: null,
+      last: const {
+        301: LastPerformance(
+          exerciseId: 301, weightKg: 32.5, reps: 12, sessionDate: '2026-09-12',
+        ),
+      },
+    );
+
+    expect(
+      tester.widget<TextField>(find.byKey(const Key('set.1.weight'))).controller!.text,
+      '32.5',
+    );
+    expect(
+      tester.widget<TextField>(find.byKey(const Key('set.1.reps'))).controller!.text,
+      '12',
+    );
   });
 
   testWidgets('a session with no plan says so rather than naming nothing',

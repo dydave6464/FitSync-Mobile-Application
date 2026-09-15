@@ -19,6 +19,7 @@ class SetRow extends StatefulWidget {
     required this.onComplete,
     required this.onUndo,
     this.prefillWeightKg,
+    this.prefillReps,
     this.unit = WeightUnit.kg,
     this.active = false,
   });
@@ -42,6 +43,10 @@ class SetRow extends StatefulWidget {
 
   /// Seeded from the last session's heaviest set, when there was one.
   final double? prefillWeightKg;
+
+  /// The reps of that same set. Separate from [prefillWeightKg] because a
+  /// bodyweight exercise has the one without the other.
+  final int? prefillReps;
 
   final Future<void> Function(double? weightKg, int? reps) onComplete;
   final Future<void> Function() onUndo;
@@ -69,36 +74,71 @@ class _SetRowState extends State<SetRow> {
   void initState() {
     super.initState();
     final logged = widget.logged;
+    final kg = logged?.weightKg ?? widget.prefillWeightKg;
+    final reps = logged?.reps ?? widget.prefillReps;
     _weight = TextEditingController(
-      text: logged?.weightKg != null
-          ? formatWeight(logged!.weightKg!, widget.unit)
-          : widget.prefillWeightKg != null
-              ? formatWeight(widget.prefillWeightKg!, widget.unit)
-              : '',
+      text: kg == null ? '' : formatWeight(kg, widget.unit),
     );
-    _reps = TextEditingController(text: logged?.reps?.toString() ?? '');
+    _reps = TextEditingController(text: reps?.toString() ?? '');
+  }
+
+  /// Two things can reach the fields after this State exists: a unit change
+  /// and the arrival of the last session's numbers. Both are handled here
+  /// rather than in [initState] because the row is keyed on the stored set's
+  /// presence, so neither of them rebuilds this State.
+  @override
+  void didUpdateWidget(SetRow oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    // Order matters: converting first leaves any value the prefill then seeds
+    // to be formatted in the new unit once, rather than converted twice.
+    if (oldWidget.unit != widget.unit) _convertWeight(oldWidget.unit);
+    _seedFromPrefill(oldWidget);
   }
 
   /// Carries a value already in the field across a unit change.
   ///
-  /// The row is keyed on the stored set's presence, not on the unit, so
-  /// flipping kg/lb rebuilds this widget without rebuilding its State -- and
-  /// text typed under the old unit would otherwise sit there meaning
-  /// something else entirely. Anything unparseable (an empty field, a lone
-  /// decimal point mid-type) is left exactly as typed.
-  @override
-  void didUpdateWidget(SetRow oldWidget) {
-    super.didUpdateWidget(oldWidget);
-    if (oldWidget.unit == widget.unit) return;
-
-    final kg = parseWeight(_weight.text, oldWidget.unit);
+  /// Text typed under the old unit would otherwise sit there meaning something
+  /// else entirely. Anything unparseable (an empty field, a lone decimal point
+  /// mid-type) is left exactly as typed.
+  void _convertWeight(WeightUnit from) {
+    final kg = parseWeight(_weight.text, from);
     if (kg == null) return;
-    final converted = formatWeight(kg, widget.unit);
-    _weight.value = TextEditingValue(
-      text: converted,
-      // Assigning `.text` alone drops the cursor to offset 0, which puts the
-      // caret in front of a number the user may still be typing.
-      selection: TextSelection.collapsed(offset: converted.length),
+    _write(_weight, formatWeight(kg, widget.unit));
+  }
+
+  /// Seeds the fields once the last session's numbers arrive.
+  ///
+  /// They come from a fetch, so the logger's first frame always builds this row
+  /// with nothing to prefill -- and since the row is keyed on the stored set's
+  /// presence, the rebuild that brings them in reuses this State and never runs
+  /// [initState] again. Reading them there alone left the header saying "last
+  /// 22.5 kg" above two empty fields, and repeating a workout meant typing
+  /// every number the app already knew.
+  ///
+  /// Into an empty field only, and only on the frame the value changes: a
+  /// prefill offers a starting point, it does not correct one. Someone who
+  /// started typing before the fetch landed keeps what they typed, and a field
+  /// they deliberately cleared stays clear.
+  void _seedFromPrefill(SetRow oldWidget) {
+    // A stored set owns its fields; they are read-only and already show it.
+    if (widget.logged != null) return;
+
+    final kg = widget.prefillWeightKg;
+    if (kg != null && kg != oldWidget.prefillWeightKg && _weight.text.isEmpty) {
+      _write(_weight, formatWeight(kg, widget.unit));
+    }
+    final reps = widget.prefillReps;
+    if (reps != null && reps != oldWidget.prefillReps && _reps.text.isEmpty) {
+      _write(_reps, '$reps');
+    }
+  }
+
+  /// Assigning `.text` alone drops the cursor to offset 0, which puts the
+  /// caret in front of a number the user may still be typing.
+  void _write(TextEditingController controller, String text) {
+    controller.value = TextEditingValue(
+      text: text,
+      selection: TextSelection.collapsed(offset: text.length),
     );
   }
 
