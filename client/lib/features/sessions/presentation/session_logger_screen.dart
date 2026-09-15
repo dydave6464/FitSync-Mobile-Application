@@ -168,6 +168,30 @@ class _SessionLoggerScreenState extends ConsumerState<SessionLoggerScreen> {
     return null;
   }
 
+  /// Every move this screen makes: which exercise, which face of it, and what
+  /// that does to the rest countdown. Call it inside a setState.
+  ///
+  /// The countdown belongs to the set table and nowhere else. Leaving the
+  /// table for a demo hides the tag, which unmounts [RestTimer] and stops the
+  /// countdown dead -- onDone can never fire, so the flag is stuck true and
+  /// its only possible future is to resurface as a fresh 90 seconds that
+  /// measured nothing. Changing exercise does the same thing to it, and a rest
+  /// between two different exercises would not mean anything anyway.
+  ///
+  /// So the clearing hangs off the move rather than off any one call site.
+  /// Four paths lead here -- Next exercise, both halves of back, and the jump
+  /// sheet -- and a fifth added later is covered by construction rather than
+  /// by remembering. Pausing and resuming instead would be defensible, but it
+  /// is more machinery than a bar tag on one table needs.
+  void _moveTo({int? index, required _LoggerStage stage}) {
+    if (index != null && index != _index) {
+      _index = index;
+      _resting = false;
+    }
+    if (stage == _LoggerStage.demo) _resting = false;
+    _stage = stage;
+  }
+
   /// Whether anything at all has been logged against [exercise] in this
   /// session. Not the inverse of [_activeSetNumber]: undoing a set leaves a
   /// hole, so an exercise can have set 1 open and set 2 stored, and "the next
@@ -220,18 +244,17 @@ class _SessionLoggerScreenState extends ConsumerState<SessionLoggerScreen> {
     );
     if (chosen != null && mounted) {
       setState(() {
-        _index = chosen;
         // The demo prepares you for a movement you are about to do. An
         // exercise you have already logged sets against is one you were
         // already prepared for, so jumping back to fix a set lands on the
         // table -- matching the back handler -- while jumping forward to
         // something untouched still shows its cues.
-        _stage = _hasLoggedSets(exercises[chosen], session)
-            ? _LoggerStage.logging
-            : _LoggerStage.demo;
-        // Rest is not shown between exercises at all, so a flag that survived
-        // the move would mean nothing. See onNextExercise.
-        _resting = false;
+        _moveTo(
+          index: chosen,
+          stage: _hasLoggedSets(exercises[chosen], session)
+              ? _LoggerStage.logging
+              : _LoggerStage.demo,
+        );
       });
     }
   }
@@ -671,13 +694,11 @@ class _SessionLoggerScreenState extends ConsumerState<SessionLoggerScreen> {
         if (didPop) return;
         setState(() {
           if (_stage == _LoggerStage.logging) {
-            _stage = _LoggerStage.demo;
+            _moveTo(stage: _LoggerStage.demo);
           } else {
             // Stepping back lands on the previous exercise's table, not on a
             // demo that has already been read.
-            _index = index - 1;
-            _stage = _LoggerStage.logging;
-            _resting = false;
+            _moveTo(index: index - 1, stage: _LoggerStage.logging);
           }
         });
       },
@@ -813,8 +834,9 @@ class _SessionLoggerScreenState extends ConsumerState<SessionLoggerScreen> {
                         key: const Key('logger.primary'),
                         label: 'Start logging',
                         icon: const Icon(Icons.arrow_forward),
-                        onPressed: () =>
-                            setState(() => _stage = _LoggerStage.logging),
+                        onPressed: () => setState(
+                          () => _moveTo(stage: _LoggerStage.logging),
+                        ),
                       )
                     : LoggerAction(
                         activeSetNumber: _activeSetNumber(exercise, session),
@@ -841,20 +863,15 @@ class _SessionLoggerScreenState extends ConsumerState<SessionLoggerScreen> {
                           }
                           if (mounted) setState(() => _resting = true);
                         },
-                        onNextExercise: () => setState(() {
-                          _index = index + 1;
-                          // The next exercise opens on its demo, the same
-                          // as the first one did.
-                          _stage = _LoggerStage.demo;
-                          // And it opens with no rest running. The demo
-                          // hides the countdown, which unmounts RestTimer
-                          // and stops it dead -- onDone can never fire, so
-                          // a flag left true here surfaces as a fresh 90
-                          // seconds over the next exercise's empty table,
-                          // having rested nothing. Rest is not shown
-                          // between exercises, so it does not survive one.
-                          _resting = false;
-                        }),
+                        // The next exercise opens on its demo, the same as
+                        // the first one did, and with no rest running --
+                        // see _moveTo.
+                        onNextExercise: () => setState(
+                          () => _moveTo(
+                            index: index + 1,
+                            stage: _LoggerStage.demo,
+                          ),
+                        ),
                         onFinish: _finish,
                       ),
               ),

@@ -535,6 +535,36 @@ void main() {
     expect(find.byType(RestTimer), findsNothing);
   });
 
+  // The same bug with no index change, which is why clearing the flag hangs
+  // off entering the demo rather than off moving exercise. Back from the table
+  // lands on the SAME exercise's demo, the stage guard hides the tag, the
+  // timer unmounts and the countdown stops dead -- onDone can never fire, so a
+  // flag left true resurfaces as a fresh 90 seconds the moment Start logging
+  // is tapped again, having rested nothing.
+  testWidgets('the rest does not survive stepping back to the same demo',
+      (tester) async {
+    await _pumpLogging(tester, session: _manualSession, plan: null);
+
+    await tester.enterText(find.byKey(const Key('set.1.weight')), '20');
+    await tester.enterText(find.byKey(const Key('set.1.reps')), '10');
+    await tester.tap(find.byKey(const Key('logger.primary')));
+    await tester.pump();
+    await tester.pump();
+    expect(find.byType(RestTimer), findsOneWidget);
+
+    // Back to this exercise's own demo, then forward to its table again.
+    // Single frames throughout: settling would run the 90 seconds out and the
+    // tag would be gone for a reason that has nothing to do with the stage.
+    await tester.tap(find.byKey(const Key('logger.back')));
+    await tester.pump();
+    await tester.tap(find.byKey(const Key('logger.primary')));
+    await tester.pump();
+    await tester.pump();
+
+    expect(find.byType(SetRow), findsWidgets);
+    expect(find.byType(RestTimer), findsNothing);
+  });
+
   testWidgets('back from the set table returns to the demo', (tester) async {
     await _pump(tester, session: _manualSession, plan: null);
 
