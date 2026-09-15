@@ -6,10 +6,7 @@ import '../../../exercises/presentation/providers.dart';
 import '../../../exercises/presentation/widgets/exercise_demo_body.dart';
 import '../../../plans/domain/workout_plan.dart';
 
-/// The mockup's screen 3: what the movement looks like, and how to do it,
-/// shown before its set table rather than behind a thumbnail nobody taps.
-///
-/// A stage of the logger, not a route -- see the design, §5.
+/// What the movement looks like and how to do it: the mockup's screen 3.
 ///
 /// The cues are the catalogue's, carried by `/exercises/:id`. That is a
 /// request the logger did not make before this branch: one per exercise
@@ -19,21 +16,37 @@ import '../../../plans/domain/workout_plan.dart';
 /// live whatever this shows -- and has its own error branch below, so a
 /// catalogue that will not answer costs the cues and nothing else.
 ///
-/// Deliberately not a replacement for [InSessionExerciseScreen]
-/// (`../in_session_exercise_screen.dart`), which stays: the set table's
-/// thumbnail still pushes that route for a second look at the demo without
-/// leaving the table's stage behind.
+/// Two things wrap this, and it is deliberately neither of them:
+///
+/// * [SessionLoggerScreen] (`../session_logger_screen.dart`) renders it as a
+///   *stage*, before the set table -- not a route, so the session, the drafts
+///   and the rest countdown all stay put behind it. See the design, §5.
+/// * [InSessionExerciseScreen] (`../in_session_exercise_screen.dart`) pushes
+///   it as a route, for the second look the set table's thumbnail offers
+///   mid-set.
+///
+/// Both need the same fetch, the same loading spinner, the same error copy
+/// and the same header, and they used to carry a verbatim copy of each. What
+/// differs between them is the Scaffold around it and the button below it, so
+/// that is what stays out here -- the same relationship [ExerciseDemoBody]
+/// already has with `ExerciseDetailScreen`.
 class ExerciseDemoStage extends ConsumerWidget {
   const ExerciseDemoStage({
     super.key,
     required this.exercise,
-    required this.position,
-    required this.total,
+    required this.positionLabel,
   });
 
   final PlanExercise exercise;
-  final int position;
-  final int total;
+
+  /// The eyebrow above the name -- "Exercise 2 / 6".
+  ///
+  /// Passed in rather than formatted from a position and a total, because the
+  /// two wrappers above genuinely word it differently: on the logger this
+  /// sits directly under a meta row carrying the same counter, and has to
+  /// match it exactly (see `_positionLabel` there), while the pushed route
+  /// has no second counter to agree with and reads "Exercise 2 of 6".
+  final String positionLabel;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -66,11 +79,7 @@ class ExerciseDemoStage extends ConsumerWidget {
             // would render "EXERCISE 1 / 6" instead of the position counter's
             // actual wording. The eyebrow *style* still applies via
             // fsEyebrow(t).
-            //
-            // `n / N`, matching the meta row's counter directly above this
-            // stage on the logger -- the two are on screen together, and two
-            // spellings of one number read as two different numbers.
-            Text('Exercise $position / $total', style: fsEyebrow(t)),
+            Text(positionLabel, style: fsEyebrow(t)),
             const Spacer(),
             Text(
               '${exercise.targetSets} × ${exercise.targetReps}',

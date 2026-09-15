@@ -38,6 +38,14 @@ class SessionLoggerScreen extends ConsumerStatefulWidget {
 /// below, and a pushed route would have to be handed every one of them.
 enum _LoggerStage { demo, logging }
 
+/// The position counter, spelled in one place.
+///
+/// It is on screen twice at once whenever the demo is the stage showing --
+/// once in the meta row with the plan's name after it, once as the stage's
+/// own eyebrow -- and two spellings of one number read as two numbers. So
+/// neither call site writes it out.
+String _positionLabel(int index, int count) => 'Exercise ${index + 1} / $count';
+
 class _SessionLoggerScreenState extends ConsumerState<SessionLoggerScreen> {
   static const _restDuration = Duration(seconds: 90);
 
@@ -734,7 +742,7 @@ class _SessionLoggerScreenState extends ConsumerState<SessionLoggerScreen> {
                             children: [
                               Flexible(
                                 child: Text(
-                                  'Exercise ${index + 1} / ${exercises.length}'
+                                  '${_positionLabel(index, exercises.length)}'
                                   // A session started from a chosen list has
                                   // no plan to name, and trailing off after
                                   // the separator reads as a rendering fault.
@@ -789,8 +797,7 @@ class _SessionLoggerScreenState extends ConsumerState<SessionLoggerScreen> {
                   ? ExerciseDemoStage(
                       key: const Key('logger.demo'),
                       exercise: exercise,
-                      position: index + 1,
-                      total: exercises.length,
+                      positionLabel: _positionLabel(index, exercises.length),
                     )
                   : SingleChildScrollView(
                       padding: const EdgeInsets.fromLTRB(20, 0, 20, 20),
