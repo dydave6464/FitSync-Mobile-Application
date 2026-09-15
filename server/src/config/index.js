@@ -78,6 +78,15 @@ function load(env = process.env) {
       mode: env.ML_MODE || 'stub',
       serviceUrl: env.ML_SERVICE_URL || null,
     },
+    cues: {
+      // Defaults to the stub for the same reason ml does: no test may make a
+      // network call. There is deliberately no production guard here -- stub
+      // cues degrade one screen to the catalogue's own text, which is a
+      // working product, unlike stub mail or a stub Google verifier.
+      mode: env.CUES_MODE || 'stub',
+      apiKey: env.GROQ_API_KEY || null,
+      model: env.CUES_MODEL || null,
+    },
     storage: {
       mode: env.STORAGE_MODE || 'local',
       localDir: env.STORAGE_LOCAL_DIR || 'storage',

@@ -31,6 +31,10 @@ test('load applies documented defaults', () => {
   assert.equal(cfg.port, 3000);
   assert.equal(cfg.logLevel, 'info');
   assert.equal(cfg.ml.mode, 'stub');
+  // Stub by default so no test can reach Groq. Unlike mail and google there is
+  // no production guard: stub cues degrade one screen to the catalogue's own
+  // text, which still works.
+  assert.equal(cfg.cues.mode, 'stub');
   assert.equal(cfg.storage.mode, 'local');
   assert.equal(cfg.db.connectionLimit, 10);
 });
