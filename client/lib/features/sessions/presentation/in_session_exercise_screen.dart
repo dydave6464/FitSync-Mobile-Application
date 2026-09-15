@@ -1,18 +1,23 @@
 import 'package:flutter/material.dart';
-import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../core/theme.dart';
 import '../../../core/widgets/fs_kit.dart';
-import '../../exercises/presentation/providers.dart';
-import '../../exercises/presentation/widgets/exercise_demo_body.dart';
 import '../../plans/domain/workout_plan.dart';
+import 'widgets/exercise_demo_stage.dart';
 
-/// The demo and cues, mid-workout.
+/// The demo and cues, mid-workout, as a pushed route.
 ///
-/// Shares [ExerciseDemoBody] with the Browse tab's detail screen rather than
-/// copying it — the only differences are the position counter, the
-/// prescription, and a Done button that returns to the logger.
-class InSessionExerciseScreen extends ConsumerWidget {
+/// Reached from the set table's thumbnail: a second look at a movement
+/// without leaving the table's stage behind. The logger opens every exercise
+/// on the same demo before its table -- this is the detour back to it, not a
+/// duplicate of it.
+///
+/// Which is why the demo itself is [ExerciseDemoStage] and not a copy of one.
+/// This screen is the Scaffold, the app bar and the button back; everything
+/// inside -- the fetch, the spinner, the error copy, the header -- is the
+/// stage's, shared with the logger. The same relationship [ExerciseDemoBody]
+/// has with `ExerciseDetailScreen`, one layer up.
+class InSessionExerciseScreen extends StatelessWidget {
   const InSessionExerciseScreen({
     super.key,
     required this.exercise,
@@ -25,53 +30,18 @@ class InSessionExerciseScreen extends ConsumerWidget {
   final int total;
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  Widget build(BuildContext context) {
     final t = context.fs;
-    final detail = ref.watch(exerciseDetailProvider(exercise.exerciseId));
-    // animationUrl is a server-relative '/storage/...' key. Without the API
-    // base URL the demo resolves to a relative "null/storage/..." URI, fails,
-    // and falls through to the equipment icon -- the same wiring
-    // ExerciseDetailScreen does.
-    final baseUrl = ref.watch(exerciseRepositoryProvider).baseUrl;
 
     return Scaffold(
       backgroundColor: t.bg,
       appBar: AppBar(title: const Text('How to')),
-      body: detail.when(
-        loading: () => const Center(child: CircularProgressIndicator()),
-        error: (_, _) => Center(
-          child: Padding(
-            padding: const EdgeInsets.all(24),
-            child: Text(
-              'Could not load this exercise. You can still log your sets.',
-              textAlign: TextAlign.center,
-              style: TextStyle(fontSize: 12.5, color: t.text2),
-            ),
-          ),
-        ),
-        data: (loaded) => ExerciseDemoBody(
-          exercise: loaded,
-          baseUrl: baseUrl,
-          header: Row(
-            children: [
-              // Not FsEyebrow: that widget forces its text to uppercase,
-              // which would render "EXERCISE 1 OF 6" instead of the
-              // position counter's actual wording. The eyebrow *style* --
-              // mono, wide tracking -- still applies via fsEyebrow(t).
-              Text('Exercise $position of $total', style: fsEyebrow(t)),
-              const Spacer(),
-              Text(
-                '${exercise.targetSets} × ${exercise.targetReps}',
-                style: TextStyle(
-                  fontFamily: fsMonoFamily,
-                  fontSize: 13,
-                  fontWeight: FontWeight.w700,
-                  color: t.text,
-                ),
-              ),
-            ],
-          ),
-        ),
+      body: ExerciseDemoStage(
+        exercise: exercise,
+        // "of", not the logger's "n / N". This is a route of its own with no
+        // second counter on screen to agree with, where the logger's stage
+        // sits directly beneath a meta row carrying the same number.
+        positionLabel: 'Exercise $position of $total',
       ),
       bottomNavigationBar: SafeArea(
         child: Padding(

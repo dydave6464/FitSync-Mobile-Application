@@ -4,6 +4,9 @@ import 'package:flutter_test/flutter_test.dart';
 
 import 'package:fitsync/core/api_exception.dart';
 import 'package:fitsync/core/theme.dart';
+import 'package:fitsync/features/exercises/domain/exercise.dart';
+import 'package:fitsync/features/exercises/presentation/providers.dart'
+    show exerciseDetailProvider;
 import 'package:fitsync/features/plans/domain/workout_plan.dart';
 import 'package:fitsync/features/plans/presentation/providers.dart';
 import 'package:fitsync/features/sessions/domain/active_session.dart';
@@ -36,6 +39,22 @@ Future<void> _pump(WidgetTester tester, {ActiveSession? session}) async {
           const TrainingSummary(sessionCount: 0, setCount: 0, totalVolumeKg: 0)),
       sessionHistoryProvider.overrideWith((ref) async =>
           const SessionHistoryPage(sessions: [], total: 0, page: 1, limit: 20)),
+      // The logger this pushes into opens on the exercise demo, which
+      // fetches the catalogue entry. Unstubbed, that demo sits on a
+      // spinner the real repository never resolves and pumpAndSettle
+      // never returns -- the same reason lastPerformanceProvider is
+      // stubbed for the logger elsewhere.
+      exerciseDetailProvider.overrideWith(
+        (ref, id) async => ExerciseDetail(
+          exerciseId: id,
+          name: 'Detail $id',
+          muscleGroup: 'x',
+          equipment: null,
+          thumbnailUrl: null,
+          animationUrl: null,
+          cues: const [],
+        ),
+      ),
     ],
     child: MaterialApp(theme: fsLightTheme(), home: const TrainingShell()),
   ));
@@ -88,6 +107,22 @@ Future<void> _pumpWithController(
           const TrainingSummary(sessionCount: 0, setCount: 0, totalVolumeKg: 0)),
       sessionHistoryProvider.overrideWith((ref) async =>
           const SessionHistoryPage(sessions: [], total: 0, page: 1, limit: 20)),
+      // The logger this pushes into opens on the exercise demo, which
+      // fetches the catalogue entry. Unstubbed, that demo sits on a
+      // spinner the real repository never resolves and pumpAndSettle
+      // never returns -- the same reason lastPerformanceProvider is
+      // stubbed for the logger elsewhere.
+      exerciseDetailProvider.overrideWith(
+        (ref, id) async => ExerciseDetail(
+          exerciseId: id,
+          name: 'Detail $id',
+          muscleGroup: 'x',
+          equipment: null,
+          thumbnailUrl: null,
+          animationUrl: null,
+          cues: const [],
+        ),
+      ),
       // The logger this pushes into watches this too; without stubbing it,
       // the real repository would reach for a live ApiClient this test
       // never configured.

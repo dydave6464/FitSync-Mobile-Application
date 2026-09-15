@@ -4,6 +4,9 @@ import 'package:flutter_test/flutter_test.dart';
 
 import 'package:fitsync/core/api_exception.dart';
 import 'package:fitsync/core/widgets/fs_kit.dart';
+import 'package:fitsync/features/exercises/domain/exercise.dart';
+import 'package:fitsync/features/exercises/presentation/providers.dart'
+    show exerciseDetailProvider;
 import 'package:fitsync/features/home/presentation/home_screen.dart';
 import 'package:fitsync/features/home/presentation/widgets/greeting.dart';
 import 'package:fitsync/features/home/presentation/widgets/plan_card.dart';
@@ -149,6 +152,22 @@ Future<void> _pumpHome(
         }),
         sessionRepositoryProvider
             .overrideWithValue(sessions ?? _FakeSessionRepository()),
+        // The logger this pushes into opens on the exercise demo, which
+        // fetches the catalogue entry. Unstubbed, that demo sits on a
+        // spinner the real repository never resolves and pumpAndSettle
+        // never returns -- the same reason lastPerformanceProvider is
+        // stubbed for the logger elsewhere.
+        exerciseDetailProvider.overrideWith(
+          (ref, id) async => ExerciseDetail(
+            exerciseId: id,
+            name: 'Detail $id',
+            muscleGroup: 'x',
+            equipment: null,
+            thumbnailUrl: null,
+            animationUrl: null,
+            cues: const [],
+          ),
+        ),
       ],
       child: MaterialApp(
         home: HomeScreen(
