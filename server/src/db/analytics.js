@@ -111,7 +111,7 @@ async function readSetsByMuscle(pool, userId, period = 'week') {
        JOIN exercises e ON e.exercise_id = sl.exercise_id
       WHERE s.user_id = ? AND s.status = 'completed'
         AND sl.is_completed = TRUE
-        AND s.session_date >= DATE_SUB(CURDATE(), INTERVAL ? DAY)
+        AND s.session_date > DATE_SUB(CURDATE(), INTERVAL ? DAY)
       GROUP BY e.muscle_group
       ORDER BY sets DESC, muscle ASC`,
     [userId, days],

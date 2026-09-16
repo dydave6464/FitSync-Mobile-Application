@@ -157,6 +157,20 @@ test('analytics db', async (t) => {
     }
   });
 
+  await t.test('a session dated exactly the window length ago contributes no sets', async () => {
+    // Mirrors the readVolumeBuckets/readVolumeChange boundary fix: a session
+    // at daysAgo 7 must not appear in the week's muscle rows, while one at
+    // daysAgo 6 must. Unlike the bucket case, a dropped set here shows up
+    // directly in the COUNT, so this one CAN go genuinely red.
+    const userId = await makeUser('muscle-boundary@example.com');
+    await writeSession(userId, { daysAgo: 7, sets: 5, exerciseId: exRows[0].exercise_id });
+    await writeSession(userId, { daysAgo: 6, sets: 3, exerciseId: exRows[0].exercise_id });
+
+    const rows = await analytics.readSetsByMuscle(pool, userId, 'week');
+    const total = rows.reduce((sum, r) => sum + r.sets, 0);
+    assert.equal(total, 3, 'day 7 is outside the window; only day 6 counts');
+  });
+
   await t.test('the trend compares this window with the one before it', async () => {
     const userId = await makeUser('trend@example.com');
     await writeSession(userId, { daysAgo: 1, volume: 1100 });   // this week
