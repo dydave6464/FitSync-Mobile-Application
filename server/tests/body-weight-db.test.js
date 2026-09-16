@@ -121,4 +121,14 @@ test('body weight db', async (t) => {
     const userId = await makeUser(pool, 'period@example.com');
     assert.equal(await bw.readSeries(pool, userId, 'decade'), null);
   });
+
+  await t.test('an onboarding weight becomes the first chart point', async () => {
+    const userId = await makeUser(pool, 'onboard@example.com');
+    const { updateProfile } = require('../src/db/profile');
+    await updateProfile(pool, userId, { weightKg: 78.5 });
+
+    const series = await bw.readSeries(pool, userId, 'week');
+    assert.equal(series.points.length, 1, 'the chart starts with a point');
+    assert.equal(series.points[0].weightKg, 78.5);
+  });
 });

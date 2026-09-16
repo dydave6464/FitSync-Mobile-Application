@@ -1,4 +1,5 @@
 'use strict';
+const { writeEntry } = require('./body-weight');
 
 // API name -> column. Anything not in this map cannot be written, which is what
 // keeps PATCH from becoming a way to set is_premium or onboarding_completed_at.
@@ -115,6 +116,16 @@ async function updateProfile(pool, userId, fields) {
   if (sets.length === 0) return;
   params.push(userId);
   await pool.query(`UPDATE users SET ${sets.join(', ')} WHERE user_id = ?`, params);
+
+  // The chart starts with a point rather than an empty card. This is the
+  // user's own number, so nothing is invented -- and without it a brand new
+  // account's body weight card has nothing to draw on day one.
+  //
+  // Existing accounts are deliberately NOT backfilled: their weight has no
+  // date attached, and inventing one would put a fabricated point on a chart.
+  if (fields.weightKg !== undefined && fields.weightKg !== null) {
+    await writeEntry(pool, userId, { weightKg: fields.weightKg });
+  }
 }
 
 async function setEquipment(pool, userId, equipmentIds) {
