@@ -2,10 +2,15 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../core/theme.dart';
+import '../../../core/widgets/fs_charts.dart';
 import '../../../core/widgets/fs_kit.dart';
 import '../../exercises/presentation/exercise_list_screen.dart' show describeError;
+import '../../profile/presentation/providers.dart' show bodyWeightProvider;
+import '../../profile/presentation/widgets/body_weight_card.dart';
 import '../domain/session_history.dart';
+import '../domain/training_analytics.dart';
 import 'providers.dart';
+import 'widgets/progress_cards.dart';
 
 /// What training has actually amounted to.
 ///
@@ -39,17 +44,24 @@ class ProgressScreen extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final period = ref.watch(trainingPeriodProvider);
-    final summary = ref.watch(trainingSummaryProvider);
+    final analytics = ref.watch(trainingAnalyticsProvider(period));
+    final strength = ref.watch(strengthSeriesProvider(period));
+    final bodyWeight = ref.watch(bodyWeightProvider(period));
     final history = ref.watch(sessionHistoryProvider);
 
     void retry() {
-      ref.invalidate(trainingSummaryProvider);
+      ref.invalidate(trainingAnalyticsProvider(period));
+      ref.invalidate(strengthSeriesProvider(period));
+      ref.invalidate(bodyWeightProvider(period));
       ref.invalidate(sessionHistoryProvider);
     }
 
-    // Either failing is an outage, and recovering one without the other
-    // leaves half a screen that cannot be brought back without a restart.
-    final error = summary.error ?? history.error;
+    // Only the analytics call earns a full-screen retry: it owns the period
+    // every other card is scoped to, so without it the screen has no frame to
+    // hang anything on. The strength and body weight cards render their own
+    // inline error and their own retry, because either can fail while the
+    // rest of the screen is perfectly readable.
+    final error = analytics.error;
     if (error != null) {
       return _Retry(message: describeError(error), onRetry: retry);
     }
@@ -64,7 +76,7 @@ class ProgressScreen extends ConsumerWidget {
               ref.read(trainingPeriodProvider.notifier).set(value),
         ),
         const SizedBox(height: 16),
-        summary.when(
+        analytics.when(
           loading: () => const Padding(
             padding: EdgeInsets.symmetric(vertical: 28),
             child: Center(child: CircularProgressIndicator()),
@@ -72,10 +84,32 @@ class ProgressScreen extends ConsumerWidget {
           // Unreachable: a failure was handled above. Kept because `when`
           // demands it, and a silent SizedBox would hide a future regression.
           error: (e, _) => _Retry(message: describeError(e), onRetry: retry),
-          data: (totals) => _Totals(
-            totals: totals,
+          data: (data) => _AnalyticsCards(
+            analytics: data,
             window: _windowLabel[period] ?? period,
           ),
+        ),
+        const SizedBox(height: 12),
+        strength.when(
+          loading: () => const _CardLoading(),
+          error: (e, _) => _CardError(
+            message: describeError(e),
+            onRetry: () => ref.invalidate(strengthSeriesProvider(period)),
+          ),
+          data: (data) => StrengthCard(
+            series: data,
+            onPick: (id) =>
+                ref.read(strengthExerciseProvider.notifier).set(id),
+          ),
+        ),
+        const SizedBox(height: 12),
+        bodyWeight.when(
+          loading: () => const _CardLoading(),
+          error: (e, _) => _CardError(
+            message: describeError(e),
+            onRetry: () => ref.invalidate(bodyWeightProvider(period)),
+          ),
+          data: (data) => BodyWeightCard(series: data),
         ),
         const SizedBox(height: 22),
         const FsEyebrow('Recent'),
@@ -99,71 +133,61 @@ class ProgressScreen extends ConsumerWidget {
   }
 }
 
-class _Totals extends StatelessWidget {
-  const _Totals({required this.totals, required this.window});
+/// The analytics-derived cards, grouped so [ProgressScreen.build] hands them
+/// one [TrainingAnalytics] rather than threading its fields through three
+/// separate `.when` calls for what is a single fetch.
+class _AnalyticsCards extends StatelessWidget {
+  const _AnalyticsCards({required this.analytics, required this.window});
 
-  final TrainingSummary totals;
+  final TrainingAnalytics analytics;
   final String window;
 
   @override
   Widget build(BuildContext context) {
-    final t = context.fs;
-    final theme = Theme.of(context);
-
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
+        AdherenceCard(adherence: analytics.adherence, window: window),
+        const SizedBox(height: 12),
+        VolumeTrendCard(analytics: analytics),
+        const SizedBox(height: 12),
         FsCard(
-          accent: true,
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              const FsEyebrow('Total volume'),
-              const SizedBox(height: 6),
-              Row(
-                crossAxisAlignment: CrossAxisAlignment.baseline,
-                textBaseline: TextBaseline.alphabetic,
-                children: [
-                  Flexible(
-                    child: Text(
-                      groupThousands(totals.totalVolumeKg),
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: theme.textTheme.headlineMedium,
-                    ),
-                  ),
-                  const SizedBox(width: 6),
-                  Text('kg', style: TextStyle(fontSize: 13, color: t.text2)),
-                ],
-              ),
-              const SizedBox(height: 4),
-              Text(
-                'lifted in the $window',
-                style: TextStyle(fontSize: 12, color: t.text3),
-              ),
+              const FsEyebrow('Muscles worked'),
+              const SizedBox(height: 8),
+              for (final m in analytics.muscles)
+                FsBarRow(label: m.muscle, fraction: analytics.muscleFraction(m)),
             ],
           ),
-        ),
-        const SizedBox(height: 12),
-        Row(
-          children: [
-            Expanded(
-              child: _Tile(label: 'Sessions', value: '${totals.sessionCount}'),
-            ),
-            const SizedBox(width: 12),
-            Expanded(child: _Tile(label: 'Sets', value: '${totals.setCount}')),
-          ],
         ),
       ],
     );
   }
 }
 
-class _Tile extends StatelessWidget {
-  const _Tile({required this.label, required this.value});
+/// The strength and body-weight cards' own loading placeholder -- shorter
+/// than the analytics one above it, since these sit mid-list rather than
+/// carrying the whole screen while empty.
+class _CardLoading extends StatelessWidget {
+  const _CardLoading();
 
-  final String label;
-  final String value;
+  @override
+  Widget build(BuildContext context) => const Padding(
+        padding: EdgeInsets.symmetric(vertical: 20),
+        child: Center(child: CircularProgressIndicator()),
+      );
+}
+
+/// A card-sized failure, for the strength and body-weight cards. Unlike
+/// [_Retry], this does not take over the screen: either can fail while
+/// everything around it stays readable, so its retry only refetches itself.
+class _CardError extends StatelessWidget {
+  const _CardError({required this.message, required this.onRetry});
+
+  final String message;
+  final VoidCallback onRetry;
 
   @override
   Widget build(BuildContext context) {
@@ -173,12 +197,9 @@ class _Tile extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text(label, style: TextStyle(fontSize: 11, color: t.text3)),
-          const SizedBox(height: 4),
-          Text(
-            value,
-            style: Theme.of(context).textTheme.titleLarge,
-          ),
+          Text(message, style: TextStyle(fontSize: 12, color: t.text3)),
+          const SizedBox(height: 8),
+          FsChip(label: 'Retry', selected: false, onTap: onRetry),
         ],
       ),
     );

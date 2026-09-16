@@ -61,10 +61,13 @@ class ProfileRepository {
           .map((e) => InjuryOption.fromJson(e as Map<String, dynamic>))
           .toList(growable: false);
 
+  // `getJson` already strips the outer `data` envelope (see ApiClient's own
+  // doc comment) -- unlike every other method above, this one used to index
+  // `['data']` a second time, which found nothing inside the real response
+  // and threw a null cast on the first live weigh-in fetch.
   Future<BodyWeightSeries> bodyWeight(String period) async =>
       BodyWeightSeries.fromJson(
-        (await _api.getJson('/api/v1/profile/body-weight', query: {'period': period}))
-            ['data'] as Map<String, dynamic>,
+        await _api.getJson('/api/v1/profile/body-weight', query: {'period': period}),
       );
 
   Future<BodyWeightPoint> logBodyWeight(double weightKg) async =>

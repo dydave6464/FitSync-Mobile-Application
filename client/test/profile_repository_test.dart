@@ -317,4 +317,48 @@ void main() {
     expect(options.last.isLateral, isFalse);
     expect(options.last.regionGroup, 'Back and core');
   });
+
+  group('bodyWeight', () {
+    // The real shape GET /api/v1/profile/body-weight sends: one "data"
+    // envelope, same as every other endpoint ApiClient talks to. ApiClient
+    // itself strips that envelope (see its own doc comment), so a repository
+    // method must not look for a second one -- `bodyWeight` used to index
+    // `['data']` again here and threw a null cast on the first real fetch.
+    test('parses a single weigh-in, not double-wrapped', () async {
+      final (repo, _) = _repoReturning({
+        'data': {
+          'widened': false,
+          'points': [
+            {'loggedOn': '2026-09-16', 'weightKg': 71.4}
+          ],
+          'reference': {'kind': 'goal', 'weightKg': 68.0},
+          'unit': 'kg',
+        }
+      });
+
+      final series = await repo.bodyWeight('week');
+      expect(series.points.single.weightKg, 71.4);
+      expect(series.reference?.kind, 'goal');
+      expect(series.unit, 'kg');
+    });
+
+    test('asks for the period it was given', () async {
+      final (repo, captured) = _repoReturning({
+        'data': {'widened': false, 'points': [], 'reference': null, 'unit': 'kg'}
+      });
+
+      await repo.bodyWeight('month');
+      expect(captured.requests.single.url.queryParameters['period'], 'month');
+    });
+
+    test('no entries yet is not an error', () async {
+      final (repo, _) = _repoReturning({
+        'data': {'widened': false, 'points': [], 'reference': null, 'unit': 'kg'}
+      });
+
+      final series = await repo.bodyWeight('week');
+      expect(series.points, isEmpty);
+      expect(series.reference, isNull);
+    });
+  });
 }

@@ -9,11 +9,34 @@ import 'package:fitsync/features/exercises/presentation/providers.dart'
     show exerciseDetailProvider;
 import 'package:fitsync/features/plans/domain/workout_plan.dart';
 import 'package:fitsync/features/plans/presentation/providers.dart';
+import 'package:fitsync/features/profile/domain/body_weight.dart';
+import 'package:fitsync/features/profile/presentation/providers.dart'
+    show bodyWeightProvider;
 import 'package:fitsync/features/sessions/domain/active_session.dart';
 import 'package:fitsync/features/sessions/domain/session_history.dart';
+import 'package:fitsync/features/sessions/domain/strength_series.dart';
+import 'package:fitsync/features/sessions/domain/training_analytics.dart';
 import 'package:fitsync/features/sessions/presentation/providers.dart';
 import 'package:fitsync/features/sessions/presentation/session_logger_screen.dart';
 import 'package:fitsync/features/training/presentation/training_shell.dart';
+
+/// A quiet, zero-everything analytics reading. What every Progress-tab
+/// provider below is stubbed to, since this file is about the tab bar, not
+/// about what the Progress tab renders once it has real data -- that is
+/// progress_screen_test.dart's job.
+const _emptyAnalytics = TrainingAnalytics(
+  period: 'week',
+  volume: [VolumeBucket(label: '-1d', volumeKg: 0)],
+  change: VolumeChange(totalKg: 0, previousKg: 0, changePct: null),
+  adherence: Adherence(done: 0, target: null, weeks: 1),
+  muscles: [],
+);
+
+const _emptyStrength =
+    StrengthSeries(exerciseId: null, xAxis: 'date', points: [], options: []);
+
+const _emptyBodyWeight =
+    BodyWeightSeries(widened: false, points: [], reference: null, unit: 'kg');
 
 const _plan = WorkoutPlan(
   planId: 42, name: 'Week 1 — Full body', splitStyle: 'full_body',
@@ -35,8 +58,9 @@ Future<void> _pump(WidgetTester tester, {ActiveSession? session}) async {
       // The Progress tab is built eagerly with the rest of the shell. Stubbed
       // at the provider rather than the repository: this file is about the
       // tab bar, and Progress has its own test.
-      trainingSummaryProvider.overrideWith((ref) async =>
-          const TrainingSummary(sessionCount: 0, setCount: 0, totalVolumeKg: 0)),
+      trainingAnalyticsProvider.overrideWith((ref, period) async => _emptyAnalytics),
+      strengthSeriesProvider.overrideWith((ref, period) async => _emptyStrength),
+      bodyWeightProvider.overrideWith((ref, period) async => _emptyBodyWeight),
       sessionHistoryProvider.overrideWith((ref) async =>
           const SessionHistoryPage(sessions: [], total: 0, page: 1, limit: 20)),
       // The logger this pushes into opens on the exercise demo, which
@@ -103,8 +127,9 @@ Future<void> _pumpWithController(
       // The Progress tab is built eagerly with the rest of the shell. Stubbed
       // at the provider rather than the repository: this file is about the
       // tab bar, and Progress has its own test.
-      trainingSummaryProvider.overrideWith((ref) async =>
-          const TrainingSummary(sessionCount: 0, setCount: 0, totalVolumeKg: 0)),
+      trainingAnalyticsProvider.overrideWith((ref, period) async => _emptyAnalytics),
+      strengthSeriesProvider.overrideWith((ref, period) async => _emptyStrength),
+      bodyWeightProvider.overrideWith((ref, period) async => _emptyBodyWeight),
       sessionHistoryProvider.overrideWith((ref) async =>
           const SessionHistoryPage(sessions: [], total: 0, page: 1, limit: 20)),
       // The logger this pushes into opens on the exercise demo, which
@@ -154,7 +179,16 @@ void main() {
     await tester.tap(find.byKey(const Key('tab.progress')));
     await tester.pumpAndSettle();
     expect(find.textContaining('once you have logged'), findsNothing);
-    expect(find.byKey(const Key('progress.empty')), findsOneWidget);
+    // skipOffstage: false -- the Progress tab now leads with four real cards
+    // above the history list, so in the test viewport this message sits below
+    // the fold. A default finder treats "clipped by the ListView's viewport"
+    // the same as "not rendered", which is a fact about this window, not
+    // about whether the widget exists -- see nav_shell_test.dart for the same
+    // caveat with IndexedStack.
+    expect(
+      find.byKey(const Key('progress.empty'), skipOffstage: false),
+      findsOneWidget,
+    );
   });
 
   testWidgets('Recovery still says what is coming rather than nothing',

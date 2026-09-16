@@ -4,6 +4,8 @@ import '../../exercises/presentation/providers.dart' show apiClientProvider, api
 import '../data/session_repository.dart';
 import '../domain/active_session.dart';
 import '../domain/session_history.dart';
+import '../domain/strength_series.dart';
+import '../domain/training_analytics.dart';
 
 final sessionRepositoryProvider = Provider<SessionRepository>(
   (ref) => SessionRepository(ref.watch(apiClientProvider)),
@@ -152,3 +154,39 @@ final lastPerformanceProvider = FutureProvider.autoDispose
 /// Sorted so two orderings of the same plan share one cache entry.
 String lastPerformanceKey(Iterable<int> exerciseIds) =>
     (exerciseIds.toList()..sort()).join(',');
+
+/// Volume, adherence and muscle split for the Progress tab's chosen window.
+///
+/// Keyed on period like [bodyWeightProvider], so switching the segment
+/// refetches only this card's data.
+final trainingAnalyticsProvider =
+    FutureProvider.family<TrainingAnalytics, String>(
+  (ref, period) => ref.watch(sessionRepositoryProvider).analytics(period),
+  retry: apiRetryPolicy,
+);
+
+/// Which exercise the strength card is showing. Null means "let the server
+/// pick the one with the most data".
+///
+/// A [Notifier] rather than Riverpod's `StateProvider`: this codebase never
+/// pulls in `package:flutter_riverpod/legacy.dart` (Riverpod 3 moved
+/// `StateProvider` there), and every other piece of screen-local state here
+/// -- [TrainingPeriodNotifier], `SelectedFiltersNotifier` -- already follows
+/// this shape.
+class StrengthExerciseNotifier extends Notifier<int?> {
+  @override
+  int? build() => null;
+
+  void set(int? exerciseId) => state = exerciseId;
+}
+
+final strengthExerciseProvider =
+    NotifierProvider<StrengthExerciseNotifier, int?>(StrengthExerciseNotifier.new);
+
+final strengthSeriesProvider = FutureProvider.family<StrengthSeries, String>(
+  (ref, period) => ref.watch(sessionRepositoryProvider).strength(
+        period,
+        exerciseId: ref.watch(strengthExerciseProvider),
+      ),
+  retry: apiRetryPolicy,
+);

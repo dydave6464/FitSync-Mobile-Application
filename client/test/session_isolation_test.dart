@@ -9,11 +9,14 @@ import 'package:fitsync/features/exercises/domain/exercise.dart';
 import 'package:fitsync/features/exercises/presentation/providers.dart';
 import 'package:fitsync/features/plans/domain/split_style.dart';
 import 'package:fitsync/features/profile/data/profile_repository.dart';
+import 'package:fitsync/features/profile/domain/body_weight.dart';
 import 'package:fitsync/features/profile/domain/profile.dart';
 import 'package:fitsync/features/profile/presentation/providers.dart';
 import 'package:fitsync/features/sessions/data/session_repository.dart';
 import 'package:fitsync/features/sessions/domain/active_session.dart';
 import 'package:fitsync/features/sessions/domain/session_history.dart';
+import 'package:fitsync/features/sessions/domain/strength_series.dart';
+import 'package:fitsync/features/sessions/domain/training_analytics.dart';
 import 'package:fitsync/features/sessions/presentation/providers.dart';
 import 'package:fitsync/features/sessions/presentation/workout_draft.dart';
 
@@ -75,6 +78,10 @@ class SequenceProfileRepository implements ProfileRepository {
   Future<List<EquipmentOption>> equipmentOptions() async => const [];
   @override
   Future<List<InjuryOption>> injuryOptions() async => const [];
+  @override
+  Future<BodyWeightSeries> bodyWeight(String period) => throw UnimplementedError();
+  @override
+  Future<BodyWeightPoint> logBodyWeight(double weightKg) => throw UnimplementedError();
 }
 
 /// Hands out a different in-progress session on each call, so a cached one is
@@ -134,6 +141,11 @@ class SequenceSessionRepository implements SessionRepository {
   Future<void> abandon(int sessionId) => throw UnimplementedError();
   @override
   Future<Map<int, LastPerformance>> lastPerformance(List<int> exerciseIds) =>
+      throw UnimplementedError();
+  @override
+  Future<TrainingAnalytics> analytics(String period) => throw UnimplementedError();
+  @override
+  Future<StrengthSeries> strength(String period, {int? exerciseId}) =>
       throw UnimplementedError();
 }
 
