@@ -1,4 +1,5 @@
 import '../../../core/api_client.dart';
+import '../domain/body_weight.dart';
 import '../domain/profile.dart';
 
 /// What `POST /profile/complete-onboarding` returns: the finished profile and
@@ -59,4 +60,16 @@ class ProfileRepository {
       ((await _api.getJson('/api/v1/injuries'))['injuries'] as List<dynamic>)
           .map((e) => InjuryOption.fromJson(e as Map<String, dynamic>))
           .toList(growable: false);
+
+  Future<BodyWeightSeries> bodyWeight(String period) async =>
+      BodyWeightSeries.fromJson(
+        (await _api.getJson('/api/v1/profile/body-weight', query: {'period': period}))
+            ['data'] as Map<String, dynamic>,
+      );
+
+  Future<BodyWeightPoint> logBodyWeight(double weightKg) async =>
+      BodyWeightPoint.fromJson(
+        (await _api.postJson('/api/v1/profile/body-weight', {'weightKg': weightKg}))
+            ['data'] as Map<String, dynamic>,
+      );
 }

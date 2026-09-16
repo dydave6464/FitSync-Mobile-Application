@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../core/units.dart';
 import '../../exercises/presentation/providers.dart' show apiClientProvider, apiRetryPolicy;
 import '../data/profile_repository.dart';
+import '../domain/body_weight.dart';
 import '../domain/profile.dart';
 
 final profileRepositoryProvider = Provider<ProfileRepository>(
@@ -72,4 +73,9 @@ final injuryOptionsProvider = FutureProvider<List<InjuryOption>>(
 /// request that has nothing to do with them.
 final weightUnitProvider = Provider<WeightUnit>(
   (ref) => ref.watch(profileProvider).value?.weightUnit ?? WeightUnit.kg,
+);
+
+/// Keyed on period so switching the segment refetches only this card.
+final bodyWeightProvider = FutureProvider.family<BodyWeightSeries, String>(
+  (ref, period) => ref.watch(profileRepositoryProvider).bodyWeight(period),
 );
