@@ -3,6 +3,7 @@ const { load } = require('./src/config');
 const { createLogger } = require('./src/lib/logger');
 const { createPool } = require('./src/db/pool');
 const { createMlService } = require('./src/services/ml');
+const { createCueService } = require('./src/services/cues');
 const { createStorage } = require('./src/services/storage');
 const { createGoogleVerifier } = require('./src/services/google');
 const { createMailService } = require('./src/services/mail');
@@ -13,12 +14,14 @@ const config = load();
 const logger = createLogger({ level: config.logLevel, env: config.env });
 const pool = createPool(config.db);
 const ml = createMlService(config.ml);
+// Throws here, not on the first workout, when CUES_MODE=groq has no key.
+const cues = createCueService(config.cues);
 const storage = createStorage(config.storage);
 const google = createGoogleVerifier(config.google);
 const mail = createMailService(config.mail, logger);
 
 const app = createApp({
-  config, logger, pool, ml, storage, jwt: config.jwt, google,
+  config, logger, pool, ml, storage, cues, jwt: config.jwt, google,
   mail, publicBaseUrl: config.publicBaseUrl,
 });
 

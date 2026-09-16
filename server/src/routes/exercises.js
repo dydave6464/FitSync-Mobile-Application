@@ -8,6 +8,8 @@ const {
   DEFAULT_LIMIT,
   MAX_LIMIT,
 } = require('../db/exercises');
+const { resolveCues } = require('../db/cues');
+const { createCueService } = require('../services/cues');
 
 // A client sending nonsense should learn that it did, rather than have the
 // value silently clamped and get results it did not ask for.
@@ -70,7 +72,9 @@ function parseOptionalStringList(name, raw) {
   return raw;
 }
 
-module.exports = function buildExercisesRouter({ pool, storage }) {
+module.exports = function buildExercisesRouter({ pool, storage, cues = null }) {
+  // A router built without one still answers; it just never generates.
+  const cueService = cues || createCueService({});
   const router = express.Router();
 
   // The database stores keys; callers get URLs. This is the whole reason the
@@ -121,6 +125,33 @@ module.exports = function buildExercisesRouter({ pool, storage }) {
       });
 
       res.json({ data: { exercises: rows.map(toSummary), page, limit, total } });
+    } catch (err) {
+      next(err);
+    }
+  });
+
+  // Separate from GET /:id deliberately. That endpoint backs the Browse tab
+  // and must stay a pure database read; this one may generate. Split, the demo
+  // screen paints its animation and prescription from /:id immediately and
+  // fills the cue list in afterwards -- and a generation that never resolves
+  // costs the user nothing, because /:id already carried the catalogue cues
+  // they are reading.
+  //
+  // Auth comes from the mount in routes/index.js, which wraps this whole
+  // router in requireAuth, so req.user is set by the time this runs.
+  router.get('/:id/cues', async (req, res, next) => {
+    try {
+      const id = parsePositiveInt('id', req.params.id, null);
+      // Agree with the catalogue endpoint on what exists: this filters to live
+      // rows too, so an unreviewed exercise cannot leak through a side door.
+      const row = await getExerciseById(pool, id, req.user.userId);
+      if (!row) {
+        throw AppError.notFound(
+          'EXERCISE_NOT_FOUND',
+          `No live exercise with id ${req.params.id}.`,
+        );
+      }
+      res.json({ data: await resolveCues(pool, cueService, req.user.userId, id) });
     } catch (err) {
       next(err);
     }

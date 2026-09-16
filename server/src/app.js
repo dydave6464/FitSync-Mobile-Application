@@ -30,7 +30,8 @@ function reqSerializer(req) {
 }
 
 function createApp({
-  config, logger, pool, ml = null, storage = null, extraRouter = null, jwt = null, google = null,
+  config, logger, pool, ml = null, storage = null, cues = null, extraRouter = null,
+  jwt = null, google = null,
   mail = null, publicBaseUrl = null,
 }) {
   const app = express();
@@ -47,6 +48,7 @@ function createApp({
       pool,
       ml,
       storage,
+      cues,
       logger,
       config: config
         ? {
@@ -78,7 +80,7 @@ function createApp({
   }
 
   app.use('/api/v1', buildRoutes({
-    config, logger, pool, ml, storage, extraRouter, jwt, google, mail, publicBaseUrl,
+    config, logger, pool, ml, storage, cues, extraRouter, jwt, google, mail, publicBaseUrl,
   }));
 
   app.use(notFound);
