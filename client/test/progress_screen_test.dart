@@ -5,14 +5,17 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:fitsync/core/api_exception.dart';
 import 'package:fitsync/core/theme.dart';
 import 'package:fitsync/features/profile/domain/body_weight.dart';
+import 'package:fitsync/features/profile/domain/profile.dart';
 import 'package:fitsync/features/profile/presentation/providers.dart'
-    show bodyWeightProvider;
+    show bodyWeightProvider, profileProvider, ProfileNotifier;
+import 'package:fitsync/features/profile/presentation/widgets/body_weight_card.dart';
 import 'package:fitsync/features/sessions/data/session_repository.dart';
 import 'package:fitsync/features/sessions/domain/session_history.dart';
 import 'package:fitsync/features/sessions/domain/strength_series.dart';
 import 'package:fitsync/features/sessions/domain/training_analytics.dart';
 import 'package:fitsync/features/sessions/presentation/progress_screen.dart';
 import 'package:fitsync/features/sessions/presentation/providers.dart';
+import 'package:fitsync/features/sessions/presentation/widgets/progress_cards.dart';
 
 /// The real numbers off a completed manual workout.
 const _mine = SessionHistoryEntry(
@@ -98,6 +101,23 @@ class FakeSessionRepository implements SessionRepository {
       throw UnimplementedError('${i.memberName} is not used here');
 }
 
+/// Stands in for the profile fetch the strength card's weight unit now reads
+/// (see `StrengthCard.unit`) -- none of these tests are about units, so this
+/// keeps that lookup from ever reaching a real `ApiClient`.
+class _StubProfileNotifier extends ProfileNotifier {
+  @override
+  Future<Profile> build() async => const Profile(
+        userId: 1,
+        email: 'a@b.c',
+        fullName: 'A',
+        onboardingCompleted: true,
+        isPremium: false,
+        notificationsEnabled: true,
+        equipment: [],
+        injuries: [],
+      );
+}
+
 Future<FakeSessionRepository> _pump(
   WidgetTester tester, {
   FakeSessionRepository? repo,
@@ -110,6 +130,7 @@ Future<FakeSessionRepository> _pump(
       // tests are about it, so it is stubbed quiet rather than left to reach
       // a real ApiClient.
       bodyWeightProvider.overrideWith((ref, period) async => _emptyBodyWeight),
+      profileProvider.overrideWith(_StubProfileNotifier.new),
     ],
     child: MaterialApp(theme: fsLightTheme(), home: const ProgressScreen()),
   ));
@@ -221,5 +242,31 @@ void main() {
 
     expect(find.textContaining('0 kg'), findsNothing);
     expect(find.textContaining('9 sets', skipOffstage: false), findsWidgets);
+  });
+
+  testWidgets(
+      'cards render in spec order: strength, then body weight, then sets by muscle',
+      (tester) async {
+    // §5 of the design spec: segment · adherence hero · volume trend ·
+    // strength · body weight · sets by muscle · Recent history. A tall
+    // viewport keeps every card actually laid out instead of culled below
+    // the fold, so their vertical positions are comparable.
+    tester.view.physicalSize = const Size(400, 3000);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+
+    await _pump(tester);
+
+    double dy(Finder f) => tester.getTopLeft(f).dy;
+
+    final strengthDy = dy(find.byType(StrengthCard));
+    final bodyWeightDy = dy(find.byType(BodyWeightCard));
+    final musclesDy = dy(find.text('MUSCLES WORKED'));
+
+    expect(strengthDy, lessThan(bodyWeightDy),
+        reason: 'strength must render before body weight');
+    expect(bodyWeightDy, lessThan(musclesDy),
+        reason: 'sets by muscle must render last, after body weight');
   });
 }

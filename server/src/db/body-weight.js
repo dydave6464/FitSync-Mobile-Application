@@ -32,7 +32,7 @@ async function readSeries(pool, userId, period = 'week') {
     `SELECT weight_kg, log_date
        FROM body_weight_logs
       WHERE user_id = ?
-        AND log_date >= DATE_SUB(CURDATE(), INTERVAL ? DAY)
+        AND log_date > DATE_SUB(CURDATE(), INTERVAL ? DAY)
       ORDER BY log_date ASC`,
     [userId, days],
   );

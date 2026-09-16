@@ -10,8 +10,9 @@ import 'package:fitsync/features/exercises/presentation/providers.dart'
 import 'package:fitsync/features/plans/domain/workout_plan.dart';
 import 'package:fitsync/features/plans/presentation/providers.dart';
 import 'package:fitsync/features/profile/domain/body_weight.dart';
+import 'package:fitsync/features/profile/domain/profile.dart';
 import 'package:fitsync/features/profile/presentation/providers.dart'
-    show bodyWeightProvider;
+    show bodyWeightProvider, profileProvider, ProfileNotifier;
 import 'package:fitsync/features/sessions/domain/active_session.dart';
 import 'package:fitsync/features/sessions/domain/session_history.dart';
 import 'package:fitsync/features/sessions/domain/strength_series.dart';
@@ -49,6 +50,23 @@ const _plan = WorkoutPlan(
   ],
 );
 
+/// Stands in for the profile fetch the strength card's weight unit now reads
+/// (see `StrengthCard.unit`) -- this file is about the tab bar, not units, so
+/// this keeps that lookup from ever reaching a real `ApiClient`.
+class _StubProfileNotifier extends ProfileNotifier {
+  @override
+  Future<Profile> build() async => const Profile(
+        userId: 1,
+        email: 'a@b.c',
+        fullName: 'A',
+        onboardingCompleted: true,
+        isPremium: false,
+        notificationsEnabled: true,
+        equipment: [],
+        injuries: [],
+      );
+}
+
 Future<void> _pump(WidgetTester tester, {ActiveSession? session}) async {
   await tester.pumpWidget(ProviderScope(
     overrides: [
@@ -61,6 +79,7 @@ Future<void> _pump(WidgetTester tester, {ActiveSession? session}) async {
       trainingAnalyticsProvider.overrideWith((ref, period) async => _emptyAnalytics),
       strengthSeriesProvider.overrideWith((ref, period) async => _emptyStrength),
       bodyWeightProvider.overrideWith((ref, period) async => _emptyBodyWeight),
+      profileProvider.overrideWith(_StubProfileNotifier.new),
       sessionHistoryProvider.overrideWith((ref) async =>
           const SessionHistoryPage(sessions: [], total: 0, page: 1, limit: 20)),
       // The logger this pushes into opens on the exercise demo, which
@@ -130,6 +149,7 @@ Future<void> _pumpWithController(
       trainingAnalyticsProvider.overrideWith((ref, period) async => _emptyAnalytics),
       strengthSeriesProvider.overrideWith((ref, period) async => _emptyStrength),
       bodyWeightProvider.overrideWith((ref, period) async => _emptyBodyWeight),
+      profileProvider.overrideWith(_StubProfileNotifier.new),
       sessionHistoryProvider.overrideWith((ref) async =>
           const SessionHistoryPage(sessions: [], total: 0, page: 1, limit: 20)),
       // The logger this pushes into opens on the exercise demo, which

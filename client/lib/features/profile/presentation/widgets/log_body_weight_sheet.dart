@@ -5,7 +5,8 @@ import '../../../../core/api_exception.dart';
 import '../../../../core/theme.dart';
 import '../../../../core/units.dart';
 import '../../../../core/widgets/fs_kit.dart';
-import '../providers.dart' show bodyWeightProvider, profileRepositoryProvider, weightUnitProvider;
+import '../providers.dart'
+    show bodyWeightProvider, profileProvider, profileRepositoryProvider, weightUnitProvider;
 
 /// The bound `server/src/db/body-weight.js` enforces (`MIN_KG`/`MAX_KG`).
 /// Checked here too, so a typo reads as a plain-language message instead of
@@ -89,6 +90,12 @@ class _LogBodyWeightSheetState extends ConsumerState<_LogBodyWeightSheet> {
     // The point was just written; the card's own family entry is the one
     // that needs the new point, not every period at once.
     ref.invalidate(bodyWeightProvider(widget.period));
+    // The server's writeEntry also overwrites users.weight_kg when this is
+    // the newest entry, so Profile and Settings -- both backed by
+    // profileProvider, an AsyncNotifier that never refetches on its own --
+    // would otherwise keep showing the pre-save weight for the rest of the
+    // session, disagreeing with the log this sheet just wrote to.
+    ref.invalidate(profileProvider);
     Navigator.of(context).pop();
   }
 

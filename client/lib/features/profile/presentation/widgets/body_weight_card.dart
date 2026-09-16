@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../../../../core/theme.dart';
+import '../../../../core/units.dart';
 import '../../../../core/widgets/fs_charts.dart';
 import '../../../../core/widgets/fs_kit.dart';
 import '../../domain/body_weight.dart';
@@ -37,6 +38,12 @@ class BodyWeightCard extends StatelessWidget {
       ));
     }
 
+    // Everything on `series` is kilograms -- `unit` is display metadata only
+    // (see body_weight.dart). Converting once here, rather than per-field,
+    // is what keeps the headline, the chart, the reference line and the
+    // noise band all reading as the same unit instead of a half-converted
+    // card.
+    final unit = WeightUnit.fromApi(series.unit);
     final latest = points.last.weightKg;
     final reference = series.reference;
 
@@ -45,7 +52,7 @@ class BodyWeightCard extends StatelessWidget {
       children: [
         const FsEyebrow('Body weight'),
         const SizedBox(height: 6),
-        Text('${latest.toStringAsFixed(1)} ${series.unit}',
+        Text(formatWeightWithUnit(latest, unit),
             style: Theme.of(context).textTheme.headlineSmall),
         const SizedBox(height: 8),
         FsLineChart(
@@ -56,13 +63,17 @@ class BodyWeightCard extends StatelessWidget {
             for (var i = 0; i < points.length; i++)
               FsPoint(
                 x: i.toDouble(),
-                y: points[i].weightKg,
+                y: convertFromKg(points[i].weightKg, unit),
                 label: points[i].loggedOn.substring(5),
               ),
           ],
-          referenceY: reference?.weightKg,
+          referenceY: reference == null ? null : convertFromKg(reference.weightKg, unit),
           referenceLabel: reference?.label,
-          minYBand: kBodyWeightBandKg,
+          // The band is meant as "a few hundred grams of daily noise" --
+          // converting it alongside the data keeps it that same width in
+          // whichever unit is on screen, rather than staying a literal 4,
+          // which would mean something far narrower in pounds.
+          minYBand: convertFromKg(kBodyWeightBandKg, unit),
           height: 70,
         ),
         const SizedBox(height: 8),

@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../../../../core/theme.dart';
+import '../../../../core/units.dart';
 import '../../../../core/widgets/fs_kit.dart';
 import '../../../../core/widgets/fs_charts.dart';
 import '../../domain/training_analytics.dart';
@@ -102,10 +103,15 @@ class StrengthCard extends StatelessWidget {
     super.key,
     required this.series,
     required this.onPick,
+    required this.unit,
   });
 
   final StrengthSeries series;
   final ValueChanged<int> onPick;
+
+  /// `e1rmKg` is always kilograms from the server -- this is what the
+  /// headline and chart are displayed in, mirroring [BodyWeightCard].
+  final WeightUnit unit;
 
   @override
   Widget build(BuildContext context) {
@@ -156,7 +162,7 @@ class StrengthCard extends StatelessWidget {
           ),
           const SizedBox(height: 6),
           Text(
-            '${series.points.last.e1rmKg.toStringAsFixed(1)} kg',
+            formatWeightWithUnit(series.points.last.e1rmKg, unit),
             style: Theme.of(context).textTheme.headlineSmall,
           ),
           const SizedBox(height: 8),
@@ -165,11 +171,11 @@ class StrengthCard extends StatelessWidget {
               for (var i = 0; i < series.points.length; i++)
                 FsPoint(
                   x: i.toDouble(),
-                  y: series.points[i].e1rmKg,
+                  y: convertFromKg(series.points[i].e1rmKg, unit),
                   label: series.points[i].label,
                 ),
             ],
-            minYBand: kStrengthBandKg,
+            minYBand: convertFromKg(kStrengthBandKg, unit),
           ),
           const SizedBox(height: 6),
           Text(

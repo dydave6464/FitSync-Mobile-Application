@@ -78,6 +78,22 @@ test('body weight db', async (t) => {
     assert.ok(week.points[0].loggedOn < week.points[1].loggedOn, 'oldest first');
   });
 
+  await t.test('an entry exactly at the window boundary is excluded, one day inside is not', async () => {
+    const userId = await makeUser(pool, 'boundary@example.com');
+    const [[edge]] = await pool.query(`SELECT ${daysAgo(7)} AS d`);
+    const [[inside]] = await pool.query(`SELECT ${daysAgo(6)} AS d`);
+    await bw.writeEntry(pool, userId, { weightKg: 90, loggedOn: edge.d });
+    await bw.writeEntry(pool, userId, { weightKg: 79, loggedOn: inside.d });
+    await bw.writeEntry(pool, userId, { weightKg: 78 });
+
+    const week = await bw.readSeries(pool, userId, 'week');
+    assert.equal(week.widened, false, 'two entries already sit inside the window');
+    assert.equal(week.points.length, 2,
+      'the entry from exactly 7 days ago must fall outside the week window');
+    assert.ok(week.points.every((p) => p.weightKg !== 90),
+      'the day-7 boundary entry must not appear in the week series');
+  });
+
   await t.test('a full window does not widen', async () => {
     const userId = await makeUser(pool, 'nowiden@example.com');
     const [[a]] = await pool.query(`SELECT ${daysAgo(2)} AS d`);

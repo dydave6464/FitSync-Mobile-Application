@@ -5,7 +5,8 @@ import '../../../core/theme.dart';
 import '../../../core/widgets/fs_charts.dart';
 import '../../../core/widgets/fs_kit.dart';
 import '../../exercises/presentation/exercise_list_screen.dart' show describeError;
-import '../../profile/presentation/providers.dart' show bodyWeightProvider;
+import '../../profile/presentation/providers.dart'
+    show bodyWeightProvider, weightUnitProvider;
 import '../../profile/presentation/widgets/body_weight_card.dart';
 import '../../profile/presentation/widgets/log_body_weight_sheet.dart';
 import '../domain/session_history.dart';
@@ -49,6 +50,7 @@ class ProgressScreen extends ConsumerWidget {
     final strength = ref.watch(strengthSeriesProvider(period));
     final bodyWeight = ref.watch(bodyWeightProvider(period));
     final history = ref.watch(sessionHistoryProvider);
+    final unit = ref.watch(weightUnitProvider);
 
     void retry() {
       ref.invalidate(trainingAnalyticsProvider(period));
@@ -101,6 +103,7 @@ class ProgressScreen extends ConsumerWidget {
             series: data,
             onPick: (id) =>
                 ref.read(strengthExerciseProvider.notifier).set(id),
+            unit: unit,
           ),
         ),
         const SizedBox(height: 12),
@@ -114,6 +117,18 @@ class ProgressScreen extends ConsumerWidget {
             series: data,
             onAdd: () => showLogBodyWeightSheet(context, period: period),
           ),
+        ),
+        const SizedBox(height: 12),
+        // §5 of the design spec puts sets-by-muscle last of the analytics
+        // cards, after body weight -- so it renders from its own `when` here
+        // rather than inside `_AnalyticsCards` above, which now holds only
+        // the two cards that lead the screen.
+        analytics.when(
+          loading: () => const _CardLoading(),
+          // Unreachable: a failure was handled above. Kept because `when`
+          // demands it, and a silent SizedBox would hide a future regression.
+          error: (e, _) => _Retry(message: describeError(e), onRetry: retry),
+          data: (data) => _MusclesCard(analytics: data),
         ),
         const SizedBox(height: 22),
         const FsEyebrow('Recent'),
@@ -137,9 +152,11 @@ class ProgressScreen extends ConsumerWidget {
   }
 }
 
-/// The analytics-derived cards, grouped so [ProgressScreen.build] hands them
-/// one [TrainingAnalytics] rather than threading its fields through three
-/// separate `.when` calls for what is a single fetch.
+/// The two cards that lead the screen, grouped so [ProgressScreen.build]
+/// hands them one [TrainingAnalytics] rather than threading its fields
+/// through separate `.when` calls for what is a single fetch. Sets-by-muscle
+/// is fetched from the same [TrainingAnalytics] but renders on its own,
+/// further down the screen -- see [_MusclesCard].
 class _AnalyticsCards extends StatelessWidget {
   const _AnalyticsCards({required this.analytics, required this.window});
 
@@ -154,19 +171,33 @@ class _AnalyticsCards extends StatelessWidget {
         AdherenceCard(adherence: analytics.adherence, window: window),
         const SizedBox(height: 12),
         VolumeTrendCard(analytics: analytics),
-        const SizedBox(height: 12),
-        FsCard(
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              const FsEyebrow('Muscles worked'),
-              const SizedBox(height: 8),
-              for (final m in analytics.muscles)
-                FsBarRow(label: m.muscle, fraction: analytics.muscleFraction(m)),
-            ],
-          ),
-        ),
       ],
+    );
+  }
+}
+
+/// Sets by muscle -- last of the analytics cards, per §5 of the design spec
+/// (segment · adherence · volume trend · strength · body weight · sets by
+/// muscle). Split out of [_AnalyticsCards] so it can render after the
+/// strength and body-weight cards despite sharing their [TrainingAnalytics]
+/// fetch.
+class _MusclesCard extends StatelessWidget {
+  const _MusclesCard({required this.analytics});
+
+  final TrainingAnalytics analytics;
+
+  @override
+  Widget build(BuildContext context) {
+    return FsCard(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const FsEyebrow('Muscles worked'),
+          const SizedBox(height: 8),
+          for (final m in analytics.muscles)
+            FsBarRow(label: m.muscle, fraction: analytics.muscleFraction(m)),
+        ],
+      ),
     );
   }
 }

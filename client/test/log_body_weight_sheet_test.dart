@@ -23,8 +23,16 @@ const _profile = Profile(
 class FakeProfileRepository implements ProfileRepository {
   final logged = <double>[];
 
+  /// How many times [load] has been called -- starts at 0, since unlike
+  /// [bodyWeightProvider] nothing in `_pump` eagerly watches [profileProvider]
+  /// before the sheet opens.
+  int loads = 0;
+
   @override
-  Future<Profile> load() async => _profile;
+  Future<Profile> load() async {
+    loads += 1;
+    return _profile;
+  }
 
   @override
   Future<BodyWeightPoint> logBodyWeight(double weightKg) async {
@@ -113,5 +121,23 @@ void main() {
     expect(find.textContaining('between'), findsOneWidget);
     expect(find.byKey(const Key('bodyWeight.save')), findsOneWidget,
         reason: 'a rejected entry leaves the sheet open to fix it');
+  });
+
+  testWidgets('a successful save also refreshes the profile, not just the card',
+      (tester) async {
+    // The server syncs users.weight_kg from the newest weigh-in (see
+    // writeEntry in server/src/db/body-weight.js), so Profile and Settings --
+    // both backed by profileProvider -- must refetch too, or they keep
+    // showing the pre-save weight for the rest of the session.
+    final repo = FakeProfileRepository();
+    final fetches = _FetchCount();
+    await _pump(tester, repo: repo, fetches: fetches);
+    expect(repo.loads, 1, reason: 'the sheet itself already reads the unit off the profile');
+
+    await tester.enterText(find.byKey(const Key('bodyWeight.field')), '72.5');
+    await tester.tap(find.byKey(const Key('bodyWeight.save')));
+    await tester.pumpAndSettle();
+
+    expect(repo.loads, 2, reason: 'a save must invalidate profileProvider too');
   });
 }
