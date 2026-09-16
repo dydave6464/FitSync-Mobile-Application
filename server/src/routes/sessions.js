@@ -135,7 +135,17 @@ module.exports = function buildSessionsRouter(deps) {
   router.get('/analytics', auth, async (req, res, next) => {
     try {
       const period = req.query.period || 'week';
-      const volume = await analytics.readVolumeBuckets(deps.pool, req.user.userId, period);
+      // None of these four depends on another's output, so they run
+      // concurrently rather than as four sequential round trips. Volume is
+      // checked for null (the unknown-period signal) only after all four
+      // have settled -- the other three also return null for an unknown
+      // period rather than throwing, so nothing blows up in the meantime.
+      const [volume, change, adherence, muscles] = await Promise.all([
+        analytics.readVolumeBuckets(deps.pool, req.user.userId, period),
+        analytics.readVolumeChange(deps.pool, req.user.userId, period),
+        analytics.readAdherence(deps.pool, req.user.userId, period),
+        analytics.readSetsByMuscle(deps.pool, req.user.userId, period),
+      ]);
       if (volume === null) {
         throw AppError.badRequest(
           'INVALID_PERIOD',
@@ -145,11 +155,7 @@ module.exports = function buildSessionsRouter(deps) {
 
       res.json({
         data: {
-          period,
-          volume,
-          change: await analytics.readVolumeChange(deps.pool, req.user.userId, period),
-          adherence: await analytics.readAdherence(deps.pool, req.user.userId, period),
-          muscles: await analytics.readSetsByMuscle(deps.pool, req.user.userId, period),
+          period, volume, change, adherence, muscles,
         },
       });
     } catch (err) {
