@@ -12,6 +12,7 @@
     "seed": "node scripts/seed-exercises.js",
     "seed:injuries": "node scripts/seed-injuries.js",
     "seed:demo": "node scripts/seed-demo.js",
+    "warm:cues": "node scripts/warm-cues.js",
     "seed:equipment": "node scripts/seed-equipment.js",
     "seed:safety": "node scripts/seed-exercise-safety.js",
     "seed:categories": "node scripts/seed-exercise-categories.js",
