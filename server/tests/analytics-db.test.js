@@ -85,6 +85,20 @@ test('analytics db', async (t) => {
     assert.equal(buckets[0].volumeKg, 900, 'day 6 is the oldest day still inside the window');
   });
 
+  await t.test('a day-7 session never joins day 6 in the first bucket, even under the clamp', async () => {
+    // Regression guard for the >= boundary bug: with a bare `>`, day 7 never
+    // enters the query at all, so it cannot land anywhere -- including
+    // folded into bucket 0 by the LEAST() clamp. If the boundary ever
+    // reverts to `>=`, the clamp keeps day 7's volume visible rather than
+    // vanishing it, but folded into bucket 0 alongside day 6 -- which this
+    // assertion catches, unlike a bare "all buckets zero" check.
+    const userId = await makeUser('boundary-week-noclamp@example.com');
+    await writeSession(userId, { daysAgo: 6, volume: 900 });
+    await writeSession(userId, { daysAgo: 7, volume: 400 });
+    const buckets = await analytics.readVolumeBuckets(pool, userId, 'week');
+    assert.equal(buckets[0].volumeKg, 900, 'day 7 must not be folded into the day-6 bucket');
+  });
+
   await t.test('a session dated exactly the month window length ago is excluded from buckets', async () => {
     // month: days = 30. Mirrors the week boundary case above -- month and
     // year previously had only a length assertion, never a data one.

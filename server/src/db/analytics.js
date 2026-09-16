@@ -28,14 +28,25 @@ async function readVolumeBuckets(pool, userId, period = 'week') {
 
   // Bucket 0 is the most recent `width` days; the reverse below puts oldest
   // first, which is the direction a chart reads.
+  //
+  // LEAST(..., shape.count - 1) clamps the index so an out-of-range bucket is
+  // structurally impossible. With the correct `>` above, daysAgo never
+  // reaches `days`, so the raw FLOOR() never reaches `count` and LEAST never
+  // binds -- this changes nothing in correct operation. It exists purely as
+  // a guard: a `>=` here once let a session dated exactly `days` ago into
+  // this query, where its bucket index landed one past the array the output
+  // loop reads, and its volume vanished without a trace -- not zero-filled,
+  // not merged, just gone. If that boundary is ever wrong again, LEAST folds
+  // the stray session into the OLDEST bucket instead of dropping it: visible
+  // data in a slightly wrong period beats data that silently disappears.
   const [rows] = await pool.query(
-    `SELECT FLOOR(DATEDIFF(CURDATE(), s.session_date) / ?) AS bucket,
+    `SELECT LEAST(FLOOR(DATEDIFF(CURDATE(), s.session_date) / ?), ?) AS bucket,
             COALESCE(SUM(s.total_volume_kg), 0) AS volume_kg
        FROM workout_sessions s
       WHERE s.user_id = ? AND s.status = 'completed'
         AND s.session_date > DATE_SUB(CURDATE(), INTERVAL ? DAY)
       GROUP BY bucket`,
-    [width, userId, days],
+    [width, shape.count - 1, userId, days],
   );
 
   const byBucket = new Map(rows.map((r) => [Number(r.bucket), toNumber(r.volume_kg) ?? 0]));
