@@ -361,4 +361,21 @@ void main() {
       expect(series.reference, isNull);
     });
   });
+
+  group('logBodyWeight', () {
+    // Same defect as bodyWeight() above, same fix: POST /profile/body-weight
+    // answers with one "data" envelope holding the stored point directly, not
+    // a second "data" key inside it.
+    test('parses the stored entry, not double-wrapped', () async {
+      final (repo, captured) = _repoReturning({
+        'data': {'loggedOn': '2026-09-16', 'weightKg': 71.4},
+      });
+
+      final point = await repo.logBodyWeight(71.4);
+
+      expect(point.weightKg, 71.4);
+      expect(point.loggedOn, '2026-09-16');
+      expect(jsonDecode(captured.requests.single.body), {'weightKg': 71.4});
+    });
+  });
 }

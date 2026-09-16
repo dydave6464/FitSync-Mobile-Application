@@ -70,9 +70,10 @@ class ProfileRepository {
         await _api.getJson('/api/v1/profile/body-weight', query: {'period': period}),
       );
 
+  // Same fix as bodyWeight() above: postJson already unwraps the outer
+  // "data" envelope once.
   Future<BodyWeightPoint> logBodyWeight(double weightKg) async =>
       BodyWeightPoint.fromJson(
-        (await _api.postJson('/api/v1/profile/body-weight', {'weightKg': weightKg}))
-            ['data'] as Map<String, dynamic>,
+        await _api.postJson('/api/v1/profile/body-weight', {'weightKg': weightKg}),
       );
 }

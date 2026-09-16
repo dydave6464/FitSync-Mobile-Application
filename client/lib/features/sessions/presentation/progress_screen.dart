@@ -7,6 +7,7 @@ import '../../../core/widgets/fs_kit.dart';
 import '../../exercises/presentation/exercise_list_screen.dart' show describeError;
 import '../../profile/presentation/providers.dart' show bodyWeightProvider;
 import '../../profile/presentation/widgets/body_weight_card.dart';
+import '../../profile/presentation/widgets/log_body_weight_sheet.dart';
 import '../domain/session_history.dart';
 import '../domain/training_analytics.dart';
 import 'providers.dart';
@@ -109,7 +110,10 @@ class ProgressScreen extends ConsumerWidget {
             message: describeError(e),
             onRetry: () => ref.invalidate(bodyWeightProvider(period)),
           ),
-          data: (data) => BodyWeightCard(series: data),
+          data: (data) => BodyWeightCard(
+            series: data,
+            onAdd: () => showLogBodyWeightSheet(context, period: period),
+          ),
         ),
         const SizedBox(height: 22),
         const FsEyebrow('Recent'),
