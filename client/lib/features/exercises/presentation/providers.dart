@@ -4,6 +4,7 @@ import '../../../core/api_client.dart';
 import '../../../core/api_exception.dart';
 import '../data/exercise_repository.dart';
 import '../domain/exercise.dart';
+import '../domain/exercise_cues.dart';
 import '../domain/exercise_filters.dart';
 
 /// How many times a transient failure is retried before the error is shown.
@@ -43,6 +44,15 @@ final apiClientProvider = Provider<ApiClient>((ref) => ApiClient());
 
 final exerciseRepositoryProvider = Provider<ExerciseRepository>(
   (ref) => ExerciseRepository(ref.watch(apiClientProvider)),
+);
+
+/// The cues for one exercise, which the server may have written for the user's
+/// injury. autoDispose because a workout touches a handful of exercises and
+/// never returns to most of them.
+final exerciseCuesProvider =
+    FutureProvider.autoDispose.family<ExerciseCues, int>(
+  (ref, exerciseId) => ref.watch(exerciseRepositoryProvider).cues(exerciseId),
+  retry: apiRetryPolicy,
 );
 
 final exerciseFiltersProvider = FutureProvider<ExerciseFilters>(

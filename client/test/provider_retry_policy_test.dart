@@ -3,6 +3,7 @@ import 'package:flutter_test/flutter_test.dart';
 
 import 'package:fitsync/core/api_exception.dart';
 import 'package:fitsync/features/exercises/data/exercise_repository.dart';
+import 'package:fitsync/features/exercises/domain/exercise_cues.dart';
 import 'package:fitsync/features/exercises/domain/exercise.dart';
 import 'package:fitsync/features/exercises/domain/exercise_filters.dart';
 import 'package:fitsync/features/exercises/presentation/providers.dart';
@@ -18,6 +19,11 @@ class _FailingRepository implements ExerciseRepository {
 
   @override
   String get baseUrl => 'http://test.local';
+
+  // These doubles predate the cues endpoint and no test here exercises it.
+  @override
+  Future<ExerciseCues> cues(int id) async =>
+      const ExerciseCues(source: 'catalogue', injuryName: null, cues: []);
 
   @override
   Future<ExerciseDetail> byId(int id) async {

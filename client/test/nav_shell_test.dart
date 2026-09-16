@@ -7,6 +7,7 @@ import 'package:http/testing.dart';
 import 'package:fitsync/core/api_client.dart';
 import 'package:fitsync/core/token_store.dart';
 import 'package:fitsync/features/exercises/data/exercise_repository.dart';
+import 'package:fitsync/features/exercises/domain/exercise_cues.dart';
 import 'package:fitsync/features/exercises/domain/exercise.dart';
 import 'package:fitsync/features/exercises/domain/exercise_filters.dart';
 import 'package:fitsync/features/exercises/presentation/exercise_list_screen.dart';
@@ -30,6 +31,11 @@ const _exerciseCount = 30;
 class FakeExerciseRepository implements ExerciseRepository {
   @override
   String get baseUrl => 'http://test.local';
+
+  // These doubles predate the cues endpoint and no test here exercises it.
+  @override
+  Future<ExerciseCues> cues(int id) async =>
+      const ExerciseCues(source: 'catalogue', injuryName: null, cues: []);
 
   @override
   Future<ExercisePage> list({

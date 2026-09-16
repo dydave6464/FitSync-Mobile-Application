@@ -4,6 +4,7 @@ import 'package:flutter_test/flutter_test.dart';
 
 import 'package:fitsync/core/theme.dart';
 import 'package:fitsync/features/exercises/data/exercise_repository.dart';
+import 'package:fitsync/features/exercises/domain/exercise_cues.dart';
 import 'package:fitsync/features/exercises/domain/exercise.dart';
 import 'package:fitsync/features/exercises/domain/exercise_filters.dart';
 import 'package:fitsync/features/exercises/presentation/providers.dart';
@@ -42,6 +43,13 @@ const _detailWithAnimation = ExerciseDetail(
 class _BaseUrlRepository implements ExerciseRepository {
   @override
   String get baseUrl => 'http://test.local';
+
+  // This screen reads cues from the endpoint now, so the double answers the
+  // way the real server does for an exercise that loads nothing injured: the
+  // exercise's own seeded cues, marked as the catalogue's.
+  @override
+  Future<ExerciseCues> cues(int id) async =>
+      ExerciseCues.catalogue((await byId(id)).cues);
 
   @override
   Future<ExercisePage> list({

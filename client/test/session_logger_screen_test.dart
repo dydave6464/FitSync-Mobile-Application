@@ -8,7 +8,9 @@ import 'package:fitsync/core/api_exception.dart';
 import 'package:fitsync/core/theme.dart';
 import 'package:fitsync/core/units.dart';
 import 'package:fitsync/features/exercises/domain/exercise.dart';
-import 'package:fitsync/features/exercises/presentation/providers.dart' show exerciseDetailProvider;
+import 'package:fitsync/features/exercises/domain/exercise_cues.dart';
+import 'package:fitsync/features/exercises/presentation/providers.dart'
+    show exerciseDetailProvider, exerciseCuesProvider;
 import 'package:fitsync/features/plans/data/plan_repository.dart';
 import 'package:fitsync/features/plans/domain/workout_plan.dart';
 import 'package:fitsync/features/profile/domain/profile.dart';
@@ -322,6 +324,7 @@ Future<FakeSessionController> _pump(
   // through an async override, as the real provider is -- so the logger's
   // first frame renders before it lands, exactly as it does on a phone.
   Map<int, LastPerformance> last = const {},
+  ExerciseCues? cues,
   // Holds /sessions/last-performance open instead of answering [last]
   // immediately. The set table is a tap away from the pump now, so a prefill
   // supplied through [last] has always landed by the time the table is first
@@ -364,6 +367,13 @@ Future<FakeSessionController> _pump(
         (ref, key) async => lastGate != null ? lastGate.future : last,
       ),
       if (plans != null) planRepositoryProvider.overrideWithValue(plans),
+      // Live for every test in this file: the demo stage reads this too, and
+      // an unstubbed fetch would hang pumpAndSettle. `cues` lets one test
+      // supply an AI answer; the rest get the catalogue default.
+      exerciseCuesProvider.overrideWith(
+        (ref, id) async => cues ??
+            const ExerciseCues(source: 'catalogue', injuryName: null, cues: []),
+      ),
       // Live for every test in this file, not just the pushed-screen one:
       // each exercise opens on a demo stage that reads this.
       exerciseDetailProvider.overrideWith(
@@ -466,6 +476,49 @@ void main() {
     expect(find.byKey(const Key('logger.demo')), findsOneWidget);
     expect(find.byType(SetRow), findsNothing);
     expect(find.text('Start logging'), findsOneWidget);
+  });
+
+  // The payoff of the whole injury gate, seen from the screen: cues written
+  // for the user's own reported injury, named as such.
+  testWidgets('the demo stage shows cues written for a reported injury',
+      (tester) async {
+    await _pump(
+      tester,
+      session: _manualSession,
+      plan: null,
+      cues: const ExerciseCues(
+        source: 'ai',
+        injuryName: 'Shoulder',
+        cues: [
+          Cue(title: 'Pull to the navel', detail: 'Keeps it out of the arc.'),
+        ],
+      ),
+    );
+
+    expect(find.byKey(const Key('logger.demo')), findsOneWidget);
+    expect(find.text('AI coaching cues'), findsOneWidget);
+    expect(find.text('Shoulder'), findsOneWidget);
+    expect(find.text('Pull to the navel'), findsOneWidget);
+  });
+
+  // The other half, and the reason the gate exists: an exercise that loads
+  // nothing injured costs nothing and says nothing about AI.
+  testWidgets('an unflagged exercise shows plain catalogue cues',
+      (tester) async {
+    await _pump(
+      tester,
+      session: _manualSession,
+      plan: null,
+      cues: const ExerciseCues(
+        source: 'catalogue',
+        injuryName: null,
+        cues: [Cue(title: 'Brace before you press.')],
+      ),
+    );
+
+    expect(find.text('How to perform'), findsOneWidget);
+    expect(find.text('AI coaching cues'), findsNothing);
+    expect(find.text('Brace before you press.'), findsOneWidget);
   });
 
   testWidgets('Start logging reveals the set table', (tester) async {

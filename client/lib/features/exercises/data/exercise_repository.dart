@@ -1,5 +1,6 @@
 import '../../../core/api_client.dart';
 import '../domain/exercise.dart';
+import '../domain/exercise_cues.dart';
 import '../domain/exercise_filters.dart';
 
 class ExerciseRepository {
@@ -36,6 +37,12 @@ class ExerciseRepository {
 
   Future<ExerciseDetail> byId(int id) async =>
       ExerciseDetail.fromJson(await _api.getJson('/api/v1/exercises/$id'));
+
+  /// The cues to show for this exercise, which the server may have written for
+  /// an injury the user reported. Separate from [byId] because that call must
+  /// stay a pure database read -- see the route's own comment.
+  Future<ExerciseCues> cues(int id) async =>
+      ExerciseCues.fromJson(await _api.getJson('/api/v1/exercises/$id/cues'));
 
   Future<ExerciseFilters> filters() async =>
       ExerciseFilters.fromJson(await _api.getJson('/api/v1/exercises/filters'));

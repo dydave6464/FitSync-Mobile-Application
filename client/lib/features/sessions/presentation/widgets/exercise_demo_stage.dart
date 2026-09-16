@@ -56,6 +56,7 @@ class ExerciseDemoStage extends ConsumerWidget {
     // URL it resolves to "null/storage/..." and falls through to the
     // equipment icon.
     final baseUrl = ref.watch(exerciseRepositoryProvider).baseUrl;
+    final cues = ref.watch(exerciseCuesProvider(exercise.exerciseId));
 
     return detail.when(
       loading: () => const Center(child: CircularProgressIndicator()),
@@ -73,6 +74,11 @@ class ExerciseDemoStage extends ConsumerWidget {
       data: (loaded) => ExerciseDemoBody(
         exercise: loaded,
         baseUrl: baseUrl,
+        // Null while `/cues` is in flight, and null again if it fails --
+        // either way the body falls back to the catalogue cues `loaded`
+        // already carries. The reader has usable cues from the first frame,
+        // and nothing on screen claims to be AI-written until it is.
+        cues: cues.value,
         header: Row(
           children: [
             // Not FsEyebrow: that widget forces its text to uppercase, which
