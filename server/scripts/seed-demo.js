@@ -3,6 +3,7 @@ const { load } = require('../src/config');
 const { createPool } = require('../src/db/pool');
 const { hashPassword } = require('../src/lib/passwords');
 const { INJURY_MUSCLE_GROUPS } = require('../src/db/injury-muscle-groups');
+const { writeEntry } = require('../src/db/body-weight');
 
 // Hardcoded deliberately, and only because of what it is: a self-evidently
 // disposable demo credential, so publishing it in a public repository reveals
@@ -145,11 +146,17 @@ async function addPlan(pool, userId, injury, regionGroup) {
   return plan.insertId;
 }
 
-/// Two finished sessions, so Progress, the last-performance prefill and
-/// repeat-last-workout all have something to show on a fresh account.
+/// Ten completed sessions, so Progress, the last-performance prefill and
+/// repeat-last-workout all have something to show on a fresh account -- and
+/// so every chart on the Progress tab has enough points to draw a line.
 async function addHistory(pool, userId, planId) {
+  // Filtered to 'completed': an abandoned or in-progress session left behind
+  // by someone trying the app by hand is not history, and must not make this
+  // look already-seeded and skip adding any.
   const [existing] = await pool.query(
-    'SELECT session_id FROM workout_sessions WHERE user_id = ?', [userId],
+    `SELECT session_id FROM workout_sessions
+      WHERE user_id = ? AND status = 'completed'`,
+    [userId],
   );
   if (existing.length > 0) return;
 
@@ -180,6 +187,46 @@ async function addHistory(pool, userId, planId) {
         );
       }
     }
+  }
+
+  // Backdated on purpose. Every chart on the Progress tab needs at least two
+  // points to draw a line, and a demo account created moments ago has one of
+  // everything. Eight weeks of history makes the strength chart a date-axis
+  // trend rather than the single-session fallback, and gives the volume
+  // buckets something other than zero.
+  //
+  // Only the compound lift each of these eight weeks -- the same exercise
+  // addPlan chose to load the reported injury, already sitting in `exercises`
+  // -- stepping the weight up so the strength chart's e1RM line has a slope.
+  // One weigh-in rides along each week so the body weight chart is not a
+  // single dot either.
+  const compoundExerciseId = exercises[0].exercise_id;
+  const COMPOUND_SETS = 3;
+  for (let week = 8; week >= 1; week -= 1) {
+    const daysAgo = week * 7;
+    const weight = 60 + Math.floor((8 - week) / 2) * 2.5;
+
+    const [session] = await pool.query(
+      `INSERT INTO workout_sessions (user_id, plan_id, status, session_date, duration_min, total_volume_kg)
+       VALUES (?, ?, 'completed', DATE_SUB(CURDATE(), INTERVAL ? DAY), 45, ?)`,
+      [userId, planId, daysAgo, weight * COMPOUND_SETS * 10],
+    );
+
+    for (let setNo = 1; setNo <= COMPOUND_SETS; setNo += 1) {
+      await pool.query(
+        `INSERT INTO set_logs (session_id, exercise_id, set_number, weight_kg, reps, is_completed)
+         VALUES (?, ?, ?, ?, ?, TRUE)`,
+        [session.insertId, compoundExerciseId, setNo, weight, 11 - setNo],
+      );
+    }
+
+    const [[day]] = await pool.query(
+      'SELECT DATE_SUB(CURDATE(), INTERVAL ? DAY) AS d', [daysAgo],
+    );
+    await writeEntry(pool, userId, {
+      weightKg: 78 - (8 - week) * 0.4,
+      loggedOn: day.d,
+    });
   }
 }
 

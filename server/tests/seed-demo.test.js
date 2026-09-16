@@ -5,7 +5,7 @@ const { migrate } = require('../src/db/migrate');
 const { createPool } = require('../src/db/pool');
 const { testDbConfig, dropAllTables } = require('./helpers/test-db');
 const { seedInjuries } = require('../src/db/seed-injuries');
-const { verifyPassword } = require('../src/lib/passwords');
+const { verifyPassword, hashPassword } = require('../src/lib/passwords');
 const { loadsRegion } = require('../src/db/injury-muscle-groups');
 const { seedDemo } = require('../scripts/seed-demo');
 
@@ -161,7 +161,8 @@ test('the demo accounts', async (t) => {
 
       assert.equal(rows.length, 2);
       for (const row of rows) {
-        assert.equal(Number(row.sessions), 2, `${row.email} needs two sessions`);
+        // Two recent sessions plus eight backdated ones for the Progress charts.
+        assert.equal(Number(row.sessions), 10, `${row.email} needs ten sessions`);
         assert.ok(Number(row.sets) > 0, `${row.email} needs logged sets`);
       }
     });
@@ -187,6 +188,84 @@ test('the demo accounts', async (t) => {
          JOIN users u ON u.user_id = ws.user_id
         WHERE u.email LIKE 'test3%@gmail.com'`,
     );
-    assert.equal(Number(sessions[0].n), 4);
+    // Ten sessions each (two recent, eight backdated), times two accounts.
+    assert.equal(Number(sessions[0].n), 20);
   });
+
+  await t.test('demo accounts have enough history to draw a line', async () => {
+    const [[user]] = await pool.query(
+      "SELECT user_id FROM users WHERE email = 'test30@gmail.com'",
+    );
+
+    const [[sessions]] = await pool.query(
+      `SELECT COUNT(*) AS n FROM workout_sessions
+        WHERE user_id = ? AND status = 'completed'`,
+      [user.user_id],
+    );
+    assert.ok(Number(sessions.n) >= 8, 'enough sessions for a trend');
+
+    const [[weights]] = await pool.query(
+      'SELECT COUNT(*) AS n FROM body_weight_logs WHERE user_id = ?',
+      [user.user_id],
+    );
+    assert.ok(Number(weights.n) >= 6, 'enough weigh-ins for a line');
+
+    // A repeated lift across sessions is what turns the strength chart from a
+    // set-axis single session into a date-axis trend.
+    const [[repeated]] = await pool.query(
+      `SELECT COUNT(DISTINCT s.session_id) AS n
+         FROM set_logs sl
+         JOIN workout_sessions s ON s.session_id = sl.session_id
+        WHERE s.user_id = ? AND sl.weight_kg IS NOT NULL
+        GROUP BY sl.exercise_id
+        ORDER BY n DESC LIMIT 1`,
+      [user.user_id],
+    );
+    assert.ok(Number(repeated.n) >= 4, 'one lift repeated across sessions');
+  });
+});
+
+// Found by actually running the seeder against a database that already had a
+// demo account with a leftover 'abandoned' session (started, never finished --
+// exactly what a person testing the app by hand leaves behind). The old
+// existence check ignored status, so that one row alone made addHistory treat
+// the account as already having history and skip it, silently leaving the
+// account with none of the backdated data the Progress charts need.
+test('an abandoned session does not block backdated history', async (t) => {
+  const pool = createPool(testDbConfig());
+  await dropAllTables(pool);
+  await migrate(testDbConfig());
+  await seedInjuries(testDbConfig());
+  await seedCatalogue(pool);
+
+  t.after(async () => {
+    await dropAllTables(pool);
+    await pool.end();
+  });
+
+  const hash = await hashPassword('test123');
+  const [user] = await pool.query(
+    `INSERT INTO users
+       (email, password_hash, full_name, sex, date_of_birth, main_goal,
+        fitness_level, email_verified, onboarding_completed_at)
+     VALUES ('test30@gmail.com', ?, 'Test Thirty', 'prefer_not_to_say',
+             '2000-01-01', 'build_muscle', 'intermediate', 1, NOW())`,
+    [hash],
+  );
+  // A started-and-abandoned session, exactly like one left behind by someone
+  // trying the app -- no plan, no sets, and NOT the history this task adds.
+  await pool.query(
+    `INSERT INTO workout_sessions (user_id, status, session_date)
+     VALUES (?, 'abandoned', CURDATE())`,
+    [user.insertId],
+  );
+
+  await seedDemo(pool, { password: 'test123' });
+
+  const [[row]] = await pool.query(
+    `SELECT COUNT(*) AS n FROM workout_sessions
+      WHERE user_id = ? AND status = 'completed'`,
+    [user.insertId],
+  );
+  assert.ok(Number(row.n) >= 8, 'the abandoned session must not suppress history');
 });
