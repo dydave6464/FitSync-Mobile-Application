@@ -67,6 +67,40 @@ test('analytics db', async (t) => {
     assert.ok(buckets.every((b) => b.volumeKg === 0));
   });
 
+  await t.test('a session dated exactly the window length ago is excluded, not shifted into an extra bucket', async () => {
+    // week: days = 7. A session at daysAgo 7 sits exactly on the boundary --
+    // it must not appear anywhere in the output, not even mis-filed.
+    const userId = await makeUser('boundary-week-out@example.com');
+    await writeSession(userId, { daysAgo: 7, volume: 900 });
+    const buckets = await analytics.readVolumeBuckets(pool, userId, 'week');
+    assert.ok(buckets.every((b) => b.volumeKg === 0), 'day 7 is outside a 7-day window');
+  });
+
+  await t.test('a session one day inside the week window still lands in the first bucket', async () => {
+    // Proves the boundary moved by exactly one day, not more: day 6 must
+    // still be visible, and in the oldest (first) slot.
+    const userId = await makeUser('boundary-week-in@example.com');
+    await writeSession(userId, { daysAgo: 6, volume: 900 });
+    const buckets = await analytics.readVolumeBuckets(pool, userId, 'week');
+    assert.equal(buckets[0].volumeKg, 900, 'day 6 is the oldest day still inside the window');
+  });
+
+  await t.test('a session dated exactly the month window length ago is excluded from buckets', async () => {
+    // month: days = 30. Mirrors the week boundary case above -- month and
+    // year previously had only a length assertion, never a data one.
+    const userId = await makeUser('boundary-month-out@example.com');
+    await writeSession(userId, { daysAgo: 30, volume: 900 });
+    const buckets = await analytics.readVolumeBuckets(pool, userId, 'month');
+    assert.ok(buckets.every((b) => b.volumeKg === 0), 'day 30 is outside a 30-day window');
+  });
+
+  await t.test('a session one day inside the month window still lands in the first bucket', async () => {
+    const userId = await makeUser('boundary-month-in@example.com');
+    await writeSession(userId, { daysAgo: 29, volume: 900 });
+    const buckets = await analytics.readVolumeBuckets(pool, userId, 'month');
+    assert.equal(buckets[0].volumeKg, 900, 'day 29 is the oldest day still inside a 30-day window');
+  });
+
   await t.test('month is six buckets and year is twelve', async () => {
     const userId = await makeUser('shape@example.com');
     assert.equal((await analytics.readVolumeBuckets(pool, userId, 'month')).length, 6);
@@ -143,6 +177,16 @@ test('analytics db', async (t) => {
     const change = await analytics.readVolumeChange(pool, userId, 'week');
     assert.equal(change.previousKg, 0);
     assert.equal(change.changePct, null);
+  });
+
+  await t.test('a session exactly one window old counts as previous, not current', async () => {
+    // week: days = 7. A session at daysAgo 7 sits on the boundary between
+    // the two windows -- it belongs to the PREVIOUS week, not this one.
+    const userId = await makeUser('boundary-change@example.com');
+    await writeSession(userId, { daysAgo: 7, volume: 900 });
+    const change = await analytics.readVolumeChange(pool, userId, 'week');
+    assert.equal(change.totalKg, 0, 'day 7 must not count as current');
+    assert.equal(change.previousKg, 900, 'day 7 counts as previous');
   });
 
   await t.test('an unknown period is null', async () => {

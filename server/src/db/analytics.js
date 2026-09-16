@@ -33,7 +33,7 @@ async function readVolumeBuckets(pool, userId, period = 'week') {
             COALESCE(SUM(s.total_volume_kg), 0) AS volume_kg
        FROM workout_sessions s
       WHERE s.user_id = ? AND s.status = 'completed'
-        AND s.session_date >= DATE_SUB(CURDATE(), INTERVAL ? DAY)
+        AND s.session_date > DATE_SUB(CURDATE(), INTERVAL ? DAY)
       GROUP BY bucket`,
     [width, userId, days],
   );
@@ -137,13 +137,13 @@ async function readVolumeChange(pool, userId, period = 'week') {
 
   const [[row]] = await pool.query(
     `SELECT
-       COALESCE(SUM(CASE WHEN s.session_date >= DATE_SUB(CURDATE(), INTERVAL ? DAY)
+       COALESCE(SUM(CASE WHEN s.session_date > DATE_SUB(CURDATE(), INTERVAL ? DAY)
                          THEN s.total_volume_kg END), 0) AS current_kg,
-       COALESCE(SUM(CASE WHEN s.session_date <  DATE_SUB(CURDATE(), INTERVAL ? DAY)
+       COALESCE(SUM(CASE WHEN s.session_date <= DATE_SUB(CURDATE(), INTERVAL ? DAY)
                          THEN s.total_volume_kg END), 0) AS previous_kg
        FROM workout_sessions s
       WHERE s.user_id = ? AND s.status = 'completed'
-        AND s.session_date >= DATE_SUB(CURDATE(), INTERVAL ? DAY)`,
+        AND s.session_date > DATE_SUB(CURDATE(), INTERVAL ? DAY)`,
     [days, days, userId, days * 2],
   );
 
