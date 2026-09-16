@@ -2,6 +2,7 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
 const { migrate } = require('../src/db/migrate');
+const { SUMMARY_WINDOWS } = require('../src/db/sessions');
 const { createPool } = require('../src/db/pool');
 const { testDbConfig, dropAllTables } = require('./helpers/test-db');
 const { seedExercises } = require('../src/db/seed-exercises');
@@ -126,5 +127,29 @@ test('strength db', async (t) => {
     const series = await strength.readSeries(pool, userId, exerciseId, 'week');
     assert.deepEqual(series.points, []);
     assert.deepEqual(await strength.readOptions(pool, userId, 'week'), []);
+  });
+
+  await t.test('two sessions on the same calendar date each keep their own point', async () => {
+    const userId = await makeUser('same-day@example.com');
+    await writeSets(userId, 2, [[60, 10]]); // e1rm 80
+    await writeSets(userId, 2, [[50, 6]]);  // e1rm 60, a second session, same date
+
+    const series = await strength.readSeries(pool, userId, exerciseId, 'week');
+    assert.equal(series.xAxis, 'date');
+    assert.equal(series.points.length, 2, 'two sessions on the same date must not collapse into one');
+    const values = series.points.map((p) => p.e1rmKg).sort((a, b) => a - b);
+    assert.deepEqual(values, [60, 80], 'both sessions must keep their own e1RM, not just the higher one');
+  });
+
+  await t.test('a session exactly at the window boundary is excluded; one day inside it is not', async () => {
+    const userId = await makeUser('boundary@example.com');
+    const days = SUMMARY_WINDOWS.week;
+    await writeSets(userId, days, [[60, 10]]);     // exactly at the edge -> excluded
+    await writeSets(userId, days - 1, [[50, 6]]);  // one day inside -> included
+    await writeSets(userId, 1, [[30, 10]]);        // clearly inside -> included
+
+    const series = await strength.readSeries(pool, userId, exerciseId, 'week');
+    const values = series.points.map((p) => p.e1rmKg).sort((a, b) => a - b);
+    assert.deepEqual(values, [40, 60], 'the boundary session (80) must not appear; the others must');
   });
 });

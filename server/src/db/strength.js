@@ -21,7 +21,7 @@ const QUALIFYING = `
   AND sl.is_completed = TRUE
   AND sl.weight_kg IS NOT NULL
   AND sl.reps BETWEEN 1 AND ${MAX_E1RM_REPS}
-  AND s.session_date >= DATE_SUB(CURDATE(), INTERVAL ? DAY)
+  AND s.session_date > DATE_SUB(CURDATE(), INTERVAL ? DAY)
 `;
 
 /// The exercises worth offering in the picker, most-logged first -- the one
@@ -89,16 +89,24 @@ async function readSeries(pool, userId, exerciseId, period = 'week') {
     };
   }
 
-  const best = new Map();
+  // Keyed on session_id, not on the formatted date: two completed sessions can
+  // share a calendar day (an AM/PM split, a corrected re-log), and nothing in
+  // the app forbids it. Keying on the date string would collide them into one
+  // map entry and silently drop whichever session lost the max() comparison.
+  // Two same-day points sharing one date label is correct -- the x-axis is a
+  // sequential index and the label is only text.
+  const best = new Map(); // session_id -> { label, value }
   for (const row of rows) {
     const value = epley(toNumber(row.weight_kg), row.reps);
-    const key = formatDate(row.session_date);
-    if (!best.has(key) || value > best.get(key)) best.set(key, value);
+    const current = best.get(row.session_id);
+    if (!current || value > current.value) {
+      best.set(row.session_id, { label: formatDate(row.session_date), value });
+    }
   }
 
   return {
     xAxis: 'date',
-    points: [...best.entries()].map(([label, value]) => ({
+    points: [...best.values()].map(({ label, value }) => ({
       label,
       e1rmKg: round1(value),
     })),
