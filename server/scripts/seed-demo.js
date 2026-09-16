@@ -33,6 +33,33 @@ const DEMO_MUSCLE = { Shoulder: 'delts', Knee: 'quads' };
 
 const PLAN_SIZE = 4;
 
+// Shared with addPlan's `days_per_week` column so the backdated history it
+// writes trains at the SAME cadence the plan claims -- one number, used in
+// both places, rather than a plan that says 3 and a history that says 1. A
+// mismatch there is exactly what made adherence read 5/12 instead of
+// something plausible.
+const DAYS_PER_WEEK = 3;
+
+// How many weeks of backdated history addHistory writes. Long enough that
+// the Month and Year volume windows have more than one bucket of shape;
+// short enough that the Year adherence ratio still reads as "a fairly new
+// account", which it is.
+const HISTORY_WEEKS = 8;
+
+// Day-of-week offsets (days ago, within a single week, oldest to newest) for
+// DAYS_PER_WEEK training sessions. Kept in step with DAYS_PER_WEEK -- add an
+// offset here if that constant ever grows. All are under 7, so the most
+// recent week's sessions land inside the 7-day Week window and that chart is
+// never all zero.
+const WEEK_OFFSETS = [5, 3, 1];
+
+// Of those, the one day a week that also trains the rest of the plan (an
+// accessory / full-body day) and gets that week's weigh-in. Real programs
+// don't repeat every exercise every session, and giving the tracked lift
+// more sets than the others is also what makes it the one
+// `strength.readOptions` ranks first.
+const FULL_SESSION_OFFSET = 3;
+
 async function seedDemo(pool, { password = DEFAULT_PASSWORD } = {}) {
   const hash = await hashPassword(password);
   const summary = { created: 0, existing: 0 };
@@ -130,8 +157,8 @@ async function addPlan(pool, userId, injury, regionGroup) {
   const [plan] = await pool.query(
     `INSERT INTO workout_plans
        (user_id, name, split_style, days_per_week, session_length_min)
-     VALUES (?, 'Demo week 1', 'full_body', 3, 45)`,
-    [userId],
+     VALUES (?, 'Demo week 1', 'full_body', ?, 45)`,
+    [userId, DAYS_PER_WEEK],
   );
 
   const chosen = [targeted[0], ...filler];
@@ -146,9 +173,21 @@ async function addPlan(pool, userId, injury, regionGroup) {
   return plan.insertId;
 }
 
-/// Ten completed sessions, so Progress, the last-performance prefill and
-/// repeat-last-workout all have something to show on a fresh account -- and
-/// so every chart on the Progress tab has enough points to draw a line.
+/// `HISTORY_WEEKS` weeks of backdated sessions, at `DAYS_PER_WEEK` sessions a
+/// week, so Progress, the last-performance prefill and repeat-last-workout
+/// all have something to show on a fresh account -- and so every chart on
+/// the Progress tab has enough points to draw a line.
+///
+/// ONE write path. An earlier version of this function had two: two flat
+/// "recent" sessions logging all four exercises at a fixed weight, plus a
+/// separately-scheduled backdated block progressing just the compound lift.
+/// They coexisted on the same account and fought each other -- the flat
+/// sessions had no `total_volume_kg`, so the Week chart (whose only session
+/// fell on one of them) summed to zero; they also logged the SAME exercise
+/// the backdated block was progressing, at a weight lower than where the
+/// progression already was, so the e1RM series sawtoothed instead of rising.
+/// There is exactly one schedule now, and it is internally consistent by
+/// construction.
 async function addHistory(pool, userId, planId) {
   // Filtered to 'completed': an abandoned or in-progress session left behind
   // by someone trying the app by hand is not history, and must not make this
@@ -164,69 +203,76 @@ async function addHistory(pool, userId, planId) {
     'SELECT exercise_id FROM plan_exercises WHERE plan_id = ? ORDER BY order_no',
     [planId],
   );
+  // exercises[0] is `targeted[0]` from addPlan: the exercise chosen to load
+  // the reported injury. Tracking IT specifically -- rather than an
+  // arbitrary plan exercise -- means the strength chart shows the account
+  // improving on the exact lift the injury story is about.
+  const [compound, ...fillers] = exercises;
 
-  // The older session is lighter, so the logger's progressive-overload nudge
-  // and the "last 22.5 kg" prefill both have a direction to point in.
-  // [how many weeks in, how many days ago]
-  const sessions = [[0, 10], [1, 3]];
-  for (const [week, daysAgo] of sessions) {
-    const [session] = await pool.query(
-      `INSERT INTO workout_sessions
-         (user_id, plan_id, session_date, status, started_at, duration_min)
-       VALUES (?, ?, DATE_SUB(CURDATE(), INTERVAL ? DAY), 'completed',
-               DATE_SUB(NOW(), INTERVAL ? DAY), 45)`,
-      [userId, planId, daysAgo, daysAgo],
-    );
-    for (const row of exercises) {
-      for (let setNumber = 1; setNumber <= 3; setNumber += 1) {
+  let sessionIndex = 0; // oldest = 0, rises every session -> e1RM never dips
+  for (let weeksAgo = HISTORY_WEEKS - 1; weeksAgo >= 0; weeksAgo -= 1) {
+    for (const offset of WEEK_OFFSETS) {
+      const daysAgo = weeksAgo * 7 + offset;
+      // +0.5 kg every session: modest enough to be believable over eight
+      // weeks, and strictly increasing so there is no plateau to mistake for
+      // a stall, let alone a dip.
+      const weight = 60 + sessionIndex * 0.5;
+      sessionIndex += 1;
+
+      const [session] = await pool.query(
+        `INSERT INTO workout_sessions (user_id, plan_id, status, session_date, duration_min)
+         VALUES (?, ?, 'completed', DATE_SUB(CURDATE(), INTERVAL ? DAY), 45)`,
+        [userId, planId, daysAgo],
+      );
+
+      for (let setNo = 1; setNo <= 3; setNo += 1) {
         await pool.query(
-          `INSERT INTO set_logs
-             (session_id, exercise_id, set_number, weight_kg, reps, is_completed)
+          `INSERT INTO set_logs (session_id, exercise_id, set_number, weight_kg, reps, is_completed)
            VALUES (?, ?, ?, ?, ?, TRUE)`,
-          [session.insertId, row.exercise_id, setNumber, 20 + week * 2.5, 10],
+          [session.insertId, compound.exercise_id, setNo, weight, 11 - setNo],
         );
       }
-    }
-  }
 
-  // Backdated on purpose. Every chart on the Progress tab needs at least two
-  // points to draw a line, and a demo account created moments ago has one of
-  // everything. Eight weeks of history makes the strength chart a date-axis
-  // trend rather than the single-session fallback, and gives the volume
-  // buckets something other than zero.
-  //
-  // Only the compound lift each of these eight weeks -- the same exercise
-  // addPlan chose to load the reported injury, already sitting in `exercises`
-  // -- stepping the weight up so the strength chart's e1RM line has a slope.
-  // One weigh-in rides along each week so the body weight chart is not a
-  // single dot either.
-  const compoundExerciseId = exercises[0].exercise_id;
-  const COMPOUND_SETS = 3;
-  for (let week = 8; week >= 1; week -= 1) {
-    const daysAgo = week * 7;
-    const weight = 60 + Math.floor((8 - week) / 2) * 2.5;
+      // The full-body day: also trains the rest of the plan, which is what
+      // gives "sets by muscle" more than one bar, and rides the week's
+      // weigh-in. Fewer sets than the compound lift gets overall (this
+      // happens once a week, the compound lift every session), so
+      // `strength.readOptions` still ranks the progressing lift first.
+      if (offset === FULL_SESSION_OFFSET) {
+        for (const filler of fillers) {
+          for (let setNo = 1; setNo <= 3; setNo += 1) {
+            await pool.query(
+              `INSERT INTO set_logs (session_id, exercise_id, set_number, weight_kg, reps, is_completed)
+               VALUES (?, ?, ?, 20, 10, TRUE)`,
+              [session.insertId, filler.exercise_id, setNo],
+            );
+          }
+        }
 
-    const [session] = await pool.query(
-      `INSERT INTO workout_sessions (user_id, plan_id, status, session_date, duration_min, total_volume_kg)
-       VALUES (?, ?, 'completed', DATE_SUB(CURDATE(), INTERVAL ? DAY), 45, ?)`,
-      [userId, planId, daysAgo, weight * COMPOUND_SETS * 10],
-    );
+        const [[day]] = await pool.query(
+          'SELECT DATE_SUB(CURDATE(), INTERVAL ? DAY) AS d', [daysAgo],
+        );
+        await writeEntry(pool, userId, {
+          weightKg: 78 - (HISTORY_WEEKS - 1 - weeksAgo) * 0.4,
+          loggedOn: day.d,
+        });
+      }
 
-    for (let setNo = 1; setNo <= COMPOUND_SETS; setNo += 1) {
+      // The exact derivation `completeSession()` uses (src/db/sessions.js),
+      // run again here now that every set for this session is in. Matching
+      // it -- rather than computing the number in JS and hoping it agrees --
+      // is what makes a seeded session indistinguishable in shape from one
+      // someone actually logged, and is why this runs AFTER the inserts
+      // above rather than being stamped into the INSERT.
       await pool.query(
-        `INSERT INTO set_logs (session_id, exercise_id, set_number, weight_kg, reps, is_completed)
-         VALUES (?, ?, ?, ?, ?, TRUE)`,
-        [session.insertId, compoundExerciseId, setNo, weight, 11 - setNo],
+        `UPDATE workout_sessions
+            SET total_volume_kg = (SELECT COALESCE(SUM(weight_kg * reps), 0)
+                                      FROM set_logs
+                                     WHERE session_id = ? AND is_completed = TRUE)
+          WHERE session_id = ?`,
+        [session.insertId, session.insertId],
       );
     }
-
-    const [[day]] = await pool.query(
-      'SELECT DATE_SUB(CURDATE(), INTERVAL ? DAY) AS d', [daysAgo],
-    );
-    await writeEntry(pool, userId, {
-      weightKg: 78 - (8 - week) * 0.4,
-      loggedOn: day.d,
-    });
   }
 }
 

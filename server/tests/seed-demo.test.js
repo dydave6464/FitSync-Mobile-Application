@@ -8,6 +8,9 @@ const { seedInjuries } = require('../src/db/seed-injuries');
 const { verifyPassword, hashPassword } = require('../src/lib/passwords');
 const { loadsRegion } = require('../src/db/injury-muscle-groups');
 const { seedDemo } = require('../scripts/seed-demo');
+const { readVolumeBuckets, readAdherence } = require('../src/db/analytics');
+const { readSeries: readStrengthSeries } = require('../src/db/strength');
+const { readSeries: readWeightSeries } = require('../src/db/body-weight');
 
 /// A catalogue small enough to reason about, with one exercise for each demo
 /// injury's muscle group and three that load nothing either account reported.
@@ -161,8 +164,8 @@ test('the demo accounts', async (t) => {
 
       assert.equal(rows.length, 2);
       for (const row of rows) {
-        // Two recent sessions plus eight backdated ones for the Progress charts.
-        assert.equal(Number(row.sessions), 10, `${row.email} needs ten sessions`);
+        // 8 weeks x 3 sessions/week (DAYS_PER_WEEK) for the Progress charts.
+        assert.equal(Number(row.sessions), 24, `${row.email} needs 24 sessions`);
         assert.ok(Number(row.sets) > 0, `${row.email} needs logged sets`);
       }
     });
@@ -188,8 +191,8 @@ test('the demo accounts', async (t) => {
          JOIN users u ON u.user_id = ws.user_id
         WHERE u.email LIKE 'test3%@gmail.com'`,
     );
-    // Ten sessions each (two recent, eight backdated), times two accounts.
-    assert.equal(Number(sessions[0].n), 20);
+    // 24 sessions each (8 weeks x 3/week), times two accounts.
+    assert.equal(Number(sessions[0].n), 48);
   });
 
   await t.test('demo accounts have enough history to draw a line', async () => {
@@ -223,6 +226,74 @@ test('the demo accounts', async (t) => {
     );
     assert.ok(Number(repeated.n) >= 4, 'one lift repeated across sessions');
   });
+
+  // Round 1 of Task 12's fix-up: row counts passed while the charts a person
+  // would actually see were broken, because a since-removed second write
+  // path put flat, un-costed sessions alongside the progressing ones. These
+  // assertions call the same read functions the routes call, not raw counts,
+  // so a regression here can't hide behind a passing row-count test again.
+  await t.test('the charts a person would see are coherent, not just the row counts',
+    async () => {
+      const [[user]] = await pool.query(
+        "SELECT user_id FROM users WHERE email = 'test30@gmail.com'",
+      );
+      const [[compound]] = await pool.query(
+        `SELECT pe.exercise_id FROM plan_exercises pe
+           JOIN workout_plans p ON p.plan_id = pe.plan_id
+          WHERE p.user_id = ? AND p.is_active = TRUE
+          ORDER BY pe.order_no LIMIT 1`,
+        [user.user_id],
+      );
+
+      // Symptom 1: the Week volume chart must not be all zero -- it was,
+      // because the only session inside the 7-day window had a NULL
+      // total_volume_kg.
+      const weekBuckets = await readVolumeBuckets(pool, user.user_id, 'week');
+      assert.ok(weekBuckets.some((b) => b.volumeKg > 0),
+        'the week volume chart is all zero');
+
+      // The root cause, checked directly: no completed session may have a
+      // null total_volume_kg. Every one must be costed the way
+      // completeSession() costs a real one.
+      const [[nullVolume]] = await pool.query(
+        `SELECT COUNT(*) AS n FROM workout_sessions
+          WHERE user_id = ? AND status = 'completed' AND total_volume_kg IS NULL`,
+        [user.user_id],
+      );
+      assert.equal(Number(nullVolume.n), 0,
+        'a completed session has no total_volume_kg');
+
+      // Symptom 2: the tracked lift's e1RM series must rise, never dip --
+      // it sawtoothed when a second, flat-weight write path logged the same
+      // exercise at a lower weight than the progression had already reached.
+      const series = await readStrengthSeries(pool, user.user_id, compound.exercise_id, 'year');
+      assert.equal(series.xAxis, 'date', 'expected the many-session date axis');
+      assert.ok(series.points.length >= 4);
+      for (let i = 1; i < series.points.length; i += 1) {
+        assert.ok(
+          series.points[i].e1rmKg >= series.points[i - 1].e1rmKg,
+          `e1RM dipped at point ${i}: ${series.points[i - 1].e1rmKg} -> ${series.points[i].e1rmKg}`,
+        );
+      }
+
+      // Symptom 3: a month of adherence must look like real training against
+      // the plan's own days_per_week, not 5/12 from a once-a-week backfill
+      // racing a 3x/week target.
+      const adherence = await readAdherence(pool, user.user_id, 'month');
+      assert.ok(adherence.target > 0);
+      assert.ok(adherence.done / adherence.target >= 0.6,
+        `adherence looks implausible: ${adherence.done}/${adherence.target}`);
+
+      // Not one of the three symptoms, but on the same verification list:
+      // the body weight chart's year view should be a real multi-point trend
+      // heading down, not a single dot.
+      const weightSeries = await readWeightSeries(pool, user.user_id, 'year');
+      assert.equal(weightSeries.points.length, 8);
+      assert.ok(
+        weightSeries.points.at(-1).weightKg < weightSeries.points[0].weightKg,
+        'body weight is not trending down toward the goal',
+      );
+    });
 });
 
 // Found by actually running the seeder against a database that already had a
