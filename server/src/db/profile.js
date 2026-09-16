@@ -1,5 +1,10 @@
 'use strict';
-const { writeEntry } = require('./body-weight');
+const AppError = require('../lib/app-error');
+// Top-level require, not inline: the chain body-weight.js -> sessions.js ->
+// lib/app-error.js never loops back to this module (only route files
+// require profile.js, and nothing under src/db/ requires it), so there is
+// no cycle to dodge here.
+const { writeEntry, MIN_KG, MAX_KG } = require('./body-weight');
 
 // API name -> column. Anything not in this map cannot be written, which is what
 // keeps PATCH from becoming a way to set is_premium or onboarding_completed_at.
@@ -114,16 +119,46 @@ async function updateProfile(pool, userId, fields) {
   }
   // A step where the user changed nothing still submits. That is not an error.
   if (sets.length === 0) return;
+
+  const hasWeight = fields.weightKg !== undefined && fields.weightKg !== null;
+  let priorWeightKg = null;
+  if (hasWeight) {
+    // Reject an out-of-range weight before the UPDATE below runs. writeEntry
+    // enforces the same [MIN_KG, MAX_KG] bound, but only after that UPDATE
+    // has already committed -- which would let a value like 600 persist to
+    // users.weight_kg even though the request still comes back 400.
+    // validatePatch's shared NUMERIC check (0, 1000) is deliberately wider,
+    // since it also governs heightCm and goalWeightKg.
+    const weight = Number(fields.weightKg);
+    if (!Number.isFinite(weight) || weight < MIN_KG || weight > MAX_KG) {
+      throw AppError.badRequest(
+        'WEIGHT_OUT_OF_RANGE',
+        `weightKg must be a number between ${MIN_KG} and ${MAX_KG}.`,
+      );
+    }
+    const [[row]] = await pool.query(
+      'SELECT weight_kg FROM users WHERE user_id = ?', [userId],
+    );
+    priorWeightKg = row && row.weight_kg !== null ? Number(row.weight_kg) : null;
+  }
+
   params.push(userId);
   await pool.query(`UPDATE users SET ${sets.join(', ')} WHERE user_id = ?`, params);
 
-  // The chart starts with a point rather than an empty card. This is the
-  // user's own number, so nothing is invented -- and without it a brand new
-  // account's body weight card has nothing to draw on day one.
+  // The chart starts with a point rather than an empty card, and a genuine
+  // weight edit anywhere in the profile should reach it too -- users.weight_kg
+  // and the log can never be allowed to disagree. But an unchanged resend (a
+  // client PATCHing some unrelated field while it still carries the same
+  // cached weightKg) is not new information: writing it would re-stamp
+  // today's log row, clobbering a genuine same-day weigh-in once the
+  // dedicated body-weight endpoint exists. So the log write only fires when
+  // the value actually changed, or nothing was stored yet.
   //
-  // Existing accounts are deliberately NOT backfilled: their weight has no
-  // date attached, and inventing one would put a fabricated point on a chart.
-  if (fields.weightKg !== undefined && fields.weightKg !== null) {
+  // Existing accounts are deliberately NOT backfilled on their first real
+  // change either: only a difference from what was already stored writes a
+  // row, and inventing a date for a value that did not just change would put
+  // a fabricated point on the chart.
+  if (hasWeight && Number(fields.weightKg) !== priorWeightKg) {
     await writeEntry(pool, userId, { weightKg: fields.weightKg });
   }
 }

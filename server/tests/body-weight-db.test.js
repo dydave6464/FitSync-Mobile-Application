@@ -131,4 +131,36 @@ test('body weight db', async (t) => {
     assert.equal(series.points.length, 1, 'the chart starts with a point');
     assert.equal(series.points[0].weightKg, 78.5);
   });
+
+  await t.test('an unchanged resend does not add or move a log row', async () => {
+    const userId = await makeUser(pool, 'resend@example.com');
+    const { updateProfile } = require('../src/db/profile');
+    const [[past]] = await pool.query(`SELECT ${daysAgo(5)} AS d`);
+    await bw.writeEntry(pool, userId, { weightKg: 70, loggedOn: past.d });
+
+    // A PATCH editing some unrelated field, with a client that still carries
+    // the same weightKg it already had cached -- not a new weigh-in.
+    await updateProfile(pool, userId, { fullName: 'Same Weight', weightKg: 70 });
+
+    const [rows] = await pool.query(
+      'SELECT log_date FROM body_weight_logs WHERE user_id = ?', [userId],
+    );
+    assert.equal(rows.length, 1, 'no new row was added for an unchanged resend');
+  });
+
+  await t.test('an out-of-range weight in a profile edit persists nothing', async () => {
+    const userId = await makeUser(pool, 'invalid-weight@example.com');
+    await pool.query('UPDATE users SET weight_kg = 70 WHERE user_id = ?', [userId]);
+    const { updateProfile } = require('../src/db/profile');
+
+    await assert.rejects(
+      () => updateProfile(pool, userId, { weightKg: 600 }),
+      (err) => err.code === 'WEIGHT_OUT_OF_RANGE',
+    );
+
+    const [[user]] = await pool.query(
+      'SELECT weight_kg FROM users WHERE user_id = ?', [userId],
+    );
+    assert.equal(Number(user.weight_kg), 70, 'the prior weight was not overwritten');
+  });
 });
