@@ -17,6 +17,7 @@ const {
   SUMMARY_WINDOWS,
 } = require('../db/sessions');
 const analytics = require('../db/analytics');
+const strength = require('../db/strength');
 
 // A client sending nonsense should learn that it did, rather than have the
 // value silently clamped and get results it did not ask for. Same contract as
@@ -158,6 +159,38 @@ module.exports = function buildSessionsRouter(deps) {
           period, volume, change, adherence, muscles,
         },
       });
+    } catch (err) {
+      next(err);
+    }
+  });
+
+  // Its own endpoint because the exercise picker is a second axis of change:
+  // bundling it into /analytics would refetch every card on the screen each
+  // time the user tried a different lift.
+  //
+  // With no exerciseId it answers for the most-logged exercise rather than
+  // erroring, so the first paint costs one round trip instead of two.
+  router.get('/strength', auth, async (req, res, next) => {
+    try {
+      const period = req.query.period || 'week';
+      const options = await strength.readOptions(deps.pool, req.user.userId, period);
+      if (options === null) {
+        throw AppError.badRequest(
+          'INVALID_PERIOD',
+          `period must be one of week, month, year. Got ${period}.`,
+        );
+      }
+
+      const requested = req.query.exerciseId === undefined
+        ? null
+        : parsePositiveInt('exerciseId', req.query.exerciseId, null);
+
+      const exerciseId = requested ?? (options.length > 0 ? options[0].exerciseId : null);
+      const series = exerciseId === null
+        ? { xAxis: 'date', points: [] }
+        : await strength.readSeries(deps.pool, req.user.userId, exerciseId, period);
+
+      res.json({ data: { period, exerciseId, ...series, options } });
     } catch (err) {
       next(err);
     }
