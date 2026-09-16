@@ -1,8 +1,22 @@
 'use strict';
 
 const ENDPOINT = 'https://api.groq.com/openai/v1/chat/completions';
-const DEFAULT_MODEL = 'llama-3.1-8b-instant';
-const TIMEOUT_MS = 4000;
+// Groq retired llama-3.1-8b-instant; `GET /v1/models` is the authority on what
+// this key can actually reach. Chosen from what is available because cues are
+// written ONCE and cached forever, so a more capable model costs almost nothing
+// in aggregate -- and in a side-by-side probe this was the only candidate whose
+// advice was actually about the injured joint. The smaller gpt-oss-20b and
+// qwen3.8-27b both answered a shoulder question with cues about spine position.
+// Override with CUES_MODEL if this is ever retired too.
+const DEFAULT_MODEL = 'openai/gpt-oss-120b';
+const TIMEOUT_MS = 6000;
+// Measured, not guessed. gpt-oss emits hidden reasoning tokens before its
+// answer; at the default effort one reply spent 328 of them and ran to 799
+// total, overrunning a 400 cap and arriving truncated. At 'low' the same reply
+// costs 25 reasoning tokens and ~490 total, so 800 leaves real headroom and
+// the free tier's 8,000 tokens/minute allows roughly 16 generations a minute.
+const MAX_TOKENS = 800;
+const REASONING_EFFORT = 'low';
 
 const MIN_CUES = 2;
 const MAX_CUES = 3;
@@ -79,7 +93,8 @@ function create({ apiKey, model = DEFAULT_MODEL, fetchImpl = fetch }) {
         body: JSON.stringify({
           model,
           temperature: 0.3,
-          max_tokens: 400,
+          max_tokens: MAX_TOKENS,
+          reasoning_effort: REASONING_EFFORT,
           response_format: { type: 'json_object' },
           messages: [
             { role: 'system', content: SYSTEM },
@@ -97,7 +112,15 @@ function create({ apiKey, model = DEFAULT_MODEL, fetchImpl = fetch }) {
       if (!res.ok) return null;
 
       const body = await res.json();
-      return parseReply(body?.choices?.[0]?.message?.content);
+      const choice = body?.choices?.[0];
+
+      // A reply cut off at the token ceiling is half a sentence of advice. Most
+      // fail JSON parsing anyway, but one truncated at a lucky closing brace
+      // would parse clean and be stored forever in a table with no expiry.
+      // Refuse the whole generation rather than gamble on where it stopped.
+      if (choice?.finish_reason === 'length') return null;
+
+      return parseReply(choice?.message?.content);
     } catch {
       // Timeout, abort, DNS, a malformed envelope -- one answer for all of
       // them. A workout is never blocked by Groq.

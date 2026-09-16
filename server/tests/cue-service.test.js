@@ -173,6 +173,21 @@ test('the groq client never throws', async (t) => {
     assert.equal(cues, null);
   });
 
+  // Truncation is the failure most likely to slip through: cut at the right
+  // brace, half an instruction parses as valid JSON and is cached forever.
+  await t.test('a reply cut off at the token ceiling is refused', async () => {
+    const truncated = {
+      ok: true,
+      json: async () => ({
+        choices: [{
+          finish_reason: 'length',
+          message: { content: JSON.stringify({ cues: GOOD_CUES }) },
+        }],
+      }),
+    };
+    assert.equal(await client(truncated).generate(REQUEST), null);
+  });
+
   await t.test('a malformed generation resolves to null', async () => {
     const cues = await client(okResponse('not json')).generate(REQUEST);
     assert.equal(cues, null);
