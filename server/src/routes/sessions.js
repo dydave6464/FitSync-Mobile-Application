@@ -16,6 +16,7 @@ const {
   lastCompletedWorkout,
   SUMMARY_WINDOWS,
 } = require('../db/sessions');
+const analytics = require('../db/analytics');
 
 // A client sending nonsense should learn that it did, rather than have the
 // value silently clamped and get results it did not ask for. Same contract as
@@ -126,6 +127,34 @@ module.exports = function buildSessionsRouter(deps) {
       }
       res.json({ data: { summary } });
     } catch (err) { next(err); }
+  });
+
+  // Everything the period segment governs, in one payload. The exercise
+  // picker and the body weight card are deliberately NOT here: they change
+  // for different reasons and would otherwise refetch on every segment tap.
+  router.get('/analytics', auth, async (req, res, next) => {
+    try {
+      const period = req.query.period || 'week';
+      const volume = await analytics.readVolumeBuckets(deps.pool, req.user.userId, period);
+      if (volume === null) {
+        throw AppError.badRequest(
+          'INVALID_PERIOD',
+          `period must be one of week, month, year. Got ${period}.`,
+        );
+      }
+
+      res.json({
+        data: {
+          period,
+          volume,
+          change: await analytics.readVolumeChange(deps.pool, req.user.userId, period),
+          adherence: await analytics.readAdherence(deps.pool, req.user.userId, period),
+          muscles: await analytics.readSetsByMuscle(deps.pool, req.user.userId, period),
+        },
+      });
+    } catch (err) {
+      next(err);
+    }
   });
 
   router.get('/last', auth, async (req, res, next) => {
