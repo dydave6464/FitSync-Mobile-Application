@@ -7,6 +7,7 @@ const {
   listEquipment, listInjuries, markOnboardingComplete, WRITABLE,
 } = require('../db/profile');
 const { savePlan, getActivePlan } = require('../db/plans');
+const bodyWeight = require('../db/body-weight');
 
 const ENUMS = {
   sex: ['male', 'female', 'prefer_not_to_say'],
@@ -234,6 +235,51 @@ module.exports = function buildProfileRouter(deps) {
       await setTrainingDays(pool, req.user.userId, raw);
       await respond(res, req.user.userId);
     } catch (err) { next(err); }
+  });
+
+  // Profile data that happens to be drawn on the Progress screen, which is
+  // why it lives here rather than under /sessions: the current weight and its
+  // history belong to the same feature.
+  router.get('/profile/body-weight', auth, async (req, res, next) => {
+    try {
+      const period = req.query.period || 'week';
+      const series = await bodyWeight.readSeries(deps.pool, req.user.userId, period);
+      if (series === null) {
+        throw AppError.badRequest(
+          'INVALID_PERIOD',
+          `period must be one of week, month, year. Got ${period}.`,
+        );
+      }
+
+      const [[user]] = await deps.pool.query(
+        'SELECT weight_unit FROM users WHERE user_id = ?', [req.user.userId],
+      );
+
+      res.json({
+        data: {
+          ...series,
+          reference: await bodyWeight.readReference(deps.pool, req.user.userId),
+          unit: user.weight_unit,
+        },
+      });
+    } catch (err) {
+      next(err);
+    }
+  });
+
+  // 201 rather than 200 even when the day's row already existed: from the
+  // caller's side an entry was recorded either way, and making a re-log look
+  // different from a first log would push the upsert into the client.
+  router.post('/profile/body-weight', auth, async (req, res, next) => {
+    try {
+      const entry = await bodyWeight.writeEntry(deps.pool, req.user.userId, {
+        weightKg: req.body.weightKg,
+        loggedOn: req.body.loggedOn || null,
+      });
+      res.status(201).json({ data: entry });
+    } catch (err) {
+      next(err);
+    }
   });
 
   router.get('/equipment', auth, async (_req, res, next) => {
