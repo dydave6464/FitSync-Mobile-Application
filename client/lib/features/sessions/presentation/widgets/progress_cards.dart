@@ -189,3 +189,81 @@ class StrengthCard extends StatelessWidget {
     );
   }
 }
+
+/// Kilograms lifted per muscle group, as bars scaled against the biggest.
+///
+/// A Pro card, and the app's first: `isPremium` reached the client long
+/// before anything read it. The server sends a free user no numbers at all,
+/// so [TrainingAnalytics.musclesLocked] is what this renders from rather than
+/// choosing not to draw data it was handed.
+///
+/// Three states, and the two empty ones are not the same: a locked card
+/// offers the upgrade, while a Pro user who has logged nothing weighted is
+/// told why their card is empty. Selling Pro to someone who already has it
+/// would be the worse of the two mistakes.
+class VolumeByMuscleCard extends StatelessWidget {
+  const VolumeByMuscleCard({super.key, required this.analytics});
+
+  final TrainingAnalytics analytics;
+
+  /// The mockup's bar lengths, used only behind the lock. Fixed rather than
+  /// random so the card does not shimmer on every rebuild, and unlabelled so
+  /// nothing here can be mistaken for a reading.
+  static const _placeholders = [0.82, 0.68, 0.45, 0.6];
+
+  @override
+  Widget build(BuildContext context) {
+    final t = context.fs;
+    final locked = analytics.musclesLocked;
+
+    return FsCard(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          // The badge stays in every state: it is what says the feature
+          // exists, which is the whole point of showing a locked card rather
+          // than hiding it.
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: const [
+              FsEyebrow('Volume by muscle'),
+              FsTag('Pro'),
+            ],
+          ),
+          const SizedBox(height: 8),
+          if (locked) ...[
+            for (final fraction in _placeholders)
+              FsBarRow(label: '', fraction: fraction, color: t.line2),
+            const SizedBox(height: 8),
+            Row(
+              key: const Key('muscles.locked'),
+              children: [
+                Icon(Icons.lock_outline, size: 15, color: t.text3),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: Text(
+                    'Unlock with Pro to see which muscles your volume goes to.',
+                    style: TextStyle(fontSize: 11.5, color: t.text2, height: 1.4),
+                  ),
+                ),
+              ],
+            ),
+          ] else if (analytics.muscles.isEmpty)
+            Text(
+              key: const Key('muscles.empty'),
+              // Named plainly rather than left as an empty card: volume is
+              // weight times reps, so a session of pull-ups and push-ups is
+              // real work that this measure cannot see. See
+              // readVolumeByMuscle in server/src/db/analytics.js.
+              'Nothing lifted with weight in this window yet. Bodyweight sets '
+              'count as training, but they carry no volume to chart.',
+              style: TextStyle(fontSize: 12.5, color: t.text2, height: 1.4),
+            )
+          else
+            for (final m in analytics.muscles)
+              FsBarRow(label: m.muscle, fraction: analytics.muscleFraction(m)),
+        ],
+      ),
+    );
+  }
+}

@@ -20,7 +20,10 @@ module.exports = function requireAuth({ pool, jwt }) {
         throw AppError.unauthorized('UNAUTHENTICATED', 'Sign in again to continue.');
       }
 
-      req.user = { userId };
+      // isPremium rides along because the row is already in hand -- the
+      // lookup above happens on every authenticated request either way, and
+      // a route that gates a Pro feature would otherwise query for it again.
+      req.user = { userId, isPremium: Boolean(user.is_premium) };
       next();
     } catch (err) {
       next(err);

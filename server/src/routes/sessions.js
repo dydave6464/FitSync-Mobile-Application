@@ -141,11 +141,17 @@ module.exports = function buildSessionsRouter(deps) {
       // checked for null (the unknown-period signal) only after all four
       // have settled -- the other three also return null for an unknown
       // period rather than throwing, so nothing blows up in the meantime.
+      // Volume by muscle is the one Pro card here. A free user's numbers are
+      // not fetched at all rather than fetched and withheld by the UI: a
+      // payload the client chooses not to draw is a hint, not a lock.
+      const premium = req.user.isPremium;
       const [volume, change, adherence, muscles] = await Promise.all([
         analytics.readVolumeBuckets(deps.pool, req.user.userId, period),
         analytics.readVolumeChange(deps.pool, req.user.userId, period),
         analytics.readAdherence(deps.pool, req.user.userId, period),
-        analytics.readSetsByMuscle(deps.pool, req.user.userId, period),
+        premium
+          ? analytics.readVolumeByMuscle(deps.pool, req.user.userId, period)
+          : Promise.resolve([]),
       ]);
       if (volume === null) {
         throw AppError.badRequest(
@@ -156,7 +162,16 @@ module.exports = function buildSessionsRouter(deps) {
 
       res.json({
         data: {
-          period, volume, change, adherence, muscles,
+          period,
+          volume,
+          change,
+          adherence,
+          muscles,
+          // Says WHY the list is empty. A Pro user who has logged nothing
+          // weighted gets an empty list too, and the card reads differently
+          // in each case -- one offers an upgrade, the other explains that
+          // bodyweight work carries no volume.
+          musclesLocked: !premium,
         },
       });
     } catch (err) {

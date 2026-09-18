@@ -2,7 +2,6 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../core/theme.dart';
-import '../../../core/widgets/fs_charts.dart';
 import '../../../core/widgets/fs_kit.dart';
 import '../../exercises/presentation/exercise_list_screen.dart' show describeError;
 import '../../profile/presentation/providers.dart'
@@ -128,7 +127,7 @@ class ProgressScreen extends ConsumerWidget {
           // Unreachable: a failure was handled above. Kept because `when`
           // demands it, and a silent SizedBox would hide a future regression.
           error: (e, _) => _Retry(message: describeError(e), onRetry: retry),
-          data: (data) => _MusclesCard(analytics: data),
+          data: (data) => VolumeByMuscleCard(analytics: data),
         ),
         const SizedBox(height: 22),
         const FsEyebrow('Recent'),
@@ -156,7 +155,7 @@ class ProgressScreen extends ConsumerWidget {
 /// hands them one [TrainingAnalytics] rather than threading its fields
 /// through separate `.when` calls for what is a single fetch. Sets-by-muscle
 /// is fetched from the same [TrainingAnalytics] but renders on its own,
-/// further down the screen -- see [_MusclesCard].
+/// further down the screen -- see [VolumeByMuscleCard] in progress_cards.dart.
 class _AnalyticsCards extends StatelessWidget {
   const _AnalyticsCards({required this.analytics, required this.window});
 
@@ -177,31 +176,6 @@ class _AnalyticsCards extends StatelessWidget {
 }
 
 /// Sets by muscle -- last of the analytics cards, per §5 of the design spec
-/// (segment · adherence · volume trend · strength · body weight · sets by
-/// muscle). Split out of [_AnalyticsCards] so it can render after the
-/// strength and body-weight cards despite sharing their [TrainingAnalytics]
-/// fetch.
-class _MusclesCard extends StatelessWidget {
-  const _MusclesCard({required this.analytics});
-
-  final TrainingAnalytics analytics;
-
-  @override
-  Widget build(BuildContext context) {
-    return FsCard(
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          const FsEyebrow('Muscles worked'),
-          const SizedBox(height: 8),
-          for (final m in analytics.muscles)
-            FsBarRow(label: m.muscle, fraction: analytics.muscleFraction(m)),
-        ],
-      ),
-    );
-  }
-}
-
 /// The strength and body-weight cards' own loading placeholder -- shorter
 /// than the analytics one above it, since these sit mid-list rather than
 /// carrying the whole screen while empty.

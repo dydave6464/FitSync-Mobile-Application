@@ -111,12 +111,27 @@ async function readAdherence(pool, userId, period = 'week') {
 /// Sets rather than kilograms, deliberately. Volume is dominated by exercise
 /// selection -- a leg press outweighs a set of pull-ups by 8,000 kg to zero,
 /// because bodyweight work has no `weight_kg` at all -- while a set is a set.
-async function readSetsByMuscle(pool, userId, period = 'week') {
+/// Kilograms lifted per muscle group in the window.
+///
+/// Volume is `SUM(weight_kg * reps)`, the same measure `total_volume_kg`
+/// carries per session (see completeSession in src/db/sessions.js) and the
+/// volume-trend card already sums -- so the two cards on the Progress tab
+/// cannot disagree about what a kilogram of work is.
+///
+/// A set is not a unit of effort: five sets of 20 kg and five of 100 kg draw
+/// the same bar under a COUNT, which is what this replaced.
+///
+/// HAVING excludes a muscle group worked only without external load: a
+/// bodyweight set stores no weight, so its SUM is NULL, and `NULL > 0` is
+/// not true. Omitting the row entirely is the honest rendering -- a zero bar
+/// would read as "this muscle was not worked" when it was, just not in a way
+/// volume can describe.
+async function readVolumeByMuscle(pool, userId, period = 'week') {
   const days = SUMMARY_WINDOWS[period];
   if (!days) return null;
 
   const [rows] = await pool.query(
-    `SELECT e.muscle_group AS muscle, COUNT(*) AS sets
+    `SELECT e.muscle_group AS muscle, SUM(sl.weight_kg * sl.reps) AS volume_kg
        FROM set_logs sl
        JOIN workout_sessions s ON s.session_id = sl.session_id
        JOIN exercises e ON e.exercise_id = sl.exercise_id
@@ -124,11 +139,12 @@ async function readSetsByMuscle(pool, userId, period = 'week') {
         AND sl.is_completed = TRUE
         AND s.session_date > DATE_SUB(CURDATE(), INTERVAL ? DAY)
       GROUP BY e.muscle_group
-      ORDER BY sets DESC, muscle ASC`,
+      HAVING volume_kg > 0
+      ORDER BY volume_kg DESC, muscle ASC`,
     [userId, days],
   );
 
-  return rows.map((r) => ({ muscle: r.muscle, sets: Number(r.sets) }));
+  return rows.map((r) => ({ muscle: r.muscle, volumeKg: Number(r.volume_kg) }));
 }
 
 /// This window's volume against the one immediately before it.
@@ -174,6 +190,6 @@ module.exports = {
   readVolumeBuckets,
   readVolumeChange,
   readAdherence,
-  readSetsByMuscle,
+  readVolumeByMuscle,
   BUCKETS,
 };

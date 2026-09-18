@@ -27,7 +27,12 @@ test('analytics db', async (t) => {
     return res.insertId;
   };
 
-  const writeSession = async (userId, { daysAgo, volume = 1000, sets = 0, exerciseId }) => {
+  // weightKg null writes a bodyweight set -- the way the logger stores one,
+  // and the case volume cannot describe.
+  const writeSession = async (
+    userId,
+    { daysAgo, volume = 1000, sets = 0, exerciseId, weightKg = 60 },
+  ) => {
     const [res] = await pool.query(
       `INSERT INTO workout_sessions (user_id, status, session_date, total_volume_kg)
        VALUES (?, 'completed', DATE_SUB(CURDATE(), INTERVAL ? DAY), ?)`,
@@ -36,8 +41,8 @@ test('analytics db', async (t) => {
     for (let i = 1; i <= sets; i += 1) {
       await pool.query(
         `INSERT INTO set_logs (session_id, exercise_id, set_number, weight_kg, reps, is_completed)
-         VALUES (?, ?, ?, 60, 10, TRUE)`,
-        [res.insertId, exerciseId, i],
+         VALUES (?, ?, ?, ?, 10, TRUE)`,
+        [res.insertId, exerciseId, i, weightKg],
       );
     }
     return res.insertId;
@@ -158,31 +163,53 @@ test('analytics db', async (t) => {
     assert.equal(a.done, 0, 'day 29 is outside the 28-day target window');
   });
 
-  await t.test('sets group by muscle, descending', async () => {
+  // The card this feeds counts kilograms now, not sets: 10 reps at 60 kg is
+  // 600 kg of work, and a set is not a unit of effort -- five sets of 20 kg
+  // and five of 100 kg are the same bar under a COUNT.
+  await t.test('volume groups by muscle, descending', async () => {
     const userId = await makeUser('muscle@example.com');
     await writeSession(userId, { daysAgo: 1, sets: 5, exerciseId: exRows[0].exercise_id });
     await writeSession(userId, { daysAgo: 2, sets: 2, exerciseId: exRows[1].exercise_id });
 
-    const rows = await analytics.readSetsByMuscle(pool, userId, 'week');
+    const rows = await analytics.readVolumeByMuscle(pool, userId, 'week');
     assert.ok(rows.length >= 1);
-    assert.equal(rows[0].sets, exRows[0].muscle_group === exRows[1].muscle_group ? 7 : 5);
+    // 5 sets x 60 kg x 10 reps = 3000; 2 sets = 1200. Shared muscle group,
+    // 4200. Hand-derived rather than recomputed from the same multiplication
+    // the query does.
+    assert.equal(
+      rows[0].volumeKg,
+      exRows[0].muscle_group === exRows[1].muscle_group ? 4200 : 3000,
+    );
     for (let i = 1; i < rows.length; i += 1) {
-      assert.ok(rows[i - 1].sets >= rows[i].sets, 'descending');
+      assert.ok(rows[i - 1].volumeKg >= rows[i].volumeKg, 'descending');
     }
   });
 
-  await t.test('a session dated exactly the window length ago contributes no sets', async () => {
+  // Volume is SUM(weight_kg * reps), and a bodyweight set stores no weight --
+  // so it contributes nothing and must not draw an empty bar claiming the
+  // muscle was not worked. The row is omitted entirely.
+  await t.test('a bodyweight set contributes no volume and no row', async () => {
+    const userId = await makeUser('muscle-bodyweight@example.com');
+    await writeSession(userId, {
+      daysAgo: 1, sets: 4, exerciseId: exRows[0].exercise_id, weightKg: null,
+    });
+
+    const rows = await analytics.readVolumeByMuscle(pool, userId, 'week');
+    assert.deepEqual(rows, [], 'four pull-ups are four sets of no volume');
+  });
+
+  await t.test('a session dated exactly the window length ago contributes no volume', async () => {
     // Mirrors the readVolumeBuckets/readVolumeChange boundary fix: a session
     // at daysAgo 7 must not appear in the week's muscle rows, while one at
     // daysAgo 6 must. Unlike the bucket case, a dropped set here shows up
-    // directly in the COUNT, so this one CAN go genuinely red.
+    // directly in the SUM, so this one CAN go genuinely red.
     const userId = await makeUser('muscle-boundary@example.com');
     await writeSession(userId, { daysAgo: 7, sets: 5, exerciseId: exRows[0].exercise_id });
     await writeSession(userId, { daysAgo: 6, sets: 3, exerciseId: exRows[0].exercise_id });
 
-    const rows = await analytics.readSetsByMuscle(pool, userId, 'week');
-    const total = rows.reduce((sum, r) => sum + r.sets, 0);
-    assert.equal(total, 3, 'day 7 is outside the window; only day 6 counts');
+    const rows = await analytics.readVolumeByMuscle(pool, userId, 'week');
+    const total = rows.reduce((sum, r) => sum + r.volumeKg, 0);
+    assert.equal(total, 1800, 'day 7 is outside the window; only day 6 counts');
   });
 
   await t.test('the trend compares this window with the one before it', async () => {

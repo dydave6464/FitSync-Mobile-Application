@@ -245,10 +245,10 @@ void main() {
   });
 
   testWidgets(
-      'cards render in spec order: strength, then body weight, then sets by muscle',
+      'cards render in spec order: strength, then body weight, then volume by muscle',
       (tester) async {
     // §5 of the design spec: segment · adherence hero · volume trend ·
-    // strength · body weight · sets by muscle · Recent history. A tall
+    // strength · body weight · volume by muscle · Recent history. A tall
     // viewport keeps every card actually laid out instead of culled below
     // the fold, so their vertical positions are comparable.
     tester.view.physicalSize = const Size(400, 3000);
@@ -262,11 +262,11 @@ void main() {
 
     final strengthDy = dy(find.byType(StrengthCard));
     final bodyWeightDy = dy(find.byType(BodyWeightCard));
-    final musclesDy = dy(find.text('MUSCLES WORKED'));
+    final musclesDy = dy(find.text('VOLUME BY MUSCLE'));
 
     expect(strengthDy, lessThan(bodyWeightDy),
         reason: 'strength must render before body weight');
     expect(bodyWeightDy, lessThan(musclesDy),
-        reason: 'sets by muscle must render last, after body weight');
+        reason: 'volume by muscle must render last, after body weight');
   });
 }
