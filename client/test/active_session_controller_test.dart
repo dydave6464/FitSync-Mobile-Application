@@ -234,6 +234,214 @@ void main() {
     expect(await container.read(completedDaysProvider.future), {'2026-09-08'});
   });
 
+  // Finishing a workout changes what every "what have I done" read answers,
+  // and none of those providers is autoDispose -- each one holds whatever it
+  // resolved to for the life of the app. On a new account they all resolve
+  // EMPTY before the first workout, so without an invalidation the Progress
+  // tab keeps saying "No completed workouts yet" over a workout that is
+  // stored, until the app is restarted.
+  //
+  // Each test below reads its provider BEFORE complete(), for the reason the
+  // week test above gives: invalidating a provider with no element yet is a
+  // no-op, and the assertion would pass on a deleted invalidate().
+  group('completing refreshes what reads finished workouts', () {
+    /// Answers every read this group makes, counting calls per endpoint so
+    /// the second read of a provider is distinguishable from a cached one:
+    /// the first call to each answers as a user who has trained nothing,
+    /// every later call as one who has just finished session 7.
+    ///
+    /// Counted per URL rather than per path, because the analytics and
+    /// strength endpoints are one path serving a family: keyed on the path
+    /// alone, reading 'month' would consume 'week''s first call and be
+    /// answered as though a workout had already landed.
+    MockClient serverWithOneWorkout() {
+      final calls = <String, int>{};
+      return MockClient((request) async {
+        final path = request.url.path;
+        final key = '$path?${request.url.query}';
+        final n = calls[key] = (calls[key] ?? 0) + 1;
+        final first = n == 1;
+
+        if (path.endsWith('/complete')) {
+          return http.Response(
+            jsonEncode({
+              'data': {
+                'session': {..._session, 'status': 'completed', 'durationMin': 40},
+              },
+            }),
+            200,
+          );
+        }
+        if (path == '/api/v1/sessions') {
+          return http.Response(
+            jsonEncode({
+              'data': {
+                'sessions': first
+                    ? []
+                    : [
+                        {
+                          'sessionId': 7,
+                          'sessionDate': '2026-09-08',
+                          'setCount': 18,
+                          'exerciseCount': 6,
+                          'durationMin': 40,
+                          'totalVolumeKg': 1550,
+                          'planName': 'Full Body',
+                        },
+                      ],
+                'total': first ? 0 : 1,
+                'page': 1,
+                'limit': 20,
+              },
+            }),
+            200,
+          );
+        }
+        if (path.endsWith('/summary')) {
+          return http.Response(
+            jsonEncode({
+              'data': {
+                'summary': first
+                    ? {'sessionCount': 0, 'setCount': 0, 'totalVolumeKg': 0}
+                    : {'sessionCount': 1, 'setCount': 18, 'totalVolumeKg': 1550},
+              },
+            }),
+            200,
+          );
+        }
+        if (path.endsWith('/analytics')) {
+          return http.Response(
+            jsonEncode({
+              'data': {
+                'period': 'week',
+                'volume': [],
+                'change': {
+                  'totalKg': first ? 0 : 1550,
+                  'previousKg': 0,
+                  'changePct': null,
+                },
+                'adherence': {'done': first ? 0 : 1, 'target': 3, 'weeks': 1},
+                'muscles': [],
+              },
+            }),
+            200,
+          );
+        }
+        if (path.endsWith('/strength')) {
+          return http.Response(
+            jsonEncode({
+              'data': {
+                'exerciseId': first ? null : 101,
+                'xAxis': 'date',
+                'points': [],
+                'options': [],
+              },
+            }),
+            200,
+          );
+        }
+        if (path.endsWith('/last')) {
+          return http.Response(
+            jsonEncode({
+              'data': {
+                'session': first
+                    ? null
+                    : {
+                        'sessionId': 7,
+                        'sessionDate': '2026-09-08',
+                        'planName': 'Full Body',
+                        'exercises': [],
+                      },
+              },
+            }),
+            200,
+          );
+        }
+        return http.Response(jsonEncode({'data': {'session': _session}}), 200);
+      });
+    }
+
+    Future<ProviderContainer> completed() async {
+      final container = _container(serverWithOneWorkout());
+      await container.read(activeSessionProvider.future);
+      return container;
+    }
+
+    // The one the user sees as "No completed workouts yet" over a workout
+    // they just finished.
+    test('the history the Progress tab lists', () async {
+      final container = await completed();
+      expect((await container.read(sessionHistoryProvider.future)).total, 0);
+
+      await container.read(activeSessionProvider.notifier).complete(40);
+
+      final history = await container.read(sessionHistoryProvider.future);
+      expect(history.total, 1);
+      expect(history.sessions.single.sessionId, 7);
+    });
+
+    test('the totals the period segment sums', () async {
+      final container = await completed();
+      expect((await container.read(trainingSummaryProvider.future)).sessionCount, 0);
+
+      await container.read(activeSessionProvider.notifier).complete(40);
+
+      expect((await container.read(trainingSummaryProvider.future)).sessionCount, 1);
+    });
+
+    // A family: every period the user has looked at is its own element, and
+    // all of them are stale once a workout lands. Invalidating the family
+    // itself is what reaches the ones not currently on screen.
+    test('the analytics cards, for every period already read', () async {
+      final container = await completed();
+      expect(
+        (await container.read(trainingAnalyticsProvider('week').future)).adherence.done,
+        0,
+      );
+      expect(
+        (await container.read(trainingAnalyticsProvider('month').future)).adherence.done,
+        0,
+      );
+
+      await container.read(activeSessionProvider.notifier).complete(40);
+
+      expect(
+        (await container.read(trainingAnalyticsProvider('week').future)).adherence.done,
+        1,
+      );
+      expect(
+        (await container.read(trainingAnalyticsProvider('month').future)).adherence.done,
+        1,
+      );
+    });
+
+    test('the strength card', () async {
+      final container = await completed();
+      expect(
+        (await container.read(strengthSeriesProvider('week').future)).exerciseId,
+        isNull,
+      );
+
+      await container.read(activeSessionProvider.notifier).complete(40);
+
+      expect(
+        (await container.read(strengthSeriesProvider('week').future)).exerciseId,
+        101,
+      );
+    });
+
+    // The "+" sheet offers to repeat this, and the workout just finished is
+    // the one it should be offering.
+    test('the workout the repeat sheet offers', () async {
+      final container = await completed();
+      expect(await container.read(lastWorkoutProvider.future), isNull);
+
+      await container.read(activeSessionProvider.notifier).complete(40);
+
+      expect((await container.read(lastWorkoutProvider.future))!.sessionId, 7);
+    });
+  });
+
   test('starting stores the new session', () async {
     final container = _container(MockClient((request) async {
       if (request.method == 'POST') {

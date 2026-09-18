@@ -73,8 +73,24 @@ class ActiveSessionController extends AsyncNotifier<ActiveSession?> {
     final done = await _repo.complete(_current.sessionId, durationMin);
     // Nothing is in progress now, so the Plan tab offers Start, not Resume.
     state = const AsyncValue.data(null);
-    // The strip gains a filled dot for today.
-    ref.invalidate(completedDaysProvider);
+
+    // Everything that answers "what have I done" is now out of date, and none
+    // of these is autoDispose -- each holds whatever it resolved to for the
+    // life of the app. On a new account they all resolve EMPTY before the
+    // first workout, so leaving them alone means the Progress tab goes on
+    // saying "No completed workouts yet" over a workout the server has
+    // stored, until the app is restarted. Invalidating only the week strip
+    // is what that looked like.
+    //
+    // The two families are invalidated whole, without a period: the user may
+    // have looked at more than one segment, and every element of each is
+    // equally stale now.
+    ref.invalidate(completedDaysProvider); // the strip's dot for today
+    ref.invalidate(sessionHistoryProvider); // the Progress tab's list
+    ref.invalidate(trainingSummaryProvider); // its totals
+    ref.invalidate(trainingAnalyticsProvider); // volume, adherence, muscles
+    ref.invalidate(strengthSeriesProvider); // the e1RM card
+    ref.invalidate(lastWorkoutProvider); // what the "+" sheet repeats
     return done;
   }
 
