@@ -148,6 +148,10 @@ PlanExercise _sessionExercise(Map<String, dynamic> json) => PlanExercise(
       targetSets: json['targetSets'] as int,
       targetReps: json['targetReps'] as String,
       thumbnailUrl: json['thumbnailUrl'] as String?,
+      // The logger hides its weight column off PlanExercise.isBodyweight,
+      // which reads this. Null from a server that predates the field, which
+      // reads as unknown equipment -- the same as an exercise with none.
+      equipment: json['equipment'] as String?,
     );
 
 /// What the user last lifted on one exercise — the heaviest set of their most

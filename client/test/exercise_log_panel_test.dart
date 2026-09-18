@@ -19,6 +19,20 @@ const _exercise = PlanExercise(
   targetReps: '8-12',
 );
 
+/// The curated display name `GET /plans/active` sends for an unloaded
+/// exercise -- not the raw catalogue tag 'body weight', which is a different
+/// vocabulary the plan path never uses. See PlanExercise.isBodyweight.
+const _bodyweight = PlanExercise(
+  planExerciseId: 602,
+  exerciseId: 102,
+  name: 'Pull-up',
+  muscleGroup: 'lats',
+  orderNo: 2,
+  targetSets: 3,
+  targetReps: '8-12',
+  equipment: 'Bodyweight',
+);
+
 ActiveSession _session({List<LoggedSet> sets = const []}) => ActiveSession(
       sessionId: 7,
       status: 'in_progress',
@@ -713,4 +727,171 @@ void main() {
     expect(field.controller!.text, isEmpty);
     expect(field.enabled, isTrue);
   });
+
+  // 305 of the live catalogue is bodyweight, and every one of them used to
+  // draw a kg field. An empty field on a pull-up is not neutral: it invites a
+  // number, and a pull-up logged at 60 kg inflates the volume chart it feeds.
+  group('an exercise with no external load', () {
+    testWidgets('has no weight field on any set', (tester) async {
+      await tester.pumpWidget(_host(ExerciseLogPanel(
+        exercise: _bodyweight,
+        session: _session(),
+        drafts: _drafts(tester),
+        onUndoSet: (_) async {},
+      )));
+
+      expect(find.byKey(const Key('set.1.weight')), findsNothing);
+      expect(find.byKey(const Key('set.3.weight')), findsNothing);
+      // Reps is what a bodyweight set records, and the table still counts it.
+      expect(find.byKey(const Key('set.1.reps')), findsOneWidget);
+      expect(find.byKey(const Key('set.3.reps')), findsOneWidget);
+    });
+
+    // The header shares SetRow's column constants, so a heading left standing
+    // over a column that is gone does not merely look odd -- it takes width
+    // the rows no longer give it, and every heading after it slides off its
+    // field.
+    testWidgets('drops the weight heading with the column', (tester) async {
+      await tester.pumpWidget(_host(ExerciseLogPanel(
+        exercise: _bodyweight,
+        session: _session(),
+        drafts: _drafts(tester),
+        onUndoSet: (_) async {},
+      )));
+
+      final header = find.byKey(const Key('logpanel.columns'));
+      expect(find.descendant(of: header, matching: find.text('KG')), findsNothing);
+      expect(find.descendant(of: header, matching: find.text('LB')), findsNothing);
+      expect(find.descendant(of: header, matching: find.text('SET')), findsOneWidget);
+      expect(find.descendant(of: header, matching: find.text('REPS')), findsOneWidget);
+    });
+
+    testWidgets('keeps the reps heading over the reps field', (tester) async {
+      await tester.pumpWidget(_host(ExerciseLogPanel(
+        exercise: _bodyweight,
+        session: _session(),
+        drafts: _drafts(tester),
+        onUndoSet: (_) async {},
+      )));
+
+      final heading = find.descendant(
+        of: find.byKey(const Key('logpanel.columns')),
+        matching: find.text('REPS'),
+      );
+      expect(
+        tester.getCenter(heading).dx,
+        closeTo(tester.getCenter(find.byKey(const Key('set.1.reps'))).dx, 1),
+      );
+    });
+
+    // A dip belt is the exception, not the rule, so the field is asked for
+    // rather than offered -- and asked for once on the exercise, because
+    // nobody belts up for set 2 alone.
+    testWidgets('offers to add weight, which brings the column back',
+        (tester) async {
+      await tester.pumpWidget(_host(ExerciseLogPanel(
+        exercise: _bodyweight,
+        session: _session(),
+        drafts: _drafts(tester),
+        onUndoSet: (_) async {},
+      )));
+
+      await tester.tap(find.byKey(const Key('logpanel.addweight')));
+      await tester.pumpAndSettle();
+
+      expect(find.byKey(const Key('set.1.weight')), findsOneWidget);
+      expect(find.byKey(const Key('set.3.weight')), findsOneWidget);
+      expect(
+        find.descendant(
+          of: find.byKey(const Key('logpanel.columns')),
+          matching: find.text('KG'),
+        ),
+        findsOneWidget,
+      );
+    });
+
+    // Derived from history rather than stored as a preference: someone who
+    // belted up last week is belted up this week, and the last set logged
+    // already says so. Nothing new is persisted to know it.
+    testWidgets('keeps its weight column when last week carried a weight',
+        (tester) async {
+      await tester.pumpWidget(_host(ExerciseLogPanel(
+        exercise: _bodyweight,
+        session: _session(),
+        last: const LastPerformance(
+          exerciseId: 102, weightKg: 10, reps: 8, sessionDate: '2026-09-11',
+        ),
+        drafts: _drafts(tester),
+        onUndoSet: (_) async {},
+      )));
+
+      expect(find.byKey(const Key('set.1.weight')), findsOneWidget);
+      // Already there, so there is nothing left to ask for.
+      expect(find.byKey(const Key('logpanel.addweight')), findsNothing);
+    });
+
+    // A null weight on the last set is a bodyweight set, not a missing
+    // reading -- it must not read as "carried a weight".
+    testWidgets('stays without one when last week carried none', (tester) async {
+      await tester.pumpWidget(_host(ExerciseLogPanel(
+        exercise: _bodyweight,
+        session: _session(),
+        last: const LastPerformance(
+          exerciseId: 102, reps: 8, sessionDate: '2026-09-11',
+        ),
+        drafts: _drafts(tester),
+        onUndoSet: (_) async {},
+      )));
+
+      expect(find.byKey(const Key('set.1.weight')), findsNothing);
+    });
+
+    // The panel holds the reveal, and the logger rebuilds it in place as the
+    // workout moves -- so a State that survives the move would carry one
+    // exercise's dip belt onto the next exercise's push-ups.
+    testWidgets('puts the column away again on the next exercise',
+        (tester) async {
+      Widget panel(PlanExercise exercise) => _host(ExerciseLogPanel(
+            exercise: exercise,
+            session: _session(),
+            drafts: _drafts(tester),
+            onUndoSet: (_) async {},
+          ));
+
+      await tester.pumpWidget(panel(_bodyweight));
+      await tester.tap(find.byKey(const Key('logpanel.addweight')));
+      await tester.pumpAndSettle();
+      expect(find.byKey(const Key('set.1.weight')), findsOneWidget);
+
+      await tester.pumpWidget(panel(const PlanExercise(
+        planExerciseId: 603,
+        exerciseId: 103,
+        name: 'Push-up',
+        muscleGroup: 'pectorals',
+        orderNo: 3,
+        targetSets: 3,
+        targetReps: '12',
+        equipment: 'Bodyweight',
+      )));
+
+      expect(find.byKey(const Key('set.1.weight')), findsNothing);
+    });
+
+  });
+
+  // The affordance belongs to the exercises that lost something. Offering it
+  // on a barbell bench, which already has the field, would read as a second
+  // weight.
+  testWidgets('a loaded exercise never offers to add weight', (tester) async {
+    await tester.pumpWidget(_host(ExerciseLogPanel(
+      exercise: _exercise,
+      session: _session(),
+      drafts: _drafts(tester),
+      onUndoSet: (_) async {},
+    )));
+
+    expect(find.byKey(const Key('logpanel.addweight')), findsNothing);
+    expect(find.byKey(const Key('set.1.weight')), findsOneWidget);
+  });
+
 }

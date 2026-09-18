@@ -31,6 +31,46 @@ void main() {
     expect(without.equipment, isNull);
   });
 
+  // Two equipment vocabularies reach the client, and the logger's weight
+  // field is hidden off this getter -- so reading only one of them leaves the
+  // field offered on every pull-up in a plan, which is the whole defect.
+  //
+  // `GET /plans/active` sends the curated display name ('Bodyweight'); `GET
+  // /exercises` sends the raw catalogue tag ('body weight'). See the note
+  // over the equipment SELECT in server/src/db/plans.js.
+  group('isBodyweight', () {
+    PlanExercise withEquipment(String? equipment) => PlanExercise(
+          planExerciseId: 1,
+          exerciseId: 1,
+          name: 'Pull-up',
+          muscleGroup: 'lats',
+          orderNo: 1,
+          targetSets: 3,
+          targetReps: '8-12',
+          equipment: equipment,
+        );
+
+    test('reads the curated display name a plan carries', () {
+      expect(withEquipment('Bodyweight').isBodyweight, isTrue);
+    });
+
+    test('reads the raw catalogue tag too', () {
+      expect(withEquipment('body weight').isBodyweight, isTrue);
+    });
+
+    test('loaded equipment is not bodyweight', () {
+      expect(withEquipment('Barbell').isBodyweight, isFalse);
+      expect(withEquipment('Pull-up bar').isBodyweight, isFalse);
+    });
+
+    // equipment_id is nullable, and an untagged exercise is not a claim that
+    // the exercise is unloaded -- it is the absence of a claim. Offering the
+    // field is the recoverable side of that guess.
+    test('unknown equipment is not bodyweight', () {
+      expect(withEquipment(null).isBodyweight, isFalse);
+    });
+  });
+
   test('a plan exercise keeps the id of its row in the plan', () {
     final ex = PlanExercise.fromJson(const {
       'planExerciseId': 77,
