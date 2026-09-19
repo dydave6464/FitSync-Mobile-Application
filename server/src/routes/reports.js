@@ -30,6 +30,46 @@ function section(title, rows) {
   return `<h2>${escapeHtml(title)}</h2><table>${items}</table>`;
 }
 
+/// Kilograms the way the app writes them: 48200 is unreadable, 48.2k is not.
+///
+/// Mirrors formatWeightCompact in client/lib/core/units.dart. Kilograms
+/// regardless of the sharer's weight-unit preference, as every other figure
+/// on this page already is.
+function compactKg(kg) {
+  const value = Math.round(kg ?? 0);
+  if (value < 1000) return `${value} kg`;
+  return `${(value / 1000).toFixed(1).replace(/\.0$/, '')}k kg`;
+}
+
+/// Volume as a DIRECTION. The total lives one section up, in the summary.
+///
+/// readVolumeChange in src/db/analytics.js documents `totalKg` as the half
+/// that says nothing -- it swings by 50x between week and year -- and
+/// `changePct` as the half that survives, and changePct was being computed,
+/// stored in report_json and then never drawn. `previousKg` goes entirely:
+/// it is the comparand the percentage is already made of, it appears nowhere
+/// in the app, and printing two five-figure kilogram totals side by side asks
+/// the coach to do a subtraction the server has already done.
+///
+/// The total itself is not dropped, only moved: the app's VolumeTrendCard
+/// argues, correctly, that a percentage with no total behind it is the
+/// thinner half of a pair -- and a first window has no percentage at all, so
+/// a direction-only section would be blank for every new account. The summary
+/// row carries it, compactly, and carries it even when this section is off.
+function volumeSection(period, change) {
+  if (!change) return '';
+
+  // Null means the previous window held nothing. "+100%" measured from zero
+  // is not a fact about training, so say there is nothing to compare against
+  // rather than print a number that reads like one.
+  const pct = change.changePct;
+  const value = pct === null || pct === undefined
+    ? `No previous ${period} to compare against`
+    : `${pct >= 0 ? '+' : ''}${pct}% against the previous ${period}`;
+
+  return section('Training volume', [['Change', value]]);
+}
+
 function renderReport({ fullName, period, windowStart, windowEnd, report }) {
   const day = (d) => new Date(d).toISOString().slice(0, 10);
   const s = report.summary || {};
@@ -40,14 +80,9 @@ function renderReport({ fullName, period, windowStart, windowEnd, report }) {
     section('Summary', [
       ['Sessions', String(s.sessionCount ?? 0)],
       ['Sets', String(s.setCount ?? 0)],
-      ['Volume', `${Math.round(s.totalVolumeKg ?? 0)} kg`],
+      ['Volume', compactKg(s.totalVolumeKg)],
     ]),
-    report.volume
-      ? section('Training volume', [
-          ['Total', `${Math.round(report.volume.change.totalKg)} kg`],
-          ['Previous window', `${Math.round(report.volume.change.previousKg)} kg`],
-        ])
-      : '',
+    report.volume ? volumeSection(period, report.volume.change) : '',
     report.bodyWeight && report.bodyWeight.points.length > 0
       ? section('Body weight',
           report.bodyWeight.points.map((p) => [p.loggedOn, `${p.weightKg} kg`]))
@@ -69,7 +104,12 @@ function renderReport({ fullName, period, windowStart, windowEnd, report }) {
       : '',
   ].join('');
 
-  return renderPage({ title: `Training report — ${fullName}`, body });
+  // Deliberately generic, with the name left in the body only. The designed
+  // delivery path for this link is pasting it into a chat app, and chat apps
+  // fetch a URL server-side to build a preview card -- which reads <title>.
+  // A name in there reaches third-party infrastructure before anyone has
+  // opened the link at all, and X-Robots-Tag does nothing about unfurlers.
+  return renderPage({ title: 'Training report', body });
 }
 
 module.exports = function buildReportsRouter(deps = {}) {
@@ -122,6 +162,13 @@ module.exports = function buildReportsRouter(deps = {}) {
 
       // A pasted link must not reach a search index.
       res.set('X-Robots-Tag', 'noindex, nofollow');
+
+      // Server-side expiry is the only lifetime guarantee this feature has,
+      // and a browser or shared proxy holding a cached copy would outlive it
+      // silently. Set before the branch, so the 404 an expired link gets is
+      // not itself cached over a link that is about to come back as a 200 for
+      // nobody. auth.js does the same for the reset form.
+      res.set('Cache-Control', 'no-store');
 
       if (!found) {
         // Byte-identical to the page an expired link gets, so this never

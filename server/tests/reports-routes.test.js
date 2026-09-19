@@ -179,6 +179,40 @@ test('report endpoints', async (t) => {
     assert.match(res.text, /Juan Dela Cruz/);
   });
 
+  // The designed way to deliver this link is pasting it into a chat app, and
+  // chat apps fetch the URL server-side to build a preview card -- reading
+  // <title>. A name there reaches third-party infrastructure before anyone
+  // has opened the link, and X-Robots-Tag does not apply to unfurlers.
+  await t.test('the page title does not carry the sharer’s name', async () => {
+    const { path } = await shareFor('p9@example.com');
+
+    const res = await request(app).get(path).expect(200);
+    const title = res.text.match(/<title>([^<]*)<\/title>/)[1];
+    assert.equal(title, 'Training report');
+    assert.ok(!title.includes('Juan'), 'the name must not be in the title');
+    // Still on the page itself, where the coach who opened it can see it.
+    assert.match(res.text, /Juan Dela Cruz/);
+  });
+
+  // Server-side expiry is this feature's only lifetime guarantee. A browser
+  // or shared proxy holding a cached copy would keep serving the report after
+  // expires_at passes, and nothing about that would be visible to anyone.
+  await t.test('a report page is never cached', async () => {
+    const { path, userId } = await shareFor('p10@example.com');
+
+    const live = await request(app).get(path).expect(200);
+    assert.equal(live.headers['cache-control'], 'no-store');
+
+    await pool.query(
+      'UPDATE shared_reports SET expires_at = DATE_SUB(NOW(), INTERVAL 1 DAY) WHERE user_id = ?',
+      [userId],
+    );
+
+    // And the 404 too, so an expired link's page is not itself cached.
+    const gone = await request(app).get(path).expect(404);
+    assert.equal(gone.headers['cache-control'], 'no-store');
+  });
+
   // A pasted link must not end up in a search index.
   await t.test('the page refuses indexing', async () => {
     const { path } = await shareFor('p2@example.com');
@@ -324,6 +358,78 @@ test('report endpoints', async (t) => {
     const page = await request(app)
       .get(new URL(created.body.data.url).pathname).expect(200);
     assert.equal((page.text.match(/<td>\d+ sets<\/td>/g) || []).length, 1);
+  });
+
+  // changePct is what analytics.js calls the honest half of volume, and it
+  // was computed, stored in report_json and never drawn. previousKg is the
+  // raw comparand the percentage is already made of and is gone.
+  await t.test('the volume section shows the direction, not the comparand', async () => {
+    const { token, userId } = await freshUser('p11@example.com');
+
+    // Last week 400 kg, this week 600 -- a +50% week. `>` CURDATE()-7 for the
+    // current window and `<=` for the previous, matching readVolumeChange.
+    await pool.query(
+      `INSERT INTO workout_sessions (user_id, status, session_date, total_volume_kg)
+       VALUES (?, 'completed', CURDATE(), 600),
+              (?, 'completed', DATE_SUB(CURDATE(), INTERVAL 10 DAY), 400)`,
+      [userId, userId],
+    );
+
+    const created = await request(app).post('/api/v1/reports')
+      .set('Authorization', `Bearer ${token}`)
+      .send({ period: 'week', include: allSections })
+      .expect(201);
+
+    const page = await request(app)
+      .get(new URL(created.body.data.url).pathname).expect(200);
+
+    assert.match(page.text, /\+50% against the previous week/);
+    assert.ok(!page.text.includes('Previous window'), 'the raw comparand is gone');
+  });
+
+  // A first window has nothing behind it, and "+100%" measured from zero is
+  // not a fact about training. The section says so rather than printing one.
+  await t.test('a first window says there is nothing to compare against', async () => {
+    const { token, userId } = await freshUser('p12@example.com');
+    await pool.query(
+      `INSERT INTO workout_sessions (user_id, status, session_date, total_volume_kg)
+       VALUES (?, 'completed', CURDATE(), 600)`,
+      [userId],
+    );
+
+    const created = await request(app).post('/api/v1/reports')
+      .set('Authorization', `Bearer ${token}`)
+      .send({ period: 'week', include: allSections })
+      .expect(201);
+
+    const page = await request(app)
+      .get(new URL(created.body.data.url).pathname).expect(200);
+
+    assert.match(page.text, /No previous week to compare against/);
+    assert.ok(!/\d+% against/.test(page.text), 'no percentage invented from zero');
+  });
+
+  // 48,200 kg is not a number anyone reads. The app's VolumeTrendCard settled
+  // this with formatWeightCompact rather than by dropping the total, and the
+  // summary row follows it.
+  await t.test('a five-figure volume is written compactly', async () => {
+    const { token, userId } = await freshUser('p13@example.com');
+    await pool.query(
+      `INSERT INTO workout_sessions (user_id, status, session_date, total_volume_kg)
+       VALUES (?, 'completed', CURDATE(), 48200)`,
+      [userId],
+    );
+
+    const created = await request(app).post('/api/v1/reports')
+      .set('Authorization', `Bearer ${token}`)
+      .send({ period: 'week', include: allSections })
+      .expect(201);
+
+    const page = await request(app)
+      .get(new URL(created.body.data.url).pathname).expect(200);
+
+    assert.match(page.text, /48\.2k kg/);
+    assert.ok(!page.text.includes('48200 kg'));
   });
 
   // bodyWeight.widened is true when the window held too few entries and the
