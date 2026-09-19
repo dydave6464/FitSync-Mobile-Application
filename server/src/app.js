@@ -9,6 +9,7 @@ const requestId = require('./middleware/request-id');
 const notFound = require('./middleware/not-found');
 const errorHandler = require('./middleware/error-handler');
 const buildRoutes = require('./routes');
+const { REPORT_TOKEN_PATH, redactUrl } = require('./lib/redact-url');
 
 // pino-http's default req serializer logs req.url from req.originalUrl,
 // which is the path AND the query string as one literal string. The emailed
@@ -22,21 +23,19 @@ const buildRoutes = require('./routes');
 // out of req.url entirely.
 //
 // The share-a-report token needs its OWN handling, because it is the one
-// credential in this app that rides in the PATH rather than the query string:
-// GET /api/v1/reports/<43 chars> is opened by a coach with no account, so the
-// token IS the credential -- and unlike the two above it stays live for 30
-// days. Stripping the query string does nothing for it; without the replace
-// below, every successful view writes a 30-day key to someone's training data
-// into the logs at 'info'. Redact the segment and keep the route shape, which
-// is the only part of that path worth logging anyway.
-const REPORT_TOKEN_PATH = /^(\/api\/v1\/reports\/)[^/]+/;
-
+// credential in this app that rides in the PATH rather than the query string.
+// Stripping the query string does nothing for it; without redactUrl below,
+// every successful view writes a 30-day key to someone's training data into
+// the logs at 'info'. The regex lives in lib/redact-url.js because
+// middleware/not-found.js needs the identical redaction and cannot require
+// this module -- app.js requires not-found long before it assigns its own
+// exports, so the constant would arrive undefined.
 function reqSerializer(req) {
   const serialized = stdSerializers.req(req);
   if (typeof serialized.url === 'string') {
     const queryIndex = serialized.url.indexOf('?');
     if (queryIndex !== -1) serialized.url = serialized.url.slice(0, queryIndex);
-    serialized.url = serialized.url.replace(REPORT_TOKEN_PATH, '$1[REDACTED]');
+    serialized.url = redactUrl(serialized.url);
   }
   return serialized;
 }
@@ -101,4 +100,4 @@ function createApp({
   return app;
 }
 
-module.exports = { createApp, reqSerializer };
+module.exports = { createApp, reqSerializer, REPORT_TOKEN_PATH, redactUrl };
