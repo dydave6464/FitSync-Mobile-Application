@@ -17,6 +17,12 @@ test('report endpoints', async (t) => {
   await seedExercises(testDbConfig(), JSON.parse(JSON.stringify(FIXTURE)));
   const app = buildTestApp({ pool, publicBaseUrl: 'https://fitsync.test' });
 
+  const [ex] = await pool.query(
+    "SELECT exercise_id, muscle_group FROM exercises WHERE status='live' LIMIT 1",
+  );
+  const exerciseId = ex[0].exercise_id;
+  const muscleGroup = ex[0].muscle_group;
+
   t.after(async () => {
     await dropAllTables(pool);
     await pool.end();
@@ -166,6 +172,7 @@ test('report endpoints', async (t) => {
 
     const res = await request(app).get(path).expect(404);
     assert.match(res.text, /no longer available/i);
+    assert.match(res.headers['x-robots-tag'], /noindex/);
   });
 
   // Expired and never-existed render the same page, so the endpoint does not
@@ -208,5 +215,77 @@ test('report endpoints', async (t) => {
   await t.test('reading a report needs no token of its own', async () => {
     const { path } = await shareFor('p5@example.com');
     await request(app).get(path).expect(200);
+  });
+
+  // Every other subtest shares reports for a user with no sessions and no
+  // body-weight logs, so muscles stays null, sessions stays [], and
+  // bodyWeight.points stays [] across the whole file: the three .map()
+  // bodies in reports.js that render real rows -- and the escapeHtml calls
+  // inside them -- never actually run. This seeds real data so they do.
+  await t.test('the page renders muscle balance, body weight and session data', async () => {
+    const { token, userId } = await freshUser('p6@example.com');
+    await pool.query('UPDATE users SET is_premium = 1 WHERE user_id = ?', [userId]);
+
+    const [s] = await pool.query(
+      `INSERT INTO workout_sessions (user_id, status, session_date, total_volume_kg)
+       VALUES (?, 'completed', CURDATE(), 600)`,
+      [userId],
+    );
+    await pool.query(
+      `INSERT INTO set_logs (session_id, exercise_id, set_number, weight_kg, reps, is_completed)
+       VALUES (?, ?, 1, 60, 10, TRUE)`,
+      [s.insertId, exerciseId],
+    );
+    // Two entries inside the "week" window: readSeries needs >= 2 to leave
+    // widened false, which this test also relies on (see the assertion below).
+    await pool.query(
+      'INSERT INTO body_weight_logs (user_id, weight_kg, log_date) VALUES (?, 82.5, CURDATE())',
+      [userId],
+    );
+    await pool.query(
+      `INSERT INTO body_weight_logs (user_id, weight_kg, log_date)
+       VALUES (?, 80, DATE_SUB(CURDATE(), INTERVAL 2 DAY))`,
+      [userId],
+    );
+
+    const created = await request(app).post('/api/v1/reports')
+      .set('Authorization', `Bearer ${token}`)
+      .send({ period: 'week', include: allSections })
+      .expect(201);
+
+    const page = await request(app)
+      .get(new URL(created.body.data.url).pathname).expect(200);
+
+    assert.ok(page.text.includes(muscleGroup), 'muscle group name should appear');
+    assert.ok(page.text.includes('82.5 kg'), 'body-weight figure should appear');
+    assert.match(page.text, /<td>\d{4}-\d{2}-\d{2}<\/td><td>1 sets<\/td>/);
+    // Two entries fell inside the window, so it was never widened.
+    assert.ok(!page.text.includes('Fewer than two entries'));
+  });
+
+  // bodyWeight.widened is true when the window held too few entries and the
+  // series reached further back to find some -- those points then sit under
+  // a heading naming a window they are not actually inside. The page must
+  // say so, since the coach reading it has no other way to know.
+  await t.test('the body-weight note appears when the window had to widen', async () => {
+    const { token, userId } = await freshUser('p7@example.com');
+    // Only one entry, and it is well outside the "week" window: readSeries
+    // finds nothing inside the window, widens to the most recent entries,
+    // and reports widened: true.
+    await pool.query(
+      `INSERT INTO body_weight_logs (user_id, weight_kg, log_date)
+       VALUES (?, 75, DATE_SUB(CURDATE(), INTERVAL 40 DAY))`,
+      [userId],
+    );
+
+    const created = await request(app).post('/api/v1/reports')
+      .set('Authorization', `Bearer ${token}`)
+      .send({ period: 'week', include: allSections })
+      .expect(201);
+
+    const page = await request(app)
+      .get(new URL(created.body.data.url).pathname).expect(200);
+
+    assert.match(page.text, /Fewer than two entries in this window; showing all recent entries\./);
   });
 });

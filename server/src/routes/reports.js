@@ -51,6 +51,13 @@ function renderReport({ fullName, period, windowStart, windowEnd, report }) {
     report.bodyWeight && report.bodyWeight.points.length > 0
       ? section('Body weight',
           report.bodyWeight.points.map((p) => [p.loggedOn, `${p.weightKg} kg`]))
+        // The window widened to find enough points to draw -- these entries
+        // fall outside the "week"/"2026-09-12 to 2026-09-19" caption above,
+        // and this is the only place that says so: the coach reading this
+        // page has no other context to notice on their own.
+        + (report.bodyWeight.widened
+            ? '<p class="note">Fewer than two entries in this window; showing all recent entries.</p>'
+            : '')
       : '',
     report.muscles
       ? section('Muscle balance',
