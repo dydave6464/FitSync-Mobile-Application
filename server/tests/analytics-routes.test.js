@@ -32,6 +32,17 @@ test('analytics routes', async (t) => {
       .set(auth).expect(400);
   });
 
+  // Every reader here signals "unknown period" by returning null, which the
+  // route turns into the 400 above. A bare SUMMARY_WINDOWS[period] lookup
+  // reads 'constructor' off the prototype chain instead and returns a
+  // function, so the null never happens and the query throws a 500.
+  await t.test('a prototype property is a 400, not a 500', async () => {
+    for (const period of ['constructor', 'toString', '__proto__']) {
+      await request(app).get(`/api/v1/sessions/analytics?period=${period}`)
+        .set(auth).expect(400);
+    }
+  });
+
   await t.test('a brand new account gets a full, empty line', async () => {
     const get = await request(app).get('/api/v1/sessions/analytics?period=week')
       .set(auth).expect(200);

@@ -238,6 +238,19 @@ test('session history', async (t) => {
     assert.equal(res.body.error.code, 'INVALID_QUERY_PARAM');
   });
 
+  // 'constructor' is not a period, but it IS a property of every object's
+  // prototype. A bare SUMMARY_WINDOWS[period] hands back a function, which is
+  // truthy, so the unknown-period guard passes it through and it reaches the
+  // query as a bind parameter -- a 500 where this 400 belongs.
+  await t.test('a prototype property is not mistaken for a period', async () => {
+    const u = await freshUser('h14@example.com');
+    for (const period of ['constructor', 'toString', '__proto__']) {
+      const res = await request(app).get(`/api/v1/sessions/summary?period=${period}`)
+        .set('Authorization', `Bearer ${u.token}`).expect(400);
+      assert.equal(res.body.error.code, 'INVALID_QUERY_PARAM');
+    }
+  });
+
   await t.test('history needs a signed-in caller', async () => {
     await request(app).get('/api/v1/sessions').expect(401);
     await request(app).get('/api/v1/sessions/summary').expect(401);

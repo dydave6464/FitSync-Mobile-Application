@@ -64,6 +64,21 @@ test('report endpoints', async (t) => {
     assert.equal(res.body.error.code, 'INVALID_PERIOD');
   });
 
+  // 'constructor' names no window, but it does name a property every object
+  // inherits. A bare SUMMARY_WINDOWS[period] yields a truthy function, the
+  // guard below it never fires, and the request ends as a 500.
+  await t.test('a prototype property is not mistaken for a period', async () => {
+    const { token } = await freshUser('r2b@example.com');
+
+    for (const period of ['constructor', 'toString', '__proto__']) {
+      const res = await request(app).post('/api/v1/reports')
+        .set('Authorization', `Bearer ${token}`)
+        .send({ period, include: allSections })
+        .expect(400);
+      assert.equal(res.body.error.code, 'INVALID_PERIOD');
+    }
+  });
+
   // The Pro section must not reach the row for a free user. Checking the
   // stored snapshot rather than the response is the point: the response does
   // not carry the report.

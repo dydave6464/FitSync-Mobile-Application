@@ -492,6 +492,17 @@ async function lastPerformance(pool, userId, exerciseIds) {
 /// a calendar, so it is not bound to one.
 const SUMMARY_WINDOWS = { week: 7, month: 30, year: 365 };
 
+/// How many days [period] covers, or null when it names no window at all.
+///
+/// Object.hasOwn rather than a bare SUMMARY_WINDOWS[period]: the object
+/// inherits from Object.prototype, so period='constructor' reads a function
+/// off the prototype chain and passes a truthiness check. The null return is
+/// what the routes turn into a 400, so a bare lookup turns a bad query
+/// parameter into a 500 instead.
+function periodDays(period) {
+  return Object.hasOwn(SUMMARY_WINDOWS, period) ? SUMMARY_WINDOWS[period] : null;
+}
+
 /// How many sets a session holds. A correlated subquery rather than a GROUP
 /// BY: a session with no sets at all must still appear with a count of 0,
 /// which an inner join to set_logs would drop.
@@ -563,7 +574,7 @@ async function listHistory(pool, userId, { page = 1, limit = 20 } = {}) {
 /// that has trained nothing yet -- that is the state a new user is in, and it
 /// has to read as "nothing yet" rather than as a broken screen.
 async function summariseHistory(pool, userId, period = 'week') {
-  const days = SUMMARY_WINDOWS[period];
+  const days = periodDays(period);
   if (!days) return null;
 
   const [[row]] = await pool.query(
@@ -683,5 +694,6 @@ module.exports = {
   summariseHistory,
   lastCompletedWorkout,
   SUMMARY_WINDOWS,
+  periodDays,
   nextPlanDayNo,
 };

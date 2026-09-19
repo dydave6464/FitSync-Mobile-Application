@@ -80,7 +80,11 @@ module.exports = function buildReportsRouter(deps = {}) {
   router.post('/', auth, async (req, res, next) => {
     try {
       const period = req.body.period || 'week';
-      const days = SUMMARY_WINDOWS[period];
+      // Object.hasOwn, not a bare lookup: SUMMARY_WINDOWS inherits from
+      // Object.prototype, so period='constructor' would read a function off
+      // the prototype chain, sail past the !days check, and reach the query
+      // as a bind parameter -- a 500 where a 400 is the honest answer.
+      const days = Object.hasOwn(SUMMARY_WINDOWS, period) ? SUMMARY_WINDOWS[period] : null;
       if (!days) {
         throw AppError.badRequest(
           'INVALID_PERIOD',

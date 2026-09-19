@@ -1,5 +1,5 @@
 'use strict';
-const { toNumber, SUMMARY_WINDOWS } = require('./sessions');
+const { toNumber, periodDays } = require('./sessions');
 
 /// How many points each period's volume line has.
 ///
@@ -20,7 +20,7 @@ const BUCKETS = {
 
 /// Volume per bucket, oldest first, always `count` entries long.
 async function readVolumeBuckets(pool, userId, period = 'week') {
-  const days = SUMMARY_WINDOWS[period];
+  const days = periodDays(period);
   const shape = BUCKETS[period];
   if (!days || !shape) return null;
 
@@ -80,7 +80,7 @@ function bucketLabel(index, width) {
 /// No active plan means no target, and the card then shows the count alone.
 /// The plan is what defines the target; one invented without it is fiction.
 async function readAdherence(pool, userId, period = 'week') {
-  const days = SUMMARY_WINDOWS[period];
+  const days = periodDays(period);
   if (!days) return null;
 
   const weeks = Math.round(days / 7);
@@ -127,7 +127,7 @@ async function readAdherence(pool, userId, period = 'week') {
 /// would read as "this muscle was not worked" when it was, just not in a way
 /// volume can describe.
 async function readVolumeByMuscle(pool, userId, period = 'week') {
-  const days = SUMMARY_WINDOWS[period];
+  const days = periodDays(period);
   if (!days) return null;
 
   const [rows] = await pool.query(
@@ -159,7 +159,7 @@ async function readVolumeByMuscle(pool, userId, period = 'week') {
 /// nothing to be up against, and "+100%" measured from zero is not a fact
 /// about training.
 async function readVolumeChange(pool, userId, period = 'week') {
-  const days = SUMMARY_WINDOWS[period];
+  const days = periodDays(period);
   if (!days) return null;
 
   const [[row]] = await pool.query(
