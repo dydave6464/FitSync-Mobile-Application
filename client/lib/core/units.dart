@@ -46,6 +46,28 @@ String formatWeight(double kg, WeightUnit unit) {
   return fixed.contains('.') ? fixed.replaceFirst(RegExp(r'\.?0+$'), '') : fixed;
 }
 
+/// [kg] in [unit], shortened for a headline: `48.2k` rather than `48,200`.
+///
+/// A window's total volume runs to five figures, and nobody has intuition for
+/// 48,200 kg -- which was the reason the number used to be left off the card
+/// entirely. The shortening is the answer to that, not the omission: a
+/// percentage with no total behind it says nothing on the first week, when
+/// there is no previous window to compare against.
+///
+/// Converted BEFORE the threshold is applied, so the form follows what is on
+/// screen: 1,550 kg reads `1.6k`, and the same weight in pounds is 3,417,
+/// which reads `3.4k`.
+///
+/// Under a thousand there is nothing to shorten and no decimal is invented --
+/// 950 reads `950`, not `0.9k`.
+String formatWeightCompact(double kg, WeightUnit unit) {
+  final value = convertFromKg(kg, unit);
+  if (value < 1000) return value.round().toString();
+  final thousands = (value / 1000).toStringAsFixed(1);
+  // Guarded on the dot for the same reason formatWeight is.
+  return '${thousands.contains('.') ? thousands.replaceFirst(RegExp(r'\.?0+$'), '') : thousands}k';
+}
+
 /// [kg] as [unit] displays it, with the unit named.
 String formatWeightWithUnit(double kg, WeightUnit unit) =>
     '${formatWeight(kg, unit)} ${unit.api}';

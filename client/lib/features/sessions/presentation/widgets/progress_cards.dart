@@ -5,31 +5,28 @@ import '../../../../core/units.dart';
 import '../../../../core/widgets/fs_kit.dart';
 import '../../../../core/widgets/fs_charts.dart';
 import '../../domain/training_analytics.dart';
-import '../../domain/strength_series.dart';
 
 /// The hero. Adherence leads because it is the one number a beginner can act
 /// on, and the only one that means anything in week one -- every trend on this
 /// screen is still a single point then.
 class AdherenceCard extends StatelessWidget {
-  const AdherenceCard({super.key, required this.adherence, required this.window});
+  const AdherenceCard({super.key, required this.adherence});
 
   final Adherence adherence;
-  final String window;
 
   @override
   Widget build(BuildContext context) {
     final t = context.fs;
 
     return FsCard(
-      accent: true,
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           const FsEyebrow('Sessions'),
           const SizedBox(height: 6),
-          Text(adherence.label, style: Theme.of(context).textTheme.headlineMedium),
-          const SizedBox(height: 6),
+          Text(adherence.label, style: Theme.of(context).textTheme.headlineSmall),
           if (adherence.hasTarget) ...[
+            const SizedBox(height: 8),
             ClipRRect(
               borderRadius: BorderRadius.circular(99),
               child: LinearProgressIndicator(
@@ -39,41 +36,110 @@ class AdherenceCard extends StatelessWidget {
                 color: t.accent,
               ),
             ),
-            const SizedBox(height: 6),
           ],
-          Text(
-            adherence.hasTarget
-                ? 'of your plan in the $window'
-                : 'completed in the $window',
-            style: TextStyle(fontSize: 12, color: t.text3),
-          ),
         ],
       ),
     );
   }
 }
 
-/// Volume, demoted from headline to trend. The total is meaningless -- nobody
-/// has intuition for 48,200 kg -- so the percentage and the shape lead, and
-/// the number is not shown at all.
-class VolumeTrendCard extends StatelessWidget {
-  const VolumeTrendCard({super.key, required this.analytics});
+/// Sets logged in the window, beside [AdherenceCard].
+///
+/// The prototype pairs sessions with new personal records. PRs do not exist
+/// here and are deliberately not stubbed (see ProgressScreen), so the pair is
+/// filled with a number already fetched rather than an invented one: sets
+/// come from `/sessions/summary`, which is scoped to the same window.
+class SetsCard extends StatelessWidget {
+  const SetsCard({super.key, required this.setCount});
 
-  final TrainingAnalytics analytics;
+  final int setCount;
 
   @override
   Widget build(BuildContext context) {
+    final t = context.fs;
+
+    return FsCard(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const FsEyebrow('Sets'),
+          const SizedBox(height: 6),
+          Text('$setCount', style: Theme.of(context).textTheme.headlineSmall),
+          const SizedBox(height: 8),
+          Text('logged', style: TextStyle(fontSize: 11, color: t.text3)),
+        ],
+      ),
+    );
+  }
+}
+
+/// Volume: the total lifted in the window, the change on the one before it,
+/// and the shape it got there by.
+///
+/// The total used to be left off entirely, on the reasoning that nobody has
+/// intuition for 48,200 kg. That is true of the raw figure and is an argument
+/// about how to write the number rather than whether to show it --
+/// [formatWeightCompact] is the answer, and a percentage with no total behind
+/// it is the thinner half of the pair. It also leaves the first week blank:
+/// with no previous window there is no percentage, so the card rendered a
+/// shape with no number on it at all, which is the state every new account
+/// opens in.
+class VolumeTrendCard extends StatelessWidget {
+  const VolumeTrendCard({
+    super.key,
+    required this.analytics,
+    this.unit = WeightUnit.kg,
+  });
+
+  final TrainingAnalytics analytics;
+
+  /// Everything on [analytics] is kilograms; this is how it is read out.
+  final WeightUnit unit;
+
+  @override
+  Widget build(BuildContext context) {
+    final t = context.fs;
     final buckets = analytics.volume;
 
     return FsCard(
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
+          // Headline left, unit right, as the body-weight card below lays out
+          // the same pair -- the two cards read as one family.
           Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            crossAxisAlignment: CrossAxisAlignment.end,
             children: [
-              const FsEyebrow('Training volume'),
-              if (analytics.change.hasChange) FsTag(analytics.change.label),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const FsEyebrow('Training volume'),
+                    const SizedBox(height: 6),
+                    Row(
+                      crossAxisAlignment: CrossAxisAlignment.center,
+                      children: [
+                        Text(
+                          formatWeightCompact(analytics.change.totalKg, unit),
+                          style: Theme.of(context).textTheme.headlineSmall,
+                        ),
+                        if (analytics.change.hasChange) ...[
+                          const SizedBox(width: 8),
+                          FsTag(analytics.change.label),
+                        ],
+                      ],
+                    ),
+                  ],
+                ),
+              ),
+              Text(
+                '${unit.api} lifted',
+                style: TextStyle(
+                  fontFamily: fsMonoFamily,
+                  fontSize: 11,
+                  color: t.text3,
+                ),
+              ),
             ],
           ),
           const SizedBox(height: 8),
@@ -89,100 +155,6 @@ class VolumeTrendCard extends StatelessWidget {
             // Volume starts at zero and belongs there: an untrained week IS
             // zero, so there is no noise to floor out.
             minYBand: 1,
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-/// Estimated 1RM. Two shapes, chosen by the server and captioned from
-/// [StrengthSeries.xAxis] so the reader always knows which one they have.
-class StrengthCard extends StatelessWidget {
-  const StrengthCard({
-    super.key,
-    required this.series,
-    required this.onPick,
-    required this.unit,
-  });
-
-  final StrengthSeries series;
-  final ValueChanged<int> onPick;
-
-  /// `e1rmKg` is always kilograms from the server -- this is what the
-  /// headline and chart are displayed in, mirroring [BodyWeightCard].
-  final WeightUnit unit;
-
-  @override
-  Widget build(BuildContext context) {
-    final t = context.fs;
-
-    if (series.points.isEmpty) {
-      return FsCard(
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            const FsEyebrow('Estimated 1RM'),
-            const SizedBox(height: 6),
-            Text(
-              'Log a weighted set and this chart starts.',
-              style: TextStyle(fontSize: 12, color: t.text3),
-            ),
-          ],
-        ),
-      );
-    }
-
-    final current = series.options.firstWhere(
-      (o) => o.exerciseId == series.exerciseId,
-      orElse: () => series.options.first,
-    );
-
-    return FsCard(
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            children: [
-              const FsEyebrow('Estimated 1RM'),
-              DropdownButton<int>(
-                value: current.exerciseId,
-                underline: const SizedBox.shrink(),
-                style: TextStyle(fontSize: 12, color: t.text2),
-                items: [
-                  for (final o in series.options)
-                    DropdownMenuItem(value: o.exerciseId, child: Text(o.name)),
-                ],
-                onChanged: (id) {
-                  if (id != null) onPick(id);
-                },
-              ),
-            ],
-          ),
-          const SizedBox(height: 6),
-          Text(
-            formatWeightWithUnit(series.points.last.e1rmKg, unit),
-            style: Theme.of(context).textTheme.headlineSmall,
-          ),
-          const SizedBox(height: 8),
-          FsLineChart(
-            points: [
-              for (var i = 0; i < series.points.length; i++)
-                FsPoint(
-                  x: i.toDouble(),
-                  y: convertFromKg(series.points[i].e1rmKg, unit),
-                  label: series.points[i].label,
-                ),
-            ],
-            minYBand: convertFromKg(kStrengthBandKg, unit),
-          ),
-          const SizedBox(height: 6),
-          Text(
-            series.isSingleSession
-                ? 'Today · by set'
-                : 'Best set of each session',
-            style: TextStyle(fontSize: 11, color: t.text3),
           ),
         ],
       ),

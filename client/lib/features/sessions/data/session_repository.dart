@@ -1,7 +1,6 @@
 import '../../../core/api_client.dart';
 import '../domain/active_session.dart';
 import '../domain/session_history.dart';
-import '../domain/strength_series.dart';
 import '../domain/training_analytics.dart';
 
 class SessionRepository {
@@ -123,15 +122,5 @@ class SessionRepository {
   Future<TrainingAnalytics> analytics(String period) async =>
       TrainingAnalytics.fromJson(
         await _api.getJson('/api/v1/sessions/analytics', query: {'period': period}),
-      );
-
-  /// Estimated one-rep max for one exercise, or the server's own pick when
-  /// [exerciseId] is null.
-  Future<StrengthSeries> strength(String period, {int? exerciseId}) async =>
-      StrengthSeries.fromJson(
-        await _api.getJson('/api/v1/sessions/strength', query: {
-          'period': period,
-          if (exerciseId != null) 'exerciseId': '$exerciseId',
-        }),
       );
 }

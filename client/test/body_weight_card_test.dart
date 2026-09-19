@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:fitsync/core/theme.dart';
 import 'package:fitsync/core/widgets/fs_charts.dart';
 import 'package:fitsync/features/profile/domain/body_weight.dart';
 import 'package:fitsync/features/profile/presentation/widgets/body_weight_card.dart';
@@ -31,8 +32,63 @@ void main() {
     // handed the chart a reference to draw.
     final chart = tester.widget<FsLineChart>(find.byType(FsLineChart));
     expect(chart.referenceY, 68);
-    expect(chart.referenceLabel, 'goal');
     expect(chart.points.length, 1);
+  });
+
+  // The chart draws no y-axis, so the dashed line's value can only be read
+  // off a label -- and the prototype puts that in the card header, opposite
+  // the headline, rather than inside the plot. Labelling the line itself
+  // leaves the number floating over the data it is not part of.
+  testWidgets('the goal reads in the card header, not on the chart',
+      (tester) async {
+    await tester.pumpWidget(MaterialApp(theme: fsLightTheme(), home: Scaffold(
+      body: BodyWeightCard(series: series(
+        [('2026-09-18', 71.5)],
+        reference: const BodyWeightReference(kind: 'goal', weightKg: 75),
+      )),
+    )));
+
+    expect(find.text('goal 75 kg'), findsOneWidget);
+    final chart = tester.widget<FsLineChart>(find.byType(FsLineChart));
+    expect(chart.referenceLabel, isNull, reason: 'the header carries it now');
+    expect(chart.referenceY, 75, reason: 'the line itself stays');
+  });
+
+  testWidgets('a starting-weight reference reads the same way', (tester) async {
+    await tester.pumpWidget(MaterialApp(theme: fsLightTheme(), home: Scaffold(
+      body: BodyWeightCard(series: series(
+        [('2026-09-18', 71.5)],
+        reference: const BodyWeightReference(kind: 'start', weightKg: 80),
+      )),
+    )));
+
+    expect(find.text('start 80 kg'), findsOneWidget);
+  });
+
+  // 68 kg is 149.914... lb, derived by hand rather than through the same
+  // conversion the card uses.
+  testWidgets('the header goal converts for an lb user', (tester) async {
+    await tester.pumpWidget(MaterialApp(theme: fsLightTheme(), home: Scaffold(
+      body: BodyWeightCard(series: series(
+        [('2026-09-16', 71.4)],
+        reference: const BodyWeightReference(kind: 'goal', weightKg: 68),
+        unit: 'lb',
+      )),
+    )));
+
+    expect(find.text('goal 149.9 lb'), findsOneWidget);
+  });
+
+  // Body weight is the one chart here that is not about training output, and
+  // the prototype colours it apart from the accent for exactly that reason.
+  testWidgets('the body-weight chart reads in blue, not the accent',
+      (tester) async {
+    await tester.pumpWidget(MaterialApp(theme: fsLightTheme(), home: Scaffold(
+      body: BodyWeightCard(series: series([('2026-09-18', 71.5)])),
+    )));
+
+    final chart = tester.widget<FsLineChart>(find.byType(FsLineChart));
+    expect(chart.color, FsTokens.light.blue);
   });
 
   testWidgets('a widened series says so', (tester) async {
