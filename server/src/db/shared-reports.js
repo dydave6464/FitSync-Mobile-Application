@@ -1,5 +1,6 @@
 'use strict';
 const crypto = require('node:crypto');
+const { hashToken } = require('../lib/auth-tokens');
 
 /// How long a shared link stays open.
 ///
@@ -16,17 +17,26 @@ function mintToken() {
   return crypto.randomBytes(32).toString('base64url');
 }
 
+/// Mints a token, stores only its hash, and hands the plaintext back once.
+///
+/// The caller needs the plaintext to build the URL; the database never sees
+/// it. This is the policy 011_email_verification.sql already states for
+/// auth_tokens -- an outstanding share token is 30 days of access to a named
+/// person's training data, so a leaked table must yield nothing usable. It is
+/// also why nothing else in this module reads a token back out: there is
+/// nothing to read.
 async function createSharedReport(pool, userId, { period, windowStart, windowEnd, report }) {
   const token = mintToken();
   await pool.query(
     `INSERT INTO shared_reports
-       (user_id, token, period, window_start, window_end, report_json, expires_at)
+       (user_id, token_hash, period, window_start, window_end, report_json, expires_at)
      VALUES (?, ?, ?, ?, ?, ?, DATE_ADD(NOW(), INTERVAL ? DAY))`,
-    [userId, token, period, windowStart, windowEnd, JSON.stringify(report), SHARE_TTL_DAYS],
+    [userId, hashToken(token), period, windowStart, windowEnd,
+      JSON.stringify(report), SHARE_TTL_DAYS],
   );
 
   const [[row]] = await pool.query(
-    'SELECT expires_at FROM shared_reports WHERE token = ?', [token],
+    'SELECT expires_at FROM shared_reports WHERE token_hash = ?', [hashToken(token)],
   );
   return { token, expiresAt: row.expires_at };
 }
@@ -36,13 +46,15 @@ async function createSharedReport(pool, userId, { period, windowStart, windowEnd
 /// Deliberately the same answer: the caller renders one page for both, so the
 /// endpoint never confirms whether a token was ever real.
 async function readSharedReport(pool, token) {
+  if (typeof token !== 'string' || token.length === 0) return null;
+
   const [[row]] = await pool.query(
     `SELECT r.user_id, r.period, r.window_start, r.window_end, r.report_json,
             r.expires_at, u.full_name
        FROM shared_reports r
        JOIN users u ON u.user_id = r.user_id
-      WHERE r.token = ? AND r.expires_at > NOW()`,
-    [token],
+      WHERE r.token_hash = ? AND r.expires_at > NOW()`,
+    [hashToken(token)],
   );
   if (!row) return null;
 
