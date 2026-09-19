@@ -570,6 +570,45 @@ async function listHistory(pool, userId, { page = 1, limit = 20 } = {}) {
   return { sessions: rows.map(toHistoryRow), total, page, limit };
 }
 
+/// Completed sessions INSIDE [period]'s window, newest first.
+///
+/// A period-aware twin of listHistory rather than an option bolted onto it:
+/// listHistory is the app's all-time "Recent" list and has to stay unwindowed,
+/// because the History screen pages through everything a user has ever done.
+/// A shared report is the opposite case -- it captions itself with a window
+/// ("week - 2026-09-12 to 2026-09-19"), so a list reaching months past that
+/// caption makes the page contradict itself to a reader who has no other
+/// context to catch it with.
+///
+/// `>=` against CURDATE(), matching summariseHistory rather than the analytics
+/// readers' `>`: the summary line at the top of the same report counts its
+/// sessions that way, and a stricter comparison here would print fewer rows
+/// than the count sitting directly above them.
+///
+/// Null for a period that names no window -- the signal every other reader
+/// here uses, and what the routes turn into a 400.
+async function listHistoryInWindow(pool, userId, period, { limit = 20 } = {}) {
+  const days = periodDays(period);
+  if (!days) return null;
+
+  const [rows] = await pool.query(
+    `SELECT s.session_id, s.session_date, s.duration_min, s.total_volume_kg,
+            UNIX_TIMESTAMP(s.started_at) AS started_at_epoch,
+            p.name AS plan_name,
+            ${SET_COUNT} AS set_count,
+            ${EXERCISE_COUNT} AS exercise_count
+       FROM workout_sessions s
+       LEFT JOIN workout_plans p ON p.plan_id = s.plan_id
+      WHERE s.user_id = ? AND s.status = 'completed'
+        AND s.session_date >= DATE_SUB(CURDATE(), INTERVAL ? DAY)
+      ORDER BY s.session_date DESC, s.session_id DESC
+      LIMIT ?`,
+    [userId, days, limit],
+  );
+
+  return rows.map(toHistoryRow);
+}
+
 /// What the last [period] added up to. Zeroes, never null, for an account
 /// that has trained nothing yet -- that is the state a new user is in, and it
 /// has to read as "nothing yet" rather than as a broken screen.
@@ -691,6 +730,7 @@ module.exports = {
   lastPerformance,
   completedThisWeek,
   listHistory,
+  listHistoryInWindow,
   summariseHistory,
   lastCompletedWorkout,
   SUMMARY_WINDOWS,

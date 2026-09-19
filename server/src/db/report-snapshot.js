@@ -1,6 +1,6 @@
 'use strict';
 const analytics = require('./analytics');
-const { summariseHistory, listHistory } = require('./sessions');
+const { summariseHistory, listHistoryInWindow } = require('./sessions');
 const bodyWeight = require('./body-weight');
 
 /// The toggleable sections of a shared report, in the order the page draws
@@ -27,7 +27,13 @@ async function buildReportSnapshot(pool, userId, { period, include, premium }) {
       ? analytics.readVolumeByMuscle(pool, userId, period)
       : null,
     want('bodyWeight') ? bodyWeight.readSeries(pool, userId, period) : null,
-    want('sessions') ? listHistory(pool, userId, { page: 1, limit: 20 }) : null,
+    // listHistoryInWindow, not listHistory: the page captions these rows with
+    // the report's period, and listHistory is the app's unwindowed all-time
+    // list. A user who trained three times this week and thirty times before
+    // would otherwise send a coach twenty sessions reaching back months under
+    // a seven-day heading. The cap stays at 20 -- a report is a summary, not
+    // an export.
+    want('sessions') ? listHistoryInWindow(pool, userId, period, { limit: 20 }) : null,
   ]);
 
   const adherence = await analytics.readAdherence(pool, userId, period);
@@ -37,7 +43,7 @@ async function buildReportSnapshot(pool, userId, { period, include, premium }) {
     volume: want('volume') ? { buckets: volume, change } : null,
     bodyWeight: weight,
     muscles,
-    sessions: sessions ? sessions.sessions : null,
+    sessions,
   };
 }
 

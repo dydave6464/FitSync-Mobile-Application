@@ -91,6 +91,56 @@ test('report snapshot', async (t) => {
     assert.notEqual(snap.volume, null, 'the free sections still come through');
   });
 
+  // The page captions these rows with the report's period, so a row from
+  // outside it makes the page contradict its own heading. The user who is
+  // most exposed to this is the one with a long history and a quiet week --
+  // exactly the report a coach is most likely to be sent.
+  await t.test('the sessions section holds only sessions inside the window', async () => {
+    const userId = await trainedUser('s5@example.com');
+
+    // Well outside a 'week', comfortably inside a 'year'.
+    const [old] = await pool.query(
+      `INSERT INTO workout_sessions (user_id, status, session_date, total_volume_kg)
+       VALUES (?, 'completed', DATE_SUB(CURDATE(), INTERVAL 90 DAY), 400)`,
+      [userId],
+    );
+    await pool.query(
+      `INSERT INTO set_logs (session_id, exercise_id, set_number, weight_kg, reps, is_completed)
+       VALUES (?, ?, 1, 40, 10, TRUE)`,
+      [old.insertId, exerciseId],
+    );
+
+    const week = await buildReportSnapshot(pool, userId, {
+      period: 'week', include: all, premium: true,
+    });
+    assert.equal(week.sessions.length, 1, 'only the session inside the week');
+    assert.notEqual(week.sessions[0].sessionId, old.insertId);
+
+    // The same list under a period that DOES reach back picks both up, so
+    // this is a window and not a blanket exclusion.
+    const year = await buildReportSnapshot(pool, userId, {
+      period: 'year', include: all, premium: true,
+    });
+    assert.equal(year.sessions.length, 2);
+  });
+
+  // The Summary line counts sessions with summariseHistory and the Sessions
+  // section lists them with listHistoryInWindow. Two readers, one window --
+  // if they disagree the page prints a count that does not match its own rows.
+  await t.test('the session count and the session list agree', async () => {
+    const userId = await trainedUser('s6@example.com');
+    await pool.query(
+      `INSERT INTO workout_sessions (user_id, status, session_date, total_volume_kg)
+       VALUES (?, 'completed', DATE_SUB(CURDATE(), INTERVAL 7 DAY), 400)`,
+      [userId],
+    );
+
+    const snap = await buildReportSnapshot(pool, userId, {
+      period: 'week', include: all, premium: true,
+    });
+    assert.equal(snap.sessions.length, snap.summary.sessionCount);
+  });
+
   // The summary row is the report's header and is not a toggleable section,
   // so it survives every section being switched off.
   await t.test('the summary is captured whatever the toggles say', async () => {

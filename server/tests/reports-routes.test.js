@@ -287,6 +287,45 @@ test('report endpoints', async (t) => {
     assert.ok(!page.text.includes('Fewer than two entries'));
   });
 
+  // The Sessions section sits under a heading naming the report's window, so
+  // the rows beneath it have to be inside that window. listHistory -- the
+  // app's all-time Recent list -- takes no period at all, so this is the case
+  // that catches a reader reaching past the caption.
+  await t.test('a week report stores only the sessions inside that week', async () => {
+    const { token, userId } = await freshUser('p8@example.com');
+
+    const recent = await pool.query(
+      `INSERT INTO workout_sessions (user_id, status, session_date, total_volume_kg)
+       VALUES (?, 'completed', CURDATE(), 600)`,
+      [userId],
+    );
+    const stale = await pool.query(
+      `INSERT INTO workout_sessions (user_id, status, session_date, total_volume_kg)
+       VALUES (?, 'completed', DATE_SUB(CURDATE(), INTERVAL 120 DAY), 500)`,
+      [userId],
+    );
+
+    const created = await request(app).post('/api/v1/reports')
+      .set('Authorization', `Bearer ${token}`)
+      .send({ period: 'week', include: allSections })
+      .expect(201);
+
+    const [[row]] = await pool.query(
+      'SELECT report_json FROM shared_reports WHERE user_id = ?', [userId],
+    );
+    const json = typeof row.report_json === 'string'
+      ? JSON.parse(row.report_json) : row.report_json;
+
+    const ids = json.sessions.map((x) => x.sessionId);
+    assert.deepEqual(ids, [recent[0].insertId]);
+    assert.ok(!ids.includes(stale[0].insertId), 'a session 120 days old is not in a week');
+
+    // And the page itself shows one row, matching the count in its Summary.
+    const page = await request(app)
+      .get(new URL(created.body.data.url).pathname).expect(200);
+    assert.equal((page.text.match(/<td>\d+ sets<\/td>/g) || []).length, 1);
+  });
+
   // bodyWeight.widened is true when the window held too few entries and the
   // series reached further back to find some -- those points then sit under
   // a heading naming a window they are not actually inside. The page must
