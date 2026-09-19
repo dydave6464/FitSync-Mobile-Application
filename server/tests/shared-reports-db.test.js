@@ -103,6 +103,40 @@ test('shared reports db', async (t) => {
     assert.ok(expiresAt instanceof Date);
   });
 
+  // The expiry handed back must be the INSTANT the server will enforce, not
+  // that instant shifted by the host's UTC offset. expires_at is a TIMESTAMP:
+  // MySQL renders it in the session time zone and the pool's `timezone: 'Z'`
+  // relabels that wall clock as UTC, so a plain SELECT of it is out by the
+  // whole offset -- eight hours on the Asia/Manila host this runs on. The
+  // tolerance below is a minute, orders of magnitude under any offset that
+  // could hide in it.
+  await t.test('the expiry is a correct instant, not a local clock read as UTC', async () => {
+    const userId = await makeUser('c8@example.com');
+    const before = Date.now();
+    const { token, expiresAt } = await createSharedReport(pool, userId, payload);
+
+    const expected = before + SHARE_TTL_DAYS * 24 * 60 * 60 * 1000;
+    const offHours = (expiresAt.getTime() - expected) / 3600000;
+    assert.ok(Math.abs(offHours) < 1 / 60, `expiry is ${offHours} hours off`);
+
+    // And it agrees with the row, read through the one function that is not
+    // subject to the conversion above.
+    const [[row]] = await pool.query(
+      'SELECT UNIX_TIMESTAMP(expires_at) AS epoch FROM shared_reports WHERE token_hash = ?',
+      [hashToken(token)],
+    );
+    assert.equal(Number(row.epoch) * 1000, expiresAt.getTime());
+  });
+
+  // readSharedReport returns the same column and carried the same skew.
+  await t.test('the expiry read back is the same instant it was created with', async () => {
+    const userId = await makeUser('c9@example.com');
+    const { token, expiresAt } = await createSharedReport(pool, userId, payload);
+
+    const found = await readSharedReport(pool, token);
+    assert.equal(found.expiresAt.getTime(), expiresAt.getTime());
+  });
+
   // The stored row must be useless to anyone who reads the table: only the
   // SHA-256 of the token is there, never the token. Same policy as
   // auth_tokens, and for a longer-lived credential than either of those.

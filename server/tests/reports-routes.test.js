@@ -51,6 +51,15 @@ test('report endpoints', async (t) => {
 
     assert.match(res.body.data.url, /^https:\/\/fitsync\.test\/api\/v1\/reports\/[A-Za-z0-9_-]{43}$/);
     assert.ok(Date.parse(res.body.data.expiresAt) > Date.now());
+
+    // "in the future" is not enough: expires_at is a TIMESTAMP, and reading
+    // one back through the pool's `timezone: 'Z'` reports a local wall clock
+    // as UTC -- eight hours late on this host, which still looks like a
+    // future date. Pin it to the instant the server enforces, with a
+    // tolerance far under any UTC offset.
+    const expected = Date.now() + 30 * 24 * 60 * 60 * 1000;
+    const offHours = (Date.parse(res.body.data.expiresAt) - expected) / 3600000;
+    assert.ok(Math.abs(offHours) < 1 / 60, `expiry is ${offHours} hours off`);
   });
 
   await t.test('an unknown period is refused', async () => {

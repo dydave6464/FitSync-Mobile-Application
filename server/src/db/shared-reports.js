@@ -27,18 +27,32 @@ function mintToken() {
 /// nothing to read.
 async function createSharedReport(pool, userId, { period, windowStart, windowEnd, report }) {
   const token = mintToken();
+
+  // Computed here in epoch seconds and written with FROM_UNIXTIME, rather
+  // than computed by MySQL and read back with a second SELECT.
+  //
+  // That SELECT was both a wasted round trip and WRONG. expires_at is a
+  // TIMESTAMP, which MySQL renders in the session's time zone on the way out,
+  // and the pool's `timezone: 'Z'` then labels that local wall clock as UTC --
+  // it cannot undo a conversion the server already did. On this Asia/Manila
+  // host the expiry handed to the client came back eight hours later than the
+  // one the server actually enforces. src/db/sessions.js documents the same
+  // trap for started_at and reaches for the same remedy: speak to MySQL in
+  // epoch seconds, which no time zone touches in either direction.
+  //
+  // Seconds, not milliseconds, so the value returned is byte-for-byte the
+  // instant the column holds rather than up to a second ahead of it.
+  const expiresAtEpoch = Math.floor(Date.now() / 1000) + SHARE_TTL_DAYS * 24 * 60 * 60;
+
   await pool.query(
     `INSERT INTO shared_reports
        (user_id, token_hash, period, window_start, window_end, report_json, expires_at)
-     VALUES (?, ?, ?, ?, ?, ?, DATE_ADD(NOW(), INTERVAL ? DAY))`,
+     VALUES (?, ?, ?, ?, ?, ?, FROM_UNIXTIME(?))`,
     [userId, hashToken(token), period, windowStart, windowEnd,
-      JSON.stringify(report), SHARE_TTL_DAYS],
+      JSON.stringify(report), expiresAtEpoch],
   );
 
-  const [[row]] = await pool.query(
-    'SELECT expires_at FROM shared_reports WHERE token_hash = ?', [hashToken(token)],
-  );
-  return { token, expiresAt: row.expires_at };
+  return { token, expiresAt: new Date(expiresAtEpoch * 1000) };
 }
 
 /// Null for a token that does not exist AND for one that has expired.
@@ -50,7 +64,7 @@ async function readSharedReport(pool, token) {
 
   const [[row]] = await pool.query(
     `SELECT r.user_id, r.period, r.window_start, r.window_end, r.report_json,
-            r.expires_at, u.full_name
+            UNIX_TIMESTAMP(r.expires_at) AS expires_at_epoch, u.full_name
        FROM shared_reports r
        JOIN users u ON u.user_id = r.user_id
       WHERE r.token_hash = ? AND r.expires_at > NOW()`,
@@ -71,7 +85,9 @@ async function readSharedReport(pool, token) {
     report: typeof row.report_json === 'string'
       ? JSON.parse(row.report_json)
       : row.report_json,
-    expiresAt: row.expires_at,
+    // UNIX_TIMESTAMP for the same reason createSharedReport uses it: a plain
+    // SELECT of a TIMESTAMP is out by the server's whole UTC offset.
+    expiresAt: new Date(Number(row.expires_at_epoch) * 1000),
   };
 }
 
