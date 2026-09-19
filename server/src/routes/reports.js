@@ -2,9 +2,10 @@
 const express = require('express');
 const requireAuth = require('../middleware/require-auth');
 const AppError = require('../lib/app-error');
-const { createSharedReport } = require('../db/shared-reports');
+const { createSharedReport, readSharedReport } = require('../db/shared-reports');
 const { buildReportSnapshot } = require('../db/report-snapshot');
 const { SUMMARY_WINDOWS } = require('../db/sessions');
+const { renderPage, escapeHtml } = require('./auth-pages');
 
 /// YYYY-MM-DD, `days` before today, in the server's LOCAL time.
 ///
@@ -18,6 +19,50 @@ function localDay(daysBack = 0) {
   d.setDate(d.getDate() - daysBack);
   const pad = (n) => String(n).padStart(2, '0');
   return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+}
+
+/// One section of the report, or nothing when it was never captured.
+function section(title, rows) {
+  if (!rows || rows.length === 0) return '';
+  const items = rows
+    .map(([label, value]) => `<tr><td>${escapeHtml(label)}</td><td>${escapeHtml(value)}</td></tr>`)
+    .join('');
+  return `<h2>${escapeHtml(title)}</h2><table>${items}</table>`;
+}
+
+function renderReport({ fullName, period, windowStart, windowEnd, report }) {
+  const day = (d) => new Date(d).toISOString().slice(0, 10);
+  const s = report.summary || {};
+
+  const body = [
+    `<p class="who">${escapeHtml(fullName)} &middot; ${escapeHtml(period)}` +
+      ` &middot; ${escapeHtml(day(windowStart))} to ${escapeHtml(day(windowEnd))}</p>`,
+    section('Summary', [
+      ['Sessions', String(s.sessionCount ?? 0)],
+      ['Sets', String(s.setCount ?? 0)],
+      ['Volume', `${Math.round(s.totalVolumeKg ?? 0)} kg`],
+    ]),
+    report.volume
+      ? section('Training volume', [
+          ['Total', `${Math.round(report.volume.change.totalKg)} kg`],
+          ['Previous window', `${Math.round(report.volume.change.previousKg)} kg`],
+        ])
+      : '',
+    report.bodyWeight && report.bodyWeight.points.length > 0
+      ? section('Body weight',
+          report.bodyWeight.points.map((p) => [p.loggedOn, `${p.weightKg} kg`]))
+      : '',
+    report.muscles
+      ? section('Muscle balance',
+          report.muscles.map((m) => [m.muscle, `${Math.round(m.volumeKg)} kg`]))
+      : '',
+    report.sessions
+      ? section('Sessions',
+          report.sessions.map((x) => [x.sessionDate, `${x.setCount} sets`]))
+      : '',
+  ].join('');
+
+  return renderPage({ title: `Training report — ${fullName}`, body });
 }
 
 module.exports = function buildReportsRouter(deps = {}) {
@@ -55,6 +100,30 @@ module.exports = function buildReportsRouter(deps = {}) {
           expiresAt,
         },
       });
+    } catch (err) { next(err); }
+  });
+
+  // No auth: the token IS the credential. That is the whole point -- a coach
+  // opens this without an account.
+  router.get('/:token', async (req, res, next) => {
+    try {
+      const found = await readSharedReport(deps.pool, req.params.token);
+
+      // A pasted link must not reach a search index.
+      res.set('X-Robots-Tag', 'noindex, nofollow');
+
+      if (!found) {
+        // Byte-identical to the page an expired link gets, so this never
+        // confirms whether a token was real.
+        res.status(404).send(renderPage({
+          title: 'Report unavailable',
+          body: '<p>This report is no longer available. Links expire 30 days '
+              + 'after they are shared.</p>',
+        }));
+        return;
+      }
+
+      res.status(200).send(renderReport(found));
     } catch (err) { next(err); }
   });
 

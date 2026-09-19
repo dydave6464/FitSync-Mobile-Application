@@ -131,4 +131,82 @@ test('report endpoints', async (t) => {
   await t.test('creating a report requires a token', async () => {
     await request(app).post('/api/v1/reports').send({ period: 'week' }).expect(401);
   });
+
+  const shareFor = async (email) => {
+    const { token, userId } = await freshUser(email);
+    const res = await request(app).post('/api/v1/reports')
+      .set('Authorization', `Bearer ${token}`)
+      .send({ period: 'week', include: allSections })
+      .expect(201);
+    return { url: res.body.data.url, userId, path: new URL(res.body.data.url).pathname };
+  };
+
+  await t.test('the link renders a page naming who shared it', async () => {
+    const { path } = await shareFor('p1@example.com');
+
+    const res = await request(app).get(path).expect(200);
+    assert.match(res.headers['content-type'], /text\/html/);
+    assert.match(res.text, /Juan Dela Cruz/);
+  });
+
+  // A pasted link must not end up in a search index.
+  await t.test('the page refuses indexing', async () => {
+    const { path } = await shareFor('p2@example.com');
+
+    const res = await request(app).get(path).expect(200);
+    assert.match(res.headers['x-robots-tag'], /noindex/);
+  });
+
+  await t.test('an expired link stops working', async () => {
+    const { path, userId } = await shareFor('p3@example.com');
+    await pool.query(
+      'UPDATE shared_reports SET expires_at = DATE_SUB(NOW(), INTERVAL 1 DAY) WHERE user_id = ?',
+      [userId],
+    );
+
+    const res = await request(app).get(path).expect(404);
+    assert.match(res.text, /no longer available/i);
+  });
+
+  // Expired and never-existed render the same page, so the endpoint does not
+  // confirm whether a token was ever real.
+  await t.test('an unknown link is indistinguishable from an expired one', async () => {
+    const { path, userId } = await shareFor('p4@example.com');
+    await pool.query(
+      'UPDATE shared_reports SET expires_at = DATE_SUB(NOW(), INTERVAL 1 DAY) WHERE user_id = ?',
+      [userId],
+    );
+
+    const expired = await request(app).get(path).expect(404);
+    const unknown = await request(app)
+      .get(`/api/v1/reports/${'z'.repeat(43)}`).expect(404);
+    assert.equal(expired.text, unknown.text);
+  });
+
+  // The name is interpolated into HTML and comes from user input.
+  await t.test('a hostile display name cannot inject markup', async () => {
+    const res = await request(app).post('/api/v1/auth/register')
+      .send({
+        email: 'xss@example.com',
+        password: 's3cret-pass',
+        fullName: '<script>alert(1)</script>',
+      }).expect(201);
+    await markEmailVerified(pool, res.body.data.user.userId);
+    const login = await request(app).post('/api/v1/auth/login')
+      .send({ email: 'xss@example.com', password: 's3cret-pass' }).expect(200);
+    const created = await request(app).post('/api/v1/reports')
+      .set('Authorization', `Bearer ${login.body.data.token}`)
+      .send({ period: 'week', include: allSections })
+      .expect(201);
+
+    const page = await request(app)
+      .get(new URL(created.body.data.url).pathname).expect(200);
+    assert.ok(!page.text.includes('<script>alert(1)</script>'));
+    assert.match(page.text, /&lt;script&gt;/);
+  });
+
+  await t.test('reading a report needs no token of its own', async () => {
+    const { path } = await shareFor('p5@example.com');
+    await request(app).get(path).expect(200);
+  });
 });
