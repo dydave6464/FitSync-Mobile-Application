@@ -77,6 +77,57 @@ test('report endpoints', async (t) => {
     assert.equal(json.muscles, null);
   });
 
+  // The window bounds must be the server's LOCAL calendar day: that is the
+  // basis report-snapshot.js's readers window their data on, via MySQL
+  // CURDATE(). A UTC-based read (Date#toISOString) is a full day behind the
+  // local calendar day for the first eight hours of every Asia/Manila day --
+  // reproduced here at a fixed instant so the test does not depend on what
+  // time it happens to run.
+  await t.test('the report window is the server-local calendar day, not UTC', async (t) => {
+    const { token, userId } = await freshUser('r4@example.com');
+
+    // 2026-01-01T00:30 in Asia/Manila (UTC+8) is 2025-12-31T16:30 UTC: a
+    // UTC read reports the day before the local calendar day at this instant.
+    t.mock.timers.enable({ apis: ['Date'] });
+    t.mock.timers.setTime(Date.UTC(2025, 11, 31, 16, 30, 0));
+
+    await request(app).post('/api/v1/reports')
+      .set('Authorization', `Bearer ${token}`)
+      .send({ period: 'week', include: allSections })
+      .expect(201);
+
+    t.mock.timers.reset();
+
+    const [[row]] = await pool.query(
+      'SELECT window_start, window_end FROM shared_reports WHERE user_id = ?', [userId],
+    );
+    const dateOnly = (d) => d.toISOString().slice(0, 10);
+    assert.equal(dateOnly(row.window_end), '2026-01-01');
+    assert.equal(dateOnly(row.window_start), '2025-12-25');
+  });
+
+  // Comparing against MySQL's own CURDATE() rather than against a
+  // JS-computed expectation checks the real authority: CURDATE() is exactly
+  // the function report-snapshot.js's readers window their data with, so
+  // this is the actual invariant a shared report depends on, not our own
+  // arithmetic re-derived a second time.
+  await t.test('the report window matches what CURDATE() calls today', async () => {
+    const { token, userId } = await freshUser('r5@example.com');
+
+    await request(app).post('/api/v1/reports')
+      .set('Authorization', `Bearer ${token}`)
+      .send({ period: 'week', include: allSections })
+      .expect(201);
+
+    const [[row]] = await pool.query(
+      `SELECT DATEDIFF(window_end, window_start) AS span,
+              window_end = CURDATE() AS ends_today
+         FROM shared_reports WHERE user_id = ?`, [userId],
+    );
+    assert.equal(row.span, 7);
+    assert.equal(row.ends_today, 1);
+  });
+
   await t.test('creating a report requires a token', async () => {
     await request(app).post('/api/v1/reports').send({ period: 'week' }).expect(401);
   });
