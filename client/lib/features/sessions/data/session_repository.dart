@@ -1,6 +1,7 @@
 import '../../../core/api_client.dart';
 import '../domain/active_session.dart';
 import '../domain/session_history.dart';
+import '../domain/shared_report.dart';
 import '../domain/training_analytics.dart';
 
 class SessionRepository {
@@ -93,6 +94,22 @@ class SessionRepository {
 
   Future<void> abandon(int sessionId) =>
       _api.postJson('/api/v1/sessions/$sessionId/abandon', const {});
+
+  /// Freezes the chosen window into a report and returns the link to it.
+  ///
+  /// [include] travels whole, false values included: a section the user turned
+  /// off has to reach the server as an explicit false, or it would default
+  /// back on and be captured after all.
+  Future<SharedReport> shareReport({
+    required String period,
+    required Map<String, bool> include,
+  }) async {
+    final data = await _api.postJson('/api/v1/reports', {
+      'period': period,
+      'include': include,
+    });
+    return SharedReport.fromJson(data);
+  }
 
   /// Keyed by exercise so the logger can look one up without scanning. One
   /// request for the whole plan — six round trips on gym wifi is the
