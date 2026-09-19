@@ -24,7 +24,10 @@ class _FakeRepo implements SessionRepository {
     asked = include;
     return SharedReport(
       url: 'https://fitsync.test/api/v1/reports/abc',
-      expiresAt: DateTime.utc(2026, 10, 19),
+      // A local DateTime, and midday rather than midnight: the sheet reads
+      // the expiry in local time, so a UTC value here would name a different
+      // calendar day depending on where the test ran.
+      expiresAt: DateTime(2026, 10, 19, 12),
     );
   }
 
@@ -114,6 +117,35 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(copied, ['https://fitsync.test/api/v1/reports/abc']);
+  });
+
+  // The sheet used to say "It works for 30 days" -- a fourth copy of a
+  // constant only the server decides, next to an expiresAt it parsed and
+  // threw away. It names the real date now.
+  testWidgets('the snackbar names the real expiry date', (tester) async {
+    tester.binding.defaultBinaryMessenger.setMockMethodCallHandler(
+      SystemChannels.platform,
+      (call) async => null,
+    );
+    addTearDown(() => tester.binding.defaultBinaryMessenger
+        .setMockMethodCallHandler(SystemChannels.platform, null));
+
+    await _open(tester);
+    await tester.tap(find.byKey(const Key('share.create')));
+    await tester.pumpAndSettle();
+
+    expect(
+      find.text('Link copied. It works until October 19, 2026.'),
+      findsOneWidget,
+    );
+    expect(find.textContaining('30 days'), findsNothing);
+  });
+
+  // Built from the DateTime's fields rather than a formatting package, so it
+  // is worth pinning the shape directly.
+  test('the expiry is formatted as a plain date', () {
+    expect(formatShareExpiry(DateTime(2026, 1, 5, 9)), 'January 5, 2026');
+    expect(formatShareExpiry(DateTime(2026, 12, 31, 9)), 'December 31, 2026');
   });
 
   // A share that failed must not look like one that worked -- the user would

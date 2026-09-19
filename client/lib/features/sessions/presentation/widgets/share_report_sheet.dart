@@ -23,6 +23,21 @@ const _sections = [
   (key: 'sessions', label: 'Recent sessions', pro: false),
 ];
 
+/// The expiry as a plain date, e.g. "October 19, 2026".
+///
+/// Built from the DateTime's own fields: there is no date formatting package
+/// in this app, and pulling one in for a single sentence would be the larger
+/// change. Local time, because the date the user is being told about is the
+/// one their own calendar shows.
+String formatShareExpiry(DateTime when) {
+  const months = [
+    'January', 'February', 'March', 'April', 'May', 'June',
+    'July', 'August', 'September', 'October', 'November', 'December',
+  ];
+  final local = when.toLocal();
+  return '${months[local.month - 1]} ${local.day}, ${local.year}';
+}
+
 Future<void> showShareReportSheet(
   BuildContext context, {
   required String period,
@@ -66,8 +81,16 @@ class _ShareReportSheetState extends ConsumerState<_ShareReportSheet> {
       await Clipboard.setData(ClipboardData(text: report.url));
       if (!mounted) return;
       Navigator.of(context).pop();
+      // The real expiry, not a hardcoded "30 days". The server already sends
+      // it, SharedReport already parses it, and a literal here is a fourth
+      // copy of a constant that only the server is entitled to decide -- one
+      // that goes quietly wrong the day the TTL changes.
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Link copied. It works for 30 days.')),
+        SnackBar(
+          content: Text(
+            'Link copied. It works until ${formatShareExpiry(report.expiresAt)}.',
+          ),
+        ),
       );
     } catch (error) {
       if (!mounted) return;
