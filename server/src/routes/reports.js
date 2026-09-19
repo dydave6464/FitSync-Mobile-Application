@@ -2,9 +2,11 @@
 const express = require('express');
 const requireAuth = require('../middleware/require-auth');
 const AppError = require('../lib/app-error');
-const { createSharedReport, readSharedReport } = require('../db/shared-reports');
+const {
+  createSharedReport, readSharedReport, SHARE_TTL_DAYS,
+} = require('../db/shared-reports');
 const { buildReportSnapshot } = require('../db/report-snapshot');
-const { SUMMARY_WINDOWS } = require('../db/sessions');
+const { SUMMARY_WINDOWS, periodDays } = require('../db/sessions');
 const { renderPage, escapeHtml } = require('./auth-pages');
 
 /// YYYY-MM-DD, `days` before today, in the server's LOCAL time.
@@ -120,11 +122,11 @@ module.exports = function buildReportsRouter(deps = {}) {
   router.post('/', auth, async (req, res, next) => {
     try {
       const period = req.body.period || 'week';
-      // Object.hasOwn, not a bare lookup: SUMMARY_WINDOWS inherits from
-      // Object.prototype, so period='constructor' would read a function off
-      // the prototype chain, sail past the !days check, and reach the query
-      // as a bind parameter -- a 500 where a 400 is the honest answer.
-      const days = Object.hasOwn(SUMMARY_WINDOWS, period) ? SUMMARY_WINDOWS[period] : null;
+      // periodDays, not a bare SUMMARY_WINDOWS[period]: the object inherits
+      // from Object.prototype, so period='constructor' would read a function
+      // off the prototype chain, sail past the !days check and reach the
+      // query as a bind parameter -- a 500 where this 400 is the answer.
+      const days = periodDays(period);
       if (!days) {
         throw AppError.badRequest(
           'INVALID_PERIOD',
@@ -175,8 +177,10 @@ module.exports = function buildReportsRouter(deps = {}) {
         // confirms whether a token was real.
         res.status(404).send(renderPage({
           title: 'Report unavailable',
-          body: '<p>This report is no longer available. Links expire 30 days '
-              + 'after they are shared.</p>',
+          // The TTL read from the one place that sets it, so this sentence
+          // cannot quietly start lying the day it changes.
+          body: `<p>This report is no longer available. Links expire `
+              + `${SHARE_TTL_DAYS} days after they are shared.</p>`,
         }));
         return;
       }
