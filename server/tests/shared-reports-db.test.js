@@ -46,11 +46,16 @@ test('shared reports db', async (t) => {
   // The page captions the report with who sent it, and reads it from the row's
   // join rather than from the snapshot -- a renamed user should not have an
   // old name on a live link.
-  await t.test('the report carries its owner name', async () => {
+  await t.test('the report carries its owner name, read live', async () => {
     const userId = await makeUser('c2@example.com', 'Maria Santos');
     const { token } = await createSharedReport(pool, userId, payload);
 
-    assert.equal((await readSharedReport(pool, token)).fullName, 'Maria Santos');
+    // Renamed AFTER sharing. A name frozen into the row at insert would
+    // still read 'Maria Santos' here; the join reads what is true now.
+    await pool.query('UPDATE users SET full_name = ? WHERE user_id = ?',
+      ['Maria Reyes', userId]);
+
+    assert.equal((await readSharedReport(pool, token)).fullName, 'Maria Reyes');
   });
 
   // 43 base64url characters from 32 random bytes. Guessing is not a threat
