@@ -133,7 +133,13 @@ Future<FakeSessionRepository> _pump(
       bodyWeightProvider.overrideWith((ref, period) async => _emptyBodyWeight),
       profileProvider.overrideWith(_StubProfileNotifier.new),
     ],
-    child: MaterialApp(theme: fsLightTheme(), home: const ProgressScreen()),
+    child: MaterialApp(
+      theme: fsLightTheme(),
+      // Matches how the real app hosts this screen: training_shell.dart
+      // wraps every tab in a Scaffold, which is where the Material ancestor
+      // for ShareWithCoachCard's own InkWell comes from in production.
+      home: const Scaffold(body: ProgressScreen()),
+    ),
   ));
   await tester.pumpAndSettle();
   return fake;
@@ -278,5 +284,21 @@ void main() {
 
     // Estimated 1RM is gone from the screen entirely.
     expect(find.text('ESTIMATED 1RM'), findsNothing);
+  });
+
+  testWidgets('the share card sits at the foot of the tab', (tester) async {
+    tester.view.physicalSize = const Size(400, 3000);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+
+    await _pump(tester);
+
+    expect(find.byType(ShareWithCoachCard), findsOneWidget);
+    expect(
+      tester.getTopLeft(find.byType(ShareWithCoachCard)).dy,
+      greaterThan(tester.getTopLeft(find.byType(BodyWeightCard)).dy),
+      reason: 'the action comes after what it shares',
+    );
   });
 }

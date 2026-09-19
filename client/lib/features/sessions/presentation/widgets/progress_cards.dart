@@ -239,3 +239,52 @@ class VolumeByMuscleCard extends StatelessWidget {
     );
   }
 }
+
+/// The way into the share sheet, at the foot of the Progress tab.
+///
+/// Accent-filled rather than a plain row: it is the only action on a screen
+/// that is otherwise all readouts, and the prototype draws it that way.
+class ShareWithCoachCard extends StatelessWidget {
+  const ShareWithCoachCard({super.key, this.onTap});
+
+  final VoidCallback? onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final t = context.fs;
+
+    return InkWell(
+      key: const Key('progress.share'),
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(FsRadius.md),
+      child: FsCard(
+        accent: true,
+        child: Row(
+          children: [
+            Icon(Icons.ios_share, size: 19, color: t.accent),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    'Share with coach',
+                    style: TextStyle(
+                      fontSize: 13.5, fontWeight: FontWeight.w600, color: t.text,
+                    ),
+                  ),
+                  const SizedBox(height: 2),
+                  Text(
+                    'A link to this window, good for 30 days',
+                    style: TextStyle(fontSize: 11.5, color: t.text3),
+                  ),
+                ],
+              ),
+            ),
+            Icon(Icons.chevron_right, size: 18, color: t.text3),
+          ],
+        ),
+      ),
+    );
+  }
+}

@@ -196,4 +196,26 @@ void main() {
     });
   });
 
+  group('share with coach', () {
+    testWidgets('the card names the action and what it produces',
+        (tester) async {
+      await tester.pumpWidget(const MaterialApp(home: Scaffold(
+        body: ShareWithCoachCard(),
+      )));
+
+      expect(find.text('Share with coach'), findsOneWidget);
+      expect(find.textContaining('link'), findsOneWidget);
+    });
+
+    testWidgets('tapping it fires the handler', (tester) async {
+      var taps = 0;
+      await tester.pumpWidget(MaterialApp(home: Scaffold(
+        body: ShareWithCoachCard(onTap: () => taps++),
+      )));
+
+      await tester.tap(find.byKey(const Key('progress.share')));
+      expect(taps, 1);
+    });
+  });
+
 }

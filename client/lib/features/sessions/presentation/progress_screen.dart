@@ -11,6 +11,7 @@ import '../../profile/presentation/widgets/log_body_weight_sheet.dart';
 import '../domain/session_history.dart';
 import 'providers.dart';
 import 'widgets/progress_cards.dart';
+import 'widgets/share_report_sheet.dart';
 
 /// What training has actually amounted to.
 ///
@@ -131,6 +132,10 @@ class ProgressScreen extends ConsumerWidget {
           // demands it, and a silent SizedBox would hide a future regression.
           error: (e, _) => _Retry(message: describeError(e), onRetry: retry),
           data: (data) => VolumeByMuscleCard(analytics: data),
+        ),
+        const SizedBox(height: 12),
+        ShareWithCoachCard(
+          onTap: () => showShareReportSheet(context, period: period),
         ),
         const SizedBox(height: 22),
         const FsEyebrow('Recent'),
