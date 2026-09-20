@@ -15,7 +15,10 @@ import 'set_row.dart';
 /// Always open. The collapsed state this widget used to carry belonged to the
 /// scrolling list it lived in; the logger shows one exercise at a time now,
 /// and ExerciseJumpSheet is what reaches the others.
-class ExerciseLogPanel extends StatelessWidget {
+///
+/// Stateful for one reason: whether an exercise that carries no external load
+/// is being done with one today. See [_ExerciseLogPanelState._weightAdded].
+class ExerciseLogPanel extends StatefulWidget {
   const ExerciseLogPanel({
     super.key,
     required this.exercise,
@@ -53,14 +56,6 @@ class ExerciseLogPanel extends StatelessWidget {
   /// fallback, which is what a panel built without a repository shows.
   final String baseUrl;
 
-  /// The mockup's single mono line under the exercise name.
-  String get _targetLine {
-    final target = 'Target ${exercise.targetSets} × ${exercise.targetReps}';
-    final previous = last?.weightKg;
-    if (previous == null) return target;
-    return '$target · last ${formatWeightWithUnit(previous, unit)}';
-  }
-
   /// Null renders the header's toggle inert rather than absent, on the same
   /// reasoning as [onOpenDemo] below.
   final ValueChanged<WeightUnit>? onUnitChanged;
@@ -70,19 +65,73 @@ class ExerciseLogPanel extends StatelessWidget {
   /// row's layout stays identical whether or not a caller wires it up.
   final VoidCallback? onOpenDemo;
 
+  @override
+  State<ExerciseLogPanel> createState() => _ExerciseLogPanelState();
+}
+
+class _ExerciseLogPanelState extends State<ExerciseLogPanel> {
+  /// Whether the user has asked for a weight field on an exercise that does
+  /// not normally take one -- a dip belt, a weighted vest.
+  ///
+  /// Asked for once on the exercise rather than per set: nobody belts up for
+  /// set 2 alone. UI state, not storage -- nothing new is persisted to
+  /// remember it, and [_showWeight] explains what stands in.
+  bool _weightAdded = false;
+
+  /// Whether the set table has a weight column at all.
+  ///
+  /// Three ways to have one, and only the first is the common case:
+  ///
+  /// - the exercise is loaded, so the column is simply the table;
+  /// - the user asked for it, on this exercise, this session;
+  /// - or last session's set on this exercise carried a weight, which keeps
+  ///   weighted pull-ups weighted week to week without storing a preference
+  ///   for it. A null there is a bodyweight set rather than a missing
+  ///   reading, so it reads as "no belt last time", which is what it was.
+  bool get _showWeight =>
+      !widget.exercise.isBodyweight ||
+      _weightAdded ||
+      widget.last?.weightKg != null;
+
+  /// The logger rebuilds this panel in place as the workout moves, so the
+  /// reveal has to be dropped explicitly -- left standing, one exercise's dip
+  /// belt would follow the user onto the next exercise's push-ups.
+  ///
+  /// No setState: didUpdateWidget runs as part of this element's rebuild, so
+  /// build() reads the cleared flag on the way through. Same shape as
+  /// LoggerAction's handling of a failed set.
+  @override
+  void didUpdateWidget(ExerciseLogPanel oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (widget.exercise.exerciseId != oldWidget.exercise.exerciseId) {
+      _weightAdded = false;
+    }
+  }
+
+  /// The mockup's single mono line under the exercise name.
+  String get _targetLine {
+    final exercise = widget.exercise;
+    final target = 'Target ${exercise.targetSets} × ${exercise.targetReps}';
+    final previous = widget.last?.weightKg;
+    if (previous == null) return target;
+    return '$target · last ${formatWeightWithUnit(previous, widget.unit)}';
+  }
+
   /// How much heavier this session's best set is than the last session's, or
   /// null when there is nothing to compare or nothing to celebrate.
   ///
   /// Strictly greater: equalling last week is not progressive overload, and a
   /// nudge that fires every session stops meaning anything.
   double? get _overload {
-    final previous = last?.weightKg;
-    final current = session;
+    final previous = widget.last?.weightKg;
+    final current = widget.session;
     if (previous == null || current == null) return null;
 
     double? best;
     for (final set in current.sets) {
-      if (set.exerciseId != exercise.exerciseId || set.weightKg == null) continue;
+      if (set.exerciseId != widget.exercise.exerciseId || set.weightKg == null) {
+        continue;
+      }
       if (best == null || set.weightKg! > best) best = set.weightKg;
     }
     if (best == null || best <= previous) return null;
@@ -92,6 +141,8 @@ class ExerciseLogPanel extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final t = context.fs;
+    final exercise = widget.exercise;
+    final showWeight = _showWeight;
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -111,12 +162,12 @@ class ExerciseLogPanel extends StatelessWidget {
                   children: [
                     InkWell(
                       key: Key('logpanel.demo.${exercise.exerciseId}'),
-                      onTap: onOpenDemo,
+                      onTap: widget.onOpenDemo,
                       borderRadius: BorderRadius.circular(FsRadius.md),
                       child: ExerciseThumb(
                         size: 54,
                         radius: FsRadius.md,
-                        baseUrl: baseUrl,
+                        baseUrl: widget.baseUrl,
                         thumbnailUrl: exercise.thumbnailUrl,
                         equipment: exercise.equipment,
                         // The artwork is the way into the demo, so it says so.
@@ -129,7 +180,7 @@ class ExerciseLogPanel extends StatelessWidget {
                           child: Icon(
                             Icons.play_arrow,
                             size: 16,
-                            color: onOpenDemo == null ? t.text3 : t.text,
+                            color: widget.onOpenDemo == null ? t.text3 : t.text,
                           ),
                         ),
                       ),
@@ -159,6 +210,32 @@ class ExerciseLogPanel extends StatelessWidget {
                               color: t.text3,
                             ),
                           ),
+                          // On the exercise rather than in the table: the
+                          // column it restores belongs to every set, and the
+                          // table's own header row has no width to spare for
+                          // a control once the weight column is gone.
+                          if (!showWeight)
+                            InkWell(
+                              key: const Key('logpanel.addweight'),
+                              onTap: () =>
+                                  setState(() => _weightAdded = true),
+                              borderRadius: BorderRadius.circular(FsRadius.sm),
+                              child: Padding(
+                                padding: const EdgeInsets.symmetric(
+                                  horizontal: 4,
+                                  vertical: 5,
+                                ),
+                                child: Text(
+                                  '+ weight',
+                                  style: TextStyle(
+                                    fontFamily: fsMonoFamily,
+                                    fontSize: 11,
+                                    fontWeight: FontWeight.w600,
+                                    color: t.accent,
+                                  ),
+                                ),
+                              ),
+                            ),
                         ],
                       ),
                     ),
@@ -187,15 +264,27 @@ class ExerciseLogPanel extends StatelessWidget {
                               style: fsEyebrow(t),
                             ),
                           ),
-                          Expanded(
-                            child: Center(
-                              child: FsUnitToggle(
-                                value: unit,
-                                onChanged: onUnitChanged,
+                          // The weight heading, which is also the unit
+                          // toggle. It goes with the column it names: this
+                          // row shares SetRow's column constants, so a
+                          // heading left standing over a column that is gone
+                          // takes width the rows below no longer give it, and
+                          // REPS slides off the field it labels.
+                          //
+                          // The toggle is not the only way to the unit --
+                          // Settings owns it, and every other weight on the
+                          // panel still reads in whatever it is set to.
+                          if (showWeight) ...[
+                            Expanded(
+                              child: Center(
+                                child: FsUnitToggle(
+                                  value: widget.unit,
+                                  onChanged: widget.onUnitChanged,
+                                ),
                               ),
                             ),
-                          ),
-                          const SizedBox(width: SetRow.columnGap),
+                            const SizedBox(width: SetRow.columnGap),
+                          ],
                           Expanded(
                             child: Center(
                               child: Text(
@@ -215,8 +304,8 @@ class ExerciseLogPanel extends StatelessWidget {
                         setNumber <= exercise.targetSets;
                         setNumber++)
                       Builder(builder: (context) {
-                        final stored =
-                            session?.setFor(exercise.exerciseId, setNumber);
+                        final stored = widget.session
+                            ?.setFor(exercise.exerciseId, setNumber);
                         // Seed on every build, which is what lets a prefill
                         // arriving from a fetch -- one frame after the table
                         // is first drawn -- still reach the fields.
@@ -224,26 +313,30 @@ class ExerciseLogPanel extends StatelessWidget {
                         // Authoritative exactly when the server holds the
                         // set: a stored value corrects the field, a prefill
                         // never does. See SetDrafts.seed.
-                        drafts.seed(
+                        widget.drafts.seed(
                           setNumber: setNumber,
                           // Not `stored?.weightKg ?? last?.weightKg`: a
                           // bodyweight set is STORED with a null weight, and
                           // `??` cannot tell that apart from having no stored
                           // set at all -- so it fell through to last session's
                           // number and wrote it into a read-only field.
-                          weightKg: stored != null ? stored.weightKg : last?.weightKg,
-                          reps: stored != null ? stored.reps : last?.reps,
-                          unit: unit,
+                          weightKg: stored != null
+                              ? stored.weightKg
+                              : widget.last?.weightKg,
+                          reps:
+                              stored != null ? stored.reps : widget.last?.reps,
+                          unit: widget.unit,
                           authoritative: stored != null,
                         );
                         return SetRow(
                           key: ValueKey('set-${exercise.exerciseId}-$setNumber'),
                           setNumber: setNumber,
                           logged: stored,
-                          drafts: drafts,
-                          unit: unit,
-                          active: setNumber == activeSetNumber,
-                          onReopen: () => onUndoSet(setNumber),
+                          drafts: widget.drafts,
+                          unit: widget.unit,
+                          showWeight: showWeight,
+                          active: setNumber == widget.activeSetNumber,
+                          onReopen: () => widget.onUndoSet(setNumber),
                         );
                       }),
                   ],
@@ -267,7 +360,7 @@ class ExerciseLogPanel extends StatelessWidget {
                 const SizedBox(width: 10),
                 Expanded(
                   child: Text(
-                    '+${formatWeightWithUnit(_overload!, unit)} vs last session'
+                    '+${formatWeightWithUnit(_overload!, widget.unit)} vs last session'
                     ' — nice progressive overload.',
                     style: TextStyle(fontSize: 11, color: t.text),
                   ),

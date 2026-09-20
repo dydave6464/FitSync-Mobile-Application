@@ -6,7 +6,8 @@ import '../../../../core/units.dart';
 import '../../domain/active_session.dart';
 import 'set_drafts.dart';
 
-/// One line of the set table: number, kg, reps, mark.
+/// One line of the set table: number, kg, reps, mark -- or number, reps,
+/// mark for an exercise that carries no external load.
 ///
 /// Stateless, and deliberately inert. It renders what [drafts] holds and what
 /// the server has stored; it does not log a set and does not own the text
@@ -18,6 +19,7 @@ class SetRow extends StatelessWidget {
     required this.logged,
     required this.drafts,
     this.unit = WeightUnit.kg,
+    this.showWeight = true,
     this.active = false,
     this.onReopen,
   });
@@ -44,6 +46,15 @@ class SetRow extends StatelessWidget {
   /// What the fields show and how their text is read back. Stored values are
   /// kilograms either way -- see [WeightUnit].
   final WeightUnit unit;
+
+  /// Whether this set takes an external load at all.
+  ///
+  /// False drops the weight column outright rather than disabling it: a
+  /// greyed-out field on every set of every pull-up is still a column of the
+  /// table asking to be read. Reps takes the space. The panel's header row
+  /// shares this row's column widths and has to drop its own weight heading
+  /// in step -- see ExerciseLogPanel.
+  final bool showWeight;
 
   /// The set about to be done: the first one with nothing logged against it.
   /// Drawn in accent, which is the only thing on the table saying which row
@@ -117,32 +128,34 @@ class SetRow extends StatelessWidget {
                 ),
               ),
             ),
-            Expanded(
-              child: TextField(
-                key: Key('set.$setNumber.weight'),
-                controller: drafts.weight(setNumber),
-                enabled: editable,
-                textAlign: TextAlign.center,
-                keyboardType: const TextInputType.numberWithOptions(
-                  decimal: true,
-                ),
-                inputFormatters: [
-                  // Three digits and two decimals: weight_kg is DECIMAL(6,2) and
-                  // the server rejects anything above 999.99 anyway.
-                  FilteringTextInputFormatter.allow(
-                    RegExp(r'^\d{0,3}\.?\d{0,2}'),
+            if (showWeight) ...[
+              Expanded(
+                child: TextField(
+                  key: Key('set.$setNumber.weight'),
+                  controller: drafts.weight(setNumber),
+                  enabled: editable,
+                  textAlign: TextAlign.center,
+                  keyboardType: const TextInputType.numberWithOptions(
+                    decimal: true,
                   ),
-                ],
-                decoration: decoration(unit.api),
-                style: TextStyle(
-                  fontFamily: fsMonoFamily,
-                  fontSize: 14,
-                  fontWeight: FontWeight.w600,
-                  color: t.text,
+                  inputFormatters: [
+                    // Three digits and two decimals: weight_kg is DECIMAL(6,2)
+                    // and the server rejects anything above 999.99 anyway.
+                    FilteringTextInputFormatter.allow(
+                      RegExp(r'^\d{0,3}\.?\d{0,2}'),
+                    ),
+                  ],
+                  decoration: decoration(unit.api),
+                  style: TextStyle(
+                    fontFamily: fsMonoFamily,
+                    fontSize: 14,
+                    fontWeight: FontWeight.w600,
+                    color: t.text,
+                  ),
                 ),
               ),
-            ),
-            const SizedBox(width: SetRow.columnGap),
+              const SizedBox(width: SetRow.columnGap),
+            ],
             Expanded(
               child: TextField(
                 key: Key('set.$setNumber.reps'),

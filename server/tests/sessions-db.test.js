@@ -245,6 +245,41 @@ test('session db', async (t) => {
     assert.equal(only.thumbnailUrl, 'exercises/0001/thumb.jpg');
   });
 
+  await t.test('a manual session carries its exercises\' equipment', async () => {
+    // The logger hides its weight column for an exercise with no external
+    // load, and reads that off this field. Without it every pull-up in a
+    // manually chosen workout still asks for kilograms.
+    //
+    // The curated display name, matching what getActivePlan returns for the
+    // same field -- a manual session's rows become PlanExercise client-side,
+    // and one class reading two equipment vocabularies is the trap the note
+    // over that query warns about.
+    const { userId } = await seedPlanless();
+    const [eq] = await pool.query(
+      `INSERT INTO equipment (name, display_name, is_user_selectable)
+       VALUES (CONCAT('bw ', UUID()), 'Bodyweight', 1)`,
+    );
+    const [ex] = await pool.query(
+      `INSERT INTO exercises (name, muscle_group, equipment_id, status)
+       VALUES (CONCAT('Ex ', UUID()), 'lats', ?, 'live')`,
+      [eq.insertId],
+    );
+
+    const { session } = await startSession(pool, userId, [ex.insertId]);
+
+    assert.equal(session.exercises[0].equipment, 'Bodyweight');
+  });
+
+  await t.test('a manual exercise with no equipment carries null', async () => {
+    // exercises.equipment_id is nullable, and the LEFT JOIN has to survive it
+    // -- an INNER one would drop the exercise out of the session entirely.
+    const { userId, first } = await seedPlanless();
+
+    const { session } = await startSession(pool, userId, [first]);
+
+    assert.equal(session.exercises[0].equipment, null);
+  });
+
   await t.test('a manual exercise carries a row identity for the client', async () => {
     // PlanExercise.planExerciseId is required client-side and a session
     // exercise has no plan row, so the session row's own id stands in.

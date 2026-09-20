@@ -66,6 +66,32 @@ void main() {
       expect(only.orderNo, 1);
     });
 
+    // The logger hides its weight column off PlanExercise.isBodyweight, which
+    // reads this field -- so a session that carries its own exercises and
+    // drops their equipment leaves every pull-up in a manually chosen workout
+    // still asking for kilograms.
+    test('reads the equipment the weight column is hidden off', () {
+      final session = ActiveSession.fromJson({
+        ..._sessionJson,
+        'exercises': [
+          {..._manualExerciseJson, 'equipment': 'Bodyweight'},
+        ],
+      });
+
+      expect(session.exercises.single.equipment, 'Bodyweight');
+      expect(session.exercises.single.isBodyweight, isTrue);
+    });
+
+    // exercises.equipment_id is nullable, and so is this.
+    test('tolerates an exercise with no equipment', () {
+      final session = ActiveSession.fromJson({
+        ..._sessionJson,
+        'exercises': [_manualExerciseJson],
+      });
+
+      expect(session.exercises.single.equipment, isNull);
+    });
+
     test('stands the session row in for the plan row identity', () {
       // PlanExercise.planExerciseId is a row identity, and a manually chosen
       // exercise has no plan row to take one from.

@@ -84,12 +84,25 @@ async function loadSessionExercises(pool, sessionId) {
   // thumbnail_url comes back as the stored key. Turning a key into a URL is
   // the route's job here exactly as it is for plans -- the db layer does not
   // know the storage origin.
+  //
+  // The equipment COALESCE walks curated parent -> curated self -> raw tag,
+  // exactly as getActivePlan's does: these rows become PlanExercise
+  // client-side alongside a plan's, and the logger hides its weight column
+  // for an exercise with no external load off that one field. One class
+  // reading two equipment vocabularies is the trap the note over that query
+  // warns about, so this side speaks the curated one too.
+  //
+  // LEFT JOINs: exercises.equipment_id is nullable and an unadopted tag has
+  // no parent. An INNER join would drop the exercise out of the session.
   const [rows] = await pool.query(
     `SELECT se.session_exercise_id, se.exercise_id, se.order_no,
             se.target_sets, se.target_reps,
-            x.name, x.muscle_group, x.thumbnail_url
+            x.name, x.muscle_group, x.thumbnail_url,
+            COALESCE(parent.display_name, eq.display_name, eq.name) AS equipment
        FROM session_exercises se
        JOIN exercises x ON x.exercise_id = se.exercise_id
+       LEFT JOIN equipment eq ON eq.equipment_id = x.equipment_id
+       LEFT JOIN equipment parent ON parent.equipment_id = eq.parent_equipment_id
       WHERE se.session_id = ?
       ORDER BY se.order_no`,
     [sessionId],
@@ -103,6 +116,7 @@ async function loadSessionExercises(pool, sessionId) {
     name: row.name,
     muscleGroup: row.muscle_group,
     thumbnailUrl: row.thumbnail_url,
+    equipment: row.equipment ?? null,
   }));
 }
 

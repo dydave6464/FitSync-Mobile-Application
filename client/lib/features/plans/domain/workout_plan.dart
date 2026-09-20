@@ -40,6 +40,25 @@ class PlanExercise {
   /// null — `exercises.equipment_id` is nullable.
   final String? equipment;
 
+  /// Whether this exercise is done against the body alone, and so has no
+  /// external load to type.
+  ///
+  /// Two equipment vocabularies reach the client and this reads both: the
+  /// plan and swap paths send the curated display name ('Bodyweight'), while
+  /// `GET /exercises` sends the raw catalogue tag ('body weight'). Matching
+  /// exactly one of them would leave the logger offering a weight field on
+  /// every pull-up in a plan. equipment_icon.dart reads the same two the same
+  /// way; the note over the equipment SELECT in `server/src/db/plans.js`
+  /// explains why they differ at all.
+  ///
+  /// A null tag is unknown equipment, not a claim of no load: `equipment_id`
+  /// is nullable, and offering a field that is not needed is the recoverable
+  /// side of that guess.
+  bool get isBodyweight {
+    final tag = (equipment ?? '').toLowerCase();
+    return tag == 'bodyweight' || tag == 'body weight';
+  }
+
   factory PlanExercise.fromJson(Map<String, dynamic> json) => PlanExercise(
         planExerciseId: json['planExerciseId'] as int,
         exerciseId: json['exerciseId'] as int,
