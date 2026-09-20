@@ -21,7 +21,8 @@ const BASE_RATIO = 100;
 /// The largest excess the index reports, chosen so `MAX_LOAD / 2` stays under
 /// risk.py's `HIGH_AT` of 70. Volume alone therefore can never reach `high`;
 /// it takes a spike AND a bad morning, which is the conservatism the design
-/// claims. Raising this past 140 would hand that claim back.
+/// claims. Raising this to 140 or beyond would hand that claim back: 140 / 2
+/// is exactly HIGH_AT, and risk.py's test is `>=`.
 const MAX_LOAD = 130;
 
 /// Weeks of history behind the average, not counting the current week.
