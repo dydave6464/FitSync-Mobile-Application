@@ -1,0 +1,8 @@
+# Bulk reformats, skipped by `git blame`.
+#
+# Configure once per clone:
+#   git config blame.ignoreRevsFile .git-blame-ignore-revs
+# GitHub honours this file automatically.
+
+# Reformat the client with the current Dart formatter
+f197f16815b0c0309283f7be247d256eb20663f9
