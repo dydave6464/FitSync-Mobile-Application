@@ -204,3 +204,98 @@ class FsBarRow extends StatelessWidget {
     );
   }
 }
+
+/// The prototype's progress ring, with a label in the hole.
+///
+/// Hand-painted rather than a package: this is one arc, and the file's whole
+/// point is that fl_chart is the only charting dependency the app carries.
+class FsRing extends StatelessWidget {
+  const FsRing({
+    super.key,
+    required this.value,
+    required this.color,
+    required this.child,
+    this.size = 132,
+    this.stroke = 11,
+  });
+
+  /// 0..1. Clamped on the way to the painter -- this is drawn from a server
+  /// figure, and a NaN sweep throws inside the canvas rather than drawing
+  /// nothing.
+  final double value;
+  final Color color;
+  final Widget child;
+  final double size;
+  final double stroke;
+
+  @override
+  Widget build(BuildContext context) {
+    final t = context.fs;
+    final safe = value.isFinite ? value.clamp(0.0, 1.0) : 0.0;
+
+    return SizedBox(
+      width: size,
+      height: size,
+      child: CustomPaint(
+        painter: _RingPainter(
+          value: safe,
+          color: color,
+          track: t.line2,
+          stroke: stroke,
+        ),
+        child: Center(child: child),
+      ),
+    );
+  }
+}
+
+class _RingPainter extends CustomPainter {
+  _RingPainter({
+    required this.value,
+    required this.color,
+    required this.track,
+    required this.stroke,
+  });
+
+  final double value;
+  final Color color;
+  final Color track;
+  final double stroke;
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final rect =
+        Offset(stroke / 2, stroke / 2) &
+        Size(size.width - stroke, size.height - stroke);
+
+    final base = Paint()
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = stroke
+      ..strokeCap = StrokeCap.round
+      ..color = track;
+    canvas.drawArc(rect, 0, 6.283185307179586, false, base);
+
+    if (value <= 0) return;
+
+    final arc = Paint()
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = stroke
+      ..strokeCap = StrokeCap.round
+      ..color = color;
+    // From twelve o'clock, clockwise.
+    canvas.drawArc(
+      rect,
+      -1.5707963267948966,
+      6.283185307179586 * value,
+      false,
+      arc,
+    );
+  }
+
+  @override
+  bool shouldRepaint(_RingPainter old) =>
+      old.value != value ||
+      old.color != color ||
+      old.track != track ||
+      old.stroke != stroke;
+}
