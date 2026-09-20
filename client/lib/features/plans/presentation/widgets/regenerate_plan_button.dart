@@ -1,5 +1,8 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 
+import '../../../../core/theme.dart';
 import '../generator_screen.dart';
 
 /// Opens the generator, from the Plan tab's header and from its empty state.
@@ -29,12 +32,13 @@ Future<void> openGenerator(BuildContext context) =>
 class RegeneratePlanButton extends StatefulWidget {
   const RegeneratePlanButton({super.key, this.playIntro = false});
 
-  /// Plays the one-shot arrival animation.
+  /// Plays the arrival animation: once on mount, and again whenever this
+  /// goes from false to true.
   ///
   /// Decided by the Training shell rather than here. This widget is rebuilt
-  /// from scratch every time the Plan tab comes back into view, so an intro
-  /// it started on its own would fire again on every visit -- an
-  /// attention-getter that never stops asking for attention.
+  /// from scratch every time the Plan sub-tab comes back into view, which is
+  /// not the same event as the user opening Train -- and only the shell
+  /// survives long enough to tell them apart.
   final bool playIntro;
 
   @override
@@ -46,7 +50,16 @@ class _RegeneratePlanButtonState extends State<RegeneratePlanButton>
   /// Long enough to be seen, short enough that a user who already knows where
   /// the button is does not wait on it -- it is decoration over a control
   /// that works from the first frame either way.
-  static const _duration = Duration(milliseconds: 700);
+  static const _duration = Duration(milliseconds: 900);
+
+  /// Held back until the tab has arrived.
+  ///
+  /// IndexedStack swaps tabs with no transition, so the header, the tab row
+  /// and every card of the Plan tab land in the same frame. An intro playing
+  /// in that frame is motion among motion on a 24px icon in the corner, and
+  /// goes unnoticed -- which is exactly what happened. Waiting until the
+  /// screen is still is what makes the movement the only movement.
+  static const _settleDelay = Duration(milliseconds: 350);
 
   /// Starts at 1, its resting value. The intro rewinds it to 0 and plays
   /// forward, so a button that is never asked to animate simply draws itself.
@@ -71,26 +84,44 @@ class _RegeneratePlanButtonState extends State<RegeneratePlanButton>
     end: 0,
   ).animate(CurvedAnimation(parent: _controller, curve: Curves.easeOutCubic));
 
-  bool _considered = false;
+  bool _mountHandled = false;
+  Timer? _introTimer;
 
   @override
   void didChangeDependencies() {
     super.didChangeDependencies();
-    // Here rather than initState: this reads MediaQuery, and once rather than
-    // on every dependency change, so a theme or metrics change mid-flight
-    // cannot restart it.
-    if (_considered || !widget.playIntro) return;
-    _considered = true;
+    // Here rather than initState: this reads MediaQuery. Guarded so a theme
+    // or metrics change cannot restart an intro that is already running.
+    if (_mountHandled) return;
+    _mountHandled = true;
+    if (widget.playIntro) _startIntro();
+  }
 
+  @override
+  void didUpdateWidget(RegeneratePlanButton oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    // The shell raises the flag for a single frame each time Train is
+    // opened. Already mounted, this widget has no other way to hear about it.
+    if (widget.playIntro && !oldWidget.playIntro) _startIntro();
+  }
+
+  void _startIntro() {
     // Reduce motion is a request, not a preference to weigh. The button stays
     // at its resting size and the user loses nothing but the flourish.
     if (MediaQuery.maybeOf(context)?.disableAnimations ?? false) return;
 
-    _controller.forward(from: 0);
+    // Restarts cleanly if Train is reopened mid-flight.
+    _introTimer?.cancel();
+    _introTimer = Timer(_settleDelay, () {
+      if (mounted) _controller.forward(from: 0);
+    });
   }
 
   @override
   void dispose() {
+    // Cancelled, not just left to fire: a pending timer outliving the tree is
+    // a leak in the app and a hard failure in a widget test.
+    _introTimer?.cancel();
     _controller.dispose();
     super.dispose();
   }
@@ -102,7 +133,9 @@ class _RegeneratePlanButtonState extends State<RegeneratePlanButton>
       turns: _turns,
       child: IconButton(
         key: const Key('plan.regenerate'),
-        icon: const Icon(Icons.auto_awesome),
+        // The prototype's green, read from the theme so it follows light and
+        // dark rather than picking a side.
+        icon: Icon(Icons.auto_awesome, color: context.fs.accent),
         tooltip: 'Regenerate plan',
         onPressed: () => openGenerator(context),
       ),
