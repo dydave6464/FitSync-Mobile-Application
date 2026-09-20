@@ -6,6 +6,8 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:fitsync/core/theme.dart';
 import 'package:fitsync/features/sessions/data/session_repository.dart';
 import 'package:fitsync/features/sessions/domain/shared_report.dart';
+import 'package:fitsync/features/profile/domain/profile.dart';
+import 'package:fitsync/features/profile/presentation/providers.dart';
 import 'package:fitsync/features/sessions/presentation/providers.dart';
 import 'package:fitsync/features/sessions/presentation/widgets/share_report_sheet.dart';
 
@@ -36,11 +38,61 @@ class _FakeRepo implements SessionRepository {
       throw UnimplementedError('${i.memberName} is not used here');
 }
 
-Future<_FakeRepo> _open(WidgetTester tester, {Object? error}) async {
+
+/// The sheet reads isPremium to decide whether the Pro section can be
+/// switched on at all, so every test here has to say which kind of account
+/// is looking at it.
+class _StubProfileNotifier extends ProfileNotifier {
+  _StubProfileNotifier({required this.premium});
+
+  final bool premium;
+
+  @override
+  Future<Profile> build() async => Profile(
+    userId: 7,
+    email: 'juan@example.com',
+    fullName: 'Juan Dela Cruz',
+    onboardingCompleted: true,
+    isPremium: premium,
+    notificationsEnabled: true,
+    equipment: const [],
+    injuries: const [],
+  );
+}
+
+
+/// Answers Clipboard.setData so a create can finish.
+///
+/// Without it the await in _create never returns, _busy stays true, and
+/// FsButton's spinner animates forever -- which surfaces as pumpAndSettle
+/// timing out rather than as anything to do with the clipboard.
+void _stubClipboard(WidgetTester tester) {
+  tester.binding.defaultBinaryMessenger.setMockMethodCallHandler(
+    SystemChannels.platform,
+    (call) async => null,
+  );
+  addTearDown(
+    () => tester.binding.defaultBinaryMessenger.setMockMethodCallHandler(
+      SystemChannels.platform,
+      null,
+    ),
+  );
+}
+
+Future<_FakeRepo> _open(
+  WidgetTester tester, {
+  Object? error,
+  bool premium = true,
+}) async {
   final repo = _FakeRepo(error: error);
   await tester.pumpWidget(
     ProviderScope(
-      overrides: [sessionRepositoryProvider.overrideWithValue(repo)],
+      overrides: [
+        sessionRepositoryProvider.overrideWithValue(repo),
+        profileProvider.overrideWith(
+          () => _StubProfileNotifier(premium: premium),
+        ),
+      ],
       child: MaterialApp(
         theme: fsLightTheme(),
         home: Builder(
@@ -207,5 +259,45 @@ void main() {
     );
 
     expect(behind.color, t.surface);
+  });
+
+  group('the Pro section on a free account', () {
+    testWidgets('is locked rather than switched on', (tester) async {
+      await _open(tester, premium: false);
+
+      // The badge stays -- it is what says the feature exists, the same
+      // reason VolumeByMuscleCard keeps its own in every state.
+      expect(find.text('Pro'), findsOneWidget);
+      expect(find.byKey(const Key('share.locked.muscles')), findsOneWidget);
+      expect(find.byIcon(Icons.lock_outline), findsOneWidget);
+
+      // No switch to turn on: a togglable row that the server will not honour
+      // is worse than no row.
+      expect(find.byKey(const Key('share.toggle.muscles')), findsNothing);
+    });
+
+    testWidgets('is not sent with the report', (tester) async {
+      _stubClipboard(tester);
+      final repo = await _open(tester, premium: false);
+
+      await tester.tap(find.byKey(const Key('share.create')));
+      await tester.pumpAndSettle();
+
+      // buildReportSnapshot answers null for muscles without Pro however it
+      // is asked, so sending true would promise the coach a section the
+      // report cannot contain.
+      expect(repo.asked!['muscles'], isFalse);
+      expect(repo.asked!['volume'], isTrue);
+    });
+  });
+
+  testWidgets('a Pro account still gets the switch', (tester) async {
+    await _open(tester);
+
+    expect(find.byKey(const Key('share.toggle.muscles')), findsOneWidget);
+    expect(find.byKey(const Key('share.locked.muscles')), findsNothing);
+    // Selling Pro to someone who already has it is the worse mistake of the
+    // two, as the progress card's own comment puts it.
+    expect(find.byIcon(Icons.lock_outline), findsNothing);
   });
 }
