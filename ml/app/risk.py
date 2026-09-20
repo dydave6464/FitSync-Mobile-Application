@@ -1,9 +1,13 @@
 """Training-load and recovery -> a conservative injury-risk estimate.
 
-This endpoint has no caller yet: there is no morning check-in route, so nothing
-invokes it and no data exists to tune it. It returns the same floor the Node
-stub returns (low, 0) when given nothing, so switching ML_MODE changes nothing
-observable today. See the design, section 13.
+Called by the Node server's POST /api/v1/recovery/checkin, which computes the
+training-load index (see src/db/training-load.js) and sends a short window of
+recent check-ins -- short deliberately, because the recovery penalty below is
+averaged across every check-in in it, so the width of that window is how much
+this morning's answers are worth.
+
+There is still no trained model behind this: it is the rule-based baseline,
+and the rows it now produces are what a model would eventually be trained on.
 
 This is guidance bounded by self-reported input, not a clinical assessment.
 """

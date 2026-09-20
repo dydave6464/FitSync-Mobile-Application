@@ -204,3 +204,171 @@ class FsBarRow extends StatelessWidget {
     );
   }
 }
+
+/// The prototype's progress ring, with a label in the hole.
+///
+/// Hand-painted rather than a package: this is one arc, and the file's whole
+/// point is that fl_chart is the only charting dependency the app carries.
+class FsRing extends StatelessWidget {
+  const FsRing({
+    super.key,
+    required this.value,
+    required this.color,
+    required this.child,
+    this.size = 132,
+    this.stroke = 11,
+  });
+
+  /// 0..1. Clamped on the way to the painter -- this is drawn from a server
+  /// figure, and a NaN sweep throws inside the canvas rather than drawing
+  /// nothing.
+  final double value;
+  final Color color;
+  final Widget child;
+  final double size;
+  final double stroke;
+
+  @override
+  Widget build(BuildContext context) {
+    final t = context.fs;
+    final safe = value.isFinite ? value.clamp(0.0, 1.0) : 0.0;
+
+    return SizedBox(
+      width: size,
+      height: size,
+      child: CustomPaint(
+        painter: _RingPainter(
+          value: safe,
+          color: color,
+          track: t.line2,
+          stroke: stroke,
+        ),
+        child: Center(child: child),
+      ),
+    );
+  }
+}
+
+class _RingPainter extends CustomPainter {
+  _RingPainter({
+    required this.value,
+    required this.color,
+    required this.track,
+    required this.stroke,
+  });
+
+  final double value;
+  final Color color;
+  final Color track;
+  final double stroke;
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final rect =
+        Offset(stroke / 2, stroke / 2) &
+        Size(size.width - stroke, size.height - stroke);
+
+    final base = Paint()
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = stroke
+      ..strokeCap = StrokeCap.round
+      ..color = track;
+    canvas.drawArc(rect, 0, 6.283185307179586, false, base);
+
+    if (value <= 0) return;
+
+    final arc = Paint()
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = stroke
+      ..strokeCap = StrokeCap.round
+      ..color = color;
+    // From twelve o'clock, clockwise.
+    canvas.drawArc(
+      rect,
+      -1.5707963267948966,
+      6.283185307179586 * value,
+      false,
+      arc,
+    );
+  }
+
+  @override
+  bool shouldRepaint(_RingPainter old) =>
+      old.value != value ||
+      old.color != color ||
+      old.track != track ||
+      old.stroke != stroke;
+}
+
+/// One column of [FsBars].
+class FsBar {
+  const FsBar({required this.label, required this.value});
+  final String label;
+  final double value;
+}
+
+/// The prototype's vertical bar column, scaled against the largest bar.
+///
+/// Distinct from FsBarRow, which is one horizontal bar with a label beside it
+/// for the muscle breakdown. This is the shape the 7-day training load is
+/// drawn in.
+class FsBars extends StatelessWidget {
+  const FsBars({
+    super.key,
+    required this.bars,
+    required this.color,
+    this.height = 78,
+  });
+
+  final List<FsBar> bars;
+  final Color color;
+  final double height;
+
+  @override
+  Widget build(BuildContext context) {
+    final t = context.fs;
+    // A rest week is legitimately all zeroes, so the largest bar can be zero
+    // and the scale has to survive it rather than divide by it.
+    final peak = bars.fold<double>(0, (m, b) => b.value > m ? b.value : m);
+
+    return SizedBox(
+      height: height,
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.end,
+        children: [
+          for (final bar in bars)
+            Expanded(
+              child: Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 3),
+                child: Column(
+                  mainAxisAlignment: MainAxisAlignment.end,
+                  children: [
+                    Expanded(
+                      child: FractionallySizedBox(
+                        alignment: Alignment.bottomCenter,
+                        heightFactor: peak <= 0
+                            ? 0.02
+                            : (bar.value / peak).clamp(0.02, 1.0),
+                        child: DecoratedBox(
+                          decoration: BoxDecoration(
+                            color: bar.value <= 0 ? t.line2 : color,
+                            borderRadius: BorderRadius.circular(4),
+                          ),
+                          child: const SizedBox.expand(),
+                        ),
+                      ),
+                    ),
+                    const SizedBox(height: 6),
+                    Text(
+                      bar.label,
+                      style: TextStyle(fontSize: 10, color: t.text3),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+        ],
+      ),
+    );
+  }
+}

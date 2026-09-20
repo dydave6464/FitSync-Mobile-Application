@@ -1,19 +1,16 @@
 import 'package:flutter/material.dart';
 
 import '../../../core/theme.dart';
-import '../../../core/widgets/fs_kit.dart';
 import '../../plans/presentation/plan_screen.dart';
 import '../../plans/presentation/widgets/regenerate_plan_button.dart';
+import '../../recovery/presentation/recovery_screen.dart';
 import '../../sessions/presentation/progress_screen.dart';
 
 /// Plan · Progress · Recovery under one header.
 ///
-/// Progress is live: it reads finished sessions and what they added up to.
-///
-/// Recovery still ships as a real tab with an empty state rather than being
-/// hidden -- a tab bar that renders two of three tabs is worse than one that
-/// is honest about what is coming -- and it waits on a daily check-in that
-/// does not exist yet.
+/// All three are live: Progress reads finished sessions and what they added
+/// up to, and Recovery reads the daily check-in and the injury-risk estimate
+/// it produces.
 class TrainingShell extends StatefulWidget {
   const TrainingShell({super.key, this.onGoToProfile, this.openCount = 0});
 
@@ -148,52 +145,9 @@ class _TrainingShellState extends State<TrainingShell> {
                 children: [
                   PlanScreen(onGoToProfile: widget.onGoToProfile),
                   const ProgressScreen(),
-                  const _ComingSoon(
-                    icon: Icons.favorite_outline,
-                    title: 'Recovery',
-                    body:
-                        'Recovery and injury-risk estimates need a daily '
-                        'check-in, which is not built yet.',
-                  ),
+                  const RecoveryScreen(),
                 ],
               ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-}
-
-class _ComingSoon extends StatelessWidget {
-  const _ComingSoon({
-    required this.icon,
-    required this.title,
-    required this.body,
-  });
-
-  final IconData icon;
-  final String title;
-  final String body;
-
-  @override
-  Widget build(BuildContext context) {
-    final t = context.fs;
-
-    return Center(
-      child: Padding(
-        padding: const EdgeInsets.all(32),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            FsIconTile(icon: icon, size: 52),
-            const SizedBox(height: 16),
-            Text(title, style: Theme.of(context).textTheme.titleLarge),
-            const SizedBox(height: 8),
-            Text(
-              body,
-              textAlign: TextAlign.center,
-              style: TextStyle(fontSize: 12.5, color: t.text2),
             ),
           ],
         ),
