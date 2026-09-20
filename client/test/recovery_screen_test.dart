@@ -90,6 +90,24 @@ void main() {
     expect(find.byKey(const Key('recovery.update')), findsOneWidget);
   });
 
+  testWidgets('the load row and the chart below it agree', (tester) async {
+    await _pump(
+      tester,
+      const RecoveryOverview(
+        todayCheckin: _checkin,
+        latestEstimate: _estimate,
+        load: [],
+      ),
+    );
+
+    // One window, one number. The index is 7 days of volume against a 3-week
+    // baseline; 14 days was the old check-in window and was never a
+    // training-load figure -- least of all on the same screen as a card
+    // titled "7-day training load".
+    expect(find.text('Training load · 7 days'), findsOneWidget);
+    expect(find.textContaining('14 days'), findsNothing);
+  });
+
   testWidgets('the disclaimer is always present', (tester) async {
     await _pump(
       tester,

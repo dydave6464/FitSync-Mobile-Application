@@ -212,7 +212,7 @@ class _FeedsScoreCard extends ConsumerWidget {
           children: [
             Expanded(
               child: Text(
-                'Training load · 14 days',
+                'Training load · 7 days',
                 style: TextStyle(fontSize: 13.5, color: t.text),
               ),
             ),
