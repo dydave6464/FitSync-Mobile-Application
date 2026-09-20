@@ -7,7 +7,6 @@ import 'package:http/testing.dart';
 import 'package:fitsync/core/api_client.dart';
 import 'package:fitsync/core/token_store.dart';
 import 'package:fitsync/features/recovery/data/recovery_repository.dart';
-import 'package:fitsync/features/recovery/domain/recovery.dart';
 
 RecoveryRepository _repo(MockClient client) => RecoveryRepository(
   ApiClient(

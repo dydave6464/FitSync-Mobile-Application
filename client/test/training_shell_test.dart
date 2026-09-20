@@ -13,6 +13,9 @@ import 'package:fitsync/features/profile/domain/body_weight.dart';
 import 'package:fitsync/features/profile/domain/profile.dart';
 import 'package:fitsync/features/profile/presentation/providers.dart'
     show bodyWeightProvider, profileProvider, ProfileNotifier;
+import 'package:fitsync/features/recovery/domain/recovery.dart';
+import 'package:fitsync/features/recovery/presentation/providers.dart'
+    show recoveryOverviewProvider;
 import 'package:fitsync/features/sessions/domain/active_session.dart';
 import 'package:fitsync/features/sessions/domain/session_history.dart';
 import 'package:fitsync/features/sessions/domain/training_analytics.dart';
@@ -114,6 +117,17 @@ Future<void> _pump(
             limit: 20,
           ),
         ),
+        // The Recovery tab is built eagerly too. Stubbed at the provider for
+        // the same reason as the Progress-tab providers above: this file is
+        // about the tab bar, not about what Recovery renders, and unstubbed
+        // it would reach a real ApiClient and hang pumpAndSettle.
+        recoveryOverviewProvider.overrideWith(
+          (ref) async => const RecoveryOverview(
+            todayCheckin: null,
+            latestEstimate: null,
+            load: [],
+          ),
+        ),
         // The logger this pushes into opens on the exercise demo, which
         // fetches the catalogue entry. Unstubbed, that demo sits on a
         // spinner the real repository never resolves and pumpAndSettle
@@ -211,6 +225,17 @@ Future<void> _pumpWithController(
             total: 0,
             page: 1,
             limit: 20,
+          ),
+        ),
+        // The Recovery tab is built eagerly too. Stubbed at the provider for
+        // the same reason as the Progress-tab providers above: this file is
+        // about the tab bar, not about what Recovery renders, and unstubbed
+        // it would reach a real ApiClient and hang pumpAndSettle.
+        recoveryOverviewProvider.overrideWith(
+          (ref) async => const RecoveryOverview(
+            todayCheckin: null,
+            latestEstimate: null,
+            load: [],
           ),
         ),
         // The logger this pushes into opens on the exercise demo, which
