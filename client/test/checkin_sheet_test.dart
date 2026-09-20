@@ -15,14 +15,9 @@ class _FakeRepo implements RecoveryRepository {
   Object? error;
 
   @override
-  Future<InjuryRiskEstimate> checkIn(Map<String, String> answers) async {
+  Future<void> checkIn(Map<String, String> answers) async {
     if (error != null) throw error!;
     sent = answers;
-    return const InjuryRiskEstimate(
-      riskLevel: 'moderate',
-      trainingLoadScore: 40,
-      checkinDate: '2026-09-20',
-    );
   }
 
   @override
@@ -37,12 +32,11 @@ class _FakeRepo implements RecoveryRepository {
 class _SlowFakeRepo implements RecoveryRepository {
   _SlowFakeRepo(this._checkinCompleter);
 
-  final Completer<InjuryRiskEstimate> _checkinCompleter;
+  final Completer<void> _checkinCompleter;
   int overviewCalls = 0;
 
   @override
-  Future<InjuryRiskEstimate> checkIn(Map<String, String> answers) =>
-      _checkinCompleter.future;
+  Future<void> checkIn(Map<String, String> answers) => _checkinCompleter.future;
 
   @override
   Future<RecoveryOverview> overview() async {
@@ -122,7 +116,7 @@ void main() {
     'dismissing the sheet mid-save still refreshes the overview once the '
     'save lands',
     (tester) async {
-      final completer = Completer<InjuryRiskEstimate>();
+      final completer = Completer<void>();
       final repo = _SlowFakeRepo(completer);
 
       await tester.pumpWidget(
@@ -167,13 +161,7 @@ void main() {
       await tester.pumpAndSettle();
 
       // The save "lands" only now, after the sheet is gone.
-      completer.complete(
-        const InjuryRiskEstimate(
-          riskLevel: 'moderate',
-          trainingLoadScore: 40,
-          checkinDate: '2026-09-20',
-        ),
-      );
+      completer.complete();
       await tester.pumpAndSettle();
 
       // Against the unguarded `ref.invalidate` this call throws inside the

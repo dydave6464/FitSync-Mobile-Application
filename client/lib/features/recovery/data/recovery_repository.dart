@@ -16,10 +16,15 @@ class RecoveryRepository {
   }
 
   /// Answers go up exactly as given. See MorningCheckin's class comment.
-  Future<InjuryRiskEstimate> checkIn(Map<String, String> answers) async {
-    final data = await _api.postJson('/api/v1/recovery/checkin', answers);
-    return InjuryRiskEstimate.fromJson(
-      data['estimate'] as Map<String, dynamic>,
-    );
+  ///
+  /// Nothing is read back out. The `estimate` this POST returns is the ML
+  /// service's own body -- `riskLevel` and `trainingLoadScore`, and nothing
+  /// else (ml/app/schemas.py, InjuryRiskResponse) -- so it cannot build an
+  /// [InjuryRiskEstimate], which is dated. The dated one comes from
+  /// GET /api/v1/recovery, which joins the check-in that produced it; callers
+  /// invalidate the overview rather than using a return value here, and the
+  /// two shapes stay one shape each.
+  Future<void> checkIn(Map<String, String> answers) async {
+    await _api.postJson('/api/v1/recovery/checkin', answers);
   }
 }
