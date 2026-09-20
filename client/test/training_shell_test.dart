@@ -18,6 +18,7 @@ import 'package:fitsync/features/sessions/domain/session_history.dart';
 import 'package:fitsync/features/sessions/domain/training_analytics.dart';
 import 'package:fitsync/features/sessions/presentation/providers.dart';
 import 'package:fitsync/features/sessions/presentation/session_logger_screen.dart';
+import 'package:fitsync/features/plans/presentation/generator_screen.dart';
 import 'package:fitsync/features/training/presentation/training_shell.dart';
 
 /// A quiet, zero-everything analytics reading. What every Progress-tab
@@ -286,5 +287,42 @@ void main() {
         reason: 'the button must still be wired up after a failed attempt, '
             'not stuck disabled by a _starting flag that was never reset');
     expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('the Plan tab offers a way to regenerate', (tester) async {
+    await _pump(tester);
+
+    // Labelled, not an icon: the whole point of moving this out of the
+    // start-workout sheet is that nobody found it there.
+    expect(find.byKey(const Key('plan.regenerate')), findsOneWidget);
+    expect(find.text('Regenerate'), findsOneWidget);
+  });
+
+  testWidgets('the other tabs do not offer it', (tester) async {
+    await _pump(tester);
+
+    for (final tab in ['progress', 'recovery']) {
+      await tester.tap(find.byKey(Key('tab.$tab')));
+      await tester.pumpAndSettle();
+      // The header is shared by all three tabs, so an action parked there
+      // unconditionally would sit above two screens it means nothing on.
+      expect(
+        find.byKey(const Key('plan.regenerate')),
+        findsNothing,
+        reason: 'regenerate should not be offered on the $tab tab',
+      );
+    }
+  });
+
+  testWidgets('regenerate opens the generator', (tester) async {
+    await _pump(tester);
+
+    await tester.tap(find.byKey(const Key('plan.regenerate')));
+    await tester.pumpAndSettle();
+
+    // Straight to the screen that already asks split, days and length, and
+    // whose Generate button is the commit -- no confirm in between, since
+    // opening it changes nothing.
+    expect(find.byType(GeneratorScreen), findsOneWidget);
   });
 }
