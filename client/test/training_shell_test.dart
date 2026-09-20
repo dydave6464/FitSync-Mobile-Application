@@ -83,7 +83,12 @@ class _StubProfileNotifier extends ProfileNotifier {
   );
 }
 
-Future<void> _pump(WidgetTester tester, {ActiveSession? session}) async {
+Future<void> _pump(
+  WidgetTester tester, {
+  ActiveSession? session,
+  bool settle = true,
+  bool reduceMotion = false,
+}) async {
   await tester.pumpWidget(
     ProviderScope(
       overrides: [
@@ -126,10 +131,23 @@ Future<void> _pump(WidgetTester tester, {ActiveSession? session}) async {
           ),
         ),
       ],
-      child: MaterialApp(theme: fsLightTheme(), home: const TrainingShell()),
+      child: MaterialApp(
+        theme: fsLightTheme(),
+        home: MediaQuery(
+          data: MediaQueryData(disableAnimations: reduceMotion),
+          child: const TrainingShell(),
+        ),
+      ),
     ),
   );
-  await tester.pumpAndSettle();
+  if (settle) {
+    await tester.pumpAndSettle();
+  } else {
+    // One frame: enough for the stubbed providers to resolve and the header
+    // to build, not enough for a 700ms intro to finish.
+    await tester.pump();
+    await tester.pump();
+  }
 }
 
 class _StubController extends ActiveSessionController {
@@ -400,5 +418,53 @@ void main() {
     // whose Generate button is the commit -- no confirm in between, since
     // opening it changes nothing.
     expect(find.byType(GeneratorScreen), findsOneWidget);
+  });
+
+  /// The Train tab is mounted lazily and never torn down (see NavShell's
+  /// _visited), so "the first time this State is built" is exactly "the first
+  /// time the user switches to Train".
+  group('the regenerate icon intro', () {
+    double scaleOf(WidgetTester tester) => tester
+        .widget<ScaleTransition>(
+          find.ancestor(
+            of: find.byKey(const Key('plan.regenerate')),
+            matching: find.byType(ScaleTransition),
+          ),
+        )
+        .scale
+        .value;
+
+    testWidgets('plays on the first visit to Train', (tester) async {
+      await _pump(tester, settle: false);
+
+      // Caught mid-flight: the icon grows into place, so before it settles it
+      // is smaller than its resting size.
+      expect(scaleOf(tester), lessThan(1.0));
+
+      await tester.pumpAndSettle();
+      expect(scaleOf(tester), 1.0);
+    });
+
+    testWidgets('does not replay on a return to the Plan tab', (tester) async {
+      await _pump(tester);
+
+      await tester.tap(find.byKey(const Key('tab.progress')));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const Key('tab.plan')));
+      await tester.pump();
+
+      // The button is rebuilt every time Plan comes back, so without a flag
+      // held above it the intro would fire again on every visit -- an
+      // attention-getter that never stops asking for attention.
+      expect(scaleOf(tester), 1.0);
+    });
+
+    testWidgets('is skipped when the platform asks for less motion', (
+      tester,
+    ) async {
+      await _pump(tester, settle: false, reduceMotion: true);
+
+      expect(scaleOf(tester), 1.0);
+    });
   });
 }

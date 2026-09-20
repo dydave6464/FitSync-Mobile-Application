@@ -26,14 +26,86 @@ Future<void> openGenerator(BuildContext context) =>
 /// The tooltip carries the words the icon cannot, and is what a screen reader
 /// announces -- an IconButton with no tooltip is unlabelled to anyone not
 /// looking at it.
-class RegeneratePlanButton extends StatelessWidget {
-  const RegeneratePlanButton({super.key});
+class RegeneratePlanButton extends StatefulWidget {
+  const RegeneratePlanButton({super.key, this.playIntro = false});
+
+  /// Plays the one-shot arrival animation.
+  ///
+  /// Decided by the Training shell rather than here. This widget is rebuilt
+  /// from scratch every time the Plan tab comes back into view, so an intro
+  /// it started on its own would fire again on every visit -- an
+  /// attention-getter that never stops asking for attention.
+  final bool playIntro;
 
   @override
-  Widget build(BuildContext context) => IconButton(
-    key: const Key('plan.regenerate'),
-    icon: const Icon(Icons.auto_awesome),
-    tooltip: 'Regenerate plan',
-    onPressed: () => openGenerator(context),
+  State<RegeneratePlanButton> createState() => _RegeneratePlanButtonState();
+}
+
+class _RegeneratePlanButtonState extends State<RegeneratePlanButton>
+    with SingleTickerProviderStateMixin {
+  /// Long enough to be seen, short enough that a user who already knows where
+  /// the button is does not wait on it -- it is decoration over a control
+  /// that works from the first frame either way.
+  static const _duration = Duration(milliseconds: 700);
+
+  /// Starts at 1, its resting value. The intro rewinds it to 0 and plays
+  /// forward, so a button that is never asked to animate simply draws itself.
+  late final AnimationController _controller = AnimationController(
+    vsync: this,
+    duration: _duration,
+    value: 1,
+  );
+
+  /// easeOutBack overshoots before settling, which is what makes it read as a
+  /// pop rather than a grow.
+  late final Animation<double> _scale = CurvedAnimation(
+    parent: _controller,
+    curve: Curves.easeOutBack,
+  );
+
+  /// A quarter turn anticlockwise into place. A sparkle is the one icon in
+  /// the set where a spin looks like the thing itself rather than a loading
+  /// indicator.
+  late final Animation<double> _turns = Tween<double>(
+    begin: -0.25,
+    end: 0,
+  ).animate(CurvedAnimation(parent: _controller, curve: Curves.easeOutCubic));
+
+  bool _considered = false;
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    // Here rather than initState: this reads MediaQuery, and once rather than
+    // on every dependency change, so a theme or metrics change mid-flight
+    // cannot restart it.
+    if (_considered || !widget.playIntro) return;
+    _considered = true;
+
+    // Reduce motion is a request, not a preference to weigh. The button stays
+    // at its resting size and the user loses nothing but the flourish.
+    if (MediaQuery.maybeOf(context)?.disableAnimations ?? false) return;
+
+    _controller.forward(from: 0);
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) => ScaleTransition(
+    scale: _scale,
+    child: RotationTransition(
+      turns: _turns,
+      child: IconButton(
+        key: const Key('plan.regenerate'),
+        icon: const Icon(Icons.auto_awesome),
+        tooltip: 'Regenerate plan',
+        onPressed: () => openGenerator(context),
+      ),
+    ),
   );
 }
