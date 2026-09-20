@@ -336,4 +336,33 @@ void main() {
 
     expect(find.text('Start a workout'), findsOneWidget);
   });
+
+  /// The intro is only ever asserted against TrainingShell mounted directly
+  /// in training_shell_test.dart. This is the path the user actually takes:
+  /// NavShell builds the Train tab lazily on the first tap of its nav item.
+  testWidgets('the regenerate icon animates in on the first tap of Train', (
+    tester,
+  ) async {
+    await _pumpShell(tester);
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.byKey(const Key('nav.1')));
+    await tester.pump();
+    // Past the settle delay, but not past the intro itself.
+    await tester.pump(const Duration(milliseconds: 400));
+
+    final scale = tester
+        .widget<ScaleTransition>(
+          find.ancestor(
+            of: find.byKey(const Key('plan.regenerate')),
+            matching: find.byType(ScaleTransition),
+          ),
+        )
+        .scale
+        .value;
+
+    expect(scale, lessThan(1.0), reason: 'the icon should still be growing');
+
+    await tester.pumpAndSettle();
+  });
 }

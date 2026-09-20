@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 
 import '../generator_screen.dart';
@@ -46,7 +48,16 @@ class _RegeneratePlanButtonState extends State<RegeneratePlanButton>
   /// Long enough to be seen, short enough that a user who already knows where
   /// the button is does not wait on it -- it is decoration over a control
   /// that works from the first frame either way.
-  static const _duration = Duration(milliseconds: 700);
+  static const _duration = Duration(milliseconds: 900);
+
+  /// Held back until the tab has arrived.
+  ///
+  /// IndexedStack swaps tabs with no transition, so the header, the tab row
+  /// and every card of the Plan tab land in the same frame. An intro playing
+  /// in that frame is motion among motion on a 24px icon in the corner, and
+  /// goes unnoticed -- which is exactly what happened. Waiting until the
+  /// screen is still is what makes the movement the only movement.
+  static const _settleDelay = Duration(milliseconds: 350);
 
   /// Starts at 1, its resting value. The intro rewinds it to 0 and plays
   /// forward, so a button that is never asked to animate simply draws itself.
@@ -72,6 +83,7 @@ class _RegeneratePlanButtonState extends State<RegeneratePlanButton>
   ).animate(CurvedAnimation(parent: _controller, curve: Curves.easeOutCubic));
 
   bool _considered = false;
+  Timer? _introTimer;
 
   @override
   void didChangeDependencies() {
@@ -86,11 +98,16 @@ class _RegeneratePlanButtonState extends State<RegeneratePlanButton>
     // at its resting size and the user loses nothing but the flourish.
     if (MediaQuery.maybeOf(context)?.disableAnimations ?? false) return;
 
-    _controller.forward(from: 0);
+    _introTimer = Timer(_settleDelay, () {
+      if (mounted) _controller.forward(from: 0);
+    });
   }
 
   @override
   void dispose() {
+    // Cancelled, not just left to fire: a pending timer outliving the tree is
+    // a leak in the app and a hard failure in a widget test.
+    _introTimer?.cancel();
     _controller.dispose();
     super.dispose();
   }

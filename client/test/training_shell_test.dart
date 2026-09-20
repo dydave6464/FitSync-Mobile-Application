@@ -434,8 +434,19 @@ void main() {
         .scale
         .value;
 
-    testWidgets('plays on the first visit to Train', (tester) async {
+    testWidgets('waits for the tab to arrive before playing', (tester) async {
       await _pump(tester, settle: false);
+
+      // IndexedStack swaps tabs with no transition, so the header, the tab
+      // row and every plan card land in one frame. An intro that started in
+      // that same frame would be motion among motion, on a 24px icon in the
+      // corner -- which is precisely how it went unnoticed.
+      expect(scaleOf(tester), 1.0);
+    });
+
+    testWidgets('plays once the tab is still', (tester) async {
+      await _pump(tester, settle: false);
+      await tester.pump(const Duration(milliseconds: 400));
 
       // Caught mid-flight: the icon grows into place, so before it settles it
       // is smaller than its resting size.
