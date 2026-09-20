@@ -299,3 +299,76 @@ class _RingPainter extends CustomPainter {
       old.track != track ||
       old.stroke != stroke;
 }
+
+/// One column of [FsBars].
+class FsBar {
+  const FsBar({required this.label, required this.value});
+  final String label;
+  final double value;
+}
+
+/// The prototype's vertical bar column, scaled against the largest bar.
+///
+/// Distinct from FsBarRow, which is one horizontal bar with a label beside it
+/// for the muscle breakdown. This is the shape the 7-day training load is
+/// drawn in.
+class FsBars extends StatelessWidget {
+  const FsBars({
+    super.key,
+    required this.bars,
+    required this.color,
+    this.height = 78,
+  });
+
+  final List<FsBar> bars;
+  final Color color;
+  final double height;
+
+  @override
+  Widget build(BuildContext context) {
+    final t = context.fs;
+    // A rest week is legitimately all zeroes, so the largest bar can be zero
+    // and the scale has to survive it rather than divide by it.
+    final peak = bars.fold<double>(0, (m, b) => b.value > m ? b.value : m);
+
+    return SizedBox(
+      height: height,
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.end,
+        children: [
+          for (final bar in bars)
+            Expanded(
+              child: Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 3),
+                child: Column(
+                  mainAxisAlignment: MainAxisAlignment.end,
+                  children: [
+                    Expanded(
+                      child: FractionallySizedBox(
+                        alignment: Alignment.bottomCenter,
+                        heightFactor: peak <= 0
+                            ? 0.02
+                            : (bar.value / peak).clamp(0.02, 1.0),
+                        child: DecoratedBox(
+                          decoration: BoxDecoration(
+                            color: bar.value <= 0 ? t.line2 : color,
+                            borderRadius: BorderRadius.circular(4),
+                          ),
+                          child: const SizedBox.expand(),
+                        ),
+                      ),
+                    ),
+                    const SizedBox(height: 6),
+                    Text(
+                      bar.label,
+                      style: TextStyle(fontSize: 10, color: t.text3),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+        ],
+      ),
+    );
+  }
+}
