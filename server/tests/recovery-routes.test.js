@@ -152,3 +152,45 @@ test('recovery survives the ML service being down', async (t) => {
   const [[{ n }]] = await pool.query('SELECT COUNT(*) AS n FROM morning_checkins');
   assert.equal(n, 1);
 });
+
+/// How much this morning's answers are actually worth.
+///
+/// risk.py averages the recovery penalty across every check-in it is handed,
+/// so the width of the window is the weight today carries. This asserts the
+/// window by its effect -- an older check-in that must not be averaged in --
+/// rather than by reading the constant back.
+test('the estimator only sees the last few days of check-ins', async (t) => {
+  const pool = createPool(testDbConfig());
+  await dropAllTables(pool);
+  await migrate(testDbConfig());
+  const ml = recordingMl();
+  const app = buildTestApp({ pool, ml });
+  t.after(async () => { await dropAllTables(pool); await pool.end(); });
+
+  const reg = await request(app).post('/api/v1/auth/register')
+    .send({ email: 'window@example.com', password: 's3cret-pass', fullName: 'W' })
+    .expect(201);
+  const { userId } = reg.body.data.user;
+  await markEmailVerified(pool, userId);
+  const login = await request(app).post('/api/v1/auth/login')
+    .send({ email: 'window@example.com', password: 's3cret-pass' }).expect(200);
+
+  // A fine morning last week. Inside a 14-day window it halves the penalty
+  // this morning's answers produce; it is too old to say anything about how
+  // this user should train today.
+  await pool.query(
+    `INSERT INTO morning_checkins
+       (user_id, checkin_date, sleep_quality, muscle_soreness, energy, stress)
+     VALUES (?, DATE_SUB(CURDATE(), INTERVAL 5 DAY),
+             'excellent', 'none', 'high', 'very_low')`,
+    [userId],
+  );
+
+  await request(app).post('/api/v1/recovery/checkin')
+    .set('Authorization', `Bearer ${login.body.data.token}`)
+    .send(ANSWERS).expect(201);
+
+  const { checkins } = ml.calls.at(-1);
+  assert.equal(checkins.length, 1, 'last week must not dilute this morning');
+  assert.equal(checkins[0].sleepQuality, 'poor');
+});

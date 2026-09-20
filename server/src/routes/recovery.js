@@ -12,6 +12,21 @@ const { readVolumeBuckets } = require('../db/analytics');
 /// The floor the ML stub returns, used when the service cannot be reached.
 const FLOOR = { riskLevel: 'low', trainingLoadScore: 0 };
 
+/// Days of check-ins handed to the estimator, and deliberately short.
+///
+/// risk.py averages the recovery penalty across every check-in it is sent
+/// (`sum(penalties) / len(penalties)`), so this window IS the weight today's
+/// answers carry. Over the 14 days `recentCheckins` defaults to, a user with
+/// a fortnight of good mornings who wakes up wrecked moves their own score by
+/// a fourteenth of the penalty -- about four points -- while the tab's "What
+/// feeds this score" card and its Update button promise the opposite. Three
+/// days gives this morning roughly a third of the term, which is real
+/// influence without letting one bad night define the week.
+///
+/// Widening this back to 14 would quietly dilute the check-in again; it is
+/// the estimator's averaging, not the query, that makes the number matter.
+const CHECKIN_WINDOW_DAYS = 3;
+
 /// Every field present and spelled as its column allows, or a 400 naming the
 /// first field that is not. Validated here rather than left to MySQL, which
 /// answers an ENUM violation with a 500.
@@ -60,7 +75,7 @@ module.exports = function buildRecoveryRouter(deps = {}) {
 
       const checkin = await upsertCheckin(deps.pool, userId, answers);
       const [checkins, load] = await Promise.all([
-        recentCheckins(deps.pool, userId),
+        recentCheckins(deps.pool, userId, CHECKIN_WINDOW_DAYS),
         readTrainingLoad(deps.pool, userId),
       ]);
 
