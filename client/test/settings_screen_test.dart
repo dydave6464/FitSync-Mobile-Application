@@ -15,6 +15,7 @@ import 'package:fitsync/core/theme_controller.dart';
 import 'package:fitsync/features/plans/presentation/widgets/training_days_row.dart';
 import 'package:fitsync/features/profile/domain/profile.dart';
 import 'package:fitsync/features/profile/presentation/providers.dart';
+import 'package:fitsync/features/pro/presentation/pro_screen.dart';
 import 'package:fitsync/features/settings/presentation/settings_screen.dart';
 
 const _baseProfile = Profile(
@@ -163,8 +164,14 @@ Future<void> _pump(
   await tester.pumpAndSettle();
 }
 
+/// Scrolls to a row and taps it.
+///
+/// scrollUntilVisible rather than ensureVisible: this is a ListView, which
+/// does not build what it has not reached, and ensureVisible can only move to
+/// a widget that is already in the tree. Rows low in the list were within the
+/// build range by luck until the Pro card lengthened the screen above them.
 Future<void> _openRow(WidgetTester tester, Key key) async {
-  await tester.ensureVisible(find.byKey(key));
+  await tester.scrollUntilVisible(find.byKey(key), 200);
   await tester.pumpAndSettle();
   await tester.tap(find.byKey(key));
   await tester.pumpAndSettle();
@@ -186,9 +193,7 @@ void main() {
     final patches = <Map<String, dynamic>>[];
     await _pump(tester, patches: patches);
 
-    await tester.ensureVisible(find.byKey(const Key('unit.lb')));
-    await tester.tap(find.byKey(const Key('unit.lb')));
-    await tester.pumpAndSettle();
+    await _openRow(tester, const Key('unit.lb'));
 
     // Whole-list equality, not `contains`: Dart maps compare by identity, so
     // contains() would miss an equal-but-distinct map. This also pins that
@@ -299,10 +304,7 @@ void main() {
     final patches = <Map<String, dynamic>>[];
     await _pump(tester, patches: patches);
 
-    await tester.ensureVisible(find.byKey(const Key('notifications')));
-    await tester.pumpAndSettle();
-    await tester.tap(find.byKey(const Key('notifications')));
-    await tester.pumpAndSettle();
+    await _openRow(tester, const Key('notifications'));
 
     expect(patches.single, {'notificationsEnabled': false});
   });
@@ -431,5 +433,16 @@ void main() {
 
     expect(find.byKey(const Key('signOut')), findsOneWidget);
     expect(find.text('Dark mode'), findsNothing);
+  });
+
+  testWidgets('the profile offers a way to Pro', (tester) async {
+    await _pump(tester);
+
+    // The prototype's own Profile screen carries this card, and it is the one
+    // entry point that does not require meeting a lock first.
+    await tester.tap(find.byKey(const Key('settings.goPro')));
+    await tester.pumpAndSettle();
+
+    expect(find.byType(ProScreen), findsOneWidget);
   });
 }

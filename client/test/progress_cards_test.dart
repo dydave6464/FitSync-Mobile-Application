@@ -5,6 +5,7 @@ import 'package:fitsync/core/units.dart';
 import 'package:fitsync/core/widgets/fs_charts.dart';
 import 'package:fitsync/core/widgets/fs_kit.dart';
 import 'package:fitsync/features/sessions/domain/training_analytics.dart';
+import 'package:fitsync/features/pro/presentation/pro_screen.dart';
 import 'package:fitsync/features/sessions/presentation/widgets/progress_cards.dart';
 
 void main() {
@@ -230,6 +231,19 @@ void main() {
       for (final bar in tester.widgetList<FsBarRow>(find.byType(FsBarRow))) {
         expect(bar.label, isEmpty);
       }
+    });
+
+    testWidgets('the lock is a way through to Pro, not just a message', (
+      tester,
+    ) async {
+      await pump(tester, analytics(locked: true));
+
+      // Until this screen existed the row was deliberately inert -- there was
+      // nowhere to send anyone. There is now.
+      await tester.tap(find.byKey(const Key('muscles.locked')));
+      await tester.pumpAndSettle();
+
+      expect(find.byType(ProScreen), findsOneWidget);
     });
 
     // Two different empty lists. A Pro user who trains only bodyweight has

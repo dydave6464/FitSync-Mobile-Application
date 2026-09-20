@@ -14,6 +14,7 @@ import '../../onboarding/presentation/steps/goal_step.dart';
 import '../../onboarding/presentation/steps/injuries_step.dart';
 import '../../onboarding/presentation/steps/level_step.dart';
 import '../../plans/presentation/widgets/training_days_row.dart';
+import '../../pro/presentation/pro_screen.dart';
 import '../../profile/domain/profile.dart';
 import '../../profile/presentation/providers.dart';
 
@@ -150,6 +151,41 @@ class _SettingsList extends ConsumerWidget {
                   ],
                 ),
               ),
+            ],
+          ),
+        ),
+        const SizedBox(height: 14),
+        // The prototype's Profile screen carries this card, and it is the one
+        // route to Pro that does not require meeting a lock first.
+        FsCard(
+          key: const Key('settings.goPro'),
+          accent: true,
+          onTap: () => openProScreen(context),
+          child: Row(
+            children: [
+              Icon(Icons.workspace_premium_outlined, size: 22, color: t.accent),
+              const SizedBox(width: 13),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      'FitSync Pro',
+                      style: TextStyle(
+                        fontSize: 14,
+                        fontWeight: FontWeight.w700,
+                        color: t.text,
+                      ),
+                    ),
+                    const SizedBox(height: 2),
+                    Text(
+                      'See where your training volume goes',
+                      style: TextStyle(fontSize: 11, color: t.text3),
+                    ),
+                  ],
+                ),
+              ),
+              Icon(Icons.chevron_right, size: 17, color: t.accent),
             ],
           ),
         ),

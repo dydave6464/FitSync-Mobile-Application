@@ -9,6 +9,7 @@ import 'package:fitsync/features/sessions/domain/shared_report.dart';
 import 'package:fitsync/features/profile/domain/profile.dart';
 import 'package:fitsync/features/profile/presentation/providers.dart';
 import 'package:fitsync/features/sessions/presentation/providers.dart';
+import 'package:fitsync/features/pro/presentation/pro_screen.dart';
 import 'package:fitsync/features/sessions/presentation/widgets/share_report_sheet.dart';
 
 class _FakeRepo implements SessionRepository {
@@ -274,6 +275,17 @@ void main() {
       // No switch to turn on: a togglable row that the server will not honour
       // is worse than no row.
       expect(find.byKey(const Key('share.toggle.muscles')), findsNothing);
+    });
+
+    testWidgets('is a way through to Pro', (tester) async {
+      await _open(tester, premium: false);
+
+      await tester.tap(find.byKey(const Key('share.locked.muscles')));
+      await tester.pumpAndSettle();
+
+      // The sheet is the moment a user is thinking about what their coach
+      // will see, which makes it the best moment to learn Pro adds something.
+      expect(find.byType(ProScreen), findsOneWidget);
     });
 
     testWidgets('is not sent with the report', (tester) async {

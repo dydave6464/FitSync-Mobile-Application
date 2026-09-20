@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../../../../core/theme.dart';
 import '../../../../core/units.dart';
 import '../../../../core/widgets/fs_kit.dart';
+import '../../../pro/presentation/pro_screen.dart';
 import '../../../../core/widgets/fs_charts.dart';
 import '../../domain/training_analytics.dart';
 
@@ -207,22 +208,26 @@ class VolumeByMuscleCard extends StatelessWidget {
             for (final fraction in _placeholders)
               FsBarRow(label: '', fraction: fraction, color: t.line2),
             const SizedBox(height: 8),
-            Row(
+            InkWell(
               key: const Key('muscles.locked'),
-              children: [
-                Icon(Icons.lock_outline, size: 15, color: t.text3),
-                const SizedBox(width: 8),
-                Expanded(
-                  child: Text(
-                    'Unlock with Pro to see which muscles your volume goes to.',
-                    style: TextStyle(
-                      fontSize: 11.5,
-                      color: t.text2,
-                      height: 1.4,
+              onTap: () => openProScreen(context),
+              child: Row(
+                children: [
+                  Icon(Icons.lock_outline, size: 15, color: t.text3),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Text(
+                      'Unlock with Pro to see which muscles your volume goes to.',
+                      style: TextStyle(
+                        fontSize: 11.5,
+                        color: t.text2,
+                        height: 1.4,
+                      ),
                     ),
                   ),
-                ),
-              ],
+                  Icon(Icons.chevron_right, size: 16, color: t.text3),
+                ],
+              ),
             ),
           ] else if (analytics.muscles.isEmpty)
             Text(

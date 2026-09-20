@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../../core/theme.dart';
 import '../../../../core/widgets/fs_kit.dart';
+import '../../../pro/presentation/pro_screen.dart';
 // describeError lives beside the catalogue list rather than in core/ -- it is
 // the one place that turns an ApiException into a sentence, and every screen
 // imports it from there with `show`.
@@ -235,37 +236,44 @@ class _LockedSection extends StatelessWidget {
   Widget build(BuildContext context) {
     final t = context.fs;
 
-    return Padding(
+    return InkWell(
       key: Key('share.locked.$sectionKey'),
-      padding: const EdgeInsets.symmetric(vertical: 10),
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Icon(Icons.lock_outline, size: 15, color: t.text3),
-          const SizedBox(width: 10),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Row(
-                  children: [
-                    Text(
-                      label,
-                      style: TextStyle(fontSize: 13.5, color: t.text2),
+      onTap: () => openProScreen(context),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(vertical: 10),
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Icon(Icons.lock_outline, size: 15, color: t.text3),
+            const SizedBox(width: 10),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    children: [
+                      Text(
+                        label,
+                        style: TextStyle(fontSize: 13.5, color: t.text2),
+                      ),
+                      const SizedBox(width: 8),
+                      const FsTag('Pro'),
+                    ],
+                  ),
+                  const SizedBox(height: 3),
+                  Text(
+                    'Unlock with Pro to show your coach where your volume goes.',
+                    style: TextStyle(
+                      fontSize: 11.5,
+                      color: t.text3,
+                      height: 1.4,
                     ),
-                    const SizedBox(width: 8),
-                    const FsTag('Pro'),
-                  ],
-                ),
-                const SizedBox(height: 3),
-                Text(
-                  'Unlock with Pro to show your coach where your volume goes.',
-                  style: TextStyle(fontSize: 11.5, color: t.text3, height: 1.4),
-                ),
-              ],
+                  ),
+                ],
+              ),
             ),
-          ),
-        ],
+          ],
+        ),
       ),
     );
   }
