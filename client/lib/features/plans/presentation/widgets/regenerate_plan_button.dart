@@ -47,10 +47,13 @@ class RegeneratePlanButton extends StatefulWidget {
 
 class _RegeneratePlanButtonState extends State<RegeneratePlanButton>
     with SingleTickerProviderStateMixin {
-  /// Long enough to be seen, short enough that a user who already knows where
-  /// the button is does not wait on it -- it is decoration over a control
-  /// that works from the first frame either way.
-  static const _duration = Duration(milliseconds: 900);
+  /// Long enough to read as a deliberate turn rather than a flicker.
+  ///
+  /// 900ms was too quick to follow: easeOutCubic spends most of its distance
+  /// early, so a short spin is over before the eye lands on it. The button
+  /// works from the first frame throughout -- this is decoration, and nothing
+  /// waits on it.
+  static const _duration = Duration(milliseconds: 1500);
 
   /// Held back until the tab has arrived.
   ///
@@ -76,11 +79,12 @@ class _RegeneratePlanButtonState extends State<RegeneratePlanButton>
     curve: Curves.easeOutBack,
   );
 
-  /// A quarter turn anticlockwise into place. A sparkle is the one icon in
-  /// the set where a spin looks like the thing itself rather than a loading
-  /// indicator.
+  /// A full turn anticlockwise into place. A sparkle is the one icon in the
+  /// set where a spin looks like the thing itself rather than a loading
+  /// indicator, and a whole revolution reads as one where a quarter of one
+  /// just looked like a nudge.
   late final Animation<double> _turns = Tween<double>(
-    begin: -0.25,
+    begin: -1,
     end: 0,
   ).animate(CurvedAnimation(parent: _controller, curve: Curves.easeOutCubic));
 
@@ -94,7 +98,12 @@ class _RegeneratePlanButtonState extends State<RegeneratePlanButton>
     // or metrics change cannot restart an intro that is already running.
     if (_mountHandled) return;
     _mountHandled = true;
-    if (widget.playIntro) _startIntro();
+    // Every mount, not only the ones the shell flagged. This widget exists
+    // only while the Plan tab is the visible one, so being built at all means
+    // Plan has just come into view -- from another sub-tab, or with the whole
+    // Train tab. The shell's flag below covers the one case a mount cannot:
+    // Train reopened while Plan was already the tab on screen.
+    _startIntro();
   }
 
   @override

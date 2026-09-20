@@ -481,17 +481,26 @@ void main() {
       expect(scaleOf(tester), 1.0);
     });
 
-    testWidgets('does not replay on a return to the Plan tab', (tester) async {
+    testWidgets('replays on a return to the Plan tab', (tester) async {
       await _pump(tester);
+      expect(scaleOf(tester), 1.0, reason: 'settled after the first visit');
 
       await tester.tap(find.byKey(const Key('tab.progress')));
       await tester.pumpAndSettle();
       await tester.tap(find.byKey(const Key('tab.plan')));
       await tester.pump();
 
-      // The button is rebuilt every time Plan comes back, so without a flag
-      // held above it the intro would fire again on every visit -- an
-      // attention-getter that never stops asking for attention.
+      // Still at rest on the frame Plan returns: the intro waits for the tab
+      // to settle before it moves, exactly as it does on a first visit.
+      expect(scaleOf(tester), 1.0);
+
+      await tester.pump(const Duration(milliseconds: 400));
+
+      // The button is rebuilt every time Plan comes back into view, and every
+      // one of those is a fresh arrival worth pointing at.
+      expect(scaleOf(tester), lessThan(1.0));
+
+      await tester.pumpAndSettle();
       expect(scaleOf(tester), 1.0);
     });
 
