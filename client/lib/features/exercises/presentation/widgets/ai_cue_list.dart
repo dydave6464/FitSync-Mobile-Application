@@ -80,7 +80,9 @@ class AiCueList extends StatelessWidget {
                           Text(
                             cues.cues[i].detail!,
                             style: TextStyle(
-                              fontSize: 11.5, color: t.text3, height: 1.4,
+                              fontSize: 11.5,
+                              color: t.text3,
+                              height: 1.4,
                             ),
                           ),
                         ],

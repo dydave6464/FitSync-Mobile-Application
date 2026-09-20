@@ -14,13 +14,13 @@ class FitSyncApp extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) => MaterialApp(
-        title: 'FitSync',
-        debugShowCheckedModeBanner: false,
-        theme: fsLightTheme(),
-        darkTheme: fsDarkTheme(),
-        // Never ThemeMode.system: the user picks explicitly in Settings, and
-        // the stored choice is restored on launch.
-        themeMode: ref.watch(themeModeProvider),
-        home: const AppShell(),
-      );
+    title: 'FitSync',
+    debugShowCheckedModeBanner: false,
+    theme: fsLightTheme(),
+    darkTheme: fsDarkTheme(),
+    // Never ThemeMode.system: the user picks explicitly in Settings, and
+    // the stored choice is restored on launch.
+    themeMode: ref.watch(themeModeProvider),
+    home: const AppShell(),
+  );
 }

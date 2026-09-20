@@ -12,8 +12,13 @@ import 'package:fitsync/features/plans/domain/workout_plan.dart';
 import 'package:fitsync/features/sessions/presentation/in_session_exercise_screen.dart';
 
 const _exercise = PlanExercise(
-  planExerciseId: 601, exerciseId: 101, name: 'Goblet squat',
-  muscleGroup: 'quadriceps', orderNo: 1, targetSets: 4, targetReps: '8-10',
+  planExerciseId: 601,
+  exerciseId: 101,
+  name: 'Goblet squat',
+  muscleGroup: 'quadriceps',
+  orderNo: 1,
+  targetSets: 4,
+  targetReps: '8-10',
 );
 
 const _detail = ExerciseDetail(
@@ -53,8 +58,11 @@ class _BaseUrlRepository implements ExerciseRepository {
 
   @override
   Future<ExercisePage> list({
-    List<String> muscleGroups = const [], String? equipment, String? search,
-    int page = 1, int limit = 20,
+    List<String> muscleGroups = const [],
+    String? equipment,
+    String? search,
+    int page = 1,
+    int limit = 20,
   }) async => throw UnimplementedError();
 
   @override
@@ -64,24 +72,33 @@ class _BaseUrlRepository implements ExerciseRepository {
   Future<ExerciseFilters> filters() async => throw UnimplementedError();
 }
 
-Future<void> _pump(WidgetTester tester, {ExerciseDetail detail = _detail}) async {
-  await tester.pumpWidget(ProviderScope(
-    overrides: [
-      exerciseRepositoryProvider.overrideWithValue(_BaseUrlRepository()),
-      exerciseDetailProvider.overrideWith((ref, id) async => detail),
-    ],
-    child: MaterialApp(
-      theme: fsLightTheme(),
-      home: const InSessionExerciseScreen(
-        exercise: _exercise, position: 1, total: 6,
+Future<void> _pump(
+  WidgetTester tester, {
+  ExerciseDetail detail = _detail,
+}) async {
+  await tester.pumpWidget(
+    ProviderScope(
+      overrides: [
+        exerciseRepositoryProvider.overrideWithValue(_BaseUrlRepository()),
+        exerciseDetailProvider.overrideWith((ref, id) async => detail),
+      ],
+      child: MaterialApp(
+        theme: fsLightTheme(),
+        home: const InSessionExerciseScreen(
+          exercise: _exercise,
+          position: 1,
+          total: 6,
+        ),
       ),
     ),
-  ));
+  );
   await tester.pumpAndSettle();
 }
 
 void main() {
-  testWidgets('shows the position, the prescription and the seeded cues', (tester) async {
+  testWidgets('shows the position, the prescription and the seeded cues', (
+    tester,
+  ) async {
     await _pump(tester);
 
     expect(find.text('Exercise 1 of 6'), findsOneWidget);
@@ -105,40 +122,47 @@ void main() {
   // --- Addition beyond the brief's list ---
 
   testWidgets(
-      'a failed fetch says logging still works, and Done is still there',
-      (tester) async {
-    await tester.pumpWidget(ProviderScope(
-      overrides: [
-        exerciseRepositoryProvider.overrideWithValue(_BaseUrlRepository()),
-        exerciseDetailProvider.overrideWith(
-          (ref, id) async => throw Exception('offline'),
+    'a failed fetch says logging still works, and Done is still there',
+    (tester) async {
+      await tester.pumpWidget(
+        ProviderScope(
+          overrides: [
+            exerciseRepositoryProvider.overrideWithValue(_BaseUrlRepository()),
+            exerciseDetailProvider.overrideWith(
+              (ref, id) async => throw Exception('offline'),
+            ),
+          ],
+          child: MaterialApp(
+            theme: fsLightTheme(),
+            home: const InSessionExerciseScreen(
+              exercise: _exercise,
+              position: 1,
+              total: 6,
+            ),
+          ),
         ),
-      ],
-      child: MaterialApp(
-        theme: fsLightTheme(),
-        home: const InSessionExerciseScreen(
-          exercise: _exercise, position: 1, total: 6,
-        ),
-      ),
-    ));
-    await tester.pumpAndSettle();
+      );
+      await tester.pumpAndSettle();
 
-    expect(
-      find.text('Could not load this exercise. You can still log your sets.'),
-      findsOneWidget,
-    );
-    // The position/prescription header lives inside the data branch, so a
-    // failed fetch must not show stale or fabricated prescription text.
-    expect(find.text('Exercise 1 of 6'), findsNothing);
-    expect(find.text('4 × 8-10'), findsNothing);
+      expect(
+        find.text('Could not load this exercise. You can still log your sets.'),
+        findsOneWidget,
+      );
+      // The position/prescription header lives inside the data branch, so a
+      // failed fetch must not show stale or fabricated prescription text.
+      expect(find.text('Exercise 1 of 6'), findsNothing);
+      expect(find.text('4 × 8-10'), findsNothing);
 
-    expect(find.byKey(const Key('insession.done')), findsOneWidget);
-    await tester.tap(find.byKey(const Key('insession.done')));
-    await tester.pumpAndSettle();
-    expect(find.byKey(const Key('insession.done')), findsNothing);
-  });
+      expect(find.byKey(const Key('insession.done')), findsOneWidget);
+      await tester.tap(find.byKey(const Key('insession.done')));
+      await tester.pumpAndSettle();
+      expect(find.byKey(const Key('insession.done')), findsNothing);
+    },
+  );
 
-  testWidgets('the demo image is built against the API base URL', (tester) async {
+  testWidgets('the demo image is built against the API base URL', (
+    tester,
+  ) async {
     // The whole reason this screen exists mid-workout. animationUrl is a
     // server-relative '/storage/...' key, so without the base URL the widget
     // requests "null/storage/..." and silently falls through to the equipment

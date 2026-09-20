@@ -129,7 +129,8 @@ class _ExerciseLogPanelState extends State<ExerciseLogPanel> {
 
     double? best;
     for (final set in current.sets) {
-      if (set.exerciseId != widget.exercise.exerciseId || set.weightKg == null) {
+      if (set.exerciseId != widget.exercise.exerciseId ||
+          set.weightKg == null) {
         continue;
       }
       if (best == null || set.weightKg! > best) best = set.weightKg;
@@ -217,8 +218,7 @@ class _ExerciseLogPanelState extends State<ExerciseLogPanel> {
                           if (!showWeight)
                             InkWell(
                               key: const Key('logpanel.addweight'),
-                              onTap: () =>
-                                  setState(() => _weightAdded = true),
+                              onTap: () => setState(() => _weightAdded = true),
                               borderRadius: BorderRadius.circular(FsRadius.sm),
                               child: Padding(
                                 padding: const EdgeInsets.symmetric(
@@ -300,45 +300,54 @@ class _ExerciseLogPanelState extends State<ExerciseLogPanel> {
                         ],
                       ),
                     ),
-                    for (var setNumber = 1;
-                        setNumber <= exercise.targetSets;
-                        setNumber++)
-                      Builder(builder: (context) {
-                        final stored = widget.session
-                            ?.setFor(exercise.exerciseId, setNumber);
-                        // Seed on every build, which is what lets a prefill
-                        // arriving from a fetch -- one frame after the table
-                        // is first drawn -- still reach the fields.
-                        //
-                        // Authoritative exactly when the server holds the
-                        // set: a stored value corrects the field, a prefill
-                        // never does. See SetDrafts.seed.
-                        widget.drafts.seed(
-                          setNumber: setNumber,
-                          // Not `stored?.weightKg ?? last?.weightKg`: a
-                          // bodyweight set is STORED with a null weight, and
-                          // `??` cannot tell that apart from having no stored
-                          // set at all -- so it fell through to last session's
-                          // number and wrote it into a read-only field.
-                          weightKg: stored != null
-                              ? stored.weightKg
-                              : widget.last?.weightKg,
-                          reps:
-                              stored != null ? stored.reps : widget.last?.reps,
-                          unit: widget.unit,
-                          authoritative: stored != null,
-                        );
-                        return SetRow(
-                          key: ValueKey('set-${exercise.exerciseId}-$setNumber'),
-                          setNumber: setNumber,
-                          logged: stored,
-                          drafts: widget.drafts,
-                          unit: widget.unit,
-                          showWeight: showWeight,
-                          active: setNumber == widget.activeSetNumber,
-                          onReopen: () => widget.onUndoSet(setNumber),
-                        );
-                      }),
+                    for (
+                      var setNumber = 1;
+                      setNumber <= exercise.targetSets;
+                      setNumber++
+                    )
+                      Builder(
+                        builder: (context) {
+                          final stored = widget.session?.setFor(
+                            exercise.exerciseId,
+                            setNumber,
+                          );
+                          // Seed on every build, which is what lets a prefill
+                          // arriving from a fetch -- one frame after the table
+                          // is first drawn -- still reach the fields.
+                          //
+                          // Authoritative exactly when the server holds the
+                          // set: a stored value corrects the field, a prefill
+                          // never does. See SetDrafts.seed.
+                          widget.drafts.seed(
+                            setNumber: setNumber,
+                            // Not `stored?.weightKg ?? last?.weightKg`: a
+                            // bodyweight set is STORED with a null weight, and
+                            // `??` cannot tell that apart from having no stored
+                            // set at all -- so it fell through to last session's
+                            // number and wrote it into a read-only field.
+                            weightKg: stored != null
+                                ? stored.weightKg
+                                : widget.last?.weightKg,
+                            reps: stored != null
+                                ? stored.reps
+                                : widget.last?.reps,
+                            unit: widget.unit,
+                            authoritative: stored != null,
+                          );
+                          return SetRow(
+                            key: ValueKey(
+                              'set-${exercise.exerciseId}-$setNumber',
+                            ),
+                            setNumber: setNumber,
+                            logged: stored,
+                            drafts: widget.drafts,
+                            unit: widget.unit,
+                            showWeight: showWeight,
+                            active: setNumber == widget.activeSetNumber,
+                            onReopen: () => widget.onUndoSet(setNumber),
+                          );
+                        },
+                      ),
                   ],
                 ),
               ),

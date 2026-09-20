@@ -64,9 +64,9 @@ class WorkoutDraftNotifier extends Notifier<List<ExerciseSummary>> {
   void clear() => state = const [];
 
   List<ExerciseSummary> _without(int exerciseId) => [
-        for (final exercise in state)
-          if (exercise.exerciseId != exerciseId) exercise,
-      ];
+    for (final exercise in state)
+      if (exercise.exerciseId != exerciseId) exercise,
+  ];
 }
 
 extension WorkoutDraft on List<ExerciseSummary> {
@@ -76,14 +76,15 @@ extension WorkoutDraft on List<ExerciseSummary> {
       any((exercise) => exercise.exerciseId == exerciseId);
 
   /// What `POST /sessions` is sent, in the order shown on the review screen.
-  List<int> get exerciseIds =>
-      [for (final exercise in this) exercise.exerciseId];
+  List<int> get exerciseIds => [
+    for (final exercise in this) exercise.exerciseId,
+  ];
 }
 
 final workoutDraftProvider =
     NotifierProvider<WorkoutDraftNotifier, List<ExerciseSummary>>(
-  WorkoutDraftNotifier.new,
-);
+      WorkoutDraftNotifier.new,
+    );
 
 /// The split the user picked on the setup screen before choosing exercises.
 ///
@@ -103,5 +104,5 @@ class ChosenSplitStyleNotifier extends Notifier<String> {
 
 final chosenSplitStyleProvider =
     NotifierProvider<ChosenSplitStyleNotifier, String>(
-  ChosenSplitStyleNotifier.new,
-);
+      ChosenSplitStyleNotifier.new,
+    );

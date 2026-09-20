@@ -36,7 +36,8 @@ class HomeScreen extends ConsumerWidget {
     // Only to place the plan in its rotation -- see WorkoutPlan.todayDayNo.
     // An unread count is an empty week, which is day 1: the card names one
     // day either way, never the whole rotation.
-    final completedDays = ref.watch(completedDaysProvider).value ?? const <String>{};
+    final completedDays =
+        ref.watch(completedDaysProvider).value ?? const <String>{};
     // What is happening NOW outranks what was planned. A session left open is
     // otherwise invisible here, and Home is where a user looks first.
     final session = ref.watch(activeSessionProvider).value;
@@ -155,14 +156,14 @@ class _ActiveWorkoutState extends ConsumerState<_ActiveWorkout> {
 
   @override
   Widget build(BuildContext context) => ActiveWorkoutCard(
-        session: widget.session,
-        plan: widget.plan,
-        discarding: _discarding,
-        onContinue: () => Navigator.of(context).push(
-          MaterialPageRoute<void>(builder: (_) => const SessionLoggerScreen()),
-        ),
-        onDiscard: _discard,
-      );
+    session: widget.session,
+    plan: widget.plan,
+    discarding: _discarding,
+    onContinue: () => Navigator.of(context).push(
+      MaterialPageRoute<void>(builder: (_) => const SessionLoggerScreen()),
+    ),
+    onDiscard: _discard,
+  );
 }
 
 /// Plans are created only by `POST /profile/complete-onboarding`. There is no
@@ -206,18 +207,18 @@ class _Retry extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) => Padding(
-        padding: const EdgeInsets.symmetric(vertical: 16),
-        child: Column(
-          children: [
-            Text(message, textAlign: TextAlign.center),
-            const SizedBox(height: 12),
-            FsButton(
-              label: 'Retry',
-              small: true,
-              kind: FsButtonKind.secondary,
-              onPressed: onRetry,
-            ),
-          ],
+    padding: const EdgeInsets.symmetric(vertical: 16),
+    child: Column(
+      children: [
+        Text(message, textAlign: TextAlign.center),
+        const SizedBox(height: 12),
+        FsButton(
+          label: 'Retry',
+          small: true,
+          kind: FsButtonKind.secondary,
+          onPressed: onRetry,
         ),
-      );
+      ],
+    ),
+  );
 }

@@ -4,9 +4,9 @@ class VolumeBucket {
   final double volumeKg;
 
   factory VolumeBucket.fromJson(Map<String, dynamic> json) => VolumeBucket(
-        label: json['label'] as String,
-        volumeKg: (json['volumeKg'] as num).toDouble(),
-      );
+    label: json['label'] as String,
+    volumeKg: (json['volumeKg'] as num).toDouble(),
+  );
 }
 
 /// Sessions completed against what the active plan asked for.
@@ -15,7 +15,11 @@ class VolumeBucket {
 /// that means anything in week one -- every trend chart is still a single
 /// point then.
 class Adherence {
-  const Adherence({required this.done, required this.target, required this.weeks});
+  const Adherence({
+    required this.done,
+    required this.target,
+    required this.weeks,
+  });
 
   final int done;
 
@@ -31,10 +35,10 @@ class Adherence {
   double get fraction => hasTarget ? (done / target!).clamp(0, 1) : 0;
 
   factory Adherence.fromJson(Map<String, dynamic> json) => Adherence(
-        done: json['done'] as int,
-        target: json['target'] as int?,
-        weeks: json['weeks'] as int,
-      );
+    done: json['done'] as int,
+    target: json['target'] as int?,
+    weeks: json['weeks'] as int,
+  );
 }
 
 /// This window's volume against the one before it.
@@ -53,15 +57,14 @@ class VolumeChange {
   final int? changePct;
 
   bool get hasChange => changePct != null;
-  String get label => changePct == null
-      ? ''
-      : '${changePct! >= 0 ? '+' : ''}$changePct%';
+  String get label =>
+      changePct == null ? '' : '${changePct! >= 0 ? '+' : ''}$changePct%';
 
   factory VolumeChange.fromJson(Map<String, dynamic> json) => VolumeChange(
-        totalKg: (json['totalKg'] as num).toDouble(),
-        previousKg: (json['previousKg'] as num).toDouble(),
-        changePct: json['changePct'] as int?,
-      );
+    totalKg: (json['totalKg'] as num).toDouble(),
+    previousKg: (json['previousKg'] as num).toDouble(),
+    changePct: json['changePct'] as int?,
+  );
 }
 
 /// Kilograms lifted for one muscle group in the window.
@@ -77,11 +80,11 @@ class MuscleVolume {
   final double volumeKg;
 
   factory MuscleVolume.fromJson(Map<String, dynamic> json) => MuscleVolume(
-        muscle: json['muscle'] as String,
-        // `as double?` would throw on a whole number: jsonDecode gives 600 as
-        // an int. Same reasoning as LoggedSet.weightKg.
-        volumeKg: (json['volumeKg'] as num).toDouble(),
-      );
+    muscle: json['muscle'] as String,
+    // `as double?` would throw on a whole number: jsonDecode gives 600 as
+    // an int. Same reasoning as LoggedSet.weightKg.
+    volumeKg: (json['volumeKg'] as num).toDouble(),
+  );
 }
 
 class TrainingAnalytics {
@@ -119,14 +122,17 @@ class TrainingAnalytics {
     return top == 0 ? 0 : row.volumeKg / top;
   }
 
-  factory TrainingAnalytics.fromJson(Map<String, dynamic> json) => TrainingAnalytics(
+  factory TrainingAnalytics.fromJson(Map<String, dynamic> json) =>
+      TrainingAnalytics(
         period: json['period'] as String,
         volume: [
           for (final b in (json['volume'] as List<dynamic>? ?? const []))
             VolumeBucket.fromJson(b as Map<String, dynamic>),
         ],
         change: VolumeChange.fromJson(json['change'] as Map<String, dynamic>),
-        adherence: Adherence.fromJson(json['adherence'] as Map<String, dynamic>),
+        adherence: Adherence.fromJson(
+          json['adherence'] as Map<String, dynamic>,
+        ),
         muscles: [
           for (final m in (json['muscles'] as List<dynamic>? ?? const []))
             MuscleVolume.fromJson(m as Map<String, dynamic>),

@@ -71,9 +71,9 @@ class AuthController extends AsyncNotifier<AuthState> {
   }
 
   AuthState _forUser(AuthUser user) => AuthState(
-        user.onboardingCompleted ? AuthStatus.ready : AuthStatus.onboarding,
-        user,
-      );
+    user.onboardingCompleted ? AuthStatus.ready : AuthStatus.onboarding,
+    user,
+  );
 
   /// Called by the sign-in screen once a token is already stored, so the
   /// shell moves on without a second round trip to `/auth/me`.
@@ -136,8 +136,7 @@ class AuthController extends AsyncNotifier<AuthState> {
   }
 }
 
-final authControllerProvider =
-    AsyncNotifierProvider<AuthController, AuthState>(
+final authControllerProvider = AsyncNotifierProvider<AuthController, AuthState>(
   AuthController.new,
   retry: apiRetryPolicy,
 );

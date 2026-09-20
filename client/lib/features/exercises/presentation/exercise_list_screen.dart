@@ -47,7 +47,8 @@ class _ExerciseListScreenState extends ConsumerState<ExerciseListScreen> {
 
   void _onScroll() {
     if (!_controller.hasClients) return;
-    final remaining = _controller.position.maxScrollExtent - _controller.position.pixels;
+    final remaining =
+        _controller.position.maxScrollExtent - _controller.position.pixels;
     if (remaining < 400) {
       ref.read(exerciseListProvider.notifier).loadMore();
     }
@@ -58,9 +59,9 @@ class _ExerciseListScreenState extends ConsumerState<ExerciseListScreen> {
   /// Pushed rather than replacing this route: "Add more exercises" on the
   /// review screen pops straight back to the library, with the picks and the
   /// scroll position the user left behind.
-  void _review() => Navigator.of(context).push(
-        MaterialPageRoute<void>(builder: (_) => const WorkoutReviewScreen()),
-      );
+  void _review() => Navigator.of(
+    context,
+  ).push(MaterialPageRoute<void>(builder: (_) => const WorkoutReviewScreen()));
 
   @override
   Widget build(BuildContext context) {
@@ -126,7 +127,9 @@ class _ExerciseListScreenState extends ConsumerState<ExerciseListScreen> {
               ),
               data: (state) {
                 if (state.items.isEmpty) {
-                  return const Center(child: Text('No exercises match those filters.'));
+                  return const Center(
+                    child: Text('No exercises match those filters.'),
+                  );
                 }
                 return ListView.builder(
                   controller: _controller,
@@ -147,15 +150,15 @@ class _ExerciseListScreenState extends ConsumerState<ExerciseListScreen> {
                           : null,
                       onTap: widget.selecting
                           ? () => ref
-                              .read(workoutDraftProvider.notifier)
-                              .toggle(exercise)
+                                .read(workoutDraftProvider.notifier)
+                                .toggle(exercise)
                           : () => Navigator.of(context).push(
-                                MaterialPageRoute<void>(
-                                  builder: (_) => ExerciseDetailScreen(
-                                    exerciseId: exercise.exerciseId,
-                                  ),
+                              MaterialPageRoute<void>(
+                                builder: (_) => ExerciseDetailScreen(
+                                  exerciseId: exercise.exerciseId,
                                 ),
                               ),
+                            ),
                     );
                   },
                 );
@@ -176,18 +179,18 @@ class _ErrorView extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) => Center(
-        child: Padding(
-          padding: const EdgeInsets.all(24),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              const Icon(Icons.cloud_off, size: 40),
-              const SizedBox(height: 12),
-              Text(message, textAlign: TextAlign.center),
-              const SizedBox(height: 16),
-              FilledButton(onPressed: onRetry, child: const Text('Retry')),
-            ],
-          ),
-        ),
-      );
+    child: Padding(
+      padding: const EdgeInsets.all(24),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          const Icon(Icons.cloud_off, size: 40),
+          const SizedBox(height: 12),
+          Text(message, textAlign: TextAlign.center),
+          const SizedBox(height: 16),
+          FilledButton(onPressed: onRetry, child: const Text('Retry')),
+        ],
+      ),
+    ),
+  );
 }

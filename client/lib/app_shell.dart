@@ -5,7 +5,8 @@ import 'core/theme.dart';
 import 'core/widgets/fs_kit.dart';
 import 'features/auth/presentation/auth_controller.dart';
 import 'features/auth/presentation/sign_in_screen.dart';
-import 'features/exercises/presentation/exercise_list_screen.dart' show describeError;
+import 'features/exercises/presentation/exercise_list_screen.dart'
+    show describeError;
 import 'features/home/presentation/nav_shell.dart';
 import 'features/onboarding/presentation/onboarding_flow.dart';
 

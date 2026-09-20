@@ -51,15 +51,12 @@ const _longLabel =
     'Adjustable resistance training equipment and accessories catalogue';
 
 Widget _host(Widget child) => MaterialApp(
-      theme: fsLightTheme(),
-      home: MediaQuery(
-        data: const MediaQueryData(
-          size: Size(320, 800),
-          textScaler: _hostileScale,
-        ),
-        child: Scaffold(body: child),
-      ),
-    );
+  theme: fsLightTheme(),
+  home: MediaQuery(
+    data: const MediaQueryData(size: Size(320, 800), textScaler: _hostileScale),
+    child: Scaffold(body: child),
+  ),
+);
 
 void main() {
   group('unflexed child of a Row (no external Flexible/Expanded)', () {
@@ -89,13 +86,16 @@ void main() {
     }.entries) {
       testWidgets('${entry.key} overflows here — known, structural, and '
           'not this widget\'s to fix', (tester) async {
-        await tester.pumpWidget(_host(SizedBox(
-          width: 320,
-          child: Row(children: [entry.value()]),
-        )));
-        expect(tester.takeException(), isNotNull,
-            reason: 'see the group-level comment: no widget here can '
-                'defend against being a bare, unwrapped Row child');
+        await tester.pumpWidget(
+          _host(SizedBox(width: 320, child: Row(children: [entry.value()]))),
+        );
+        expect(
+          tester.takeException(),
+          isNotNull,
+          reason:
+              'see the group-level comment: no widget here can '
+              'defend against being a bare, unwrapped Row child',
+        );
       });
     }
   });
@@ -108,34 +108,46 @@ void main() {
     // one line, so none of them ask a fixed-height Column for more than it
     // has.
     testWidgets('FsNav', (tester) async {
-      await tester.pumpWidget(_host(SizedBox(
-        width: 320,
-        height: 58,
-        child: FsNav(
-          currentIndex: 0,
-          onSelect: (_) {},
-          items: const [
-            FsNavItem(icon: Icons.home_outlined, label: 'Home'),
-            FsNavItem(
-              icon: Icons.fitness_center_outlined,
-              label: 'Adjustable resistance training',
+      await tester.pumpWidget(
+        _host(
+          SizedBox(
+            width: 320,
+            height: 58,
+            child: FsNav(
+              currentIndex: 0,
+              onSelect: (_) {},
+              items: const [
+                FsNavItem(icon: Icons.home_outlined, label: 'Home'),
+                FsNavItem(
+                  icon: Icons.fitness_center_outlined,
+                  label: 'Adjustable resistance training',
+                ),
+                FsNavItem(icon: Icons.settings_outlined, label: 'Settings'),
+              ],
             ),
-            FsNavItem(icon: Icons.settings_outlined, label: 'Settings'),
-          ],
+          ),
         ),
-      )));
+      );
       expect(tester.takeException(), isNull);
     });
 
     testWidgets('FsEyebrow', (tester) async {
-      await tester.pumpWidget(_host(SizedBox(
-        width: 320,
-        height: 40,
-        child: Column(children: [FsEyebrow(_longLabel)]),
-      )));
-      expect(tester.takeException(), isNull,
-          reason: 'maxLines: 1 caps this to one line, so it never asks the '
-              'fixed-height Column for more than one line\'s worth');
+      await tester.pumpWidget(
+        _host(
+          SizedBox(
+            width: 320,
+            height: 40,
+            child: Column(children: [FsEyebrow(_longLabel)]),
+          ),
+        ),
+      );
+      expect(
+        tester.takeException(),
+        isNull,
+        reason:
+            'maxLines: 1 caps this to one line, so it never asks the '
+            'fixed-height Column for more than one line\'s worth',
+      );
     });
 
     testWidgets('FsTag', (tester) async {
@@ -144,11 +156,15 @@ void main() {
       // needs about 31px including that padding — a height smaller than
       // one guarded line can ever be would not be testing the guard, just
       // an unrealistic fixture.
-      await tester.pumpWidget(_host(SizedBox(
-        width: 320,
-        height: 40,
-        child: Column(children: [FsTag(_longLabel)]),
-      )));
+      await tester.pumpWidget(
+        _host(
+          SizedBox(
+            width: 320,
+            height: 40,
+            child: Column(children: [FsTag(_longLabel)]),
+          ),
+        ),
+      );
       expect(tester.takeException(), isNull);
     });
   });
@@ -162,45 +178,66 @@ void main() {
     // elsewhere in this branch; see home_widgets_test.dart) and is
     // reproduced here directly against the kit widgets themselves.
     testWidgets('FsEyebrow', (tester) async {
-      await tester.pumpWidget(_host(Container(
-        width: 320,
-        height: 40,
-        alignment: Alignment.bottomLeft,
-        child: FsEyebrow(_longLabel),
-      )));
+      await tester.pumpWidget(
+        _host(
+          Container(
+            width: 320,
+            height: 40,
+            alignment: Alignment.bottomLeft,
+            child: FsEyebrow(_longLabel),
+          ),
+        ),
+      );
       expect(tester.takeException(), isNull);
 
       final paragraph = tester.renderObject<RenderBox>(
         find.descendant(
-            of: find.byType(FsEyebrow), matching: find.byType(RichText)),
+          of: find.byType(FsEyebrow),
+          matching: find.byType(RichText),
+        ),
       );
       // No padding at this call site, so the full 320px width is available
       // to the text.
-      expect(paragraph.getMaxIntrinsicHeight(320), lessThanOrEqualTo(40),
-          reason: 'maxLines: 1 must keep this to one line\'s worth of '
-              'intrinsic height, not merely report a clamped size while '
-              'painting more than that underneath it');
+      expect(
+        paragraph.getMaxIntrinsicHeight(320),
+        lessThanOrEqualTo(40),
+        reason:
+            'maxLines: 1 must keep this to one line\'s worth of '
+            'intrinsic height, not merely report a clamped size while '
+            'painting more than that underneath it',
+      );
     });
 
     testWidgets('FsTag', (tester) async {
       // height: 40 for the same reason as the fixed-height-Column case
       // above — smaller than one guarded line's real height would not be
       // testing the guard.
-      await tester.pumpWidget(_host(Container(
-        width: 100,
-        height: 40,
-        alignment: Alignment.center,
-        child: FsTag(_longLabel),
-      )));
+      await tester.pumpWidget(
+        _host(
+          Container(
+            width: 100,
+            height: 40,
+            alignment: Alignment.center,
+            child: FsTag(_longLabel),
+          ),
+        ),
+      );
       expect(tester.takeException(), isNull);
 
       final paragraph = tester.renderObject<RenderBox>(
-        find.descendant(of: find.byType(FsTag), matching: find.byType(RichText)),
+        find.descendant(
+          of: find.byType(FsTag),
+          matching: find.byType(RichText),
+        ),
       );
       // FsTag pads 8px each side: 100 - 16 = 84 available for the text.
-      expect(paragraph.getMaxIntrinsicHeight(84), lessThanOrEqualTo(40),
-          reason: 'maxLines: 1 must keep this to one line\'s worth of '
-              'intrinsic height');
+      expect(
+        paragraph.getMaxIntrinsicHeight(84),
+        lessThanOrEqualTo(40),
+        reason:
+            'maxLines: 1 must keep this to one line\'s worth of '
+            'intrinsic height',
+      );
     });
   });
 
@@ -210,43 +247,55 @@ void main() {
     // fits the current run), so a Flexible/maxLines-based guard is
     // effective for whichever widget sits directly in it.
     testWidgets('FsChip', (tester) async {
-      await tester.pumpWidget(_host(SizedBox(
-        width: 320,
-        child: Wrap(children: [
-          FsChip(
-            label: _longLabel,
-            selected: true,
-            showCheck: true,
-            onTap: () {},
+      await tester.pumpWidget(
+        _host(
+          SizedBox(
+            width: 320,
+            child: Wrap(
+              children: [
+                FsChip(
+                  label: _longLabel,
+                  selected: true,
+                  showCheck: true,
+                  onTap: () {},
+                ),
+              ],
+            ),
           ),
-        ]),
-      )));
+        ),
+      );
       expect(tester.takeException(), isNull);
     });
 
     testWidgets('FsButton', (tester) async {
-      await tester.pumpWidget(_host(SizedBox(
-        width: 320,
-        child: Wrap(children: [
-          FsButton(label: _longLabel, small: true, onPressed: () {}),
-        ]),
-      )));
+      await tester.pumpWidget(
+        _host(
+          SizedBox(
+            width: 320,
+            child: Wrap(
+              children: [
+                FsButton(label: _longLabel, small: true, onPressed: () {}),
+              ],
+            ),
+          ),
+        ),
+      );
       expect(tester.takeException(), isNull);
     });
 
     testWidgets('FsEyebrow', (tester) async {
-      await tester.pumpWidget(_host(SizedBox(
-        width: 320,
-        child: Wrap(children: [FsEyebrow(_longLabel)]),
-      )));
+      await tester.pumpWidget(
+        _host(
+          SizedBox(width: 320, child: Wrap(children: [FsEyebrow(_longLabel)])),
+        ),
+      );
       expect(tester.takeException(), isNull);
     });
 
     testWidgets('FsTag', (tester) async {
-      await tester.pumpWidget(_host(SizedBox(
-        width: 320,
-        child: Wrap(children: [FsTag(_longLabel)]),
-      )));
+      await tester.pumpWidget(
+        _host(SizedBox(width: 320, child: Wrap(children: [FsTag(_longLabel)]))),
+      );
       expect(tester.takeException(), isNull);
     });
   });

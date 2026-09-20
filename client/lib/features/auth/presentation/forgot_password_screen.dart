@@ -90,7 +90,11 @@ class _ForgotPasswordScreenState extends ConsumerState<ForgotPasswordScreen> {
                       "If that address has an account, we've sent a link.",
                       key: const Key('confirmation'),
                       textAlign: TextAlign.center,
-                      style: TextStyle(fontSize: 13, color: t.text2, height: 1.5),
+                      style: TextStyle(
+                        fontSize: 13,
+                        color: t.text2,
+                        height: 1.5,
+                      ),
                     ),
                   ]
                 : [
@@ -102,7 +106,11 @@ class _ForgotPasswordScreenState extends ConsumerState<ForgotPasswordScreen> {
                     Text(
                       "Enter your email and we'll send a link to reset your "
                       'password.',
-                      style: TextStyle(fontSize: 12.5, color: t.text2, height: 1.5),
+                      style: TextStyle(
+                        fontSize: 12.5,
+                        color: t.text2,
+                        height: 1.5,
+                      ),
                     ),
                     const SizedBox(height: 24),
                     FsField(

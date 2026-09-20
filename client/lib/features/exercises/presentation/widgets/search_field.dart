@@ -59,7 +59,8 @@ class _ExerciseSearchFieldState extends ConsumerState<ExerciseSearchField> {
 
   void _apply(String raw) {
     final term = raw.trim();
-    ref.read(selectedFiltersProvider.notifier)
+    ref
+        .read(selectedFiltersProvider.notifier)
         // Empty is null rather than '': the two mean the same thing to the
         // endpoint, but only null makes `isEmpty` -- and so the chip strip's
         // Clear -- agree that nothing is being searched for.

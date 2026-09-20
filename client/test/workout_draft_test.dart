@@ -12,12 +12,12 @@ ProviderContainer _container() {
 
 /// A catalogue row as the library hands it to the draft.
 ExerciseSummary _exercise(int id) => ExerciseSummary(
-      exerciseId: id,
-      name: 'Exercise $id',
-      muscleGroup: 'chest',
-      equipment: 'barbell',
-      thumbnailUrl: null,
-    );
+  exerciseId: id,
+  name: 'Exercise $id',
+  muscleGroup: 'chest',
+  equipment: 'barbell',
+  thumbnailUrl: null,
+);
 
 /// The ids, in order -- what `POST /sessions` is actually sent.
 List<int> _ids(ProviderContainer c) =>

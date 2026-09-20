@@ -59,23 +59,23 @@ class _FakeProfileNotifier extends ProfileNotifier {
   List<int>? lastTrainingDays;
 
   Profile _profileWith(List<int> days) => Profile(
-        userId: 1,
-        email: 'test@example.com',
-        fullName: 'Test User',
-        onboardingCompleted: true,
-        isPremium: false,
-        notificationsEnabled: true,
-        equipment: const [],
-        injuries: injuries,
-        trainingDays: days,
-      );
+    userId: 1,
+    email: 'test@example.com',
+    fullName: 'Test User',
+    onboardingCompleted: true,
+    isPremium: false,
+    notificationsEnabled: true,
+    equipment: const [],
+    injuries: injuries,
+    trainingDays: days,
+  );
 
   @override
   Future<Profile> build() async => switch (load) {
-        _ProfileLoad.loaded => _profileWith(trainingDays),
-        _ProfileLoad.pending => Completer<Profile>().future,
-        _ProfileLoad.failed => throw Exception('profile down'),
-      };
+    _ProfileLoad.loaded => _profileWith(trainingDays),
+    _ProfileLoad.pending => Completer<Profile>().future,
+    _ProfileLoad.failed => throw Exception('profile down'),
+  };
 
   @override
   Future<void> setTrainingDays(List<int> weekdays) async {
@@ -132,10 +132,10 @@ bool _chipOn(WidgetTester tester, String label) => tester
 /// rather than a captured container, because a screen that narrowed it would
 /// do so around the push.
 List<String> _constraintIn(WidgetTester tester) => ProviderScope.containerOf(
-      // skipOffstage: false -- once the library is pushed the setup screen is
-      // still mounted behind an opaque route, which find hides by default.
-      tester.element(find.byType(WorkoutSetupScreen, skipOffstage: false)),
-    ).read(catalogueConstraintProvider);
+  // skipOffstage: false -- once the library is pushed the setup screen is
+  // still mounted behind an opaque route, which find hides by default.
+  tester.element(find.byType(WorkoutSetupScreen, skipOffstage: false)),
+).read(catalogueConstraintProvider);
 
 Future<void> _openLibrary(WidgetTester tester) async {
   await tester.tap(find.byKey(const Key('setup.select')));
@@ -200,8 +200,9 @@ void main() {
     expect(find.textContaining('Session length'), findsNothing);
   });
 
-  testWidgets('the screen does not state a target exercise count',
-      (tester) async {
+  testWidgets('the screen does not state a target exercise count', (
+    tester,
+  ) async {
     await _pump(tester, plan: _plan);
 
     expect(find.byKey(const Key('setup.target.value')), findsNothing);
@@ -212,14 +213,23 @@ void main() {
     // Nothing on this screen reads the plan any more, so a plan that will not
     // load must not cost the user the library. This is the regression guard
     // for re-introducing a plan read without an error branch under it.
-    await tester.pumpWidget(ProviderScope(
-      overrides: [
-        activePlanProvider.overrideWith((ref) async => throw Exception('boom')),
-        profileProvider.overrideWith(() => _FakeProfileNotifier(const [])),
-        injuryOptionsProvider.overrideWith((ref) async => const <InjuryOption>[]),
-      ],
-      child: MaterialApp(theme: fsLightTheme(), home: const WorkoutSetupScreen()),
-    ));
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          activePlanProvider.overrideWith(
+            (ref) async => throw Exception('boom'),
+          ),
+          profileProvider.overrideWith(() => _FakeProfileNotifier(const [])),
+          injuryOptionsProvider.overrideWith(
+            (ref) async => const <InjuryOption>[],
+          ),
+        ],
+        child: MaterialApp(
+          theme: fsLightTheme(),
+          home: const WorkoutSetupScreen(),
+        ),
+      ),
+    );
     await tester.pumpAndSettle();
 
     expect(find.text('Full body'), findsOneWidget);
@@ -234,8 +244,18 @@ void main() {
       plan: _plan,
       injuries: const [SelectedInjury(injuryId: 3, side: 'right')],
       injuryOptions: const [
-        InjuryOption(injuryId: 3, name: 'Knee', isLateral: true, regionGroup: 'leg'),
-        InjuryOption(injuryId: 9, name: 'Lower back', isLateral: false, regionGroup: 'back'),
+        InjuryOption(
+          injuryId: 3,
+          name: 'Knee',
+          isLateral: true,
+          regionGroup: 'leg',
+        ),
+        InjuryOption(
+          injuryId: 9,
+          name: 'Lower back',
+          isLateral: false,
+          regionGroup: 'back',
+        ),
       ],
     );
 
@@ -258,13 +278,19 @@ void main() {
     expect(find.text('Select Exercise'), findsOneWidget);
     await _openLibrary(tester);
 
-    final picker = tester.widget<ExerciseListScreen>(find.byType(ExerciseListScreen));
-    expect(picker.selecting, isTrue,
-        reason: 'the same list, but picking rather than browsing');
+    final picker = tester.widget<ExerciseListScreen>(
+      find.byType(ExerciseListScreen),
+    );
+    expect(
+      picker.selecting,
+      isTrue,
+      reason: 'the same list, but picking rather than browsing',
+    );
   });
 
-  testWidgets('the library opens on the whole catalogue whatever the split',
-      (tester) async {
+  testWidgets('the library opens on the whole catalogue whatever the split', (
+    tester,
+  ) async {
     // A split is a rotation of days, and constraining the catalogue to the
     // whole of one barely constrains it: push_pull_legs left 997 of 1,203
     // live exercises and upper_lower left the identical set. So the chip
@@ -310,17 +336,22 @@ void main() {
       expect(find.byKey(Key('weekday.$weekday')), findsOneWidget);
     }
     expect(
-      tester.widget<TrainingDayCell>(find.byKey(const Key('weekday.1'))).selected,
+      tester
+          .widget<TrainingDayCell>(find.byKey(const Key('weekday.1')))
+          .selected,
       isTrue,
     );
     expect(
-      tester.widget<TrainingDayCell>(find.byKey(const Key('weekday.5'))).selected,
+      tester
+          .widget<TrainingDayCell>(find.byKey(const Key('weekday.5')))
+          .selected,
       isFalse,
     );
   });
 
-  testWidgets('ticking a weekday writes the whole set to the profile',
-      (tester) async {
+  testWidgets('ticking a weekday writes the whole set to the profile', (
+    tester,
+  ) async {
     await _pump(tester, plan: _plan, trainingDays: const [1, 3]);
 
     await tester.tap(find.byKey(const Key('weekday.5')));
@@ -338,22 +369,31 @@ void main() {
     expect(_profile.lastTrainingDays, [1, 5]);
   });
 
-  testWidgets('a failed write leaves the day as it was and says so',
-      (tester) async {
-    await _pump(tester, plan: _plan, trainingDays: const [1],
-        failTrainingDays: true);
+  testWidgets('a failed write leaves the day as it was and says so', (
+    tester,
+  ) async {
+    await _pump(
+      tester,
+      plan: _plan,
+      trainingDays: const [1],
+      failTrainingDays: true,
+    );
 
     await tester.tap(find.byKey(const Key('weekday.5')));
     await tester.pumpAndSettle();
 
     expect(find.textContaining('Could not'), findsOneWidget);
     expect(
-      tester.widget<TrainingDayCell>(find.byKey(const Key('weekday.5'))).selected,
+      tester
+          .widget<TrainingDayCell>(find.byKey(const Key('weekday.5')))
+          .selected,
       isFalse,
       reason: 'nothing may look saved that is not',
     );
     expect(
-      tester.widget<TrainingDayCell>(find.byKey(const Key('weekday.1'))).selected,
+      tester
+          .widget<TrainingDayCell>(find.byKey(const Key('weekday.1')))
+          .selected,
       isTrue,
       reason: 'and the day that WAS stored must still render chosen',
     );
@@ -370,9 +410,11 @@ void main() {
       await tester.tap(find.byKey(const Key('weekday.5')));
       await tester.pumpAndSettle();
 
-      expect(_profile.lastTrainingDays, isNull,
-          reason: 'a tap while the profile is $load must send nothing');
+      expect(
+        _profile.lastTrainingDays,
+        isNull,
+        reason: 'a tap while the profile is $load must send nothing',
+      );
     }
   });
-
 }

@@ -45,9 +45,13 @@ class _WorkoutSetupScreenState extends ConsumerState<WorkoutSetupScreen> {
       await ref.read(profileProvider.notifier).setTrainingDays(next);
     } catch (error) {
       if (!mounted) return;
-      messenger.showSnackBar(SnackBar(
-        content: Text('Could not save your training days. ${describeError(error)}'),
-      ));
+      messenger.showSnackBar(
+        SnackBar(
+          content: Text(
+            'Could not save your training days. ${describeError(error)}',
+          ),
+        ),
+      );
     } finally {
       if (mounted) setState(() => _savingWeekday = null);
     }
@@ -63,10 +67,10 @@ class _WorkoutSetupScreenState extends ConsumerState<WorkoutSetupScreen> {
   /// they narrow it to something the user chose rather than to something a
   /// chip implied.
   Future<void> _openLibrary() => Navigator.of(context).push(
-        MaterialPageRoute<void>(
-          builder: (_) => const ExerciseListScreen(selecting: true),
-        ),
-      );
+    MaterialPageRoute<void>(
+      builder: (_) => const ExerciseListScreen(selecting: true),
+    ),
+  );
 
   @override
   Widget build(BuildContext context) {
@@ -82,13 +86,15 @@ class _WorkoutSetupScreenState extends ConsumerState<WorkoutSetupScreen> {
     final splitStyle = ref.watch(chosenSplitStyleProvider);
 
     final injuries = asyncProfile.value?.injuries ?? const <SelectedInjury>[];
-    final options = ref.watch(injuryOptionsProvider).value ?? const <InjuryOption>[];
+    final options =
+        ref.watch(injuryOptionsProvider).value ?? const <InjuryOption>[];
     // Only regions the catalogue recognises, so a stale profile row cannot
     // put an unnamed injury on the card. Same derivation as the generator's.
     final avoiding = [
       for (final selected in injuries)
         for (final option in options)
-          if (option.injuryId == selected.injuryId) injuryLabel(option, selected),
+          if (option.injuryId == selected.injuryId)
+            injuryLabel(option, selected),
     ];
 
     return Scaffold(
@@ -107,7 +113,9 @@ class _WorkoutSetupScreenState extends ConsumerState<WorkoutSetupScreen> {
                 FsChip(
                   label: style.label,
                   selected: style.value == splitStyle,
-                  onTap: () => ref.read(chosenSplitStyleProvider.notifier).set(style.value),
+                  onTap: () => ref
+                      .read(chosenSplitStyleProvider.notifier)
+                      .set(style.value),
                 ),
             ],
           ),
@@ -122,8 +130,9 @@ class _WorkoutSetupScreenState extends ConsumerState<WorkoutSetupScreen> {
               // The tapped day is the one that differs between the two sets.
               final before = trainingDays.toSet();
               final after = next.toSet();
-              final changed =
-                  before.difference(after).followedBy(after.difference(before));
+              final changed = before
+                  .difference(after)
+                  .followedBy(after.difference(before));
               if (changed.isEmpty) return;
               _setTrainingDays(next, changed.first);
             },
@@ -149,7 +158,11 @@ class _WorkoutSetupScreenState extends ConsumerState<WorkoutSetupScreen> {
                   Expanded(
                     child: Text(
                       'Avoiding: ${avoiding.join(', ')}',
-                      style: TextStyle(fontSize: 12, color: t.text2, height: 1.35),
+                      style: TextStyle(
+                        fontSize: 12,
+                        color: t.text2,
+                        height: 1.35,
+                      ),
                     ),
                   ),
                 ],

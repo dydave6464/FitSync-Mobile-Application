@@ -38,27 +38,31 @@ class _FakeRepo implements SessionRepository {
 
 Future<_FakeRepo> _open(WidgetTester tester, {Object? error}) async {
   final repo = _FakeRepo(error: error);
-  await tester.pumpWidget(ProviderScope(
-    overrides: [sessionRepositoryProvider.overrideWithValue(repo)],
-    child: MaterialApp(
-      theme: fsLightTheme(),
-      home: Builder(
-        builder: (context) => Scaffold(
-          body: TextButton(
-            onPressed: () => showShareReportSheet(context, period: 'week'),
-            child: const Text('open'),
+  await tester.pumpWidget(
+    ProviderScope(
+      overrides: [sessionRepositoryProvider.overrideWithValue(repo)],
+      child: MaterialApp(
+        theme: fsLightTheme(),
+        home: Builder(
+          builder: (context) => Scaffold(
+            body: TextButton(
+              onPressed: () => showShareReportSheet(context, period: 'week'),
+              child: const Text('open'),
+            ),
           ),
         ),
       ),
     ),
-  ));
+  );
   await tester.tap(find.text('open'));
   await tester.pumpAndSettle();
   return repo;
 }
 
 void main() {
-  testWidgets('the sheet lists the sections that can be shared', (tester) async {
+  testWidgets('the sheet lists the sections that can be shared', (
+    tester,
+  ) async {
     await _open(tester);
 
     expect(find.text('Training volume'), findsOneWidget);
@@ -84,8 +88,12 @@ void main() {
       SystemChannels.platform,
       (call) async => null,
     );
-    addTearDown(() => tester.binding.defaultBinaryMessenger
-        .setMockMethodCallHandler(SystemChannels.platform, null));
+    addTearDown(
+      () => tester.binding.defaultBinaryMessenger.setMockMethodCallHandler(
+        SystemChannels.platform,
+        null,
+      ),
+    );
 
     final repo = await _open(tester);
 
@@ -98,7 +106,9 @@ void main() {
     expect(repo.asked!['volume'], isTrue);
   });
 
-  testWidgets('creating a report puts its link on the clipboard', (tester) async {
+  testWidgets('creating a report puts its link on the clipboard', (
+    tester,
+  ) async {
     final copied = <String>[];
     tester.binding.defaultBinaryMessenger.setMockMethodCallHandler(
       SystemChannels.platform,
@@ -109,8 +119,12 @@ void main() {
         return null;
       },
     );
-    addTearDown(() => tester.binding.defaultBinaryMessenger
-        .setMockMethodCallHandler(SystemChannels.platform, null));
+    addTearDown(
+      () => tester.binding.defaultBinaryMessenger.setMockMethodCallHandler(
+        SystemChannels.platform,
+        null,
+      ),
+    );
 
     await _open(tester);
     await tester.tap(find.byKey(const Key('share.create')));
@@ -127,8 +141,12 @@ void main() {
       SystemChannels.platform,
       (call) async => null,
     );
-    addTearDown(() => tester.binding.defaultBinaryMessenger
-        .setMockMethodCallHandler(SystemChannels.platform, null));
+    addTearDown(
+      () => tester.binding.defaultBinaryMessenger.setMockMethodCallHandler(
+        SystemChannels.platform,
+        null,
+      ),
+    );
 
     await _open(tester);
     await tester.tap(find.byKey(const Key('share.create')));
@@ -159,8 +177,12 @@ void main() {
         return null;
       },
     );
-    addTearDown(() => tester.binding.defaultBinaryMessenger
-        .setMockMethodCallHandler(SystemChannels.platform, null));
+    addTearDown(
+      () => tester.binding.defaultBinaryMessenger.setMockMethodCallHandler(
+        SystemChannels.platform,
+        null,
+      ),
+    );
 
     await _open(tester, error: Exception('offline'));
     await tester.tap(find.byKey(const Key('share.create')));

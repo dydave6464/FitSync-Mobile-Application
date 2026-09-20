@@ -69,7 +69,9 @@ class _SignInScreenState extends ConsumerState<SignInScreen> {
       // exactly as it was so the user can pick another way in.
       if (idToken == null) return;
 
-      final user = await ref.read(authRepositoryProvider).signInWithGoogle(idToken);
+      final user = await ref
+          .read(authRepositoryProvider)
+          .signInWithGoogle(idToken);
       if (!mounted) return;
       ref.read(authControllerProvider.notifier).onAuthenticated(user);
     } on ApiException catch (error) {
@@ -146,9 +148,7 @@ class _SignInScreenState extends ConsumerState<SignInScreen> {
 
   void _openForgotPassword() {
     Navigator.of(context).push(
-      MaterialPageRoute<void>(
-        builder: (_) => const ForgotPasswordScreen(),
-      ),
+      MaterialPageRoute<void>(builder: (_) => const ForgotPasswordScreen()),
     );
   }
 
@@ -276,9 +276,9 @@ class _SignInScreenState extends ConsumerState<SignInScreen> {
                     onTap: _busy
                         ? null
                         : () => setState(() {
-                              _registering = !_registering;
-                              _error = null;
-                            }),
+                            _registering = !_registering;
+                            _error = null;
+                          }),
                     child: Text.rich(
                       TextSpan(
                         style: TextStyle(fontSize: 12.5, color: t.text2),

@@ -17,7 +17,9 @@ void main() {
             VolumeBucket(label: 'today', volumeKg: 200),
           ],
           change: VolumeChange(
-            totalKg: totalKg, previousKg: 0, changePct: changePct,
+            totalKg: totalKg,
+            previousKg: 0,
+            changePct: changePct,
           ),
           adherence: const Adherence(done: 1, target: 3, weeks: 1),
           muscles: const [],
@@ -27,9 +29,16 @@ void main() {
     // that nobody has intuition for 48,200 kg. True -- but that is an argument
     // about how to write the number, not about hiding it.
     testWidgets('the card leads with the total lifted', (tester) async {
-      await tester.pumpWidget(MaterialApp(home: Scaffold(
-        body: VolumeTrendCard(analytics: withVolume(48200), unit: WeightUnit.kg),
-      )));
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(
+            body: VolumeTrendCard(
+              analytics: withVolume(48200),
+              unit: WeightUnit.kg,
+            ),
+          ),
+        ),
+      );
 
       expect(find.text('48.2k'), findsOneWidget);
       expect(find.text('kg lifted'), findsOneWidget);
@@ -38,9 +47,16 @@ void main() {
     // 1550 kg is 3417.2... lb. Hand-derived, not run through the same
     // conversion the card uses.
     testWidgets('the total converts for an lb user', (tester) async {
-      await tester.pumpWidget(MaterialApp(home: Scaffold(
-        body: VolumeTrendCard(analytics: withVolume(1550), unit: WeightUnit.lb),
-      )));
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(
+            body: VolumeTrendCard(
+              analytics: withVolume(1550),
+              unit: WeightUnit.lb,
+            ),
+          ),
+        ),
+      );
 
       expect(find.text('3.4k'), findsOneWidget);
       expect(find.text('lb lifted'), findsOneWidget);
@@ -51,21 +67,34 @@ void main() {
     // with no previous window there is no percentage, and the card used to
     // render a shape with no number on it at all.
     testWidgets('a first window still shows its total', (tester) async {
-      await tester.pumpWidget(MaterialApp(home: Scaffold(
-        body: VolumeTrendCard(analytics: withVolume(1550), unit: WeightUnit.kg),
-      )));
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(
+            body: VolumeTrendCard(
+              analytics: withVolume(1550),
+              unit: WeightUnit.kg,
+            ),
+          ),
+        ),
+      );
 
       expect(find.text('1.6k'), findsOneWidget);
       expect(find.byType(FsTag), findsNothing, reason: 'nothing to compare to');
     });
 
-    testWidgets('a later window shows the change beside the total',
-        (tester) async {
-      await tester.pumpWidget(MaterialApp(home: Scaffold(
-        body: VolumeTrendCard(
-          analytics: withVolume(48200, changePct: 12), unit: WeightUnit.kg,
+    testWidgets('a later window shows the change beside the total', (
+      tester,
+    ) async {
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(
+            body: VolumeTrendCard(
+              analytics: withVolume(48200, changePct: 12),
+              unit: WeightUnit.kg,
+            ),
+          ),
         ),
-      )));
+      );
 
       expect(find.text('48.2k'), findsOneWidget);
       expect(
@@ -75,17 +104,23 @@ void main() {
     });
   });
 
-
   group('the sessions and sets pair', () {
     // The prototype puts these side by side under the volume chart, where
     // adherence used to be a full-width hero above it. Half a row each, so
     // neither carries the caption the hero had room for -- the segment above
     // already says which window is on screen.
-    testWidgets('sessions shows the ratio and how far through it is',
-        (tester) async {
-      await tester.pumpWidget(const MaterialApp(home: Scaffold(
-        body: AdherenceCard(adherence: Adherence(done: 2, target: 3, weeks: 1)),
-      )));
+    testWidgets('sessions shows the ratio and how far through it is', (
+      tester,
+    ) async {
+      await tester.pumpWidget(
+        const MaterialApp(
+          home: Scaffold(
+            body: AdherenceCard(
+              adherence: Adherence(done: 2, target: 3, weeks: 1),
+            ),
+          ),
+        ),
+      );
 
       expect(find.text('SESSIONS'), findsOneWidget);
       expect(find.text('2 / 3'), findsOneWidget);
@@ -97,20 +132,27 @@ void main() {
 
     // A user with no active plan has nothing to be two-thirds of. The bar is
     // what would be meaningless, not the count.
-    testWidgets('sessions without a target shows the count and no bar',
-        (tester) async {
-      await tester.pumpWidget(const MaterialApp(home: Scaffold(
-        body: AdherenceCard(adherence: Adherence(done: 3, target: null, weeks: 1)),
-      )));
+    testWidgets('sessions without a target shows the count and no bar', (
+      tester,
+    ) async {
+      await tester.pumpWidget(
+        const MaterialApp(
+          home: Scaffold(
+            body: AdherenceCard(
+              adherence: Adherence(done: 3, target: null, weeks: 1),
+            ),
+          ),
+        ),
+      );
 
       expect(find.text('3'), findsOneWidget);
       expect(find.byType(LinearProgressIndicator), findsNothing);
     });
 
     testWidgets('sets shows what was logged in the window', (tester) async {
-      await tester.pumpWidget(const MaterialApp(home: Scaffold(
-        body: SetsCard(setCount: 18),
-      )));
+      await tester.pumpWidget(
+        const MaterialApp(home: Scaffold(body: SetsCard(setCount: 18))),
+      );
 
       expect(find.text('SETS'), findsOneWidget);
       expect(find.text('18'), findsOneWidget);
@@ -122,25 +164,33 @@ void main() {
       List<MuscleVolume> muscles = const [],
       bool locked = false,
     }) => TrainingAnalytics(
-          period: 'week',
-          volume: const [],
-          change: const VolumeChange(totalKg: 0, previousKg: 0, changePct: null),
-          adherence: const Adherence(done: 1, target: 3, weeks: 1),
-          muscles: muscles,
-          musclesLocked: locked,
-        );
+      period: 'week',
+      volume: const [],
+      change: const VolumeChange(totalKg: 0, previousKg: 0, changePct: null),
+      adherence: const Adherence(done: 1, target: 3, weeks: 1),
+      muscles: muscles,
+      musclesLocked: locked,
+    );
 
     Future<void> pump(WidgetTester tester, TrainingAnalytics a) =>
-        tester.pumpWidget(MaterialApp(
-          home: Scaffold(body: VolumeByMuscleCard(analytics: a)),
-        ));
+        tester.pumpWidget(
+          MaterialApp(
+            home: Scaffold(body: VolumeByMuscleCard(analytics: a)),
+          ),
+        );
 
-    testWidgets('a Pro user gets a bar per muscle, biggest first',
-        (tester) async {
-      await pump(tester, analytics(muscles: const [
-        MuscleVolume(muscle: 'chest', volumeKg: 3000),
-        MuscleVolume(muscle: 'lats', volumeKg: 1500),
-      ]));
+    testWidgets('a Pro user gets a bar per muscle, biggest first', (
+      tester,
+    ) async {
+      await pump(
+        tester,
+        analytics(
+          muscles: const [
+            MuscleVolume(muscle: 'chest', volumeKg: 3000),
+            MuscleVolume(muscle: 'lats', volumeKg: 1500),
+          ],
+        ),
+      );
 
       expect(find.text('chest'), findsOneWidget);
       expect(find.text('lats'), findsOneWidget);
@@ -168,8 +218,9 @@ void main() {
     // A blurred bar with a real number behind it is a hint, not a lock. The
     // server sends a free user nothing, and the card must not invent
     // anything that reads as data either.
-    testWidgets('a locked card offers the upgrade and shows no muscle',
-        (tester) async {
+    testWidgets('a locked card offers the upgrade and shows no muscle', (
+      tester,
+    ) async {
       await pump(tester, analytics(locked: true));
 
       expect(find.byKey(const Key('muscles.locked')), findsOneWidget);
@@ -184,24 +235,28 @@ void main() {
     // Two different empty lists. A Pro user who trains only bodyweight has
     // logged plenty and has no volume -- telling them to upgrade would be
     // wrong, and an empty card reads as broken.
-    testWidgets('a Pro user with nothing weighted is told why, not sold to',
-        (tester) async {
+    testWidgets('a Pro user with nothing weighted is told why, not sold to', (
+      tester,
+    ) async {
       await pump(tester, analytics());
 
       expect(find.byKey(const Key('muscles.empty')), findsOneWidget);
       expect(find.textContaining('Unlock with Pro'), findsNothing);
-      expect(find.textContaining(RegExp('bodyweight', caseSensitive: false)),
-          findsOneWidget);
+      expect(
+        find.textContaining(RegExp('bodyweight', caseSensitive: false)),
+        findsOneWidget,
+      );
       expect(find.byType(FsBarRow), findsNothing);
     });
   });
 
   group('share with coach', () {
-    testWidgets('the card names the action and what it produces',
-        (tester) async {
-      await tester.pumpWidget(const MaterialApp(home: Scaffold(
-        body: ShareWithCoachCard(),
-      )));
+    testWidgets('the card names the action and what it produces', (
+      tester,
+    ) async {
+      await tester.pumpWidget(
+        const MaterialApp(home: Scaffold(body: ShareWithCoachCard())),
+      );
 
       expect(find.text('Share with coach'), findsOneWidget);
       expect(find.textContaining('link'), findsOneWidget);
@@ -209,9 +264,11 @@ void main() {
 
     testWidgets('tapping it fires the handler', (tester) async {
       var taps = 0;
-      await tester.pumpWidget(MaterialApp(home: Scaffold(
-        body: ShareWithCoachCard(onTap: () => taps++),
-      )));
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(body: ShareWithCoachCard(onTap: () => taps++)),
+        ),
+      );
 
       await tester.tap(find.byKey(const Key('progress.share')));
       expect(taps, 1);

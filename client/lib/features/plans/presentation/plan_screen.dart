@@ -5,7 +5,8 @@ import '../../../core/theme.dart';
 import '../../../core/widgets/fs_kit.dart';
 import '../../exercises/presentation/exercise_thumb.dart';
 import '../../exercises/presentation/exercise_detail_screen.dart';
-import '../../exercises/presentation/exercise_list_screen.dart' show describeError;
+import '../../exercises/presentation/exercise_list_screen.dart'
+    show describeError;
 import '../../profile/presentation/providers.dart';
 import '../../sessions/presentation/providers.dart';
 import '../../sessions/presentation/session_logger_screen.dart';
@@ -126,9 +127,9 @@ class _PlanViewState extends ConsumerState<_PlanView> {
         await controller.start();
       }
       if (!mounted) return;
-      await Navigator.of(context).push(MaterialPageRoute<void>(
-        builder: (_) => const SessionLoggerScreen(),
-      ));
+      await Navigator.of(context).push(
+        MaterialPageRoute<void>(builder: (_) => const SessionLoggerScreen()),
+      );
     } catch (error) {
       messenger.showSnackBar(SnackBar(content: Text(describeError(error))));
     } finally {
@@ -141,7 +142,8 @@ class _PlanViewState extends ConsumerState<_PlanView> {
     final t = context.fs;
     final plan = widget.plan;
     final baseUrl = ref.watch(planRepositoryProvider).baseUrl;
-    final completedDays = ref.watch(completedDaysProvider).value ?? const <String>{};
+    final completedDays =
+        ref.watch(completedDaysProvider).value ?? const <String>{};
 
     // The rule itself lives on WorkoutPlan.todayDayNo, with the caveat about
     // distinct dates: the Home tab's plan card needs the same number, and two
@@ -154,9 +156,11 @@ class _PlanViewState extends ConsumerState<_PlanView> {
     final dayName = rotation == 1
         ? null
         : plan.days
-            .firstWhere((d) => d.dayNo == todayDayNo,
-                orElse: () => PlanDay(dayNo: todayDayNo, name: ''))
-            .name;
+              .firstWhere(
+                (d) => d.dayNo == todayDayNo,
+                orElse: () => PlanDay(dayNo: todayDayNo, name: ''),
+              )
+              .name;
 
     return ListView(
       padding: const EdgeInsets.fromLTRB(20, 8, 20, 24),
@@ -246,25 +250,31 @@ class _PlanExerciseCard extends StatelessWidget {
                 Row(
                   children: [
                     Expanded(
-                      child: Text(exercise.name, style: theme.textTheme.titleMedium),
+                      child: Text(
+                        exercise.name,
+                        style: theme.textTheme.titleMedium,
+                      ),
                     ),
                     TextButton(
                       key: Key('swap.open.${exercise.planExerciseId}'),
-                      onPressed: () => showModalBottomSheet<String>(
-                        context: context,
-                        isScrollControlled: true,
-                        builder: (_) => ExerciseSwapSheet(
-                          planExerciseId: exercise.planExerciseId,
-                          exerciseName: exercise.name,
-                          onGoToProfile: onGoToProfile,
-                        ),
-                      ).then((swappedTo) {
-                        if (swappedTo != null && context.mounted) {
-                          ScaffoldMessenger.of(context).showSnackBar(
-                            SnackBar(content: Text('Swapped to $swappedTo')),
-                          );
-                        }
-                      }),
+                      onPressed: () =>
+                          showModalBottomSheet<String>(
+                            context: context,
+                            isScrollControlled: true,
+                            builder: (_) => ExerciseSwapSheet(
+                              planExerciseId: exercise.planExerciseId,
+                              exerciseName: exercise.name,
+                              onGoToProfile: onGoToProfile,
+                            ),
+                          ).then((swappedTo) {
+                            if (swappedTo != null && context.mounted) {
+                              ScaffoldMessenger.of(context).showSnackBar(
+                                SnackBar(
+                                  content: Text('Swapped to $swappedTo'),
+                                ),
+                              );
+                            }
+                          }),
                       child: const Text('Change'),
                     ),
                   ],
@@ -288,4 +298,3 @@ class _PlanExerciseCard extends StatelessWidget {
     );
   }
 }
-

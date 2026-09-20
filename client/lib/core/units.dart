@@ -18,8 +18,7 @@ enum WeightUnit {
   /// Anything unrecognised reads as kilograms: the column is NOT NULL with a
   /// `kg` default, so an unknown value means a client newer than this one, and
   /// showing metric is a better failure than throwing on the profile.
-  static WeightUnit fromApi(String? value) =>
-      value == lb.api ? lb : kg;
+  static WeightUnit fromApi(String? value) => value == lb.api ? lb : kg;
 }
 
 /// One pound in kilograms, exactly, by international agreement since 1959.
@@ -43,7 +42,9 @@ String formatWeight(double kg, WeightUnit unit) {
   final fixed = value.toStringAsFixed(unit == WeightUnit.kg ? 2 : 1);
   // Guarded on the dot: `\.?0+$` against a string with no decimal point would
   // eat the significant zeros of "100" and leave "1".
-  return fixed.contains('.') ? fixed.replaceFirst(RegExp(r'\.?0+$'), '') : fixed;
+  return fixed.contains('.')
+      ? fixed.replaceFirst(RegExp(r'\.?0+$'), '')
+      : fixed;
 }
 
 /// [kg] in [unit], shortened for a headline: `48.2k` rather than `48,200`.

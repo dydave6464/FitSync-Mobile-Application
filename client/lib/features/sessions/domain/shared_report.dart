@@ -9,7 +9,7 @@ class SharedReport {
   final DateTime expiresAt;
 
   factory SharedReport.fromJson(Map<String, dynamic> json) => SharedReport(
-        url: json['url'] as String,
-        expiresAt: DateTime.parse(json['expiresAt'] as String),
-      );
+    url: json['url'] as String,
+    expiresAt: DateTime.parse(json['expiresAt'] as String),
+  );
 }

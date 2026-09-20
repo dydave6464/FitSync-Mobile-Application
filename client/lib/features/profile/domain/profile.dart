@@ -7,7 +7,8 @@ class EquipmentOption {
   final int equipmentId;
   final String name;
 
-  factory EquipmentOption.fromJson(Map<String, dynamic> json) => EquipmentOption(
+  factory EquipmentOption.fromJson(Map<String, dynamic> json) =>
+      EquipmentOption(
         equipmentId: json['equipmentId'] as int,
         name: json['name'] as String,
       );
@@ -32,11 +33,11 @@ class InjuryOption {
   final String regionGroup;
 
   factory InjuryOption.fromJson(Map<String, dynamic> json) => InjuryOption(
-        injuryId: json['injuryId'] as int,
-        name: json['name'] as String,
-        isLateral: json['isLateral'] as bool? ?? false,
-        regionGroup: json['regionGroup'] as String? ?? '',
-      );
+    injuryId: json['injuryId'] as int,
+    name: json['name'] as String,
+    isLateral: json['isLateral'] as bool? ?? false,
+    regionGroup: json['regionGroup'] as String? ?? '',
+  );
 }
 
 /// An injury the user has selected. [side] is null for a non-lateral region,
@@ -48,16 +49,16 @@ class SelectedInjury {
   final String? side;
 
   factory SelectedInjury.fromJson(Map<String, dynamic> json) => SelectedInjury(
-        injuryId: json['injuryId'] as int,
-        side: json['side'] as String?,
-      );
+    injuryId: json['injuryId'] as int,
+    side: json['side'] as String?,
+  );
 
   /// Omits `side` entirely when there is none, rather than sending null —
   /// the wire shape the server documents for a non-lateral injury.
   Map<String, dynamic> toJson() => {
-        'injuryId': injuryId,
-        if (side != null) 'side': side,
-      };
+    'injuryId': injuryId,
+    if (side != null) 'side': side,
+  };
 
   SelectedInjury withSide(String? value) =>
       SelectedInjury(injuryId: injuryId, side: value);
@@ -160,34 +161,34 @@ class Profile {
   }
 
   factory Profile.fromJson(Map<String, dynamic> json) => Profile(
-        userId: json['userId'] as int,
-        email: json['email'] as String,
-        fullName: json['fullName'] as String,
-        onboardingCompleted: json['onboardingCompleted'] as bool? ?? false,
-        isPremium: json['isPremium'] as bool? ?? false,
-        notificationsEnabled: json['notificationsEnabled'] as bool? ?? true,
-        weightUnit: WeightUnit.fromApi(json['weightUnit'] as String?),
-        equipment: ((json['equipment'] as List<dynamic>?) ?? const [])
-            .map((e) => EquipmentOption.fromJson(e as Map<String, dynamic>))
-            .toList(growable: false),
-        injuries: ((json['injuries'] as List<dynamic>?) ?? const [])
-            .map((e) => SelectedInjury.fromJson(e as Map<String, dynamic>))
-            .toList(growable: false),
-        trainingDays: ((json['trainingDays'] as List<dynamic>?) ?? const [])
-            .map((d) => (d as num).toInt())
-            .toList(growable: false),
-        sex: json['sex'] as String?,
-        dateOfBirth: _toDate(json['dateOfBirth']),
-        heightCm: _toDouble(json['heightCm']),
-        weightKg: _toDouble(json['weightKg']),
-        goalWeightKg: _toDouble(json['goalWeightKg']),
-        mainGoal: json['mainGoal'] as String?,
-        fitnessLevel: json['fitnessLevel'] as String?,
-        activityLevel: json['activityLevel'] as String?,
-        trainingLocation: json['trainingLocation'] as String?,
-        city: json['city'] as String?,
-        joinedAt: json['joinedAt'] == null
-            ? null
-            : DateTime.parse(json['joinedAt'] as String),
-      );
+    userId: json['userId'] as int,
+    email: json['email'] as String,
+    fullName: json['fullName'] as String,
+    onboardingCompleted: json['onboardingCompleted'] as bool? ?? false,
+    isPremium: json['isPremium'] as bool? ?? false,
+    notificationsEnabled: json['notificationsEnabled'] as bool? ?? true,
+    weightUnit: WeightUnit.fromApi(json['weightUnit'] as String?),
+    equipment: ((json['equipment'] as List<dynamic>?) ?? const [])
+        .map((e) => EquipmentOption.fromJson(e as Map<String, dynamic>))
+        .toList(growable: false),
+    injuries: ((json['injuries'] as List<dynamic>?) ?? const [])
+        .map((e) => SelectedInjury.fromJson(e as Map<String, dynamic>))
+        .toList(growable: false),
+    trainingDays: ((json['trainingDays'] as List<dynamic>?) ?? const [])
+        .map((d) => (d as num).toInt())
+        .toList(growable: false),
+    sex: json['sex'] as String?,
+    dateOfBirth: _toDate(json['dateOfBirth']),
+    heightCm: _toDouble(json['heightCm']),
+    weightKg: _toDouble(json['weightKg']),
+    goalWeightKg: _toDouble(json['goalWeightKg']),
+    mainGoal: json['mainGoal'] as String?,
+    fitnessLevel: json['fitnessLevel'] as String?,
+    activityLevel: json['activityLevel'] as String?,
+    trainingLocation: json['trainingLocation'] as String?,
+    city: json['city'] as String?,
+    joinedAt: json['joinedAt'] == null
+        ? null
+        : DateTime.parse(json['joinedAt'] as String),
+  );
 }

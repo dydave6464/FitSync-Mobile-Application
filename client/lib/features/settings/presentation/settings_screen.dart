@@ -6,7 +6,8 @@ import '../../../core/theme.dart';
 import '../../../core/theme_controller.dart';
 import '../../../core/widgets/fs_kit.dart';
 import '../../auth/presentation/auth_controller.dart';
-import '../../exercises/presentation/exercise_list_screen.dart' show describeError;
+import '../../exercises/presentation/exercise_list_screen.dart'
+    show describeError;
 import '../../onboarding/presentation/edit_scaffold.dart';
 import '../../onboarding/presentation/steps/about_step.dart';
 import '../../onboarding/presentation/steps/goal_step.dart';
@@ -87,9 +88,9 @@ class _SettingsList extends ConsumerWidget {
 
   final Profile profile;
 
-  void _open(BuildContext context, Widget editor) => Navigator.of(context).push(
-        MaterialPageRoute<void>(builder: (_) => editor),
-      );
+  void _open(BuildContext context, Widget editor) =>
+      Navigator.of(context)
+          .push(MaterialPageRoute<void>(builder: (_) => editor));
 
   String get _initials {
     final parts = profile.fullName.trim().split(RegExp(r'\s+'));
@@ -206,9 +207,9 @@ class _SettingsList extends ConsumerWidget {
                 label: 'Weight unit',
                 trailing: FsUnitToggle(
                   value: profile.weightUnit,
-                  onChanged: (unit) => ref
-                      .read(profileProvider.notifier)
-                      .patch({'weightUnit': unit.api}),
+                  onChanged: (unit) => ref.read(profileProvider.notifier).patch(
+                    {'weightUnit': unit.api},
+                  ),
                 ),
               ),
               _SettingsRow(
@@ -271,9 +272,7 @@ class _SettingsRow extends StatelessWidget {
       child: Container(
         padding: const EdgeInsets.symmetric(vertical: 12),
         decoration: BoxDecoration(
-          border: last
-              ? null
-              : Border(bottom: BorderSide(color: t.line)),
+          border: last ? null : Border(bottom: BorderSide(color: t.line)),
         ),
         child: Row(
           children: [
@@ -289,8 +288,7 @@ class _SettingsRow extends StatelessWidget {
                 ),
               ),
             ),
-            trailing ??
-                Icon(Icons.chevron_right, size: 16, color: t.text3),
+            trailing ?? Icon(Icons.chevron_right, size: 16, color: t.text3),
           ],
         ),
       ),
@@ -479,8 +477,9 @@ class _LevelEditorState extends _EditorState<_LevelEditor> {
       _value = LevelAnswers(
         fitnessLevel: profile.fitnessLevel,
         trainingLocation: profile.trainingLocation,
-        equipmentIds:
-            profile.equipment.map((e) => e.equipmentId).toList(growable: false),
+        equipmentIds: profile.equipment
+            .map((e) => e.equipmentId)
+            .toList(growable: false),
       );
     }
     return LevelStep(

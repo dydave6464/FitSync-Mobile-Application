@@ -60,7 +60,10 @@ class ActiveWorkoutCard extends StatelessWidget {
       // "0 sets logged" reads as a failure. A workout nobody has touched yet
       // has simply not been started, which is a different thing and the more
       // useful one to say -- it is the state a mis-tapped Start leaves.
-      if (sets == 0) 'Not started yet' else '$sets ${sets == 1 ? 'set' : 'sets'} logged',
+      if (sets == 0)
+        'Not started yet'
+      else
+        '$sets ${sets == 1 ? 'set' : 'sets'} logged',
     ];
     return parts.join(' · ');
   }

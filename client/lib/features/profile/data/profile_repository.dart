@@ -14,37 +14,50 @@ class ProfileRepository {
 
   final ApiClient _api;
 
-  Future<Profile> load() async =>
-      Profile.fromJson((await _api.getJson('/api/v1/profile'))['profile']
-          as Map<String, dynamic>);
+  Future<Profile> load() async => Profile.fromJson(
+    (await _api.getJson('/api/v1/profile'))['profile'] as Map<String, dynamic>,
+  );
 
   /// Sends exactly the keys it is given. The server treats an absent key as
   /// "leave alone" and an explicit null as "clear", so passing a full object
   /// with nulls would wipe fields the user never touched.
-  Future<Profile> patch(Map<String, dynamic> fields) async =>
-      Profile.fromJson((await _api.patchJson('/api/v1/profile', fields))['profile']
-          as Map<String, dynamic>);
+  Future<Profile> patch(Map<String, dynamic> fields) async => Profile.fromJson(
+    (await _api.patchJson('/api/v1/profile', fields))['profile']
+        as Map<String, dynamic>,
+  );
 
   /// The server replaces the whole set, so this sends every id the user has
   /// selected — not a delta.
-  Future<Profile> setEquipment(List<int> equipmentIds) async => Profile.fromJson(
-      (await _api.putJson('/api/v1/profile/equipment',
-          {'equipmentIds': equipmentIds}))['profile'] as Map<String, dynamic>);
+  Future<Profile> setEquipment(List<int> equipmentIds) async =>
+      Profile.fromJson(
+        (await _api.putJson('/api/v1/profile/equipment', {
+              'equipmentIds': equipmentIds,
+            }))['profile']
+            as Map<String, dynamic>,
+      );
 
   Future<Profile> setInjuries(List<SelectedInjury> injuries) async =>
-      Profile.fromJson((await _api.putJson('/api/v1/profile/injuries',
-          {'injuries': injuries.map((i) => i.toJson()).toList()}))['profile']
-          as Map<String, dynamic>);
+      Profile.fromJson(
+        (await _api.putJson('/api/v1/profile/injuries', {
+              'injuries': injuries.map((i) => i.toJson()).toList(),
+            }))['profile']
+            as Map<String, dynamic>,
+      );
 
   /// Replaces the whole set. An empty list clears the days, which is a real
   /// instruction rather than a no-op.
-  Future<Profile> setTrainingDays(List<int> weekdays) async =>
-      Profile.fromJson((await _api.putJson('/api/v1/profile/training-days',
-          {'trainingDays': weekdays}))['profile'] as Map<String, dynamic>);
+  Future<Profile> setTrainingDays(List<int> weekdays) async => Profile.fromJson(
+    (await _api.putJson('/api/v1/profile/training-days', {
+          'trainingDays': weekdays,
+        }))['profile']
+        as Map<String, dynamic>,
+  );
 
   Future<CompletedOnboarding> completeOnboarding() async {
-    final data =
-        await _api.postJson('/api/v1/profile/complete-onboarding', const {});
+    final data = await _api.postJson(
+      '/api/v1/profile/complete-onboarding',
+      const {},
+    );
     return (
       profile: Profile.fromJson(data['profile'] as Map<String, dynamic>),
       plan: data['plan'] as Map<String, dynamic>?,
@@ -67,13 +80,18 @@ class ProfileRepository {
   // and threw a null cast on the first live weigh-in fetch.
   Future<BodyWeightSeries> bodyWeight(String period) async =>
       BodyWeightSeries.fromJson(
-        await _api.getJson('/api/v1/profile/body-weight', query: {'period': period}),
+        await _api.getJson(
+          '/api/v1/profile/body-weight',
+          query: {'period': period},
+        ),
       );
 
   // Same fix as bodyWeight() above: postJson already unwraps the outer
   // "data" envelope once.
   Future<BodyWeightPoint> logBodyWeight(double weightKg) async =>
       BodyWeightPoint.fromJson(
-        await _api.postJson('/api/v1/profile/body-weight', {'weightKg': weightKg}),
+        await _api.postJson('/api/v1/profile/body-weight', {
+          'weightKg': weightKg,
+        }),
       );
 }

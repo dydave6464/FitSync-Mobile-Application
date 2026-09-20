@@ -24,10 +24,11 @@ import 'package:fitsync/features/sessions/presentation/workout_setup_screen.dart
 /// FsTag('Recommended') at 136dp against Space Grotesk's ~62dp, which is
 /// enough to invert a conclusion about whether this sheet fits.
 Future<void> _loadFont() async {
-  final bytes = await File('assets/fonts/SpaceGrotesk-Variable.ttf').readAsBytes();
-  await (FontLoader('SpaceGrotesk')
-        ..addFont(Future.value(ByteData.view(bytes.buffer))))
-      .load();
+  final bytes = await File('assets/fonts/SpaceGrotesk-Variable.ttf')
+      .readAsBytes();
+  await (FontLoader(
+    'SpaceGrotesk',
+  )..addFont(Future.value(ByteData.view(bytes.buffer)))).load();
 }
 
 /// A workout already trained, as GET /sessions/last reports it.
@@ -37,12 +38,18 @@ const _lastWorkout = LastWorkout(
   planName: null,
   exercises: [
     ExerciseSummary(
-      exerciseId: 101, name: 'Goblet squat', muscleGroup: 'quadriceps',
-      equipment: 'dumbbell', thumbnailUrl: null,
+      exerciseId: 101,
+      name: 'Goblet squat',
+      muscleGroup: 'quadriceps',
+      equipment: 'dumbbell',
+      thumbnailUrl: null,
     ),
     ExerciseSummary(
-      exerciseId: 202, name: 'Cable fly', muscleGroup: 'pectorals',
-      equipment: 'cable', thumbnailUrl: null,
+      exerciseId: 202,
+      name: 'Cable fly',
+      muscleGroup: 'pectorals',
+      equipment: 'cable',
+      thumbnailUrl: null,
     ),
   ],
 );
@@ -54,13 +61,15 @@ Future<ProviderContainer> _open(
   LastWorkout? last,
   Object? lastError,
 }) async {
-  final container = ProviderContainer(overrides: [
-    activePlanProvider.overrideWith((ref) async => plan),
-    lastWorkoutProvider.overrideWith((ref) async {
-      if (lastError != null) throw lastError;
-      return last;
-    }),
-  ]);
+  final container = ProviderContainer(
+    overrides: [
+      activePlanProvider.overrideWith((ref) async => plan),
+      lastWorkoutProvider.overrideWith((ref) async {
+        if (lastError != null) throw lastError;
+        return last;
+      }),
+    ],
+  );
   addTearDown(container.dispose);
   await tester.pumpWidget(
     UncontrolledProviderScope(
@@ -97,10 +106,12 @@ void main() {
   /// a bare Column has nowhere to put the remainder, so the second row goes
   /// off the bottom edge -- a debug stripe, and in release nothing at all.
   void expectBothRowsUsable(WidgetTester tester) {
-    expect(find.byKey(const Key('start.generator')).hitTestable(), findsOneWidget);
+    expect(
+      find.byKey(const Key('start.generator')).hitTestable(),
+      findsOneWidget,
+    );
     expect(find.byKey(const Key('start.manual')).hitTestable(), findsOneWidget);
   }
-
 
   testWidgets('offers to repeat the last workout', (tester) async {
     // The row your mockup draws under "or pick up where you left off". Your
@@ -114,18 +125,26 @@ void main() {
     expect(find.textContaining('2 exercises'), findsOneWidget);
   });
 
-  testWidgets('a repeated plan workout is named after its plan', (tester) async {
-    await _open(tester, last: const LastWorkout(
-      sessionId: 30,
-      sessionDate: '2026-09-12',
-      planName: 'Upper Body · Push',
-      exercises: [
-        ExerciseSummary(
-          exerciseId: 1, name: 'Bench press', muscleGroup: 'chest',
-          equipment: 'barbell', thumbnailUrl: null,
-        ),
-      ],
-    ));
+  testWidgets('a repeated plan workout is named after its plan', (
+    tester,
+  ) async {
+    await _open(
+      tester,
+      last: const LastWorkout(
+        sessionId: 30,
+        sessionDate: '2026-09-12',
+        planName: 'Upper Body · Push',
+        exercises: [
+          ExerciseSummary(
+            exerciseId: 1,
+            name: 'Bench press',
+            muscleGroup: 'chest',
+            equipment: 'barbell',
+            thumbnailUrl: null,
+          ),
+        ],
+      ),
+    );
 
     expect(find.textContaining('Upper Body · Push'), findsOneWidget);
     expect(find.textContaining('1 exercise'), findsOneWidget);
@@ -136,8 +155,11 @@ void main() {
     await _open(tester, last: null);
 
     expect(find.byKey(const Key('start.repeat')), findsNothing);
-    expect(find.textContaining('pick up where you left off'), findsNothing,
-        reason: 'a divider with nothing under it is furniture for nothing');
+    expect(
+      find.textContaining('pick up where you left off'),
+      findsNothing,
+      reason: 'a divider with nothing under it is furniture for nothing',
+    );
   });
 
   testWidgets('a failed lookup simply omits the row', (tester) async {
@@ -159,18 +181,27 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.byType(WorkoutReviewScreen), findsOneWidget);
-    expect(container.read(workoutDraftProvider).exerciseIds, [101, 202],
-        reason: 'in the order they were trained');
+    expect(container.read(workoutDraftProvider).exerciseIds, [
+      101,
+      202,
+    ], reason: 'in the order they were trained');
   });
 
   testWidgets('repeating replaces whatever was half-picked', (tester) async {
     // Appending would silently merge an abandoned selection into a workout
     // the user asked to repeat exactly.
     final container = await _open(tester, last: _lastWorkout);
-    container.read(workoutDraftProvider.notifier).toggle(const ExerciseSummary(
-      exerciseId: 999, name: 'Leftover', muscleGroup: 'abs',
-      equipment: null, thumbnailUrl: null,
-    ));
+    container
+        .read(workoutDraftProvider.notifier)
+        .toggle(
+          const ExerciseSummary(
+            exerciseId: 999,
+            name: 'Leftover',
+            muscleGroup: 'abs',
+            equipment: null,
+            thumbnailUrl: null,
+          ),
+        );
 
     await tester.tap(find.byKey(const Key('start.repeat')));
     await tester.pumpAndSettle();
@@ -201,8 +232,9 @@ void main() {
     expectBothRowsUsable(tester);
   });
 
-  testWidgets('the largest text scale scrolls rather than clipping',
-      (tester) async {
+  testWidgets('the largest text scale scrolls rather than clipping', (
+    tester,
+  ) async {
     // 2.0x on a 390x844 phone -- Android's largest font setting. At this
     // scale the two rows are taller than the whole screen, so no cap and no
     // amount of full-height sheet can show both at once: the remainder has
@@ -215,13 +247,22 @@ void main() {
 
     await _open(tester, textScaler: const TextScaler.linear(2));
 
-    expect(find.byKey(const Key('start.generator')).hitTestable(), findsOneWidget);
+    expect(
+      find.byKey(const Key('start.generator')).hitTestable(),
+      findsOneWidget,
+    );
 
-    await tester.drag(find.byKey(const Key('start.generator')), const Offset(0, -400));
+    await tester.drag(
+      find.byKey(const Key('start.generator')),
+      const Offset(0, -400),
+    );
     await tester.pumpAndSettle();
 
-    expect(find.byKey(const Key('start.manual')).hitTestable(), findsOneWidget,
-        reason: 'the second row must scroll into reach, not be clipped away');
+    expect(
+      find.byKey(const Key('start.manual')).hitTestable(),
+      findsOneWidget,
+      reason: 'the second row must scroll into reach, not be clipped away',
+    );
   });
 
   testWidgets('the sheet offers both rows from the design', (tester) async {
@@ -232,8 +273,9 @@ void main() {
     expect(find.text('Log a workout'), findsOneWidget);
   });
 
-  testWidgets('the row says what it does, not how it is implemented',
-      (tester) async {
+  testWidgets('the row says what it does, not how it is implemented', (
+    tester,
+  ) async {
     // "Log manually" described an implementation detail, and it stopped being
     // only a one-off path the moment it could build a plan.
     await _open(tester);
@@ -242,7 +284,9 @@ void main() {
     expect(find.text('Log manually'), findsNothing);
   });
 
-  testWidgets('log manually is live now that the picker exists', (tester) async {
+  testWidgets('log manually is live now that the picker exists', (
+    tester,
+  ) async {
     // It was inert while the exercise library was a later slice. The library
     // and the sessions endpoint both exist now, so "Coming soon" would be
     // saying the capability is missing when it is not.
@@ -250,9 +294,7 @@ void main() {
 
     expect(find.text('Coming soon'), findsNothing);
 
-    final row = tester.widget<InkWell>(
-      find.byKey(const Key('start.manual')),
-    );
+    final row = tester.widget<InkWell>(find.byKey(const Key('start.manual')));
     expect(row.onTap, isNotNull);
   });
 
@@ -270,8 +312,11 @@ void main() {
     await tester.pump(const Duration(seconds: 1));
 
     expect(find.byType(WorkoutSetupScreen), findsOneWidget);
-    expect(find.byType(ExerciseListScreen), findsNothing,
-        reason: 'the picker is reached from the setup screen, not the sheet');
+    expect(
+      find.byType(ExerciseListScreen),
+      findsNothing,
+      reason: 'the picker is reached from the setup screen, not the sheet',
+    );
 
     // The sheet must have been popped, not left stacked underneath: a
     // Navigator route that is merely covered by an opaque route above it is

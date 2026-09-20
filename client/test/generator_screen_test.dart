@@ -34,7 +34,8 @@ const _pplPlan = WorkoutPlan(
 
 /// The server's refusal message, shared by [FakePlanRepository] and the tests
 /// that check the dialog states it verbatim -- so the two never drift apart.
-const _customPlanMessage = 'Generating a new plan replaces "My Push / Pull / '
+const _customPlanMessage =
+    'Generating a new plan replaces "My Push / Pull / '
     'Legs" and the 2 days you built in it.';
 
 class FakePlanRepository implements PlanRepository {
@@ -92,8 +93,9 @@ class FakePlanRepository implements PlanRepository {
   }
 
   @override
-  dynamic noSuchMethod(Invocation invocation) =>
-      throw UnimplementedError('${invocation.memberName} is not used by these tests');
+  dynamic noSuchMethod(Invocation invocation) => throw UnimplementedError(
+    '${invocation.memberName} is not used by these tests',
+  );
 }
 
 /// How far the profile fetch got. The screen has to tell all three apart:
@@ -128,14 +130,17 @@ class _FakeProfileNotifier extends ProfileNotifier {
 
   @override
   Future<Profile> build() async => switch (load) {
-        _ProfileLoad.loaded =>
-          _profileWith(injuries, goal, trainingDays: trainingDays),
-        _ProfileLoad.pending => Completer<Profile>().future,
-        // A plain Exception, not ApiException(NETWORK_ERROR): that is the one
-        // code apiRetryPolicy retries on its own, which would leave the
-        // provider looping rather than settling into the error state.
-        _ProfileLoad.failed => throw Exception('profile down'),
-      };
+    _ProfileLoad.loaded => _profileWith(
+      injuries,
+      goal,
+      trainingDays: trainingDays,
+    ),
+    _ProfileLoad.pending => Completer<Profile>().future,
+    // A plain Exception, not ApiException(NETWORK_ERROR): that is the one
+    // code apiRetryPolicy retries on its own, which would leave the
+    // provider looping rather than settling into the error state.
+    _ProfileLoad.failed => throw Exception('profile down'),
+  };
 
   @override
   Future<void> setTrainingDays(List<int> weekdays) async {
@@ -151,19 +156,18 @@ Profile _profileWith(
   List<SelectedInjury> injuries,
   String? goal, {
   List<int> trainingDays = const [],
-}) =>
-    Profile(
-      userId: 1,
-      email: 'test@example.com',
-      fullName: 'Test User',
-      onboardingCompleted: true,
-      isPremium: false,
-      notificationsEnabled: true,
-      equipment: const [],
-      injuries: injuries,
-      trainingDays: trainingDays,
-      mainGoal: goal,
-    );
+}) => Profile(
+  userId: 1,
+  email: 'test@example.com',
+  fullName: 'Test User',
+  onboardingCompleted: true,
+  isPremium: false,
+  notificationsEnabled: true,
+  equipment: const [],
+  injuries: injuries,
+  trainingDays: trainingDays,
+  mainGoal: goal,
+);
 
 /// Records what the screen asks the profile to store. Only setInjuries is
 /// implemented -- the generator writes nothing else to the profile, and a
@@ -184,8 +188,9 @@ class FakeProfileRepository implements ProfileRepository {
   }
 
   @override
-  dynamic noSuchMethod(Invocation invocation) =>
-      throw UnimplementedError('${invocation.memberName} is not used by these tests');
+  dynamic noSuchMethod(Invocation invocation) => throw UnimplementedError(
+    '${invocation.memberName} is not used by these tests',
+  );
 }
 
 /// The profile notifier fake the running test's `_pump` installed. Set fresh
@@ -235,10 +240,7 @@ Future<void> _pump(
           return injuryOptions;
         }),
       ],
-      child: MaterialApp(
-        theme: fsLightTheme(),
-        home: const GeneratorScreen(),
-      ),
+      child: MaterialApp(theme: fsLightTheme(), home: const GeneratorScreen()),
     ),
   );
   await tester.pumpAndSettle();
@@ -292,7 +294,9 @@ void main() {
     expect(_chipOn(tester, 'Full body'), isFalse);
   });
 
-  testWidgets('with no plan the controls fall back to defaults', (tester) async {
+  testWidgets('with no plan the controls fall back to defaults', (
+    tester,
+  ) async {
     // /regenerate has no NO_ACTIVE_PLAN check, so this screen works for
     // someone who has none -- it must not render blank.
     await _pump(tester, plan: null);
@@ -324,20 +328,22 @@ void main() {
     expect(_chipOn(tester, 'Push / Pull / Legs'), isFalse);
   });
 
-  testWidgets('with no plan the derived session length still reaches the payload',
-      (tester) async {
-    // Length is no longer shown, so the only place it can be observed is the
-    // request. It still has to be RESOLVED and SENT: omitting sessionLengthMin
-    // hands the service's own `overrides.sessionLengthMin || 45` whatever it
-    // likes, and a 60-minute plan would come back silently shortened.
-    final repo = FakePlanRepository();
-    await _pump(tester, plan: null, repo: repo);
+  testWidgets(
+    'with no plan the derived session length still reaches the payload',
+    (tester) async {
+      // Length is no longer shown, so the only place it can be observed is the
+      // request. It still has to be RESOLVED and SENT: omitting sessionLengthMin
+      // hands the service's own `overrides.sessionLengthMin || 45` whatever it
+      // likes, and a 60-minute plan would come back silently shortened.
+      final repo = FakePlanRepository();
+      await _pump(tester, plan: null, repo: repo);
 
-    await tester.tap(find.byKey(const Key('gen.generate')));
-    await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const Key('gen.generate')));
+      await tester.pumpAndSettle();
 
-    expect(repo.sent!['sessionLengthMin'], 45);
-  });
+      expect(repo.sent!['sessionLengthMin'], 45);
+    },
+  );
 
   testWidgets('ticking a weekday adds just that day', (tester) async {
     // The behaviour fill-to-N could not express: days are chosen
@@ -359,23 +365,30 @@ void main() {
     expect(_profile.lastTrainingDays, [1, 5]);
   });
 
-  testWidgets('a failed write leaves the day as it was and says so',
-      (tester) async {
+  testWidgets('a failed write leaves the day as it was and says so', (
+    tester,
+  ) async {
     // Nothing may look saved that is not.
-    await _pump(tester, plan: _pplPlan, trainingDays: const [1],
-        failTrainingDays: true);
+    await _pump(
+      tester,
+      plan: _pplPlan,
+      trainingDays: const [1],
+      failTrainingDays: true,
+    );
 
     await tester.tap(find.byKey(const Key('weekday.5')));
     await tester.pumpAndSettle();
 
     expect(find.textContaining('Could not'), findsOneWidget);
     final failedCell = tester.widget<TrainingDayCell>(
-        find.byKey(const Key('weekday.5')));
+      find.byKey(const Key('weekday.5')),
+    );
     expect(failedCell.selected, isFalse);
     // The day that WAS stored must still render selected -- proves the row
     // reflects what is saved, not just that a failed tap stays untied.
     final storedCell = tester.widget<TrainingDayCell>(
-        find.byKey(const Key('weekday.1')));
+      find.byKey(const Key('weekday.1')),
+    );
     expect(storedCell.selected, isTrue);
   });
 
@@ -389,18 +402,22 @@ void main() {
     // no tap can currently produce it.
     await _pump(tester, plan: _pplPlan, trainingDays: const [1, 3]);
 
-    tester
-        .widget<TrainingDaysRow>(find.byType(TrainingDaysRow))
-        .onChanged(const [1, 3]);
+    tester.widget<TrainingDaysRow>(find.byType(TrainingDaysRow)).onChanged(
+      const [1, 3],
+    );
     await tester.pumpAndSettle();
 
     expect(tester.takeException(), isNull);
-    expect(_profile.lastTrainingDays, isNull,
-        reason: 'nothing changed, so there is nothing to save');
+    expect(
+      _profile.lastTrainingDays,
+      isNull,
+      reason: 'nothing changed, so there is nothing to save',
+    );
   });
 
-  testWidgets('a tap does nothing while the profile is still loading',
-      (tester) async {
+  testWidgets('a tap does nothing while the profile is still loading', (
+    tester,
+  ) async {
     // PUT /profile/training-days replaces the whole set. The plan can resolve
     // while the profile has not, and the row then renders seven blank cells
     // that say "none chosen" when the truth is "not known yet" -- one tap
@@ -410,15 +427,23 @@ void main() {
     await tester.tap(find.byKey(const Key('weekday.5')));
     await tester.pump();
 
-    expect(_profile.lastTrainingDays, isNull,
-        reason: 'a blank row that is only blank because nothing arrived '
-            'must not be able to write');
-    expect(find.byKey(const Key('gen.trainingDays.unavailable')), findsOneWidget,
-        reason: 'a row that silently ignores taps reads as broken');
+    expect(
+      _profile.lastTrainingDays,
+      isNull,
+      reason:
+          'a blank row that is only blank because nothing arrived '
+          'must not be able to write',
+    );
+    expect(
+      find.byKey(const Key('gen.trainingDays.unavailable')),
+      findsOneWidget,
+      reason: 'a row that silently ignores taps reads as broken',
+    );
   });
 
-  testWidgets('a failed profile leaves the row unusable and says why',
-      (tester) async {
+  testWidgets('a failed profile leaves the row unusable and says why', (
+    tester,
+  ) async {
     // Same destructive tap, and the one state that never resolves on its own.
     await _pump(tester, plan: _pplPlan, profileLoad: _ProfileLoad.failed);
 
@@ -438,8 +463,9 @@ void main() {
     );
   });
 
-  testWidgets('a loaded profile with no days chosen still takes taps',
-      (tester) async {
+  testWidgets('a loaded profile with no days chosen still takes taps', (
+    tester,
+  ) async {
     // Empty is a real answer, and the whole point of separating it from "not
     // known": disabling on emptiness would make the first day unpickable.
     await _pump(tester, plan: _pplPlan, trainingDays: const []);
@@ -460,8 +486,9 @@ void main() {
     expect(_plans.lastDaysPerWeek, 3);
   });
 
-  testWidgets('with no days chosen generate falls back to the plan count',
-      (tester) async {
+  testWidgets('with no days chosen generate falls back to the plan count', (
+    tester,
+  ) async {
     // The payload is never sent an empty schedule.
     await _pump(tester, plan: _pplPlan, trainingDays: const []);
 
@@ -471,8 +498,9 @@ void main() {
     expect(_plans.lastDaysPerWeek, _pplPlan.daysPerWeek);
   });
 
-  testWidgets('generating shows the building screen, not just a busy button',
-      (tester) async {
+  testWidgets('generating shows the building screen, not just a busy button', (
+    tester,
+  ) async {
     await _pump(tester, plan: _pplPlan, trainingDays: const [1, 3, 5]);
 
     await tester.tap(find.byKey(const Key('gen.generate')));
@@ -484,8 +512,9 @@ void main() {
     await tester.pumpAndSettle();
   });
 
-  testWidgets('with no days chosen the lead row counts them instead',
-      (tester) async {
+  testWidgets('with no days chosen the lead row counts them instead', (
+    tester,
+  ) async {
     // The lead row has one job -- say what is being applied -- and the plan's
     // own count is what is being applied when no weekday is ticked.
     await _pump(tester, plan: _pplPlan, trainingDays: const []);
@@ -498,8 +527,9 @@ void main() {
     await tester.pumpAndSettle();
   });
 
-  testWidgets('the building screen names the injuries it is working around',
-      (tester) async {
+  testWidgets('the building screen names the injuries it is working around', (
+    tester,
+  ) async {
     // Row two is the injury row in both of its states, whether or not the
     // user has chosen weekdays.
     await _pump(
@@ -509,7 +539,11 @@ void main() {
       injuries: const [SelectedInjury(injuryId: 3, side: 'right')],
       injuryOptions: const [
         InjuryOption(
-            injuryId: 3, name: 'Knee', isLateral: true, regionGroup: 'leg'),
+          injuryId: 3,
+          name: 'Knee',
+          isLateral: true,
+          regionGroup: 'leg',
+        ),
       ],
     );
 
@@ -530,40 +564,58 @@ void main() {
     await tester.tap(find.byKey(const Key('gen.generate')));
     await tester.pump();
 
-    expect(find.text('Full body, Tue · Thu'), findsNothing,
-        reason: 'the split is the plan\'s, not a default');
+    expect(
+      find.text('Full body, Tue · Thu'),
+      findsNothing,
+      reason: 'the split is the plan\'s, not a default',
+    );
     expect(find.text('Push / Pull / Legs, Tue · Thu'), findsOneWidget);
     expect(find.text('Avoiding Knee (right)'), findsOneWidget);
 
     await tester.pumpAndSettle();
   });
 
-  testWidgets('the building screen is held so a fast rebuild cannot flash past',
-      (tester) async {
-    await _pump(tester, plan: _pplPlan, trainingDays: const [1, 3, 5]);
+  testWidgets(
+    'the building screen is held so a fast rebuild cannot flash past',
+    (tester) async {
+      await _pump(tester, plan: _pplPlan, trainingDays: const [1, 3, 5]);
 
-    await tester.tap(find.byKey(const Key('gen.generate')));
-    // Nothing is gated: regenerate resolves on the next microtask, which is
-    // the case the hold exists for.
-    await tester.pump();
-    await tester.pump(GeneratingPace.regenerate.revealAt.last +
-        const Duration(milliseconds: 100));
+      await tester.tap(find.byKey(const Key('gen.generate')));
+      // Nothing is gated: regenerate resolves on the next microtask, which is
+      // the case the hold exists for.
+      await tester.pump();
+      await tester.pump(
+        GeneratingPace.regenerate.revealAt.last +
+            const Duration(milliseconds: 100),
+      );
 
-    for (final row in ['lead', 'avoiding', 'exercises']) {
-      expect(find.byKey(Key('gen.$row.done')), findsOneWidget,
-          reason: 'row $row should have ticked by the last slot');
-    }
-    expect(find.byType(GeneratorScreen), findsOneWidget,
-        reason: 'a hold shorter than the schedule would hand off mid-sequence '
-            'and the last tick would never be seen');
+      for (final row in ['lead', 'avoiding', 'exercises']) {
+        expect(
+          find.byKey(Key('gen.$row.done')),
+          findsOneWidget,
+          reason: 'row $row should have ticked by the last slot',
+        );
+      }
+      expect(
+        find.byType(GeneratorScreen),
+        findsOneWidget,
+        reason:
+            'a hold shorter than the schedule would hand off mid-sequence '
+            'and the last tick would never be seen',
+      );
 
-    await tester.pumpAndSettle();
-    expect(find.byType(GeneratorScreen), findsNothing,
-        reason: 'the hold delays the hand-off, never skips it');
-  });
+      await tester.pumpAndSettle();
+      expect(
+        find.byType(GeneratorScreen),
+        findsNothing,
+        reason: 'the hold delays the hand-off, never skips it',
+      );
+    },
+  );
 
-  testWidgets('the exercises row waits for the plan, not just for its slot',
-      (tester) async {
+  testWidgets('the exercises row waits for the plan, not just for its slot', (
+    tester,
+  ) async {
     // Pacing, never progress. The request is held open past every slot; the
     // row that describes it must not tick until it answers.
     final done = Completer<WorkoutPlan>();
@@ -579,15 +631,19 @@ void main() {
     await tester.pump(GeneratingPace.regenerate.minimumRun * 2);
 
     expect(find.byKey(const Key('gen.lead.done')), findsOneWidget);
-    expect(find.byKey(const Key('gen.exercises.done')), findsNothing,
-        reason: 'this row is the work still running; ticking it would be a lie');
+    expect(
+      find.byKey(const Key('gen.exercises.done')),
+      findsNothing,
+      reason: 'this row is the work still running; ticking it would be a lie',
+    );
 
     done.complete(_pplPlan);
     await tester.pumpAndSettle();
   });
 
-  testWidgets('the screen says generating replaces the current plan',
-      (tester) async {
+  testWidgets('the screen says generating replaces the current plan', (
+    tester,
+  ) async {
     // savePlan deactivates the previous plan inside its transaction. That is
     // the one destructive thing here and should not be discovered afterwards.
     await _pump(tester, plan: _pplPlan);
@@ -595,28 +651,36 @@ void main() {
     expect(find.textContaining('replace'), findsOneWidget);
   });
 
-  testWidgets('shows a loading indicator while the plan is loading, not the defaults',
-      (tester) async {
-    // AsyncValue.value reads null for both "loading" and "no plan", so
-    // flattening the two would render full_body/3/45 under "Generating
-    // replaces your current plan" while the real plan is still in flight.
-    await tester.pumpWidget(
-      ProviderScope(
-        overrides: [
-          activePlanProvider.overrideWith((ref) => Completer<WorkoutPlan?>().future),
-        ],
-        child: MaterialApp(theme: fsLightTheme(), home: const GeneratorScreen()),
-      ),
-    );
-    await tester.pump();
+  testWidgets(
+    'shows a loading indicator while the plan is loading, not the defaults',
+    (tester) async {
+      // AsyncValue.value reads null for both "loading" and "no plan", so
+      // flattening the two would render full_body/3/45 under "Generating
+      // replaces your current plan" while the real plan is still in flight.
+      await tester.pumpWidget(
+        ProviderScope(
+          overrides: [
+            activePlanProvider.overrideWith(
+              (ref) => Completer<WorkoutPlan?>().future,
+            ),
+          ],
+          child: MaterialApp(
+            theme: fsLightTheme(),
+            home: const GeneratorScreen(),
+          ),
+        ),
+      );
+      await tester.pump();
 
-    expect(find.byType(CircularProgressIndicator), findsOneWidget);
-    expect(find.byType(FsChip), findsNothing);
-    expect(find.text('Generating replaces your current plan.'), findsNothing);
-  });
+      expect(find.byType(CircularProgressIndicator), findsOneWidget);
+      expect(find.byType(FsChip), findsNothing);
+      expect(find.text('Generating replaces your current plan.'), findsNothing);
+    },
+  );
 
-  testWidgets('shows an error and offers a retry rather than the defaults',
-      (tester) async {
+  testWidgets('shows an error and offers a retry rather than the defaults', (
+    tester,
+  ) async {
     // Same flattening risk as loading: a failed fetch must not quietly
     // present full_body/3/45 as if it described a real plan, because
     // generating from there really does replace whatever plan the user has.
@@ -633,7 +697,10 @@ void main() {
             return _pplPlan;
           }),
         ],
-        child: MaterialApp(theme: fsLightTheme(), home: const GeneratorScreen()),
+        child: MaterialApp(
+          theme: fsLightTheme(),
+          home: const GeneratorScreen(),
+        ),
       ),
     );
     await tester.pumpAndSettle();
@@ -651,8 +718,12 @@ void main() {
 
   testWidgets('generate sends exactly what the controls show', (tester) async {
     final repo = FakePlanRepository();
-    await _pump(tester, plan: _pplPlan, repo: repo,
-        trainingDays: const [1, 2, 3, 4, 5]);
+    await _pump(
+      tester,
+      plan: _pplPlan,
+      repo: repo,
+      trainingDays: const [1, 2, 3, 4, 5],
+    );
 
     await tester.tap(find.text('Upper / Lower'));
     await tester.pump();
@@ -682,17 +753,26 @@ void main() {
 
   testWidgets('a failed generation leaves the screen open', (tester) async {
     final repo = FakePlanRepository(
-      error: const ApiException('PLAN_GENERATION_FAILED', 'Could not build a plan.'),
+      error: const ApiException(
+        'PLAN_GENERATION_FAILED',
+        'Could not build a plan.',
+      ),
     );
     await _pump(tester, plan: _pplPlan, repo: repo);
 
     await tester.tap(find.byKey(const Key('gen.generate')));
     await tester.pumpAndSettle();
 
-    expect(find.byType(GeneratorScreen), findsOneWidget,
-        reason: 'the user must be able to retry or change their choices');
-    expect(find.text(_generatedMessage), findsNothing,
-        reason: 'nothing was generated, so nothing should say it was');
+    expect(
+      find.byType(GeneratorScreen),
+      findsOneWidget,
+      reason: 'the user must be able to retry or change their choices',
+    );
+    expect(
+      find.text(_generatedMessage),
+      findsNothing,
+      reason: 'nothing was generated, so nothing should say it was',
+    );
   });
 
   testWidgets('generating over your own plan asks first', (tester) async {
@@ -736,7 +816,9 @@ void main() {
     expect(repo.lastReplaceCustomPlan, isTrue);
   });
 
-  testWidgets('a generated plan is replaced without a question', (tester) async {
+  testWidgets('a generated plan is replaced without a question', (
+    tester,
+  ) async {
     // A regression guard on today's behaviour: a plan the screen itself
     // generated must never be second-guessed.
     final repo = FakePlanRepository();
@@ -749,7 +831,9 @@ void main() {
     expect(repo.regenerateCalls, 1);
   });
 
-  testWidgets('a successful generation refreshes the active plan', (tester) async {
+  testWidgets('a successful generation refreshes the active plan', (
+    tester,
+  ) async {
     // Nothing else in the handler exercises this line -- deleting it left
     // every other assertion in this file green.
     var calls = 0;
@@ -769,7 +853,10 @@ void main() {
           // viewport.
           profileProvider.overrideWith(() => _FakeProfileNotifier(const [])),
         ],
-        child: MaterialApp(theme: fsLightTheme(), home: const GeneratorScreen()),
+        child: MaterialApp(
+          theme: fsLightTheme(),
+          home: const GeneratorScreen(),
+        ),
       ),
     );
     await tester.pumpAndSettle();
@@ -778,8 +865,11 @@ void main() {
     await tester.tap(find.byKey(const Key('gen.generate')));
     await tester.pumpAndSettle();
 
-    expect(calls, 2,
-        reason: 'the plan must be refetched so every screen reading it sees the new one');
+    expect(
+      calls,
+      2,
+      reason: 'the plan must be refetched so every screen reading it sees the new one',
+    );
     expect(find.byType(GeneratorScreen), findsNothing);
   });
 
@@ -809,7 +899,9 @@ void main() {
               body: Center(
                 child: ElevatedButton(
                   onPressed: () => Navigator.of(context).push(
-                    MaterialPageRoute<void>(builder: (_) => const GeneratorScreen()),
+                    MaterialPageRoute<void>(
+                      builder: (_) => const GeneratorScreen(),
+                    ),
                   ),
                   child: const Text('open'),
                 ),
@@ -872,7 +964,9 @@ void main() {
                 body: Center(
                   child: ElevatedButton(
                     onPressed: () => Navigator.of(context).push(
-                      MaterialPageRoute<void>(builder: (_) => const GeneratorScreen()),
+                      MaterialPageRoute<void>(
+                        builder: (_) => const GeneratorScreen(),
+                      ),
                     ),
                     child: const Text('open'),
                   ),
@@ -883,7 +977,11 @@ void main() {
         ),
       );
       await tester.pumpAndSettle();
-      expect(calls, 0, reason: 'activePlanProvider is not read until the generator opens');
+      expect(
+        calls,
+        0,
+        reason: 'activePlanProvider is not read until the generator opens',
+      );
 
       await tester.tap(find.text('open'));
       await tester.pumpAndSettle();
@@ -893,7 +991,8 @@ void main() {
       await tester.pump(); // regenerate is now in flight, awaiting `done`
 
       await tester.pageBack();
-      await tester.pumpAndSettle(); // the screen is gone before the request finishes
+      await tester
+          .pumpAndSettle(); // the screen is gone before the request finishes
 
       done.complete(_pplPlan);
       await tester.pump();
@@ -903,23 +1002,34 @@ void main() {
       // read that would otherwise wait for the Plan tab to reappear.
       await container.read(activePlanProvider.future);
 
-      expect(calls, 2,
-          reason: 'the refresh must survive the screen being popped mid-request');
+      expect(
+        calls,
+        2,
+        reason: 'the refresh must survive the screen being popped mid-request',
+      );
     },
   );
 
   group('describe your week', () {
-    const knee =
-        InjuryOption(injuryId: 3, name: 'Knee', isLateral: true, regionGroup: 'leg');
+    const knee = InjuryOption(
+      injuryId: 3,
+      name: 'Knee',
+      isLateral: true,
+      regionGroup: 'leg',
+    );
     const back = InjuryOption(
-        injuryId: 9, name: 'Lower back', isLateral: false, regionGroup: 'back');
+      injuryId: 9,
+      name: 'Lower back',
+      isLateral: false,
+      regionGroup: 'back',
+    );
 
     /// The editable inside the card. The key sits on the FsField wrapper, so
     /// both reading and typing have to reach through it.
     Finder field() => find.descendant(
-          of: find.byKey(const Key('gen.describe.field')),
-          matching: find.byType(TextField),
-        );
+      of: find.byKey(const Key('gen.describe.field')),
+      matching: find.byType(TextField),
+    );
 
     String fieldText(WidgetTester tester) =>
         tester.widget<TextField>(field()).controller!.text;
@@ -934,8 +1044,9 @@ void main() {
       await tester.pumpAndSettle();
     }
 
-    testWidgets('opens with a sentence composed from the profile and plan',
-        (tester) async {
+    testWidgets('opens with a sentence composed from the profile and plan', (
+      tester,
+    ) async {
       await _pump(tester, plan: _pplPlan, goal: 'build_muscle');
 
       final text = fieldText(tester);
@@ -944,20 +1055,23 @@ void main() {
       expect(text, contains('push / pull / legs'));
     });
 
-    testWidgets('an edited sentence is not overwritten when the profile arrives',
-        (tester) async {
-      // The box follows the profile and plan only until the user takes it
-      // over. Re-composing over their words would delete what they typed.
-      await _pump(tester, plan: _pplPlan, goal: 'build_muscle');
+    testWidgets(
+      'an edited sentence is not overwritten when the profile arrives',
+      (tester) async {
+        // The box follows the profile and plan only until the user takes it
+        // over. Re-composing over their words would delete what they typed.
+        await _pump(tester, plan: _pplPlan, goal: 'build_muscle');
 
-      await write(tester, 'my own words');
-      await tester.pumpAndSettle();
+        await write(tester, 'my own words');
+        await tester.pumpAndSettle();
 
-      expect(fieldText(tester), 'my own words');
-    });
+        expect(fieldText(tester), 'my own words');
+      },
+    );
 
-    testWidgets('applying the sentence moves the split and the day count',
-        (tester) async {
+    testWidgets('applying the sentence moves the split and the day count', (
+      tester,
+    ) async {
       await _pump(tester, plan: _pplPlan); // opens on push/pull/legs, 4 days
 
       await write(tester, 'full body, 2 days a week');
@@ -969,8 +1083,9 @@ void main() {
       expect(_chipOn(tester, 'Full body'), isTrue);
     });
 
-    testWidgets('a sentence it cannot read leaves the controls alone',
-        (tester) async {
+    testWidgets('a sentence it cannot read leaves the controls alone', (
+      tester,
+    ) async {
       // Resolving nothing must not read as "full body, 3 days" -- that is
       // the flattening this screen already refuses for its loading state.
       await _pump(tester, plan: _pplPlan);
@@ -983,8 +1098,9 @@ void main() {
       expect(screen.debugDaysPerWeek, 4);
     });
 
-    testWidgets('from profile rewrites the sentence after an edit',
-        (tester) async {
+    testWidgets('from profile rewrites the sentence after an edit', (
+      tester,
+    ) async {
       await _pump(tester, plan: _pplPlan, goal: 'build_muscle');
 
       await write(tester, 'nonsense');
@@ -994,8 +1110,9 @@ void main() {
       expect(fieldText(tester), contains('push / pull / legs'));
     });
 
-    testWidgets('a region the profile lacks is offered, not applied',
-        (tester) async {
+    testWidgets('a region the profile lacks is offered, not applied', (
+      tester,
+    ) async {
       // The generator reads injuries from the profile server-side. Treating a
       // typed region as already honoured would promise protection the plan
       // does not have.
@@ -1005,11 +1122,16 @@ void main() {
       await apply(tester);
 
       expect(find.byKey(const Key('gen.describe.add.3')), findsOneWidget);
-      expect(find.byKey(const Key('gen.avoiding')), findsNothing,
-          reason: 'nothing is being avoided until the profile says so');
+      expect(
+        find.byKey(const Key('gen.avoiding')),
+        findsNothing,
+        reason: 'nothing is being avoided until the profile says so',
+      );
     });
 
-    testWidgets('the offer says what adding the region will do', (tester) async {
+    testWidgets('the offer says what adding the region will do', (
+      tester,
+    ) async {
       // "Not in your injuries yet" states a fact about a database. What the
       // user is deciding is whether their plan avoids the movement, and the
       // offer should say so -- 608 exercises are contraindicated for the
@@ -1019,12 +1141,15 @@ void main() {
       await write(tester, 'protect my right knee');
       await apply(tester);
 
-      expect(find.textContaining('skip the exercises that load it'),
-          findsOneWidget);
+      expect(
+        find.textContaining('skip the exercises that load it'),
+        findsOneWidget,
+      );
     });
 
-    testWidgets('adding an offered region sends it to the profile',
-        (tester) async {
+    testWidgets('adding an offered region sends it to the profile', (
+      tester,
+    ) async {
       final profileRepo = FakeProfileRepository();
       await _pump(
         tester,
@@ -1043,8 +1168,9 @@ void main() {
       expect(profileRepo.sent!.single.side, 'right');
     });
 
-    testWidgets('adding keeps the injuries the profile already had',
-        (tester) async {
+    testWidgets('adding keeps the injuries the profile already had', (
+      tester,
+    ) async {
       // PUT /profile/injuries replaces the whole set, so an add that sends
       // only the new region silently deletes every other injury the user has.
       final profileRepo = FakeProfileRepository();
@@ -1061,11 +1187,15 @@ void main() {
       await tester.tap(find.byKey(const Key('gen.describe.add.3')));
       await tester.pumpAndSettle();
 
-      expect(profileRepo.sent!.map((i) => i.injuryId), containsAll(<int>[9, 3]));
+      expect(
+        profileRepo.sent!.map((i) => i.injuryId),
+        containsAll(<int>[9, 3]),
+      );
     });
 
-    testWidgets('a region already in the profile is not offered again',
-        (tester) async {
+    testWidgets('a region already in the profile is not offered again', (
+      tester,
+    ) async {
       await _pump(
         tester,
         plan: _pplPlan,
@@ -1096,25 +1226,35 @@ void main() {
       await tester.pumpAndSettle();
 
       expect(find.textContaining('Could not save that'), findsOneWidget);
-      expect(find.byKey(const Key('gen.describe.add.3')), findsOneWidget,
-          reason: 'nothing was saved, so the offer must still stand');
+      expect(
+        find.byKey(const Key('gen.describe.add.3')),
+        findsOneWidget,
+        reason: 'nothing was saved, so the offer must still stand',
+      );
     });
 
-    testWidgets('a catalogue that failed to load does not claim nothing matched',
-        (tester) async {
-      // value ?? const [] reads the same for "still loading", "failed" and
-      // "no regions exist". With a card that reports what it recognised, that
-      // silence becomes a false statement about the user's injuries.
-      await _pump(tester, plan: _pplPlan, injuryOptionsFail: true);
+    testWidgets(
+      'a catalogue that failed to load does not claim nothing matched',
+      (tester) async {
+        // value ?? const [] reads the same for "still loading", "failed" and
+        // "no regions exist". With a card that reports what it recognised, that
+        // silence becomes a false statement about the user's injuries.
+        await _pump(tester, plan: _pplPlan, injuryOptionsFail: true);
 
-      await write(tester, 'protect my right knee');
-      await apply(tester);
+        await write(tester, 'protect my right knee');
+        await apply(tester);
 
-      expect(find.byKey(const Key('gen.describe.catalogueError')), findsOneWidget);
-      expect(find.byKey(const Key('gen.describe.add.3')), findsNothing);
-    });
+        expect(
+          find.byKey(const Key('gen.describe.catalogueError')),
+          findsOneWidget,
+        );
+        expect(find.byKey(const Key('gen.describe.add.3')), findsNothing);
+      },
+    );
 
-    testWidgets('the sentence counts the days the picker shows', (tester) async {
+    testWidgets('the sentence counts the days the picker shows', (
+      tester,
+    ) async {
       // The plan's stored label still says four; the user has ticked three.
       // The card sits directly above the picker, so composing from the plan
       // puts "train 4 days a week" over three ticked cells -- a contradiction
@@ -1123,12 +1263,16 @@ void main() {
       await _pump(tester, plan: _pplPlan, trainingDays: const [1, 3, 5]);
 
       expect(fieldText(tester), contains('train 3 days a week'));
-      expect(_ticked(tester), 3,
-          reason: 'the sentence and the cells must describe one schedule');
+      expect(
+        _ticked(tester),
+        3,
+        reason: 'the sentence and the cells must describe one schedule',
+      );
     });
 
-    testWidgets('a day count the picker overrules is reported, not swallowed',
-        (tester) async {
+    testWidgets('a day count the picker overrules is reported, not swallowed', (
+      tester,
+    ) async {
       // _resolve takes the count from the chosen days, so the applied number
       // has nowhere to land. It cannot simply be dropped: parsed.isEmpty is
       // false -- the split did land -- so "Nothing in that changed your plan"
@@ -1142,12 +1286,16 @@ void main() {
       expect(find.textContaining('weekdays you have chosen'), findsOneWidget);
 
       final screen = tester.state(find.byType(GeneratorScreen)) as dynamic;
-      expect(screen.debugDaysPerWeek, 3,
-          reason: 'the picker sets the count while any day is chosen');
+      expect(
+        screen.debugDaysPerWeek,
+        3,
+        reason: 'the picker sets the count while any day is chosen',
+      );
     });
 
-    testWidgets('with no days chosen the count lands and nothing is reported',
-        (tester) async {
+    testWidgets('with no days chosen the count lands and nothing is reported', (
+      tester,
+    ) async {
       // The other half of the pair: with nothing ticked the sentence's count
       // IS what the controls take, so saying it went nowhere would be false.
       await _pump(tester, plan: _pplPlan, trainingDays: const []);
@@ -1160,8 +1308,9 @@ void main() {
       expect(screen.debugDaysPerWeek, 5);
     });
 
-    testWidgets('a topic this screen does not own is named, not dropped',
-        (tester) async {
+    testWidgets('a topic this screen does not own is named, not dropped', (
+      tester,
+    ) async {
       await _pump(tester, plan: _pplPlan);
 
       await write(tester, 'about 50 min a session');
@@ -1193,8 +1342,18 @@ void main() {
       plan: _pplPlan,
       injuries: const [SelectedInjury(injuryId: 3, side: 'right')],
       injuryOptions: const [
-        InjuryOption(injuryId: 3, name: 'Knee', isLateral: true, regionGroup: 'leg'),
-        InjuryOption(injuryId: 9, name: 'Lower back', isLateral: false, regionGroup: 'back'),
+        InjuryOption(
+          injuryId: 3,
+          name: 'Knee',
+          isLateral: true,
+          regionGroup: 'leg',
+        ),
+        InjuryOption(
+          injuryId: 9,
+          name: 'Lower back',
+          isLateral: false,
+          regionGroup: 'back',
+        ),
       ],
     );
 
@@ -1207,7 +1366,12 @@ void main() {
       plan: _pplPlan,
       injuries: const [SelectedInjury(injuryId: 9)],
       injuryOptions: const [
-        InjuryOption(injuryId: 9, name: 'Lower back', isLateral: false, regionGroup: 'back'),
+        InjuryOption(
+          injuryId: 9,
+          name: 'Lower back',
+          isLateral: false,
+          regionGroup: 'back',
+        ),
       ],
     );
 
@@ -1243,8 +1407,18 @@ void main() {
         plan: _pplPlan,
         injuries: const [SelectedInjury(injuryId: 12, side: 'left')],
         injuryOptions: const [
-          InjuryOption(injuryId: 12, name: 'SI joint', isLateral: true, regionGroup: 'back'),
-          InjuryOption(injuryId: 9, name: 'Lower back', isLateral: false, regionGroup: 'back'),
+          InjuryOption(
+            injuryId: 12,
+            name: 'SI joint',
+            isLateral: true,
+            regionGroup: 'back',
+          ),
+          InjuryOption(
+            injuryId: 9,
+            name: 'Lower back',
+            isLateral: false,
+            regionGroup: 'back',
+          ),
         ],
       );
 
@@ -1265,7 +1439,12 @@ void main() {
       plan: _pplPlan,
       injuries: const [SelectedInjury(injuryId: 4, side: 'both')],
       injuryOptions: const [
-        InjuryOption(injuryId: 4, name: 'Shoulder', isLateral: true, regionGroup: 'arm'),
+        InjuryOption(
+          injuryId: 4,
+          name: 'Shoulder',
+          isLateral: true,
+          regionGroup: 'arm',
+        ),
       ],
     );
 
@@ -1283,7 +1462,12 @@ void main() {
       plan: _pplPlan,
       injuries: const [SelectedInjury(injuryId: 4, side: 'bilateral')],
       injuryOptions: const [
-        InjuryOption(injuryId: 4, name: 'Shoulder', isLateral: true, regionGroup: 'arm'),
+        InjuryOption(
+          injuryId: 4,
+          name: 'Shoulder',
+          isLateral: true,
+          regionGroup: 'arm',
+        ),
       ],
     );
 

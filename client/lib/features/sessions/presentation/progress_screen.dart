@@ -3,7 +3,8 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../core/theme.dart';
 import '../../../core/widgets/fs_kit.dart';
-import '../../exercises/presentation/exercise_list_screen.dart' show describeError;
+import '../../exercises/presentation/exercise_list_screen.dart'
+    show describeError;
 import '../../profile/presentation/providers.dart'
     show bodyWeightProvider, weightUnitProvider;
 import '../../profile/presentation/widgets/body_weight_card.dart';
@@ -150,7 +151,8 @@ class ProgressScreen extends ConsumerWidget {
               ? const _NothingYet()
               : Column(
                   children: [
-                    for (final entry in page.sessions) _HistoryRow(entry: entry),
+                    for (final entry in page.sessions)
+                      _HistoryRow(entry: entry),
                   ],
                 ),
         ),
@@ -168,9 +170,9 @@ class _CardLoading extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) => const Padding(
-        padding: EdgeInsets.symmetric(vertical: 20),
-        child: Center(child: CircularProgressIndicator()),
-      );
+    padding: EdgeInsets.symmetric(vertical: 20),
+    child: Center(child: CircularProgressIndicator()),
+  );
 }
 
 /// A card-sized failure, for the strength and body-weight cards. Unlike
@@ -230,7 +232,10 @@ class _HistoryRow extends StatelessWidget {
                     entry.title,
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
-                    style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w600),
+                    style: const TextStyle(
+                      fontSize: 14,
+                      fontWeight: FontWeight.w600,
+                    ),
                   ),
                   const SizedBox(height: 3),
                   Text(facts, style: TextStyle(fontSize: 12, color: t.text2)),
@@ -285,20 +290,20 @@ class _Retry extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) => Center(
-        child: Padding(
-          padding: const EdgeInsets.all(24),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              const Icon(Icons.cloud_off, size: 40),
-              const SizedBox(height: 12),
-              Text(message, textAlign: TextAlign.center),
-              const SizedBox(height: 16),
-              FilledButton(onPressed: onRetry, child: const Text('Retry')),
-            ],
-          ),
-        ),
-      );
+    child: Padding(
+      padding: const EdgeInsets.all(24),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          const Icon(Icons.cloud_off, size: 40),
+          const SizedBox(height: 12),
+          Text(message, textAlign: TextAlign.center),
+          const SizedBox(height: 16),
+          FilledButton(onPressed: onRetry, child: const Text('Retry')),
+        ],
+      ),
+    ),
+  );
 }
 
 /// 8053.0 -> "8,053". Whole kilos only: a gram of barbell volume is noise,

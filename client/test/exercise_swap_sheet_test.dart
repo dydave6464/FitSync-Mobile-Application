@@ -14,12 +14,20 @@ import 'package:fitsync/features/plans/presentation/exercise_swap_sheet.dart';
 import 'package:fitsync/features/plans/presentation/providers.dart';
 
 const _alt = ExerciseAlternative(
-  exerciseId: 12, name: 'Push-up', muscleGroup: 'pectorals', equipment: 'Bodyweight',
+  exerciseId: 12,
+  name: 'Push-up',
+  muscleGroup: 'pectorals',
+  equipment: 'Bodyweight',
 );
 
 const _plan = WorkoutPlan(
-  planId: 1, name: 'P', splitStyle: 'full_body', daysPerWeek: 3,
-  sessionLengthMin: 45, weekNo: 1, exercises: [],
+  planId: 1,
+  name: 'P',
+  splitStyle: 'full_body',
+  daysPerWeek: 3,
+  sessionLengthMin: 45,
+  weekNo: 1,
+  exercises: [],
 );
 
 /// A minimal [PlanRepository] whose swap always fails, so the sheet's error
@@ -33,14 +41,18 @@ class _FailingRepo implements PlanRepository {
   Future<WorkoutPlan?> activePlan() async => null;
 
   @override
-  Future<List<ExerciseAlternative>> alternatives(int planExerciseId,
-          {String? q, bool bodyweightOnly = false}) async =>
-      const [];
+  Future<List<ExerciseAlternative>> alternatives(
+    int planExerciseId, {
+    String? q,
+    bool bodyweightOnly = false,
+  }) async => const [];
 
   @override
   Future<WorkoutPlan> swap(int planExerciseId, int exerciseId) async =>
       throw const ApiException(
-          'EXERCISE_NOT_ALLOWED', 'That exercise is not available for this plan.');
+        'EXERCISE_NOT_ALLOWED',
+        'That exercise is not available for this plan.',
+      );
 
   @override
   Future<WorkoutPlan> regenerate({
@@ -56,8 +68,9 @@ class _FailingRepo implements PlanRepository {
     required int sessionId,
     String? splitStyle,
     int? dayNo,
-  }) async =>
-      throw UnimplementedError('the swap sheet never sends a workout to the plan');
+  }) async => throw UnimplementedError(
+    'the swap sheet never sends a workout to the plan',
+  );
 }
 
 /// What the catalogue knows about the alternative under preview.
@@ -83,9 +96,11 @@ class _RecordingRepo implements PlanRepository {
   Future<WorkoutPlan?> activePlan() async => _plan;
 
   @override
-  Future<List<ExerciseAlternative>> alternatives(int planExerciseId,
-          {String? q, bool bodyweightOnly = false}) async =>
-      const [_alt];
+  Future<List<ExerciseAlternative>> alternatives(
+    int planExerciseId, {
+    String? q,
+    bool bodyweightOnly = false,
+  }) async => const [_alt];
 
   @override
   Future<WorkoutPlan> swap(int planExerciseId, int exerciseId) async {
@@ -107,26 +122,32 @@ class _RecordingRepo implements PlanRepository {
     required int sessionId,
     String? splitStyle,
     int? dayNo,
-  }) async =>
-      throw UnimplementedError('the swap sheet never sends a workout to the plan');
+  }) async => throw UnimplementedError(
+    'the swap sheet never sends a workout to the plan',
+  );
 }
 
 /// Pumps the sheet with a repository that records swaps and a catalogue that
 /// answers with [_detail].
 Future<_RecordingRepo> _pumpWithPreview(WidgetTester tester) async {
   final repo = _RecordingRepo();
-  await tester.pumpWidget(ProviderScope(
-    overrides: [
-      planRepositoryProvider.overrideWithValue(repo),
-      alternativesProvider.overrideWith((ref, key) async => const [_alt]),
-      exerciseDetailProvider.overrideWith((ref, id) async => _detail),
-    ],
-    child: const MaterialApp(
-      home: Scaffold(
-        body: ExerciseSwapSheet(planExerciseId: 77, exerciseName: 'Cable Fly'),
+  await tester.pumpWidget(
+    ProviderScope(
+      overrides: [
+        planRepositoryProvider.overrideWithValue(repo),
+        alternativesProvider.overrideWith((ref, key) async => const [_alt]),
+        exerciseDetailProvider.overrideWith((ref, id) async => _detail),
+      ],
+      child: const MaterialApp(
+        home: Scaffold(
+          body: ExerciseSwapSheet(
+            planExerciseId: 77,
+            exerciseName: 'Cable Fly',
+          ),
+        ),
       ),
     ),
-  ));
+  );
   await tester.pumpAndSettle();
   return repo;
 }
@@ -140,9 +161,11 @@ class _SucceedingRepo implements PlanRepository {
   Future<WorkoutPlan?> activePlan() async => _plan;
 
   @override
-  Future<List<ExerciseAlternative>> alternatives(int planExerciseId,
-          {String? q, bool bodyweightOnly = false}) async =>
-      const [_alt];
+  Future<List<ExerciseAlternative>> alternatives(
+    int planExerciseId, {
+    String? q,
+    bool bodyweightOnly = false,
+  }) async => const [_alt];
 
   @override
   Future<WorkoutPlan> swap(int planExerciseId, int exerciseId) async => _plan;
@@ -161,8 +184,9 @@ class _SucceedingRepo implements PlanRepository {
     required int sessionId,
     String? splitStyle,
     int? dayNo,
-  }) async =>
-      throw UnimplementedError('the swap sheet never sends a workout to the plan');
+  }) async => throw UnimplementedError(
+    'the swap sheet never sends a workout to the plan',
+  );
 }
 
 /// A [PlanRepository] whose swap does not resolve until [completer] does —
@@ -179,12 +203,15 @@ class _SlowRepo implements PlanRepository {
   Future<WorkoutPlan?> activePlan() async => _plan;
 
   @override
-  Future<List<ExerciseAlternative>> alternatives(int planExerciseId,
-          {String? q, bool bodyweightOnly = false}) async =>
-      const [_alt];
+  Future<List<ExerciseAlternative>> alternatives(
+    int planExerciseId, {
+    String? q,
+    bool bodyweightOnly = false,
+  }) async => const [_alt];
 
   @override
-  Future<WorkoutPlan> swap(int planExerciseId, int exerciseId) => completer.future;
+  Future<WorkoutPlan> swap(int planExerciseId, int exerciseId) =>
+      completer.future;
 
   @override
   Future<WorkoutPlan> regenerate({
@@ -200,8 +227,9 @@ class _SlowRepo implements PlanRepository {
     required int sessionId,
     String? splitStyle,
     int? dayNo,
-  }) async =>
-      throw UnimplementedError('the swap sheet never sends a workout to the plan');
+  }) async => throw UnimplementedError(
+    'the swap sheet never sends a workout to the plan',
+  );
 }
 
 Future<void> _pump(
@@ -209,20 +237,20 @@ Future<void> _pump(
   List<ExerciseAlternative> rows, {
   VoidCallback? onGoToProfile,
 }) async {
-  await tester.pumpWidget(ProviderScope(
-    overrides: [
-      alternativesProvider.overrideWith((ref, key) async => rows),
-    ],
-    child: MaterialApp(
-      home: Scaffold(
-        body: ExerciseSwapSheet(
-          planExerciseId: 77,
-          exerciseName: 'Cable Fly',
-          onGoToProfile: onGoToProfile,
+  await tester.pumpWidget(
+    ProviderScope(
+      overrides: [alternativesProvider.overrideWith((ref, key) async => rows)],
+      child: MaterialApp(
+        home: Scaffold(
+          body: ExerciseSwapSheet(
+            planExerciseId: 77,
+            exerciseName: 'Cable Fly',
+            onGoToProfile: onGoToProfile,
+          ),
         ),
       ),
     ),
-  ));
+  );
   await tester.pumpAndSettle();
 }
 
@@ -231,14 +259,14 @@ const _screen = Size(1080, 2340);
 const _dpr = 2.625;
 
 List<ExerciseAlternative> _many(int n) => List.generate(
-      n,
-      (i) => ExerciseAlternative(
-        exerciseId: i + 1,
-        name: 'Alternative ${i + 1}',
-        muscleGroup: 'pectorals',
-        equipment: 'Barbell',
-      ),
-    );
+  n,
+  (i) => ExerciseAlternative(
+    exerciseId: i + 1,
+    name: 'Alternative ${i + 1}',
+    muscleGroup: 'pectorals',
+    equipment: 'Barbell',
+  ),
+);
 
 /// Opens the sheet the way [PlanScreen] does — through a real modal route.
 ///
@@ -256,33 +284,33 @@ Future<double> _pumpAsSheet(
   tester.view.viewInsets = FakeViewPadding(bottom: keyboard * _dpr);
   addTearDown(tester.view.reset);
 
-  await tester.pumpWidget(ProviderScope(
-    overrides: [
-      alternativesProvider.overrideWith((ref, key) async => rows),
-    ],
-    child: MaterialApp(
-      // A fresh key per call: without it a second `_pumpAsSheet` in the same
-      // test reuses the Navigator's element, which still holds the first
-      // sheet's route — the "open" button would then be behind a modal
-      // barrier and the tap would dismiss the sheet instead.
-      key: ValueKey('${rows.length}:$keyboard'),
-      home: Scaffold(
-        body: Builder(
-          builder: (context) => TextButton(
-            onPressed: () => showModalBottomSheet<String>(
-              context: context,
-              isScrollControlled: true,
-              builder: (_) => const ExerciseSwapSheet(
-                planExerciseId: 77,
-                exerciseName: 'Cable Fly',
+  await tester.pumpWidget(
+    ProviderScope(
+      overrides: [alternativesProvider.overrideWith((ref, key) async => rows)],
+      child: MaterialApp(
+        // A fresh key per call: without it a second `_pumpAsSheet` in the same
+        // test reuses the Navigator's element, which still holds the first
+        // sheet's route — the "open" button would then be behind a modal
+        // barrier and the tap would dismiss the sheet instead.
+        key: ValueKey('${rows.length}:$keyboard'),
+        home: Scaffold(
+          body: Builder(
+            builder: (context) => TextButton(
+              onPressed: () => showModalBottomSheet<String>(
+                context: context,
+                isScrollControlled: true,
+                builder: (_) => const ExerciseSwapSheet(
+                  planExerciseId: 77,
+                  exerciseName: 'Cable Fly',
+                ),
               ),
+              child: const Text('open'),
             ),
-            child: const Text('open'),
           ),
         ),
       ),
     ),
-  ));
+  );
 
   await tester.tap(find.text('open'));
   await tester.pumpAndSettle();
@@ -303,8 +331,9 @@ void main() {
     expect(find.text('Bodyweight'), findsOneWidget);
   });
 
-  testWidgets('explains an empty pool rather than showing a blank list',
-      (tester) async {
+  testWidgets('explains an empty pool rather than showing a blank list', (
+    tester,
+  ) async {
     await _pump(tester, const []);
 
     // Reachable in production: delts has no body-weight strength exercises at
@@ -312,20 +341,26 @@ void main() {
     expect(find.textContaining('Nothing you can do'), findsOneWidget);
   });
 
-  testWidgets('a failed swap keeps the sheet open with the message',
-      (tester) async {
-    await tester.pumpWidget(ProviderScope(
-      overrides: [
-        alternativesProvider.overrideWith((ref, key) async => const [_alt]),
-        planRepositoryProvider.overrideWithValue(_FailingRepo()),
-        exerciseDetailProvider.overrideWith((ref, id) async => _detail),
-      ],
-      child: const MaterialApp(
-        home: Scaffold(
-          body: ExerciseSwapSheet(planExerciseId: 77, exerciseName: 'Cable Fly'),
+  testWidgets('a failed swap keeps the sheet open with the message', (
+    tester,
+  ) async {
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          alternativesProvider.overrideWith((ref, key) async => const [_alt]),
+          planRepositoryProvider.overrideWithValue(_FailingRepo()),
+          exerciseDetailProvider.overrideWith((ref, id) async => _detail),
+        ],
+        child: const MaterialApp(
+          home: Scaffold(
+            body: ExerciseSwapSheet(
+              planExerciseId: 77,
+              exerciseName: 'Cable Fly',
+            ),
+          ),
         ),
       ),
-    ));
+    );
     await tester.pumpAndSettle();
 
     await tester.tap(find.byKey(const Key('swap.alt.12')));
@@ -333,15 +368,24 @@ void main() {
     await tester.tap(find.byKey(const Key('swap.preview.confirm')));
     await tester.pumpAndSettle();
 
-    expect(find.byType(ExerciseSwapSheet), findsOneWidget,
-        reason: 'closing would discard the choice the user just made');
-    expect(find.byKey(const Key('swap.preview')), findsOneWidget,
-        reason: 'the rejected candidate stays on screen to be retried or '
-            'backed out of, rather than dumping the user in the list');
+    expect(
+      find.byType(ExerciseSwapSheet),
+      findsOneWidget,
+      reason: 'closing would discard the choice the user just made',
+    );
+    expect(
+      find.byKey(const Key('swap.preview')),
+      findsOneWidget,
+      reason:
+          'the rejected candidate stays on screen to be retried or '
+          'backed out of, rather than dumping the user in the list',
+    );
     expect(find.textContaining('not available'), findsOneWidget);
   });
 
-  testWidgets('points at Profile even when the list is not empty', (tester) async {
+  testWidgets('points at Profile even when the list is not empty', (
+    tester,
+  ) async {
     await _pump(tester, const [_alt]);
 
     // The pool is filtered to the equipment picked at onboarding, and until
@@ -351,8 +395,9 @@ void main() {
     expect(find.textContaining("Don't see your equipment?"), findsOneWidget);
   });
 
-  testWidgets('tapping the equipment note asks for the Profile tab',
-      (tester) async {
+  testWidgets('tapping the equipment note asks for the Profile tab', (
+    tester,
+  ) async {
     var asked = 0;
     await _pump(tester, const [_alt], onGoToProfile: () => asked++);
 
@@ -362,147 +407,186 @@ void main() {
     expect(asked, 1);
   });
 
-  testWidgets('the equipment note is inert when nothing wired a way to Profile',
-      (tester) async {
-    await _pump(tester, const [_alt]);
+  testWidgets(
+    'the equipment note is inert when nothing wired a way to Profile',
+    (tester) async {
+      await _pump(tester, const [_alt]);
 
-    // The advice still holds without a route to act on it — a sheet pumped
-    // outside the shell has no tab to switch to — but a link that goes
-    // nowhere is worse than plain text, so only the tappability drops.
-    expect(find.byKey(const Key('swap.equipmentHint')), findsOneWidget);
-    expect(
-      find.ancestor(
-        of: find.byKey(const Key('swap.equipmentHint')),
-        matching: find.byType(InkWell),
-      ),
-      findsNothing,
-    );
-  });
-
-
-
+      // The advice still holds without a route to act on it — a sheet pumped
+      // outside the shell has no tab to switch to — but a link that goes
+      // nowhere is worse than plain text, so only the tappability drops.
+      expect(find.byKey(const Key('swap.equipmentHint')), findsOneWidget);
+      expect(
+        find.ancestor(
+          of: find.byKey(const Key('swap.equipmentHint')),
+          matching: find.byType(InkWell),
+        ),
+        findsNothing,
+      );
+    },
+  );
 
   testWidgets(
-      'a successful swap invalidates every cached alternatives list, not just this row',
-      (tester) async {
-    var fetches = 0;
-    final container = ProviderContainer(overrides: [
-      alternativesProvider.overrideWith((ref, key) async {
-        fetches++;
-        return const [_alt];
-      }),
-      planRepositoryProvider.overrideWithValue(_SucceedingRepo()),
-      exerciseDetailProvider.overrideWith((ref, id) async => _detail),
-    ]);
-    addTearDown(container.dispose);
+    'a successful swap invalidates every cached alternatives list, not just this row',
+    (tester) async {
+      var fetches = 0;
+      final container = ProviderContainer(
+        overrides: [
+          alternativesProvider.overrideWith((ref, key) async {
+            fetches++;
+            return const [_alt];
+          }),
+          planRepositoryProvider.overrideWithValue(_SucceedingRepo()),
+          exerciseDetailProvider.overrideWith((ref, id) async => _detail),
+        ],
+      );
+      addTearDown(container.dispose);
 
-    // Held outside the sheet's widget tree, on the very key the sheet
-    // itself watches, so it is not torn down when the sheet closes below —
-    // isolating the family-wide invalidate in `_choose` from auto-dispose,
-    // which would also eventually reclaim a genuinely-unwatched entry on
-    // its own and could make this pass for the wrong reason.
-    const key = (planExerciseId: 77, query: '');
-    container.listen(alternativesProvider(key), (_, _) {});
+      // Held outside the sheet's widget tree, on the very key the sheet
+      // itself watches, so it is not torn down when the sheet closes below —
+      // isolating the family-wide invalidate in `_choose` from auto-dispose,
+      // which would also eventually reclaim a genuinely-unwatched entry on
+      // its own and could make this pass for the wrong reason.
+      const key = (planExerciseId: 77, query: '');
+      container.listen(alternativesProvider(key), (_, _) {});
 
-    await tester.pumpWidget(UncontrolledProviderScope(
-      container: container,
-      child: const MaterialApp(
-        home: Scaffold(
-          body: ExerciseSwapSheet(planExerciseId: 77, exerciseName: 'Cable Fly'),
+      await tester.pumpWidget(
+        UncontrolledProviderScope(
+          container: container,
+          child: const MaterialApp(
+            home: Scaffold(
+              body: ExerciseSwapSheet(
+                planExerciseId: 77,
+                exerciseName: 'Cable Fly',
+              ),
+            ),
+          ),
         ),
-      ),
-    ));
-    await tester.pumpAndSettle();
-    expect(fetches, 1, reason: 'one fetch renders the initial list');
+      );
+      await tester.pumpAndSettle();
+      expect(fetches, 1, reason: 'one fetch renders the initial list');
 
-    await tester.tap(find.byKey(const Key('swap.alt.12')));
-    await tester.pumpAndSettle();
-    await tester.tap(find.byKey(const Key('swap.preview.confirm')));
-    await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const Key('swap.alt.12')));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const Key('swap.preview.confirm')));
+      await tester.pumpAndSettle();
 
-    expect(fetches, 2,
-        reason: 'a swap changes inPlanIds for every row in the plan, so every '
+      expect(
+        fetches,
+        2,
+        reason:
+            'a swap changes inPlanIds for every row in the plan, so every '
             'cached alternatives list — including this exact key — must be '
-            'refetched, not just the row that changed');
-  });
+            'refetched, not just the row that changed',
+      );
+    },
+  );
 
-  testWidgets('a swap in flight when the sheet is dismissed still refreshes the plan',
-      (tester) async {
-    final completer = Completer<WorkoutPlan>();
-    var activePlanFetches = 0;
-    final container = ProviderContainer(overrides: [
-      planRepositoryProvider.overrideWithValue(_SlowRepo(completer)),
-      exerciseDetailProvider.overrideWith((ref, id) async => _detail),
-      alternativesProvider.overrideWith((ref, key) async => const [_alt]),
-      activePlanProvider.overrideWith((ref) {
-        activePlanFetches++;
-        return Future.value(_plan);
-      }),
-    ]);
-    addTearDown(container.dispose);
+  testWidgets(
+    'a swap in flight when the sheet is dismissed still refreshes the plan',
+    (tester) async {
+      final completer = Completer<WorkoutPlan>();
+      var activePlanFetches = 0;
+      final container = ProviderContainer(
+        overrides: [
+          planRepositoryProvider.overrideWithValue(_SlowRepo(completer)),
+          exerciseDetailProvider.overrideWith((ref, id) async => _detail),
+          alternativesProvider.overrideWith((ref, key) async => const [_alt]),
+          activePlanProvider.overrideWith((ref) {
+            activePlanFetches++;
+            return Future.value(_plan);
+          }),
+        ],
+      );
+      addTearDown(container.dispose);
 
-    // Held outside the sheet's widget tree so it survives the sheet's
-    // disposal below — asserting on the (by then disposed) sheet's own
-    // state would prove nothing about whether the refresh actually reached
-    // the provider.
-    container.listen(activePlanProvider, (_, _) {});
-    await container.read(activePlanProvider.future);
-    expect(activePlanFetches, 1);
+      // Held outside the sheet's widget tree so it survives the sheet's
+      // disposal below — asserting on the (by then disposed) sheet's own
+      // state would prove nothing about whether the refresh actually reached
+      // the provider.
+      container.listen(activePlanProvider, (_, _) {});
+      await container.read(activePlanProvider.future);
+      expect(activePlanFetches, 1);
 
-    await tester.pumpWidget(UncontrolledProviderScope(
-      container: container,
-      child: const MaterialApp(
-        home: Scaffold(
-          body: ExerciseSwapSheet(planExerciseId: 77, exerciseName: 'Cable Fly'),
+      await tester.pumpWidget(
+        UncontrolledProviderScope(
+          container: container,
+          child: const MaterialApp(
+            home: Scaffold(
+              body: ExerciseSwapSheet(
+                planExerciseId: 77,
+                exerciseName: 'Cable Fly',
+              ),
+            ),
+          ),
         ),
-      ),
-    ));
-    await tester.pumpAndSettle();
+      );
+      await tester.pumpAndSettle();
 
-    await tester.tap(find.byKey(const Key('swap.alt.12')));
-    await tester.pumpAndSettle();
-    await tester.tap(find.byKey(const Key('swap.preview.confirm')));
-    await tester.pump(); // starts the swap; it awaits the completer, so it does not resolve yet
+      await tester.tap(find.byKey(const Key('swap.alt.12')));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const Key('swap.preview.confirm')));
+      await tester.pump(); // starts the swap; it awaits the completer, so it does not resolve yet
 
-    // Dismiss the sheet by replacing the whole widget tree under it — the
-    // sheet's State is disposed while its swap() call is still in flight,
-    // exactly as it would be if the user swiped the sheet away mid-request.
-    await tester.pumpWidget(UncontrolledProviderScope(
-      container: container,
-      child: const MaterialApp(home: Scaffold(body: SizedBox())),
-    ));
-    await tester.pump();
+      // Dismiss the sheet by replacing the whole widget tree under it — the
+      // sheet's State is disposed while its swap() call is still in flight,
+      // exactly as it would be if the user swiped the sheet away mid-request.
+      await tester.pumpWidget(
+        UncontrolledProviderScope(
+          container: container,
+          child: const MaterialApp(home: Scaffold(body: SizedBox())),
+        ),
+      );
+      await tester.pump();
 
-    completer.complete(_plan);
-    await tester.pumpAndSettle();
+      completer.complete(_plan);
+      await tester.pumpAndSettle();
 
-    expect(tester.takeException(), isNull,
-        reason: 'completing the swap after disposal must not throw');
-    expect(activePlanFetches, 2,
-        reason: 'the refresh must survive the sheet being disposed mid-request');
-  });
+      expect(
+        tester.takeException(),
+        isNull,
+        reason: 'completing the swap after disposal must not throw',
+      );
+      expect(
+        activePlanFetches,
+        2,
+        reason: 'the refresh must survive the sheet being disposed mid-request',
+      );
+    },
+  );
 
-  testWidgets('opens at the same height whether there are two candidates or twelve',
-      (tester) async {
-    final two = await _pumpAsSheet(tester, _many(2));
-    final twelve = await _pumpAsSheet(tester, _many(12));
+  testWidgets(
+    'opens at the same height whether there are two candidates or twelve',
+    (tester) async {
+      final two = await _pumpAsSheet(tester, _many(2));
+      final twelve = await _pumpAsSheet(tester, _many(12));
 
-    // The point of the fixed height: a muscle with a dozen alternatives used
-    // to grow the sheet until it covered the plan entirely, so the same
-    // action looked like a different screen depending on the exercise.
-    expect(twelve, two);
-    final screen = _screen.height / _dpr;
-    expect(twelve / screen, closeTo(0.52, 0.01),
-        reason: 'the fraction is tuned to clear the Exercises heading below '
+      // The point of the fixed height: a muscle with a dozen alternatives used
+      // to grow the sheet until it covered the plan entirely, so the same
+      // action looked like a different screen depending on the exercise.
+      expect(twelve, two);
+      final screen = _screen.height / _dpr;
+      expect(
+        twelve / screen,
+        closeTo(0.52, 0.01),
+        reason:
+            'the fraction is tuned to clear the Exercises heading below '
             'the Plan tab\'s WeekStrip and SessionCard, with headroom for a '
-            'wrapped plan name -- see exercise_swap_sheet.dart');
-  });
+            'wrapped plan name -- see exercise_swap_sheet.dart',
+      );
+    },
+  );
 
-  testWidgets('a list too long for the sheet scrolls inside it', (tester) async {
+  testWidgets('a list too long for the sheet scrolls inside it', (
+    tester,
+  ) async {
     await _pumpAsSheet(tester, _many(12));
 
-    expect(find.text('Alternative 12'), findsNothing,
-        reason: 'twelve rows cannot fit; the last must start off-screen');
+    expect(
+      find.text('Alternative 12'),
+      findsNothing,
+      reason: 'twelve rows cannot fit; the last must start off-screen',
+    );
 
     await tester.scrollUntilVisible(
       find.text('Alternative 12'),
@@ -520,8 +604,9 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
-  testWidgets('gives the keyboard room instead of overflowing behind it',
-      (tester) async {
+  testWidgets('gives the keyboard room instead of overflowing behind it', (
+    tester,
+  ) async {
     // Guards the fix rather than driving it: a content-sized sheet already
     // survived this, but a rigid two thirds would not. The route anchors the
     // sheet to the bottom of the screen and never lifts it, so with a 400pt
@@ -533,13 +618,16 @@ void main() {
 
     final screen = _screen.height / _dpr;
     expect(tester.takeException(), isNull);
-    expect(tester.getBottomLeft(find.text('Alternative 1')).dy,
-        lessThanOrEqualTo(screen - keyboard),
-        reason: 'the first row has to sit above the keyboard, not behind it');
+    expect(
+      tester.getBottomLeft(find.text('Alternative 1')).dy,
+      lessThanOrEqualTo(screen - keyboard),
+      reason: 'the first row has to sit above the keyboard, not behind it',
+    );
   });
 
-  testWidgets('the demo is not stretched far past the pixels it has',
-      (tester) async {
+  testWidgets('the demo is not stretched far past the pixels it has', (
+    tester,
+  ) async {
     // Every animation in the store is 180x180. Filling the pane asked the
     // renderer for roughly five times that on a modern phone, which is the
     // whole of the blur — there is no more detail in the file to find.
@@ -552,25 +640,39 @@ void main() {
     await tester.pumpAndSettle();
 
     final painted = tester.getSize(find.byType(Image)).width * _dpr;
-    expect(painted, lessThanOrEqualTo(180 * 3),
-        reason: 'asking for more than 3x the source resolution buys nothing '
-            'but blur');
-    expect(painted, greaterThan(180.0),
-        reason: 'nor should it be shrunk below the detail it does have');
+    expect(
+      painted,
+      lessThanOrEqualTo(180 * 3),
+      reason:
+          'asking for more than 3x the source resolution buys nothing '
+          'but blur',
+    );
+    expect(
+      painted,
+      greaterThan(180.0),
+      reason: 'nor should it be shrunk below the detail it does have',
+    );
   });
 
-  testWidgets('tapping an alternative previews it instead of swapping it',
-      (tester) async {
+  testWidgets('tapping an alternative previews it instead of swapping it', (
+    tester,
+  ) async {
     final repo = await _pumpWithPreview(tester);
 
     await tester.tap(find.byKey(const Key('swap.alt.12')));
     await tester.pumpAndSettle();
 
-    expect(repo.swaps, isEmpty,
-        reason: 'a tap used to be the commitment; now it only opens a look');
+    expect(
+      repo.swaps,
+      isEmpty,
+      reason: 'a tap used to be the commitment; now it only opens a look',
+    );
     expect(find.byKey(const Key('swap.preview')), findsOneWidget);
-    expect(find.byKey(const Key('swap.search')), findsNothing,
-        reason: 'the preview takes the whole sheet, list and search included');
+    expect(
+      find.byKey(const Key('swap.search')),
+      findsNothing,
+      reason: 'the preview takes the whole sheet, list and search included',
+    );
   });
 
   testWidgets('the preview plays the catalogue demo', (tester) async {
@@ -580,9 +682,11 @@ void main() {
     await tester.pumpAndSettle();
 
     final image = tester.widget<Image>(find.byType(Image));
-    expect((image.image as NetworkImage).url,
-        'http://test.local/media/push-up.gif',
-        reason: 'the demo is the whole point of the preview');
+    expect(
+      (image.image as NetworkImage).url,
+      'http://test.local/media/push-up.gif',
+      reason: 'the demo is the whole point of the preview',
+    );
   });
 
   testWidgets('confirming from the preview is what swaps', (tester) async {
@@ -596,8 +700,9 @@ void main() {
     expect(repo.swaps, [(planExerciseId: 77, exerciseId: 12)]);
   });
 
-  testWidgets('backing out of the preview keeps the search that found it',
-      (tester) async {
+  testWidgets('backing out of the preview keeps the search that found it', (
+    tester,
+  ) async {
     await _pumpWithPreview(tester);
     await tester.enterText(find.byKey(const Key('swap.search')), 'push');
     await tester.pumpAndSettle();

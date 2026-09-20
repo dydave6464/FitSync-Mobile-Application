@@ -49,11 +49,12 @@ final exerciseRepositoryProvider = Provider<ExerciseRepository>(
 /// The cues for one exercise, which the server may have written for the user's
 /// injury. autoDispose because a workout touches a handful of exercises and
 /// never returns to most of them.
-final exerciseCuesProvider =
-    FutureProvider.autoDispose.family<ExerciseCues, int>(
-  (ref, exerciseId) => ref.watch(exerciseRepositoryProvider).cues(exerciseId),
-  retry: apiRetryPolicy,
-);
+final exerciseCuesProvider = FutureProvider.autoDispose
+    .family<ExerciseCues, int>(
+      (ref, exerciseId) =>
+          ref.watch(exerciseRepositoryProvider).cues(exerciseId),
+      retry: apiRetryPolicy,
+    );
 
 final exerciseFiltersProvider = FutureProvider<ExerciseFilters>(
   (ref) => ref.watch(exerciseRepositoryProvider).filters(),
@@ -75,8 +76,8 @@ class SelectedFiltersNotifier extends Notifier<SelectedFilters> {
 
 final selectedFiltersProvider =
     NotifierProvider<SelectedFiltersNotifier, SelectedFilters>(
-  SelectedFiltersNotifier.new,
-);
+      SelectedFiltersNotifier.new,
+    );
 
 /// The accumulated list across pages, plus enough state to drive infinite
 /// scroll without the screen tracking page numbers itself.
@@ -101,14 +102,13 @@ class ExerciseListState {
     int? total,
     bool? hasMore,
     bool? loadingMore,
-  }) =>
-      ExerciseListState(
-        items: items ?? this.items,
-        page: page ?? this.page,
-        total: total ?? this.total,
-        hasMore: hasMore ?? this.hasMore,
-        loadingMore: loadingMore ?? this.loadingMore,
-      );
+  }) => ExerciseListState(
+    items: items ?? this.items,
+    page: page ?? this.page,
+    total: total ?? this.total,
+    hasMore: hasMore ?? this.hasMore,
+    loadingMore: loadingMore ?? this.loadingMore,
+  );
 }
 
 /// Muscle groups the whole catalogue view is confined to, set by the picker
@@ -122,8 +122,8 @@ class CatalogueConstraintNotifier extends Notifier<List<String>> {
 
 final catalogueConstraintProvider =
     NotifierProvider<CatalogueConstraintNotifier, List<String>>(
-  CatalogueConstraintNotifier.new,
-);
+      CatalogueConstraintNotifier.new,
+    );
 
 /// What to actually ask the catalogue for.
 ///
@@ -206,13 +206,15 @@ class ExerciseListNotifier extends AsyncNotifier<ExerciseListState> {
       //     SelectedFilters — value equality is blind to that by
       //     construction, since the filters object never actually changes.
       if (filters != ref.read(selectedFiltersProvider)) return;
-      state = AsyncData(current.copyWith(
-        items: [...current.items, ...next.items],
-        page: next.page,
-        total: next.total,
-        hasMore: next.hasMore,
-        loadingMore: false,
-      ));
+      state = AsyncData(
+        current.copyWith(
+          items: [...current.items, ...next.items],
+          page: next.page,
+          total: next.total,
+          hasMore: next.hasMore,
+          loadingMore: false,
+        ),
+      );
     } catch (err, stack) {
       if (filters != ref.read(selectedFiltersProvider)) return;
       // A failed "load more" must not discard the pages already shown.
@@ -224,9 +226,9 @@ class ExerciseListNotifier extends AsyncNotifier<ExerciseListState> {
 
 final exerciseListProvider =
     AsyncNotifierProvider<ExerciseListNotifier, ExerciseListState>(
-  ExerciseListNotifier.new,
-  retry: apiRetryPolicy,
-);
+      ExerciseListNotifier.new,
+      retry: apiRetryPolicy,
+    );
 
 /// Surfaces a pagination failure without tearing down the list already on
 /// screen. The list screen shows it as a snack bar.
@@ -242,8 +244,7 @@ final listErrorProvider = NotifierProvider<ListErrorNotifier, Object?>(
   ListErrorNotifier.new,
 );
 
-final exerciseDetailProvider =
-    FutureProvider.family<ExerciseDetail, int>(
+final exerciseDetailProvider = FutureProvider.family<ExerciseDetail, int>(
   (ref, id) => ref.watch(exerciseRepositoryProvider).byId(id),
   retry: apiRetryPolicy,
 );

@@ -68,18 +68,18 @@ class FakeProfileNotifier extends ProfileNotifier {
 
   @override
   Future<Profile> build() async => Profile(
-        userId: _baseProfile.userId,
-        email: _baseProfile.email,
-        fullName: _baseProfile.fullName,
-        onboardingCompleted: _baseProfile.onboardingCompleted,
-        isPremium: _baseProfile.isPremium,
-        notificationsEnabled: _baseProfile.notificationsEnabled,
-        equipment: _baseProfile.equipment,
-        injuries: _baseProfile.injuries,
-        trainingDays: trainingDays,
-        city: _baseProfile.city,
-        mainGoal: _baseProfile.mainGoal,
-      );
+    userId: _baseProfile.userId,
+    email: _baseProfile.email,
+    fullName: _baseProfile.fullName,
+    onboardingCompleted: _baseProfile.onboardingCompleted,
+    isPremium: _baseProfile.isPremium,
+    notificationsEnabled: _baseProfile.notificationsEnabled,
+    equipment: _baseProfile.equipment,
+    injuries: _baseProfile.injuries,
+    trainingDays: trainingDays,
+    city: _baseProfile.city,
+    mainGoal: _baseProfile.mainGoal,
+  );
 
   @override
   Future<void> patch(Map<String, dynamic> fields) async {
@@ -111,15 +111,15 @@ class RecordingAuthController extends AuthController {
 
   @override
   Future<AuthState> build() async => AuthState(
-        AuthStatus.ready,
-        const AuthUser(
-          userId: 7,
-          email: 'juan@example.com',
-          fullName: 'Juan Dela Cruz',
-          onboardingCompleted: true,
-          isPremium: false,
-        ),
-      );
+    AuthStatus.ready,
+    const AuthUser(
+      userId: 7,
+      email: 'juan@example.com',
+      fullName: 'Juan Dela Cruz',
+      onboardingCompleted: true,
+      isPremium: false,
+    ),
+  );
 
   @override
   Future<void> signOut() async {
@@ -147,16 +147,19 @@ Future<void> _pump(
     trainingDays: trainingDays,
     failTrainingDays: failTrainingDays,
   );
-  await tester.pumpWidget(ProviderScope(
-    overrides: [
-      profileProvider.overrideWith(() => _profile),
-      authControllerProvider
-          .overrideWith(() => RecordingAuthController(signOuts ?? [])),
-      equipmentOptionsProvider.overrideWith((ref) async => _equipment),
-      injuryOptionsProvider.overrideWith((ref) async => _injuryOptions),
-    ],
-    child: const MaterialApp(home: SettingsScreen()),
-  ));
+  await tester.pumpWidget(
+    ProviderScope(
+      overrides: [
+        profileProvider.overrideWith(() => _profile),
+        authControllerProvider.overrideWith(
+          () => RecordingAuthController(signOuts ?? []),
+        ),
+        equipmentOptionsProvider.overrideWith((ref) async => _equipment),
+        injuryOptionsProvider.overrideWith((ref) async => _injuryOptions),
+      ],
+      child: const MaterialApp(home: SettingsScreen()),
+    ),
+  );
   await tester.pumpAndSettle();
 }
 
@@ -177,8 +180,9 @@ void main() {
 
   // Reachable when you are not mid-workout: the logger's header toggle is the
   // discoverable one, but nobody goes there to change a setting.
-  testWidgets('the weight unit row saves what it is switched to',
-      (tester) async {
+  testWidgets('the weight unit row saves what it is switched to', (
+    tester,
+  ) async {
     final patches = <Map<String, dynamic>>[];
     await _pump(tester, patches: patches);
 
@@ -201,8 +205,9 @@ void main() {
     expect(find.text('Language'), findsNothing);
   });
 
-  testWidgets('each row opens its step inside the edit scaffold',
-      (tester) async {
+  testWidgets('each row opens its step inside the edit scaffold', (
+    tester,
+  ) async {
     await _pump(tester, patches: []);
 
     for (final row in [
@@ -213,8 +218,11 @@ void main() {
     ]) {
       await _openRow(tester, row.key);
 
-      expect(find.byType(EditScaffold), findsOneWidget,
-          reason: '${row.key} must open an editor, not a wizard step');
+      expect(
+        find.byType(EditScaffold),
+        findsOneWidget,
+        reason: '${row.key} must open an editor, not a wizard step',
+      );
       expect(find.byType(row.type), findsOneWidget);
       expect(find.byType(LinearProgressIndicator), findsNothing);
 
@@ -234,8 +242,11 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(patches.single, {'mainGoal': 'build_muscle'});
-    expect(find.byType(EditScaffold), findsNothing,
-        reason: 'a successful save should return to Settings');
+    expect(
+      find.byType(EditScaffold),
+      findsNothing,
+      reason: 'a successful save should return to Settings',
+    );
   });
 
   testWidgets('a save says so, naming what was saved', (tester) async {
@@ -252,8 +263,9 @@ void main() {
     expect(find.text('Goal saved'), findsOneWidget);
   });
 
-  testWidgets('the message names the section, not a generic success',
-      (tester) async {
+  testWidgets('the message names the section, not a generic success', (
+    tester,
+  ) async {
     await _pump(tester, patches: []);
 
     await _openRow(tester, const Key('edit.injuries'));
@@ -276,8 +288,11 @@ void main() {
     // could not be saved", which such a matcher would catch and call a pass.
     expect(find.text('Goal saved'), findsNothing);
     expect(find.byType(SnackBar), findsNothing);
-    expect(find.byKey(const Key('error')), findsOneWidget,
-        reason: 'the failure is reported where the user is, on the editor');
+    expect(
+      find.byKey(const Key('error')),
+      findsOneWidget,
+      reason: 'the failure is reported where the user is, on the editor',
+    );
   });
 
   testWidgets('the notifications toggle writes the new value', (tester) async {
@@ -313,8 +328,7 @@ void main() {
     expect(find.text('Training days'), findsOneWidget);
   });
 
-  testWidgets('the row opens a picker seeded from the profile',
-      (tester) async {
+  testWidgets('the row opens a picker seeded from the profile', (tester) async {
     await _pump(tester, trainingDays: const [1, 3]);
 
     await _openRow(tester, const Key('edit.trainingDays'));
@@ -345,8 +359,9 @@ void main() {
     expect(_profile.lastTrainingDays, [1, 3]);
   });
 
-  testWidgets('a failed save reports it and stays on the editor',
-      (tester) async {
+  testWidgets('a failed save reports it and stays on the editor', (
+    tester,
+  ) async {
     // Same contract every other editor here has: nothing may look saved that
     // is not, and the screen must not pop on failure.
     await _pump(tester, trainingDays: const [1], failTrainingDays: true);
@@ -361,28 +376,33 @@ void main() {
     expect(find.text('Training days'), findsOneWidget);
   });
 
-  testWidgets('the same step widget renders under both scaffolds',
-      (tester) async {
+  testWidgets('the same step widget renders under both scaffolds', (
+    tester,
+  ) async {
     // The point of the two-scaffold design. If this ever needs a flag on the
     // step to pass, the boundary has leaked and Task 10 stops being wiring.
-    await tester.pumpWidget(MaterialApp(
-      home: OnboardingScaffold(
-        step: 1,
-        total: 4,
-        onContinue: () {},
-        child: GoalStep(value: null, onChanged: (_) {}),
+    await tester.pumpWidget(
+      MaterialApp(
+        home: OnboardingScaffold(
+          step: 1,
+          total: 4,
+          onContinue: () {},
+          child: GoalStep(value: null, onChanged: (_) {}),
+        ),
       ),
-    ));
+    );
     await tester.pumpAndSettle();
     expect(find.byKey(const Key('goal.lose_weight')), findsOneWidget);
 
-    await tester.pumpWidget(MaterialApp(
-      home: EditScaffold(
-        title: 'Goal',
-        onSave: () {},
-        child: GoalStep(value: null, onChanged: (_) {}),
+    await tester.pumpWidget(
+      MaterialApp(
+        home: EditScaffold(
+          title: 'Goal',
+          onSave: () {},
+          child: GoalStep(value: null, onChanged: (_) {}),
+        ),
       ),
-    ));
+    );
     await tester.pumpAndSettle();
     expect(find.byKey(const Key('goal.lose_weight')), findsOneWidget);
   });

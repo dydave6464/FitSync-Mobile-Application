@@ -7,7 +7,8 @@ import '../../../core/units.dart';
 import '../../../core/widgets/fs_kit.dart';
 import '../../exercises/presentation/providers.dart'
     show exerciseRepositoryProvider;
-import '../../exercises/presentation/exercise_list_screen.dart' show describeError;
+import '../../exercises/presentation/exercise_list_screen.dart'
+    show describeError;
 import '../../plans/domain/workout_plan.dart';
 import '../../plans/presentation/add_to_plan_sheet.dart';
 import '../../plans/presentation/providers.dart';
@@ -29,7 +30,8 @@ class SessionLoggerScreen extends ConsumerStatefulWidget {
   const SessionLoggerScreen({super.key});
 
   @override
-  ConsumerState<SessionLoggerScreen> createState() => _SessionLoggerScreenState();
+  ConsumerState<SessionLoggerScreen> createState() =>
+      _SessionLoggerScreenState();
 }
 
 /// Which face of the current exercise is on screen. Two faces of one
@@ -335,44 +337,47 @@ class _SessionLoggerScreenState extends ConsumerState<SessionLoggerScreen> {
     // the button performs, and the dialog's builder does not rebuild when the
     // provider changes under it.
     final active = ref.read(activePlanProvider).value;
-    final addToPlanWillClose = await showDialog<bool>(
-      context: context,
-      builder: (dialogContext) => AlertDialog(
-        key: const Key('logger.summary'),
-        title: const Text('Session complete'),
-        content: Text(
-          '${done.durationMin} min · ${done.completedSetCount} sets · '
-          // Whole numbers: a session's total volume runs to hundreds, where
-          // formatWeight's decimal place would be noise rather than precision.
-          '${convertFromKg(done.totalVolumeKg ?? 0, unit).toStringAsFixed(0)} '
-          '${unit.api} lifted',
-        ),
-        actions: [
-          // Only a hand-picked workout. A plan-backed one is already part of a
-          // plan, and offering to add it again would be offering nothing.
-          //
-          // Offered, never automatic: this workout may have been improvisation,
-          // and silently rewriting the plan the user follows is the kind of
-          // surprise that costs trust in the whole feature.
-          if (done.planId == null)
-            TextButton(
-              key: const Key('summary.toPlan'),
-              onPressed: () => _addToPlan(dialogContext, done),
-              // Two acts, two labels -- see the design, section 4. "Add to my
-              // plan" over a plan the user has not built is a promise the
-              // action does not keep: there is nothing to add to, so the
-              // workout becomes the plan and whatever was active goes.
-              child: Text(active != null && active.isCustom
-                  ? 'Add to my plan'
-                  : 'Make this my plan'),
+    final addToPlanWillClose =
+        await showDialog<bool>(
+          context: context,
+          builder: (dialogContext) => AlertDialog(
+            key: const Key('logger.summary'),
+            title: const Text('Session complete'),
+            content: Text(
+              '${done.durationMin} min · ${done.completedSetCount} sets · '
+              // Whole numbers: a session's total volume runs to hundreds, where
+              // formatWeight's decimal place would be noise rather than precision.
+              '${convertFromKg(done.totalVolumeKg ?? 0, unit).toStringAsFixed(0)} '
+              '${unit.api} lifted',
             ),
-          TextButton(
-            onPressed: () => Navigator.of(dialogContext).pop(false),
-            child: const Text('Done'),
+            actions: [
+              // Only a hand-picked workout. A plan-backed one is already part of a
+              // plan, and offering to add it again would be offering nothing.
+              //
+              // Offered, never automatic: this workout may have been improvisation,
+              // and silently rewriting the plan the user follows is the kind of
+              // surprise that costs trust in the whole feature.
+              if (done.planId == null)
+                TextButton(
+                  key: const Key('summary.toPlan'),
+                  onPressed: () => _addToPlan(dialogContext, done),
+                  // Two acts, two labels -- see the design, section 4. "Add to my
+                  // plan" over a plan the user has not built is a promise the
+                  // action does not keep: there is nothing to add to, so the
+                  // workout becomes the plan and whatever was active goes.
+                  child: Text(
+                    active != null && active.isCustom
+                        ? 'Add to my plan'
+                        : 'Make this my plan',
+                  ),
+                ),
+              TextButton(
+                onPressed: () => Navigator.of(dialogContext).pop(false),
+                child: const Text('Done'),
+              ),
+            ],
           ),
-        ],
-      ),
-    ) ??
+        ) ??
         false;
     if (!addToPlanWillClose && mounted) Navigator.of(context).pop();
   }
@@ -398,7 +403,10 @@ class _SessionLoggerScreenState extends ConsumerState<SessionLoggerScreen> {
   /// lands there is usually no screen left, and the host scaffold below is
   /// what shows it. Same pattern as `generator_screen.dart`'s `_generate`
   /// and `exercise_swap_sheet.dart`'s `_choose`, for the same reason.
-  Future<void> _addToPlan(BuildContext dialogContext, ActiveSession done) async {
+  Future<void> _addToPlan(
+    BuildContext dialogContext,
+    ActiveSession done,
+  ) async {
     final messenger = ScaffoldMessenger.of(context);
     final container = ProviderScope.containerOf(context, listen: false);
     Navigator.of(dialogContext).pop(true);
@@ -431,7 +439,9 @@ class _SessionLoggerScreenState extends ConsumerState<SessionLoggerScreen> {
     if (cancelled) return;
 
     try {
-      final plan = await ref.read(planRepositoryProvider).planFromSession(
+      final plan = await ref
+          .read(planRepositoryProvider)
+          .planFromSession(
             sessionId: done.sessionId,
             splitStyle: ref.read(chosenSplitStyleProvider),
             dayNo: dayNo,
@@ -445,9 +455,7 @@ class _SessionLoggerScreenState extends ConsumerState<SessionLoggerScreen> {
       // returned to, which is very much alive. Gating it here would mean
       // nothing at all appeared on any connection slower than the pop
       // animation, for either outcome. Same as generator_screen.dart.
-      messenger.showSnackBar(
-        SnackBar(content: Text('Added to ${plan.name}.')),
-      );
+      messenger.showSnackBar(SnackBar(content: Text('Added to ${plan.name}.')));
     } catch (error) {
       messenger.showSnackBar(SnackBar(content: Text(describeError(error))));
     }
@@ -531,77 +539,77 @@ class _SessionLoggerScreenState extends ConsumerState<SessionLoggerScreen> {
   /// [doneSets] only keys the rest countdown, which restarts on each
   /// new set; the empty state never rests, so it passes zero.
   PreferredSizeWidget _appBar(FsTokens t, {int doneSets = 0}) => AppBar(
-      // The mockup's 38px rounded-square icon button, not Material's bare
-      // arrow. Tooltipped 'Back' so the platform affordance -- and
-      // tester.pageBack -- still finds it, and maybePop routes it through
-      // the PopScope above, which is what steps an exercise back.
-      leadingWidth: 58,
-      leading: Padding(
-        padding: const EdgeInsets.only(left: 20),
-        child: Tooltip(
-          message: 'Back',
-          child: InkWell(
-            key: const Key('logger.back'),
-            onTap: () => Navigator.maybePop(context),
-            borderRadius: BorderRadius.circular(FsRadius.sm),
-            child: Container(
-              width: 38,
-              height: 38,
-              decoration: BoxDecoration(
-                color: t.surface,
-                borderRadius: BorderRadius.circular(FsRadius.sm),
-                border: Border.all(color: t.line),
-              ),
-              child: Icon(Icons.chevron_left, size: 19, color: t.text),
+    // The mockup's 38px rounded-square icon button, not Material's bare
+    // arrow. Tooltipped 'Back' so the platform affordance -- and
+    // tester.pageBack -- still finds it, and maybePop routes it through
+    // the PopScope above, which is what steps an exercise back.
+    leadingWidth: 58,
+    leading: Padding(
+      padding: const EdgeInsets.only(left: 20),
+      child: Tooltip(
+        message: 'Back',
+        child: InkWell(
+          key: const Key('logger.back'),
+          onTap: () => Navigator.maybePop(context),
+          borderRadius: BorderRadius.circular(FsRadius.sm),
+          child: Container(
+            width: 38,
+            height: 38,
+            decoration: BoxDecoration(
+              color: t.surface,
+              borderRadius: BorderRadius.circular(FsRadius.sm),
+              border: Border.all(color: t.line),
             ),
+            child: Icon(Icons.chevron_left, size: 19, color: t.text),
           ),
         ),
       ),
-      titleSpacing: 10,
-      title: Text(
-        'Logging',
-        style: TextStyle(
-          fontSize: 21,
-          fontWeight: FontWeight.w700,
-          letterSpacing: -0.74,
-          color: t.text,
-        ),
+    ),
+    titleSpacing: 10,
+    title: Text(
+      'Logging',
+      style: TextStyle(
+        fontSize: 21,
+        fontWeight: FontWeight.w700,
+        letterSpacing: -0.74,
+        color: t.text,
       ),
-      actions: [
-        // The rest countdown is a tag up here rather than a card over the
-        // content, so ticking a set does not shove the set table down.
-        // Logging stage only: the demo has no sets on it, so a countdown
-        // between sets has nothing to count between there.
-        if (_resting && _stage == _LoggerStage.logging) ...[
-          RestTimer(
-            // A fresh key restarts the countdown on each new set.
-            key: ValueKey('rest-$doneSets'),
-            duration: _restDuration,
-            onDone: () => setState(() => _resting = false),
-            onSkip: () => setState(() => _resting = false),
-          ),
-          const SizedBox(width: 6),
-        ],
-        // Finish lives here as well as on the footer button, so stopping a
-        // workout early does not mean paging to the end of it first.
-        PopupMenuButton<String>(
-          key: const Key('logger.menu'),
-          onSelected: (value) => value == 'finish' ? _finish() : _discard(),
-          itemBuilder: (_) => const [
-            PopupMenuItem(
-              key: Key('logger.finish'),
-              value: 'finish',
-              child: Text('Finish session'),
-            ),
-            PopupMenuItem(
-              key: Key('logger.discard'),
-              value: 'discard',
-              child: Text('Discard session'),
-            ),
-          ],
+    ),
+    actions: [
+      // The rest countdown is a tag up here rather than a card over the
+      // content, so ticking a set does not shove the set table down.
+      // Logging stage only: the demo has no sets on it, so a countdown
+      // between sets has nothing to count between there.
+      if (_resting && _stage == _LoggerStage.logging) ...[
+        RestTimer(
+          // A fresh key restarts the countdown on each new set.
+          key: ValueKey('rest-$doneSets'),
+          duration: _restDuration,
+          onDone: () => setState(() => _resting = false),
+          onSkip: () => setState(() => _resting = false),
         ),
-        const SizedBox(width: 8),
+        const SizedBox(width: 6),
       ],
+      // Finish lives here as well as on the footer button, so stopping a
+      // workout early does not mean paging to the end of it first.
+      PopupMenuButton<String>(
+        key: const Key('logger.menu'),
+        onSelected: (value) => value == 'finish' ? _finish() : _discard(),
+        itemBuilder: (_) => const [
+          PopupMenuItem(
+            key: Key('logger.finish'),
+            value: 'finish',
+            child: Text('Finish session'),
+          ),
+          PopupMenuItem(
+            key: Key('logger.discard'),
+            value: 'discard',
+            child: Text('Discard session'),
+          ),
+        ],
+      ),
+      const SizedBox(width: 8),
+    ],
   );
 
   @override
@@ -658,8 +666,10 @@ class _SessionLoggerScreenState extends ConsumerState<SessionLoggerScreen> {
               children: [
                 FsIconTile(icon: Icons.fitness_center, size: 56),
                 const SizedBox(height: 16),
-                Text('Nothing to train here',
-                    style: Theme.of(context).textTheme.titleLarge),
+                Text(
+                  'Nothing to train here',
+                  style: Theme.of(context).textTheme.titleLarge,
+                ),
                 const SizedBox(height: 8),
                 Text(
                   'This day of your plan has no exercises. Go back, or '
@@ -691,14 +701,18 @@ class _SessionLoggerScreenState extends ConsumerState<SessionLoggerScreen> {
     final exercise = exercises[index];
     final isLast = index == exercises.length - 1;
 
-    final targetSets =
-        exercises.fold<int>(0, (total, exercise) => total + exercise.targetSets);
+    final targetSets = exercises.fold<int>(
+      0,
+      (total, exercise) => total + exercise.targetSets,
+    );
     final doneSets = session.completedSetCount;
 
     final last = ref
-        .watch(lastPerformanceProvider(
-          lastPerformanceKey(exercises.map((e) => e.exerciseId)),
-        ))
+        .watch(
+          lastPerformanceProvider(
+            lastPerformanceKey(exercises.map((e) => e.exerciseId)),
+          ),
+        )
         .value;
 
     // Back steps through the workout before it leaves it. PopScope
@@ -749,7 +763,10 @@ class _SessionLoggerScreenState extends ConsumerState<SessionLoggerScreen> {
                                   ' · ${plan?.name ?? 'Manual workout'}',
                                   maxLines: 1,
                                   overflow: TextOverflow.ellipsis,
-                                  style: TextStyle(fontSize: 11, color: t.text3),
+                                  style: TextStyle(
+                                    fontSize: 11,
+                                    color: t.text3,
+                                  ),
                                 ),
                               ),
                               Icon(

@@ -15,9 +15,9 @@ import 'token_store.dart';
 /// The stored JWT is attached here too, so no screen ever handles a token.
 class ApiClient {
   ApiClient({http.Client? client, String? baseUrl, TokenStore? tokens})
-      : _client = client ?? http.Client(),
-        _baseUrl = baseUrl ?? _defaultBaseUrl,
-        _tokens = tokens ?? TokenStore();
+    : _client = client ?? http.Client(),
+      _baseUrl = baseUrl ?? _defaultBaseUrl,
+      _tokens = tokens ?? TokenStore();
 
   static const _defaultBaseUrl = String.fromEnvironment(
     'API_BASE_URL',
@@ -133,22 +133,28 @@ class ApiClient {
         'PUT' => _client.put(uri, headers: headers, body: encoded),
         'DELETE' => _client.delete(uri, headers: headers, body: encoded),
         _ => throw ArgumentError('Unsupported method: $method'),
-      }
-          .timeout(_timeout);
+      }.timeout(_timeout);
     } catch (_) {
       throw ApiException('NETWORK_ERROR', _unreachableMessage);
     }
     return _unwrap(response);
   }
 
-  Future<Map<String, dynamic>> postJson(String path, Map<String, dynamic> body) =>
-      _send('POST', path, body);
-  Future<Map<String, dynamic>> patchJson(String path, Map<String, dynamic> body) =>
-      _send('PATCH', path, body);
-  Future<Map<String, dynamic>> putJson(String path, Map<String, dynamic> body) =>
-      _send('PUT', path, body);
+  Future<Map<String, dynamic>> postJson(
+    String path,
+    Map<String, dynamic> body,
+  ) => _send('POST', path, body);
+  Future<Map<String, dynamic>> patchJson(
+    String path,
+    Map<String, dynamic> body,
+  ) => _send('PATCH', path, body);
+  Future<Map<String, dynamic>> putJson(
+    String path,
+    Map<String, dynamic> body,
+  ) => _send('PUT', path, body);
 
   /// The server answers a delete with `{ data: { … } }` like every other
   /// route — never 204 — because [_unwrap] requires a `data` object.
-  Future<Map<String, dynamic>> deleteJson(String path) => _send('DELETE', path, const {});
+  Future<Map<String, dynamic>> deleteJson(String path) =>
+      _send('DELETE', path, const {});
 }

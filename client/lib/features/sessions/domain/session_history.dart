@@ -119,13 +119,13 @@ class LastWorkout {
       '${exercises.length} ${exercises.length == 1 ? 'exercise' : 'exercises'}';
 
   factory LastWorkout.fromJson(Map<String, dynamic> json) => LastWorkout(
-        sessionId: json['sessionId'] as int,
-        sessionDate: json['sessionDate'] as String,
-        planName: json['planName'] as String?,
-        exercises: (json['exercises'] as List<dynamic>? ?? const [])
-            .map((e) => ExerciseSummary.fromJson(e as Map<String, dynamic>))
-            .toList(growable: false),
-      );
+    sessionId: json['sessionId'] as int,
+    sessionDate: json['sessionDate'] as String,
+    planName: json['planName'] as String?,
+    exercises: (json['exercises'] as List<dynamic>? ?? const [])
+        .map((e) => ExerciseSummary.fromJson(e as Map<String, dynamic>))
+        .toList(growable: false),
+  );
 }
 
 /// What a window of training added up to.
@@ -145,7 +145,8 @@ class TrainingSummary {
   /// every new account starts in.
   bool get isEmpty => sessionCount == 0;
 
-  factory TrainingSummary.fromJson(Map<String, dynamic> json) => TrainingSummary(
+  factory TrainingSummary.fromJson(Map<String, dynamic> json) =>
+      TrainingSummary(
         sessionCount: json['sessionCount'] as int? ?? 0,
         setCount: json['setCount'] as int? ?? 0,
         totalVolumeKg: (json['totalVolumeKg'] as num?)?.toDouble() ?? 0,

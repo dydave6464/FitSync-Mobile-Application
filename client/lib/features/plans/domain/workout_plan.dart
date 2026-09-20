@@ -60,19 +60,19 @@ class PlanExercise {
   }
 
   factory PlanExercise.fromJson(Map<String, dynamic> json) => PlanExercise(
-        planExerciseId: json['planExerciseId'] as int,
-        exerciseId: json['exerciseId'] as int,
-        name: json['name'] as String,
-        muscleGroup: json['muscleGroup'] as String? ?? '',
-        orderNo: json['orderNo'] as int? ?? 0,
-        targetSets: json['targetSets'] as int? ?? 0,
-        // via toString() so a generator that writes a bare number into that
-        // VARCHAR is handled too.
-        targetReps: json['targetReps']?.toString() ?? '',
-        thumbnailUrl: json['thumbnailUrl'] as String?,
-        equipment: json['equipment'] as String?,
-        dayNo: json['dayNo'] as int? ?? 1,
-      );
+    planExerciseId: json['planExerciseId'] as int,
+    exerciseId: json['exerciseId'] as int,
+    name: json['name'] as String,
+    muscleGroup: json['muscleGroup'] as String? ?? '',
+    orderNo: json['orderNo'] as int? ?? 0,
+    targetSets: json['targetSets'] as int? ?? 0,
+    // via toString() so a generator that writes a bare number into that
+    // VARCHAR is handled too.
+    targetReps: json['targetReps']?.toString() ?? '',
+    thumbnailUrl: json['thumbnailUrl'] as String?,
+    equipment: json['equipment'] as String?,
+    dayNo: json['dayNo'] as int? ?? 1,
+  );
 }
 
 /// One day of a plan's rotation. The name is derived server-side from the
@@ -84,9 +84,9 @@ class PlanDay {
   final String name;
 
   factory PlanDay.fromJson(Map<String, dynamic> json) => PlanDay(
-        dayNo: json['dayNo'] as int? ?? 1,
-        name: json['name'] as String? ?? '',
-      );
+    dayNo: json['dayNo'] as int? ?? 1,
+    name: json['name'] as String? ?? '',
+  );
 }
 
 class WorkoutPlan {
@@ -127,20 +127,20 @@ class WorkoutPlan {
   bool get isCustom => source == 'custom';
 
   factory WorkoutPlan.fromJson(Map<String, dynamic> json) => WorkoutPlan(
-        planId: json['planId'] as int,
-        name: json['name'] as String,
-        splitStyle: json['splitStyle'] as String? ?? '',
-        daysPerWeek: json['daysPerWeek'] as int? ?? 0,
-        sessionLengthMin: json['sessionLengthMin'] as int? ?? 0,
-        weekNo: json['weekNo'] as int? ?? 1,
-        exercises: ((json['exercises'] as List<dynamic>?) ?? const [])
-            .map((e) => PlanExercise.fromJson(e as Map<String, dynamic>))
-            .toList(growable: false),
-        days: ((json['days'] as List<dynamic>?) ?? const [])
-            .map((d) => PlanDay.fromJson(d as Map<String, dynamic>))
-            .toList(growable: false),
-        source: json['source'] as String? ?? 'generated',
-      );
+    planId: json['planId'] as int,
+    name: json['name'] as String,
+    splitStyle: json['splitStyle'] as String? ?? '',
+    daysPerWeek: json['daysPerWeek'] as int? ?? 0,
+    sessionLengthMin: json['sessionLengthMin'] as int? ?? 0,
+    weekNo: json['weekNo'] as int? ?? 1,
+    exercises: ((json['exercises'] as List<dynamic>?) ?? const [])
+        .map((e) => PlanExercise.fromJson(e as Map<String, dynamic>))
+        .toList(growable: false),
+    days: ((json['days'] as List<dynamic>?) ?? const [])
+        .map((d) => PlanDay.fromJson(d as Map<String, dynamic>))
+        .toList(growable: false),
+    source: json['source'] as String? ?? 'generated',
+  );
 
   /// Which rotation day today falls on, from how many sessions are already
   /// complete this week.
@@ -180,6 +180,9 @@ String describeSplit(String slug) {
   if (slug.isEmpty) return '';
   return slug
       .split('_')
-      .map((word) => word.isEmpty ? word : word[0].toUpperCase() + word.substring(1))
+      .map(
+        (word) =>
+            word.isEmpty ? word : word[0].toUpperCase() + word.substring(1),
+      )
       .join(' ');
 }

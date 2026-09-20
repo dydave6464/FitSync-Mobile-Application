@@ -40,17 +40,19 @@ Future<AboutAnswers?> _pumpAndEdit(
   WeightUnit unit = WeightUnit.kg,
 }) async {
   AboutAnswers? emitted;
-  await tester.pumpWidget(MaterialApp(
-    home: Scaffold(
-      body: SingleChildScrollView(
-        child: AboutStep(
-          value: value,
-          unit: unit,
-          onChanged: (v) => emitted = v,
+  await tester.pumpWidget(
+    MaterialApp(
+      home: Scaffold(
+        body: SingleChildScrollView(
+          child: AboutStep(
+            value: value,
+            unit: unit,
+            onChanged: (v) => emitted = v,
+          ),
         ),
       ),
     ),
-  ));
+  );
   await interact(tester);
   await tester.pumpAndSettle();
   return emitted;
@@ -66,21 +68,26 @@ void main() {
     expect(find.text('Prefer not to say'), findsNothing);
   });
 
-  testWidgets('a sex saved before that option was withdrawn is left alone',
-      (tester) async {
+  testWidgets('a sex saved before that option was withdrawn is left alone', (
+    tester,
+  ) async {
     // `prefer_not_to_say` is still a valid ENUM value on the server and still
     // sits in profiles answered under the old three-chip control. Reopening
     // this step from settings must neither throw nor quietly rewrite that
     // answer to something the user did not choose.
-    final emitted = await _pumpAndEdit(tester, (_) async {},
-        value: const AboutAnswers(sex: 'prefer_not_to_say'));
+    final emitted = await _pumpAndEdit(
+      tester,
+      (_) async {},
+      value: const AboutAnswers(sex: 'prefer_not_to_say'),
+    );
 
     expect(tester.takeException(), isNull);
     expect(emitted, isNull, reason: 'rendering is not an edit');
   });
 
-  testWidgets('offers all five activity levels, including active',
-      (tester) async {
+  testWidgets('offers all five activity levels, including active', (
+    tester,
+  ) async {
     await _pumpAndEdit(tester, (_) async {});
 
     // The design draws four chips and no "Active"; leaving it out would push
@@ -91,8 +98,9 @@ void main() {
     }
   });
 
-  testWidgets('renders a date of birth control and the three measurements',
-      (tester) async {
+  testWidgets('renders a date of birth control and the three measurements', (
+    tester,
+  ) async {
     await _pumpAndEdit(tester, (_) async {});
 
     expect(find.byKey(const Key('dateOfBirth')), findsOneWidget);
@@ -101,28 +109,47 @@ void main() {
     expect(find.byKey(const Key('goalWeightKg')), findsOneWidget);
   });
 
-  testWidgets('reads the date of birth back as a date, with the age it implies',
-      (tester) async {
-    await _pumpAndEdit(tester, (_) async {},
-        value: const AboutAnswers(dateOfBirth: '1998-03-14'));
+  testWidgets(
+    'reads the date of birth back as a date, with the age it implies',
+    (tester) async {
+      await _pumpAndEdit(
+        tester,
+        (_) async {},
+        value: const AboutAnswers(dateOfBirth: '1998-03-14'),
+      );
 
-    expect(find.text('14 March 1998'), findsOneWidget,
-        reason: 'the raw 1998-03-14 is wire format, not something to read');
-    expect(find.textContaining('yrs'), findsOneWidget);
+      expect(
+        find.text('14 March 1998'),
+        findsOneWidget,
+        reason: 'the raw 1998-03-14 is wire format, not something to read',
+      );
+      expect(find.textContaining('yrs'), findsOneWidget);
+    },
+  );
+
+  testWidgets('the estimate waits until every input it needs is there', (
+    tester,
+  ) async {
+    await _pumpAndEdit(
+      tester,
+      (_) async {},
+      value: const AboutAnswers(
+        sex: 'male',
+        dateOfBirth: '1998-03-14',
+        heightCm: 175,
+      ),
+    );
+
+    expect(
+      find.textContaining('kcal'),
+      findsNothing,
+      reason: 'a target computed without a body weight describes nobody',
+    );
   });
 
-  testWidgets('the estimate waits until every input it needs is there',
-      (tester) async {
-    await _pumpAndEdit(tester, (_) async {},
-        value: const AboutAnswers(
-            sex: 'male', dateOfBirth: '1998-03-14', heightCm: 175));
-
-    expect(find.textContaining('kcal'), findsNothing,
-        reason: 'a target computed without a body weight describes nobody');
-  });
-
-  testWidgets('the estimate appears once the last number is typed',
-      (tester) async {
+  testWidgets('the estimate appears once the last number is typed', (
+    tester,
+  ) async {
     await _pumpAndEdit(
       tester,
       (t) async {
@@ -130,14 +157,18 @@ void main() {
         await t.enterText(find.byKey(const Key('weightKg')), '72');
       },
       value: const AboutAnswers(
-          sex: 'male',
-          dateOfBirth: '1998-03-14',
-          heightCm: 175,
-          activityLevel: 'light'),
+        sex: 'male',
+        dateOfBirth: '1998-03-14',
+        heightCm: 175,
+        activityLevel: 'light',
+      ),
     );
 
-    expect(find.textContaining('kcal'), findsOneWidget,
-        reason: 'the card has to recompute as the measurements are typed');
+    expect(
+      find.textContaining('kcal'),
+      findsOneWidget,
+      reason: 'the card has to recompute as the measurements are typed',
+    );
     expect(find.textContaining('protein'), findsOneWidget);
   });
 
@@ -159,8 +190,9 @@ void main() {
     expect(emitted!.sex, 'female');
   });
 
-  testWidgets('emits the activity enum value the server accepts',
-      (tester) async {
+  testWidgets('emits the activity enum value the server accepts', (
+    tester,
+  ) async {
     final emitted = await _pumpAndEdit(
       tester,
       (t) => _tapKey(t, const Key('activity.active')),
@@ -178,8 +210,9 @@ void main() {
     expect(emitted!.heightCm, 172.5);
   });
 
-  testWidgets('a measurement that is not a number emits null, not a crash',
-      (tester) async {
+  testWidgets('a measurement that is not a number emits null, not a crash', (
+    tester,
+  ) async {
     final emitted = await _pumpAndEdit(
       tester,
       (t) => t.enterText(find.byKey(const Key('weightKg')), 'abc'),
@@ -189,46 +222,53 @@ void main() {
   });
 
   testWidgets('does not read providers or save anything', (tester) async {
-    await tester.pumpWidget(MaterialApp(
-      home: Scaffold(
-        body: SingleChildScrollView(
-          child: AboutStep(value: const AboutAnswers(), onChanged: (_) {}),
-        ),
-      ),
-    ));
-
-    expect(tester.takeException(), isNull);
-  });
-
-  testWidgets('the paired measurement cards survive a narrow screen at 2x text',
-      (tester) async {
-    // Height and Weight sit side by side in a Row, which is the context
-    // overflow_guard_test.dart documents as the one this kit keeps losing to.
-    // Each card holds its own Row (a flexible number and an unflexed unit),
-    // so a doubled text scale on a 320dp screen squeezes both axes at once.
-    await tester.pumpWidget(MaterialApp(
-      home: MediaQuery(
-        data: const MediaQueryData(
-          size: Size(320, 800),
-          textScaler: TextScaler.linear(2.0),
-        ),
-        child: Scaffold(
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
           body: SingleChildScrollView(
-            child: AboutStep(value: _complete, onChanged: _ignore),
+            child: AboutStep(value: const AboutAnswers(), onChanged: (_) {}),
           ),
         ),
       ),
-    ));
-    await tester.pumpAndSettle();
+    );
 
     expect(tester.takeException(), isNull);
   });
+
+  testWidgets(
+    'the paired measurement cards survive a narrow screen at 2x text',
+    (tester) async {
+      // Height and Weight sit side by side in a Row, which is the context
+      // overflow_guard_test.dart documents as the one this kit keeps losing to.
+      // Each card holds its own Row (a flexible number and an unflexed unit),
+      // so a doubled text scale on a 320dp screen squeezes both axes at once.
+      await tester.pumpWidget(
+        MaterialApp(
+          home: MediaQuery(
+            data: const MediaQueryData(
+              size: Size(320, 800),
+              textScaler: TextScaler.linear(2.0),
+            ),
+            child: Scaffold(
+              body: SingleChildScrollView(
+                child: AboutStep(value: _complete, onChanged: _ignore),
+              ),
+            ),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      expect(tester.takeException(), isNull);
+    },
+  );
 
   // The first weight the app ever asks for, and the one the plan generator is
   // fed. Someone thinking in pounds who typed 150 into a field labelled kg
   // would hand the ML service a body weight out by a factor of 2.2.
-  testWidgets('a weight typed in pounds is reported in kilograms',
-      (tester) async {
+  testWidgets('a weight typed in pounds is reported in kilograms', (
+    tester,
+  ) async {
     final emitted = await _pumpAndEdit(
       tester,
       (t) async => t.enterText(find.byKey(const Key('weightKg')), '150'),
@@ -239,21 +279,26 @@ void main() {
     expect(emitted!.weightKg, closeTo(68.0388555, 1e-7));
   });
 
-  testWidgets('the weight card shows the stored kilograms in the unit in force',
-      (tester) async {
-    await _pumpAndEdit(
-      tester,
-      (t) async {},
-      value: _complete,
-      unit: WeightUnit.lb,
-    );
+  testWidgets(
+    'the weight card shows the stored kilograms in the unit in force',
+    (tester) async {
+      await _pumpAndEdit(
+        tester,
+        (t) async {},
+        value: _complete,
+        unit: WeightUnit.lb,
+      );
 
-    // The fixture's 72 kg is 158.7... lb.
-    expect(
-      tester.widget<TextField>(find.byKey(const Key('weightKg'))).controller!.text,
-      '158.7',
-    );
-  });
+      // The fixture's 72 kg is 158.7... lb.
+      expect(
+        tester
+            .widget<TextField>(find.byKey(const Key('weightKg')))
+            .controller!
+            .text,
+        '158.7',
+      );
+    },
+  );
 }
 
 void _ignore(AboutAnswers _) {}

@@ -147,9 +147,11 @@ class _GeneratingViewState extends State<GeneratingView> {
     super.initState();
     final revealAt = widget.pace.revealAt;
     for (var i = 0; i < revealAt.length; i++) {
-      _timers.add(Timer(revealAt[i], () {
-        if (mounted) setState(() => _open = i + 1);
-      }));
+      _timers.add(
+        Timer(revealAt[i], () {
+          if (mounted) setState(() => _open = i + 1);
+        }),
+      );
     }
   }
 
@@ -225,11 +227,7 @@ class _GeneratingViewState extends State<GeneratingView> {
 /// fill animates because the row now completes while the user is watching it,
 /// rather than arriving already ticked.
 class _CheckRow extends StatelessWidget {
-  const _CheckRow({
-    required this.id,
-    required this.label,
-    required this.done,
-  });
+  const _CheckRow({required this.id, required this.label, required this.done});
 
   final String id;
   final String label;

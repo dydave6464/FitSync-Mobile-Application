@@ -26,24 +26,24 @@ Future<void> _pump(
   WidgetTester tester, {
   bool? selected,
   ExerciseSummary exercise = _exercise,
-}) =>
-    tester.pumpWidget(
-      MaterialApp(
-        theme: fsLightTheme(),
-        home: Scaffold(
-          body: ExerciseTile(
-            exercise: exercise,
-            baseUrl: 'http://test.local',
-            onTap: () {},
-            selected: selected,
-          ),
-        ),
+}) => tester.pumpWidget(
+  MaterialApp(
+    theme: fsLightTheme(),
+    home: Scaffold(
+      body: ExerciseTile(
+        exercise: exercise,
+        baseUrl: 'http://test.local',
+        onTap: () {},
+        selected: selected,
       ),
-    );
+    ),
+  ),
+);
 
 void main() {
-  testWidgets('browsing shows the chevron and no selection mark',
-      (tester) async {
+  testWidgets('browsing shows the chevron and no selection mark', (
+    tester,
+  ) async {
     // selected: null is the Browse tab, where a tile opens a detail screen.
     // A tick there would promise a basket that does not exist.
     await _pump(tester);
@@ -52,8 +52,9 @@ void main() {
     expect(find.byKey(const Key('tile.select.101')), findsNothing);
   });
 
-  testWidgets('picking shows an empty mark instead of the chevron',
-      (tester) async {
+  testWidgets('picking shows an empty mark instead of the chevron', (
+    tester,
+  ) async {
     await _pump(tester, selected: false);
 
     expect(find.byIcon(Icons.chevron_right), findsNothing);
@@ -68,8 +69,9 @@ void main() {
     expect(find.byIcon(Icons.check), findsOneWidget);
   });
 
-  testWidgets('an exercise that loads a reported injury is marked',
-      (tester) async {
+  testWidgets('an exercise that loads a reported injury is marked', (
+    tester,
+  ) async {
     // The generator refuses these outright. Someone picking by hand should at
     // least be told, rather than discovering it from their back.
     await _pump(tester, selected: false, exercise: _risky);

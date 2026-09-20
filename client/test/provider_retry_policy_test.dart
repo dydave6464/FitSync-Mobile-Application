@@ -38,8 +38,7 @@ class _FailingRepository implements ExerciseRepository {
     String? search,
     int page = 1,
     int limit = 20,
-  }) =>
-      throw UnimplementedError();
+  }) => throw UnimplementedError();
 
   @override
   Future<ExerciseFilters> filters() => throw UnimplementedError();
@@ -57,26 +56,55 @@ void main() {
   // without waiting for it to elapse.
   group('apiRetryPolicy', () {
     test('does not retry a permanent, server-named error', () {
-      const error = ApiException('EXERCISE_NOT_FOUND', 'No live exercise with id 1.');
+      const error = ApiException(
+        'EXERCISE_NOT_FOUND',
+        'No live exercise with id 1.',
+      );
       expect(apiRetryPolicy(0, error), isNull);
     });
 
-    test('does not retry INVALID_QUERY_PARAM, INVALID_RESPONSE or UNKNOWN_ERROR', () {
-      for (final code in ['INVALID_QUERY_PARAM', 'INVALID_RESPONSE', 'UNKNOWN_ERROR']) {
-        expect(apiRetryPolicy(0, ApiException(code, 'x')), isNull, reason: code);
-      }
-    });
+    test(
+      'does not retry INVALID_QUERY_PARAM, INVALID_RESPONSE or UNKNOWN_ERROR',
+      () {
+        for (final code in [
+          'INVALID_QUERY_PARAM',
+          'INVALID_RESPONSE',
+          'UNKNOWN_ERROR',
+        ]) {
+          expect(
+            apiRetryPolicy(0, ApiException(code, 'x')),
+            isNull,
+            reason: code,
+          );
+        }
+      },
+    );
 
-    test('retries NETWORK_ERROR, deferring the backoff to the framework default', () {
-      const error = ApiException('NETWORK_ERROR', 'Could not reach the server.');
-      // Asserted across the retries that still happen — the backoff duration
-      // is the framework's, not a reimplementation.
-      expect(apiRetryPolicy(0, error), ProviderContainer.defaultRetry(0, error));
-      expect(apiRetryPolicy(1, error), ProviderContainer.defaultRetry(1, error));
-    });
+    test(
+      'retries NETWORK_ERROR, deferring the backoff to the framework default',
+      () {
+        const error = ApiException(
+          'NETWORK_ERROR',
+          'Could not reach the server.',
+        );
+        // Asserted across the retries that still happen — the backoff duration
+        // is the framework's, not a reimplementation.
+        expect(
+          apiRetryPolicy(0, error),
+          ProviderContainer.defaultRetry(0, error),
+        );
+        expect(
+          apiRetryPolicy(1, error),
+          ProviderContainer.defaultRetry(1, error),
+        );
+      },
+    );
 
     test('stops retrying NETWORK_ERROR after two attempts', () {
-      const error = ApiException('NETWORK_ERROR', 'Could not reach the server.');
+      const error = ApiException(
+        'NETWORK_ERROR',
+        'Could not reach the server.',
+      );
       // Two retries still absorb a transient blip...
       expect(apiRetryPolicy(0, error), isNotNull);
       expect(apiRetryPolicy(1, error), isNotNull);
@@ -93,20 +121,23 @@ void main() {
     });
   });
 
-  test('a permanent failure produces exactly one call, not ten retries', () async {
-    final repo = _FailingRepository(
-      const ApiException('EXERCISE_NOT_FOUND', 'No live exercise with id 1.'),
-    );
-    final container = ProviderContainer(overrides: [
-      exerciseRepositoryProvider.overrideWithValue(repo),
-    ]);
-    addTearDown(container.dispose);
+  test(
+    'a permanent failure produces exactly one call, not ten retries',
+    () async {
+      final repo = _FailingRepository(
+        const ApiException('EXERCISE_NOT_FOUND', 'No live exercise with id 1.'),
+      );
+      final container = ProviderContainer(
+        overrides: [exerciseRepositoryProvider.overrideWithValue(repo)],
+      );
+      addTearDown(container.dispose);
 
-    await expectLater(
-      container.read(exerciseDetailProvider(1).future),
-      throwsA(isA<ApiException>()),
-    );
+      await expectLater(
+        container.read(exerciseDetailProvider(1).future),
+        throwsA(isA<ApiException>()),
+      );
 
-    expect(repo.byIdCalls, 1);
-  });
+      expect(repo.byIdCalls, 1);
+    },
+  );
 }

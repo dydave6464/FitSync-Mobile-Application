@@ -41,9 +41,9 @@ class _NavShellState extends State<NavShell> {
   final Set<int> _visited = {0};
 
   void _select(int index) => setState(() {
-        _index = index;
-        _visited.add(index);
-      });
+    _index = index;
+    _visited.add(index);
+  });
 
   static const _items = [
     FsNavItem(icon: Icons.home_outlined, label: 'Home'),

@@ -7,29 +7,35 @@ import 'package:fitsync/features/sessions/presentation/widgets/logger_action.dar
 import 'package:fitsync/features/sessions/presentation/widgets/set_drafts.dart';
 
 Widget _host(Widget child) => MaterialApp(
-      theme: fsLightTheme(),
-      home: Scaffold(body: child),
-    );
+  theme: fsLightTheme(),
+  home: Scaffold(body: child),
+);
 
 void main() {
   testWidgets('names the set it is about to log', (tester) async {
     final drafts = SetDrafts();
     addTearDown(drafts.dispose);
 
-    await tester.pumpWidget(_host(LoggerAction(
-      activeSetNumber: 3,
-      isLastExercise: false,
-      drafts: drafts,
-      unit: WeightUnit.kg,
-      onCompleteSet: (_, _, _) async {},
-      onNextExercise: () {},
-      onFinish: () {},
-    )));
+    await tester.pumpWidget(
+      _host(
+        LoggerAction(
+          activeSetNumber: 3,
+          isLastExercise: false,
+          drafts: drafts,
+          unit: WeightUnit.kg,
+          onCompleteSet: (_, _, _) async {},
+          onNextExercise: () {},
+          onFinish: () {},
+        ),
+      ),
+    );
 
     expect(find.text('Complete set 3'), findsOneWidget);
   });
 
-  testWidgets('reports the active row\'s typed weight and reps', (tester) async {
+  testWidgets('reports the active row\'s typed weight and reps', (
+    tester,
+  ) async {
     final drafts = SetDrafts();
     addTearDown(drafts.dispose);
     drafts.weight(2).text = '25';
@@ -39,19 +45,23 @@ void main() {
     double? gotWeight;
     int? gotReps;
 
-    await tester.pumpWidget(_host(LoggerAction(
-      activeSetNumber: 2,
-      isLastExercise: false,
-      drafts: drafts,
-      unit: WeightUnit.kg,
-      onCompleteSet: (setNumber, weightKg, reps) async {
-        gotSet = setNumber;
-        gotWeight = weightKg;
-        gotReps = reps;
-      },
-      onNextExercise: () {},
-      onFinish: () {},
-    )));
+    await tester.pumpWidget(
+      _host(
+        LoggerAction(
+          activeSetNumber: 2,
+          isLastExercise: false,
+          drafts: drafts,
+          unit: WeightUnit.kg,
+          onCompleteSet: (setNumber, weightKg, reps) async {
+            gotSet = setNumber;
+            gotWeight = weightKg;
+            gotReps = reps;
+          },
+          onNextExercise: () {},
+          onFinish: () {},
+        ),
+      ),
+    );
 
     await tester.tap(find.byKey(const Key('logger.primary')));
     await tester.pumpAndSettle();
@@ -63,22 +73,27 @@ void main() {
 
   // The storage contract, now that the button is what reads the field:
   // whatever unit is on screen, the server is handed kilograms.
-  testWidgets('a weight typed in pounds is reported in kilograms',
-      (tester) async {
+  testWidgets('a weight typed in pounds is reported in kilograms', (
+    tester,
+  ) async {
     final drafts = SetDrafts();
     addTearDown(drafts.dispose);
     drafts.weight(1).text = '100';
 
     double? sentKg;
-    await tester.pumpWidget(_host(LoggerAction(
-      activeSetNumber: 1,
-      isLastExercise: false,
-      drafts: drafts,
-      unit: WeightUnit.lb,
-      onCompleteSet: (_, weightKg, _) async => sentKg = weightKg,
-      onNextExercise: () {},
-      onFinish: () {},
-    )));
+    await tester.pumpWidget(
+      _host(
+        LoggerAction(
+          activeSetNumber: 1,
+          isLastExercise: false,
+          drafts: drafts,
+          unit: WeightUnit.lb,
+          onCompleteSet: (_, weightKg, _) async => sentKg = weightKg,
+          onNextExercise: () {},
+          onFinish: () {},
+        ),
+      ),
+    );
 
     await tester.tap(find.byKey(const Key('logger.primary')));
     await tester.pumpAndSettle();
@@ -93,18 +108,22 @@ void main() {
 
     var called = false;
     double? sentKg = 99;
-    await tester.pumpWidget(_host(LoggerAction(
-      activeSetNumber: 1,
-      isLastExercise: false,
-      drafts: drafts,
-      unit: WeightUnit.kg,
-      onCompleteSet: (_, weightKg, _) async {
-        called = true;
-        sentKg = weightKg;
-      },
-      onNextExercise: () {},
-      onFinish: () {},
-    )));
+    await tester.pumpWidget(
+      _host(
+        LoggerAction(
+          activeSetNumber: 1,
+          isLastExercise: false,
+          drafts: drafts,
+          unit: WeightUnit.kg,
+          onCompleteSet: (_, weightKg, _) async {
+            called = true;
+            sentKg = weightKg;
+          },
+          onNextExercise: () {},
+          onFinish: () {},
+        ),
+      ),
+    );
 
     await tester.tap(find.byKey(const Key('logger.primary')));
     await tester.pumpAndSettle();
@@ -118,15 +137,19 @@ void main() {
     addTearDown(drafts.dispose);
 
     var advanced = false;
-    await tester.pumpWidget(_host(LoggerAction(
-      activeSetNumber: null,
-      isLastExercise: false,
-      drafts: drafts,
-      unit: WeightUnit.kg,
-      onCompleteSet: (_, _, _) async {},
-      onNextExercise: () => advanced = true,
-      onFinish: () {},
-    )));
+    await tester.pumpWidget(
+      _host(
+        LoggerAction(
+          activeSetNumber: null,
+          isLastExercise: false,
+          drafts: drafts,
+          unit: WeightUnit.kg,
+          onCompleteSet: (_, _, _) async {},
+          onNextExercise: () => advanced = true,
+          onFinish: () {},
+        ),
+      ),
+    );
 
     expect(find.text('Next exercise'), findsOneWidget);
     await tester.tap(find.byKey(const Key('logger.primary')));
@@ -135,21 +158,26 @@ void main() {
     expect(advanced, isTrue);
   });
 
-  testWidgets('the last finished exercise offers to finish the session',
-      (tester) async {
+  testWidgets('the last finished exercise offers to finish the session', (
+    tester,
+  ) async {
     final drafts = SetDrafts();
     addTearDown(drafts.dispose);
 
     var finished = false;
-    await tester.pumpWidget(_host(LoggerAction(
-      activeSetNumber: null,
-      isLastExercise: true,
-      drafts: drafts,
-      unit: WeightUnit.kg,
-      onCompleteSet: (_, _, _) async {},
-      onNextExercise: () {},
-      onFinish: () => finished = true,
-    )));
+    await tester.pumpWidget(
+      _host(
+        LoggerAction(
+          activeSetNumber: null,
+          isLastExercise: true,
+          drafts: drafts,
+          unit: WeightUnit.kg,
+          onCompleteSet: (_, _, _) async {},
+          onNextExercise: () {},
+          onFinish: () => finished = true,
+        ),
+      ),
+    );
 
     expect(find.text('Finish session'), findsOneWidget);
     await tester.tap(find.byKey(const Key('logger.primary')));
@@ -165,18 +193,22 @@ void main() {
     addTearDown(drafts.dispose);
 
     var attempts = 0;
-    await tester.pumpWidget(_host(LoggerAction(
-      activeSetNumber: 1,
-      isLastExercise: false,
-      drafts: drafts,
-      unit: WeightUnit.kg,
-      onCompleteSet: (_, _, _) async {
-        attempts++;
-        throw Exception('network');
-      },
-      onNextExercise: () {},
-      onFinish: () {},
-    )));
+    await tester.pumpWidget(
+      _host(
+        LoggerAction(
+          activeSetNumber: 1,
+          isLastExercise: false,
+          drafts: drafts,
+          unit: WeightUnit.kg,
+          onCompleteSet: (_, _, _) async {
+            attempts++;
+            throw Exception('network');
+          },
+          onNextExercise: () {},
+          onFinish: () {},
+        ),
+      ),
+    );
 
     await tester.tap(find.byKey(const Key('logger.primary')));
     await tester.pumpAndSettle();
@@ -194,36 +226,41 @@ void main() {
   // that is already logged against, keeps the logging stage and rebuilds
   // this button in place -- so a _failed left standing would offer to
   // "Retry set 2" for a set nobody has tried.
-  testWidgets('a failure does not follow the button onto another set',
-      (tester) async {
+  testWidgets('a failure does not follow the button onto another set', (
+    tester,
+  ) async {
     final drafts = SetDrafts();
     addTearDown(drafts.dispose);
 
     var active = 1;
-    await tester.pumpWidget(StatefulBuilder(
-      builder: (context, setState) => _host(Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          LoggerAction(
-            activeSetNumber: active,
-            isLastExercise: false,
-            drafts: drafts,
-            unit: WeightUnit.kg,
-            onCompleteSet: (_, _, _) async {
-              throw Exception('network');
-            },
-            onNextExercise: () {},
-            onFinish: () {},
+    await tester.pumpWidget(
+      StatefulBuilder(
+        builder: (context, setState) => _host(
+          Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              LoggerAction(
+                activeSetNumber: active,
+                isLastExercise: false,
+                drafts: drafts,
+                unit: WeightUnit.kg,
+                onCompleteSet: (_, _, _) async {
+                  throw Exception('network');
+                },
+                onNextExercise: () {},
+                onFinish: () {},
+              ),
+              TextButton(
+                // Stands in for whatever moved the active set without rebuilding
+                // this widget from scratch.
+                onPressed: () => setState(() => active = 2),
+                child: const Text('move to set 2'),
+              ),
+            ],
           ),
-          TextButton(
-            // Stands in for whatever moved the active set without rebuilding
-            // this widget from scratch.
-            onPressed: () => setState(() => active = 2),
-            child: const Text('move to set 2'),
-          ),
-        ],
-      )),
-    ));
+        ),
+      ),
+    );
 
     await tester.tap(find.byKey(const Key('logger.primary')));
     await tester.pumpAndSettle();

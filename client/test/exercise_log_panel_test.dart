@@ -34,16 +34,16 @@ const _bodyweight = PlanExercise(
 );
 
 ActiveSession _session({List<LoggedSet> sets = const []}) => ActiveSession(
-      sessionId: 7,
-      status: 'in_progress',
-      sessionDate: '2026-09-08',
-      sets: sets,
-    );
+  sessionId: 7,
+  status: 'in_progress',
+  sessionDate: '2026-09-08',
+  sets: sets,
+);
 
 Widget _host(Widget child) => MaterialApp(
-      theme: fsLightTheme(),
-      home: Scaffold(body: SingleChildScrollView(child: child)),
-    );
+  theme: fsLightTheme(),
+  home: Scaffold(body: SingleChildScrollView(child: child)),
+);
 
 /// A fresh store per test, torn down with the test.
 SetDrafts _drafts(WidgetTester tester) {
@@ -57,14 +57,20 @@ void main() {
   // it, and the jump sheet carries it per exercise. The card header is the
   // name and the prescription, as the mockup draws it.
   testWidgets('names the exercise and its prescription', (tester) async {
-    await tester.pumpWidget(_host(ExerciseLogPanel(
-      exercise: _exercise,
-      session: _session(sets: const [
-        LoggedSet(exerciseId: 101, setNumber: 1, weightKg: 20, reps: 10),
-      ]),
-      drafts: _drafts(tester),
-      onUndoSet: (_) async {},
-    )));
+    await tester.pumpWidget(
+      _host(
+        ExerciseLogPanel(
+          exercise: _exercise,
+          session: _session(
+            sets: const [
+              LoggedSet(exerciseId: 101, setNumber: 1, weightKg: 20, reps: 10),
+            ],
+          ),
+          drafts: _drafts(tester),
+          onUndoSet: (_) async {},
+        ),
+      ),
+    );
 
     expect(find.text('Goblet squat'), findsOneWidget);
     expect(find.text('Target 3 × 8-12'), findsOneWidget);
@@ -75,29 +81,46 @@ void main() {
   // nothing on screen saying what it measured. The header is what keeps the
   // columns named whatever the fields contain.
   testWidgets('the set table labels its columns', (tester) async {
-    await tester.pumpWidget(_host(ExerciseLogPanel(
-      exercise: _exercise,
-      session: _session(),
-      drafts: _drafts(tester),
-      onUndoSet: (_) async {},
-    )));
+    await tester.pumpWidget(
+      _host(
+        ExerciseLogPanel(
+          exercise: _exercise,
+          session: _session(),
+          drafts: _drafts(tester),
+          onUndoSet: (_) async {},
+        ),
+      ),
+    );
 
     final header = find.byKey(const Key('logpanel.columns'));
-    expect(find.descendant(of: header, matching: find.text('SET')), findsOneWidget);
-    expect(find.descendant(of: header, matching: find.text('KG')), findsOneWidget);
-    expect(find.descendant(of: header, matching: find.text('REPS')), findsOneWidget);
+    expect(
+      find.descendant(of: header, matching: find.text('SET')),
+      findsOneWidget,
+    );
+    expect(
+      find.descendant(of: header, matching: find.text('KG')),
+      findsOneWidget,
+    );
+    expect(
+      find.descendant(of: header, matching: find.text('REPS')),
+      findsOneWidget,
+    );
   });
 
   testWidgets('the column header switches the unit', (tester) async {
     WeightUnit? chosen;
-    await tester.pumpWidget(_host(ExerciseLogPanel(
-      exercise: _exercise,
-      session: _session(),
-      unit: WeightUnit.kg,
-      onUnitChanged: (unit) => chosen = unit,
-      drafts: _drafts(tester),
-      onUndoSet: (_) async {},
-    )));
+    await tester.pumpWidget(
+      _host(
+        ExerciseLogPanel(
+          exercise: _exercise,
+          session: _session(),
+          unit: WeightUnit.kg,
+          onUnitChanged: (unit) => chosen = unit,
+          drafts: _drafts(tester),
+          onUndoSet: (_) async {},
+        ),
+      ),
+    );
 
     await tester.tap(find.byKey(const Key('unit.lb')));
     expect(chosen, WeightUnit.lb);
@@ -107,20 +130,30 @@ void main() {
   // 55.1155... lb and the 2.5 kg gain between them is 5.5115... lb. Derived by
   // hand: an expectation run through the same conversion the widget uses
   // would pass whatever factor that was.
-  testWidgets('in pounds, every weight on the panel reads in pounds',
-      (tester) async {
-    await tester.pumpWidget(_host(ExerciseLogPanel(
-      exercise: _exercise,
-      session: _session(sets: const [
-        LoggedSet(exerciseId: 101, setNumber: 1, weightKg: 25, reps: 8),
-      ]),
-      last: const LastPerformance(
-        exerciseId: 101, weightKg: 22.5, reps: 10, sessionDate: '2026-09-05',
+  testWidgets('in pounds, every weight on the panel reads in pounds', (
+    tester,
+  ) async {
+    await tester.pumpWidget(
+      _host(
+        ExerciseLogPanel(
+          exercise: _exercise,
+          session: _session(
+            sets: const [
+              LoggedSet(exerciseId: 101, setNumber: 1, weightKg: 25, reps: 8),
+            ],
+          ),
+          last: const LastPerformance(
+            exerciseId: 101,
+            weightKg: 22.5,
+            reps: 10,
+            sessionDate: '2026-09-05',
+          ),
+          unit: WeightUnit.lb,
+          drafts: _drafts(tester),
+          onUndoSet: (_) async {},
+        ),
       ),
-      unit: WeightUnit.lb,
-      drafts: _drafts(tester),
-      onUndoSet: (_) async {},
-    )));
+    );
 
     expect(find.text('Target 3 × 8-12 · last 49.6 lb'), findsOneWidget);
     expect(
@@ -129,11 +162,17 @@ void main() {
     );
     // The stored set, and the next row prefilled from last week.
     expect(
-      tester.widget<TextField>(find.byKey(const Key('set.1.weight'))).controller!.text,
+      tester
+          .widget<TextField>(find.byKey(const Key('set.1.weight')))
+          .controller!
+          .text,
       '55.1',
     );
     expect(
-      tester.widget<TextField>(find.byKey(const Key('set.2.weight'))).controller!.text,
+      tester
+          .widget<TextField>(find.byKey(const Key('set.2.weight')))
+          .controller!
+          .text,
       '49.6',
     );
   });
@@ -145,16 +184,21 @@ void main() {
   // SetRow entirely and does not land again until the footer button reads
   // the same field (logger_action.dart, a later task). A typed value the tap
   // does not consume is the visible sign that nothing fired.
-  testWidgets('a weight typed in pounds is left untouched by an unlogged tap',
-      (tester) async {
+  testWidgets('a weight typed in pounds is left untouched by an unlogged tap', (
+    tester,
+  ) async {
     double? sentKg;
-    await tester.pumpWidget(_host(ExerciseLogPanel(
-      exercise: _exercise,
-      session: _session(),
-      unit: WeightUnit.lb,
-      drafts: _drafts(tester),
-      onUndoSet: (_) async {},
-    )));
+    await tester.pumpWidget(
+      _host(
+        ExerciseLogPanel(
+          exercise: _exercise,
+          session: _session(),
+          unit: WeightUnit.lb,
+          drafts: _drafts(tester),
+          onUndoSet: (_) async {},
+        ),
+      ),
+    );
 
     await tester.enterText(find.byKey(const Key('set.1.weight')), '100');
     await tester.enterText(find.byKey(const Key('set.1.reps')), '8');
@@ -163,7 +207,10 @@ void main() {
 
     expect(sentKg, isNull);
     expect(
-      tester.widget<TextField>(find.byKey(const Key('set.1.weight'))).controller!.text,
+      tester
+          .widget<TextField>(find.byKey(const Key('set.1.weight')))
+          .controller!
+          .text,
       '100',
     );
   });
@@ -171,35 +218,38 @@ void main() {
   // Flipping the unit must carry the number across, not leave it sitting
   // there meaning something else. Someone who has typed 100 kg and then
   // realises the app is in the wrong unit would otherwise log 100 lb.
-  testWidgets('switching the unit converts a half-typed weight in place',
-      (tester) async {
+  testWidgets('switching the unit converts a half-typed weight in place', (
+    tester,
+  ) async {
     var unit = WeightUnit.kg;
     final drafts = _drafts(tester);
-    await tester.pumpWidget(MaterialApp(
-      theme: fsLightTheme(),
-      home: Scaffold(
-        body: StatefulBuilder(
-          builder: (context, setState) => SingleChildScrollView(
-            child: ExerciseLogPanel(
-              exercise: _exercise,
-              session: _session(),
-              unit: unit,
-              // The panel itself has no unit-conversion side effect any
-              // more -- that moved to SetDrafts.convert(), called by
-              // whoever owns the toggle. session_logger_screen.dart's
-              // _setUnit does this in the real app; mirrored here since
-              // this test drives the panel directly.
-              onUnitChanged: (chosen) => setState(() {
-                drafts.convert(unit, chosen);
-                unit = chosen;
-              }),
-              drafts: drafts,
-              onUndoSet: (_) async {},
+    await tester.pumpWidget(
+      MaterialApp(
+        theme: fsLightTheme(),
+        home: Scaffold(
+          body: StatefulBuilder(
+            builder: (context, setState) => SingleChildScrollView(
+              child: ExerciseLogPanel(
+                exercise: _exercise,
+                session: _session(),
+                unit: unit,
+                // The panel itself has no unit-conversion side effect any
+                // more -- that moved to SetDrafts.convert(), called by
+                // whoever owns the toggle. session_logger_screen.dart's
+                // _setUnit does this in the real app; mirrored here since
+                // this test drives the panel directly.
+                onUnitChanged: (chosen) => setState(() {
+                  drafts.convert(unit, chosen);
+                  unit = chosen;
+                }),
+                drafts: drafts,
+                onUndoSet: (_) async {},
+              ),
             ),
           ),
         ),
       ),
-    ));
+    );
 
     await tester.enterText(find.byKey(const Key('set.1.weight')), '100');
     await tester.tap(find.byKey(const Key('unit.lb')));
@@ -207,7 +257,10 @@ void main() {
 
     // 100 kg is 220.462... lb.
     expect(
-      tester.widget<TextField>(find.byKey(const Key('set.1.weight'))).controller!.text,
+      tester
+          .widget<TextField>(find.byKey(const Key('set.1.weight')))
+          .controller!
+          .text,
       '220.5',
     );
   });
@@ -222,15 +275,21 @@ void main() {
   // session_logger_screen_test.dart's 'the highlighted row is the set the
   // button names' is what covers the derivation itself.
   testWidgets('the panel highlights the set it is handed', (tester) async {
-    await tester.pumpWidget(_host(ExerciseLogPanel(
-      exercise: _exercise,
-      session: _session(sets: const [
-        LoggedSet(exerciseId: 101, setNumber: 1, weightKg: 20, reps: 10),
-      ]),
-      activeSetNumber: 2,
-      drafts: _drafts(tester),
-      onUndoSet: (_) async {},
-    )));
+    await tester.pumpWidget(
+      _host(
+        ExerciseLogPanel(
+          exercise: _exercise,
+          session: _session(
+            sets: const [
+              LoggedSet(exerciseId: 101, setNumber: 1, weightKg: 20, reps: 10),
+            ],
+          ),
+          activeSetNumber: 2,
+          drafts: _drafts(tester),
+          onUndoSet: (_) async {},
+        ),
+      ),
+    );
 
     // Three target sets, and only the one named is drawn as next.
     expect(
@@ -242,19 +301,26 @@ void main() {
   // Null is what a finished exercise is handed -- see the screen test named
   // above. Passed explicitly rather than left to the default, so this says
   // what it means.
-  testWidgets('handed no active set, the panel highlights nothing',
-      (tester) async {
-    await tester.pumpWidget(_host(ExerciseLogPanel(
-      exercise: _exercise,
-      session: _session(sets: const [
-        LoggedSet(exerciseId: 101, setNumber: 1, weightKg: 20, reps: 10),
-        LoggedSet(exerciseId: 101, setNumber: 2, weightKg: 20, reps: 10),
-        LoggedSet(exerciseId: 101, setNumber: 3, weightKg: 20, reps: 10),
-      ]),
-      activeSetNumber: null,
-      drafts: _drafts(tester),
-      onUndoSet: (_) async {},
-    )));
+  testWidgets('handed no active set, the panel highlights nothing', (
+    tester,
+  ) async {
+    await tester.pumpWidget(
+      _host(
+        ExerciseLogPanel(
+          exercise: _exercise,
+          session: _session(
+            sets: const [
+              LoggedSet(exerciseId: 101, setNumber: 1, weightKg: 20, reps: 10),
+              LoggedSet(exerciseId: 101, setNumber: 2, weightKg: 20, reps: 10),
+              LoggedSet(exerciseId: 101, setNumber: 3, weightKg: 20, reps: 10),
+            ],
+          ),
+          activeSetNumber: null,
+          drafts: _drafts(tester),
+          onUndoSet: (_) async {},
+        ),
+      ),
+    );
 
     expect(
       tester.widgetList<SetRow>(find.byType(SetRow)).map((row) => row.active),
@@ -263,44 +329,68 @@ void main() {
   });
 
   testWidgets('shows one row per target set', (tester) async {
-    await tester.pumpWidget(_host(ExerciseLogPanel(
-      exercise: _exercise,
-      session: _session(),
-      drafts: _drafts(tester),
-      onUndoSet: (_) async {},
-    )));
+    await tester.pumpWidget(
+      _host(
+        ExerciseLogPanel(
+          exercise: _exercise,
+          session: _session(),
+          drafts: _drafts(tester),
+          onUndoSet: (_) async {},
+        ),
+      ),
+    );
 
     expect(find.byKey(const Key('set.1.weight')), findsOneWidget);
     expect(find.byKey(const Key('set.3.reps')), findsOneWidget);
     expect(find.byKey(const Key('set.4.weight')), findsNothing);
   });
 
-  testWidgets('the weight field is prefilled from the last session', (tester) async {
-    await tester.pumpWidget(_host(ExerciseLogPanel(
-      exercise: _exercise,
-      session: _session(),
-      last: const LastPerformance(
-        exerciseId: 101, weightKg: 22.5, reps: 10, sessionDate: '2026-09-05',
+  testWidgets('the weight field is prefilled from the last session', (
+    tester,
+  ) async {
+    await tester.pumpWidget(
+      _host(
+        ExerciseLogPanel(
+          exercise: _exercise,
+          session: _session(),
+          last: const LastPerformance(
+            exerciseId: 101,
+            weightKg: 22.5,
+            reps: 10,
+            sessionDate: '2026-09-05',
+          ),
+          drafts: _drafts(tester),
+          onUndoSet: (_) async {},
+        ),
       ),
-      drafts: _drafts(tester),
-      onUndoSet: (_) async {},
-    )));
+    );
 
     expect(find.text('Target 3 × 8-12 · last 22.5 kg'), findsOneWidget);
-    final field = tester.widget<TextField>(find.byKey(const Key('set.1.weight')));
+    final field = tester.widget<TextField>(
+      find.byKey(const Key('set.1.weight')),
+    );
     expect(field.controller!.text, '22.5');
   });
 
-  testWidgets('the reps field is prefilled from the last session', (tester) async {
-    await tester.pumpWidget(_host(ExerciseLogPanel(
-      exercise: _exercise,
-      session: _session(),
-      last: const LastPerformance(
-        exerciseId: 101, weightKg: 22.5, reps: 10, sessionDate: '2026-09-05',
+  testWidgets('the reps field is prefilled from the last session', (
+    tester,
+  ) async {
+    await tester.pumpWidget(
+      _host(
+        ExerciseLogPanel(
+          exercise: _exercise,
+          session: _session(),
+          last: const LastPerformance(
+            exerciseId: 101,
+            weightKg: 22.5,
+            reps: 10,
+            sessionDate: '2026-09-05',
+          ),
+          drafts: _drafts(tester),
+          onUndoSet: (_) async {},
+        ),
       ),
-      drafts: _drafts(tester),
-      onUndoSet: (_) async {},
-    )));
+    );
 
     final field = tester.widget<TextField>(find.byKey(const Key('set.1.reps')));
     expect(field.controller!.text, '10');
@@ -312,59 +402,93 @@ void main() {
   // stored set's presence, not on the prefill, so its State survives the
   // rebuild that brings the values in. Reading them in initState alone means
   // the header says "last 22.5 kg" over two empty fields, forever.
-  testWidgets('a prefill arriving after the first frame still reaches the fields',
-      (tester) async {
-    final drafts = _drafts(tester);
-    Widget panel(LastPerformance? last) => _host(ExerciseLogPanel(
+  testWidgets(
+    'a prefill arriving after the first frame still reaches the fields',
+    (tester) async {
+      final drafts = _drafts(tester);
+      Widget panel(LastPerformance? last) => _host(
+        ExerciseLogPanel(
           exercise: _exercise,
           session: _session(),
           last: last,
           drafts: drafts,
           onUndoSet: (_) async {},
-        ));
+        ),
+      );
 
-    await tester.pumpWidget(panel(null));
-    await tester.pumpWidget(panel(const LastPerformance(
-      exerciseId: 101, weightKg: 22.5, reps: 10, sessionDate: '2026-09-05',
-    )));
+      await tester.pumpWidget(panel(null));
+      await tester.pumpWidget(
+        panel(
+          const LastPerformance(
+            exerciseId: 101,
+            weightKg: 22.5,
+            reps: 10,
+            sessionDate: '2026-09-05',
+          ),
+        ),
+      );
 
-    expect(
-      tester.widget<TextField>(find.byKey(const Key('set.1.weight'))).controller!.text,
-      '22.5',
-    );
-    expect(
-      tester.widget<TextField>(find.byKey(const Key('set.1.reps'))).controller!.text,
-      '10',
-    );
-  });
+      expect(
+        tester
+            .widget<TextField>(find.byKey(const Key('set.1.weight')))
+            .controller!
+            .text,
+        '22.5',
+      );
+      expect(
+        tester
+            .widget<TextField>(find.byKey(const Key('set.1.reps')))
+            .controller!
+            .text,
+        '10',
+      );
+    },
+  );
 
   // A late prefill fills a field, it does not correct one. Someone who opened
   // the logger and started typing before the fetch landed must not have their
   // first set rewritten under them.
-  testWidgets('a late prefill leaves a value already typed alone', (tester) async {
+  testWidgets('a late prefill leaves a value already typed alone', (
+    tester,
+  ) async {
     final drafts = _drafts(tester);
-    Widget panel(LastPerformance? last) => _host(ExerciseLogPanel(
-          exercise: _exercise,
-          session: _session(),
-          last: last,
-          drafts: drafts,
-          onUndoSet: (_) async {},
-        ));
+    Widget panel(LastPerformance? last) => _host(
+      ExerciseLogPanel(
+        exercise: _exercise,
+        session: _session(),
+        last: last,
+        drafts: drafts,
+        onUndoSet: (_) async {},
+      ),
+    );
 
     await tester.pumpWidget(panel(null));
     await tester.enterText(find.byKey(const Key('set.1.weight')), '30');
     await tester.enterText(find.byKey(const Key('set.1.reps')), '6');
 
-    await tester.pumpWidget(panel(const LastPerformance(
-      exerciseId: 101, weightKg: 22.5, reps: 10, sessionDate: '2026-09-05',
-    )));
+    await tester.pumpWidget(
+      panel(
+        const LastPerformance(
+          exerciseId: 101,
+          weightKg: 22.5,
+          reps: 10,
+          sessionDate: '2026-09-05',
+        ),
+      ),
+    );
 
     expect(
-      tester.widget<TextField>(find.byKey(const Key('set.1.weight'))).controller!.text,
+      tester
+          .widget<TextField>(find.byKey(const Key('set.1.weight')))
+          .controller!
+          .text,
       '30',
     );
     expect(
-      tester.widget<TextField>(find.byKey(const Key('set.1.reps'))).controller!.text,
+      tester
+          .widget<TextField>(find.byKey(const Key('set.1.reps')))
+          .controller!
+          .text,
       '6',
     );
   });
@@ -374,63 +498,99 @@ void main() {
   // to fall through to last session's number -- then write it authoritatively
   // into a field the user cannot edit, claiming a lift that never happened.
   testWidgets('a stored set with no weight shows no weight', (tester) async {
-    await tester.pumpWidget(_host(ExerciseLogPanel(
-      exercise: _exercise,
-      session: _session(sets: const [
-        LoggedSet(exerciseId: 101, setNumber: 1, reps: 12),
-      ]),
-      last: const LastPerformance(
-        exerciseId: 101, weightKg: 22.5, reps: 10, sessionDate: '2026-09-05',
+    await tester.pumpWidget(
+      _host(
+        ExerciseLogPanel(
+          exercise: _exercise,
+          session: _session(
+            sets: const [LoggedSet(exerciseId: 101, setNumber: 1, reps: 12)],
+          ),
+          last: const LastPerformance(
+            exerciseId: 101,
+            weightKg: 22.5,
+            reps: 10,
+            sessionDate: '2026-09-05',
+          ),
+          drafts: _drafts(tester),
+          onUndoSet: (_) async {},
+        ),
       ),
-      drafts: _drafts(tester),
-      onUndoSet: (_) async {},
-    )));
+    );
 
     expect(
-      tester.widget<TextField>(find.byKey(const Key('set.1.weight'))).controller!.text,
+      tester
+          .widget<TextField>(find.byKey(const Key('set.1.weight')))
+          .controller!
+          .text,
       isEmpty,
       reason: 'the server holds no weight for this set',
     );
     // What it DOES hold is still shown.
     expect(
-      tester.widget<TextField>(find.byKey(const Key('set.1.reps'))).controller!.text,
+      tester
+          .widget<TextField>(find.byKey(const Key('set.1.reps')))
+          .controller!
+          .text,
       '12',
     );
   });
 
   testWidgets('a stored set with no reps shows no reps', (tester) async {
-    await tester.pumpWidget(_host(ExerciseLogPanel(
-      exercise: _exercise,
-      session: _session(sets: const [
-        LoggedSet(exerciseId: 101, setNumber: 1, weightKg: 40),
-      ]),
-      last: const LastPerformance(
-        exerciseId: 101, weightKg: 22.5, reps: 10, sessionDate: '2026-09-05',
+    await tester.pumpWidget(
+      _host(
+        ExerciseLogPanel(
+          exercise: _exercise,
+          session: _session(
+            sets: const [
+              LoggedSet(exerciseId: 101, setNumber: 1, weightKg: 40),
+            ],
+          ),
+          last: const LastPerformance(
+            exerciseId: 101,
+            weightKg: 22.5,
+            reps: 10,
+            sessionDate: '2026-09-05',
+          ),
+          drafts: _drafts(tester),
+          onUndoSet: (_) async {},
+        ),
       ),
-      drafts: _drafts(tester),
-      onUndoSet: (_) async {},
-    )));
+    );
 
     expect(
-      tester.widget<TextField>(find.byKey(const Key('set.1.reps'))).controller!.text,
+      tester
+          .widget<TextField>(find.byKey(const Key('set.1.reps')))
+          .controller!
+          .text,
       isEmpty,
     );
     expect(
-      tester.widget<TextField>(find.byKey(const Key('set.1.weight'))).controller!.text,
+      tester
+          .widget<TextField>(find.byKey(const Key('set.1.weight')))
+          .controller!
+          .text,
       '40',
     );
   });
 
-  testWidgets('a first session prefills nothing and says nothing', (tester) async {
-    await tester.pumpWidget(_host(ExerciseLogPanel(
-      exercise: _exercise,
-      session: _session(),
-      drafts: _drafts(tester),
-      onUndoSet: (_) async {},
-    )));
+  testWidgets('a first session prefills nothing and says nothing', (
+    tester,
+  ) async {
+    await tester.pumpWidget(
+      _host(
+        ExerciseLogPanel(
+          exercise: _exercise,
+          session: _session(),
+          drafts: _drafts(tester),
+          onUndoSet: (_) async {},
+        ),
+      ),
+    );
 
     expect(find.textContaining('Last '), findsNothing);
-    final field = tester.widget<TextField>(find.byKey(const Key('set.1.weight')));
+    final field = tester.widget<TextField>(
+      find.byKey(const Key('set.1.weight')),
+    );
     expect(field.controller!.text, isEmpty);
   });
 
@@ -441,14 +601,19 @@ void main() {
   // button to read. Whether anything was reported is not observable from
   // here: the panel's only callback is onUndoSet, and
   // 'an unlogged row is not a reopen target' below is what asserts that.
-  testWidgets('a tap on an unlogged row leaves the typed weight in place',
-      (tester) async {
-    await tester.pumpWidget(_host(ExerciseLogPanel(
-      exercise: _exercise,
-      session: _session(),
-      drafts: _drafts(tester),
-      onUndoSet: (_) async {},
-    )));
+  testWidgets('a tap on an unlogged row leaves the typed weight in place', (
+    tester,
+  ) async {
+    await tester.pumpWidget(
+      _host(
+        ExerciseLogPanel(
+          exercise: _exercise,
+          session: _session(),
+          drafts: _drafts(tester),
+          onUndoSet: (_) async {},
+        ),
+      ),
+    );
 
     await tester.enterText(find.byKey(const Key('set.1.weight')), '25');
     await tester.enterText(find.byKey(const Key('set.1.reps')), '8');
@@ -456,7 +621,10 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(
-      tester.widget<TextField>(find.byKey(const Key('set.1.weight'))).controller!.text,
+      tester
+          .widget<TextField>(find.byKey(const Key('set.1.weight')))
+          .controller!
+          .text,
       '25',
     );
   });
@@ -465,21 +633,29 @@ void main() {
   // as a zero -- is covered directly in units_test.dart. Here, the same as
   // above, for the field that was never filled in: a tap must not put
   // anything into it either.
-  testWidgets('a tap on an unlogged row leaves an empty weight field empty',
-      (tester) async {
-    await tester.pumpWidget(_host(ExerciseLogPanel(
-      exercise: _exercise,
-      session: _session(),
-      drafts: _drafts(tester),
-      onUndoSet: (_) async {},
-    )));
+  testWidgets('a tap on an unlogged row leaves an empty weight field empty', (
+    tester,
+  ) async {
+    await tester.pumpWidget(
+      _host(
+        ExerciseLogPanel(
+          exercise: _exercise,
+          session: _session(),
+          drafts: _drafts(tester),
+          onUndoSet: (_) async {},
+        ),
+      ),
+    );
 
     await tester.enterText(find.byKey(const Key('set.1.reps')), '15');
     await tester.tap(find.byKey(const Key('set.1.tick')));
     await tester.pumpAndSettle();
 
     expect(
-      tester.widget<TextField>(find.byKey(const Key('set.1.weight'))).controller!.text,
+      tester
+          .widget<TextField>(find.byKey(const Key('set.1.weight')))
+          .controller!
+          .text,
       isEmpty,
     );
   });
@@ -490,63 +666,91 @@ void main() {
   // it shows is final -- and it has to be what the server actually took.
   // Seeding that declined to correct the field would leave the table
   // displaying 105 against a stored set of 100, permanently.
-  testWidgets('a stored set shows what was stored, not an edit made mid-write',
-      (tester) async {
-    ActiveSession session = _session();
-    final drafts = _drafts(tester);
+  testWidgets(
+    'a stored set shows what was stored, not an edit made mid-write',
+    (tester) async {
+      ActiveSession session = _session();
+      final drafts = _drafts(tester);
 
-    await tester.pumpWidget(StatefulBuilder(
-      builder: (context, setState) => _host(Column(
-        children: [
-          ExerciseLogPanel(
-            exercise: _exercise,
-            session: session,
-            drafts: drafts,
-            onUndoSet: (_) async {},
+      await tester.pumpWidget(
+        StatefulBuilder(
+          builder: (context, setState) => _host(
+            Column(
+              children: [
+                ExerciseLogPanel(
+                  exercise: _exercise,
+                  session: session,
+                  drafts: drafts,
+                  onUndoSet: (_) async {},
+                ),
+                TextButton(
+                  // Stands in for the write resolving: the set the server took
+                  // arrives on the session one frame after the edit.
+                  onPressed: () => setState(() {
+                    session = session.withSet(
+                      const LoggedSet(
+                        exerciseId: 101,
+                        setNumber: 1,
+                        weightKg: 100,
+                        reps: 8,
+                      ),
+                    );
+                  }),
+                  child: const Text('land the write'),
+                ),
+              ],
+            ),
           ),
-          TextButton(
-            // Stands in for the write resolving: the set the server took
-            // arrives on the session one frame after the edit.
-            onPressed: () => setState(() {
-              session = session.withSet(const LoggedSet(
-                exerciseId: 101, setNumber: 1, weightKg: 100, reps: 8,
-              ));
-            }),
-            child: const Text('land the write'),
+        ),
+      );
+
+      await tester.enterText(find.byKey(const Key('set.1.weight')), '105');
+      await tester.enterText(find.byKey(const Key('set.1.reps')), '5');
+      await tester.pump();
+
+      await tester.tap(find.text('land the write'));
+      await tester.pumpAndSettle();
+
+      expect(
+        tester
+            .widget<TextField>(find.byKey(const Key('set.1.weight')))
+            .controller!
+            .text,
+        '100',
+      );
+      expect(
+        tester
+            .widget<TextField>(find.byKey(const Key('set.1.reps')))
+            .controller!
+            .text,
+        '8',
+      );
+    },
+  );
+
+  testWidgets('beating the last session shows the overload nudge', (
+    tester,
+  ) async {
+    await tester.pumpWidget(
+      _host(
+        ExerciseLogPanel(
+          exercise: _exercise,
+          session: _session(
+            sets: const [
+              LoggedSet(exerciseId: 101, setNumber: 1, weightKg: 25, reps: 8),
+            ],
           ),
-        ],
-      )),
-    ));
-
-    await tester.enterText(find.byKey(const Key('set.1.weight')), '105');
-    await tester.enterText(find.byKey(const Key('set.1.reps')), '5');
-    await tester.pump();
-
-    await tester.tap(find.text('land the write'));
-    await tester.pumpAndSettle();
-
-    expect(
-      tester.widget<TextField>(find.byKey(const Key('set.1.weight'))).controller!.text,
-      '100',
-    );
-    expect(
-      tester.widget<TextField>(find.byKey(const Key('set.1.reps'))).controller!.text,
-      '8',
-    );
-  });
-
-  testWidgets('beating the last session shows the overload nudge', (tester) async {
-    await tester.pumpWidget(_host(ExerciseLogPanel(
-      exercise: _exercise,
-      session: _session(sets: const [
-        LoggedSet(exerciseId: 101, setNumber: 1, weightKg: 25, reps: 8),
-      ]),
-      last: const LastPerformance(
-        exerciseId: 101, weightKg: 22.5, reps: 10, sessionDate: '2026-09-05',
+          last: const LastPerformance(
+            exerciseId: 101,
+            weightKg: 22.5,
+            reps: 10,
+            sessionDate: '2026-09-05',
+          ),
+          drafts: _drafts(tester),
+          onUndoSet: (_) async {},
+        ),
       ),
-      drafts: _drafts(tester),
-      onUndoSet: (_) async {},
-    )));
+    );
 
     expect(
       find.text('+2.5 kg vs last session — nice progressive overload.'),
@@ -554,18 +758,29 @@ void main() {
     );
   });
 
-  testWidgets('matching or missing the last weight shows no nudge', (tester) async {
-    await tester.pumpWidget(_host(ExerciseLogPanel(
-      exercise: _exercise,
-      session: _session(sets: const [
-        LoggedSet(exerciseId: 101, setNumber: 1, weightKg: 22.5, reps: 8),
-      ]),
-      last: const LastPerformance(
-        exerciseId: 101, weightKg: 22.5, reps: 10, sessionDate: '2026-09-05',
+  testWidgets('matching or missing the last weight shows no nudge', (
+    tester,
+  ) async {
+    await tester.pumpWidget(
+      _host(
+        ExerciseLogPanel(
+          exercise: _exercise,
+          session: _session(
+            sets: const [
+              LoggedSet(exerciseId: 101, setNumber: 1, weightKg: 22.5, reps: 8),
+            ],
+          ),
+          last: const LastPerformance(
+            exerciseId: 101,
+            weightKg: 22.5,
+            reps: 10,
+            sessionDate: '2026-09-05',
+          ),
+          drafts: _drafts(tester),
+          onUndoSet: (_) async {},
+        ),
       ),
-      drafts: _drafts(tester),
-      onUndoSet: (_) async {},
-    )));
+    );
 
     // Equalling last week is not progressive overload, and saying it is would
     // make the nudge meaningless.
@@ -573,43 +788,73 @@ void main() {
   });
 
   testWidgets('a first session never nudges', (tester) async {
-    await tester.pumpWidget(_host(ExerciseLogPanel(
-      exercise: _exercise,
-      session: _session(sets: const [
-        LoggedSet(exerciseId: 101, setNumber: 1, weightKg: 40, reps: 8),
-      ]),
-      drafts: _drafts(tester),
-      onUndoSet: (_) async {},
-    )));
+    await tester.pumpWidget(
+      _host(
+        ExerciseLogPanel(
+          exercise: _exercise,
+          session: _session(
+            sets: const [
+              LoggedSet(exerciseId: 101, setNumber: 1, weightKg: 40, reps: 8),
+            ],
+          ),
+          drafts: _drafts(tester),
+          onUndoSet: (_) async {},
+        ),
+      ),
+    );
 
     expect(find.textContaining('vs last session'), findsNothing);
   });
 
   testWidgets('a stored set renders ticked and read-only', (tester) async {
-    await tester.pumpWidget(_host(ExerciseLogPanel(
-      exercise: _exercise,
-      session: _session(sets: const [
-        LoggedSet(exerciseId: 101, setNumber: 1, weightKg: 22.5, reps: 10),
-      ]),
-      drafts: _drafts(tester),
-      onUndoSet: (_) async {},
-    )));
+    await tester.pumpWidget(
+      _host(
+        ExerciseLogPanel(
+          exercise: _exercise,
+          session: _session(
+            sets: const [
+              LoggedSet(
+                exerciseId: 101,
+                setNumber: 1,
+                weightKg: 22.5,
+                reps: 10,
+              ),
+            ],
+          ),
+          drafts: _drafts(tester),
+          onUndoSet: (_) async {},
+        ),
+      ),
+    );
 
-    final field = tester.widget<TextField>(find.byKey(const Key('set.1.weight')));
+    final field = tester.widget<TextField>(
+      find.byKey(const Key('set.1.weight')),
+    );
     expect(field.controller!.text, '22.5');
     expect(field.enabled, isFalse);
   });
 
   testWidgets('tapping a ticked set un-ticks it', (tester) async {
     int? undone;
-    await tester.pumpWidget(_host(ExerciseLogPanel(
-      exercise: _exercise,
-      session: _session(sets: const [
-        LoggedSet(exerciseId: 101, setNumber: 1, weightKg: 22.5, reps: 10),
-      ]),
-      drafts: _drafts(tester),
-      onUndoSet: (setNumber) async => undone = setNumber,
-    )));
+    await tester.pumpWidget(
+      _host(
+        ExerciseLogPanel(
+          exercise: _exercise,
+          session: _session(
+            sets: const [
+              LoggedSet(
+                exerciseId: 101,
+                setNumber: 1,
+                weightKg: 22.5,
+                reps: 10,
+              ),
+            ],
+          ),
+          drafts: _drafts(tester),
+          onUndoSet: (setNumber) async => undone = setNumber,
+        ),
+      ),
+    );
 
     await tester.tap(find.byKey(const Key('set.1.tick')));
     await tester.pumpAndSettle();
@@ -631,12 +876,16 @@ void main() {
   // prove it against a real controller.
   testWidgets('an unlogged row\'s tick fires no callback', (tester) async {
     var undos = 0;
-    await tester.pumpWidget(_host(ExerciseLogPanel(
-      exercise: _exercise,
-      session: _session(),
-      drafts: _drafts(tester),
-      onUndoSet: (_) async => undos++,
-    )));
+    await tester.pumpWidget(
+      _host(
+        ExerciseLogPanel(
+          exercise: _exercise,
+          session: _session(),
+          drafts: _drafts(tester),
+          onUndoSet: (_) async => undos++,
+        ),
+      ),
+    );
 
     // An unlogged row's mark does nothing at all.
     await tester.tap(find.byKey(const Key('set.1.tick')));
@@ -647,17 +896,28 @@ void main() {
 
   testWidgets('tapping a stored row reopens it for editing', (tester) async {
     var reopened = 0;
-    await tester.pumpWidget(_host(ExerciseLogPanel(
-      exercise: _exercise,
-      session: _session(sets: const [
-        LoggedSet(exerciseId: 101, setNumber: 1, weightKg: 22.5, reps: 10),
-      ]),
-      drafts: _drafts(tester),
-      onUndoSet: (setNumber) async {
-        expect(setNumber, 1);
-        reopened++;
-      },
-    )));
+    await tester.pumpWidget(
+      _host(
+        ExerciseLogPanel(
+          exercise: _exercise,
+          session: _session(
+            sets: const [
+              LoggedSet(
+                exerciseId: 101,
+                setNumber: 1,
+                weightKg: 22.5,
+                reps: 10,
+              ),
+            ],
+          ),
+          drafts: _drafts(tester),
+          onUndoSet: (setNumber) async {
+            expect(setNumber, 1);
+            reopened++;
+          },
+        ),
+      ),
+    );
 
     await tester.tap(find.byKey(const Key('set.1.row')));
     await tester.pumpAndSettle();
@@ -667,12 +927,16 @@ void main() {
 
   testWidgets('an unlogged row is not a reopen target', (tester) async {
     var reopened = 0;
-    await tester.pumpWidget(_host(ExerciseLogPanel(
-      exercise: _exercise,
-      session: _session(),
-      drafts: _drafts(tester),
-      onUndoSet: (_) async => reopened++,
-    )));
+    await tester.pumpWidget(
+      _host(
+        ExerciseLogPanel(
+          exercise: _exercise,
+          session: _session(),
+          drafts: _drafts(tester),
+          onUndoSet: (_) async => reopened++,
+        ),
+      ),
+    );
 
     await tester.tap(find.byKey(const Key('set.2.row')));
     await tester.pumpAndSettle();
@@ -682,63 +946,80 @@ void main() {
 
   // --- Additions beyond the brief's list ---
 
-  testWidgets('un-ticking a set does not leave the old value sitting in the field',
-      (tester) async {
-    ActiveSession session = _session(sets: const [
-      LoggedSet(exerciseId: 101, setNumber: 1, weightKg: 22.5, reps: 10),
-    ]);
-    final drafts = _drafts(tester);
+  testWidgets(
+    'un-ticking a set does not leave the old value sitting in the field',
+    (tester) async {
+      ActiveSession session = _session(
+        sets: const [
+          LoggedSet(exerciseId: 101, setNumber: 1, weightKg: 22.5, reps: 10),
+        ],
+      );
+      final drafts = _drafts(tester);
 
-    await tester.pumpWidget(StatefulBuilder(
-      builder: (context, setState) => _host(ExerciseLogPanel(
-        exercise: _exercise,
-        session: session,
-        drafts: drafts,
-        onUndoSet: (setNumber) async {
-          setState(() {
-            session = session.withoutSet(_exercise.exerciseId, setNumber);
-            // ExerciseLogPanel does not own `drafts` and has no way to reach
-            // whatever session_logger_screen.dart's real onUndoSet does --
-            // this test supplies its own, so calling release() here can only
-            // ever demonstrate the panel/SetDrafts *mechanism* (a released
-            // field re-seeds blank), never verify that the real screen's
-            // handler actually calls it. That real wiring is what
-            // session_logger_screen_test.dart's
-            // "undoing a set clears its typed values from the reopened row"
-            // now checks, against the actual handler.
-            drafts.release(setNumber);
-          });
-        },
-      )),
-    ));
+      await tester.pumpWidget(
+        StatefulBuilder(
+          builder: (context, setState) => _host(
+            ExerciseLogPanel(
+              exercise: _exercise,
+              session: session,
+              drafts: drafts,
+              onUndoSet: (setNumber) async {
+                setState(() {
+                  session = session.withoutSet(_exercise.exerciseId, setNumber);
+                  // ExerciseLogPanel does not own `drafts` and has no way to reach
+                  // whatever session_logger_screen.dart's real onUndoSet does --
+                  // this test supplies its own, so calling release() here can only
+                  // ever demonstrate the panel/SetDrafts *mechanism* (a released
+                  // field re-seeds blank), never verify that the real screen's
+                  // handler actually calls it. That real wiring is what
+                  // session_logger_screen_test.dart's
+                  // "undoing a set clears its typed values from the reopened row"
+                  // now checks, against the actual handler.
+                  drafts.release(setNumber);
+                });
+              },
+            ),
+          ),
+        ),
+      );
 
-    // Sanity: starts ticked, showing the stored value.
-    expect(
-      tester.widget<TextField>(find.byKey(const Key('set.1.weight'))).controller!.text,
-      '22.5',
-    );
+      // Sanity: starts ticked, showing the stored value.
+      expect(
+        tester
+            .widget<TextField>(find.byKey(const Key('set.1.weight')))
+            .controller!
+            .text,
+        '22.5',
+      );
 
-    await tester.tap(find.byKey(const Key('set.1.tick')));
-    await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const Key('set.1.tick')));
+      await tester.pumpAndSettle();
 
-    // The row must rebuild its controller on un-tick, not keep showing the
-    // set that was just undone as though it were still typed in.
-    final field = tester.widget<TextField>(find.byKey(const Key('set.1.weight')));
-    expect(field.controller!.text, isEmpty);
-    expect(field.enabled, isTrue);
-  });
+      // The row must rebuild its controller on un-tick, not keep showing the
+      // set that was just undone as though it were still typed in.
+      final field = tester.widget<TextField>(
+        find.byKey(const Key('set.1.weight')),
+      );
+      expect(field.controller!.text, isEmpty);
+      expect(field.enabled, isTrue);
+    },
+  );
 
   // 305 of the live catalogue is bodyweight, and every one of them used to
   // draw a kg field. An empty field on a pull-up is not neutral: it invites a
   // number, and a pull-up logged at 60 kg inflates the volume chart it feeds.
   group('an exercise with no external load', () {
     testWidgets('has no weight field on any set', (tester) async {
-      await tester.pumpWidget(_host(ExerciseLogPanel(
-        exercise: _bodyweight,
-        session: _session(),
-        drafts: _drafts(tester),
-        onUndoSet: (_) async {},
-      )));
+      await tester.pumpWidget(
+        _host(
+          ExerciseLogPanel(
+            exercise: _bodyweight,
+            session: _session(),
+            drafts: _drafts(tester),
+            onUndoSet: (_) async {},
+          ),
+        ),
+      );
 
       expect(find.byKey(const Key('set.1.weight')), findsNothing);
       expect(find.byKey(const Key('set.3.weight')), findsNothing);
@@ -752,27 +1033,47 @@ void main() {
     // the rows no longer give it, and every heading after it slides off its
     // field.
     testWidgets('drops the weight heading with the column', (tester) async {
-      await tester.pumpWidget(_host(ExerciseLogPanel(
-        exercise: _bodyweight,
-        session: _session(),
-        drafts: _drafts(tester),
-        onUndoSet: (_) async {},
-      )));
+      await tester.pumpWidget(
+        _host(
+          ExerciseLogPanel(
+            exercise: _bodyweight,
+            session: _session(),
+            drafts: _drafts(tester),
+            onUndoSet: (_) async {},
+          ),
+        ),
+      );
 
       final header = find.byKey(const Key('logpanel.columns'));
-      expect(find.descendant(of: header, matching: find.text('KG')), findsNothing);
-      expect(find.descendant(of: header, matching: find.text('LB')), findsNothing);
-      expect(find.descendant(of: header, matching: find.text('SET')), findsOneWidget);
-      expect(find.descendant(of: header, matching: find.text('REPS')), findsOneWidget);
+      expect(
+        find.descendant(of: header, matching: find.text('KG')),
+        findsNothing,
+      );
+      expect(
+        find.descendant(of: header, matching: find.text('LB')),
+        findsNothing,
+      );
+      expect(
+        find.descendant(of: header, matching: find.text('SET')),
+        findsOneWidget,
+      );
+      expect(
+        find.descendant(of: header, matching: find.text('REPS')),
+        findsOneWidget,
+      );
     });
 
     testWidgets('keeps the reps heading over the reps field', (tester) async {
-      await tester.pumpWidget(_host(ExerciseLogPanel(
-        exercise: _bodyweight,
-        session: _session(),
-        drafts: _drafts(tester),
-        onUndoSet: (_) async {},
-      )));
+      await tester.pumpWidget(
+        _host(
+          ExerciseLogPanel(
+            exercise: _bodyweight,
+            session: _session(),
+            drafts: _drafts(tester),
+            onUndoSet: (_) async {},
+          ),
+        ),
+      );
 
       final heading = find.descendant(
         of: find.byKey(const Key('logpanel.columns')),
@@ -787,14 +1088,19 @@ void main() {
     // A dip belt is the exception, not the rule, so the field is asked for
     // rather than offered -- and asked for once on the exercise, because
     // nobody belts up for set 2 alone.
-    testWidgets('offers to add weight, which brings the column back',
-        (tester) async {
-      await tester.pumpWidget(_host(ExerciseLogPanel(
-        exercise: _bodyweight,
-        session: _session(),
-        drafts: _drafts(tester),
-        onUndoSet: (_) async {},
-      )));
+    testWidgets('offers to add weight, which brings the column back', (
+      tester,
+    ) async {
+      await tester.pumpWidget(
+        _host(
+          ExerciseLogPanel(
+            exercise: _bodyweight,
+            session: _session(),
+            drafts: _drafts(tester),
+            onUndoSet: (_) async {},
+          ),
+        ),
+      );
 
       await tester.tap(find.byKey(const Key('logpanel.addweight')));
       await tester.pumpAndSettle();
@@ -813,17 +1119,25 @@ void main() {
     // Derived from history rather than stored as a preference: someone who
     // belted up last week is belted up this week, and the last set logged
     // already says so. Nothing new is persisted to know it.
-    testWidgets('keeps its weight column when last week carried a weight',
-        (tester) async {
-      await tester.pumpWidget(_host(ExerciseLogPanel(
-        exercise: _bodyweight,
-        session: _session(),
-        last: const LastPerformance(
-          exerciseId: 102, weightKg: 10, reps: 8, sessionDate: '2026-09-11',
+    testWidgets('keeps its weight column when last week carried a weight', (
+      tester,
+    ) async {
+      await tester.pumpWidget(
+        _host(
+          ExerciseLogPanel(
+            exercise: _bodyweight,
+            session: _session(),
+            last: const LastPerformance(
+              exerciseId: 102,
+              weightKg: 10,
+              reps: 8,
+              sessionDate: '2026-09-11',
+            ),
+            drafts: _drafts(tester),
+            onUndoSet: (_) async {},
+          ),
         ),
-        drafts: _drafts(tester),
-        onUndoSet: (_) async {},
-      )));
+      );
 
       expect(find.byKey(const Key('set.1.weight')), findsOneWidget);
       // Already there, so there is nothing left to ask for.
@@ -832,16 +1146,24 @@ void main() {
 
     // A null weight on the last set is a bodyweight set, not a missing
     // reading -- it must not read as "carried a weight".
-    testWidgets('stays without one when last week carried none', (tester) async {
-      await tester.pumpWidget(_host(ExerciseLogPanel(
-        exercise: _bodyweight,
-        session: _session(),
-        last: const LastPerformance(
-          exerciseId: 102, reps: 8, sessionDate: '2026-09-11',
+    testWidgets('stays without one when last week carried none', (
+      tester,
+    ) async {
+      await tester.pumpWidget(
+        _host(
+          ExerciseLogPanel(
+            exercise: _bodyweight,
+            session: _session(),
+            last: const LastPerformance(
+              exerciseId: 102,
+              reps: 8,
+              sessionDate: '2026-09-11',
+            ),
+            drafts: _drafts(tester),
+            onUndoSet: (_) async {},
+          ),
         ),
-        drafts: _drafts(tester),
-        onUndoSet: (_) async {},
-      )));
+      );
 
       expect(find.byKey(const Key('set.1.weight')), findsNothing);
     });
@@ -849,49 +1171,58 @@ void main() {
     // The panel holds the reveal, and the logger rebuilds it in place as the
     // workout moves -- so a State that survives the move would carry one
     // exercise's dip belt onto the next exercise's push-ups.
-    testWidgets('puts the column away again on the next exercise',
-        (tester) async {
-      Widget panel(PlanExercise exercise) => _host(ExerciseLogPanel(
-            exercise: exercise,
-            session: _session(),
-            drafts: _drafts(tester),
-            onUndoSet: (_) async {},
-          ));
+    testWidgets('puts the column away again on the next exercise', (
+      tester,
+    ) async {
+      Widget panel(PlanExercise exercise) => _host(
+        ExerciseLogPanel(
+          exercise: exercise,
+          session: _session(),
+          drafts: _drafts(tester),
+          onUndoSet: (_) async {},
+        ),
+      );
 
       await tester.pumpWidget(panel(_bodyweight));
       await tester.tap(find.byKey(const Key('logpanel.addweight')));
       await tester.pumpAndSettle();
       expect(find.byKey(const Key('set.1.weight')), findsOneWidget);
 
-      await tester.pumpWidget(panel(const PlanExercise(
-        planExerciseId: 603,
-        exerciseId: 103,
-        name: 'Push-up',
-        muscleGroup: 'pectorals',
-        orderNo: 3,
-        targetSets: 3,
-        targetReps: '12',
-        equipment: 'Bodyweight',
-      )));
+      await tester.pumpWidget(
+        panel(
+          const PlanExercise(
+            planExerciseId: 603,
+            exerciseId: 103,
+            name: 'Push-up',
+            muscleGroup: 'pectorals',
+            orderNo: 3,
+            targetSets: 3,
+            targetReps: '12',
+            equipment: 'Bodyweight',
+          ),
+        ),
+      );
 
       expect(find.byKey(const Key('set.1.weight')), findsNothing);
     });
-
   });
 
   // The affordance belongs to the exercises that lost something. Offering it
   // on a barbell bench, which already has the field, would read as a second
   // weight.
   testWidgets('a loaded exercise never offers to add weight', (tester) async {
-    await tester.pumpWidget(_host(ExerciseLogPanel(
-      exercise: _exercise,
-      session: _session(),
-      drafts: _drafts(tester),
-      onUndoSet: (_) async {},
-    )));
+    await tester.pumpWidget(
+      _host(
+        ExerciseLogPanel(
+          exercise: _exercise,
+          session: _session(),
+          drafts: _drafts(tester),
+          onUndoSet: (_) async {},
+        ),
+      ),
+    );
 
     expect(find.byKey(const Key('logpanel.addweight')), findsNothing);
     expect(find.byKey(const Key('set.1.weight')), findsOneWidget);
   });
-
 }

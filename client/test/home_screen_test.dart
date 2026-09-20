@@ -26,19 +26,18 @@ Profile _profile({
   String? mainGoal = 'build_muscle',
   String? fitnessLevel = 'beginner',
   List<EquipmentOption> equipment = _someEquipment,
-}) =>
-    Profile(
-      userId: 1,
-      email: 'juan@example.com',
-      fullName: fullName,
-      onboardingCompleted: true,
-      isPremium: false,
-      notificationsEnabled: true,
-      equipment: equipment,
-      injuries: const [],
-      mainGoal: mainGoal,
-      fitnessLevel: fitnessLevel,
-    );
+}) => Profile(
+  userId: 1,
+  email: 'juan@example.com',
+  fullName: fullName,
+  onboardingCompleted: true,
+  isPremium: false,
+  notificationsEnabled: true,
+  equipment: equipment,
+  injuries: const [],
+  mainGoal: mainGoal,
+  fitnessLevel: fitnessLevel,
+);
 
 const _defaultPlan = WorkoutPlan(
   planId: 1,
@@ -77,7 +76,8 @@ class _FakeSessionRepository implements SessionRepository {
   }
 
   @override
-  Future<Map<int, LastPerformance>> lastPerformance(List<int> ids) async => const {};
+  Future<Map<int, LastPerformance>> lastPerformance(List<int> ids) async =>
+      const {};
 
   @override
   Future<Set<String>> completedThisWeek() async => const {};
@@ -93,17 +93,18 @@ class _FakeSessionRepository implements SessionRepository {
 /// A workout started from the plan: its exercises still come from the plan,
 /// so the session carries none of its own.
 ActiveSession _planSession({List<LoggedSet> sets = const []}) => ActiveSession(
-      sessionId: 7,
-      status: 'in_progress',
-      sessionDate: '2026-09-14',
-      planId: 1,
-      planDayNo: 1,
-      startedAt: DateTime.now(),
-      sets: sets,
-    );
+  sessionId: 7,
+  status: 'in_progress',
+  sessionDate: '2026-09-14',
+  planId: 1,
+  planDayNo: 1,
+  startedAt: DateTime.now(),
+  sets: sets,
+);
 
 /// A workout picked by hand: no plan, and it carries its own exercises.
-ActiveSession _manualSession({List<LoggedSet> sets = const []}) => ActiveSession(
+ActiveSession _manualSession({List<LoggedSet> sets = const []}) =>
+    ActiveSession(
       sessionId: 8,
       status: 'in_progress',
       sessionDate: '2026-09-14',
@@ -111,12 +112,22 @@ ActiveSession _manualSession({List<LoggedSet> sets = const []}) => ActiveSession
       sets: sets,
       exercises: const [
         PlanExercise(
-          planExerciseId: 1, exerciseId: 101, name: 'Goblet squat',
-          muscleGroup: 'quadriceps', orderNo: 1, targetSets: 3, targetReps: '8-12',
+          planExerciseId: 1,
+          exerciseId: 101,
+          name: 'Goblet squat',
+          muscleGroup: 'quadriceps',
+          orderNo: 1,
+          targetSets: 3,
+          targetReps: '8-12',
         ),
         PlanExercise(
-          planExerciseId: 2, exerciseId: 202, name: 'Cable fly',
-          muscleGroup: 'pectorals', orderNo: 2, targetSets: 3, targetReps: '8-12',
+          planExerciseId: 2,
+          exerciseId: 202,
+          name: 'Cable fly',
+          muscleGroup: 'pectorals',
+          orderNo: 2,
+          targetSets: 3,
+          targetReps: '8-12',
         ),
       ],
     );
@@ -144,14 +155,16 @@ Future<void> _pumpHome(
   await tester.pumpWidget(
     ProviderScope(
       overrides: [
-        profileProvider
-            .overrideWith(() => _StubProfileNotifier(profile ?? _profile())),
+        profileProvider.overrideWith(
+          () => _StubProfileNotifier(profile ?? _profile()),
+        ),
         activePlanProvider.overrideWith((ref) async {
           if (planError != null) throw planError;
           return plan;
         }),
-        sessionRepositoryProvider
-            .overrideWithValue(sessions ?? _FakeSessionRepository()),
+        sessionRepositoryProvider.overrideWithValue(
+          sessions ?? _FakeSessionRepository(),
+        ),
         // The logger this pushes into opens on the exercise demo, which
         // fetches the catalogue entry. Unstubbed, that demo sits on a
         // spinner the real repository never resolves and pumpAndSettle
@@ -189,27 +202,35 @@ void main() {
     await _pumpHome(tester, sessions: _FakeSessionRepository(_planSession()));
 
     expect(find.byKey(const Key('home.inProgress')), findsOneWidget);
-    expect(find.byType(PlanCard), findsNothing,
-        reason: 'the plan card must not offer to start a second workout');
+    expect(
+      find.byType(PlanCard),
+      findsNothing,
+      reason: 'the plan card must not offer to start a second workout',
+    );
   });
 
-  testWidgets('nothing running leaves the plan card exactly as it was',
-      (tester) async {
+  testWidgets('nothing running leaves the plan card exactly as it was', (
+    tester,
+  ) async {
     await _pumpHome(tester);
 
     expect(find.byType(PlanCard), findsOneWidget);
     expect(find.byKey(const Key('home.inProgress')), findsNothing);
   });
 
-  testWidgets('a hand-picked workout is named as one, not as the plan',
-      (tester) async {
+  testWidgets('a hand-picked workout is named as one, not as the plan', (
+    tester,
+  ) async {
     // The whole point: the plan is still there underneath, but what is
     // RUNNING is a one-off the user chose, and Home must say so rather than
     // showing the generated plan's name over it.
     await _pumpHome(tester, sessions: _FakeSessionRepository(_manualSession()));
 
-    expect(find.textContaining('Upper Body · Push'), findsNothing,
-        reason: 'this session did not come from the plan');
+    expect(
+      find.textContaining('Upper Body · Push'),
+      findsNothing,
+      reason: 'this session did not come from the plan',
+    );
     expect(find.textContaining('2 exercises'), findsOneWidget);
   });
 
@@ -222,17 +243,22 @@ void main() {
   testWidgets('the card says how much has been logged', (tester) async {
     await _pumpHome(
       tester,
-      sessions: _FakeSessionRepository(_manualSession(sets: const [
-        LoggedSet(exerciseId: 101, setNumber: 1, weightKg: 20, reps: 10),
-        LoggedSet(exerciseId: 101, setNumber: 2, weightKg: 20, reps: 9),
-      ])),
+      sessions: _FakeSessionRepository(
+        _manualSession(
+          sets: const [
+            LoggedSet(exerciseId: 101, setNumber: 1, weightKg: 20, reps: 10),
+            LoggedSet(exerciseId: 101, setNumber: 2, weightKg: 20, reps: 9),
+          ],
+        ),
+      ),
     );
 
     expect(find.textContaining('2 sets logged'), findsOneWidget);
   });
 
-  testWidgets('a workout with nothing logged yet says so plainly',
-      (tester) async {
+  testWidgets('a workout with nothing logged yet says so plainly', (
+    tester,
+  ) async {
     // "0 sets logged" reads like a failure; a just-started workout has simply
     // not been touched yet.
     await _pumpHome(tester, sessions: _FakeSessionRepository(_manualSession()));
@@ -250,8 +276,9 @@ void main() {
     expect(find.byType(SessionLoggerScreen), findsOneWidget);
   });
 
-  testWidgets('discarding asks before throwing the workout away',
-      (tester) async {
+  testWidgets('discarding asks before throwing the workout away', (
+    tester,
+  ) async {
     final sessions = _FakeSessionRepository(_planSession());
     await _pumpHome(tester, sessions: sessions);
 
@@ -284,10 +311,12 @@ void main() {
     await tester.tap(find.byKey(const Key('home.inProgress.discard')));
     await tester.pumpAndSettle();
     // The card's own button says "Discard" too, so target the dialog's.
-    await tester.tap(find.descendant(
-      of: find.byType(AlertDialog),
-      matching: find.text('Discard'),
-    ));
+    await tester.tap(
+      find.descendant(
+        of: find.byType(AlertDialog),
+        matching: find.text('Discard'),
+      ),
+    );
     await tester.pumpAndSettle();
 
     expect(sessions.abandoned, 1);
@@ -295,31 +324,41 @@ void main() {
     expect(find.byType(PlanCard), findsOneWidget);
   });
 
-  testWidgets('start workout and the nudge each select their tab',
-      (tester) async {
+  testWidgets('start workout and the nudge each select their tab', (
+    tester,
+  ) async {
     final selected = <String>[];
-    await _pumpHome(tester,
-        onGoToTrain: () => selected.add('train'),
-        onGoToProfile: () => selected.add('profile'),
-        profile: _profile(mainGoal: null));
+    await _pumpHome(
+      tester,
+      onGoToTrain: () => selected.add('train'),
+      onGoToProfile: () => selected.add('profile'),
+      profile: _profile(mainGoal: null),
+    );
 
     await tester.tap(find.text('Finish your profile'));
     await tester.pumpAndSettle();
     await tester.tap(find.text('Start workout'));
     await tester.pumpAndSettle();
 
-    expect(selected, ['profile', 'train'],
-        reason: 'Home selects tabs; it never pushes a second PlanScreen');
+    expect(selected, [
+      'profile',
+      'train',
+    ], reason: 'Home selects tabs; it never pushes a second PlanScreen');
   });
 
-  testWidgets('a null plan explains itself and offers no generate action',
-      (tester) async {
+  testWidgets('a null plan explains itself and offers no generate action', (
+    tester,
+  ) async {
     await _pumpHome(tester, plan: null);
     expect(find.text('Start workout'), findsNothing);
     expect(find.textContaining('no active plan'), findsOneWidget);
-    expect(find.byKey(const Key('home.noPlan')), findsOneWidget,
-        reason: 'the descendant check below is vacuous if this key does not '
-            'resolve to the no-plan card');
+    expect(
+      find.byKey(const Key('home.noPlan')),
+      findsOneWidget,
+      reason:
+          'the descendant check below is vacuous if this key does not '
+          'resolve to the no-plan card',
+    );
     // Absence of the one specific label is not enough — a relabelled
     // "Generate plan" button would satisfy both assertions above. The
     // no-plan state must offer no action at all, so nothing tappable may
@@ -337,44 +376,53 @@ void main() {
         matching: find.byType(FsButton),
       ),
       findsNothing,
-      reason: 'the no-plan state must offer no action; a "Generate plan" '
+      reason:
+          'the no-plan state must offer no action; a "Generate plan" '
           'button would call an endpoint that does not exist',
     );
   });
 
   testWidgets('a failed plan load offers a retry', (tester) async {
-    await _pumpHome(tester,
-        planError: const ApiException('X', 'Server is down'));
+    await _pumpHome(
+      tester,
+      planError: const ApiException('X', 'Server is down'),
+    );
     expect(find.text('Retry'), findsOneWidget);
   });
 
   testWidgets(
-      'a complete profile leaves no gap where the nudge would have been',
-      (tester) async {
-    // Both the nudge and its trailing SizedBox(height: 14) live inside the
-    // same `if (profileNeedsFinishing(p))` block in home_screen.dart. If
-    // that SizedBox ever escaped the conditional (e.g. moved below the
-    // closing bracket), the nudge would still correctly disappear for a
-    // complete profile, but a 14px gap would remain — invisible to a test
-    // that only checks the nudge is absent. Measuring the actual on-screen
-    // distance between Greeting and the plan card is what catches that:
-    // with the nudge suppressed, only the fixed SizedBox(height: 20) after
-    // Greeting should separate them.
-    await _pumpHome(tester); // default profile is complete; default plan renders
+    'a complete profile leaves no gap where the nudge would have been',
+    (tester) async {
+      // Both the nudge and its trailing SizedBox(height: 14) live inside the
+      // same `if (profileNeedsFinishing(p))` block in home_screen.dart. If
+      // that SizedBox ever escaped the conditional (e.g. moved below the
+      // closing bracket), the nudge would still correctly disappear for a
+      // complete profile, but a 14px gap would remain — invisible to a test
+      // that only checks the nudge is absent. Measuring the actual on-screen
+      // distance between Greeting and the plan card is what catches that:
+      // with the nudge suppressed, only the fixed SizedBox(height: 20) after
+      // Greeting should separate them.
+      await _pumpHome(
+        tester,
+      ); // default profile is complete; default plan renders
 
-    expect(find.text('Finish your profile'), findsNothing);
+      expect(find.text('Finish your profile'), findsNothing);
 
-    final greetingBottom = tester.getBottomLeft(find.byType(Greeting)).dy;
-    final planCardTop = tester.getTopLeft(find.byType(PlanCard)).dy;
+      final greetingBottom = tester.getBottomLeft(find.byType(Greeting)).dy;
+      final planCardTop = tester.getTopLeft(find.byType(PlanCard)).dy;
 
-    expect(planCardTop - greetingBottom, moreOrLessEquals(20),
-        reason: 'only the base 20px gap after Greeting should separate it '
+      expect(
+        planCardTop - greetingBottom,
+        moreOrLessEquals(20),
+        reason:
+            'only the base 20px gap after Greeting should separate it '
             'from the plan card when the nudge does not render; a leftover '
-            '14px would mean the nudge\'s SizedBox escaped its conditional');
-  });
+            '14px would mean the nudge\'s SizedBox escaped its conditional',
+      );
+    },
+  );
 
-  testWidgets(
-      'the assembled screen does not overflow at 2.0x text scale on a '
+  testWidgets('the assembled screen does not overflow at 2.0x text scale on a '
       'narrow phone', (tester) async {
     // 320dp mirrors a small phone; 2.0x mirrors Android 14's maximum text
     // scale. Greeting's name text carries no maxLines/Flexible guard of its

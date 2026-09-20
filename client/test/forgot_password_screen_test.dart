@@ -38,8 +38,7 @@ class FakeAuthRepository implements AuthRepository {
     required String email,
     required String password,
     required String fullName,
-  }) =>
-      throw UnimplementedError();
+  }) => throw UnimplementedError();
 
   @override
   Future<AuthUser> me() => throw UnimplementedError();
@@ -55,8 +54,7 @@ class FakeAuthRepository implements AuthRepository {
   Future<void> resendVerification({
     required String email,
     required String password,
-  }) =>
-      throw UnimplementedError();
+  }) => throw UnimplementedError();
 }
 
 Future<void> _pump(WidgetTester tester, FakeAuthRepository repo) =>
@@ -75,8 +73,9 @@ void main() {
     expect(find.byKey(const Key('email')), findsOneWidget);
   });
 
-  testWidgets('an empty email is rejected without a network call',
-      (tester) async {
+  testWidgets('an empty email is rejected without a network call', (
+    tester,
+  ) async {
     final repo = FakeAuthRepository();
     await _pump(tester, repo);
     await tester.pumpAndSettle();
@@ -85,12 +84,16 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.text('Enter your email.'), findsOneWidget);
-    expect(repo.requestCalls, 0,
-        reason: 'validation must run before anything is sent');
+    expect(
+      repo.requestCalls,
+      0,
+      reason: 'validation must run before anything is sent',
+    );
   });
 
-  testWidgets('shows the confirmation when the request succeeds',
-      (tester) async {
+  testWidgets('shows the confirmation when the request succeeds', (
+    tester,
+  ) async {
     final repo = FakeAuthRepository();
     await _pump(tester, repo);
     await tester.pumpAndSettle();
@@ -105,22 +108,32 @@ void main() {
   });
 
   testWidgets(
-      'shows the exact same confirmation when the request throws, never '
-      'the server error', (tester) async {
-    final repo = FakeAuthRepository(
-      onRequestReset: () async => throw const ApiException(
-          'NOT_FOUND', 'No account exists for that address.'),
-    );
-    await _pump(tester, repo);
-    await tester.pumpAndSettle();
+    'shows the exact same confirmation when the request throws, never '
+    'the server error',
+    (tester) async {
+      final repo = FakeAuthRepository(
+        onRequestReset: () async => throw const ApiException(
+          'NOT_FOUND',
+          'No account exists for that address.',
+        ),
+      );
+      await _pump(tester, repo);
+      await tester.pumpAndSettle();
 
-    await tester.enterText(find.byKey(const Key('email')), 'nope@example.com');
-    await tester.tap(find.byKey(const Key('submit')));
-    await tester.pumpAndSettle();
+      await tester.enterText(
+        find.byKey(const Key('email')),
+        'nope@example.com',
+      );
+      await tester.tap(find.byKey(const Key('submit')));
+      await tester.pumpAndSettle();
 
-    expect(repo.requestCalls, 1);
-    expect(find.text(_confirmation), findsOneWidget);
-    expect(find.text('No account exists for that address.'), findsNothing,
-        reason: 'the client must never reveal what the server refused to say');
-  });
+      expect(repo.requestCalls, 1);
+      expect(find.text(_confirmation), findsOneWidget);
+      expect(
+        find.text('No account exists for that address.'),
+        findsNothing,
+        reason: 'the client must never reveal what the server refused to say',
+      );
+    },
+  );
 }

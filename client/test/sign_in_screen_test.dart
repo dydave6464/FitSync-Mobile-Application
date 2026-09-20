@@ -13,12 +13,12 @@ import 'package:fitsync/features/auth/presentation/forgot_password_screen.dart';
 import 'package:fitsync/features/auth/presentation/sign_in_screen.dart';
 
 AuthUser _user() => const AuthUser(
-      userId: 7,
-      email: 'juan@example.com',
-      fullName: 'Juan Dela Cruz',
-      onboardingCompleted: false,
-      isPremium: false,
-    );
+  userId: 7,
+  email: 'juan@example.com',
+  fullName: 'Juan Dela Cruz',
+  onboardingCompleted: false,
+  isPremium: false,
+);
 
 /// Records what the screen asked for, so a test can assert that a request was
 /// never made as well as that one was.
@@ -69,8 +69,7 @@ class FakeAuthRepository implements AuthRepository {
   Future<void> resendVerification({
     required String email,
     required String password,
-  }) =>
-      throw UnimplementedError();
+  }) => throw UnimplementedError();
 }
 
 class RecordingAuthController extends AuthController {
@@ -92,17 +91,17 @@ Future<void> _pump(
   WidgetTester tester,
   FakeAuthRepository repo, {
   List<AuthUser>? seen,
-}) =>
-    tester.pumpWidget(
-      ProviderScope(
-        overrides: [
-          authRepositoryProvider.overrideWithValue(repo),
-          authControllerProvider
-              .overrideWith(() => RecordingAuthController(seen ?? [])),
-        ],
-        child: const MaterialApp(home: SignInScreen()),
+}) => tester.pumpWidget(
+  ProviderScope(
+    overrides: [
+      authRepositoryProvider.overrideWithValue(repo),
+      authControllerProvider.overrideWith(
+        () => RecordingAuthController(seen ?? []),
       ),
-    );
+    ],
+    child: const MaterialApp(home: SignInScreen()),
+  ),
+);
 
 Future<void> _fillAndSubmit(
   WidgetTester tester, {
@@ -123,8 +122,9 @@ void main() {
     expect(find.byKey(const Key('password')), findsOneWidget);
   });
 
-  testWidgets('an empty email is rejected without a network call',
-      (tester) async {
+  testWidgets('an empty email is rejected without a network call', (
+    tester,
+  ) async {
     final repo = FakeAuthRepository();
     await _pump(tester, repo);
     await tester.pumpAndSettle();
@@ -133,12 +133,16 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.text('Enter your email.'), findsOneWidget);
-    expect(repo.loginCalls, 0,
-        reason: 'validation must run before anything is sent');
+    expect(
+      repo.loginCalls,
+      0,
+      reason: 'validation must run before anything is sent',
+    );
   });
 
-  testWidgets('a successful login hands the user to the controller',
-      (tester) async {
+  testWidgets('a successful login hands the user to the controller', (
+    tester,
+  ) async {
     final seen = <AuthUser>[];
     final repo = FakeAuthRepository(onLogin: () async => _user());
     await _pump(tester, repo, seen: seen);
@@ -151,11 +155,14 @@ void main() {
     expect(seen.single.email, 'juan@example.com');
   });
 
-  testWidgets('INVALID_CREDENTIALS shows the message and keeps the input',
-      (tester) async {
+  testWidgets('INVALID_CREDENTIALS shows the message and keeps the input', (
+    tester,
+  ) async {
     final repo = FakeAuthRepository(
       onLogin: () async => throw const ApiException(
-          'INVALID_CREDENTIALS', 'Email or password is incorrect.'),
+        'INVALID_CREDENTIALS',
+        'Email or password is incorrect.',
+      ),
     );
     await _pump(tester, repo);
     await tester.pumpAndSettle();
@@ -174,7 +181,9 @@ void main() {
   testWidgets('EMAIL_TAKEN on register shows the message', (tester) async {
     final repo = FakeAuthRepository(
       onRegister: () async => throw const ApiException(
-          'EMAIL_TAKEN', 'That email is already registered.'),
+        'EMAIL_TAKEN',
+        'That email is already registered.',
+      ),
     );
     await _pump(tester, repo);
     await tester.pumpAndSettle();
@@ -193,7 +202,9 @@ void main() {
   testWidgets('a NETWORK_ERROR shows its retryable message', (tester) async {
     final repo = FakeAuthRepository(
       onLogin: () async => throw const ApiException(
-          'NETWORK_ERROR', 'Could not reach the server.'),
+        'NETWORK_ERROR',
+        'Could not reach the server.',
+      ),
     );
     await _pump(tester, repo);
     await tester.pumpAndSettle();
@@ -204,8 +215,9 @@ void main() {
     expect(find.text('Could not reach the server.'), findsOneWidget);
   });
 
-  testWidgets('a double tap on register cannot create two accounts',
-      (tester) async {
+  testWidgets('a double tap on register cannot create two accounts', (
+    tester,
+  ) async {
     final pending = Completer<void>();
     final repo = FakeAuthRepository(onRegister: () => pending.future);
     await _pump(tester, repo);
@@ -220,15 +232,19 @@ void main() {
     await tester.tap(find.byKey(const Key('submit')));
     await tester.pump();
 
-    expect(repo.registerCalls, 1,
-        reason: 'the button must be disabled while a request is in flight');
+    expect(
+      repo.registerCalls,
+      1,
+      reason: 'the button must be disabled while a request is in flight',
+    );
 
     pending.complete();
     await tester.pumpAndSettle();
   });
 
-  testWidgets('a successful registration shows the check-your-email screen',
-      (tester) async {
+  testWidgets('a successful registration shows the check-your-email screen', (
+    tester,
+  ) async {
     final seen = <AuthUser>[];
     final repo = FakeAuthRepository(onRegister: () async {});
     await _pump(tester, repo, seen: seen);
@@ -240,17 +256,26 @@ void main() {
     await _fillAndSubmit(tester);
     await tester.pumpAndSettle();
 
-    expect(find.byType(CheckEmailScreen), findsOneWidget,
-        reason: 'there is no token yet, so onboarding must not start');
-    expect(seen, isEmpty,
-        reason: 'a registration with no session must never reach the controller');
+    expect(
+      find.byType(CheckEmailScreen),
+      findsOneWidget,
+      reason: 'there is no token yet, so onboarding must not start',
+    );
+    expect(
+      seen,
+      isEmpty,
+      reason: 'a registration with no session must never reach the controller',
+    );
   });
 
-  testWidgets('EMAIL_NOT_VERIFIED on login shows the check-your-email screen',
-      (tester) async {
+  testWidgets('EMAIL_NOT_VERIFIED on login shows the check-your-email screen', (
+    tester,
+  ) async {
     final repo = FakeAuthRepository(
       onLogin: () async => throw const ApiException(
-          'EMAIL_NOT_VERIFIED', 'Verify your email before signing in.'),
+        'EMAIL_NOT_VERIFIED',
+        'Verify your email before signing in.',
+      ),
     );
     await _pump(tester, repo);
     await tester.pumpAndSettle();
@@ -258,8 +283,11 @@ void main() {
     await _fillAndSubmit(tester);
     await tester.pumpAndSettle();
 
-    expect(find.byType(CheckEmailScreen), findsOneWidget,
-        reason: 'the way forward should be obvious, not a generic error');
+    expect(
+      find.byType(CheckEmailScreen),
+      findsOneWidget,
+      reason: 'the way forward should be obvious, not a generic error',
+    );
     expect(find.text('Verify your email before signing in.'), findsNothing);
   });
 

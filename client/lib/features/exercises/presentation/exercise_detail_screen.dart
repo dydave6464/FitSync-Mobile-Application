@@ -33,19 +33,23 @@ class ExerciseDetailScreen extends ConsumerWidget {
                 const Icon(Icons.cloud_off, size: 40),
                 const SizedBox(height: 12),
                 Text(
-                  error is ApiException ? error.message : 'Something went wrong.',
+                  error is ApiException
+                      ? error.message
+                      : 'Something went wrong.',
                   textAlign: TextAlign.center,
                 ),
                 const SizedBox(height: 16),
                 FilledButton(
-                  onPressed: () => ref.invalidate(exerciseDetailProvider(exerciseId)),
+                  onPressed: () =>
+                      ref.invalidate(exerciseDetailProvider(exerciseId)),
                   child: const Text('Retry'),
                 ),
               ],
             ),
           ),
         ),
-        data: (exercise) => ExerciseDemoBody(exercise: exercise, baseUrl: baseUrl),
+        data: (exercise) =>
+            ExerciseDemoBody(exercise: exercise, baseUrl: baseUrl),
       ),
     );
   }

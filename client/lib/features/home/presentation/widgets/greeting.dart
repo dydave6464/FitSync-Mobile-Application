@@ -14,7 +14,12 @@ class Greeting extends StatelessWidget {
   final DateTime now;
 
   static const _weekdays = [
-    'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday',
+    'Monday',
+    'Tuesday',
+    'Wednesday',
+    'Thursday',
+    'Friday',
+    'Saturday',
     'Sunday',
   ];
 
@@ -52,8 +57,11 @@ class Greeting extends StatelessWidget {
     final joined = profile.joinedAt;
     if (joined == null) return null;
     final localJoined = joined.toLocal();
-    final from =
-        DateTime.utc(localJoined.year, localJoined.month, localJoined.day);
+    final from = DateTime.utc(
+      localJoined.year,
+      localJoined.month,
+      localJoined.day,
+    );
     final to = DateTime.utc(now.year, now.month, now.day);
     return to.difference(from).inDays + 1;
   }

@@ -4,7 +4,7 @@ class FilterOption {
   /// barbell') and the server rolls those up to the names onboarding uses,
   /// while a muscle group is already the word the user would say.
   const FilterOption({required this.value, required this.count, String? label})
-      : label = label ?? value;
+    : label = label ?? value;
 
   /// What the API is sent. Stable, and not what the user reads.
   final String value;
@@ -15,11 +15,11 @@ class FilterOption {
   final int count;
 
   factory FilterOption.fromJson(Map<String, dynamic> json) => FilterOption(
-        value: json['value'] as String,
-        // Absent on muscle groups, and on any server predating the rollup.
-        label: json['label'] as String?,
-        count: (json['count'] as num).toInt(),
-      );
+    value: json['value'] as String,
+    // Absent on muscle groups, and on any server predating the rollup.
+    label: json['label'] as String?,
+    count: (json['count'] as num).toInt(),
+  );
 }
 
 class ExerciseFilters {
@@ -33,7 +33,8 @@ class ExerciseFilters {
           .map((e) => FilterOption.fromJson(e as Map<String, dynamic>))
           .toList(growable: false);
 
-  factory ExerciseFilters.fromJson(Map<String, dynamic> json) => ExerciseFilters(
+  factory ExerciseFilters.fromJson(Map<String, dynamic> json) =>
+      ExerciseFilters(
         muscleGroups: _parse(json['muscleGroups']),
         equipment: _parse(json['equipment']),
       );
@@ -55,16 +56,20 @@ class SelectedFilters {
   SelectedFilters withMuscleGroup(String? value) =>
       SelectedFilters(muscleGroup: value, equipment: equipment, search: search);
 
-  SelectedFilters withEquipment(String? value) =>
-      SelectedFilters(muscleGroup: muscleGroup, equipment: value, search: search);
+  SelectedFilters withEquipment(String? value) => SelectedFilters(
+    muscleGroup: muscleGroup,
+    equipment: value,
+    search: search,
+  );
 
   SelectedFilters withSearch(String? value) => SelectedFilters(
-        muscleGroup: muscleGroup,
-        equipment: equipment,
-        search: value,
-      );
+    muscleGroup: muscleGroup,
+    equipment: equipment,
+    search: value,
+  );
 
-  bool get isEmpty => muscleGroup == null && equipment == null && search == null;
+  bool get isEmpty =>
+      muscleGroup == null && equipment == null && search == null;
 
   /// Whether any CHIP is lit. Separate from [isEmpty] because the chip
   /// strip's "Clear" answers for the chips only: the search box carries its

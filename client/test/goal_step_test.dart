@@ -17,9 +17,11 @@ const _wireValues = [
 
 void main() {
   testWidgets('renders exactly the four goals', (tester) async {
-    await tester.pumpWidget(MaterialApp(
-      home: Scaffold(body: GoalStep(value: null, onChanged: (_) {})),
-    ));
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(body: GoalStep(value: null, onChanged: (_) {})),
+      ),
+    );
 
     for (final value in _wireValues) {
       expect(find.byKey(Key('goal.$value')), findsOneWidget);
@@ -29,9 +31,11 @@ void main() {
 
   testWidgets('emits the server enum value, not the label', (tester) async {
     final emitted = <String>[];
-    await tester.pumpWidget(MaterialApp(
-      home: Scaffold(body: GoalStep(value: null, onChanged: emitted.add)),
-    ));
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(body: GoalStep(value: null, onChanged: emitted.add)),
+      ),
+    );
 
     for (final value in _wireValues) {
       await tester.tap(find.byKey(Key('goal.$value')));
@@ -42,11 +46,13 @@ void main() {
   });
 
   testWidgets('marks the selected goal', (tester) async {
-    await tester.pumpWidget(MaterialApp(
-      home: Scaffold(
-        body: GoalStep(value: 'build_muscle', onChanged: (_) {}),
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: GoalStep(value: 'build_muscle', onChanged: (_) {}),
+        ),
       ),
-    ));
+    );
 
     // The selected card carries the accent-card treatment.
     expect(
@@ -63,9 +69,13 @@ void main() {
     // Pumped with no ProviderScope at all. If this ever throws, the step has
     // started reaching for state it should have been handed, and Task 10's
     // reuse from Settings is broken.
-    await tester.pumpWidget(MaterialApp(
-      home: Scaffold(body: GoalStep(value: 'lose_weight', onChanged: (_) {})),
-    ));
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: GoalStep(value: 'lose_weight', onChanged: (_) {}),
+        ),
+      ),
+    );
 
     expect(tester.takeException(), isNull);
   });

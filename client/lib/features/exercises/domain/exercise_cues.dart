@@ -10,9 +10,9 @@ class Cue {
   final String? detail;
 
   factory Cue.fromJson(Map<String, dynamic> json) => Cue(
-        title: json['title'] as String? ?? '',
-        detail: json['detail'] as String?,
-      );
+    title: json['title'] as String? ?? '',
+    detail: json['detail'] as String?,
+  );
 }
 
 /// What `GET /exercises/:id/cues` answers.
@@ -40,19 +40,18 @@ class ExerciseCues {
   /// already fetched, so a cue list is on screen while `/cues` is still in
   /// flight -- and a request that never resolves costs the reader nothing.
   factory ExerciseCues.catalogue(List<String> cues) => ExerciseCues(
-        source: 'catalogue',
-        injuryName: null,
-        cues: [for (final cue in cues) Cue(title: cue)],
-      );
+    source: 'catalogue',
+    injuryName: null,
+    cues: [for (final cue in cues) Cue(title: cue)],
+  );
 
   /// Defaults over a missing field rather than throwing: a malformed payload
   /// must not take a workout screen down with it.
   factory ExerciseCues.fromJson(Map<String, dynamic> json) => ExerciseCues(
-        source: json['source'] as String? ?? 'catalogue',
-        injuryName:
-            (json['injury'] as Map<String, dynamic>?)?['name'] as String?,
-        cues: ((json['cues'] as List<dynamic>?) ?? const [])
-            .map((e) => Cue.fromJson(e as Map<String, dynamic>))
-            .toList(growable: false),
-      );
+    source: json['source'] as String? ?? 'catalogue',
+    injuryName: (json['injury'] as Map<String, dynamic>?)?['name'] as String?,
+    cues: ((json['cues'] as List<dynamic>?) ?? const [])
+        .map((e) => Cue.fromJson(e as Map<String, dynamic>))
+        .toList(growable: false),
+  );
 }

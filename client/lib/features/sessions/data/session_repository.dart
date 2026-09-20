@@ -22,9 +22,7 @@ class SessionRepository {
 
   /// Finished workouts, newest first. The server lists completed ones only.
   Future<SessionHistoryPage> history({int page = 1, int limit = 20}) async {
-    final data = await _api.getJson(
-      '/api/v1/sessions?page=$page&limit=$limit',
-    );
+    final data = await _api.getJson('/api/v1/sessions?page=$page&limit=$limit');
     return SessionHistoryPage.fromJson(data);
   }
 
@@ -81,14 +79,14 @@ class SessionRepository {
     int sessionId, {
     required int exerciseId,
     required int setNumber,
-  }) =>
-      _api.deleteJson('/api/v1/sessions/$sessionId/sets/$exerciseId/$setNumber');
+  }) => _api.deleteJson(
+    '/api/v1/sessions/$sessionId/sets/$exerciseId/$setNumber',
+  );
 
   Future<ActiveSession> complete(int sessionId, int durationMin) async {
-    final data = await _api.postJson(
-      '/api/v1/sessions/$sessionId/complete',
-      {'durationMin': durationMin},
-    );
+    final data = await _api.postJson('/api/v1/sessions/$sessionId/complete', {
+      'durationMin': durationMin,
+    });
     return ActiveSession.fromJson(data['session'] as Map<String, dynamic>);
   }
 
@@ -114,7 +112,9 @@ class SessionRepository {
   /// Keyed by exercise so the logger can look one up without scanning. One
   /// request for the whole plan — six round trips on gym wifi is the
   /// difference between a screen that is ready and one that fills in.
-  Future<Map<int, LastPerformance>> lastPerformance(List<int> exerciseIds) async {
+  Future<Map<int, LastPerformance>> lastPerformance(
+    List<int> exerciseIds,
+  ) async {
     if (exerciseIds.isEmpty) return const {};
 
     final data = await _api.getJson(
@@ -138,6 +138,9 @@ class SessionRepository {
   /// window.
   Future<TrainingAnalytics> analytics(String period) async =>
       TrainingAnalytics.fromJson(
-        await _api.getJson('/api/v1/sessions/analytics', query: {'period': period}),
+        await _api.getJson(
+          '/api/v1/sessions/analytics',
+          query: {'period': period},
+        ),
       );
 }

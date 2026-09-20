@@ -95,10 +95,10 @@ class _RestTimerState extends State<RestTimer> {
   }
 
   TextStyle _tagStyle(FsTokens t) => TextStyle(
-        fontFamily: fsMonoFamily,
-        fontSize: 10,
-        fontWeight: FontWeight.w600,
-        letterSpacing: 0.6,
-        color: t.amber,
-      );
+    fontFamily: fsMonoFamily,
+    fontSize: 10,
+    fontWeight: FontWeight.w600,
+    letterSpacing: 0.6,
+    color: t.amber,
+  );
 }

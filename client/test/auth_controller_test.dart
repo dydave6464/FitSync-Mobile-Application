@@ -8,12 +8,12 @@ import 'package:fitsync/features/auth/domain/auth_user.dart';
 import 'package:fitsync/features/auth/presentation/auth_controller.dart';
 
 AuthUser _user({bool onboardingCompleted = false}) => AuthUser(
-      userId: 7,
-      email: 'juan@example.com',
-      fullName: 'Juan Dela Cruz',
-      onboardingCompleted: onboardingCompleted,
-      isPremium: false,
-    );
+  userId: 7,
+  email: 'juan@example.com',
+  fullName: 'Juan Dela Cruz',
+  onboardingCompleted: onboardingCompleted,
+  isPremium: false,
+);
 
 /// An auth repository double. `me()` is supplied per test; `signOut()` clears
 /// the same token store the controller reads, so the test can assert on it.
@@ -38,8 +38,7 @@ class FakeAuthRepository implements AuthRepository {
     required String email,
     required String password,
     required String fullName,
-  }) =>
-      throw UnimplementedError();
+  }) => throw UnimplementedError();
 
   @override
   Future<AuthUser> signInWithGoogle(String idToken) =>
@@ -52,15 +51,16 @@ class FakeAuthRepository implements AuthRepository {
   Future<void> resendVerification({
     required String email,
     required String password,
-  }) =>
-      throw UnimplementedError();
+  }) => throw UnimplementedError();
 }
 
 ProviderContainer _containerWith(TokenStore tokens, FakeAuthRepository repo) {
-  final container = ProviderContainer(overrides: [
-    tokenStoreProvider.overrideWithValue(tokens),
-    authRepositoryProvider.overrideWithValue(repo),
-  ]);
+  final container = ProviderContainer(
+    overrides: [
+      tokenStoreProvider.overrideWithValue(tokens),
+      authRepositoryProvider.overrideWithValue(repo),
+    ],
+  );
   addTearDown(container.dispose);
   return container;
 }
@@ -76,28 +76,35 @@ void main() {
     expect(state.user, isNull);
   });
 
-  test('a stored token for an unfinished profile resolves to onboarding', () async {
-    final tokens = TokenStore(backing: InMemorySecureStore());
-    await tokens.write('tok');
-    final container = _containerWith(
-      tokens,
-      FakeAuthRepository(tokens,
-          onMe: () async => _user(onboardingCompleted: false)),
-    );
+  test(
+    'a stored token for an unfinished profile resolves to onboarding',
+    () async {
+      final tokens = TokenStore(backing: InMemorySecureStore());
+      await tokens.write('tok');
+      final container = _containerWith(
+        tokens,
+        FakeAuthRepository(
+          tokens,
+          onMe: () async => _user(onboardingCompleted: false),
+        ),
+      );
 
-    final state = await container.read(authControllerProvider.future);
+      final state = await container.read(authControllerProvider.future);
 
-    expect(state.status, AuthStatus.onboarding);
-    expect(state.user!.email, 'juan@example.com');
-  });
+      expect(state.status, AuthStatus.onboarding);
+      expect(state.user!.email, 'juan@example.com');
+    },
+  );
 
   test('a stored token for a finished profile resolves to ready', () async {
     final tokens = TokenStore(backing: InMemorySecureStore());
     await tokens.write('tok');
     final container = _containerWith(
       tokens,
-      FakeAuthRepository(tokens,
-          onMe: () async => _user(onboardingCompleted: true)),
+      FakeAuthRepository(
+        tokens,
+        onMe: () async => _user(onboardingCompleted: true),
+      ),
     );
 
     final state = await container.read(authControllerProvider.future);
@@ -112,17 +119,21 @@ void main() {
       tokens,
       FakeAuthRepository(
         tokens,
-        onMe: () async => throw const ApiException(
-            'UNAUTHENTICATED', 'Sign in to continue.'),
+        onMe: () async =>
+            throw const ApiException('UNAUTHENTICATED', 'Sign in to continue.'),
       ),
     );
 
     final state = await container.read(authControllerProvider.future);
 
     expect(state.status, AuthStatus.signedOut);
-    expect(await tokens.read(), isNull,
-        reason: 'an expired token must not strand the user on a screen that '
-            'cannot load');
+    expect(
+      await tokens.read(),
+      isNull,
+      reason:
+          'an expired token must not strand the user on a screen that '
+          'cannot load',
+    );
   });
 
   test('signOut moves a ready session to signedOut', () async {
@@ -130,15 +141,19 @@ void main() {
     await tokens.write('tok');
     final container = _containerWith(
       tokens,
-      FakeAuthRepository(tokens,
-          onMe: () async => _user(onboardingCompleted: true)),
+      FakeAuthRepository(
+        tokens,
+        onMe: () async => _user(onboardingCompleted: true),
+      ),
     );
 
     await container.read(authControllerProvider.future);
     await container.read(authControllerProvider.notifier).signOut();
 
-    expect(container.read(authControllerProvider).value!.status,
-        AuthStatus.signedOut);
+    expect(
+      container.read(authControllerProvider).value!.status,
+      AuthStatus.signedOut,
+    );
     expect(await tokens.read(), isNull);
   });
 }

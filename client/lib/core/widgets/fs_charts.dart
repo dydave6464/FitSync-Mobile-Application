@@ -112,7 +112,9 @@ class FsLineChart extends StatelessWidget {
                 interval: _labelInterval,
                 getTitlesWidget: (value, meta) {
                   final i = value.round();
-                  if (i < 0 || i >= points.length) return const SizedBox.shrink();
+                  if (i < 0 || i >= points.length) {
+                    return const SizedBox.shrink();
+                  }
                   return Text(
                     points[i].label,
                     style: TextStyle(fontSize: 9, color: t.text3),
@@ -123,19 +125,21 @@ class FsLineChart extends StatelessWidget {
           ),
           extraLinesData: referenceY == null
               ? const ExtraLinesData()
-              : ExtraLinesData(horizontalLines: [
-                  HorizontalLine(
-                    y: referenceY!,
-                    color: t.text3,
-                    strokeWidth: 1,
-                    dashArray: const [4, 4],
-                    label: HorizontalLineLabel(
-                      show: referenceLabel != null,
-                      labelResolver: (_) => referenceLabel!,
-                      style: TextStyle(fontSize: 9, color: t.text3),
+              : ExtraLinesData(
+                  horizontalLines: [
+                    HorizontalLine(
+                      y: referenceY!,
+                      color: t.text3,
+                      strokeWidth: 1,
+                      dashArray: const [4, 4],
+                      label: HorizontalLineLabel(
+                        show: referenceLabel != null,
+                        labelResolver: (_) => referenceLabel!,
+                        style: TextStyle(fontSize: 9, color: t.text3),
+                      ),
                     ),
-                  ),
-                ]),
+                  ],
+                ),
           lineBarsData: [
             LineChartBarData(
               spots: [for (final p in points) FlSpot(p.x, p.y)],

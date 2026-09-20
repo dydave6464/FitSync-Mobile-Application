@@ -20,12 +20,12 @@ import 'package:fitsync/features/home/presentation/nav_shell.dart';
 import 'package:fitsync/features/profile/presentation/providers.dart';
 
 AuthUser _user({bool onboardingCompleted = false}) => AuthUser(
-      userId: 7,
-      email: 'juan@example.com',
-      fullName: 'Juan Dela Cruz',
-      onboardingCompleted: onboardingCompleted,
-      isPremium: false,
-    );
+  userId: 7,
+  email: 'juan@example.com',
+  fullName: 'Juan Dela Cruz',
+  onboardingCompleted: onboardingCompleted,
+  isPremium: false,
+);
 
 /// Keeps the shell's onboarding branch hermetic. Without it the real profile
 /// provider would reach the secure-storage platform channel, which has no
@@ -33,15 +33,15 @@ AuthUser _user({bool onboardingCompleted = false}) => AuthUser(
 class StubProfileNotifier extends ProfileNotifier {
   @override
   Future<Profile> build() async => const Profile(
-        userId: 7,
-        email: 'juan@example.com',
-        fullName: 'Juan Dela Cruz',
-        onboardingCompleted: false,
-        isPremium: false,
-        notificationsEnabled: true,
-        equipment: [],
-        injuries: [],
-      );
+    userId: 7,
+    email: 'juan@example.com',
+    fullName: 'Juan Dela Cruz',
+    onboardingCompleted: false,
+    isPremium: false,
+    notificationsEnabled: true,
+    equipment: [],
+    injuries: [],
+  );
 }
 
 /// Drives the shell's four branches directly. [onBuild] receives how many
@@ -60,22 +60,25 @@ class FakeAuthController extends AuthController {
 Future<void> _pumpShell(
   WidgetTester tester,
   Future<AuthState> Function(int callCount) onBuild,
-) =>
-    tester.pumpWidget(
-      ProviderScope(
-        overrides: [
-          authControllerProvider.overrideWith(() => FakeAuthController(onBuild)),
-          profileProvider.overrideWith(StubProfileNotifier.new),
-          // Keeps the plan branch off the secure-storage platform channel.
-          apiClientProvider.overrideWithValue(ApiClient(
-            baseUrl: 'http://test.local',
-            tokens: TokenStore(backing: InMemorySecureStore()),
-            client: MockClient((_) async => http.Response('{"data":{"plan":null}}', 200)),
-          )),
-        ],
-        child: const MaterialApp(home: AppShell()),
+) => tester.pumpWidget(
+  ProviderScope(
+    overrides: [
+      authControllerProvider.overrideWith(() => FakeAuthController(onBuild)),
+      profileProvider.overrideWith(StubProfileNotifier.new),
+      // Keeps the plan branch off the secure-storage platform channel.
+      apiClientProvider.overrideWithValue(
+        ApiClient(
+          baseUrl: 'http://test.local',
+          tokens: TokenStore(backing: InMemorySecureStore()),
+          client: MockClient(
+            (_) async => http.Response('{"data":{"plan":null}}', 200),
+          ),
+        ),
       ),
-    );
+    ],
+    child: const MaterialApp(home: AppShell()),
+  ),
+);
 
 void main() {
   testWidgets('shows a spinner while auth state is resolving', (tester) async {
@@ -96,7 +99,9 @@ void main() {
     expect(find.byType(SignInScreen), findsOneWidget);
   });
 
-  testWidgets('an unfinished profile shows the onboarding flow', (tester) async {
+  testWidgets('an unfinished profile shows the onboarding flow', (
+    tester,
+  ) async {
     await _pumpShell(
       tester,
       (_) async => AuthState(AuthStatus.onboarding, _user()),
@@ -109,20 +114,23 @@ void main() {
   testWidgets('a finished profile shows the nav shell', (tester) async {
     await _pumpShell(
       tester,
-      (_) async => AuthState(
-        AuthStatus.ready,
-        _user(onboardingCompleted: true),
-      ),
+      (_) async =>
+          AuthState(AuthStatus.ready, _user(onboardingCompleted: true)),
     );
     await tester.pumpAndSettle();
 
     expect(find.byType(NavShell), findsOneWidget);
   });
 
-  testWidgets('an error shows the message and recovers on retry', (tester) async {
+  testWidgets('an error shows the message and recovers on retry', (
+    tester,
+  ) async {
     await _pumpShell(tester, (callCount) async {
       if (callCount == 0) {
-        throw const ApiException('SERVER_ERROR', 'The server is having a moment.');
+        throw const ApiException(
+          'SERVER_ERROR',
+          'The server is having a moment.',
+        );
       }
       return AuthState.signedOut;
     });
@@ -133,7 +141,10 @@ void main() {
     await tester.tap(find.text('Retry'));
     await tester.pumpAndSettle();
 
-    expect(find.byType(SignInScreen), findsOneWidget,
-        reason: 'retry must re-read the controller, not just clear the error');
+    expect(
+      find.byType(SignInScreen),
+      findsOneWidget,
+      reason: 'retry must re-read the controller, not just clear the error',
+    );
   });
 }

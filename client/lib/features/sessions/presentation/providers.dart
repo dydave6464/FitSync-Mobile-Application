@@ -1,6 +1,7 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
-import '../../exercises/presentation/providers.dart' show apiClientProvider, apiRetryPolicy;
+import '../../exercises/presentation/providers.dart'
+    show apiClientProvider, apiRetryPolicy;
 import '../data/session_repository.dart';
 import '../domain/active_session.dart';
 import '../domain/session_history.dart';
@@ -62,9 +63,16 @@ class ActiveSessionController extends AsyncNotifier<ActiveSession?> {
 
   /// Same reasoning as [logSet]: [_current] is read again after the await so
   /// a concurrent write in flight for a different set is not clobbered.
-  Future<void> unlogSet({required int exerciseId, required int setNumber}) async {
+  Future<void> unlogSet({
+    required int exerciseId,
+    required int setNumber,
+  }) async {
     final sessionId = _current.sessionId;
-    await _repo.deleteSet(sessionId, exerciseId: exerciseId, setNumber: setNumber);
+    await _repo.deleteSet(
+      sessionId,
+      exerciseId: exerciseId,
+      setNumber: setNumber,
+    );
     state = AsyncValue.data(_current.withoutSet(exerciseId, setNumber));
   }
 
@@ -102,8 +110,8 @@ class ActiveSessionController extends AsyncNotifier<ActiveSession?> {
 
 final activeSessionProvider =
     AsyncNotifierProvider<ActiveSessionController, ActiveSession?>(
-  ActiveSessionController.new,
-);
+      ActiveSessionController.new,
+    );
 
 /// Which window the Progress tab is summarising: 'week', 'month' or 'year'.
 ///
@@ -116,8 +124,9 @@ class TrainingPeriodNotifier extends Notifier<String> {
   void set(String period) => state = period;
 }
 
-final trainingPeriodProvider =
-    NotifierProvider<TrainingPeriodNotifier, String>(TrainingPeriodNotifier.new);
+final trainingPeriodProvider = NotifierProvider<TrainingPeriodNotifier, String>(
+  TrainingPeriodNotifier.new,
+);
 
 /// What the chosen window added up to. Rebuilt whenever the window changes,
 /// which is exactly the refetch we want with no manual reset logic.
@@ -159,13 +168,15 @@ final completedDaysProvider = FutureProvider<Set<String>>(
 /// otherwise stay resident for the app's lifetime.
 final lastPerformanceProvider = FutureProvider.autoDispose
     .family<Map<int, LastPerformance>, String>(
-  (ref, key) => ref.watch(sessionRepositoryProvider).lastPerformance(
-        key.isEmpty
-            ? const []
-            : key.split(',').map(int.parse).toList(growable: false),
-      ),
-  retry: apiRetryPolicy,
-);
+      (ref, key) => ref
+          .watch(sessionRepositoryProvider)
+          .lastPerformance(
+            key.isEmpty
+                ? const []
+                : key.split(',').map(int.parse).toList(growable: false),
+          ),
+      retry: apiRetryPolicy,
+    );
 
 /// Sorted so two orderings of the same plan share one cache entry.
 String lastPerformanceKey(Iterable<int> exerciseIds) =>
@@ -177,6 +188,6 @@ String lastPerformanceKey(Iterable<int> exerciseIds) =>
 /// refetches only this card's data.
 final trainingAnalyticsProvider =
     FutureProvider.family<TrainingAnalytics, String>(
-  (ref, period) => ref.watch(sessionRepositoryProvider).analytics(period),
-  retry: apiRetryPolicy,
-);
+      (ref, period) => ref.watch(sessionRepositoryProvider).analytics(period),
+      retry: apiRetryPolicy,
+    );

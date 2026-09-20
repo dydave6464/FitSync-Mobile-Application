@@ -53,17 +53,15 @@ class ExerciseDemoBody extends StatelessWidget {
             ),
           ),
         const SizedBox(height: 16),
-        if (header != null) ...[
-          header!,
-          const SizedBox(height: 8),
-        ],
+        if (header != null) ...[header!, const SizedBox(height: 8)],
         Text(exercise.name, style: Theme.of(context).textTheme.headlineSmall),
         const SizedBox(height: 8),
         Wrap(
           spacing: 8,
           children: [
             Chip(label: Text(exercise.muscleGroup)),
-            if (exercise.equipment != null) Chip(label: Text(exercise.equipment!)),
+            if (exercise.equipment != null)
+              Chip(label: Text(exercise.equipment!)),
           ],
         ),
         const SizedBox(height: 24),

@@ -14,9 +14,9 @@ import '../generator_screen.dart';
 /// built by hand, is refused by the server (`CUSTOM_PLAN_WOULD_BE_LOST`) and
 /// raised from that refusal, so it already covers every caller rather than
 /// relying on each new door remembering to ask.
-Future<void> openGenerator(BuildContext context) => Navigator.of(context).push(
-      MaterialPageRoute<void>(builder: (_) => const GeneratorScreen()),
-    );
+Future<void> openGenerator(BuildContext context) =>
+    Navigator.of(context)
+        .push(MaterialPageRoute<void>(builder: (_) => const GeneratorScreen()));
 
 /// The Plan tab's way back to the generator.
 ///
@@ -30,10 +30,10 @@ class RegeneratePlanButton extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) => FsButton(
-        key: const Key('plan.regenerate'),
-        label: 'Regenerate',
-        kind: FsButtonKind.ghost,
-        small: true,
-        onPressed: () => openGenerator(context),
-      );
+    key: const Key('plan.regenerate'),
+    label: 'Regenerate',
+    kind: FsButtonKind.ghost,
+    small: true,
+    onPressed: () => openGenerator(context),
+  );
 }

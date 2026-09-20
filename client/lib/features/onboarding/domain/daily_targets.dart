@@ -62,7 +62,8 @@ DailyTargets? estimateDailyTargets({
   // A birthday later this year has not happened yet, and Mifflin-St Jeor
   // charges five calories a year.
   final hadBirthday =
-      now.month > born.month || (now.month == born.month && now.day >= born.day);
+      now.month > born.month ||
+      (now.month == born.month && now.day >= born.day);
   if (!hadBirthday) age -= 1;
 
   final bmr = 10 * weightKg + 6.25 * heightCm - 5 * age + sexConstant;

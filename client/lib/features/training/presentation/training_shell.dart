@@ -75,7 +75,9 @@ class _TrainingShellState extends State<TrainingShell> {
                           border: Border(
                             bottom: BorderSide(
                               width: 2,
-                              color: i == _index ? t.accent : Colors.transparent,
+                              color: i == _index
+                                  ? t.accent
+                                  : Colors.transparent,
                             ),
                           ),
                         ),
@@ -102,7 +104,8 @@ class _TrainingShellState extends State<TrainingShell> {
                   const _ComingSoon(
                     icon: Icons.favorite_outline,
                     title: 'Recovery',
-                    body: 'Recovery and injury-risk estimates need a daily '
+                    body:
+                        'Recovery and injury-risk estimates need a daily '
                         'check-in, which is not built yet.',
                   ),
                 ],
@@ -116,7 +119,11 @@ class _TrainingShellState extends State<TrainingShell> {
 }
 
 class _ComingSoon extends StatelessWidget {
-  const _ComingSoon({required this.icon, required this.title, required this.body});
+  const _ComingSoon({
+    required this.icon,
+    required this.title,
+    required this.body,
+  });
 
   final IconData icon;
   final String title;

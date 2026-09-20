@@ -32,16 +32,22 @@ class FakeExerciseRepository implements ExerciseRepository {
   }) async {
     asked = muscleGroups;
     return ExercisePage(
-        items: const [
-          ExerciseSummary(
-            exerciseId: 101, name: 'Goblet squat', muscleGroup: 'quadriceps',
-            equipment: 'Dumbbell', thumbnailUrl: null,
-          ),
-          ExerciseSummary(
-            exerciseId: 202, name: 'Cable fly', muscleGroup: 'pectorals',
-            equipment: 'Cable', thumbnailUrl: null,
-          ),
-        ],
+      items: const [
+        ExerciseSummary(
+          exerciseId: 101,
+          name: 'Goblet squat',
+          muscleGroup: 'quadriceps',
+          equipment: 'Dumbbell',
+          thumbnailUrl: null,
+        ),
+        ExerciseSummary(
+          exerciseId: 202,
+          name: 'Cable fly',
+          muscleGroup: 'pectorals',
+          equipment: 'Cable',
+          thumbnailUrl: null,
+        ),
+      ],
       page: page,
       limit: limit,
       total: 2,
@@ -49,11 +55,10 @@ class FakeExerciseRepository implements ExerciseRepository {
   }
 
   @override
-  Future<ExerciseFilters> filters() async =>
-      const ExerciseFilters(
-        muscleGroups: [FilterOption(value: 'quadriceps', count: 1)],
-        equipment: [FilterOption(value: 'Dumbbell', count: 1)],
-      );
+  Future<ExerciseFilters> filters() async => const ExerciseFilters(
+    muscleGroups: [FilterOption(value: 'quadriceps', count: 1)],
+    equipment: [FilterOption(value: 'Dumbbell', count: 1)],
+  );
 
   @override
   dynamic noSuchMethod(Invocation invocation) =>
@@ -88,8 +93,12 @@ class FakeSessionRepository implements SessionRepository {
       exercises: [
         for (final (index, id) in (exerciseIds ?? const <int>[]).indexed)
           PlanExercise(
-            planExerciseId: index + 1, exerciseId: id, name: 'Ex $id',
-            muscleGroup: 'x', orderNo: index + 1, targetSets: 3,
+            planExerciseId: index + 1,
+            exerciseId: id,
+            name: 'Ex $id',
+            muscleGroup: 'x',
+            orderNo: index + 1,
+            targetSets: 3,
             targetReps: '8-12',
           ),
       ],
@@ -97,7 +106,8 @@ class FakeSessionRepository implements SessionRepository {
   }
 
   @override
-  Future<Map<int, LastPerformance>> lastPerformance(List<int> ids) async => const {};
+  Future<Map<int, LastPerformance>> lastPerformance(List<int> ids) async =>
+      const {};
 
   @override
   Future<Set<String>> completedThisWeek() async => const {};
@@ -114,24 +124,28 @@ Future<void> _pump(
   FakeExerciseRepository? exercises,
   List<String> muscleGroups = const [],
 }) async {
-  await tester.pumpWidget(ProviderScope(
-    overrides: [
-      exerciseRepositoryProvider
-          .overrideWithValue(exercises ?? FakeExerciseRepository()),
-      if (muscleGroups.isNotEmpty)
-        catalogueConstraintProvider.overrideWith(
-          () => _ConstrainedTo(muscleGroups),
+  await tester.pumpWidget(
+    ProviderScope(
+      overrides: [
+        exerciseRepositoryProvider.overrideWithValue(
+          exercises ?? FakeExerciseRepository(),
         ),
-      sessionRepositoryProvider
-          .overrideWithValue(sessions ?? FakeSessionRepository()),
-      // A manual session has none; the logger must not need one.
-      activePlanProvider.overrideWith((ref) async => null),
-    ],
-    child: MaterialApp(
-      theme: fsLightTheme(),
-      home: ExerciseListScreen(selecting: selecting),
+        if (muscleGroups.isNotEmpty)
+          catalogueConstraintProvider.overrideWith(
+            () => _ConstrainedTo(muscleGroups),
+          ),
+        sessionRepositoryProvider.overrideWithValue(
+          sessions ?? FakeSessionRepository(),
+        ),
+        // A manual session has none; the logger must not need one.
+        activePlanProvider.overrideWith((ref) async => null),
+      ],
+      child: MaterialApp(
+        theme: fsLightTheme(),
+        home: ExerciseListScreen(selecting: selecting),
+      ),
     ),
-  ));
+  );
   await tester.pumpAndSettle();
 }
 
@@ -157,14 +171,19 @@ void main() {
     expect(find.byIcon(Icons.chevron_right), findsWidgets);
   });
 
-  testWidgets('picking offers a review button, inert until something is chosen',
-      (tester) async {
-    await _pump(tester);
+  testWidgets(
+    'picking offers a review button, inert until something is chosen',
+    (tester) async {
+      await _pump(tester);
 
-    expect(_review(), findsOneWidget);
-    expect(tester.widget<FsButton>(_review()).onPressed, isNull,
-        reason: 'a workout of no exercises is not a workout');
-  });
+      expect(_review(), findsOneWidget);
+      expect(
+        tester.widget<FsButton>(_review()).onPressed,
+        isNull,
+        reason: 'a workout of no exercises is not a workout',
+      );
+    },
+  );
 
   testWidgets('tapping a row adds it and the count follows', (tester) async {
     await _pump(tester);
@@ -188,24 +207,27 @@ void main() {
     expect(tester.widget<FsButton>(_review()).onPressed, isNull);
   });
 
-  testWidgets('the footer leads to the review screen, not straight to a session',
-      (tester) async {
-    // Starting from here meant the picks were only ever reviewable as ticks
-    // scattered down a 1,200-row catalogue. The library hands off now.
-    final sessions = FakeSessionRepository();
-    await _pump(tester, sessions: sessions);
+  testWidgets(
+    'the footer leads to the review screen, not straight to a session',
+    (tester) async {
+      // Starting from here meant the picks were only ever reviewable as ticks
+      // scattered down a 1,200-row catalogue. The library hands off now.
+      final sessions = FakeSessionRepository();
+      await _pump(tester, sessions: sessions);
 
-    await tester.tap(find.text('Cable fly'));
-    await tester.pumpAndSettle();
-    await tester.tap(_review());
-    await tester.pumpAndSettle();
+      await tester.tap(find.text('Cable fly'));
+      await tester.pumpAndSettle();
+      await tester.tap(_review());
+      await tester.pumpAndSettle();
 
-    expect(find.byType(WorkoutReviewScreen), findsOneWidget);
-    expect(sessions.startCalls, 0, reason: 'reviewing is not starting');
-  });
+      expect(find.byType(WorkoutReviewScreen), findsOneWidget);
+      expect(sessions.startCalls, 0, reason: 'reviewing is not starting');
+    },
+  );
 
-  testWidgets('the review screen shows the picks in the order they were made',
-      (tester) async {
+  testWidgets('the review screen shows the picks in the order they were made', (
+    tester,
+  ) async {
     await _pump(tester);
 
     await tester.tap(find.text('Cable fly'));
@@ -221,8 +243,9 @@ void main() {
     );
   });
 
-  testWidgets('adding more from the review screen lands back on the library',
-      (tester) async {
+  testWidgets('adding more from the review screen lands back on the library', (
+    tester,
+  ) async {
     // Popping rather than pushing: a second library would leave two of them
     // on the stack and two ways back.
     await _pump(tester);
@@ -235,19 +258,30 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.byType(WorkoutReviewScreen), findsNothing);
-    expect(find.text('Cable fly'), findsOneWidget, reason: 'back on the library');
-    expect(find.textContaining('1 added'), findsOneWidget,
-        reason: 'the picks survived the round trip');
+    expect(
+      find.text('Cable fly'),
+      findsOneWidget,
+      reason: 'back on the library',
+    );
+    expect(
+      find.textContaining('1 added'),
+      findsOneWidget,
+      reason: 'the picks survived the round trip',
+    );
   });
 
-  testWidgets("the training day's groups are what the catalogue is asked for",
-      (tester) async {
+  testWidgets("the training day's groups are what the catalogue is asked for", (
+    tester,
+  ) async {
     // The day chosen on the setup screen has to reach the request, or the
     // library shows all 1,203 exercises under a heading that says Push.
     final exercises = FakeExerciseRepository();
 
-    await _pump(tester, exercises: exercises,
-        muscleGroups: const ['pectorals', 'delts', 'triceps']);
+    await _pump(
+      tester,
+      exercises: exercises,
+      muscleGroups: const ['pectorals', 'delts', 'triceps'],
+    );
 
     expect(exercises.asked, ['pectorals', 'delts', 'triceps']);
   });

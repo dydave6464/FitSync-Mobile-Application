@@ -42,7 +42,9 @@ Future<AddToPlanChoice> showAddToPlanSheet(
               child: Text(
                 'Add to ${plan.name}',
                 style: TextStyle(
-                  fontSize: 16, fontWeight: FontWeight.w600, color: t.text,
+                  fontSize: 16,
+                  fontWeight: FontWeight.w600,
+                  color: t.text,
                 ),
               ),
             ),
@@ -55,26 +57,31 @@ Future<AddToPlanChoice> showAddToPlanSheet(
                 'Day ${dayNumbers.length + 1} of your plan',
                 style: TextStyle(fontSize: 12, color: t.text3),
               ),
-              onTap: () => Navigator.of(sheetContext)
-                  .pop((cancelled: false, dayNo: null)),
+              onTap: () =>
+                  Navigator.of(sheetContext)
+                      .pop((cancelled: false, dayNo: null)),
             ),
             Divider(color: t.line2, height: 1),
             for (final dayNo in dayNumbers)
-              Builder(builder: (_) {
-                final count =
-                    plan.exercises.where((e) => e.dayNo == dayNo).length;
-                return ListTile(
-                  key: Key('addToPlan.day.$dayNo'),
-                  leading: Icon(Icons.swap_horiz, size: 20, color: t.text2),
-                  title: Text('Day $dayNo'),
-                  subtitle: Text(
-                    'Replaces $count ${count == 1 ? 'exercise' : 'exercises'}',
-                    style: TextStyle(fontSize: 12, color: t.text3),
-                  ),
-                  onTap: () => Navigator.of(sheetContext)
-                      .pop((cancelled: false, dayNo: dayNo)),
-                );
-              }),
+              Builder(
+                builder: (_) {
+                  final count = plan.exercises
+                      .where((e) => e.dayNo == dayNo)
+                      .length;
+                  return ListTile(
+                    key: Key('addToPlan.day.$dayNo'),
+                    leading: Icon(Icons.swap_horiz, size: 20, color: t.text2),
+                    title: Text('Day $dayNo'),
+                    subtitle: Text(
+                      'Replaces $count ${count == 1 ? 'exercise' : 'exercises'}',
+                      style: TextStyle(fontSize: 12, color: t.text3),
+                    ),
+                    onTap: () =>
+                        Navigator.of(sheetContext)
+                            .pop((cancelled: false, dayNo: dayNo)),
+                  );
+                },
+              ),
             const SizedBox(height: 8),
           ],
         ),

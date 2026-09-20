@@ -61,14 +61,24 @@ const _pplPlan = WorkoutPlan(
   ],
   exercises: [
     PlanExercise(
-      planExerciseId: 701, exerciseId: 201, name: 'Bench press',
-      muscleGroup: 'pectorals', dayNo: 1, orderNo: 1,
-      targetSets: 3, targetReps: '8-12',
+      planExerciseId: 701,
+      exerciseId: 201,
+      name: 'Bench press',
+      muscleGroup: 'pectorals',
+      dayNo: 1,
+      orderNo: 1,
+      targetSets: 3,
+      targetReps: '8-12',
     ),
     PlanExercise(
-      planExerciseId: 702, exerciseId: 202, name: 'Barbell row',
-      muscleGroup: 'lats', dayNo: 2, orderNo: 1,
-      targetSets: 3, targetReps: '8-12',
+      planExerciseId: 702,
+      exerciseId: 202,
+      name: 'Barbell row',
+      muscleGroup: 'lats',
+      dayNo: 2,
+      orderNo: 1,
+      targetSets: 3,
+      targetReps: '8-12',
     ),
   ],
 );
@@ -83,9 +93,14 @@ const _fullBodyPlan = WorkoutPlan(
   days: [PlanDay(dayNo: 1, name: 'Full body')],
   exercises: [
     PlanExercise(
-      planExerciseId: 703, exerciseId: 203, name: 'Goblet squat',
-      muscleGroup: 'quads', dayNo: 1, orderNo: 1,
-      targetSets: 3, targetReps: '8-12',
+      planExerciseId: 703,
+      exerciseId: 203,
+      name: 'Goblet squat',
+      muscleGroup: 'quads',
+      dayNo: 1,
+      orderNo: 1,
+      targetSets: 3,
+      targetReps: '8-12',
     ),
   ],
 );
@@ -127,10 +142,10 @@ class _FakeProfileNotifier extends ProfileNotifier {
 
 /// Keeps anything downstream of the API client off the platform channel.
 ApiClient _hermeticClient() => ApiClient(
-      baseUrl: 'http://test.local',
-      tokens: TokenStore(backing: InMemorySecureStore()),
-      client: MockClient((_) async => http.Response('{"data":{}}', 200)),
-    );
+  baseUrl: 'http://test.local',
+  tokens: TokenStore(backing: InMemorySecureStore()),
+  client: MockClient((_) async => http.Response('{"data":{}}', 200)),
+);
 
 Future<void> _pump(
   WidgetTester tester,
@@ -140,28 +155,30 @@ Future<void> _pump(
   Set<String> completedDays = const <String>{},
   ProfileNotifier Function()? profile,
 }) async {
-  await tester.pumpWidget(ProviderScope(
-    overrides: [
-      apiClientProvider.overrideWithValue(_hermeticClient()),
-      if (profile != null) profileProvider.overrideWith(profile),
-      activePlanProvider.overrideWith((ref) async => plan),
-      // The screen now also watches these two -- the session card's
-      // Start/Resume label and the week strip's filled dots.
-      activeSessionProvider.overrideWith(() => _NoSessionController()),
-      completedDaysProvider.overrideWith((ref) async => completedDays),
-      // Only stubbed for the tests that open the sheet; the others never
-      // reach it, and an unconditional override would hide a regression
-      // where the sheet fetches when it should not.
-      if (alternatives != null)
-        alternativesProvider.overrideWith((ref, key) async => alternatives),
-    ],
-    child: MaterialApp(
-      // PlanScreen no longer brings its own Scaffold/AppBar -- the Training
-      // shell supplies both now -- so this test supplies a bare Scaffold to
-      // stand in for it.
-      home: Scaffold(body: PlanScreen(onGoToProfile: onGoToProfile)),
+  await tester.pumpWidget(
+    ProviderScope(
+      overrides: [
+        apiClientProvider.overrideWithValue(_hermeticClient()),
+        if (profile != null) profileProvider.overrideWith(profile),
+        activePlanProvider.overrideWith((ref) async => plan),
+        // The screen now also watches these two -- the session card's
+        // Start/Resume label and the week strip's filled dots.
+        activeSessionProvider.overrideWith(() => _NoSessionController()),
+        completedDaysProvider.overrideWith((ref) async => completedDays),
+        // Only stubbed for the tests that open the sheet; the others never
+        // reach it, and an unconditional override would hide a regression
+        // where the sheet fetches when it should not.
+        if (alternatives != null)
+          alternativesProvider.overrideWith((ref, key) async => alternatives),
+      ],
+      child: MaterialApp(
+        // PlanScreen no longer brings its own Scaffold/AppBar -- the Training
+        // shell supplies both now -- so this test supplies a bare Scaffold to
+        // stand in for it.
+        home: Scaffold(body: PlanScreen(onGoToProfile: onGoToProfile)),
+      ),
     ),
-  ));
+  );
   await tester.pumpAndSettle();
 }
 
@@ -192,8 +209,9 @@ void main() {
     expect(find.byType(ExerciseDetailScreen), findsOneWidget);
   });
 
-  testWidgets('no plan yet renders an empty state, not a crash',
-      (tester) async {
+  testWidgets('no plan yet renders an empty state, not a crash', (
+    tester,
+  ) async {
     await _pump(tester, null);
 
     expect(find.byKey(const Key('noPlan')), findsOneWidget);
@@ -231,31 +249,44 @@ void main() {
     expect(find.text('Replace Push-up'), findsOneWidget);
   });
 
-  testWidgets('a row with no artwork falls back to its equipment, not a dumbbell',
-      (tester) async {
-    // Network images never load in a widget test, so what renders here is the
-    // same fallback a missing file produces in the app. A body-weight exercise
-    // showing a dumbbell was the complaint; it now shows a body.
-    await _pump(
-      tester,
-      const WorkoutPlan(
-        planId: 42, name: 'W', splitStyle: 'full_body', daysPerWeek: 3,
-        sessionLengthMin: 45, weekNo: 1,
-        exercises: [
-          PlanExercise(
-            planExerciseId: 601, exerciseId: 101, name: 'Push-up',
-            muscleGroup: 'pectorals', orderNo: 1, targetSets: 3,
-            targetReps: '8-12', equipment: 'Bodyweight',
-          ),
-        ],
-      ),
-    );
+  testWidgets(
+    'a row with no artwork falls back to its equipment, not a dumbbell',
+    (tester) async {
+      // Network images never load in a widget test, so what renders here is the
+      // same fallback a missing file produces in the app. A body-weight exercise
+      // showing a dumbbell was the complaint; it now shows a body.
+      await _pump(
+        tester,
+        const WorkoutPlan(
+          planId: 42,
+          name: 'W',
+          splitStyle: 'full_body',
+          daysPerWeek: 3,
+          sessionLengthMin: 45,
+          weekNo: 1,
+          exercises: [
+            PlanExercise(
+              planExerciseId: 601,
+              exerciseId: 101,
+              name: 'Push-up',
+              muscleGroup: 'pectorals',
+              orderNo: 1,
+              targetSets: 3,
+              targetReps: '8-12',
+              equipment: 'Bodyweight',
+            ),
+          ],
+        ),
+      );
 
-    expect(find.byIcon(Icons.accessibility_new), findsOneWidget);
-    expect(find.byIcon(Icons.fitness_center), findsNothing);
-  });
+      expect(find.byIcon(Icons.accessibility_new), findsOneWidget);
+      expect(find.byIcon(Icons.fitness_center), findsNothing);
+    },
+  );
 
-  testWidgets('the sheet opens just below the Exercises heading', (tester) async {
+  testWidgets('the sheet opens just below the Exercises heading', (
+    tester,
+  ) async {
     // Pins the sheet's height fraction to the thing it was chosen for. The
     // constant lives in exercise_swap_sheet.dart, but what makes 0.66 right
     // is this screen: the heading stays visible and the plan behind it is
@@ -275,14 +306,23 @@ void main() {
     // Only the "stays visible" half is asserted: the exact gap moves with the
     // plan card above it, which grows a line whenever a plan name wraps, so
     // pinning the distance would fail on a long plan name and prove nothing.
-    expect(sheetTop, greaterThanOrEqualTo(heading),
-        reason: 'the sheet must not swallow the heading it opens under');
+    expect(
+      sheetTop,
+      greaterThanOrEqualTo(heading),
+      reason: 'the sheet must not swallow the heading it opens under',
+    );
   });
 
-  testWidgets("the sheet's equipment note closes it and heads for Profile",
-      (tester) async {
+  testWidgets("the sheet's equipment note closes it and heads for Profile", (
+    tester,
+  ) async {
     var asked = 0;
-    await _pump(tester, _plan, alternatives: const [], onGoToProfile: () => asked++);
+    await _pump(
+      tester,
+      _plan,
+      alternatives: const [],
+      onGoToProfile: () => asked++,
+    );
 
     await tester.tap(find.byKey(const Key('swap.open.602')));
     await tester.pumpAndSettle();
@@ -290,9 +330,16 @@ void main() {
     await tester.tap(find.byKey(const Key('swap.equipmentHint')));
     await tester.pumpAndSettle();
 
-    expect(asked, 1, reason: 'the note has to reach the screen that owns the tabs');
-    expect(find.byType(ExerciseSwapSheet), findsNothing,
-        reason: 'a sheet left open would cover the tab it just switched to');
+    expect(
+      asked,
+      1,
+      reason: 'the note has to reach the screen that owns the tabs',
+    );
+    expect(
+      find.byType(ExerciseSwapSheet),
+      findsNothing,
+      reason: 'a sheet left open would cover the tab it just switched to',
+    );
   });
 
   testWidgets("names today's day and lists only its exercises", (tester) async {
@@ -314,34 +361,46 @@ void main() {
 
   testWidgets('a completed rotation wraps back to day one', (tester) async {
     // Two days done on a two-day rotation: 2 mod 2 + 1 = 1.
-    await _pump(tester, _pplPlan,
-        completedDays: const {'2026-09-07', '2026-09-08'});
+    await _pump(
+      tester,
+      _pplPlan,
+      completedDays: const {'2026-09-07', '2026-09-08'},
+    );
     expect(find.text('Push'), findsOneWidget);
   });
 
-  testWidgets('the strip counts against the days the profile carries',
-      (tester) async {
-    await _pump(tester, _pplPlan,
-        profile: () => _FakeProfileNotifier(trainingDays: const [1, 3, 5]));
+  testWidgets('the strip counts against the days the profile carries', (
+    tester,
+  ) async {
+    await _pump(
+      tester,
+      _pplPlan,
+      profile: () => _FakeProfileNotifier(trainingDays: const [1, 3, 5]),
+    );
 
     expect(find.text('0 of 3'), findsOneWidget);
   });
 
-  testWidgets('a profile that never arrived is not read as no days chosen',
-      (tester) async {
+  testWidgets('a profile that never arrived is not read as no days chosen', (
+    tester,
+  ) async {
     // `.value?.trainingDays ?? const []` flattened "failed" into "the user
     // chose nothing": the strip reverted to a dot on every day and the tally
     // silently swapped its denominator for the plan's stale label. Display
     // only, and still a claim the app cannot support.
-    await _pump(tester, _pplPlan,
-        profile: () => _FakeProfileNotifier(fails: true));
+    await _pump(
+      tester,
+      _pplPlan,
+      profile: () => _FakeProfileNotifier(fails: true),
+    );
 
     expect(find.text('0 sessions'), findsOneWidget);
     expect(find.textContaining(' of '), findsNothing);
   });
 
-  testWidgets('a one-day custom plan renders the day the user built',
-      (tester) async {
+  testWidgets('a one-day custom plan renders the day the user built', (
+    tester,
+  ) async {
     // The spec's "accepting creates the plan and the Plan tab then renders
     // it", end to end from the wire: a user picks push/pull/legs, logs one
     // workout and keeps it, and one completed session already exists this
@@ -366,19 +425,30 @@ void main() {
       ],
       'exercises': [
         {
-          'planExerciseId': 801, 'exerciseId': 301, 'name': 'Cable fly',
-          'muscleGroup': 'pectorals', 'dayNo': 1, 'orderNo': 1,
-          'targetSets': 3, 'targetReps': '10',
+          'planExerciseId': 801,
+          'exerciseId': 301,
+          'name': 'Cable fly',
+          'muscleGroup': 'pectorals',
+          'dayNo': 1,
+          'orderNo': 1,
+          'targetSets': 3,
+          'targetReps': '10',
         },
       ],
     });
 
     await _pump(tester, plan, completedDays: const {'2026-09-07'});
 
-    expect(find.text('Cable fly'), findsOneWidget,
-        reason: 'the day the user just built is the day the tab must show');
-    expect(find.text('Pull'), findsNothing,
-        reason: 'a one-day plan has no day 2 to rotate onto');
+    expect(
+      find.text('Cable fly'),
+      findsOneWidget,
+      reason: 'the day the user just built is the day the tab must show',
+    );
+    expect(
+      find.text('Pull'),
+      findsNothing,
+      reason: 'a one-day plan has no day 2 to rotate onto',
+    );
   });
 
   testWidgets('a one-day plan names no day', (tester) async {

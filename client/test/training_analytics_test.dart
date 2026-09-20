@@ -6,19 +6,21 @@ void main() {
     List<MuscleVolume> muscles = const [],
     bool musclesLocked = false,
   }) => TrainingAnalytics(
-        period: 'week',
-        volume: const [VolumeBucket(label: '-1d', volumeKg: 0)],
-        change: const VolumeChange(totalKg: 0, previousKg: 0, changePct: null),
-        adherence: const Adherence(done: 2, target: 4, weeks: 1),
-        muscles: muscles,
-        musclesLocked: musclesLocked,
-      );
+    period: 'week',
+    volume: const [VolumeBucket(label: '-1d', volumeKg: 0)],
+    change: const VolumeChange(totalKg: 0, previousKg: 0, changePct: null),
+    adherence: const Adherence(done: 2, target: 4, weeks: 1),
+    muscles: muscles,
+    musclesLocked: musclesLocked,
+  );
 
   test('muscle bars scale against the largest group', () {
-    final a = analytics(muscles: const [
-      MuscleVolume(muscle: 'chest', volumeKg: 3000),
-      MuscleVolume(muscle: 'back', volumeKg: 1500),
-    ]);
+    final a = analytics(
+      muscles: const [
+        MuscleVolume(muscle: 'chest', volumeKg: 3000),
+        MuscleVolume(muscle: 'back', volumeKg: 1500),
+      ],
+    );
     expect(a.muscleFraction(a.muscles[0]), 1.0);
     expect(a.muscleFraction(a.muscles[1]), 0.5);
   });

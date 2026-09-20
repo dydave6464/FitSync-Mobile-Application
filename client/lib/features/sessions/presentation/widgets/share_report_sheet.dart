@@ -31,8 +31,18 @@ const _sections = [
 /// one their own calendar shows.
 String formatShareExpiry(DateTime when) {
   const months = [
-    'January', 'February', 'March', 'April', 'May', 'June',
-    'July', 'August', 'September', 'October', 'November', 'December',
+    'January',
+    'February',
+    'March',
+    'April',
+    'May',
+    'June',
+    'July',
+    'August',
+    'September',
+    'October',
+    'November',
+    'December',
   ];
   final local = when.toLocal();
   return '${months[local.month - 1]} ${local.day}, ${local.year}';
@@ -120,7 +130,10 @@ class _ShareReportSheetState extends ConsumerState<_ShareReportSheet> {
     return SafeArea(
       child: Padding(
         padding: EdgeInsets.fromLTRB(
-          18, 10, 18, MediaQuery.of(context).viewInsets.bottom + 20,
+          18,
+          10,
+          18,
+          MediaQuery.of(context).viewInsets.bottom + 20,
         ),
         child: Column(
           mainAxisSize: MainAxisSize.min,
@@ -143,7 +156,10 @@ class _ShareReportSheetState extends ConsumerState<_ShareReportSheet> {
                     : (on) => setState(() => _include[s.key] = on),
                 title: Row(
                   children: [
-                    Text(s.label, style: TextStyle(fontSize: 13.5, color: t.text)),
+                    Text(
+                      s.label,
+                      style: TextStyle(fontSize: 13.5, color: t.text),
+                    ),
                     if (s.pro) ...[
                       const SizedBox(width: 8),
                       const FsTag('Pro'),

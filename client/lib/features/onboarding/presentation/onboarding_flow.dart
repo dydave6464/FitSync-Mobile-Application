@@ -3,7 +3,8 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../core/api_exception.dart';
 import '../../auth/presentation/auth_controller.dart';
-import '../../exercises/presentation/exercise_list_screen.dart' show describeError;
+import '../../exercises/presentation/exercise_list_screen.dart'
+    show describeError;
 import '../../profile/domain/profile.dart';
 import '../../profile/presentation/providers.dart';
 import 'generating_view.dart';
@@ -27,7 +28,6 @@ class OnboardingFlow extends ConsumerStatefulWidget {
 
 class _OnboardingFlowState extends ConsumerState<OnboardingFlow> {
   static const _total = 4;
-
 
   int _index = 0;
   bool _busy = false;
@@ -63,8 +63,9 @@ class _OnboardingFlowState extends ConsumerState<OnboardingFlow> {
     _level = LevelAnswers(
       fitnessLevel: profile.fitnessLevel,
       trainingLocation: profile.trainingLocation,
-      equipmentIds:
-          profile.equipment.map((e) => e.equipmentId).toList(growable: false),
+      equipmentIds: profile.equipment
+          .map((e) => e.equipmentId)
+          .toList(growable: false),
     );
     _injuries = profile.injuries;
   }
@@ -73,23 +74,22 @@ class _OnboardingFlowState extends ConsumerState<OnboardingFlow> {
   /// as "leave alone" and an explicit null as "clear", so sending the whole
   /// object would wipe fields this step never asked about.
   Map<String, dynamic> _patchForCurrentStep() => switch (_index) {
-        0 => {if (_mainGoal != null) 'mainGoal': _mainGoal},
-        1 => {
-            if (_about.sex != null) 'sex': _about.sex,
-            if (_about.dateOfBirth != null) 'dateOfBirth': _about.dateOfBirth,
-            if (_about.heightCm != null) 'heightCm': _about.heightCm,
-            if (_about.weightKg != null) 'weightKg': _about.weightKg,
-            if (_about.goalWeightKg != null) 'goalWeightKg': _about.goalWeightKg,
-            if (_about.activityLevel != null)
-              'activityLevel': _about.activityLevel,
-          },
-        2 => {
-            if (_level.fitnessLevel != null) 'fitnessLevel': _level.fitnessLevel,
-            if (_level.trainingLocation != null)
-              'trainingLocation': _level.trainingLocation,
-          },
-        _ => const {},
-      };
+    0 => {if (_mainGoal != null) 'mainGoal': _mainGoal},
+    1 => {
+      if (_about.sex != null) 'sex': _about.sex,
+      if (_about.dateOfBirth != null) 'dateOfBirth': _about.dateOfBirth,
+      if (_about.heightCm != null) 'heightCm': _about.heightCm,
+      if (_about.weightKg != null) 'weightKg': _about.weightKg,
+      if (_about.goalWeightKg != null) 'goalWeightKg': _about.goalWeightKg,
+      if (_about.activityLevel != null) 'activityLevel': _about.activityLevel,
+    },
+    2 => {
+      if (_level.fitnessLevel != null) 'fitnessLevel': _level.fitnessLevel,
+      if (_level.trainingLocation != null)
+        'trainingLocation': _level.trainingLocation,
+    },
+    _ => const {},
+  };
 
   /// Writes whatever the current step collected. Equipment is a separate
   /// endpoint from the profile patch, so step 3 makes two calls.
@@ -121,7 +121,9 @@ class _OnboardingFlowState extends ConsumerState<OnboardingFlow> {
       // Held before the hand-off, not after: the hand-off swaps this screen
       // out, so a wait on the far side of it would not be seen.
       await _holdGenerating();
-      if (mounted) ref.read(authControllerProvider.notifier).onOnboardingCompleted();
+      if (mounted) {
+        ref.read(authControllerProvider.notifier).onOnboardingCompleted();
+      }
     }
   }
 
@@ -182,49 +184,47 @@ class _OnboardingFlowState extends ConsumerState<OnboardingFlow> {
   }
 
   void _advance() => setState(() {
-        _error = null;
-        if (_index < _total - 1) _index++;
-      });
+    _error = null;
+    if (_index < _total - 1) _index++;
+  });
 
   void _back() => setState(() {
-        _error = null;
-        if (_index > 0) _index--;
-      });
+    _error = null;
+    if (_index > 0) _index--;
+  });
 
   Widget _stepContent() => switch (_index) {
-        0 => GoalStep(
-            value: _mainGoal,
-            onChanged: (value) => setState(() => _mainGoal = value),
-          ),
-        1 => AboutStep(
-            value: _about,
-            onChanged: (value) => _about = value,
-            // Saved to the account as it is tapped rather than held with the
-            // rest of the step: it changes what the two cards on screen say
-            // right now, so it cannot wait for Continue.
-            unit: ref.watch(weightUnitProvider),
-            onUnitChanged: (unit) => ref
-                .read(profileProvider.notifier)
-                .patch({'weightUnit': unit.api}),
-          ),
-        2 => LevelStep(
-            value: _level,
-            onChanged: (value) => setState(() => _level = value),
-          ),
-        _ => InjuriesStep(
-            value: _injuries,
-            onChanged: (value) => setState(() => _injuries = value),
-          ),
-      };
+    0 => GoalStep(
+      value: _mainGoal,
+      onChanged: (value) => setState(() => _mainGoal = value),
+    ),
+    1 => AboutStep(
+      value: _about,
+      onChanged: (value) => _about = value,
+      // Saved to the account as it is tapped rather than held with the
+      // rest of the step: it changes what the two cards on screen say
+      // right now, so it cannot wait for Continue.
+      unit: ref.watch(weightUnitProvider),
+      onUnitChanged: (unit) =>
+          ref.read(profileProvider.notifier).patch({'weightUnit': unit.api}),
+    ),
+    2 => LevelStep(
+      value: _level,
+      onChanged: (value) => setState(() => _level = value),
+    ),
+    _ => InjuriesStep(
+      value: _injuries,
+      onChanged: (value) => setState(() => _injuries = value),
+    ),
+  };
 
   @override
   Widget build(BuildContext context) {
     final profile = ref.watch(profileProvider);
 
     return profile.when(
-      loading: () => const Scaffold(
-        body: Center(child: CircularProgressIndicator()),
-      ),
+      loading: () =>
+          const Scaffold(body: Center(child: CircularProgressIndicator())),
       error: (error, _) => Scaffold(
         body: Center(
           child: Padding(
@@ -251,7 +251,8 @@ class _OnboardingFlowState extends ConsumerState<OnboardingFlow> {
         if (_busy && _index == _total - 1) {
           return GeneratingView(
             title: 'Building your plan…',
-            subtitle: 'Matching exercises to your goals, equipment, '
+            subtitle:
+                'Matching exercises to your goals, equipment, '
                 'and injury history.',
             leadLabel: 'Profile saved',
             leadDone: _saved,
@@ -264,8 +265,7 @@ class _OnboardingFlowState extends ConsumerState<OnboardingFlow> {
           step: _index + 1,
           total: _total,
           busy: _busy,
-          continueLabel:
-              _index == _total - 1 ? 'Generate my plan' : 'Continue',
+          continueLabel: _index == _total - 1 ? 'Generate my plan' : 'Continue',
           onContinue: _continue,
           onSkip: _busy ? null : _advance,
           onBack: _index == 0 ? null : _back,

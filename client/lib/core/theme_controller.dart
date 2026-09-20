@@ -18,13 +18,13 @@ class ThemeStore {
   final SecureStore _backing;
 
   Future<ThemeMode?> read() async => switch (await _backing.read(_key)) {
-        'dark' => ThemeMode.dark,
-        'light' => ThemeMode.light,
-        // Anything else — absent, or written by a future version that knew
-        // about more modes — means "no usable preference", so the caller
-        // keeps its default rather than guessing.
-        _ => null,
-      };
+    'dark' => ThemeMode.dark,
+    'light' => ThemeMode.light,
+    // Anything else — absent, or written by a future version that knew
+    // about more modes — means "no usable preference", so the caller
+    // keeps its default rather than guessing.
+    _ => null,
+  };
 
   Future<void> write(ThemeMode mode) =>
       _backing.write(_key, mode == ThemeMode.light ? 'light' : 'dark');

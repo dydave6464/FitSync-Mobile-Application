@@ -54,8 +54,7 @@ class FakeAuthRepository implements AuthRepository {
     required String email,
     required String password,
     required String fullName,
-  }) =>
-      throw UnimplementedError();
+  }) => throw UnimplementedError();
 
   @override
   Future<AuthUser> me() => throw UnimplementedError();
@@ -70,8 +69,7 @@ class FakeAuthRepository implements AuthRepository {
   Future<void> resendVerification({
     required String email,
     required String password,
-  }) =>
-      throw UnimplementedError();
+  }) => throw UnimplementedError();
 }
 
 class RecordingAuthController extends AuthController {
@@ -95,15 +93,18 @@ Future<void> _pump(
   required FakeAuthRepository repo,
   List<AuthUser>? seen,
 }) async {
-  await tester.pumpWidget(ProviderScope(
-    overrides: [
-      googleSignInGatewayProvider.overrideWithValue(gateway),
-      authRepositoryProvider.overrideWithValue(repo),
-      authControllerProvider
-          .overrideWith(() => RecordingAuthController(seen ?? [])),
-    ],
-    child: const MaterialApp(home: SignInScreen()),
-  ));
+  await tester.pumpWidget(
+    ProviderScope(
+      overrides: [
+        googleSignInGatewayProvider.overrideWithValue(gateway),
+        authRepositoryProvider.overrideWithValue(repo),
+        authControllerProvider.overrideWith(
+          () => RecordingAuthController(seen ?? []),
+        ),
+      ],
+      child: const MaterialApp(home: SignInScreen()),
+    ),
+  );
   await tester.pumpAndSettle();
 }
 
@@ -132,8 +133,11 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.byKey(const Key('error')), findsNothing);
-    expect(repo.googleTokens, isEmpty,
-        reason: 'nothing should be sent when there is no token');
+    expect(
+      repo.googleTokens,
+      isEmpty,
+      reason: 'nothing should be sent when there is no token',
+    );
 
     // Still usable: the user can try again.
     await tester.tap(find.byKey(const Key('google')));
@@ -145,19 +149,24 @@ void main() {
     final gateway = FakeGoogleGateway(() async => 'stale-token');
     final repo = FakeAuthRepository(
       onGoogle: (_) async => throw const ApiException(
-          'INVALID_GOOGLE_TOKEN', 'That Google sign-in could not be verified.'),
+        'INVALID_GOOGLE_TOKEN',
+        'That Google sign-in could not be verified.',
+      ),
     );
 
     await _pump(tester, gateway: gateway, repo: repo);
     await tester.tap(find.byKey(const Key('google')));
     await tester.pumpAndSettle();
 
-    expect(find.text('That Google sign-in could not be verified.'),
-        findsOneWidget);
+    expect(
+      find.text('That Google sign-in could not be verified.'),
+      findsOneWidget,
+    );
   });
 
-  testWidgets('the Google button is live, not a coming-soon stub',
-      (tester) async {
+  testWidgets('the Google button is live, not a coming-soon stub', (
+    tester,
+  ) async {
     final gateway = FakeGoogleGateway(() async => null);
     await _pump(tester, gateway: gateway, repo: FakeAuthRepository());
 

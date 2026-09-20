@@ -19,16 +19,25 @@ import 'package:fitsync/features/sessions/presentation/workout_draft.dart';
 import 'package:fitsync/features/sessions/presentation/workout_review_screen.dart';
 
 const _squat = ExerciseSummary(
-  exerciseId: 101, name: 'Goblet squat', muscleGroup: 'quadriceps',
-  equipment: 'dumbbell', thumbnailUrl: null,
+  exerciseId: 101,
+  name: 'Goblet squat',
+  muscleGroup: 'quadriceps',
+  equipment: 'dumbbell',
+  thumbnailUrl: null,
 );
 const _fly = ExerciseSummary(
-  exerciseId: 202, name: 'Cable fly', muscleGroup: 'pectorals',
-  equipment: 'cable', thumbnailUrl: null,
+  exerciseId: 202,
+  name: 'Cable fly',
+  muscleGroup: 'pectorals',
+  equipment: 'cable',
+  thumbnailUrl: null,
 );
 const _press = ExerciseSummary(
-  exerciseId: 303, name: 'Bench press', muscleGroup: 'pectorals',
-  equipment: 'barbell', thumbnailUrl: null,
+  exerciseId: 303,
+  name: 'Bench press',
+  muscleGroup: 'pectorals',
+  equipment: 'barbell',
+  thumbnailUrl: null,
 );
 
 class FakeExerciseRepository implements ExerciseRepository {
@@ -80,8 +89,12 @@ class FakeSessionRepository implements SessionRepository {
       exercises: [
         for (final (index, id) in (exerciseIds ?? const <int>[]).indexed)
           PlanExercise(
-            planExerciseId: index + 1, exerciseId: id, name: 'Ex $id',
-            muscleGroup: 'x', orderNo: index + 1, targetSets: 3,
+            planExerciseId: index + 1,
+            exerciseId: id,
+            name: 'Ex $id',
+            muscleGroup: 'x',
+            orderNo: index + 1,
+            targetSets: 3,
             targetReps: '8-12',
           ),
       ],
@@ -89,7 +102,8 @@ class FakeSessionRepository implements SessionRepository {
   }
 
   @override
-  Future<Map<int, LastPerformance>> lastPerformance(List<int> ids) async => const {};
+  Future<Map<int, LastPerformance>> lastPerformance(List<int> ids) async =>
+      const {};
 
   @override
   Future<Set<String>> completedThisWeek() async => const {};
@@ -113,33 +127,38 @@ Future<ProviderContainer> _pump(
   required List<ExerciseSummary> picks,
   FakeSessionRepository? sessions,
 }) async {
-  final container = ProviderContainer(overrides: [
-    exerciseRepositoryProvider.overrideWithValue(FakeExerciseRepository()),
-    sessionRepositoryProvider
-        .overrideWithValue(sessions ?? FakeSessionRepository()),
-    workoutDraftProvider.overrideWith(() => _Picked(picks)),
-    // A manual session has no plan; the logger must not need one.
-    activePlanProvider.overrideWith((ref) async => null),
-  ]);
+  final container = ProviderContainer(
+    overrides: [
+      exerciseRepositoryProvider.overrideWithValue(FakeExerciseRepository()),
+      sessionRepositoryProvider.overrideWithValue(
+        sessions ?? FakeSessionRepository(),
+      ),
+      workoutDraftProvider.overrideWith(() => _Picked(picks)),
+      // A manual session has no plan; the logger must not need one.
+      activePlanProvider.overrideWith((ref) async => null),
+    ],
+  );
   addTearDown(container.dispose);
 
-  await tester.pumpWidget(UncontrolledProviderScope(
-    container: container,
-    child: MaterialApp(
-      theme: fsLightTheme(),
-      home: const WorkoutReviewScreen(),
+  await tester.pumpWidget(
+    UncontrolledProviderScope(
+      container: container,
+      child: MaterialApp(
+        theme: fsLightTheme(),
+        home: const WorkoutReviewScreen(),
+      ),
     ),
-  ));
+  );
   await tester.pumpAndSettle();
   return container;
 }
 
 ActiveSession _openWorkout() => ActiveSession(
-      sessionId: 4,
-      status: 'in_progress',
-      sessionDate: '2026-09-14',
-      startedAt: DateTime.now(),
-    );
+  sessionId: 4,
+  status: 'in_progress',
+  sessionDate: '2026-09-14',
+  startedAt: DateTime.now(),
+);
 
 Finder _start() => find.byKey(const Key('review.start'));
 
@@ -149,11 +168,7 @@ Finder _start() => find.byKey(const Key('review.start'));
 /// does not treat as a reorder -- it tracks the pointer across frames to work
 /// out which slot the row is over. Stepping the gesture and pumping between
 /// moves is what a real finger looks like to it.
-Future<void> _dragOnto(
-  WidgetTester tester,
-  Key handle,
-  Key target,
-) async {
+Future<void> _dragOnto(WidgetTester tester, Key handle, Key target) async {
   final from = tester.getCenter(find.byKey(handle));
   final to = tester.getCenter(find.byKey(target));
 
@@ -176,8 +191,9 @@ Future<void> _dragOnto(
 }
 
 void main() {
-  testWidgets('lists the picks in the order they will be trained',
-      (tester) async {
+  testWidgets('lists the picks in the order they will be trained', (
+    tester,
+  ) async {
     await _pump(tester, picks: const [_squat, _fly, _press]);
 
     expect(find.text('Goblet squat'), findsOneWidget);
@@ -219,7 +235,11 @@ void main() {
 
   testWidgets('starting sends the ids in the order shown', (tester) async {
     final sessions = FakeSessionRepository();
-    await _pump(tester, picks: const [_squat, _fly, _press], sessions: sessions);
+    await _pump(
+      tester,
+      picks: const [_squat, _fly, _press],
+      sessions: sessions,
+    );
 
     await tester.tap(_start());
     await tester.pumpAndSettle();
@@ -227,12 +247,17 @@ void main() {
     expect(sessions.startedWith, [101, 202, 303]);
   });
 
-  testWidgets('dragging an exercise to the top starts it first',
-      (tester) async {
+  testWidgets('dragging an exercise to the top starts it first', (
+    tester,
+  ) async {
     // The whole reason the screen is draggable: order_no comes from this, and
     // before the drag the order was only "whichever row was tapped first".
     final sessions = FakeSessionRepository();
-    await _pump(tester, picks: const [_squat, _fly, _press], sessions: sessions);
+    await _pump(
+      tester,
+      picks: const [_squat, _fly, _press],
+      sessions: sessions,
+    );
 
     await _dragOnto(
       tester,
@@ -243,8 +268,11 @@ void main() {
     await tester.tap(_start());
     await tester.pumpAndSettle();
 
-    expect(sessions.startedWith!.first, 303,
-        reason: 'the dragged exercise must be trained first');
+    expect(
+      sessions.startedWith!.first,
+      303,
+      reason: 'the dragged exercise must be trained first',
+    );
   });
 
   testWidgets('starting opens the logger', (tester) async {
@@ -265,25 +293,32 @@ void main() {
     expect(container.read(workoutDraftProvider), isEmpty);
   });
 
-  testWidgets('a failed start keeps the picks so they can be retried',
-      (tester) async {
+  testWidgets('a failed start keeps the picks so they can be retried', (
+    tester,
+  ) async {
     final sessions = FakeSessionRepository(
       error: const ApiException('NETWORK_ERROR', 'Could not reach the server.'),
     );
-    final container =
-        await _pump(tester, picks: const [_squat, _fly], sessions: sessions);
+    final container = await _pump(
+      tester,
+      picks: const [_squat, _fly],
+      sessions: sessions,
+    );
 
     await tester.tap(_start());
     await tester.pumpAndSettle();
 
     expect(find.textContaining('Could not reach the server.'), findsOneWidget);
-    expect(container.read(workoutDraftProvider).exerciseIds, [101, 202],
-        reason: 'choosing them all again is not a retry');
+    expect(container.read(workoutDraftProvider).exerciseIds, [
+      101,
+      202,
+    ], reason: 'choosing them all again is not a retry');
     expect(find.byType(SessionLoggerScreen), findsNothing);
   });
 
-  testWidgets('a workout already open is named rather than silently replaced',
-      (tester) async {
+  testWidgets('a workout already open is named rather than silently replaced', (
+    tester,
+  ) async {
     // The server is idempotent here: it returns the running session and
     // ignores the list, so opening the logger anyway would drop everything
     // just picked and show a workout the user did not choose.
@@ -298,8 +333,9 @@ void main() {
     expect(find.byType(SessionLoggerScreen), findsNothing);
   });
 
-  testWidgets('the workout in the way can be opened from the message',
-      (tester) async {
+  testWidgets('the workout in the way can be opened from the message', (
+    tester,
+  ) async {
     final sessions = FakeSessionRepository(existing: _openWorkout());
     await _pump(tester, picks: const [_squat], sessions: sessions);
 
@@ -313,8 +349,9 @@ void main() {
     expect(sessions.abandoned, 0, reason: 'opening throws nothing away');
   });
 
-  testWidgets('the workout in the way can be discarded and this one started',
-      (tester) async {
+  testWidgets('the workout in the way can be discarded and this one started', (
+    tester,
+  ) async {
     // Without this the message was a dead end: the only way out was to find
     // the old session in another tab and close it from inside the logger.
     final sessions = FakeSessionRepository(existing: _openWorkout());
@@ -330,11 +367,15 @@ void main() {
     expect(find.byType(SessionLoggerScreen), findsOneWidget);
   });
 
-  testWidgets('backing out of the message leaves both workouts alone',
-      (tester) async {
+  testWidgets('backing out of the message leaves both workouts alone', (
+    tester,
+  ) async {
     final sessions = FakeSessionRepository(existing: _openWorkout());
-    final container =
-        await _pump(tester, picks: const [_squat], sessions: sessions);
+    final container = await _pump(
+      tester,
+      picks: const [_squat],
+      sessions: sessions,
+    );
 
     await tester.tap(_start());
     await tester.pumpAndSettle();
@@ -343,8 +384,9 @@ void main() {
 
     expect(sessions.abandoned, 0);
     expect(sessions.startCalls, 0);
-    expect(container.read(workoutDraftProvider).exerciseIds, [101],
-        reason: 'the picks must survive a cancelled start');
+    expect(container.read(workoutDraftProvider).exerciseIds, [
+      101,
+    ], reason: 'the picks must survive a cancelled start');
   });
 
   testWidgets('an emptied workout cannot be started', (tester) async {
@@ -353,7 +395,10 @@ void main() {
     await tester.tap(find.byKey(const Key('review.remove.101')));
     await tester.pumpAndSettle();
 
-    expect(tester.widget<FsButton>(_start()).onPressed, isNull,
-        reason: 'a workout of no exercises is not a workout');
+    expect(
+      tester.widget<FsButton>(_start()).onPressed,
+      isNull,
+      reason: 'a workout of no exercises is not a workout',
+    );
   });
 }

@@ -55,12 +55,18 @@ const _customPlanJson = {
   'exercises': <Map<String, dynamic>>[],
 };
 
-PlanRepository _repoReturning(Object body, {int status = 200}) => PlanRepository(
+PlanRepository _repoReturning(Object body, {int status = 200}) =>
+    PlanRepository(
       ApiClient(
         baseUrl: 'http://test.local',
         tokens: TokenStore(backing: InMemorySecureStore()),
-        client: MockClient((_) async => http.Response(jsonEncode(body), status,
-            headers: {'content-type': 'application/json'})),
+        client: MockClient(
+          (_) async => http.Response(
+            jsonEncode(body),
+            status,
+            headers: {'content-type': 'application/json'},
+          ),
+        ),
       ),
     );
 
@@ -70,18 +76,20 @@ PlanRepository _repoCapturing(
   Object body,
   List<http.Request> seen, {
   int status = 200,
-}) =>
-    PlanRepository(
-      ApiClient(
-        baseUrl: 'http://test.local',
-        tokens: TokenStore(backing: InMemorySecureStore()),
-        client: MockClient((req) async {
-          seen.add(req);
-          return http.Response(jsonEncode(body), status,
-              headers: {'content-type': 'application/json'});
-        }),
-      ),
-    );
+}) => PlanRepository(
+  ApiClient(
+    baseUrl: 'http://test.local',
+    tokens: TokenStore(backing: InMemorySecureStore()),
+    client: MockClient((req) async {
+      seen.add(req);
+      return http.Response(
+        jsonEncode(body),
+        status,
+        headers: {'content-type': 'application/json'},
+      );
+    }),
+  ),
+);
 
 void main() {
   test('parses a plan and its exercises in order', () {
@@ -120,7 +128,9 @@ void main() {
   });
 
   test('an active-plan request returns the plan', () async {
-    final repo = _repoReturning({'data': {'plan': _planJson}});
+    final repo = _repoReturning({
+      'data': {'plan': _planJson},
+    });
 
     final plan = await repo.activePlan();
 
@@ -131,16 +141,15 @@ void main() {
     // A user who is part way through onboarding legitimately has no plan.
     // Treating this as a failure would put an error screen in front of the
     // most normal state there is.
-    final repo = _repoReturning({'data': {'plan': null}});
+    final repo = _repoReturning({
+      'data': {'plan': null},
+    });
 
     expect(await repo.activePlan(), isNull);
   });
 
   test('a plan with no exercises parses to an empty list', () {
-    final plan = WorkoutPlan.fromJson({
-      ..._planJson,
-      'exercises': <Object>[],
-    });
+    final plan = WorkoutPlan.fromJson({..._planJson, 'exercises': <Object>[]});
 
     expect(plan.exercises, isEmpty);
   });
@@ -168,7 +177,9 @@ void main() {
 
   test('a search term is sent as q on that row\'s path', () async {
     final seen = <http.Request>[];
-    final repo = _repoCapturing({'data': {'alternatives': []}}, seen);
+    final repo = _repoCapturing({
+      'data': {'alternatives': []},
+    }, seen);
 
     await repo.alternatives(77, q: 'press');
 
@@ -178,7 +189,9 @@ void main() {
 
   test('a swap PATCHes the row and returns the updated plan', () async {
     final seen = <http.Request>[];
-    final repo = _repoCapturing({'data': {'plan': _planJson}}, seen);
+    final repo = _repoCapturing({
+      'data': {'plan': _planJson},
+    }, seen);
 
     final plan = await repo.swap(701, 12);
 
@@ -242,40 +255,48 @@ void main() {
     expect(plan.isCustom, isTrue);
   });
 
-  test('a plan from a server predating the column reads as generated', () async {
-    // The column defaults to 'generated' server-side for the same reason: the
-    // generator was the only thing that could make one.
-    final plan = WorkoutPlan.fromJson(const {
-      'planId': 1,
-      'name': 'Week 1 — Full body',
-      'splitStyle': 'full_body',
-      'daysPerWeek': 3,
-      'sessionLengthMin': 45,
-      'weekNo': 1,
-      'exercises': <Map<String, dynamic>>[],
-    });
+  test(
+    'a plan from a server predating the column reads as generated',
+    () async {
+      // The column defaults to 'generated' server-side for the same reason: the
+      // generator was the only thing that could make one.
+      final plan = WorkoutPlan.fromJson(const {
+        'planId': 1,
+        'name': 'Week 1 — Full body',
+        'splitStyle': 'full_body',
+        'daysPerWeek': 3,
+        'sessionLengthMin': 45,
+        'weekNo': 1,
+        'exercises': <Map<String, dynamic>>[],
+      });
 
-    expect(plan.source, 'generated');
-    expect(plan.isCustom, isFalse);
-  });
+      expect(plan.source, 'generated');
+      expect(plan.isCustom, isFalse);
+    },
+  );
 
   test('sending a workout to the plan posts what the server needs', () async {
     late Map<String, dynamic> sent;
-    final repo = PlanRepository(ApiClient(
-      baseUrl: 'http://test.local',
-      tokens: TokenStore(backing: InMemorySecureStore()),
-      client: MockClient((request) async {
-        sent = jsonDecode(request.body) as Map<String, dynamic>;
-        return http.Response(
-          jsonEncode({'data': {'plan': _customPlanJson}}),
-          200,
-          headers: {'content-type': 'application/json'},
-        );
-      }),
-    ));
+    final repo = PlanRepository(
+      ApiClient(
+        baseUrl: 'http://test.local',
+        tokens: TokenStore(backing: InMemorySecureStore()),
+        client: MockClient((request) async {
+          sent = jsonDecode(request.body) as Map<String, dynamic>;
+          return http.Response(
+            jsonEncode({
+              'data': {'plan': _customPlanJson},
+            }),
+            200,
+            headers: {'content-type': 'application/json'},
+          );
+        }),
+      ),
+    );
 
     final plan = await repo.planFromSession(
-      sessionId: 32, splitStyle: 'push_pull_legs',
+      sessionId: 32,
+      splitStyle: 'push_pull_legs',
     );
 
     expect(sent['sessionId'], 32);
@@ -285,43 +306,56 @@ void main() {
 
   test('replacing a day sends the day it replaces', () async {
     late Map<String, dynamic> sent;
-    final repo = PlanRepository(ApiClient(
-      baseUrl: 'http://test.local',
-      tokens: TokenStore(backing: InMemorySecureStore()),
-      client: MockClient((request) async {
-        sent = jsonDecode(request.body) as Map<String, dynamic>;
-        return http.Response(
-          jsonEncode({'data': {'plan': _customPlanJson}}),
-          200,
-          headers: {'content-type': 'application/json'},
-        );
-      }),
-    ));
+    final repo = PlanRepository(
+      ApiClient(
+        baseUrl: 'http://test.local',
+        tokens: TokenStore(backing: InMemorySecureStore()),
+        client: MockClient((request) async {
+          sent = jsonDecode(request.body) as Map<String, dynamic>;
+          return http.Response(
+            jsonEncode({
+              'data': {'plan': _customPlanJson},
+            }),
+            200,
+            headers: {'content-type': 'application/json'},
+          );
+        }),
+      ),
+    );
 
     await repo.planFromSession(sessionId: 32, dayNo: 2);
 
     expect(sent['dayNo'], 2);
-    expect(sent.containsKey('splitStyle'), isFalse,
-        reason: 'extending an existing plan states no split style');
+    expect(
+      sent.containsKey('splitStyle'),
+      isFalse,
+      reason: 'extending an existing plan states no split style',
+    );
   });
 
   test('regenerating over a custom plan says so explicitly', () async {
     late Map<String, dynamic> sent;
-    final repo = PlanRepository(ApiClient(
-      baseUrl: 'http://test.local',
-      tokens: TokenStore(backing: InMemorySecureStore()),
-      client: MockClient((request) async {
-        sent = jsonDecode(request.body) as Map<String, dynamic>;
-        return http.Response(
-          jsonEncode({'data': {'plan': _customPlanJson}}),
-          200,
-          headers: {'content-type': 'application/json'},
-        );
-      }),
-    ));
+    final repo = PlanRepository(
+      ApiClient(
+        baseUrl: 'http://test.local',
+        tokens: TokenStore(backing: InMemorySecureStore()),
+        client: MockClient((request) async {
+          sent = jsonDecode(request.body) as Map<String, dynamic>;
+          return http.Response(
+            jsonEncode({
+              'data': {'plan': _customPlanJson},
+            }),
+            200,
+            headers: {'content-type': 'application/json'},
+          );
+        }),
+      ),
+    );
 
     await repo.regenerate(
-      splitStyle: 'full_body', daysPerWeek: 3, sessionLengthMin: 45,
+      splitStyle: 'full_body',
+      daysPerWeek: 3,
+      sessionLengthMin: 45,
       replaceCustomPlan: true,
     );
 
@@ -332,21 +366,27 @@ void main() {
     // The server refuses by default. Sending the flag unasked would defeat the
     // guard for every caller at once.
     late Map<String, dynamic> sent;
-    final repo = PlanRepository(ApiClient(
-      baseUrl: 'http://test.local',
-      tokens: TokenStore(backing: InMemorySecureStore()),
-      client: MockClient((request) async {
-        sent = jsonDecode(request.body) as Map<String, dynamic>;
-        return http.Response(
-          jsonEncode({'data': {'plan': _customPlanJson}}),
-          200,
-          headers: {'content-type': 'application/json'},
-        );
-      }),
-    ));
+    final repo = PlanRepository(
+      ApiClient(
+        baseUrl: 'http://test.local',
+        tokens: TokenStore(backing: InMemorySecureStore()),
+        client: MockClient((request) async {
+          sent = jsonDecode(request.body) as Map<String, dynamic>;
+          return http.Response(
+            jsonEncode({
+              'data': {'plan': _customPlanJson},
+            }),
+            200,
+            headers: {'content-type': 'application/json'},
+          );
+        }),
+      ),
+    );
 
     await repo.regenerate(
-      splitStyle: 'full_body', daysPerWeek: 3, sessionLengthMin: 45,
+      splitStyle: 'full_body',
+      daysPerWeek: 3,
+      sessionLengthMin: 45,
     );
 
     expect(sent.containsKey('replaceCustomPlan'), isFalse);

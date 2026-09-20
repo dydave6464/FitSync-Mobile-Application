@@ -24,7 +24,10 @@ class AdherenceCard extends StatelessWidget {
         children: [
           const FsEyebrow('Sessions'),
           const SizedBox(height: 6),
-          Text(adherence.label, style: Theme.of(context).textTheme.headlineSmall),
+          Text(
+            adherence.label,
+            style: Theme.of(context).textTheme.headlineSmall,
+          ),
           if (adherence.hasTarget) ...[
             const SizedBox(height: 8),
             ClipRRect(
@@ -197,10 +200,7 @@ class VolumeByMuscleCard extends StatelessWidget {
           // than hiding it.
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            children: const [
-              FsEyebrow('Volume by muscle'),
-              FsTag('Pro'),
-            ],
+            children: const [FsEyebrow('Volume by muscle'), FsTag('Pro')],
           ),
           const SizedBox(height: 8),
           if (locked) ...[
@@ -215,7 +215,11 @@ class VolumeByMuscleCard extends StatelessWidget {
                 Expanded(
                   child: Text(
                     'Unlock with Pro to see which muscles your volume goes to.',
-                    style: TextStyle(fontSize: 11.5, color: t.text2, height: 1.4),
+                    style: TextStyle(
+                      fontSize: 11.5,
+                      color: t.text2,
+                      height: 1.4,
+                    ),
                   ),
                 ),
               ],
@@ -268,7 +272,9 @@ class ShareWithCoachCard extends StatelessWidget {
                 Text(
                   'Share with coach',
                   style: TextStyle(
-                    fontSize: 13.5, fontWeight: FontWeight.w600, color: t.text,
+                    fontSize: 13.5,
+                    fontWeight: FontWeight.w600,
+                    color: t.text,
                   ),
                 ),
                 const SizedBox(height: 2),

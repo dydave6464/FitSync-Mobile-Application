@@ -69,19 +69,22 @@ void main() {
     expect(drafts.weight(1).text, '49.6');
   });
 
-  test('converting carries every typed weight across and leaves reps alone', () {
-    final drafts = SetDrafts();
-    addTearDown(drafts.dispose);
+  test(
+    'converting carries every typed weight across and leaves reps alone',
+    () {
+      final drafts = SetDrafts();
+      addTearDown(drafts.dispose);
 
-    drafts.weight(1).text = '100';
-    drafts.reps(1).text = '8';
+      drafts.weight(1).text = '100';
+      drafts.reps(1).text = '8';
 
-    drafts.convert(WeightUnit.kg, WeightUnit.lb);
+      drafts.convert(WeightUnit.kg, WeightUnit.lb);
 
-    // 100 kg is 220.462... lb.
-    expect(drafts.weight(1).text, '220.5');
-    expect(drafts.reps(1).text, '8');
-  });
+      // 100 kg is 220.462... lb.
+      expect(drafts.weight(1).text, '220.5');
+      expect(drafts.reps(1).text, '8');
+    },
+  );
 
   test('converting leaves an unparseable field exactly as typed', () {
     final drafts = SetDrafts();

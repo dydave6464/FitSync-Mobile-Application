@@ -23,16 +23,16 @@ const _exercise = PlanExercise(
 );
 
 ActiveSession _session() => const ActiveSession(
-      sessionId: 7,
-      status: 'in_progress',
-      sessionDate: '2026-09-08',
-      sets: [],
-    );
+  sessionId: 7,
+  status: 'in_progress',
+  sessionDate: '2026-09-08',
+  sets: [],
+);
 
 Widget _host(Widget child) => MaterialApp(
-      theme: fsLightTheme(),
-      home: Scaffold(body: SingleChildScrollView(child: child)),
-    );
+  theme: fsLightTheme(),
+  home: Scaffold(body: SingleChildScrollView(child: child)),
+);
 
 final _demoButton = find.byKey(const Key('logpanel.demo.101'));
 
@@ -47,13 +47,17 @@ void main() {
   testWidgets('tapping the demo affordance invokes onOpenDemo', (tester) async {
     var opened = false;
 
-    await tester.pumpWidget(_host(ExerciseLogPanel(
-      exercise: _exercise,
-      session: _session(),
-      drafts: _drafts(tester),
-      onUndoSet: (_) async {},
-      onOpenDemo: () => opened = true,
-    )));
+    await tester.pumpWidget(
+      _host(
+        ExerciseLogPanel(
+          exercise: _exercise,
+          session: _session(),
+          drafts: _drafts(tester),
+          onUndoSet: (_) async {},
+          onOpenDemo: () => opened = true,
+        ),
+      ),
+    );
 
     await tester.tap(_demoButton);
     await tester.pumpAndSettle();
@@ -61,19 +65,25 @@ void main() {
     expect(opened, isTrue);
   });
 
-  testWidgets('with no onOpenDemo, the affordance renders disabled rather than absent',
-      (tester) async {
-    await tester.pumpWidget(_host(ExerciseLogPanel(
-      exercise: _exercise,
-      session: _session(),
-      drafts: _drafts(tester),
-      onUndoSet: (_) async {},
-    )));
+  testWidgets(
+    'with no onOpenDemo, the affordance renders disabled rather than absent',
+    (tester) async {
+      await tester.pumpWidget(
+        _host(
+          ExerciseLogPanel(
+            exercise: _exercise,
+            session: _session(),
+            drafts: _drafts(tester),
+            onUndoSet: (_) async {},
+          ),
+        ),
+      );
 
-    // If onOpenDemo were ever wired to a hardcoded no-op instead of passed
-    // straight through, this would still find the icon but onPressed would
-    // no longer be null.
-    final tile = tester.widget<InkWell>(_demoButton);
-    expect(tile.onTap, isNull);
-  });
+      // If onOpenDemo were ever wired to a hardcoded no-op instead of passed
+      // straight through, this would still find the icon but onPressed would
+      // no longer be null.
+      final tile = tester.widget<InkWell>(_demoButton);
+      expect(tile.onTap, isNull);
+    },
+  );
 }

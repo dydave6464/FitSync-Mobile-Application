@@ -13,20 +13,19 @@ Profile _profileWith({
   double? weightKg = 86,
   double? goalWeightKg = 92,
   WeightUnit weightUnit = WeightUnit.kg,
-}) =>
-    Profile(
-      userId: 7,
-      email: 'juan@example.com',
-      fullName: 'Juan Dela Cruz',
-      onboardingCompleted: true,
-      isPremium: false,
-      notificationsEnabled: true,
-      equipment: const [],
-      injuries: const [],
-      weightKg: weightKg,
-      goalWeightKg: goalWeightKg,
-      weightUnit: weightUnit,
-    );
+}) => Profile(
+  userId: 7,
+  email: 'juan@example.com',
+  fullName: 'Juan Dela Cruz',
+  onboardingCompleted: true,
+  isPremium: false,
+  notificationsEnabled: true,
+  equipment: const [],
+  injuries: const [],
+  weightKg: weightKg,
+  goalWeightKg: goalWeightKg,
+  weightUnit: weightUnit,
+);
 
 class _FakeRepo implements ProfileRepository {
   /// Every bodyWeight() call in order, so a test can count the fetches for a
@@ -102,7 +101,9 @@ void main() {
     final (container, repo) = await _open();
     expect(repo.fetches, ['month']);
 
-    await container.read(profileProvider.notifier).patch({'goalWeightKg': 80.0});
+    await container.read(profileProvider.notifier).patch({
+      'goalWeightKg': 80.0,
+    });
     await container.read(bodyWeightProvider('month').future);
 
     // The Progress tab reads its goal line from the server's response, not
@@ -126,9 +127,9 @@ void main() {
   test('a patch that touches neither figure refetches nothing', () async {
     final (container, repo) = await _open();
 
-    await container
-        .read(profileProvider.notifier)
-        .patch({'notificationsEnabled': false});
+    await container.read(profileProvider.notifier).patch({
+      'notificationsEnabled': false,
+    });
     await container.read(bodyWeightProvider('month').future);
 
     expect(repo.fetches, ['month']);
@@ -138,7 +139,9 @@ void main() {
     final (container, repo) = await _open(periods: ['week', 'month', 'year']);
     expect(repo.fetches, ['week', 'month', 'year']);
 
-    await container.read(profileProvider.notifier).patch({'goalWeightKg': 80.0});
+    await container.read(profileProvider.notifier).patch({
+      'goalWeightKg': 80.0,
+    });
     for (final period in ['week', 'month', 'year']) {
       await container.read(bodyWeightProvider(period).future);
     }

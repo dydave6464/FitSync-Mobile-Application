@@ -22,14 +22,14 @@ class AuthUser {
   final bool emailVerified;
 
   factory AuthUser.fromJson(Map<String, dynamic> json) => AuthUser(
-        userId: json['userId'] as int,
-        email: json['email'] as String,
-        fullName: json['fullName'] as String,
-        onboardingCompleted: json['onboardingCompleted'] as bool? ?? false,
-        isPremium: json['isPremium'] as bool? ?? false,
-        // A missing field reads as "not verified" — the stricter assumption
-        // is the safe one, since this value is never asked for once signed
-        // in (see the class doc above).
-        emailVerified: json['emailVerified'] as bool? ?? false,
-      );
+    userId: json['userId'] as int,
+    email: json['email'] as String,
+    fullName: json['fullName'] as String,
+    onboardingCompleted: json['onboardingCompleted'] as bool? ?? false,
+    isPremium: json['isPremium'] as bool? ?? false,
+    // A missing field reads as "not verified" — the stricter assumption
+    // is the safe one, since this value is never asked for once signed
+    // in (see the class doc above).
+    emailVerified: json['emailVerified'] as bool? ?? false,
+  );
 }

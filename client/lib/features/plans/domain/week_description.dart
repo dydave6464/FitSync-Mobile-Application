@@ -84,8 +84,13 @@ const _minDays = 1;
 const _maxDays = 7;
 
 const _numberWords = {
-  'one': 1, 'two': 2, 'three': 3, 'four': 4,
-  'five': 5, 'six': 6, 'seven': 7,
+  'one': 1,
+  'two': 2,
+  'three': 3,
+  'four': 4,
+  'five': 5,
+  'six': 6,
+  'seven': 7,
 };
 
 /// The spellings [composeWeekDescription] writes and [parseWeekDescription]
@@ -115,8 +120,9 @@ final _daysPattern = RegExp(
   r'\s*(?:x|times)?\s*(?:a|per)?\s*\b(?:days?|week)\b',
 );
 
-final _minutesPattern =
-    RegExp(r'\b\d{1,3}\s*(?:min\b|mins\b|minutes\b)|\bminutes?\b|\bhours?\b');
+final _minutesPattern = RegExp(
+  r'\b\d{1,3}\s*(?:min\b|mins\b|minutes\b)|\bminutes?\b|\bhours?\b',
+);
 
 final _goalPattern = RegExp(
   r'\b(?:gain|build|put on)\s+(?:muscle|mass|size)\b'
@@ -138,13 +144,26 @@ final _sidePattern = RegExp(r'\b(left|right|both)\b');
 /// ever resolves to a catalogue row that already exists, never conjures one.
 const _injuryAliases = <String, List<String>>{
   'lower back': [
-    'lumbar', 'bad back', 'back pain', 'sore back', 'spine',
-    'slipped disc', 'herniated disc', 'sciatica',
+    'lumbar',
+    'bad back',
+    'back pain',
+    'sore back',
+    'spine',
+    'slipped disc',
+    'herniated disc',
+    'sciatica',
   ],
   'shoulder': ['rotator cuff', 'frozen shoulder'],
   'elbow': ['tennis elbow', 'golfers elbow', "golfer's elbow"],
   'wrist': ['carpal tunnel'],
-  'knee': ['acl', 'mcl', 'meniscus', 'patella', 'runners knee', "runner's knee"],
+  'knee': [
+    'acl',
+    'mcl',
+    'meniscus',
+    'patella',
+    'runners knee',
+    "runner's knee",
+  ],
   'ankle': ['achilles'],
   'foot': ['plantar fasciitis'],
   'calf': ['shin splints'],
@@ -228,8 +247,8 @@ String? _split(String lower) {
 RegExpMatch? _nameMatch(String lower, InjuryOption option) {
   final canonical = option.name.toLowerCase();
   for (final term in [canonical, ...?_injuryAliases[canonical]]) {
-    final match =
-        RegExp(r'\b' + RegExp.escape(term) + r's?\b').firstMatch(lower);
+    final match = RegExp(r'\b' + RegExp.escape(term) + r's?\b')
+        .firstMatch(lower);
     if (match != null) return match;
   }
   return null;
@@ -237,9 +256,14 @@ RegExpMatch? _nameMatch(String lower, InjuryOption option) {
 
 /// Whether the sentence names this region in order to dismiss it.
 bool _ruledOut(String lower, RegExpMatch name) {
-  final before = lower.substring(max(0, name.start - _ruleOutBefore), name.start);
-  final after =
-      lower.substring(name.end, min(lower.length, name.end + _ruleOutAfter));
+  final before = lower.substring(
+    max(0, name.start - _ruleOutBefore),
+    name.start,
+  );
+  final after = lower.substring(
+    name.end,
+    min(lower.length, name.end + _ruleOutAfter),
+  );
   return _absentCue.hasMatch(before) || _resolvedCue.hasMatch(after);
 }
 
@@ -262,10 +286,12 @@ List<SelectedInjury> _injuries(String lower, List<InjuryOption> options) {
       continue;
     }
 
-    found.add(SelectedInjury(
-      injuryId: option.injuryId,
-      side: _nearestSide(sides, name),
-    ));
+    found.add(
+      SelectedInjury(
+        injuryId: option.injuryId,
+        side: _nearestSide(sides, name),
+      ),
+    );
   }
 
   return found;
@@ -299,8 +325,8 @@ String? _nearestSide(List<RegExpMatch> sides, RegExpMatch name) {
 /// not lowercase in the first place.
 String _midSentence(String label) =>
     label.substring(1).contains(RegExp(r'[A-Z]'))
-        ? label
-        : label[0].toLowerCase() + label.substring(1);
+    ? label
+    : label[0].toLowerCase() + label.substring(1);
 
 /// Writes the sentence the "From profile" chip fills the box with.
 ///

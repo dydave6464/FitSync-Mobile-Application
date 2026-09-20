@@ -25,9 +25,11 @@ typedef AlternativesQuery = ({int planExerciseId, String query});
 /// each one would leak a permanent provider element for the app's lifetime.
 final alternativesProvider = FutureProvider.autoDispose
     .family<List<ExerciseAlternative>, AlternativesQuery>(
-  (ref, key) => ref.watch(planRepositoryProvider).alternatives(
-        key.planExerciseId,
-        q: key.query.isEmpty ? null : key.query,
-      ),
-  retry: apiRetryPolicy,
-);
+      (ref, key) => ref
+          .watch(planRepositoryProvider)
+          .alternatives(
+            key.planExerciseId,
+            q: key.query.isEmpty ? null : key.query,
+          ),
+      retry: apiRetryPolicy,
+    );

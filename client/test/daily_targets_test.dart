@@ -11,15 +11,14 @@ DailyTargets? _estimate({
   double? heightCm = 175,
   double? weightKg = 72,
   String? activityLevel = 'light',
-}) =>
-    estimateDailyTargets(
-      sex: sex,
-      dateOfBirth: dateOfBirth,
-      heightCm: heightCm,
-      weightKg: weightKg,
-      activityLevel: activityLevel,
-      today: _today,
-    );
+}) => estimateDailyTargets(
+  sex: sex,
+  dateOfBirth: dateOfBirth,
+  heightCm: heightCm,
+  weightKg: weightKg,
+  activityLevel: activityLevel,
+  today: _today,
+);
 
 void main() {
   test('Mifflin-St Jeor for a man, times the activity multiplier', () {

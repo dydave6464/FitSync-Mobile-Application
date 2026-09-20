@@ -10,9 +10,17 @@ import 'package:fitsync/features/profile/domain/profile.dart';
 const _options = [
   InjuryOption(injuryId: 3, name: 'Knee', isLateral: true, regionGroup: 'leg'),
   InjuryOption(
-      injuryId: 9, name: 'Lower back', isLateral: false, regionGroup: 'back'),
+    injuryId: 9,
+    name: 'Lower back',
+    isLateral: false,
+    regionGroup: 'back',
+  ),
   InjuryOption(
-      injuryId: 4, name: 'Shoulder', isLateral: true, regionGroup: 'arm'),
+    injuryId: 4,
+    name: 'Shoulder',
+    isLateral: true,
+    regionGroup: 'arm',
+  ),
 ];
 
 WeekDescription _parse(String text) => parseWeekDescription(text, _options);
@@ -134,12 +142,14 @@ void main() {
       expect(_parse('lumbar / lower back trouble').injuries, hasLength(1));
     });
 
-    test('an alias for a region the catalogue does not carry reads as nothing',
-        () {
-      // The alias table is this client's, the regions are the server's. An
-      // alias may never conjure a row the catalogue has no id for.
-      expect(parseWeekDescription('sciatica', const []).injuries, isEmpty);
-    });
+    test(
+      'an alias for a region the catalogue does not carry reads as nothing',
+      () {
+        // The alias table is this client's, the regions are the server's. An
+        // alias may never conjure a row the catalogue has no id for.
+        expect(parseWeekDescription('sciatica', const []).injuries, isEmpty);
+      },
+    );
   });
 
   group('regions the sentence rules out', () {
@@ -169,13 +179,17 @@ void main() {
 
   group('topics this screen does not own', () {
     test('notices a session length', () {
-      expect(_parse('about 50 min a session').elsewhere,
-          contains(WeekTopic.sessionLength));
+      expect(
+        _parse('about 50 min a session').elsewhere,
+        contains(WeekTopic.sessionLength),
+      );
     });
 
     test('notices a goal', () {
-      expect(_parse('I want to gain muscle').elsewhere,
-          contains(WeekTopic.goal));
+      expect(
+        _parse('I want to gain muscle').elsewhere,
+        contains(WeekTopic.goal),
+      );
     });
 
     test('names nothing when the sentence raises neither', () {
@@ -216,19 +230,18 @@ void main() {
       String? goal,
       List<SelectedInjury> injuries = const [],
       List<int> trainingDays = const [],
-    }) =>
-        Profile(
-          userId: 1,
-          email: 'a@b.c',
-          fullName: 'Test',
-          onboardingCompleted: true,
-          isPremium: false,
-          notificationsEnabled: true,
-          equipment: const [],
-          injuries: injuries,
-          trainingDays: trainingDays,
-          mainGoal: goal,
-        );
+    }) => Profile(
+      userId: 1,
+      email: 'a@b.c',
+      fullName: 'Test',
+      onboardingCompleted: true,
+      isPremium: false,
+      notificationsEnabled: true,
+      equipment: const [],
+      injuries: injuries,
+      trainingDays: trainingDays,
+      mainGoal: goal,
+    );
 
     test('names the goal, the days and the split', () {
       final text = composeWeekDescription(
@@ -308,7 +321,11 @@ void main() {
       // Prose wants a lowercase "knee"; it must not buy that by mangling
       // every name that is capitalised for a reason.
       const si = InjuryOption(
-          injuryId: 12, name: 'SI joint', isLateral: true, regionGroup: 'back');
+        injuryId: 12,
+        name: 'SI joint',
+        isLateral: true,
+        regionGroup: 'back',
+      );
       final text = composeWeekDescription(
         profile: profileWith(
           injuries: const [SelectedInjury(injuryId: 12, side: 'left')],

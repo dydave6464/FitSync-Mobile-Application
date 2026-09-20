@@ -43,8 +43,7 @@ class ProfileNudge extends StatelessWidget {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text('Finish your profile',
-                    style: theme.textTheme.titleMedium),
+                Text('Finish your profile', style: theme.textTheme.titleMedium),
                 const SizedBox(height: 2),
                 Text(
                   'Using safe defaults — add your goal and equipment for a '

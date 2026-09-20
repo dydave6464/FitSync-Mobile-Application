@@ -46,10 +46,9 @@ class _CheckEmailScreenState extends ConsumerState<CheckEmailScreen> {
     });
 
     try {
-      await ref.read(authRepositoryProvider).resendVerification(
-            email: widget.email,
-            password: widget.password,
-          );
+      await ref
+          .read(authRepositoryProvider)
+          .resendVerification(email: widget.email, password: widget.password);
       if (!mounted) return;
       setState(() => _status = 'Email sent.');
     } on ApiException catch (error) {

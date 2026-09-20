@@ -54,8 +54,18 @@ const _activityLevels = <({String value, String label})>[
 ];
 
 const _months = <String>[
-  'January', 'February', 'March', 'April', 'May', 'June',
-  'July', 'August', 'September', 'October', 'November', 'December',
+  'January',
+  'February',
+  'March',
+  'April',
+  'May',
+  'June',
+  'July',
+  'August',
+  'September',
+  'October',
+  'November',
+  'December',
 ];
 
 /// `1998-03-14` as `14 March 1998` — the wire format is not something to read.
@@ -71,7 +81,8 @@ int? _ageFrom(String? iso) {
   if (born == null) return null;
 
   final now = DateTime.now();
-  final hadBirthday = now.month > born.month ||
+  final hadBirthday =
+      now.month > born.month ||
       (now.month == born.month && now.day >= born.day);
   return now.year - born.year - (hadBirthday ? 0 : 1);
 }
@@ -134,9 +145,9 @@ class _AboutStepState extends State<AboutStep> {
       ..addListener(_onNumberChanged);
     _weight = TextEditingController(text: _formatKg(widget.value.weightKg))
       ..addListener(_onNumberChanged);
-    _goalWeight =
-        TextEditingController(text: _formatKg(widget.value.goalWeightKg))
-          ..addListener(_onNumberChanged);
+    _goalWeight = TextEditingController(
+      text: _formatKg(widget.value.goalWeightKg),
+    )..addListener(_onNumberChanged);
   }
 
   /// Carries whatever is already typed across a unit change, so a number does
@@ -194,14 +205,16 @@ class _AboutStepState extends State<AboutStep> {
     _emit();
   }
 
-  void _emit() => widget.onChanged(AboutAnswers(
-        sex: _sex,
-        dateOfBirth: _dateOfBirth,
-        heightCm: _parse(_height.text),
-        weightKg: _parseKg(_weight.text),
-        goalWeightKg: _parseKg(_goalWeight.text),
-        activityLevel: _activityLevel,
-      ));
+  void _emit() => widget.onChanged(
+    AboutAnswers(
+      sex: _sex,
+      dateOfBirth: _dateOfBirth,
+      heightCm: _parse(_height.text),
+      weightKg: _parseKg(_weight.text),
+      goalWeightKg: _parseKg(_goalWeight.text),
+      activityLevel: _activityLevel,
+    ),
+  );
 
   Future<void> _pickDate() async {
     final now = DateTime.now();
@@ -217,23 +230,30 @@ class _AboutStepState extends State<AboutStep> {
     );
     if (picked == null) return;
 
-    setState(() => _dateOfBirth =
-        '${picked.year.toString().padLeft(4, '0')}-'
-        '${picked.month.toString().padLeft(2, '0')}-'
-        '${picked.day.toString().padLeft(2, '0')}');
+    setState(
+      () => _dateOfBirth =
+          '${picked.year.toString().padLeft(4, '0')}-'
+          '${picked.month.toString().padLeft(2, '0')}-'
+          '${picked.day.toString().padLeft(2, '0')}',
+    );
     _emit();
   }
 
-  Widget _statField(Key key, TextEditingController controller, String label,
-          String unit, {bool accent = false, Widget? unitControl}) =>
-      FsStatField(
-        fieldKey: key,
-        label: label,
-        unit: unit,
-        controller: controller,
-        accent: accent,
-        unitControl: unitControl,
-      );
+  Widget _statField(
+    Key key,
+    TextEditingController controller,
+    String label,
+    String unit, {
+    bool accent = false,
+    Widget? unitControl,
+  }) => FsStatField(
+    fieldKey: key,
+    label: label,
+    unit: unit,
+    controller: controller,
+    accent: accent,
+    unitControl: unitControl,
+  );
 
   @override
   Widget build(BuildContext context) {
@@ -301,10 +321,7 @@ class _AboutStepState extends State<AboutStep> {
                   ],
                 ),
               ),
-              if (age != null) ...[
-                FsTag('$age yrs'),
-                const SizedBox(width: 8),
-              ],
+              if (age != null) ...[FsTag('$age yrs'), const SizedBox(width: 8)],
               Icon(Icons.chevron_right, size: 16, color: t.text3),
             ],
           ),
@@ -314,8 +331,7 @@ class _AboutStepState extends State<AboutStep> {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Expanded(
-              child: _statField(
-                  const Key('heightCm'), _height, 'Height', 'cm'),
+              child: _statField(const Key('heightCm'), _height, 'Height', 'cm'),
             ),
             const SizedBox(width: 10),
             Expanded(
@@ -336,9 +352,13 @@ class _AboutStepState extends State<AboutStep> {
           ],
         ),
         const SizedBox(height: 10),
-        _statField(const Key('goalWeightKg'), _goalWeight, 'Goal weight',
-            widget.unit.api,
-            accent: true),
+        _statField(
+          const Key('goalWeightKg'),
+          _goalWeight,
+          'Goal weight',
+          widget.unit.api,
+          accent: true,
+        ),
         const SizedBox(height: 18),
         const FsEyebrow('Daily activity level'),
         const SizedBox(height: 10),
@@ -376,7 +396,11 @@ class _AboutStepState extends State<AboutStep> {
                   child: Text(
                     'Estimated daily target \u2248 ${_grouped(targets.kcal)} kcal'
                     ' \u00b7 ${targets.proteinG}g protein',
-                    style: TextStyle(fontSize: 11.5, color: t.text, height: 1.45),
+                    style: TextStyle(
+                      fontSize: 11.5,
+                      color: t.text,
+                      height: 1.45,
+                    ),
                   ),
                 ),
               ],

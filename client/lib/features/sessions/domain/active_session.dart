@@ -19,13 +19,13 @@ class LoggedSet {
   final int? reps;
 
   factory LoggedSet.fromJson(Map<String, dynamic> json) => LoggedSet(
-        exerciseId: json['exerciseId'] as int,
-        setNumber: json['setNumber'] as int,
-        // `as double?` would throw on a whole number: jsonDecode gives 20 as
-        // an int, and the server sends whatever MySQL's DECIMAL rounded to.
-        weightKg: (json['weightKg'] as num?)?.toDouble(),
-        reps: json['reps'] as int?,
-      );
+    exerciseId: json['exerciseId'] as int,
+    setNumber: json['setNumber'] as int,
+    // `as double?` would throw on a whole number: jsonDecode gives 20 as
+    // an int, and the server sends whatever MySQL's DECIMAL rounded to.
+    weightKg: (json['weightKg'] as num?)?.toDouble(),
+    reps: json['reps'] as int?,
+  );
 }
 
 class ActiveSession {
@@ -74,7 +74,9 @@ class ActiveSession {
 
   LoggedSet? setFor(int exerciseId, int setNumber) {
     for (final set in sets) {
-      if (set.exerciseId == exerciseId && set.setNumber == setNumber) return set;
+      if (set.exerciseId == exerciseId && set.setNumber == setNumber) {
+        return set;
+      }
     }
     return null;
   }
@@ -82,55 +84,59 @@ class ActiveSession {
   /// Replaces or adds one set, leaving everything else alone — how the
   /// controller folds a single write back into state without refetching.
   ActiveSession withSet(LoggedSet set) {
-    final next = [
-      for (final existing in sets)
-        if (existing.exerciseId != set.exerciseId || existing.setNumber != set.setNumber)
-          existing,
-      set,
-    ]..sort((a, b) => a.exerciseId == b.exerciseId
-        ? a.setNumber.compareTo(b.setNumber)
-        : a.exerciseId.compareTo(b.exerciseId));
+    final next =
+        [
+          for (final existing in sets)
+            if (existing.exerciseId != set.exerciseId ||
+                existing.setNumber != set.setNumber)
+              existing,
+          set,
+        ]..sort(
+          (a, b) => a.exerciseId == b.exerciseId
+              ? a.setNumber.compareTo(b.setNumber)
+              : a.exerciseId.compareTo(b.exerciseId),
+        );
     return _copyWith(sets: next);
   }
 
   ActiveSession withoutSet(int exerciseId, int setNumber) => _copyWith(
-        sets: [
-          for (final set in sets)
-            if (set.exerciseId != exerciseId || set.setNumber != setNumber) set,
-        ],
-      );
+    sets: [
+      for (final set in sets)
+        if (set.exerciseId != exerciseId || set.setNumber != setNumber) set,
+    ],
+  );
 
   ActiveSession _copyWith({List<LoggedSet>? sets}) => ActiveSession(
-        sessionId: sessionId,
-        status: status,
-        sessionDate: sessionDate,
-        planId: planId,
-        startedAt: startedAt,
-        durationMin: durationMin,
-        totalVolumeKg: totalVolumeKg,
-        sets: sets ?? this.sets,
-        planDayNo: planDayNo,
-        exercises: exercises,
-      );
+    sessionId: sessionId,
+    status: status,
+    sessionDate: sessionDate,
+    planId: planId,
+    startedAt: startedAt,
+    durationMin: durationMin,
+    totalVolumeKg: totalVolumeKg,
+    sets: sets ?? this.sets,
+    planDayNo: planDayNo,
+    exercises: exercises,
+  );
 
   factory ActiveSession.fromJson(Map<String, dynamic> json) => ActiveSession(
-        sessionId: json['sessionId'] as int,
-        status: json['status'] as String,
-        sessionDate: json['sessionDate'] as String,
-        planId: json['planId'] as int?,
-        startedAt: json['startedAt'] == null
-            ? null
-            : DateTime.parse(json['startedAt'] as String),
-        durationMin: json['durationMin'] as int?,
-        totalVolumeKg: (json['totalVolumeKg'] as num?)?.toDouble(),
-        sets: ((json['sets'] as List<dynamic>?) ?? const [])
-            .map((e) => LoggedSet.fromJson(e as Map<String, dynamic>))
-            .toList(growable: false),
-        planDayNo: json['planDayNo'] as int?,
-        exercises: ((json['exercises'] as List<dynamic>?) ?? const [])
-            .map((e) => _sessionExercise(e as Map<String, dynamic>))
-            .toList(growable: false),
-      );
+    sessionId: json['sessionId'] as int,
+    status: json['status'] as String,
+    sessionDate: json['sessionDate'] as String,
+    planId: json['planId'] as int?,
+    startedAt: json['startedAt'] == null
+        ? null
+        : DateTime.parse(json['startedAt'] as String),
+    durationMin: json['durationMin'] as int?,
+    totalVolumeKg: (json['totalVolumeKg'] as num?)?.toDouble(),
+    sets: ((json['sets'] as List<dynamic>?) ?? const [])
+        .map((e) => LoggedSet.fromJson(e as Map<String, dynamic>))
+        .toList(growable: false),
+    planDayNo: json['planDayNo'] as int?,
+    exercises: ((json['exercises'] as List<dynamic>?) ?? const [])
+        .map((e) => _sessionExercise(e as Map<String, dynamic>))
+        .toList(growable: false),
+  );
 }
 
 /// One row of a manual session's list, as the logger's widgets expect it.
@@ -140,19 +146,19 @@ class ActiveSession {
 /// row, so the session row's own id stands in: it is unique per session and
 /// nothing here reads it as a plan reference.
 PlanExercise _sessionExercise(Map<String, dynamic> json) => PlanExercise(
-      planExerciseId: json['sessionExerciseId'] as int,
-      exerciseId: json['exerciseId'] as int,
-      name: json['name'] as String,
-      muscleGroup: json['muscleGroup'] as String? ?? '',
-      orderNo: json['orderNo'] as int,
-      targetSets: json['targetSets'] as int,
-      targetReps: json['targetReps'] as String,
-      thumbnailUrl: json['thumbnailUrl'] as String?,
-      // The logger hides its weight column off PlanExercise.isBodyweight,
-      // which reads this. Null from a server that predates the field, which
-      // reads as unknown equipment -- the same as an exercise with none.
-      equipment: json['equipment'] as String?,
-    );
+  planExerciseId: json['sessionExerciseId'] as int,
+  exerciseId: json['exerciseId'] as int,
+  name: json['name'] as String,
+  muscleGroup: json['muscleGroup'] as String? ?? '',
+  orderNo: json['orderNo'] as int,
+  targetSets: json['targetSets'] as int,
+  targetReps: json['targetReps'] as String,
+  thumbnailUrl: json['thumbnailUrl'] as String?,
+  // The logger hides its weight column off PlanExercise.isBodyweight,
+  // which reads this. Null from a server that predates the field, which
+  // reads as unknown equipment -- the same as an exercise with none.
+  equipment: json['equipment'] as String?,
+);
 
 /// What the user last lifted on one exercise — the heaviest set of their most
 /// recent completed session.
@@ -169,7 +175,8 @@ class LastPerformance {
   final double? weightKg;
   final int? reps;
 
-  factory LastPerformance.fromJson(Map<String, dynamic> json) => LastPerformance(
+  factory LastPerformance.fromJson(Map<String, dynamic> json) =>
+      LastPerformance(
         exerciseId: json['exerciseId'] as int,
         sessionDate: json['sessionDate'] as String,
         weightKg: (json['weightKg'] as num?)?.toDouble(),

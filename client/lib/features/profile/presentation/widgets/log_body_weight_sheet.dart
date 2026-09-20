@@ -6,7 +6,11 @@ import '../../../../core/theme.dart';
 import '../../../../core/units.dart';
 import '../../../../core/widgets/fs_kit.dart';
 import '../providers.dart'
-    show bodyWeightProvider, profileProvider, profileRepositoryProvider, weightUnitProvider;
+    show
+        bodyWeightProvider,
+        profileProvider,
+        profileRepositoryProvider,
+        weightUnitProvider;
 
 /// The bound `server/src/db/body-weight.js` enforces (`MIN_KG`/`MAX_KG`).
 /// Checked here too, so a typo reads as a plain-language message instead of
@@ -64,9 +68,12 @@ class _LogBodyWeightSheetState extends ConsumerState<_LogBodyWeightSheet> {
       return;
     }
     if (kg < _minKg || kg > _maxKg) {
-      setState(() => _error = 'Enter a weight between '
-          '${formatWeight(_minKg, unit)} and ${formatWeight(_maxKg, unit)} '
-          '${unit.api}.');
+      setState(
+        () => _error =
+            'Enter a weight between '
+            '${formatWeight(_minKg, unit)} and ${formatWeight(_maxKg, unit)} '
+            '${unit.api}.',
+      );
       return;
     }
 
@@ -141,7 +148,10 @@ class _LogBodyWeightSheetState extends ConsumerState<_LogBodyWeightSheet> {
                     child: Text(
                       'Log your weight',
                       style: TextStyle(
-                          fontSize: 20, fontWeight: FontWeight.w700, color: t.text),
+                        fontSize: 20,
+                        fontWeight: FontWeight.w700,
+                        color: t.text,
+                      ),
                     ),
                   ),
                   IconButton(

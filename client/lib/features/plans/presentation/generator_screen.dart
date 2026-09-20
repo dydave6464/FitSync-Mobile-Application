@@ -4,7 +4,8 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../core/api_exception.dart';
 import '../../../core/theme.dart';
 import '../../../core/widgets/fs_kit.dart';
-import '../../exercises/presentation/exercise_list_screen.dart' show describeError;
+import '../../exercises/presentation/exercise_list_screen.dart'
+    show describeError;
 import '../../onboarding/presentation/generating_view.dart';
 import '../../profile/domain/profile.dart';
 import '../../profile/presentation/providers.dart';
@@ -51,9 +52,13 @@ class _GeneratorScreenState extends ConsumerState<GeneratorScreen> {
       await ref.read(profileProvider.notifier).setTrainingDays(next);
     } catch (error) {
       if (!mounted) return;
-      messenger.showSnackBar(SnackBar(
-        content: Text('Could not save your training days. ${describeError(error)}'),
-      ));
+      messenger.showSnackBar(
+        SnackBar(
+          content: Text(
+            'Could not save your training days. ${describeError(error)}',
+          ),
+        ),
+      );
     } finally {
       if (mounted) setState(() => _savingWeekday = null);
     }
@@ -97,7 +102,9 @@ class _GeneratorScreenState extends ConsumerState<GeneratorScreen> {
       _leadLabel = _describeChoice(split, trainingDays, days);
     });
     try {
-      await ref.read(planRepositoryProvider).regenerate(
+      await ref
+          .read(planRepositoryProvider)
+          .regenerate(
             splitStyle: split,
             daysPerWeek: days,
             sessionLengthMin: length,
@@ -123,7 +130,9 @@ class _GeneratorScreenState extends ConsumerState<GeneratorScreen> {
       // Browse, where the new plan is invisible and the only irreversible
       // action in this slice would otherwise finish with no evidence it
       // happened at all.
-      messenger.showSnackBar(const SnackBar(content: Text('New plan generated')));
+      messenger.showSnackBar(
+        const SnackBar(content: Text('New plan generated')),
+      );
       if (mounted) navigator.pop();
     } on ApiException catch (error) {
       if (error.code != 'CUSTOM_PLAN_WOULD_BE_LOST') {
@@ -166,13 +175,23 @@ class _GeneratorScreenState extends ConsumerState<GeneratorScreen> {
         // request inline, so the confirmed attempt gets the identical busy
         // state and hold as the first -- there is exactly one place that
         // logic lives.
-        await _generate(split, days, length, trainingDays, replaceCustomPlan: true);
+        await _generate(
+          split,
+          days,
+          length,
+          trainingDays,
+          replaceCustomPlan: true,
+        );
       }
     } catch (_) {
       if (!mounted) return;
       setState(() => _busy = false);
       messenger.showSnackBar(
-        const SnackBar(content: Text('Something went wrong generating your plan. Try again.')),
+        const SnackBar(
+          content: Text(
+            'Something went wrong generating your plan. Try again.',
+          ),
+        ),
       );
     }
   }
@@ -183,22 +202,21 @@ class _GeneratorScreenState extends ConsumerState<GeneratorScreen> {
   ({String split, int days, int length}) _resolve(
     WorkoutPlan? plan,
     List<int> trainingDays,
-  ) =>
-      (
-        split: _splitStyle ?? plan?.splitStyle ?? _defaultSplit,
-        // The chosen days are what the user just said; the plan's stored count
-        // is a stale label until the next regeneration. Falling back to it
-        // when nothing is chosen is what stops an empty schedule being sent.
-        days: trainingDays.isNotEmpty
-            ? trainingDays.length
-            : (_daysPerWeek ?? plan?.daysPerWeek ?? _defaultDays),
-        // Still resolved and still sent, even though nothing on this screen
-        // sets it any more: omitting sessionLengthMin from the payload hands
-        // the service's `overrides.sessionLengthMin || 45` a 60-minute plan
-        // and silently shortens it. Removing the control must not change the
-        // plan the user gets.
-        length: plan?.sessionLengthMin ?? _defaultLength,
-      );
+  ) => (
+    split: _splitStyle ?? plan?.splitStyle ?? _defaultSplit,
+    // The chosen days are what the user just said; the plan's stored count
+    // is a stale label until the next regeneration. Falling back to it
+    // when nothing is chosen is what stops an empty schedule being sent.
+    days: trainingDays.isNotEmpty
+        ? trainingDays.length
+        : (_daysPerWeek ?? plan?.daysPerWeek ?? _defaultDays),
+    // Still resolved and still sent, even though nothing on this screen
+    // sets it any more: omitting sessionLengthMin from the payload hands
+    // the service's `overrides.sessionLengthMin || 45` a 60-minute plan
+    // and silently shortens it. Removing the control must not change the
+    // plan the user gets.
+    length: plan?.sessionLengthMin ?? _defaultLength,
+  );
 
   /// The lead row's sentence: what is actually being applied.
   ///
@@ -207,8 +225,10 @@ class _GeneratorScreenState extends ConsumerState<GeneratorScreen> {
   /// to say.
   static String _describeChoice(String split, List<int> days, int count) {
     final label = splitStyles
-        .firstWhere((s) => s.value == split,
-            orElse: () => (value: split, label: describeSplit(split)))
+        .firstWhere(
+          (s) => s.value == split,
+          orElse: () => (value: split, label: describeSplit(split)),
+        )
         .label;
     if (days.isEmpty) {
       return '$label, $count day${count == 1 ? '' : 's'} a week';
@@ -237,17 +257,17 @@ class _GeneratorScreenState extends ConsumerState<GeneratorScreen> {
   // Read by the widget tests, which drive the controls and assert the state
   // they produce rather than reaching into private fields by name.
   String get debugSplitStyle => _resolve(
-        ref.read(activePlanProvider).value,
-        ref.read(profileProvider).value?.trainingDays ?? const [],
-      ).split;
+    ref.read(activePlanProvider).value,
+    ref.read(profileProvider).value?.trainingDays ?? const [],
+  ).split;
   int get debugDaysPerWeek => _resolve(
-        ref.read(activePlanProvider).value,
-        ref.read(profileProvider).value?.trainingDays ?? const [],
-      ).days;
+    ref.read(activePlanProvider).value,
+    ref.read(profileProvider).value?.trainingDays ?? const [],
+  ).days;
   int get debugSessionLengthMin => _resolve(
-        ref.read(activePlanProvider).value,
-        ref.read(profileProvider).value?.trainingDays ?? const [],
-      ).length;
+    ref.read(activePlanProvider).value,
+    ref.read(profileProvider).value?.trainingDays ?? const [],
+  ).length;
 
   @override
   Widget build(BuildContext context) {
@@ -258,7 +278,10 @@ class _GeneratorScreenState extends ConsumerState<GeneratorScreen> {
       appBar: AppBar(
         title: const Text('AI Workout Generator'),
         actions: const [
-          Padding(padding: EdgeInsets.only(right: 16), child: Center(child: FsTag('Beta'))),
+          Padding(
+            padding: EdgeInsets.only(right: 16),
+            child: Center(child: FsTag('Beta')),
+          ),
         ],
       ),
       // Loading and error both used to collapse into "no plan" -- plan?.x on
@@ -281,7 +304,8 @@ class _GeneratorScreenState extends ConsumerState<GeneratorScreen> {
       body: _busy
           ? GeneratingView(
               title: 'Rebuilding your plan…',
-              subtitle: 'Matching exercises to your split, your equipment, '
+              subtitle:
+                  'Matching exercises to your split, your equipment, '
                   'and your injuries.',
               leadLabel: _leadLabel,
               leadDone: true,
@@ -298,7 +322,10 @@ class _GeneratorScreenState extends ConsumerState<GeneratorScreen> {
                   child: Column(
                     mainAxisSize: MainAxisSize.min,
                     children: [
-                      const Text("Couldn't load your current plan.", textAlign: TextAlign.center),
+                      const Text(
+                        "Couldn't load your current plan.",
+                        textAlign: TextAlign.center,
+                      ),
                       const SizedBox(height: 6),
                       Text(describeError(error), textAlign: TextAlign.center),
                       const SizedBox(height: 12),
@@ -406,8 +433,9 @@ class _GeneratorScreenState extends ConsumerState<GeneratorScreen> {
             // is not a trade worth leaving open.
             final before = trainingDays.toSet();
             final after = next.toSet();
-            final changed =
-                before.difference(after).followedBy(after.difference(before));
+            final changed = before
+                .difference(after)
+                .followedBy(after.difference(before));
             if (changed.isEmpty) return;
             _setTrainingDays(next, changed.first);
           },
@@ -417,7 +445,7 @@ class _GeneratorScreenState extends ConsumerState<GeneratorScreen> {
           Text(
             asyncProfile.hasError
                 ? "Couldn't load your training days, so they can't be changed "
-                    'here. ${describeError(asyncProfile.error!)}'
+                      'here. ${describeError(asyncProfile.error!)}'
                 : 'Loading your training days…',
             key: const Key('gen.trainingDays.unavailable'),
             style: TextStyle(
@@ -444,7 +472,11 @@ class _GeneratorScreenState extends ConsumerState<GeneratorScreen> {
                 Expanded(
                   child: Text(
                     'Avoiding: ${avoiding.join(', ')}',
-                    style: TextStyle(fontSize: 12, color: t.text2, height: 1.35),
+                    style: TextStyle(
+                      fontSize: 12,
+                      color: t.text2,
+                      height: 1.35,
+                    ),
                   ),
                 ),
               ],
@@ -506,8 +538,9 @@ class _DescribeCard extends ConsumerStatefulWidget {
 }
 
 class _DescribeCardState extends ConsumerState<_DescribeCard> {
-  late final TextEditingController _controller =
-      TextEditingController(text: widget.composed);
+  late final TextEditingController _controller = TextEditingController(
+    text: widget.composed,
+  );
 
   /// The last applied parse, or null before the first Apply. Held so the
   /// offers and notes below the field survive rebuilds without re-parsing
@@ -548,13 +581,17 @@ class _DescribeCardState extends ConsumerState<_DescribeCard> {
 
   Future<void> _add(SelectedInjury injury) async {
     final messenger = ScaffoldMessenger.of(context);
-    final current = ref.read(profileProvider).value?.injuries ?? const <SelectedInjury>[];
+    final current =
+        ref.read(profileProvider).value?.injuries ?? const <SelectedInjury>[];
     setState(() => _adding = injury.injuryId);
     try {
       // PUT /profile/injuries replaces the whole set, so the existing
       // injuries go back with it. Sending only the new region would delete
       // every other injury the user has.
-      await ref.read(profileProvider.notifier).setInjuries([...current, injury]);
+      await ref.read(profileProvider.notifier).setInjuries([
+        ...current,
+        injury,
+      ]);
       if (!mounted) return;
       setState(() {
         _added.add(injury.injuryId);
@@ -573,13 +610,16 @@ class _DescribeCardState extends ConsumerState<_DescribeCard> {
     final parsed = _applied;
     if (parsed == null) return const [];
     final held = {
-      for (final i in ref.watch(profileProvider).value?.injuries ?? const <SelectedInjury>[])
+      for (final i
+          in ref.watch(profileProvider).value?.injuries ??
+              const <SelectedInjury>[])
         i.injuryId,
     };
 
     return [
       for (final injury in parsed.injuries)
-        if (!held.contains(injury.injuryId) && !_added.contains(injury.injuryId))
+        if (!held.contains(injury.injuryId) &&
+            !_added.contains(injury.injuryId))
           for (final option in widget.options)
             if (option.injuryId == injury.injuryId)
               (option: option, injury: injury),
@@ -654,8 +694,11 @@ class _DescribeCardState extends ConsumerState<_DescribeCard> {
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         if (parsed.isEmpty && !widget.catalogueFailed)
-          Text("Nothing in that changed your plan -- the controls below are "
-              "unchanged.", style: note),
+          Text(
+            "Nothing in that changed your plan -- the controls below are "
+            "unchanged.",
+            style: note,
+          ),
 
         // Said whatever else was parsed: the catalogue is what injury
         // matching depends on, so without it "no regions matched" is a claim
@@ -708,10 +751,7 @@ class _DescribeCardState extends ConsumerState<_DescribeCard> {
           Padding(
             key: const Key('gen.describe.elsewhere'),
             padding: const EdgeInsets.only(top: 6),
-            child: Text(
-              notes.map(_topicNote).join(' '),
-              style: note,
-            ),
+            child: Text(notes.map(_topicNote).join(' '), style: note),
           ),
       ],
     );
@@ -719,12 +759,12 @@ class _DescribeCardState extends ConsumerState<_DescribeCard> {
 
   /// The domain reports a topic; the wording lives here.
   static String _topicNote(WeekTopic topic) => switch (topic) {
-        WeekTopic.sessionLength =>
-          'Session length follows your goal and fitness level, so it is not '
-              'set here.',
-        WeekTopic.goal => 'Your goal is set in your profile.',
-        WeekTopic.dayCount =>
-          'How many days you train follows the weekdays you have chosen '
-              'below, so that count was not applied.',
-      };
+    WeekTopic.sessionLength =>
+      'Session length follows your goal and fitness level, so it is not '
+          'set here.',
+    WeekTopic.goal => 'Your goal is set in your profile.',
+    WeekTopic.dayCount =>
+      'How many days you train follows the weekdays you have chosen '
+          'below, so that count was not applied.',
+  };
 }

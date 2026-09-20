@@ -35,7 +35,10 @@ Set<String> get metTableEquipmentNames => _mets.keys.toSet();
 /// Null rather than a guess when [weightKg] is unknown: body weight is
 /// skippable during onboarding, and substituting a population average would
 /// produce a confident-looking figure derived from a stranger's body.
-int? estimateSessionKcal({required WorkoutPlan plan, required double? weightKg}) {
+int? estimateSessionKcal({
+  required WorkoutPlan plan,
+  required double? weightKg,
+}) {
   if (weightKg == null || plan.exercises.isEmpty) return null;
 
   // Equal weighting: per-exercise duration is not recorded, only sets and

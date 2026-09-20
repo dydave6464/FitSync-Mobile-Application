@@ -15,13 +15,13 @@ import '../units.dart';
 /// centre fab both carry it in `styles.css`; one list here is what stops the
 /// two drifting apart.
 List<BoxShadow> fsAccentGlow(FsTokens t) => [
-      BoxShadow(
-        color: t.accent.withValues(alpha: 0.45),
-        blurRadius: 24,
-        offset: const Offset(0, 10),
-        spreadRadius: -10,
-      ),
-    ];
+  BoxShadow(
+    color: t.accent.withValues(alpha: 0.45),
+    blurRadius: 24,
+    offset: const Offset(0, 10),
+    spreadRadius: -10,
+  ),
+];
 
 enum FsButtonKind { primary, secondary, ghost }
 
@@ -58,8 +58,11 @@ class FsButton extends StatelessWidget {
     final (Color bg, Color fg, Color border) = switch (kind) {
       FsButtonKind.primary => (t.accent, t.onAccent, Colors.transparent),
       FsButtonKind.secondary => (t.surface, t.text, t.line2),
-      FsButtonKind.ghost =>
-        (Colors.transparent, danger ? t.red : t.text2, Colors.transparent),
+      FsButtonKind.ghost => (
+        Colors.transparent,
+        danger ? t.red : t.text2,
+        Colors.transparent,
+      ),
     };
 
     return Opacity(
@@ -67,8 +70,9 @@ class FsButton extends StatelessWidget {
       child: DecoratedBox(
         decoration: BoxDecoration(
           borderRadius: BorderRadius.circular(FsRadius.pill),
-          boxShadow:
-              kind == FsButtonKind.primary && enabled ? fsAccentGlow(t) : null,
+          boxShadow: kind == FsButtonKind.primary && enabled
+              ? fsAccentGlow(t)
+              : null,
         ),
         child: Material(
           color: bg,
@@ -345,7 +349,10 @@ class FsField extends StatelessWidget {
         suffixIcon: trailing,
         filled: true,
         fillColor: t.surface,
-        contentPadding: const EdgeInsets.symmetric(horizontal: 15, vertical: 16),
+        contentPadding: const EdgeInsets.symmetric(
+          horizontal: 15,
+          vertical: 16,
+        ),
         border: OutlineInputBorder(
           borderRadius: BorderRadius.circular(FsRadius.md),
           borderSide: BorderSide(color: t.line),
@@ -504,8 +511,9 @@ class FsStatField extends StatelessWidget {
                 child: TextField(
                   key: fieldKey,
                   controller: controller,
-                  keyboardType:
-                      const TextInputType.numberWithOptions(decimal: true),
+                  keyboardType: const TextInputType.numberWithOptions(
+                    decimal: true,
+                  ),
                   inputFormatters: [
                     TextInputFormatter.withFunction(
                       (previous, next) =>
@@ -555,11 +563,11 @@ class FsEyebrow extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) => Text(
-        text.toUpperCase(),
-        maxLines: 1,
-        overflow: TextOverflow.ellipsis,
-        style: fsEyebrow(context.fs),
-      );
+    text.toUpperCase(),
+    maxLines: 1,
+    overflow: TextOverflow.ellipsis,
+    style: fsEyebrow(context.fs),
+  );
 }
 
 /// `.tag` — the small count pill the design puts opposite a section eyebrow.
@@ -641,53 +649,55 @@ class FsNav extends StatelessWidget {
   Widget build(BuildContext context) => _bar(context.fs);
 
   Widget _bar(FsTokens t) => Container(
-        decoration: BoxDecoration(
-          color: t.surface,
-          border: Border(top: BorderSide(color: t.line)),
-        ),
-        child: SafeArea(
-          top: false,
-          child: SizedBox(
-            height: _barHeight,
-            child: Row(
-              children: [
-                for (final (index, item) in items.indexed) ...[
-                  if (index == 2 && onFabTap != null)
-                    SizedBox(width: _fabSlotWidth, child: Center(child: _fab(t))),
-                  Expanded(
-                    child: InkWell(
-                      key: Key('nav.$index'),
-                      onTap: () => onSelect(index),
-                      child: Column(
-                        mainAxisAlignment: MainAxisAlignment.center,
-                        children: [
-                          Icon(
-                            item.icon,
-                            size: _tabIconSize,
-                            color: index == currentIndex ? t.accent : t.text3,
-                          ),
-                          const SizedBox(height: _tabGap),
-                          Text(
-                            item.label,
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                            style: TextStyle(
-                              fontSize: 10,
-                              fontWeight: FontWeight.w600,
-                              color:
-                                  index == currentIndex ? t.accent : t.text3,
-                            ),
-                          ),
-                        ],
+    decoration: BoxDecoration(
+      color: t.surface,
+      border: Border(top: BorderSide(color: t.line)),
+    ),
+    child: SafeArea(
+      top: false,
+      child: SizedBox(
+        height: _barHeight,
+        child: Row(
+          children: [
+            for (final (index, item) in items.indexed) ...[
+              if (index == 2 && onFabTap != null)
+                SizedBox(
+                  width: _fabSlotWidth,
+                  child: Center(child: _fab(t)),
+                ),
+              Expanded(
+                child: InkWell(
+                  key: Key('nav.$index'),
+                  onTap: () => onSelect(index),
+                  child: Column(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      Icon(
+                        item.icon,
+                        size: _tabIconSize,
+                        color: index == currentIndex ? t.accent : t.text3,
                       ),
-                    ),
+                      const SizedBox(height: _tabGap),
+                      Text(
+                        item.label,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: TextStyle(
+                          fontSize: 10,
+                          fontWeight: FontWeight.w600,
+                          color: index == currentIndex ? t.accent : t.text3,
+                        ),
+                      ),
+                    ],
                   ),
-                ],
-              ],
-            ),
-          ),
+                ),
+              ),
+            ],
+          ],
         ),
-      );
+      ),
+    ),
+  );
 
   /// The centre circle.
   ///
@@ -699,26 +709,29 @@ class FsNav extends StatelessWidget {
   /// had to be positioned carefully to keep, and a `Transform.translate`
   /// would have lost outright.
   Widget _fab(FsTokens t) => DecoratedBox(
-        // Circle, not the default rectangle: the glow has to follow the
-        // shape it falls from. Painted outside the Material rather than
-        // through its `elevation`, so it is the design's accent glow and
-        // not Material's own grey ambient shadow.
-        decoration: BoxDecoration(shape: BoxShape.circle, boxShadow: fsAccentGlow(t)),
-        child: Material(
-          color: t.accent,
-          shape: const CircleBorder(),
-          child: InkWell(
-            key: const Key('nav.fab'),
-            customBorder: const CircleBorder(),
-            onTap: onFabTap,
-            child: SizedBox(
-              width: _fabSize,
-              height: _fabSize,
-              child: Icon(Icons.add, size: 26, color: t.onAccent),
-            ),
-          ),
+    // Circle, not the default rectangle: the glow has to follow the
+    // shape it falls from. Painted outside the Material rather than
+    // through its `elevation`, so it is the design's accent glow and
+    // not Material's own grey ambient shadow.
+    decoration: BoxDecoration(
+      shape: BoxShape.circle,
+      boxShadow: fsAccentGlow(t),
+    ),
+    child: Material(
+      color: t.accent,
+      shape: const CircleBorder(),
+      child: InkWell(
+        key: const Key('nav.fab'),
+        customBorder: const CircleBorder(),
+        onTap: onFabTap,
+        child: SizedBox(
+          width: _fabSize,
+          height: _fabSize,
+          child: Icon(Icons.add, size: 26, color: t.onAccent),
         ),
-      );
+      ),
+    ),
+  );
 }
 
 /// The onboarding progress strip: one bar per step, filled up to [step].
@@ -886,9 +899,8 @@ class FsUnitToggle extends StatelessWidget {
               padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 2),
               child: Text(
                 unit.api.toUpperCase(),
-                style: fsEyebrow(t).copyWith(
-                  color: unit == value ? t.accent : t.text3,
-                ),
+                style: fsEyebrow(t)
+                    .copyWith(color: unit == value ? t.accent : t.text3),
               ),
             ),
           ),

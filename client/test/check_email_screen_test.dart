@@ -39,8 +39,7 @@ class FakeAuthRepository implements AuthRepository {
     required String email,
     required String password,
     required String fullName,
-  }) =>
-      throw UnimplementedError();
+  }) => throw UnimplementedError();
 
   @override
   Future<AuthUser> me() => throw UnimplementedError();
@@ -77,8 +76,9 @@ void main() {
     expect(find.textContaining('juan@example.com'), findsOneWidget);
   });
 
-  testWidgets('Resend calls the endpoint with the same credentials',
-      (tester) async {
+  testWidgets('Resend calls the endpoint with the same credentials', (
+    tester,
+  ) async {
     final repo = FakeAuthRepository();
     await _pump(tester, repo);
     await tester.pumpAndSettle();
@@ -94,7 +94,9 @@ void main() {
   testWidgets('a resend failure surfaces the server message', (tester) async {
     final repo = FakeAuthRepository(
       onResend: () async => throw const ApiException(
-          'NETWORK_ERROR', 'Could not reach the server.'),
+        'NETWORK_ERROR',
+        'Could not reach the server.',
+      ),
     );
     await _pump(tester, repo);
     await tester.pumpAndSettle();

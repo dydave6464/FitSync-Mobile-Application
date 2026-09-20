@@ -1,7 +1,8 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../core/units.dart';
-import '../../exercises/presentation/providers.dart' show apiClientProvider, apiRetryPolicy;
+import '../../exercises/presentation/providers.dart'
+    show apiClientProvider, apiRetryPolicy;
 import '../data/profile_repository.dart';
 import '../domain/body_weight.dart';
 import '../domain/profile.dart';
@@ -45,22 +46,26 @@ class ProfileNotifier extends AsyncNotifier<Profile> {
 
   Future<void> setEquipment(List<int> equipmentIds) async {
     state = AsyncData(
-        await ref.read(profileRepositoryProvider).setEquipment(equipmentIds));
+      await ref.read(profileRepositoryProvider).setEquipment(equipmentIds),
+    );
   }
 
   Future<void> setInjuries(List<SelectedInjury> injuries) async {
     state = AsyncData(
-        await ref.read(profileRepositoryProvider).setInjuries(injuries));
+      await ref.read(profileRepositoryProvider).setInjuries(injuries),
+    );
   }
 
   Future<void> setTrainingDays(List<int> weekdays) async {
     state = AsyncData(
-        await ref.read(profileRepositoryProvider).setTrainingDays(weekdays));
+      await ref.read(profileRepositoryProvider).setTrainingDays(weekdays),
+    );
   }
 
   Future<CompletedOnboarding> completeOnboarding() async {
-    final result =
-        await ref.read(profileRepositoryProvider).completeOnboarding();
+    final result = await ref
+        .read(profileRepositoryProvider)
+        .completeOnboarding();
     state = AsyncData(result.profile);
     return result;
   }

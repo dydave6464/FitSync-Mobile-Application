@@ -15,15 +15,15 @@ import 'package:fitsync/features/profile/domain/profile.dart';
 import 'package:fitsync/features/profile/presentation/providers.dart';
 
 Profile _emptyProfile() => const Profile(
-      userId: 7,
-      email: 'juan@example.com',
-      fullName: 'Juan Dela Cruz',
-      onboardingCompleted: false,
-      isPremium: false,
-      notificationsEnabled: true,
-      equipment: [],
-      injuries: [],
-    );
+  userId: 7,
+  email: 'juan@example.com',
+  fullName: 'Juan Dela Cruz',
+  onboardingCompleted: false,
+  isPremium: false,
+  notificationsEnabled: true,
+  equipment: [],
+  injuries: [],
+);
 
 // The curated list the server now returns, in display order.
 const _equipment = [
@@ -101,15 +101,15 @@ class RecordingAuthController extends AuthController {
 
   @override
   Future<AuthState> build() async => AuthState(
-        AuthStatus.onboarding,
-        const AuthUser(
-          userId: 7,
-          email: 'juan@example.com',
-          fullName: 'Juan Dela Cruz',
-          onboardingCompleted: false,
-          isPremium: false,
-        ),
-      );
+    AuthStatus.onboarding,
+    const AuthUser(
+      userId: 7,
+      email: 'juan@example.com',
+      fullName: 'Juan Dela Cruz',
+      onboardingCompleted: false,
+      isPremium: false,
+    ),
+  );
 
   @override
   void onOnboardingCompleted() {
@@ -131,23 +131,28 @@ Future<void> _pumpFlow(
   Future<void> Function(int attempt)? onComplete,
   List<bool>? completed,
 }) async {
-  await tester.pumpWidget(ProviderScope(
-    overrides: [
-      profileProvider.overrideWith(() => FakeProfileNotifier(
+  await tester.pumpWidget(
+    ProviderScope(
+      overrides: [
+        profileProvider.overrideWith(
+          () => FakeProfileNotifier(
             patches,
             onPatch: onPatch,
             equipmentWrites: equipmentWrites,
             injuryWrites: injuryWrites,
             completions: completions,
             onComplete: onComplete,
-          )),
-      authControllerProvider
-          .overrideWith(() => RecordingAuthController(completed ?? [])),
-      equipmentOptionsProvider.overrideWith((ref) async => _equipment),
-      injuryOptionsProvider.overrideWith((ref) async => _injuries),
-    ],
-    child: const MaterialApp(home: OnboardingFlow()),
-  ));
+          ),
+        ),
+        authControllerProvider.overrideWith(
+          () => RecordingAuthController(completed ?? []),
+        ),
+        equipmentOptionsProvider.overrideWith((ref) async => _equipment),
+        injuryOptionsProvider.overrideWith((ref) async => _injuries),
+      ],
+      child: const MaterialApp(home: OnboardingFlow()),
+    ),
+  );
   await tester.pumpAndSettle();
 }
 
@@ -181,7 +186,7 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(patches, [
-      {'mainGoal': 'build_muscle'}
+      {'mainGoal': 'build_muscle'},
     ], reason: 'a dropout after step 1 must still have their goal saved');
     expect(find.text('STEP 2 / 4'), findsOneWidget);
   });
@@ -196,25 +201,33 @@ void main() {
     expect(find.text('STEP 2 / 4'), findsOneWidget);
   });
 
-  testWidgets('Continue with nothing chosen saves nothing but still advances',
-      (tester) async {
+  testWidgets('Continue with nothing chosen saves nothing but still advances', (
+    tester,
+  ) async {
     final patches = <Map<String, dynamic>>[];
     await _pumpFlow(tester, patches: patches);
 
     await tester.tap(find.byKey(const Key('continue')));
     await tester.pumpAndSettle();
 
-    expect(patches, isEmpty, reason: 'an empty patch is a pointless round trip');
+    expect(
+      patches,
+      isEmpty,
+      reason: 'an empty patch is a pointless round trip',
+    );
     expect(find.text('STEP 2 / 4'), findsOneWidget);
   });
 
-  testWidgets('a failed save shows the message and stays on the step',
-      (tester) async {
+  testWidgets('a failed save shows the message and stays on the step', (
+    tester,
+  ) async {
     await _pumpFlow(
       tester,
       patches: [],
       onPatch: () async => throw const ApiException(
-          'INVALID_PROFILE_FIELD', 'That goal is not one we recognise.'),
+        'INVALID_PROFILE_FIELD',
+        'That goal is not one we recognise.',
+      ),
     );
 
     await tester.tap(find.byKey(const Key('goal.build_muscle')));
@@ -223,12 +236,16 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.text('That goal is not one we recognise.'), findsOneWidget);
-    expect(find.text('STEP 1 / 4'), findsOneWidget,
-        reason: 'advancing past a step whose answer was rejected would lose it');
+    expect(
+      find.text('STEP 1 / 4'),
+      findsOneWidget,
+      reason: 'advancing past a step whose answer was rejected would lose it',
+    );
   });
 
-  testWidgets('step 3 saves the level fields and the equipment set',
-      (tester) async {
+  testWidgets('step 3 saves the level fields and the equipment set', (
+    tester,
+  ) async {
     final patches = <Map<String, dynamic>>[];
     final equipmentWrites = <List<int>>[];
     await _pumpFlow(tester, patches: patches, equipmentWrites: equipmentWrites);
@@ -243,13 +260,15 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(patches.single, {'fitnessLevel': 'beginner'});
-    expect(equipmentWrites.single, [3],
-        reason: 'equipment is a replace-set write, not part of the patch');
+    expect(equipmentWrites.single, [
+      3,
+    ], reason: 'equipment is a replace-set write, not part of the patch');
     expect(find.text('STEP 4 / 4'), findsOneWidget);
   });
 
-  testWidgets('step 3 shows the eight chips the design specifies, in order',
-      (tester) async {
+  testWidgets('step 3 shows the eight chips the design specifies, in order', (
+    tester,
+  ) async {
     await _pumpFlow(tester, patches: []);
     await _skip(tester);
     await _skip(tester);
@@ -261,13 +280,22 @@ void main() {
     // FsChips too but keyed 'location.*'.
     final labels = tester
         .widgetList<FsChip>(find.byType(FsChip))
-        .where((chip) => (chip.key as ValueKey<String>).value.startsWith('equipment.'))
+        .where(
+          (chip) =>
+              (chip.key as ValueKey<String>).value.startsWith('equipment.'),
+        )
         .map((chip) => chip.label)
         .toList();
 
     expect(labels, [
-      'Barbell', 'Dumbbells', 'Bench', 'Pull-up bar',
-      'Kettlebell', 'Bands', 'Machines', 'Bodyweight',
+      'Barbell',
+      'Dumbbells',
+      'Bench',
+      'Pull-up bar',
+      'Kettlebell',
+      'Bands',
+      'Machines',
+      'Bodyweight',
     ]);
   });
 
@@ -283,16 +311,21 @@ void main() {
     // showCheck or not), so the finder has to discriminate by location, not
     // just by icon.
     final chip = find.byKey(const Key('equipment.3'));
-    expect(find.descendant(of: chip, matching: find.byIcon(Icons.check)),
-        findsNothing,
-        reason: 'unselected chip must not show a check');
+    expect(
+      find.descendant(of: chip, matching: find.byIcon(Icons.check)),
+      findsNothing,
+      reason: 'unselected chip must not show a check',
+    );
 
     await _tapKey(tester, const Key('equipment.3'));
 
-    expect(find.descendant(of: chip, matching: find.byIcon(Icons.check)),
-        findsOneWidget,
-        reason: 'showCheck must actually be wired to the equipment chips, '
-            'not just supported by FsChip');
+    expect(
+      find.descendant(of: chip, matching: find.byIcon(Icons.check)),
+      findsOneWidget,
+      reason:
+          'showCheck must actually be wired to the equipment chips, '
+          'not just supported by FsChip',
+    );
   });
 
   testWidgets('the counter tracks the equipment selection', (tester) async {
@@ -336,8 +369,9 @@ void main() {
     expect(find.text('Continue'), findsNothing);
   });
 
-  testWidgets('generating the plan completes onboarding and hands off',
-      (tester) async {
+  testWidgets('generating the plan completes onboarding and hands off', (
+    tester,
+  ) async {
     final completions = <int>[];
     final completed = <bool>[];
     await _pumpFlow(
@@ -354,8 +388,9 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(completions, hasLength(1));
-    expect(completed, [true],
-        reason: 'the shell has to be told, or the user stays in onboarding');
+    expect(completed, [
+      true,
+    ], reason: 'the shell has to be told, or the user stays in onboarding');
   });
 
   testWidgets('a failed generation can be retried', (tester) async {
@@ -369,7 +404,9 @@ void main() {
         // precisely so this retry is possible.
         if (attempt == 0) {
           throw const ApiException(
-              'PLAN_GENERATION_FAILED', 'Could not build a plan right now.');
+            'PLAN_GENERATION_FAILED',
+            'Could not build a plan right now.',
+          );
         }
       },
     );
@@ -389,8 +426,9 @@ void main() {
     expect(completions, hasLength(2));
   });
 
-  testWidgets('generating replaces the step with the plan-building screen',
-      (tester) async {
+  testWidgets('generating replaces the step with the plan-building screen', (
+    tester,
+  ) async {
     final gate = Completer<void>();
     await _pumpFlow(tester, patches: [], onComplete: (_) => gate.future);
 
@@ -401,15 +439,19 @@ void main() {
     await tester.pump();
 
     expect(find.text('Building your plan…'), findsOneWidget);
-    expect(find.text('STEP 4 / 4'), findsNothing,
-        reason: 'the wizard chrome has no place on the generating screen');
+    expect(
+      find.text('STEP 4 / 4'),
+      findsNothing,
+      reason: 'the wizard chrome has no place on the generating screen',
+    );
 
     gate.complete();
     await tester.pumpAndSettle();
   });
 
-  testWidgets('the generating screen names the injuries the user reported',
-      (tester) async {
+  testWidgets('the generating screen names the injuries the user reported', (
+    tester,
+  ) async {
     final gate = Completer<void>();
     await _pumpFlow(tester, patches: [], onComplete: (_) => gate.future);
 
@@ -428,8 +470,9 @@ void main() {
     await tester.pumpAndSettle();
   });
 
-  testWidgets('holds the generating screen so a fast build cannot flash past',
-      (tester) async {
+  testWidgets('holds the generating screen so a fast build cannot flash past', (
+    tester,
+  ) async {
     final completed = <bool>[];
     // Nothing is gated here: every write resolves on the next microtask, which
     // is the case the hold exists for.
@@ -447,16 +490,22 @@ void main() {
     await tester.pump(const Duration(seconds: 3));
 
     expect(find.text('Building your plan…'), findsOneWidget);
-    expect(completed, isEmpty,
-        reason: 'the screen is meant to be readable, not merely non-zero');
+    expect(
+      completed,
+      isEmpty,
+      reason: 'the screen is meant to be readable, not merely non-zero',
+    );
 
     await tester.pumpAndSettle();
 
-    expect(completed, [true], reason: 'the hold delays the hand-off, never skips it');
+    expect(completed, [
+      true,
+    ], reason: 'the hold delays the hand-off, never skips it');
   });
 
-  testWidgets('every row has ticked before the plan takes the screen',
-      (tester) async {
+  testWidgets('every row has ticked before the plan takes the screen', (
+    tester,
+  ) async {
     final completed = <bool>[];
     await _pumpFlow(tester, patches: [], completed: completed);
 
@@ -468,16 +517,25 @@ void main() {
 
     // Just past the last slot: with every write already resolved, all three
     // gates are open, so this is the moment the list is complete.
-    await tester.pump(GeneratingPace.onboarding.revealAt.last +
-        const Duration(milliseconds: 100));
+    await tester.pump(
+      GeneratingPace.onboarding.revealAt.last +
+          const Duration(milliseconds: 100),
+    );
 
     for (final row in ['lead', 'avoiding', 'exercises']) {
-      expect(find.byKey(Key('gen.$row.done')), findsOneWidget,
-          reason: 'row $row should have ticked by the last slot');
+      expect(
+        find.byKey(Key('gen.$row.done')),
+        findsOneWidget,
+        reason: 'row $row should have ticked by the last slot',
+      );
     }
-    expect(completed, isEmpty,
-        reason: 'a hold shorter than the schedule would hand off mid-sequence '
-            'and the last tick would never be seen');
+    expect(
+      completed,
+      isEmpty,
+      reason:
+          'a hold shorter than the schedule would hand off mid-sequence '
+          'and the last tick would never be seen',
+    );
 
     await tester.pumpAndSettle();
     expect(completed, [true]);

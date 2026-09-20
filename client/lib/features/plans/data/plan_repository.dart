@@ -30,7 +30,9 @@ class PlanRepository {
       if (q != null && q.isNotEmpty) 'q=${Uri.encodeQueryComponent(q)}',
     ];
     final query = params.isEmpty ? '' : '?${params.join('&')}';
-    final data = await _api.getJson('/api/v1/plans/exercises/$planExerciseId/alternatives$query');
+    final data = await _api.getJson(
+      '/api/v1/plans/exercises/$planExerciseId/alternatives$query',
+    );
     final rows = (data['alternatives'] as List).cast<Map<String, dynamic>>();
     return rows.map(ExerciseAlternative.fromJson).toList(growable: false);
   }
@@ -39,7 +41,8 @@ class PlanRepository {
   /// replaces state in a single hop rather than reconciling a partial update.
   Future<WorkoutPlan> swap(int planExerciseId, int exerciseId) async {
     final data = await _api.patchJson(
-      '/api/v1/plans/exercises/$planExerciseId', {'exerciseId': exerciseId},
+      '/api/v1/plans/exercises/$planExerciseId',
+      {'exerciseId': exerciseId},
     );
     return WorkoutPlan.fromJson(data['plan'] as Map<String, dynamic>);
   }

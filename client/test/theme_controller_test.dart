@@ -15,8 +15,9 @@ ProviderContainer _containerWith(ThemeStore store) {
 
 void main() {
   test('defaults to light, and dark is a choice the user makes', () async {
-    final container =
-        _containerWith(ThemeStore(backing: InMemorySecureStore()));
+    final container = _containerWith(
+      ThemeStore(backing: InMemorySecureStore()),
+    );
 
     expect(container.read(themeModeProvider), ThemeMode.light);
   });
@@ -34,9 +35,13 @@ void main() {
     expect(container.read(themeModeProvider), ThemeMode.light);
     await container.read(themeModeProvider.notifier).ready;
 
-    expect(container.read(themeModeProvider), ThemeMode.dark,
-        reason: 'an existing user who chose dark keeps it across the change '
-            'of default');
+    expect(
+      container.read(themeModeProvider),
+      ThemeMode.dark,
+      reason:
+          'an existing user who chose dark keeps it across the change '
+          'of default',
+    );
   });
 
   test('choosing light persists it', () async {
@@ -46,8 +51,11 @@ void main() {
     await container.read(themeModeProvider.notifier).setDark(false);
 
     expect(container.read(themeModeProvider), ThemeMode.light);
-    expect(await store.read(), ThemeMode.light,
-        reason: 'the choice must survive a restart, not just this session');
+    expect(
+      await store.read(),
+      ThemeMode.light,
+      reason: 'the choice must survive a restart, not just this session',
+    );
   });
 
   test('choosing dark again persists it', () async {

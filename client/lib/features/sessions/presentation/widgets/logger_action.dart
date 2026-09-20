@@ -34,7 +34,7 @@ class LoggerAction extends StatefulWidget {
   final WeightUnit unit;
 
   final Future<void> Function(int setNumber, double? weightKg, int? reps)
-      onCompleteSet;
+  onCompleteSet;
   final VoidCallback onNextExercise;
   final VoidCallback onFinish;
 

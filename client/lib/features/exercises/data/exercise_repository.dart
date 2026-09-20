@@ -25,13 +25,16 @@ class ExerciseRepository {
     int page = 1,
     int limit = 20,
   }) async {
-    final data = await _api.getJson('/api/v1/exercises', query: {
-      if (muscleGroups.isNotEmpty) 'muscleGroup': muscleGroups,
-      'equipment': equipment,
-      if (search != null && search.isNotEmpty) 'search': search,
-      'page': '$page',
-      'limit': '$limit',
-    });
+    final data = await _api.getJson(
+      '/api/v1/exercises',
+      query: {
+        if (muscleGroups.isNotEmpty) 'muscleGroup': muscleGroups,
+        'equipment': equipment,
+        if (search != null && search.isNotEmpty) 'search': search,
+        'page': '$page',
+        'limit': '$limit',
+      },
+    );
     return ExercisePage.fromJson(data);
   }
 

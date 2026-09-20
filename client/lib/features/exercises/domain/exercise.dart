@@ -24,7 +24,8 @@ class ExerciseSummary {
   /// "nothing known", never as a crash.
   final bool contraindicated;
 
-  factory ExerciseSummary.fromJson(Map<String, dynamic> json) => ExerciseSummary(
+  factory ExerciseSummary.fromJson(Map<String, dynamic> json) =>
+      ExerciseSummary(
         exerciseId: json['exerciseId'] as int,
         name: json['name'] as String,
         muscleGroup: json['muscleGroup'] as String,
@@ -54,16 +55,16 @@ class ExerciseDetail {
   final List<String> cues;
 
   factory ExerciseDetail.fromJson(Map<String, dynamic> json) => ExerciseDetail(
-        exerciseId: json['exerciseId'] as int,
-        name: json['name'] as String,
-        muscleGroup: json['muscleGroup'] as String,
-        equipment: json['equipment'] as String?,
-        thumbnailUrl: json['thumbnailUrl'] as String?,
-        animationUrl: json['animationUrl'] as String?,
-        cues: (json['cues'] as List<dynamic>? ?? const [])
-            .map((c) => c as String)
-            .toList(growable: false),
-      );
+    exerciseId: json['exerciseId'] as int,
+    name: json['name'] as String,
+    muscleGroup: json['muscleGroup'] as String,
+    equipment: json['equipment'] as String?,
+    thumbnailUrl: json['thumbnailUrl'] as String?,
+    animationUrl: json['animationUrl'] as String?,
+    cues: (json['cues'] as List<dynamic>? ?? const [])
+        .map((c) => c as String)
+        .toList(growable: false),
+  );
 }
 
 class ExercisePage {
@@ -82,11 +83,11 @@ class ExercisePage {
   bool get hasMore => page * limit < total;
 
   factory ExercisePage.fromJson(Map<String, dynamic> json) => ExercisePage(
-        items: (json['exercises'] as List<dynamic>)
-            .map((e) => ExerciseSummary.fromJson(e as Map<String, dynamic>))
-            .toList(growable: false),
-        page: json['page'] as int,
-        limit: json['limit'] as int,
-        total: json['total'] as int,
-      );
+    items: (json['exercises'] as List<dynamic>)
+        .map((e) => ExerciseSummary.fromJson(e as Map<String, dynamic>))
+        .toList(growable: false),
+    page: json['page'] as int,
+    limit: json['limit'] as int,
+    total: json['total'] as int,
+  );
 }

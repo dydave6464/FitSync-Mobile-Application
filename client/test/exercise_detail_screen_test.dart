@@ -22,9 +22,9 @@ const _detail = ExerciseDetail(
 );
 
 Widget harness(Override override) => ProviderScope(
-      overrides: [override],
-      child: const MaterialApp(home: ExerciseDetailScreen(exerciseId: 1)),
-    );
+  overrides: [override],
+  child: const MaterialApp(home: ExerciseDetailScreen(exerciseId: 1)),
+);
 
 // The default flutter_test surface is 800x600 logical px — wider than it is
 // tall, unlike any phone this app targets. The detail screen's hero image is
@@ -44,9 +44,9 @@ void _usePortraitSurface(WidgetTester tester) {
 void main() {
   testWidgets('renders the name, metadata and numbered cues', (tester) async {
     _usePortraitSurface(tester);
-    await tester.pumpWidget(harness(
-      exerciseDetailProvider(1).overrideWith((ref) async => _detail),
-    ));
+    await tester.pumpWidget(
+      harness(exerciseDetailProvider(1).overrideWith((ref) async => _detail)),
+    );
     await tester.pumpAndSettle();
 
     expect(find.text('3/4 sit-up'), findsOneWidget);
@@ -68,12 +68,17 @@ void main() {
     // error) is not silently retried by Riverpod's own default retry policy
     // before the tap — see apiRetryPolicy in providers.dart.
     var calls = 0;
-    await tester.pumpWidget(harness(
-      exerciseDetailProvider(1).overrideWith((ref) async {
-        calls++;
-        throw const ApiException('EXERCISE_NOT_FOUND', 'No live exercise with id 1.');
-      }),
-    ));
+    await tester.pumpWidget(
+      harness(
+        exerciseDetailProvider(1).overrideWith((ref) async {
+          calls++;
+          throw const ApiException(
+            'EXERCISE_NOT_FOUND',
+            'No live exercise with id 1.',
+          );
+        }),
+      ),
+    );
     await tester.pumpAndSettle();
 
     expect(find.textContaining('No live exercise with id 1.'), findsOneWidget);
@@ -86,11 +91,13 @@ void main() {
     expect(calls, 2);
   });
 
-  testWidgets('an unreachable animation does not crash the screen', (tester) async {
+  testWidgets('an unreachable animation does not crash the screen', (
+    tester,
+  ) async {
     _usePortraitSurface(tester);
-    await tester.pumpWidget(harness(
-      exerciseDetailProvider(1).overrideWith((ref) async => _detail),
-    ));
+    await tester.pumpWidget(
+      harness(exerciseDetailProvider(1).overrideWith((ref) async => _detail)),
+    );
     await tester.pumpAndSettle();
 
     expect(tester.takeException(), isNull);

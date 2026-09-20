@@ -3,7 +3,8 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../../core/theme.dart';
 import '../../../../core/widgets/fs_kit.dart';
-import '../../../exercises/presentation/exercise_list_screen.dart' show describeError;
+import '../../../exercises/presentation/exercise_list_screen.dart'
+    show describeError;
 import '../../../profile/presentation/providers.dart';
 
 /// The answers step 3 collects.
@@ -26,12 +27,11 @@ class LevelAnswers {
     String? fitnessLevel,
     List<int>? equipmentIds,
     String? trainingLocation,
-  }) =>
-      LevelAnswers(
-        fitnessLevel: fitnessLevel ?? this.fitnessLevel,
-        equipmentIds: equipmentIds ?? this.equipmentIds,
-        trainingLocation: trainingLocation ?? this.trainingLocation,
-      );
+  }) => LevelAnswers(
+    fitnessLevel: fitnessLevel ?? this.fitnessLevel,
+    equipmentIds: equipmentIds ?? this.equipmentIds,
+    trainingLocation: trainingLocation ?? this.trainingLocation,
+  );
 }
 
 /// `fitness_level` ENUM values. The schema offers two; there is no "advanced".
@@ -187,8 +187,12 @@ class LevelStep extends ConsumerWidget {
             children: [
               Icon(Icons.home_outlined, size: 18, color: t.text2),
               const SizedBox(width: 11),
-              const Expanded(child: Text('Training location',
-                  style: TextStyle(fontSize: 13.5))),
+              const Expanded(
+                child: Text(
+                  'Training location',
+                  style: TextStyle(fontSize: 13.5),
+                ),
+              ),
               Text(
                 _locationLabel,
                 style: TextStyle(

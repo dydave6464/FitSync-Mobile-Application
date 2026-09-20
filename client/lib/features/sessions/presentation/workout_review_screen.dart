@@ -5,7 +5,8 @@ import '../../../core/theme.dart';
 import '../../../core/widgets/fs_kit.dart';
 import '../../exercises/domain/exercise.dart';
 import '../../exercises/presentation/equipment_icon.dart';
-import '../../exercises/presentation/exercise_list_screen.dart' show describeError;
+import '../../exercises/presentation/exercise_list_screen.dart'
+    show describeError;
 import '../../exercises/presentation/providers.dart';
 import 'providers.dart';
 import 'session_logger_screen.dart';
@@ -60,9 +61,9 @@ class _WorkoutReviewScreenState extends ConsumerState<WorkoutReviewScreen> {
       if (choice == null || !mounted) return;
 
       if (choice == _Blocked.open) {
-        await Navigator.of(context).push(MaterialPageRoute<void>(
-          builder: (_) => const SessionLoggerScreen(),
-        ));
+        await Navigator.of(context).push(
+          MaterialPageRoute<void>(builder: (_) => const SessionLoggerScreen()),
+        );
         return;
       }
       // Discarding is a write that can fail on its own. Only once it lands is
@@ -75,29 +76,29 @@ class _WorkoutReviewScreenState extends ConsumerState<WorkoutReviewScreen> {
 
   /// Names the workout in the way and offers the three honest answers.
   Future<_Blocked?> _askAboutOpenWorkout() => showDialog<_Blocked>(
-        context: context,
-        builder: (dialogContext) => AlertDialog(
-          title: const Text('You already have a workout open'),
-          content: const Text(
-            'Only one workout can be open at a time. Discarding throws away '
-            'everything logged in the old one.',
-          ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.of(dialogContext).pop(),
-              child: const Text('Cancel'),
-            ),
-            TextButton(
-              onPressed: () => Navigator.of(dialogContext).pop(_Blocked.open),
-              child: const Text('Open it'),
-            ),
-            TextButton(
-              onPressed: () => Navigator.of(dialogContext).pop(_Blocked.replace),
-              child: const Text('Discard it & start'),
-            ),
-          ],
+    context: context,
+    builder: (dialogContext) => AlertDialog(
+      title: const Text('You already have a workout open'),
+      content: const Text(
+        'Only one workout can be open at a time. Discarding throws away '
+        'everything logged in the old one.',
+      ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.of(dialogContext).pop(),
+          child: const Text('Cancel'),
         ),
-      );
+        TextButton(
+          onPressed: () => Navigator.of(dialogContext).pop(_Blocked.open),
+          child: const Text('Open it'),
+        ),
+        TextButton(
+          onPressed: () => Navigator.of(dialogContext).pop(_Blocked.replace),
+          child: const Text('Discard it & start'),
+        ),
+      ],
+    ),
+  );
 
   /// True when the old workout is gone and this one may start.
   Future<bool> _discardOpenWorkout() async {
@@ -138,9 +139,9 @@ class _WorkoutReviewScreenState extends ConsumerState<WorkoutReviewScreen> {
       // started, so backing out of the logger onto it would offer to start a
       // workout that already is. The library underneath is the honest
       // destination -- it is where more exercises come from.
-      await navigator.pushReplacement(MaterialPageRoute<void>(
-        builder: (_) => const SessionLoggerScreen(),
-      ));
+      await navigator.pushReplacement(
+        MaterialPageRoute<void>(builder: (_) => const SessionLoggerScreen()),
+      );
     } catch (error) {
       messenger.showSnackBar(SnackBar(content: Text(describeError(error))));
     } finally {
@@ -180,14 +181,22 @@ class _WorkoutReviewScreenState extends ConsumerState<WorkoutReviewScreen> {
                   child: Text(
                     _summarise(draft),
                     key: const Key('review.summary'),
-                    style: TextStyle(fontSize: 13, color: t.text2, height: 1.35),
+                    style: TextStyle(
+                      fontSize: 13,
+                      color: t.text2,
+                      height: 1.35,
+                    ),
                   ),
                 ),
                 Padding(
                   padding: const EdgeInsets.fromLTRB(20, 0, 20, 8),
                   child: Text(
                     'Drag to set the order you will train them in.',
-                    style: TextStyle(fontSize: 12, color: t.text3, height: 1.35),
+                    style: TextStyle(
+                      fontSize: 12,
+                      color: t.text3,
+                      height: 1.35,
+                    ),
                   ),
                 ),
                 Expanded(
@@ -241,7 +250,9 @@ String _summarise(List<ExerciseSummary> draft) {
   final count = draft.length == 1 ? '1 exercise' : '${draft.length} exercises';
   final groups = <String>[];
   for (final exercise in draft) {
-    if (!groups.contains(exercise.muscleGroup)) groups.add(exercise.muscleGroup);
+    if (!groups.contains(exercise.muscleGroup)) {
+      groups.add(exercise.muscleGroup);
+    }
   }
   return '$count · ${groups.join(', ')}';
 }
@@ -375,7 +386,7 @@ class _ThumbPlaceholder extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) => Container(
-        color: Theme.of(context).colorScheme.surfaceContainerHighest,
-        child: Icon(equipmentIcon(equipment), size: 18),
-      );
+    color: Theme.of(context).colorScheme.surfaceContainerHighest,
+    child: Icon(equipmentIcon(equipment), size: 18),
+  );
 }

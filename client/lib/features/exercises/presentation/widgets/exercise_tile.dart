@@ -114,7 +114,7 @@ class _ThumbPlaceholder extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) => Container(
-        color: Theme.of(context).colorScheme.surfaceContainerHighest,
-        child: Icon(equipmentIcon(equipment), size: 20),
-      );
+    color: Theme.of(context).colorScheme.surfaceContainerHighest,
+    child: Icon(equipmentIcon(equipment), size: 20),
+  );
 }

@@ -156,7 +156,11 @@ class WeekStrip extends StatelessWidget {
     // subtracts exact hours, so on a week containing a DST change the whole
     // strip can slide a day. The DateTime constructor normalises out-of-range
     // day numbers over month and year ends and stays on the intended date.
-    final monday = DateTime(today.year, today.month, today.day - (today.weekday - 1));
+    final monday = DateTime(
+      today.year,
+      today.month,
+      today.day - (today.weekday - 1),
+    );
 
     // Same reason as `monday` above -- add(Duration) would re-open the DST
     // slide for the individual days.
@@ -168,7 +172,9 @@ class WeekStrip extends StatelessWidget {
     // the set is scoped to this week by its provider today, and a tally that
     // trusted that would silently overcount the moment anything handed it a
     // wider range.
-    final done = dates.where((date) => completedDates.contains(_key(date))).length;
+    final done = dates
+        .where((date) => completedDates.contains(_key(date)))
+        .length;
 
     final known = trainingDays != null;
     final chosen = trainingDays?.toSet() ?? const <int>{};
@@ -188,7 +194,9 @@ class WeekStrip extends StatelessWidget {
       if (!known || chosen.isEmpty) return DayMark.planned;
       if (!chosen.contains(weekday)) return DayMark.none;
       // Strictly before today. Today is never missed -- the day is not over.
-      return _key(date).compareTo(todayKey) < 0 ? DayMark.missed : DayMark.planned;
+      return _key(date).compareTo(todayKey) < 0
+          ? DayMark.missed
+          : DayMark.planned;
     }
 
     final target = chosen.isNotEmpty ? chosen.length : daysPerWeek;

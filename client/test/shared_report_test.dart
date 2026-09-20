@@ -9,11 +9,13 @@ import 'package:fitsync/core/token_store.dart';
 import 'package:fitsync/features/sessions/data/session_repository.dart';
 import 'package:fitsync/features/sessions/domain/shared_report.dart';
 
-SessionRepository _repo(MockClient client) => SessionRepository(ApiClient(
-      baseUrl: 'http://test.local',
-      tokens: TokenStore(backing: InMemorySecureStore()),
-      client: client,
-    ));
+SessionRepository _repo(MockClient client) => SessionRepository(
+  ApiClient(
+    baseUrl: 'http://test.local',
+    tokens: TokenStore(backing: InMemorySecureStore()),
+    client: client,
+  ),
+);
 
 void main() {
   test('a shared report reads its link and expiry', () {
@@ -29,18 +31,20 @@ void main() {
 
   test('sharing posts the period and the chosen sections', () async {
     Map<String, dynamic>? sent;
-    final repo = _repo(MockClient((request) async {
-      sent = jsonDecode(request.body) as Map<String, dynamic>;
-      return http.Response(
-        jsonEncode({
-          'data': {
-            'url': 'https://fitsync.test/api/v1/reports/abc',
-            'expiresAt': '2026-10-19T00:00:00.000Z',
-          },
-        }),
-        201,
-      );
-    }));
+    final repo = _repo(
+      MockClient((request) async {
+        sent = jsonDecode(request.body) as Map<String, dynamic>;
+        return http.Response(
+          jsonEncode({
+            'data': {
+              'url': 'https://fitsync.test/api/v1/reports/abc',
+              'expiresAt': '2026-10-19T00:00:00.000Z',
+            },
+          }),
+          201,
+        );
+      }),
+    );
 
     final report = await repo.shareReport(
       period: 'month',

@@ -41,7 +41,11 @@ class _StartWorkoutSheet extends ConsumerWidget {
   /// mockup's row pointed: a repeat is rarely identical, and the review
   /// screen already owns starting -- including the guard for a workout that
   /// is already open. Routing around it would mean a second copy of that.
-  void _repeat(BuildContext context, WidgetRef ref, List<ExerciseSummary> exercises) {
+  void _repeat(
+    BuildContext context,
+    WidgetRef ref,
+    List<ExerciseSummary> exercises,
+  ) {
     ref.read(workoutDraftProvider.notifier).replaceWith(exercises);
     Navigator.of(context).pop();
     Navigator.of(context).push(
@@ -90,8 +94,14 @@ class _StartWorkoutSheet extends ConsumerWidget {
                   // overflow in. Wrapping to a second line is the same
                   // remedy FsButton and the eyebrow rows already use.
                   Expanded(
-                    child: Text('Start a workout',
-                        style: TextStyle(fontSize: 20, fontWeight: FontWeight.w700, color: t.text)),
+                    child: Text(
+                      'Start a workout',
+                      style: TextStyle(
+                        fontSize: 20,
+                        fontWeight: FontWeight.w700,
+                        color: t.text,
+                      ),
+                    ),
                   ),
                   IconButton(
                     key: const Key('start.close'),
@@ -112,7 +122,9 @@ class _StartWorkoutSheet extends ConsumerWidget {
                 onTap: () {
                   Navigator.of(context).pop();
                   Navigator.of(context).push(
-                    MaterialPageRoute<void>(builder: (_) => const GeneratorScreen()),
+                    MaterialPageRoute<void>(
+                      builder: (_) => const GeneratorScreen(),
+                    ),
                   );
                 },
               ),
@@ -121,7 +133,8 @@ class _StartWorkoutSheet extends ConsumerWidget {
                 rowKey: const Key('start.manual'),
                 icon: Icons.fitness_center,
                 title: 'Log a workout',
-                body: 'Pick your own exercises. Keep it as part of your plan '
+                body:
+                    'Pick your own exercises. Keep it as part of your plan '
                     'when you finish, or just log it.',
                 tag: 'Free',
                 accent: false,
@@ -155,7 +168,10 @@ class _StartWorkoutSheet extends ConsumerWidget {
                   onTap: () => _repeat(context, ref, last.exercises),
                   borderRadius: BorderRadius.circular(FsRadius.md),
                   child: Padding(
-                    padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 8),
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 4,
+                      vertical: 8,
+                    ),
                     child: Row(
                       children: [
                         Icon(Icons.history, size: 18, color: t.text2),
@@ -167,14 +183,19 @@ class _StartWorkoutSheet extends ConsumerWidget {
                               const Text(
                                 'Repeat last workout',
                                 style: TextStyle(
-                                    fontSize: 13, fontWeight: FontWeight.w600),
+                                  fontSize: 13,
+                                  fontWeight: FontWeight.w600,
+                                ),
                               ),
                               const SizedBox(height: 2),
                               Text(
                                 '${last.title} · ${last.describeCount}',
                                 maxLines: 1,
                                 overflow: TextOverflow.ellipsis,
-                                style: TextStyle(fontSize: 11.5, color: t.text3),
+                                style: TextStyle(
+                                  fontSize: 11.5,
+                                  color: t.text3,
+                                ),
                               ),
                             ],
                           ),
@@ -238,15 +259,23 @@ class _Row extends StatelessWidget {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text(title,
-                        style: TextStyle(
-                          fontSize: 15,
-                          fontWeight: FontWeight.w600,
-                          color: dimmed ? t.text3 : t.text,
-                        )),
+                    Text(
+                      title,
+                      style: TextStyle(
+                        fontSize: 15,
+                        fontWeight: FontWeight.w600,
+                        color: dimmed ? t.text3 : t.text,
+                      ),
+                    ),
                     const SizedBox(height: 3),
-                    Text(body,
-                        style: TextStyle(fontSize: 12, color: t.text3, height: 1.35)),
+                    Text(
+                      body,
+                      style: TextStyle(
+                        fontSize: 12,
+                        color: t.text3,
+                        height: 1.35,
+                      ),
+                    ),
                   ],
                 ),
               ),

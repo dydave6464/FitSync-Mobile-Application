@@ -29,24 +29,24 @@ import 'package:fitsync/features/sessions/presentation/workout_draft.dart';
 
 /// A catalogue row as the library hands it to the draft.
 ExerciseSummary _picked(int id) => ExerciseSummary(
-      exerciseId: id,
-      name: 'Exercise $id',
-      muscleGroup: 'chest',
-      equipment: 'barbell',
-      thumbnailUrl: null,
-    );
+  exerciseId: id,
+  name: 'Exercise $id',
+  muscleGroup: 'chest',
+  equipment: 'barbell',
+  thumbnailUrl: null,
+);
 
 Profile _profile({required int userId, required String email}) => Profile(
-      userId: userId,
-      email: email,
-      fullName: 'User $userId',
-      onboardingCompleted: true,
-      isPremium: false,
-      notificationsEnabled: true,
-      equipment: const [],
-      injuries: const [],
-      heightCm: userId * 10.0,
-    );
+  userId: userId,
+  email: email,
+  fullName: 'User $userId',
+  onboardingCompleted: true,
+  isPremium: false,
+  notificationsEnabled: true,
+  equipment: const [],
+  injuries: const [],
+  heightCm: userId * 10.0,
+);
 
 /// Hands out a different profile on each call, so a cached value is
 /// distinguishable from a freshly loaded one.
@@ -64,24 +64,30 @@ class SequenceProfileRepository implements ProfileRepository {
   }
 
   @override
-  Future<Profile> patch(Map<String, dynamic> fields) => throw UnimplementedError();
+  Future<Profile> patch(Map<String, dynamic> fields) =>
+      throw UnimplementedError();
   @override
-  Future<Profile> setEquipment(List<int> equipmentIds) => throw UnimplementedError();
+  Future<Profile> setEquipment(List<int> equipmentIds) =>
+      throw UnimplementedError();
   @override
   Future<Profile> setInjuries(List<SelectedInjury> injuries) =>
       throw UnimplementedError();
   @override
-  Future<Profile> setTrainingDays(List<int> weekdays) => throw UnimplementedError();
+  Future<Profile> setTrainingDays(List<int> weekdays) =>
+      throw UnimplementedError();
   @override
-  Future<CompletedOnboarding> completeOnboarding() => throw UnimplementedError();
+  Future<CompletedOnboarding> completeOnboarding() =>
+      throw UnimplementedError();
   @override
   Future<List<EquipmentOption>> equipmentOptions() async => const [];
   @override
   Future<List<InjuryOption>> injuryOptions() async => const [];
   @override
-  Future<BodyWeightSeries> bodyWeight(String period) => throw UnimplementedError();
+  Future<BodyWeightSeries> bodyWeight(String period) =>
+      throw UnimplementedError();
   @override
-  Future<BodyWeightPoint> logBodyWeight(double weightKg) => throw UnimplementedError();
+  Future<BodyWeightPoint> logBodyWeight(double weightKg) =>
+      throw UnimplementedError();
 }
 
 /// Hands out a different in-progress session on each call, so a cached one is
@@ -117,7 +123,8 @@ class SequenceSessionRepository implements SessionRepository {
   @override
   Future<LastWorkout?> lastWorkout() => throw UnimplementedError();
   @override
-  Future<ActiveSession> start({List<int>? exerciseIds}) => throw UnimplementedError();
+  Future<ActiveSession> start({List<int>? exerciseIds}) =>
+      throw UnimplementedError();
   @override
   Future<LoggedSet> logSet(
     int sessionId, {
@@ -125,15 +132,13 @@ class SequenceSessionRepository implements SessionRepository {
     required int setNumber,
     double? weightKg,
     int? reps,
-  }) =>
-      throw UnimplementedError();
+  }) => throw UnimplementedError();
   @override
   Future<void> deleteSet(
     int sessionId, {
     required int exerciseId,
     required int setNumber,
-  }) =>
-      throw UnimplementedError();
+  }) => throw UnimplementedError();
   @override
   Future<ActiveSession> complete(int sessionId, int durationMin) =>
       throw UnimplementedError();
@@ -143,13 +148,13 @@ class SequenceSessionRepository implements SessionRepository {
   Future<Map<int, LastPerformance>> lastPerformance(List<int> exerciseIds) =>
       throw UnimplementedError();
   @override
-  Future<TrainingAnalytics> analytics(String period) => throw UnimplementedError();
+  Future<TrainingAnalytics> analytics(String period) =>
+      throw UnimplementedError();
   @override
   Future<SharedReport> shareReport({
     required String period,
     required Map<String, bool> include,
-  }) =>
-      throw UnimplementedError();
+  }) => throw UnimplementedError();
 }
 
 class FakeAuthRepository implements AuthRepository {
@@ -168,18 +173,17 @@ class FakeAuthRepository implements AuthRepository {
     required String email,
     required String password,
     required String fullName,
-  }) =>
-      throw UnimplementedError();
+  }) => throw UnimplementedError();
   @override
-  Future<AuthUser> signInWithGoogle(String idToken) => throw UnimplementedError();
+  Future<AuthUser> signInWithGoogle(String idToken) =>
+      throw UnimplementedError();
   @override
   Future<void> requestPasswordReset(String email) => throw UnimplementedError();
   @override
   Future<void> resendVerification({
     required String email,
     required String password,
-  }) =>
-      throw UnimplementedError();
+  }) => throw UnimplementedError();
 }
 
 void main() {
@@ -190,24 +194,31 @@ void main() {
     final tokens = TokenStore(backing: InMemorySecureStore());
     await tokens.write('token-for-juan');
 
-    final container = ProviderContainer(overrides: [
-      tokenStoreProvider.overrideWithValue(tokens),
-      authRepositoryProvider.overrideWithValue(FakeAuthRepository(tokens)),
-      profileRepositoryProvider.overrideWithValue(profiles),
-    ]);
+    final container = ProviderContainer(
+      overrides: [
+        tokenStoreProvider.overrideWithValue(tokens),
+        authRepositoryProvider.overrideWithValue(FakeAuthRepository(tokens)),
+        profileRepositoryProvider.overrideWithValue(profiles),
+      ],
+    );
     addTearDown(container.dispose);
 
     // Juan is signed in and his profile is loaded and cached.
-    expect((await container.read(profileProvider.future)).email,
-        'juan@example.com');
+    expect(
+      (await container.read(profileProvider.future)).email,
+      'juan@example.com',
+    );
     expect(profiles.loads, 1);
 
     await container.read(authControllerProvider.notifier).signOut();
 
     // Maria signs in on the same device. She must not be shown Juan's profile.
     final afterSignOut = await container.read(profileProvider.future);
-    expect(afterSignOut.email, 'maria@example.com',
-        reason: 'the next account got the previous account\'s cached profile');
+    expect(
+      afterSignOut.email,
+      'maria@example.com',
+      reason: 'the next account got the previous account\'s cached profile',
+    );
     expect(profiles.loads, 2, reason: 'the profile was not re-fetched');
   });
 
@@ -215,49 +226,66 @@ void main() {
   // more caches with it. An in-progress session carries its logged sets, so
   // the next account to sign in on the same device opened the logger onto
   // someone else's weights and reps already ticked into the table.
-  test("signing out drops the previous account's in-progress session", () async {
-    final juan = ActiveSession(
-      sessionId: 1,
-      status: 'in_progress',
-      sessionDate: '2026-09-09',
-      startedAt: DateTime.now(),
-      sets: const [LoggedSet(exerciseId: 101, setNumber: 1, weightKg: 60, reps: 8)],
-    );
-    final sessions = SequenceSessionRepository([juan, null]);
-    final tokens = TokenStore(backing: InMemorySecureStore());
-    await tokens.write('token-for-juan');
+  test(
+    "signing out drops the previous account's in-progress session",
+    () async {
+      final juan = ActiveSession(
+        sessionId: 1,
+        status: 'in_progress',
+        sessionDate: '2026-09-09',
+        startedAt: DateTime.now(),
+        sets: const [
+          LoggedSet(exerciseId: 101, setNumber: 1, weightKg: 60, reps: 8),
+        ],
+      );
+      final sessions = SequenceSessionRepository([juan, null]);
+      final tokens = TokenStore(backing: InMemorySecureStore());
+      await tokens.write('token-for-juan');
 
-    final container = ProviderContainer(overrides: [
-      tokenStoreProvider.overrideWithValue(tokens),
-      authRepositoryProvider.overrideWithValue(FakeAuthRepository(tokens)),
-      profileRepositoryProvider.overrideWithValue(
-          SequenceProfileRepository([_profile(userId: 1, email: 'a@b.c')])),
-      sessionRepositoryProvider.overrideWithValue(sessions),
-    ]);
-    addTearDown(container.dispose);
+      final container = ProviderContainer(
+        overrides: [
+          tokenStoreProvider.overrideWithValue(tokens),
+          authRepositoryProvider.overrideWithValue(FakeAuthRepository(tokens)),
+          profileRepositoryProvider.overrideWithValue(
+            SequenceProfileRepository([_profile(userId: 1, email: 'a@b.c')]),
+          ),
+          sessionRepositoryProvider.overrideWithValue(sessions),
+        ],
+      );
+      addTearDown(container.dispose);
 
-    expect((await container.read(activeSessionProvider.future))!.sets, hasLength(1));
-    expect(sessions.loads, 1);
+      expect(
+        (await container.read(activeSessionProvider.future))!.sets,
+        hasLength(1),
+      );
+      expect(sessions.loads, 1);
 
-    await container.read(authControllerProvider.notifier).signOut();
+      await container.read(authControllerProvider.notifier).signOut();
 
-    expect(await container.read(activeSessionProvider.future), isNull,
-        reason: "the next account was handed the previous account's session");
-    expect(sessions.loads, 2, reason: 'the session was not re-fetched');
-  });
+      expect(
+        await container.read(activeSessionProvider.future),
+        isNull,
+        reason: "the next account was handed the previous account's session",
+      );
+      expect(sessions.loads, 2, reason: 'the session was not re-fetched');
+    },
+  );
 
   test("signing out drops the previous account's completed days", () async {
     final sessions = SequenceSessionRepository([null]);
     final tokens = TokenStore(backing: InMemorySecureStore());
     await tokens.write('token-for-juan');
 
-    final container = ProviderContainer(overrides: [
-      tokenStoreProvider.overrideWithValue(tokens),
-      authRepositoryProvider.overrideWithValue(FakeAuthRepository(tokens)),
-      profileRepositoryProvider.overrideWithValue(
-          SequenceProfileRepository([_profile(userId: 1, email: 'a@b.c')])),
-      sessionRepositoryProvider.overrideWithValue(sessions),
-    ]);
+    final container = ProviderContainer(
+      overrides: [
+        tokenStoreProvider.overrideWithValue(tokens),
+        authRepositoryProvider.overrideWithValue(FakeAuthRepository(tokens)),
+        profileRepositoryProvider.overrideWithValue(
+          SequenceProfileRepository([_profile(userId: 1, email: 'a@b.c')]),
+        ),
+        sessionRepositoryProvider.overrideWithValue(sessions),
+      ],
+    );
     addTearDown(container.dispose);
 
     // The week strip is per-user too: it marks which days THIS account trained.
@@ -265,8 +293,9 @@ void main() {
 
     await container.read(authControllerProvider.notifier).signOut();
 
-    expect(await container.read(completedDaysProvider.future), {'2026-09-02'},
-        reason: "the next account kept the previous account's week strip");
+    expect(await container.read(completedDaysProvider.future), {
+      '2026-09-02',
+    }, reason: "the next account kept the previous account's week strip");
   });
 
   // The manual picker landed after the caches above, and brought a third one
@@ -278,12 +307,15 @@ void main() {
     final tokens = TokenStore(backing: InMemorySecureStore());
     await tokens.write('token-for-juan');
 
-    final container = ProviderContainer(overrides: [
-      tokenStoreProvider.overrideWithValue(tokens),
-      authRepositoryProvider.overrideWithValue(FakeAuthRepository(tokens)),
-      profileRepositoryProvider.overrideWithValue(
-          SequenceProfileRepository([_profile(userId: 1, email: 'a@b.c')])),
-    ]);
+    final container = ProviderContainer(
+      overrides: [
+        tokenStoreProvider.overrideWithValue(tokens),
+        authRepositoryProvider.overrideWithValue(FakeAuthRepository(tokens)),
+        profileRepositoryProvider.overrideWithValue(
+          SequenceProfileRepository([_profile(userId: 1, email: 'a@b.c')]),
+        ),
+      ],
+    );
     addTearDown(container.dispose);
 
     // Juan picks two exercises in the library and walks away without starting.
@@ -293,8 +325,11 @@ void main() {
 
     await container.read(authControllerProvider.notifier).signOut();
 
-    expect(container.read(workoutDraftProvider), isEmpty,
-        reason: "the next account was handed the previous account's picks");
+    expect(
+      container.read(workoutDraftProvider),
+      isEmpty,
+      reason: "the next account was handed the previous account's picks",
+    );
   });
 
   // The setup screen's split chip landed after the caches above, and brought
@@ -303,17 +338,19 @@ void main() {
   // this list, the next account's setup screen would open on a split someone
   // else picked, the same way an uncleared draft opened on someone else's
   // exercises.
-  test("signing out drops the previous account's chosen split style",
-      () async {
+  test("signing out drops the previous account's chosen split style", () async {
     final tokens = TokenStore(backing: InMemorySecureStore());
     await tokens.write('token-for-juan');
 
-    final container = ProviderContainer(overrides: [
-      tokenStoreProvider.overrideWithValue(tokens),
-      authRepositoryProvider.overrideWithValue(FakeAuthRepository(tokens)),
-      profileRepositoryProvider.overrideWithValue(
-          SequenceProfileRepository([_profile(userId: 1, email: 'a@b.c')])),
-    ]);
+    final container = ProviderContainer(
+      overrides: [
+        tokenStoreProvider.overrideWithValue(tokens),
+        authRepositoryProvider.overrideWithValue(FakeAuthRepository(tokens)),
+        profileRepositoryProvider.overrideWithValue(
+          SequenceProfileRepository([_profile(userId: 1, email: 'a@b.c')]),
+        ),
+      ],
+    );
     addTearDown(container.dispose);
 
     container.read(chosenSplitStyleProvider.notifier).set('push_pull_legs');
@@ -321,8 +358,11 @@ void main() {
 
     await container.read(authControllerProvider.notifier).signOut();
 
-    expect(container.read(chosenSplitStyleProvider), splitStyles.first.value,
-        reason: "the next account was handed the previous account's split choice");
+    expect(
+      container.read(chosenSplitStyleProvider),
+      splitStyles.first.value,
+      reason: "the next account was handed the previous account's split choice",
+    );
   });
 
   test("signing out drops the previous account's catalogue filter", () async {
@@ -332,12 +372,15 @@ void main() {
     final tokens = TokenStore(backing: InMemorySecureStore());
     await tokens.write('token-for-juan');
 
-    final container = ProviderContainer(overrides: [
-      tokenStoreProvider.overrideWithValue(tokens),
-      authRepositoryProvider.overrideWithValue(FakeAuthRepository(tokens)),
-      profileRepositoryProvider.overrideWithValue(
-          SequenceProfileRepository([_profile(userId: 1, email: 'a@b.c')])),
-    ]);
+    final container = ProviderContainer(
+      overrides: [
+        tokenStoreProvider.overrideWithValue(tokens),
+        authRepositoryProvider.overrideWithValue(FakeAuthRepository(tokens)),
+        profileRepositoryProvider.overrideWithValue(
+          SequenceProfileRepository([_profile(userId: 1, email: 'a@b.c')]),
+        ),
+      ],
+    );
     addTearDown(container.dispose);
 
     container.read(selectedFiltersProvider.notifier).setSearch('bench');
@@ -346,21 +389,30 @@ void main() {
     await container.read(authControllerProvider.notifier).signOut();
 
     final filters = container.read(selectedFiltersProvider);
-    expect(filters.search, isNull,
-        reason: "the next account inherited a search term");
-    expect(filters.equipment, isNull,
-        reason: "the next account inherited an equipment filter");
+    expect(
+      filters.search,
+      isNull,
+      reason: "the next account inherited a search term",
+    );
+    expect(
+      filters.equipment,
+      isNull,
+      reason: "the next account inherited an equipment filter",
+    );
   });
 
   test('signing out clears the stored token', () async {
     final tokens = TokenStore(backing: InMemorySecureStore());
     await tokens.write('token-for-juan');
-    final container = ProviderContainer(overrides: [
-      tokenStoreProvider.overrideWithValue(tokens),
-      authRepositoryProvider.overrideWithValue(FakeAuthRepository(tokens)),
-      profileRepositoryProvider
-          .overrideWithValue(SequenceProfileRepository([_profile(userId: 1, email: 'a@b.c')])),
-    ]);
+    final container = ProviderContainer(
+      overrides: [
+        tokenStoreProvider.overrideWithValue(tokens),
+        authRepositoryProvider.overrideWithValue(FakeAuthRepository(tokens)),
+        profileRepositoryProvider.overrideWithValue(
+          SequenceProfileRepository([_profile(userId: 1, email: 'a@b.c')]),
+        ),
+      ],
+    );
     addTearDown(container.dispose);
 
     await container.read(authControllerProvider.notifier).signOut();

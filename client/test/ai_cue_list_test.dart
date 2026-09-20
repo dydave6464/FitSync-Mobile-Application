@@ -6,16 +6,22 @@ import 'package:fitsync/features/exercises/domain/exercise_cues.dart';
 import 'package:fitsync/features/exercises/presentation/widgets/ai_cue_list.dart';
 
 Widget _host(Widget child) => MaterialApp(
-      theme: fsLightTheme(),
-      home: Scaffold(body: SingleChildScrollView(child: child)),
-    );
+  theme: fsLightTheme(),
+  home: Scaffold(body: SingleChildScrollView(child: child)),
+);
 
 const _ai = ExerciseCues(
   source: 'ai',
   injuryName: 'Shoulder',
   cues: [
-    Cue(title: 'Pull to the navel', detail: 'Keeps the shoulder out of the arc.'),
-    Cue(title: 'Stop at the ribs', detail: 'Past that the joint takes the load.'),
+    Cue(
+      title: 'Pull to the navel',
+      detail: 'Keeps the shoulder out of the arc.',
+    ),
+    Cue(
+      title: 'Stop at the ribs',
+      detail: 'Past that the joint takes the load.',
+    ),
   ],
 );
 
@@ -30,7 +36,11 @@ void main() {
     test('reads the endpoint envelope', () {
       final cues = ExerciseCues.fromJson({
         'source': 'ai',
-        'injury': {'injuryId': 1, 'name': 'Shoulder', 'reason': 'shoulder_load'},
+        'injury': {
+          'injuryId': 1,
+          'name': 'Shoulder',
+          'reason': 'shoulder_load',
+        },
         'cues': [
           {'title': 'Pull to the navel', 'detail': 'Keeps it out of the arc.'},
         ],
@@ -98,10 +108,16 @@ void main() {
     expect(find.text('1'), findsOneWidget);
   });
 
-  testWidgets('an exercise with no cues renders nothing at all', (tester) async {
-    await tester.pumpWidget(_host(const AiCueList(
-      cues: ExerciseCues(source: 'catalogue', injuryName: null, cues: []),
-    )));
+  testWidgets('an exercise with no cues renders nothing at all', (
+    tester,
+  ) async {
+    await tester.pumpWidget(
+      _host(
+        const AiCueList(
+          cues: ExerciseCues(source: 'catalogue', injuryName: null, cues: []),
+        ),
+      ),
+    );
 
     expect(find.text('How to perform'), findsNothing);
     expect(find.text('AI coaching cues'), findsNothing);

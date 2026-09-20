@@ -3,7 +3,8 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../../core/theme.dart';
 import '../../../../core/widgets/fs_kit.dart';
-import '../../../exercises/presentation/exercise_list_screen.dart' show describeError;
+import '../../../exercises/presentation/exercise_list_screen.dart'
+    show describeError;
 import '../../../profile/domain/profile.dart';
 import '../../../profile/presentation/providers.dart';
 
@@ -72,7 +73,8 @@ class InjuriesStep extends ConsumerWidget {
   /// rather than dropped — migration 007 defaults `region_group` to 'other',
   /// and a region the client has never heard of still has to be selectable.
   List<({String group, List<InjuryOption> options})> _grouped(
-      List<InjuryOption> options) {
+    List<InjuryOption> options,
+  ) {
     final byGroup = <String, List<InjuryOption>>{};
     for (final option in options) {
       byGroup.putIfAbsent(option.regionGroup, () => []).add(option);
@@ -205,10 +207,7 @@ class _RegionCard extends StatelessWidget {
             const SizedBox(height: 12),
             Row(
               children: [
-                Text(
-                  'Side',
-                  style: TextStyle(fontSize: 11, color: t.text3),
-                ),
+                Text('Side', style: TextStyle(fontSize: 11, color: t.text3)),
                 const SizedBox(width: 10),
                 for (final side in _sides) ...[
                   FsChip(

@@ -8,7 +8,8 @@ class BodyWeightPoint {
   final String loggedOn;
   final double weightKg;
 
-  factory BodyWeightPoint.fromJson(Map<String, dynamic> json) => BodyWeightPoint(
+  factory BodyWeightPoint.fromJson(Map<String, dynamic> json) =>
+      BodyWeightPoint(
         loggedOn: json['loggedOn'] as String,
         weightKg: (json['weightKg'] as num).toDouble(),
       );
@@ -49,7 +50,8 @@ class BodyWeightSeries {
   /// `'kg'` or `'lb'` — display only. Everything above is kilograms.
   final String unit;
 
-  factory BodyWeightSeries.fromJson(Map<String, dynamic> json) => BodyWeightSeries(
+  factory BodyWeightSeries.fromJson(Map<String, dynamic> json) =>
+      BodyWeightSeries(
         widened: json['widened'] as bool? ?? false,
         points: [
           for (final p in (json['points'] as List<dynamic>? ?? const []))
@@ -57,7 +59,9 @@ class BodyWeightSeries {
         ],
         reference: json['reference'] == null
             ? null
-            : BodyWeightReference.fromJson(json['reference'] as Map<String, dynamic>),
+            : BodyWeightReference.fromJson(
+                json['reference'] as Map<String, dynamic>,
+              ),
         unit: json['unit'] as String? ?? 'kg',
       );
 }

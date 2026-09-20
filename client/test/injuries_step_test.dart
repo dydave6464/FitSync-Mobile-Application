@@ -12,16 +12,29 @@ import 'package:fitsync/features/profile/presentation/providers.dart';
 /// design asks for has to be imposed by the step.
 const _options = [
   InjuryOption(
-      injuryId: 1, name: 'Shoulder', isLateral: true, regionGroup: 'upper_body'),
+    injuryId: 1,
+    name: 'Shoulder',
+    isLateral: true,
+    regionGroup: 'upper_body',
+  ),
   InjuryOption(
-      injuryId: 2, name: 'Elbow', isLateral: true, regionGroup: 'upper_body'),
+    injuryId: 2,
+    name: 'Elbow',
+    isLateral: true,
+    regionGroup: 'upper_body',
+  ),
   InjuryOption(
-      injuryId: 7,
-      name: 'Lower back',
-      isLateral: false,
-      regionGroup: 'back_core'),
+    injuryId: 7,
+    name: 'Lower back',
+    isLateral: false,
+    regionGroup: 'back_core',
+  ),
   InjuryOption(
-      injuryId: 13, name: 'Knee', isLateral: true, regionGroup: 'lower_body'),
+    injuryId: 13,
+    name: 'Knee',
+    isLateral: true,
+    regionGroup: 'lower_body',
+  ),
 ];
 
 /// The step is a controlled widget: it reports a new value and renders
@@ -42,12 +55,12 @@ class _HostState extends State<_Host> {
 
   @override
   Widget build(BuildContext context) => InjuriesStep(
-        value: _value,
-        onChanged: (next) {
-          widget.sink.add(next);
-          setState(() => _value = next);
-        },
-      );
+    value: _value,
+    onChanged: (next) {
+      widget.sink.add(next);
+      setState(() => _value = next);
+    },
+  );
 }
 
 /// Returns the list of every value the step emitted, newest last.
@@ -57,18 +70,18 @@ Future<List<List<SelectedInjury>>> _pump(
   List<InjuryOption> options = _options,
 }) async {
   final sink = <List<SelectedInjury>>[];
-  await tester.pumpWidget(ProviderScope(
-    overrides: [
-      injuryOptionsProvider.overrideWith((ref) async => options),
-    ],
-    child: MaterialApp(
-      home: Scaffold(
-        body: SingleChildScrollView(
-          child: _Host(initial: value, sink: sink),
+  await tester.pumpWidget(
+    ProviderScope(
+      overrides: [injuryOptionsProvider.overrideWith((ref) async => options)],
+      child: MaterialApp(
+        home: Scaffold(
+          body: SingleChildScrollView(
+            child: _Host(initial: value, sink: sink),
+          ),
         ),
       ),
     ),
-  ));
+  );
   await tester.pumpAndSettle();
   return sink;
 }
@@ -81,8 +94,9 @@ Future<void> _tapKey(WidgetTester tester, Key key) async {
 }
 
 void main() {
-  testWidgets('groups the regions and orders the groups for reading',
-      (tester) async {
+  testWidgets('groups the regions and orders the groups for reading', (
+    tester,
+  ) async {
     await _pump(tester);
 
     // Group headings render through the eyebrow style, which uppercases.
@@ -97,8 +111,11 @@ void main() {
   testWidgets('a lateral region offers a side once selected', (tester) async {
     await _pump(tester);
 
-    expect(find.byKey(const Key('side.1.left')), findsNothing,
-        reason: 'the side control belongs to a selected region only');
+    expect(
+      find.byKey(const Key('side.1.left')),
+      findsNothing,
+      reason: 'the side control belongs to a selected region only',
+    );
 
     await _tapKey(tester, const Key('injury.1'));
 
@@ -129,7 +146,10 @@ void main() {
   });
 
   testWidgets('choosing a side emits it', (tester) async {
-    final emitted = await _pump(tester, value: const [SelectedInjury(injuryId: 1)]);
+    final emitted = await _pump(
+      tester,
+      value: const [SelectedInjury(injuryId: 1)],
+    );
 
     await _tapKey(tester, const Key('side.1.both'));
 
@@ -138,10 +158,13 @@ void main() {
   });
 
   testWidgets('deselecting a region drops it and its side', (tester) async {
-    final emitted = await _pump(tester, value: const [
-      SelectedInjury(injuryId: 1, side: 'left'),
-      SelectedInjury(injuryId: 13, side: 'right'),
-    ]);
+    final emitted = await _pump(
+      tester,
+      value: const [
+        SelectedInjury(injuryId: 1, side: 'left'),
+        SelectedInjury(injuryId: 13, side: 'right'),
+      ],
+    );
 
     await _tapKey(tester, const Key('injury.1'));
 
@@ -151,7 +174,10 @@ void main() {
   });
 
   testWidgets('no injuries at all is a valid answer, not null', (tester) async {
-    final emitted = await _pump(tester, value: const [SelectedInjury(injuryId: 1)]);
+    final emitted = await _pump(
+      tester,
+      value: const [SelectedInjury(injuryId: 1)],
+    );
 
     await _tapKey(tester, const Key('injury.1'));
 
@@ -160,15 +186,24 @@ void main() {
     expect(emitted.last, isEmpty);
   });
 
-  testWidgets('renders a region group it has never seen rather than dropping it',
-      (tester) async {
-    await _pump(tester, options: const [
-      InjuryOption(
-          injuryId: 99, name: 'Jaw', isLateral: false, regionGroup: 'other'),
-    ]);
+  testWidgets(
+    'renders a region group it has never seen rather than dropping it',
+    (tester) async {
+      await _pump(
+        tester,
+        options: const [
+          InjuryOption(
+            injuryId: 99,
+            name: 'Jaw',
+            isLateral: false,
+            regionGroup: 'other',
+          ),
+        ],
+      );
 
-    expect(find.byKey(const Key('injury.99')), findsOneWidget);
-  });
+      expect(find.byKey(const Key('injury.99')), findsOneWidget);
+    },
+  );
 
   testWidgets('says what actually happens to the answers', (tester) async {
     await _pump(tester);

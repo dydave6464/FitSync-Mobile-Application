@@ -15,13 +15,23 @@ const _plan = WorkoutPlan(
   source: 'custom',
   exercises: [
     PlanExercise(
-      planExerciseId: 1, exerciseId: 101, name: 'Bench press',
-      muscleGroup: 'chest', orderNo: 1, targetSets: 3, targetReps: '8-12',
+      planExerciseId: 1,
+      exerciseId: 101,
+      name: 'Bench press',
+      muscleGroup: 'chest',
+      orderNo: 1,
+      targetSets: 3,
+      targetReps: '8-12',
       dayNo: 1,
     ),
     PlanExercise(
-      planExerciseId: 2, exerciseId: 202, name: 'Barbell row',
-      muscleGroup: 'back', orderNo: 1, targetSets: 3, targetReps: '8-12',
+      planExerciseId: 2,
+      exerciseId: 202,
+      name: 'Barbell row',
+      muscleGroup: 'back',
+      orderNo: 1,
+      targetSets: 3,
+      targetReps: '8-12',
       dayNo: 2,
     ),
   ],
@@ -35,19 +45,21 @@ typedef _Opened = ({AddToPlanChoice? Function() chosen});
 
 Future<_Opened> _open(WidgetTester tester) async {
   AddToPlanChoice? chosen;
-  await tester.pumpWidget(MaterialApp(
-    theme: fsLightTheme(),
-    home: Builder(
-      builder: (context) => Scaffold(
-        body: ElevatedButton(
-          onPressed: () async {
-            chosen = await showAddToPlanSheet(context, _plan);
-          },
-          child: const Text('open'),
+  await tester.pumpWidget(
+    MaterialApp(
+      theme: fsLightTheme(),
+      home: Builder(
+        builder: (context) => Scaffold(
+          body: ElevatedButton(
+            onPressed: () async {
+              chosen = await showAddToPlanSheet(context, _plan);
+            },
+            child: const Text('open'),
+          ),
         ),
       ),
     ),
-  ));
+  );
   await tester.tap(find.text('open'));
   await tester.pumpAndSettle();
   return (chosen: () => chosen);
@@ -90,8 +102,9 @@ void main() {
     expect(opened.chosen(), (cancelled: false, dayNo: 2));
   });
 
-  testWidgets('dismissing the sheet is none of these, not a new day',
-      (tester) async {
+  testWidgets('dismissing the sheet is none of these, not a new day', (
+    tester,
+  ) async {
     // "As a new day" is a row the user can tap. Swiping the sheet away or
     // tapping outside it conventionally means "none of these" -- and a day
     // added by accident cannot be removed again: pruning a custom plan is

@@ -8,14 +8,16 @@ import 'package:fitsync/features/onboarding/presentation/onboarding_scaffold.dar
 void main() {
   group('OnboardingScaffold', () {
     testWidgets('shows progress for the current step', (tester) async {
-      await tester.pumpWidget(MaterialApp(
-        home: OnboardingScaffold(
-          step: 2,
-          total: 4,
-          onContinue: () {},
-          child: const Text('content'),
+      await tester.pumpWidget(
+        MaterialApp(
+          home: OnboardingScaffold(
+            step: 2,
+            total: 4,
+            onContinue: () {},
+            child: const Text('content'),
+          ),
         ),
-      ));
+      );
 
       // The design uses one bar per step rather than a continuous track, so
       // progress is "how many bars are filled", not a fraction.
@@ -28,14 +30,16 @@ void main() {
 
     testWidgets('Continue calls onContinue', (tester) async {
       var continued = 0;
-      await tester.pumpWidget(MaterialApp(
-        home: OnboardingScaffold(
-          step: 1,
-          total: 4,
-          onContinue: () => continued++,
-          child: const Text('content'),
+      await tester.pumpWidget(
+        MaterialApp(
+          home: OnboardingScaffold(
+            step: 1,
+            total: 4,
+            onContinue: () => continued++,
+            child: const Text('content'),
+          ),
         ),
-      ));
+      );
 
       await tester.tap(find.byKey(const Key('continue')));
       await tester.pumpAndSettle();
@@ -45,15 +49,17 @@ void main() {
 
     testWidgets('Skip calls onSkip when one is given', (tester) async {
       var skipped = 0;
-      await tester.pumpWidget(MaterialApp(
-        home: OnboardingScaffold(
-          step: 1,
-          total: 4,
-          onContinue: () {},
-          onSkip: () => skipped++,
-          child: const Text('content'),
+      await tester.pumpWidget(
+        MaterialApp(
+          home: OnboardingScaffold(
+            step: 1,
+            total: 4,
+            onContinue: () {},
+            onSkip: () => skipped++,
+            child: const Text('content'),
+          ),
         ),
-      ));
+      );
 
       await tester.tap(find.byKey(const Key('skip')));
       await tester.pumpAndSettle();
@@ -63,15 +69,17 @@ void main() {
 
     testWidgets('back calls onBack when one is given', (tester) async {
       var went = 0;
-      await tester.pumpWidget(MaterialApp(
-        home: OnboardingScaffold(
-          step: 2,
-          total: 4,
-          onContinue: () {},
-          onBack: () => went++,
-          child: const Text('content'),
+      await tester.pumpWidget(
+        MaterialApp(
+          home: OnboardingScaffold(
+            step: 2,
+            total: 4,
+            onContinue: () {},
+            onBack: () => went++,
+            child: const Text('content'),
+          ),
         ),
-      ));
+      );
 
       await tester.tap(find.byKey(const Key('back')));
       await tester.pumpAndSettle();
@@ -80,14 +88,16 @@ void main() {
     });
 
     testWidgets('offers no back control on the first step', (tester) async {
-      await tester.pumpWidget(MaterialApp(
-        home: OnboardingScaffold(
-          step: 1,
-          total: 4,
-          onContinue: () {},
-          child: const Text('content'),
+      await tester.pumpWidget(
+        MaterialApp(
+          home: OnboardingScaffold(
+            step: 1,
+            total: 4,
+            onContinue: () {},
+            child: const Text('content'),
+          ),
         ),
-      ));
+      );
 
       expect(find.byKey(const Key('back')), findsNothing);
     });
@@ -96,13 +106,15 @@ void main() {
   group('EditScaffold', () {
     testWidgets('shows its title and saves', (tester) async {
       var saved = 0;
-      await tester.pumpWidget(MaterialApp(
-        home: EditScaffold(
-          title: 'Your goal',
-          onSave: () => saved++,
-          child: const Text('content'),
+      await tester.pumpWidget(
+        MaterialApp(
+          home: EditScaffold(
+            title: 'Your goal',
+            onSave: () => saved++,
+            child: const Text('content'),
+          ),
         ),
-      ));
+      );
 
       expect(find.text('Your goal'), findsOneWidget);
       expect(find.text('content'), findsOneWidget);
@@ -114,13 +126,15 @@ void main() {
     });
 
     testWidgets('shows no wizard chrome', (tester) async {
-      await tester.pumpWidget(MaterialApp(
-        home: EditScaffold(
-          title: 'Your goal',
-          onSave: () {},
-          child: const Text('content'),
+      await tester.pumpWidget(
+        MaterialApp(
+          home: EditScaffold(
+            title: 'Your goal',
+            onSave: () {},
+            child: const Text('content'),
+          ),
         ),
-      ));
+      );
 
       // This is what makes it a different wrapper rather than the same one
       // with different labels: editing one answer from Settings is not a

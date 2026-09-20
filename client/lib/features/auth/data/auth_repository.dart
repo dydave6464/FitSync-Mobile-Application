@@ -19,8 +19,10 @@ class AuthRepository {
     return AuthUser.fromJson(data['user'] as Map<String, dynamic>);
   }
 
-  Future<AuthUser> login(String email, String password) =>
-      _authenticate('/api/v1/auth/login', {'email': email, 'password': password});
+  Future<AuthUser> login(String email, String password) => _authenticate(
+    '/api/v1/auth/login',
+    {'email': email, 'password': password},
+  );
 
   /// The account is created, but cannot sign in until the address is
   /// verified — so there is no session to hand back, only confirmation that
@@ -30,8 +32,11 @@ class AuthRepository {
     required String password,
     required String fullName,
   }) async {
-    await _api.postJson('/api/v1/auth/register',
-        {'email': email, 'password': password, 'fullName': fullName});
+    await _api.postJson('/api/v1/auth/register', {
+      'email': email,
+      'password': password,
+      'fullName': fullName,
+    });
   }
 
   Future<AuthUser> signInWithGoogle(String idToken) =>
@@ -48,7 +53,9 @@ class AuthRepository {
   /// used to learn who has an account. Callers must not turn a failure here
   /// into a different message than a success — see `ForgotPasswordScreen`.
   Future<void> requestPasswordReset(String email) async {
-    await _api.postJson('/api/v1/auth/password-reset/request', {'email': email});
+    await _api.postJson('/api/v1/auth/password-reset/request', {
+      'email': email,
+    });
   }
 
   /// Takes a password rather than a token: the account this resends to has
@@ -57,7 +64,9 @@ class AuthRepository {
     required String email,
     required String password,
   }) async {
-    await _api.postJson('/api/v1/auth/verify-email/request',
-        {'email': email, 'password': password});
+    await _api.postJson('/api/v1/auth/verify-email/request', {
+      'email': email,
+      'password': password,
+    });
   }
 }

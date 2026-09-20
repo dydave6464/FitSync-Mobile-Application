@@ -27,7 +27,6 @@ Future<void> _pump(WidgetTester tester, {VoidCallback? onFabTap}) async {
   );
 }
 
-
 /// The same bar, pumped at a real phone's viewport and bottom inset rather
 /// than the harness default of 800x600 with a zero inset. The inset is the
 /// one axis nothing in this repo varies, and it is the axis the bar's own
@@ -121,7 +120,8 @@ void main() {
       expect(
         tester.getSize(find.byType(FsNav)).height,
         59 + inset,
-        reason: 'the fab bar must reserve the inset, not swallow it (inset $inset)',
+        reason:
+            'the fab bar must reserve the inset, not swallow it (inset $inset)',
       );
     }
   });
@@ -150,8 +150,9 @@ void main() {
     }
   });
 
-  testWidgets('the fab centres on the tab cell, level with the row',
-      (tester) async {
+  testWidgets('the fab centres on the tab cell, level with the row', (
+    tester,
+  ) async {
     // Centred on the whole tab CELL -- icon over label -- not on the icon
     // alone. Centring on the icon line is what two rounds of device feedback
     // called out: it puts the circle's centre 8px above the block the tabs
@@ -188,20 +189,25 @@ void main() {
       );
       expect(decorated, findsOneWidget, reason: 'the bar is one decorated box');
 
-      expect(fab.top, greaterThanOrEqualTo(bar.top),
-          reason: 'the fab is outside the hit-test box (inset $inset)');
+      expect(
+        fab.top,
+        greaterThanOrEqualTo(bar.top),
+        reason: 'the fab is outside the hit-test box (inset $inset)',
+      );
       expect(
         fab.top,
         greaterThanOrEqualTo(tester.getRect(decorated).top),
-        reason: 'the circle must sit inside the bar, not over its edge '
+        reason:
+            'the circle must sit inside the bar, not over its edge '
             '(inset $inset)',
       );
       expect(fab.bottom, lessThanOrEqualTo(bar.bottom));
     }
   });
 
-  testWidgets('the fab casts the accent drop shadow the design gives it',
-      (tester) async {
+  testWidgets('the fab casts the accent drop shadow the design gives it', (
+    tester,
+  ) async {
     // styles.css puts a glow under the raised circle, the same one it puts
     // under .btn.primary. A bare Material has none: the circle reads as
     // painted onto the bar rather than lifted off it, which is the whole
@@ -210,15 +216,21 @@ void main() {
 
     final shadowed = tester
         .widgetList<DecoratedBox>(
-          find.descendant(of: find.byType(FsNav), matching: find.byType(DecoratedBox)),
+          find.descendant(
+            of: find.byType(FsNav),
+            matching: find.byType(DecoratedBox),
+          ),
         )
         .map((d) => d.decoration)
         .whereType<BoxDecoration>()
         .where((d) => d.boxShadow?.isNotEmpty ?? false)
         .toList();
 
-    expect(shadowed, hasLength(1),
-        reason: 'the raised fab is the one thing in this bar that lifts off it');
+    expect(
+      shadowed,
+      hasLength(1),
+      reason: 'the raised fab is the one thing in this bar that lifts off it',
+    );
     // Round, not square: a rectangular glow under a circle is worse than none.
     expect(shadowed.single.shape, BoxShape.circle);
 

@@ -24,8 +24,9 @@ class PluginGoogleSignInGateway implements GoogleSignInGateway {
   /// token returned here is minted for `serverClientId`, and the server
   /// verifies `audience: GOOGLE_CLIENT_ID` — so the two must be the same web
   /// client id or every token is rejected as having the wrong audience.
-  static const _defaultServerClientId =
-      String.fromEnvironment('GOOGLE_SERVER_CLIENT_ID');
+  static const _defaultServerClientId = String.fromEnvironment(
+    'GOOGLE_SERVER_CLIENT_ID',
+  );
 
   final String serverClientId;
 

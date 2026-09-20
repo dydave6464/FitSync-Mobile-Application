@@ -9,10 +9,18 @@ import 'package:fitsync/core/api_client.dart';
 import 'package:fitsync/core/api_exception.dart';
 import 'package:fitsync/core/token_store.dart';
 
-ApiClient clientReturning(String body, {int status = 200, void Function(http.Request)? onRequest}) {
+ApiClient clientReturning(
+  String body, {
+  int status = 200,
+  void Function(http.Request)? onRequest,
+}) {
   final mock = MockClient((request) async {
     onRequest?.call(request);
-    return http.Response(body, status, headers: {'content-type': 'application/json'});
+    return http.Response(
+      body,
+      status,
+      headers: {'content-type': 'application/json'},
+    );
   });
   // An in-memory token store, because the real one reaches a platform channel
   // that has no binding under `flutter test`.
@@ -25,45 +33,69 @@ ApiClient clientReturning(String body, {int status = 200, void Function(http.Req
 
 void main() {
   test('unwraps the data envelope', () async {
-    final api = clientReturning(jsonEncode({'data': {'total': 3}}));
+    final api = clientReturning(
+      jsonEncode({
+        'data': {'total': 3},
+      }),
+    );
     final data = await api.getJson('/api/v1/exercises');
     expect(data['total'], 3);
   });
 
-  test('maps the error envelope to an ApiException carrying the server code', () async {
-    final api = clientReturning(
-      jsonEncode({'error': {'code': 'INVALID_QUERY_PARAM', 'message': 'limit must not exceed 50.'}}),
-      status: 400,
-    );
-    expect(
-      () => api.getJson('/api/v1/exercises'),
-      throwsA(isA<ApiException>()
-          .having((e) => e.code, 'code', 'INVALID_QUERY_PARAM')
-          .having((e) => e.message, 'message', contains('50'))),
-    );
-  });
+  test(
+    'maps the error envelope to an ApiException carrying the server code',
+    () async {
+      final api = clientReturning(
+        jsonEncode({
+          'error': {
+            'code': 'INVALID_QUERY_PARAM',
+            'message': 'limit must not exceed 50.',
+          },
+        }),
+        status: 400,
+      );
+      expect(
+        () => api.getJson('/api/v1/exercises'),
+        throwsA(
+          isA<ApiException>()
+              .having((e) => e.code, 'code', 'INVALID_QUERY_PARAM')
+              .having((e) => e.message, 'message', contains('50')),
+        ),
+      );
+    },
+  );
 
-  test('a non-JSON body is reported as INVALID_RESPONSE, not a parse crash', () async {
-    final api = clientReturning('<html>502 Bad Gateway</html>', status: 502);
-    expect(
-      () => api.getJson('/api/v1/exercises'),
-      throwsA(isA<ApiException>().having((e) => e.code, 'code', 'INVALID_RESPONSE')),
-    );
-  });
+  test(
+    'a non-JSON body is reported as INVALID_RESPONSE, not a parse crash',
+    () async {
+      final api = clientReturning('<html>502 Bad Gateway</html>', status: 502);
+      expect(
+        () => api.getJson('/api/v1/exercises'),
+        throwsA(
+          isA<ApiException>().having((e) => e.code, 'code', 'INVALID_RESPONSE'),
+        ),
+      );
+    },
+  );
 
-  test('a transport failure is reported as NETWORK_ERROR with a usable hint', () async {
-    final api = ApiClient(
-      client: MockClient((_) async => throw const SocketExceptionStub()),
-      baseUrl: 'http://test.local',
-      tokens: TokenStore(backing: InMemorySecureStore()),
-    );
-    expect(
-      () => api.getJson('/api/v1/exercises'),
-      throwsA(isA<ApiException>()
-          .having((e) => e.code, 'code', 'NETWORK_ERROR')
-          .having((e) => e.message, 'message', contains('adb reverse'))),
-    );
-  });
+  test(
+    'a transport failure is reported as NETWORK_ERROR with a usable hint',
+    () async {
+      final api = ApiClient(
+        client: MockClient((_) async => throw const SocketExceptionStub()),
+        baseUrl: 'http://test.local',
+        tokens: TokenStore(backing: InMemorySecureStore()),
+      );
+      expect(
+        () => api.getJson('/api/v1/exercises'),
+        throwsA(
+          isA<ApiException>()
+              .having((e) => e.code, 'code', 'NETWORK_ERROR')
+              .having((e) => e.message, 'message', contains('adb reverse')),
+        ),
+      );
+    },
+  );
 
   test('null and empty query values are omitted from the URL', () async {
     Uri? seen;
@@ -71,12 +103,15 @@ void main() {
       jsonEncode({'data': {}}),
       onRequest: (r) => seen = r.url,
     );
-    await api.getJson('/api/v1/exercises', query: {
-      'muscleGroup': 'abs',
-      'equipment': null,
-      'page': '1',
-      'blank': '',
-    });
+    await api.getJson(
+      '/api/v1/exercises',
+      query: {
+        'muscleGroup': 'abs',
+        'equipment': null,
+        'page': '1',
+        'blank': '',
+      },
+    );
     expect(seen!.queryParameters, {'muscleGroup': 'abs', 'page': '1'});
   });
 
@@ -84,7 +119,9 @@ void main() {
     final api = clientReturning(jsonEncode({'unexpected': true}));
     expect(
       () => api.getJson('/api/v1/exercises'),
-      throwsA(isA<ApiException>().having((e) => e.code, 'code', 'INVALID_RESPONSE')),
+      throwsA(
+        isA<ApiException>().having((e) => e.code, 'code', 'INVALID_RESPONSE'),
+      ),
     );
   });
 
@@ -113,7 +150,11 @@ void main() {
       }),
     );
     await client.getJson('/api/v1/exercises');
-    expect(seen, isNull, reason: 'an anonymous request must not send an empty header');
+    expect(
+      seen,
+      isNull,
+      reason: 'an anonymous request must not send an empty header',
+    );
   });
 
   test('postJson sends a JSON body and unwraps the envelope', () async {
@@ -126,7 +167,9 @@ void main() {
         return http.Response('{"data":{"token":"t"}}', 201);
       }),
     );
-    final data = await client.postJson('/api/v1/auth/login', {'email': 'a@b.com'});
+    final data = await client.postJson('/api/v1/auth/login', {
+      'email': 'a@b.com',
+    });
     expect(jsonDecode(body!), {'email': 'a@b.com'});
     expect(data['token'], 't');
   });
@@ -134,8 +177,12 @@ void main() {
   test('a write that fails surfaces the server code', () async {
     final client = ApiClient(
       tokens: TokenStore(backing: InMemorySecureStore()),
-      client: MockClient((_) async => http.Response(
-          '{"error":{"code":"EMAIL_TAKEN","message":"That email is already registered."}}', 409)),
+      client: MockClient(
+        (_) async => http.Response(
+          '{"error":{"code":"EMAIL_TAKEN","message":"That email is already registered."}}',
+          409,
+        ),
+      ),
     );
     await expectLater(
       client.postJson('/api/v1/auth/register', const {}),
@@ -150,7 +197,9 @@ void main() {
     );
     await expectLater(
       client.postJson('/api/v1/auth/login', const {}),
-      throwsA(isA<ApiException>().having((e) => e.code, 'code', 'NETWORK_ERROR')),
+      throwsA(
+        isA<ApiException>().having((e) => e.code, 'code', 'NETWORK_ERROR'),
+      ),
     );
   });
 }

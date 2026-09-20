@@ -112,26 +112,25 @@ class FsTokens extends ThemeExtension<FsTokens> {
     Color? red,
     Color? blue,
     Color? violet,
-  }) =>
-      FsTokens(
-        bg: bg ?? this.bg,
-        surface: surface ?? this.surface,
-        surface2: surface2 ?? this.surface2,
-        elev: elev ?? this.elev,
-        line: line ?? this.line,
-        line2: line2 ?? this.line2,
-        text: text ?? this.text,
-        text2: text2 ?? this.text2,
-        text3: text3 ?? this.text3,
-        accent: accent ?? this.accent,
-        accentDim: accentDim ?? this.accentDim,
-        accentLine: accentLine ?? this.accentLine,
-        onAccent: onAccent ?? this.onAccent,
-        amber: amber ?? this.amber,
-        red: red ?? this.red,
-        blue: blue ?? this.blue,
-        violet: violet ?? this.violet,
-      );
+  }) => FsTokens(
+    bg: bg ?? this.bg,
+    surface: surface ?? this.surface,
+    surface2: surface2 ?? this.surface2,
+    elev: elev ?? this.elev,
+    line: line ?? this.line,
+    line2: line2 ?? this.line2,
+    text: text ?? this.text,
+    text2: text2 ?? this.text2,
+    text3: text3 ?? this.text3,
+    accent: accent ?? this.accent,
+    accentDim: accentDim ?? this.accentDim,
+    accentLine: accentLine ?? this.accentLine,
+    onAccent: onAccent ?? this.onAccent,
+    amber: amber ?? this.amber,
+    red: red ?? this.red,
+    blue: blue ?? this.blue,
+    violet: violet ?? this.violet,
+  );
 
   @override
   FsTokens lerp(covariant FsTokens? other, double t) {
@@ -184,59 +183,59 @@ extension FsThemeX on BuildContext {
 }
 
 TextTheme _textTheme(FsTokens t) => TextTheme(
-      // .h1 — 25px / 700 / -0.035em
-      headlineSmall: TextStyle(
-        fontSize: 25,
-        fontWeight: FontWeight.w700,
-        letterSpacing: -0.875,
-        height: 1.05,
-        color: t.text,
-      ),
-      // .h2 — 19px / 700 / -0.03em
-      titleLarge: TextStyle(
-        fontSize: 19,
-        fontWeight: FontWeight.w700,
-        letterSpacing: -0.57,
-        color: t.text,
-      ),
-      // .h3 — 15px / 600 / -0.02em
-      titleMedium: TextStyle(
-        fontSize: 15,
-        fontWeight: FontWeight.w600,
-        letterSpacing: -0.3,
-        color: t.text,
-      ),
-      // body — 13px / 600
-      bodyMedium: TextStyle(fontSize: 13, color: t.text),
-      // .t-sm — 12.5px
-      bodySmall: TextStyle(fontSize: 12.5, color: t.text2),
-      // .btn — 15px / 700 / -0.01em
-      labelLarge: TextStyle(
-        fontSize: 15,
-        fontWeight: FontWeight.w700,
-        letterSpacing: -0.15,
-        color: t.text,
-      ),
-    );
+  // .h1 — 25px / 700 / -0.035em
+  headlineSmall: TextStyle(
+    fontSize: 25,
+    fontWeight: FontWeight.w700,
+    letterSpacing: -0.875,
+    height: 1.05,
+    color: t.text,
+  ),
+  // .h2 — 19px / 700 / -0.03em
+  titleLarge: TextStyle(
+    fontSize: 19,
+    fontWeight: FontWeight.w700,
+    letterSpacing: -0.57,
+    color: t.text,
+  ),
+  // .h3 — 15px / 600 / -0.02em
+  titleMedium: TextStyle(
+    fontSize: 15,
+    fontWeight: FontWeight.w600,
+    letterSpacing: -0.3,
+    color: t.text,
+  ),
+  // body — 13px / 600
+  bodyMedium: TextStyle(fontSize: 13, color: t.text),
+  // .t-sm — 12.5px
+  bodySmall: TextStyle(fontSize: 12.5, color: t.text2),
+  // .btn — 15px / 700 / -0.01em
+  labelLarge: TextStyle(
+    fontSize: 15,
+    fontWeight: FontWeight.w700,
+    letterSpacing: -0.15,
+    color: t.text,
+  ),
+);
 
 /// `.eyebrow` — mono, 10.5px, uppercase, wide tracking. Section labels and
 /// step counters use this; it is the design's most recognisable detail.
 TextStyle fsEyebrow(FsTokens t) => TextStyle(
-      fontFamily: fsMonoFamily,
-      fontSize: 10.5,
-      fontWeight: FontWeight.w600,
-      letterSpacing: 1.47, // 0.14em
-      color: t.text3,
-    );
+  fontFamily: fsMonoFamily,
+  fontSize: 10.5,
+  fontWeight: FontWeight.w600,
+  letterSpacing: 1.47, // 0.14em
+  color: t.text3,
+);
 
 /// `.num` — mono, for figures.
 TextStyle fsNum(FsTokens t, {double size = 13}) => TextStyle(
-      fontFamily: fsMonoFamily,
-      fontSize: size,
-      fontWeight: FontWeight.w600,
-      letterSpacing: -0.13,
-      color: t.text,
-    );
+  fontFamily: fsMonoFamily,
+  fontSize: size,
+  fontWeight: FontWeight.w600,
+  letterSpacing: -0.13,
+  color: t.text,
+);
 
 ThemeData _build(FsTokens t, Brightness brightness) {
   final textTheme = _textTheme(t);

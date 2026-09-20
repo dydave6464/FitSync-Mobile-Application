@@ -49,11 +49,18 @@ const _quietAnalytics = TrainingAnalytics(
 
 /// Sets logged in the window, for the card beside Sessions. Zero unless a
 /// test says otherwise -- none of these are about the count itself.
-const _quietSummary =
-    TrainingSummary(sessionCount: 0, setCount: 0, totalVolumeKg: 0);
+const _quietSummary = TrainingSummary(
+  sessionCount: 0,
+  setCount: 0,
+  totalVolumeKg: 0,
+);
 
-const _emptyBodyWeight =
-    BodyWeightSeries(widened: false, points: [], reference: null, unit: 'kg');
+const _emptyBodyWeight = BodyWeightSeries(
+  widened: false,
+  points: [],
+  reference: null,
+  unit: 'kg',
+);
 
 class FakeSessionRepository implements SessionRepository {
   FakeSessionRepository({
@@ -77,7 +84,10 @@ class FakeSessionRepository implements SessionRepository {
   Future<SessionHistoryPage> history({int page = 1, int limit = 20}) async {
     if (error != null) throw error!;
     return SessionHistoryPage(
-      sessions: entries, total: entries.length, page: page, limit: limit,
+      sessions: entries,
+      total: entries.length,
+      page: page,
+      limit: limit,
     );
   }
 
@@ -108,15 +118,15 @@ class FakeSessionRepository implements SessionRepository {
 class _StubProfileNotifier extends ProfileNotifier {
   @override
   Future<Profile> build() async => const Profile(
-        userId: 1,
-        email: 'a@b.c',
-        fullName: 'A',
-        onboardingCompleted: true,
-        isPremium: false,
-        notificationsEnabled: true,
-        equipment: [],
-        injuries: [],
-      );
+    userId: 1,
+    email: 'a@b.c',
+    fullName: 'A',
+    onboardingCompleted: true,
+    isPremium: false,
+    notificationsEnabled: true,
+    equipment: [],
+    injuries: [],
+  );
 }
 
 Future<FakeSessionRepository> _pump(
@@ -124,23 +134,27 @@ Future<FakeSessionRepository> _pump(
   FakeSessionRepository? repo,
 }) async {
   final fake = repo ?? FakeSessionRepository();
-  await tester.pumpWidget(ProviderScope(
-    overrides: [
-      sessionRepositoryProvider.overrideWithValue(fake),
-      // The body-weight card is a separate feature's provider; none of these
-      // tests are about it, so it is stubbed quiet rather than left to reach
-      // a real ApiClient.
-      bodyWeightProvider.overrideWith((ref, period) async => _emptyBodyWeight),
-      profileProvider.overrideWith(_StubProfileNotifier.new),
-    ],
-    child: MaterialApp(
-      theme: fsLightTheme(),
-      // Matches how the real app hosts this screen: training_shell.dart
-      // wraps every tab in a Scaffold, which is where the Material ancestor
-      // for ShareWithCoachCard's own InkWell comes from in production.
-      home: const Scaffold(body: ProgressScreen()),
+  await tester.pumpWidget(
+    ProviderScope(
+      overrides: [
+        sessionRepositoryProvider.overrideWithValue(fake),
+        // The body-weight card is a separate feature's provider; none of these
+        // tests are about it, so it is stubbed quiet rather than left to reach
+        // a real ApiClient.
+        bodyWeightProvider.overrideWith(
+          (ref, period) async => _emptyBodyWeight,
+        ),
+        profileProvider.overrideWith(_StubProfileNotifier.new),
+      ],
+      child: MaterialApp(
+        theme: fsLightTheme(),
+        // Matches how the real app hosts this screen: training_shell.dart
+        // wraps every tab in a Scaffold, which is where the Material ancestor
+        // for ShareWithCoachCard's own InkWell comes from in production.
+        home: const Scaffold(body: ProgressScreen()),
+      ),
     ),
-  ));
+  );
   await tester.pumpAndSettle();
   return fake;
 }
@@ -161,38 +175,49 @@ void main() {
   testWidgets('the headline reads adherence against the plan', (tester) async {
     // Adherence, not volume, is the hero now -- the one number a beginner
     // can act on in week one, when every trend chart is still one point.
-    await _pump(tester, repo: FakeSessionRepository(
-      analyticsValue: const TrainingAnalytics(
-        period: 'week',
-        volume: [VolumeBucket(label: '-1d', volumeKg: 0)],
-        change: VolumeChange(totalKg: 0, previousKg: 0, changePct: null),
-        adherence: Adherence(done: 14, target: 16, weeks: 4),
-        muscles: [],
+    await _pump(
+      tester,
+      repo: FakeSessionRepository(
+        analyticsValue: const TrainingAnalytics(
+          period: 'week',
+          volume: [VolumeBucket(label: '-1d', volumeKg: 0)],
+          change: VolumeChange(totalKg: 0, previousKg: 0, changePct: null),
+          adherence: Adherence(done: 14, target: 16, weeks: 4),
+          muscles: [],
+        ),
       ),
-    ));
+    );
 
     expect(find.text('14 / 16'), findsOneWidget);
   });
 
-  testWidgets('the headline is a bare count with no active plan', (tester) async {
+  testWidgets('the headline is a bare count with no active plan', (
+    tester,
+  ) async {
     // No plan means no target to divide by -- a denominator nobody agreed
     // to would be fiction, so the card shows the count alone.
-    await _pump(tester, repo: FakeSessionRepository(
-      analyticsValue: const TrainingAnalytics(
-        period: 'week',
-        volume: [VolumeBucket(label: '-1d', volumeKg: 0)],
-        change: VolumeChange(totalKg: 0, previousKg: 0, changePct: null),
-        adherence: Adherence(done: 3, target: null, weeks: 1),
-        muscles: [],
+    await _pump(
+      tester,
+      repo: FakeSessionRepository(
+        analyticsValue: const TrainingAnalytics(
+          period: 'week',
+          volume: [VolumeBucket(label: '-1d', volumeKg: 0)],
+          change: VolumeChange(totalKg: 0, previousKg: 0, changePct: null),
+          adherence: Adherence(done: 3, target: null, weeks: 1),
+          muscles: [],
+        ),
       ),
-    ));
+    );
 
     expect(find.text('3'), findsOneWidget);
     expect(find.textContaining('/'), findsNothing);
   });
 
   testWidgets('a plan workout is listed under its plan name', (tester) async {
-    await _pump(tester, repo: FakeSessionRepository(entries: const [_fromPlan]));
+    await _pump(
+      tester,
+      repo: FakeSessionRepository(entries: const [_fromPlan]),
+    );
 
     expect(find.text('Upper Body · Push', skipOffstage: false), findsOneWidget);
   });
@@ -221,70 +246,99 @@ void main() {
     expect(find.textContaining('once you have logged'), findsNothing);
   });
 
-  testWidgets('a failure offers a retry rather than an empty screen',
-      (tester) async {
+  testWidgets('a failure offers a retry rather than an empty screen', (
+    tester,
+  ) async {
     // The analytics call is what earns the full-screen retry now -- it owns
     // the period the rest of the screen is scoped to -- so the fake's error
     // has to come from there for this to still exercise that path.
-    await _pump(tester, repo: FakeSessionRepository(
-      error: const ApiException('NETWORK_ERROR', 'Could not reach the server.'),
-    ));
+    await _pump(
+      tester,
+      repo: FakeSessionRepository(
+        error: const ApiException(
+          'NETWORK_ERROR',
+          'Could not reach the server.',
+        ),
+      ),
+    );
 
     expect(find.textContaining('Could not reach the server.'), findsOneWidget);
     expect(find.text('Retry'), findsOneWidget);
-    expect(find.textContaining('No completed workouts yet'), findsNothing,
-        reason: 'a failure is not the same as having trained nothing');
+    expect(
+      find.textContaining('No completed workouts yet'),
+      findsNothing,
+      reason: 'a failure is not the same as having trained nothing',
+    );
   });
 
-  testWidgets('a session that logged no weight does not read as zero',
-      (tester) async {
+  testWidgets('a session that logged no weight does not read as zero', (
+    tester,
+  ) async {
     // A bodyweight-only workout has no volume. Printing "0 kg" next to it
     // reads as a failure to record rather than as a fact about the workout.
-    await _pump(tester, repo: FakeSessionRepository(entries: const [
-      SessionHistoryEntry(
-        sessionId: 1, sessionDate: '2026-09-13', setCount: 9,
-        exerciseCount: 3, durationMin: 20,
+    await _pump(
+      tester,
+      repo: FakeSessionRepository(
+        entries: const [
+          SessionHistoryEntry(
+            sessionId: 1,
+            sessionDate: '2026-09-13',
+            setCount: 9,
+            exerciseCount: 3,
+            durationMin: 20,
+          ),
+        ],
       ),
-    ]));
+    );
 
     expect(find.textContaining('0 kg'), findsNothing);
     expect(find.textContaining('9 sets', skipOffstage: false), findsWidgets);
   });
 
   testWidgets(
-      'cards render in prototype order: volume, the pair, body weight, muscles',
-      (tester) async {
-    // The prototype's Progress screen: segment · total volume · sessions and
-    // sets side by side · body weight · volume by muscle. Estimated 1RM is
-    // not on it at all. A tall viewport keeps every card actually laid out
-    // instead of culled below the fold, so their positions are comparable.
-    tester.view.physicalSize = const Size(400, 3000);
-    tester.view.devicePixelRatio = 1;
-    addTearDown(tester.view.resetPhysicalSize);
-    addTearDown(tester.view.resetDevicePixelRatio);
+    'cards render in prototype order: volume, the pair, body weight, muscles',
+    (tester) async {
+      // The prototype's Progress screen: segment · total volume · sessions and
+      // sets side by side · body weight · volume by muscle. Estimated 1RM is
+      // not on it at all. A tall viewport keeps every card actually laid out
+      // instead of culled below the fold, so their positions are comparable.
+      tester.view.physicalSize = const Size(400, 3000);
+      tester.view.devicePixelRatio = 1;
+      addTearDown(tester.view.resetPhysicalSize);
+      addTearDown(tester.view.resetDevicePixelRatio);
 
-    await _pump(tester);
+      await _pump(tester);
 
-    double dy(Finder f) => tester.getTopLeft(f).dy;
+      double dy(Finder f) => tester.getTopLeft(f).dy;
 
-    final volumeDy = dy(find.byType(VolumeTrendCard));
-    final sessionsDy = dy(find.byType(AdherenceCard));
-    final bodyWeightDy = dy(find.byType(BodyWeightCard));
-    final musclesDy = dy(find.text('VOLUME BY MUSCLE'));
+      final volumeDy = dy(find.byType(VolumeTrendCard));
+      final sessionsDy = dy(find.byType(AdherenceCard));
+      final bodyWeightDy = dy(find.byType(BodyWeightCard));
+      final musclesDy = dy(find.text('VOLUME BY MUSCLE'));
 
-    expect(volumeDy, lessThan(sessionsDy),
-        reason: 'the volume chart leads, with the pair beneath it');
-    expect(sessionsDy, lessThan(bodyWeightDy),
-        reason: 'sessions and sets sit above body weight');
-    expect(bodyWeightDy, lessThan(musclesDy),
-        reason: 'muscles renders last of the analytics cards');
+      expect(
+        volumeDy,
+        lessThan(sessionsDy),
+        reason: 'the volume chart leads, with the pair beneath it',
+      );
+      expect(
+        sessionsDy,
+        lessThan(bodyWeightDy),
+        reason: 'sessions and sets sit above body weight',
+      );
+      expect(
+        bodyWeightDy,
+        lessThan(musclesDy),
+        reason: 'muscles renders last of the analytics cards',
+      );
 
-    // Sessions and Sets share a row, so they start at the same height.
-    expect(dy(find.byType(SetsCard)), sessionsDy);
+      // Sessions and Sets share a row, so they start at the same height.
+      expect(dy(find.byType(SetsCard)), sessionsDy);
 
-    // Estimated 1RM is gone from the screen entirely.
-    expect(find.text('ESTIMATED 1RM'), findsNothing);
-  });
+      // Estimated 1RM is gone from the screen entirely.
+      expect(find.text('ESTIMATED 1RM'), findsNothing);
+    },
+  );
 
   testWidgets('the share card sits at the foot of the tab', (tester) async {
     tester.view.physicalSize = const Size(400, 3000);

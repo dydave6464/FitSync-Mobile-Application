@@ -7,8 +7,10 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../core/theme.dart';
 import '../../../core/widgets/fs_kit.dart';
 import '../../exercises/presentation/equipment_icon.dart';
-import '../../exercises/presentation/exercise_list_screen.dart' show describeError;
-import '../../exercises/presentation/providers.dart' show exerciseDetailProvider;
+import '../../exercises/presentation/exercise_list_screen.dart'
+    show describeError;
+import '../../exercises/presentation/providers.dart'
+    show exerciseDetailProvider;
 import '../domain/exercise_alternative.dart';
 import 'providers.dart';
 
@@ -112,7 +114,9 @@ class _ExerciseSwapSheetState extends ConsumerState<ExerciseSwapSheet> {
     final container = ProviderScope.containerOf(context, listen: false);
 
     try {
-      await ref.read(planRepositoryProvider).swap(widget.planExerciseId, alt.exerciseId);
+      await ref
+          .read(planRepositoryProvider)
+          .swap(widget.planExerciseId, alt.exerciseId);
       container.invalidate(activePlanProvider);
       // A swap changes which exercises are already in the plan for every
       // row, not just this one — a cached alternatives list for any other
@@ -155,13 +159,15 @@ class _ExerciseSwapSheetState extends ConsumerState<ExerciseSwapSheet> {
   Widget _equipmentHint(FsTokens t) {
     final linked = widget.onGoToProfile != null;
     final note = Text.rich(
-      TextSpan(children: [
-        const TextSpan(text: "Don't see your equipment? "),
-        TextSpan(
-          text: 'Update it in Profile \u2192 Equipment & location.',
-          style: TextStyle(color: linked ? t.accent : t.text3),
-        ),
-      ]),
+      TextSpan(
+        children: [
+          const TextSpan(text: "Don't see your equipment? "),
+          TextSpan(
+            text: 'Update it in Profile \u2192 Equipment & location.',
+            style: TextStyle(color: linked ? t.accent : t.text3),
+          ),
+        ],
+      ),
       key: const Key('swap.equipmentHint'),
       style: TextStyle(fontSize: 12, color: t.text3),
     );
@@ -200,7 +206,9 @@ class _ExerciseSwapSheetState extends ConsumerState<ExerciseSwapSheet> {
               icon: const Icon(Icons.arrow_back, size: 20),
               padding: EdgeInsets.zero,
               constraints: const BoxConstraints(minWidth: 36, minHeight: 36),
-              onPressed: _busy ? null : () => setState(() => _previewing = null),
+              onPressed: _busy
+                  ? null
+                  : () => setState(() => _previewing = null),
             ),
             const SizedBox(width: 8),
             Expanded(
@@ -265,8 +273,11 @@ class _ExerciseSwapSheetState extends ConsumerState<ExerciseSwapSheet> {
                             fit: BoxFit.contain,
                             filterQuality: FilterQuality.medium,
                             errorBuilder: (_, _, _) => Center(
-                              child: Icon(equipmentIcon(alt.equipment),
-                                  size: 44, color: t.text3),
+                              child: Icon(
+                                equipmentIcon(alt.equipment),
+                                size: 44,
+                                color: t.text3,
+                              ),
                             ),
                           ),
                         );
@@ -277,7 +288,10 @@ class _ExerciseSwapSheetState extends ConsumerState<ExerciseSwapSheet> {
         ),
         if (_error != null) ...[
           const SizedBox(height: 12),
-          Text(_error!, style: TextStyle(color: Theme.of(context).colorScheme.error)),
+          Text(
+            _error!,
+            style: TextStyle(color: Theme.of(context).colorScheme.error),
+          ),
         ],
         const SizedBox(height: 12),
         FsButton(
@@ -293,10 +307,12 @@ class _ExerciseSwapSheetState extends ConsumerState<ExerciseSwapSheet> {
   @override
   Widget build(BuildContext context) {
     final t = context.fs;
-    final alternatives = ref.watch(alternativesProvider((
-      planExerciseId: widget.planExerciseId,
-      query: _query,
-    )));
+    final alternatives = ref.watch(
+      alternativesProvider((
+        planExerciseId: widget.planExerciseId,
+        query: _query,
+      )),
+    );
 
     // The route anchors the sheet to the bottom of the screen and never lifts
     // it for the keyboard — the padding below does that — so the box has to
@@ -314,7 +330,9 @@ class _ExerciseSwapSheetState extends ConsumerState<ExerciseSwapSheet> {
       child: SafeArea(
         child: Padding(
           padding: EdgeInsets.only(
-            left: 20, right: 20, top: 16,
+            left: 20,
+            right: 20,
+            top: 16,
             bottom: insets + 16,
           ),
           // The list pane is replaced rather than covered, so its query, its
@@ -323,73 +341,92 @@ class _ExerciseSwapSheetState extends ConsumerState<ExerciseSwapSheet> {
           child: previewing != null
               ? _preview(t, previewing)
               : Column(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              Text('Replace ${widget.exerciseName}',
-                  style: Theme.of(context).textTheme.titleLarge),
-              const SizedBox(height: 12),
-              TextField(
-                key: const Key('swap.search'),
-                controller: _controller,
-                onChanged: _onChanged,
-                decoration: const InputDecoration(
-                  prefixIcon: Icon(Icons.search),
-                  hintText: 'Search all exercises',
-                ),
-              ),
-              if (_error != null) ...[
-                const SizedBox(height: 12),
-                Text(_error!, style: TextStyle(color: Theme.of(context).colorScheme.error)),
-              ],
-              const SizedBox(height: 16),
-              Expanded(
-                child: alternatives.when(
-                  loading: () => const Center(child: Padding(
-                    padding: EdgeInsets.all(24), child: CircularProgressIndicator())),
-                  error: (err, _) => Padding(
-                    padding: const EdgeInsets.all(16),
-                    child: Text(describeError(err)),
-                  ),
-                  data: (rows) => rows.isEmpty
-                      ? Padding(
-                          padding: const EdgeInsets.symmetric(vertical: 24),
-                          child: Text(
-                            _query.isEmpty
-                                ? 'Nothing you can do with your equipment trains this muscle.'
-                                : 'Nothing you can do matches that search.',
-                            style: TextStyle(color: t.text2),
-                            textAlign: TextAlign.center,
-                          ),
-                        )
-                      : ListView.builder(
-                          shrinkWrap: true,
-                          itemCount: rows.length,
-                          itemBuilder: (_, i) {
-                            final alt = rows[i];
-                            return ListTile(
-                              key: Key('swap.alt.${alt.exerciseId}'),
-                              contentPadding: EdgeInsets.zero,
-                              title: Text(alt.name),
-                              subtitle: Text(alt.equipment ?? alt.muscleGroup),
-                              trailing:
-                                  Icon(Icons.chevron_right, size: 16, color: t.text3),
-                              // Opens a look at it. The swap itself now waits
-                              // for the confirm button on the preview: a tap
-                              // here used to replace an exercise outright,
-                              // before the user had seen what they were
-                              // taking on.
-                              onTap: _busy
-                                  ? null
-                                  : () => setState(() => _previewing = alt),
-                            );
-                          },
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    Text(
+                      'Replace ${widget.exerciseName}',
+                      style: Theme.of(context).textTheme.titleLarge,
+                    ),
+                    const SizedBox(height: 12),
+                    TextField(
+                      key: const Key('swap.search'),
+                      controller: _controller,
+                      onChanged: _onChanged,
+                      decoration: const InputDecoration(
+                        prefixIcon: Icon(Icons.search),
+                        hintText: 'Search all exercises',
+                      ),
+                    ),
+                    if (_error != null) ...[
+                      const SizedBox(height: 12),
+                      Text(
+                        _error!,
+                        style: TextStyle(
+                          color: Theme.of(context).colorScheme.error,
                         ),
+                      ),
+                    ],
+                    const SizedBox(height: 16),
+                    Expanded(
+                      child: alternatives.when(
+                        loading: () => const Center(
+                          child: Padding(
+                            padding: EdgeInsets.all(24),
+                            child: CircularProgressIndicator(),
+                          ),
+                        ),
+                        error: (err, _) => Padding(
+                          padding: const EdgeInsets.all(16),
+                          child: Text(describeError(err)),
+                        ),
+                        data: (rows) => rows.isEmpty
+                            ? Padding(
+                                padding: const EdgeInsets.symmetric(
+                                  vertical: 24,
+                                ),
+                                child: Text(
+                                  _query.isEmpty
+                                      ? 'Nothing you can do with your equipment trains this muscle.'
+                                      : 'Nothing you can do matches that search.',
+                                  style: TextStyle(color: t.text2),
+                                  textAlign: TextAlign.center,
+                                ),
+                              )
+                            : ListView.builder(
+                                shrinkWrap: true,
+                                itemCount: rows.length,
+                                itemBuilder: (_, i) {
+                                  final alt = rows[i];
+                                  return ListTile(
+                                    key: Key('swap.alt.${alt.exerciseId}'),
+                                    contentPadding: EdgeInsets.zero,
+                                    title: Text(alt.name),
+                                    subtitle: Text(
+                                      alt.equipment ?? alt.muscleGroup,
+                                    ),
+                                    trailing: Icon(
+                                      Icons.chevron_right,
+                                      size: 16,
+                                      color: t.text3,
+                                    ),
+                                    // Opens a look at it. The swap itself now waits
+                                    // for the confirm button on the preview: a tap
+                                    // here used to replace an exercise outright,
+                                    // before the user had seen what they were
+                                    // taking on.
+                                    onTap: _busy
+                                        ? null
+                                        : () =>
+                                              setState(() => _previewing = alt),
+                                  );
+                                },
+                              ),
+                      ),
+                    ),
+                    Divider(color: t.line, height: 25),
+                    _equipmentHint(t),
+                  ],
                 ),
-              ),
-              Divider(color: t.line, height: 25),
-              _equipmentHint(t),
-            ],
-          ),
         ),
       ),
     );

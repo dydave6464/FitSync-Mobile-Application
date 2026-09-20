@@ -42,10 +42,10 @@ class EquipmentFilterButton extends ConsumerWidget {
     final chosen = selected == null
         ? null
         : options
-            .where((option) => option.value == selected)
-            .map((option) => option.label)
-            .firstOrNull ??
-            selected;
+                  .where((option) => option.value == selected)
+                  .map((option) => option.label)
+                  .firstOrNull ??
+              selected;
 
     return Align(
       alignment: Alignment.centerLeft,
@@ -64,7 +64,9 @@ class EquipmentFilterButton extends ConsumerWidget {
             color: selected == null ? t.text2 : t.onAccent,
           ),
           backgroundColor: selected == null ? t.surface : t.accent,
-          side: BorderSide(color: selected == null ? t.line : Colors.transparent),
+          side: BorderSide(
+            color: selected == null ? t.line : Colors.transparent,
+          ),
           onPressed: () => _open(context, ref, options),
         ),
       ),
@@ -135,7 +137,9 @@ class _EquipmentSheetState extends State<_EquipmentSheet> {
     return SafeArea(
       child: Padding(
         // Lifts the sheet clear of the keyboard the search box raises.
-        padding: EdgeInsets.only(bottom: MediaQuery.of(context).viewInsets.bottom),
+        padding: EdgeInsets.only(
+          bottom: MediaQuery.of(context).viewInsets.bottom,
+        ),
         child: Column(
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -245,10 +249,7 @@ class _OptionRow extends StatelessWidget {
         mainAxisSize: MainAxisSize.min,
         children: [
           if (count != null)
-            Text(
-              '$count',
-              style: TextStyle(fontSize: 12, color: t.text3),
-            ),
+            Text('$count', style: TextStyle(fontSize: 12, color: t.text3)),
           if (selected) ...[
             const SizedBox(width: 8),
             Icon(Icons.check, size: 18, color: t.accent),

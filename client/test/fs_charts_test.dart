@@ -11,9 +11,11 @@ void main() {
       FsPoint(x: 1, y: 71.2, label: 'Tue'),
       FsPoint(x: 2, y: 71.3, label: 'Wed'),
     ];
-    await tester.pumpWidget(MaterialApp(
-      home: Scaffold(body: FsLineChart(points: points, minYBand: 4.0)),
-    ));
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(body: FsLineChart(points: points, minYBand: 4.0)),
+      ),
+    );
 
     final chart = tester.widget<FsLineChart>(find.byType(FsLineChart));
     final (minY, maxY) = chart.resolvedYRange;
@@ -25,24 +27,32 @@ void main() {
       FsPoint(x: 0, y: 60, label: 'a'),
       FsPoint(x: 1, y: 95, label: 'b'),
     ];
-    await tester.pumpWidget(MaterialApp(
-      home: Scaffold(body: FsLineChart(points: points, minYBand: 4.0)),
-    ));
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(body: FsLineChart(points: points, minYBand: 4.0)),
+      ),
+    );
 
     final chart = tester.widget<FsLineChart>(find.byType(FsLineChart));
     final (minY, maxY) = chart.resolvedYRange;
     expect(maxY - minY, greaterThan(35.0));
   });
 
-  testWidgets('a single point still renders with its reference line', (tester) async {
-    await tester.pumpWidget(MaterialApp(
-      home: Scaffold(body: FsLineChart(
-        points: [FsPoint(x: 0, y: 71.4, label: 'today')],
-        referenceY: 68,
-        referenceLabel: 'goal',
-        minYBand: 4.0,
-      )),
-    ));
+  testWidgets('a single point still renders with its reference line', (
+    tester,
+  ) async {
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: FsLineChart(
+            points: [FsPoint(x: 0, y: 71.4, label: 'today')],
+            referenceY: 68,
+            referenceLabel: 'goal',
+            minYBand: 4.0,
+          ),
+        ),
+      ),
+    );
     expect(find.byType(FsLineChart), findsOneWidget);
     expect(tester.takeException(), isNull);
   });

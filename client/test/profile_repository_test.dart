@@ -71,8 +71,11 @@ class _Captured {
     tokens: TokenStore(backing: InMemorySecureStore()),
     client: MockClient((request) async {
       captured.requests.add(request);
-      return http.Response(jsonEncode(body), status,
-          headers: {'content-type': 'application/json'});
+      return http.Response(
+        jsonEncode(body),
+        status,
+        headers: {'content-type': 'application/json'},
+      );
     }),
   );
   return (ProfileRepository(api), captured);
@@ -80,7 +83,9 @@ class _Captured {
 
 void main() {
   test('parses a fully populated profile', () {
-    final profile = Profile.fromJson(Map<String, dynamic>.from(_fullProfileJson));
+    final profile = Profile.fromJson(
+      Map<String, dynamic>.from(_fullProfileJson),
+    );
 
     expect(profile.fullName, 'Juan Dela Cruz');
     expect(profile.sex, 'male');
@@ -97,30 +102,35 @@ void main() {
     expect(profile.injuries.single.side, 'left');
   });
 
-  test('parses a just-registered profile whose optional fields are all null',
-      () {
-    final profile =
-        Profile.fromJson(Map<String, dynamic>.from(_emptyProfileJson));
+  test(
+    'parses a just-registered profile whose optional fields are all null',
+    () {
+      final profile = Profile.fromJson(
+        Map<String, dynamic>.from(_emptyProfileJson),
+      );
 
-    expect(profile.sex, isNull);
-    expect(profile.dateOfBirth, isNull);
-    expect(profile.heightCm, isNull);
-    expect(profile.mainGoal, isNull);
-    expect(profile.equipment, isEmpty);
-    expect(profile.injuries, isEmpty);
-    expect(profile.onboardingCompleted, isFalse);
-  });
+      expect(profile.sex, isNull);
+      expect(profile.dateOfBirth, isNull);
+      expect(profile.heightCm, isNull);
+      expect(profile.mainGoal, isNull);
+      expect(profile.equipment, isEmpty);
+      expect(profile.injuries, isEmpty);
+      expect(profile.onboardingCompleted, isFalse);
+    },
+  );
 
   test('parses the weight unit, defaulting to kilograms', () {
-    final pounds = Profile.fromJson(
-      {...Map<String, dynamic>.from(_fullProfileJson), 'weightUnit': 'lb'},
-    );
+    final pounds = Profile.fromJson({
+      ...Map<String, dynamic>.from(_fullProfileJson),
+      'weightUnit': 'lb',
+    });
     expect(pounds.weightUnit, WeightUnit.lb);
 
     // The fixture carries no weightUnit at all -- a server older than the
     // column, which must read as metric rather than throw on the profile.
-    final missing =
-        Profile.fromJson(Map<String, dynamic>.from(_emptyProfileJson));
+    final missing = Profile.fromJson(
+      Map<String, dynamic>.from(_emptyProfileJson),
+    );
     expect(missing.weightUnit, WeightUnit.kg);
   });
 
@@ -164,25 +174,35 @@ void main() {
   });
 
   test('patch sends only the keys it was given', () async {
-    final (repo, captured) = _repoReturning({'data': {'profile': _fullProfileJson}});
+    final (repo, captured) = _repoReturning({
+      'data': {'profile': _fullProfileJson},
+    });
 
     await repo.patch({'mainGoal': 'build_muscle'});
 
-    expect(jsonDecode(captured.requests.single.body), {'mainGoal': 'build_muscle'});
+    expect(jsonDecode(captured.requests.single.body), {
+      'mainGoal': 'build_muscle',
+    });
     expect(captured.requests.single.method, 'PATCH');
   });
 
   test('setEquipment sends the complete id set', () async {
-    final (repo, captured) = _repoReturning({'data': {'profile': _fullProfileJson}});
+    final (repo, captured) = _repoReturning({
+      'data': {'profile': _fullProfileJson},
+    });
 
     await repo.setEquipment([3, 7]);
 
-    expect(jsonDecode(captured.requests.single.body), {'equipmentIds': [3, 7]});
+    expect(jsonDecode(captured.requests.single.body), {
+      'equipmentIds': [3, 7],
+    });
     expect(captured.requests.single.method, 'PUT');
   });
 
   test('setInjuries omits the side for a non-lateral injury', () async {
-    final (repo, captured) = _repoReturning({'data': {'profile': _fullProfileJson}});
+    final (repo, captured) = _repoReturning({
+      'data': {'profile': _fullProfileJson},
+    });
 
     await repo.setInjuries(const [
       SelectedInjury(injuryId: 5, side: 'left'),
@@ -210,8 +230,8 @@ void main() {
           'equipment': <dynamic>[],
           'injuries': <dynamic>[],
           'trainingDays': [1, 3, 5],
-        }
-      }
+        },
+      },
     });
 
     expect((await repo.setTrainingDays([1, 3, 5])).trainingDays, [1, 3, 5]);
@@ -231,8 +251,8 @@ void main() {
           'notificationsEnabled': true,
           'equipment': <dynamic>[],
           'injuries': <dynamic>[],
-        }
-      }
+        },
+      },
     });
 
     expect((await repo.setTrainingDays(const [])).trainingDays, isEmpty);
@@ -251,15 +271,17 @@ void main() {
           'equipment': <dynamic>[],
           'injuries': <dynamic>[],
           'trainingDays': <dynamic>[],
-        }
-      }
+        },
+      },
     });
 
     await repo.setTrainingDays([2, 4]);
 
     final seen = captured.requests.single;
     expect(seen.url.path, '/api/v1/profile/training-days');
-    expect(jsonDecode(seen.body), {'trainingDays': [2, 4]});
+    expect(jsonDecode(seen.body), {
+      'trainingDays': [2, 4],
+    });
   });
 
   test('completeOnboarding returns the profile and the plan', () async {
@@ -286,8 +308,13 @@ void main() {
 
     await expectLater(
       repo.completeOnboarding(),
-      throwsA(isA<ApiException>()
-          .having((e) => e.code, 'code', 'PLAN_GENERATION_FAILED')),
+      throwsA(
+        isA<ApiException>().having(
+          (e) => e.code,
+          'code',
+          'PLAN_GENERATION_FAILED',
+        ),
+      ),
     );
   });
 
@@ -329,11 +356,11 @@ void main() {
         'data': {
           'widened': false,
           'points': [
-            {'loggedOn': '2026-09-16', 'weightKg': 71.4}
+            {'loggedOn': '2026-09-16', 'weightKg': 71.4},
           ],
           'reference': {'kind': 'goal', 'weightKg': 68.0},
           'unit': 'kg',
-        }
+        },
       });
 
       final series = await repo.bodyWeight('week');
@@ -344,7 +371,12 @@ void main() {
 
     test('asks for the period it was given', () async {
       final (repo, captured) = _repoReturning({
-        'data': {'widened': false, 'points': [], 'reference': null, 'unit': 'kg'}
+        'data': {
+          'widened': false,
+          'points': [],
+          'reference': null,
+          'unit': 'kg',
+        },
       });
 
       await repo.bodyWeight('month');
@@ -353,7 +385,12 @@ void main() {
 
     test('no entries yet is not an error', () async {
       final (repo, _) = _repoReturning({
-        'data': {'widened': false, 'points': [], 'reference': null, 'unit': 'kg'}
+        'data': {
+          'widened': false,
+          'points': [],
+          'reference': null,
+          'unit': 'kg',
+        },
       });
 
       final series = await repo.bodyWeight('week');

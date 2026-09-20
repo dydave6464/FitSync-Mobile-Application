@@ -44,22 +44,21 @@ class FakeExerciseRepository implements ExerciseRepository {
     String? search,
     int page = 1,
     int limit = 20,
-  }) async =>
-      ExercisePage(
-        items: List.generate(
-          _exerciseCount,
-          (i) => ExerciseSummary(
-            exerciseId: i + 1,
-            name: 'Exercise ${i + 1}',
-            muscleGroup: 'abs',
-            equipment: 'body weight',
-            thumbnailUrl: null,
-          ),
-        ),
-        page: 1,
-        limit: _exerciseCount,
-        total: _exerciseCount,
-      );
+  }) async => ExercisePage(
+    items: List.generate(
+      _exerciseCount,
+      (i) => ExerciseSummary(
+        exerciseId: i + 1,
+        name: 'Exercise ${i + 1}',
+        muscleGroup: 'abs',
+        equipment: 'body weight',
+        thumbnailUrl: null,
+      ),
+    ),
+    page: 1,
+    limit: _exerciseCount,
+    total: _exerciseCount,
+  );
 
   @override
   Future<ExerciseDetail> byId(int id) async => throw UnimplementedError();
@@ -74,15 +73,15 @@ class FakeExerciseRepository implements ExerciseRepository {
 class StubProfileNotifier extends ProfileNotifier {
   @override
   Future<Profile> build() async => const Profile(
-        userId: 7,
-        email: 'juan@example.com',
-        fullName: 'Juan Dela Cruz',
-        onboardingCompleted: true,
-        isPremium: false,
-        notificationsEnabled: true,
-        equipment: [],
-        injuries: [],
-      );
+    userId: 7,
+    email: 'juan@example.com',
+    fullName: 'Juan Dela Cruz',
+    onboardingCompleted: true,
+    isPremium: false,
+    notificationsEnabled: true,
+    equipment: [],
+    injuries: [],
+  );
 }
 
 /// One row is enough to reach the swap sheet from the Train tab.
@@ -106,40 +105,47 @@ const _plan = WorkoutPlan(
   ],
 );
 
-Future<void> _pumpShell(WidgetTester tester, {WorkoutPlan? plan}) => tester.pumpWidget(
-      ProviderScope(
-        overrides: [
-          // Defensive: nothing here should actually reach it, since every
-          // tab's own data provider is overridden below, but a stray watch
-          // must fail hermetically rather than hang on a real socket.
-          apiClientProvider.overrideWithValue(ApiClient(
-            baseUrl: 'http://test.local',
-            tokens: TokenStore(backing: InMemorySecureStore()),
-            client: MockClient((_) async => http.Response('{"data":{}}', 200)),
-          )),
-          // Train tab (the Training shell, wrapping PlanScreen as its Plan
-          // tab body). No plan keeps it on the simple empty state, which is
-          // also what avoids a stray "Exercises" eyebrow label competing
-          // with the Browse tab's AppBar title below.
-          activePlanProvider.overrideWith((ref) async => plan),
-          alternativesProvider.overrideWith((ref, key) async => const [
-                ExerciseAlternative(
-                  exerciseId: 12,
-                  name: 'Push-up',
-                  muscleGroup: 'quadriceps',
-                  equipment: 'Bodyweight',
-                ),
-              ]),
-          // Browse tab (ExerciseListScreen).
-          exerciseRepositoryProvider.overrideWithValue(FakeExerciseRepository()),
-          // Profile tab (SettingsScreen).
-          profileProvider.overrideWith(StubProfileNotifier.new),
-          equipmentOptionsProvider.overrideWith((ref) async => const []),
-          injuryOptionsProvider.overrideWith((ref) async => const []),
-        ],
-        child: const MaterialApp(home: NavShell()),
+Future<void> _pumpShell(
+  WidgetTester tester, {
+  WorkoutPlan? plan,
+}) => tester.pumpWidget(
+  ProviderScope(
+    overrides: [
+      // Defensive: nothing here should actually reach it, since every
+      // tab's own data provider is overridden below, but a stray watch
+      // must fail hermetically rather than hang on a real socket.
+      apiClientProvider.overrideWithValue(
+        ApiClient(
+          baseUrl: 'http://test.local',
+          tokens: TokenStore(backing: InMemorySecureStore()),
+          client: MockClient((_) async => http.Response('{"data":{}}', 200)),
+        ),
       ),
-    );
+      // Train tab (the Training shell, wrapping PlanScreen as its Plan
+      // tab body). No plan keeps it on the simple empty state, which is
+      // also what avoids a stray "Exercises" eyebrow label competing
+      // with the Browse tab's AppBar title below.
+      activePlanProvider.overrideWith((ref) async => plan),
+      alternativesProvider.overrideWith(
+        (ref, key) async => const [
+          ExerciseAlternative(
+            exerciseId: 12,
+            name: 'Push-up',
+            muscleGroup: 'quadriceps',
+            equipment: 'Bodyweight',
+          ),
+        ],
+      ),
+      // Browse tab (ExerciseListScreen).
+      exerciseRepositoryProvider.overrideWithValue(FakeExerciseRepository()),
+      // Profile tab (SettingsScreen).
+      profileProvider.overrideWith(StubProfileNotifier.new),
+      equipmentOptionsProvider.overrideWith((ref) async => const []),
+      injuryOptionsProvider.overrideWith((ref) async => const []),
+    ],
+    child: const MaterialApp(home: NavShell()),
+  ),
+);
 
 /// The vertical list inside [ExerciseListScreen] — as opposed to the
 /// FilterBar's horizontal chip strip, which is also a [Scrollable] and would
@@ -147,92 +153,108 @@ Future<void> _pumpShell(WidgetTester tester, {WorkoutPlan? plan}) => tester.pump
 final _catalogueScrollable = find.descendant(
   of: find.byType(ExerciseListScreen),
   matching: find.byWidgetPredicate(
-    (widget) => widget is Scrollable && widget.axisDirection == AxisDirection.down,
+    (widget) =>
+        widget is Scrollable && widget.axisDirection == AxisDirection.down,
   ),
 );
 
 void main() {
   testWidgets(
-      'keeps a tab mounted across a switch away and back, so its scroll '
-      'position survives the trip', (tester) async {
-    await _pumpShell(tester);
+    'keeps a tab mounted across a switch away and back, so its scroll '
+    'position survives the trip',
+    (tester) async {
+      await _pumpShell(tester);
 
-    await tester.tap(find.byKey(const Key('nav.2')));
-    await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const Key('nav.2')));
+      await tester.pumpAndSettle();
 
-    // IndexedStack in this Flutter version builds every child immediately on
-    // mount (verified separately: all four tabs run initState the moment
-    // NavShell first builds, not on first display), so a plain build-count
-    // probe cannot discriminate "mounted lazily, then kept" from "mounted
-    // eagerly, then torn down and rebuilt on every switch" — both start
-    // counting from the same eager first build. Driving the real
-    // ScrollPosition instead asserts the property IndexedStack actually
-    // exists for: a tab's internal State (here, its ScrollController-backed
-    // position) survives being hidden and shown again. jumpTo (not a drag)
-    // keeps this independent of gesture/drag physics.
-    final position = tester.state<ScrollableState>(_catalogueScrollable).position;
-    position.jumpTo(400);
-    await tester.pump();
-    expect(position.pixels, 400, reason: 'the jump itself must have taken');
+      // IndexedStack in this Flutter version builds every child immediately on
+      // mount (verified separately: all four tabs run initState the moment
+      // NavShell first builds, not on first display), so a plain build-count
+      // probe cannot discriminate "mounted lazily, then kept" from "mounted
+      // eagerly, then torn down and rebuilt on every switch" — both start
+      // counting from the same eager first build. Driving the real
+      // ScrollPosition instead asserts the property IndexedStack actually
+      // exists for: a tab's internal State (here, its ScrollController-backed
+      // position) survives being hidden and shown again. jumpTo (not a drag)
+      // keeps this independent of gesture/drag physics.
+      final position = tester
+          .state<ScrollableState>(_catalogueScrollable)
+          .position;
+      position.jumpTo(400);
+      await tester.pump();
+      expect(position.pixels, 400, reason: 'the jump itself must have taken');
 
-    await tester.tap(find.byKey(const Key('nav.0')));
-    await tester.pumpAndSettle();
-    await tester.tap(find.byKey(const Key('nav.2')));
-    await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const Key('nav.0')));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const Key('nav.2')));
+      await tester.pumpAndSettle();
 
-    final positionAfterReturn =
-        tester.state<ScrollableState>(_catalogueScrollable).position;
-    expect(positionAfterReturn.pixels, 400,
-        reason: 'IndexedStack must keep the tab mounted, not rebuild it');
-  });
+      final positionAfterReturn = tester
+          .state<ScrollableState>(_catalogueScrollable)
+          .position;
+      expect(
+        positionAfterReturn.pixels,
+        400,
+        reason: 'IndexedStack must keep the tab mounted, not rebuild it',
+      );
+    },
+  );
 
   testWidgets(
-      'a tab never visited does not build at cold start, but a visited tab '
-      'stays mounted (even offstage) after leaving it', (tester) async {
-    await _pumpShell(tester);
+    'a tab never visited does not build at cold start, but a visited tab '
+    'stays mounted (even offstage) after leaving it',
+    (tester) async {
+      await _pumpShell(tester);
 
-    // find.byType defaults to skipOffstage: true, which for an IndexedStack
-    // relies on its own debugVisitOnstageChildren override to reveal only
-    // the *selected* child. That means a default finder reports findsNothing
-    // for every non-current tab regardless of whether that tab was ever
-    // built — both before and after this fix — so it cannot discriminate
-    // "never mounted" from "mounted and sitting offstage". skipOffstage:
-    // false walks the whole element tree instead, so it actually sees a tab
-    // IndexedStack is hiding rather than one that was never built.
-    expect(
-      find.byType(TrainingShell, skipOffstage: false), findsNothing,
-      reason: 'Train must not mount until the user visits it',
-    );
-    expect(
-      find.byType(ExerciseListScreen, skipOffstage: false), findsNothing,
-      reason: 'Browse must not mount until the user visits it',
-    );
-    expect(
-      find.byType(SettingsScreen, skipOffstage: false), findsNothing,
-      reason: 'Profile must not mount until the user visits it',
-    );
+      // find.byType defaults to skipOffstage: true, which for an IndexedStack
+      // relies on its own debugVisitOnstageChildren override to reveal only
+      // the *selected* child. That means a default finder reports findsNothing
+      // for every non-current tab regardless of whether that tab was ever
+      // built — both before and after this fix — so it cannot discriminate
+      // "never mounted" from "mounted and sitting offstage". skipOffstage:
+      // false walks the whole element tree instead, so it actually sees a tab
+      // IndexedStack is hiding rather than one that was never built.
+      expect(
+        find.byType(TrainingShell, skipOffstage: false),
+        findsNothing,
+        reason: 'Train must not mount until the user visits it',
+      );
+      expect(
+        find.byType(ExerciseListScreen, skipOffstage: false),
+        findsNothing,
+        reason: 'Browse must not mount until the user visits it',
+      );
+      expect(
+        find.byType(SettingsScreen, skipOffstage: false),
+        findsNothing,
+        reason: 'Profile must not mount until the user visits it',
+      );
 
-    // Visit Browse, then leave it for Home. It must still be mounted (just
-    // offstage), so the state-preservation IndexedStack exists for keeps
-    // working — this half is also covered by the scroll-preservation test
-    // above, but asserted here too since it is the other side of the same
-    // change.
-    await tester.tap(find.byKey(const Key('nav.2')));
-    await tester.pumpAndSettle();
-    expect(find.byType(ExerciseListScreen), findsOneWidget);
+      // Visit Browse, then leave it for Home. It must still be mounted (just
+      // offstage), so the state-preservation IndexedStack exists for keeps
+      // working — this half is also covered by the scroll-preservation test
+      // above, but asserted here too since it is the other side of the same
+      // change.
+      await tester.tap(find.byKey(const Key('nav.2')));
+      await tester.pumpAndSettle();
+      expect(find.byType(ExerciseListScreen), findsOneWidget);
 
-    await tester.tap(find.byKey(const Key('nav.0')));
-    await tester.pumpAndSettle();
-    expect(
-      find.byType(ExerciseListScreen, skipOffstage: false), findsOneWidget,
-      reason: 'once visited, Browse must stay mounted underneath (offstage), '
-          'not be torn down when another tab is selected',
-    );
+      await tester.tap(find.byKey(const Key('nav.0')));
+      await tester.pumpAndSettle();
+      expect(
+        find.byType(ExerciseListScreen, skipOffstage: false),
+        findsOneWidget,
+        reason:
+            'once visited, Browse must stay mounted underneath (offstage), '
+            'not be torn down when another tab is selected',
+      );
 
-    // Train and Profile remain unvisited throughout.
-    expect(find.byType(TrainingShell, skipOffstage: false), findsNothing);
-    expect(find.byType(SettingsScreen, skipOffstage: false), findsNothing);
-  });
+      // Train and Profile remain unvisited throughout.
+      expect(find.byType(TrainingShell, skipOffstage: false), findsNothing);
+      expect(find.byType(SettingsScreen, skipOffstage: false), findsNothing);
+    },
+  );
 
   testWidgets('tapping Train reaches the Training shell', (tester) async {
     // nav.0, nav.2 and nav.3 were already exercised above; nav.1 (Train) was
@@ -257,8 +279,11 @@ void main() {
     await _pumpShell(tester);
     await tester.tap(find.byKey(const Key('nav.2')));
     await tester.pumpAndSettle();
-    expect(find.text('Exercises'), findsOneWidget,
-        reason: 'the Browse tab shows the catalogue, previously unreachable');
+    expect(
+      find.text('Exercises'),
+      findsOneWidget,
+      reason: 'the Browse tab shows the catalogue, previously unreachable',
+    );
   });
 
   testWidgets('tapping Profile reaches account settings', (tester) async {
@@ -271,13 +296,18 @@ void main() {
     // The type is unique across the whole tree — nothing else in NavShell
     // is a SettingsScreen — so this cannot be satisfied by anything but the
     // real screen actually being current.
-    expect(find.byType(SettingsScreen), findsOneWidget,
-        reason: 'Profile must still reach Settings now that the gear icon '
-            'plan_screen_test.dart tested is gone');
+    expect(
+      find.byType(SettingsScreen),
+      findsOneWidget,
+      reason:
+          'Profile must still reach Settings now that the gear icon '
+          'plan_screen_test.dart tested is gone',
+    );
   });
 
-  testWidgets("the swap sheet's equipment note lands on the Profile tab",
-      (tester) async {
+  testWidgets("the swap sheet's equipment note lands on the Profile tab", (
+    tester,
+  ) async {
     // The one test that crosses all three files. The sheet's note, the
     // callback PlanScreen forwards and the index NavShell selects are each
     // covered on their own; only here does a wrong index in nav_shell.dart —

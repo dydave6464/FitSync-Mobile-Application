@@ -66,10 +66,10 @@ class FakeRepository implements ExerciseRepository {
           name: search != null && search.isNotEmpty
               ? '$search $page'
               : equipment != null
-                  ? '$equipment press $page'
-                  : muscleGroups.isEmpty
-                      ? 'Sit-up $page'
-                      : 'Curl $page',
+              ? '$equipment press $page'
+              : muscleGroups.isEmpty
+              ? 'Sit-up $page'
+              : 'Curl $page',
           muscleGroup: muscleGroups.isEmpty ? 'abs' : muscleGroups.first,
           equipment: 'body weight',
           thumbnailUrl: '/storage/exercises/000$page/thumb.jpg',
@@ -91,7 +91,10 @@ class FakeRepository implements ExerciseRepository {
       throw const ApiException('NETWORK_ERROR', 'Could not reach the server.');
     }
     return const ExerciseFilters(
-      muscleGroups: [FilterOption(value: 'abs', count: 147), FilterOption(value: 'biceps', count: 150)],
+      muscleGroups: [
+        FilterOption(value: 'abs', count: 147),
+        FilterOption(value: 'biceps', count: 150),
+      ],
       equipment: [
         FilterOption(value: 'barbell', label: 'Barbell', count: 214),
         FilterOption(value: 'body weight', label: 'Bodyweight', count: 304),
@@ -115,9 +118,9 @@ Future<void> search(WidgetTester tester, String term) async {
 }
 
 Widget harness(FakeRepository repo) => ProviderScope(
-      overrides: [exerciseRepositoryProvider.overrideWithValue(repo)],
-      child: const MaterialApp(home: ExerciseListScreen()),
-    );
+  overrides: [exerciseRepositoryProvider.overrideWithValue(repo)],
+  child: const MaterialApp(home: ExerciseListScreen()),
+);
 
 void main() {
   testWidgets('shows a loading indicator, then the exercises', (tester) async {
@@ -132,14 +135,21 @@ void main() {
     expect(find.byType(CircularProgressIndicator), findsNothing);
   });
 
-  testWidgets('shows the server error code and retries on demand', (tester) async {
+  testWidgets('shows the server error code and retries on demand', (
+    tester,
+  ) async {
     // NETWORK_ERROR is deliberately avoided here: it is the one code
     // apiRetryPolicy treats as transient, so it would retry automatically
     // (up to Riverpod's default 10 attempts) instead of surfacing on the
     // first failure the way this test expects. INVALID_QUERY_PARAM is
     // permanent from the client's side and surfaces immediately, matching
     // the equivalent case in exercise_detail_screen_test.dart.
-    final repo = FakeRepository(failWith: const ApiException('INVALID_QUERY_PARAM', 'Unsupported filter value.'));
+    final repo = FakeRepository(
+      failWith: const ApiException(
+        'INVALID_QUERY_PARAM',
+        'Unsupported filter value.',
+      ),
+    );
     await tester.pumpWidget(harness(repo));
     await tester.pumpAndSettle();
 
@@ -152,8 +162,9 @@ void main() {
     expect(repo.listCalls, 2, reason: 'retry must actually refetch');
   });
 
-  testWidgets('the catalogue is narrowed by equipment, not by a chip strip',
-      (tester) async {
+  testWidgets('the catalogue is narrowed by equipment, not by a chip strip', (
+    tester,
+  ) async {
     // The strip put every muscle group ahead of the equipment tags in one
     // sideways scroller, so reaching "dumbbell" meant scrolling past all of
     // them. Equipment now has its own labelled control and the strip is gone.
@@ -162,10 +173,16 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.byKey(const Key('library.equipment')), findsOneWidget);
-    expect(find.byType(FilterChip), findsNothing,
-        reason: 'the chip strip is gone');
-    expect(find.text('biceps'), findsNothing,
-        reason: 'muscle groups are no longer a filter control');
+    expect(
+      find.byType(FilterChip),
+      findsNothing,
+      reason: 'the chip strip is gone',
+    );
+    expect(
+      find.text('biceps'),
+      findsNothing,
+      reason: 'muscle groups are no longer a filter control',
+    );
   });
 
   testWidgets('choosing equipment refetches the list with it', (tester) async {
@@ -216,12 +233,16 @@ void main() {
 
     expect(find.text('Machines'), findsOneWidget);
     expect(find.text('Bodyweight'), findsOneWidget);
-    expect(find.text('body weight'), findsNothing,
-        reason: 'the raw catalogue tag is a key, not a label');
+    expect(
+      find.text('body weight'),
+      findsNothing,
+      reason: 'the raw catalogue tag is a key, not a label',
+    );
   });
 
-  testWidgets('the key sent to the server is the value, not the label',
-      (tester) async {
+  testWidgets('the key sent to the server is the value, not the label', (
+    tester,
+  ) async {
     final repo = FakeRepository();
     await tester.pumpWidget(harness(repo));
     await tester.pumpAndSettle();
@@ -231,8 +252,11 @@ void main() {
     await tester.tap(find.text('Bodyweight'));
     await tester.pumpAndSettle();
 
-    expect(repo.lastEquipment, 'body weight',
-        reason: 'the label is for the user; the value is the API contract');
+    expect(
+      repo.lastEquipment,
+      'body weight',
+      reason: 'the label is for the user; the value is the API contract',
+    );
   });
 
   testWidgets('the sheet says how many exercises each tag has', (tester) async {
@@ -286,11 +310,16 @@ void main() {
     expect(find.text('Equipment'), findsOneWidget);
   });
 
-  testWidgets('retry brings the filter bar back, not just the list', (tester) async {
+  testWidgets('retry brings the filter bar back, not just the list', (
+    tester,
+  ) async {
     // An outage takes down both providers. Retry must recover both — a filter
     // bar that stays dead until app restart looks fixed but is not.
     final repo = FakeRepository(
-      failWith: const ApiException('NETWORK_ERROR', 'Could not reach the server.'),
+      failWith: const ApiException(
+        'NETWORK_ERROR',
+        'Could not reach the server.',
+      ),
       // Fail every attempt the retry policy allows (1 initial + 2 retries), so
       // the provider settles into a real error state the way a genuine outage
       // leaves it — rather than self-healing on the fake clock.
@@ -300,16 +329,22 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.text('Retry'), findsOneWidget);
-    expect(find.byKey(const Key('library.equipment')), findsNothing,
-        reason: 'filters failed too');
+    expect(
+      find.byKey(const Key('library.equipment')),
+      findsNothing,
+      reason: 'filters failed too',
+    );
 
     repo.failWith = null;
     await tester.tap(find.text('Retry'));
     await tester.pumpAndSettle();
 
     expect(find.text('Sit-up 1'), findsOneWidget, reason: 'list recovered');
-    expect(find.byKey(const Key('library.equipment')), findsOneWidget,
-        reason: 'the equipment filter must recover too');
+    expect(
+      find.byKey(const Key('library.equipment')),
+      findsOneWidget,
+      reason: 'the equipment filter must recover too',
+    );
   });
 
   testWidgets('a missing thumbnail does not break the row', (tester) async {
@@ -322,8 +357,9 @@ void main() {
     expect(tester.takeException(), isNull);
     expect(find.text('Sit-up 1'), findsOneWidget);
   });
-  testWidgets('typing in the search box refetches with that term',
-      (tester) async {
+  testWidgets('typing in the search box refetches with that term', (
+    tester,
+  ) async {
     final repo = FakeRepository();
     await tester.pumpWidget(harness(repo));
     await tester.pumpAndSettle();
@@ -336,8 +372,9 @@ void main() {
     expect(find.text('plank 1'), findsOneWidget);
   });
 
-  testWidgets('a burst of keystrokes costs one request, not one each',
-      (tester) async {
+  testWidgets('a burst of keystrokes costs one request, not one each', (
+    tester,
+  ) async {
     // Every keystroke rebuilding the provider means a request per character
     // against a 1,200-row catalogue, and the answers can land out of order --
     // the list would settle on whichever response was slowest, not on what
@@ -362,8 +399,9 @@ void main() {
     expect(repo.lastSearch, 'plank');
   });
 
-  testWidgets('clearing the search box goes back to the whole catalogue',
-      (tester) async {
+  testWidgets('clearing the search box goes back to the whole catalogue', (
+    tester,
+  ) async {
     final repo = FakeRepository();
     await tester.pumpWidget(harness(repo));
     await tester.pumpAndSettle();
@@ -390,13 +428,17 @@ void main() {
     await tester.pumpAndSettle();
     await search(tester, 'curl');
 
-    expect(repo.lastEquipment, 'dumbbell',
-        reason: 'the chosen equipment must still be applied');
+    expect(
+      repo.lastEquipment,
+      'dumbbell',
+      reason: 'the chosen equipment must still be applied',
+    );
     expect(repo.lastSearch, 'curl');
   });
 
-  testWidgets('a re-opened library shows the term it is still filtering by',
-      (tester) async {
+  testWidgets('a re-opened library shows the term it is still filtering by', (
+    tester,
+  ) async {
     // The box is part of the screen; the term outlives it. Backing out of the
     // library and going back in gave a fresh, empty box above a list still
     // filtered to the old term -- and the clear button only appears when the
@@ -408,54 +450,71 @@ void main() {
     );
     addTearDown(container.dispose);
 
-    await tester.pumpWidget(UncontrolledProviderScope(
-      container: container,
-      child: const MaterialApp(home: ExerciseListScreen()),
-    ));
+    await tester.pumpWidget(
+      UncontrolledProviderScope(
+        container: container,
+        child: const MaterialApp(home: ExerciseListScreen()),
+      ),
+    );
     await tester.pumpAndSettle();
     await search(tester, 'bench');
     expect(repo.lastSearch, 'bench');
 
     // Leave the library, then come back to a freshly built one.
-    await tester.pumpWidget(UncontrolledProviderScope(
-      container: container,
-      child: const MaterialApp(home: Scaffold(body: Text('elsewhere'))),
-    ));
+    await tester.pumpWidget(
+      UncontrolledProviderScope(
+        container: container,
+        child: const MaterialApp(home: Scaffold(body: Text('elsewhere'))),
+      ),
+    );
     await tester.pumpAndSettle();
-    await tester.pumpWidget(UncontrolledProviderScope(
-      container: container,
-      child: const MaterialApp(home: ExerciseListScreen()),
-    ));
+    await tester.pumpWidget(
+      UncontrolledProviderScope(
+        container: container,
+        child: const MaterialApp(home: ExerciseListScreen()),
+      ),
+    );
     await tester.pumpAndSettle();
 
     expect(
-      tester.widget<TextField>(find.byKey(const Key('library.search'))).controller!.text,
+      tester
+          .widget<TextField>(find.byKey(const Key('library.search')))
+          .controller!
+          .text,
       'bench',
       reason: 'the box must show the term the list is obeying',
     );
-    expect(find.byKey(const Key('library.search.clear')), findsOneWidget,
-        reason: 'and it must be clearable');
+    expect(
+      find.byKey(const Key('library.search.clear')),
+      findsOneWidget,
+      reason: 'and it must be clearable',
+    );
   });
 
-  testWidgets('clearing a restored term goes back to the whole catalogue',
-      (tester) async {
+  testWidgets('clearing a restored term goes back to the whole catalogue', (
+    tester,
+  ) async {
     final repo = FakeRepository();
     final container = ProviderContainer(
       overrides: [exerciseRepositoryProvider.overrideWithValue(repo)],
     );
     addTearDown(container.dispose);
 
-    await tester.pumpWidget(UncontrolledProviderScope(
-      container: container,
-      child: const MaterialApp(home: ExerciseListScreen()),
-    ));
+    await tester.pumpWidget(
+      UncontrolledProviderScope(
+        container: container,
+        child: const MaterialApp(home: ExerciseListScreen()),
+      ),
+    );
     await tester.pumpAndSettle();
     await search(tester, 'bench');
 
-    await tester.pumpWidget(UncontrolledProviderScope(
-      container: container,
-      child: const MaterialApp(home: ExerciseListScreen(selecting: true)),
-    ));
+    await tester.pumpWidget(
+      UncontrolledProviderScope(
+        container: container,
+        child: const MaterialApp(home: ExerciseListScreen(selecting: true)),
+      ),
+    );
     await tester.pumpAndSettle();
     await tester.tap(find.byKey(const Key('library.search.clear')));
     await tester.pumpAndSettle();
@@ -463,8 +522,9 @@ void main() {
     expect(repo.lastSearch, isNull);
   });
 
-  testWidgets('an empty result says so rather than looking broken',
-      (tester) async {
+  testWidgets('an empty result says so rather than looking broken', (
+    tester,
+  ) async {
     final repo = FakeRepository(emptyResults: true);
     await tester.pumpWidget(harness(repo));
     await tester.pumpAndSettle();
@@ -473,5 +533,4 @@ void main() {
 
     expect(find.textContaining('No exercises'), findsOneWidget);
   });
-
 }
