@@ -32,6 +32,18 @@ test('body weight routes', async (t) => {
       .set(auth).expect(400);
   });
 
+
+  // 'decade' above names no property at all. 'constructor' names one every
+  // object inherits, so a bare SUMMARY_WINDOWS[period] hands back a truthy
+  // function, the null the route turns into the 400 never happens, and the
+  // function reaches the query as a bind parameter -- a 500.
+  await t.test('a prototype property is a 400, not a 500', async () => {
+    for (const period of ['constructor', 'toString', '__proto__']) {
+      await request(app).get(`/api/v1/profile/body-weight?period=${period}`)
+        .set(auth).expect(400);
+    }
+  });
+
   await t.test('posting an entry returns it', async () => {
     const post = await request(app).post('/api/v1/profile/body-weight')
       .set(auth).send({ weightKg: 71.4 }).expect(201);

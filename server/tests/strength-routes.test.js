@@ -64,6 +64,17 @@ test('strength routes', async (t) => {
     await request(app).get('/api/v1/sessions/strength?period=decade').set(auth).expect(400);
   });
 
+  // 'decade' above names no property at all. 'constructor' names one every
+  // object inherits, so a bare SUMMARY_WINDOWS[period] hands back a truthy
+  // function, the null the route turns into the 400 never happens, and the
+  // function reaches the query as a bind parameter -- a 500.
+  await t.test('a prototype property is a 400, not a 500', async () => {
+    for (const period of ['constructor', 'toString', '__proto__']) {
+      await request(app).get(`/api/v1/sessions/strength?period=${period}`)
+        .set(auth).expect(400);
+    }
+  });
+
   await t.test('a non-numeric exerciseId is a 400', async () => {
     await request(app).get('/api/v1/sessions/strength?exerciseId=abc').set(auth).expect(400);
   });

@@ -1,6 +1,6 @@
 'use strict';
 const AppError = require('../lib/app-error');
-const { formatDate, toNumber, SUMMARY_WINDOWS } = require('./sessions');
+const { formatDate, toNumber, periodDays } = require('./sessions');
 
 // A plausible human range. `users.weight_kg` is unconstrained today, and this
 // endpoint is about to become the main way it is written -- a typo landing
@@ -25,7 +25,12 @@ const MAX_POINTS = 24;
 /// Volume never does this -- its buckets are always full. Only the sparse,
 /// user-driven series need it.
 async function readSeries(pool, userId, period = 'week') {
-  const days = SUMMARY_WINDOWS[period];
+  // periodDays, not a bare SUMMARY_WINDOWS lookup: indexing reads the
+  // prototype chain, so 'constructor' comes back a truthy function, walks
+  // past this guard and reaches the query as a bind parameter -- where
+  // mysql2 stringifies it and MySQL reads it as a nought-day window,
+  // answering 200 with a nonsense series instead of refusing.
+  const days = periodDays(period);
   if (!days) return null;
 
   const [windowed] = await pool.query(
