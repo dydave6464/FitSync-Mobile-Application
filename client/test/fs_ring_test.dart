@@ -3,22 +3,29 @@ import 'package:flutter_test/flutter_test.dart';
 
 import 'package:fitsync/core/widgets/fs_charts.dart';
 
-/// Reaches past FsRing's SizedBox to the CustomPaint it wraps and reads the
-/// value its (private) painter was built with. This is what makes the tests
-/// below fail if the ring stops actually drawing its input -- a hardcoded
-/// sweep angle would leave `find.text` and `takeException` satisfied while
-/// this catches it.
-double _ringValue(WidgetTester tester) {
-  final customPaint = tester.widget<CustomPaint>(
-    find
-        .descendant(of: find.byType(FsRing), matching: find.byType(CustomPaint))
-        .first,
-  );
-  return (customPaint.painter as dynamic).value as double;
-}
+/// The exact double `_RingPainter.paint()` multiplies its value by. Kept as
+/// the same literal (rather than recomputed from `2 * math.pi`) so the
+/// expected sweep angle is bit-identical to what the widget draws --
+/// `PaintPattern.arc`'s sweepAngle check is an exact `==`, not a tolerance.
+const double _twoPi = 6.283185307179586;
+
+/// From twelve o'clock -- the start angle the value arc is drawn from.
+const double _twelveOClock = -1.5707963267948966;
+
+/// The CustomPaint FsRing wraps around its child. Reading real canvas calls
+/// off this (via the `paints` matcher below) is what proves `paint()` drew
+/// the right arc -- reading the painter's `value` field only proves the
+/// number was threaded into the constructor, which a hardcoded sweep angle
+/// in `paint()` itself would leave untouched.
+Finder get _ringCanvas => find.descendant(
+  of: find.byType(FsRing),
+  matching: find.byType(CustomPaint),
+);
 
 void main() {
-  testWidgets('the ring draws its child in the middle', (tester) async {
+  testWidgets('the ring draws its child in the middle and sweeps by value', (
+    tester,
+  ) async {
     await tester.pumpWidget(
       const MaterialApp(
         home: Scaffold(
@@ -35,7 +42,21 @@ void main() {
 
     expect(find.text('Low-Mod'), findsOneWidget);
     expect(tester.takeException(), isNull);
-    expect(_ringValue(tester), closeTo(0.32, 1e-9));
+
+    // Exactly one full-circle track arc, then one value arc swept to
+    // 2*pi*0.32 in the widget's own colour -- a hardcoded sweep (e.g. always
+    // half a circle) would still pass a `value` field read but fails this.
+    expect(_ringCanvas, paintsExactlyCountTimes(#drawArc, 2));
+    expect(
+      _ringCanvas,
+      paints
+        ..arc(startAngle: 0, sweepAngle: _twoPi)
+        ..arc(
+          startAngle: _twelveOClock,
+          sweepAngle: _twoPi * 0.32,
+          color: Colors.amber,
+        ),
+    );
   });
 
   testWidgets('a value outside 0..1 is clamped rather than drawn', (
@@ -59,28 +80,28 @@ void main() {
       // this is about not crashing on a figure the server could send.
       expect(tester.takeException(), isNull, reason: 'value $value');
 
-      final painted = _ringValue(tester);
-      expect(painted.isFinite, isTrue, reason: 'value $value painted $painted');
-      expect(
-        painted,
-        inInclusiveRange(0.0, 1.0),
-        reason: 'value $value painted $painted',
-      );
-      if (value.isNaN) {
-        // Not finite input has no sane fraction, so it degrades to an empty
-        // ring rather than carrying the NaN through to the canvas.
-        expect(painted, 0.0, reason: 'NaN should degrade to an empty ring');
-      } else if (value < 0) {
+      if (value.isNaN || value <= 0) {
+        // Both degrade to a non-positive fraction, and `paint()` returns
+        // right after the track for those -- no value arc is drawn at all,
+        // rather than one with a nonsensical (negative or NaN) sweep.
         expect(
-          painted,
-          0.0,
-          reason: 'value $value should clamp to the low end',
+          _ringCanvas,
+          paintsExactlyCountTimes(#drawArc, 1),
+          reason: 'value $value should draw only the track, no value arc',
         );
       } else {
+        // 2.0 clamps to 1.0: a full circle, not a sweep of 2*pi*2.0.
+        expect(_ringCanvas, paintsExactlyCountTimes(#drawArc, 2));
         expect(
-          painted,
-          1.0,
-          reason: 'value $value should clamp to the high end',
+          _ringCanvas,
+          paints
+            ..arc(startAngle: 0, sweepAngle: _twoPi)
+            ..arc(
+              startAngle: _twelveOClock,
+              sweepAngle: _twoPi,
+              color: Colors.amber,
+            ),
+          reason: 'value $value should clamp to exactly one full sweep',
         );
       }
     }
