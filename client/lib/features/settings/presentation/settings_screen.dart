@@ -31,7 +31,10 @@ class SettingsScreen extends ConsumerWidget {
 
     return Scaffold(
       backgroundColor: t.bg,
-      appBar: AppBar(title: const Text('Profile')),
+      appBar: AppBar(
+        title: const Text('Profile'),
+        actions: const [_ThemeToggleButton()],
+      ),
       body: profile.when(
         loading: () => const Center(child: CircularProgressIndicator()),
         error: (error, _) => Center(
@@ -57,6 +60,28 @@ class SettingsScreen extends ConsumerWidget {
   }
 }
 
+/// Dark/light in the header, where the prototype's Profile bar puts its one
+/// icon button -- rather than a row the user has to scroll the whole screen
+/// to reach. It is the only control for the setting: a second one in the App
+/// card would be the same switch drawn twice.
+class _ThemeToggleButton extends ConsumerWidget {
+  const _ThemeToggleButton();
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final isDark = ref.watch(themeModeProvider) == ThemeMode.dark;
+
+    return IconButton(
+      key: const Key('themeToggle'),
+      // The icon the row used, kept so the meaning does not change with the
+      // move: it names the mode you are in, not the one you would get.
+      icon: Icon(isDark ? Icons.dark_mode_outlined : Icons.light_mode_outlined),
+      tooltip: isDark ? 'Switch to light theme' : 'Switch to dark theme',
+      onPressed: () => ref.read(themeModeProvider.notifier).setDark(!isDark),
+    );
+  }
+}
+
 class _SettingsList extends ConsumerWidget {
   const _SettingsList({required this.profile});
 
@@ -77,7 +102,6 @@ class _SettingsList extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final t = context.fs;
     final theme = Theme.of(context);
-    final isDark = ref.watch(themeModeProvider) == ThemeMode.dark;
 
     final subtitle = [
       if (profile.fitnessLevel != null)
@@ -196,16 +220,6 @@ class _SettingsList extends ConsumerWidget {
                   onChanged: (value) => ref
                       .read(profileProvider.notifier)
                       .patch({'notificationsEnabled': value}),
-                ),
-              ),
-              _SettingsRow(
-                icon: isDark ? Icons.dark_mode_outlined : Icons.light_mode_outlined,
-                label: 'Dark mode',
-                trailing: Switch(
-                  key: const Key('darkMode'),
-                  value: isDark,
-                  onChanged: (value) =>
-                      ref.read(themeModeProvider.notifier).setDark(value),
                 ),
                 last: true,
               ),

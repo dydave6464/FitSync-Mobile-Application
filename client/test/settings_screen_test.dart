@@ -11,6 +11,7 @@ import 'package:fitsync/features/onboarding/presentation/steps/goal_step.dart';
 import 'package:fitsync/features/onboarding/presentation/steps/injuries_step.dart';
 import 'package:fitsync/features/onboarding/presentation/steps/level_step.dart';
 import 'package:fitsync/core/api_exception.dart';
+import 'package:fitsync/core/theme_controller.dart';
 import 'package:fitsync/features/plans/presentation/widgets/training_days_row.dart';
 import 'package:fitsync/features/profile/domain/profile.dart';
 import 'package:fitsync/features/profile/presentation/providers.dart';
@@ -384,5 +385,31 @@ void main() {
     ));
     await tester.pumpAndSettle();
     expect(find.byKey(const Key('goal.lose_weight')), findsOneWidget);
+  });
+
+  testWidgets('the header toggle flips the theme', (tester) async {
+    await _pump(tester);
+
+    final container = ProviderScope.containerOf(
+      tester.element(find.byType(SettingsScreen)),
+    );
+    expect(container.read(themeModeProvider), ThemeMode.light);
+
+    await tester.tap(find.byKey(const Key('themeToggle')));
+    await tester.pumpAndSettle();
+
+    expect(container.read(themeModeProvider), ThemeMode.dark);
+  });
+
+  testWidgets('the theme is not also offered as a row', (tester) async {
+    await _pump(tester);
+    // Scrolled to the foot of the list so the App card is mounted: a
+    // ListView leaves off-screen children unbuilt, and an unbuilt row would
+    // let this pass whether or not the row was ever removed.
+    await tester.scrollUntilVisible(find.byKey(const Key('signOut')), 200);
+    await tester.pumpAndSettle();
+
+    expect(find.byKey(const Key('signOut')), findsOneWidget);
+    expect(find.text('Dark mode'), findsNothing);
   });
 }
