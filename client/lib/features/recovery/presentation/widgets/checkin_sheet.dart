@@ -104,6 +104,14 @@ class _CheckinSheetState extends ConsumerState<_CheckinSheet> {
 
   Future<void> _save() async {
     if (_busy) return;
+    // Captured before the await for the same reason as generator_screen's
+    // _generate and session_logger_screen's _addToPlan: nothing sets
+    // isDismissible: false or blocks the back gesture here, so the sheet can
+    // be swiped away while checkIn is still in flight. ref.invalidate would
+    // throw against a disposed State -- the container outlives the widget,
+    // so the refresh still lands even when the sheet is already gone, which
+    // is what should happen: the check-in really did save.
+    final container = ProviderScope.containerOf(context, listen: false);
     setState(() {
       _busy = true;
       _failure = null;
@@ -113,7 +121,7 @@ class _CheckinSheetState extends ConsumerState<_CheckinSheet> {
       // Sent exactly as stored in _answers -- see the class comment on
       // _questions for why nothing here may reshape these strings.
       await ref.read(recoveryRepositoryProvider).checkIn(_answers);
-      ref.invalidate(recoveryOverviewProvider);
+      container.invalidate(recoveryOverviewProvider);
       if (!mounted) return;
       Navigator.of(context).pop();
     } catch (error) {
