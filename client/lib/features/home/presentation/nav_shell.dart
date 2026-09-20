@@ -40,10 +40,22 @@ class _NavShellState extends State<NavShell> {
   /// again, so its Element (and State) is never torn down.
   final Set<int> _visited = {0};
 
+  /// How many times the Train tab has been selected.
+  ///
+  /// IndexedStack keeps a visited tab alive, so opening Train again rebuilds
+  /// nothing -- there is no mount for that tab to notice. This counter is the
+  /// notice: it changes on every selection, including a re-tap of the tab the
+  /// user is already on, and the Training shell replays its arrival animation
+  /// whenever it does.
+  int _trainOpens = 0;
+
   void _select(int index) => setState(() {
     _index = index;
     _visited.add(index);
+    if (index == _trainIndex) _trainOpens++;
   });
+
+  static const _trainIndex = 1;
 
   static const _items = [
     FsNavItem(icon: Icons.home_outlined, label: 'Home'),
@@ -68,7 +80,13 @@ class _NavShellState extends State<NavShell> {
               onGoToProfile: () => _select(3),
             ),
           ),
-          _tab(1, () => TrainingShell(onGoToProfile: () => _select(3))),
+          _tab(
+            _trainIndex,
+            () => TrainingShell(
+              openCount: _trainOpens,
+              onGoToProfile: () => _select(3),
+            ),
+          ),
           _tab(2, () => const ExerciseListScreen()),
           _tab(3, () => const SettingsScreen()),
         ],

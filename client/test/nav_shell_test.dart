@@ -365,4 +365,38 @@ void main() {
 
     await tester.pumpAndSettle();
   });
+
+  testWidgets('the regenerate icon animates again on every return to Train', (
+    tester,
+  ) async {
+    await _pumpShell(tester);
+    await tester.pumpAndSettle();
+
+    Future<double> openTrainAndRead() async {
+      await tester.tap(find.byKey(const Key('nav.1')));
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 400));
+      final value = tester
+          .widget<ScaleTransition>(
+            find.ancestor(
+              of: find.byKey(const Key('plan.regenerate')),
+              matching: find.byType(ScaleTransition),
+            ),
+          )
+          .scale
+          .value;
+      await tester.pumpAndSettle();
+      return value;
+    }
+
+    expect(await openTrainAndRead(), lessThan(1.0));
+
+    // Away and back. NavShell keeps the Train tab alive, so nothing here is
+    // rebuilt from scratch -- without a signal saying the tab was opened
+    // again, the icon would simply sit there on every visit after the first.
+    await tester.tap(find.byKey(const Key('nav.0')));
+    await tester.pumpAndSettle();
+
+    expect(await openTrainAndRead(), lessThan(1.0));
+  });
 }

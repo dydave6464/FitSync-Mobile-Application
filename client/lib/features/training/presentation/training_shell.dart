@@ -15,7 +15,14 @@ import '../../sessions/presentation/progress_screen.dart';
 /// is honest about what is coming -- and it waits on a daily check-in that
 /// does not exist yet.
 class TrainingShell extends StatefulWidget {
-  const TrainingShell({super.key, this.onGoToProfile});
+  const TrainingShell({super.key, this.onGoToProfile, this.openCount = 0});
+
+  /// Bumped by NavShell every time the Train tab is selected.
+  ///
+  /// Defaulted so a test (or any other caller) can mount this shell directly
+  /// without inventing a number; it then simply plays the intro once, on
+  /// mount, the way a first visit does.
+  final int openCount;
 
   final VoidCallback? onGoToProfile;
 
@@ -26,21 +33,40 @@ class TrainingShell extends StatefulWidget {
 class _TrainingShellState extends State<TrainingShell> {
   int _index = 0;
 
-  /// True for this shell's first frame only.
+  /// True for one frame each time the Train tab is opened.
   ///
-  /// NavShell mounts this tab lazily and never tears it down again, so this
-  /// State is built exactly once: on the user's first switch to Train. That
-  /// makes it the right place to decide whether the regenerate button plays
-  /// its arrival animation -- the button itself is rebuilt on every return to
-  /// the Plan tab and could not tell a first visit from a fifth.
+  /// The decision lives here rather than in the button because the two are
+  /// rebuilt on different rhythms: the button is torn down and remade every
+  /// time the Plan sub-tab comes back, while this shell survives for as long
+  /// as the app does. Only this side can tell "the user opened Train" from
+  /// "the user flicked back from Progress", and the first replays while the
+  /// second does not.
   bool _introPending = true;
+
+  /// The [TrainingShell.openCount] the intro has already been armed for, so
+  /// one open arms it once however many times this rebuilds.
+  int? _armedFor;
 
   @override
   void initState() {
     super.initState();
-    // Cleared after the first frame rather than when the animation ends: the
-    // button has already started by then, and a rebuild with a false flag
-    // does not stop a controller that is already running.
+    _armIntro();
+  }
+
+  @override
+  void didUpdateWidget(TrainingShell oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (widget.openCount != oldWidget.openCount) _armIntro();
+  }
+
+  void _armIntro() {
+    if (_armedFor == widget.openCount) return;
+    _armedFor = widget.openCount;
+    _introPending = true;
+    // Cleared after the frame rather than when the animation ends: the button
+    // has already started by then, and a rebuild with a false flag does not
+    // stop a controller that is already running. It also leaves the flag
+    // ready to go true again on the next open.
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (mounted) setState(() => _introPending = false);
     });

@@ -470,6 +470,19 @@ void main() {
       expect(scaleOf(tester), 1.0);
     });
 
+    testWidgets('draws the icon in the theme accent', (tester) async {
+      await _pump(tester);
+
+      final button = find.byKey(const Key('plan.regenerate'));
+      final icon = tester.widget<Icon>(
+        find.descendant(of: button, matching: find.byType(Icon)),
+      );
+
+      // The prototype's green, taken from the theme rather than spelled as a
+      // literal, so it follows light and dark instead of fighting one.
+      expect(icon.color, tester.element(button).fs.accent);
+    });
+
     testWidgets('is skipped when the platform asks for less motion', (
       tester,
     ) async {

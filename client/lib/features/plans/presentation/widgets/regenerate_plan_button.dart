@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 
+import '../../../../core/theme.dart';
 import '../generator_screen.dart';
 
 /// Opens the generator, from the Plan tab's header and from its empty state.
@@ -31,12 +32,13 @@ Future<void> openGenerator(BuildContext context) =>
 class RegeneratePlanButton extends StatefulWidget {
   const RegeneratePlanButton({super.key, this.playIntro = false});
 
-  /// Plays the one-shot arrival animation.
+  /// Plays the arrival animation: once on mount, and again whenever this
+  /// goes from false to true.
   ///
   /// Decided by the Training shell rather than here. This widget is rebuilt
-  /// from scratch every time the Plan tab comes back into view, so an intro
-  /// it started on its own would fire again on every visit -- an
-  /// attention-getter that never stops asking for attention.
+  /// from scratch every time the Plan sub-tab comes back into view, which is
+  /// not the same event as the user opening Train -- and only the shell
+  /// survives long enough to tell them apart.
   final bool playIntro;
 
   @override
@@ -82,22 +84,34 @@ class _RegeneratePlanButtonState extends State<RegeneratePlanButton>
     end: 0,
   ).animate(CurvedAnimation(parent: _controller, curve: Curves.easeOutCubic));
 
-  bool _considered = false;
+  bool _mountHandled = false;
   Timer? _introTimer;
 
   @override
   void didChangeDependencies() {
     super.didChangeDependencies();
-    // Here rather than initState: this reads MediaQuery, and once rather than
-    // on every dependency change, so a theme or metrics change mid-flight
-    // cannot restart it.
-    if (_considered || !widget.playIntro) return;
-    _considered = true;
+    // Here rather than initState: this reads MediaQuery. Guarded so a theme
+    // or metrics change cannot restart an intro that is already running.
+    if (_mountHandled) return;
+    _mountHandled = true;
+    if (widget.playIntro) _startIntro();
+  }
 
+  @override
+  void didUpdateWidget(RegeneratePlanButton oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    // The shell raises the flag for a single frame each time Train is
+    // opened. Already mounted, this widget has no other way to hear about it.
+    if (widget.playIntro && !oldWidget.playIntro) _startIntro();
+  }
+
+  void _startIntro() {
     // Reduce motion is a request, not a preference to weigh. The button stays
     // at its resting size and the user loses nothing but the flourish.
     if (MediaQuery.maybeOf(context)?.disableAnimations ?? false) return;
 
+    // Restarts cleanly if Train is reopened mid-flight.
+    _introTimer?.cancel();
     _introTimer = Timer(_settleDelay, () {
       if (mounted) _controller.forward(from: 0);
     });
@@ -119,7 +133,9 @@ class _RegeneratePlanButtonState extends State<RegeneratePlanButton>
       turns: _turns,
       child: IconButton(
         key: const Key('plan.regenerate'),
-        icon: const Icon(Icons.auto_awesome),
+        // The prototype's green, read from the theme so it follows light and
+        // dark rather than picking a side.
+        icon: Icon(Icons.auto_awesome, color: context.fs.accent),
         tooltip: 'Regenerate plan',
         onPressed: () => openGenerator(context),
       ),
