@@ -44,7 +44,17 @@ Future<void> showShareReportSheet(
 }) {
   return showModalBottomSheet<void>(
     context: context,
-    backgroundColor: Colors.transparent,
+    // The surface goes on the sheet's own Material, the way ExerciseJumpSheet
+    // is shown, rather than the Colors.transparent-plus-Container arrangement
+    // the body-weight and start-workout sheets use. Those draw custom rows;
+    // this one's rows are SwitchListTiles, which paint their background and
+    // ink splashes on the nearest Material ancestor -- a coloured box between
+    // tile and Material hides the splashes and trips an assertion. Transparent
+    // with nothing painting in its place is what left the sheet see-through.
+    backgroundColor: context.fs.surface,
+    shape: const RoundedRectangleBorder(
+      borderRadius: BorderRadius.vertical(top: Radius.circular(22)),
+    ),
     // Matches showLogBodyWeightSheet: full height rather than the default
     // 9/16 cap, so a wide accessibility text scale cannot push the button
     // past the bottom edge.

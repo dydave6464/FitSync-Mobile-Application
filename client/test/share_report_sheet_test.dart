@@ -170,4 +170,20 @@ void main() {
     // describeError's fallback for a non-ApiException.
     expect(find.textContaining('Something went wrong'), findsOneWidget);
   });
+
+  testWidgets('the sheet paints its own surface', (tester) async {
+    await _open(tester);
+
+    // The rows are SwitchListTiles, which paint themselves on the nearest
+    // Material ancestor: the surface has to be that Material's own colour,
+    // not a box behind it. A transparent one leaves the toggles sitting on
+    // the scrim with the screen showing through.
+    final eyebrow = find.text('SHARE WITH COACH');
+    final t = tester.element(eyebrow).fs;
+    final behind = tester.widget<Material>(
+      find.ancestor(of: eyebrow, matching: find.byType(Material)).first,
+    );
+
+    expect(behind.color, t.surface);
+  });
 }
