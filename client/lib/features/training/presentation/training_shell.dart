@@ -26,6 +26,26 @@ class TrainingShell extends StatefulWidget {
 class _TrainingShellState extends State<TrainingShell> {
   int _index = 0;
 
+  /// True for this shell's first frame only.
+  ///
+  /// NavShell mounts this tab lazily and never tears it down again, so this
+  /// State is built exactly once: on the user's first switch to Train. That
+  /// makes it the right place to decide whether the regenerate button plays
+  /// its arrival animation -- the button itself is rebuilt on every return to
+  /// the Plan tab and could not tell a first visit from a fifth.
+  bool _introPending = true;
+
+  @override
+  void initState() {
+    super.initState();
+    // Cleared after the first frame rather than when the animation ends: the
+    // button has already started by then, and a rebuild with a false flag
+    // does not stop a controller that is already running.
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) setState(() => _introPending = false);
+    });
+  }
+
   static const _tabs = [
     ('plan', 'Plan'),
     ('progress', 'Progress'),
@@ -55,7 +75,8 @@ class _TrainingShellState extends State<TrainingShell> {
                   // would offer to regenerate a plan while the user is
                   // looking at Progress or Recovery. Keyed on the tab's name,
                   // not its index, so reordering _tabs cannot move it.
-                  if (_tabs[_index].$1 == 'plan') const RegeneratePlanButton(),
+                  if (_tabs[_index].$1 == 'plan')
+                    RegeneratePlanButton(playIntro: _introPending),
                 ],
               ),
             ),
