@@ -9,6 +9,7 @@ const requestId = require('./middleware/request-id');
 const notFound = require('./middleware/not-found');
 const errorHandler = require('./middleware/error-handler');
 const buildRoutes = require('./routes');
+const { REPORT_TOKEN_PATH, redactUrl } = require('./lib/redact-url');
 
 // pino-http's default req serializer logs req.url from req.originalUrl,
 // which is the path AND the query string as one literal string. The emailed
@@ -20,11 +21,21 @@ const buildRoutes = require('./routes');
 // serializer to drop everything from the first '?' keeps the path, which is
 // still worth logging, while keeping the query string (and any token in it)
 // out of req.url entirely.
+//
+// The share-a-report token needs its OWN handling, because it is the one
+// credential in this app that rides in the PATH rather than the query string.
+// Stripping the query string does nothing for it; without redactUrl below,
+// every successful view writes a 30-day key to someone's training data into
+// the logs at 'info'. The regex lives in lib/redact-url.js because
+// middleware/not-found.js needs the identical redaction and cannot require
+// this module -- app.js requires not-found long before it assigns its own
+// exports, so the constant would arrive undefined.
 function reqSerializer(req) {
   const serialized = stdSerializers.req(req);
   if (typeof serialized.url === 'string') {
     const queryIndex = serialized.url.indexOf('?');
     if (queryIndex !== -1) serialized.url = serialized.url.slice(0, queryIndex);
+    serialized.url = redactUrl(serialized.url);
   }
   return serialized;
 }
@@ -89,4 +100,4 @@ function createApp({
   return app;
 }
 
-module.exports = { createApp };
+module.exports = { createApp, reqSerializer, REPORT_TOKEN_PATH, redactUrl };

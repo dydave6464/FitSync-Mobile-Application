@@ -2,7 +2,6 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../core/theme.dart';
-import '../../../core/widgets/fs_charts.dart';
 import '../../../core/widgets/fs_kit.dart';
 import '../../exercises/presentation/exercise_list_screen.dart' show describeError;
 import '../../profile/presentation/providers.dart'
@@ -10,9 +9,9 @@ import '../../profile/presentation/providers.dart'
 import '../../profile/presentation/widgets/body_weight_card.dart';
 import '../../profile/presentation/widgets/log_body_weight_sheet.dart';
 import '../domain/session_history.dart';
-import '../domain/training_analytics.dart';
 import 'providers.dart';
 import 'widgets/progress_cards.dart';
+import 'widgets/share_report_sheet.dart';
 
 /// What training has actually amounted to.
 ///
@@ -34,34 +33,25 @@ class ProgressScreen extends ConsumerWidget {
     (value: 'year', label: 'Year'),
   ];
 
-  /// How far back the chosen window reaches, said plainly. The control says
-  /// "Week" because that is what fits a segment; the card says what that
-  /// actually means, because the windows are rolling rather than calendar.
-  static const _windowLabel = {
-    'week': 'last 7 days',
-    'month': 'last 30 days',
-    'year': 'last 365 days',
-  };
-
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final period = ref.watch(trainingPeriodProvider);
     final analytics = ref.watch(trainingAnalyticsProvider(period));
-    final strength = ref.watch(strengthSeriesProvider(period));
+    final summary = ref.watch(trainingSummaryProvider);
     final bodyWeight = ref.watch(bodyWeightProvider(period));
     final history = ref.watch(sessionHistoryProvider);
     final unit = ref.watch(weightUnitProvider);
 
     void retry() {
       ref.invalidate(trainingAnalyticsProvider(period));
-      ref.invalidate(strengthSeriesProvider(period));
+      ref.invalidate(trainingSummaryProvider);
       ref.invalidate(bodyWeightProvider(period));
       ref.invalidate(sessionHistoryProvider);
     }
 
     // Only the analytics call earns a full-screen retry: it owns the period
     // every other card is scoped to, so without it the screen has no frame to
-    // hang anything on. The strength and body weight cards render their own
+    // hang anything on. The sets and body weight cards render their own
     // inline error and their own retry, because either can fail while the
     // rest of the screen is perfectly readable.
     final error = analytics.error;
@@ -87,23 +77,36 @@ class ProgressScreen extends ConsumerWidget {
           // Unreachable: a failure was handled above. Kept because `when`
           // demands it, and a silent SizedBox would hide a future regression.
           error: (e, _) => _Retry(message: describeError(e), onRetry: retry),
-          data: (data) => _AnalyticsCards(
-            analytics: data,
-            window: _windowLabel[period] ?? period,
-          ),
+          data: (data) => VolumeTrendCard(analytics: data, unit: unit),
         ),
         const SizedBox(height: 12),
-        strength.when(
-          loading: () => const _CardLoading(),
-          error: (e, _) => _CardError(
-            message: describeError(e),
-            onRetry: () => ref.invalidate(strengthSeriesProvider(period)),
-          ),
-          data: (data) => StrengthCard(
-            series: data,
-            onPick: (id) =>
-                ref.read(strengthExerciseProvider.notifier).set(id),
-            unit: unit,
+        // Side by side under the chart, as the prototype lays them out.
+        // IntrinsicHeight because the two come from different fetches and
+        // would otherwise settle at different heights as each lands.
+        IntrinsicHeight(
+          child: Row(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Expanded(
+                child: analytics.when(
+                  loading: () => const _CardLoading(),
+                  error: (e, _) =>
+                      _Retry(message: describeError(e), onRetry: retry),
+                  data: (data) => AdherenceCard(adherence: data.adherence),
+                ),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: summary.when(
+                  loading: () => const _CardLoading(),
+                  error: (e, _) => _CardError(
+                    message: describeError(e),
+                    onRetry: () => ref.invalidate(trainingSummaryProvider),
+                  ),
+                  data: (data) => SetsCard(setCount: data.setCount),
+                ),
+              ),
+            ],
           ),
         ),
         const SizedBox(height: 12),
@@ -128,7 +131,11 @@ class ProgressScreen extends ConsumerWidget {
           // Unreachable: a failure was handled above. Kept because `when`
           // demands it, and a silent SizedBox would hide a future regression.
           error: (e, _) => _Retry(message: describeError(e), onRetry: retry),
-          data: (data) => _MusclesCard(analytics: data),
+          data: (data) => VolumeByMuscleCard(analytics: data),
+        ),
+        const SizedBox(height: 12),
+        ShareWithCoachCard(
+          onTap: () => showShareReportSheet(context, period: period),
         ),
         const SizedBox(height: 22),
         const FsEyebrow('Recent'),
@@ -152,56 +159,7 @@ class ProgressScreen extends ConsumerWidget {
   }
 }
 
-/// The two cards that lead the screen, grouped so [ProgressScreen.build]
-/// hands them one [TrainingAnalytics] rather than threading its fields
-/// through separate `.when` calls for what is a single fetch. Sets-by-muscle
-/// is fetched from the same [TrainingAnalytics] but renders on its own,
-/// further down the screen -- see [_MusclesCard].
-class _AnalyticsCards extends StatelessWidget {
-  const _AnalyticsCards({required this.analytics, required this.window});
-
-  final TrainingAnalytics analytics;
-  final String window;
-
-  @override
-  Widget build(BuildContext context) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      children: [
-        AdherenceCard(adherence: analytics.adherence, window: window),
-        const SizedBox(height: 12),
-        VolumeTrendCard(analytics: analytics),
-      ],
-    );
-  }
-}
-
 /// Sets by muscle -- last of the analytics cards, per §5 of the design spec
-/// (segment · adherence · volume trend · strength · body weight · sets by
-/// muscle). Split out of [_AnalyticsCards] so it can render after the
-/// strength and body-weight cards despite sharing their [TrainingAnalytics]
-/// fetch.
-class _MusclesCard extends StatelessWidget {
-  const _MusclesCard({required this.analytics});
-
-  final TrainingAnalytics analytics;
-
-  @override
-  Widget build(BuildContext context) {
-    return FsCard(
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          const FsEyebrow('Muscles worked'),
-          const SizedBox(height: 8),
-          for (final m in analytics.muscles)
-            FsBarRow(label: m.muscle, fraction: analytics.muscleFraction(m)),
-        ],
-      ),
-    );
-  }
-}
-
 /// The strength and body-weight cards' own loading placeholder -- shorter
 /// than the analytics one above it, since these sit mid-list rather than
 /// carrying the whole screen while empty.

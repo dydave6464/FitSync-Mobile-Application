@@ -50,10 +50,37 @@ class BodyWeightCard extends StatelessWidget {
     return FsCard(child: Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        const FsEyebrow('Body weight'),
-        const SizedBox(height: 6),
-        Text(formatWeightWithUnit(latest, unit),
-            style: Theme.of(context).textTheme.headlineSmall),
+        // Headline and goal on one line, as the prototype lays them out: the
+        // goal is what the headline is measured against, so it is read beside
+        // it rather than hunted for on the chart. The chart draws no y-axis,
+        // so a label on the dashed line was the only other place it could
+        // live -- floating over data it is not part of.
+        Row(
+          crossAxisAlignment: CrossAxisAlignment.end,
+          children: [
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const FsEyebrow('Body weight'),
+                  const SizedBox(height: 6),
+                  Text(formatWeightWithUnit(latest, unit),
+                      style: Theme.of(context).textTheme.headlineSmall),
+                ],
+              ),
+            ),
+            if (reference != null)
+              Text(
+                '${reference.label} '
+                '${formatWeightWithUnit(reference.weightKg, unit)}',
+                style: TextStyle(
+                  fontFamily: fsMonoFamily,
+                  fontSize: 11,
+                  color: t.text3,
+                ),
+              ),
+          ],
+        ),
         const SizedBox(height: 8),
         FsLineChart(
           // `FsPoint.x` must be a sequential index — the chart's axis-label
@@ -68,7 +95,10 @@ class BodyWeightCard extends StatelessWidget {
               ),
           ],
           referenceY: reference == null ? null : convertFromKg(reference.weightKg, unit),
-          referenceLabel: reference?.label,
+          // Unlabelled: the header above says which line this is and what it
+          // sits at. The line itself stays because it is what makes a
+          // one-entry card read as a chart rather than a lone dot.
+          color: t.blue,
           // The band is meant as "a few hundred grams of daily noise" --
           // converting it alongside the data keeps it that same width in
           // whichever unit is on screen, rather than staying a literal 4,

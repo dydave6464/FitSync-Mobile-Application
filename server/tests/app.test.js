@@ -13,6 +13,22 @@ test('unmatched route returns the error envelope, not Express HTML', async () =>
   assert.equal(res.body.data, undefined);
 });
 
+// The 404 envelope echoes the AppError's message, which carries originalUrl.
+// A share link pasted with a stray trailing character lands here, so the
+// token must not survive into the response body either.
+test('an unmatched report URL does not echo the share token back', async () => {
+  const token = 'E'.repeat(43);
+  const res = await request(buildTestApp()).get(`/api/v1/reports/${token}/x`);
+
+  assert.equal(res.status, 404);
+  assert.equal(res.body.error.code, 'NOT_FOUND');
+  assert.doesNotMatch(JSON.stringify(res.body), new RegExp(token));
+  assert.equal(
+    res.body.error.message,
+    'No route matches GET /api/v1/reports/[REDACTED]/x',
+  );
+});
+
 test('an AppError renders with its own status and code', async () => {
   const app = buildTestApp({
     extend: (router) => {

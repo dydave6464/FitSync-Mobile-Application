@@ -64,14 +64,23 @@ class VolumeChange {
       );
 }
 
-class MuscleSets {
-  const MuscleSets({required this.muscle, required this.sets});
+/// Kilograms lifted for one muscle group in the window.
+///
+/// Volume rather than a set count: five sets of 20 kg and five of 100 kg
+/// draw the same bar under a count, which says nothing about the work done.
+/// The server's measure is `SUM(weight_kg * reps)`, the same one
+/// `total_volume_kg` carries per session -- so this card and the volume
+/// trend above it cannot disagree about what a kilogram of work is.
+class MuscleVolume {
+  const MuscleVolume({required this.muscle, required this.volumeKg});
   final String muscle;
-  final int sets;
+  final double volumeKg;
 
-  factory MuscleSets.fromJson(Map<String, dynamic> json) => MuscleSets(
+  factory MuscleVolume.fromJson(Map<String, dynamic> json) => MuscleVolume(
         muscle: json['muscle'] as String,
-        sets: json['sets'] as int,
+        // `as double?` would throw on a whole number: jsonDecode gives 600 as
+        // an int. Same reasoning as LoggedSet.weightKg.
+        volumeKg: (json['volumeKg'] as num).toDouble(),
       );
 }
 
@@ -82,21 +91,32 @@ class TrainingAnalytics {
     required this.change,
     required this.adherence,
     required this.muscles,
+    this.musclesLocked = false,
   });
 
   final String period;
   final List<VolumeBucket> volume;
   final VolumeChange change;
   final Adherence adherence;
-  final List<MuscleSets> muscles;
+  final List<MuscleVolume> muscles;
+
+  /// Why [muscles] is empty: this is a Pro card and the user is not on Pro,
+  /// so the server sent no numbers at all.
+  ///
+  /// A Pro user who has logged nothing weighted also gets an empty list, and
+  /// the card reads differently for each -- one offers an upgrade, the other
+  /// explains that bodyweight work carries no volume. Defaults to false so a
+  /// payload from before the field reads as "not locked", which is what a
+  /// server that never gated this meant.
+  final bool musclesLocked;
 
   /// Bars are relative to the biggest group, not to a target. A per-muscle
   /// weekly target is a claim about training science this app is not in a
   /// position to make.
-  double muscleFraction(MuscleSets row) {
+  double muscleFraction(MuscleVolume row) {
     if (muscles.isEmpty) return 0;
-    final top = muscles.first.sets;
-    return top == 0 ? 0 : row.sets / top;
+    final top = muscles.first.volumeKg;
+    return top == 0 ? 0 : row.volumeKg / top;
   }
 
   factory TrainingAnalytics.fromJson(Map<String, dynamic> json) => TrainingAnalytics(
@@ -109,7 +129,8 @@ class TrainingAnalytics {
         adherence: Adherence.fromJson(json['adherence'] as Map<String, dynamic>),
         muscles: [
           for (final m in (json['muscles'] as List<dynamic>? ?? const []))
-            MuscleSets.fromJson(m as Map<String, dynamic>),
+            MuscleVolume.fromJson(m as Map<String, dynamic>),
         ],
+        musclesLocked: json['musclesLocked'] as bool? ?? false,
       );
 }

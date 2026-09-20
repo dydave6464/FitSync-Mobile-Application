@@ -12,6 +12,7 @@ import '../../sessions/presentation/session_logger_screen.dart';
 import '../domain/workout_plan.dart';
 import 'exercise_swap_sheet.dart';
 import 'providers.dart';
+import 'widgets/regenerate_plan_button.dart';
 import 'widgets/session_card.dart';
 import 'widgets/week_strip.dart';
 
@@ -74,9 +75,19 @@ class _NoPlanYet extends StatelessWidget {
             Text('No plan yet', style: Theme.of(context).textTheme.titleLarge),
             const SizedBox(height: 8),
             Text(
-              'Finish onboarding and one will be generated for you.',
+              'Build one from your goals, equipment and injuries.',
               textAlign: TextAlign.center,
               style: TextStyle(fontSize: 12.5, color: t.text2),
+            ),
+            const SizedBox(height: 16),
+            // The old copy said a plan would be generated after onboarding
+            // and offered no way to ask for one, which left anyone who
+            // arrived here without a plan with nothing to tap.
+            FsButton(
+              key: const Key('noPlan.generate'),
+              label: 'Generate a plan',
+              small: true,
+              onPressed: () => openGenerator(context),
             ),
           ],
         ),

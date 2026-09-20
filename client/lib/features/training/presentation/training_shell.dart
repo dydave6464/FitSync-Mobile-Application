@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../../../core/theme.dart';
 import '../../../core/widgets/fs_kit.dart';
 import '../../plans/presentation/plan_screen.dart';
+import '../../plans/presentation/widgets/regenerate_plan_button.dart';
 import '../../sessions/presentation/progress_screen.dart';
 
 /// Plan · Progress · Recovery under one header.
@@ -45,7 +46,18 @@ class _TrainingShellState extends State<TrainingShell> {
           children: [
             Padding(
               padding: const EdgeInsets.fromLTRB(20, 12, 20, 4),
-              child: Text('Training', style: theme.textTheme.titleLarge),
+              child: Row(
+                children: [
+                  Text('Training', style: theme.textTheme.titleLarge),
+                  const Spacer(),
+                  // Per tab rather than shared. This header sits above all
+                  // three tabs, so an action parked here unconditionally
+                  // would offer to regenerate a plan while the user is
+                  // looking at Progress or Recovery. Keyed on the tab's name,
+                  // not its index, so reordering _tabs cannot move it.
+                  if (_tabs[_index].$1 == 'plan') const RegeneratePlanButton(),
+                ],
+              ),
             ),
             Padding(
               padding: const EdgeInsets.symmetric(horizontal: 20),

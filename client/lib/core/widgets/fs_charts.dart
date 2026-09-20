@@ -34,6 +34,7 @@ class FsLineChart extends StatelessWidget {
     required this.minYBand,
     this.referenceY,
     this.referenceLabel,
+    this.color,
     this.height = 84,
   });
 
@@ -46,6 +47,13 @@ class FsLineChart extends StatelessWidget {
   /// It is also what makes a one-point card read as a chart.
   final double? referenceY;
   final String? referenceLabel;
+
+  /// The series' own colour. Null is the accent, which is what a chart of
+  /// training output uses. Body weight is not training output -- it is the
+  /// body the training acts on -- and reads in blue so the two are not
+  /// skimmed as the same measure.
+  final Color? color;
+
   final double height;
 
   /// The y window actually drawn: the data's range, widened to [minYBand]
@@ -133,13 +141,13 @@ class FsLineChart extends StatelessWidget {
               spots: [for (final p in points) FlSpot(p.x, p.y)],
               isCurved: true,
               curveSmoothness: 0.2,
-              color: t.accent,
+              color: color ?? t.accent,
               barWidth: 2,
               // A single point has no line to draw, so show the dot itself.
               dotData: FlDotData(show: points.length == 1),
               belowBarData: BarAreaData(
                 show: true,
-                color: t.accent.withValues(alpha: 0.12),
+                color: (color ?? t.accent).withValues(alpha: 0.12),
               ),
             ),
           ],

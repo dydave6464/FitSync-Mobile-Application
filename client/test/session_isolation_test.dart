@@ -15,7 +15,7 @@ import 'package:fitsync/features/profile/presentation/providers.dart';
 import 'package:fitsync/features/sessions/data/session_repository.dart';
 import 'package:fitsync/features/sessions/domain/active_session.dart';
 import 'package:fitsync/features/sessions/domain/session_history.dart';
-import 'package:fitsync/features/sessions/domain/strength_series.dart';
+import 'package:fitsync/features/sessions/domain/shared_report.dart';
 import 'package:fitsync/features/sessions/domain/training_analytics.dart';
 import 'package:fitsync/features/sessions/presentation/providers.dart';
 import 'package:fitsync/features/sessions/presentation/workout_draft.dart';
@@ -145,7 +145,10 @@ class SequenceSessionRepository implements SessionRepository {
   @override
   Future<TrainingAnalytics> analytics(String period) => throw UnimplementedError();
   @override
-  Future<StrengthSeries> strength(String period, {int? exerciseId}) =>
+  Future<SharedReport> shareReport({
+    required String period,
+    required Map<String, bool> include,
+  }) =>
       throw UnimplementedError();
 }
 

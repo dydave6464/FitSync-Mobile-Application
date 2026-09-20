@@ -18,7 +18,9 @@ const TTL_SECONDS = Object.freeze({
   reset_password: 60 * 60,
 });
 
-const hash = (token) => crypto.createHash('sha256').update(token).digest('hex');
+/// SHA-256, hex. Exported because shared_reports.token_hash holds the same
+/// class of credential under the same policy -- one hashing helper, not two.
+const hashToken = (token) => crypto.createHash('sha256').update(token).digest('hex');
 
 async function issueToken(pool, { userId, purpose }) {
   const ttl = TTL_SECONDS[purpose];
@@ -28,7 +30,7 @@ async function issueToken(pool, { userId, purpose }) {
   await pool.query(
     `INSERT INTO auth_tokens (token_hash, user_id, purpose, expires_at)
      VALUES (?, ?, ?, DATE_ADD(NOW(), INTERVAL ? SECOND))`,
-    [hash(token), userId, purpose, ttl],
+    [hashToken(token), userId, purpose, ttl],
   );
   return token;
 }
@@ -43,12 +45,12 @@ async function consumeToken(pool, { token, purpose }) {
     `UPDATE auth_tokens SET consumed_at = NOW()
       WHERE token_hash = ? AND purpose = ?
         AND consumed_at IS NULL AND expires_at > NOW()`,
-    [hash(token), purpose],
+    [hashToken(token), purpose],
   );
   if (result.affectedRows !== 1) return null;
 
   const [rows] = await pool.query(
-    'SELECT user_id FROM auth_tokens WHERE token_hash = ?', [hash(token)],
+    'SELECT user_id FROM auth_tokens WHERE token_hash = ?', [hashToken(token)],
   );
   // The UPDATE above reported success, so this row existed a moment ago. If
   // the owning user were deleted in that window, ON DELETE CASCADE would
@@ -69,4 +71,4 @@ async function consumeToken(pool, { token, purpose }) {
   return { userId };
 }
 
-module.exports = { issueToken, consumeToken, TTL_SECONDS };
+module.exports = { issueToken, consumeToken, hashToken, TTL_SECONDS };

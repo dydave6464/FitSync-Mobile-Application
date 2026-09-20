@@ -19,11 +19,28 @@ class ProfileNotifier extends AsyncNotifier<Profile> {
   @override
   Future<Profile> build() => ref.watch(profileRepositoryProvider).load();
 
+  /// The profile fields the body-weight card is drawn from on the server.
+  ///
+  /// `goalWeightKg` is the dashed reference line readReference() reads
+  /// straight out of `users`, and a changed `weightKg` makes the profile
+  /// write a `body_weight_logs` row of its own. Either one leaves the cached
+  /// series wrong; patching anything else changes nothing the card shows.
+  static const _bodyWeightFields = {'weightKg', 'goalWeightKg'};
+
   // Each write replaces state only on success. A failed write leaves the
   // profile already on screen intact and rethrows, so the caller can show the
   // error without the form underneath it disappearing.
   Future<void> patch(Map<String, dynamic> fields) async {
     state = AsyncData(await ref.read(profileRepositoryProvider).patch(fields));
+    // Setting this state is not enough on its own: bodyWeightProvider holds
+    // what the server computed from these same fields, and nothing else
+    // refetches it -- the mirror of the invalidation showLogBodyWeightSheet
+    // already does in the other direction.
+    if (fields.keys.any(_bodyWeightFields.contains)) {
+      // The whole family rather than one period. A goal is not per-period, so
+      // every segment the user has already opened is holding the old line.
+      ref.invalidate(bodyWeightProvider);
+    }
   }
 
   Future<void> setEquipment(List<int> equipmentIds) async {

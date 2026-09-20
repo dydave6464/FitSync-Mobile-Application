@@ -11,7 +11,6 @@ import 'package:fitsync/features/profile/presentation/providers.dart'
 import 'package:fitsync/features/profile/presentation/widgets/body_weight_card.dart';
 import 'package:fitsync/features/sessions/data/session_repository.dart';
 import 'package:fitsync/features/sessions/domain/session_history.dart';
-import 'package:fitsync/features/sessions/domain/strength_series.dart';
 import 'package:fitsync/features/sessions/domain/training_analytics.dart';
 import 'package:fitsync/features/sessions/presentation/progress_screen.dart';
 import 'package:fitsync/features/sessions/presentation/providers.dart';
@@ -38,7 +37,7 @@ const _fromPlan = SessionHistoryEntry(
 );
 
 /// A quiet reading with nothing to report -- what most of these tests hand
-/// the analytics and strength cards, since they are testing the history list
+/// the analytics and summary cards, since they are testing the history list
 /// underneath, not the cards themselves.
 const _quietAnalytics = TrainingAnalytics(
   period: 'week',
@@ -48,8 +47,10 @@ const _quietAnalytics = TrainingAnalytics(
   muscles: [],
 );
 
-const _emptyStrength =
-    StrengthSeries(exerciseId: null, xAxis: 'date', points: [], options: []);
+/// Sets logged in the window, for the card beside Sessions. Zero unless a
+/// test says otherwise -- none of these are about the count itself.
+const _quietSummary =
+    TrainingSummary(sessionCount: 0, setCount: 0, totalVolumeKg: 0);
 
 const _emptyBodyWeight =
     BodyWeightSeries(widened: false, points: [], reference: null, unit: 'kg');
@@ -58,13 +59,13 @@ class FakeSessionRepository implements SessionRepository {
   FakeSessionRepository({
     this.entries = const [],
     this.analyticsValue = _quietAnalytics,
-    this.strengthValue = _emptyStrength,
+    this.summaryValue = _quietSummary,
     this.error,
   });
 
   final List<SessionHistoryEntry> entries;
   final TrainingAnalytics analyticsValue;
-  final StrengthSeries strengthValue;
+  final TrainingSummary summaryValue;
 
   /// Thrown by every method below when set -- a systemic outage, the same
   /// shape the old single-provider screen modelled.
@@ -88,9 +89,9 @@ class FakeSessionRepository implements SessionRepository {
   }
 
   @override
-  Future<StrengthSeries> strength(String period, {int? exerciseId}) async {
+  Future<TrainingSummary> summary({String period = 'week'}) async {
     if (error != null) throw error!;
-    return strengthValue;
+    return summaryValue;
   }
 
   @override
@@ -101,8 +102,8 @@ class FakeSessionRepository implements SessionRepository {
       throw UnimplementedError('${i.memberName} is not used here');
 }
 
-/// Stands in for the profile fetch the strength card's weight unit now reads
-/// (see `StrengthCard.unit`) -- none of these tests are about units, so this
+/// Stands in for the profile fetch the volume card's weight unit reads (see
+/// `VolumeTrendCard.unit`) -- none of these tests are about units, so this
 /// keeps that lookup from ever reaching a real `ApiClient`.
 class _StubProfileNotifier extends ProfileNotifier {
   @override
@@ -132,7 +133,13 @@ Future<FakeSessionRepository> _pump(
       bodyWeightProvider.overrideWith((ref, period) async => _emptyBodyWeight),
       profileProvider.overrideWith(_StubProfileNotifier.new),
     ],
-    child: MaterialApp(theme: fsLightTheme(), home: const ProgressScreen()),
+    child: MaterialApp(
+      theme: fsLightTheme(),
+      // Matches how the real app hosts this screen: training_shell.dart
+      // wraps every tab in a Scaffold, which is where the Material ancestor
+      // for ShareWithCoachCard's own InkWell comes from in production.
+      home: const Scaffold(body: ProgressScreen()),
+    ),
   ));
   await tester.pumpAndSettle();
   return fake;
@@ -245,12 +252,12 @@ void main() {
   });
 
   testWidgets(
-      'cards render in spec order: strength, then body weight, then sets by muscle',
+      'cards render in prototype order: volume, the pair, body weight, muscles',
       (tester) async {
-    // §5 of the design spec: segment · adherence hero · volume trend ·
-    // strength · body weight · sets by muscle · Recent history. A tall
-    // viewport keeps every card actually laid out instead of culled below
-    // the fold, so their vertical positions are comparable.
+    // The prototype's Progress screen: segment · total volume · sessions and
+    // sets side by side · body weight · volume by muscle. Estimated 1RM is
+    // not on it at all. A tall viewport keeps every card actually laid out
+    // instead of culled below the fold, so their positions are comparable.
     tester.view.physicalSize = const Size(400, 3000);
     tester.view.devicePixelRatio = 1;
     addTearDown(tester.view.resetPhysicalSize);
@@ -260,13 +267,38 @@ void main() {
 
     double dy(Finder f) => tester.getTopLeft(f).dy;
 
-    final strengthDy = dy(find.byType(StrengthCard));
+    final volumeDy = dy(find.byType(VolumeTrendCard));
+    final sessionsDy = dy(find.byType(AdherenceCard));
     final bodyWeightDy = dy(find.byType(BodyWeightCard));
-    final musclesDy = dy(find.text('MUSCLES WORKED'));
+    final musclesDy = dy(find.text('VOLUME BY MUSCLE'));
 
-    expect(strengthDy, lessThan(bodyWeightDy),
-        reason: 'strength must render before body weight');
+    expect(volumeDy, lessThan(sessionsDy),
+        reason: 'the volume chart leads, with the pair beneath it');
+    expect(sessionsDy, lessThan(bodyWeightDy),
+        reason: 'sessions and sets sit above body weight');
     expect(bodyWeightDy, lessThan(musclesDy),
-        reason: 'sets by muscle must render last, after body weight');
+        reason: 'muscles renders last of the analytics cards');
+
+    // Sessions and Sets share a row, so they start at the same height.
+    expect(dy(find.byType(SetsCard)), sessionsDy);
+
+    // Estimated 1RM is gone from the screen entirely.
+    expect(find.text('ESTIMATED 1RM'), findsNothing);
+  });
+
+  testWidgets('the share card sits at the foot of the tab', (tester) async {
+    tester.view.physicalSize = const Size(400, 3000);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+
+    await _pump(tester);
+
+    expect(find.byType(ShareWithCoachCard), findsOneWidget);
+    expect(
+      tester.getTopLeft(find.byType(ShareWithCoachCard)).dy,
+      greaterThan(tester.getTopLeft(find.byType(BodyWeightCard)).dy),
+      reason: 'the action comes after what it shares',
+    );
   });
 }

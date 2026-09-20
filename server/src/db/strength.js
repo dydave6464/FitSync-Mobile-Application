@@ -1,5 +1,5 @@
 'use strict';
-const { formatDate, toNumber, SUMMARY_WINDOWS } = require('./sessions');
+const { formatDate, toNumber, periodDays } = require('./sessions');
 
 /// Above this, Epley stops describing anything real -- a 20-rep set says more
 /// about conditioning than about a one-rep max.
@@ -27,7 +27,12 @@ const QUALIFYING = `
 /// The exercises worth offering in the picker, most-logged first -- the one
 /// with the most data is the one whose chart will look like something.
 async function readOptions(pool, userId, period = 'week') {
-  const days = SUMMARY_WINDOWS[period];
+  // periodDays, not a bare SUMMARY_WINDOWS lookup: indexing reads the
+  // prototype chain, so 'constructor' comes back a truthy function, walks
+  // past this guard and reaches the query as a bind parameter -- where
+  // mysql2 stringifies it and MySQL reads it as a nought-day window,
+  // answering 200 with a nonsense series instead of refusing.
+  const days = periodDays(period);
   if (!days) return null;
 
   const [rows] = await pool.query(
@@ -63,7 +68,12 @@ async function readOptions(pool, userId, period = 'week') {
 /// Best set per session rather than last, for the reason `lastPerformance()`
 /// already gives: the final set is usually where form broke down.
 async function readSeries(pool, userId, exerciseId, period = 'week') {
-  const days = SUMMARY_WINDOWS[period];
+  // periodDays, not a bare SUMMARY_WINDOWS lookup: indexing reads the
+  // prototype chain, so 'constructor' comes back a truthy function, walks
+  // past this guard and reaches the query as a bind parameter -- where
+  // mysql2 stringifies it and MySQL reads it as a nought-day window,
+  // answering 200 with a nonsense series instead of refusing.
+  const days = periodDays(period);
   if (!days) return null;
 
   const [rows] = await pool.query(

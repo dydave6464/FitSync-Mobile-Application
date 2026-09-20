@@ -15,10 +15,10 @@ import 'package:fitsync/features/profile/presentation/providers.dart'
     show bodyWeightProvider, profileProvider, ProfileNotifier;
 import 'package:fitsync/features/sessions/domain/active_session.dart';
 import 'package:fitsync/features/sessions/domain/session_history.dart';
-import 'package:fitsync/features/sessions/domain/strength_series.dart';
 import 'package:fitsync/features/sessions/domain/training_analytics.dart';
 import 'package:fitsync/features/sessions/presentation/providers.dart';
 import 'package:fitsync/features/sessions/presentation/session_logger_screen.dart';
+import 'package:fitsync/features/plans/presentation/generator_screen.dart';
 import 'package:fitsync/features/training/presentation/training_shell.dart';
 
 /// A quiet, zero-everything analytics reading. What every Progress-tab
@@ -33,8 +33,8 @@ const _emptyAnalytics = TrainingAnalytics(
   muscles: [],
 );
 
-const _emptyStrength =
-    StrengthSeries(exerciseId: null, xAxis: 'date', points: [], options: []);
+const _emptySummary =
+    TrainingSummary(sessionCount: 0, setCount: 0, totalVolumeKg: 0);
 
 const _emptyBodyWeight =
     BodyWeightSeries(widened: false, points: [], reference: null, unit: 'kg');
@@ -50,8 +50,8 @@ const _plan = WorkoutPlan(
   ],
 );
 
-/// Stands in for the profile fetch the strength card's weight unit now reads
-/// (see `StrengthCard.unit`) -- this file is about the tab bar, not units, so
+/// Stands in for the profile fetch the volume card's weight unit reads (see
+/// `VolumeTrendCard.unit`) -- this file is about the tab bar, not units, so
 /// this keeps that lookup from ever reaching a real `ApiClient`.
 class _StubProfileNotifier extends ProfileNotifier {
   @override
@@ -77,7 +77,7 @@ Future<void> _pump(WidgetTester tester, {ActiveSession? session}) async {
       // at the provider rather than the repository: this file is about the
       // tab bar, and Progress has its own test.
       trainingAnalyticsProvider.overrideWith((ref, period) async => _emptyAnalytics),
-      strengthSeriesProvider.overrideWith((ref, period) async => _emptyStrength),
+      trainingSummaryProvider.overrideWith((ref) async => _emptySummary),
       bodyWeightProvider.overrideWith((ref, period) async => _emptyBodyWeight),
       profileProvider.overrideWith(_StubProfileNotifier.new),
       sessionHistoryProvider.overrideWith((ref) async =>
@@ -147,7 +147,7 @@ Future<void> _pumpWithController(
       // at the provider rather than the repository: this file is about the
       // tab bar, and Progress has its own test.
       trainingAnalyticsProvider.overrideWith((ref, period) async => _emptyAnalytics),
-      strengthSeriesProvider.overrideWith((ref, period) async => _emptyStrength),
+      trainingSummaryProvider.overrideWith((ref) async => _emptySummary),
       bodyWeightProvider.overrideWith((ref, period) async => _emptyBodyWeight),
       profileProvider.overrideWith(_StubProfileNotifier.new),
       sessionHistoryProvider.overrideWith((ref) async =>
@@ -287,5 +287,42 @@ void main() {
         reason: 'the button must still be wired up after a failed attempt, '
             'not stuck disabled by a _starting flag that was never reset');
     expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('the Plan tab offers a way to regenerate', (tester) async {
+    await _pump(tester);
+
+    // Labelled, not an icon: the whole point of moving this out of the
+    // start-workout sheet is that nobody found it there.
+    expect(find.byKey(const Key('plan.regenerate')), findsOneWidget);
+    expect(find.text('Regenerate'), findsOneWidget);
+  });
+
+  testWidgets('the other tabs do not offer it', (tester) async {
+    await _pump(tester);
+
+    for (final tab in ['progress', 'recovery']) {
+      await tester.tap(find.byKey(Key('tab.$tab')));
+      await tester.pumpAndSettle();
+      // The header is shared by all three tabs, so an action parked there
+      // unconditionally would sit above two screens it means nothing on.
+      expect(
+        find.byKey(const Key('plan.regenerate')),
+        findsNothing,
+        reason: 'regenerate should not be offered on the $tab tab',
+      );
+    }
+  });
+
+  testWidgets('regenerate opens the generator', (tester) async {
+    await _pump(tester);
+
+    await tester.tap(find.byKey(const Key('plan.regenerate')));
+    await tester.pumpAndSettle();
+
+    // Straight to the screen that already asks split, days and length, and
+    // whose Generate button is the commit -- no confirm in between, since
+    // opening it changes nothing.
+    expect(find.byType(GeneratorScreen), findsOneWidget);
   });
 }

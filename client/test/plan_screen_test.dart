@@ -11,6 +11,7 @@ import 'package:fitsync/features/exercises/presentation/providers.dart';
 import 'package:fitsync/features/plans/domain/exercise_alternative.dart';
 import 'package:fitsync/features/plans/domain/workout_plan.dart';
 import 'package:fitsync/features/plans/presentation/exercise_swap_sheet.dart';
+import 'package:fitsync/features/plans/presentation/generator_screen.dart';
 import 'package:fitsync/features/plans/presentation/plan_screen.dart';
 import 'package:fitsync/features/plans/presentation/providers.dart';
 import 'package:fitsync/features/profile/domain/profile.dart';
@@ -197,6 +198,18 @@ void main() {
 
     expect(find.byKey(const Key('noPlan')), findsOneWidget);
     expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('the empty state offers a way out of itself', (tester) async {
+    await _pump(tester, null);
+
+    // Before this, the empty state said a plan would be generated after
+    // onboarding and gave no way to ask for one -- a dead end for anyone
+    // who arrived here with no plan.
+    await tester.tap(find.byKey(const Key('noPlan.generate')));
+    await tester.pumpAndSettle();
+
+    expect(find.byType(GeneratorScreen), findsOneWidget);
   });
 
   testWidgets('every plan exercise offers a way to change it', (tester) async {

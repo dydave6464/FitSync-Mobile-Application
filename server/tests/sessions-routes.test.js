@@ -589,6 +589,52 @@ test('session endpoints', async (t) => {
     assert.equal(retry.body.data.session.planDayNo, 1, 'giving up does not cost a day');
   });
 
+  // Volume by muscle is a Pro card. The numbers must not travel to a free
+  // client at all: a payload the UI chooses not to draw is not a lock, it is
+  // a hint, and anyone reading the response gets the feature for nothing.
+  const withCompletedVolume = async (userId, exerciseId) => {
+    const [s] = await pool.query(
+      `INSERT INTO workout_sessions (user_id, status, session_date, total_volume_kg)
+       VALUES (?, 'completed', CURDATE(), 1200)`,
+      [userId],
+    );
+    await pool.query(
+      `INSERT INTO set_logs (session_id, exercise_id, set_number, weight_kg, reps, is_completed)
+       VALUES (?, ?, 1, 60, 10, TRUE)`,
+      [s.insertId, exerciseId],
+    );
+  };
+
+  await t.test('analytics withholds muscle volumes from a free user', async () => {
+    const { token, userId, exerciseId } = await freshUser('muscles-free@example.com');
+    await withCompletedVolume(userId, exerciseId);
+
+    const res = await auth(
+      request(app).get('/api/v1/sessions/analytics?period=week'), token,
+    ).expect(200);
+
+    assert.deepEqual(res.body.data.muscles, [], 'no numbers on the wire');
+    assert.equal(res.body.data.musclesLocked, true);
+    // The rest of the card set is free, and must still be there.
+    assert.ok(res.body.data.adherence);
+    assert.ok(Array.isArray(res.body.data.volume));
+  });
+
+  await t.test('analytics gives a Pro user their muscle volumes', async () => {
+    const { token, userId, exerciseId } = await freshUser('muscles-pro@example.com');
+    await withCompletedVolume(userId, exerciseId);
+    await pool.query('UPDATE users SET is_premium = 1 WHERE user_id = ?', [userId]);
+
+    const res = await auth(
+      request(app).get('/api/v1/sessions/analytics?period=week'), token,
+    ).expect(200);
+
+    assert.equal(res.body.data.musclesLocked, false);
+    // 1 set x 60 kg x 10 reps, hand-derived.
+    assert.equal(res.body.data.muscles.length, 1);
+    assert.equal(res.body.data.muscles[0].volumeKg, 600);
+  });
+
   await t.test('every route requires a token', async () => {
     await request(app).get('/api/v1/sessions/active').expect(401);
     await request(app).post('/api/v1/sessions').expect(401);

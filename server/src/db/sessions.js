@@ -492,6 +492,17 @@ async function lastPerformance(pool, userId, exerciseIds) {
 /// a calendar, so it is not bound to one.
 const SUMMARY_WINDOWS = { week: 7, month: 30, year: 365 };
 
+/// How many days [period] covers, or null when it names no window at all.
+///
+/// Object.hasOwn rather than a bare SUMMARY_WINDOWS[period]: the object
+/// inherits from Object.prototype, so period='constructor' reads a function
+/// off the prototype chain and passes a truthiness check. The null return is
+/// what the routes turn into a 400, so a bare lookup turns a bad query
+/// parameter into a 500 instead.
+function periodDays(period) {
+  return Object.hasOwn(SUMMARY_WINDOWS, period) ? SUMMARY_WINDOWS[period] : null;
+}
+
 /// How many sets a session holds. A correlated subquery rather than a GROUP
 /// BY: a session with no sets at all must still appear with a count of 0,
 /// which an inner join to set_logs would drop.
@@ -559,11 +570,50 @@ async function listHistory(pool, userId, { page = 1, limit = 20 } = {}) {
   return { sessions: rows.map(toHistoryRow), total, page, limit };
 }
 
+/// Completed sessions INSIDE [period]'s window, newest first.
+///
+/// A period-aware twin of listHistory rather than an option bolted onto it:
+/// listHistory is the app's all-time "Recent" list and has to stay unwindowed,
+/// because the History screen pages through everything a user has ever done.
+/// A shared report is the opposite case -- it captions itself with a window
+/// ("week - 2026-09-12 to 2026-09-19"), so a list reaching months past that
+/// caption makes the page contradict itself to a reader who has no other
+/// context to catch it with.
+///
+/// `>=` against CURDATE(), matching summariseHistory rather than the analytics
+/// readers' `>`: the summary line at the top of the same report counts its
+/// sessions that way, and a stricter comparison here would print fewer rows
+/// than the count sitting directly above them.
+///
+/// Null for a period that names no window -- the signal every other reader
+/// here uses, and what the routes turn into a 400.
+async function listHistoryInWindow(pool, userId, period, { limit = 20 } = {}) {
+  const days = periodDays(period);
+  if (!days) return null;
+
+  const [rows] = await pool.query(
+    `SELECT s.session_id, s.session_date, s.duration_min, s.total_volume_kg,
+            UNIX_TIMESTAMP(s.started_at) AS started_at_epoch,
+            p.name AS plan_name,
+            ${SET_COUNT} AS set_count,
+            ${EXERCISE_COUNT} AS exercise_count
+       FROM workout_sessions s
+       LEFT JOIN workout_plans p ON p.plan_id = s.plan_id
+      WHERE s.user_id = ? AND s.status = 'completed'
+        AND s.session_date >= DATE_SUB(CURDATE(), INTERVAL ? DAY)
+      ORDER BY s.session_date DESC, s.session_id DESC
+      LIMIT ?`,
+    [userId, days, limit],
+  );
+
+  return rows.map(toHistoryRow);
+}
+
 /// What the last [period] added up to. Zeroes, never null, for an account
 /// that has trained nothing yet -- that is the state a new user is in, and it
 /// has to read as "nothing yet" rather than as a broken screen.
 async function summariseHistory(pool, userId, period = 'week') {
-  const days = SUMMARY_WINDOWS[period];
+  const days = periodDays(period);
   if (!days) return null;
 
   const [[row]] = await pool.query(
@@ -680,8 +730,10 @@ module.exports = {
   lastPerformance,
   completedThisWeek,
   listHistory,
+  listHistoryInWindow,
   summariseHistory,
   lastCompletedWorkout,
   SUMMARY_WINDOWS,
+  periodDays,
   nextPlanDayNo,
 };
