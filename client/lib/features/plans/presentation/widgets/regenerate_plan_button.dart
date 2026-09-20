@@ -1,6 +1,5 @@
 import 'package:flutter/material.dart';
 
-import '../../../../core/widgets/fs_kit.dart';
 import '../generator_screen.dart';
 
 /// Opens the generator, from the Plan tab's header and from its empty state.
@@ -20,20 +19,21 @@ Future<void> openGenerator(BuildContext context) =>
 
 /// The Plan tab's way back to the generator.
 ///
-/// Spelled out rather than drawn as an icon: the generator was only reachable
-/// from a row inside the start-workout sheet, which is the right screen filed
-/// under the wrong intent -- someone whose equipment just changed is not
-/// trying to start a workout. A word needs no tooltip and no first-run hint
-/// to explain it.
+/// Icons.auto_awesome is the icon the start-workout sheet already puts on its
+/// AI Workout Generator row. Both open the same screen, so wearing the same
+/// icon is what stops them reading as two different features.
+///
+/// The tooltip carries the words the icon cannot, and is what a screen reader
+/// announces -- an IconButton with no tooltip is unlabelled to anyone not
+/// looking at it.
 class RegeneratePlanButton extends StatelessWidget {
   const RegeneratePlanButton({super.key});
 
   @override
-  Widget build(BuildContext context) => FsButton(
+  Widget build(BuildContext context) => IconButton(
     key: const Key('plan.regenerate'),
-    label: 'Regenerate',
-    kind: FsButtonKind.ghost,
-    small: true,
+    icon: const Icon(Icons.auto_awesome),
+    tooltip: 'Regenerate plan',
     onPressed: () => openGenerator(context),
   );
 }

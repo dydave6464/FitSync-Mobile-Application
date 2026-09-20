@@ -365,10 +365,13 @@ void main() {
   testWidgets('the Plan tab offers a way to regenerate', (tester) async {
     await _pump(tester);
 
-    // Labelled, not an icon: the whole point of moving this out of the
-    // start-workout sheet is that nobody found it there.
     expect(find.byKey(const Key('plan.regenerate')), findsOneWidget);
-    expect(find.text('Regenerate'), findsOneWidget);
+    // The icon the start-workout sheet already puts on its AI Workout
+    // Generator row: both open the same screen, so they read as one thing.
+    expect(find.byIcon(Icons.auto_awesome), findsOneWidget);
+    // An icon says nothing on its own, so the tooltip carries the words --
+    // it is also what a screen reader announces.
+    expect(find.byTooltip('Regenerate plan'), findsOneWidget);
   });
 
   testWidgets('the other tabs do not offer it', (tester) async {
