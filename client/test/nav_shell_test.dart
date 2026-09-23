@@ -416,4 +416,32 @@ void main() {
 
     expect(await openTrainAndRead(), lessThan(1.0));
   });
+
+  testWidgets('tapping Train while already on it does not replay the icon', (
+    tester,
+  ) async {
+    await _pumpShell(tester);
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const Key('nav.1')));
+    await tester.pumpAndSettle();
+
+    // Already on Train: the user has not arrived anywhere, so there is
+    // nothing to announce.
+    await tester.tap(find.byKey(const Key('nav.1')));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 400));
+
+    final scale = tester
+        .widget<ScaleTransition>(
+          find.ancestor(
+            of: find.byKey(const Key('plan.regenerate')),
+            matching: find.byType(ScaleTransition),
+          ),
+        )
+        .scale
+        .value;
+    expect(scale, 1.0, reason: 'the icon should be at rest, not replaying');
+
+    await tester.pumpAndSettle();
+  });
 }
