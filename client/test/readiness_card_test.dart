@@ -53,7 +53,7 @@ void main() {
     testWidgets('shows a $level estimate in Recovery\'s ring', (tester) async {
       await _pump(tester, estimate: _estimate(level), todayCheckin: _today);
 
-      expect(find.text("TODAY'S INJURY RISK"), findsOneWidget);
+      expect(find.text('INJURY-RISK ESTIMATE'), findsOneWidget);
       expect(find.text(label), findsOneWidget);
       final ring = tester.widget<FsRing>(find.byType(FsRing));
       expect(ring.value, _estimate(level).ringValue);
@@ -62,7 +62,12 @@ void main() {
 
   testWidgets('with no estimate it asks for a check-in', (tester) async {
     await _pump(tester);
-    expect(find.text("Check in to see today's readiness"), findsOneWidget);
+    expect(find.text('INJURY-RISK ESTIMATE'), findsOneWidget);
+    // Recovery's own empty-state sentence, not a Home-specific rewrite.
+    expect(
+      find.text('Check in this morning to get your first estimate.'),
+      findsOneWidget,
+    );
     expect(find.byType(FsRing), findsNothing);
     expect(find.byKey(const Key('home.readiness.checkin')), findsOneWidget);
   });
@@ -71,6 +76,20 @@ void main() {
     await _pump(tester, estimate: _estimate('low', date: '2026-09-20'));
     expect(find.textContaining('From '), findsOneWidget);
   });
+
+  testWidgets(
+    'an estimate with no check-in today does not claim to be today\'s',
+    (tester) async {
+      // No todayCheckin -- the estimate may be from an earlier day, so none
+      // of the per-level "today" advice lines can be shown.
+      await _pump(tester, estimate: _estimate('high', date: '2026-09-20'));
+
+      expect(find.text('Check in for today\'s estimate'), findsOneWidget);
+      expect(find.text('Consider a lighter day'), findsNothing);
+      expect(find.text('Worth easing in today'), findsNothing);
+      expect(find.text('Load and check-ins look manageable'), findsNothing);
+    },
+  );
 
   testWidgets('today\'s estimate does not repeat the date', (tester) async {
     await _pump(tester, estimate: _estimate('low'), todayCheckin: _today);

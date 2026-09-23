@@ -50,10 +50,11 @@ class ReadinessCard extends StatelessWidget {
           ? Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                const FsEyebrow("Today's injury risk"),
+                const FsEyebrow('Injury-risk estimate'),
                 const SizedBox(height: 8),
+                // Recovery's own empty-state sentence, verbatim.
                 Text(
-                  "Check in to see today's readiness",
+                  'Check in this morning to get your first estimate.',
                   style: TextStyle(
                     fontSize: 15,
                     fontWeight: FontWeight.w700,
@@ -89,14 +90,19 @@ class ReadinessCard extends StatelessWidget {
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      const FsEyebrow("Today's injury risk"),
+                      const FsEyebrow('Injury-risk estimate'),
                       const SizedBox(height: 6),
                       Text(
-                        switch (estimate.riskLevel) {
-                          'high' => 'Consider a lighter day',
-                          'moderate' => 'Worth easing in today',
-                          _ => 'Load and check-ins look manageable',
-                        },
+                        // With no check-in today, the estimate may be from an
+                        // earlier day, so none of the per-level "today"
+                        // advice can be claimed.
+                        todayCheckin == null
+                            ? "Check in for today's estimate"
+                            : switch (estimate.riskLevel) {
+                                'high' => 'Consider a lighter day',
+                                'moderate' => 'Worth easing in today',
+                                _ => 'Load and check-ins look manageable',
+                              },
                         style: TextStyle(
                           fontSize: 15,
                           fontWeight: FontWeight.w700,
