@@ -1,9 +1,5 @@
 import '../../sessions/domain/training_analytics.dart' show VolumeBucket;
 
-/// Mandatory wherever an estimate is shown on screen, verbatim.
-const riskEstimateDisclaimer =
-    'An estimate from training load & recovery — not a medical diagnosis.';
-
 /// One morning's answers. The four values are the server's ENUM spellings and
 /// are never transformed on the way through -- ml/app/risk.py looks them up
 /// with a defaulting get, so a renamed value scores zero penalty in silence.

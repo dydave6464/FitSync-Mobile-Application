@@ -108,7 +108,10 @@ void main() {
     expect(find.textContaining('14 days'), findsNothing);
   });
 
-  testWidgets('the disclaimer is always present', (tester) async {
+  testWidgets('carries no disclaimer line, with an estimate or without', (
+    tester,
+  ) async {
+    // Removed at the user's request on 2026-09-24.
     await _pump(
       tester,
       const RecoveryOverview(
@@ -117,7 +120,16 @@ void main() {
         load: [],
       ),
     );
+    expect(find.textContaining('not a medical diagnosis'), findsNothing);
 
-    expect(find.textContaining('not a medical diagnosis'), findsOneWidget);
+    await _pump(
+      tester,
+      const RecoveryOverview(
+        todayCheckin: null,
+        latestEstimate: null,
+        load: [],
+      ),
+    );
+    expect(find.textContaining('not a medical diagnosis'), findsNothing);
   });
 }

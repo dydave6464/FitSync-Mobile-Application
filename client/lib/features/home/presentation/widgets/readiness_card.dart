@@ -122,15 +122,6 @@ class ReadinessCard extends StatelessWidget {
                       ],
                       const SizedBox(height: 10),
                       chip,
-                      const SizedBox(height: 10),
-                      Text(
-                        riskEstimateDisclaimer,
-                        style: TextStyle(
-                          fontSize: 11,
-                          color: t.text3,
-                          height: 1.4,
-                        ),
-                      ),
                     ],
                   ),
                 ),
