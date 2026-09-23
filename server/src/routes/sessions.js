@@ -18,6 +18,7 @@ const {
 } = require('../db/sessions');
 const analytics = require('../db/analytics');
 const strength = require('../db/strength');
+const { pendingOutcome, recordOutcome, PAIN_LEVELS } = require('../db/session-outcomes');
 
 // A client sending nonsense should learn that it did, rather than have the
 // value silently clamped and get results it did not ask for. Same contract as
@@ -56,6 +57,34 @@ function sessionIdOr404(raw) {
 }
 
 const notFound = () => AppError.notFound('SESSION_NOT_FOUND', 'No such session.');
+
+/// The body of a pain report, checked before anything touches the database.
+///
+/// Null and absent both mean "no region", so a client that serialises an unset
+/// field as null is not told off for it. A region is a JSON number and nothing
+/// else -- '7' is refused rather than coerced, for the reason optionalNumber
+/// below gives.
+function parseOutcome(body) {
+  const painLevel = body?.painLevel;
+  if (!PAIN_LEVELS.includes(painLevel)) {
+    throw AppError.badRequest(
+      'PAIN_LEVEL_INVALID',
+      `painLevel must be one of: ${PAIN_LEVELS.join(', ')}.`,
+    );
+  }
+  const raw = body.injuryId;
+  const hasRegion = raw !== undefined && raw !== null;
+  if (painLevel === 'none' && hasRegion) {
+    throw AppError.badRequest('INJURY_NOT_EXPECTED', 'injuryId must be left out when painLevel is none.');
+  }
+  if (painLevel !== 'none' && !hasRegion) {
+    throw AppError.badRequest('INJURY_REQUIRED', 'injuryId is required when there is pain.');
+  }
+  if (hasRegion && !(Number.isSafeInteger(raw) && raw > 0)) {
+    throw AppError.badRequest('INJURY_INVALID', 'injuryId does not name a body region.');
+  }
+  return { painLevel, injuryId: hasRegion ? raw : null };
+}
 
 /// Null and undefined both mean "not recorded" -- a bodyweight set has no
 /// weight, and an AMRAP set may have no counted reps.
@@ -229,6 +258,17 @@ module.exports = function buildSessionsRouter(deps) {
     } catch (err) { next(err); }
   });
 
+  // Registered with the other fixed paths, ahead of every '/:sessionId' route,
+  // so 'pending-outcome' can never be read as an id.
+  router.get('/pending-outcome', auth, async (req, res, next) => {
+    try {
+      // Null rather than 404, the contract GET /sessions/last states: having
+      // nothing to ask about is the normal state.
+      const session = await pendingOutcome(deps.pool, req.user.userId);
+      res.json({ data: { session } });
+    } catch (err) { next(err); }
+  });
+
   router.get('/active', auth, async (req, res, next) => {
     try {
       // Null rather than 404: having no session in progress is the normal
@@ -315,6 +355,16 @@ module.exports = function buildSessionsRouter(deps) {
       const ok = await abandonSession(deps.pool, req.user.userId, id);
       if (!ok) throw notFound();
       res.json({ data: { abandoned: true } });
+    } catch (err) { next(err); }
+  });
+
+  router.post('/:sessionId/outcome', auth, async (req, res, next) => {
+    try {
+      const id = sessionIdOr404(req.params.sessionId);
+      const answer = parseOutcome(req.body);
+      const outcome = await recordOutcome(deps.pool, req.user.userId, id, answer);
+      if (!outcome) throw notFound();
+      res.status(201).json({ data: { outcome } });
     } catch (err) { next(err); }
   });
 
