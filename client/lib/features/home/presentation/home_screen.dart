@@ -6,9 +6,17 @@ import '../../../core/widgets/fs_kit.dart';
 import '../../exercises/presentation/exercise_list_screen.dart'
     show describeError;
 import '../../plans/presentation/providers.dart';
+import '../../recovery/presentation/providers.dart'
+    show recoveryOverviewProvider;
+import '../../recovery/presentation/widgets/checkin_sheet.dart'
+    show showCheckinSheet;
 import '../../sessions/domain/active_session.dart';
 import '../../sessions/presentation/providers.dart'
-    show activeSessionProvider, completedDaysProvider;
+    show
+        activeSessionProvider,
+        completedDaysProvider,
+        homeSummaryProvider,
+        trainingAnalyticsProvider;
 import '../../sessions/presentation/session_logger_screen.dart';
 import '../../profile/presentation/providers.dart';
 import '../../plans/domain/workout_plan.dart';
@@ -16,18 +24,28 @@ import 'widgets/active_workout_card.dart';
 import 'widgets/greeting.dart';
 import 'widgets/plan_card.dart';
 import 'widgets/profile_nudge.dart';
+import 'widgets/progress_snapshot_card.dart';
+import 'widgets/readiness_card.dart';
 
 /// The signed-in landing screen.
 ///
-/// Only sections with a live API are here. The design's readiness ring,
-/// progress chart, routine checklist, quick stats and ad each need a server
-/// slice that does not exist yet, and a placeholder showing invented figures
-/// cannot be told apart from a real one by anyone looking at the screen.
+/// Only sections with a live API are here. The design's routine checklist,
+/// quick stats and ad each need a server slice that does not exist yet, and a
+/// placeholder showing invented figures cannot be told apart from a real one
+/// by anyone looking at the screen.
 class HomeScreen extends ConsumerWidget {
-  const HomeScreen({super.key, this.onGoToTrain, this.onGoToProfile});
+  const HomeScreen({
+    super.key,
+    this.onGoToTrain,
+    this.onGoToProfile,
+    this.onGoToProgress,
+    this.onGoToRecovery,
+  });
 
   final VoidCallback? onGoToTrain;
   final VoidCallback? onGoToProfile;
+  final VoidCallback? onGoToProgress;
+  final VoidCallback? onGoToRecovery;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -63,6 +81,7 @@ class HomeScreen extends ConsumerWidget {
                 ProfileNudge(profile: p, onTap: () => onGoToProfile?.call()),
                 const SizedBox(height: 14),
               ],
+              _Readiness(onTap: () => onGoToRecovery?.call()),
               // The plan is not replaced while a workout runs, only
               // covered: finishing or discarding uncovers it with no reload,
               // because activePlanProvider was never touched.
@@ -87,6 +106,8 @@ class HomeScreen extends ConsumerWidget {
                           onStart: () => onGoToTrain?.call(),
                         ),
                 ),
+              const SizedBox(height: 14),
+              _Progress(onTap: () => onGoToProgress?.call()),
             ],
           ),
         ),
@@ -221,4 +242,77 @@ class _Retry extends StatelessWidget {
       ],
     ),
   );
+}
+
+/// Hidden entirely when the estimate cannot be read: the Recovery tab is
+/// where that error belongs, and Home's first screen should not open on it.
+class _Readiness extends ConsumerWidget {
+  const _Readiness({required this.onTap});
+
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    return ref
+        .watch(recoveryOverviewProvider)
+        .when(
+          // The card's own height, so Home does not jump when it lands.
+          loading: () => const SizedBox(height: 124),
+          error: (_, _) => const SizedBox.shrink(),
+          data: (overview) => Padding(
+            padding: const EdgeInsets.only(bottom: 14),
+            child: ReadinessCard(
+              estimate: overview.latestEstimate,
+              todayCheckin: overview.todayCheckin,
+              onCheckIn: () =>
+                  showCheckinSheet(context, existing: overview.todayCheckin),
+              onTap: onTap,
+            ),
+          ),
+        );
+  }
+}
+
+/// Needs both the 30-day summary and the month analytics; either failing is
+/// one error line, since half a card would only raise the question of where
+/// the other half went.
+class _Progress extends ConsumerWidget {
+  const _Progress({required this.onTap});
+
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final summary = ref.watch(homeSummaryProvider);
+    final analytics = ref.watch(trainingAnalyticsProvider('month'));
+    final t = context.fs;
+
+    if (summary.hasError || analytics.hasError) {
+      return Row(
+        children: [
+          Expanded(
+            child: Text(
+              "Couldn't load progress",
+              style: TextStyle(fontSize: 13, color: t.text2),
+            ),
+          ),
+          TextButton(
+            key: const Key('home.progress.retry'),
+            onPressed: () {
+              ref.invalidate(homeSummaryProvider);
+              ref.invalidate(trainingAnalyticsProvider('month'));
+            },
+            child: const Text('Retry'),
+          ),
+        ],
+      );
+    }
+    final s = summary.value;
+    final a = analytics.value;
+    // Measured from the real card (test/_scratch_measure_test.dart, deleted
+    // after use): ProgressSnapshotCard renders at 163px here, not the 150
+    // guessed before either provider had resolved.
+    if (s == null || a == null) return const SizedBox(height: 163);
+    return ProgressSnapshotCard(summary: s, analytics: a, onTap: onTap);
+  }
 }
