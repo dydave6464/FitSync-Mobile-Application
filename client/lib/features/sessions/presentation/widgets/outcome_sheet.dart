@@ -181,9 +181,24 @@ class _OutcomeSheetState extends ConsumerState<_OutcomeSheet> {
                 ),
                 // Without regions a pain answer cannot be completed, so Save
                 // stays off; "Not now" still gets the user to their workout.
-                error: (_, _) => Text(
-                  "Couldn't load body regions.",
-                  style: TextStyle(fontSize: 12, color: t.red),
+                // The provider is not autoDispose, so without a retry the
+                // error would stay cached until the app restarts.
+                error: (_, _) => Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      "Couldn't load body regions.",
+                      style: TextStyle(fontSize: 12, color: t.red),
+                    ),
+                    const SizedBox(height: 4),
+                    FsButton(
+                      key: const Key('outcome.regions.retry'),
+                      label: 'Retry',
+                      small: true,
+                      kind: FsButtonKind.secondary,
+                      onPressed: () => ref.invalidate(injuryOptionsProvider),
+                    ),
+                  ],
                 ),
               ),
             ],

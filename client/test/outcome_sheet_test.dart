@@ -48,8 +48,12 @@ Future<List<Map<String, dynamic>>> _open(
   int status = 201,
   String errorCode = 'INTERNAL',
   ValueChanged<bool?>? onResult,
+  // How many times injuryOptionsProvider throws before it starts returning
+  // _regions -- 0 means it never fails.
+  int regionsFailures = 0,
 }) async {
   final posts = <Map<String, dynamic>>[];
+  var regionsCalls = 0;
   final client = MockClient((request) async {
     if (request.method == 'POST' &&
         request.url.path == '/api/v1/sessions/7/outcome') {
@@ -77,7 +81,12 @@ Future<List<Map<String, dynamic>>> _open(
             client: client,
           ),
         ),
-        injuryOptionsProvider.overrideWith((ref) async => _regions),
+        injuryOptionsProvider.overrideWith((ref) async {
+          if (regionsCalls++ < regionsFailures) {
+            throw Exception("Couldn't load body regions.");
+          }
+          return _regions;
+        }),
       ],
       child: MaterialApp(
         theme: fsLightTheme(),
@@ -234,5 +243,17 @@ void main() {
       reason: 'a failure must not stand between the user and training',
     );
     expect(result, isTrue, reason: 'the caller must be told the save failed');
+  });
+
+  testWidgets('a failed body-region load can be retried', (tester) async {
+    await _open(tester, regionsFailures: 1);
+    await _tap(tester, _pain('moderate'));
+
+    expect(find.text("Couldn't load body regions."), findsOneWidget);
+    expect(_region(13), findsNothing);
+
+    await _tap(tester, find.byKey(const Key('outcome.regions.retry')));
+
+    expect(_region(13), findsOneWidget);
   });
 }
