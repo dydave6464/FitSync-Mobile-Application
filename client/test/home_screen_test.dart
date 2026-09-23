@@ -749,5 +749,37 @@ void main() {
       expect(find.text('Stretch'), findsOneWidget);
       expect(find.text('Read'), findsOneWidget);
     });
+
+    testWidgets(
+      'tapping the workout row from the routine screen returns to Home and '
+      'opens Train',
+      (tester) async {
+        var wentToTrain = false;
+        const dayWithWorkout = RoutineDay(
+          date: '2026-09-24',
+          habits: [],
+          workout: RoutineWorkout(title: 'Upper Body', done: false),
+        );
+        await _pumpHome(
+          tester,
+          onGoToTrain: () => wentToTrain = true,
+          routine: dayWithWorkout,
+        );
+
+        await tester.scrollUntilVisible(
+          find.byKey(const Key('home.routine')),
+          200,
+        );
+        await tester.pumpAndSettle();
+        await tester.tap(find.byKey(const Key('home.routine')));
+        await tester.pumpAndSettle();
+
+        await tester.tap(find.byKey(const Key('routine.workout')));
+        await tester.pumpAndSettle();
+
+        expect(wentToTrain, isTrue);
+        expect(find.byType(RoutineScreen), findsNothing);
+      },
+    );
   });
 }

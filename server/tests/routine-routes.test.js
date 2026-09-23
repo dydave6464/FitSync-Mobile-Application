@@ -106,6 +106,7 @@ test('routine endpoints', async (t) => {
 
     let res = await a.patch(`/habits/${habitId}`, { title: 'Easy run' }).expect(200);
     assert.equal(res.body.data.habit.time, '06:00');
+    assert.deepEqual(res.body.data.habit.weekdays, ALL, 'a title-only patch leaves weekdays alone');
     res = await a.patch(`/habits/${habitId}`, { time: null, durationMin: null }).expect(200);
     assert.equal(res.body.data.habit.time, null);
     assert.equal(res.body.data.habit.durationMin, null);

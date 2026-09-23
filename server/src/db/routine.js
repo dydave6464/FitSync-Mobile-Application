@@ -84,7 +84,7 @@ async function readDay(pool, userId, date = null) {
       WHERE h.user_id = ? AND h.is_active = TRUE
         AND EXISTS (SELECT 1 FROM routine_habit_days d
                      WHERE d.habit_id = h.habit_id AND d.weekday = ?)
-      ORDER BY h.scheduled_time IS NULL, h.scheduled_time, h.title`,
+      ORDER BY h.scheduled_time IS NULL, h.scheduled_time, h.title, h.habit_id`,
     [day, userId, weekday],
   );
   const days = await weekdaysFor(pool, rows.map((r) => r.habit_id));
@@ -159,8 +159,8 @@ async function updateHabit(pool, userId, habitId, fields) {
     await conn.beginTransaction();
     if (columns.length > 0) {
       await conn.query(
-        `UPDATE routine_habits SET ${columns.join(', ')} WHERE habit_id = ?`,
-        [...values, habitId],
+        `UPDATE routine_habits SET ${columns.join(', ')} WHERE habit_id = ? AND user_id = ?`,
+        [...values, habitId, userId],
       );
     }
     if (fields.weekdays !== undefined) await writeWeekdays(conn, habitId, fields.weekdays);

@@ -213,20 +213,22 @@ void main() {
     },
   );
 
-  testWidgets('the workout tick does nothing and calls no repository method', (
-    tester,
-  ) async {
-    final repo = _FakeRoutineRepo(_fixtureDay);
-    await tester.pumpWidget(_harness(repo));
-    await tester.pumpAndSettle();
+  testWidgets(
+    'tapping the workout tick box opens the plan, like the rest of the row',
+    (tester) async {
+      var opened = false;
+      final repo = _FakeRoutineRepo(_fixtureDay);
+      await tester.pumpWidget(_harness(repo, onOpenPlan: () => opened = true));
+      await tester.pumpAndSettle();
 
-    await tester.tap(find.byKey(const Key('routine.workout.tick')));
-    await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const Key('routine.workout.tick')));
+      await tester.pumpAndSettle();
 
-    expect(repo.checkCalls, 0);
-    expect(repo.uncheckCalls, 0);
-    expect(find.text('3/3'), findsNothing);
-  });
+      expect(opened, isTrue);
+      expect(repo.checkCalls, 0);
+      expect(repo.uncheckCalls, 0);
+    },
+  );
 
   testWidgets('tapping the workout row opens the plan', (tester) async {
     var opened = false;

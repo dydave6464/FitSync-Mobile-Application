@@ -92,6 +92,14 @@ class WorkoutEntry extends RoutineEntry {
   bool get done => workout.done;
 }
 
+/// The tie-break key for a title collision in [RoutineDay.entries]: a
+/// habit's own id, or a value past any real habit id for the workout item,
+/// so the workout always comes last on a tie.
+int _tieBreak(RoutineEntry e) => switch (e) {
+  HabitEntry(:final habit) => habit.habitId,
+  WorkoutEntry() => 1 << 30,
+};
+
 class RoutineDay {
   const RoutineDay({
     required this.date,
@@ -107,13 +115,22 @@ class RoutineDay {
   final RoutineWorkout? workout;
 
   /// Timed habits first, as the server orders them; then the untimed habits
-  /// and the workout item, which has no time, by title.
+  /// and the workout item, which has no time, by title. A tied title falls
+  /// back to habit id, oldest first, so the order does not reshuffle between
+  /// loads; the workout item sorts after every habit it ties with, since a
+  /// habit is something the person named and the workout is not.
   List<RoutineEntry> get entries {
-    final untimed = <RoutineEntry>[
-      for (final h in habits)
-        if (h.time == null) HabitEntry(h),
-      if (workout != null) WorkoutEntry(workout!),
-    ]..sort((a, b) => a.title.toLowerCase().compareTo(b.title.toLowerCase()));
+    final untimed =
+        <RoutineEntry>[
+          for (final h in habits)
+            if (h.time == null) HabitEntry(h),
+          if (workout != null) WorkoutEntry(workout!),
+        ]..sort((a, b) {
+          final byTitle = a.title.toLowerCase().compareTo(
+            b.title.toLowerCase(),
+          );
+          return byTitle != 0 ? byTitle : _tieBreak(a).compareTo(_tieBreak(b));
+        });
     return [
       for (final h in habits)
         if (h.time != null) HabitEntry(h),

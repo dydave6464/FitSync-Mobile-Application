@@ -178,11 +178,12 @@ class _Row extends ConsumerWidget {
         Icons.fitness_center,
         workout.done ? 'Finished today' : 'Ticks itself when you finish',
         onOpenPlan,
-        // No onTap: the workout is done by training, not by ticking.
+        // The box itself cannot be ticked by hand -- the workout is done by
+        // training -- so tapping it does what the rest of the row does.
         _TickBox(
           key: const Key('routine.workout.tick'),
           done: workout.done,
-          onTap: null,
+          onTap: onOpenPlan,
         ),
       ),
     };

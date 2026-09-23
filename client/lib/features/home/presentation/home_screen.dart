@@ -32,10 +32,11 @@ import 'widgets/routine_card.dart';
 
 /// The signed-in landing screen.
 ///
-/// Only sections with a live API are here. The design's routine checklist,
-/// quick stats and ad each need a server slice that does not exist yet, and a
-/// placeholder showing invented figures cannot be told apart from a real one
-/// by anyone looking at the screen.
+/// Only sections with a live API are here. The routine checklist now has one
+/// -- see [_Routine] -- but the design's quick stats and ad still need a
+/// server slice that does not exist yet, and a placeholder showing invented
+/// figures cannot be told apart from a real one by anyone looking at the
+/// screen.
 class HomeScreen extends ConsumerWidget {
   const HomeScreen({
     super.key,
