@@ -4,7 +4,10 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../core/theme.dart';
 import '../../../core/widgets/fs_kit.dart';
 import '../../exercises/domain/exercise.dart';
-import '../../sessions/presentation/providers.dart' show lastWorkoutProvider;
+import '../../sessions/domain/session_outcome.dart';
+import '../../sessions/presentation/providers.dart'
+    show lastWorkoutProvider, pendingOutcomeProvider;
+import '../../sessions/presentation/widgets/outcome_sheet.dart';
 import '../../sessions/presentation/workout_draft.dart';
 import '../../sessions/presentation/workout_review_screen.dart';
 import '../../sessions/presentation/workout_setup_screen.dart';
@@ -17,7 +20,36 @@ import 'generator_screen.dart';
 /// workout is described on before its exercises are picked. It was inert
 /// while the exercise library was a later slice; the library and the sessions
 /// endpoint that accepts a chosen list both exist now.
-Future<void> showStartWorkoutSheet(BuildContext context) {
+///
+/// A completed session still awaiting its pain report is asked about first,
+/// and the start sheet follows however that sheet closes. The lookup is
+/// capped at [_pendingLookupLimit], and any failure skips the question:
+/// collecting a label must never stand between someone and their workout.
+///
+/// A pain answer that could not be saved shows [outcomeNotSavedMessage] on
+/// the start sheet rather than the outcome sheet, which is already gone by
+/// the time a failed save would need to be seen.
+Future<void> showStartWorkoutSheet(BuildContext context) async {
+  // The lookup put an await between the tap and the first route, where
+  // before there was none: with nothing guarding it, the FAB stays tappable
+  // for up to _pendingLookupLimit, and a second tap in that window would
+  // fire a second lookup and, if both resolve pending, queue a second
+  // outcome sheet behind the first. Guarding only the lookup is enough --
+  // once a sheet is actually pushed, its own modal barrier blocks the FAB
+  // exactly as it always has, lookup or no lookup.
+  if (_startSheetInFlight) return;
+  _startSheetInFlight = true;
+  final PendingOutcome? pending;
+  try {
+    pending = await _pendingOutcome(context);
+  } finally {
+    _startSheetInFlight = false;
+  }
+  var notSaved = false;
+  if (pending != null && context.mounted) {
+    notSaved = await showOutcomeSheet(context, pending);
+  }
+  if (!context.mounted) return;
   return showModalBottomSheet<void>(
     context: context,
     backgroundColor: Colors.transparent,
@@ -28,12 +60,42 @@ Future<void> showStartWorkoutSheet(BuildContext context) {
     // orientation; the scroll view inside covers the accessibility text
     // scales that no height can fit.
     isScrollControlled: true,
-    builder: (_) => const _StartWorkoutSheet(),
+    builder: (_) =>
+        _StartWorkoutSheet(notice: notSaved ? outcomeNotSavedMessage : null),
   );
 }
 
+/// Guards [showStartWorkoutSheet] against a second tap while an earlier
+/// tap's pending-outcome lookup is still in flight. Cleared as soon as that
+/// lookup settles, in the function's `finally` -- see the comment there for
+/// why the lookup alone is the window that needs guarding.
+bool _startSheetInFlight = false;
+
+/// How long the "+" button waits to learn whether to ask about pain before
+/// opening the start sheet without asking.
+const _pendingLookupLimit = Duration(seconds: 3);
+
+/// Refreshed rather than read: whether a session is pending changes with
+/// every workout completed and every answer given, and a cached answer would
+/// re-ask a question already answered.
+Future<PendingOutcome?> _pendingOutcome(BuildContext context) async {
+  final container = ProviderScope.containerOf(context, listen: false);
+  try {
+    return await container
+        .refresh(pendingOutcomeProvider.future)
+        .timeout(_pendingLookupLimit);
+  } catch (error) {
+    debugPrint('Pending-outcome lookup skipped: $error');
+    return null;
+  }
+}
+
 class _StartWorkoutSheet extends ConsumerWidget {
-  const _StartWorkoutSheet();
+  const _StartWorkoutSheet({this.notice});
+
+  /// A pain answer that could not be saved, shown as one line under the
+  /// title. Null when there is nothing to report.
+  final String? notice;
 
   /// Loads the workout into the draft and hands it to the review screen.
   ///
@@ -111,6 +173,14 @@ class _StartWorkoutSheet extends ConsumerWidget {
                   ),
                 ],
               ),
+              if (notice != null) ...[
+                const SizedBox(height: 4),
+                Text(
+                  notice!,
+                  key: const Key('start.notice'),
+                  style: TextStyle(fontSize: 12, color: t.red),
+                ),
+              ],
               const SizedBox(height: 14),
               _Row(
                 rowKey: const Key('start.generator'),
