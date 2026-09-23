@@ -20,6 +20,12 @@ test('routine endpoints', async (t) => {
   const notToday = (Number(today) % 7) + 1;
   const ALL = [1, 2, 3, 4, 5, 6, 7];
 
+  // The server's own today/yesterday, so a stale-date test tracks CURDATE().
+  const [[{ todayStr, yesterdayStr }]] = await pool.query(
+    `SELECT DATE_FORMAT(CURDATE(), '%Y-%m-%d') AS todayStr,
+            DATE_FORMAT(CURDATE() - INTERVAL 1 DAY, '%Y-%m-%d') AS yesterdayStr`,
+  );
+
   let seq = 0;
   const freshUser = async () => {
     seq += 1;
@@ -137,5 +143,31 @@ test('routine endpoints', async (t) => {
     const { habitId } = (await a.post('/habits', { title: 'Later', weekdays: [notToday] })).body.data.habit;
     const res = await a.put(`/habits/${habitId}/check`).expect(400);
     assert.equal(res.body.error.code, 'HABIT_NOT_TODAY');
+  });
+
+  await t.test('a tick for a day that has already passed is refused', async () => {
+    const a = api(await freshUser());
+    const { habitId } = (await a.post('/habits', { title: 'Stretch', weekdays: ALL })).body.data.habit;
+
+    const res = await a.put(`/habits/${habitId}/check?date=${yesterdayStr}`).expect(409);
+    assert.equal(res.body.error.code, 'DAY_CHANGED');
+
+    const day = await a.get('/today').expect(200);
+    assert.equal(day.body.data.habits[0].done, false, 'the stale tick wrote nothing');
+  });
+
+  await t.test('a tick with today\'s own date still works', async () => {
+    const a = api(await freshUser());
+    const { habitId } = (await a.post('/habits', { title: 'Stretch', weekdays: ALL })).body.data.habit;
+
+    await a.put(`/habits/${habitId}/check?date=${todayStr}`).expect(200, { data: { done: true } });
+  });
+
+  await t.test('a malformed date is refused', async () => {
+    const a = api(await freshUser());
+    const { habitId } = (await a.post('/habits', { title: 'Stretch', weekdays: ALL })).body.data.habit;
+
+    const res = await a.put(`/habits/${habitId}/check?date=21-09-2026`).expect(400);
+    assert.equal(res.body.error.code, 'DATE_INVALID');
   });
 });

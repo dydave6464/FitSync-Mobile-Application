@@ -7,7 +7,20 @@ const {
 } = require('../db/routine');
 
 const TIME = /^([01]\d|2[0-3]):[0-5]\d$/;
+const DATE = /^\d{4}-\d{2}-\d{2}$/;
 const notFound = () => AppError.notFound('HABIT_NOT_FOUND', 'No such habit.');
+
+/// The `?date=` query param on a check/uncheck: what the screen believes
+/// today is. Absent is fine -- unchanged behaviour, checked against the
+/// server's own CURDATE() in `setCheck`. Present and not `YYYY-MM-DD` is a
+/// 400, not a silent fall-through to "no date given".
+function parseCheckDate(raw) {
+  if (raw === undefined) return null;
+  if (typeof raw !== 'string' || !DATE.test(raw)) {
+    throw AppError.badRequest('DATE_INVALID', 'date must be YYYY-MM-DD.');
+  }
+  return raw;
+}
 
 /// A non-numeric id would reach MySQL as NaN and 500; refuse it as the same
 /// 404 a missing habit gets, as routes/sessions.js does for session ids.
@@ -97,7 +110,8 @@ module.exports = function buildRoutineRouter(deps) {
     router[method]('/habits/:habitId/check', auth, async (req, res, next) => {
       try {
         const id = habitIdOr404(req.params.habitId);
-        const result = await setCheck(deps.pool, req.user.userId, id, done);
+        const requestedDate = parseCheckDate(req.query.date);
+        const result = await setCheck(deps.pool, req.user.userId, id, done, null, requestedDate);
         if (!result) throw notFound();
         res.json({ data: result });
       } catch (err) { next(err); }

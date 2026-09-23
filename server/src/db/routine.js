@@ -187,11 +187,27 @@ async function deactivateHabit(pool, userId, habitId) {
 
 /// Ticks or unticks [date]. Both directions are idempotent: the UNIQUE key
 /// absorbs a second tick, and a second untick deletes nothing.
-async function setCheck(pool, userId, habitId, done, date = null) {
-  const habit = await readHabit(pool, userId, habitId, date);
-  if (!habit) return null;
+///
+/// [requestedDate] is what the CLIENT believes today is, from the screen's
+/// `?date=` query parameter -- distinct from [date], which exists only for
+/// tests to freeze what the SERVER treats as today. When given and it no
+/// longer matches, the day has turned over since the screen last loaded and
+/// the tick is refused before any write, rather than filed under the new day
+/// or rejected as HABIT_NOT_TODAY with no way to retry.
+async function setCheck(pool, userId, habitId, done, date = null, requestedDate = null) {
   const { day, weekday } = await resolveDay(pool, date);
-  if (!habit.weekdays.includes(weekday)) {
+  if (requestedDate !== null && requestedDate !== day) {
+    throw AppError.conflict('DAY_CHANGED', 'A new day has started.');
+  }
+
+  const [rows] = await pool.query(
+    `SELECT 1 FROM routine_habits
+      WHERE habit_id = ? AND user_id = ? AND is_active = TRUE`,
+    [habitId, userId],
+  );
+  if (rows.length === 0) return null;
+  const weekdays = (await weekdaysFor(pool, [habitId])).get(habitId);
+  if (!weekdays.includes(weekday)) {
     throw AppError.badRequest('HABIT_NOT_TODAY', 'This habit does not repeat today.');
   }
   if (done) {
