@@ -108,6 +108,8 @@ const _plan = WorkoutPlan(
 Future<void> _pumpShell(
   WidgetTester tester, {
   WorkoutPlan? plan,
+  // Sees the path of every request that reaches the stub ApiClient.
+  void Function(String path)? onRequest,
 }) => tester.pumpWidget(
   ProviderScope(
     overrides: [
@@ -118,7 +120,10 @@ Future<void> _pumpShell(
         ApiClient(
           baseUrl: 'http://test.local',
           tokens: TokenStore(backing: InMemorySecureStore()),
-          client: MockClient((_) async => http.Response('{"data":{}}', 200)),
+          client: MockClient((request) async {
+            onRequest?.call(request.url.path);
+            return http.Response('{"data":{}}', 200);
+          }),
         ),
       ),
       // Train tab (the Training shell, wrapping PlanScreen as its Plan
@@ -326,6 +331,18 @@ void main() {
     // As above: IndexedStack only shows the selected child to a default
     // finder, so this holds only if Profile is genuinely the current tab.
     expect(find.byType(SettingsScreen), findsOneWidget);
+  });
+
+  testWidgets('the shell looks up the pain question before any tap', (
+    tester,
+  ) async {
+    // So that "+" can answer from a settled lookup instead of waiting on the
+    // network after the tap.
+    final paths = <String>[];
+    await _pumpShell(tester, onRequest: paths.add);
+    await tester.pumpAndSettle();
+
+    expect(paths, contains('/api/v1/sessions/pending-outcome'));
   });
 
   testWidgets('the centre button opens the start sheet', (tester) async {

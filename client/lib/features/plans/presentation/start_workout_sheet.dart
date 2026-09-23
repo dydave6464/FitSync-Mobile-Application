@@ -75,15 +75,30 @@ bool _startSheetInFlight = false;
 /// opening the start sheet without asking.
 const _pendingLookupLimit = Duration(seconds: 3);
 
-/// Refreshed rather than read: whether a session is pending changes with
-/// every workout completed and every answer given, and a cached answer would
-/// re-ask a question already answered.
+/// Whether to ask about pain, as fast as it can be known.
+///
+/// A settled answer -- NavShell looks one up when it mounts -- is used at
+/// once, so the tap opens a sheet with no network wait, and a fresh lookup
+/// starts behind it for the next tap. The cached answer can only be stale in
+/// one direction that matters: an app left open past midnight, when
+/// yesterday's session becomes askable. Then the question arrives one tap
+/// late, never about the wrong session. An answer given in the sheet
+/// refreshes the provider itself, so it is never asked twice.
+///
+/// With nothing settled -- no lookup yet, one in flight, or one that failed
+/// -- the tap waits, capped at [_pendingLookupLimit], as it always did.
 Future<PendingOutcome?> _pendingOutcome(BuildContext context) async {
   final container = ProviderScope.containerOf(context, listen: false);
+  final known = container.read(pendingOutcomeProvider);
+  if (known is AsyncData<PendingOutcome?>) {
+    container.refresh(pendingOutcomeProvider);
+    return known.value;
+  }
   try {
-    return await container
-        .refresh(pendingOutcomeProvider.future)
-        .timeout(_pendingLookupLimit);
+    final lookup = known is AsyncError
+        ? container.refresh(pendingOutcomeProvider.future)
+        : container.read(pendingOutcomeProvider.future);
+    return await lookup.timeout(_pendingLookupLimit);
   } catch (error) {
     debugPrint('Pending-outcome lookup skipped: $error');
     return null;

@@ -1,8 +1,10 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../core/widgets/fs_kit.dart';
 import '../../exercises/presentation/exercise_list_screen.dart';
 import '../../plans/presentation/start_workout_sheet.dart';
+import '../../sessions/presentation/providers.dart' show pendingOutcomeProvider;
 import '../../settings/presentation/settings_screen.dart';
 import '../../training/presentation/training_shell.dart';
 import 'home_screen.dart';
@@ -48,6 +50,20 @@ class _NavShellState extends State<NavShell> {
   /// user is already on, and the Training shell replays its arrival animation
   /// whenever it does.
   int _trainOpens = 0;
+
+  @override
+  void initState() {
+    super.initState();
+    // Starts the "+" button's pain-question lookup now, while the user is
+    // still on Home, so the tap can answer from a settled result instead of
+    // waiting on the network (see showStartWorkoutSheet). Read, not watched:
+    // nothing here renders from it. A failure is harmless -- the tap falls
+    // back to looking up again itself.
+    ProviderScope.containerOf(
+      context,
+      listen: false,
+    ).read(pendingOutcomeProvider);
+  }
 
   void _select(int index) => setState(() {
     _index = index;
