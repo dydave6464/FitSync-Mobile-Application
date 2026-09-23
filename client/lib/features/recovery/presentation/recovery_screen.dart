@@ -102,11 +102,6 @@ class _EmptyEstimate extends StatelessWidget {
           'Check in this morning to get your first estimate.',
           style: TextStyle(fontSize: 13, color: t.text2, height: 1.4),
         ),
-        const SizedBox(height: 12),
-        Text(
-          riskEstimateDisclaimer,
-          style: TextStyle(fontSize: 11, color: t.text3, height: 1.4),
-        ),
       ],
     );
   }
@@ -161,11 +156,6 @@ class _EstimateCard extends StatelessWidget {
             ),
           ),
         ],
-        const SizedBox(height: 14),
-        Text(
-          riskEstimateDisclaimer,
-          style: TextStyle(fontSize: 11, color: t.text3, height: 1.4),
-        ),
       ],
     );
   }

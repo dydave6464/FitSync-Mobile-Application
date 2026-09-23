@@ -96,11 +96,12 @@ void main() {
     expect(find.textContaining('From '), findsNothing);
   });
 
-  testWidgets('the disclaimer shows with an estimate and not without one', (
+  testWidgets('carries no disclaimer line, with an estimate or without', (
     tester,
   ) async {
+    // Removed at the user's request on 2026-09-24.
     await _pump(tester, estimate: _estimate('low'), todayCheckin: _today);
-    expect(find.textContaining('not a medical diagnosis'), findsOneWidget);
+    expect(find.textContaining('not a medical diagnosis'), findsNothing);
 
     await _pump(tester);
     expect(find.textContaining('not a medical diagnosis'), findsNothing);
