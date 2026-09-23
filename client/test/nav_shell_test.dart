@@ -417,6 +417,37 @@ void main() {
     expect(await openTrainAndRead(), lessThan(1.0));
   });
 
+  testWidgets('returning to Train hides the icon until it pops in', (
+    tester,
+  ) async {
+    // The already-mounted path: Train reopened with Plan on screen, where the
+    // icon has been sitting at rest since the last visit. It must not be
+    // seen there, still, before the intro takes it away and brings it back.
+    await _pumpShell(tester);
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const Key('nav.1')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const Key('nav.0')));
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.byKey(const Key('nav.1')));
+    await tester.pump();
+    await tester.pump();
+
+    final scale = tester
+        .widget<ScaleTransition>(
+          find.ancestor(
+            of: find.byKey(const Key('plan.regenerate')),
+            matching: find.byType(ScaleTransition),
+          ),
+        )
+        .scale
+        .value;
+    expect(scale, 0.0);
+
+    await tester.pumpAndSettle();
+  });
+
   testWidgets('tapping Train while already on it does not replay the icon', (
     tester,
   ) async {

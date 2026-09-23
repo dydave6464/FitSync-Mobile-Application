@@ -119,6 +119,11 @@ class _RegeneratePlanButtonState extends State<RegeneratePlanButton>
     // at its resting size and the user loses nothing but the flourish.
     if (MediaQuery.maybeOf(context)?.disableAnimations ?? false) return;
 
+    // Hidden now, for the whole settle delay, rather than drawn at rest and
+    // snapped to nothing when the pop begins. Seen still and then vanishing,
+    // the icon read as a glitch; its first appearance should be the pop.
+    _controller.value = 0;
+
     // Restarts cleanly if Train is reopened mid-flight.
     _introTimer?.cancel();
     _introTimer = Timer(_settleDelay, () {

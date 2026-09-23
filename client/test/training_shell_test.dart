@@ -155,6 +155,10 @@ Future<void> _pump(
     ),
   );
   if (settle) {
+    // Past the regenerate icon's settle delay first. That delay is a Timer,
+    // and pumpAndSettle only waits on scheduled frames, so on its own it
+    // would return with the icon still hidden, waiting to pop in.
+    await tester.pump(const Duration(milliseconds: 400));
     await tester.pumpAndSettle();
   } else {
     // One frame: enough for the stubbed providers to resolve and the header
@@ -466,7 +470,11 @@ void main() {
       // row and every plan card land in one frame. An intro that started in
       // that same frame would be motion among motion, on a 24px icon in the
       // corner -- which is precisely how it went unnoticed.
-      expect(scaleOf(tester), 1.0);
+      //
+      // Hidden while it waits, not drawn at rest: an icon seen sitting still
+      // and then snapping away to pop back in reads as a glitch, not an
+      // arrival. The first sight of it should be the pop.
+      expect(scaleOf(tester), 0.0);
     });
 
     testWidgets('plays once the tab is still', (tester) async {
@@ -490,9 +498,10 @@ void main() {
       await tester.tap(find.byKey(const Key('tab.plan')));
       await tester.pump();
 
-      // Still at rest on the frame Plan returns: the intro waits for the tab
-      // to settle before it moves, exactly as it does on a first visit.
-      expect(scaleOf(tester), 1.0);
+      // Hidden on the frame Plan returns: the intro waits for the tab to
+      // settle before it moves, exactly as it does on a first visit, and the
+      // icon is not seen at all until it does.
+      expect(scaleOf(tester), 0.0);
 
       await tester.pump(const Duration(milliseconds: 400));
 
