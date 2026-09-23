@@ -542,6 +542,21 @@ void main() {
       );
     });
 
+    test('the 30-day totals Home shows', () async {
+      final container = await completed();
+      expect(
+        (await container.read(homeSummaryProvider.future)).sessionCount,
+        0,
+      );
+
+      await container.read(activeSessionProvider.notifier).complete(40);
+
+      expect(
+        (await container.read(homeSummaryProvider.future)).sessionCount,
+        1,
+      );
+    });
+
     // A family: every period the user has looked at is its own element, and
     // all of them are stale once a workout lands. Invalidating the family
     // itself is what reaches the ones not currently on screen.

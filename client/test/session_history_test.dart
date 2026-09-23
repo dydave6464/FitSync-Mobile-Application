@@ -7,6 +7,7 @@ import 'package:http/testing.dart';
 import 'package:fitsync/core/api_client.dart';
 import 'package:fitsync/core/token_store.dart';
 import 'package:fitsync/features/sessions/data/session_repository.dart';
+import 'package:fitsync/features/sessions/domain/session_history.dart';
 
 SessionRepository _repo(MockClient client) => SessionRepository(
   ApiClient(
@@ -255,6 +256,27 @@ void main() {
       final summary = await repo.summary(period: 'week');
       expect(summary.totalVolumeKg, 0);
       expect(summary.isEmpty, isTrue);
+    });
+  });
+
+  group('TrainingSummary', () {
+    test('reads the new PR count', () {
+      final s = TrainingSummary.fromJson({
+        'sessionCount': 4,
+        'setCount': 40,
+        'totalVolumeKg': 8420,
+        'newPrCount': 3,
+      });
+      expect(s.newPrCount, 3);
+    });
+
+    test('an older server with no PR count reads as none', () {
+      final s = TrainingSummary.fromJson({
+        'sessionCount': 4,
+        'setCount': 40,
+        'totalVolumeKg': 8420,
+      });
+      expect(s.newPrCount, 0);
     });
   });
 }
