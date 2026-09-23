@@ -26,7 +26,21 @@ import 'generator_screen.dart';
 /// capped at [_pendingLookupLimit], and any failure skips the question:
 /// collecting a label must never stand between someone and their workout.
 Future<void> showStartWorkoutSheet(BuildContext context) async {
-  final pending = await _pendingOutcome(context);
+  // The lookup put an await between the tap and the first route, where
+  // before there was none: with nothing guarding it, the FAB stays tappable
+  // for up to _pendingLookupLimit, and a second tap in that window would
+  // fire a second lookup and, if both resolve pending, queue a second
+  // outcome sheet behind the first. Guarding only the lookup is enough --
+  // once a sheet is actually pushed, its own modal barrier blocks the FAB
+  // exactly as it always has, lookup or no lookup.
+  if (_startSheetInFlight) return;
+  _startSheetInFlight = true;
+  final PendingOutcome? pending;
+  try {
+    pending = await _pendingOutcome(context);
+  } finally {
+    _startSheetInFlight = false;
+  }
   if (pending != null && context.mounted) {
     await showOutcomeSheet(context, pending);
   }
@@ -44,6 +58,12 @@ Future<void> showStartWorkoutSheet(BuildContext context) async {
     builder: (_) => const _StartWorkoutSheet(),
   );
 }
+
+/// Guards [showStartWorkoutSheet] against a second tap while an earlier
+/// tap's pending-outcome lookup is still in flight. Cleared as soon as that
+/// lookup settles, in the function's `finally` -- see the comment there for
+/// why the lookup alone is the window that needs guarding.
+bool _startSheetInFlight = false;
 
 /// How long the "+" button waits to learn whether to ask about pain before
 /// opening the start sheet without asking.

@@ -437,5 +437,43 @@ void main() {
       expect(find.text(question), findsNothing);
       expect(find.text('Start a workout'), findsOneWidget);
     });
+
+    testWidgets(
+      'a second tap while the lookup is in flight does not start a second '
+      'chain',
+      (tester) async {
+        // The first tap's lookup is still in flight when the second tap
+        // lands: nothing has resolved yet, so the base screen's button is
+        // still the one thing on screen to hit.
+        final lookup = Completer<PendingOutcome?>();
+        await _open(tester, pendingFuture: lookup.future);
+
+        await tester.tap(find.text('open'));
+
+        lookup.complete(pending);
+        await tester.pumpAndSettle();
+
+        // A second, unguarded chain would have stacked a second outcome
+        // sheet on top of the first once both resolved pending.
+        expect(find.text(question), findsOneWidget);
+
+        await tester.tap(find.byKey(const Key('outcome.skip')));
+        await tester.pumpAndSettle();
+
+        // Likewise for a second start sheet stacked on top of the first.
+        expect(find.text('Start a workout'), findsOneWidget);
+
+        // The guard must release once the chain ends, not stay set forever:
+        // the next tap should open a fresh chain rather than being silently
+        // swallowed.
+        await tester.tap(find.byKey(const Key('start.close')));
+        await tester.pumpAndSettle();
+
+        await tester.tap(find.text('open'));
+        await tester.pumpAndSettle();
+
+        expect(find.text(question), findsOneWidget);
+      },
+    );
   });
 }
