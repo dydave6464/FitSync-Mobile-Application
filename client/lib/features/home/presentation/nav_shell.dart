@@ -4,9 +4,11 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../core/widgets/fs_kit.dart';
 import '../../exercises/presentation/exercise_list_screen.dart';
 import '../../plans/presentation/start_workout_sheet.dart';
-import '../../sessions/presentation/providers.dart' show pendingOutcomeProvider;
+import '../../sessions/presentation/providers.dart'
+    show pendingOutcomeProvider, trainingPeriodProvider;
 import '../../settings/presentation/settings_screen.dart';
-import '../../training/presentation/training_shell.dart';
+import '../../training/presentation/training_shell.dart'
+    show TrainTabRequest, TrainingShell;
 import 'home_screen.dart';
 
 /// The signed-in shell: four tabs over an IndexedStack.
@@ -50,6 +52,17 @@ class _NavShellState extends State<NavShell> {
   /// Training shell replays its arrival animation whenever it does. A re-tap
   /// of Train while already on it is not an arrival and leaves it alone.
   int _trainOpens = 0;
+
+  /// Which Train tab another screen last asked for. Serialised so asking for
+  /// the same tab twice still lands there after the user moved away.
+  TrainTabRequest? _trainTab;
+
+  void _openTrainAt(String tab) {
+    _select(_trainIndex); // an arrival, so the regenerate intro still plays
+    setState(() {
+      _trainTab = TrainTabRequest(tab, (_trainTab?.serial ?? 0) + 1);
+    });
+  }
 
   @override
   void initState() {
@@ -96,6 +109,16 @@ class _NavShellState extends State<NavShell> {
             () => HomeScreen(
               onGoToTrain: () => _select(1),
               onGoToProfile: () => _select(3),
+              onGoToRecovery: () => _openTrainAt('recovery'),
+              onGoToProgress: () {
+                // The card says "Last 30 days"; Progress must open on the
+                // same window, or the numbers the user tapped on vanish.
+                ProviderScope.containerOf(
+                  context,
+                  listen: false,
+                ).read(trainingPeriodProvider.notifier).set('month');
+                _openTrainAt('progress');
+              },
             ),
           ),
           _tab(
@@ -103,6 +126,7 @@ class _NavShellState extends State<NavShell> {
             () => TrainingShell(
               openCount: _trainOpens,
               onGoToProfile: () => _select(3),
+              tabRequest: _trainTab,
             ),
           ),
           _tab(2, () => const ExerciseListScreen()),

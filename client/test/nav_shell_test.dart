@@ -6,6 +6,7 @@ import 'package:http/testing.dart';
 
 import 'package:fitsync/core/api_client.dart';
 import 'package:fitsync/core/token_store.dart';
+import 'package:fitsync/core/widgets/fs_charts.dart' show FsRing;
 import 'package:fitsync/features/exercises/data/exercise_repository.dart';
 import 'package:fitsync/features/exercises/domain/exercise_cues.dart';
 import 'package:fitsync/features/exercises/domain/exercise.dart';
@@ -18,6 +19,16 @@ import 'package:fitsync/features/plans/domain/workout_plan.dart';
 import 'package:fitsync/features/plans/presentation/providers.dart';
 import 'package:fitsync/features/profile/domain/profile.dart';
 import 'package:fitsync/features/profile/presentation/providers.dart';
+import 'package:fitsync/features/recovery/domain/recovery.dart';
+import 'package:fitsync/features/recovery/presentation/providers.dart'
+    show recoveryOverviewProvider;
+import 'package:fitsync/features/recovery/presentation/recovery_screen.dart';
+import 'package:fitsync/features/sessions/domain/session_history.dart'
+    show TrainingSummary;
+import 'package:fitsync/features/sessions/domain/training_analytics.dart';
+import 'package:fitsync/features/sessions/presentation/progress_screen.dart';
+import 'package:fitsync/features/sessions/presentation/providers.dart'
+    show homeSummaryProvider, trainingAnalyticsProvider, trainingPeriodProvider;
 import 'package:fitsync/features/settings/presentation/settings_screen.dart';
 import 'package:fitsync/features/training/presentation/training_shell.dart';
 
@@ -105,6 +116,45 @@ const _plan = WorkoutPlan(
   ],
 );
 
+/// Shaped like home_screen_test.dart's own fixtures, just enough for Home's
+/// readiness and progress cards to render here too.
+const _recovery = RecoveryOverview(
+  todayCheckin: MorningCheckin(
+    checkinId: 1,
+    checkinDate: '2026-09-24',
+    sleepQuality: 'good',
+    muscleSoreness: 'none',
+    energy: 'moderate',
+    stress: 'low',
+  ),
+  latestEstimate: InjuryRiskEstimate(
+    riskLevel: 'low',
+    trainingLoadScore: 20,
+    checkinDate: '2026-09-24',
+  ),
+  load: [],
+);
+
+const _summary = TrainingSummary(
+  sessionCount: 4,
+  setCount: 40,
+  totalVolumeKg: 6600,
+  newPrCount: 3,
+);
+
+final _analytics = TrainingAnalytics(
+  period: 'month',
+  volume: const [
+    VolumeBucket(label: 'W1', volumeKg: 1200),
+    VolumeBucket(label: 'W2', volumeKg: 1800),
+    VolumeBucket(label: 'W3', volumeKg: 1500),
+    VolumeBucket(label: 'W4', volumeKg: 2100),
+  ],
+  change: const VolumeChange(totalKg: 6600, previousKg: 5900, changePct: 12),
+  adherence: const Adherence(done: 4, target: 12, weeks: 4),
+  muscles: const [],
+);
+
 Future<void> _pumpShell(
   WidgetTester tester, {
   WorkoutPlan? plan,
@@ -141,6 +191,10 @@ Future<void> _pumpShell(
           ),
         ],
       ),
+      // Home tab (HomeScreen's readiness and progress cards).
+      recoveryOverviewProvider.overrideWith((ref) async => _recovery),
+      homeSummaryProvider.overrideWith((ref) async => _summary),
+      trainingAnalyticsProvider.overrideWith((ref, period) async => _analytics),
       // Browse tab (ExerciseListScreen).
       exerciseRepositoryProvider.overrideWithValue(FakeExerciseRepository()),
       // Profile tab (SettingsScreen).
@@ -474,5 +528,38 @@ void main() {
     expect(scale, 1.0, reason: 'the icon should be at rest, not replaying');
 
     await tester.pumpAndSettle();
+  });
+
+  testWidgets('the progress card opens Train at Progress, on the month', (
+    tester,
+  ) async {
+    await _pumpShell(tester);
+    await tester.pumpAndSettle();
+
+    await tester.ensureVisible(find.byKey(const Key('home.progress')));
+    await tester.tap(find.byKey(const Key('home.progress')));
+    await tester.pumpAndSettle();
+
+    expect(find.byType(ProgressScreen), findsOneWidget);
+    final container = ProviderScope.containerOf(
+      tester.element(find.byType(NavShell)),
+    );
+    expect(container.read(trainingPeriodProvider), 'month');
+  });
+
+  testWidgets('the readiness card opens Train at Recovery', (tester) async {
+    await _pumpShell(tester);
+    await tester.pumpAndSettle();
+
+    // The ring, not the card's centre: the centre can land on the chip.
+    await tester.tap(
+      find.descendant(
+        of: find.byKey(const Key('home.readiness')),
+        matching: find.byType(FsRing),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.byType(RecoveryScreen), findsOneWidget);
   });
 }
