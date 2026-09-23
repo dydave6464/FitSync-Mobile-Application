@@ -20,10 +20,17 @@ String _displayLabel(String value) =>
 /// "How did your last workout leave you?" -- one severity row, then a region
 /// row once there is pain.
 ///
-/// Completes when the sheet closes, however it closes: answered, dismissed,
-/// or a save that failed. The caller opens the start sheet next either way.
-Future<void> showOutcomeSheet(BuildContext context, PendingOutcome pending) {
-  return showModalBottomSheet<void>(
+/// Resolves when the sheet closes, however it closes: `true` exactly when the
+/// user submitted an answer and it could not be saved, `false` otherwise (a
+/// successful save, a 409 that means an earlier tap already saved it, or
+/// "Not now"/a swipe-down that submitted nothing). The caller -- the start
+/// sheet -- uses that to show its own notice, since a SnackBar raised here
+/// would sit under the start sheet's modal barrier and never be seen.
+Future<bool> showOutcomeSheet(
+  BuildContext context,
+  PendingOutcome pending,
+) async {
+  final failed = await showModalBottomSheet<bool>(
     context: context,
     // The surface on the sheet's own Material, as checkin_sheet.dart does and
     // for its reason: the chips are InkWells and need a Material under them.
@@ -34,6 +41,7 @@ Future<void> showOutcomeSheet(BuildContext context, PendingOutcome pending) {
     isScrollControlled: true,
     builder: (_) => _OutcomeSheet(pending: pending),
   );
+  return failed ?? false;
 }
 
 class _OutcomeSheet extends ConsumerStatefulWidget {
@@ -70,9 +78,6 @@ class _OutcomeSheetState extends ConsumerState<_OutcomeSheet> {
 
   Future<void> _submit() async {
     if (_busy || !_complete) return;
-    // Captured before the await: the sheet can be swiped away mid-save, and
-    // the snackbar belongs to the screen underneath, which outlives it.
-    final messenger = ScaffoldMessenger.maybeOf(context);
     setState(() => _busy = true);
 
     Object? failure;
@@ -91,13 +96,9 @@ class _OutcomeSheetState extends ConsumerState<_OutcomeSheet> {
     // 409 means an earlier tap already stored this answer -- saved, not failed.
     final alreadyStored =
         failure is ApiException && failure.code == 'OUTCOME_EXISTS';
-    if (failure != null && !alreadyStored) {
-      messenger?.showSnackBar(
-        const SnackBar(content: Text(outcomeNotSavedMessage)),
-      );
-    }
+    final notSaved = failure != null && !alreadyStored;
     if (!mounted) return;
-    Navigator.of(context).pop();
+    Navigator.of(context).pop(notSaved);
   }
 
   @override

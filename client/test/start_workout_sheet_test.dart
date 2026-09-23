@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:convert';
 import 'dart:io';
 import 'dart:typed_data';
 
@@ -6,11 +7,17 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart' show FontLoader;
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:http/http.dart' as http;
+import 'package:http/testing.dart';
 
 import 'package:fitsync/features/exercises/presentation/exercise_list_screen.dart';
 
+import 'package:fitsync/core/api_client.dart';
 import 'package:fitsync/core/api_exception.dart';
 import 'package:fitsync/core/theme.dart';
+import 'package:fitsync/core/token_store.dart';
+import 'package:fitsync/features/exercises/presentation/providers.dart'
+    show apiClientProvider;
 import 'package:fitsync/features/plans/domain/workout_plan.dart';
 import 'package:fitsync/features/plans/presentation/generator_screen.dart';
 import 'package:fitsync/features/plans/presentation/providers.dart';
@@ -21,6 +28,8 @@ import 'package:fitsync/features/profile/presentation/providers.dart'
 import 'package:fitsync/features/sessions/domain/session_history.dart';
 import 'package:fitsync/features/sessions/domain/session_outcome.dart';
 import 'package:fitsync/features/sessions/presentation/providers.dart';
+import 'package:fitsync/features/sessions/presentation/widgets/outcome_sheet.dart'
+    show outcomeNotSavedMessage;
 import 'package:fitsync/features/sessions/presentation/workout_draft.dart';
 import 'package:fitsync/features/sessions/presentation/workout_review_screen.dart';
 import 'package:fitsync/features/sessions/presentation/workout_setup_screen.dart';
@@ -68,6 +77,9 @@ Future<ProviderContainer> _open(
   PendingOutcome? pending,
   Object? pendingError,
   Future<PendingOutcome?>? pendingFuture,
+  // Serves the outcome POST for the chain tests that answer for real. The
+  // other tests never submit an answer, so they never need one.
+  http.Client? client,
 }) async {
   final container = ProviderContainer(
     overrides: [
@@ -85,6 +97,14 @@ Future<ProviderContainer> _open(
         return pending;
       }),
       injuryOptionsProvider.overrideWith((ref) async => const []),
+      if (client != null)
+        apiClientProvider.overrideWithValue(
+          ApiClient(
+            baseUrl: 'http://test.local',
+            tokens: TokenStore(backing: InMemorySecureStore()),
+            client: client,
+          ),
+        ),
     ],
   );
   addTearDown(container.dispose);
@@ -473,6 +493,56 @@ void main() {
         await tester.pumpAndSettle();
 
         expect(find.text(question), findsOneWidget);
+      },
+    );
+
+    /// Serves the outcome POST at `/api/v1/sessions/31/outcome` -- 31 being
+    /// `pending`'s sessionId above -- with [status] and, on success, the
+    /// shape `recordOutcome` expects back.
+    MockClient outcomeClient(int status) => MockClient((request) async {
+      if (request.method == 'POST' &&
+          request.url.path == '/api/v1/sessions/31/outcome') {
+        if (status == 201) {
+          return http.Response('{"data":{"outcome":{}}}', 201);
+        }
+        return http.Response(
+          jsonEncode({
+            'error': {'code': 'INTERNAL', 'message': 'x'},
+          }),
+          status,
+        );
+      }
+      return http.Response('{"data":{}}', 200);
+    });
+
+    testWidgets(
+      'answering "None" and saving opens the start sheet with no notice',
+      (tester) async {
+        await _open(tester, pending: pending, client: outcomeClient(201));
+
+        await tester.tap(find.byKey(const Key('outcome.pain.none')));
+        await tester.pumpAndSettle();
+        await tester.tap(find.byKey(const Key('outcome.submit')));
+        await tester.pumpAndSettle();
+
+        expect(find.text('Start a workout'), findsOneWidget);
+        expect(find.byKey(const Key('start.notice')), findsNothing);
+      },
+    );
+
+    testWidgets(
+      'answering "None" when the save fails shows the notice on the start '
+      'sheet',
+      (tester) async {
+        await _open(tester, pending: pending, client: outcomeClient(500));
+
+        await tester.tap(find.byKey(const Key('outcome.pain.none')));
+        await tester.pumpAndSettle();
+        await tester.tap(find.byKey(const Key('outcome.submit')));
+        await tester.pumpAndSettle();
+
+        expect(find.text('Start a workout'), findsOneWidget);
+        expect(find.text(outcomeNotSavedMessage).hitTestable(), findsOneWidget);
       },
     );
   });

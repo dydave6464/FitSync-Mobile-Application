@@ -25,6 +25,10 @@ import 'generator_screen.dart';
 /// and the start sheet follows however that sheet closes. The lookup is
 /// capped at [_pendingLookupLimit], and any failure skips the question:
 /// collecting a label must never stand between someone and their workout.
+///
+/// A pain answer that could not be saved shows [outcomeNotSavedMessage] on
+/// the start sheet rather than the outcome sheet, which is already gone by
+/// the time a failed save would need to be seen.
 Future<void> showStartWorkoutSheet(BuildContext context) async {
   // The lookup put an await between the tap and the first route, where
   // before there was none: with nothing guarding it, the FAB stays tappable
@@ -41,8 +45,9 @@ Future<void> showStartWorkoutSheet(BuildContext context) async {
   } finally {
     _startSheetInFlight = false;
   }
+  var notSaved = false;
   if (pending != null && context.mounted) {
-    await showOutcomeSheet(context, pending);
+    notSaved = await showOutcomeSheet(context, pending);
   }
   if (!context.mounted) return;
   return showModalBottomSheet<void>(
@@ -55,7 +60,8 @@ Future<void> showStartWorkoutSheet(BuildContext context) async {
     // orientation; the scroll view inside covers the accessibility text
     // scales that no height can fit.
     isScrollControlled: true,
-    builder: (_) => const _StartWorkoutSheet(),
+    builder: (_) =>
+        _StartWorkoutSheet(notice: notSaved ? outcomeNotSavedMessage : null),
   );
 }
 
@@ -84,7 +90,11 @@ Future<PendingOutcome?> _pendingOutcome(BuildContext context) async {
 }
 
 class _StartWorkoutSheet extends ConsumerWidget {
-  const _StartWorkoutSheet();
+  const _StartWorkoutSheet({this.notice});
+
+  /// A pain answer that could not be saved, shown as one line under the
+  /// title. Null when there is nothing to report.
+  final String? notice;
 
   /// Loads the workout into the draft and hands it to the review screen.
   ///
@@ -162,6 +172,14 @@ class _StartWorkoutSheet extends ConsumerWidget {
                   ),
                 ],
               ),
+              if (notice != null) ...[
+                const SizedBox(height: 4),
+                Text(
+                  notice!,
+                  key: const Key('start.notice'),
+                  style: TextStyle(fontSize: 12, color: t.red),
+                ),
+              ],
               const SizedBox(height: 14),
               _Row(
                 rowKey: const Key('start.generator'),

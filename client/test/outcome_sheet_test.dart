@@ -41,10 +41,13 @@ const _regions = [
 
 /// Opens the sheet over a Scaffold and returns every body POSTed to the
 /// outcome route. [status] and [errorCode] shape the server's answer.
+/// [onResult] is handed whatever [showOutcomeSheet] resolves with, once the
+/// sheet closes.
 Future<List<Map<String, dynamic>>> _open(
   WidgetTester tester, {
   int status = 201,
   String errorCode = 'INTERNAL',
+  ValueChanged<bool?>? onResult,
 }) async {
   final posts = <Map<String, dynamic>>[];
   final client = MockClient((request) async {
@@ -81,7 +84,10 @@ Future<List<Map<String, dynamic>>> _open(
         home: Scaffold(
           body: Builder(
             builder: (context) => ElevatedButton(
-              onPressed: () => showOutcomeSheet(context, _pending),
+              onPressed: () async {
+                final result = await showOutcomeSheet(context, _pending);
+                onResult?.call(result);
+              },
               child: const Text('open'),
             ),
           ),
@@ -163,7 +169,8 @@ void main() {
   });
 
   testWidgets('no pain posts without a region and closes', (tester) async {
-    final posts = await _open(tester);
+    bool? result;
+    final posts = await _open(tester, onResult: (r) => result = r);
     await _tap(tester, _pain('none'));
     await _tap(tester, _submit);
 
@@ -171,6 +178,7 @@ void main() {
       {'painLevel': 'none'},
     ]);
     expect(find.text(_question), findsNothing);
+    expect(result, isFalse, reason: 'a successful save was not lost');
   });
 
   testWidgets('pain posts its region', (tester) async {
@@ -185,25 +193,38 @@ void main() {
   });
 
   testWidgets('dismissing posts nothing', (tester) async {
-    final posts = await _open(tester);
+    bool? result;
+    final posts = await _open(tester, onResult: (r) => result = r);
     await _tap(tester, _pain('mild'));
     await _tap(tester, find.byKey(const Key('outcome.skip')));
 
     expect(posts, isEmpty);
     expect(find.text(_question), findsNothing);
+    expect(result, isFalse, reason: 'nothing was submitted, so nothing failed');
   });
 
   testWidgets('an answer already stored counts as saved', (tester) async {
-    await _open(tester, status: 409, errorCode: 'OUTCOME_EXISTS');
+    bool? result;
+    await _open(
+      tester,
+      status: 409,
+      errorCode: 'OUTCOME_EXISTS',
+      onResult: (r) => result = r,
+    );
     await _tap(tester, _pain('none'));
     await _tap(tester, _submit);
 
     expect(find.text(_question), findsNothing);
-    expect(find.byType(SnackBar), findsNothing);
+    expect(
+      result,
+      isFalse,
+      reason: 'a 409 means an earlier tap already saved it',
+    );
   });
 
   testWidgets('a failed save closes the sheet and says so', (tester) async {
-    await _open(tester, status: 500);
+    bool? result;
+    await _open(tester, status: 500, onResult: (r) => result = r);
     await _tap(tester, _pain('none'));
     await _tap(tester, _submit);
 
@@ -212,6 +233,6 @@ void main() {
       findsNothing,
       reason: 'a failure must not stand between the user and training',
     );
-    expect(find.text(outcomeNotSavedMessage), findsOneWidget);
+    expect(result, isTrue, reason: 'the caller must be told the save failed');
   });
 }
