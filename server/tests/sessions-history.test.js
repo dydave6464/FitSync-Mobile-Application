@@ -228,7 +228,22 @@ test('session history', async (t) => {
     const u = await freshUser('h12@example.com');
 
     const s = await summary(u.token, 'week');
-    assert.deepEqual(s, { sessionCount: 0, setCount: 0, totalVolumeKg: 0 });
+    assert.deepEqual(s, { sessionCount: 0, setCount: 0, totalVolumeKg: 0, newPrCount: 0 });
+  });
+
+  await t.test('summary counts the window\'s new PRs', async () => {
+    const u = await freshUser('h12pr@example.com');
+    await writeSession(u.userId, { daysAgo: 40, sets: 1 }); // 20 x 10
+    const recent = await writeSession(u.userId, { daysAgo: 2, sets: 0 });
+    await pool.query(
+      `INSERT INTO set_logs (session_id, exercise_id, set_number, weight_kg, reps, is_completed)
+       VALUES (?, ?, 1, 30, 10, TRUE)`,
+      [recent, exerciseId],
+    );
+    await pool.query('UPDATE set_logs SET is_completed = TRUE WHERE session_id IN (SELECT session_id FROM workout_sessions WHERE user_id = ?)', [u.userId]);
+
+    const s = await summary(u.token, 'month');
+    assert.equal(s.newPrCount, 1);
   });
 
   await t.test('an unknown period is refused rather than guessed', async () => {

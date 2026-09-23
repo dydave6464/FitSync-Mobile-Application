@@ -6,13 +6,31 @@ import '../../plans/presentation/widgets/regenerate_plan_button.dart';
 import '../../recovery/presentation/recovery_screen.dart';
 import '../../sessions/presentation/progress_screen.dart';
 
+/// A request, from outside, to show one of Train's tabs.
+///
+/// [serial] is what makes a repeat of the same tab a new request: the shell
+/// acts when it changes, not when [tab] does, so asking for Progress twice in
+/// a row still lands on Progress the second time after the user moved away.
+class TrainTabRequest {
+  const TrainTabRequest(this.tab, this.serial);
+
+  /// One of `_tabs`' names: 'plan', 'progress' or 'recovery'.
+  final String tab;
+  final int serial;
+}
+
 /// Plan · Progress · Recovery under one header.
 ///
 /// All three are live: Progress reads finished sessions and what they added
 /// up to, and Recovery reads the daily check-in and the injury-risk estimate
 /// it produces.
 class TrainingShell extends StatefulWidget {
-  const TrainingShell({super.key, this.onGoToProfile, this.openCount = 0});
+  const TrainingShell({
+    super.key,
+    this.onGoToProfile,
+    this.openCount = 0,
+    this.tabRequest,
+  });
 
   /// Bumped by NavShell every time the Train tab is selected.
   ///
@@ -20,6 +38,10 @@ class TrainingShell extends StatefulWidget {
   /// without inventing a number; it then simply plays the intro once, on
   /// mount, the way a first visit does.
   final int openCount;
+
+  /// Set by NavShell when another screen asks for a particular tab -- Home's
+  /// readiness and progress cards. Null opens wherever the user left it.
+  final TrainTabRequest? tabRequest;
 
   final VoidCallback? onGoToProfile;
 
@@ -48,12 +70,24 @@ class _TrainingShellState extends State<TrainingShell> {
   void initState() {
     super.initState();
     _armIntro();
+    _applyTabRequest(widget.tabRequest);
   }
 
   @override
   void didUpdateWidget(TrainingShell oldWidget) {
     super.didUpdateWidget(oldWidget);
     if (widget.openCount != oldWidget.openCount) _armIntro();
+    if (widget.tabRequest?.serial != oldWidget.tabRequest?.serial) {
+      _applyTabRequest(widget.tabRequest);
+    }
+  }
+
+  /// No setState: both callers run before the next build anyway. An unknown
+  /// name is ignored rather than guessed at.
+  void _applyTabRequest(TrainTabRequest? request) {
+    if (request == null) return;
+    final i = _tabs.indexWhere((tab) => tab.$1 == request.tab);
+    if (i >= 0) _index = i;
   }
 
   void _armIntro() {

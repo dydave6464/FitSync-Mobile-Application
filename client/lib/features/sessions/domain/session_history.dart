@@ -134,11 +134,16 @@ class TrainingSummary {
     required this.sessionCount,
     required this.setCount,
     required this.totalVolumeKg,
+    this.newPrCount = 0,
   });
 
   final int sessionCount;
   final int setCount;
   final double totalVolumeKg;
+
+  /// Exercises whose best estimated 1RM in this window beat everything
+  /// before it. 0 from a server that predates the count.
+  final int newPrCount;
 
   /// Nothing trained in this window. Distinct from a failure to load: the
   /// screen has to be able to say "nothing yet" plainly, which is the state
@@ -150,5 +155,6 @@ class TrainingSummary {
         sessionCount: json['sessionCount'] as int? ?? 0,
         setCount: json['setCount'] as int? ?? 0,
         totalVolumeKg: (json['totalVolumeKg'] as num?)?.toDouble() ?? 0,
+        newPrCount: json['newPrCount'] as int? ?? 0,
       );
 }

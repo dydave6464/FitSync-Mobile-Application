@@ -155,7 +155,13 @@ module.exports = function buildSessionsRouter(deps) {
           [{ field: 'period', value: String(period) }],
         );
       }
-      res.json({ data: { summary } });
+      // Added here rather than in summariseHistory: strength.js already
+      // imports from db/sessions.js, and the reverse would be circular. The
+      // period is known-good by now -- summariseHistory returned non-null.
+      const newPrCount = await strength.countNewPrs(
+        deps.pool, req.user.userId, SUMMARY_WINDOWS[period],
+      );
+      res.json({ data: { summary: { ...summary, newPrCount } } });
     } catch (err) { next(err); }
   });
 

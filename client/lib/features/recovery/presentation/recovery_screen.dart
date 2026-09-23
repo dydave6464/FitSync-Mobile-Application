@@ -85,10 +85,6 @@ class _RecoveryView extends StatelessWidget {
   }
 }
 
-/// The disclaimer, verbatim, every time an estimate might be on screen.
-const _disclaimer =
-    'An estimate from training load & recovery — not a medical diagnosis.';
-
 class _EmptyEstimate extends StatelessWidget {
   const _EmptyEstimate({required this.t});
 
@@ -108,7 +104,7 @@ class _EmptyEstimate extends StatelessWidget {
         ),
         const SizedBox(height: 12),
         Text(
-          _disclaimer,
+          riskEstimateDisclaimer,
           style: TextStyle(fontSize: 11, color: t.text3, height: 1.4),
         ),
       ],
@@ -167,7 +163,7 @@ class _EstimateCard extends StatelessWidget {
         ],
         const SizedBox(height: 14),
         Text(
-          _disclaimer,
+          riskEstimateDisclaimer,
           style: TextStyle(fontSize: 11, color: t.text3, height: 1.4),
         ),
       ],

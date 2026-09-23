@@ -3,7 +3,8 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import 'package:fitsync/core/api_exception.dart';
-import 'package:fitsync/core/widgets/fs_kit.dart';
+import 'package:fitsync/core/widgets/fs_charts.dart' show FsRing;
+import 'package:fitsync/core/widgets/fs_kit.dart' hide FsRing;
 import 'package:fitsync/features/exercises/domain/exercise.dart';
 import 'package:fitsync/features/exercises/presentation/providers.dart'
     show exerciseDetailProvider;
@@ -14,8 +15,12 @@ import 'package:fitsync/features/plans/domain/workout_plan.dart';
 import 'package:fitsync/features/plans/presentation/providers.dart';
 import 'package:fitsync/features/profile/domain/profile.dart';
 import 'package:fitsync/features/profile/presentation/providers.dart';
+import 'package:fitsync/features/recovery/domain/recovery.dart';
+import 'package:fitsync/features/recovery/presentation/providers.dart';
 import 'package:fitsync/features/sessions/data/session_repository.dart';
 import 'package:fitsync/features/sessions/domain/active_session.dart';
+import 'package:fitsync/features/sessions/domain/session_history.dart';
+import 'package:fitsync/features/sessions/domain/training_analytics.dart';
 import 'package:fitsync/features/sessions/presentation/providers.dart';
 import 'package:fitsync/features/sessions/presentation/session_logger_screen.dart';
 
@@ -37,6 +42,43 @@ Profile _profile({
   injuries: const [],
   mainGoal: mainGoal,
   fitnessLevel: fitnessLevel,
+);
+
+const _defaultRecovery = RecoveryOverview(
+  todayCheckin: MorningCheckin(
+    checkinId: 1,
+    checkinDate: '2026-09-24',
+    sleepQuality: 'good',
+    muscleSoreness: 'none',
+    energy: 'moderate',
+    stress: 'low',
+  ),
+  latestEstimate: InjuryRiskEstimate(
+    riskLevel: 'low',
+    trainingLoadScore: 20,
+    checkinDate: '2026-09-24',
+  ),
+  load: [],
+);
+
+const _defaultSummary = TrainingSummary(
+  sessionCount: 4,
+  setCount: 40,
+  totalVolumeKg: 6600,
+  newPrCount: 3,
+);
+
+final _defaultAnalytics = TrainingAnalytics(
+  period: 'month',
+  volume: const [
+    VolumeBucket(label: 'W1', volumeKg: 1200),
+    VolumeBucket(label: 'W2', volumeKg: 1800),
+    VolumeBucket(label: 'W3', volumeKg: 1500),
+    VolumeBucket(label: 'W4', volumeKg: 2100),
+  ],
+  change: const VolumeChange(totalKg: 6600, previousKg: 5900, changePct: 12),
+  adherence: const Adherence(done: 4, target: 12, weeks: 4),
+  muscles: const [],
 );
 
 const _defaultPlan = WorkoutPlan(
@@ -147,10 +189,17 @@ Future<void> _pumpHome(
   WidgetTester tester, {
   VoidCallback? onGoToTrain,
   VoidCallback? onGoToProfile,
+  VoidCallback? onGoToProgress,
+  VoidCallback? onGoToRecovery,
   Profile? profile,
   WorkoutPlan? plan = _defaultPlan,
   ApiException? planError,
   _FakeSessionRepository? sessions,
+  RecoveryOverview? recovery = _defaultRecovery,
+  Object? recoveryError,
+  TrainingSummary summary = _defaultSummary,
+  Object? progressError,
+  Object? analyticsError,
 }) async {
   await tester.pumpWidget(
     ProviderScope(
@@ -181,11 +230,25 @@ Future<void> _pumpHome(
             cues: const [],
           ),
         ),
+        recoveryOverviewProvider.overrideWith((ref) async {
+          if (recoveryError != null) throw recoveryError;
+          return recovery!;
+        }),
+        homeSummaryProvider.overrideWith((ref) async {
+          if (progressError != null) throw progressError;
+          return summary;
+        }),
+        trainingAnalyticsProvider.overrideWith((ref, period) async {
+          if (analyticsError != null) throw analyticsError;
+          return _defaultAnalytics;
+        }),
       ],
       child: MaterialApp(
         home: HomeScreen(
           onGoToTrain: onGoToTrain,
           onGoToProfile: onGoToProfile,
+          onGoToProgress: onGoToProgress,
+          onGoToRecovery: onGoToRecovery,
         ),
       ),
     ),
@@ -399,9 +462,15 @@ void main() {
       // closing bracket), the nudge would still correctly disappear for a
       // complete profile, but a 14px gap would remain — invisible to a test
       // that only checks the nudge is absent. Measuring the actual on-screen
-      // distance between Greeting and the plan card is what catches that:
+      // distance between Greeting and the next section is what catches that:
       // with the nudge suppressed, only the fixed SizedBox(height: 20) after
       // Greeting should separate them.
+      //
+      // Measured against the readiness card, not the plan card: since Task 7,
+      // the readiness section sits unconditionally between the nudge block
+      // and the plan card, so the Greeting-to-plan-card distance now
+      // legitimately includes its height too and would no longer isolate the
+      // nudge's own spacing.
       await _pumpHome(
         tester,
       ); // default profile is complete; default plan renders
@@ -409,15 +478,18 @@ void main() {
       expect(find.text('Finish your profile'), findsNothing);
 
       final greetingBottom = tester.getBottomLeft(find.byType(Greeting)).dy;
-      final planCardTop = tester.getTopLeft(find.byType(PlanCard)).dy;
+      final readinessTop = tester
+          .getTopLeft(find.byKey(const Key('home.readiness')))
+          .dy;
 
       expect(
-        planCardTop - greetingBottom,
+        readinessTop - greetingBottom,
         moreOrLessEquals(20),
         reason:
             'only the base 20px gap after Greeting should separate it '
-            'from the plan card when the nudge does not render; a leftover '
-            '14px would mean the nudge\'s SizedBox escaped its conditional',
+            'from the readiness card when the nudge does not render; a '
+            'leftover 14px would mean the nudge\'s SizedBox escaped its '
+            'conditional',
       );
     },
   );
@@ -442,5 +514,137 @@ void main() {
     await _pumpHome(tester, profile: _profile(mainGoal: null));
 
     expect(tester.takeException(), isNull);
+  });
+
+  group('readiness and progress', () {
+    testWidgets('Home reads top to bottom as the prototype does', (
+      tester,
+    ) async {
+      await _pumpHome(tester);
+
+      double top(Key key) => tester.getTopLeft(find.byKey(key)).dy;
+      expect(
+        top(const Key('home.readiness')),
+        lessThan(tester.getTopLeft(find.byType(PlanCard)).dy),
+      );
+      expect(
+        tester.getTopLeft(find.byType(PlanCard)).dy,
+        lessThan(top(const Key('home.progress'))),
+      );
+    });
+
+    testWidgets('a readiness that fails to load simply is not there', (
+      tester,
+    ) async {
+      await _pumpHome(
+        tester,
+        recoveryError: const ApiException('INTERNAL', 'x'),
+      );
+      expect(find.byKey(const Key('home.readiness')), findsNothing);
+      expect(find.byType(PlanCard), findsOneWidget);
+    });
+
+    testWidgets('progress that fails to load offers a retry', (tester) async {
+      await _pumpHome(
+        tester,
+        progressError: const ApiException('INTERNAL', 'x'),
+      );
+      expect(find.text("Couldn't load progress"), findsOneWidget);
+      expect(find.byKey(const Key('home.progress.retry')), findsOneWidget);
+    });
+
+    testWidgets('the analytics half failing alone still shows the same error', (
+      tester,
+    ) async {
+      // Either provider failing is one error line -- half a card would
+      // only raise the question of where the other half went.
+      await _pumpHome(
+        tester,
+        analyticsError: const ApiException('INTERNAL', 'x'),
+      );
+      expect(find.text("Couldn't load progress"), findsOneWidget);
+      expect(find.byKey(const Key('home.progress.retry')), findsOneWidget);
+    });
+
+    testWidgets('retrying after progress loads successfully shows the card', (
+      tester,
+    ) async {
+      var fail = true;
+      await tester.pumpWidget(
+        ProviderScope(
+          overrides: [
+            profileProvider.overrideWith(
+              () => _StubProfileNotifier(_profile()),
+            ),
+            activePlanProvider.overrideWith((ref) async => _defaultPlan),
+            sessionRepositoryProvider.overrideWithValue(
+              _FakeSessionRepository(),
+            ),
+            exerciseDetailProvider.overrideWith(
+              (ref, id) async => ExerciseDetail(
+                exerciseId: id,
+                name: 'Detail $id',
+                muscleGroup: 'x',
+                equipment: null,
+                thumbnailUrl: null,
+                animationUrl: null,
+                cues: const [],
+              ),
+            ),
+            recoveryOverviewProvider.overrideWith(
+              (ref) async => _defaultRecovery,
+            ),
+            homeSummaryProvider.overrideWith((ref) async {
+              if (fail) throw const ApiException('INTERNAL', 'x');
+              return _defaultSummary;
+            }),
+            trainingAnalyticsProvider.overrideWith(
+              (ref, period) async => _defaultAnalytics,
+            ),
+          ],
+          child: const MaterialApp(home: HomeScreen()),
+        ),
+      );
+      await tester.pumpAndSettle();
+      expect(find.text("Couldn't load progress"), findsOneWidget);
+
+      fail = false;
+      await tester.ensureVisible(find.byKey(const Key('home.progress.retry')));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const Key('home.progress.retry')));
+      await tester.pumpAndSettle();
+
+      expect(find.text("Couldn't load progress"), findsNothing);
+      expect(find.byKey(const Key('home.progress')), findsOneWidget);
+    });
+
+    testWidgets('the cards open Progress and Recovery', (tester) async {
+      final taps = <String>[];
+      await _pumpHome(
+        tester,
+        onGoToProgress: () => taps.add('progress'),
+        onGoToRecovery: () => taps.add('recovery'),
+      );
+
+      // The ring, not the card's centre: the centre can land on the chip.
+      await tester.tap(
+        find.descendant(
+          of: find.byKey(const Key('home.readiness')),
+          matching: find.byType(FsRing),
+        ),
+      );
+      await tester.ensureVisible(find.byKey(const Key('home.progress')));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const Key('home.progress')));
+
+      expect(taps, ['recovery', 'progress']);
+    });
+
+    testWidgets('the check-in chip opens the check-in sheet', (tester) async {
+      await _pumpHome(tester);
+      await tester.tap(find.byKey(const Key('home.readiness.checkin')));
+      await tester.pumpAndSettle();
+      expect(find.text('Morning check-in'), findsOneWidget);
+    });
   });
 }

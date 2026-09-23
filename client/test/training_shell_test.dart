@@ -22,6 +22,8 @@ import 'package:fitsync/features/sessions/domain/training_analytics.dart';
 import 'package:fitsync/features/sessions/presentation/providers.dart';
 import 'package:fitsync/features/sessions/presentation/session_logger_screen.dart';
 import 'package:fitsync/features/plans/presentation/generator_screen.dart';
+import 'package:fitsync/features/recovery/presentation/recovery_screen.dart';
+import 'package:fitsync/features/sessions/presentation/progress_screen.dart';
 import 'package:fitsync/features/training/presentation/training_shell.dart';
 
 /// A quiet, zero-everything analytics reading. What every Progress-tab
@@ -86,11 +88,27 @@ class _StubProfileNotifier extends ProfileNotifier {
   );
 }
 
+/// Rebuilds TrainingShell with whatever request the test sets.
+class _RequestHost extends StatefulWidget {
+  const _RequestHost();
+  @override
+  State<_RequestHost> createState() => _RequestHostState();
+}
+
+class _RequestHostState extends State<_RequestHost> {
+  TrainTabRequest? request;
+  void send(TrainTabRequest r) => setState(() => request = r);
+  @override
+  Widget build(BuildContext context) => TrainingShell(tabRequest: request);
+}
+
 Future<void> _pump(
   WidgetTester tester, {
   ActiveSession? session,
   bool settle = true,
   bool reduceMotion = false,
+  TrainTabRequest? tabRequest,
+  bool hosted = false,
 }) async {
   await tester.pumpWidget(
     ProviderScope(
@@ -149,7 +167,9 @@ Future<void> _pump(
         theme: fsLightTheme(),
         home: MediaQuery(
           data: MediaQueryData(disableAnimations: reduceMotion),
-          child: const TrainingShell(),
+          child: hosted
+              ? const _RequestHost()
+              : TrainingShell(tabRequest: tabRequest),
         ),
       ),
     ),
@@ -532,6 +552,38 @@ void main() {
       await _pump(tester, settle: false, reduceMotion: true);
 
       expect(scaleOf(tester), 1.0);
+    });
+  });
+
+  group('opening at a tab', () {
+    testWidgets('a request on mount opens that tab', (tester) async {
+      await _pump(tester, tabRequest: const TrainTabRequest('recovery', 1));
+      expect(find.byType(RecoveryScreen), findsOneWidget);
+    });
+
+    testWidgets('a new request switches tabs', (tester) async {
+      await _pump(tester, hosted: true);
+      tester
+          .state<_RequestHostState>(find.byType(_RequestHost))
+          .send(const TrainTabRequest('progress', 1));
+      await tester.pumpAndSettle();
+      expect(find.byType(ProgressScreen), findsOneWidget);
+    });
+
+    testWidgets('the same request again does not undo a manual switch', (
+      tester,
+    ) async {
+      await _pump(tester, hosted: true);
+      final host = tester.state<_RequestHostState>(find.byType(_RequestHost));
+      host.send(const TrainTabRequest('progress', 1));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const Key('tab.plan')));
+      await tester.pumpAndSettle();
+
+      host.send(const TrainTabRequest('progress', 1)); // same serial
+      await tester.pumpAndSettle();
+
+      expect(find.byType(ProgressScreen), findsNothing);
     });
   });
 }

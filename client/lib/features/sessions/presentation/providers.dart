@@ -98,6 +98,7 @@ class ActiveSessionController extends AsyncNotifier<ActiveSession?> {
     ref.invalidate(completedDaysProvider); // the strip's dot for today
     ref.invalidate(sessionHistoryProvider); // the Progress tab's list
     ref.invalidate(trainingSummaryProvider); // its totals
+    ref.invalidate(homeSummaryProvider); // Home's 30-day card
     ref.invalidate(trainingAnalyticsProvider); // volume, adherence, muscles
     ref.invalidate(lastWorkoutProvider); // what the "+" sheet repeats
     return done;
@@ -135,6 +136,15 @@ final trainingSummaryProvider = FutureProvider<TrainingSummary>(
   (ref) => ref
       .watch(sessionRepositoryProvider)
       .summary(period: ref.watch(trainingPeriodProvider)),
+  retry: apiRetryPolicy,
+);
+
+/// The last 30 days, always -- what Home's progress card reports.
+///
+/// Not [trainingSummaryProvider], which follows whichever period the Progress
+/// tab's segment is on: Home is labelled "Last 30 days" and must mean it.
+final homeSummaryProvider = FutureProvider<TrainingSummary>(
+  (ref) => ref.watch(sessionRepositoryProvider).summary(period: 'month'),
   retry: apiRetryPolicy,
 );
 
