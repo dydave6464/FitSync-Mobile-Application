@@ -42,13 +42,13 @@ class _NavShellState extends State<NavShell> {
   /// again, so its Element (and State) is never torn down.
   final Set<int> _visited = {0};
 
-  /// How many times the Train tab has been selected.
+  /// How many times the user has arrived at the Train tab from another tab.
   ///
   /// IndexedStack keeps a visited tab alive, so opening Train again rebuilds
   /// nothing -- there is no mount for that tab to notice. This counter is the
-  /// notice: it changes on every selection, including a re-tap of the tab the
-  /// user is already on, and the Training shell replays its arrival animation
-  /// whenever it does.
+  /// notice: it changes each time Train is selected from another tab, and the
+  /// Training shell replays its arrival animation whenever it does. A re-tap
+  /// of Train while already on it is not an arrival and leaves it alone.
   int _trainOpens = 0;
 
   @override
@@ -66,9 +66,11 @@ class _NavShellState extends State<NavShell> {
   }
 
   void _select(int index) => setState(() {
+    // Only an arrival counts: a tap on Train while already there opens
+    // nothing, and must not replay the Training shell's intro.
+    if (index == _trainIndex && _index != _trainIndex) _trainOpens++;
     _index = index;
     _visited.add(index);
-    if (index == _trainIndex) _trainOpens++;
   });
 
   static const _trainIndex = 1;
