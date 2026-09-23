@@ -1,6 +1,7 @@
 import '../../../core/api_client.dart';
 import '../domain/active_session.dart';
 import '../domain/session_history.dart';
+import '../domain/session_outcome.dart';
 import '../domain/shared_report.dart';
 import '../domain/training_analytics.dart';
 
@@ -35,6 +36,30 @@ class SessionRepository {
     final session = data['session'];
     if (session == null) return null;
     return LastWorkout.fromJson(session as Map<String, dynamic>);
+  }
+
+  /// The previous session while it still awaits a pain report, else null.
+  ///
+  /// Null rather than an exception, the contract [lastWorkout] states:
+  /// nothing to ask about is the normal state.
+  Future<PendingOutcome?> pendingOutcome() async {
+    final data = await _api.getJson('/api/v1/sessions/pending-outcome');
+    final session = data['session'];
+    if (session == null) return null;
+    return PendingOutcome.fromJson(session as Map<String, dynamic>);
+  }
+
+  /// [injuryId] is left out entirely for 'none': the server refuses a region
+  /// alongside no pain rather than guess which of the two was meant.
+  Future<void> recordOutcome(
+    int sessionId, {
+    required String painLevel,
+    int? injuryId,
+  }) async {
+    await _api.postJson('/api/v1/sessions/$sessionId/outcome', {
+      'painLevel': painLevel,
+      'injuryId': ?injuryId,
+    });
   }
 
   /// What the last [period] ('week', 'month' or 'year') added up to.

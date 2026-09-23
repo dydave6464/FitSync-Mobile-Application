@@ -9,6 +9,7 @@ import 'package:fitsync/core/api_exception.dart';
 import 'package:fitsync/core/token_store.dart';
 import 'package:fitsync/features/sessions/data/session_repository.dart';
 import 'package:fitsync/features/sessions/domain/active_session.dart';
+import 'package:fitsync/features/sessions/domain/session_outcome.dart';
 
 /// The exact shape `server/src/db/sessions.js` returns.
 const _sessionJson = {
@@ -606,5 +607,92 @@ void main() {
     // the first logged set, and a day-2 session would re-filter to day 1
     // mid-workout.
     expect(updated.planDayNo, 2);
+  });
+
+  group('pain outcomes', () {
+    test('reads the session waiting for a report', () async {
+      late String path;
+      final repo = _repo(
+        MockClient((request) async {
+          path = request.url.path;
+          return http.Response(
+            jsonEncode({
+              'data': {
+                'session': {
+                  'sessionId': 31,
+                  'sessionDate': '2026-09-21',
+                  'planName': null,
+                },
+              },
+            }),
+            200,
+          );
+        }),
+      );
+
+      final pending = await repo.pendingOutcome();
+
+      expect(path, '/api/v1/sessions/pending-outcome');
+      expect(pending!.sessionId, 31);
+      expect(pending.sessionDate, '2026-09-21');
+      expect(pending.title, 'Your own workout');
+    });
+
+    test('nothing to ask about is null, not an error', () async {
+      final repo = _repo(
+        MockClient(
+          (_) async => http.Response('{"data":{"session":null}}', 200),
+        ),
+      );
+      expect(await repo.pendingOutcome(), isNull);
+    });
+
+    test('no pain is sent with no region at all', () async {
+      late String path;
+      late Map<String, dynamic> body;
+      final repo = _repo(
+        MockClient((request) async {
+          path = request.url.path;
+          body = jsonDecode(request.body) as Map<String, dynamic>;
+          return http.Response('{"data":{"outcome":{}}}', 201);
+        }),
+      );
+
+      await repo.recordOutcome(31, painLevel: 'none');
+
+      expect(path, '/api/v1/sessions/31/outcome');
+      expect(body, {'painLevel': 'none'});
+    });
+
+    test('pain is sent with its region', () async {
+      late Map<String, dynamic> body;
+      final repo = _repo(
+        MockClient((request) async {
+          body = jsonDecode(request.body) as Map<String, dynamic>;
+          return http.Response('{"data":{"outcome":{}}}', 201);
+        }),
+      );
+
+      await repo.recordOutcome(31, painLevel: 'moderate', injuryId: 13);
+
+      expect(body, {'painLevel': 'moderate', 'injuryId': 13});
+    });
+
+    test('an answer already stored surfaces as OUTCOME_EXISTS', () async {
+      final repo = _repo(
+        MockClient(
+          (_) async => http.Response(
+            '{"error":{"code":"OUTCOME_EXISTS","message":"x"}}',
+            409,
+          ),
+        ),
+      );
+      await expectLater(
+        repo.recordOutcome(31, painLevel: 'none'),
+        throwsA(
+          isA<ApiException>().having((e) => e.code, 'code', 'OUTCOME_EXISTS'),
+        ),
+      );
+    });
   });
 }

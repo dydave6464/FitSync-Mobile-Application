@@ -15,6 +15,7 @@ import 'package:fitsync/features/profile/presentation/providers.dart';
 import 'package:fitsync/features/sessions/data/session_repository.dart';
 import 'package:fitsync/features/sessions/domain/active_session.dart';
 import 'package:fitsync/features/sessions/domain/session_history.dart';
+import 'package:fitsync/features/sessions/domain/session_outcome.dart';
 import 'package:fitsync/features/sessions/domain/shared_report.dart';
 import 'package:fitsync/features/sessions/domain/training_analytics.dart';
 import 'package:fitsync/features/sessions/presentation/providers.dart';
@@ -122,6 +123,11 @@ class SequenceSessionRepository implements SessionRepository {
       throw UnimplementedError();
   @override
   Future<LastWorkout?> lastWorkout() => throw UnimplementedError();
+  @override
+  Future<PendingOutcome?> pendingOutcome() => throw UnimplementedError();
+  @override
+  Future<void> recordOutcome(int sessionId, {required String painLevel, int? injuryId}) =>
+      throw UnimplementedError();
   @override
   Future<ActiveSession> start({List<int>? exerciseIds}) =>
       throw UnimplementedError();

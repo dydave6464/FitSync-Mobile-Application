@@ -5,6 +5,7 @@ import '../../exercises/presentation/providers.dart'
 import '../data/session_repository.dart';
 import '../domain/active_session.dart';
 import '../domain/session_history.dart';
+import '../domain/session_outcome.dart';
 import '../domain/training_analytics.dart';
 
 final sessionRepositoryProvider = Provider<SessionRepository>(
@@ -148,6 +149,17 @@ final sessionHistoryProvider = FutureProvider<SessionHistoryPage>(
 final lastWorkoutProvider = FutureProvider<LastWorkout?>(
   (ref) => ref.watch(sessionRepositoryProvider).lastWorkout(),
   retry: apiRetryPolicy,
+);
+
+/// The previous session while it still awaits a pain report, else null.
+///
+/// No retry, unlike its neighbours: the "+" button waits on this before
+/// opening its sheet, a failure only means the question is skipped, and a
+/// backoff would hold the sheet back for nothing. Read with refresh, never
+/// watch -- see showStartWorkoutSheet.
+final pendingOutcomeProvider = FutureProvider<PendingOutcome?>(
+  (ref) => ref.watch(sessionRepositoryProvider).pendingOutcome(),
+  retry: (_, _) => null,
 );
 
 /// `YYYY-MM-DD` for every completed session since Monday. Feeds the week strip.
