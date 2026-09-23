@@ -20,20 +20,36 @@ final routineTodayProvider =
 class RoutineController extends AsyncNotifier<RoutineDay> {
   RoutineRepository get _repo => ref.read(routineRepositoryProvider);
 
+  /// Habits with a tick in flight. A second tap on one of these is ignored
+  /// rather than queued: the first tap's outcome is what will land, and
+  /// firing a second write for the same habit could resolve out of order
+  /// with it.
+  final Set<int> _inFlight = {};
+
   @override
   Future<RoutineDay> build() => ref.watch(routineRepositoryProvider).today();
 
   /// Shown at once; put back and rethrown if the save fails, so the screen
   /// can say so. A tick is small enough that waiting on the network before
   /// the box changes would read as the tap not registering.
+  ///
+  /// The rollback on failure reads and writes the CURRENT state, not a
+  /// snapshot taken before the write started: another habit's tick, add,
+  /// edit or delete may have landed while this one was in flight, and a
+  /// whole-day snapshot would silently erase it. `withHabitDone` is a no-op
+  /// for a habit id no longer in the day, so a rollback after a reload that
+  /// dropped it does nothing rather than throwing.
   Future<void> setDone(int habitId, bool done) async {
-    final before = state.requireValue;
-    state = AsyncData(before.withHabitDone(habitId, done));
+    if (_inFlight.contains(habitId)) return;
+    _inFlight.add(habitId);
+    state = AsyncData(state.requireValue.withHabitDone(habitId, done));
     try {
       done ? await _repo.check(habitId) : await _repo.uncheck(habitId);
     } catch (_) {
-      state = AsyncData(before);
+      state = AsyncData(state.requireValue.withHabitDone(habitId, !done));
       rethrow;
+    } finally {
+      _inFlight.remove(habitId);
     }
   }
 
