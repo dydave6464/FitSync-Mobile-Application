@@ -113,6 +113,21 @@ test('session outcomes db', async (t) => {
       'pain today is not evidence about a session more than a week ago');
   });
 
+  await t.test('a session completed today is not pending', async () => {
+    const userId = await newUser();
+    await session(userId, { daysAgo: 0 });
+    assert.equal(await pendingOutcome(pool, userId), null,
+      'delayed-onset pain has not had time to show up yet');
+  });
+
+  await t.test('when the latest session is today, an unanswered earlier one is not asked about either', async () => {
+    const userId = await newUser();
+    await session(userId, { daysAgo: 1 }); // unanswered, but no longer the latest
+    await session(userId, { daysAgo: 0 }); // latest, today
+    assert.equal(await pendingOutcome(pool, userId), null,
+      'most-recent-only still holds: never fall back to an older session');
+  });
+
   await t.test('nothing is pending once the last session is answered', async () => {
     const userId = await newUser();
     const latest = await session(userId);

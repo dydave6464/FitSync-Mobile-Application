@@ -6,6 +6,8 @@ const { formatDate } = require('./sessions');
 /// peaks 24-48 hours after training, and a week covers that plus an ordinary
 /// gap between training days. Much beyond it, the rest of the user's life is
 /// the likelier cause, and the answer would be noise attributed to a session.
+/// Today itself is excluded (see pendingOutcome) so the window is seven whole
+/// days before today, not eight counting today.
 const OUTCOME_WINDOW_DAYS = 7;
 
 /// session_outcomes.pain_level's ENUM, in the order the client shows it.
@@ -17,10 +19,17 @@ const PAIN_LEVELS = ['none', 'mild', 'moderate', 'severe'];
 /// lastCompletedWorkout orders it. When that one is answered or stale, nothing
 /// is pending -- even if an older session in the window was dismissed -- because
 /// pain reported now is evidence about the last session, not an earlier one.
+///
+/// The window excludes today: a session that ended minutes ago has not had
+/// time for delayed-onset pain to appear, and because of UNIQUE(session_id) an
+/// early "none" would permanently block the later, meaningful answer. If the
+/// latest session is today's, nothing is pending -- never fall back to an
+/// older one, even an unanswered one still inside the window.
 async function pendingOutcome(pool, userId) {
   const [rows] = await pool.query(
     `SELECT s.session_id, s.session_date, p.name AS plan_name, o.outcome_id,
-            s.session_date >= CURDATE() - INTERVAL ? DAY AS in_window
+            s.session_date >= CURDATE() - INTERVAL ? DAY
+              AND s.session_date < CURDATE() AS in_window
        FROM workout_sessions s
        LEFT JOIN workout_plans p ON p.plan_id = s.plan_id
        LEFT JOIN session_outcomes o ON o.session_id = s.session_id
