@@ -71,7 +71,19 @@ class RoutineController extends AsyncNotifier<RoutineDay> {
   /// A fresh day rather than patching the list locally: a new or edited
   /// habit may or may not repeat today, and only the server says where it
   /// sorts.
+  ///
+  /// The write above this already landed, so a failure here must not read as
+  /// one: it falls back to [AsyncNotifier.invalidateSelf], which asks the
+  /// provider to refetch on its own, rather than throwing into the caller.
+  /// Without this, a reload that failed right after a successful write left
+  /// the sheet showing an error over a save that had, in fact, gone through —
+  /// saving again created a duplicate habit, and deleting again answered "No
+  /// such habit".
   Future<void> _reload() async {
-    state = AsyncData(await _repo.today());
+    try {
+      state = AsyncData(await _repo.today());
+    } catch (_) {
+      ref.invalidateSelf();
+    }
   }
 }

@@ -24,12 +24,17 @@ class _FakeRepo implements RoutineRepository {
     workout: null,
   );
   bool failNext = false;
+  bool failNextToday = false;
   int todayCalls = 0;
   final added = <HabitDraft>[];
 
   @override
   Future<RoutineDay> today() async {
     todayCalls++;
+    if (failNextToday) {
+      failNextToday = false;
+      throw const ApiException('NETWORK_ERROR', 'offline');
+    }
     return day;
   }
 
@@ -171,6 +176,29 @@ void main() {
       throwsA(isA<ApiException>()),
     );
   });
+
+  test(
+    'a save that lands counts as saved even if the reload after it fails',
+    () async {
+      final repo = _FakeRepo();
+      final c = _container(repo);
+      await c.read(routineTodayProvider.future);
+      repo.failNextToday = true;
+
+      await c
+          .read(routineTodayProvider.notifier)
+          .add(
+            const HabitDraft(
+              title: 'Walk',
+              time: null,
+              durationMin: null,
+              weekdays: [1],
+            ),
+          );
+
+      expect(repo.added, hasLength(1));
+    },
+  );
 
   test('a failed tick rolls back only itself, not a concurrent tick that '
       'succeeded', () async {
