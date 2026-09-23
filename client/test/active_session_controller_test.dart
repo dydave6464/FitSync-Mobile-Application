@@ -11,6 +11,8 @@ import 'package:fitsync/core/api_exception.dart';
 import 'package:fitsync/core/token_store.dart';
 import 'package:fitsync/features/exercises/presentation/providers.dart'
     show apiClientProvider;
+import 'package:fitsync/features/routine/presentation/providers.dart'
+    show routineTodayProvider;
 import 'package:fitsync/features/sessions/presentation/providers.dart';
 
 const _session = {
@@ -482,6 +484,18 @@ void main() {
             200,
           );
         }
+        if (path == '/api/v1/routine/today') {
+          return http.Response(
+            jsonEncode({
+              'data': {
+                'date': '2026-09-21',
+                'habits': [],
+                'workout': {'title': 'Plan', 'done': !first},
+              },
+            }),
+            200,
+          );
+        }
         if (path.endsWith('/last')) {
           return http.Response(
             jsonEncode({
@@ -600,6 +614,23 @@ void main() {
       await container.read(activeSessionProvider.notifier).complete(40);
 
       expect((await container.read(lastWorkoutProvider.future))!.sessionId, 7);
+    });
+
+    // The routine screen's automatic workout item, and Home's card that
+    // shares the same provider.
+    test("the routine's workout item", () async {
+      final container = await completed();
+      expect(
+        (await container.read(routineTodayProvider.future)).workout!.done,
+        isFalse,
+      );
+
+      await container.read(activeSessionProvider.notifier).complete(40);
+
+      expect(
+        (await container.read(routineTodayProvider.future)).workout!.done,
+        isTrue,
+      );
     });
   });
 

@@ -2,6 +2,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../exercises/presentation/providers.dart'
     show apiClientProvider, apiRetryPolicy;
+import '../../routine/presentation/providers.dart' show routineTodayProvider;
 import '../data/session_repository.dart';
 import '../domain/active_session.dart';
 import '../domain/session_history.dart';
@@ -99,6 +100,7 @@ class ActiveSessionController extends AsyncNotifier<ActiveSession?> {
     ref.invalidate(sessionHistoryProvider); // the Progress tab's list
     ref.invalidate(trainingSummaryProvider); // its totals
     ref.invalidate(homeSummaryProvider); // Home's 30-day card
+    ref.invalidate(routineTodayProvider); // the routine's workout item
     ref.invalidate(trainingAnalyticsProvider); // volume, adherence, muscles
     ref.invalidate(lastWorkoutProvider); // what the "+" sheet repeats
     return done;
