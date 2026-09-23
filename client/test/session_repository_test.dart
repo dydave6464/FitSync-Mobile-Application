@@ -9,7 +9,6 @@ import 'package:fitsync/core/api_exception.dart';
 import 'package:fitsync/core/token_store.dart';
 import 'package:fitsync/features/sessions/data/session_repository.dart';
 import 'package:fitsync/features/sessions/domain/active_session.dart';
-import 'package:fitsync/features/sessions/domain/session_outcome.dart';
 
 /// The exact shape `server/src/db/sessions.js` returns.
 const _sessionJson = {
