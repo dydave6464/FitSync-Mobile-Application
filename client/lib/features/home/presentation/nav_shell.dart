@@ -107,7 +107,7 @@ class _NavShellState extends State<NavShell> {
           _tab(
             0,
             () => HomeScreen(
-              onGoToTrain: () => _select(1),
+              onGoToTrain: () => _openTrainAt('plan'),
               onGoToProfile: () => _select(3),
               onGoToRecovery: () => _openTrainAt('recovery'),
               onGoToProgress: () {

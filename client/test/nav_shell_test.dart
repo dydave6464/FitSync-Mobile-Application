@@ -16,6 +16,7 @@ import 'package:fitsync/features/exercises/presentation/providers.dart';
 import 'package:fitsync/features/home/presentation/nav_shell.dart';
 import 'package:fitsync/features/plans/domain/exercise_alternative.dart';
 import 'package:fitsync/features/plans/domain/workout_plan.dart';
+import 'package:fitsync/features/plans/presentation/plan_screen.dart';
 import 'package:fitsync/features/plans/presentation/providers.dart';
 import 'package:fitsync/features/profile/domain/profile.dart';
 import 'package:fitsync/features/profile/presentation/providers.dart';
@@ -561,5 +562,32 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.byType(RecoveryScreen), findsOneWidget);
+  });
+
+  testWidgets("Start workout opens Train on Plan, whatever Train last showed", (
+    tester,
+  ) async {
+    // Opening Train at Recovery (via the readiness card) and then going
+    // back to Home must not leave "Start workout" landing on Recovery,
+    // which has no start button.
+    await _pumpShell(tester, plan: _plan);
+    await tester.pumpAndSettle();
+
+    await tester.tap(
+      find.descendant(
+        of: find.byKey(const Key('home.readiness')),
+        matching: find.byType(FsRing),
+      ),
+    );
+    await tester.pumpAndSettle();
+    expect(find.byType(RecoveryScreen), findsOneWidget);
+
+    await tester.tap(find.byKey(const Key('nav.0')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Start workout'));
+    await tester.pumpAndSettle();
+
+    expect(find.byType(PlanScreen), findsOneWidget);
+    expect(find.byType(RecoveryScreen), findsNothing);
   });
 }
