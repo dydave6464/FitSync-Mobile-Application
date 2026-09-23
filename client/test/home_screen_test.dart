@@ -567,6 +567,7 @@ void main() {
         ),
       );
       await tester.ensureVisible(find.byKey(const Key('home.progress')));
+      await tester.pumpAndSettle();
       await tester.tap(find.byKey(const Key('home.progress')));
 
       expect(taps, ['recovery', 'progress']);

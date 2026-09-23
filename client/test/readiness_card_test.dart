@@ -96,6 +96,27 @@ void main() {
     expect(find.textContaining('From '), findsNothing);
   });
 
+  testWidgets('the disclaimer shows with an estimate and not without one', (
+    tester,
+  ) async {
+    await _pump(tester, estimate: _estimate('low'), todayCheckin: _today);
+    expect(find.textContaining('not a medical diagnosis'), findsOneWidget);
+
+    await _pump(tester);
+    expect(find.textContaining('not a medical diagnosis'), findsNothing);
+  });
+
+  testWidgets('the chip reads Update once checked in today, Check in '
+      'otherwise', (tester) async {
+    await _pump(tester, estimate: _estimate('low'), todayCheckin: _today);
+    expect(find.text('Update'), findsOneWidget);
+    expect(find.text('Check in'), findsNothing);
+
+    await _pump(tester, estimate: _estimate('low'), todayCheckin: null);
+    expect(find.text('Check in'), findsOneWidget);
+    expect(find.text('Update'), findsNothing);
+  });
+
   testWidgets('the chip checks in and the card opens Recovery', (tester) async {
     final r = await _pump(
       tester,

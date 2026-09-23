@@ -36,7 +36,10 @@ class ReadinessCard extends StatelessWidget {
 
     final chip = FsChip(
       key: const Key('home.readiness.checkin'),
-      label: 'Check-in',
+      // Recovery's own spellings: an existing check-in is updated, not
+      // repeated, and nobody who already checked in today should be asked
+      // to check in again.
+      label: todayCheckin != null ? 'Update' : 'Check in',
       selected: false,
       small: true,
       onTap: onCheckIn,
@@ -119,6 +122,15 @@ class ReadinessCard extends StatelessWidget {
                       ],
                       const SizedBox(height: 10),
                       chip,
+                      const SizedBox(height: 10),
+                      Text(
+                        riskEstimateDisclaimer,
+                        style: TextStyle(
+                          fontSize: 11,
+                          color: t.text3,
+                          height: 1.4,
+                        ),
+                      ),
                     ],
                   ),
                 ),

@@ -584,6 +584,8 @@ void main() {
 
     await tester.tap(find.byKey(const Key('nav.0')));
     await tester.pumpAndSettle();
+    await tester.ensureVisible(find.text('Start workout'));
+    await tester.pumpAndSettle();
     await tester.tap(find.text('Start workout'));
     await tester.pumpAndSettle();
 
