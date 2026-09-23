@@ -280,7 +280,7 @@ class _Empty extends StatelessWidget {
           mainAxisSize: MainAxisSize.min,
           children: [
             Text(
-              'Add a habit to build your daily routine',
+              'Nothing on your routine today',
               textAlign: TextAlign.center,
               style: TextStyle(fontSize: 14, color: t.text2),
             ),

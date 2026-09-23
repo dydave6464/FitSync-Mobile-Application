@@ -33,6 +33,16 @@ class _HabitSheet extends ConsumerStatefulWidget {
   ConsumerState<_HabitSheet> createState() => _HabitSheetState();
 }
 
+const _weekdayNames = {
+  1: 'Mon',
+  2: 'Tue',
+  3: 'Wed',
+  4: 'Thu',
+  5: 'Fri',
+  6: 'Sat',
+  7: 'Sun',
+};
+
 class _HabitSheetState extends ConsumerState<_HabitSheet> {
   late final _title = TextEditingController(text: widget.existing?.title);
   late final _duration = TextEditingController(
@@ -44,6 +54,15 @@ class _HabitSheetState extends ConsumerState<_HabitSheet> {
   ];
   bool _busy = false;
   String? _error;
+
+  /// The weekday of the day the routine screen was showing when this sheet
+  /// opened, 1-7. Read once, here, rather than each time it is needed: the
+  /// provider may have already moved on to a different day by the time a
+  /// slow save resolves, and what matters is what day the person who tapped
+  /// Save was looking at.
+  late final int? _openedOnWeekday = DateTime.tryParse(
+    ref.read(routineTodayProvider).value?.date ?? '',
+  )?.weekday;
 
   @override
   void dispose() {
@@ -79,16 +98,33 @@ class _HabitSheetState extends ConsumerState<_HabitSheet> {
     return null;
   }
 
-  Future<void> _run(Future<void> Function(RoutineController c) action) async {
+  /// [action] returns the saved habit for add/edit, or null for remove --
+  /// only a save that repeats on a day other than the one this sheet opened
+  /// on gets a snackbar, telling the person what just happened to a habit
+  /// that then dropped out of today's list with nothing else to say so.
+  Future<void> _run(Future<Habit?> Function(RoutineController c) action) async {
     if (_busy) return;
     setState(() {
       _busy = true;
       _error = null;
     });
+    // Captured before the await: by the time it resolves this sheet's own
+    // context may already be gone, popped off by the Navigator call below.
+    final messenger = ScaffoldMessenger.of(context);
     try {
-      await action(ref.read(routineTodayProvider.notifier));
+      final saved = await action(ref.read(routineTodayProvider.notifier));
       if (!mounted) return;
       Navigator.of(context).pop();
+      if (saved != null &&
+          _openedOnWeekday != null &&
+          !saved.weekdays.contains(_openedOnWeekday)) {
+        final days = (saved.weekdays.toList()..sort())
+            .map((d) => _weekdayNames[d])
+            .join(', ');
+        messenger.showSnackBar(
+          SnackBar(content: Text('Saved — repeats $days')),
+        );
+      }
     } catch (error) {
       if (!mounted) return;
       setState(() {
@@ -217,7 +253,10 @@ class _HabitSheetState extends ConsumerState<_HabitSheet> {
                 key: const Key('habit.delete'),
                 onPressed: _busy
                     ? null
-                    : () => _run((c) => c.remove(existing.habitId)),
+                    : () => _run((c) async {
+                        await c.remove(existing.habitId);
+                        return null;
+                      }),
                 child: Text('Delete habit', style: TextStyle(color: t.red)),
               ),
             ],

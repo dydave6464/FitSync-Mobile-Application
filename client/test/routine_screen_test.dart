@@ -269,10 +269,7 @@ void main() {
     await tester.pumpWidget(_harness(repo));
     await tester.pumpAndSettle();
 
-    expect(
-      find.text('Add a habit to build your daily routine'),
-      findsOneWidget,
-    );
+    expect(find.text('Nothing on your routine today'), findsOneWidget);
     expect(find.byKey(const Key('routine.empty.add')), findsOneWidget);
   });
 

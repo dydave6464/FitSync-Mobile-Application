@@ -44,7 +44,7 @@ class RoutineCard extends StatelessWidget {
           const SizedBox(height: 12),
           if (entries.isEmpty)
             Text(
-              'Build your daily routine ›',
+              "Nothing on today's routine ›",
               style: TextStyle(fontSize: 13, color: t.text2),
             )
           else ...[

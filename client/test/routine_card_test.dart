@@ -85,7 +85,7 @@ void main() {
     final day = _day(const []);
     await _pump(tester, day);
 
-    expect(find.text('Build your daily routine ›'), findsOneWidget);
+    expect(find.text("Nothing on today's routine ›"), findsOneWidget);
     expect(find.byType(FsTag), findsNothing);
   });
 

@@ -53,18 +53,29 @@ class _FakeRepo implements RoutineRepository {
   @override
   Future<void> uncheck(int habitId, {String? date}) => _maybeFail();
 
+  /// Echoes the draft back as the saved habit -- what the real server does --
+  /// so a test can tell what the sheet was told was saved, weekdays included.
+  Habit _fromDraft(int habitId, HabitDraft draft) => Habit(
+    habitId: habitId,
+    title: draft.title,
+    time: draft.time,
+    durationMin: draft.durationMin,
+    weekdays: draft.weekdays,
+    done: false,
+  );
+
   @override
   Future<Habit> add(HabitDraft draft) async {
     await _maybeFail();
     added.add(draft);
-    return _dummyHabit;
+    return _fromDraft(_dummyHabit.habitId, draft);
   }
 
   @override
   Future<Habit> edit(int habitId, HabitDraft draft) async {
     await _maybeFail();
     edited.add((habitId, draft));
-    return _dummyHabit;
+    return _fromDraft(habitId, draft);
   }
 
   @override
@@ -174,6 +185,38 @@ void main() {
       expect(draft.durationMin, isNull);
       expect(draft.weekdays, [1, 2, 3, 4, 5, 6, 7]);
       expect(find.byKey(const Key('habit.save')), findsNothing);
+    },
+  );
+
+  testWidgets(
+    'saving a habit that does not repeat today says what days it repeats on',
+    (tester) async {
+      await _open(tester);
+
+      await tester.enterText(find.byKey(const Key('habit.title')), 'Stretch');
+      // The fixture day (2026-09-21) is a Monday: weekday 1. Leave only
+      // Tuesday (2) and Thursday (4) selected, so today is excluded.
+      for (final weekday in [1, 3, 5, 6, 7]) {
+        await tester.tap(find.byKey(Key('weekday.$weekday')));
+        await tester.pump();
+      }
+      await tester.tap(find.byKey(const Key('habit.save')));
+      await tester.pumpAndSettle();
+
+      expect(find.text('Saved — repeats Tue, Thu'), findsOneWidget);
+    },
+  );
+
+  testWidgets(
+    'saving a habit that does repeat today shows no repeats snackbar',
+    (tester) async {
+      await _open(tester);
+
+      await tester.enterText(find.byKey(const Key('habit.title')), 'Stretch');
+      await tester.tap(find.byKey(const Key('habit.save')));
+      await tester.pumpAndSettle();
+
+      expect(find.textContaining('repeats'), findsNothing);
     },
   );
 

@@ -68,14 +68,19 @@ class RoutineController extends AsyncNotifier<RoutineDay> {
     }
   }
 
-  Future<void> add(HabitDraft draft) async {
-    await _repo.add(draft);
+  /// Returns the saved habit -- the repository already gets it back from the
+  /// server -- so the sheet can tell whether it repeats today without a
+  /// second round trip, and say so if it does not.
+  Future<Habit> add(HabitDraft draft) async {
+    final habit = await _repo.add(draft);
     await _reload();
+    return habit;
   }
 
-  Future<void> edit(int habitId, HabitDraft draft) async {
-    await _repo.edit(habitId, draft);
+  Future<Habit> edit(int habitId, HabitDraft draft) async {
+    final habit = await _repo.edit(habitId, draft);
     await _reload();
+    return habit;
   }
 
   Future<void> remove(int habitId) async {
