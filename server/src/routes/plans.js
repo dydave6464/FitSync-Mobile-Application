@@ -219,7 +219,9 @@ module.exports = function buildPlansRouter(deps) {
       // itself -- the same way src/db/plans.js and src/db/users.js signal
       // expected failures from this layer -- so next(err) carries it to the
       // error handler unchanged. Do not add a translating try/catch here.
-      await swapPlanExercise(deps.pool, ctx, exerciseId);
+      // deps.logger, so a label that fails to record is visible in the server
+      // log rather than silently absent from the training data.
+      await swapPlanExercise(deps.pool, ctx, exerciseId, { logger: deps.logger });
 
       res.json({
         data: { plan: withUrls(await getActivePlan(deps.pool, req.user.userId)) },

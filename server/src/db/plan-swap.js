@@ -48,6 +48,7 @@ async function loadSwapContext(pool, userId, planExerciseId) {
   );
 
   return {
+    userId,
     planId: row.plan_id,
     planExerciseId: row.plan_exercise_id,
     exerciseId: row.exercise_id,
@@ -185,7 +186,42 @@ async function isAllowedTarget(pool, ctx, exerciseId) {
   return rows.length === 1;
 }
 
-async function swapPlanExercise(pool, ctx, exerciseId) {
+// The label: what was rejected, and what it was rejected in favour of.
+//
+// The UPDATE below used to be the whole function, and it erased the rejected
+// exercise_id -- leaving a database where a thousand rejections look exactly
+// like none. See 020_swap_capture.sql for why this signal is worth more than
+// the skip label the ranker would otherwise train on.
+async function recordSwap(pool, ctx, chosenExerciseId) {
+  const [inserted] = await pool.query(
+    `INSERT INTO plan_swaps
+       (user_id, plan_id, plan_exercise_id, rejected_exercise_id,
+        chosen_exercise_id, muscle_group)
+     VALUES (?, ?, ?, ?, ?, ?)`,
+    [ctx.userId, ctx.planId, ctx.planExerciseId, ctx.exerciseId,
+      chosenExerciseId, ctx.muscleGroup],
+  );
+
+  // Re-derived rather than carried over from the GET that built the sheet: the
+  // PATCH never receives `q` or `bodyweightOnly`, so what lands here is the
+  // DEFAULT sheet, which is not what a searching user saw. That imprecision is
+  // the price of this staying server-side -- the alternative is a new API
+  // contract and a client change.
+  //
+  // ctx is a snapshot taken before the UPDATE, so inPlanIds still holds the
+  // exercise that was just replaced and this list is the one the user chose
+  // from, not the one they would be offered now.
+  const offered = await listAlternatives(pool, ctx);
+  if (offered.length === 0) return;
+
+  await pool.query(
+    `INSERT INTO plan_swap_alternatives (swap_id, exercise_id, position_no)
+     VALUES ?`,
+    [offered.map((alt, index) => [inserted.insertId, alt.exerciseId, index + 1])],
+  );
+}
+
+async function swapPlanExercise(pool, ctx, exerciseId, { logger = null } = {}) {
   if (!(await isAllowedTarget(pool, ctx, exerciseId))) {
     throw AppError.badRequest(
       'EXERCISE_NOT_ALLOWED',
@@ -198,6 +234,18 @@ async function swapPlanExercise(pool, ctx, exerciseId) {
     'UPDATE plan_exercises SET exercise_id = ? WHERE plan_exercise_id = ?',
     [exerciseId, ctx.planExerciseId],
   );
+
+  // AFTER the update, and best-effort. A label recorded for a swap that then
+  // failed would be a lie; a label lost because this threw is only a gap. The
+  // user's swap has already happened and they are looking at it -- nothing
+  // about collecting training data may turn that into an error.
+  try {
+    await recordSwap(pool, ctx, exerciseId);
+  } catch (err) {
+    if (logger && logger.error) {
+      logger.error(`plan swap not recorded: ${err.message}`);
+    }
+  }
 }
 
 module.exports = { loadSwapContext, listAlternatives, swapPlanExercise };
