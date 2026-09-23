@@ -221,10 +221,15 @@ class _NoPlan extends StatelessWidget {
 /// Matches PlanScreen's failure treatment, so the two screens fail the same
 /// way rather than each inventing their own.
 class _Retry extends StatelessWidget {
-  const _Retry({required this.message, required this.onRetry});
+  const _Retry({required this.message, required this.onRetry, this.buttonKey});
 
   final String message;
   final VoidCallback onRetry;
+
+  /// Lets a caller keep a stable finder for the button itself, since keying
+  /// this whole widget would make a tap land wherever its centre happens to
+  /// fall -- the message above it, say -- rather than on the button.
+  final Key? buttonKey;
 
   @override
   Widget build(BuildContext context) => Padding(
@@ -234,6 +239,7 @@ class _Retry extends StatelessWidget {
         Text(message, textAlign: TextAlign.center),
         const SizedBox(height: 12),
         FsButton(
+          key: buttonKey,
           label: 'Retry',
           small: true,
           kind: FsButtonKind.secondary,
@@ -285,33 +291,24 @@ class _Progress extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final summary = ref.watch(homeSummaryProvider);
     final analytics = ref.watch(trainingAnalyticsProvider('month'));
-    final t = context.fs;
 
     if (summary.hasError || analytics.hasError) {
-      return Row(
-        children: [
-          Expanded(
-            child: Text(
-              "Couldn't load progress",
-              style: TextStyle(fontSize: 13, color: t.text2),
-            ),
-          ),
-          TextButton(
-            key: const Key('home.progress.retry'),
-            onPressed: () {
-              ref.invalidate(homeSummaryProvider);
-              ref.invalidate(trainingAnalyticsProvider('month'));
-            },
-            child: const Text('Retry'),
-          ),
-        ],
+      return _Retry(
+        message: "Couldn't load progress",
+        buttonKey: const Key('home.progress.retry'),
+        onRetry: () {
+          ref.invalidate(homeSummaryProvider);
+          ref.invalidate(trainingAnalyticsProvider('month'));
+        },
       );
     }
     final s = summary.value;
     final a = analytics.value;
-    // Measured from the real card (test/_scratch_measure_test.dart, deleted
-    // after use): ProgressSnapshotCard renders at 163px here, not the 150
-    // guessed before either provider had resolved.
+    // Each placeholder here matches its card's real, with-data height,
+    // measured by pumping the card on its own and reading tester.getSize --
+    // not guessed. A loading or empty state is free to differ from that by
+    // design (it says less, so it can be shorter), only a placeholder
+    // standing in for data about to replace it must match.
     if (s == null || a == null) return const SizedBox(height: 163);
     return ProgressSnapshotCard(summary: s, analytics: a, onTap: onTap);
   }

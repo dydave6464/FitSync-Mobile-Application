@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../../../../core/theme.dart';
 import '../../../../core/widgets/fs_charts.dart' show FsLineChart, FsPoint;
-import '../../../../core/widgets/fs_kit.dart' hide FsRing;
+import '../../../../core/widgets/fs_kit.dart';
 import '../../../sessions/domain/session_history.dart';
 import '../../../sessions/domain/training_analytics.dart';
 

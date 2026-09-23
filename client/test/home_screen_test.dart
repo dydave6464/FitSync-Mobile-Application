@@ -199,6 +199,7 @@ Future<void> _pumpHome(
   Object? recoveryError,
   TrainingSummary summary = _defaultSummary,
   Object? progressError,
+  Object? analyticsError,
 }) async {
   await tester.pumpWidget(
     ProviderScope(
@@ -237,9 +238,10 @@ Future<void> _pumpHome(
           if (progressError != null) throw progressError;
           return summary;
         }),
-        trainingAnalyticsProvider.overrideWith(
-          (ref, period) async => _defaultAnalytics,
-        ),
+        trainingAnalyticsProvider.overrideWith((ref, period) async {
+          if (analyticsError != null) throw analyticsError;
+          return _defaultAnalytics;
+        }),
       ],
       child: MaterialApp(
         home: HomeScreen(
@@ -549,6 +551,71 @@ void main() {
       );
       expect(find.text("Couldn't load progress"), findsOneWidget);
       expect(find.byKey(const Key('home.progress.retry')), findsOneWidget);
+    });
+
+    testWidgets('the analytics half failing alone still shows the same error', (
+      tester,
+    ) async {
+      // Either provider failing is one error line -- half a card would
+      // only raise the question of where the other half went.
+      await _pumpHome(
+        tester,
+        analyticsError: const ApiException('INTERNAL', 'x'),
+      );
+      expect(find.text("Couldn't load progress"), findsOneWidget);
+      expect(find.byKey(const Key('home.progress.retry')), findsOneWidget);
+    });
+
+    testWidgets('retrying after progress loads successfully shows the card', (
+      tester,
+    ) async {
+      var fail = true;
+      await tester.pumpWidget(
+        ProviderScope(
+          overrides: [
+            profileProvider.overrideWith(
+              () => _StubProfileNotifier(_profile()),
+            ),
+            activePlanProvider.overrideWith((ref) async => _defaultPlan),
+            sessionRepositoryProvider.overrideWithValue(
+              _FakeSessionRepository(),
+            ),
+            exerciseDetailProvider.overrideWith(
+              (ref, id) async => ExerciseDetail(
+                exerciseId: id,
+                name: 'Detail $id',
+                muscleGroup: 'x',
+                equipment: null,
+                thumbnailUrl: null,
+                animationUrl: null,
+                cues: const [],
+              ),
+            ),
+            recoveryOverviewProvider.overrideWith(
+              (ref) async => _defaultRecovery,
+            ),
+            homeSummaryProvider.overrideWith((ref) async {
+              if (fail) throw const ApiException('INTERNAL', 'x');
+              return _defaultSummary;
+            }),
+            trainingAnalyticsProvider.overrideWith(
+              (ref, period) async => _defaultAnalytics,
+            ),
+          ],
+          child: const MaterialApp(home: HomeScreen()),
+        ),
+      );
+      await tester.pumpAndSettle();
+      expect(find.text("Couldn't load progress"), findsOneWidget);
+
+      fail = false;
+      await tester.ensureVisible(find.byKey(const Key('home.progress.retry')));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const Key('home.progress.retry')));
+      await tester.pumpAndSettle();
+
+      expect(find.text("Couldn't load progress"), findsNothing);
+      expect(find.byKey(const Key('home.progress')), findsOneWidget);
     });
 
     testWidgets('the cards open Progress and Recovery', (tester) async {
