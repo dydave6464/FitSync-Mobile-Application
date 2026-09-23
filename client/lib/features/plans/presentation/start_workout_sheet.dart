@@ -84,7 +84,8 @@ Future<PendingOutcome?> _pendingOutcome(BuildContext context) async {
     return await container
         .refresh(pendingOutcomeProvider.future)
         .timeout(_pendingLookupLimit);
-  } catch (_) {
+  } catch (error) {
+    debugPrint('Pending-outcome lookup skipped: $error');
     return null;
   }
 }
