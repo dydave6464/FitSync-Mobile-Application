@@ -4,7 +4,10 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../core/theme.dart';
 import '../../../core/widgets/fs_kit.dart';
 import '../../exercises/domain/exercise.dart';
-import '../../sessions/presentation/providers.dart' show lastWorkoutProvider;
+import '../../sessions/domain/session_outcome.dart';
+import '../../sessions/presentation/providers.dart'
+    show lastWorkoutProvider, pendingOutcomeProvider;
+import '../../sessions/presentation/widgets/outcome_sheet.dart';
 import '../../sessions/presentation/workout_draft.dart';
 import '../../sessions/presentation/workout_review_screen.dart';
 import '../../sessions/presentation/workout_setup_screen.dart';
@@ -17,7 +20,17 @@ import 'generator_screen.dart';
 /// workout is described on before its exercises are picked. It was inert
 /// while the exercise library was a later slice; the library and the sessions
 /// endpoint that accepts a chosen list both exist now.
-Future<void> showStartWorkoutSheet(BuildContext context) {
+///
+/// A completed session still awaiting its pain report is asked about first,
+/// and the start sheet follows however that sheet closes. The lookup is
+/// capped at [_pendingLookupLimit], and any failure skips the question:
+/// collecting a label must never stand between someone and their workout.
+Future<void> showStartWorkoutSheet(BuildContext context) async {
+  final pending = await _pendingOutcome(context);
+  if (pending != null && context.mounted) {
+    await showOutcomeSheet(context, pending);
+  }
+  if (!context.mounted) return;
   return showModalBottomSheet<void>(
     context: context,
     backgroundColor: Colors.transparent,
@@ -30,6 +43,24 @@ Future<void> showStartWorkoutSheet(BuildContext context) {
     isScrollControlled: true,
     builder: (_) => const _StartWorkoutSheet(),
   );
+}
+
+/// How long the "+" button waits to learn whether to ask about pain before
+/// opening the start sheet without asking.
+const _pendingLookupLimit = Duration(seconds: 3);
+
+/// Refreshed rather than read: whether a session is pending changes with
+/// every workout completed and every answer given, and a cached answer would
+/// re-ask a question already answered.
+Future<PendingOutcome?> _pendingOutcome(BuildContext context) async {
+  final container = ProviderScope.containerOf(context, listen: false);
+  try {
+    return await container
+        .refresh(pendingOutcomeProvider.future)
+        .timeout(_pendingLookupLimit);
+  } catch (_) {
+    return null;
+  }
 }
 
 class _StartWorkoutSheet extends ConsumerWidget {

@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:io';
 import 'dart:typed_data';
 
@@ -8,13 +9,17 @@ import 'package:flutter_test/flutter_test.dart';
 
 import 'package:fitsync/features/exercises/presentation/exercise_list_screen.dart';
 
+import 'package:fitsync/core/api_exception.dart';
 import 'package:fitsync/core/theme.dart';
 import 'package:fitsync/features/plans/domain/workout_plan.dart';
 import 'package:fitsync/features/plans/presentation/generator_screen.dart';
 import 'package:fitsync/features/plans/presentation/providers.dart';
 import 'package:fitsync/features/plans/presentation/start_workout_sheet.dart';
 import 'package:fitsync/features/exercises/domain/exercise.dart';
+import 'package:fitsync/features/profile/presentation/providers.dart'
+    show injuryOptionsProvider;
 import 'package:fitsync/features/sessions/domain/session_history.dart';
+import 'package:fitsync/features/sessions/domain/session_outcome.dart';
 import 'package:fitsync/features/sessions/presentation/providers.dart';
 import 'package:fitsync/features/sessions/presentation/workout_draft.dart';
 import 'package:fitsync/features/sessions/presentation/workout_review_screen.dart';
@@ -60,6 +65,9 @@ Future<ProviderContainer> _open(
   TextScaler textScaler = TextScaler.noScaling,
   LastWorkout? last,
   Object? lastError,
+  PendingOutcome? pending,
+  Object? pendingError,
+  Future<PendingOutcome?>? pendingFuture,
 }) async {
   final container = ProviderContainer(
     overrides: [
@@ -68,6 +76,15 @@ Future<ProviderContainer> _open(
         if (lastError != null) throw lastError;
         return last;
       }),
+      // Every test passes through the pending lookup now. Overridden so that
+      // none of them reaches a real socket, which under the test binding
+      // would never answer.
+      pendingOutcomeProvider.overrideWith((ref) async {
+        if (pendingFuture != null) return pendingFuture;
+        if (pendingError != null) throw pendingError;
+        return pending;
+      }),
+      injuryOptionsProvider.overrideWith((ref) async => const []),
     ],
   );
   addTearDown(container.dispose);
@@ -368,5 +385,57 @@ void main() {
 
     expect(find.text('Start a workout'), findsNothing);
     expect(find.text('open'), findsOneWidget);
+  });
+
+  group('the pain question', () {
+    const pending = PendingOutcome(
+      sessionId: 31,
+      sessionDate: '2026-09-21',
+      planName: null,
+    );
+    const question = 'How did your last workout leave you?';
+
+    testWidgets('is asked before the start sheet when a session is pending', (
+      tester,
+    ) async {
+      await _open(tester, pending: pending);
+
+      expect(find.text(question), findsOneWidget);
+      expect(find.text('Start a workout'), findsNothing);
+
+      await tester.tap(find.byKey(const Key('outcome.skip')));
+      await tester.pumpAndSettle();
+
+      expect(find.text(question), findsNothing);
+      expect(find.text('Start a workout'), findsOneWidget);
+    });
+
+    testWidgets('is not asked when nothing is pending', (tester) async {
+      await _open(tester);
+      expect(find.text(question), findsNothing);
+      expect(find.text('Start a workout'), findsOneWidget);
+    });
+
+    testWidgets('a failed lookup still opens the start sheet', (tester) async {
+      await _open(
+        tester,
+        pendingError: const ApiException('NETWORK_ERROR', 'unreachable'),
+      );
+      expect(find.text(question), findsNothing);
+      expect(find.text('Start a workout'), findsOneWidget);
+    });
+
+    testWidgets('a lookup that never answers gives up after three seconds', (
+      tester,
+    ) async {
+      await _open(tester, pendingFuture: Completer<PendingOutcome?>().future);
+      expect(find.text('Start a workout'), findsNothing);
+
+      await tester.pump(const Duration(seconds: 3));
+      await tester.pumpAndSettle();
+
+      expect(find.text(question), findsNothing);
+      expect(find.text('Start a workout'), findsOneWidget);
+    });
   });
 }
