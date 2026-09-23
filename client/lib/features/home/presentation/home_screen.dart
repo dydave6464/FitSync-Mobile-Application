@@ -10,6 +10,8 @@ import '../../recovery/presentation/providers.dart'
     show recoveryOverviewProvider;
 import '../../recovery/presentation/widgets/checkin_sheet.dart'
     show showCheckinSheet;
+import '../../routine/presentation/providers.dart' show routineTodayProvider;
+import '../../routine/presentation/routine_screen.dart';
 import '../../sessions/domain/active_session.dart';
 import '../../sessions/presentation/providers.dart'
     show
@@ -26,6 +28,7 @@ import 'widgets/plan_card.dart';
 import 'widgets/profile_nudge.dart';
 import 'widgets/progress_snapshot_card.dart';
 import 'widgets/readiness_card.dart';
+import 'widgets/routine_card.dart';
 
 /// The signed-in landing screen.
 ///
@@ -108,6 +111,8 @@ class HomeScreen extends ConsumerWidget {
                 ),
               const SizedBox(height: 14),
               _Progress(onTap: () => onGoToProgress?.call()),
+              const SizedBox(height: 14),
+              _Routine(onGoToTrain: onGoToTrain),
             ],
           ),
         ),
@@ -311,5 +316,42 @@ class _Progress extends ConsumerWidget {
     // standing in for data about to replace it must match.
     if (s == null || a == null) return const SizedBox(height: 163);
     return ProgressSnapshotCard(summary: s, analytics: a, onTap: onTap);
+  }
+}
+
+/// Read-only on Home; opens the routine screen, whose workout item returns
+/// here and on to Train at Plan.
+class _Routine extends ConsumerWidget {
+  const _Routine({required this.onGoToTrain});
+
+  final VoidCallback? onGoToTrain;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    return ref
+        .watch(routineTodayProvider)
+        .when(
+          // The card's with-data height (three rows plus "+N more"), measured
+          // the way _Progress's placeholder note describes.
+          loading: () => const SizedBox(height: 167),
+          error: (_, _) => _Retry(
+            message: "Couldn't load your routine",
+            buttonKey: const Key('home.routine.retry'),
+            onRetry: () => ref.invalidate(routineTodayProvider),
+          ),
+          data: (day) => RoutineCard(
+            day: day,
+            onTap: () => Navigator.of(context).push(
+              MaterialPageRoute<void>(
+                builder: (_) => RoutineScreen(
+                  onOpenPlan: () {
+                    Navigator.of(context).pop();
+                    onGoToTrain?.call();
+                  },
+                ),
+              ),
+            ),
+          ),
+        );
   }
 }
