@@ -123,10 +123,47 @@ async function readSeries(pool, userId, exerciseId, period = 'week') {
   };
 }
 
+/// Epley in SQL, for aggregating across every set at once. Must stay the same
+/// formula as epley() above.
+const E1RM_SQL = 'sl.weight_kg * (1 + sl.reps / 30)';
+
+/// How many exercises set a new best estimated 1RM in the last [days] days.
+///
+/// Per exercise: the best e1RM inside the window against the best from before
+/// it. Strictly greater counts; a tie does not. An exercise first logged inside
+/// the window has no earlier best, and NULL compares as unknown, so it drops
+/// out -- a new account's first month is not a string of "PRs".
+///
+/// The window's edge is summariseHistory's (`>=`), because the count is
+/// reported inside that summary. QUALIFYING above uses `>` for the charts;
+/// the two answer different questions and stay separate.
+async function countNewPrs(pool, userId, days) {
+  const [[row]] = await pool.query(
+    `SELECT COUNT(*) AS n
+       FROM (
+         SELECT sl.exercise_id,
+                MAX(CASE WHEN s.session_date >= DATE_SUB(CURDATE(), INTERVAL ? DAY)
+                         THEN ${E1RM_SQL} END) AS window_best,
+                MAX(CASE WHEN s.session_date <  DATE_SUB(CURDATE(), INTERVAL ? DAY)
+                         THEN ${E1RM_SQL} END) AS earlier_best
+           FROM set_logs sl
+           JOIN workout_sessions s ON s.session_id = sl.session_id
+          WHERE s.user_id = ? AND s.status = 'completed'
+            AND sl.is_completed = TRUE
+            AND sl.weight_kg IS NOT NULL
+            AND sl.reps BETWEEN 1 AND ${MAX_E1RM_REPS}
+          GROUP BY sl.exercise_id
+       ) per_exercise
+      WHERE window_best > earlier_best`,
+    [days, days, userId],
+  );
+  return Number(row.n);
+}
+
 /// One decimal. An estimate carrying six of them claims a precision it does
 /// not have.
 function round1(value) {
   return Math.round(value * 10) / 10;
 }
 
-module.exports = { epley, readOptions, readSeries, MAX_E1RM_REPS };
+module.exports = { epley, readOptions, readSeries, countNewPrs, MAX_E1RM_REPS };
