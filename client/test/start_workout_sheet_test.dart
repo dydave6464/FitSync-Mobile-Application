@@ -80,7 +80,14 @@ Future<ProviderContainer> _open(
   // Serves the outcome POST for the chain tests that answer for real. The
   // other tests never submit an answer, so they never need one.
   http.Client? client,
+  // Answers the Nth pending lookup (0-based), for tests where a later lookup
+  // must differ from the first -- a refresh that hangs, or one that finds the
+  // question answered. Wins over pending, pendingError and pendingFuture.
+  Future<PendingOutcome?> Function(int call)? lookup,
+  // Resolves one lookup before the tap, as NavShell does when it mounts.
+  bool prefetch = false,
 }) async {
+  var lookups = 0;
   final container = ProviderContainer(
     overrides: [
       activePlanProvider.overrideWith((ref) async => plan),
@@ -92,6 +99,8 @@ Future<ProviderContainer> _open(
       // none of them reaches a real socket, which under the test binding
       // would never answer.
       pendingOutcomeProvider.overrideWith((ref) async {
+        final call = lookups++;
+        if (lookup != null) return lookup(call);
         if (pendingFuture != null) return pendingFuture;
         if (pendingError != null) throw pendingError;
         return pending;
@@ -108,6 +117,7 @@ Future<ProviderContainer> _open(
     ],
   );
   addTearDown(container.dispose);
+  if (prefetch) await container.read(pendingOutcomeProvider.future);
   await tester.pumpWidget(
     UncontrolledProviderScope(
       container: container,
@@ -545,5 +555,42 @@ void main() {
         expect(find.text(outcomeNotSavedMessage).hitTestable(), findsOneWidget);
       },
     );
+
+    testWidgets('a known answer opens at once, without waiting on a lookup', (
+      tester,
+    ) async {
+      // The first lookup is the prefetch; every later one hangs. Waiting on
+      // a fresh lookup at the tap would show nothing for three seconds.
+      final hanging = Completer<PendingOutcome?>();
+      await _open(
+        tester,
+        prefetch: true,
+        lookup: (call) => call == 0 ? Future.value(pending) : hanging.future,
+      );
+
+      expect(find.text(question), findsOneWidget);
+    });
+
+    testWidgets('once an answer is saved, the next tap does not ask again', (
+      tester,
+    ) async {
+      await _open(
+        tester,
+        client: outcomeClient(201),
+        lookup: (call) async => call == 0 ? pending : null,
+      );
+      await tester.tap(find.byKey(const Key('outcome.pain.none')));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const Key('outcome.submit')));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const Key('start.close')));
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.text('open'));
+      await tester.pumpAndSettle();
+
+      expect(find.text(question), findsNothing);
+      expect(find.text('Start a workout'), findsOneWidget);
+    });
   });
 }

@@ -7,7 +7,8 @@ import '../../../../core/widgets/fs_kit.dart';
 import '../../../profile/presentation/providers.dart'
     show injuryOptionsProvider;
 import '../../domain/session_outcome.dart';
-import '../providers.dart' show sessionRepositoryProvider;
+import '../providers.dart'
+    show pendingOutcomeProvider, sessionRepositoryProvider;
 
 /// Shown after a save that did not land. The session stays pending, so the
 /// question comes back next time; nothing is queued.
@@ -78,6 +79,10 @@ class _OutcomeSheetState extends ConsumerState<_OutcomeSheet> {
 
   Future<void> _submit() async {
     if (_busy || !_complete) return;
+    // Captured before the await, as checkin_sheet.dart's _save does: the
+    // sheet can be swiped away mid-save, and the refresh below must still
+    // land against a container that outlives it.
+    final container = ProviderScope.containerOf(context, listen: false);
     setState(() => _busy = true);
 
     Object? failure;
@@ -97,6 +102,11 @@ class _OutcomeSheetState extends ConsumerState<_OutcomeSheet> {
     final alreadyStored =
         failure is ApiException && failure.code == 'OUTCOME_EXISTS';
     final notSaved = failure != null && !alreadyStored;
+    // The "+" button answers from pendingOutcomeProvider's settled value
+    // without asking the server again, so a stored answer has to replace it
+    // here -- or the next tap asks about this session a second time. A
+    // failed save leaves it alone: the session is still pending.
+    if (!notSaved) container.refresh(pendingOutcomeProvider);
     if (!mounted) return;
     Navigator.of(context).pop(notSaved);
   }
