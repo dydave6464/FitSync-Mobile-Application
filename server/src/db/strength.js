@@ -14,13 +14,16 @@ function epley(weightKg, reps) {
   return weightKg * (1 + reps / 30);
 }
 
+/// One definition of a set that can carry an e1RM estimate.
+const SET_QUALIFIES = `s.status = 'completed'
+    AND sl.is_completed = TRUE
+    AND sl.weight_kg IS NOT NULL
+    AND sl.reps BETWEEN 1 AND ${MAX_E1RM_REPS}`;
+
 /// Only sets that can carry an estimate: completed, loaded, inside the cap,
 /// belonging to a finished session.
 const QUALIFYING = `
-  s.user_id = ? AND s.status = 'completed'
-  AND sl.is_completed = TRUE
-  AND sl.weight_kg IS NOT NULL
-  AND sl.reps BETWEEN 1 AND ${MAX_E1RM_REPS}
+  s.user_id = ? AND ${SET_QUALIFIES}
   AND s.session_date > DATE_SUB(CURDATE(), INTERVAL ? DAY)
 `;
 
@@ -148,10 +151,7 @@ async function countNewPrs(pool, userId, days) {
                          THEN ${E1RM_SQL} END) AS earlier_best
            FROM set_logs sl
            JOIN workout_sessions s ON s.session_id = sl.session_id
-          WHERE s.user_id = ? AND s.status = 'completed'
-            AND sl.is_completed = TRUE
-            AND sl.weight_kg IS NOT NULL
-            AND sl.reps BETWEEN 1 AND ${MAX_E1RM_REPS}
+          WHERE s.user_id = ? AND ${SET_QUALIFIES}
           GROUP BY sl.exercise_id
        ) per_exercise
       WHERE window_best > earlier_best`,
