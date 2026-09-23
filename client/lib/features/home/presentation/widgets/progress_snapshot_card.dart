@@ -6,11 +6,14 @@ import '../../../../core/widgets/fs_kit.dart' hide FsRing;
 import '../../../sessions/domain/session_history.dart';
 import '../../../sessions/domain/training_analytics.dart';
 
-/// Home's snapshot of the last 30 days, opening the Progress tab.
+/// Home's snapshot of training this month, opening the Progress tab.
 ///
-/// The Progress tab's `month` window exactly, so tapping through lands on
-/// the same numbers. "New PRs" is counted by the server (best estimated 1RM
-/// beating all earlier history); nothing here is derived on the device.
+/// Sessions, the chart and the volume change come from the same month
+/// analytics Progress › Month shows, so the two never disagree. The new-PRs
+/// count comes from the 30-day summary instead: it has no equivalent on
+/// Progress to disagree with, and "new PRs" is counted by the server (best
+/// estimated 1RM beating all earlier history) -- nothing here is derived on
+/// the device.
 class ProgressSnapshotCard extends StatelessWidget {
   const ProgressSnapshotCard({
     super.key,
@@ -48,14 +51,14 @@ class ProgressSnapshotCard extends StatelessWidget {
                 ),
               ),
               Text(
-                'Last 30 days',
+                'Past month',
                 style: TextStyle(fontSize: 11.5, color: t.text3),
               ),
               Icon(Icons.chevron_right, size: 16, color: t.text3),
             ],
           ),
           const SizedBox(height: 8),
-          if (summary.isEmpty)
+          if (analytics.adherence.done == 0)
             Text(
               'Finish a workout to see your progress here.',
               style: TextStyle(fontSize: 13, color: t.text2, height: 1.4),
@@ -79,7 +82,7 @@ class ProgressSnapshotCard extends StatelessWidget {
               children: [
                 _Stat(
                   valueKey: 'home.progress.sessions',
-                  value: '${summary.sessionCount}',
+                  value: '${analytics.adherence.done}',
                   label: 'sessions',
                 ),
                 _Stat(

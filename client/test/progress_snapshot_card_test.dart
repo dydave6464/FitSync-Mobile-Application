@@ -7,18 +7,23 @@ import 'package:fitsync/features/home/presentation/widgets/progress_snapshot_car
 import 'package:fitsync/features/sessions/domain/session_history.dart';
 import 'package:fitsync/features/sessions/domain/training_analytics.dart';
 
-TrainingAnalytics _analytics({int? changePct = 12}) => TrainingAnalytics(
-  period: 'month',
-  volume: const [
-    VolumeBucket(label: 'W1', volumeKg: 1200),
-    VolumeBucket(label: 'W2', volumeKg: 1800),
-    VolumeBucket(label: 'W3', volumeKg: 1500),
-    VolumeBucket(label: 'W4', volumeKg: 2100),
-  ],
-  change: VolumeChange(totalKg: 6600, previousKg: 5900, changePct: changePct),
-  adherence: const Adherence(done: 4, target: 12, weeks: 4),
-  muscles: const [],
-);
+TrainingAnalytics _analytics({int? changePct = 12, int done = 5}) =>
+    TrainingAnalytics(
+      period: 'month',
+      volume: const [
+        VolumeBucket(label: 'W1', volumeKg: 1200),
+        VolumeBucket(label: 'W2', volumeKg: 1800),
+        VolumeBucket(label: 'W3', volumeKg: 1500),
+        VolumeBucket(label: 'W4', volumeKg: 2100),
+      ],
+      change: VolumeChange(
+        totalKg: 6600,
+        previousKg: 5900,
+        changePct: changePct,
+      ),
+      adherence: Adherence(done: done, target: 12, weeks: 4),
+      muscles: const [],
+    );
 
 Future<List<String>> _pump(
   WidgetTester tester, {
@@ -54,8 +59,8 @@ void main() {
     await _pump(tester);
 
     expect(find.text('Your progress'), findsOneWidget);
-    expect(find.textContaining('Last 30 days'), findsOneWidget);
-    expect(_textOf(tester, 'home.progress.sessions'), '4');
+    expect(find.textContaining('Past month'), findsOneWidget);
+    expect(_textOf(tester, 'home.progress.sessions'), '5');
     expect(_textOf(tester, 'home.progress.prs'), '3');
     expect(_textOf(tester, 'home.progress.change'), '+12%');
     expect(find.byType(FsLineChart), findsOneWidget);
@@ -68,14 +73,18 @@ void main() {
     expect(_textOf(tester, 'home.progress.change'), '—');
   });
 
-  testWidgets('nothing trained in 30 days says so', (tester) async {
+  testWidgets('nothing trained in the month says so', (tester) async {
+    // Keyed on the analytics done count, not the summary: a summary that is
+    // not itself empty must still show the empty state when adherence.done
+    // is 0, since that is the number the card (and Progress) now agree on.
     await _pump(
       tester,
       summary: const TrainingSummary(
-        sessionCount: 0,
-        setCount: 0,
-        totalVolumeKg: 0,
+        sessionCount: 4,
+        setCount: 40,
+        totalVolumeKg: 6600,
       ),
+      analytics: _analytics(done: 0),
     );
     expect(
       find.text('Finish a workout to see your progress here.'),
