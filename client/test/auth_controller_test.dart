@@ -98,9 +98,10 @@ class _SequenceRoutineRepository implements RoutineRepository {
   @override
   Future<void> remove(int habitId) => throw UnimplementedError();
   @override
-  Future<void> check(int habitId) => throw UnimplementedError();
+  Future<void> check(int habitId, {String? date}) => throw UnimplementedError();
   @override
-  Future<void> uncheck(int habitId) => throw UnimplementedError();
+  Future<void> uncheck(int habitId, {String? date}) =>
+      throw UnimplementedError();
 }
 
 /// Hands out a different summary/pending-outcome on each call, so a cached

@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../../core/api_exception.dart';
 import '../../../core/theme.dart';
 import '../../../core/widgets/fs_charts.dart' show FsRing;
 import '../../../core/widgets/fs_kit.dart' hide FsRing;
@@ -133,9 +134,22 @@ class _Row extends ConsumerWidget {
       await ref
           .read(routineTodayProvider.notifier)
           .setDone(habit.habitId, !habit.done);
-    } catch (_) {
+    } catch (error) {
+      // Either code means the checklist on screen is no longer today's --
+      // the day turned over, or this habit was never on the day that is now
+      // current -- and the controller has already reloaded it by the time
+      // this snackbar shows.
+      final dayChanged =
+          error is ApiException &&
+          (error.code == 'DAY_CHANGED' || error.code == 'HABIT_NOT_TODAY');
       messenger.showSnackBar(
-        const SnackBar(content: Text("Couldn't save that. Try again.")),
+        SnackBar(
+          content: Text(
+            dayChanged
+                ? 'A new day has started — your routine has refreshed.'
+                : "Couldn't save that. Try again.",
+          ),
+        ),
       );
     }
   }

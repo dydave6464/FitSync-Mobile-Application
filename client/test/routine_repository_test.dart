@@ -140,4 +140,29 @@ void main() {
       'weekdays': [1, 3],
     });
   });
+
+  test('check and uncheck append the date when the screen gives one', () async {
+    final urls = <String>[];
+    final repo = _repo(
+      MockClient((request) async {
+        urls.add(request.url.toString());
+        return http.Response(
+          jsonEncode({
+            'data': {'done': request.method == 'PUT'},
+          }),
+          200,
+        );
+      }),
+    );
+
+    await repo.check(1, date: '2026-09-21');
+    await repo.uncheck(1, date: '2026-09-21');
+    await repo.check(1);
+
+    expect(urls, [
+      'http://test.local/api/v1/routine/habits/1/check?date=2026-09-21',
+      'http://test.local/api/v1/routine/habits/1/check?date=2026-09-21',
+      'http://test.local/api/v1/routine/habits/1/check',
+    ]);
+  });
 }

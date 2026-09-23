@@ -49,9 +49,9 @@ class _FakeRepo implements RoutineRepository {
       const RoutineDay(date: '2026-09-21', habits: [], workout: null);
 
   @override
-  Future<void> check(int habitId) => _maybeFail();
+  Future<void> check(int habitId, {String? date}) => _maybeFail();
   @override
-  Future<void> uncheck(int habitId) => _maybeFail();
+  Future<void> uncheck(int habitId, {String? date}) => _maybeFail();
 
   @override
   Future<Habit> add(HabitDraft draft) async {

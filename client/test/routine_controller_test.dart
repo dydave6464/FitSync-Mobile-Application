@@ -25,8 +25,10 @@ class _FakeRepo implements RoutineRepository {
   );
   bool failNext = false;
   bool failNextToday = false;
+  String failCode = 'NETWORK_ERROR';
   int todayCalls = 0;
   final added = <HabitDraft>[];
+  final checkDates = <String?>[];
 
   @override
   Future<RoutineDay> today() async {
@@ -41,14 +43,21 @@ class _FakeRepo implements RoutineRepository {
   Future<void> _maybeFail() async {
     if (failNext) {
       failNext = false;
-      throw const ApiException('NETWORK_ERROR', 'offline');
+      throw ApiException(failCode, 'offline');
     }
   }
 
   @override
-  Future<void> check(int habitId) => _maybeFail();
+  Future<void> check(int habitId, {String? date}) {
+    checkDates.add(date);
+    return _maybeFail();
+  }
+
   @override
-  Future<void> uncheck(int habitId) => _maybeFail();
+  Future<void> uncheck(int habitId, {String? date}) {
+    checkDates.add(date);
+    return _maybeFail();
+  }
 
   @override
   Future<Habit> add(HabitDraft draft) async {
@@ -97,9 +106,9 @@ class _ControlledRepo implements RoutineRepository {
   @override
   Future<RoutineDay> today() async => day;
   @override
-  Future<void> check(int habitId) => _settle(habitId);
+  Future<void> check(int habitId, {String? date}) => _settle(habitId);
   @override
-  Future<void> uncheck(int habitId) => _settle(habitId);
+  Future<void> uncheck(int habitId, {String? date}) => _settle(habitId);
   @override
   Future<Habit> add(HabitDraft draft) async => throw UnimplementedError();
   @override
@@ -135,6 +144,52 @@ void main() {
       throwsA(isA<ApiException>()),
     );
     expect(c.read(routineTodayProvider).value!.habits.single.done, isFalse);
+  });
+
+  test('a tick sends the day the screen is showing', () async {
+    final repo = _FakeRepo();
+    final c = _container(repo);
+    await c.read(routineTodayProvider.future);
+
+    await c.read(routineTodayProvider.notifier).setDone(1, true);
+
+    expect(repo.checkDates, ['2026-09-21']);
+  });
+
+  test('a DAY_CHANGED failure reloads the day, then rethrows', () async {
+    final repo = _FakeRepo()
+      ..failNext = true
+      ..failCode = 'DAY_CHANGED';
+    final c = _container(repo);
+    await c.read(routineTodayProvider.future);
+    final callsBefore = repo.todayCalls;
+
+    await expectLater(
+      c.read(routineTodayProvider.notifier).setDone(1, true),
+      throwsA(isA<ApiException>()),
+    );
+
+    expect(
+      repo.todayCalls,
+      greaterThan(callsBefore),
+      reason: 'the day was reloaded so the screen shows the new day',
+    );
+  });
+
+  test('a HABIT_NOT_TODAY failure reloads the day, then rethrows', () async {
+    final repo = _FakeRepo()
+      ..failNext = true
+      ..failCode = 'HABIT_NOT_TODAY';
+    final c = _container(repo);
+    await c.read(routineTodayProvider.future);
+    final callsBefore = repo.todayCalls;
+
+    await expectLater(
+      c.read(routineTodayProvider.notifier).setDone(1, true),
+      throwsA(isA<ApiException>()),
+    );
+
+    expect(repo.todayCalls, greaterThan(callsBefore));
   });
 
   test('adding saves the draft and reloads the day', () async {

@@ -42,6 +42,7 @@ class _FakeRoutineRepo implements RoutineRepository {
   RoutineDay day;
   Object? failLoad;
   bool failNextCheck = false;
+  String failCode = 'VALIDATION_ERROR';
   int checkCalls = 0;
   int uncheckCalls = 0;
 
@@ -54,18 +55,18 @@ class _FakeRoutineRepo implements RoutineRepository {
   Future<void> _maybeFail() async {
     if (failNextCheck) {
       failNextCheck = false;
-      throw const ApiException('VALIDATION_ERROR', 'nope');
+      throw ApiException(failCode, 'nope');
     }
   }
 
   @override
-  Future<void> check(int habitId) async {
+  Future<void> check(int habitId, {String? date}) async {
     checkCalls++;
     await _maybeFail();
   }
 
   @override
-  Future<void> uncheck(int habitId) async {
+  Future<void> uncheck(int habitId, {String? date}) async {
     uncheckCalls++;
     await _maybeFail();
   }
@@ -191,6 +192,26 @@ void main() {
     expect(walkTitle.style?.decoration, TextDecoration.none);
     expect(find.text("Couldn't save that. Try again."), findsOneWidget);
   });
+
+  testWidgets(
+    'a DAY_CHANGED failure shows a refreshed-day snackbar, not the generic one',
+    (tester) async {
+      final repo = _FakeRoutineRepo(_fixtureDay)
+        ..failNextCheck = true
+        ..failCode = 'DAY_CHANGED';
+      await tester.pumpWidget(_harness(repo));
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.byKey(const Key('routine.tick.2')));
+      await tester.pumpAndSettle();
+
+      expect(
+        find.text('A new day has started — your routine has refreshed.'),
+        findsOneWidget,
+      );
+      expect(find.text("Couldn't save that. Try again."), findsNothing);
+    },
+  );
 
   testWidgets('the workout tick does nothing and calls no repository method', (
     tester,

@@ -1,5 +1,6 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../../core/api_exception.dart';
 import '../../exercises/presentation/providers.dart'
     show apiClientProvider, apiRetryPolicy;
 import '../data/routine_repository.dart';
@@ -39,14 +40,28 @@ class RoutineController extends AsyncNotifier<RoutineDay> {
   /// whole-day snapshot would silently erase it. `withHabitDone` is a no-op
   /// for a habit id no longer in the day, so a rollback after a reload that
   /// dropped it does nothing rather than throwing.
+  ///
+  /// The day shown is sent with the write, so the server can tell a stale
+  /// screen from a live one. `DAY_CHANGED` (the day turned over since this
+  /// screen loaded) and `HABIT_NOT_TODAY` (the habit was never on the day now
+  /// current) both mean the same thing to the user -- the checklist on screen
+  /// is no longer today's -- so both reload it via [_reload], which is safe
+  /// to call after a failure: it never throws its own error into this one.
   Future<void> setDone(int habitId, bool done) async {
     if (_inFlight.contains(habitId)) return;
     _inFlight.add(habitId);
+    final date = state.requireValue.date;
     state = AsyncData(state.requireValue.withHabitDone(habitId, done));
     try {
-      done ? await _repo.check(habitId) : await _repo.uncheck(habitId);
-    } catch (_) {
+      done
+          ? await _repo.check(habitId, date: date)
+          : await _repo.uncheck(habitId, date: date);
+    } catch (error) {
       state = AsyncData(state.requireValue.withHabitDone(habitId, !done));
+      if (error is ApiException &&
+          (error.code == 'DAY_CHANGED' || error.code == 'HABIT_NOT_TODAY')) {
+        await _reload();
+      }
       rethrow;
     } finally {
       _inFlight.remove(habitId);

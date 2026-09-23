@@ -26,11 +26,18 @@ class RoutineRepository {
     await _api.deleteJson('/api/v1/routine/habits/$habitId');
   }
 
-  Future<void> check(int habitId) async {
-    await _api.putJson('/api/v1/routine/habits/$habitId/check', const {});
+  /// [date] is the day the screen believes it is, from the [RoutineDay] it
+  /// last loaded. The server compares it against its own CURDATE() and
+  /// refuses the tick with `DAY_CHANGED` if the day has since turned over,
+  /// rather than silently filing it under the new day.
+  Future<void> check(int habitId, {String? date}) async {
+    await _api.putJson(_checkPath(habitId, date), const {});
   }
 
-  Future<void> uncheck(int habitId) async {
-    await _api.deleteJson('/api/v1/routine/habits/$habitId/check');
+  Future<void> uncheck(int habitId, {String? date}) async {
+    await _api.deleteJson(_checkPath(habitId, date));
   }
+
+  String _checkPath(int habitId, String? date) =>
+      '/api/v1/routine/habits/$habitId/check${date == null ? '' : '?date=$date'}';
 }
