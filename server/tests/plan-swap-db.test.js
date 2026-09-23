@@ -149,6 +149,92 @@ test('swap candidates', async (t) => {
     assert.equal(rows[0].target_reps, '8-12');
   });
 
+  await t.test('a swap records the exercise that was rejected', async () => {
+    const planExerciseId = await reset();
+    const ctx = await loadSwapContext(pool, userId, planExerciseId);
+
+    await swapPlanExercise(pool, ctx, other.exercise_id);
+
+    const [swaps] = await pool.query(
+      `SELECT user_id, rejected_exercise_id, chosen_exercise_id, muscle_group
+         FROM plan_swaps`,
+    );
+    assert.equal(swaps.length, 1, 'one swap must leave exactly one record');
+    assert.equal(swaps[0].rejected_exercise_id, inPlan.exercise_id,
+      'the rejected exercise is the whole point -- the UPDATE used to erase it');
+    assert.equal(swaps[0].chosen_exercise_id, other.exercise_id);
+    assert.equal(swaps[0].user_id, userId);
+    assert.equal(swaps[0].muscle_group, inPlan.muscle_group);
+  });
+
+  await t.test('a swap records the alternatives that were on offer', async () => {
+    const planExerciseId = await reset();
+    const ctx = await loadSwapContext(pool, userId, planExerciseId);
+    const offered = await listAlternatives(pool, ctx, { q: null, limit: 20 });
+
+    await swapPlanExercise(pool, ctx, other.exercise_id);
+
+    const [rows] = await pool.query(
+      `SELECT a.exercise_id, a.position_no
+         FROM plan_swap_alternatives a
+         JOIN plan_swaps s ON s.swap_id = a.swap_id
+        ORDER BY a.position_no`,
+    );
+    assert.equal(rows.length, offered.length,
+      'every option the sheet showed is one row of the choice set');
+    assert.deepEqual(rows.map((r) => r.exercise_id), offered.map((o) => o.exerciseId),
+      'order is signal: the sheet ranks selected equipment ahead of the fallback');
+    assert.deepEqual(rows.map((r) => r.position_no), offered.map((_, i) => i + 1),
+      'positions are 1-based and contiguous');
+  });
+
+  await t.test('a refused swap records nothing', async () => {
+    const planExerciseId = await reset();
+    const ctx = await loadSwapContext(pool, userId, planExerciseId);
+
+    await assert.rejects(
+      () => swapPlanExercise(pool, ctx, inPlan.exercise_id),
+      (err) => err.code === 'EXERCISE_NOT_ALLOWED',
+    );
+
+    const [swaps] = await pool.query('SELECT swap_id FROM plan_swaps');
+    assert.equal(swaps.length, 0,
+      'a label must describe a swap that actually happened');
+  });
+
+  await t.test('a swap still succeeds when the label cannot be written', async () => {
+    const planExerciseId = await reset();
+    const ctx = await loadSwapContext(pool, userId, planExerciseId);
+    // A real failure, not a stub: no such user, so the INSERT violates
+    // fk_plan_swaps_user while the UPDATE itself is unaffected.
+    const doomed = { ...ctx, userId: 2147483600 };
+
+    await swapPlanExercise(pool, doomed, other.exercise_id);
+
+    const [rows] = await pool.query(
+      'SELECT exercise_id FROM plan_exercises WHERE plan_exercise_id = ?',
+      [planExerciseId],
+    );
+    assert.equal(rows[0].exercise_id, other.exercise_id,
+      'collecting training data must never turn a user’s swap into an error');
+    const [swaps] = await pool.query('SELECT swap_id FROM plan_swaps');
+    assert.equal(swaps.length, 0, 'and the label is simply absent');
+  });
+
+  await t.test('a label that cannot be written is reported, not swallowed', async () => {
+    const planExerciseId = await reset();
+    const ctx = await loadSwapContext(pool, userId, planExerciseId);
+    const doomed = { ...ctx, userId: 2147483600 };
+    const errors = [];
+
+    await swapPlanExercise(pool, doomed, other.exercise_id, {
+      logger: { error: (message) => errors.push(message) },
+    });
+
+    assert.equal(errors.length, 1,
+      'a dataset that stops filling must not do so silently');
+  });
+
   await t.test('refuses an exercise already in the plan', async () => {
     const planExerciseId = await reset();
     const ctx = await loadSwapContext(pool, userId, planExerciseId);

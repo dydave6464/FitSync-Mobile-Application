@@ -10,6 +10,7 @@ const EXPECTED_TABLES = [
   'equipment', 'exercise_categories', 'exercise_contraindications', 'exercise_equipment_requirements',
   'exercise_ai_cues', 'exercises', 'food_recognitions', 'foods', 'goals', 'injuries',
   'injury_risk_estimates', 'meal_logs', 'morning_checkins', 'plan_exercises',
+  'plan_swaps', 'plan_swap_alternatives',
   'progress_reports', 'reminders', 'routine_items', 'session_exercises', 'set_logs',
   'shared_reports', 'streaks',
   'subscriptions', 'user_equipment', 'user_identities', 'user_injuries', 'user_training_days',
@@ -26,10 +27,10 @@ test('complete FitSync schema', async (t) => {
     await pool.end();
   });
 
-  await t.test('creates exactly the 35 tables from the data dictionary', async () => {
+  await t.test('creates exactly the 37 tables from the data dictionary', async () => {
     const names = (await tableNames(pool)).filter((n) => n !== 'schema_migrations');
     assert.deepEqual(names.sort(), [...EXPECTED_TABLES].sort());
-    assert.equal(names.length, 35);
+    assert.equal(names.length, 37);
   });
 
   await t.test('every table is InnoDB and utf8mb4', async () => {
@@ -54,7 +55,7 @@ test('complete FitSync schema', async (t) => {
     );
     const composite = rows.filter((r) => r.cols > 1 && r.t !== 'schema_migrations');
     assert.deepEqual(composite, [], 'no table may use a composite primary key');
-    assert.equal(rows.length, 36); // 35 tables + schema_migrations
+    assert.equal(rows.length, 38); // 37 tables + schema_migrations
   });
 
   await t.test('a user has exactly one streak record', async () => {
@@ -151,7 +152,7 @@ test('complete FitSync schema', async (t) => {
     assert.equal(srows[0].plan_day_no, null, 'a session predating 013 has no day');
   });
 
-  await t.test('all nineteen migrations are recorded', async () => {
+  await t.test('all twenty migrations are recorded', async () => {
     const [rows] = await pool.query('SELECT version FROM schema_migrations ORDER BY version');
     assert.deepEqual(rows.map((r) => r.version), [
       '001_account_and_profile.sql',
@@ -173,6 +174,7 @@ test('complete FitSync schema', async (t) => {
       '017_plan_source.sql',
       '018_exercise_ai_cues.sql',
       '019_shared_reports.sql',
+      '020_swap_capture.sql',
     ]);
   });
 
