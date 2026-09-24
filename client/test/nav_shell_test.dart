@@ -13,6 +13,7 @@ import 'package:fitsync/features/exercises/domain/exercise.dart';
 import 'package:fitsync/features/exercises/domain/exercise_filters.dart';
 import 'package:fitsync/features/exercises/presentation/exercise_list_screen.dart';
 import 'package:fitsync/features/exercises/presentation/providers.dart';
+import 'package:fitsync/features/home/presentation/day_rollover.dart';
 import 'package:fitsync/features/home/presentation/nav_shell.dart';
 import 'package:fitsync/features/plans/domain/exercise_alternative.dart';
 import 'package:fitsync/features/plans/domain/workout_plan.dart';
@@ -398,6 +399,19 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(paths, contains('/api/v1/sessions/pending-outcome'));
+  });
+
+  testWidgets('the shell refreshes dated views on a new day', (tester) async {
+    // DayRollover's own tests cover what it refetches and when; this holds
+    // the shell to mounting it, above every tab.
+    await _pumpShell(tester);
+    expect(
+      find.ancestor(
+        of: find.byType(Scaffold).first,
+        matching: find.byType(DayRollover),
+      ),
+      findsOneWidget,
+    );
   });
 
   testWidgets('the centre button opens the start sheet', (tester) async {
