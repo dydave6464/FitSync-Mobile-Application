@@ -193,6 +193,34 @@ void main() {
     expect(find.byKey(const Key('goal.save')), findsOneWidget);
   });
 
+  testWidgets(
+    'a pound target that only beats the best before rounding is refused',
+    (tester) async {
+      const bench = GoalOption(
+        exerciseId: 3,
+        name: 'Bench Press',
+        bestKg: 61.23,
+        sets: 6,
+      );
+      final repo = await _open(tester, options: [bench], unit: WeightUnit.lb);
+
+      await tester.tap(find.byKey(const Key('goal.option.3')));
+      await tester.pumpAndSettle();
+      await _setTarget(tester, '135');
+
+      // 135 lb is 61.23497 kg unrounded -- just above the 61.23 kg best -- but
+      // rounds to the same 61.23 kg that is actually sent, so it must be
+      // refused in the user's own unit, not the server's kilogram message.
+      expect(
+        find.text(
+          'Your best is already ${formatWeightWithUnit(61.23, WeightUnit.lb)}.',
+        ),
+        findsOneWidget,
+      );
+      expect(repo.added, isEmpty);
+    },
+  );
+
   testWidgets('an empty target asks for one', (tester) async {
     await _open(tester);
 
@@ -201,6 +229,25 @@ void main() {
     await _setTarget(tester, '');
 
     expect(find.text('Enter a target weight.'), findsOneWidget);
+  });
+
+  testWidgets('a target above the server range is refused in the sheet', (
+    tester,
+  ) async {
+    final repo = await _open(tester);
+
+    await tester.tap(find.byKey(const Key('goal.option.3')));
+    await tester.pumpAndSettle();
+    await _setTarget(tester, '1000');
+
+    expect(
+      find.text(
+        'Enter a target between ${formatWeightWithUnit(0.5, WeightUnit.kg)} '
+        'and ${formatWeightWithUnit(999.99, WeightUnit.kg)}.',
+      ),
+      findsOneWidget,
+    );
+    expect(repo.added, isEmpty);
   });
 
   testWidgets('a server refusal stays in the sheet', (tester) async {

@@ -83,12 +83,29 @@ class _AddGoalSheetState extends ConsumerState<_AddGoalSheet> {
     // mid-save, making ref invalid. The container outlives the widget.
     final container = ProviderScope.containerOf(context, listen: false);
     final kg = parseWeight(_target.text, unit);
-    if (kg == null || kg <= 0) {
+    if (kg == null) {
       setState(() => _error = 'Enter a target weight.');
       return;
     }
+    // Rounded to what set_logs and the POST body actually carry (DECIMAL
+    // 6,2): a target that only beats the best before rounding would pass
+    // this check on the unrounded value, then be refused by the server on
+    // the rounded one -- in kilograms, whatever the user's unit is.
+    final sendKg = double.parse(kg.toStringAsFixed(2));
+    if (sendKg <= 0) {
+      setState(() => _error = 'Enter a target weight.');
+      return;
+    }
+    if (sendKg < 0.5 || sendKg > 999.99) {
+      setState(
+        () => _error =
+            'Enter a target between ${formatWeightWithUnit(0.5, unit)} and '
+            '${formatWeightWithUnit(999.99, unit)}.',
+      );
+      return;
+    }
     final best = picked.bestKg;
-    if (best != null && kg <= best) {
+    if (best != null && sendKg <= best) {
       setState(
         () => _error =
             'Your best is already ${formatWeightWithUnit(best, unit)}.',
@@ -102,10 +119,7 @@ class _AddGoalSheetState extends ConsumerState<_AddGoalSheet> {
     try {
       await ref
           .read(goalsRepositoryProvider)
-          .add(
-            exerciseId: picked.exerciseId,
-            targetKg: double.parse(kg.toStringAsFixed(2)),
-          );
+          .add(exerciseId: picked.exerciseId, targetKg: sendKg);
       container.invalidate(goalsProvider);
       if (mounted) Navigator.of(context).pop();
     } catch (error) {
@@ -124,13 +138,10 @@ class _AddGoalSheetState extends ConsumerState<_AddGoalSheet> {
     final options = ref.watch(goalOptionsProvider);
     final picked = _picked;
     final media = MediaQuery.of(context);
-    // Calculate the space left above the keyboard, accounting for app bar
+    // Calculate the space left above the keyboard, accounting for headroom
     // and padding. This ensures the sheet fits and the target field stays on screen.
     final roomAboveKeyboard =
-        media.size.height -
-        media.viewInsets.bottom -
-        media.padding.top -
-        56; // Approximate app bar height
+        media.size.height - media.viewInsets.bottom - media.padding.top - 56; // Headroom kept above the keyboard, not an app bar -- the sheet has none.
     final height = math.max(
       160.0,
       math.min(media.size.height * 0.7, roomAboveKeyboard),
