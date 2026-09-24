@@ -7,8 +7,8 @@ import '../../../recovery/domain/recovery.dart';
 import '../../../sessions/presentation/widgets/share_report_sheet.dart'
     show formatShareExpiry;
 
-/// Home's readiness hero: today's injury-risk estimate, in the Recovery tab's
-/// own ring.
+/// Home's readiness hero: the latest injury-risk estimate, in the Recovery
+/// tab's own ring.
 ///
 /// The prototype draws a 0-100 "READY" score here. The app has no such score
 /// -- it has a low/moderate/high estimate -- so this shows that, with the same
