@@ -331,8 +331,11 @@ class _Routine extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    // Hidden while loading and on error, as the card hides it at 0.
-    final streak = ref.watch(streakProvider).value?.current ?? 0;
+    // Hidden on error -- AsyncError keeps the previous value, which would be
+    // a streak the app no longer has -- and before the first load. During a
+    // plain refresh the previous count stays up rather than flickering away.
+    final streakState = ref.watch(streakProvider);
+    final streak = streakState.hasError ? 0 : (streakState.value?.current ?? 0);
     return ref
         .watch(routineTodayProvider)
         .when(

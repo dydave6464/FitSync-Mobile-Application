@@ -250,7 +250,12 @@ Future<void> _pumpHome(
     week: [],
   ),
   Object? streakError,
+  // Succeeds the first read (the initial load), then throws on every read
+  // after that -- a refresh gone wrong, as opposed to streakError's failure
+  // from the very start.
+  bool streakFailsOnRefresh = false,
 }) async {
+  var streakReads = 0;
   await tester.pumpWidget(
     ProviderScope(
       overrides: [
@@ -296,7 +301,11 @@ Future<void> _pumpHome(
           () => _StubRoutine(routine, routineError),
         ),
         streakProvider.overrideWith((ref) async {
-          if (streakError != null) throw streakError;
+          streakReads += 1;
+          if (streakError != null ||
+              (streakFailsOnRefresh && streakReads > 1)) {
+            throw streakError ?? const ApiException('SERVER_ERROR', 'nope');
+          }
           return streak;
         }),
         goalsProvider.overrideWith((ref) async => const <LiftGoal>[]),
@@ -802,6 +811,34 @@ void main() {
         find.byKey(const Key('home.routine')),
         200,
       );
+      await tester.pumpAndSettle();
+
+      expect(find.byKey(const Key('home.routine.streak')), findsNothing);
+    });
+
+    testWidgets('a streak that fails to refresh drops its tag', (tester) async {
+      await _pumpHome(
+        tester,
+        streak: const Streak(
+          current: 12,
+          best: 18,
+          todayActive: true,
+          week: [],
+        ),
+        streakFailsOnRefresh: true,
+      );
+
+      await tester.scrollUntilVisible(
+        find.byKey(const Key('home.routine.streak')),
+        200,
+      );
+      await tester.pumpAndSettle();
+      expect(find.text('12-day streak'), findsOneWidget);
+
+      final container = ProviderScope.containerOf(
+        tester.element(find.byType(HomeScreen)),
+      );
+      container.invalidate(streakProvider);
       await tester.pumpAndSettle();
 
       expect(find.byKey(const Key('home.routine.streak')), findsNothing);
