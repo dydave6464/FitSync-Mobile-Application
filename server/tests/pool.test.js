@@ -32,3 +32,26 @@ test('pool surfaces connection failures rather than hanging', async () => {
     await pool.end();
   }
 });
+
+// "Today" is Manila's date on any host: CURDATE(), NOW() and WEEKDAY() follow
+// the session's zone, and a host left on UTC would otherwise roll the day
+// over at 08:00 Manila time. Two connections held at once, so a zone set on
+// only the first connection the pool happens to open would still fail.
+test('every pooled connection runs on Manila time', async () => {
+  const pool = createPool({ ...testDbConfig(), connectionLimit: 2 });
+  const a = await pool.getConnection();
+  const b = await pool.getConnection();
+  try {
+    for (const conn of [a, b]) {
+      const [[row]] = await conn.query(
+        'SELECT @@session.time_zone AS tz, TIMESTAMPDIFF(MINUTE, UTC_TIMESTAMP(), NOW()) AS offset_min',
+      );
+      assert.equal(row.tz, '+08:00');
+      assert.equal(row.offset_min, 480);
+    }
+  } finally {
+    a.release();
+    b.release();
+    await pool.end();
+  }
+});
