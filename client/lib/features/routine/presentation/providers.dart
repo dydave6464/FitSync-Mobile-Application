@@ -97,10 +97,12 @@ class RoutineController extends AsyncNotifier<RoutineDay> {
   }
 
   /// Today's list and the full list both show the habit just written, so
-  /// both refetch, whichever screen the sheet was opened from.
+  /// both refetch, whichever screen the sheet was opened from. The full
+  /// list is invalidated first, so its refetch runs alongside today's
+  /// reload rather than after it.
   Future<void> _afterWrite() async {
-    await _reload();
     ref.invalidate(allHabitsProvider);
+    await _reload();
   }
 
   /// A fresh day rather than patching the list locally: a new or edited
