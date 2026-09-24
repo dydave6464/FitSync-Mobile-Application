@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -78,6 +79,9 @@ class _AddGoalSheetState extends ConsumerState<_AddGoalSheet> {
   Future<void> _save() async {
     final picked = _picked!;
     final unit = ref.read(weightUnitProvider);
+    // Capture the container before any await; the sheet can be dismissed
+    // mid-save, making ref invalid. The container outlives the widget.
+    final container = ProviderScope.containerOf(context, listen: false);
     final kg = parseWeight(_target.text, unit);
     if (kg == null || kg <= 0) {
       setState(() => _error = 'Enter a target weight.');
@@ -102,7 +106,7 @@ class _AddGoalSheetState extends ConsumerState<_AddGoalSheet> {
             exerciseId: picked.exerciseId,
             targetKg: double.parse(kg.toStringAsFixed(2)),
           );
-      ref.invalidate(goalsProvider);
+      container.invalidate(goalsProvider);
       if (mounted) Navigator.of(context).pop();
     } catch (error) {
       if (!mounted) return;
@@ -119,15 +123,22 @@ class _AddGoalSheetState extends ConsumerState<_AddGoalSheet> {
     // when a search result needs its best.
     final options = ref.watch(goalOptionsProvider);
     final picked = _picked;
+    final media = MediaQuery.of(context);
+    // Calculate the space left above the keyboard, accounting for app bar
+    // and padding. This ensures the sheet fits and the target field stays on screen.
+    final roomAboveKeyboard =
+        media.size.height -
+        media.viewInsets.bottom -
+        media.padding.top -
+        56; // Approximate app bar height
+    final height = math.max(
+      160.0,
+      math.min(media.size.height * 0.7, roomAboveKeyboard),
+    );
     return Padding(
-      padding: EdgeInsets.fromLTRB(
-        20,
-        16,
-        20,
-        20 + MediaQuery.of(context).viewInsets.bottom,
-      ),
+      padding: EdgeInsets.fromLTRB(20, 16, 20, 20 + media.viewInsets.bottom),
       child: SizedBox(
-        height: MediaQuery.of(context).size.height * 0.7,
+        height: height,
         child: picked == null ? _chooseStep(options) : _targetStep(picked),
       ),
     );
@@ -214,64 +225,66 @@ class _AddGoalSheetState extends ConsumerState<_AddGoalSheet> {
     final t = context.fs;
     final unit = ref.watch(weightUnitProvider);
     final best = picked.bestKg;
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Row(
-          children: [
-            IconButton(
-              key: const Key('goal.back'),
-              tooltip: 'Back',
-              icon: const Icon(Icons.arrow_back),
-              onPressed: _busy
-                  ? null
-                  : () => setState(() {
-                      _picked = null;
-                      _error = null;
-                    }),
-            ),
-            Expanded(
-              child: Text(
-                picked.name,
-                style: TextStyle(
-                  fontSize: 18,
-                  fontWeight: FontWeight.w700,
-                  color: t.text,
+    return SingleChildScrollView(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              IconButton(
+                key: const Key('goal.back'),
+                tooltip: 'Back',
+                icon: const Icon(Icons.arrow_back),
+                onPressed: _busy
+                    ? null
+                    : () => setState(() {
+                        _picked = null;
+                        _error = null;
+                      }),
+              ),
+              Expanded(
+                child: Text(
+                  picked.name,
+                  style: TextStyle(
+                    fontSize: 18,
+                    fontWeight: FontWeight.w700,
+                    color: t.text,
+                  ),
                 ),
               ),
+            ],
+          ),
+          const SizedBox(height: 4),
+          Text(
+            best == null
+                ? 'Not logged yet'
+                : 'Your best: ${formatWeightWithUnit(best, unit)}',
+            style: TextStyle(fontSize: 13, color: t.text2),
+          ),
+          const SizedBox(height: 16),
+          FsField(
+            controller: _target,
+            hint: 'Target (${unit.api})',
+            fieldKey: const Key('goal.target'),
+            keyboardType: const TextInputType.numberWithOptions(decimal: true),
+          ),
+          if (_error != null) ...[
+            const SizedBox(height: 10),
+            Text(
+              _error!,
+              key: const Key('goal.error'),
+              style: TextStyle(fontSize: 13, color: t.red),
             ),
           ],
-        ),
-        const SizedBox(height: 4),
-        Text(
-          best == null
-              ? 'Not logged yet'
-              : 'Your best: ${formatWeightWithUnit(best, unit)}',
-          style: TextStyle(fontSize: 13, color: t.text2),
-        ),
-        const SizedBox(height: 16),
-        FsField(
-          controller: _target,
-          hint: 'Target (${unit.api})',
-          fieldKey: const Key('goal.target'),
-          keyboardType: const TextInputType.numberWithOptions(decimal: true),
-        ),
-        if (_error != null) ...[
-          const SizedBox(height: 10),
-          Text(
-            _error!,
-            key: const Key('goal.error'),
-            style: TextStyle(fontSize: 13, color: t.red),
+          const SizedBox(height: 16),
+          FsButton(
+            key: const Key('goal.save'),
+            label: 'Save goal',
+            busy: _busy,
+            onPressed: _busy ? null : _save,
           ),
         ],
-        const SizedBox(height: 16),
-        FsButton(
-          key: const Key('goal.save'),
-          label: 'Save goal',
-          busy: _busy,
-          onPressed: _busy ? null : _save,
-        ),
-      ],
+      ),
     );
   }
 }

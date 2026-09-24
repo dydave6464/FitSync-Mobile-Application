@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -35,18 +37,34 @@ class _FakeGoalsRepo implements GoalsRepository {
   final List<GoalOption> _options;
   final added = <(int, double)>[];
   Object? failAdd;
+  Completer<void>? blockAdd;
 
   @override
   Future<List<GoalOption>> options() async => _options;
 
   @override
-  Future<List<LiftGoal>> list() async => const [];
+  Future<List<LiftGoal>> list() async {
+    // Return the goals that were added.
+    return added
+        .map(
+          (e) => LiftGoal(
+            goalId: 1,
+            exerciseId: e.$1,
+            exerciseName: 'x',
+            targetKg: e.$2,
+            bestKg: null,
+            reachedOn: null,
+          ),
+        )
+        .toList();
+  }
 
   @override
   Future<LiftGoal> add({
     required int exerciseId,
     required double targetKg,
   }) async {
+    if (blockAdd != null) await blockAdd!.future;
     if (failAdd != null) throw failAdd!;
     added.add((exerciseId, targetKg));
     return LiftGoal(
@@ -222,5 +240,87 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.text('LIFTED BEFORE'), findsOneWidget);
+  });
+
+  testWidgets('a sheet dismissed mid-save still refreshes the goals list', (
+    tester,
+  ) async {
+    final completer = Completer<void>();
+    final repo = _FakeGoalsRepo(const [_bench]);
+    repo.blockAdd = completer;
+
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          goalsRepositoryProvider.overrideWithValue(repo),
+          weightUnitProvider.overrideWithValue(WeightUnit.kg),
+          goalSearchProvider.overrideWith((ref, query) async => const []),
+        ],
+        child: MaterialApp(
+          theme: fsLightTheme(),
+          home: Builder(
+            builder: (context) => Scaffold(
+              body: Consumer(
+                builder: (context, ref, child) {
+                  final goals = ref.watch(goalsProvider);
+                  return Column(
+                    children: [
+                      Text(
+                        'Goals: ${goals.value?.length ?? 0}',
+                        key: const Key('goal.count'),
+                      ),
+                      TextButton(
+                        onPressed: () => showAddGoalSheet(context),
+                        child: const Text('open'),
+                      ),
+                    ],
+                  );
+                },
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+    await tester.tap(find.text('open'));
+    await tester.pumpAndSettle();
+
+    // Pick option, enter target, tap save.
+    await tester.tap(find.byKey(const Key('goal.option.3')));
+    await tester.pumpAndSettle();
+    await tester.enterText(find.byKey(const Key('goal.target')), '60');
+    await tester.tap(find.byKey(const Key('goal.save')));
+    await tester.pump(); // Let the save start.
+
+    // Dismiss the sheet while the save is in flight.
+    Navigator.of(tester.element(find.byKey(const Key('goal.target')))).pop();
+    await tester.pumpAndSettle();
+
+    // Complete the add, which should refresh the goals list.
+    completer.complete();
+    await tester.pumpAndSettle();
+
+    // The goals list should now show 1 goal, not 0.
+    expect(find.text('Goals: 1'), findsOneWidget);
+  });
+
+  testWidgets('with the keyboard up the target field stays on screen', (
+    tester,
+  ) async {
+    addTearDown(tester.view.resetViewInsets);
+    tester.view.viewInsets = const FakeViewPadding(bottom: 900);
+
+    await _open(tester);
+    await tester.tap(find.byKey(const Key('goal.option.3')));
+    await tester.pumpAndSettle();
+
+    // Should not have thrown an overflow exception.
+    expect(tester.takeException(), isNull);
+
+    // The target field should be on screen and hit-testable.
+    final targetRect = tester.getRect(find.byKey(const Key('goal.target')));
+    final screenHeight =
+        tester.view.physicalSize.height / tester.view.devicePixelRatio;
+    expect(targetRect.bottom, lessThanOrEqualTo(screenHeight - 300));
   });
 }
