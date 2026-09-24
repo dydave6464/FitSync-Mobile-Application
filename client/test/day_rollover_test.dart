@@ -23,6 +23,9 @@ import 'package:fitsync/features/sessions/presentation/providers.dart'
         pendingOutcomeProvider,
         trainingAnalyticsProvider,
         trainingSummaryProvider;
+import 'package:fitsync/features/streaks/domain/streaks.dart';
+import 'package:fitsync/features/streaks/presentation/providers.dart'
+    show streakProvider;
 
 /// Never settles: these tests count builds, and a value would only need
 /// constructing to be ignored.
@@ -84,6 +87,10 @@ void main() {
               count('pendingOutcome');
               return _pending<PendingOutcome?>();
             }),
+            streakProvider.overrideWith((ref) {
+              count('streak');
+              return _pending<Streak>();
+            }),
           ],
           child: MaterialApp(
             home: DayRollover(
@@ -98,6 +105,7 @@ void main() {
                   ref.watch(trainingAnalyticsProvider('week'));
                   ref.watch(completedDaysProvider);
                   ref.watch(pendingOutcomeProvider);
+                  ref.watch(streakProvider);
                   return const SizedBox();
                 },
               ),
@@ -126,6 +134,7 @@ void main() {
       'analytics:week',
       'completedDays',
       'pendingOutcome',
+      'streak',
     };
 
     setUp(() => builds = {});

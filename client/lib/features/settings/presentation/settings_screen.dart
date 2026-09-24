@@ -17,6 +17,7 @@ import '../../plans/presentation/widgets/training_days_row.dart';
 import '../../pro/presentation/pro_screen.dart';
 import '../../profile/domain/profile.dart';
 import '../../profile/presentation/providers.dart';
+import '../../streaks/presentation/streaks_screen.dart';
 
 /// FR-1.4: change any onboarding answer later.
 ///
@@ -226,6 +227,12 @@ class _SettingsList extends ConsumerWidget {
                 icon: Icons.event_available_outlined,
                 label: 'Training days',
                 onTap: () => _open(context, const _TrainingDaysEditor()),
+              ),
+              _SettingsRow(
+                rowKey: const Key('edit.streaks'),
+                icon: Icons.emoji_events_outlined,
+                label: 'Streaks & goals',
+                onTap: () => _open(context, const StreaksScreen()),
                 last: true,
               ),
             ],

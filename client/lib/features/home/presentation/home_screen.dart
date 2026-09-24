@@ -22,6 +22,8 @@ import '../../sessions/presentation/providers.dart'
 import '../../sessions/presentation/session_logger_screen.dart';
 import '../../profile/presentation/providers.dart';
 import '../../plans/domain/workout_plan.dart';
+import '../../streaks/presentation/providers.dart' show streakProvider;
+import '../../streaks/presentation/streaks_screen.dart';
 import 'widgets/active_workout_card.dart';
 import 'widgets/greeting.dart';
 import 'widgets/plan_card.dart';
@@ -329,6 +331,11 @@ class _Routine extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
+    // Hidden on error -- AsyncError keeps the previous value, which would be
+    // a streak the app no longer has -- and before the first load. During a
+    // plain refresh the previous count stays up rather than flickering away.
+    final streakState = ref.watch(streakProvider);
+    final streak = streakState.hasError ? 0 : (streakState.value?.current ?? 0);
     return ref
         .watch(routineTodayProvider)
         .when(
@@ -342,6 +349,10 @@ class _Routine extends ConsumerWidget {
           ),
           data: (day) => RoutineCard(
             day: day,
+            streak: streak,
+            onOpenStreak: () => Navigator.of(context).push(
+              MaterialPageRoute<void>(builder: (_) => const StreaksScreen()),
+            ),
             onTap: () => Navigator.of(context).push(
               MaterialPageRoute<void>(
                 builder: (_) => RoutineScreen(

@@ -16,6 +16,9 @@ import 'package:fitsync/features/sessions/domain/session_outcome.dart';
 import 'package:fitsync/features/sessions/domain/shared_report.dart';
 import 'package:fitsync/features/sessions/domain/training_analytics.dart';
 import 'package:fitsync/features/sessions/presentation/providers.dart';
+import 'package:fitsync/features/streaks/data/streaks_repository.dart';
+import 'package:fitsync/features/streaks/domain/streaks.dart';
+import 'package:fitsync/features/streaks/presentation/providers.dart';
 
 AuthUser _user({bool onboardingCompleted = false}) => AuthUser(
   userId: 7,
@@ -184,6 +187,22 @@ class _SequenceSessionRepository implements SessionRepository {
     required String period,
     required Map<String, bool> include,
   }) => throw UnimplementedError();
+}
+
+/// Hands out a different streak on each call, so a cached one is
+/// distinguishable from a freshly loaded one.
+class _SequenceStreakRepository implements StreakRepository {
+  _SequenceStreakRepository(this._streaks);
+
+  final List<Streak> _streaks;
+  int loads = 0;
+
+  @override
+  Future<Streak> read() async {
+    final s = _streaks[loads.clamp(0, _streaks.length - 1)];
+    loads += 1;
+    return s;
+  }
 }
 
 void main() {
@@ -414,5 +433,39 @@ void main() {
       2,
       reason: 'the pending outcome was not re-fetched',
     );
+  });
+
+  test("signing out drops the previous account's streak", () async {
+    final tokens = TokenStore(backing: InMemorySecureStore());
+    await tokens.write('tok');
+    final streaks = _SequenceStreakRepository(const [
+      Streak(current: 12, best: 18, todayActive: true, week: []),
+      Streak(current: 0, best: 0, todayActive: false, week: []),
+    ]);
+    final container = ProviderContainer(
+      overrides: [
+        tokenStoreProvider.overrideWithValue(tokens),
+        authRepositoryProvider.overrideWithValue(
+          FakeAuthRepository(
+            tokens,
+            onMe: () async => _user(onboardingCompleted: true),
+          ),
+        ),
+        streakRepositoryProvider.overrideWithValue(streaks),
+      ],
+    );
+    addTearDown(container.dispose);
+
+    await container.read(authControllerProvider.future);
+    expect((await container.read(streakProvider.future)).current, 12);
+
+    await container.read(authControllerProvider.notifier).signOut();
+
+    expect(
+      (await container.read(streakProvider.future)).current,
+      0,
+      reason: "the next account was handed the previous account's streak",
+    );
+    expect(streaks.loads, 2);
   });
 }

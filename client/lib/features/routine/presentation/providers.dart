@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../core/api_exception.dart';
 import '../../exercises/presentation/providers.dart'
     show apiClientProvider, apiRetryPolicy;
+import '../../streaks/presentation/providers.dart' show streakProvider;
 import '../data/routine_repository.dart';
 import '../domain/routine.dart';
 
@@ -64,6 +65,8 @@ class RoutineController extends AsyncNotifier<RoutineDay> {
       done
           ? await _repo.check(habitId, date: date)
           : await _repo.uncheck(habitId, date: date);
+      // A tick can start or extend today's activity, an untick can end it.
+      ref.invalidate(streakProvider);
     } catch (error) {
       state = AsyncData(state.requireValue.withHabitDone(habitId, !done));
       if (error is ApiException &&

@@ -17,6 +17,10 @@ import 'package:fitsync/features/profile/domain/profile.dart';
 import 'package:fitsync/features/profile/presentation/providers.dart';
 import 'package:fitsync/features/pro/presentation/pro_screen.dart';
 import 'package:fitsync/features/settings/presentation/settings_screen.dart';
+import 'package:fitsync/features/streaks/domain/streaks.dart';
+import 'package:fitsync/features/streaks/presentation/providers.dart'
+    show goalsProvider, streakProvider;
+import 'package:fitsync/features/streaks/presentation/streaks_screen.dart';
 
 const _baseProfile = Profile(
   userId: 7,
@@ -157,6 +161,11 @@ Future<void> _pump(
         ),
         equipmentOptionsProvider.overrideWith((ref) async => _equipment),
         injuryOptionsProvider.overrideWith((ref) async => _injuryOptions),
+        streakProvider.overrideWith(
+          (ref) async =>
+              const Streak(current: 0, best: 0, todayActive: false, week: []),
+        ),
+        goalsProvider.overrideWith((ref) async => const <LiftGoal>[]),
       ],
       child: const MaterialApp(home: SettingsScreen()),
     ),
@@ -444,5 +453,13 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.byType(ProScreen), findsOneWidget);
+  });
+
+  testWidgets('the Streaks & goals row opens the screen', (tester) async {
+    await _pump(tester);
+
+    await _openRow(tester, const Key('edit.streaks'));
+
+    expect(find.byType(StreaksScreen), findsOneWidget);
   });
 }

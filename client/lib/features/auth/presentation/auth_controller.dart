@@ -9,6 +9,7 @@ import '../../routine/presentation/providers.dart';
 import '../../sessions/presentation/providers.dart';
 import '../../sessions/presentation/workout_draft.dart';
 import '../../profile/presentation/providers.dart';
+import '../../streaks/presentation/providers.dart';
 import '../data/auth_repository.dart';
 import '../data/google_sign_in_gateway.dart';
 import '../domain/auth_user.dart';
@@ -124,8 +125,8 @@ class AuthController extends AsyncNotifier<AuthState> {
   ///
   /// `routineTodayProvider`, `homeSummaryProvider`, `trainingSummaryProvider`,
   /// `trainingAnalyticsProvider`, `sessionHistoryProvider`,
-  /// `lastWorkoutProvider`, `pendingOutcomeProvider` and
-  /// `recoveryOverviewProvider` belong on this list for the same reason: none
+  /// `lastWorkoutProvider`, `pendingOutcomeProvider`, `recoveryOverviewProvider`
+  /// and `streakProvider` belong on this list for the same reason: none
   /// of them is autoDispose, and each carries another account's training,
   /// recovery or routine data across the sign-out.
   void _clearUserScopedCaches() {
@@ -144,6 +145,7 @@ class AuthController extends AsyncNotifier<AuthState> {
     ref.invalidate(lastWorkoutProvider);
     ref.invalidate(pendingOutcomeProvider);
     ref.invalidate(recoveryOverviewProvider);
+    ref.invalidate(streakProvider);
   }
 
   Future<void> signOut() async {
