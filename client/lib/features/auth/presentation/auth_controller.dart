@@ -4,6 +4,8 @@ import '../../../core/api_exception.dart';
 import '../../../core/token_store.dart';
 import '../../exercises/presentation/providers.dart';
 import '../../plans/presentation/providers.dart';
+import '../../recovery/presentation/providers.dart';
+import '../../routine/presentation/providers.dart';
 import '../../sessions/presentation/providers.dart';
 import '../../sessions/presentation/workout_draft.dart';
 import '../../profile/presentation/providers.dart';
@@ -119,6 +121,13 @@ class AuthController extends AsyncNotifier<AuthState> {
   /// Lookup data (`equipmentOptionsProvider`, `injuryOptionsProvider`, the
   /// exercise catalogue itself) is the same for everyone and is deliberately
   /// kept.
+  ///
+  /// `routineTodayProvider`, `homeSummaryProvider`, `trainingSummaryProvider`,
+  /// `trainingAnalyticsProvider`, `sessionHistoryProvider`,
+  /// `lastWorkoutProvider`, `pendingOutcomeProvider` and
+  /// `recoveryOverviewProvider` belong on this list for the same reason: none
+  /// of them is autoDispose, and each carries another account's training,
+  /// recovery or routine data across the sign-out.
   void _clearUserScopedCaches() {
     ref.invalidate(profileProvider);
     ref.invalidate(activePlanProvider);
@@ -127,6 +136,14 @@ class AuthController extends AsyncNotifier<AuthState> {
     ref.invalidate(workoutDraftProvider);
     ref.invalidate(selectedFiltersProvider);
     ref.invalidate(chosenSplitStyleProvider);
+    ref.invalidate(routineTodayProvider);
+    ref.invalidate(homeSummaryProvider);
+    ref.invalidate(trainingSummaryProvider);
+    ref.invalidate(trainingAnalyticsProvider);
+    ref.invalidate(sessionHistoryProvider);
+    ref.invalidate(lastWorkoutProvider);
+    ref.invalidate(pendingOutcomeProvider);
+    ref.invalidate(recoveryOverviewProvider);
   }
 
   Future<void> signOut() async {

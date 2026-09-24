@@ -8,6 +8,7 @@ const buildPlansRouter = require('./plans');
 const buildSessionsRouter = require('./sessions');
 const buildReportsRouter = require('./reports');
 const buildRecoveryRouter = require('./recovery');
+const buildRoutineRouter = require('./routine');
 const requireAuth = require('../middleware/require-auth');
 
 module.exports = function buildRoutes(deps = {}) {
@@ -19,6 +20,7 @@ module.exports = function buildRoutes(deps = {}) {
   router.use('/sessions', buildSessionsRouter(deps));
   router.use('/reports', buildReportsRouter(deps));
   router.use('/recovery', buildRecoveryRouter(deps));
+  router.use('/routine', buildRoutineRouter(deps));
   // The catalogue is reference data, but the app requires sign-in to reach any
   // of it, so an open endpoint would just be an inconsistency.
   router.use('/exercises', requireAuth(deps), buildExercisesRouter(deps));

@@ -17,6 +17,9 @@ import 'package:fitsync/features/profile/domain/profile.dart';
 import 'package:fitsync/features/profile/presentation/providers.dart';
 import 'package:fitsync/features/recovery/domain/recovery.dart';
 import 'package:fitsync/features/recovery/presentation/providers.dart';
+import 'package:fitsync/features/routine/domain/routine.dart';
+import 'package:fitsync/features/routine/presentation/providers.dart';
+import 'package:fitsync/features/routine/presentation/routine_screen.dart';
 import 'package:fitsync/features/sessions/data/session_repository.dart';
 import 'package:fitsync/features/sessions/domain/active_session.dart';
 import 'package:fitsync/features/sessions/domain/session_history.dart';
@@ -79,6 +82,29 @@ final _defaultAnalytics = TrainingAnalytics(
   change: const VolumeChange(totalKg: 6600, previousKg: 5900, changePct: 12),
   adherence: const Adherence(done: 4, target: 12, weeks: 4),
   muscles: const [],
+);
+
+const _defaultRoutine = RoutineDay(
+  date: '2026-09-24',
+  habits: [
+    Habit(
+      habitId: 1,
+      title: 'Stretch',
+      time: '06:30',
+      durationMin: 8,
+      weekdays: [1, 2, 3, 4, 5, 6, 7],
+      done: true,
+    ),
+    Habit(
+      habitId: 2,
+      title: 'Read',
+      time: '21:00',
+      durationMin: null,
+      weekdays: [1, 2, 3, 4, 5, 6, 7],
+      done: false,
+    ),
+  ],
+  workout: null,
 );
 
 const _defaultPlan = WorkoutPlan(
@@ -185,6 +211,17 @@ class _StubProfileNotifier extends ProfileNotifier {
   Future<Profile> build() async => profile;
 }
 
+class _StubRoutine extends RoutineController {
+  _StubRoutine(this.day, this.error);
+  final RoutineDay? day;
+  final Object? error;
+  @override
+  Future<RoutineDay> build() async {
+    if (error != null) throw error!;
+    return day!;
+  }
+}
+
 Future<void> _pumpHome(
   WidgetTester tester, {
   VoidCallback? onGoToTrain,
@@ -200,6 +237,8 @@ Future<void> _pumpHome(
   TrainingSummary summary = _defaultSummary,
   Object? progressError,
   Object? analyticsError,
+  RoutineDay? routine = _defaultRoutine,
+  Object? routineError,
 }) async {
   await tester.pumpWidget(
     ProviderScope(
@@ -242,6 +281,9 @@ Future<void> _pumpHome(
           if (analyticsError != null) throw analyticsError;
           return _defaultAnalytics;
         }),
+        routineTodayProvider.overrideWith(
+          () => _StubRoutine(routine, routineError),
+        ),
       ],
       child: MaterialApp(
         home: HomeScreen(
@@ -601,6 +643,9 @@ void main() {
             trainingAnalyticsProvider.overrideWith(
               (ref, period) async => _defaultAnalytics,
             ),
+            routineTodayProvider.overrideWith(
+              () => _StubRoutine(_defaultRoutine, null),
+            ),
           ],
           child: const MaterialApp(home: HomeScreen()),
         ),
@@ -646,5 +691,95 @@ void main() {
       await tester.pumpAndSettle();
       expect(find.text('Morning check-in'), findsOneWidget);
     });
+  });
+
+  group('routine', () {
+    testWidgets('the routine card sits below the progress card', (
+      tester,
+    ) async {
+      await _pumpHome(tester);
+      // scrollUntilVisible, not ensureVisible: this is a ListView, which does
+      // not build what it has not reached, and the routine card sits below
+      // the progress card, out of the test viewport's initial build range.
+      await tester.scrollUntilVisible(
+        find.byKey(const Key('home.routine')),
+        200,
+      );
+      await tester.pumpAndSettle();
+
+      final progressTop = tester
+          .getTopLeft(find.byKey(const Key('home.progress')))
+          .dy;
+      final routineTop = tester
+          .getTopLeft(find.byKey(const Key('home.routine')))
+          .dy;
+
+      expect(progressTop, lessThan(routineTop));
+    });
+
+    testWidgets('a routine that fails to load offers a retry', (tester) async {
+      await _pumpHome(
+        tester,
+        routineError: const ApiException('INTERNAL', 'x'),
+      );
+      await tester.scrollUntilVisible(
+        find.byKey(const Key('home.routine.retry')),
+        200,
+      );
+      await tester.pumpAndSettle();
+
+      expect(find.text("Couldn't load your routine"), findsOneWidget);
+      expect(find.byKey(const Key('home.routine.retry')), findsOneWidget);
+    });
+
+    testWidgets('tapping the card opens the routine screen', (tester) async {
+      await _pumpHome(tester);
+
+      await tester.scrollUntilVisible(
+        find.byKey(const Key('home.routine')),
+        200,
+      );
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const Key('home.routine')));
+      await tester.pumpAndSettle();
+
+      expect(find.byType(RoutineScreen), findsOneWidget);
+      // The screen reads routineTodayProvider itself, so it shows the same
+      // stubbed day Home's own card summarised.
+      expect(find.text('Stretch'), findsOneWidget);
+      expect(find.text('Read'), findsOneWidget);
+    });
+
+    testWidgets(
+      'tapping the workout row from the routine screen returns to Home and '
+      'opens Train',
+      (tester) async {
+        var wentToTrain = false;
+        const dayWithWorkout = RoutineDay(
+          date: '2026-09-24',
+          habits: [],
+          workout: RoutineWorkout(title: 'Upper Body', done: false),
+        );
+        await _pumpHome(
+          tester,
+          onGoToTrain: () => wentToTrain = true,
+          routine: dayWithWorkout,
+        );
+
+        await tester.scrollUntilVisible(
+          find.byKey(const Key('home.routine')),
+          200,
+        );
+        await tester.pumpAndSettle();
+        await tester.tap(find.byKey(const Key('home.routine')));
+        await tester.pumpAndSettle();
+
+        await tester.tap(find.byKey(const Key('routine.workout')));
+        await tester.pumpAndSettle();
+
+        expect(wentToTrain, isTrue);
+        expect(find.byType(RoutineScreen), findsNothing);
+      },
+    );
   });
 }
