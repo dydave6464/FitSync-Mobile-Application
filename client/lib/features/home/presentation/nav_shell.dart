@@ -9,6 +9,7 @@ import '../../sessions/presentation/providers.dart'
 import '../../settings/presentation/settings_screen.dart';
 import '../../training/presentation/training_shell.dart'
     show TrainTabRequest, TrainingShell;
+import 'day_rollover.dart';
 import 'home_screen.dart';
 
 /// The signed-in shell: four tabs over an IndexedStack.
@@ -100,44 +101,46 @@ class _NavShellState extends State<NavShell> {
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      body: IndexedStack(
-        index: _index,
-        children: [
-          _tab(
-            0,
-            () => HomeScreen(
-              onGoToTrain: () => _openTrainAt('plan'),
-              onGoToProfile: () => _select(3),
-              onGoToRecovery: () => _openTrainAt('recovery'),
-              onGoToProgress: () {
-                // The card says "Last 30 days"; Progress must open on the
-                // same window, or the numbers the user tapped on vanish.
-                ProviderScope.containerOf(
-                  context,
-                  listen: false,
-                ).read(trainingPeriodProvider.notifier).set('month');
-                _openTrainAt('progress');
-              },
+    return DayRollover(
+      child: Scaffold(
+        body: IndexedStack(
+          index: _index,
+          children: [
+            _tab(
+              0,
+              () => HomeScreen(
+                onGoToTrain: () => _openTrainAt('plan'),
+                onGoToProfile: () => _select(3),
+                onGoToRecovery: () => _openTrainAt('recovery'),
+                onGoToProgress: () {
+                  // The card says "Past month"; Progress must open on the
+                  // month, or the numbers the user tapped on vanish.
+                  ProviderScope.containerOf(
+                    context,
+                    listen: false,
+                  ).read(trainingPeriodProvider.notifier).set('month');
+                  _openTrainAt('progress');
+                },
+              ),
             ),
-          ),
-          _tab(
-            _trainIndex,
-            () => TrainingShell(
-              openCount: _trainOpens,
-              onGoToProfile: () => _select(3),
-              tabRequest: _trainTab,
+            _tab(
+              _trainIndex,
+              () => TrainingShell(
+                openCount: _trainOpens,
+                onGoToProfile: () => _select(3),
+                tabRequest: _trainTab,
+              ),
             ),
-          ),
-          _tab(2, () => const ExerciseListScreen()),
-          _tab(3, () => const SettingsScreen()),
-        ],
-      ),
-      bottomNavigationBar: FsNav(
-        currentIndex: _index,
-        onSelect: _select,
-        items: _items,
-        onFabTap: () => showStartWorkoutSheet(context),
+            _tab(2, () => const ExerciseListScreen()),
+            _tab(3, () => const SettingsScreen()),
+          ],
+        ),
+        bottomNavigationBar: FsNav(
+          currentIndex: _index,
+          onSelect: _select,
+          items: _items,
+          onFabTap: () => showStartWorkoutSheet(context),
+        ),
       ),
     );
   }

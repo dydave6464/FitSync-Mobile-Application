@@ -8,20 +8,7 @@ const {
 const { buildReportSnapshot } = require('../db/report-snapshot');
 const { SUMMARY_WINDOWS, periodDays } = require('../db/sessions');
 const { renderPage, escapeHtml } = require('./auth-pages');
-
-/// YYYY-MM-DD, `days` before today, in the server's LOCAL time.
-///
-/// Local getters throughout, and deliberately NOT toISOString(): that reads
-/// the date back out in UTC, which east of Greenwich returns yesterday for
-/// the first hours of every local day. These bounds caption a report whose
-/// data was windowed by MySQL CURDATE() -- the server's local date -- so the
-/// two must share a basis or the caption contradicts the numbers.
-function localDay(daysBack = 0) {
-  const d = new Date();
-  d.setDate(d.getDate() - daysBack);
-  const pad = (n) => String(n).padStart(2, '0');
-  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
-}
+const { manilaDay } = require('../lib/manila-day');
 
 /// One section of the report, or nothing when it was never captured.
 function section(title, rows) {
@@ -142,8 +129,8 @@ module.exports = function buildReportsRouter(deps = {}) {
 
       const { token, expiresAt } = await createSharedReport(deps.pool, req.user.userId, {
         period,
-        windowStart: localDay(days),
-        windowEnd: localDay(),
+        windowStart: manilaDay(days),
+        windowEnd: manilaDay(),
         report,
       });
 

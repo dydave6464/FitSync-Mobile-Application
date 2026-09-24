@@ -28,9 +28,8 @@ const _existing = Habit(
 );
 
 /// Records `add` / `edit` / `remove` calls, the model for a habit-sheet test's
-/// fake per Task 5's `_FakeRepo`. `today()` is never actually awaited by the
-/// sheet -- only the controller's write methods are -- but it is implemented
-/// to satisfy the interface.
+/// fake per Task 5's `_FakeRepo`. `today()` answers the harness's first load
+/// and each write's reload, from [days].
 class _FakeRepo implements RoutineRepository {
   bool failNext = false;
   final added = <HabitDraft>[];
@@ -44,9 +43,17 @@ class _FakeRepo implements RoutineRepository {
     }
   }
 
+  /// The day each successive `today()` answers with; the last repeats. More
+  /// than one simulates midnight passing while the sheet is open.
+  List<String> days = const ['2026-09-21'];
+  int _todayCalls = 0;
+
   @override
-  Future<RoutineDay> today() async =>
-      const RoutineDay(date: '2026-09-21', habits: [], workout: null);
+  Future<RoutineDay> today() async => RoutineDay(
+    date: days[(_todayCalls++).clamp(0, days.length - 1)],
+    habits: const [],
+    workout: null,
+  );
 
   @override
   Future<void> check(int habitId, {String? date}) => _maybeFail();
@@ -89,24 +96,32 @@ Future<_FakeRepo> _open(
   WidgetTester tester, {
   Habit? existing,
   bool failNext = false,
+  List<String>? days,
 }) async {
   final repo = _FakeRepo()..failNext = failNext;
+  if (days != null) repo.days = days;
   await tester.pumpWidget(
     ProviderScope(
       overrides: [routineRepositoryProvider.overrideWithValue(repo)],
       child: MaterialApp(
         theme: fsLightTheme(),
-        home: Builder(
-          builder: (context) => Scaffold(
-            body: TextButton(
-              onPressed: () => showHabitSheet(context, existing: existing),
-              child: const Text('open'),
-            ),
-          ),
+        // Watches the day, as the routine screen and Home's card do: the
+        // sheet is only ever opened over a routine that has loaded.
+        home: Consumer(
+          builder: (context, ref, _) {
+            ref.watch(routineTodayProvider);
+            return Scaffold(
+              body: TextButton(
+                onPressed: () => showHabitSheet(context, existing: existing),
+                child: const Text('open'),
+              ),
+            );
+          },
         ),
       ),
     ),
   );
+  await tester.pumpAndSettle();
   await tester.tap(find.text('open'));
   await tester.pumpAndSettle();
   return repo;
@@ -204,6 +219,26 @@ void main() {
       await tester.pumpAndSettle();
 
       expect(find.text('Saved — repeats Tue, Thu'), findsOneWidget);
+    },
+  );
+
+  testWidgets(
+    'a save that lands after midnight still compares against the day it opened on',
+    (tester) async {
+      // Opened on Monday 2026-09-21; the save's own reload comes back on
+      // Tuesday. A Tuesday-only habit does not repeat on the day the person
+      // was looking at, so they are told when it does.
+      await _open(tester, days: ['2026-09-21', '2026-09-22']);
+
+      await tester.enterText(find.byKey(const Key('habit.title')), 'Stretch');
+      for (final weekday in [1, 3, 4, 5, 6, 7]) {
+        await tester.tap(find.byKey(Key('weekday.$weekday')));
+        await tester.pump();
+      }
+      await tester.tap(find.byKey(const Key('habit.save')));
+      await tester.pumpAndSettle();
+
+      expect(find.text('Saved — repeats Tue'), findsOneWidget);
     },
   );
 
