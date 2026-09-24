@@ -56,13 +56,20 @@ class _HabitSheetState extends ConsumerState<_HabitSheet> {
   String? _error;
 
   /// The weekday of the day the routine screen was showing when this sheet
-  /// opened, 1-7. Read once, here, rather than each time it is needed: the
-  /// provider may have already moved on to a different day by the time a
-  /// slow save resolves, and what matters is what day the person who tapped
-  /// Save was looking at.
-  late final int? _openedOnWeekday = DateTime.tryParse(
-    ref.read(routineTodayProvider).value?.date ?? '',
-  )?.weekday;
+  /// opened, 1-7. Read once, in initState, rather than each time it is
+  /// needed: the provider may have already moved on to a different day by the
+  /// time a slow save resolves, and what matters is what day the person who
+  /// tapped Save was looking at. Not a lazy initialiser -- that would first
+  /// run after the save's own reload, and so read the new day.
+  late final int? _openedOnWeekday;
+
+  @override
+  void initState() {
+    super.initState();
+    _openedOnWeekday = DateTime.tryParse(
+      ref.read(routineTodayProvider).value?.date ?? '',
+    )?.weekday;
+  }
 
   @override
   void dispose() {
