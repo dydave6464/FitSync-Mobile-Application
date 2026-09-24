@@ -12,6 +12,7 @@ import '../../sessions/presentation/providers.dart'
         pendingOutcomeProvider,
         trainingAnalyticsProvider,
         trainingSummaryProvider;
+import '../../streaks/presentation/providers.dart' show streakProvider;
 
 /// Refetches everything dated "today" when the app comes back to the
 /// foreground on a new Manila day.
@@ -61,6 +62,7 @@ class _DayRolloverState extends ConsumerState<DayRollover> {
       ..invalidate(trainingSummaryProvider)
       ..invalidate(trainingAnalyticsProvider) // every period
       ..invalidate(completedDaysProvider)
+      ..invalidate(streakProvider)
       // Yesterday's session becomes askable about at midnight.
       ..invalidate(pendingOutcomeProvider);
   }

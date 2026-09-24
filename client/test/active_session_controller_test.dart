@@ -14,6 +14,7 @@ import 'package:fitsync/features/exercises/presentation/providers.dart'
 import 'package:fitsync/features/routine/presentation/providers.dart'
     show routineTodayProvider;
 import 'package:fitsync/features/sessions/presentation/providers.dart';
+import 'package:fitsync/features/streaks/presentation/providers.dart';
 
 const _session = {
   'sessionId': 7,
@@ -484,6 +485,19 @@ void main() {
             200,
           );
         }
+        if (path == '/api/v1/streak') {
+          return http.Response(
+            jsonEncode({
+              'data': {
+                'current': first ? 0 : 1,
+                'best': first ? 0 : 1,
+                'todayActive': !first,
+                'week': [],
+              },
+            }),
+            200,
+          );
+        }
         if (path == '/api/v1/routine/today') {
           return http.Response(
             jsonEncode({
@@ -631,6 +645,16 @@ void main() {
         (await container.read(routineTodayProvider.future)).workout!.done,
         isTrue,
       );
+    });
+
+    // A finished workout is a streak day.
+    test('the streak', () async {
+      final container = await completed();
+      expect((await container.read(streakProvider.future)).current, 0);
+
+      await container.read(activeSessionProvider.notifier).complete(40);
+
+      expect((await container.read(streakProvider.future)).current, 1);
     });
   });
 

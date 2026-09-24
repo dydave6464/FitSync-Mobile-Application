@@ -7,6 +7,8 @@ import 'package:fitsync/core/api_exception.dart';
 import 'package:fitsync/features/routine/data/routine_repository.dart';
 import 'package:fitsync/features/routine/domain/routine.dart';
 import 'package:fitsync/features/routine/presentation/providers.dart';
+import 'package:fitsync/features/streaks/domain/streaks.dart';
+import 'package:fitsync/features/streaks/presentation/providers.dart';
 
 const _habit = Habit(
   habitId: 1,
@@ -368,4 +370,44 @@ void main() {
     await c.read(allHabitsProvider.future);
     expect(repo.allCalls, 4, reason: 'after remove');
   });
+
+  test(
+    'a tick that lands refreshes the streak; one that fails does not',
+    () async {
+      var streakBuilds = 0;
+      final repo = _FakeRepo();
+      final c = ProviderContainer(
+        overrides: [
+          routineRepositoryProvider.overrideWithValue(repo),
+          streakProvider.overrideWith((ref) async {
+            streakBuilds++;
+            return const Streak(
+              current: 0,
+              best: 0,
+              todayActive: false,
+              week: [],
+            );
+          }),
+        ],
+      );
+      addTearDown(c.dispose);
+      final sub = c.listen(streakProvider, (_, _) {});
+      addTearDown(sub.close);
+      await c.read(streakProvider.future);
+      await c.read(routineTodayProvider.future);
+      expect(streakBuilds, 1);
+
+      await c.read(routineTodayProvider.notifier).setDone(_habit.habitId, true);
+      await c.read(streakProvider.future);
+      expect(streakBuilds, 2, reason: 'a landed tick');
+
+      repo.failNext = true;
+      await expectLater(
+        c.read(routineTodayProvider.notifier).setDone(_habit.habitId, false),
+        throwsA(isA<ApiException>()),
+      );
+      await c.read(streakProvider.future);
+      expect(streakBuilds, 2, reason: 'a failed tick changed nothing');
+    },
+  );
 }
