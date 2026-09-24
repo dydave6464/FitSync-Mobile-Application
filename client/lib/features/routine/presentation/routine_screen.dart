@@ -8,12 +8,13 @@ import '../../../core/widgets/fs_kit.dart' hide FsRing;
 import '../../exercises/presentation/exercise_list_screen.dart'
     show describeError;
 import '../domain/routine.dart';
+import 'all_habits_screen.dart';
 import 'providers.dart';
 import 'widgets/habit_sheet.dart';
 
 /// Today's checklist: repeating habits, and the workout item that ticks
-/// itself when a session is finished. Today only -- other days belong to the
-/// Schedule screen, which does not exist yet.
+/// itself when a session is finished. Today only -- a habit on other days is
+/// found, edited or deleted on the All habits screen, from the app bar.
 class RoutineScreen extends ConsumerWidget {
   const RoutineScreen({super.key, this.onOpenPlan});
 
@@ -29,6 +30,14 @@ class RoutineScreen extends ConsumerWidget {
       appBar: AppBar(
         title: const Text('Daily Routine'),
         actions: [
+          IconButton(
+            key: const Key('routine.all'),
+            tooltip: 'All habits',
+            icon: const Icon(Icons.view_list_outlined),
+            onPressed: () => Navigator.of(context).push(
+              MaterialPageRoute<void>(builder: (_) => const AllHabitsScreen()),
+            ),
+          ),
           IconButton(
             key: const Key('routine.add'),
             tooltip: 'Add a habit',
