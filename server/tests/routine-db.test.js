@@ -209,6 +209,32 @@ test('routine db', async (t) => {
     [userId, date],
   );
 
+  await t.test('all habits lists every active one, whatever its days, in day order', async () => {
+    const u = await newUser();
+    const other = await newUser();
+    await habit(u, { title: 'Walk', weekdays: [2] });
+    await habit(u, { title: 'Stretch', time: '21:00', weekdays: [5, 1, 3] });
+    await habit(u, { title: 'Mobility', time: '06:30', durationMin: 8, weekdays: [1] });
+    await habit(u, { title: 'Breathe', weekdays: [6, 7] });
+    await habit(u, { title: 'Old', weekdays: [1], active: false }); // deleted
+    await habit(other, { title: 'Theirs' });
+
+    const list = await routine.listHabits(pool, u);
+
+    // Timed by time, then untimed by title -- readDay's order.
+    assert.deepEqual(list.map((h) => h.title), ['Mobility', 'Stretch', 'Breathe', 'Walk']);
+    // Exact keys: no `done`, since a tick belongs to a day.
+    assert.deepEqual(list[0], {
+      habitId: list[0].habitId, title: 'Mobility', time: '06:30', durationMin: 8, weekdays: [1],
+    });
+    assert.deepEqual(list[1].weekdays, [1, 3, 5], 'ascending, whatever the insert order');
+    assert.deepEqual(list[3].weekdays, [2]);
+  });
+
+  await t.test('all habits is empty for a user with none', async () => {
+    assert.deepEqual(await routine.listHabits(pool, await newUser()), []);
+  });
+
   await t.test('no active plan and no session today: no workout item', async () => {
     const u = await newUser();
     assert.equal((await routine.readDay(pool, u, MONDAY)).workout, null);
