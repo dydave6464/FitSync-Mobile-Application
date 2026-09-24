@@ -18,13 +18,22 @@ Habit _habit(int id, String title, {bool done = false, String? time}) => Habit(
 RoutineDay _day(List<Habit> habits, {RoutineWorkout? workout}) =>
     RoutineDay(date: '2026-09-24', habits: habits, workout: workout);
 
-Future<List<String>> _pump(WidgetTester tester, RoutineDay day) async {
+Future<List<String>> _pump(
+  WidgetTester tester,
+  RoutineDay day, {
+  int streak = 0,
+}) async {
   final taps = <String>[];
   await tester.pumpWidget(
     MaterialApp(
       theme: fsLightTheme(),
       home: Scaffold(
-        body: RoutineCard(day: day, onTap: () => taps.add('tap')),
+        body: RoutineCard(
+          day: day,
+          onTap: () => taps.add('tap'),
+          streak: streak,
+          onOpenStreak: () => taps.add('streak'),
+        ),
       ),
     ),
   );
@@ -103,5 +112,31 @@ void main() {
     // must still land on the card-wide target rather than doing nothing.
     await tester.tap(find.byIcon(Icons.check));
     expect(taps, ['tap']);
+  });
+
+  testWidgets('a streak of one day or more shows as a tag', (tester) async {
+    await _pump(tester, _day([_habit(1, 'Walk')]), streak: 1);
+    expect(find.text('1-day streak'), findsOneWidget);
+
+    await _pump(tester, _day([_habit(1, 'Walk')]), streak: 12);
+    expect(find.text('12-day streak'), findsOneWidget);
+  });
+
+  testWidgets('no streak, no tag', (tester) async {
+    await _pump(tester, _day([_habit(1, 'Walk')]));
+
+    expect(find.byKey(const Key('home.routine.streak')), findsNothing);
+    expect(find.textContaining('streak'), findsNothing);
+  });
+
+  testWidgets('tapping the tag opens the streak, not the routine', (
+    tester,
+  ) async {
+    final taps = await _pump(tester, _day([_habit(1, 'Walk')]), streak: 3);
+
+    await tester.tap(find.byKey(const Key('home.routine.streak')));
+    await tester.pump();
+
+    expect(taps, ['streak']);
   });
 }

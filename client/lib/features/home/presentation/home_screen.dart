@@ -22,6 +22,8 @@ import '../../sessions/presentation/providers.dart'
 import '../../sessions/presentation/session_logger_screen.dart';
 import '../../profile/presentation/providers.dart';
 import '../../plans/domain/workout_plan.dart';
+import '../../streaks/presentation/providers.dart' show streakProvider;
+import '../../streaks/presentation/streaks_screen.dart';
 import 'widgets/active_workout_card.dart';
 import 'widgets/greeting.dart';
 import 'widgets/plan_card.dart';
@@ -329,6 +331,8 @@ class _Routine extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
+    // Hidden while loading and on error, as the card hides it at 0.
+    final streak = ref.watch(streakProvider).value?.current ?? 0;
     return ref
         .watch(routineTodayProvider)
         .when(
@@ -342,6 +346,10 @@ class _Routine extends ConsumerWidget {
           ),
           data: (day) => RoutineCard(
             day: day,
+            streak: streak,
+            onOpenStreak: () => Navigator.of(context).push(
+              MaterialPageRoute<void>(builder: (_) => const StreaksScreen()),
+            ),
             onTap: () => Navigator.of(context).push(
               MaterialPageRoute<void>(
                 builder: (_) => RoutineScreen(

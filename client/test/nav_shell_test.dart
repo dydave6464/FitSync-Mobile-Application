@@ -32,6 +32,9 @@ import 'package:fitsync/features/sessions/presentation/progress_screen.dart';
 import 'package:fitsync/features/sessions/presentation/providers.dart'
     show homeSummaryProvider, trainingAnalyticsProvider, trainingPeriodProvider;
 import 'package:fitsync/features/settings/presentation/settings_screen.dart';
+import 'package:fitsync/features/streaks/domain/streaks.dart';
+import 'package:fitsync/features/streaks/presentation/providers.dart'
+    show streakProvider;
 import 'package:fitsync/features/training/presentation/training_shell.dart';
 
 /// Enough rows that the catalogue's list is taller than the test viewport,
@@ -197,6 +200,10 @@ Future<void> _pumpShell(
       recoveryOverviewProvider.overrideWith((ref) async => _recovery),
       homeSummaryProvider.overrideWith((ref) async => _summary),
       trainingAnalyticsProvider.overrideWith((ref, period) async => _analytics),
+      streakProvider.overrideWith(
+        (ref) async =>
+            const Streak(current: 0, best: 0, todayActive: false, week: []),
+      ),
       // Browse tab (ExerciseListScreen).
       exerciseRepositoryProvider.overrideWithValue(FakeExerciseRepository()),
       // Profile tab (SettingsScreen).

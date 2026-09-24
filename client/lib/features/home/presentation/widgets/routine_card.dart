@@ -8,10 +8,23 @@ import '../../../routine/domain/routine.dart';
 /// screen, the one place items are ticked -- the user chose that over
 /// ticking from Home.
 class RoutineCard extends StatelessWidget {
-  const RoutineCard({super.key, required this.day, required this.onTap});
+  const RoutineCard({
+    super.key,
+    required this.day,
+    required this.onTap,
+    this.streak = 0,
+    this.onOpenStreak,
+  });
 
   final RoutineDay day;
   final VoidCallback onTap;
+
+  /// Days in a row with any activity. The tag is hidden at 0: the card never
+  /// shows a streak the app does not have.
+  final int streak;
+
+  /// The tag's own destination; the rest of the card still opens the routine.
+  final VoidCallback? onOpenStreak;
 
   static const _shown = 3;
 
@@ -38,6 +51,15 @@ class RoutineCard extends StatelessWidget {
                   ),
                 ),
               ),
+              if (streak >= 1) ...[
+                GestureDetector(
+                  key: const Key('home.routine.streak'),
+                  behavior: HitTestBehavior.opaque,
+                  onTap: onOpenStreak,
+                  child: FsTag('$streak-day streak'),
+                ),
+                if (entries.isNotEmpty) const SizedBox(width: 6),
+              ],
               if (entries.isNotEmpty) FsTag('${day.done} / ${day.total}'),
             ],
           ),

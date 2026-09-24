@@ -26,6 +26,10 @@ import 'package:fitsync/features/sessions/domain/session_history.dart';
 import 'package:fitsync/features/sessions/domain/training_analytics.dart';
 import 'package:fitsync/features/sessions/presentation/providers.dart';
 import 'package:fitsync/features/sessions/presentation/session_logger_screen.dart';
+import 'package:fitsync/features/streaks/domain/streaks.dart';
+import 'package:fitsync/features/streaks/presentation/providers.dart'
+    show goalsProvider, streakProvider;
+import 'package:fitsync/features/streaks/presentation/streaks_screen.dart';
 
 const _someEquipment = [EquipmentOption(equipmentId: 1, name: 'Dumbbells')];
 
@@ -239,6 +243,13 @@ Future<void> _pumpHome(
   Object? analyticsError,
   RoutineDay? routine = _defaultRoutine,
   Object? routineError,
+  Streak streak = const Streak(
+    current: 0,
+    best: 0,
+    todayActive: false,
+    week: [],
+  ),
+  Object? streakError,
 }) async {
   await tester.pumpWidget(
     ProviderScope(
@@ -284,6 +295,11 @@ Future<void> _pumpHome(
         routineTodayProvider.overrideWith(
           () => _StubRoutine(routine, routineError),
         ),
+        streakProvider.overrideWith((ref) async {
+          if (streakError != null) throw streakError;
+          return streak;
+        }),
+        goalsProvider.overrideWith((ref) async => const <LiftGoal>[]),
       ],
       child: MaterialApp(
         home: HomeScreen(
@@ -748,6 +764,47 @@ void main() {
       // stubbed day Home's own card summarised.
       expect(find.text('Stretch'), findsOneWidget);
       expect(find.text('Read'), findsOneWidget);
+    });
+
+    testWidgets('the routine card carries the streak and opens it', (
+      tester,
+    ) async {
+      await _pumpHome(
+        tester,
+        streak: const Streak(
+          current: 12,
+          best: 18,
+          todayActive: true,
+          week: [],
+        ),
+      );
+
+      await tester.scrollUntilVisible(
+        find.byKey(const Key('home.routine.streak')),
+        200,
+      );
+      await tester.pumpAndSettle();
+      expect(find.text('12-day streak'), findsOneWidget);
+
+      await tester.tap(find.byKey(const Key('home.routine.streak')));
+      await tester.pumpAndSettle();
+
+      expect(find.byType(StreaksScreen), findsOneWidget);
+    });
+
+    testWidgets('a streak that fails to load leaves no tag', (tester) async {
+      await _pumpHome(
+        tester,
+        streakError: const ApiException('SERVER_ERROR', 'nope'),
+      );
+
+      await tester.scrollUntilVisible(
+        find.byKey(const Key('home.routine')),
+        200,
+      );
+      await tester.pumpAndSettle();
+
+      expect(find.byKey(const Key('home.routine.streak')), findsNothing);
     });
 
     testWidgets(
