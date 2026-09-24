@@ -72,6 +72,8 @@ class _FakeRoutineRepo implements RoutineRepository {
   }
 
   @override
+  Future<List<Habit>> all() async => const [];
+  @override
   Future<Habit> add(HabitDraft draft) async => throw UnimplementedError();
   @override
   Future<Habit> edit(int habitId, HabitDraft draft) async =>

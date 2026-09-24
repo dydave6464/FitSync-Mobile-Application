@@ -27,6 +27,7 @@ class _FakeRepo implements RoutineRepository {
   bool failNextToday = false;
   String failCode = 'NETWORK_ERROR';
   int todayCalls = 0;
+  int allCalls = 0;
   final added = <HabitDraft>[];
   final checkDates = <String?>[];
 
@@ -57,6 +58,12 @@ class _FakeRepo implements RoutineRepository {
   Future<void> uncheck(int habitId, {String? date}) {
     checkDates.add(date);
     return _maybeFail();
+  }
+
+  @override
+  Future<List<Habit>> all() async {
+    allCalls++;
+    return const [_habit];
   }
 
   @override
@@ -109,6 +116,8 @@ class _ControlledRepo implements RoutineRepository {
   Future<void> check(int habitId, {String? date}) => _settle(habitId);
   @override
   Future<void> uncheck(int habitId, {String? date}) => _settle(habitId);
+  @override
+  Future<List<Habit>> all() async => throw UnimplementedError();
   @override
   Future<Habit> add(HabitDraft draft) async => throw UnimplementedError();
   @override
@@ -328,4 +337,35 @@ void main() {
       await first;
     },
   );
+
+  test('adding, editing and deleting each refetch the full list', () async {
+    final repo = _FakeRepo();
+    final c = _container(repo);
+    await c.read(routineTodayProvider.future);
+    // Held open, as the All habits screen holds it; autoDispose otherwise.
+    final sub = c.listen(allHabitsProvider, (_, _) {});
+    addTearDown(sub.close);
+    await c.read(allHabitsProvider.future);
+    expect(repo.allCalls, 1);
+
+    final notifier = c.read(routineTodayProvider.notifier);
+    const draft = HabitDraft(
+      title: 'Walk',
+      time: null,
+      durationMin: null,
+      weekdays: [1],
+    );
+
+    await notifier.add(draft);
+    await c.read(allHabitsProvider.future);
+    expect(repo.allCalls, 2, reason: 'after add');
+
+    await notifier.edit(1, draft);
+    await c.read(allHabitsProvider.future);
+    expect(repo.allCalls, 3, reason: 'after edit');
+
+    await notifier.remove(1);
+    await c.read(allHabitsProvider.future);
+    expect(repo.allCalls, 4, reason: 'after remove');
+  });
 }

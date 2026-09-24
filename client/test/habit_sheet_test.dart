@@ -90,6 +90,9 @@ class _FakeRepo implements RoutineRepository {
     await _maybeFail();
     removed.add(habitId);
   }
+
+  @override
+  Future<List<Habit>> all() async => const [];
 }
 
 Future<_FakeRepo> _open(

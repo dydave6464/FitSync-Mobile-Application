@@ -91,6 +91,8 @@ class _SequenceRoutineRepository implements RoutineRepository {
   }
 
   @override
+  Future<List<Habit>> all() => throw UnimplementedError();
+  @override
   Future<Habit> add(HabitDraft draft) => throw UnimplementedError();
   @override
   Future<Habit> edit(int habitId, HabitDraft draft) =>

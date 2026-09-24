@@ -165,4 +165,43 @@ void main() {
       'http://test.local/api/v1/routine/habits/1/check',
     ]);
   });
+
+  test('all() lists every habit from /routine/habits, none ticked', () async {
+    final repo = _repo(
+      MockClient((request) async {
+        expect(request.method, 'GET');
+        expect(request.url.path, '/api/v1/routine/habits');
+        return http.Response(
+          jsonEncode({
+            'data': {
+              'habits': [
+                {
+                  'habitId': 4,
+                  'title': 'Stretch',
+                  'time': '21:00',
+                  'durationMin': 10,
+                  'weekdays': [1, 3, 5],
+                },
+                {
+                  'habitId': 5,
+                  'title': 'Walk',
+                  'time': null,
+                  'durationMin': null,
+                  'weekdays': [2],
+                },
+              ],
+            },
+          }),
+          200,
+        );
+      }),
+    );
+
+    final habits = await repo.all();
+
+    expect(habits.map((h) => h.habitId), [4, 5]);
+    expect(habits.first.weekdays, [1, 3, 5]);
+    expect(habits.first.subtitle, '9:00 PM · 10 min');
+    expect(habits.every((h) => !h.done), isTrue);
+  });
 }
