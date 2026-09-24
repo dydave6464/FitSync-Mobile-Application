@@ -9,6 +9,15 @@ class RoutineRepository {
   Future<RoutineDay> today() async =>
       RoutineDay.fromJson(await _api.getJson('/api/v1/routine/today'));
 
+  /// Every active habit, whatever day it repeats on, in the server's order:
+  /// timed by time, then untimed by title. None is ticked.
+  Future<List<Habit>> all() async {
+    final data = await _api.getJson('/api/v1/routine/habits');
+    return (data['habits'] as List<dynamic>)
+        .map((h) => Habit.fromJson(h as Map<String, dynamic>))
+        .toList(growable: false);
+  }
+
   Future<Habit> add(HabitDraft draft) async => Habit.fromJson(
     (await _api.postJson('/api/v1/routine/habits', draft.toJson()))['habit']
         as Map<String, dynamic>,

@@ -112,6 +112,25 @@ async function readHabit(pool, userId, habitId, date = null) {
   return toHabit(rows[0], days.get(habitId));
 }
 
+/// Every active habit of [userId], whatever weekday it repeats on, in
+/// readDay's order. No `done`: a tick belongs to a day, and this list is not
+/// about one.
+async function listHabits(pool, userId) {
+  const [rows] = await pool.query(
+    `SELECT habit_id, title, scheduled_time, duration_min
+       FROM routine_habits
+      WHERE user_id = ? AND is_active = TRUE
+      ORDER BY scheduled_time IS NULL, scheduled_time, title, habit_id`,
+    [userId],
+  );
+  const days = await weekdaysFor(pool, rows.map((r) => r.habit_id));
+  return rows.map((r) => {
+    const habit = toHabit(r, days.get(r.habit_id));
+    delete habit.done;
+    return habit;
+  });
+}
+
 async function writeWeekdays(conn, habitId, weekdays) {
   await conn.query('DELETE FROM routine_habit_days WHERE habit_id = ?', [habitId]);
   await conn.query(
@@ -225,5 +244,5 @@ async function setCheck(pool, userId, habitId, done, date = null, requestedDate 
 }
 
 module.exports = {
-  readDay, readHabit, createHabit, updateHabit, deactivateHabit, setCheck,
+  readDay, readHabit, listHabits, createHabit, updateHabit, deactivateHabit, setCheck,
 };

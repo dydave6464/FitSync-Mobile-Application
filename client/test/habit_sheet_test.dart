@@ -90,6 +90,9 @@ class _FakeRepo implements RoutineRepository {
     await _maybeFail();
     removed.add(habitId);
   }
+
+  @override
+  Future<List<Habit>> all() async => const [];
 }
 
 Future<_FakeRepo> _open(
@@ -97,6 +100,7 @@ Future<_FakeRepo> _open(
   Habit? existing,
   bool failNext = false,
   List<String>? days,
+  bool announceRepeats = true,
 }) async {
   final repo = _FakeRepo()..failNext = failNext;
   if (days != null) repo.days = days;
@@ -112,7 +116,11 @@ Future<_FakeRepo> _open(
             ref.watch(routineTodayProvider);
             return Scaffold(
               body: TextButton(
-                onPressed: () => showHabitSheet(context, existing: existing),
+                onPressed: () => showHabitSheet(
+                  context,
+                  existing: existing,
+                  announceRepeats: announceRepeats,
+                ),
                 child: const Text('open'),
               ),
             );
@@ -254,6 +262,28 @@ void main() {
       expect(find.textContaining('repeats'), findsNothing);
     },
   );
+
+  testWidgets('a sheet told not to announce repeats saves without saying so', (
+    tester,
+  ) async {
+    await _open(tester, announceRepeats: false);
+
+    await tester.enterText(find.byKey(const Key('habit.title')), 'Stretch');
+    // Monday's fixture day, Tuesday and Thursday only: this WOULD announce.
+    for (final weekday in [1, 3, 5, 6, 7]) {
+      await tester.tap(find.byKey(Key('weekday.$weekday')));
+      await tester.pump();
+    }
+    await tester.tap(find.byKey(const Key('habit.save')));
+    await tester.pumpAndSettle();
+
+    expect(
+      find.byKey(const Key('habit.save')),
+      findsNothing,
+      reason: 'saved, closed',
+    );
+    expect(find.textContaining('repeats'), findsNothing);
+  });
 
   testWidgets('editing opens prefilled from the existing habit', (
     tester,

@@ -5,6 +5,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:fitsync/core/api_exception.dart';
 import 'package:fitsync/features/routine/data/routine_repository.dart';
 import 'package:fitsync/features/routine/domain/routine.dart';
+import 'package:fitsync/features/routine/presentation/all_habits_screen.dart';
 import 'package:fitsync/features/routine/presentation/providers.dart';
 import 'package:fitsync/features/routine/presentation/routine_screen.dart';
 
@@ -71,6 +72,8 @@ class _FakeRoutineRepo implements RoutineRepository {
     await _maybeFail();
   }
 
+  @override
+  Future<List<Habit>> all() async => const [];
   @override
   Future<Habit> add(HabitDraft draft) async => throw UnimplementedError();
   @override
@@ -282,5 +285,16 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.byKey(const Key('routine.retry')), findsOneWidget);
+  });
+
+  testWidgets('the list icon opens every habit', (tester) async {
+    final repo = _FakeRoutineRepo(_fixtureDay);
+    await tester.pumpWidget(_harness(repo));
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.byKey(const Key('routine.all')));
+    await tester.pumpAndSettle();
+
+    expect(find.byType(AllHabitsScreen), findsOneWidget);
   });
 }

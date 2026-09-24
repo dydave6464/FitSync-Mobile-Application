@@ -18,6 +18,14 @@ final routineTodayProvider =
       retry: apiRetryPolicy,
     );
 
+/// Every active habit, for the All habits screen. AutoDispose: it lives only
+/// while that screen is open, so it needs no place on sign-out's list of
+/// per-user caches (`_clearUserScopedCaches`).
+final allHabitsProvider = FutureProvider.autoDispose<List<Habit>>(
+  (ref) => ref.watch(routineRepositoryProvider).all(),
+  retry: apiRetryPolicy,
+);
+
 class RoutineController extends AsyncNotifier<RoutineDay> {
   RoutineRepository get _repo => ref.read(routineRepositoryProvider);
 
@@ -73,18 +81,27 @@ class RoutineController extends AsyncNotifier<RoutineDay> {
   /// second round trip, and say so if it does not.
   Future<Habit> add(HabitDraft draft) async {
     final habit = await _repo.add(draft);
-    await _reload();
+    await _afterWrite();
     return habit;
   }
 
   Future<Habit> edit(int habitId, HabitDraft draft) async {
     final habit = await _repo.edit(habitId, draft);
-    await _reload();
+    await _afterWrite();
     return habit;
   }
 
   Future<void> remove(int habitId) async {
     await _repo.remove(habitId);
+    await _afterWrite();
+  }
+
+  /// Today's list and the full list both show the habit just written, so
+  /// both refetch, whichever screen the sheet was opened from. The full
+  /// list is invalidated first, so its refetch runs alongside today's
+  /// reload rather than after it.
+  Future<void> _afterWrite() async {
+    ref.invalidate(allHabitsProvider);
     await _reload();
   }
 

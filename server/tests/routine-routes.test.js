@@ -50,6 +50,29 @@ test('routine endpoints', async (t) => {
     await request(app).get('/api/v1/routine/today').expect(401);
   });
 
+  await t.test('all habits requires sign-in', async () => {
+    await request(app).get('/api/v1/routine/habits').expect(401);
+  });
+
+  await t.test('all habits lists a habit that is not on today, with no tick', async () => {
+    const a = api(await freshUser());
+    await a.post('/habits', {
+      title: 'Elsewhere', time: '07:00', durationMin: 10, weekdays: [notToday],
+    }).expect(201);
+    assert.deepEqual((await a.get('/today')).body.data.habits, [], 'not on today');
+
+    const res = await a.get('/habits').expect(200);
+
+    const [only] = res.body.data.habits;
+    assert.deepEqual(res.body, {
+      data: {
+        habits: [{
+          habitId: only.habitId, title: 'Elsewhere', time: '07:00', durationMin: 10, weekdays: [notToday],
+        }],
+      },
+    });
+  });
+
   await t.test('a new account has an empty day and no workout item', async () => {
     const res = await api(await freshUser()).get('/today').expect(200);
     assert.match(res.body.data.date, /^\d{4}-\d{2}-\d{2}$/);

@@ -3,7 +3,7 @@ const express = require('express');
 const requireAuth = require('../middleware/require-auth');
 const AppError = require('../lib/app-error');
 const {
-  readDay, createHabit, updateHabit, deactivateHabit, setCheck,
+  readDay, listHabits, createHabit, updateHabit, deactivateHabit, setCheck,
 } = require('../db/routine');
 
 const TIME = /^([01]\d|2[0-3]):[0-5]\d$/;
@@ -78,6 +78,12 @@ module.exports = function buildRoutineRouter(deps) {
   router.get('/today', auth, async (req, res, next) => {
     try {
       res.json({ data: await readDay(deps.pool, req.user.userId) });
+    } catch (err) { next(err); }
+  });
+
+  router.get('/habits', auth, async (req, res, next) => {
+    try {
+      res.json({ data: { habits: await listHabits(deps.pool, req.user.userId) } });
     } catch (err) { next(err); }
   });
 

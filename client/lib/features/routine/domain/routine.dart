@@ -6,6 +6,16 @@ String formatClock(String hhmm) {
   return '$h12:$minutes ${hour < 12 ? 'AM' : 'PM'}';
 }
 
+const _weekdayShortNames = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
+
+/// `[5, 1, 3]` -> `Mon, Wed, Fri`, in weekday order whatever order they
+/// arrive in; all seven -> `Every day`. 1 = Monday .. 7 = Sunday.
+String formatWeekdays(List<int> weekdays) {
+  final days = weekdays.toSet().toList()..sort();
+  if (days.length == 7) return 'Every day';
+  return days.map((d) => _weekdayShortNames[d - 1]).join(', ');
+}
+
 /// A repeating habit and today's tick, as GET /routine/today lists it.
 class Habit {
   const Habit({
@@ -49,7 +59,9 @@ class Habit {
     time: json['time'] as String?,
     durationMin: json['durationMin'] as int?,
     weekdays: (json['weekdays'] as List<dynamic>).cast<int>(),
-    done: json['done'] as bool,
+    // GET /routine/habits sends no `done` -- a tick belongs to a day, and
+    // that list is not about one -- so absent reads as not done.
+    done: json['done'] as bool? ?? false,
   );
 }
 
