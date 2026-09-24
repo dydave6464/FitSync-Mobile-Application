@@ -12,7 +12,15 @@ import '../providers.dart';
 /// Adds a habit, or edits [existing] (with Delete). Closes on a save that
 /// lands; stays open, saying why, on one that does not -- the check-in
 /// sheet's rule.
-Future<void> showHabitSheet(BuildContext context, {Habit? existing}) {
+///
+/// [announceRepeats]: after a save that does not repeat on the day this
+/// sheet opened on, say which days it does. Off where the caller already
+/// shows the habit's days (All habits).
+Future<void> showHabitSheet(
+  BuildContext context, {
+  Habit? existing,
+  bool announceRepeats = true,
+}) {
   return showModalBottomSheet<void>(
     context: context,
     backgroundColor: context.fs.surface,
@@ -20,28 +28,20 @@ Future<void> showHabitSheet(BuildContext context, {Habit? existing}) {
       borderRadius: BorderRadius.vertical(top: Radius.circular(22)),
     ),
     isScrollControlled: true,
-    builder: (_) => _HabitSheet(existing: existing),
+    builder: (_) =>
+        _HabitSheet(existing: existing, announceRepeats: announceRepeats),
   );
 }
 
 class _HabitSheet extends ConsumerStatefulWidget {
-  const _HabitSheet({this.existing});
+  const _HabitSheet({this.existing, required this.announceRepeats});
 
   final Habit? existing;
+  final bool announceRepeats;
 
   @override
   ConsumerState<_HabitSheet> createState() => _HabitSheetState();
 }
-
-const _weekdayNames = {
-  1: 'Mon',
-  2: 'Tue',
-  3: 'Wed',
-  4: 'Thu',
-  5: 'Fri',
-  6: 'Sat',
-  7: 'Sun',
-};
 
 class _HabitSheetState extends ConsumerState<_HabitSheet> {
   late final _title = TextEditingController(text: widget.existing?.title);
@@ -122,14 +122,14 @@ class _HabitSheetState extends ConsumerState<_HabitSheet> {
       final saved = await action(ref.read(routineTodayProvider.notifier));
       if (!mounted) return;
       Navigator.of(context).pop();
-      if (saved != null &&
+      if (widget.announceRepeats &&
+          saved != null &&
           _openedOnWeekday != null &&
           !saved.weekdays.contains(_openedOnWeekday)) {
-        final days = (saved.weekdays.toList()..sort())
-            .map((d) => _weekdayNames[d])
-            .join(', ');
         messenger.showSnackBar(
-          SnackBar(content: Text('Saved — repeats $days')),
+          SnackBar(
+            content: Text('Saved — repeats ${formatWeekdays(saved.weekdays)}'),
+          ),
         );
       }
     } catch (error) {
