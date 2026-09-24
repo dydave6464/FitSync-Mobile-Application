@@ -61,6 +61,49 @@ async function createGoal(pool, userId, exerciseId, targetKg) {
   return readGoal(pool, userId, res.insertId);
 }
 
+/// Create a goal only if [userId] has no unreached goal for that exercise.
+/// Locks the user row to serialize concurrent creates for the same user.
+/// Returns the goal or null if one already exists.
+async function createGoalIfNoneOpen(pool, userId, exerciseId, targetKg) {
+  const conn = await pool.getConnection();
+  try {
+    await conn.beginTransaction();
+    // Lock the user row to serialize goal creates for this user.
+    await conn.query('SELECT user_id FROM users WHERE user_id = ? FOR UPDATE', [userId]);
+
+    // Check for an unreached goal on this exercise.
+    const [rows] = await conn.query(
+      `SELECT 1 FROM lift_goals g
+        WHERE g.user_id = ? AND g.exercise_id = ?
+          AND NOT EXISTS (
+            SELECT 1 FROM set_logs sl
+              JOIN workout_sessions s ON s.session_id = sl.session_id
+             WHERE s.user_id = g.user_id AND sl.exercise_id = g.exercise_id
+               AND ${COUNTS} AND sl.weight_kg >= g.target_kg)
+        LIMIT 1`,
+      [userId, exerciseId],
+    );
+
+    if (rows.length > 0) {
+      await conn.rollback();
+      return null;
+    }
+
+    // Insert the goal.
+    const [res] = await conn.query(
+      'INSERT INTO lift_goals (user_id, exercise_id, target_kg) VALUES (?, ?, ?)',
+      [userId, exerciseId, targetKg],
+    );
+    await conn.commit();
+    return readGoal(pool, userId, res.insertId);
+  } catch (err) {
+    await conn.rollback().catch(() => {});
+    throw err;
+  } finally {
+    conn.release();
+  }
+}
+
 /// False when there was no such goal of [userId]'s to delete.
 async function deleteGoal(pool, userId, goalId) {
   const [res] = await pool.query(
@@ -110,5 +153,5 @@ async function listOptions(pool, userId) {
 }
 
 module.exports = {
-  listGoals, readGoal, createGoal, deleteGoal, bestKg, isLiveExercise, listOptions,
+  listGoals, readGoal, createGoal, createGoalIfNoneOpen, deleteGoal, bestKg, isLiveExercise, listOptions,
 };

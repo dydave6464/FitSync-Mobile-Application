@@ -143,4 +143,25 @@ test('goals db', async (t) => {
     assert.equal(await goals.isLiveExercise(pool, squat), true);
     assert.equal(await goals.isLiveExercise(pool, 99999999), false);
   });
+
+  await t.test('createGoalIfNoneOpen returns null when unreached goal exists, creates when only reached', async () => {
+    const u = await makeUser();
+    // Create and keep unreached
+    const g1 = await goals.createGoalIfNoneOpen(pool, u, squat, 70);
+    assert.ok(g1);
+    assert.equal(g1.targetKg, 70);
+
+    // Try to create another for same exercise: should be null
+    const g2 = await goals.createGoalIfNoneOpen(pool, u, squat, 80);
+    assert.equal(g2, null);
+
+    // Reach the first goal
+    await session(u, { daysAgo: 1, sets: [{ weightKg: 70, reps: 5 }] });
+
+    // Now can create a higher goal
+    const g3 = await goals.createGoalIfNoneOpen(pool, u, squat, 80);
+    assert.ok(g3);
+    assert.equal(g3.targetKg, 80);
+    assert.equal(g3.reachedOn, null);
+  });
 });

@@ -134,4 +134,14 @@ test('goal endpoints', async (t) => {
     assert.equal(options[0].sets, 1);
     assert.equal(typeof options[0].name, 'string');
   });
+
+  await t.test('two goals for one exercise sent at once: exactly one is created', async () => {
+    const u = await freshUser();
+    const [r1, r2] = await Promise.all([
+      u.post({ exerciseId: press, targetKg: 50 }),
+      u.post({ exerciseId: press, targetKg: 55 }),
+    ]);
+    assert.deepEqual([r1.status, r2.status].sort(), [201, 409]);
+    assert.equal((await u.get('').expect(200)).body.data.goals.filter((g) => g.exerciseId === press).length, 1);
+  });
 });

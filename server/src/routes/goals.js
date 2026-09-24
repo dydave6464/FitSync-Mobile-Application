@@ -3,7 +3,7 @@ const express = require('express');
 const requireAuth = require('../middleware/require-auth');
 const AppError = require('../lib/app-error');
 const {
-  listGoals, createGoal, deleteGoal, bestKg, isLiveExercise, listOptions,
+  listGoals, deleteGoal, bestKg, isLiveExercise, listOptions, createGoalIfNoneOpen,
 } = require('../db/goals');
 
 const notFound = () => AppError.notFound('GOAL_NOT_FOUND', 'No such goal.');
@@ -55,13 +55,11 @@ module.exports = function buildGoalsRouter(deps) {
       if (best !== null && target <= best) {
         throw AppError.badRequest('GOAL_ALREADY_MET', `Your best is already ${kg(best)} kg.`);
       }
-      const open = (await listGoals(deps.pool, userId))
-        .some((g) => g.exerciseId === exerciseId && g.reachedOn === null);
-      if (open) {
+
+      const goal = await createGoalIfNoneOpen(deps.pool, userId, exerciseId, target);
+      if (goal === null) {
         throw AppError.conflict('GOAL_EXISTS', 'You already have a goal for this exercise.');
       }
-
-      const goal = await createGoal(deps.pool, userId, exerciseId, target);
       res.status(201).json({ data: { goal } });
     } catch (err) { next(err); }
   });
