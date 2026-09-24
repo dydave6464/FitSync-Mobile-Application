@@ -53,6 +53,7 @@ async function readGoal(pool, userId, goalId) {
   return rows.length ? toGoal(rows[0]) : null;
 }
 
+/// Tests only; routes create goals through createGoalIfNoneOpen.
 async function createGoal(pool, userId, exerciseId, targetKg) {
   const [res] = await pool.query(
     'INSERT INTO lift_goals (user_id, exercise_id, target_kg) VALUES (?, ?, ?)',
@@ -66,6 +67,7 @@ async function createGoal(pool, userId, exerciseId, targetKg) {
 /// Returns the goal or null if one already exists.
 async function createGoalIfNoneOpen(pool, userId, exerciseId, targetKg) {
   const conn = await pool.getConnection();
+  let insertId = null;
   try {
     await conn.beginTransaction();
     // Lock the user row to serialize goal creates for this user.
@@ -94,14 +96,15 @@ async function createGoalIfNoneOpen(pool, userId, exerciseId, targetKg) {
       'INSERT INTO lift_goals (user_id, exercise_id, target_kg) VALUES (?, ?, ?)',
       [userId, exerciseId, targetKg],
     );
+    insertId = res.insertId;
     await conn.commit();
-    return readGoal(pool, userId, res.insertId);
   } catch (err) {
     await conn.rollback().catch(() => {});
     throw err;
   } finally {
     conn.release();
   }
+  return insertId === null ? null : readGoal(pool, userId, insertId);
 }
 
 /// False when there was no such goal of [userId]'s to delete.
