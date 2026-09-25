@@ -40,7 +40,18 @@ class _ReminderPromptCardState extends ConsumerState<ReminderPromptCard> {
     // outlive Home swapping this card out (a fast tab switch), and ref.read
     // throws on a disposed widget rather than returning stale data.
     if (!mounted) return;
-    final answered = await ref.read(reminderPromptStoreProvider).answered();
+    final bool answered;
+    try {
+      answered = await ref.read(reminderPromptStoreProvider).answered();
+    } catch (error) {
+      // Secure storage is a platform channel -- it can fail (a locked
+      // keychain, a missing implementation). Unable to tell whether the
+      // prompt was already answered, the safer default is to stay quiet
+      // rather than risk nagging someone who already dismissed it.
+      debugPrint('Reminder prompt: answered() failed: $error');
+      if (mounted) setState(() => _show = false);
+      return;
+    }
     if (!mounted) return;
     setState(() => _show = !granted && !answered);
   }
@@ -49,8 +60,17 @@ class _ReminderPromptCardState extends ConsumerState<ReminderPromptCard> {
   /// buttons -- Not now calls it directly, Turn on calls it after the system
   /// prompt closes -- since either tap is the user having decided, whatever
   /// they decided.
+  ///
+  /// A write failure still hides the card for this session -- there is
+  /// nothing more useful to show -- but only `debugPrint`s rather than
+  /// throwing, since the flag not landing just means the prompt asks again
+  /// next time.
   Future<void> _hide() async {
-    await ref.read(reminderPromptStoreProvider).markAnswered();
+    try {
+      await ref.read(reminderPromptStoreProvider).markAnswered();
+    } catch (error) {
+      debugPrint('Reminder prompt: markAnswered() failed: $error');
+    }
     if (!mounted) return;
     setState(() => _show = false);
   }

@@ -43,6 +43,17 @@ class _FakeScheduler implements ReminderScheduler {
   Stream<String> get taps => const Stream.empty();
 }
 
+/// `answered()` fails every time -- a secure-storage read that genuinely
+/// cannot land. Writes are left to the real in-memory backing, unused by the
+/// test that needs this but harmless either way.
+class _ThrowingAnsweredStore extends ReminderPromptStore {
+  _ThrowingAnsweredStore() : super(backing: InMemorySecureStore());
+
+  @override
+  Future<bool> answered() =>
+      Future<bool>.error(Exception('storage unavailable'));
+}
+
 Future<void> _pump(
   WidgetTester tester, {
   required _FakeScheduler scheduler,
@@ -92,6 +103,19 @@ void main() {
       store: store,
     );
 
+    expect(find.text('Get reminders for your habits'), findsNothing);
+  });
+
+  testWidgets('hides when the answered check fails, instead of throwing', (
+    tester,
+  ) async {
+    await _pump(
+      tester,
+      scheduler: _FakeScheduler(granted: false),
+      store: _ThrowingAnsweredStore(),
+    );
+
+    expect(tester.takeException(), isNull);
     expect(find.text('Get reminders for your habits'), findsNothing);
   });
 

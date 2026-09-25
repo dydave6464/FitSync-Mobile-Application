@@ -17,6 +17,7 @@ import 'package:fitsync/features/profile/domain/profile.dart';
 import 'package:fitsync/features/profile/presentation/providers.dart';
 import 'package:fitsync/features/recovery/domain/recovery.dart';
 import 'package:fitsync/features/recovery/presentation/providers.dart';
+import 'package:fitsync/features/reminders/data/reminder_prompt_store.dart';
 import 'package:fitsync/features/routine/domain/routine.dart';
 import 'package:fitsync/features/routine/presentation/providers.dart';
 import 'package:fitsync/features/routine/presentation/routine_screen.dart';
@@ -30,6 +31,8 @@ import 'package:fitsync/features/streaks/domain/streaks.dart';
 import 'package:fitsync/features/streaks/presentation/providers.dart'
     show goalsProvider, streakProvider;
 import 'package:fitsync/features/streaks/presentation/streaks_screen.dart';
+
+import 'helpers/in_memory_secure_store.dart';
 
 const _someEquipment = [EquipmentOption(equipmentId: 1, name: 'Dumbbells')];
 
@@ -309,6 +312,9 @@ Future<void> _pumpHome(
           return streak;
         }),
         goalsProvider.overrideWith((ref) async => const <LiftGoal>[]),
+        reminderPromptStoreProvider.overrideWithValue(
+          inMemoryReminderPromptStore(),
+        ),
       ],
       child: MaterialApp(
         home: HomeScreen(
@@ -670,6 +676,9 @@ void main() {
             ),
             routineTodayProvider.overrideWith(
               () => _StubRoutine(_defaultRoutine, null),
+            ),
+            reminderPromptStoreProvider.overrideWithValue(
+              inMemoryReminderPromptStore(),
             ),
           ],
           child: const MaterialApp(home: HomeScreen()),
