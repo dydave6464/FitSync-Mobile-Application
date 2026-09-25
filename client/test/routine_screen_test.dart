@@ -9,13 +9,13 @@ import 'package:fitsync/features/routine/presentation/all_habits_screen.dart';
 import 'package:fitsync/features/routine/presentation/providers.dart';
 import 'package:fitsync/features/routine/presentation/routine_screen.dart';
 import 'package:fitsync/features/profile/presentation/providers.dart';
-import 'package:fitsync/features/reminders/domain/reminders.dart';
 import 'package:fitsync/features/reminders/presentation/providers.dart';
 import 'package:fitsync/features/schedule/domain/calendar.dart';
 import 'package:fitsync/features/schedule/presentation/providers.dart';
 import 'package:fitsync/features/schedule/presentation/schedule_screen.dart';
 
-import 'settings_screen_test.dart' show FakeProfileNotifier;
+import 'settings_screen_test.dart'
+    show DefaultReminderSettings, FakeProfileNotifier;
 
 const _mobility = Habit(
   habitId: 1,
@@ -89,11 +89,6 @@ class _FakeRoutineRepo implements RoutineRepository {
       throw UnimplementedError();
   @override
   Future<void> remove(int habitId) async => throw UnimplementedError();
-}
-
-class _DefaultReminderSettings extends ReminderSettingsController {
-  @override
-  Future<ReminderSettings> build() async => ReminderSettings.defaults;
 }
 
 Widget _harness(_FakeRoutineRepo repo, {VoidCallback? onOpenPlan}) =>
@@ -323,7 +318,7 @@ void main() {
           ),
           profileProvider.overrideWith(() => FakeProfileNotifier([])),
           reminderSettingsProvider.overrideWith(
-            () => _DefaultReminderSettings(),
+            () => DefaultReminderSettings(),
           ),
         ],
         child: const MaterialApp(home: RoutineScreen()),

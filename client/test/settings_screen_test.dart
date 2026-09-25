@@ -118,7 +118,7 @@ class FakeProfileNotifier extends ProfileNotifier {
 /// A fixed answer instead of a repository round trip, so `SettingsScreen`
 /// has something to give `RemindersScreen` when the notifications row opens
 /// it -- this file's tests never change a reminder setting themselves.
-class _DefaultReminderSettings extends ReminderSettingsController {
+class DefaultReminderSettings extends ReminderSettingsController {
   @override
   Future<ReminderSettings> build() async => ReminderSettings.defaults;
 }
@@ -175,7 +175,7 @@ Future<void> _pump(
         ),
         equipmentOptionsProvider.overrideWith((ref) async => _equipment),
         injuryOptionsProvider.overrideWith((ref) async => _injuryOptions),
-        reminderSettingsProvider.overrideWith(() => _DefaultReminderSettings()),
+        reminderSettingsProvider.overrideWith(() => DefaultReminderSettings()),
         streakProvider.overrideWith(
           (ref) async =>
               const Streak(current: 0, best: 0, todayActive: false, week: []),
