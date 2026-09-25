@@ -3,6 +3,9 @@ import 'dart:async';
 import 'package:flutter/widgets.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../../core/manila_day.dart' show manilaDayOf;
+import '../../auth/presentation/auth_controller.dart'
+    show AuthStatus, authControllerProvider;
 import '../../plans/presentation/providers.dart' show activePlanProvider;
 import '../../profile/presentation/providers.dart' show profileProvider;
 import '../../recovery/presentation/providers.dart'
@@ -53,6 +56,12 @@ class _ReminderSyncState extends ConsumerState<ReminderSync> {
   /// flight, so that run's snapshot (taken before the change) is not the
   /// last word: one more run follows once it finishes.
   bool _dirty = false;
+
+  /// Chains every cancelAll/scheduleAll pair this widget issues onto the
+  /// last one, so a cancel and the schedule that belongs to it are never
+  /// interleaved with another pair -- `_running` already keeps two `_run`
+  /// bodies from executing at once, but this holds even if that changes.
+  Future<void> _schedulerChain = Future<void>.value();
 
   StreamSubscription<String>? _taps;
 
@@ -113,11 +122,39 @@ class _ReminderSyncState extends ConsumerState<ReminderSync> {
     scheduleMicrotask(_run);
   }
 
+  /// Whether [value] is usable input for a reschedule: present and not
+  /// erroring. `isLoading` is deliberately not part of this -- an
+  /// [AsyncValue] keeps its previous data while a refresh is in flight, so
+  /// checking only `hasValue`/`hasError` would read that stale value as
+  /// current. Most of this run's inputs settle together often enough that it
+  /// does not matter in practice; [routineTodayProvider] is the one case
+  /// this file has actually seen it matter for (see [_run]), so its own read
+  /// checks `isLoading` too rather than relying on this helper alone.
+  bool _ready(AsyncValue<Object?> value) => value.hasValue && !value.hasError;
+
   Future<void> _run() async {
     try {
-      final settings = ref.read(reminderSettingsProvider).value;
-      final profile = ref.read(profileProvider).value;
-      if (settings == null || profile == null) return;
+      // A failure to read any input -- offline, a server error, or (for
+      // routineTodayProvider) a fetch still in flight -- leaves whatever is
+      // already on the phone in place rather than rebuilding the schedule
+      // from an incomplete picture. "No active plan" is not a failure:
+      // activePlanProvider holding AsyncData(null) is real data, and
+      // planReminders already treats a null plan name as "no workout
+      // reminders".
+      final settingsAsync = ref.read(reminderSettingsProvider);
+      final profileAsync = ref.read(profileProvider);
+      final routineAsync = ref.read(routineTodayProvider);
+      final recoveryAsync = ref.read(recoveryOverviewProvider);
+      final planAsync = ref.read(activePlanProvider);
+      if (!_ready(settingsAsync) || !_ready(profileAsync)) return;
+      if (!_ready(routineAsync) || routineAsync.isLoading) return;
+      if (!_ready(recoveryAsync) || !_ready(planAsync)) return;
+
+      final settings = settingsAsync.value!;
+      final profile = profileAsync.value!;
+      final day = routineAsync.value!;
+      final recovery = recoveryAsync.value;
+      final plan = planAsync.value;
 
       final List<Habit> habits;
       try {
@@ -131,16 +168,18 @@ class _ReminderSyncState extends ConsumerState<ReminderSync> {
       // so every read past here must be guarded.
       if (!mounted) return;
 
-      final day = ref.read(routineTodayProvider).value;
-      final recovery = ref.read(recoveryOverviewProvider).value;
-      final plan = ref.read(activePlanProvider).value;
-
+      // A day from any other date -- e.g. yesterday's, still sitting in
+      // routineTodayProvider while today's fetch has not landed -- says
+      // nothing about what is done today; reading its ticks as today's would
+      // wrongly suppress a reminder that has not fired yet.
+      final isToday = day.date == manilaDayOf(widget.now());
       final done = TodayDone(
         habitIds: {
-          for (final h in day?.habits ?? const [])
-            if (h.done) h.habitId,
+          if (isToday)
+            for (final h in day.habits)
+              if (h.done) h.habitId,
         },
-        workout: day?.workout?.done ?? false,
+        workout: isToday && (day.workout?.done ?? false),
         checkin: recovery?.todayCheckin != null,
       );
 
@@ -157,8 +196,15 @@ class _ReminderSyncState extends ConsumerState<ReminderSync> {
       if (!mounted) return;
       final scheduler = ref.read(reminderSchedulerProvider);
       try {
-        await scheduler.cancelAll();
-        await scheduler.scheduleAll(planned);
+        await _enqueueScheduler(scheduler.cancelAll);
+        // Sign-out can land while the two calls above/below are in flight
+        // (it cancels directly, off this same chain) -- re-checked right
+        // before reviving anything on the phone, so a reschedule already
+        // underway can never outlive it.
+        final signedIn =
+            ref.read(authControllerProvider).value?.status == AuthStatus.ready;
+        if (!mounted || !signedIn) return;
+        await _enqueueScheduler(() => scheduler.scheduleAll(planned));
       } catch (e) {
         // Whatever is on the phone now is stale, but there is nothing better
         // to fall back to -- the next trigger (another write, or this same
@@ -172,6 +218,18 @@ class _ReminderSyncState extends ConsumerState<ReminderSync> {
         _queue();
       }
     }
+  }
+
+  /// Chains [op] onto [_schedulerChain] and returns its own result, so a
+  /// cancelAll/scheduleAll pair from one run can never overlap on the
+  /// scheduler with another pair from this widget. One step's failure is
+  /// swallowed into the chain itself, not into [op]'s caller (which still
+  /// sees the original error via the returned future), so it cannot wedge
+  /// every later step.
+  Future<void> _enqueueScheduler(Future<void> Function() op) {
+    final started = _schedulerChain.then((_) => op());
+    _schedulerChain = started.then((_) {}, onError: (_) {});
+    return started;
   }
 
   @override

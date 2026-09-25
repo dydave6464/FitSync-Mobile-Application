@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart' show debugPrint;
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../core/api_exception.dart';
@@ -67,6 +68,7 @@ class AuthController extends AsyncNotifier<AuthState> {
       // screen that can never load. Drop it and show sign-in instead.
       if (error.code == 'UNAUTHENTICATED') {
         await tokens.clear();
+        await _cancelReminders();
         return AuthState.signedOut;
       }
       // Anything else is a real failure the shell should surface with a
@@ -155,9 +157,21 @@ class AuthController extends AsyncNotifier<AuthState> {
   Future<void> signOut() async {
     await ref.read(authRepositoryProvider).signOut();
     // The next account must not inherit this one's reminders.
-    await ref.read(reminderSchedulerProvider).cancelAll();
+    await _cancelReminders();
     _clearUserScopedCaches();
     state = const AsyncData(AuthState.signedOut);
+  }
+
+  /// Best-effort: a scheduler failure here must never strand the caller
+  /// signed in (or, from [build]'s expired-token path, stuck on a screen
+  /// that can never load) just because the phone's notification plugin had
+  /// a bad moment.
+  Future<void> _cancelReminders() async {
+    try {
+      await ref.read(reminderSchedulerProvider).cancelAll();
+    } catch (error) {
+      debugPrint('AuthController: cancelAll failed: $error');
+    }
   }
 }
 

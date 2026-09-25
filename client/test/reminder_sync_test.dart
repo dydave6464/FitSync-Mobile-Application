@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 
+import 'package:fitsync/features/auth/presentation/auth_controller.dart';
 import 'package:fitsync/features/plans/domain/workout_plan.dart';
 import 'package:fitsync/features/plans/presentation/providers.dart'
     show activePlanProvider;
@@ -21,7 +22,7 @@ import 'package:fitsync/features/reminders/presentation/reminder_sync.dart';
 import 'package:fitsync/features/routine/data/routine_repository.dart';
 import 'package:fitsync/features/routine/domain/routine.dart';
 import 'package:fitsync/features/routine/presentation/providers.dart'
-    show routineRepositoryProvider;
+    show routineRepositoryProvider, routineTodayProvider;
 
 /// Records every call the widget under test makes, in order, so a test can
 /// tell a stale run from the final one and check that cancelAll always
@@ -62,6 +63,14 @@ class _FakeScheduler implements ReminderScheduler {
   Stream<String> get taps => tapsController.stream;
 }
 
+/// Signed in and past onboarding by default -- every test here is about a
+/// reschedule that should actually reach the scheduler, and `_run` now
+/// re-checks this right before it schedules anything.
+class _StubAuthController extends AuthController {
+  @override
+  Future<AuthState> build() async => const AuthState(AuthStatus.ready);
+}
+
 /// A fixed answer instead of a repository round trip, mirroring
 /// `_StubProfileNotifier` in home_screen_test.dart.
 class _StubProfileNotifier extends ProfileNotifier {
@@ -97,7 +106,10 @@ class _FakeRoutineRepository implements RoutineRepository {
   });
 
   final List<Habit> habits;
-  final RoutineDay day;
+
+  /// Mutable so a test can change what `today()` answers next, then
+  /// `container.invalidate(routineTodayProvider)` to have it re-fetched.
+  RoutineDay day;
   final Object? allError;
   final Completer<List<Habit>>? pendingAll;
 
@@ -155,6 +167,15 @@ const _dayNotDone = RoutineDay(
 
 const _dayHabitDone = RoutineDay(
   date: '2026-09-25',
+  habits: [_stretchHabitDoneToday],
+  workout: null,
+);
+
+/// The habit was ticked, but on a day that is not today (per [_now]) --
+/// still sitting there, e.g. because the fetch that would replace it with
+/// today's day has not landed yet.
+const _yesterdayHabitDoneElsewhere = RoutineDay(
+  date: '2026-09-24',
   habits: [_stretchHabitDoneToday],
   workout: null,
 );
@@ -223,6 +244,7 @@ Future<_Harness> _pump(
       ),
       recoveryOverviewProvider.overrideWith((ref) async => recovery),
       activePlanProvider.overrideWith((ref) async => plan),
+      authControllerProvider.overrideWith(_StubAuthController.new),
     ],
   );
   addTearDown(container.dispose);
@@ -310,6 +332,88 @@ void main() {
 
     expect(harness.scheduler.scheduleAllCalls.last, hasLength(6));
   });
+
+  testWidgets(
+    "a habit ticked on a day that is not today does not suppress today's "
+    'reminder',
+    (tester) async {
+      final harness = await _pump(tester, day: _yesterdayHabitDoneElsewhere);
+
+      expect(
+        harness.scheduler.scheduleAllCalls.last,
+        hasLength(7),
+        reason: "a tick recorded on another date must not read as today's",
+      );
+    },
+  );
+
+  testWidgets(
+    'once activePlanProvider starts erroring, the existing schedule is kept',
+    (tester) async {
+      var planShouldError = false;
+      final scheduler = _FakeScheduler();
+      addTearDown(scheduler.tapsController.close);
+
+      final container = ProviderContainer(
+        overrides: [
+          reminderSchedulerProvider.overrideWithValue(scheduler),
+          reminderSettingsProvider.overrideWith(
+            () => _StubReminderSettings(ReminderSettings.defaults),
+          ),
+          profileProvider.overrideWith(() => _StubProfileNotifier(_profile())),
+          routineRepositoryProvider.overrideWithValue(
+            _FakeRoutineRepository(
+              habits: const [_stretchHabit],
+              day: _dayNotDone,
+            ),
+          ),
+          recoveryOverviewProvider.overrideWith(
+            (ref) async => _noCheckinRecovery,
+          ),
+          activePlanProvider.overrideWith((ref) async {
+            if (planShouldError) throw Exception('plan unreachable');
+            return null;
+          }),
+          authControllerProvider.overrideWith(_StubAuthController.new),
+        ],
+      );
+      addTearDown(container.dispose);
+
+      await tester.pumpWidget(
+        UncontrolledProviderScope(
+          container: container,
+          child: MaterialApp(
+            home: ReminderSync(
+              now: _now,
+              onOpenRoutine: () {},
+              onOpenRecovery: () {},
+              child: const SizedBox(),
+            ),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      expect(
+        scheduler.scheduleAllCalls,
+        isNotEmpty,
+        reason: 'the initial run must have scheduled something',
+      );
+      final logLengthBefore = scheduler.log.length;
+
+      planShouldError = true;
+      container.invalidate(activePlanProvider);
+      await tester.pumpAndSettle();
+
+      expect(
+        scheduler.log.length,
+        logLengthBefore,
+        reason:
+            'an erroring input must keep the existing schedule, not touch '
+            'the scheduler again',
+      );
+    },
+  );
 
   testWidgets('when habits cannot be read, the existing schedule is kept', (
     tester,
@@ -409,4 +513,147 @@ void main() {
     );
     expect(tester.takeException(), isNull);
   });
+
+  testWidgets(
+    "a tick landing on today's routine drops today's reminder from the next "
+    'schedule',
+    (tester) async {
+      final scheduler = _FakeScheduler();
+      addTearDown(scheduler.tapsController.close);
+      final routineRepo = _FakeRoutineRepository(
+        habits: const [_stretchHabit],
+        day: _dayNotDone,
+      );
+
+      final container = ProviderContainer(
+        overrides: [
+          reminderSchedulerProvider.overrideWithValue(scheduler),
+          reminderSettingsProvider.overrideWith(
+            () => _StubReminderSettings(ReminderSettings.defaults),
+          ),
+          profileProvider.overrideWith(() => _StubProfileNotifier(_profile())),
+          routineRepositoryProvider.overrideWithValue(routineRepo),
+          recoveryOverviewProvider.overrideWith(
+            (ref) async => _noCheckinRecovery,
+          ),
+          activePlanProvider.overrideWith((ref) async => null),
+          authControllerProvider.overrideWith(_StubAuthController.new),
+        ],
+      );
+      addTearDown(container.dispose);
+
+      await tester.pumpWidget(
+        UncontrolledProviderScope(
+          container: container,
+          child: MaterialApp(
+            home: ReminderSync(
+              now: _now,
+              onOpenRoutine: () {},
+              onOpenRecovery: () {},
+              child: const SizedBox(),
+            ),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      expect(scheduler.scheduleAllCalls.last, hasLength(7));
+      final callsBefore = scheduler.scheduleAllCalls.length;
+
+      // The routine screen's own tick already invalidates
+      // routineTodayProvider on a successful write; simulated directly here
+      // since this test is about ReminderSync's reaction, not the tick
+      // itself.
+      routineRepo.day = _dayHabitDone;
+      container.invalidate(routineTodayProvider);
+      await tester.pumpAndSettle();
+
+      expect(
+        scheduler.scheduleAllCalls.length,
+        greaterThan(callsBefore),
+        reason: 'the tick must trigger a fresh reschedule',
+      );
+      expect(scheduler.scheduleAllCalls.last, hasLength(6));
+    },
+  );
+
+  testWidgets(
+    "a check-in landing drops today's check-in reminder from the next "
+    'schedule',
+    (tester) async {
+      final scheduler = _FakeScheduler();
+      addTearDown(scheduler.tapsController.close);
+      var recovery = _noCheckinRecovery;
+
+      final container = ProviderContainer(
+        overrides: [
+          reminderSchedulerProvider.overrideWithValue(scheduler),
+          reminderSettingsProvider.overrideWith(
+            () => _StubReminderSettings(
+              const ReminderSettings(
+                habitsEnabled: false,
+                habitLeadMin: 15,
+                workoutEnabled: false,
+                workoutTime: '07:00',
+                checkinEnabled: true,
+                checkinTime: '07:00',
+              ),
+            ),
+          ),
+          profileProvider.overrideWith(() => _StubProfileNotifier(_profile())),
+          routineRepositoryProvider.overrideWithValue(
+            _FakeRoutineRepository(habits: const [], day: _dayNotDone),
+          ),
+          recoveryOverviewProvider.overrideWith((ref) async => recovery),
+          activePlanProvider.overrideWith((ref) async => null),
+          authControllerProvider.overrideWith(_StubAuthController.new),
+        ],
+      );
+      addTearDown(container.dispose);
+
+      await tester.pumpWidget(
+        UncontrolledProviderScope(
+          container: container,
+          child: MaterialApp(
+            home: ReminderSync(
+              now: _now,
+              onOpenRoutine: () {},
+              onOpenRecovery: () {},
+              child: const SizedBox(),
+            ),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      expect(
+        scheduler.scheduleAllCalls.last,
+        hasLength(7),
+        reason: 'one check-in reminder a day, none done today, for 7 days',
+      );
+      final callsBefore = scheduler.scheduleAllCalls.length;
+
+      recovery = const RecoveryOverview(
+        todayCheckin: MorningCheckin(
+          checkinId: 1,
+          checkinDate: '2026-09-25',
+          sleepQuality: 'good',
+          muscleSoreness: 'none',
+          energy: 'moderate',
+          stress: 'low',
+        ),
+        latestEstimate: null,
+        load: [],
+      );
+      container.invalidate(recoveryOverviewProvider);
+      await tester.pumpAndSettle();
+
+      expect(
+        scheduler.scheduleAllCalls.length,
+        greaterThan(callsBefore),
+        reason: 'the check-in must trigger a fresh reschedule',
+      );
+      expect(scheduler.scheduleAllCalls.last, hasLength(6));
+    },
+  );
 }

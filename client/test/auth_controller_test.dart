@@ -208,13 +208,25 @@ class _SequenceStreakRepository implements StreakRepository {
 }
 
 class _RecordingScheduler implements ReminderScheduler {
+  _RecordingScheduler({this.cancelAllError});
+
   int cancels = 0;
+
+  /// When set, every `cancelAll` call throws this after still being
+  /// recorded in [cancels] -- so a test can check the failure is contained
+  /// without needing the call to ever succeed.
+  final Object? cancelAllError;
+
   @override
   Future<bool> permissionGranted() async => true;
   @override
   Future<bool> requestPermission() async => true;
   @override
-  Future<void> cancelAll() async => cancels++;
+  Future<void> cancelAll() async {
+    cancels++;
+    if (cancelAllError != null) throw cancelAllError!;
+  }
+
   @override
   Future<void> scheduleAll(List<PlannedReminder> reminders) async {}
   @override
@@ -483,6 +495,69 @@ void main() {
       reason: "the next account was handed the previous account's streak",
     );
     expect(streaks.loads, 2);
+  });
+
+  test('signOut still completes when cancelAll throws', () async {
+    final tokens = TokenStore(backing: InMemorySecureStore());
+    await tokens.write('tok');
+    final scheduler = _RecordingScheduler(
+      cancelAllError: Exception('scheduler unreachable'),
+    );
+    final container = ProviderContainer(
+      overrides: [
+        tokenStoreProvider.overrideWithValue(tokens),
+        authRepositoryProvider.overrideWithValue(
+          FakeAuthRepository(
+            tokens,
+            onMe: () async => _user(onboardingCompleted: true),
+          ),
+        ),
+        reminderSchedulerProvider.overrideWithValue(scheduler),
+      ],
+    );
+    addTearDown(container.dispose);
+
+    await container.read(authControllerProvider.future);
+    await container.read(authControllerProvider.notifier).signOut();
+
+    expect(scheduler.cancels, 1, reason: 'the attempt must still be made');
+    expect(
+      container.read(authControllerProvider).value!.status,
+      AuthStatus.signedOut,
+      reason: 'a scheduler failure must not strand sign-out',
+    );
+    expect(await tokens.read(), isNull);
+  });
+
+  test('a rejected token also cancels scheduled reminders', () async {
+    final tokens = TokenStore(backing: InMemorySecureStore());
+    await tokens.write('expired');
+    final scheduler = _RecordingScheduler();
+    final container = ProviderContainer(
+      overrides: [
+        tokenStoreProvider.overrideWithValue(tokens),
+        authRepositoryProvider.overrideWithValue(
+          FakeAuthRepository(
+            tokens,
+            onMe: () async => throw const ApiException(
+              'UNAUTHENTICATED',
+              'Sign in to continue.',
+            ),
+          ),
+        ),
+        reminderSchedulerProvider.overrideWithValue(scheduler),
+      ],
+    );
+    addTearDown(container.dispose);
+
+    final state = await container.read(authControllerProvider.future);
+
+    expect(state.status, AuthStatus.signedOut);
+    expect(
+      scheduler.cancels,
+      1,
+      reason: "an expired token's reminders must not go on firing",
+    );
   });
 
   test('signing out cancels scheduled reminders', () async {
