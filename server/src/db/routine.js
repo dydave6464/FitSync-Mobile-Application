@@ -246,4 +246,5 @@ async function setCheck(pool, userId, habitId, done, date = null, requestedDate 
 
 module.exports = {
   readDay, readHabit, listHabits, createHabit, updateHabit, deactivateHabit, setCheck,
+  weekdaysFor, hhmm,
 };

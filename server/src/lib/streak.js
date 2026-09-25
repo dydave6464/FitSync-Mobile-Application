@@ -45,4 +45,4 @@ function computeStreak(activeDates, today) {
   return { current, best, todayActive: active.has(todayNo), week };
 }
 
-module.exports = { computeStreak };
+module.exports = { computeStreak, dayNumber, dateOf };
