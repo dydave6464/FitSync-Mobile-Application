@@ -152,8 +152,29 @@ class _FlakySettings extends ReminderSettingsController {
   }
 }
 
+/// A repo whose answer can be swapped mid-test, to simulate the server's
+/// today landing in a different month than the device's first guess.
+class _MutableCalendarRepo implements CalendarRepository {
+  _MutableCalendarRepo(this.answer);
+
+  CalendarRange Function(String from, String to) answer;
+  final requests = <String>[];
+
+  @override
+  Future<CalendarRange> range(String from, String to) async {
+    requests.add('$from..$to');
+    return answer(from, to);
+  }
+}
+
 const _grid = '2026-08-31..2026-10-11';
 const _week = '2026-09-24..2026-09-30';
+
+/// `_week`/`_grid`'s `from..to` as the record [calendarProvider] keys on.
+CalendarSpan _span(String range) {
+  final parts = range.split('..');
+  return (from: parts[0], to: parts[1]);
+}
 
 Future<_FakeCalendarRepo> _pump(
   WidgetTester tester, {
@@ -452,6 +473,63 @@ void main() {
       expect(find.text('Today · Walk · Any time'), findsOneWidget);
     },
   );
+
+  testWidgets(
+    'a stale selected day outside the reloaded grid gives way to Upcoming',
+    (tester) async {
+      tester.view.physicalSize = const Size(800, 1800);
+      tester.view.devicePixelRatio = 1;
+      addTearDown(tester.view.reset);
+
+      final repo = _MutableCalendarRepo(
+        (from, to) => _range(from, to, days: _fixture),
+      );
+      await tester.pumpWidget(
+        ProviderScope(
+          overrides: [
+            calendarRepositoryProvider.overrideWithValue(repo),
+            profileProvider.overrideWith(() => _Profile(true)),
+            reminderSettingsProvider.overrideWith(
+              () => _Settings(ReminderSettings.defaults),
+            ),
+          ],
+          child: MaterialApp(home: ScheduleScreen(now: () => _now)),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.byKey(const Key('schedule.day.2026-09-25')));
+      await tester.pumpAndSettle();
+      expect(find.text('Read · Any time'), findsOneWidget);
+
+      // The server's today now lands in October; the week (and so the
+      // month shown, since nothing pinned it) reload there, and 25 Sep is
+      // no longer one of the loaded grid's days.
+      repo.answer = (from, to) => _range(from, to, today: '2026-10-01');
+      ProviderScope.containerOf(tester.element(find.byType(ScheduleScreen)))
+          .invalidate(calendarProvider(_span(_week)));
+      await tester.pumpAndSettle();
+
+      expect(find.text('Upcoming'), findsOneWidget);
+      expect(find.text('Nothing planned.'), findsNothing);
+      expect(find.text('Nothing logged this day.'), findsNothing);
+    },
+  );
+
+  testWidgets('tap a day, then next month clears it: Upcoming shows', (
+    tester,
+  ) async {
+    await _pump(tester);
+
+    await tester.tap(find.byKey(const Key('schedule.day.2026-09-25')));
+    await tester.pumpAndSettle();
+    expect(find.text('Read · Any time'), findsOneWidget);
+
+    await tester.tap(find.byKey(const Key('schedule.next')));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Upcoming'), findsOneWidget);
+  });
 
   testWidgets(
     "a tapped day gives way to Upcoming if the grid's refetch errors",

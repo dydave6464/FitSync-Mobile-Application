@@ -75,6 +75,14 @@ class _ScheduleScreenState extends ConsumerState<ScheduleScreen> {
     final CalendarSpan gridSpan = (from: dates.first, to: dates.last);
     final grid = ref.watch(calendarProvider(gridSpan));
     final loaded = grid.hasError ? null : grid.value;
+    // A selected date survives a month change (nothing clears it but
+    // prev/next): once the shown month moves for another reason -- the
+    // server's today lands elsewhere, say -- it may no longer be one of
+    // this grid's days, and showing it would say "Nothing planned." for a
+    // day that was never loaded. Upcoming stands in instead.
+    final selected = _selected;
+    final showDay =
+        selected != null && loaded != null && dates.contains(selected);
 
     return Scaffold(
       backgroundColor: t.bg,
@@ -134,11 +142,11 @@ class _ScheduleScreenState extends ConsumerState<ScheduleScreen> {
           const SizedBox(height: 22),
           // The tapped day needs the grid's own data, not just a selection:
           // showing it from nothing would say "Nothing planned." while the
-          // grid is actually in error, not empty. Upcoming stands in until
-          // the grid loads again; [_selected] itself is left set, so the day
-          // reappears once it does.
-          if (_selected != null && loaded != null)
-            ..._day(_selected!, loaded)
+          // grid is actually in error or stale for another month. Upcoming
+          // stands in until the right grid loads; [_selected] itself is
+          // left set, so the day reappears once it does.
+          if (showDay)
+            ..._day(selected, loaded)
           else
             ..._upcoming(week, weekSpan, _reminders()),
         ],
