@@ -498,7 +498,7 @@ void main() {
     await _skip(tester);
     await _skip(tester);
     await _skip(tester);
-    await tester.tap(find.byKey(const Key('skip')));
+    await tester.tap(find.byKey(const Key('secondary')));
     await tester.pumpAndSettle();
 
     expect(scheduler.requestPermissionCalls, 0);
@@ -523,7 +523,7 @@ void main() {
     await _skip(tester);
     await _skip(tester);
     await _skip(tester);
-    await tester.tap(find.byKey(const Key('skip')));
+    await tester.tap(find.byKey(const Key('secondary')));
     await tester.pumpAndSettle();
 
     expect(tester.takeException(), isNull);
@@ -550,7 +550,7 @@ void main() {
       await _skip(tester);
       await _skip(tester);
       await _skip(tester);
-      await tester.tap(find.byKey(const Key('skip')));
+      await tester.tap(find.byKey(const Key('secondary')));
       await tester.pumpAndSettle();
 
       expect(tester.takeException(), isNull);
@@ -574,7 +574,7 @@ void main() {
       await _skip(tester);
       await _skip(tester);
       await _skip(tester);
-      await tester.tap(find.byKey(const Key('skip')));
+      await tester.tap(find.byKey(const Key('secondary')));
       await tester.pumpAndSettle();
 
       expect(
@@ -713,6 +713,38 @@ void main() {
     gate.complete();
     await tester.pumpAndSettle();
   });
+
+  testWidgets(
+    'a pick on the injuries step survives Skip and still reaches the server',
+    (tester) async {
+      final injuryWrites = <List<SelectedInjury>>[];
+      await _pumpFlow(tester, patches: [], injuryWrites: injuryWrites);
+
+      await _skip(tester);
+      await _skip(tester);
+      await _skip(tester);
+      expect(find.text('STEP 4 / 5'), findsOneWidget);
+
+      await _tapKey(tester, const Key('injury.1'));
+      // Skip, not Continue -- this is the case that used to lose the pick:
+      // Skip advances without saving, and only the step-5 completion path
+      // (fixed to save injuries too) is left to send it.
+      await _skip(tester);
+      expect(find.text('STEP 5 / 5'), findsOneWidget);
+
+      await tester.tap(find.byKey(const Key('continue')));
+      await tester.pumpAndSettle();
+
+      expect(
+        injuryWrites,
+        isNotEmpty,
+        reason:
+            'a pick made on the injuries step must reach the server even '
+            'when that step itself was skipped past',
+      );
+      expect(injuryWrites.last.single.injuryId, 1);
+    },
+  );
 
   testWidgets('holds the generating screen so a fast build cannot flash past', (
     tester,

@@ -21,7 +21,8 @@ class OnboardingScaffold extends StatelessWidget {
     this.onSkip,
     this.onBack,
     this.continueLabel = 'Continue',
-    this.skipLabel = 'Skip',
+    this.secondaryLabel,
+    this.onSecondary,
     this.busy = false,
   });
 
@@ -32,7 +33,14 @@ class OnboardingScaffold extends StatelessWidget {
   final VoidCallback? onSkip;
   final VoidCallback? onBack;
   final String continueLabel;
-  final String skipLabel;
+
+  /// When set, rendered as a secondary button directly under Continue,
+  /// instead of the header's 38px Skip slot. The last step uses this for
+  /// "Not now": declining reminders is a real second choice, not a question
+  /// to skip past, and its label did not fit that cramped corner slot
+  /// without wrapping.
+  final String? secondaryLabel;
+  final VoidCallback? onSecondary;
   final bool busy;
 
   @override
@@ -72,7 +80,7 @@ class OnboardingScaffold extends StatelessWidget {
                                 key: const Key('skip'),
                                 onTap: busy ? null : onSkip,
                                 child: Text(
-                                  skipLabel,
+                                  'Skip',
                                   textAlign: TextAlign.right,
                                   style: TextStyle(
                                     fontSize: 12.5,
@@ -97,11 +105,25 @@ class OnboardingScaffold extends StatelessWidget {
             ),
             Padding(
               padding: const EdgeInsets.fromLTRB(20, 0, 20, 16),
-              child: FsButton(
-                key: const Key('continue'),
-                label: continueLabel,
-                busy: busy,
-                onPressed: busy ? null : onContinue,
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  FsButton(
+                    key: const Key('continue'),
+                    label: continueLabel,
+                    busy: busy,
+                    onPressed: busy ? null : onContinue,
+                  ),
+                  if (secondaryLabel != null) ...[
+                    const SizedBox(height: 10),
+                    FsButton(
+                      key: const Key('secondary'),
+                      label: secondaryLabel!,
+                      kind: FsButtonKind.secondary,
+                      onPressed: busy ? null : onSecondary,
+                    ),
+                  ],
+                ],
               ),
             ),
           ],

@@ -112,10 +112,15 @@ class _OnboardingFlowState extends ConsumerState<OnboardingFlow> {
     if (_index == 3) await notifier.setInjuries(_injuries);
 
     if (_index == _total - 1) {
+      // Whatever is selected on the injuries step is saved here too, not
+      // only when that step's own Continue already ran setInjuries: Skip on
+      // that step advances without saving anything, so this is the only
+      // write a pick made there and then skipped past would ever get. The
+      // generating screen's "Avoiding …" line already reads from local
+      // state regardless, so this only affects what reaches the server.
+      await notifier.setInjuries(_injuries);
       // Everything the user answered is now on the server, which is what the
-      // generating screen's first row claims — so it may only tick here. The
-      // profile and injury writes both landed on an earlier step's Continue,
-      // so nothing here is awaited first.
+      // generating screen's first row claims — so it may only tick here.
       if (mounted) setState(() => _saved = true);
       // Either button on this step counts as answering the Home prompt.
       // Fired and forgotten, not awaited: a slow or failing secure-storage
@@ -302,12 +307,16 @@ class _OnboardingFlowState extends ConsumerState<OnboardingFlow> {
           total: _total,
           busy: _busy,
           continueLabel: onLastStep ? 'Turn on reminders' : 'Continue',
-          skipLabel: onLastStep ? 'Not now' : 'Skip',
           onContinue: onLastStep ? _turnOnReminders : _continue,
+          // The last step has no header Skip -- "Not now" is its own button
+          // under Continue instead (see secondaryLabel below). Every earlier
+          // step keeps the plain header Skip, advancing without saving.
+          onSkip: onLastStep ? null : (_busy ? null : _advance),
           // Not now still saves and builds the plan -- it only skips asking
-          // for permission first -- so the last step routes Skip through
-          // _continue rather than the plain _advance every earlier step uses.
-          onSkip: _busy ? null : (onLastStep ? _continue : _advance),
+          // for permission first -- so it routes through _continue rather
+          // than the plain _advance every earlier step's Skip uses.
+          secondaryLabel: onLastStep ? 'Not now' : null,
+          onSecondary: onLastStep ? (_busy ? null : _continue) : null,
           onBack: _index == 0 ? null : _back,
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
