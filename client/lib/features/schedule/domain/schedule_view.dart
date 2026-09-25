@@ -32,7 +32,8 @@ YearMonth shiftMonth(YearMonth m, int delta) {
 
 /// The 42 dates of [m]'s grid: six Monday-first weeks, starting on the
 /// Monday on or before the 1st. Always six rows, so the grid never changes
-/// height between months. At most 62 days, so one request covers it.
+/// height between months, and always 42 days -- within the endpoint's
+/// 62-day limit, so one request covers it.
 List<String> monthGridDates(YearMonth m) {
   final first = DateTime.utc(m.year, m.month, 1);
   final start = first.subtract(Duration(days: first.weekday - 1));
