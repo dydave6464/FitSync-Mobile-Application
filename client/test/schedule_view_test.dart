@@ -75,6 +75,13 @@ void main() {
       expect(monthGridDates((year: 2026, month: 6)).first, '2026-06-01');
     });
 
+    test('a month starting on a Sunday takes the maximum 6-day offset', () {
+      // 1 Nov 2026 is a Sunday.
+      final nov = monthGridDates((year: 2026, month: 11));
+      expect(nov.first, '2026-10-26');
+      expect(nov.length, 42);
+    });
+
     test('labels', () {
       expect(formatMonthTitle((year: 2026, month: 9)), 'September 2026');
       expect(formatDayLabel('2026-09-24'), 'Thu 24 Sep');
