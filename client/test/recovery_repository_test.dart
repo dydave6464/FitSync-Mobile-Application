@@ -35,6 +35,48 @@ void main() {
     expect(overview.load, isEmpty);
   });
 
+  test('muscle groups arrive in the order sent, with their dates', () async {
+    final repo = _repo(
+      MockClient(
+        (_) async => http.Response(
+          jsonEncode({
+            'data': {
+              'todayCheckin': null,
+              'latestEstimate': null,
+              'load': [],
+              'muscles': [
+                {'group': 'chest', 'lastTrained': null, 'daysAgo': null},
+                {'group': 'legs', 'lastTrained': '2026-09-20', 'daysAgo': 5},
+              ],
+            },
+          }),
+          200,
+        ),
+      ),
+    );
+
+    final muscles = (await repo.overview()).muscles;
+    expect(muscles.map((m) => m.group), ['chest', 'legs']);
+    expect(muscles.first.daysAgo, isNull);
+    expect(muscles.last.lastTrained, '2026-09-20');
+    expect(muscles.last.daysAgo, 5);
+  });
+
+  test('an older server without muscles parses as none', () async {
+    final repo = _repo(
+      MockClient(
+        (_) async => http.Response(
+          jsonEncode({
+            'data': {'todayCheckin': null, 'latestEstimate': null, 'load': []},
+          }),
+          200,
+        ),
+      ),
+    );
+
+    expect((await repo.overview()).muscles, isEmpty);
+  });
+
   test('an estimate carries its date and a ring value', () async {
     final repo = _repo(
       MockClient(

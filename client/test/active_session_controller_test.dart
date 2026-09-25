@@ -14,6 +14,8 @@ import 'package:fitsync/features/exercises/presentation/providers.dart'
 import 'package:fitsync/features/routine/presentation/providers.dart'
     show routineTodayProvider;
 import 'package:fitsync/features/sessions/presentation/providers.dart';
+import 'package:fitsync/features/recovery/presentation/providers.dart'
+    show recoveryOverviewProvider;
 import 'package:fitsync/features/streaks/presentation/providers.dart';
 
 const _session = {
@@ -498,6 +500,25 @@ void main() {
             200,
           );
         }
+        if (path == '/api/v1/recovery') {
+          return http.Response(
+            jsonEncode({
+              'data': {
+                'todayCheckin': null,
+                'latestEstimate': null,
+                'load': [],
+                'muscles': [
+                  {
+                    'group': 'legs',
+                    'lastTrained': first ? null : '2026-09-21',
+                    'daysAgo': first ? null : 0,
+                  },
+                ],
+              },
+            }),
+            200,
+          );
+        }
         if (path == '/api/v1/routine/today') {
           return http.Response(
             jsonEncode({
@@ -644,6 +665,28 @@ void main() {
       expect(
         (await container.read(routineTodayProvider.future)).workout!.done,
         isTrue,
+      );
+    });
+
+    // Recovery's "last trained" card and its 7-day load.
+    test('the recovery overview', () async {
+      final container = await completed();
+      expect(
+        (await container.read(recoveryOverviewProvider.future))
+            .muscles
+            .single
+            .daysAgo,
+        isNull,
+      );
+
+      await container.read(activeSessionProvider.notifier).complete(40);
+
+      expect(
+        (await container.read(recoveryOverviewProvider.future))
+            .muscles
+            .single
+            .daysAgo,
+        0,
       );
     });
 

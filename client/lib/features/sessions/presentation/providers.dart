@@ -2,6 +2,8 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../exercises/presentation/providers.dart'
     show apiClientProvider, apiRetryPolicy;
+import '../../recovery/presentation/providers.dart'
+    show recoveryOverviewProvider;
 import '../../routine/presentation/providers.dart' show routineTodayProvider;
 import '../../streaks/presentation/providers.dart' show streakProvider;
 import '../data/session_repository.dart';
@@ -105,6 +107,7 @@ class ActiveSessionController extends AsyncNotifier<ActiveSession?> {
     ref.invalidate(trainingAnalyticsProvider); // volume, adherence, muscles
     ref.invalidate(lastWorkoutProvider); // what the "+" sheet repeats
     ref.invalidate(streakProvider); // a finished workout is a streak day
+    ref.invalidate(recoveryOverviewProvider); // 7-day load, last trained
     return done;
   }
 

@@ -8,6 +8,7 @@ const {
 } = require('../db/recovery');
 const { readTrainingLoad } = require('../db/training-load');
 const { readVolumeBuckets } = require('../db/analytics');
+const { readMuscleRecency } = require('../db/muscle-recency');
 
 /// Days of check-ins handed to the estimator, and deliberately short.
 ///
@@ -49,10 +50,11 @@ module.exports = function buildRecoveryRouter(deps = {}) {
   router.get('/', auth, async (req, res, next) => {
     try {
       const { userId } = req.user;
-      const [checkin, estimate, load] = await Promise.all([
+      const [checkin, estimate, load, muscles] = await Promise.all([
         todayCheckin(deps.pool, userId),
         latestEstimate(deps.pool, userId),
         readVolumeBuckets(deps.pool, userId, 'week'),
+        readMuscleRecency(deps.pool, userId),
       ]);
 
       res.json({
@@ -60,6 +62,7 @@ module.exports = function buildRecoveryRouter(deps = {}) {
           todayCheckin: checkin,
           latestEstimate: estimate,
           load: load || [],
+          muscles,
         },
       });
     } catch (err) { next(err); }

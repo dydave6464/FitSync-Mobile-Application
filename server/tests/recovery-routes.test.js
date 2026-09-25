@@ -53,6 +53,11 @@ test('recovery routes', async (t) => {
     assert.equal(res.body.data.todayCheckin, null);
     assert.equal(res.body.data.latestEstimate, null);
     assert.equal(res.body.data.load.length, 7);
+    // Six groups, none trained yet, in body order.
+    assert.deepEqual(res.body.data.muscles.map((m) => [m.group, m.lastTrained, m.daysAgo]), [
+      ['chest', null, null], ['back', null, null], ['shoulders', null, null],
+      ['arms', null, null], ['legs', null, null], ['core', null, null],
+    ]);
   });
 
   await t.test('a bad answer is a 400 naming the field', async () => {
