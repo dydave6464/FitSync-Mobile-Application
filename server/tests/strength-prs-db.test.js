@@ -118,10 +118,16 @@ test('new PR count', async (t) => {
     assert.equal(await countNewPrs(pool, a, 30), 0);
   });
 
-  await t.test('the window includes its oldest day, as the summary does', async () => {
-    const u = await makeUser();
-    await session(u, { daysAgo: 31, sets: [{ weightKg: 60, reps: 5 }] });
-    await session(u, { daysAgo: 30, sets: [{ weightKg: 65, reps: 5 }] });
-    assert.equal(await countNewPrs(pool, u, 30), 1);
+  // 30 days ending today: day 29 is inside, day 30 is earlier history.
+  await t.test('the window is the 30 days ending today', async () => {
+    const outside = await makeUser();
+    await session(outside, { daysAgo: 31, sets: [{ weightKg: 60, reps: 5 }] });
+    await session(outside, { daysAgo: 30, sets: [{ weightKg: 65, reps: 5 }] });
+    assert.equal(await countNewPrs(pool, outside, 30), 0, 'day 30 is before the window');
+
+    const inside = await makeUser();
+    await session(inside, { daysAgo: 30, sets: [{ weightKg: 60, reps: 5 }] });
+    await session(inside, { daysAgo: 29, sets: [{ weightKg: 65, reps: 5 }] });
+    assert.equal(await countNewPrs(pool, inside, 30), 1, 'day 29 is inside the window');
   });
 });

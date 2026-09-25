@@ -143,10 +143,11 @@ final trainingSummaryProvider = FutureProvider<TrainingSummary>(
   retry: apiRetryPolicy,
 );
 
-/// The last 30 days, always -- what Home's progress card reports.
+/// The last 30 days (today and the 29 before it), always -- what Home's
+/// progress card reports.
 ///
 /// Not [trainingSummaryProvider], which follows whichever period the Progress
-/// tab's segment is on: Home is labelled "Last 30 days" and must mean it.
+/// tab's segment is on: Home is labelled "Past month" and must mean it.
 final homeSummaryProvider = FutureProvider<TrainingSummary>(
   (ref) => ref.watch(sessionRepositoryProvider).summary(period: 'month'),
   retry: apiRetryPolicy,
