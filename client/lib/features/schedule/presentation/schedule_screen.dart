@@ -61,8 +61,12 @@ class _ScheduleScreenState extends ConsumerState<ScheduleScreen> {
   Widget build(BuildContext context) {
     final t = context.fs;
     final deviceToday = manilaDayOf(widget.now());
+    // A day of slack for a phone whose clock runs ahead of the server's:
+    // caught right before midnight, its guess at "today" can already be
+    // tomorrow by Manila time. [upcomingItems] filters from the server's
+    // own today, so the extra day costs nothing once it answers.
     final CalendarSpan weekSpan = (
-      from: deviceToday,
+      from: addDays(deviceToday, -1),
       to: addDays(deviceToday, 6),
     );
     final week = ref.watch(calendarProvider(weekSpan));

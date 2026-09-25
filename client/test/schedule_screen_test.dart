@@ -168,7 +168,7 @@ class _MutableCalendarRepo implements CalendarRepository {
 }
 
 const _grid = '2026-08-31..2026-10-11';
-const _week = '2026-09-24..2026-09-30';
+const _week = '2026-09-23..2026-09-30';
 
 /// `_week`/`_grid`'s `from..to` as the record [calendarProvider] keys on.
 CalendarSpan _span(String range) {
@@ -283,6 +283,23 @@ void main() {
     expect(find.text('Reminder 15 min before'), findsNWidgets(2));
     expect(find.textContaining('Reminder at'), findsNothing);
   });
+
+  testWidgets(
+    'a device clock a day ahead of the server still lists the actual today',
+    (tester) async {
+      // The phone's Manila clock already reads 25 Sep; the server -- and so
+      // the fixture's "today" data at 2026-09-24 -- has not turned over yet.
+      await _pump(
+        tester,
+        now: DateTime.utc(2026, 9, 24, 16, 30),
+        answer: (from, to) =>
+            _range(from, to, days: _fixture, today: '2026-09-24'),
+      );
+
+      expect(find.text('Today · Stretch · 9:00 PM'), findsOneWidget);
+      expect(find.text('Today · Walk · Any time'), findsOneWidget);
+    },
+  );
 
   testWidgets('with the master switch off: Reminders off, no reminder lines', (
     tester,
