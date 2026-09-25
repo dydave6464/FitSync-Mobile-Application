@@ -5,6 +5,8 @@ import '../../../core/token_store.dart';
 import '../../exercises/presentation/providers.dart';
 import '../../plans/presentation/providers.dart';
 import '../../recovery/presentation/providers.dart';
+import '../../reminders/data/reminder_scheduler.dart';
+import '../../reminders/presentation/providers.dart';
 import '../../routine/presentation/providers.dart';
 import '../../sessions/presentation/providers.dart';
 import '../../sessions/presentation/workout_draft.dart';
@@ -125,10 +127,11 @@ class AuthController extends AsyncNotifier<AuthState> {
   ///
   /// `routineTodayProvider`, `homeSummaryProvider`, `trainingSummaryProvider`,
   /// `trainingAnalyticsProvider`, `sessionHistoryProvider`,
-  /// `lastWorkoutProvider`, `pendingOutcomeProvider`, `recoveryOverviewProvider`
-  /// and `streakProvider` belong on this list for the same reason: none
-  /// of them is autoDispose, and each carries another account's training,
-  /// recovery or routine data across the sign-out.
+  /// `lastWorkoutProvider`, `pendingOutcomeProvider`, `recoveryOverviewProvider`,
+  /// `streakProvider` and `reminderSettingsProvider` belong on this list for
+  /// the same reason: none of them is autoDispose, and each carries another
+  /// account's training, recovery, routine or reminder data across the
+  /// sign-out.
   void _clearUserScopedCaches() {
     ref.invalidate(profileProvider);
     ref.invalidate(activePlanProvider);
@@ -146,10 +149,13 @@ class AuthController extends AsyncNotifier<AuthState> {
     ref.invalidate(pendingOutcomeProvider);
     ref.invalidate(recoveryOverviewProvider);
     ref.invalidate(streakProvider);
+    ref.invalidate(reminderSettingsProvider);
   }
 
   Future<void> signOut() async {
     await ref.read(authRepositoryProvider).signOut();
+    // The next account must not inherit this one's reminders.
+    await ref.read(reminderSchedulerProvider).cancelAll();
     _clearUserScopedCaches();
     state = const AsyncData(AuthState.signedOut);
   }

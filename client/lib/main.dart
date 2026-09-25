@@ -4,9 +4,18 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'app_shell.dart';
 import 'core/theme.dart';
 import 'core/theme_controller.dart';
+import 'features/reminders/data/local_reminder_scheduler.dart';
+import 'features/reminders/data/reminder_scheduler.dart';
 
-void main() {
-  runApp(const ProviderScope(child: FitSyncApp()));
+Future<void> main() async {
+  WidgetsFlutterBinding.ensureInitialized();
+  final scheduler = await LocalReminderScheduler.create();
+  runApp(
+    ProviderScope(
+      overrides: [reminderSchedulerProvider.overrideWithValue(scheduler)],
+      child: const FitSyncApp(),
+    ),
+  );
 }
 
 class FitSyncApp extends ConsumerWidget {

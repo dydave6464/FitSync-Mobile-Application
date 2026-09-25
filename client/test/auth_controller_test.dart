@@ -6,6 +6,8 @@ import 'package:fitsync/core/token_store.dart';
 import 'package:fitsync/features/auth/data/auth_repository.dart';
 import 'package:fitsync/features/auth/domain/auth_user.dart';
 import 'package:fitsync/features/auth/presentation/auth_controller.dart';
+import 'package:fitsync/features/reminders/data/reminder_scheduler.dart';
+import 'package:fitsync/features/reminders/domain/reminders.dart';
 import 'package:fitsync/features/routine/data/routine_repository.dart';
 import 'package:fitsync/features/routine/domain/routine.dart';
 import 'package:fitsync/features/routine/presentation/providers.dart';
@@ -203,6 +205,20 @@ class _SequenceStreakRepository implements StreakRepository {
     loads += 1;
     return s;
   }
+}
+
+class _RecordingScheduler implements ReminderScheduler {
+  int cancels = 0;
+  @override
+  Future<bool> permissionGranted() async => true;
+  @override
+  Future<bool> requestPermission() async => true;
+  @override
+  Future<void> cancelAll() async => cancels++;
+  @override
+  Future<void> scheduleAll(List<PlannedReminder> reminders) async {}
+  @override
+  Stream<String> get taps => const Stream.empty();
 }
 
 void main() {
@@ -467,5 +483,34 @@ void main() {
       reason: "the next account was handed the previous account's streak",
     );
     expect(streaks.loads, 2);
+  });
+
+  test('signing out cancels scheduled reminders', () async {
+    final tokens = TokenStore(backing: InMemorySecureStore());
+    await tokens.write('tok');
+    final scheduler = _RecordingScheduler();
+    final container = ProviderContainer(
+      overrides: [
+        tokenStoreProvider.overrideWithValue(tokens),
+        authRepositoryProvider.overrideWithValue(
+          FakeAuthRepository(
+            tokens,
+            onMe: () async => _user(onboardingCompleted: true),
+          ),
+        ),
+        reminderSchedulerProvider.overrideWithValue(scheduler),
+      ],
+    );
+    addTearDown(container.dispose);
+
+    await container.read(authControllerProvider.future);
+
+    await container.read(authControllerProvider.notifier).signOut();
+
+    expect(
+      scheduler.cancels,
+      1,
+      reason: 'the next account must not inherit these reminders',
+    );
   });
 }
