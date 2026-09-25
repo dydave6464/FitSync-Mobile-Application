@@ -240,6 +240,28 @@ void main() {
   });
 
   testWidgets(
+    'the blocked banner clears when permission is granted while the screen '
+    'is open',
+    (tester) async {
+      final scheduler = await _pump(tester, granted: false);
+      expect(find.byKey(const Key('reminders.blocked')), findsOneWidget);
+
+      scheduler.granted = true;
+
+      // Mirrors `resume` in day_rollover_test.dart.
+      tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.inactive);
+      tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.hidden);
+      tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.paused);
+      tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.hidden);
+      tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.inactive);
+      tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.resumed);
+      await tester.pumpAndSettle();
+
+      expect(find.byKey(const Key('reminders.blocked')), findsNothing);
+    },
+  );
+
+  testWidgets(
     'popping the screen while permission is being asked does not throw',
     (tester) async {
       final settingsPatches = <Map<String, dynamic>>[];

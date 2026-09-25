@@ -53,10 +53,23 @@ class _RemindersScreenState extends ConsumerState<RemindersScreen> {
   /// rebuild.
   bool _granted = true;
 
+  /// Re-checks permission on resume, so a grant made from the phone's own
+  /// settings while this screen was left open behind it (the only way to
+  /// grant it once refused -- the app cannot re-ask) clears the banner
+  /// without needing the screen reopened.
+  late final AppLifecycleListener _lifecycle;
+
   @override
   void initState() {
     super.initState();
     _refreshGranted();
+    _lifecycle = AppLifecycleListener(onResume: _refreshGranted);
+  }
+
+  @override
+  void dispose() {
+    _lifecycle.dispose();
+    super.dispose();
   }
 
   Future<void> _refreshGranted() async {

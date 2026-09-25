@@ -71,6 +71,7 @@ class _NavShellState extends State<NavShell> {
   /// tapped reminder about a habit or the workout item opens onto, the same
   /// screen Home's own routine card opens.
   void _openRoutine() {
+    _popToShell();
     _select(0);
     Navigator.of(context).push(
       MaterialPageRoute<void>(
@@ -83,6 +84,14 @@ class _NavShellState extends State<NavShell> {
       ),
     );
   }
+
+  /// A tapped reminder can land while some other pushed route (Routine, a
+  /// swap sheet, whatever else the user was on) is covering the shell.
+  /// Switching the underlying tab alone would leave it sitting there,
+  /// invisible on top -- popped back to the shell first, so the tab the tap
+  /// asked for is what is actually seen.
+  void _popToShell() =>
+      Navigator.of(context).popUntil((route) => route.isFirst);
 
   @override
   void initState() {
@@ -122,7 +131,10 @@ class _NavShellState extends State<NavShell> {
   Widget build(BuildContext context) {
     return ReminderSync(
       onOpenRoutine: _openRoutine,
-      onOpenRecovery: () => _openTrainAt('recovery'),
+      onOpenRecovery: () {
+        _popToShell();
+        _openTrainAt('recovery');
+      },
       child: DayRollover(
         child: Scaffold(
           body: IndexedStack(

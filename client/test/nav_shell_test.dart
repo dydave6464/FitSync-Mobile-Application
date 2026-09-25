@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -25,6 +27,13 @@ import 'package:fitsync/features/recovery/domain/recovery.dart';
 import 'package:fitsync/features/recovery/presentation/providers.dart'
     show recoveryOverviewProvider;
 import 'package:fitsync/features/recovery/presentation/recovery_screen.dart';
+import 'package:fitsync/features/reminders/data/reminder_prompt_store.dart';
+import 'package:fitsync/features/reminders/data/reminder_scheduler.dart';
+import 'package:fitsync/features/reminders/domain/reminders.dart';
+import 'package:fitsync/features/routine/domain/routine.dart';
+import 'package:fitsync/features/routine/presentation/providers.dart'
+    show routineTodayProvider, RoutineController;
+import 'package:fitsync/features/routine/presentation/routine_screen.dart';
 import 'package:fitsync/features/sessions/domain/session_history.dart'
     show TrainingSummary;
 import 'package:fitsync/features/sessions/domain/training_analytics.dart';
@@ -36,6 +45,8 @@ import 'package:fitsync/features/streaks/domain/streaks.dart';
 import 'package:fitsync/features/streaks/presentation/providers.dart'
     show streakProvider;
 import 'package:fitsync/features/training/presentation/training_shell.dart';
+
+import 'helpers/in_memory_secure_store.dart';
 
 /// Enough rows that the catalogue's list is taller than the test viewport,
 /// so it actually has somewhere to scroll to.
@@ -98,6 +109,49 @@ class StubProfileNotifier extends ProfileNotifier {
     equipment: [],
     injuries: [],
   );
+}
+
+/// A day with one habit, so Home's routine card renders something tappable.
+/// Mirrors `_defaultRoutine` in home_screen_test.dart.
+const _routineDay = RoutineDay(
+  date: '2026-09-24',
+  habits: [
+    Habit(
+      habitId: 1,
+      title: 'Stretch',
+      time: '06:30',
+      durationMin: 8,
+      weekdays: [1, 2, 3, 4, 5, 6, 7],
+      done: false,
+    ),
+  ],
+  workout: null,
+);
+
+/// A fixed answer instead of a repository round trip, mirroring
+/// `_StubRoutine` in home_screen_test.dart.
+class _StubRoutine extends RoutineController {
+  _StubRoutine(this.day);
+  final RoutineDay day;
+  @override
+  Future<RoutineDay> build() async => day;
+}
+
+/// Its `taps` stream is driven directly by a test, mirroring `_FakeScheduler`
+/// in reminder_sync_test.dart.
+class _FakeReminderScheduler implements ReminderScheduler {
+  final tapsController = StreamController<String>.broadcast();
+
+  @override
+  Future<bool> permissionGranted() async => false;
+  @override
+  Future<bool> requestPermission() async => false;
+  @override
+  Future<void> cancelAll() async {}
+  @override
+  Future<void> scheduleAll(List<PlannedReminder> reminders) async {}
+  @override
+  Stream<String> get taps => tapsController.stream;
 }
 
 /// One row is enough to reach the swap sheet from the Train tab.
@@ -165,6 +219,8 @@ Future<void> _pumpShell(
   WorkoutPlan? plan,
   // Sees the path of every request that reaches the stub ApiClient.
   void Function(String path)? onRequest,
+  ReminderScheduler? scheduler,
+  RoutineDay? routine,
 }) => tester.pumpWidget(
   ProviderScope(
     overrides: [
@@ -210,6 +266,13 @@ Future<void> _pumpShell(
       profileProvider.overrideWith(StubProfileNotifier.new),
       equipmentOptionsProvider.overrideWith((ref) async => const []),
       injuryOptionsProvider.overrideWith((ref) async => const []),
+      reminderPromptStoreProvider.overrideWithValue(
+        inMemoryReminderPromptStore(),
+      ),
+      if (scheduler != null)
+        reminderSchedulerProvider.overrideWithValue(scheduler),
+      if (routine != null)
+        routineTodayProvider.overrideWith(() => _StubRoutine(routine)),
     ],
     child: const MaterialApp(home: NavShell()),
   ),
@@ -613,4 +676,38 @@ void main() {
     expect(find.byType(PlanScreen), findsOneWidget);
     expect(find.byType(RecoveryScreen), findsNothing);
   });
+
+  testWidgets(
+    "a tapped reminder pops a route pushed on top before it routes, so it "
+    "doesn't just switch the tab underneath one",
+    (tester) async {
+      final scheduler = _FakeReminderScheduler();
+      addTearDown(scheduler.tapsController.close);
+      await _pumpShell(tester, scheduler: scheduler, routine: _routineDay);
+      await tester.pumpAndSettle();
+
+      // Push RoutineScreen on top of the shell, the same way a tap on the
+      // Home routine card always has.
+      await tester.scrollUntilVisible(
+        find.byKey(const Key('home.routine')),
+        200,
+      );
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const Key('home.routine')));
+      await tester.pumpAndSettle();
+      expect(find.byType(RoutineScreen), findsOneWidget);
+
+      scheduler.tapsController.add('recovery');
+      await tester.pumpAndSettle();
+
+      expect(
+        find.byType(RoutineScreen),
+        findsNothing,
+        reason:
+            'the pushed route must be popped, not merely left covering the '
+            'tab the tap switched underneath it',
+      );
+      expect(find.byType(RecoveryScreen), findsOneWidget);
+    },
+  );
 }
