@@ -88,6 +88,27 @@ class _FakeCalendarRepo implements CalendarRepository {
   }
 }
 
+/// Answers [failFrom] once, then throws on every request for it after that
+/// -- a refetch (not the first load) failing.
+class _FlakyCalendarRepo implements CalendarRepository {
+  _FlakyCalendarRepo(this.answer, this.failFrom);
+
+  final CalendarRange Function(String from, String to) answer;
+  final String failFrom;
+  final _counts = <String, int>{};
+
+  @override
+  Future<CalendarRange> range(String from, String to) async {
+    final span = '$from..$to';
+    final count = (_counts[span] ?? 0) + 1;
+    _counts[span] = count;
+    if (span == failFrom && count > 1) {
+      throw const ApiException('SERVER_ERROR', 'nope');
+    }
+    return answer(from, to);
+  }
+}
+
 class _Profile extends ProfileNotifier {
   _Profile(this.masterOn);
 
@@ -113,6 +134,22 @@ class _Settings extends ReminderSettingsController {
 
   @override
   Future<ReminderSettings> build() async => settings;
+}
+
+/// Answers [first] once, then throws on every rebuild after that -- a
+/// refetch (not the first load) failing.
+class _FlakySettings extends ReminderSettingsController {
+  _FlakySettings(this.first);
+
+  final ReminderSettings first;
+  int _calls = 0;
+
+  @override
+  Future<ReminderSettings> build() async {
+    _calls += 1;
+    if (_calls == 1) return first;
+    throw const ApiException('SERVER_ERROR', 'nope');
+  }
 }
 
 const _grid = '2026-08-31..2026-10-11';
@@ -374,4 +411,87 @@ void main() {
     expect(find.text("Couldn't load what's coming up"), findsNothing);
     expect(find.text('Today · Walk · Any time'), findsOneWidget);
   });
+
+  testWidgets(
+    'a reminder settings refetch that errors hides the tag and lines, not stale ones',
+    (tester) async {
+      tester.view.physicalSize = const Size(800, 1800);
+      tester.view.devicePixelRatio = 1;
+      addTearDown(tester.view.reset);
+
+      await tester.pumpWidget(
+        ProviderScope(
+          overrides: [
+            calendarRepositoryProvider.overrideWithValue(
+              _FakeCalendarRepo((from, to) => _range(from, to, days: _fixture)),
+            ),
+            profileProvider.overrideWith(() => _Profile(true)),
+            reminderSettingsProvider.overrideWith(
+              () => _FlakySettings(ReminderSettings.defaults),
+            ),
+          ],
+          child: MaterialApp(home: ScheduleScreen(now: () => _now)),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      // Sanity: reminders show while the settings are good.
+      expect(find.text('Reminders on'), findsOneWidget);
+      expect(find.text('Reminder 15 min before'), findsNWidgets(2));
+
+      // A refetch fails; the settings provider keeps its old value
+      // (Riverpod 3's AsyncError.copyWithPrevious) but is now in error.
+      ProviderScope.containerOf(tester.element(find.byType(ScheduleScreen)))
+          .invalidate(reminderSettingsProvider);
+      await tester.pumpAndSettle();
+
+      expect(find.text('Reminders on'), findsNothing);
+      expect(find.text('Reminders off'), findsNothing);
+      expect(find.textContaining('Reminder '), findsNothing);
+      // The Upcoming rows themselves are unaffected.
+      expect(find.text('Today · Walk · Any time'), findsOneWidget);
+    },
+  );
+
+  testWidgets(
+    "a tapped day gives way to Upcoming if the grid's refetch errors",
+    (tester) async {
+      tester.view.physicalSize = const Size(800, 1800);
+      tester.view.devicePixelRatio = 1;
+      addTearDown(tester.view.reset);
+
+      await tester.pumpWidget(
+        ProviderScope(
+          overrides: [
+            calendarRepositoryProvider.overrideWithValue(
+              _FlakyCalendarRepo(
+                (from, to) => _range(from, to, days: _fixture),
+                _grid,
+              ),
+            ),
+            profileProvider.overrideWith(() => _Profile(true)),
+            reminderSettingsProvider.overrideWith(
+              () => _Settings(ReminderSettings.defaults),
+            ),
+          ],
+          child: MaterialApp(home: ScheduleScreen(now: () => _now)),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.byKey(const Key('schedule.day.2026-09-25')));
+      await tester.pumpAndSettle();
+      expect(find.text('Read · Any time'), findsOneWidget);
+
+      // The grid's span reloads and this time fails.
+      ProviderScope.containerOf(tester.element(find.byType(ScheduleScreen)))
+          .invalidate(calendarProvider((from: '2026-08-31', to: '2026-10-11')));
+      await tester.pumpAndSettle();
+
+      expect(find.text('Nothing planned.'), findsNothing);
+      expect(find.text('Nothing logged this day.'), findsNothing);
+      expect(find.text('Upcoming'), findsOneWidget);
+      expect(find.text("Couldn't load this month"), findsOneWidget);
+    },
+  );
 }

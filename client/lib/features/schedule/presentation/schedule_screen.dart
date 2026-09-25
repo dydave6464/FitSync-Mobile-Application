@@ -43,11 +43,14 @@ class _ScheduleScreenState extends ConsumerState<ScheduleScreen> {
   void _tapDay(String date) =>
       setState(() => _selected = _selected == date ? null : date);
 
-  /// The master switch and the reminder settings, or null until both load.
+  /// The master switch and the reminder settings, or null until both load --
+  /// or if either is in error, even if it still holds a stale value from
+  /// before a failed refetch (Riverpod 3 keeps `hasValue` true then).
   ReminderContext? _reminders() {
     final profile = ref.watch(profileProvider);
     final settings = ref.watch(reminderSettingsProvider);
     if (!profile.hasValue || !settings.hasValue) return null;
+    if (profile.hasError || settings.hasError) return null;
     return (
       masterOn: profile.value!.notificationsEnabled,
       settings: settings.value!,
@@ -129,10 +132,15 @@ class _ScheduleScreenState extends ConsumerState<ScheduleScreen> {
             ),
           ),
           const SizedBox(height: 22),
-          if (_selected == null)
-            ..._upcoming(week, weekSpan, _reminders())
+          // The tapped day needs the grid's own data, not just a selection:
+          // showing it from nothing would say "Nothing planned." while the
+          // grid is actually in error, not empty. Upcoming stands in until
+          // the grid loads again; [_selected] itself is left set, so the day
+          // reappears once it does.
+          if (_selected != null && loaded != null)
+            ..._day(_selected!, loaded)
           else
-            ..._day(_selected!, loaded),
+            ..._upcoming(week, weekSpan, _reminders()),
         ],
       ),
     );
@@ -179,12 +187,12 @@ class _ScheduleScreenState extends ConsumerState<ScheduleScreen> {
     ),
   ];
 
-  List<Widget> _day(String date, CalendarRange? grid) {
+  List<Widget> _day(String date, CalendarRange range) {
     CalendarDay? day;
-    for (final d in grid?.days ?? const <CalendarDay>[]) {
+    for (final d in range.days) {
       if (d.date == date) day = d;
     }
-    final past = grid != null && date.compareTo(grid.today) < 0;
+    final past = date.compareTo(range.today) < 0;
     final items = day == null
         ? const <ScheduleItem>[]
         : dayItems(day).where((i) => !past || i.done).toList();
