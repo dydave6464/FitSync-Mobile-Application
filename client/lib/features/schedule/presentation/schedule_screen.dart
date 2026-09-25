@@ -87,6 +87,10 @@ class _ScheduleScreenState extends ConsumerState<ScheduleScreen> {
     final selected = _selected;
     final showDay =
         selected != null && loaded != null && dates.contains(selected);
+    // Watched unconditionally: called only from the Upcoming branch, this
+    // would watch profile/reminder settings only while that branch builds,
+    // and miss their changes while a day is shown instead.
+    final reminders = _reminders();
 
     return Scaffold(
       backgroundColor: t.bg,
@@ -152,7 +156,7 @@ class _ScheduleScreenState extends ConsumerState<ScheduleScreen> {
           if (showDay)
             ..._day(selected, loaded)
           else
-            ..._upcoming(week, weekSpan, _reminders()),
+            ..._upcoming(week, weekSpan, reminders),
         ],
       ),
     );
