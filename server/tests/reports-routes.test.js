@@ -133,7 +133,8 @@ test('report endpoints', async (t) => {
     );
     const dateOnly = (d) => d.toISOString().slice(0, 10);
     assert.equal(dateOnly(row.window_end), '2026-01-01');
-    assert.equal(dateOnly(row.window_start), '2025-12-25');
+    // Seven days ending today, today included: 26 Dec to 1 Jan.
+    assert.equal(dateOnly(row.window_start), '2025-12-26');
   });
 
   // Comparing against MySQL's own CURDATE() rather than against a
@@ -154,7 +155,7 @@ test('report endpoints', async (t) => {
               window_end = CURDATE() AS ends_today
          FROM shared_reports WHERE user_id = ?`, [userId],
     );
-    assert.equal(row.span, 7);
+    assert.equal(row.span, 6, 'seven days, both ends included');
     assert.equal(row.ends_today, 1);
   });
 

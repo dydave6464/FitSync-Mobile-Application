@@ -129,7 +129,8 @@ module.exports = function buildReportsRouter(deps = {}) {
 
       const { token, expiresAt } = await createSharedReport(deps.pool, req.user.userId, {
         period,
-        windowStart: manilaDay(days),
+        // N days ending today, today included: the first is N - 1 days ago.
+        windowStart: manilaDay(days - 1),
         windowEnd: manilaDay(),
         report,
       });

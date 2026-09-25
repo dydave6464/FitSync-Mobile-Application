@@ -2,6 +2,8 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../exercises/presentation/providers.dart'
     show apiClientProvider, apiRetryPolicy;
+import '../../recovery/presentation/providers.dart'
+    show recoveryOverviewProvider;
 import '../../routine/presentation/providers.dart' show routineTodayProvider;
 import '../../streaks/presentation/providers.dart' show streakProvider;
 import '../data/session_repository.dart';
@@ -105,6 +107,7 @@ class ActiveSessionController extends AsyncNotifier<ActiveSession?> {
     ref.invalidate(trainingAnalyticsProvider); // volume, adherence, muscles
     ref.invalidate(lastWorkoutProvider); // what the "+" sheet repeats
     ref.invalidate(streakProvider); // a finished workout is a streak day
+    ref.invalidate(recoveryOverviewProvider); // 7-day load, last trained
     return done;
   }
 
@@ -143,10 +146,11 @@ final trainingSummaryProvider = FutureProvider<TrainingSummary>(
   retry: apiRetryPolicy,
 );
 
-/// The last 30 days, always -- what Home's progress card reports.
+/// The last 30 days (today and the 29 before it), always -- what Home's
+/// progress card reports.
 ///
 /// Not [trainingSummaryProvider], which follows whichever period the Progress
-/// tab's segment is on: Home is labelled "Last 30 days" and must mean it.
+/// tab's segment is on: Home is labelled "Past month" and must mean it.
 final homeSummaryProvider = FutureProvider<TrainingSummary>(
   (ref) => ref.watch(sessionRepositoryProvider).summary(period: 'month'),
   retry: apiRetryPolicy,

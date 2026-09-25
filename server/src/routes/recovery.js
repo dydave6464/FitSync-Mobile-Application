@@ -8,9 +8,7 @@ const {
 } = require('../db/recovery');
 const { readTrainingLoad } = require('../db/training-load');
 const { readVolumeBuckets } = require('../db/analytics');
-
-/// The floor the ML stub returns, used when the service cannot be reached.
-const FLOOR = { riskLevel: 'low', trainingLoadScore: 0 };
+const { readMuscleRecency } = require('../db/muscle-recency');
 
 /// Days of check-ins handed to the estimator, and deliberately short.
 ///
@@ -52,10 +50,11 @@ module.exports = function buildRecoveryRouter(deps = {}) {
   router.get('/', auth, async (req, res, next) => {
     try {
       const { userId } = req.user;
-      const [checkin, estimate, load] = await Promise.all([
+      const [checkin, estimate, load, muscles] = await Promise.all([
         todayCheckin(deps.pool, userId),
         latestEstimate(deps.pool, userId),
         readVolumeBuckets(deps.pool, userId, 'week'),
+        readMuscleRecency(deps.pool, userId),
       ]);
 
       res.json({
@@ -63,6 +62,7 @@ module.exports = function buildRecoveryRouter(deps = {}) {
           todayCheckin: checkin,
           latestEstimate: estimate,
           load: load || [],
+          muscles,
         },
       });
     } catch (err) { next(err); }
@@ -79,23 +79,28 @@ module.exports = function buildRecoveryRouter(deps = {}) {
         readTrainingLoad(deps.pool, userId),
       ]);
 
-      let estimate = FLOOR;
+      // No estimate rather than an invented one when the service is down: a
+      // stored 'low' would read on Home as "manageable", indistinguishable
+      // from a real estimate. The check-in is already stored -- it is the
+      // user's own data -- and the screens fall back to the latest real
+      // estimate, captioned with its date.
+      let estimate = null;
       try {
         estimate = await deps.ml.estimateInjuryRisk({
           checkins, load, injuryHistory: [],
         });
       } catch (err) {
-        // Logged, not rethrown. The check-in is already stored and is the
-        // user's own data; a service being down must not lose it.
-        req.log?.warn({ err }, 'injury-risk estimate failed, storing the floor');
+        req.log?.warn({ err }, 'injury-risk estimate failed; check-in saved without one');
       }
 
-      await saveEstimate(deps.pool, {
-        userId,
-        checkinId: checkin.checkinId,
-        riskLevel: estimate.riskLevel,
-        trainingLoadScore: estimate.trainingLoadScore,
-      });
+      if (estimate) {
+        await saveEstimate(deps.pool, {
+          userId,
+          checkinId: checkin.checkinId,
+          riskLevel: estimate.riskLevel,
+          trainingLoadScore: estimate.trainingLoadScore,
+        });
+      }
 
       res.status(201).json({ data: { checkin, estimate } });
     } catch (err) { next(err); }

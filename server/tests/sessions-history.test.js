@@ -212,6 +212,17 @@ test('session history', async (t) => {
     assert.equal(year.totalVolumeKg, 8777);
   });
 
+  // Seven days ending today: day 6 is in, day 7 is the week before.
+  await t.test("the week's window is the seven days ending today", async () => {
+    const u = await freshUser('h10b@example.com');
+    await writeSession(u.userId, { daysAgo: 6, volume: 100, sets: 1 });
+    await writeSession(u.userId, { daysAgo: 7, volume: 200, sets: 1 });
+
+    const week = await summary(u.token, 'week');
+    assert.equal(week.sessionCount, 1);
+    assert.equal(week.totalVolumeKg, 100);
+  });
+
   await t.test('an abandoned session counts for nothing', async () => {
     const u = await freshUser('h11@example.com');
     await writeSession(u.userId, { status: 'abandoned', volume: 5000, sets: 50 });

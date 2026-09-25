@@ -74,6 +74,89 @@ void main() {
     expect(find.byKey(const Key('recovery.checkin')), findsOneWidget);
   });
 
+  testWidgets(
+    'a check-in today without its estimate says so and dates the older one',
+    (tester) async {
+      // _checkin is today's (the 20th); the latest estimate is the 18th's, as
+      // when today's was saved while the ML service was down.
+      await _pump(
+        tester,
+        const RecoveryOverview(
+          todayCheckin: _checkin,
+          latestEstimate: _estimate,
+          load: [],
+        ),
+      );
+
+      expect(find.text('Today\'s estimate is unavailable'), findsOneWidget);
+      expect(find.textContaining('September 18'), findsOneWidget);
+    },
+  );
+
+  testWidgets('last trained lists each group in the order the server sent', (
+    tester,
+  ) async {
+    await _pump(
+      tester,
+      const RecoveryOverview(
+        todayCheckin: null,
+        latestEstimate: _estimate,
+        load: [],
+        muscles: [
+          MuscleRecency(group: 'chest', lastTrained: null, daysAgo: null),
+          MuscleRecency(group: 'legs', lastTrained: '2026-09-15', daysAgo: 5),
+          MuscleRecency(group: 'arms', lastTrained: '2026-09-19', daysAgo: 1),
+          MuscleRecency(group: 'core', lastTrained: '2026-09-20', daysAgo: 0),
+        ],
+      ),
+    );
+
+    await tester.scrollUntilVisible(
+      find.byKey(const Key('recovery.muscles')),
+      200,
+    );
+    await tester.pumpAndSettle();
+
+    final names = ['Chest', 'Legs', 'Arms', 'Core'];
+    final ys = [for (final n in names) tester.getTopLeft(find.text(n)).dy];
+    expect(ys, [...ys]..sort(), reason: 'rows keep the server order');
+    expect(find.text('Not trained yet'), findsOneWidget);
+    expect(find.text('5 days ago'), findsOneWidget);
+    expect(find.text('Yesterday'), findsOneWidget);
+    expect(find.text('Today'), findsOneWidget);
+  });
+
+  testWidgets('with no training yet the card says how to fill it', (
+    tester,
+  ) async {
+    await _pump(
+      tester,
+      const RecoveryOverview(
+        todayCheckin: null,
+        latestEstimate: null,
+        load: [],
+        muscles: [
+          MuscleRecency(group: 'chest', lastTrained: null, daysAgo: null),
+          MuscleRecency(group: 'back', lastTrained: null, daysAgo: null),
+        ],
+      ),
+    );
+
+    await tester.scrollUntilVisible(
+      find.byKey(const Key('recovery.muscles')),
+      200,
+    );
+    await tester.pumpAndSettle();
+
+    expect(
+      find.text(
+        'Finish a workout to see when each muscle group was last trained.',
+      ),
+      findsOneWidget,
+    );
+    expect(find.text('Not trained yet'), findsNothing);
+  });
+
   testWidgets('a check-in already made today is not asked for again', (
     tester,
   ) async {

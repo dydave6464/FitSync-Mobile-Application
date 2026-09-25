@@ -33,6 +33,14 @@ class ReadinessCard extends StatelessWidget {
   Widget build(BuildContext context) {
     final t = context.fs;
     final estimate = this.estimate;
+    final today = todayCheckin;
+    // Whether the estimate came from today's check-in. Otherwise it is an
+    // earlier day's -- no check-in yet today, or today's was saved while the
+    // ML service was down -- and none of the per-level "today" advice holds.
+    final isToday =
+        estimate != null &&
+        today != null &&
+        estimate.checkinDate == today.checkinDate;
 
     final chip = FsChip(
       key: const Key('home.readiness.checkin'),
@@ -96,11 +104,10 @@ class ReadinessCard extends StatelessWidget {
                       const FsEyebrow('Injury-risk estimate'),
                       const SizedBox(height: 6),
                       Text(
-                        // With no check-in today, the estimate may be from an
-                        // earlier day, so none of the per-level "today"
-                        // advice can be claimed.
-                        todayCheckin == null
-                            ? "Check in for today's estimate"
+                        !isToday
+                            ? (today == null
+                                  ? "Check in for today's estimate"
+                                  : "Today's estimate is unavailable")
                             : switch (estimate.riskLevel) {
                                 'high' => 'Consider a lighter day',
                                 'moderate' => 'Worth easing in today',
@@ -112,8 +119,9 @@ class ReadinessCard extends StatelessWidget {
                           color: t.text,
                         ),
                       ),
-                      // Recovery's rule: today's check-in already dates it.
-                      if (todayCheckin == null) ...[
+                      // Recovery's rule: an estimate from today's check-in
+                      // is already dated by "today"; any other says its day.
+                      if (!isToday) ...[
                         const SizedBox(height: 4),
                         Text(
                           'From ${formatShareExpiry(DateTime.parse(estimate.checkinDate))}',

@@ -80,6 +80,13 @@ class _RecoveryView extends StatelessWidget {
             child: _LoadCard(load: overview.load, t: t),
           ),
         ],
+        if (overview.muscles.isNotEmpty) ...[
+          const SizedBox(height: 12),
+          FsCard(
+            key: const Key('recovery.muscles'),
+            child: _MusclesCard(muscles: overview.muscles, t: t),
+          ),
+        ],
       ],
     );
   }
@@ -125,6 +132,11 @@ class _EstimateCard extends StatelessWidget {
       'moderate' => t.amber,
       _ => t.accent,
     };
+    final today = todayCheckin;
+    // An estimate from today's check-in is dated by "today" already. Any
+    // other is an earlier day's: none checked in yet, or today's was saved
+    // while the ML service was down.
+    final isToday = today != null && estimate.checkinDate == today.checkinDate;
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -145,9 +157,16 @@ class _EstimateCard extends StatelessWidget {
             ),
           ),
         ),
-        // Today's check-in already backs this estimate, so the day it came
-        // from would only repeat what "today" already says.
-        if (todayCheckin == null) ...[
+        if (today != null && !isToday) ...[
+          const SizedBox(height: 10),
+          Center(
+            child: Text(
+              "Today's estimate is unavailable",
+              style: TextStyle(fontSize: 13, color: t.text2),
+            ),
+          ),
+        ],
+        if (!isToday) ...[
           const SizedBox(height: 10),
           Center(
             child: Text(
@@ -233,6 +252,56 @@ class _LoadCard extends StatelessWidget {
           ],
           color: t.accent,
         ),
+      ],
+    );
+  }
+}
+
+/// When each muscle group was last trained, longest rested first. No
+/// colours, bars or "recovered" labels: the app cannot measure recovery, so
+/// it states the date and leaves the judgement to the person.
+class _MusclesCard extends StatelessWidget {
+  const _MusclesCard({required this.muscles, required this.t});
+
+  final List<MuscleRecency> muscles;
+  final FsTokens t;
+
+  @override
+  Widget build(BuildContext context) {
+    final anyTrained = muscles.any((m) => m.daysAgo != null);
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        const FsEyebrow('Last trained'),
+        const SizedBox(height: 12),
+        if (!anyTrained)
+          Text(
+            'Finish a workout to see when each muscle group was last trained.',
+            style: TextStyle(fontSize: 13, color: t.text2),
+          )
+        else
+          for (final m in muscles)
+            Padding(
+              padding: const EdgeInsets.symmetric(vertical: 5),
+              child: Row(
+                children: [
+                  Expanded(
+                    child: Text(
+                      m.label,
+                      style: TextStyle(
+                        fontSize: 13.5,
+                        fontWeight: FontWeight.w600,
+                        color: t.text,
+                      ),
+                    ),
+                  ),
+                  Text(
+                    m.when,
+                    style: TextStyle(fontSize: 12.5, color: t.text2),
+                  ),
+                ],
+              ),
+            ),
       ],
     );
   }

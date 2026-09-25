@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
@@ -7,14 +9,17 @@ import '../../exercises/presentation/exercise_list_screen.dart'
     show describeError;
 import '../../profile/domain/profile.dart';
 import '../../profile/presentation/providers.dart';
+import '../../reminders/data/reminder_prompt_store.dart';
+import '../../reminders/data/reminder_scheduler.dart';
 import 'generating_view.dart';
 import 'onboarding_scaffold.dart';
 import 'steps/about_step.dart';
 import 'steps/goal_step.dart';
 import 'steps/injuries_step.dart';
 import 'steps/level_step.dart';
+import 'steps/reminders_step.dart';
 
-/// Sequences the four onboarding steps.
+/// Sequences the five onboarding steps.
 ///
 /// Saves on every Continue rather than once at the end: a user who drops out
 /// on step 3 keeps what they answered on steps 1 and 2, and comes back to a
@@ -27,7 +32,7 @@ class OnboardingFlow extends ConsumerStatefulWidget {
 }
 
 class _OnboardingFlowState extends ConsumerState<OnboardingFlow> {
-  static const _total = 4;
+  static const _total = 5;
 
   int _index = 0;
   bool _busy = false;
@@ -104,12 +109,32 @@ class _OnboardingFlowState extends ConsumerState<OnboardingFlow> {
     // "I own none of these", "nothing hurts" — and skipping the call when the
     // list is empty would make that unsavable.
     if (_index == 2) await notifier.setEquipment(_level.equipmentIds);
+    if (_index == 3) await notifier.setInjuries(_injuries);
 
     if (_index == _total - 1) {
+      // Whatever is selected on the injuries step is saved here too, not
+      // only when that step's own Continue already ran setInjuries: Skip on
+      // that step advances without saving anything, so this is the only
+      // write a pick made there and then skipped past would ever get. The
+      // generating screen's "Avoiding …" line already reads from local
+      // state regardless, so this only affects what reaches the server.
       await notifier.setInjuries(_injuries);
       // Everything the user answered is now on the server, which is what the
       // generating screen's first row claims — so it may only tick here.
       if (mounted) setState(() => _saved = true);
+      // Either button on this step counts as answering the Home prompt.
+      // Fired and forgotten, not awaited: a slow or failing secure-storage
+      // write must never hold up -- or altogether block -- the plan the user
+      // is actually here for. A write that never lands just means the Home
+      // prompt asks again next time, which is a far smaller cost than a
+      // stuck "Building your plan…" screen with no error and no retry.
+      unawaited(
+        ref.read(reminderPromptStoreProvider).markAnswered().catchError((
+          Object error,
+        ) {
+          debugPrint('Reminder prompt flag not saved: $error');
+        }),
+      );
       // Generating the plan is the last thing that happens, and the server
       // leaves onboarding incomplete if it fails — so a failure here lands in
       // _continue's catch, the user stays on this step, and tapping again is a
@@ -183,6 +208,19 @@ class _OnboardingFlowState extends ConsumerState<OnboardingFlow> {
     _advance();
   }
 
+  /// The last step's Continue: unlike every earlier step, this one has
+  /// something to do before `_continue()` -- show the system permission
+  /// prompt. `_continue()` still runs afterwards either way, since declining
+  /// is not the same as Not now; only the button pressed decides that.
+  Future<void> _turnOnReminders() async {
+    await ref.read(reminderSchedulerProvider).requestPermission();
+    // The system prompt this just awaited can outlive the flow -- the app
+    // backgrounding, or the shell tearing this screen down -- so nothing
+    // below may touch ref once it is gone.
+    if (!mounted) return;
+    await _continue();
+  }
+
   void _advance() => setState(() {
     _error = null;
     if (_index < _total - 1) _index++;
@@ -212,10 +250,11 @@ class _OnboardingFlowState extends ConsumerState<OnboardingFlow> {
       value: _level,
       onChanged: (value) => setState(() => _level = value),
     ),
-    _ => InjuriesStep(
+    3 => InjuriesStep(
       value: _injuries,
       onChanged: (value) => setState(() => _injuries = value),
     ),
+    _ => const RemindersStep(),
   };
 
   @override
@@ -261,13 +300,23 @@ class _OnboardingFlowState extends ConsumerState<OnboardingFlow> {
           );
         }
 
+        final onLastStep = _index == _total - 1;
+
         return OnboardingScaffold(
           step: _index + 1,
           total: _total,
           busy: _busy,
-          continueLabel: _index == _total - 1 ? 'Generate my plan' : 'Continue',
-          onContinue: _continue,
-          onSkip: _busy ? null : _advance,
+          continueLabel: onLastStep ? 'Turn on reminders' : 'Continue',
+          onContinue: onLastStep ? _turnOnReminders : _continue,
+          // The last step has no header Skip -- "Not now" is its own button
+          // under Continue instead (see secondaryLabel below). Every earlier
+          // step keeps the plain header Skip, advancing without saving.
+          onSkip: onLastStep ? null : (_busy ? null : _advance),
+          // Not now still saves and builds the plan -- it only skips asking
+          // for permission first -- so it routes through _continue rather
+          // than the plain _advance every earlier step's Skip uses.
+          secondaryLabel: onLastStep ? 'Not now' : null,
+          onSecondary: onLastStep ? (_busy ? null : _continue) : null,
           onBack: _index == 0 ? null : _back,
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
