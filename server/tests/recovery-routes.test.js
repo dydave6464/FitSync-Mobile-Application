@@ -139,18 +139,23 @@ test('recovery survives the ML service being down', async (t) => {
   const login = await request(app).post('/api/v1/auth/login')
     .send({ email: 'down@example.com', password: 's3cret-pass' }).expect(200);
 
-  // The check-in is the user's own data. Losing it because a service is down
-  // would be the worse failure, so the route falls back to the same floor the
-  // stub returns everywhere else.
+  // The check-in is the user's own data, so it is kept. But no estimate is
+  // invented for it: a stored 'low' would show on Home as "manageable" and
+  // be indistinguishable from a real one.
+  const auth = { Authorization: `Bearer ${login.body.data.token}` };
   const post = await request(app).post('/api/v1/recovery/checkin')
-    .set('Authorization', `Bearer ${login.body.data.token}`)
-    .send(ANSWERS).expect(201);
+    .set(auth).send(ANSWERS).expect(201);
 
-  assert.equal(post.body.data.estimate.riskLevel, 'low');
-  assert.equal(post.body.data.estimate.trainingLoadScore, 0);
+  assert.equal(post.body.data.estimate, null);
+  assert.equal(post.body.data.checkin.sleepQuality, ANSWERS.sleepQuality);
 
   const [[{ n }]] = await pool.query('SELECT COUNT(*) AS n FROM morning_checkins');
-  assert.equal(n, 1);
+  assert.equal(n, 1, 'the check-in is kept');
+  const [[{ e }]] = await pool.query('SELECT COUNT(*) AS e FROM injury_risk_estimates');
+  assert.equal(e, 0, 'no estimate is stored for it');
+
+  const overview = await request(app).get('/api/v1/recovery').set(auth).expect(200);
+  assert.equal(overview.body.data.latestEstimate ?? null, null);
 });
 
 /// How much this morning's answers are actually worth.

@@ -125,6 +125,11 @@ class _EstimateCard extends StatelessWidget {
       'moderate' => t.amber,
       _ => t.accent,
     };
+    final today = todayCheckin;
+    // An estimate from today's check-in is dated by "today" already. Any
+    // other is an earlier day's: none checked in yet, or today's was saved
+    // while the ML service was down.
+    final isToday = today != null && estimate.checkinDate == today.checkinDate;
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -145,9 +150,16 @@ class _EstimateCard extends StatelessWidget {
             ),
           ),
         ),
-        // Today's check-in already backs this estimate, so the day it came
-        // from would only repeat what "today" already says.
-        if (todayCheckin == null) ...[
+        if (today != null && !isToday) ...[
+          const SizedBox(height: 10),
+          Center(
+            child: Text(
+              "Today's estimate is unavailable",
+              style: TextStyle(fontSize: 13, color: t.text2),
+            ),
+          ),
+        ],
+        if (!isToday) ...[
           const SizedBox(height: 10),
           Center(
             child: Text(

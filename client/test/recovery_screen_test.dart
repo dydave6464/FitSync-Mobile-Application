@@ -74,6 +74,25 @@ void main() {
     expect(find.byKey(const Key('recovery.checkin')), findsOneWidget);
   });
 
+  testWidgets(
+    'a check-in today without its estimate says so and dates the older one',
+    (tester) async {
+      // _checkin is today's (the 20th); the latest estimate is the 18th's, as
+      // when today's was saved while the ML service was down.
+      await _pump(
+        tester,
+        const RecoveryOverview(
+          todayCheckin: _checkin,
+          latestEstimate: _estimate,
+          load: [],
+        ),
+      );
+
+      expect(find.text('Today\'s estimate is unavailable'), findsOneWidget);
+      expect(find.textContaining('September 18'), findsOneWidget);
+    },
+  );
+
   testWidgets('a check-in already made today is not asked for again', (
     tester,
   ) async {

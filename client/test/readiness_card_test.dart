@@ -91,6 +91,24 @@ void main() {
     },
   );
 
+  testWidgets(
+    'checked in today without an estimate for it: says so and dates the old one',
+    (tester) async {
+      // Today's check-in was saved while the ML service was down, so the
+      // latest estimate is an earlier day's: none of today's advice applies.
+      await _pump(
+        tester,
+        estimate: _estimate('high', date: '2026-09-20'),
+        todayCheckin: _today,
+      );
+
+      expect(find.text('Today\'s estimate is unavailable'), findsOneWidget);
+      expect(find.textContaining('From '), findsOneWidget);
+      expect(find.text('Consider a lighter day'), findsNothing);
+      expect(find.text('Check in for today\'s estimate'), findsNothing);
+    },
+  );
+
   testWidgets('today\'s estimate does not repeat the date', (tester) async {
     await _pump(tester, estimate: _estimate('low'), todayCheckin: _today);
     expect(find.textContaining('From '), findsNothing);
