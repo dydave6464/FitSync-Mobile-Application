@@ -1,5 +1,3 @@
-import 'dart:async';
-
 import 'package:flutter/foundation.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:timezone/data/latest_all.dart' as tz_data;
@@ -7,6 +5,7 @@ import 'package:timezone/timezone.dart' as tz;
 
 import '../domain/reminders.dart';
 import 'reminder_scheduler.dart';
+import 'tap_relay.dart';
 
 const _channelId = 'reminders';
 const _channelName = 'Reminders';
@@ -19,13 +18,9 @@ class LocalReminderScheduler implements ReminderScheduler {
   LocalReminderScheduler._(this._plugin);
 
   final FlutterLocalNotificationsPlugin _plugin;
-  final _tapsController = StreamController<String>.broadcast();
 
-  /// The payload of the notification that launched the app, if any.
-  String? _launchPayload;
-
-  /// Whether [taps] has already replayed [_launchPayload] to a listener.
-  bool _launchDelivered = false;
+  /// Assigned once, in [create], after the launch payload (if any) is known.
+  late final TapRelay _relay;
 
   static Future<LocalReminderScheduler> create() async {
     tz_data.initializeTimeZones();
@@ -53,7 +48,7 @@ class LocalReminderScheduler implements ReminderScheduler {
         onDidReceiveNotificationResponse: (response) {
           final payload = response.payload;
           if (payload != null && payload.isNotEmpty) {
-            scheduler._tapsController.add(payload);
+            scheduler._relay.add(payload);
           }
         },
       );
@@ -61,18 +56,20 @@ class LocalReminderScheduler implements ReminderScheduler {
       debugPrint('Reminder plugin failed to initialise: $error');
     }
 
+    String? launchPayload;
     try {
       final launchDetails = await plugin.getNotificationAppLaunchDetails();
       if (launchDetails != null && launchDetails.didNotificationLaunchApp) {
         final payload = launchDetails.notificationResponse?.payload;
         if (payload != null && payload.isNotEmpty) {
-          scheduler._launchPayload = payload;
+          launchPayload = payload;
         }
       }
     } catch (error) {
       debugPrint('Reminder launch details lookup failed: $error');
     }
 
+    scheduler._relay = TapRelay(launchPayload: launchPayload);
     return scheduler;
   }
 
@@ -159,12 +156,5 @@ class LocalReminderScheduler implements ReminderScheduler {
   }
 
   @override
-  Stream<String> get taps async* {
-    if (!_launchDelivered) {
-      _launchDelivered = true;
-      final payload = _launchPayload;
-      if (payload != null) yield payload;
-    }
-    yield* _tapsController.stream;
-  }
+  Stream<String> get taps => _relay.stream;
 }
