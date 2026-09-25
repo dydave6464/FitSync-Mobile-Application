@@ -16,6 +16,9 @@ import 'package:fitsync/features/plans/presentation/widgets/training_days_row.da
 import 'package:fitsync/features/profile/domain/profile.dart';
 import 'package:fitsync/features/profile/presentation/providers.dart';
 import 'package:fitsync/features/pro/presentation/pro_screen.dart';
+import 'package:fitsync/features/reminders/domain/reminders.dart';
+import 'package:fitsync/features/reminders/presentation/providers.dart';
+import 'package:fitsync/features/reminders/presentation/reminders_screen.dart';
 import 'package:fitsync/features/settings/presentation/settings_screen.dart';
 import 'package:fitsync/features/streaks/domain/streaks.dart';
 import 'package:fitsync/features/streaks/presentation/providers.dart'
@@ -109,6 +112,14 @@ class FakeProfileNotifier extends ProfileNotifier {
   }
 }
 
+/// A fixed answer instead of a repository round trip, so `SettingsScreen`
+/// has something to give `RemindersScreen` when the notifications row opens
+/// it -- this file's tests never change a reminder setting themselves.
+class _DefaultReminderSettings extends ReminderSettingsController {
+  @override
+  Future<ReminderSettings> build() async => ReminderSettings.defaults;
+}
+
 class RecordingAuthController extends AuthController {
   RecordingAuthController(this.signOuts);
 
@@ -161,6 +172,7 @@ Future<void> _pump(
         ),
         equipmentOptionsProvider.overrideWith((ref) async => _equipment),
         injuryOptionsProvider.overrideWith((ref) async => _injuryOptions),
+        reminderSettingsProvider.overrideWith(() => _DefaultReminderSettings()),
         streakProvider.overrideWith(
           (ref) async =>
               const Streak(current: 0, best: 0, todayActive: false, week: []),
@@ -309,13 +321,12 @@ void main() {
     );
   });
 
-  testWidgets('the notifications toggle writes the new value', (tester) async {
-    final patches = <Map<String, dynamic>>[];
-    await _pump(tester, patches: patches);
+  testWidgets('the notifications row opens Reminders', (tester) async {
+    await _pump(tester);
 
     await _openRow(tester, const Key('notifications'));
 
-    expect(patches.single, {'notificationsEnabled': false});
+    expect(find.byType(RemindersScreen), findsOneWidget);
   });
 
   testWidgets('sign out clears the session', (tester) async {

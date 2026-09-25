@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart' show debugPrint;
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../core/api_exception.dart';
@@ -5,6 +6,8 @@ import '../../../core/token_store.dart';
 import '../../exercises/presentation/providers.dart';
 import '../../plans/presentation/providers.dart';
 import '../../recovery/presentation/providers.dart';
+import '../../reminders/data/reminder_scheduler.dart';
+import '../../reminders/presentation/providers.dart';
 import '../../routine/presentation/providers.dart';
 import '../../sessions/presentation/providers.dart';
 import '../../sessions/presentation/workout_draft.dart';
@@ -65,6 +68,7 @@ class AuthController extends AsyncNotifier<AuthState> {
       // screen that can never load. Drop it and show sign-in instead.
       if (error.code == 'UNAUTHENTICATED') {
         await tokens.clear();
+        await _cancelReminders();
         return AuthState.signedOut;
       }
       // Anything else is a real failure the shell should surface with a
@@ -125,10 +129,11 @@ class AuthController extends AsyncNotifier<AuthState> {
   ///
   /// `routineTodayProvider`, `homeSummaryProvider`, `trainingSummaryProvider`,
   /// `trainingAnalyticsProvider`, `sessionHistoryProvider`,
-  /// `lastWorkoutProvider`, `pendingOutcomeProvider`, `recoveryOverviewProvider`
-  /// and `streakProvider` belong on this list for the same reason: none
-  /// of them is autoDispose, and each carries another account's training,
-  /// recovery or routine data across the sign-out.
+  /// `lastWorkoutProvider`, `pendingOutcomeProvider`, `recoveryOverviewProvider`,
+  /// `streakProvider` and `reminderSettingsProvider` belong on this list for
+  /// the same reason: none of them is autoDispose, and each carries another
+  /// account's training, recovery, routine or reminder data across the
+  /// sign-out.
   void _clearUserScopedCaches() {
     ref.invalidate(profileProvider);
     ref.invalidate(activePlanProvider);
@@ -146,12 +151,27 @@ class AuthController extends AsyncNotifier<AuthState> {
     ref.invalidate(pendingOutcomeProvider);
     ref.invalidate(recoveryOverviewProvider);
     ref.invalidate(streakProvider);
+    ref.invalidate(reminderSettingsProvider);
   }
 
   Future<void> signOut() async {
     await ref.read(authRepositoryProvider).signOut();
+    // The next account must not inherit this one's reminders.
+    await _cancelReminders();
     _clearUserScopedCaches();
     state = const AsyncData(AuthState.signedOut);
+  }
+
+  /// Best-effort: a scheduler failure here must never strand the caller
+  /// signed in (or, from [build]'s expired-token path, stuck on a screen
+  /// that can never load) just because the phone's notification plugin had
+  /// a bad moment.
+  Future<void> _cancelReminders() async {
+    try {
+      await ref.read(reminderSchedulerProvider).cancelAll();
+    } catch (error) {
+      debugPrint('AuthController: cancelAll failed: $error');
+    }
   }
 }
 

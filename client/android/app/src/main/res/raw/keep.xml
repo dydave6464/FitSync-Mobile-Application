@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Keeps the reminder notification icon (referenced only by name from Dart,
+  in local_reminder_scheduler.dart's AndroidInitializationSettings) alive
+  through R8's release shrink. Without this, flutter_local_notifications
+  22.3.1's README warns the resource can be silently discarded and
+  notifications broken or shown without an icon.
+  https://developer.android.com/topic/performance/app-optimization/customize-which-resources-to-keep
+-->
+<resources xmlns:tools="http://schemas.android.com/tools"
+    tools:keep="@drawable/ic_notification" />

@@ -18,6 +18,9 @@ import 'package:fitsync/features/profile/domain/profile.dart';
 import 'package:fitsync/features/exercises/presentation/providers.dart';
 import 'package:fitsync/features/home/presentation/nav_shell.dart';
 import 'package:fitsync/features/profile/presentation/providers.dart';
+import 'package:fitsync/features/reminders/data/reminder_prompt_store.dart';
+
+import 'helpers/in_memory_secure_store.dart';
 
 AuthUser _user({bool onboardingCompleted = false}) => AuthUser(
   userId: 7,
@@ -65,6 +68,9 @@ Future<void> _pumpShell(
     overrides: [
       authControllerProvider.overrideWith(() => FakeAuthController(onBuild)),
       profileProvider.overrideWith(StubProfileNotifier.new),
+      reminderPromptStoreProvider.overrideWithValue(
+        inMemoryReminderPromptStore(),
+      ),
       // Keeps the plan branch off the secure-storage platform channel.
       apiClientProvider.overrideWithValue(
         ApiClient(
