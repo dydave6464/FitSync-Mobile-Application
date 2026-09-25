@@ -1,5 +1,6 @@
 'use strict';
 const AppError = require('../lib/app-error');
+const { isPlannedWorkoutDay } = require('../lib/workout-day');
 
 /// The day to report, and its weekday (1 = Monday).
 ///
@@ -67,8 +68,8 @@ async function workoutItem(pool, userId, day, weekday) {
   const [chosen] = await pool.query(
     'SELECT weekday FROM user_training_days WHERE user_id = ?', [userId],
   );
-  const days = chosen.map((r) => Number(r.weekday));
-  if (days.length > 0 && !days.includes(weekday)) return null;
+  const trainingDays = chosen.map((r) => Number(r.weekday));
+  if (!isPlannedWorkoutDay({ hasActivePlan: true, trainingDays, weekday })) return null;
   return { title, done: false };
 }
 
