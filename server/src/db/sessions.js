@@ -594,10 +594,10 @@ async function listHistory(pool, userId, { page = 1, limit = 20 } = {}) {
 /// caption makes the page contradict itself to a reader who has no other
 /// context to catch it with.
 ///
-/// `>=` against CURDATE(), matching summariseHistory rather than the analytics
-/// readers' `>`: the summary line at the top of the same report counts its
-/// sessions that way, and a stricter comparison here would print fewer rows
-/// than the count sitting directly above them.
+/// `>` against CURDATE() - N: a window of N days is the N calendar days
+/// ending today, today included -- the one definition every reader here uses
+/// (summary, PR count, adherence, charts), so a report's rows, its count and
+/// its caption all describe the same days.
 ///
 /// Null for a period that names no window -- the signal every other reader
 /// here uses, and what the routes turn into a 400.
@@ -614,7 +614,7 @@ async function listHistoryInWindow(pool, userId, period, { limit = 20 } = {}) {
        FROM workout_sessions s
        LEFT JOIN workout_plans p ON p.plan_id = s.plan_id
       WHERE s.user_id = ? AND s.status = 'completed'
-        AND s.session_date >= DATE_SUB(CURDATE(), INTERVAL ? DAY)
+        AND s.session_date > DATE_SUB(CURDATE(), INTERVAL ? DAY)
       ORDER BY s.session_date DESC, s.session_id DESC
       LIMIT ?`,
     [userId, days, limit],
@@ -636,7 +636,7 @@ async function summariseHistory(pool, userId, period = 'week') {
             COALESCE(SUM(${SET_COUNT}), 0) AS set_count
        FROM workout_sessions s
       WHERE s.user_id = ? AND s.status = 'completed'
-        AND s.session_date >= DATE_SUB(CURDATE(), INTERVAL ? DAY)`,
+        AND s.session_date > DATE_SUB(CURDATE(), INTERVAL ? DAY)`,
     [userId, days],
   );
 

@@ -135,7 +135,7 @@ test('analytics db', async (t) => {
     assert.equal(a.target, null, 'the plan is what defines a target');
   });
 
-  await t.test('adherence multiplies days_per_week by whole weeks', async () => {
+  await t.test('the target is days_per_week over the window, rounded', async () => {
     const userId = await makeUser('plan@example.com');
     await pool.query(
       `INSERT INTO workout_plans (user_id, name, split_style, days_per_week, session_length_min, is_active)
@@ -143,14 +143,14 @@ test('analytics db', async (t) => {
       [userId],
     );
     assert.equal((await analytics.readAdherence(pool, userId, 'week')).target, 4);
-    assert.equal((await analytics.readAdherence(pool, userId, 'month')).target, 16);
-    assert.equal((await analytics.readAdherence(pool, userId, 'year')).target, 208);
+    // 4 x 30/7 = 17.1 and 4 x 365/7 = 208.6.
+    assert.equal((await analytics.readAdherence(pool, userId, 'month')).target, 17);
+    assert.equal((await analytics.readAdherence(pool, userId, 'year')).target, 209);
   });
 
-  await t.test('the count cannot exceed its own target window', async () => {
-    // Sessions on days 28 and 29 fall inside a 30-day window but outside the
-    // 4-week target the month denominator describes. Counting them would let
-    // a diligent user score 17/16, and a ratio over 100% reads as a bug.
+  await t.test('the count and the target describe the same 30 days', async () => {
+    // Numerator and denominator over one window: a count over more days than
+    // its target covers would let a diligent user score over 100%.
     const userId = await makeUser('window@example.com');
     await pool.query(
       `INSERT INTO workout_plans (user_id, name, split_style, days_per_week, session_length_min, is_active)
@@ -158,9 +158,11 @@ test('analytics db', async (t) => {
       [userId],
     );
     await writeSession(userId, { daysAgo: 29 });
+    await writeSession(userId, { daysAgo: 30 });
 
     const a = await analytics.readAdherence(pool, userId, 'month');
-    assert.equal(a.done, 0, 'day 29 is outside the 28-day target window');
+    assert.equal(a.done, 1, 'day 29 is inside the window, day 30 is not');
+    assert.equal(a.target, 4, '1 a week over 30 days, rounded');
   });
 
   // The card this feeds counts kilograms now, not sets: 10 reps at 60 kg is

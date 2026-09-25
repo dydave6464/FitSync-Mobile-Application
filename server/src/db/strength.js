@@ -137,17 +137,18 @@ const E1RM_SQL = 'sl.weight_kg * (1 + sl.reps / 30)';
 /// the window has no earlier best, and NULL compares as unknown, so it drops
 /// out -- a new account's first month is not a string of "PRs".
 ///
-/// The window's edge is summariseHistory's (`>=`), because the count is
-/// reported inside that summary. QUALIFYING above uses `>` for the charts;
-/// the two answer different questions and stay separate.
+/// The window is the N calendar days ending today (`>` CURDATE() - N), the
+/// same edge summariseHistory and the charts use, since the count is reported
+/// inside that summary; everything on or before CURDATE() - N is earlier
+/// history.
 async function countNewPrs(pool, userId, days) {
   const [[row]] = await pool.query(
     `SELECT COUNT(*) AS n
        FROM (
          SELECT sl.exercise_id,
-                MAX(CASE WHEN s.session_date >= DATE_SUB(CURDATE(), INTERVAL ? DAY)
+                MAX(CASE WHEN s.session_date >  DATE_SUB(CURDATE(), INTERVAL ? DAY)
                          THEN ${E1RM_SQL} END) AS window_best,
-                MAX(CASE WHEN s.session_date <  DATE_SUB(CURDATE(), INTERVAL ? DAY)
+                MAX(CASE WHEN s.session_date <= DATE_SUB(CURDATE(), INTERVAL ? DAY)
                          THEN ${E1RM_SQL} END) AS earlier_best
            FROM set_logs sl
            JOIN workout_sessions s ON s.session_id = sl.session_id

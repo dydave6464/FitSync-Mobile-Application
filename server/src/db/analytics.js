@@ -71,11 +71,14 @@ function bucketLabel(index, width) {
 
 /// Sessions completed against the active plan's target for the same window.
 ///
-/// `weeks` rounds the window to whole weeks (1, 4, 52) and the COUNT uses
-/// `weeks * 7` days rather than the raw window, so numerator and denominator
-/// describe the same stretch of time. Counting 30 days of sessions against a
-/// 4-week target lets a diligent user score 17/16, and a ratio above 100%
-/// reads as a bug rather than as praise.
+/// The COUNT and the target cover the same N days -- the window every reader
+/// here uses, the N calendar days ending today -- and the target is the
+/// plan's days_per_week spread over them, rounded: 3 a week is 13 over 30
+/// days. Counting over a different span than the target describes is what
+/// once let a diligent user score 17/16.
+///
+/// `weeks` (1, 4, 52) is kept in the response for the client's model; the
+/// arithmetic no longer uses it.
 ///
 /// No active plan means no target, and the card then shows the count alone.
 /// The plan is what defines the target; one invented without it is fiction.
@@ -96,12 +99,12 @@ async function readAdherence(pool, userId, period = 'week') {
     `SELECT COUNT(*) AS done FROM workout_sessions
       WHERE user_id = ? AND status = 'completed'
         AND session_date > DATE_SUB(CURDATE(), INTERVAL ? DAY)`,
-    [userId, weeks * 7],
+    [userId, days],
   );
 
   return {
     done: Number(row.done),
-    target: plan ? plan.days_per_week * weeks : null,
+    target: plan ? Math.round((plan.days_per_week * days) / 7) : null,
     weeks,
   };
 }
