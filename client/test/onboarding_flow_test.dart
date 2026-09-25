@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart' show PlatformException;
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 
@@ -148,6 +149,26 @@ class _FakeScheduler implements ReminderScheduler {
   Stream<String> get taps => const Stream.empty();
 }
 
+/// `markAnswered` fails every time -- a secure-storage write that genuinely
+/// cannot land, e.g. a locked keychain. `answered()` is left to the real
+/// in-memory backing, unused by these tests but harmless either way.
+class _ThrowingReminderPromptStore extends ReminderPromptStore {
+  _ThrowingReminderPromptStore() : super(backing: InMemorySecureStore());
+
+  @override
+  Future<void> markAnswered() =>
+      Future<void>.error(PlatformException(code: 'unavailable'));
+}
+
+/// `markAnswered` never completes -- the write is sent but the platform
+/// never answers. Onboarding must not sit around waiting for it either.
+class _HangingReminderPromptStore extends ReminderPromptStore {
+  _HangingReminderPromptStore() : super(backing: InMemorySecureStore());
+
+  @override
+  Future<void> markAnswered() => Completer<void>().future;
+}
+
 /// Both lookup providers are always stubbed, even for tests that never reach
 /// steps 3 and 4. Leaving one live means the first `pumpAndSettle` after
 /// arriving at that step waits forever on its loading spinner.
@@ -155,8 +176,10 @@ class _FakeScheduler implements ReminderScheduler {
 /// `reminderPromptStoreProvider` is stubbed with an in-memory backing for the
 /// same reason -- unlike `reminderSchedulerProvider`, whose provider default
 /// is already a safe no-op, this one's default reaches the real secure
-/// storage plugin, which never answers in a widget test and would leave the
-/// last step's completion block waiting on `markAnswered()` forever.
+/// storage plugin, which never answers in a widget test. [store] defaults to
+/// a fresh in-memory one, but a caller can pass its own -- and keep the
+/// reference -- to prove `markAnswered()` actually lands, or to pass a fake
+/// that throws or hangs without ever reaching real storage.
 Future<void> _pumpFlow(
   WidgetTester tester, {
   required List<Map<String, dynamic>> patches,
@@ -167,6 +190,7 @@ Future<void> _pumpFlow(
   Future<void> Function(int attempt)? onComplete,
   List<bool>? completed,
   ReminderScheduler? scheduler,
+  ReminderPromptStore? store,
 }) async {
   await tester.pumpWidget(
     ProviderScope(
@@ -189,7 +213,7 @@ Future<void> _pumpFlow(
         if (scheduler != null)
           reminderSchedulerProvider.overrideWithValue(scheduler),
         reminderPromptStoreProvider.overrideWithValue(
-          ReminderPromptStore(backing: InMemorySecureStore()),
+          store ?? ReminderPromptStore(backing: InMemorySecureStore()),
         ),
       ],
       child: const MaterialApp(home: OnboardingFlow()),
@@ -481,6 +505,107 @@ void main() {
     expect(completions, hasLength(1));
     expect(completed, [true]);
   });
+
+  testWidgets('a reminder flag that cannot be saved does not stop onboarding', (
+    tester,
+  ) async {
+    final completions = <int>[];
+    final completed = <bool>[];
+    await _pumpFlow(
+      tester,
+      patches: [],
+      completions: completions,
+      completed: completed,
+      store: _ThrowingReminderPromptStore(),
+    );
+
+    await _skip(tester);
+    await _skip(tester);
+    await _skip(tester);
+    await _skip(tester);
+    await tester.tap(find.byKey(const Key('skip')));
+    await tester.pumpAndSettle();
+
+    expect(tester.takeException(), isNull);
+    expect(completions, hasLength(1));
+    expect(completed, [
+      true,
+    ], reason: 'a rejected reminder flag write must not block the plan');
+  });
+
+  testWidgets(
+    'a reminder flag write that never finishes does not stop onboarding',
+    (tester) async {
+      final completions = <int>[];
+      final completed = <bool>[];
+      await _pumpFlow(
+        tester,
+        patches: [],
+        completions: completions,
+        completed: completed,
+        store: _HangingReminderPromptStore(),
+      );
+
+      await _skip(tester);
+      await _skip(tester);
+      await _skip(tester);
+      await _skip(tester);
+      await tester.tap(find.byKey(const Key('skip')));
+      await tester.pumpAndSettle();
+
+      expect(tester.takeException(), isNull);
+      expect(completions, hasLength(1));
+      expect(
+        completed,
+        [true],
+        reason:
+            'a reminder flag write that never resolves must not hang the plan',
+      );
+    },
+  );
+
+  testWidgets(
+    'finishing onboarding remembers the reminder question was answered',
+    (tester) async {
+      final notNowStore = ReminderPromptStore(backing: InMemorySecureStore());
+      await _pumpFlow(tester, patches: [], store: notNowStore);
+
+      await _skip(tester);
+      await _skip(tester);
+      await _skip(tester);
+      await _skip(tester);
+      await tester.tap(find.byKey(const Key('skip')));
+      await tester.pumpAndSettle();
+
+      expect(
+        await notNowStore.answered(),
+        isTrue,
+        reason: 'Not now still counts as answering the Home prompt',
+      );
+    },
+  );
+
+  testWidgets(
+    'turning reminders on also remembers the reminder question was answered',
+    (tester) async {
+      final turnOnStore = ReminderPromptStore(backing: InMemorySecureStore());
+      await _pumpFlow(
+        tester,
+        patches: [],
+        store: turnOnStore,
+        scheduler: _FakeScheduler(),
+      );
+
+      await _skip(tester);
+      await _skip(tester);
+      await _skip(tester);
+      await _skip(tester);
+      await tester.tap(find.byKey(const Key('continue')));
+      await tester.pumpAndSettle();
+
+      expect(await turnOnStore.answered(), isTrue);
+    },
+  );
 
   testWidgets('generating the plan completes onboarding and hands off', (
     tester,

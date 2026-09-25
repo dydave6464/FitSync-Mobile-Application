@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
@@ -115,12 +117,19 @@ class _OnboardingFlowState extends ConsumerState<OnboardingFlow> {
       // profile and injury writes both landed on an earlier step's Continue,
       // so nothing here is awaited first.
       if (mounted) setState(() => _saved = true);
-      // Either button on this step counts as answering the Home prompt, so
-      // it never asks again — regardless of whether the plan build below
-      // succeeds. Reads `ref` once, before this method's only prior await on
-      // this path, so no mounted check is needed for it specifically — but
-      // everything from here on that touches `ref` already has one.
-      await ref.read(reminderPromptStoreProvider).markAnswered();
+      // Either button on this step counts as answering the Home prompt.
+      // Fired and forgotten, not awaited: a slow or failing secure-storage
+      // write must never hold up -- or altogether block -- the plan the user
+      // is actually here for. A write that never lands just means the Home
+      // prompt asks again next time, which is a far smaller cost than a
+      // stuck "Building your plan…" screen with no error and no retry.
+      unawaited(
+        ref.read(reminderPromptStoreProvider).markAnswered().catchError((
+          Object error,
+        ) {
+          debugPrint('Reminder prompt flag not saved: $error');
+        }),
+      );
       // Generating the plan is the last thing that happens, and the server
       // leaves onboarding incomplete if it fails — so a failure here lands in
       // _continue's catch, the user stays on this step, and tapping again is a
