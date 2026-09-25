@@ -7,14 +7,17 @@ import '../../exercises/presentation/exercise_list_screen.dart'
     show describeError;
 import '../../profile/domain/profile.dart';
 import '../../profile/presentation/providers.dart';
+import '../../reminders/data/reminder_prompt_store.dart';
+import '../../reminders/data/reminder_scheduler.dart';
 import 'generating_view.dart';
 import 'onboarding_scaffold.dart';
 import 'steps/about_step.dart';
 import 'steps/goal_step.dart';
 import 'steps/injuries_step.dart';
 import 'steps/level_step.dart';
+import 'steps/reminders_step.dart';
 
-/// Sequences the four onboarding steps.
+/// Sequences the five onboarding steps.
 ///
 /// Saves on every Continue rather than once at the end: a user who drops out
 /// on step 3 keeps what they answered on steps 1 and 2, and comes back to a
@@ -27,7 +30,7 @@ class OnboardingFlow extends ConsumerStatefulWidget {
 }
 
 class _OnboardingFlowState extends ConsumerState<OnboardingFlow> {
-  static const _total = 4;
+  static const _total = 5;
 
   int _index = 0;
   bool _busy = false;
@@ -104,12 +107,20 @@ class _OnboardingFlowState extends ConsumerState<OnboardingFlow> {
     // "I own none of these", "nothing hurts" — and skipping the call when the
     // list is empty would make that unsavable.
     if (_index == 2) await notifier.setEquipment(_level.equipmentIds);
+    if (_index == 3) await notifier.setInjuries(_injuries);
 
     if (_index == _total - 1) {
-      await notifier.setInjuries(_injuries);
       // Everything the user answered is now on the server, which is what the
-      // generating screen's first row claims — so it may only tick here.
+      // generating screen's first row claims — so it may only tick here. The
+      // profile and injury writes both landed on an earlier step's Continue,
+      // so nothing here is awaited first.
       if (mounted) setState(() => _saved = true);
+      // Either button on this step counts as answering the Home prompt, so
+      // it never asks again — regardless of whether the plan build below
+      // succeeds. Reads `ref` once, before this method's only prior await on
+      // this path, so no mounted check is needed for it specifically — but
+      // everything from here on that touches `ref` already has one.
+      await ref.read(reminderPromptStoreProvider).markAnswered();
       // Generating the plan is the last thing that happens, and the server
       // leaves onboarding incomplete if it fails — so a failure here lands in
       // _continue's catch, the user stays on this step, and tapping again is a
@@ -183,6 +194,19 @@ class _OnboardingFlowState extends ConsumerState<OnboardingFlow> {
     _advance();
   }
 
+  /// The last step's Continue: unlike every earlier step, this one has
+  /// something to do before `_continue()` -- show the system permission
+  /// prompt. `_continue()` still runs afterwards either way, since declining
+  /// is not the same as Not now; only the button pressed decides that.
+  Future<void> _turnOnReminders() async {
+    await ref.read(reminderSchedulerProvider).requestPermission();
+    // The system prompt this just awaited can outlive the flow -- the app
+    // backgrounding, or the shell tearing this screen down -- so nothing
+    // below may touch ref once it is gone.
+    if (!mounted) return;
+    await _continue();
+  }
+
   void _advance() => setState(() {
     _error = null;
     if (_index < _total - 1) _index++;
@@ -212,10 +236,11 @@ class _OnboardingFlowState extends ConsumerState<OnboardingFlow> {
       value: _level,
       onChanged: (value) => setState(() => _level = value),
     ),
-    _ => InjuriesStep(
+    3 => InjuriesStep(
       value: _injuries,
       onChanged: (value) => setState(() => _injuries = value),
     ),
+    _ => const RemindersStep(),
   };
 
   @override
@@ -261,13 +286,19 @@ class _OnboardingFlowState extends ConsumerState<OnboardingFlow> {
           );
         }
 
+        final onLastStep = _index == _total - 1;
+
         return OnboardingScaffold(
           step: _index + 1,
           total: _total,
           busy: _busy,
-          continueLabel: _index == _total - 1 ? 'Generate my plan' : 'Continue',
-          onContinue: _continue,
-          onSkip: _busy ? null : _advance,
+          continueLabel: onLastStep ? 'Turn on reminders' : 'Continue',
+          skipLabel: onLastStep ? 'Not now' : 'Skip',
+          onContinue: onLastStep ? _turnOnReminders : _continue,
+          // Not now still saves and builds the plan -- it only skips asking
+          // for permission first -- so the last step routes Skip through
+          // _continue rather than the plain _advance every earlier step uses.
+          onSkip: _busy ? null : (onLastStep ? _continue : _advance),
           onBack: _index == 0 ? null : _back,
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,

@@ -21,6 +21,7 @@ class OnboardingScaffold extends StatelessWidget {
     this.onSkip,
     this.onBack,
     this.continueLabel = 'Continue',
+    this.skipLabel = 'Skip',
     this.busy = false,
   });
 
@@ -31,6 +32,7 @@ class OnboardingScaffold extends StatelessWidget {
   final VoidCallback? onSkip;
   final VoidCallback? onBack;
   final String continueLabel;
+  final String skipLabel;
   final bool busy;
 
   @override
@@ -70,7 +72,7 @@ class OnboardingScaffold extends StatelessWidget {
                                 key: const Key('skip'),
                                 onTap: busy ? null : onSkip,
                                 child: Text(
-                                  'Skip',
+                                  skipLabel,
                                   textAlign: TextAlign.right,
                                   style: TextStyle(
                                     fontSize: 12.5,

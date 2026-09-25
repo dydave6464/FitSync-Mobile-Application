@@ -30,6 +30,7 @@ import 'widgets/plan_card.dart';
 import 'widgets/profile_nudge.dart';
 import 'widgets/progress_snapshot_card.dart';
 import 'widgets/readiness_card.dart';
+import 'widgets/reminder_prompt_card.dart';
 import 'widgets/routine_card.dart';
 
 /// The signed-in landing screen.
@@ -79,6 +80,7 @@ class HomeScreen extends ConsumerWidget {
             padding: const EdgeInsets.fromLTRB(20, 8, 20, 24),
             children: [
               Greeting(profile: p, now: DateTime.now()),
+              const ReminderPromptCard(),
               const SizedBox(height: 20),
               // The nudge renders nothing when the profile is complete, so
               // its spacing is conditional too — otherwise a complete profile
