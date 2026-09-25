@@ -17,6 +17,7 @@ import '../../plans/presentation/widgets/training_days_row.dart';
 import '../../pro/presentation/pro_screen.dart';
 import '../../profile/domain/profile.dart';
 import '../../profile/presentation/providers.dart';
+import '../../reminders/presentation/reminders_screen.dart';
 import '../../streaks/presentation/streaks_screen.dart';
 
 /// FR-1.4: change any onboarding answer later.
@@ -256,15 +257,10 @@ class _SettingsList extends ConsumerWidget {
                 ),
               ),
               _SettingsRow(
+                rowKey: const Key('notifications'),
                 icon: Icons.notifications_outlined,
                 label: 'Notifications & reminders',
-                trailing: Switch(
-                  key: const Key('notifications'),
-                  value: profile.notificationsEnabled,
-                  onChanged: (value) => ref
-                      .read(profileProvider.notifier)
-                      .patch({'notificationsEnabled': value}),
-                ),
+                onTap: () => _open(context, const RemindersScreen()),
                 last: true,
               ),
             ],
