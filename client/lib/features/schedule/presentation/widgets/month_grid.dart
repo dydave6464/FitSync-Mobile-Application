@@ -144,7 +144,7 @@ class ScheduleDayCell extends StatelessWidget {
                   ),
                   const SizedBox(height: 3),
                   SizedBox(
-                    height: 6,
+                    height: 10,
                     child: Row(
                       mainAxisAlignment: MainAxisAlignment.center,
                       children: [
@@ -161,6 +161,10 @@ class ScheduleDayCell extends StatelessWidget {
                           ScheduleDot(
                             key: Key('schedule.dot.habits.$date'),
                             color: t.blue,
+                            // Blue on the accent fill is close to unreadable;
+                            // a small onAccent disc restores the contrast
+                            // without changing the dot's own colour.
+                            backing: isToday ? t.onAccent : null,
                             filled: habits == DotState.done,
                           ),
                       ],
@@ -177,22 +181,43 @@ class ScheduleDayCell extends StatelessWidget {
 }
 
 /// Filled for done, a ring for planned or due.
+///
+/// [backing] draws a small disc behind the dot, 2px larger on every side, in
+/// that colour -- for a dot whose own colour would otherwise sit too close
+/// to the colour behind it.
 class ScheduleDot extends StatelessWidget {
-  const ScheduleDot({super.key, required this.color, required this.filled});
+  const ScheduleDot({
+    super.key,
+    required this.color,
+    required this.filled,
+    this.backing,
+  });
 
   final Color color;
   final bool filled;
+  final Color? backing;
 
   @override
-  Widget build(BuildContext context) => Container(
-    width: 6,
-    height: 6,
-    decoration: BoxDecoration(
-      shape: BoxShape.circle,
-      color: filled ? color : Colors.transparent,
-      border: Border.all(color: color, width: 1.2),
-    ),
-  );
+  Widget build(BuildContext context) {
+    final dot = Container(
+      width: 6,
+      height: 6,
+      decoration: BoxDecoration(
+        shape: BoxShape.circle,
+        color: filled ? color : Colors.transparent,
+        border: Border.all(color: color, width: 1.2),
+      ),
+    );
+    final backingColor = backing;
+    if (backingColor == null) return dot;
+    return Container(
+      width: 10,
+      height: 10,
+      alignment: Alignment.center,
+      decoration: BoxDecoration(shape: BoxShape.circle, color: backingColor),
+      child: dot,
+    );
+  }
 }
 
 class _Legend extends StatelessWidget {

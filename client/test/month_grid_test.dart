@@ -178,6 +178,22 @@ void main() {
     expect(_cell(tester, '2026-09-25').selected, isFalse);
   });
 
+  testWidgets(
+    "today's habits dot sits on an onAccent backing disc; other dots do not",
+    (tester) async {
+      await _pump(tester, days: _days);
+
+      final todayHabits = _dot(tester, 'habits', '2026-09-24')!;
+      expect(todayHabits.backing, _t.onAccent);
+      expect(todayHabits.color, _t.blue);
+
+      expect(_dot(tester, 'habits', '2026-09-22')!.backing, isNull);
+      expect(_dot(tester, 'workout', '2026-09-24')!.backing, isNull);
+
+      expect(_dot(tester, 'workout', '2026-09-24')!.color, _t.onAccent);
+    },
+  );
+
   testWidgets('a legend explains the dots', (tester) async {
     await _pump(tester, days: _days);
 
