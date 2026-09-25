@@ -97,6 +97,14 @@ class _ReminderSyncState extends ConsumerState<ReminderSync> {
   }
 
   void _queue() {
+    // Guards more than the common case of a listener still firing after
+    // dispose (listenManual subscriptions close themselves by then): _run's
+    // own finally calls back into this to replay a coalesced change, and
+    // that call can land after dispose too -- the run it is finishing may
+    // have been the one suspended on the habits fetch when this widget was
+    // torn down. Either way, scheduling another _run here would read a ref
+    // that is no longer safe to use.
+    if (!mounted) return;
     if (_running) {
       _dirty = true;
       return;
@@ -117,6 +125,11 @@ class _ReminderSyncState extends ConsumerState<ReminderSync> {
       } catch (_) {
         return;
       }
+      // The fetch above was the run's only await before this point, and
+      // widget disposal (e.g. sign-out tearing the shell down mid-fetch)
+      // does not cancel it -- ref becomes unusable the moment that happens,
+      // so every read past here must be guarded.
+      if (!mounted) return;
 
       final day = ref.read(routineTodayProvider).value;
       final recovery = ref.read(recoveryOverviewProvider).value;
@@ -143,8 +156,15 @@ class _ReminderSyncState extends ConsumerState<ReminderSync> {
 
       if (!mounted) return;
       final scheduler = ref.read(reminderSchedulerProvider);
-      await scheduler.cancelAll();
-      await scheduler.scheduleAll(planned);
+      try {
+        await scheduler.cancelAll();
+        await scheduler.scheduleAll(planned);
+      } catch (e) {
+        // Whatever is on the phone now is stale, but there is nothing better
+        // to fall back to -- the next trigger (another write, or this same
+        // run re-queued by _dirty) tries again.
+        debugPrint('ReminderSync: scheduling failed: $e');
+      }
     } finally {
       _running = false;
       if (_dirty) {

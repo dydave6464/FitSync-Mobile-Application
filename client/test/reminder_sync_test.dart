@@ -26,7 +26,14 @@ import 'package:fitsync/features/routine/presentation/providers.dart'
 /// Records every call the widget under test makes, in order, so a test can
 /// tell a stale run from the final one and check that cancelAll always
 /// precedes the scheduleAll it belongs to.
+///
+/// [scheduleAllError], when set, is thrown by every `scheduleAll` call --
+/// after it is still recorded in [scheduleAllCalls] -- so a test can check a
+/// scheduling failure is contained without needing it to ever succeed.
 class _FakeScheduler implements ReminderScheduler {
+  _FakeScheduler({this.scheduleAllError});
+
+  final Object? scheduleAllError;
   final List<String> log = [];
   final List<List<PlannedReminder>> scheduleAllCalls = [];
   int cancelAllCount = 0;
@@ -48,6 +55,7 @@ class _FakeScheduler implements ReminderScheduler {
   Future<void> scheduleAll(List<PlannedReminder> reminders) async {
     scheduleAllCalls.add(reminders);
     log.add('scheduleAll');
+    if (scheduleAllError != null) throw scheduleAllError!;
   }
 
   @override
@@ -76,22 +84,26 @@ class _StubReminderSettings extends ReminderSettingsController {
   void set(ReminderSettings value) => state = AsyncData(value);
 }
 
-/// `all()` returns the given habits (or throws, if [allError] is set);
-/// `today()` returns the given day. Every other member is unused by
-/// ReminderSync and throws if called.
+/// `all()` returns the given habits (or throws, if [allError] is set, or
+/// waits on [pendingAll] if given -- so a test can hold the fetch open and
+/// control exactly when it resolves). `today()` returns the given day.
+/// Every other member is unused by ReminderSync and throws if called.
 class _FakeRoutineRepository implements RoutineRepository {
   _FakeRoutineRepository({
     required this.habits,
     required this.day,
     this.allError,
+    this.pendingAll,
   });
 
   final List<Habit> habits;
   final RoutineDay day;
   final Object? allError;
+  final Completer<List<Habit>>? pendingAll;
 
   @override
   Future<List<Habit>> all() async {
+    if (pendingAll != null) return pendingAll!.future;
     if (allError != null) throw allError!;
     return habits;
   }
@@ -181,13 +193,15 @@ Future<_Harness> _pump(
   List<Habit> habits = const [_stretchHabit],
   RoutineDay day = _dayNotDone,
   Object? habitsError,
+  Completer<List<Habit>>? pendingAll,
   Profile? profile,
   RecoveryOverview recovery = _noCheckinRecovery,
   WorkoutPlan? plan,
   VoidCallback? onOpenRoutine,
   VoidCallback? onOpenRecovery,
+  Object? scheduleAllError,
 }) async {
-  final scheduler = _FakeScheduler();
+  final scheduler = _FakeScheduler(scheduleAllError: scheduleAllError);
   addTearDown(scheduler.tapsController.close);
 
   final container = ProviderContainer(
@@ -200,7 +214,12 @@ Future<_Harness> _pump(
         () => _StubProfileNotifier(profile ?? _profile()),
       ),
       routineRepositoryProvider.overrideWithValue(
-        _FakeRoutineRepository(habits: habits, day: day, allError: habitsError),
+        _FakeRoutineRepository(
+          habits: habits,
+          day: day,
+          allError: habitsError,
+          pendingAll: pendingAll,
+        ),
       ),
       recoveryOverviewProvider.overrideWith((ref) async => recovery),
       activePlanProvider.overrideWith((ref) async => plan),
@@ -318,5 +337,76 @@ void main() {
     await tester.pump();
 
     expect(opened, ['routine', 'recovery']);
+  });
+
+  testWidgets('disposed while habits load: no error and nothing scheduled', (
+    tester,
+  ) async {
+    final pendingAll = Completer<List<Habit>>();
+    final harness = await _pump(tester, pendingAll: pendingAll);
+
+    // Tear down the shell -- e.g. sign-out on a slow network -- while the
+    // habits fetch this run started is still in flight.
+    await tester.pumpWidget(
+      UncontrolledProviderScope(
+        container: harness.container,
+        child: const MaterialApp(home: SizedBox()),
+      ),
+    );
+
+    pendingAll.complete(const [_stretchHabit]);
+    await tester.pump();
+    await tester.pump();
+
+    expect(
+      tester.takeException(),
+      isNull,
+      reason: 'a run resuming after dispose must not throw',
+    );
+    expect(
+      harness.scheduler.scheduleAllCalls,
+      isEmpty,
+      reason: 'a disposed ReminderSync must not schedule anything',
+    );
+  });
+
+  testWidgets('a scheduling failure is contained', (tester) async {
+    final harness = await _pump(
+      tester,
+      scheduleAllError: Exception('scheduler boom'),
+    );
+
+    expect(
+      tester.takeException(),
+      isNull,
+      reason: 'the widget must keep working despite the failure',
+    );
+    expect(
+      harness.scheduler.scheduleAllCalls,
+      isNotEmpty,
+      reason: 'the failed attempt is still recorded',
+    );
+
+    final callsBefore = harness.scheduler.scheduleAllCalls.length;
+    (harness.container.read(
+      reminderSettingsProvider.notifier,
+    ) as _StubReminderSettings).set(
+      const ReminderSettings(
+        habitsEnabled: true,
+        habitLeadMin: 15,
+        workoutEnabled: false,
+        workoutTime: '07:00',
+        checkinEnabled: true,
+        checkinTime: '07:00',
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(
+      harness.scheduler.scheduleAllCalls.length,
+      greaterThan(callsBefore),
+      reason: 'a later trigger must retry scheduling',
+    );
+    expect(tester.takeException(), isNull);
   });
 }
