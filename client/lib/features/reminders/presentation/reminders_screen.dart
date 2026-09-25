@@ -60,6 +60,12 @@ class _RemindersScreenState extends ConsumerState<RemindersScreen> {
   }
 
   Future<void> _refreshGranted() async {
+    // Checked before touching `ref` at all, not only after the await below:
+    // a caller that itself just resumed from an await (`_setEnabled` after
+    // `requestPermission`) may already be unmounted by the time this runs,
+    // and `ref.read` throws on a disposed widget rather than returning
+    // stale data.
+    if (!mounted) return;
     final granted = await ref
         .read(reminderSchedulerProvider)
         .permissionGranted();
@@ -88,6 +94,10 @@ class _RemindersScreenState extends ConsumerState<RemindersScreen> {
       final granted = await ref
           .read(reminderSchedulerProvider)
           .requestPermission();
+      // The system prompt this just awaited can outlive the screen -- a pop
+      // (or the signed-in shell tearing down) while it is up leaves `ref`
+      // unusable, so nothing below may touch it.
+      if (!mounted) return;
       await _refreshGranted();
       if (!granted) return;
     }

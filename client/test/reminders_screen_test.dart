@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -35,11 +37,20 @@ class _RecordingReminderSettings extends ReminderSettingsController {
 /// reports until a test says so -- so `requestPermissionCalls` is the only
 /// signal a test needs that the screen asked at all.
 class _FakeScheduler implements ReminderScheduler {
-  _FakeScheduler({this.granted = true, this.requestAnswer = true});
+  _FakeScheduler({
+    this.granted = true,
+    this.requestAnswer = true,
+    this.pendingRequest,
+  });
 
   bool granted;
   bool requestAnswer;
   int requestPermissionCalls = 0;
+
+  /// When set, `requestPermission()` waits on this instead of answering
+  /// immediately -- so a test can hold the simulated system prompt open and
+  /// pop the screen while it is still up.
+  final Completer<bool>? pendingRequest;
 
   @override
   Future<bool> permissionGranted() async => granted;
@@ -47,6 +58,7 @@ class _FakeScheduler implements ReminderScheduler {
   @override
   Future<bool> requestPermission() async {
     requestPermissionCalls += 1;
+    if (pendingRequest != null) return pendingRequest!.future;
     return requestAnswer;
   }
 
@@ -226,4 +238,78 @@ void main() {
       findsOneWidget,
     );
   });
+
+  testWidgets(
+    'popping the screen while permission is being asked does not throw',
+    (tester) async {
+      final settingsPatches = <Map<String, dynamic>>[];
+      final pendingRequest = Completer<bool>();
+      final scheduler = _FakeScheduler(
+        granted: false,
+        pendingRequest: pendingRequest,
+      );
+
+      await tester.pumpWidget(
+        ProviderScope(
+          overrides: [
+            reminderSettingsProvider.overrideWith(
+              () => _RecordingReminderSettings(
+                ReminderSettings.defaults,
+                patches: settingsPatches,
+              ),
+            ),
+            profileProvider.overrideWith(
+              () => FakeProfileNotifier(<Map<String, dynamic>>[]),
+            ),
+            reminderSchedulerProvider.overrideWithValue(scheduler),
+          ],
+          // A route below RemindersScreen, so the test can pop it -- unlike
+          // every other test here, which puts it straight at `home` with
+          // nothing to pop to.
+          child: MaterialApp(
+            home: Builder(
+              builder: (context) => Scaffold(
+                body: Center(
+                  child: ElevatedButton(
+                    onPressed: () => Navigator.of(context).push(
+                      MaterialPageRoute<void>(
+                        builder: (_) => const RemindersScreen(),
+                      ),
+                    ),
+                    child: const Text('open'),
+                  ),
+                ),
+              ),
+            ),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('open'));
+      await tester.pumpAndSettle();
+
+      await tester.scrollUntilVisible(
+        find.byKey(const Key('reminders.checkin')),
+        200,
+      );
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const Key('reminders.checkin')));
+      // A plain pump, not pumpAndSettle: `requestPermission()` is parked on
+      // `pendingRequest`, so the widget is mid-await, exactly where a real
+      // system prompt would leave it while still on screen.
+      await tester.pump();
+
+      Navigator.of(tester.element(find.byType(RemindersScreen))).pop();
+      await tester.pumpAndSettle();
+
+      // The prompt is "answered" only after the screen is already gone --
+      // the resumed `_setEnabled` must see `mounted == false` and stop
+      // rather than touch `ref` or `context` again.
+      pendingRequest.complete(true);
+      await tester.pump();
+
+      expect(tester.takeException(), isNull);
+      expect(settingsPatches, isEmpty);
+    },
+  );
 }
