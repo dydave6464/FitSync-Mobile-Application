@@ -4,6 +4,8 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../core/widgets/fs_kit.dart';
 import '../../exercises/presentation/exercise_list_screen.dart';
 import '../../plans/presentation/start_workout_sheet.dart';
+import '../../reminders/presentation/reminder_sync.dart';
+import '../../routine/presentation/routine_screen.dart';
 import '../../sessions/presentation/providers.dart'
     show pendingOutcomeProvider, trainingPeriodProvider;
 import '../../settings/presentation/settings_screen.dart';
@@ -65,6 +67,23 @@ class _NavShellState extends State<NavShell> {
     });
   }
 
+  /// Selects Home, then pushes the routine screen on top of it -- what a
+  /// tapped reminder about a habit or the workout item opens onto, the same
+  /// screen Home's own routine card opens.
+  void _openRoutine() {
+    _select(0);
+    Navigator.of(context).push(
+      MaterialPageRoute<void>(
+        builder: (_) => RoutineScreen(
+          onOpenPlan: () {
+            Navigator.of(context).pop();
+            _openTrainAt('plan');
+          },
+        ),
+      ),
+    );
+  }
+
   @override
   void initState() {
     super.initState();
@@ -101,45 +120,49 @@ class _NavShellState extends State<NavShell> {
 
   @override
   Widget build(BuildContext context) {
-    return DayRollover(
-      child: Scaffold(
-        body: IndexedStack(
-          index: _index,
-          children: [
-            _tab(
-              0,
-              () => HomeScreen(
-                onGoToTrain: () => _openTrainAt('plan'),
-                onGoToProfile: () => _select(3),
-                onGoToRecovery: () => _openTrainAt('recovery'),
-                onGoToProgress: () {
-                  // The card says "Past month"; Progress must open on the
-                  // month, or the numbers the user tapped on vanish.
-                  ProviderScope.containerOf(
-                    context,
-                    listen: false,
-                  ).read(trainingPeriodProvider.notifier).set('month');
-                  _openTrainAt('progress');
-                },
+    return ReminderSync(
+      onOpenRoutine: _openRoutine,
+      onOpenRecovery: () => _openTrainAt('recovery'),
+      child: DayRollover(
+        child: Scaffold(
+          body: IndexedStack(
+            index: _index,
+            children: [
+              _tab(
+                0,
+                () => HomeScreen(
+                  onGoToTrain: () => _openTrainAt('plan'),
+                  onGoToProfile: () => _select(3),
+                  onGoToRecovery: () => _openTrainAt('recovery'),
+                  onGoToProgress: () {
+                    // The card says "Past month"; Progress must open on the
+                    // month, or the numbers the user tapped on vanish.
+                    ProviderScope.containerOf(
+                      context,
+                      listen: false,
+                    ).read(trainingPeriodProvider.notifier).set('month');
+                    _openTrainAt('progress');
+                  },
+                ),
               ),
-            ),
-            _tab(
-              _trainIndex,
-              () => TrainingShell(
-                openCount: _trainOpens,
-                onGoToProfile: () => _select(3),
-                tabRequest: _trainTab,
+              _tab(
+                _trainIndex,
+                () => TrainingShell(
+                  openCount: _trainOpens,
+                  onGoToProfile: () => _select(3),
+                  tabRequest: _trainTab,
+                ),
               ),
-            ),
-            _tab(2, () => const ExerciseListScreen()),
-            _tab(3, () => const SettingsScreen()),
-          ],
-        ),
-        bottomNavigationBar: FsNav(
-          currentIndex: _index,
-          onSelect: _select,
-          items: _items,
-          onFabTap: () => showStartWorkoutSheet(context),
+              _tab(2, () => const ExerciseListScreen()),
+              _tab(3, () => const SettingsScreen()),
+            ],
+          ),
+          bottomNavigationBar: FsNav(
+            currentIndex: _index,
+            onSelect: _select,
+            items: _items,
+            onFabTap: () => showStartWorkoutSheet(context),
+          ),
         ),
       ),
     );
