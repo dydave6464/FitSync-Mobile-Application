@@ -145,6 +145,22 @@ test('calendar db', async (t) => {
     ]);
   });
 
+  await t.test('a habit ticked today then deleted still counts as done today, but not on a future day', async () => {
+    const u = await newUser();
+    const stretch = await habit(u, { title: 'Stretch', weekdays: [4] }); // due Thursdays
+    await tick(stretch, TODAY);
+    await pool.query('UPDATE routine_habits SET is_active = FALSE WHERE habit_id = ?', [stretch]);
+
+    const today = (await read(u, TODAY, TODAY)).days[0];
+    assert.deepEqual(today.habits, [
+      { habitId: stretch, title: 'Stretch', time: null, done: true },
+    ]);
+
+    // 2026-10-01 is also a Thursday, a week after TODAY.
+    const future = (await read(u, '2026-10-01', '2026-10-01')).days[0];
+    assert.deepEqual(future.habits, []);
+  });
+
   await t.test("today's workout: planned on a training day, done once a session is finished", async () => {
     const u = await newUser();
     const p = await plan(u, 'Upper/Lower');
