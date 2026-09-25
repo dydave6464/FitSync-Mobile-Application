@@ -11,6 +11,7 @@ import '../domain/routine.dart';
 import 'all_habits_screen.dart';
 import 'providers.dart';
 import 'widgets/habit_sheet.dart';
+import '../../schedule/presentation/schedule_screen.dart';
 
 /// Today's checklist: repeating habits, and the workout item that ticks
 /// itself when a session is finished. Today only -- a habit on other days is
@@ -30,6 +31,14 @@ class RoutineScreen extends ConsumerWidget {
       appBar: AppBar(
         title: const Text('Daily Routine'),
         actions: [
+          IconButton(
+            key: const Key('routine.schedule'),
+            tooltip: 'Schedule',
+            icon: const Icon(Icons.calendar_month_outlined),
+            onPressed: () => Navigator.of(context).push(
+              MaterialPageRoute<void>(builder: (_) => const ScheduleScreen()),
+            ),
+          ),
           IconButton(
             key: const Key('routine.all'),
             tooltip: 'All habits',

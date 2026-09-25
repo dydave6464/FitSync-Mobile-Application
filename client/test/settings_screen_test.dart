@@ -24,6 +24,9 @@ import 'package:fitsync/features/streaks/domain/streaks.dart';
 import 'package:fitsync/features/streaks/presentation/providers.dart'
     show goalsProvider, streakProvider;
 import 'package:fitsync/features/streaks/presentation/streaks_screen.dart';
+import 'package:fitsync/features/schedule/domain/calendar.dart';
+import 'package:fitsync/features/schedule/presentation/providers.dart';
+import 'package:fitsync/features/schedule/presentation/schedule_screen.dart';
 
 const _baseProfile = Profile(
   userId: 7,
@@ -178,6 +181,10 @@ Future<void> _pump(
               const Streak(current: 0, best: 0, todayActive: false, week: []),
         ),
         goalsProvider.overrideWith((ref) async => const <LiftGoal>[]),
+        calendarProvider.overrideWith(
+          (ref, span) async =>
+              const CalendarRange(today: '2026-09-24', days: []),
+        ),
       ],
       child: const MaterialApp(home: SettingsScreen()),
     ),
@@ -472,5 +479,13 @@ void main() {
     await _openRow(tester, const Key('edit.streaks'));
 
     expect(find.byType(StreaksScreen), findsOneWidget);
+  });
+
+  testWidgets('the Schedule row opens the screen', (tester) async {
+    await _pump(tester);
+
+    await _openRow(tester, const Key('edit.schedule'));
+
+    expect(find.byType(ScheduleScreen), findsOneWidget);
   });
 }

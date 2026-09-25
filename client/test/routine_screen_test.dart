@@ -8,6 +8,14 @@ import 'package:fitsync/features/routine/domain/routine.dart';
 import 'package:fitsync/features/routine/presentation/all_habits_screen.dart';
 import 'package:fitsync/features/routine/presentation/providers.dart';
 import 'package:fitsync/features/routine/presentation/routine_screen.dart';
+import 'package:fitsync/features/profile/presentation/providers.dart';
+import 'package:fitsync/features/reminders/domain/reminders.dart';
+import 'package:fitsync/features/reminders/presentation/providers.dart';
+import 'package:fitsync/features/schedule/domain/calendar.dart';
+import 'package:fitsync/features/schedule/presentation/providers.dart';
+import 'package:fitsync/features/schedule/presentation/schedule_screen.dart';
+
+import 'settings_screen_test.dart' show FakeProfileNotifier;
 
 const _mobility = Habit(
   habitId: 1,
@@ -81,6 +89,11 @@ class _FakeRoutineRepo implements RoutineRepository {
       throw UnimplementedError();
   @override
   Future<void> remove(int habitId) async => throw UnimplementedError();
+}
+
+class _DefaultReminderSettings extends ReminderSettingsController {
+  @override
+  Future<ReminderSettings> build() async => ReminderSettings.defaults;
 }
 
 Widget _harness(_FakeRoutineRepo repo, {VoidCallback? onOpenPlan}) =>
@@ -296,5 +309,31 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.byType(AllHabitsScreen), findsOneWidget);
+  });
+
+  testWidgets('the calendar icon opens the Schedule', (tester) async {
+    final repo = _FakeRoutineRepo(_fixtureDay);
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          routineRepositoryProvider.overrideWithValue(repo),
+          calendarProvider.overrideWith(
+            (ref, span) async =>
+                const CalendarRange(today: '2026-09-24', days: []),
+          ),
+          profileProvider.overrideWith(() => FakeProfileNotifier([])),
+          reminderSettingsProvider.overrideWith(
+            () => _DefaultReminderSettings(),
+          ),
+        ],
+        child: const MaterialApp(home: RoutineScreen()),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.byKey(const Key('routine.schedule')));
+    await tester.pumpAndSettle();
+
+    expect(find.byType(ScheduleScreen), findsOneWidget);
   });
 }
