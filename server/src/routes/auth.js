@@ -97,7 +97,8 @@ module.exports = function buildAuthRouter({
   // Shared by /register and /verify-email/request. A failed send must never
   // fail the caller: the account exists and the code is already stored, so a
   // mail outage should leave the user able to ask for a new code, not unable
-  // to have an account. A null code means the resend limit held it back.
+  // to have an account. A null code means the resend limit, a lockout or the
+  // daily cap held it back.
   async function sendVerification(req, user) {
     const code = await issueCode(pool, {
       key: codesKey(), userId: user.user_id, purpose: 'verify_email',
