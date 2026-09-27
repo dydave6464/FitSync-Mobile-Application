@@ -203,6 +203,12 @@ void main() {
         'CODE_INVALID',
         'That code is wrong or has expired.',
       ),
+      // What the server says to a still-unverified account: the one sign-in
+      // a CODE_INVALID triggers (see the lost-response test) fails.
+      onLogin: () async => throw const ApiException(
+        'EMAIL_NOT_VERIFIED',
+        'Verify your email before signing in.',
+      ),
     );
     final seen = await _pump(tester, repo);
 
@@ -212,9 +218,33 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.text(wrongCodeMessage), findsOneWidget);
-    expect(repo.loginCalls, 0);
+    expect(repo.loginCalls, 1, reason: 'one check for a lost reply, no more');
     expect(seen, isEmpty);
     expect(find.byType(CheckEmailScreen), findsOneWidget);
+  });
+
+  testWidgets('a lost verify response still signs in', (tester) async {
+    // The server accepted the code but its reply was lost; the retry is told
+    // CODE_INVALID for a code this very account already spent.
+    final repo = FakeAuthRepository(
+      onVerify: () async => throw const ApiException(
+        'CODE_INVALID',
+        'That code is wrong or has expired.',
+      ),
+    );
+    final seen = await _pump(tester, repo);
+
+    await tester.enterText(find.byKey(const Key('code')), '048213');
+    await tester.pump();
+    await tester.tap(find.byKey(const Key('verify')));
+    await tester.pumpAndSettle();
+
+    expect(repo.verifyCalls, 1);
+    expect(repo.loginCalls, 1);
+    expect(repo.lastEmail, 'juan@example.com');
+    expect(repo.lastPassword, 's3cret-pass');
+    expect(seen, [_user]);
+    expect(find.byType(CheckEmailScreen), findsNothing);
   });
 
   testWidgets(

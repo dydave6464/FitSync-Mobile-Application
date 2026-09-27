@@ -245,6 +245,12 @@ void main() {
         'CODE_INVALID',
         'That code is wrong or has expired.',
       ),
+      // The password was not changed, so the one sign-in a CODE_INVALID
+      // triggers (see the lost-response test) is refused.
+      onLogin: () async => throw const ApiException(
+        'INVALID_CREDENTIALS',
+        'Email or password is incorrect.',
+      ),
     );
     final seen = await _pump(tester, repo);
 
@@ -252,8 +258,31 @@ void main() {
     await _fillReset(tester, code: '000000');
 
     expect(find.text(wrongCodeMessage), findsOneWidget);
-    expect(repo.loginCalls, 0);
+    expect(repo.loginCalls, 1, reason: 'one check for a lost reply, no more');
     expect(seen, isEmpty);
+    expect(find.byType(ForgotPasswordScreen), findsOneWidget);
+  });
+
+  testWidgets('a lost reset response still signs in', (tester) async {
+    // The server reset the password but its reply was lost; the retry is told
+    // CODE_INVALID for a code this very reset already spent.
+    final repo = FakeAuthRepository(
+      onReset: () async => throw const ApiException(
+        'CODE_INVALID',
+        'That code is wrong or has expired.',
+      ),
+    );
+    final seen = await _pump(tester, repo);
+
+    await _sendCode(tester);
+    await _fillReset(tester);
+
+    expect(repo.resetCalls, 1);
+    expect(repo.loginCalls, 1);
+    expect(repo.lastEmail, 'juan@example.com');
+    expect(repo.lastPassword, 'a whole new password', reason: 'the new one');
+    expect(seen, [_user]);
+    expect(find.byType(ForgotPasswordScreen), findsNothing);
   });
 
   testWidgets('reset but the sign-in failed: the button retries sign-in only', (

@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../core/api_exception.dart';
 import '../../../core/theme.dart';
 import '../../../core/widgets/fs_kit.dart';
+import '../domain/auth_user.dart';
 import 'auth_controller.dart';
 import 'code_entry.dart';
 
@@ -64,29 +65,42 @@ class _CheckEmailScreenState extends ConsumerState<CheckEmailScreen> {
     final repo = ref.read(authRepositoryProvider);
     final controller = ref.read(authControllerProvider.notifier);
     final navigator = Navigator.of(context);
+    final email = widget.email;
+    final password = widget.password;
     setState(() {
       _busy = true;
       _status = null;
     });
 
+    // No `mounted` check here, unlike sign_in_screen.dart: repo.login has
+    // already stored the session token, so finishing onAuthenticated keeps
+    // the app's state consistent with that stored session even if this
+    // screen was closed mid-flight. Skipping it would leave the UI signed
+    // out while holding a valid token.
+    void signedIn(AuthUser user) {
+      navigator.popUntil((route) => route.isFirst);
+      controller.onAuthenticated(user);
+    }
+
     try {
       if (!_verified) {
-        await repo.verifyEmail(email: widget.email, code: _code.text);
+        await repo.verifyEmail(email: email, code: _code.text);
         // Set the field regardless of mounted; only the rebuild is
         // conditional, so a catch reached after the screen is gone still
         // sees the code as spent and asks to retry the sign-in, not resend it.
         _verified = true;
         if (mounted) setState(() {});
       }
-      final user = await repo.login(widget.email, widget.password);
-      // No `mounted` check here, unlike sign_in_screen.dart: repo.login has
-      // already stored the session token, so finishing onAuthenticated keeps
-      // the app's state consistent with that stored session even if this
-      // screen was closed mid-flight. Skipping it would leave the UI signed
-      // out while holding a valid token.
-      navigator.popUntil((route) => route.isFirst);
-      controller.onAuthenticated(user);
+      signedIn(await repo.login(email, password));
     } on ApiException catch (error) {
+      if (!_verified && error.code == 'CODE_INVALID') {
+        // Perhaps the code was right and only the reply was lost.
+        final user = await signInAfterRejectedCode(repo, email, password);
+        if (user != null) {
+          signedIn(user);
+          return;
+        }
+      }
       if (!mounted) return;
       setState(() {
         _status = _verified

@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../core/api_exception.dart';
 import '../../../core/theme.dart';
 import '../../../core/widgets/fs_kit.dart';
+import '../domain/auth_user.dart';
 import 'auth_controller.dart';
 import 'code_entry.dart';
 
@@ -108,6 +109,16 @@ class _ForgotPasswordScreenState extends ConsumerState<ForgotPasswordScreen> {
       _message = null;
     });
 
+    // No `mounted` check here: repo.login has already stored the session
+    // token, so finishing onAuthenticated keeps the app consistent with
+    // that stored session even if this screen was closed mid-flight.
+    // Skipping it would leave the UI signed out while holding a valid
+    // token.
+    void signedIn(AuthUser user) {
+      navigator.popUntil((route) => route.isFirst);
+      controller.onAuthenticated(user);
+    }
+
     try {
       if (!_resetDone) {
         await repo.resetPassword(
@@ -121,15 +132,17 @@ class _ForgotPasswordScreenState extends ConsumerState<ForgotPasswordScreen> {
         _resetDone = true;
         if (mounted) setState(() {});
       }
-      final user = await repo.login(email, password);
-      // No `mounted` check here: repo.login has already stored the session
-      // token, so finishing onAuthenticated keeps the app consistent with
-      // that stored session even if this screen was closed mid-flight.
-      // Skipping it would leave the UI signed out while holding a valid
-      // token.
-      navigator.popUntil((route) => route.isFirst);
-      controller.onAuthenticated(user);
+      signedIn(await repo.login(email, password));
     } on ApiException catch (error) {
+      if (!_resetDone && error.code == 'CODE_INVALID') {
+        // Perhaps the reset went through and only the reply was lost: then
+        // the new password already works.
+        final user = await signInAfterRejectedCode(repo, email, password);
+        if (user != null) {
+          signedIn(user);
+          return;
+        }
+      }
       if (!mounted) return;
       setState(() {
         _message = _resetDone
