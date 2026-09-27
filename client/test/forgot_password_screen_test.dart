@@ -223,6 +223,24 @@ void main() {
     expect(find.byType(ForgotPasswordScreen), findsNothing);
   });
 
+  testWidgets('a right code shows a signed-in banner that then goes away', (
+    tester,
+  ) async {
+    await _pump(tester, FakeAuthRepository());
+
+    await _sendCode(tester);
+    await _fillReset(tester);
+
+    expect(
+      find.widgetWithText(SnackBar, "Password updated — you're signed in."),
+      findsOneWidget,
+    );
+
+    await tester.pump(const Duration(seconds: 5));
+    await tester.pumpAndSettle();
+    expect(find.byType(SnackBar), findsNothing);
+  });
+
   testWidgets('a short password is refused before anything is sent', (
     tester,
   ) async {
@@ -261,6 +279,7 @@ void main() {
     expect(repo.loginCalls, 1, reason: 'one check for a lost reply, no more');
     expect(seen, isEmpty);
     expect(find.byType(ForgotPasswordScreen), findsOneWidget);
+    expect(find.byType(SnackBar), findsNothing);
   });
 
   testWidgets('a lost reset response still signs in', (tester) async {
@@ -283,6 +302,10 @@ void main() {
     expect(repo.lastPassword, 'a whole new password', reason: 'the new one');
     expect(seen, [_user]);
     expect(find.byType(ForgotPasswordScreen), findsNothing);
+    expect(
+      find.widgetWithText(SnackBar, "Password updated — you're signed in."),
+      findsOneWidget,
+    );
   });
 
   testWidgets('reset but the sign-in failed: the button retries sign-in only', (

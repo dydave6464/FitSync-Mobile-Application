@@ -79,6 +79,7 @@ class _CheckEmailScreenState extends ConsumerState<CheckEmailScreen> {
     final repo = ref.read(authRepositoryProvider);
     final controller = ref.read(authControllerProvider.notifier);
     final navigator = Navigator.of(context);
+    final messenger = ScaffoldMessenger.of(context);
     final email = widget.email;
     final password = widget.password;
     setState(() {
@@ -94,6 +95,7 @@ class _CheckEmailScreenState extends ConsumerState<CheckEmailScreen> {
     void signedIn(AuthUser user) {
       navigator.popUntil((route) => route.isFirst);
       controller.onAuthenticated(user);
+      showSignedInBanner(messenger, verifiedSignInMessage);
     }
 
     try {

@@ -17,6 +17,32 @@ const wrongCodeMessage =
 /// this never claims more than that one is coming.
 const newCodeMessage = 'A new code is on its way. Check your inbox (and spam).';
 
+/// The banners shown once a correct code has signed someone in. Without them
+/// the code screen simply gives way to onboarding or Home, with nothing to say
+/// the code worked.
+const verifiedSignInMessage = "Email verified — you're signed in.";
+const resetSignInMessage = "Password updated — you're signed in.";
+
+/// Shows [message] as a floating banner that slides in and out by itself.
+/// Takes the messenger rather than a context: the code screen has closed by
+/// the time this runs, and the app-wide messenger shows it on whatever screen
+/// took its place.
+void showSignedInBanner(ScaffoldMessengerState messenger, String message) {
+  messenger.showSnackBar(
+    SnackBar(
+      behavior: SnackBarBehavior.floating,
+      duration: const Duration(seconds: 3),
+      content: Row(
+        children: [
+          const Icon(Icons.check_circle_outline, size: 20),
+          const SizedBox(width: 10),
+          Expanded(child: Text(message)),
+        ],
+      ),
+    ),
+  );
+}
+
 /// The one sign-in tried when a code comes back CODE_INVALID. If the server
 /// accepted the code but its reply was lost, a retry finds the code spent on
 /// an account that is in fact verified or reset, and only a sign-in can tell.

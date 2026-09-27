@@ -199,6 +199,26 @@ void main() {
     expect(find.byType(CheckEmailScreen), findsNothing);
   });
 
+  testWidgets('a right code shows a signed-in banner that then goes away', (
+    tester,
+  ) async {
+    await _pump(tester, FakeAuthRepository());
+
+    await tester.enterText(find.byKey(const Key('code')), '048213');
+    await tester.pump();
+    await tester.tap(find.byKey(const Key('verify')));
+    await tester.pumpAndSettle();
+
+    expect(
+      find.widgetWithText(SnackBar, "Email verified — you're signed in."),
+      findsOneWidget,
+    );
+
+    await tester.pump(const Duration(seconds: 5));
+    await tester.pumpAndSettle();
+    expect(find.byType(SnackBar), findsNothing);
+  });
+
   testWidgets('a wrong code says so and signs nobody in', (tester) async {
     final repo = FakeAuthRepository(
       onVerify: () async => throw const ApiException(
@@ -222,6 +242,7 @@ void main() {
     expect(find.text(wrongCodeMessage), findsOneWidget);
     expect(repo.loginCalls, 1, reason: 'one check for a lost reply, no more');
     expect(seen, isEmpty);
+    expect(find.byType(SnackBar), findsNothing);
     expect(find.byType(CheckEmailScreen), findsOneWidget);
   });
 
@@ -247,6 +268,10 @@ void main() {
     expect(repo.lastPassword, 's3cret-pass');
     expect(seen, [_user]);
     expect(find.byType(CheckEmailScreen), findsNothing);
+    expect(
+      find.widgetWithText(SnackBar, "Email verified — you're signed in."),
+      findsOneWidget,
+    );
   });
 
   testWidgets(

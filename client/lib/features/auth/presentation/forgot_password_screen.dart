@@ -102,6 +102,7 @@ class _ForgotPasswordScreenState extends ConsumerState<ForgotPasswordScreen> {
     final repo = ref.read(authRepositoryProvider);
     final controller = ref.read(authControllerProvider.notifier);
     final navigator = Navigator.of(context);
+    final messenger = ScaffoldMessenger.of(context);
     final email = _email.text.trim();
     final password = _password.text;
     setState(() {
@@ -117,6 +118,7 @@ class _ForgotPasswordScreenState extends ConsumerState<ForgotPasswordScreen> {
     void signedIn(AuthUser user) {
       navigator.popUntil((route) => route.isFirst);
       controller.onAuthenticated(user);
+      showSignedInBanner(messenger, resetSignInMessage);
     }
 
     try {
