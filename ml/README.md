@@ -106,11 +106,11 @@ ML_MODE=http
 ML_SERVICE_URL=http://localhost:8000
 ```
 
-Note: the profile Node sends still contains identifying fields — email, full
-name, city, date of birth. The service ignores them, but in `http` mode they
-cross the wire and land in request logs. The mapper that strips them is spec
-§9, not yet built. Bear that in mind before pointing a production Node at
-this.
+Node sends only what the rules read, built from an allowed list in
+`server/src/services/ml/profile-payload.js`: goal, fitness level, equipment
+and injury ids, each injury's body region, the generator's choices, and
+check-in answers. No email, name, city, date of birth or body measurements
+cross the wire, so `http` mode is fine outside development too.
 
 Restart the Node server. `ML_MODE=stub` is the default and remains valid — the
 two are interchangeable by design, and `server/tests/ml-service.test.js`
