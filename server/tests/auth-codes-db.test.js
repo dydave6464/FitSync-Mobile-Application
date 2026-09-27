@@ -273,4 +273,28 @@ test('auth codes db', async (t) => {
     );
     assert.equal(n, 0);
   });
+
+  await t.test('a code held back by the cap leaves the current one working', async () => {
+    const u = await newUser();
+    let last;
+    for (let i = 1; i <= 10; i += 1) {
+      last = await issue(u);
+      await age(u);
+    }
+    assert.equal(await issue(u), null);
+    assert.equal(await check(u, last), true, 'the tenth code still works');
+  });
+
+  await t.test('two simultaneous issues after a code is used give exactly one', async () => {
+    const u = await newUser();
+    await fill(u, 8);
+    assert.equal(await check(u, await issue(u)), true, 'the ninth is used');
+    // No auth_codes row now, but nine issues on record: one more is allowed.
+    const results = await Promise.all([issue(u), issue(u)]);
+    assert.equal(results.filter((r) => r !== null).length, 1);
+    const [[{ n }]] = await pool.query(
+      'SELECT COUNT(*) AS n FROM auth_code_issues WHERE user_id = ?', [u],
+    );
+    assert.equal(n, 10);
+  });
 });

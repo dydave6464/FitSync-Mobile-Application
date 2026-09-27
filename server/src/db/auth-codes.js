@@ -60,7 +60,8 @@ async function issueCode(pool, { key, userId, purpose }) {
       );
     } else {
       // No row exists, insert new one. A second request doing the same at the
-      // same moment fails here on the primary key, before it logs an issue.
+      // same moment fails (deadlock or duplicate key) and is rolled back, so
+      // it logs no issue.
       await conn.query(
         `INSERT INTO auth_codes (user_id, purpose, code_hash, expires_at, attempts, created_at)
          VALUES (?, ?, ?, DATE_ADD(NOW(), INTERVAL ? MINUTE), 0, NOW())`,

@@ -14,9 +14,11 @@ const crypto = require('node:crypto');
 /// LOCKOUT_MINUTES: the code stops working, even the right one, and no new code
 /// is issued until the lockout ends.
 ///
-/// That alone still allows four guesses a code and a new code a minute. So
-/// no account gets more than DAILY_CODE_LIMIT codes per purpose in any 24
-/// hours: at most forty guesses a day against a million possible codes.
+/// That alone still allows a new code a minute, and an attacker who stops at
+/// four guesses a code never meets the lockout. So no account gets more than
+/// DAILY_CODE_LIMIT codes per purpose in any 24 hours. Every code allows
+/// MAX_ATTEMPTS real guesses (the fifth is checked before it locks), so that
+/// is at most fifty guesses a day against a million possible codes.
 
 const TTL_MINUTES = Object.freeze({
   verify_email: 60,
