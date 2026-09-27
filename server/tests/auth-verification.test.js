@@ -9,6 +9,9 @@ const { testDbConfig, dropAllTables } = require('./helpers/test-db');
 const { createMailService } = require('../src/services/mail');
 const { findUserByEmail } = require('../src/db/users');
 
+/// The code from an email's subject line, "Your FitSync code: 048213".
+const codeIn = (message) => message.subject.match(/(\d{6})$/)[1];
+
 test('email verification gate', async (t) => {
   const pool = createPool(testDbConfig());
   await dropAllTables(pool);
@@ -18,9 +21,19 @@ test('email verification gate', async (t) => {
 
   t.after(async () => { await dropAllTables(pool); await pool.end(); });
 
-  const register = () => request(app).post('/api/v1/auth/register').send({
-    email: 'gate@example.com', password: 'correct horse', fullName: 'Gate',
-  });
+  const register = (email = 'gate@example.com', password = 'correct horse') =>
+    request(app).post('/api/v1/auth/register').send({ email, password, fullName: 'Gate' });
+  const verify = (email, code) =>
+    request(app).post('/api/v1/auth/verify-email').send({ email, code });
+  const lastCode = (email) => codeIn(mail.sent.filter((m) => m.to === email).at(-1));
+  const other = (code) => (code === '000000' ? '111111' : '000000');
+  const ageCode = async (email) => {
+    const user = await findUserByEmail(pool, email);
+    await pool.query(
+      'UPDATE auth_codes SET created_at = DATE_SUB(NOW(), INTERVAL 2 MINUTE) WHERE user_id = ?',
+      [user.user_id],
+    );
+  };
 
   await t.test('registration issues no token', async () => {
     const res = await register();
@@ -30,9 +43,12 @@ test('email verification gate', async (t) => {
     assert.equal(res.body.data.user.emailVerified, false);
   });
 
-  await t.test('registration mails a verification link', async () => {
-    assert.equal(mail.sent.length, 1);
-    assert.match(mail.sent[0].text, /\/auth\/verify-email\?token=[a-f0-9]{64}/);
+  await t.test('registration mails a six-digit code and no link', async () => {
+    const [m] = mail.sent.filter((x) => x.to === 'gate@example.com');
+    assert.match(m.subject, /^Your FitSync code: \d{6}$/);
+    assert.ok(m.text.includes(codeIn(m)), 'the code is in the body too');
+    assert.doesNotMatch(m.text, /https?:\/\//, 'no link: the code is typed into the app');
+    assert.match(m.text, /60 minutes/);
   });
 
   await t.test('an unverified account cannot sign in', async () => {
@@ -43,42 +59,81 @@ test('email verification gate', async (t) => {
   });
 
   await t.test('a wrong password on an unverified account still says INVALID_CREDENTIALS', async () => {
-    // The verified check runs AFTER the password compare, so a wrong password
-    // never reveals that the address is registered.
     const res = await request(app).post('/api/v1/auth/login')
       .send({ email: 'gate@example.com', password: 'wrong' });
     assert.equal(res.body.error.code, 'INVALID_CREDENTIALS');
   });
 
-  await t.test('following the link verifies and then sign-in works', async () => {
-    const token = mail.sent[0].text.match(/token=([a-f0-9]{64})/)[1];
-    const page = await request(app).get(`/api/v1/auth/verify-email?token=${token}`);
-    assert.equal(page.status, 200);
-    assert.match(page.headers['content-type'], /html/);
-
-    const res = await request(app).post('/api/v1/auth/login')
-      .send({ email: 'gate@example.com', password: 'correct horse' });
-    assert.equal(res.status, 200);
-    assert.ok(res.body.data.token);
-    assert.equal(res.body.data.user.emailVerified, true);
+  await t.test('every wrong answer looks exactly the same', async () => {
+    const good = lastCode('gate@example.com');
+    const responses = [
+      await verify('gate@example.com', other(good)),
+      await verify('nobody@example.com', good),
+      await verify('gate@example.com', '12345'),
+      await verify('gate@example.com', 'abcdef'),
+      await verify('gate@example.com', undefined),
+      await verify(undefined, good),
+    ];
+    for (const r of responses) {
+      assert.equal(r.status, 400);
+      assert.equal(r.body.error.code, 'CODE_INVALID');
+    }
+    assert.equal(new Set(responses.map((r) => r.text)).size, 1,
+      'any difference would tell a stranger which accounts exist');
   });
 
-  await t.test('the link cannot be used twice', async () => {
-    const token = mail.sent[0].text.match(/token=([a-f0-9]{64})/)[1];
-    const page = await request(app).get(`/api/v1/auth/verify-email?token=${token}`);
-    assert.equal(page.status, 400);
-    // This link arrives by email and is opened straight in a browser -- a
-    // stale or reused link (expired, already used, mistyped) must fail into
-    // a page, not the JSON error envelope the JSON API uses everywhere else.
-    assert.match(page.headers['content-type'], /html/,
-      'a browser-facing route must fail into a page, not a JSON error object');
-    assert.doesNotMatch(page.text, /^\s*\{/, 'must not be a raw JSON error object');
+  await t.test('the right code verifies, and then sign-in works', async () => {
+    const res = await verify('gate@example.com', lastCode('gate@example.com'));
+    assert.equal(res.status, 200);
+    assert.deepEqual(res.body, { data: { verified: true } });
+
+    const login = await request(app).post('/api/v1/auth/login')
+      .send({ email: 'gate@example.com', password: 'correct horse' });
+    assert.equal(login.status, 200);
+    assert.ok(login.body.data.token);
+    assert.equal(login.body.data.user.emailVerified, true);
+  });
+
+  await t.test('a used code, or any code once verified, is CODE_INVALID', async () => {
+    const res = await verify('gate@example.com', lastCode('gate@example.com'));
+    assert.equal(res.status, 400);
+    assert.equal(res.body.error.code, 'CODE_INVALID');
+  });
+
+  await t.test('a pasted code with spaces is accepted', async () => {
+    await register('spaced@example.com');
+    const code = lastCode('spaced@example.com');
+    const res = await verify('spaced@example.com', ` ${code.slice(0, 3)} ${code.slice(3)} `);
+    assert.equal(res.status, 200);
+  });
+
+  await t.test('five wrong tries use the code up', async () => {
+    await register('guess@example.com');
+    const good = lastCode('guess@example.com');
+    for (let i = 0; i < 5; i += 1) {
+      assert.equal((await verify('guess@example.com', other(good))).status, 400);
+    }
+    assert.equal((await verify('guess@example.com', good)).status, 400,
+      'after five misses even the right code is dead');
+  });
+
+  await t.test('an expired code fails', async () => {
+    await register('late@example.com');
+    const good = lastCode('late@example.com');
+    const user = await findUserByEmail(pool, 'late@example.com');
+    await pool.query(
+      'UPDATE auth_codes SET expires_at = DATE_SUB(NOW(), INTERVAL 1 MINUTE) WHERE user_id = ?',
+      [user.user_id],
+    );
+    assert.equal((await verify('late@example.com', good)).status, 400);
+  });
+
+  await t.test('the old link route is gone', async () => {
+    const res = await request(app).get('/api/v1/auth/verify-email?token=abc');
+    assert.equal(res.status, 404);
   });
 
   await t.test('a resend requires the password, and is quiet either way', async () => {
-    // gate@example.com is already verified by this point in the file, so
-    // ok && !user.email_verified is false on both calls below -- this only
-    // exercises the no-op path. See the next test for the actual send.
     const good = await request(app).post('/api/v1/auth/verify-email/request')
       .send({ email: 'gate@example.com', password: 'correct horse' });
     const bad = await request(app).post('/api/v1/auth/verify-email/request')
@@ -88,29 +143,37 @@ test('email verification gate', async (t) => {
     assert.deepEqual(good.body, bad.body);
   });
 
-  await t.test('a correct-credential resend on a still-unverified account actually sends a link', async () => {
-    // Under a hard gate this is the only recovery path for a user whose
-    // first verification email was lost, so the route must actually send
-    // one -- a fresh, still-unverified account is required to exercise that
-    // branch at all; gate@example.com above cannot, once verified.
-    await request(app).post('/api/v1/auth/register').send({
-      email: 'resend@example.com', password: 'correct horse battery', fullName: 'Resend Me',
-    });
+  await t.test('a correct resend on a still-unverified account sends a new code that replaces the old', async () => {
+    await register('resend@example.com', 'correct horse battery');
+    const first = lastCode('resend@example.com');
+    await ageCode('resend@example.com');
     const before = mail.sent.length;
 
     const good = await request(app).post('/api/v1/auth/verify-email/request')
       .send({ email: 'resend@example.com', password: 'correct horse battery' });
     const bad = await request(app).post('/api/v1/auth/verify-email/request')
       .send({ email: 'resend@example.com', password: 'wrong' });
-
     assert.equal(good.status, 202);
     assert.equal(bad.status, 202);
-    assert.equal(good.text, bad.text,
-      'must stay indistinguishable by credential correctness even while actually sending');
+    assert.equal(good.text, bad.text);
 
     const resent = mail.sent.slice(before);
-    assert.equal(resent.length, 1, 'only the correct-credential call should have sent anything');
-    assert.match(resent[0].text, /\/auth\/verify-email\?token=[a-f0-9]{64}/);
+    assert.equal(resent.length, 1, 'only the correct-credential call sent anything');
+    const second = codeIn(resent[0]);
+    if (second !== first) {
+      assert.equal((await verify('resend@example.com', first)).status, 400,
+        'only the latest code works');
+    }
+    assert.equal((await verify('resend@example.com', second)).status, 200);
+  });
+
+  await t.test('a resend within a minute answers the same but sends nothing', async () => {
+    await register('quick@example.com', 'correct horse battery');
+    const before = mail.sent.length;
+    const res = await request(app).post('/api/v1/auth/verify-email/request')
+      .send({ email: 'quick@example.com', password: 'correct horse battery' });
+    assert.equal(res.status, 202);
+    assert.equal(mail.sent.length, before, 'the one-per-minute limit held it back');
   });
 
   await t.test('an unparseable email is refused outright', async () => {
@@ -120,10 +183,6 @@ test('email verification gate', async (t) => {
   });
 
   await t.test('registration survives a mail outage', async () => {
-    // Spec section 10: a mail outage must not make accounts uncreatable. The
-    // try/catch inside sendVerification is the mechanism -- this is what
-    // proves it actually works, on a fresh app instance (sharing the same
-    // pool) wired to a mail double whose send always rejects.
     const failingMail = { send: async () => { throw new Error('smtp is down'); } };
     const failingApp = buildTestApp({ pool, mail: failingMail });
 
@@ -134,11 +193,10 @@ test('email verification gate', async (t) => {
 
     const user = await findUserByEmail(pool, 'outage@example.com');
     assert.ok(user, 'the user row must still be created');
-
-    const [tokens] = await pool.query(
-      "SELECT * FROM auth_tokens WHERE user_id = ? AND purpose = 'verify_email'",
+    const [codes] = await pool.query(
+      "SELECT * FROM auth_codes WHERE user_id = ? AND purpose = 'verify_email'",
       [user.user_id],
     );
-    assert.equal(tokens.length, 1, 'the verify_email token must still be issued');
+    assert.equal(codes.length, 1, 'the code is issued, so a resend can follow');
   });
 });

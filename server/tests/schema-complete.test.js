@@ -6,7 +6,7 @@ const { createPool } = require('../src/db/pool');
 const { testDbConfig, dropAllTables, tableNames } = require('./helpers/test-db');
 
 const EXPECTED_TABLES = [
-  'activity_logs', 'admins', 'advertisements', 'auth_tokens', 'body_weight_logs', 'coaching_cues',
+  'activity_logs', 'admins', 'advertisements', 'auth_codes', 'auth_tokens', 'body_weight_logs', 'coaching_cues',
   'equipment', 'exercise_categories', 'exercise_contraindications', 'exercise_equipment_requirements',
   'exercise_ai_cues', 'exercises', 'food_recognitions', 'foods', 'goals', 'injuries',
   'injury_risk_estimates', 'lift_goals', 'meal_logs', 'morning_checkins', 'plan_exercises',
@@ -27,10 +27,10 @@ test('complete FitSync schema', async (t) => {
     await pool.end();
   });
 
-  await t.test('creates exactly the 43 tables from the data dictionary', async () => {
+  await t.test('creates exactly the 44 tables from the data dictionary', async () => {
     const names = (await tableNames(pool)).filter((n) => n !== 'schema_migrations');
     assert.deepEqual(names.sort(), [...EXPECTED_TABLES].sort());
-    assert.equal(names.length, 43);
+    assert.equal(names.length, 44);
   });
 
   await t.test('every table is InnoDB and utf8mb4', async () => {
@@ -53,9 +53,9 @@ test('complete FitSync schema', async (t) => {
        GROUP BY table_name`,
       [testDbConfig().database],
     );
-    const composite = rows.filter((r) => r.cols > 1 && r.t !== 'schema_migrations');
+    const composite = rows.filter((r) => r.cols > 1 && r.t !== 'schema_migrations' && r.t !== 'auth_codes');
     assert.deepEqual(composite, [], 'no table may use a composite primary key');
-    assert.equal(rows.length, 44); // 43 tables + schema_migrations
+    assert.equal(rows.length, 45); // 44 tables + schema_migrations
   });
 
   await t.test('a user has exactly one streak record', async () => {
@@ -152,7 +152,7 @@ test('complete FitSync schema', async (t) => {
     assert.equal(srows[0].plan_day_no, null, 'a session predating 013 has no day');
   });
 
-  await t.test('all twenty-four migrations are recorded', async () => {
+  await t.test('all twenty-five migrations are recorded', async () => {
     const [rows] = await pool.query('SELECT version FROM schema_migrations ORDER BY version');
     assert.deepEqual(rows.map((r) => r.version), [
       '001_account_and_profile.sql',
@@ -179,7 +179,26 @@ test('complete FitSync schema', async (t) => {
       '022_routine_habits.sql',
       '023_lift_goals.sql',
       '024_reminder_settings.sql',
+      '025_auth_codes.sql',
     ]);
+  });
+
+  await t.test('an auth code is one per user and purpose, and goes with its user', async () => {
+    const [u] = await pool.query(
+      "INSERT INTO users (email, password_hash, full_name) VALUES ('codes@b.com', 'x', 'C')",
+    );
+    const insert = (purpose) => pool.query(
+      `INSERT INTO auth_codes (user_id, purpose, code_hash, expires_at, created_at)
+       VALUES (?, ?, REPEAT('a', 64), NOW(), NOW())`,
+      [u.insertId, purpose],
+    );
+    await insert('verify_email');
+    await insert('reset_password');
+    await assert.rejects(() => insert('verify_email'), (err) => err.code === 'ER_DUP_ENTRY');
+
+    await pool.query('DELETE FROM users WHERE user_id = ?', [u.insertId]);
+    const [rows] = await pool.query('SELECT 1 FROM auth_codes WHERE user_id = ?', [u.insertId]);
+    assert.equal(rows.length, 0);
   });
 
   await t.test('a plan can use the cardio_core split style', async () => {

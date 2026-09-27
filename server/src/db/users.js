@@ -40,8 +40,8 @@ async function markEmailVerified(pool, userId) {
 }
 
 // The one place password_hash changes outside registration. Used by the
-// password-reset confirm route once consumeToken has already proven the
-// caller holds a live reset_password token for this user.
+// password-reset route once checkCode has already proven the caller knows
+// the live reset_password code for this user.
 async function updatePasswordHash(pool, userId, passwordHash) {
   await pool.query('UPDATE users SET password_hash = ? WHERE user_id = ?', [passwordHash, userId]);
 }

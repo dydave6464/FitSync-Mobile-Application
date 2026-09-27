@@ -12,24 +12,25 @@ const buildRoutes = require('./routes');
 const { REPORT_TOKEN_PATH, redactUrl } = require('./lib/redact-url');
 
 // pino-http's default req serializer logs req.url from req.originalUrl,
-// which is the path AND the query string as one literal string. The emailed
-// verify-email and password-reset links both carry their token as a query
-// parameter, so that raw string carries a live credential straight into the
-// logs -- untouched by the redact rules in src/lib/logger.js, which can only
-// match structured fields (they do redact req.query.token, see below) and
-// have no way to reach into the middle of a string. Wrapping the standard
-// serializer to drop everything from the first '?' keeps the path, which is
-// still worth logging, while keeping the query string (and any token in it)
-// out of req.url entirely.
+// which is the path AND the query string as one literal string. Any token
+// sent as a query parameter -- a verify/reset link from an email sent before
+// codes replaced links (those routes now 404, but the request is still
+// logged), or any future query-string credential -- would ride that raw
+// string straight into the logs, untouched by the redact rules in
+// src/lib/logger.js, which can only match structured fields (they do redact
+// req.query.token) and have no way to reach into the middle of a string.
+// Wrapping the standard serializer to drop everything from the first '?'
+// keeps the path, which is still worth logging, while keeping the query
+// string (and any token in it) out of req.url entirely.
 //
-// The share-a-report token needs its OWN handling, because it is the one
-// credential in this app that rides in the PATH rather than the query string.
-// Stripping the query string does nothing for it; without redactUrl below,
-// every successful view writes a 30-day key to someone's training data into
-// the logs at 'info'. The regex lives in lib/redact-url.js because
-// middleware/not-found.js needs the identical redaction and cannot require
-// this module -- app.js requires not-found long before it assigns its own
-// exports, so the constant would arrive undefined.
+// The share-a-report token -- the coach-report link, the one link this app
+// still hands out -- needs its OWN handling, because it rides in the PATH
+// rather than the query string. Stripping the query string does nothing for
+// it; without redactUrl below, every successful view writes a 30-day key to
+// someone's training data into the logs at 'info'. The regex lives in
+// lib/redact-url.js because middleware/not-found.js needs the identical
+// redaction and cannot require this module -- app.js requires not-found long
+// before it assigns its own exports, so the constant would arrive undefined.
 function reqSerializer(req) {
   const serialized = stdSerializers.req(req);
   if (typeof serialized.url === 'string') {

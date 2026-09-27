@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import 'package:fitsync/core/theme.dart';
@@ -510,6 +511,33 @@ void main() {
       findsOneWidget,
       reason: 'the design labels these in the eyebrow treatment',
     );
+  });
+
+  testWidgets('FsField passes input formatters and autofill hints through', (
+    tester,
+  ) async {
+    final controller = TextEditingController();
+    addTearDown(controller.dispose);
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: FsField(
+            fieldKey: const Key('f'),
+            controller: controller,
+            hint: 'h',
+            inputFormatters: [FilteringTextInputFormatter.digitsOnly],
+            autofillHints: const [AutofillHints.oneTimeCode],
+          ),
+        ),
+      ),
+    );
+
+    final field = tester.widget<TextField>(find.byKey(const Key('f')));
+    expect(field.inputFormatters, hasLength(1));
+    expect(field.autofillHints, [AutofillHints.oneTimeCode]);
+
+    await tester.enterText(find.byKey(const Key('f')), 'a1b2');
+    expect(controller.text, '12');
   });
 }
 

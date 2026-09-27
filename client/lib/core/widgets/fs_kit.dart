@@ -293,6 +293,8 @@ class FsField extends StatelessWidget {
     this.onSubmitted,
     this.textInputAction,
     this.maxLines = 1,
+    this.inputFormatters,
+    this.autofillHints,
   });
 
   /// Applied to the inner [TextField] rather than to this wrapper, so
@@ -323,6 +325,12 @@ class FsField extends StatelessWidget {
   /// single line, a sentence scrolls sideways and hides its own beginning.
   final int maxLines;
 
+  /// Restrictions on what can be typed or pasted, e.g. digits only.
+  final List<TextInputFormatter>? inputFormatters;
+
+  /// What the platform may offer to fill in, e.g. a one-time code from Mail.
+  final Iterable<String>? autofillHints;
+
   @override
   Widget build(BuildContext context) {
     final t = context.fs;
@@ -337,6 +345,8 @@ class FsField extends StatelessWidget {
       onChanged: onChanged,
       onSubmitted: onSubmitted,
       textInputAction: textInputAction,
+      inputFormatters: inputFormatters,
+      autofillHints: autofillHints,
       autocorrect: false,
       style: TextStyle(fontSize: 14, color: t.text),
       cursorColor: t.accent,

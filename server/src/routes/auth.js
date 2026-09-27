@@ -7,9 +7,9 @@ const {
   findUserByEmail, findUserById, createUserWithPassword, findOrCreateGoogleUser,
   markEmailVerified, updatePasswordHash,
 } = require('../db/users');
-const { issueToken, consumeToken } = require('../lib/auth-tokens');
+const { codeKey, normaliseCode, TTL_MINUTES } = require('../lib/auth-codes');
+const { issueCode, checkCode } = require('../db/auth-codes');
 const requireAuth = require('../middleware/require-auth');
-const { renderPage, escapeHtml } = require('./auth-pages');
 
 const MIN_PASSWORD_LENGTH = 8;
 // bcrypt (via bcryptjs) only reads the first 72 bytes of its input — anything
@@ -71,26 +71,45 @@ function requireEmail(value) {
   return email;
 }
 
+/// One answer for every failed code, whatever the reason -- unknown address,
+/// wrong, expired, used up, already verified -- so the route cannot be used to
+/// learn which accounts exist.
+const codeInvalid = () => AppError.badRequest('CODE_INVALID', 'That code is wrong or has expired.');
+
+/// The email as a code route receives it: trimmed and lowercased, or '' when
+/// it is not a string. Deliberately not requireEmail, whose own 400 would
+/// differ from CODE_INVALID and so reveal the difference it exists to hide.
+const emailFrom = (value) => (typeof value === 'string' ? value.trim().toLowerCase() : '');
+
 module.exports = function buildAuthRouter({
-  pool, jwt, google, mail, publicBaseUrl = 'http://localhost:3000',
+  pool, jwt, google, mail,
 }) {
   const router = express.Router();
 
+  // Derived on first use rather than here: some tests build the app without
+  // a JWT config and never touch these routes.
+  let key = null;
+  const codesKey = () => {
+    key = key || codeKey(jwt.secret);
+    return key;
+  };
+
   // Shared by /register and /verify-email/request. A failed send must never
-  // fail the caller: the account exists and the token is already stored, so
-  // a mail outage should leave the user able to ask for a resend, not unable
-  // to have an account.
+  // fail the caller: the account exists and the code is already stored, so a
+  // mail outage should leave the user able to ask for a new code, not unable
+  // to have an account. A null code means the resend limit held it back.
   async function sendVerification(req, user) {
-    const token = await issueToken(pool, {
-      userId: user.user_id, purpose: 'verify_email',
+    const code = await issueCode(pool, {
+      key: codesKey(), userId: user.user_id, purpose: 'verify_email',
     });
-    const link = `${publicBaseUrl}/api/v1/auth/verify-email?token=${token}`;
+    if (code === null) return;
     try {
       await mail.send({
         to: user.email,
-        subject: 'Verify your FitSync email',
-        text: `Confirm your address to finish setting up FitSync:\n\n${link}\n\n`
-          + 'This link works once and expires in 24 hours.',
+        subject: `Your FitSync code: ${code}`,
+        text: `Enter this code in the FitSync app to verify your email: ${code}\n\n`
+          + `It expires in ${TTL_MINUTES.verify_email} minutes. `
+          + "If you didn't sign up for FitSync, you can ignore this email.",
       });
     } catch (err) {
       req.log?.error({ err }, 'verification email failed to send');
@@ -115,7 +134,7 @@ module.exports = function buildAuthRouter({
       });
       await sendVerification(req, user);
       // Hard gate: no token here. Nothing is signed in until the address is
-      // proven by following the verification link.
+      // proven by entering the emailed code.
       res.status(201).json({ data: { user: toPublicUser(user) } });
     } catch (err) { next(err); }
   });
@@ -182,47 +201,47 @@ module.exports = function buildAuthRouter({
     } catch (err) { next(err); }
   });
 
-  // Opened straight out of a mail client, so a stale, reused or mistyped
-  // token must fail into a page a human can read, not the JSON error
-  // envelope the rest of the API uses. This route never hands the browser a
-  // token to hold onto, so it does not need Cache-Control: no-store -- see
-  // the two password-reset handlers below, which do.
-  router.get('/verify-email', async (req, res, next) => {
+  // The code typed into the app. Every failure is the same CODE_INVALID (see
+  // codeInvalid). A malformed code or an unknown address never reaches
+  // checkCode, so it spends nobody's attempts. Known residual, in timing
+  // only: an unknown address returns a little sooner than a known one, and an
+  // unverified account takes longer than an unknown or already-verified one,
+  // because only it reaches checkCode's locked transaction. The first says
+  // whether an account exists, the second whether it is verified -- both left
+  // alone, low value next to /register, which already answers EMAIL_TAKEN for
+  // a known address in one request.
+  router.post('/verify-email', async (req, res, next) => {
     try {
-      const result = await consumeToken(pool, { token: req.query.token, purpose: 'verify_email' });
-      if (!result) {
-        res.status(400).send(renderPage({
-          title: 'Verification link invalid',
-          body: '<p>This verification link is invalid or has expired. '
-            + 'Request a new one from the app and try again.</p>',
-        }));
-        return;
-      }
-      await markEmailVerified(pool, result.userId);
-      res.status(200).send(renderPage({
-        title: 'Email verified',
-        body: '<p>Your address is verified. You can sign in to FitSync now.</p>',
+      const email = emailFrom(req.body.email);
+      const code = normaliseCode(req.body.code);
+      const user = email && code ? await findUserByEmail(pool, email) : null;
+      const ok = Boolean(user && !user.email_verified && await checkCode(pool, {
+        key: codesKey(), userId: user.user_id, purpose: 'verify_email', code,
       }));
+      if (!ok) throw codeInvalid();
+      await markEmailVerified(pool, user.user_id);
+      res.json({ data: { verified: true } });
     } catch (err) { next(err); }
   });
 
-  // Mirrors sendVerification above, with one deliberate difference: the mail
-  // send itself is not awaited. See the comment on the send below.
+  // Mirrors sendVerification, with one deliberate difference: the mail send
+  // is not awaited. Awaiting it would make the verified branch of
+  // /password-reset/request measurably slower than the others, turning an
+  // endpoint whose whole purpose is an indistinguishable 202 into a timing
+  // oracle. (issueCode's queries are still awaited -- the known residual
+  // recorded on /password-reset/request.)
   async function sendPasswordReset(req, user) {
-    const token = await issueToken(pool, { userId: user.user_id, purpose: 'reset_password' });
-    const link = `${publicBaseUrl}/api/v1/auth/password-reset?token=${token}`;
-    // Not awaited, deliberately. Awaiting makes the verified branch
-    // measurably slower than the unknown and unverified ones, which turns an
-    // endpoint whose whole purpose is an indistinguishable 202 into a timing
-    // oracle. The stub pushes to `sent` synchronously before it suspends, so
-    // tests stay deterministic. (issueToken's DB insert above is still
-    // awaited -- see the note on /password-reset/request for why that
-    // residual timing difference is left alone rather than "fixed".)
+    const code = await issueCode(pool, {
+      key: codesKey(), userId: user.user_id, purpose: 'reset_password',
+    });
+    if (code === null) return;
     void mail.send({
       to: user.email,
-      subject: 'Reset your FitSync password',
-      text: `Use this link to reset your FitSync password:\n\n${link}\n\n`
-        + 'This link works once and expires in 1 hour.',
+      subject: `Your FitSync password reset code: ${code}`,
+      text: `Enter this code in the FitSync app to reset your password: ${code}\n\n`
+        + `It expires in ${TTL_MINUTES.reset_password} minutes. `
+        + "If you didn't ask to reset your password, you can ignore this email "
+        + "— your password hasn't changed.",
     }).catch((err) => {
       req.log?.error({ err }, 'password reset email failed to send');
     });
@@ -234,10 +253,10 @@ module.exports = function buildAuthRouter({
   // differs by case here becomes an account-existence oracle.
   //
   // An unverified account is refused too, but silently, inside that same
-  // 202 -- mailing a reset link to an address nobody has proven they own
+  // 202 -- mailing a reset code to an address nobody has proven they own
   // would be a takeover path, not a recovery path.
   //
-  // Known residual: the verified branch still awaits issueToken's INSERT
+  // Known residual: the verified branch still awaits issueCode's queries
   // before responding, so it is marginally slower than the unknown/unverified
   // branches, which return after a single SELECT. Not closed here -- closing
   // it would mean a dummy INSERT (or similar) on every miss, which buys
@@ -251,84 +270,38 @@ module.exports = function buildAuthRouter({
         await sendPasswordReset(req, user);
       }
       res.status(202).json({
-        data: { message: 'If that account can receive a reset link, it is on its way.' },
+        data: { message: 'If that account can receive a reset code, it is on its way.' },
       });
     } catch (err) { next(err); }
   });
 
-  // Shared by the GET form below and the POST handler's own validation-
-  // failure re-render, so a rejected password does not throw the user out of
-  // the form -- they retry with the same token, still on the page, without
-  // reopening the email.
-  function renderResetForm({ token, message = null }) {
-    return renderPage({
-      title: 'Reset your password',
-      body: `
-${message ? `<p>${escapeHtml(message)}</p>` : ''}
-<p>Choose a new password for your FitSync account.</p>
-<form method="POST" action="/api/v1/auth/password-reset">
-  <input type="hidden" name="token" value="${escapeHtml(token)}">
-  <label for="password">New password</label>
-  <input type="password" id="password" name="password" required
-         minlength="${MIN_PASSWORD_LENGTH}" maxlength="${MAX_PASSWORD_LENGTH}">
-  <button type="submit">Reset password</button>
-</form>`,
-    });
-  }
-
-  // Renders the form only -- does NOT consume the token. Only the POST below
-  // does. If the GET consumed it, merely opening the link (or a mail client
-  // prefetching it) would burn the reset before the user typed anything.
-  router.get('/password-reset', (req, res) => {
-    const token = typeof req.query.token === 'string' ? req.query.token : '';
-    // Carries a live, single-use token in a hidden field -- must never be
-    // cached (by a shared proxy, a browser's back/forward cache, ...) where
-    // a later visitor to the same URL could read it out of the page.
-    res.status(200).set('Cache-Control', 'no-store').send(renderResetForm({ token }));
-  });
-
-  // The only route that spends a reset token. Deliberately server-rendered,
-  // not JSON: the spec chose this over a deep link into the Flutter client,
-  // so there is no JSON twin of this route -- that would be a second, unused
-  // way to spend a high-value credential.
-  router.post('/password-reset', express.urlencoded({ extended: false }), async (req, res, next) => {
+  // The reset itself, from the app. The password is validated FIRST: a
+  // mistyped password is a 400 that spends no attempt and keeps the code
+  // alive. Then the code, with the same single CODE_INVALID for every
+  // failure. Only a verified account can have a reset code, but the check is
+  // repeated here so an unverified account could never reset even if one
+  // existed.
+  //
+  // Known residual, in timing only, mirroring /verify-email: an unknown
+  // address returns a little sooner than a known one, and a verified account
+  // takes longer than an unknown or unverified one, because only it reaches
+  // checkCode's locked transaction (and, on a match, bcrypt). That reveals
+  // verification status only -- low value next to /register's EMAIL_TAKEN,
+  // so it is left alone.
+  router.post('/password-reset', async (req, res, next) => {
     try {
-      const token = typeof req.body.token === 'string' ? req.body.token : '';
-      // Validate BEFORE consuming. consumeToken marks the row spent
-      // unconditionally, so if a too-short password were checked after, a
-      // mistyped password would irreversibly burn the one-time link over a
-      // mistake that has nothing to do with the token's validity. Validation
-      // is pure and touches no state, so it is safe to run first.
-      //
-      // Opened straight out of a mail client: on failure, re-render the same
-      // form with the token intact and a message, rather than throwing --
-      // otherwise the user loses both the form and what they typed, over a
-      // mistake that has nothing to do with the link itself.
-      let password;
-      try {
-        password = requireString('password', req.body.password, {
-          minLength: MIN_PASSWORD_LENGTH, maxLength: MAX_PASSWORD_LENGTH,
-        });
-      } catch (validationErr) {
-        if (!(validationErr instanceof AppError)) throw validationErr;
-        res.status(400).set('Cache-Control', 'no-store')
-          .send(renderResetForm({ token, message: validationErr.message }));
-        return;
-      }
-      const result = await consumeToken(pool, { token: req.body.token, purpose: 'reset_password' });
-      if (!result) {
-        res.status(400).send(renderPage({
-          title: 'Reset link invalid',
-          body: '<p>This password reset link is invalid or has expired. '
-            + 'Request a new one and try again.</p>',
-        }));
-        return;
-      }
-      await updatePasswordHash(pool, result.userId, await hashPassword(password));
-      res.status(200).send(renderPage({
-        title: 'Password reset',
-        body: '<p>Your password has been reset. You can sign in to FitSync now.</p>',
+      const password = requireString('password', req.body.password, {
+        minLength: MIN_PASSWORD_LENGTH, maxLength: MAX_PASSWORD_LENGTH,
+      });
+      const email = emailFrom(req.body.email);
+      const code = normaliseCode(req.body.code);
+      const user = email && code ? await findUserByEmail(pool, email) : null;
+      const ok = Boolean(user && user.email_verified && await checkCode(pool, {
+        key: codesKey(), userId: user.user_id, purpose: 'reset_password', code,
       }));
+      if (!ok) throw codeInvalid();
+      await updatePasswordHash(pool, user.user_id, await hashPassword(password));
+      res.json({ data: { reset: true } });
     } catch (err) { next(err); }
   });
 

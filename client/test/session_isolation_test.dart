@@ -126,8 +126,11 @@ class SequenceSessionRepository implements SessionRepository {
   @override
   Future<PendingOutcome?> pendingOutcome() => throw UnimplementedError();
   @override
-  Future<void> recordOutcome(int sessionId, {required String painLevel, int? injuryId}) =>
-      throw UnimplementedError();
+  Future<void> recordOutcome(
+    int sessionId, {
+    required String painLevel,
+    int? injuryId,
+  }) => throw UnimplementedError();
   @override
   Future<ActiveSession> start({List<int>? exerciseIds}) =>
       throw UnimplementedError();
@@ -188,6 +191,15 @@ class FakeAuthRepository implements AuthRepository {
   @override
   Future<void> resendVerification({
     required String email,
+    required String password,
+  }) => throw UnimplementedError();
+  @override
+  Future<void> verifyEmail({required String email, required String code}) =>
+      throw UnimplementedError();
+  @override
+  Future<void> resetPassword({
+    required String email,
+    required String code,
     required String password,
   }) => throw UnimplementedError();
 }

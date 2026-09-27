@@ -113,7 +113,7 @@ class _SignInScreenState extends ConsumerState<SignInScreen> {
         // Registration returns no token any more — the account exists but
         // cannot sign in until the address is verified — so there is no
         // user to hand the controller. Send the way forward instead.
-        _pushCheckEmail(email, password);
+        _pushCheckEmail(email, password, sendCodeOnOpen: false);
       } else {
         final user = await repo.login(email, password);
         if (!mounted) return;
@@ -125,9 +125,10 @@ class _SignInScreenState extends ConsumerState<SignInScreen> {
       if (!mounted) return;
       if (error.code == 'EMAIL_NOT_VERIFIED') {
         // Same screen as a fresh registration: the way forward is identical
-        // (open the email, verify, come back), so a generic error message
-        // would only leave the user guessing what the code means.
-        _pushCheckEmail(email, password);
+        // (enter the emailed code), so a generic error message would only
+        // leave the user guessing what the code means. The code from back
+        // then has most likely expired, so the screen asks for a fresh one.
+        _pushCheckEmail(email, password, sendCodeOnOpen: true);
       } else {
         // The fields keep their text on purpose — a wrong password should
         // cost one character, not the whole form.
@@ -138,10 +139,18 @@ class _SignInScreenState extends ConsumerState<SignInScreen> {
     }
   }
 
-  void _pushCheckEmail(String email, String password) {
+  void _pushCheckEmail(
+    String email,
+    String password, {
+    required bool sendCodeOnOpen,
+  }) {
     Navigator.of(context).push(
       MaterialPageRoute<void>(
-        builder: (_) => CheckEmailScreen(email: email, password: password),
+        builder: (_) => CheckEmailScreen(
+          email: email,
+          password: password,
+          sendCodeOnOpen: sendCodeOnOpen,
+        ),
       ),
     );
   }

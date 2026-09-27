@@ -39,7 +39,6 @@ class _FakeRepo implements SessionRepository {
       throw UnimplementedError('${i.memberName} is not used here');
 }
 
-
 /// The sheet reads isPremium to decide whether the Pro section can be
 /// switched on at all, so every test here has to say which kind of account
 /// is looking at it.
@@ -60,7 +59,6 @@ class _StubProfileNotifier extends ProfileNotifier {
     injuries: const [],
   );
 }
-
 
 /// Answers Clipboard.setData so a create can finish.
 ///
