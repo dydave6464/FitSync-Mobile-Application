@@ -132,13 +132,27 @@ List<ScheduleItem> dayItems(CalendarDay day) {
   ];
 }
 
-/// Every item not yet done, from the range's today on, by date then in
-/// [dayItems] order.
-List<ScheduleItem> upcomingItems(CalendarRange range) => [
-  for (final day in range.days)
-    if (day.date.compareTo(range.today) >= 0)
-      ...dayItems(day).where((i) => !i.done),
-];
+/// A past day as a log: the workout first, then the ticked habits in the
+/// routine's order. Only what was done -- a past day never says what was
+/// planned.
+List<ScheduleItem> loggedItems(CalendarDay day) {
+  final done = dayItems(day).where((i) => i.done);
+  return [
+    ...done.where((i) => i.isWorkout),
+    ...done.where((i) => !i.isWorkout),
+  ];
+}
+
+/// Every item not yet done today and tomorrow -- by the range's today, not
+/// the phone's -- by date then in [dayItems] order.
+List<ScheduleItem> upcomingItems(CalendarRange range) {
+  final tomorrow = addDays(range.today, 1);
+  return [
+    for (final day in range.days)
+      if (day.date == range.today || day.date == tomorrow)
+        ...dayItems(day).where((i) => !i.done),
+  ];
+}
 
 /// `Stretch · 6:30 AM`, `Walk · Any time`, `Workout · Upper/Lower`.
 String itemLine(ScheduleItem item) {
@@ -155,18 +169,41 @@ String upcomingLine(ScheduleItem item, String today) =>
 /// settings.
 typedef ReminderContext = ({bool masterOn, ReminderSettings settings});
 
-/// What will remind about [item], or null when nothing will. Decided by the
-/// settings alone, as the phone schedules them: a timed habit with habit
-/// reminders on, or the workout with workout reminders on.
-String? reminderLine(ScheduleItem item, ReminderContext r) {
+/// The instant [clock] (`HH:MM`) on [date] in Manila, less [leadMin]
+/// minutes. Manila keeps no daylight saving, so a fixed +08:00 is exact.
+DateTime _manilaInstant(String date, String clock, {int leadMin = 0}) {
+  final d = _parse(date);
+  return DateTime.utc(
+    d.year,
+    d.month,
+    d.day,
+    int.parse(clock.substring(0, 2)) - 8,
+    int.parse(clock.substring(3, 5)) - leadMin,
+  );
+}
+
+/// What will remind about [item], or null when nothing will: a timed habit
+/// with habit reminders on, or the workout with workout reminders on -- and
+/// only while that reminder is still ahead of [now], as the phone schedules
+/// them. A reminder already fired or skipped is not promised.
+String? reminderLine(
+  ScheduleItem item,
+  ReminderContext r, {
+  required DateTime now,
+}) {
   if (!r.masterOn) return null;
   final s = r.settings;
   if (item.isWorkout) {
-    return s.workoutEnabled
+    if (!s.workoutEnabled) return null;
+    final fires = _manilaInstant(item.date, s.workoutTime);
+    return fires.isAfter(now)
         ? 'Reminder at ${formatClock(s.workoutTime)}'
         : null;
   }
-  if (!s.habitsEnabled || item.time == null) return null;
+  final time = item.time;
+  if (!s.habitsEnabled || time == null) return null;
+  final fires = _manilaInstant(item.date, time, leadMin: s.habitLeadMin);
+  if (!fires.isAfter(now)) return null;
   return s.habitLeadMin == 0
       ? 'Reminder at the time'
       : 'Reminder ${s.habitLeadMin} min before';

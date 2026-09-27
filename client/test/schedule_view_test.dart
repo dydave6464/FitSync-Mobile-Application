@@ -28,6 +28,12 @@ ReminderSettings _settings({
   checkinTime: '07:00',
 );
 
+/// 20:00 on 23 Sep in Manila: before every reminder in these tests fires.
+final _early = DateTime.utc(2026, 9, 23, 12);
+
+String? _line(ScheduleItem item, ReminderContext r) =>
+    reminderLine(item, r, now: _early);
+
 const _timed = ScheduleItem(
   date: '2026-09-24',
   title: 'Stretch',
@@ -118,32 +124,60 @@ void main() {
       },
     );
 
-    test('upcoming lists what is not done, from today on, in date order', () {
-      final range = CalendarRange(
-        today: '2026-09-24',
-        days: [
-          _day('2026-09-23', habits: [_habit(9, 'Yesterday', null)]),
+    test(
+      'upcoming lists what is not done today and tomorrow, in date order',
+      () {
+        final range = CalendarRange(
+          today: '2026-09-24',
+          days: [
+            _day('2026-09-23', habits: [_habit(9, 'Yesterday', null)]),
+            _day(
+              '2026-09-24',
+              workout: const CalendarWorkout(title: 'Upper/Lower', done: true),
+              habits: [
+                _habit(1, 'Mobility', '06:30', done: true),
+                _habit(3, 'Walk', null),
+              ],
+            ),
+            _day(
+              '2026-09-25',
+              workout: const CalendarWorkout(title: 'Upper/Lower', done: false),
+              habits: [_habit(4, 'Swim', '07:00')],
+            ),
+            _day(
+              '2026-09-26',
+              workout: const CalendarWorkout(title: 'Upper/Lower', done: false),
+              habits: [_habit(5, 'Later', null)],
+            ),
+          ],
+        );
+        expect(upcomingItems(range).map((i) => '${i.date} ${i.title}'), [
+          '2026-09-24 Walk',
+          '2026-09-25 Swim',
+          '2026-09-25 Upper/Lower',
+        ]);
+      },
+    );
+
+    test(
+      "a past day's logged items: the workout first, then the ticked habits",
+      () {
+        final items = loggedItems(
           _day(
-            '2026-09-24',
+            '2026-09-22',
             workout: const CalendarWorkout(title: 'Upper/Lower', done: true),
             habits: [
               _habit(1, 'Mobility', '06:30', done: true),
-              _habit(3, 'Walk', null),
+              _habit(2, 'Skipped', '07:00'),
+              _habit(3, 'Walk', null, done: true),
             ],
           ),
-          _day(
-            '2026-09-25',
-            workout: const CalendarWorkout(title: 'Upper/Lower', done: false),
-            habits: [_habit(4, 'Swim', '07:00')],
-          ),
-        ],
-      );
-      expect(upcomingItems(range).map((i) => '${i.date} ${i.title}'), [
-        '2026-09-24 Walk',
-        '2026-09-25 Swim',
-        '2026-09-25 Upper/Lower',
-      ]);
-    });
+        );
+        expect(items.map((i) => i.title), ['Upper/Lower', 'Mobility', 'Walk']);
+        expect(items.first.isWorkout, isTrue);
+        expect(items.every((i) => i.done), isTrue);
+      },
+    );
 
     test('lines', () {
       expect(itemLine(_timed), 'Stretch · 6:30 AM');
@@ -160,11 +194,11 @@ void main() {
   group('reminders', () {
     test('a timed habit: minutes before, or at the time at lead 0', () {
       expect(
-        reminderLine(_timed, (masterOn: true, settings: _settings())),
+        _line(_timed, (masterOn: true, settings: _settings())),
         'Reminder 15 min before',
       );
       expect(
-        reminderLine(_timed, (masterOn: true, settings: _settings(lead: 0))),
+        _line(_timed, (masterOn: true, settings: _settings(lead: 0))),
         'Reminder at the time',
       );
     });
@@ -173,40 +207,93 @@ void main() {
       'nothing for an untimed habit, habit reminders off, or the master off',
       () {
         expect(
-          reminderLine(_untimed, (masterOn: true, settings: _settings())),
+          _line(_untimed, (masterOn: true, settings: _settings())),
           isNull,
         );
         expect(
-          reminderLine(_timed, (
-            masterOn: true,
-            settings: _settings(habits: false),
-          )),
+          _line(_timed, (masterOn: true, settings: _settings(habits: false))),
           isNull,
         );
-        expect(
-          reminderLine(_timed, (masterOn: false, settings: _settings())),
-          isNull,
-        );
+        expect(_line(_timed, (masterOn: false, settings: _settings())), isNull);
       },
     );
 
     test('the workout: at its time when workout reminders are on', () {
+      expect(_line(_workout, (masterOn: true, settings: _settings())), isNull);
       expect(
-        reminderLine(_workout, (masterOn: true, settings: _settings())),
-        isNull,
-      );
-      expect(
-        reminderLine(_workout, (
+        _line(_workout, (
           masterOn: true,
           settings: _settings(workout: true, workoutTime: '18:15'),
         )),
         'Reminder at 6:15 PM',
       );
       expect(
-        reminderLine(_workout, (
-          masterOn: false,
-          settings: _settings(workout: true),
-        )),
+        _line(_workout, (masterOn: false, settings: _settings(workout: true))),
+        isNull,
+      );
+    });
+
+    test('a habit reminder shows only until it fires', () {
+      final r = (masterOn: true, settings: _settings());
+      // 6:30 AM on 24 Sep, 15 min before: fires 6:15 AM Manila (22:15 UTC).
+      expect(
+        reminderLine(_timed, r, now: DateTime.utc(2026, 9, 23, 22, 14)),
+        'Reminder 15 min before',
+      );
+      expect(
+        reminderLine(_timed, r, now: DateTime.utc(2026, 9, 23, 22, 15)),
+        isNull,
+        reason: 'fires now',
+      );
+      expect(
+        reminderLine(_timed, r, now: DateTime.utc(2026, 9, 24, 2)),
+        isNull,
+        reason: '10:00, long past',
+      );
+      const tomorrow = ScheduleItem(
+        date: '2026-09-25',
+        title: 'Stretch',
+        time: '06:30',
+        done: false,
+        isWorkout: false,
+      );
+      expect(
+        reminderLine(tomorrow, r, now: DateTime.utc(2026, 9, 24, 2)),
+        'Reminder 15 min before',
+      );
+    });
+
+    test('the workout reminder shows only until it fires', () {
+      final r = (
+        masterOn: true,
+        settings: _settings(workout: true, workoutTime: '07:00'),
+      );
+      expect(
+        reminderLine(_workout, r, now: DateTime.utc(2026, 9, 23, 22, 59)),
+        'Reminder at 7:00 AM',
+      );
+      expect(
+        reminderLine(_workout, r, now: DateTime.utc(2026, 9, 24, 2)),
+        isNull,
+      );
+    });
+
+    test('a reminder before midnight for a habit just after it', () {
+      final r = (masterOn: true, settings: _settings());
+      // 12:10 AM on 25 Sep, 15 min before: fires 11:55 PM on the 24th.
+      const early = ScheduleItem(
+        date: '2026-09-25',
+        title: 'Meds',
+        time: '00:10',
+        done: false,
+        isWorkout: false,
+      );
+      expect(
+        reminderLine(early, r, now: DateTime.utc(2026, 9, 24, 15, 50)),
+        'Reminder 15 min before',
+      );
+      expect(
+        reminderLine(early, r, now: DateTime.utc(2026, 9, 24, 15, 56)),
         isNull,
       );
     });

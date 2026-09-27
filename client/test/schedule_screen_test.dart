@@ -5,8 +5,10 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:fitsync/core/api_exception.dart';
 import 'package:fitsync/features/profile/domain/profile.dart';
 import 'package:fitsync/features/profile/presentation/providers.dart';
+import 'package:fitsync/features/reminders/data/reminder_scheduler.dart';
 import 'package:fitsync/features/reminders/domain/reminders.dart';
 import 'package:fitsync/features/reminders/presentation/providers.dart';
+import 'package:fitsync/features/reminders/presentation/reminders_screen.dart';
 import 'package:fitsync/features/schedule/data/calendar_repository.dart';
 import 'package:fitsync/features/schedule/domain/calendar.dart';
 import 'package:fitsync/features/schedule/domain/schedule_view.dart';
@@ -38,7 +40,7 @@ final _fixture = <String, CalendarDay>{
   ),
   '2026-09-25': const CalendarDay(
     date: '2026-09-25',
-    workout: null,
+    workout: _upperLower,
     habits: [CalendarHabit(habitId: 5, title: 'Read', time: null, done: false)],
   ),
   '2026-09-28': const CalendarDay(
@@ -109,22 +111,54 @@ class _FlakyCalendarRepo implements CalendarRepository {
   }
 }
 
+Profile _profile(bool notificationsEnabled) => Profile(
+  userId: 1,
+  email: 'a@example.com',
+  fullName: 'A',
+  onboardingCompleted: true,
+  isPremium: false,
+  notificationsEnabled: notificationsEnabled,
+  equipment: const [],
+  injuries: const [],
+);
+
+/// Records every patch; applies `notificationsEnabled`, or throws when
+/// [failPatch].
 class _Profile extends ProfileNotifier {
-  _Profile(this.masterOn);
+  _Profile(this.masterOn, {this.patches, this.failPatch = false});
 
   final bool masterOn;
+  final List<Map<String, dynamic>>? patches;
+  final bool failPatch;
 
   @override
-  Future<Profile> build() async => Profile(
-    userId: 1,
-    email: 'a@example.com',
-    fullName: 'A',
-    onboardingCompleted: true,
-    isPremium: false,
-    notificationsEnabled: masterOn,
-    equipment: const [],
-    injuries: const [],
-  );
+  Future<Profile> build() async => _profile(masterOn);
+
+  @override
+  Future<void> patch(Map<String, dynamic> fields) async {
+    patches?.add(fields);
+    if (failPatch) throw const ApiException('SERVER_ERROR', 'Could not save.');
+    state = AsyncData(_profile(fields['notificationsEnabled'] as bool));
+  }
+}
+
+/// [granted] answers `permissionGranted()`; [requestAnswer] is what the
+/// system prompt returns.
+class _Scheduler extends NoopReminderScheduler {
+  _Scheduler({this.granted = true, this.requestAnswer = true});
+
+  final bool granted;
+  final bool requestAnswer;
+  int requests = 0;
+
+  @override
+  Future<bool> permissionGranted() async => granted;
+
+  @override
+  Future<bool> requestPermission() async {
+    requests += 1;
+    return requestAnswer;
+  }
 }
 
 class _Settings extends ReminderSettingsController {
@@ -168,7 +202,7 @@ class _MutableCalendarRepo implements CalendarRepository {
 }
 
 const _grid = '2026-08-31..2026-10-11';
-const _week = '2026-09-23..2026-09-30';
+const _week = '2026-09-23..2026-09-26';
 
 /// `_week`/`_grid`'s `from..to` as the record [calendarProvider] keys on.
 CalendarSpan _span(String range) {
@@ -183,6 +217,9 @@ Future<_FakeCalendarRepo> _pump(
   bool masterOn = true,
   ReminderSettings settings = ReminderSettings.defaults,
   Set<String>? failOnce,
+  List<Map<String, dynamic>>? patches,
+  bool failPatch = false,
+  _Scheduler? scheduler,
 }) async {
   // Tall enough that the grid and the whole list are built at once.
   tester.view.physicalSize = const Size(800, 1800);
@@ -197,8 +234,11 @@ Future<_FakeCalendarRepo> _pump(
     ProviderScope(
       overrides: [
         calendarRepositoryProvider.overrideWithValue(repo),
-        profileProvider.overrideWith(() => _Profile(masterOn)),
+        profileProvider.overrideWith(
+          () => _Profile(masterOn, patches: patches, failPatch: failPatch),
+        ),
         reminderSettingsProvider.overrideWith(() => _Settings(settings)),
+        reminderSchedulerProvider.overrideWithValue(scheduler ?? _Scheduler()),
       ],
       child: MaterialApp(home: ScheduleScreen(now: () => now ?? _now)),
     ),
@@ -252,7 +292,7 @@ void main() {
     expect(repo.requests, contains('2026-07-27..2026-09-06'));
   });
 
-  testWidgets('upcoming lists what is left, in order, with its reminders', (
+  testWidgets('upcoming lists what is left today and tomorrow, in order', (
     tester,
   ) async {
     await _pump(tester);
@@ -261,9 +301,8 @@ void main() {
       'Today · Stretch · 9:00 PM',
       'Today · Workout · Upper/Lower',
       'Today · Walk · Any time',
+      'Tomorrow · Workout · Upper/Lower',
       'Tomorrow · Read · Any time',
-      'Mon 28 Sep · Workout · Upper/Lower',
-      'Tue 29 Sep · Swim · 7:00 AM',
     ];
     for (final line in order) {
       expect(find.text(line), findsOneWidget, reason: line);
@@ -276,12 +315,24 @@ void main() {
       );
     }
     expect(find.textContaining('Mobility'), findsNothing, reason: 'done');
+    expect(find.textContaining('Mon 28 Sep'), findsNothing, reason: 'later');
+    expect(find.textContaining('Swim'), findsNothing, reason: 'later');
 
     expect(find.text('Upcoming'), findsOneWidget);
     expect(find.text('Reminders on'), findsOneWidget);
     // Defaults: habit reminders 15 min before; workout reminders off.
-    expect(find.text('Reminder 15 min before'), findsNWidgets(2));
+    expect(find.text('Reminder 15 min before'), findsOneWidget);
     expect(find.textContaining('Reminder at'), findsNothing);
+  });
+
+  testWidgets('a reminder that has already fired today is not promised', (
+    tester,
+  ) async {
+    // 21:00 in Manila: Stretch at 9:00 PM reminded at 8:45 PM.
+    await _pump(tester, now: DateTime.utc(2026, 9, 24, 13));
+
+    expect(find.text('Today · Stretch · 9:00 PM'), findsOneWidget);
+    expect(find.text('Reminder 15 min before'), findsNothing);
   });
 
   testWidgets(
@@ -310,7 +361,7 @@ void main() {
     expect(find.textContaining('Reminder '), findsNothing);
   });
 
-  testWidgets('workout reminders on: the workout rows say when', (
+  testWidgets('workout reminders: only the one still ahead says when', (
     tester,
   ) async {
     await _pump(
@@ -326,14 +377,34 @@ void main() {
     );
 
     expect(find.text('Reminders on'), findsOneWidget);
-    expect(find.text('Reminder at 7:00 AM'), findsNWidgets(2));
+    // At 10:00, today's 7:00 AM reminder is past; tomorrow's is ahead.
+    expect(find.text('Reminder at 7:00 AM'), findsOneWidget);
+    expect(
+      _y(tester, 'Reminder at 7:00 AM'),
+      greaterThan(_y(tester, 'Tomorrow · Workout · Upper/Lower')),
+    );
     expect(find.text('Reminder 15 min before'), findsNothing);
   });
 
-  testWidgets('an empty week says so', (tester) async {
-    await _pump(tester, answer: (from, to) => _range(from, to));
+  testWidgets('nothing today or tomorrow says so, whatever comes later', (
+    tester,
+  ) async {
+    await _pump(
+      tester,
+      answer: (from, to) => _range(
+        from,
+        to,
+        days: {
+          '2026-09-26': const CalendarDay(
+            date: '2026-09-26',
+            workout: _upperLower,
+            habits: [],
+          ),
+        },
+      ),
+    );
 
-    expect(find.text('Nothing coming up this week.'), findsOneWidget);
+    expect(find.text('Nothing left for today or tomorrow.'), findsOneWidget);
   });
 
   testWidgets('a past day shows what was done', (tester) async {
@@ -346,6 +417,11 @@ void main() {
     expect(find.text('Upcoming'), findsNothing);
     expect(find.text('Stretch · 6:30 AM'), findsOneWidget);
     expect(find.text('Workout · Upper/Lower'), findsOneWidget);
+    expect(
+      _y(tester, 'Workout · Upper/Lower'),
+      lessThan(_y(tester, 'Stretch · 6:30 AM')),
+      reason: 'a past day lists the workout first',
+    );
     expect(find.byIcon(Icons.check_circle), findsNWidgets(2));
     expect(
       tester
@@ -475,7 +551,7 @@ void main() {
 
       // Sanity: reminders show while the settings are good.
       expect(find.text('Reminders on'), findsOneWidget);
-      expect(find.text('Reminder 15 min before'), findsNWidgets(2));
+      expect(find.text('Reminder 15 min before'), findsOneWidget);
 
       // A refetch fails; the settings provider keeps its old value
       // (Riverpod 3's AsyncError.copyWithPrevious) but is now in error.
@@ -589,4 +665,122 @@ void main() {
       expect(find.text("Couldn't load this month"), findsOneWidget);
     },
   );
+
+  group('the Reminders tag', () {
+    Finder tag() => find.byKey(const Key('schedule.reminders'));
+
+    testWidgets('tapping Reminders on turns every reminder off', (
+      tester,
+    ) async {
+      final patches = <Map<String, dynamic>>[];
+      await _pump(tester, patches: patches);
+
+      await tester.tap(tag());
+      await tester.pumpAndSettle();
+
+      expect(patches, [
+        {'notificationsEnabled': false},
+      ]);
+      expect(find.text('Reminders off'), findsOneWidget);
+      expect(find.textContaining('Reminder '), findsNothing);
+    });
+
+    testWidgets('tapping Reminders off turns them on when allowed', (
+      tester,
+    ) async {
+      final patches = <Map<String, dynamic>>[];
+      final scheduler = _Scheduler(granted: true);
+      await _pump(
+        tester,
+        masterOn: false,
+        patches: patches,
+        scheduler: scheduler,
+      );
+
+      await tester.tap(tag());
+      await tester.pumpAndSettle();
+
+      expect(scheduler.requests, 0);
+      expect(patches, [
+        {'notificationsEnabled': true},
+      ]);
+      expect(find.text('Reminders on'), findsOneWidget);
+    });
+
+    testWidgets('turning on asks for permission first when not granted', (
+      tester,
+    ) async {
+      final patches = <Map<String, dynamic>>[];
+      final scheduler = _Scheduler(granted: false, requestAnswer: true);
+      await _pump(
+        tester,
+        masterOn: false,
+        patches: patches,
+        scheduler: scheduler,
+      );
+
+      await tester.tap(tag());
+      await tester.pumpAndSettle();
+
+      expect(scheduler.requests, 1);
+      expect(patches, [
+        {'notificationsEnabled': true},
+      ]);
+    });
+
+    testWidgets('a refused permission changes nothing and says why', (
+      tester,
+    ) async {
+      final patches = <Map<String, dynamic>>[];
+      await _pump(
+        tester,
+        masterOn: false,
+        patches: patches,
+        scheduler: _Scheduler(granted: false, requestAnswer: false),
+      );
+
+      await tester.tap(tag());
+      await tester.pumpAndSettle();
+
+      expect(patches, isEmpty);
+      expect(find.text('Reminders off'), findsOneWidget);
+      expect(find.text(remindersBlockedText), findsOneWidget);
+    });
+
+    testWidgets('with every reminder type off, it opens Reminders', (
+      tester,
+    ) async {
+      final patches = <Map<String, dynamic>>[];
+      await _pump(
+        tester,
+        patches: patches,
+        settings: const ReminderSettings(
+          habitsEnabled: false,
+          habitLeadMin: 15,
+          workoutEnabled: false,
+          workoutTime: '07:00',
+          checkinEnabled: false,
+          checkinTime: '07:00',
+        ),
+      );
+
+      await tester.tap(tag());
+      await tester.pumpAndSettle();
+
+      expect(find.byType(RemindersScreen), findsOneWidget);
+      expect(patches, isEmpty);
+    });
+
+    testWidgets('a failed save says so and leaves the tag as it was', (
+      tester,
+    ) async {
+      await _pump(tester, failPatch: true);
+
+      await tester.tap(tag());
+      await tester.pumpAndSettle();
+
+      expect(find.text('Could not save.'), findsOneWidget);
+      expect(find.text('Reminders on'), findsOneWidget);
+    });
+  });
 }

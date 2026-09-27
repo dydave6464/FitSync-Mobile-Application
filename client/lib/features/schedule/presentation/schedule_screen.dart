@@ -4,16 +4,21 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../core/manila_day.dart';
 import '../../../core/theme.dart';
 import '../../../core/widgets/fs_kit.dart';
+import '../../exercises/presentation/exercise_list_screen.dart'
+    show describeError;
 import '../../profile/presentation/providers.dart' show profileProvider;
+import '../../reminders/data/reminder_scheduler.dart'
+    show reminderSchedulerProvider;
 import '../../reminders/presentation/providers.dart'
     show reminderSettingsProvider;
+import '../../reminders/presentation/reminders_screen.dart';
 import '../domain/calendar.dart';
 import '../domain/schedule_view.dart';
 import 'providers.dart';
 import 'widgets/month_grid.dart';
 
 /// Past days show what was done, future days what is planned: a month grid,
-/// then the coming week's items -- or, after a tap, one day's.
+/// then what is left today and tomorrow -- or, after a tap, one day's.
 ///
 /// The grid and the list are separate requests, so one failing never hides
 /// the other.
@@ -43,6 +48,48 @@ class _ScheduleScreenState extends ConsumerState<ScheduleScreen> {
   void _tapDay(String date) =>
       setState(() => _selected = _selected == date ? null : date);
 
+  /// A reminders tap in flight; the tag ignores taps until it lands, so a
+  /// double tap cannot flip the switch twice.
+  bool _savingReminders = false;
+
+  /// The Reminders tag: on turns the master switch off; off because of the
+  /// master switch turns it back on -- asking for the phone's permission
+  /// first when it is not granted, as the Reminders screen does. Off because
+  /// every kind of reminder is off has nothing to flip, so it opens that
+  /// screen instead.
+  Future<void> _tapReminders(ReminderContext reminders) async {
+    if (_savingReminders) return;
+    if (reminders.masterOn && !remindersOn(reminders)) {
+      Navigator.of(
+        context,
+      ).push(MaterialPageRoute<void>(builder: (_) => const RemindersScreen()));
+      return;
+    }
+    final turnOn = !reminders.masterOn;
+    // Read before any await: the screen can be popped while the system
+    // prompt or the save is in flight, and `ref`/`context` are unusable
+    // after that. The notifier and the messenger outlive this screen.
+    final messenger = ScaffoldMessenger.of(context);
+    final scheduler = ref.read(reminderSchedulerProvider);
+    final profile = ref.read(profileProvider.notifier);
+    setState(() => _savingReminders = true);
+    try {
+      if (turnOn &&
+          !await scheduler.permissionGranted() &&
+          !await scheduler.requestPermission()) {
+        messenger.showSnackBar(
+          const SnackBar(content: Text(remindersBlockedText)),
+        );
+        return;
+      }
+      await profile.patch({'notificationsEnabled': turnOn});
+    } catch (error) {
+      messenger.showSnackBar(SnackBar(content: Text(describeError(error))));
+    } finally {
+      if (mounted) setState(() => _savingReminders = false);
+    }
+  }
+
   /// The master switch and the reminder settings, or null until both load --
   /// or if either is in error, even if it still holds a stale value from
   /// before a failed refetch (Riverpod 3 keeps `hasValue` true then).
@@ -61,13 +108,13 @@ class _ScheduleScreenState extends ConsumerState<ScheduleScreen> {
   Widget build(BuildContext context) {
     final t = context.fs;
     final deviceToday = manilaDayOf(widget.now());
-    // A day of slack for a phone whose clock runs ahead of the server's:
-    // caught right before midnight, its guess at "today" can already be
-    // tomorrow by Manila time. [upcomingItems] filters from the server's
-    // own today, so the extra day costs nothing once it answers.
+    // Upcoming is today and tomorrow, with a day of slack either side for a
+    // phone whose clock disagrees with the server's around midnight: its
+    // guess at "today" can be a day off. [upcomingItems] keeps only the
+    // server's own today and tomorrow, so the extra days cost nothing.
     final CalendarSpan weekSpan = (
       from: addDays(deviceToday, -1),
-      to: addDays(deviceToday, 6),
+      to: addDays(deviceToday, 2),
     );
     final week = ref.watch(calendarProvider(weekSpan));
     final today = week.hasValue && !week.hasError
@@ -171,7 +218,10 @@ class _ScheduleScreenState extends ConsumerState<ScheduleScreen> {
       children: [
         const Expanded(child: _SectionTitle('Upcoming')),
         if (reminders != null)
-          FsTag(remindersOn(reminders) ? 'Reminders on' : 'Reminders off'),
+          _RemindersTag(
+            on: remindersOn(reminders),
+            onTap: _savingReminders ? null : () => _tapReminders(reminders),
+          ),
       ],
     ),
     const SizedBox(height: 10),
@@ -187,7 +237,9 @@ class _ScheduleScreenState extends ConsumerState<ScheduleScreen> {
       ),
       data: (range) {
         final items = upcomingItems(range);
-        if (items.isEmpty) return const _Empty('Nothing coming up this week.');
+        if (items.isEmpty) {
+          return const _Empty('Nothing left for today or tomorrow.');
+        }
         return Column(
           children: [
             for (final (i, item) in items.indexed)
@@ -195,7 +247,9 @@ class _ScheduleScreenState extends ConsumerState<ScheduleScreen> {
                 key: Key('schedule.item.$i'),
                 item: item,
                 line1: upcomingLine(item, range.today),
-                line2: reminders == null ? null : reminderLine(item, reminders),
+                line2: reminders == null
+                    ? null
+                    : reminderLine(item, reminders, now: widget.now()),
               ),
           ],
         );
@@ -211,7 +265,7 @@ class _ScheduleScreenState extends ConsumerState<ScheduleScreen> {
     final past = date.compareTo(range.today) < 0;
     final items = day == null
         ? const <ScheduleItem>[]
-        : dayItems(day).where((i) => !past || i.done).toList();
+        : (past ? loggedItems(day) : dayItems(day));
     return [
       Row(
         children: [
@@ -235,6 +289,61 @@ class _ScheduleScreenState extends ConsumerState<ScheduleScreen> {
             showDone: true,
           ),
     ];
+  }
+}
+
+/// "Reminders on" / "Reminders off" with a bell, tappable; [onTap] null
+/// while a tap is still saving.
+class _RemindersTag extends StatelessWidget {
+  const _RemindersTag({required this.on, required this.onTap});
+
+  final bool on;
+  final VoidCallback? onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final t = context.fs;
+    final radius = BorderRadius.circular(FsRadius.pill);
+    return Semantics(
+      button: true,
+      toggled: on,
+      child: Material(
+        color: t.surface2,
+        shape: RoundedRectangleBorder(
+          borderRadius: radius,
+          side: BorderSide(color: t.line),
+        ),
+        child: InkWell(
+          key: const Key('schedule.reminders'),
+          borderRadius: radius,
+          onTap: onTap,
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Icon(
+                  on
+                      ? Icons.notifications_outlined
+                      : Icons.notifications_off_outlined,
+                  size: 13,
+                  color: on ? t.accent : t.text3,
+                ),
+                const SizedBox(width: 5),
+                Text(
+                  on ? 'Reminders on' : 'Reminders off',
+                  style: TextStyle(
+                    fontSize: 11,
+                    fontWeight: FontWeight.w600,
+                    color: t.text2,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
   }
 }
 
