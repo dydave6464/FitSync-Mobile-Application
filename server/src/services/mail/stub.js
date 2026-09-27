@@ -1,10 +1,10 @@
 'use strict';
 
 // Writes the message to the log instead of sending it. This is a complete
-// local flow, not a degraded one: the developer clicks the verification link
-// out of the server log. See the design, section 5.
+// local flow, not a degraded one: the developer reads the six-digit code from
+// the logged email and types it into the app.
 //
-// `sent` lets tests assert on a link without a network or a mail server.
+// `sent` lets tests assert on a code without a network or a mail server.
 function create(logger = console) {
   const sent = [];
   return {

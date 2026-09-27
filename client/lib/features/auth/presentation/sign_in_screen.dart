@@ -125,7 +125,7 @@ class _SignInScreenState extends ConsumerState<SignInScreen> {
       if (!mounted) return;
       if (error.code == 'EMAIL_NOT_VERIFIED') {
         // Same screen as a fresh registration: the way forward is identical
-        // (open the email, verify, come back), so a generic error message
+        // (enter the emailed code), so a generic error message
         // would only leave the user guessing what the code means.
         _pushCheckEmail(email, password);
       } else {

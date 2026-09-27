@@ -60,6 +60,8 @@ test('password reset', async (t) => {
     assert.ok(m.text.includes(codeIn(m)));
     assert.doesNotMatch(m.text, /https?:\/\//);
     assert.match(m.text, /15 minutes/);
+    assert.ok(m.text.endsWith("you can ignore this email — your password hasn't changed."),
+      m.text);
   });
 
   await t.test('a too-short password is refused without spending an attempt', async () => {

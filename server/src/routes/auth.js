@@ -203,9 +203,13 @@ module.exports = function buildAuthRouter({
 
   // The code typed into the app. Every failure is the same CODE_INVALID (see
   // codeInvalid). A malformed code or an unknown address never reaches
-  // checkCode, so it spends nobody's attempts. Unknown addresses return a
-  // little sooner than known ones; that is left alone, because /register
-  // already answers EMAIL_TAKEN for a known address.
+  // checkCode, so it spends nobody's attempts. Known residual, in timing
+  // only: an unknown address returns a little sooner than a known one, and an
+  // unverified account takes longer than an unknown or already-verified one,
+  // because only it reaches checkCode's locked transaction. The first says
+  // whether an account exists, the second whether it is verified -- both left
+  // alone, low value next to /register, which already answers EMAIL_TAKEN for
+  // a known address in one request.
   router.post('/verify-email', async (req, res, next) => {
     try {
       const email = emailFrom(req.body.email);
@@ -237,7 +241,7 @@ module.exports = function buildAuthRouter({
       text: `Enter this code in the FitSync app to reset your password: ${code}\n\n`
         + `It expires in ${TTL_MINUTES.reset_password} minutes. `
         + "If you didn't ask to reset your password, you can ignore this email "
-        + "-- your password hasn't changed.",
+        + "— your password hasn't changed.",
     }).catch((err) => {
       req.log?.error({ err }, 'password reset email failed to send');
     });
@@ -277,6 +281,13 @@ module.exports = function buildAuthRouter({
   // failure. Only a verified account can have a reset code, but the check is
   // repeated here so an unverified account could never reset even if one
   // existed.
+  //
+  // Known residual, in timing only, mirroring /verify-email: an unknown
+  // address returns a little sooner than a known one, and a verified account
+  // takes longer than an unknown or unverified one, because only it reaches
+  // checkCode's locked transaction (and, on a match, bcrypt). That reveals
+  // verification status only -- low value next to /register's EMAIL_TAKEN,
+  // so it is left alone.
   router.post('/password-reset', async (req, res, next) => {
     try {
       const password = requireString('password', req.body.password, {
