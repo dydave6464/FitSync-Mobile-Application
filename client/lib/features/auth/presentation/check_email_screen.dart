@@ -72,9 +72,18 @@ class _CheckEmailScreenState extends ConsumerState<CheckEmailScreen> {
     try {
       if (!_verified) {
         await repo.verifyEmail(email: widget.email, code: _code.text);
+        // Set the field regardless of mounted; only the rebuild is
+        // conditional, so a catch reached after the screen is gone still
+        // sees the code as spent and asks to retry the sign-in, not resend it.
         _verified = true;
+        if (mounted) setState(() {});
       }
       final user = await repo.login(widget.email, widget.password);
+      // No `mounted` check here, unlike sign_in_screen.dart: repo.login has
+      // already stored the session token, so finishing onAuthenticated keeps
+      // the app's state consistent with that stored session even if this
+      // screen was closed mid-flight. Skipping it would leave the UI signed
+      // out while holding a valid token.
       navigator.popUntil((route) => route.isFirst);
       controller.onAuthenticated(user);
     } on ApiException catch (error) {
