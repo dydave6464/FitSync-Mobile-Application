@@ -73,7 +73,7 @@ test('generatePlan sends the mapped profile, never the personal fields', () => {
         equipment: [], injuries: [], overrides: { daysPerWeek: 3 },
       });
       assert.deepEqual(body, {
-        mainGoal: 'lose_weight', fitnessLevel: 'beginner', activityLevel: 'lightly_active',
+        mainGoal: 'lose_weight', fitnessLevel: 'beginner',
         equipment: [], injuries: [], overrides: { daysPerWeek: 3 },
       });
     },
@@ -97,10 +97,11 @@ test('estimateInjuryRisk sends the mapped check-ins', () => {
         load: 0,
         injuryHistory: [],
       });
-      assert.deepEqual(body.checkins, [{
-        checkinDate: '2026-09-24', sleepQuality: 'good', muscleSoreness: 'none',
-        energy: 'high', stress: 'low',
-      }]);
+      assert.deepEqual(body, {
+        checkins: [{ sleepQuality: 'good', muscleSoreness: 'none', energy: 'high', stress: 'low' }],
+        load: 0,
+        injuryHistory: [],
+      });
     },
   );
 });
