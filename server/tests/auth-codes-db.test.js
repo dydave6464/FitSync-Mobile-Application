@@ -214,4 +214,63 @@ test('auth codes db', async (t) => {
     assert.match(codes[0], /^\d{6}$/);
     assert.equal(await check(u, codes[0]), true, 'the code checks true');
   });
+
+  /// Issues [n] codes, each after the last has aged past the resend limit, so
+  /// only the daily cap can refuse one.
+  const fill = async (userId, n, purpose = 'verify_email') => {
+    for (let i = 1; i <= n; i += 1) {
+      assert.match(await issue(userId, purpose), /^\d{6}$/, `code ${i} of ${n}`);
+      await age(userId, purpose);
+    }
+  };
+
+  await t.test('ten codes a day, then no more', async () => {
+    const u = await newUser();
+    await fill(u, 10);
+    assert.equal(await issue(u), null, 'the eleventh is held back');
+    await age(u);
+    assert.equal(await issue(u), null, 'and stays held back');
+  });
+
+  await t.test('a code issued more than a day ago no longer counts', async () => {
+    const u = await newUser();
+    await fill(u, 10);
+    await pool.query(
+      `UPDATE auth_code_issues SET issued_at = DATE_SUB(NOW(), INTERVAL 25 HOUR)
+        WHERE user_id = ? ORDER BY issued_at LIMIT 1`,
+      [u],
+    );
+    assert.match(await issue(u), /^\d{6}$/, 'one slot has freed up');
+    await age(u);
+    assert.equal(await issue(u), null, 'and only one');
+  });
+
+  await t.test('the reset cap and the verification cap are separate', async () => {
+    const u = await newUser();
+    await fill(u, 10, 'reset_password');
+    assert.equal(await issue(u, 'reset_password'), null);
+    assert.match(await issue(u, 'verify_email'), /^\d{6}$/);
+  });
+
+  await t.test('an expired code being checked does not reset the count', async () => {
+    const u = await newUser();
+    await fill(u, 10);
+    await pool.query(
+      'UPDATE auth_codes SET expires_at = DATE_SUB(NOW(), INTERVAL 1 MINUTE) WHERE user_id = ?',
+      [u],
+    );
+    assert.equal(await check(u, '123456'), false);
+    assert.equal(await row(u), undefined, 'the expired code is gone');
+    assert.equal(await issue(u), null, 'the day still counts ten');
+  });
+
+  await t.test("deleting a user deletes their code history", async () => {
+    const u = await newUser();
+    await issue(u);
+    await pool.query('DELETE FROM users WHERE user_id = ?', [u]);
+    const [[{ n }]] = await pool.query(
+      'SELECT COUNT(*) AS n FROM auth_code_issues WHERE user_id = ?', [u],
+    );
+    assert.equal(n, 0);
+  });
 });

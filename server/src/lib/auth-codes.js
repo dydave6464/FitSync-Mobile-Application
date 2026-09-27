@@ -12,7 +12,11 @@ const crypto = require('node:crypto');
 /// The attempt limit only holds if spending it cannot be undone by asking for
 /// another code. So the fifth wrong guess locks the user and purpose out for
 /// LOCKOUT_MINUTES: the code stops working, even the right one, and no new code
-/// is issued until the lockout ends. Five guesses per quarter hour, at most.
+/// is issued until the lockout ends.
+///
+/// That alone still allows four guesses a code and a new code a minute. So
+/// no account gets more than DAILY_CODE_LIMIT codes per purpose in any 24
+/// hours: at most forty guesses a day against a million possible codes.
 
 const TTL_MINUTES = Object.freeze({
   verify_email: 60,
@@ -22,6 +26,7 @@ const TTL_MINUTES = Object.freeze({
 const MAX_ATTEMPTS = 5;
 const LOCKOUT_MINUTES = 15;
 const RESEND_COOLDOWN_SECONDS = 60;
+const DAILY_CODE_LIMIT = 10;
 
 function generateCode() {
   return String(crypto.randomInt(0, 1_000_000)).padStart(6, '0');
@@ -67,4 +72,5 @@ function normaliseCode(raw) {
 module.exports = {
   generateCode, codeKey, hashCode, sameHash, normaliseCode,
   TTL_MINUTES, MAX_ATTEMPTS, LOCKOUT_MINUTES, RESEND_COOLDOWN_SECONDS,
+  DAILY_CODE_LIMIT,
 };
