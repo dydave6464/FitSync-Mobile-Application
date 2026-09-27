@@ -5,16 +5,14 @@ import '../../../core/api_exception.dart';
 import '../../../core/theme.dart';
 import '../../../core/widgets/fs_kit.dart';
 import 'auth_controller.dart';
+import 'code_entry.dart';
 
 /// Shown once an account exists but cannot sign in yet: right after
 /// registration, and again when a login attempt comes back
-/// `EMAIL_NOT_VERIFIED`. Both cases resolve the same way — open the link the
-/// server emailed and come back — so they share this one screen instead of
-/// two near-identical messages.
-///
-/// The verification link opens a server-rendered page, not the app, so there
-/// is no deep link to wait for here — only a Resend action for the case the
-/// original email never arrived.
+/// `EMAIL_NOT_VERIFIED`. The server emails a 6-digit code; typing it here
+/// verifies the address, and the app then signs in with the email and
+/// password it was handed -- the same ones just typed into the form that led
+/// here -- so there is no second sign-in step.
 class CheckEmailScreen extends ConsumerStatefulWidget {
   const CheckEmailScreen({
     super.key,
@@ -25,8 +23,8 @@ class CheckEmailScreen extends ConsumerStatefulWidget {
   final String email;
 
   /// Carried along rather than re-asked for: `/verify-email/request` takes a
-  /// password because there is no JWT yet to prove who is asking, and the
-  /// user just typed this same password into the form that led here.
+  /// password because there is no JWT yet, and signing in after a correct
+  /// code needs it too.
   final String password;
 
   @override
@@ -34,23 +32,78 @@ class CheckEmailScreen extends ConsumerStatefulWidget {
 }
 
 class _CheckEmailScreenState extends ConsumerState<CheckEmailScreen> {
+  final _code = TextEditingController();
   bool _busy = false;
+
+  /// Set once the server accepts the code. From then on the button only
+  /// retries the sign-in: the code is spent, and sending it again would come
+  /// back CODE_INVALID for an address that is in fact verified.
+  bool _verified = false;
   String? _status;
 
-  Future<void> _resend() async {
-    if (_busy) return;
+  @override
+  void initState() {
+    super.initState();
+    _code.addListener(_onCodeChanged);
+  }
 
+  void _onCodeChanged() => setState(() {});
+
+  @override
+  void dispose() {
+    _code.removeListener(_onCodeChanged);
+    _code.dispose();
+    super.dispose();
+  }
+
+  bool get _canSubmit => !_busy && (_verified || _code.text.length == 6);
+
+  Future<void> _verify() async {
+    if (!_canSubmit) return;
+    // Read before any await: the screen can be gone by the time one resolves.
+    final repo = ref.read(authRepositoryProvider);
+    final controller = ref.read(authControllerProvider.notifier);
+    final navigator = Navigator.of(context);
     setState(() {
       _busy = true;
       _status = null;
     });
 
     try {
-      await ref
-          .read(authRepositoryProvider)
-          .resendVerification(email: widget.email, password: widget.password);
+      if (!_verified) {
+        await repo.verifyEmail(email: widget.email, code: _code.text);
+        _verified = true;
+      }
+      final user = await repo.login(widget.email, widget.password);
+      navigator.popUntil((route) => route.isFirst);
+      controller.onAuthenticated(user);
+    } on ApiException catch (error) {
       if (!mounted) return;
-      setState(() => _status = 'Email sent.');
+      setState(() {
+        _status = _verified
+            ? 'Your email is verified. Tap to sign in.'
+            : (error.code == 'CODE_INVALID' ? wrongCodeMessage : error.message);
+      });
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
+  }
+
+  Future<void> _resend() async {
+    if (_busy) return;
+    final repo = ref.read(authRepositoryProvider);
+    setState(() {
+      _busy = true;
+      _status = null;
+    });
+
+    try {
+      await repo.resendVerification(
+        email: widget.email,
+        password: widget.password,
+      );
+      if (!mounted) return;
+      setState(() => _status = newCodeMessage);
     } on ApiException catch (error) {
       if (!mounted) return;
       setState(() => _status = error.message);
@@ -75,7 +128,7 @@ class _CheckEmailScreenState extends ConsumerState<CheckEmailScreen> {
               mainAxisSize: MainAxisSize.min,
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
-                Center(
+                const Center(
                   child: FsIconTile(
                     icon: Icons.mail_outline,
                     selected: true,
@@ -90,13 +143,14 @@ class _CheckEmailScreenState extends ConsumerState<CheckEmailScreen> {
                 ),
                 const SizedBox(height: 10),
                 Text(
-                  "We've sent a verification link to ${widget.email}. Open "
-                  'it, then come back and sign in.',
+                  'We sent a 6-digit code to ${widget.email}. Enter it below.',
                   textAlign: TextAlign.center,
                   style: TextStyle(fontSize: 12.5, color: t.text2, height: 1.5),
                 ),
+                const SizedBox(height: 22),
+                if (!_verified) CodeField(controller: _code),
                 if (_status != null) ...[
-                  const SizedBox(height: 16),
+                  const SizedBox(height: 14),
                   Text(
                     _status!,
                     key: const Key('status'),
@@ -104,14 +158,22 @@ class _CheckEmailScreenState extends ConsumerState<CheckEmailScreen> {
                     style: TextStyle(fontSize: 12.5, color: t.text2),
                   ),
                 ],
-                const SizedBox(height: 24),
+                const SizedBox(height: 18),
                 FsButton(
-                  key: const Key('resend'),
-                  label: 'Resend email',
-                  kind: FsButtonKind.secondary,
+                  key: const Key('verify'),
+                  label: _verified ? 'Sign in' : 'Verify',
                   busy: _busy,
-                  onPressed: _busy ? null : _resend,
+                  onPressed: _canSubmit ? _verify : null,
                 ),
+                if (!_verified) ...[
+                  const SizedBox(height: 10),
+                  FsButton(
+                    key: const Key('resend'),
+                    label: 'Send a new code',
+                    kind: FsButtonKind.secondary,
+                    onPressed: _busy ? null : _resend,
+                  ),
+                ],
               ],
             ),
           ),
