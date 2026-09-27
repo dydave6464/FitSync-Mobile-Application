@@ -3,7 +3,7 @@ const test = require('node:test');
 const assert = require('node:assert/strict');
 const {
   generateCode, codeKey, hashCode, sameHash, normaliseCode,
-  TTL_MINUTES, MAX_ATTEMPTS, RESEND_COOLDOWN_SECONDS,
+  TTL_MINUTES, MAX_ATTEMPTS, LOCKOUT_MINUTES, RESEND_COOLDOWN_SECONDS,
 } = require('../src/lib/auth-codes');
 
 const KEY = codeKey('test-secret-value-at-least-32-chars');
@@ -15,6 +15,7 @@ test('a code is always six digits, leading zeros kept', () => {
 test('the rules match the design', () => {
   assert.deepEqual(TTL_MINUTES, { verify_email: 60, reset_password: 15 });
   assert.equal(MAX_ATTEMPTS, 5);
+  assert.equal(LOCKOUT_MINUTES, 15);
   assert.equal(RESEND_COOLDOWN_SECONDS, 60);
 });
 

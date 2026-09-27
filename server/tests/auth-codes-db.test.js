@@ -67,8 +67,52 @@ test('auth codes db', async (t) => {
       assert.equal((await row(u)).attempts, i);
     }
     assert.equal(await check(u, other(code)), false);
-    assert.equal(await row(u), undefined, 'deleted at the fifth');
+    // The row stays behind as the lockout marker (see the next test).
+    assert.equal((await row(u)).attempts, 5, 'kept at the fifth, as a lockout');
     assert.equal(await check(u, code), false, 'the right code is dead too');
+  });
+
+  await t.test('after five misses no new code is issued for fifteen minutes', async () => {
+    const u = await newUser();
+    const code = await issue(u);
+    for (let i = 1; i <= 5; i += 1) assert.equal(await check(u, other(code)), false);
+    const [[lock]] = await pool.query(
+      `SELECT TIMESTAMPDIFF(SECOND, NOW(), expires_at) AS seconds
+         FROM auth_codes WHERE user_id = ? AND purpose = 'verify_email'`,
+      [u],
+    );
+    const seconds = Number(lock.seconds);
+    assert.ok(seconds > 14 * 60 && seconds <= 15 * 60, `locked for ~15 minutes, got ${seconds}s`);
+
+    await age(u);
+    assert.equal(await issue(u), null, 'past the resend limit but still locked out');
+
+    await pool.query(
+      `UPDATE auth_codes SET expires_at = DATE_SUB(NOW(), INTERVAL 1 SECOND)
+        WHERE user_id = ? AND purpose = 'verify_email'`,
+      [u],
+    );
+    const fresh = await issue(u);
+    assert.match(fresh, /^\d{6}$/, 'the lockout is over');
+    assert.equal((await row(u)).attempts, 0, 'a new code starts with fresh attempts');
+    assert.equal(await check(u, fresh), true);
+  });
+
+  await t.test('a locked code does not count further guesses', async () => {
+    const u = await newUser();
+    const code = await issue(u);
+    for (let i = 1; i <= 5; i += 1) assert.equal(await check(u, other(code)), false);
+    const [[before]] = await pool.query(
+      "SELECT expires_at FROM auth_codes WHERE user_id = ? AND purpose = 'verify_email'", [u],
+    );
+    assert.equal(await check(u, other(code)), false);
+    assert.equal(await check(u, code), false);
+    const [[after]] = await pool.query(
+      "SELECT attempts, expires_at FROM auth_codes WHERE user_id = ? AND purpose = 'verify_email'",
+      [u],
+    );
+    assert.equal(after.attempts, 5, 'attempts stay at five');
+    assert.deepEqual(after.expires_at, before.expires_at, 'the lockout is not extended');
   });
 
   await t.test('an expired code fails and is removed', async () => {

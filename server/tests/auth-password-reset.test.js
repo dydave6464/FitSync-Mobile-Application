@@ -116,6 +116,35 @@ test('password reset', async (t) => {
     assert.equal(mailsTo('second@example.com', /password reset code/).length, before);
   });
 
+  await t.test('five wrong codes lock resets out', async () => {
+    await registerVerified('locked@example.com');
+    await ask('locked@example.com');
+    const good = resetCode('locked@example.com');
+    for (let i = 0; i < 5; i += 1) {
+      const res = await reset({
+        email: 'locked@example.com', code: other(good), password: 'a fine new password',
+      });
+      assert.equal(res.body.error.code, 'CODE_INVALID');
+    }
+    // Past the one-a-minute resend limit, so only the lockout can hold it back.
+    await pool.query(
+      `UPDATE auth_codes SET created_at = DATE_SUB(NOW(), INTERVAL 2 MINUTE)
+        WHERE purpose = 'reset_password'
+          AND user_id = (SELECT user_id FROM users WHERE email = 'locked@example.com')`,
+    );
+    const before = mailsTo('locked@example.com', /password reset code/).length;
+    const again = await ask('locked@example.com');
+    const unknown = await ask('nobody@example.com');
+    assert.equal(mailsTo('locked@example.com', /password reset code/).length, before,
+      'no new code to guess at');
+    assert.equal(again.status, 202);
+    assert.equal(again.text, unknown.text, 'the lockout does not show in the response');
+    const late = await reset({
+      email: 'locked@example.com', code: good, password: 'a fine new password',
+    });
+    assert.equal(late.body.error.code, 'CODE_INVALID', 'the right code is dead too');
+  });
+
   await t.test('the old link form is gone', async () => {
     assert.equal((await request(app).get('/api/v1/auth/password-reset?token=abc')).status, 404);
   });

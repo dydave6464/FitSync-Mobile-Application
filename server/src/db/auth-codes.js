@@ -1,10 +1,15 @@
 'use strict';
 const {
-  generateCode, hashCode, sameHash, TTL_MINUTES, MAX_ATTEMPTS, RESEND_COOLDOWN_SECONDS,
+  generateCode, hashCode, sameHash, TTL_MINUTES, MAX_ATTEMPTS, LOCKOUT_MINUTES,
+  RESEND_COOLDOWN_SECONDS,
 } = require('../lib/auth-codes');
 
 /// A new code for [userId] and [purpose], replacing any earlier one, or null
-/// when the last one was issued less than a minute ago -- the resend limit.
+/// when the last one was issued less than a minute ago -- the resend limit --
+/// or when the user is locked out: the last code took MAX_ATTEMPTS wrong
+/// guesses and its lockout (until expires_at) has not ended. Without that,
+/// asking for a new code would undo the attempt limit. A lockout that has
+/// ended is replaced like any older code.
 /// Uses row-level locking to ensure only one request succeeds if called
 /// simultaneously for the same user+purpose. Returns null if another request
 /// issued a code at the same moment (answers the same as the resend limit).
@@ -17,17 +22,18 @@ async function issueCode(pool, { key, userId, purpose }) {
   try {
     await conn.beginTransaction();
     const [[row]] = await conn.query(
-      `SELECT created_at > DATE_SUB(NOW(), INTERVAL ? SECOND) AS fresh
+      `SELECT created_at > DATE_SUB(NOW(), INTERVAL ? SECOND) AS fresh,
+              attempts >= ? AND expires_at > NOW() AS locked
          FROM auth_codes WHERE user_id = ? AND purpose = ? FOR UPDATE`,
-      [RESEND_COOLDOWN_SECONDS, userId, purpose],
+      [RESEND_COOLDOWN_SECONDS, MAX_ATTEMPTS, userId, purpose],
     );
 
     if (row) {
-      if (Number(row.fresh) === 1) {
+      if (Number(row.locked) === 1 || Number(row.fresh) === 1) {
         await conn.commit();
         return null;
       }
-      // Row exists but is older, update it
+      // Row exists but is older (or its lockout has ended), update it
       const code = generateCode();
       await conn.query(
         `UPDATE auth_codes SET code_hash = ?, expires_at = DATE_ADD(NOW(), INTERVAL ? MINUTE),
@@ -59,9 +65,12 @@ async function issueCode(pool, { key, userId, purpose }) {
 }
 
 /// Whether [code] is the live code for [userId] and [purpose]. A match is
-/// consumed. A miss counts an attempt and deletes the code at the fifth; an
-/// expired code is deleted. One locked row per check, so two guesses at once
-/// cannot both be counted as the first.
+/// consumed. A miss counts an attempt; the fifth does not delete the code but
+/// turns its row into a lockout: attempts stays at MAX_ATTEMPTS and expires_at
+/// moves to LOCKOUT_MINUTES from now, so issueCode refuses a new code until
+/// then. A locked code fails every check, the right code included, and is left
+/// untouched. An expired code, locked or not, is deleted. One locked row per
+/// check, so two guesses at once cannot both be counted as the first.
 async function checkCode(pool, { key, userId, purpose, code }) {
   const conn = await pool.getConnection();
   try {
@@ -80,11 +89,17 @@ async function checkCode(pool, { key, userId, purpose, code }) {
       ok = false;
     } else if (Number(row.live) !== 1) {
       await remove();
+    } else if (row.attempts >= MAX_ATTEMPTS) {
+      ok = false; // locked out: no guess counts, not even the right one
     } else if (sameHash(row.code_hash, hashCode(key, { userId, purpose, code }))) {
       await remove();
       ok = true;
     } else if (row.attempts + 1 >= MAX_ATTEMPTS) {
-      await remove();
+      await conn.query(
+        `UPDATE auth_codes SET attempts = ?, expires_at = DATE_ADD(NOW(), INTERVAL ? MINUTE)
+          WHERE user_id = ? AND purpose = ?`,
+        [MAX_ATTEMPTS, LOCKOUT_MINUTES, userId, purpose],
+      );
     } else {
       await conn.query(
         'UPDATE auth_codes SET attempts = attempts + 1 WHERE user_id = ? AND purpose = ?',

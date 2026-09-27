@@ -8,6 +8,11 @@ const crypto = require('node:crypto');
 /// tokens it replaces (lib/auth-tokens.js): a keyed hash, so a leaked table
 /// cannot be brute-forced back to codes without the server secret; an attempt
 /// limit and a short life (db/auth-codes.js).
+///
+/// The attempt limit only holds if spending it cannot be undone by asking for
+/// another code. So the fifth wrong guess locks the user and purpose out for
+/// LOCKOUT_MINUTES: the code stops working, even the right one, and no new code
+/// is issued until the lockout ends. Five guesses per quarter hour, at most.
 
 const TTL_MINUTES = Object.freeze({
   verify_email: 60,
@@ -15,6 +20,7 @@ const TTL_MINUTES = Object.freeze({
   reset_password: 15,
 });
 const MAX_ATTEMPTS = 5;
+const LOCKOUT_MINUTES = 15;
 const RESEND_COOLDOWN_SECONDS = 60;
 
 function generateCode() {
@@ -60,5 +66,5 @@ function normaliseCode(raw) {
 
 module.exports = {
   generateCode, codeKey, hashCode, sameHash, normaliseCode,
-  TTL_MINUTES, MAX_ATTEMPTS, RESEND_COOLDOWN_SECONDS,
+  TTL_MINUTES, MAX_ATTEMPTS, LOCKOUT_MINUTES, RESEND_COOLDOWN_SECONDS,
 };
