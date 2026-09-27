@@ -1,0 +1,58 @@
+'use strict';
+const crypto = require('node:crypto');
+
+/// Six-digit codes emailed for verification and password reset and typed into
+/// the app (docs/superpowers/specs/2026-09-27-email-codes-design.md).
+///
+/// A code is short enough to guess, so it is guarded unlike the 64-hex link
+/// tokens it replaces (lib/auth-tokens.js): a keyed hash, so a leaked table
+/// cannot be brute-forced back to codes without the server secret; an attempt
+/// limit and a short life (db/auth-codes.js).
+
+const TTL_MINUTES = Object.freeze({
+  verify_email: 60,
+  // Shorter: an outstanding reset code is a live account takeover.
+  reset_password: 15,
+});
+const MAX_ATTEMPTS = 5;
+const RESEND_COOLDOWN_SECONDS = 60;
+
+function generateCode() {
+  return String(crypto.randomInt(0, 1_000_000)).padStart(6, '0');
+}
+
+/// The HMAC key for code hashes: derived from JWT_SECRET under its own label,
+/// so this use of the secret can never stand in for signing a session.
+function codeKey(secret) {
+  if (typeof secret !== 'string' || secret.length === 0) {
+    throw new Error('codeKey needs the JWT secret');
+  }
+  return crypto.createHmac('sha256', secret).update('fitsync-auth-code').digest();
+}
+
+/// Tied to the user and purpose as well as the code, so a stored hash is
+/// meaningless for anyone or anything else.
+function hashCode(key, { userId, purpose, code }) {
+  return crypto.createHmac('sha256', key).update(`${userId}:${purpose}:${code}`).digest('hex');
+}
+
+/// Constant-time, so how long a wrong guess takes says nothing about how
+/// close it was.
+function sameHash(a, b) {
+  const x = Buffer.from(String(a), 'hex');
+  const y = Buffer.from(String(b), 'hex');
+  return x.length > 0 && x.length === y.length && crypto.timingSafeEqual(x, y);
+}
+
+/// A code as typed or pasted -- spaces allowed -- or null when it cannot be
+/// one. A null is refused before any database lookup, so it costs no attempt.
+function normaliseCode(raw) {
+  if (typeof raw !== 'string') return null;
+  const code = raw.replace(/\s+/g, '');
+  return /^\d{6}$/.test(code) ? code : null;
+}
+
+module.exports = {
+  generateCode, codeKey, hashCode, sameHash, normaliseCode,
+  TTL_MINUTES, MAX_ATTEMPTS, RESEND_COOLDOWN_SECONDS,
+};
