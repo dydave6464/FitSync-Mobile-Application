@@ -24,7 +24,9 @@ const _leadOptions = [
   (value: '30', label: '30 min before'),
 ];
 
-const _blockedText =
+/// Shown wherever turning reminders on meets a notification permission the
+/// phone has refused.
+const remindersBlockedText =
     "Notifications are blocked for FitSync. Allow them in your phone's "
     'settings to get reminders.';
 
@@ -219,7 +221,7 @@ class _RemindersScreenState extends ConsumerState<RemindersScreen> {
           const SizedBox(width: 10),
           Expanded(
             child: Text(
-              _blockedText,
+              remindersBlockedText,
               style: TextStyle(fontSize: 12, color: t.text2, height: 1.4),
             ),
           ),

@@ -24,6 +24,9 @@ import 'package:fitsync/features/streaks/domain/streaks.dart';
 import 'package:fitsync/features/streaks/presentation/providers.dart'
     show goalsProvider, streakProvider;
 import 'package:fitsync/features/streaks/presentation/streaks_screen.dart';
+import 'package:fitsync/features/schedule/domain/calendar.dart';
+import 'package:fitsync/features/schedule/presentation/providers.dart';
+import 'package:fitsync/features/schedule/presentation/schedule_screen.dart';
 
 const _baseProfile = Profile(
   userId: 7,
@@ -115,7 +118,7 @@ class FakeProfileNotifier extends ProfileNotifier {
 /// A fixed answer instead of a repository round trip, so `SettingsScreen`
 /// has something to give `RemindersScreen` when the notifications row opens
 /// it -- this file's tests never change a reminder setting themselves.
-class _DefaultReminderSettings extends ReminderSettingsController {
+class DefaultReminderSettings extends ReminderSettingsController {
   @override
   Future<ReminderSettings> build() async => ReminderSettings.defaults;
 }
@@ -172,12 +175,16 @@ Future<void> _pump(
         ),
         equipmentOptionsProvider.overrideWith((ref) async => _equipment),
         injuryOptionsProvider.overrideWith((ref) async => _injuryOptions),
-        reminderSettingsProvider.overrideWith(() => _DefaultReminderSettings()),
+        reminderSettingsProvider.overrideWith(() => DefaultReminderSettings()),
         streakProvider.overrideWith(
           (ref) async =>
               const Streak(current: 0, best: 0, todayActive: false, week: []),
         ),
         goalsProvider.overrideWith((ref) async => const <LiftGoal>[]),
+        calendarProvider.overrideWith(
+          (ref, span) async =>
+              const CalendarRange(today: '2026-09-24', days: []),
+        ),
       ],
       child: const MaterialApp(home: SettingsScreen()),
     ),
@@ -472,5 +479,13 @@ void main() {
     await _openRow(tester, const Key('edit.streaks'));
 
     expect(find.byType(StreaksScreen), findsOneWidget);
+  });
+
+  testWidgets('the Schedule row opens the screen', (tester) async {
+    await _pump(tester);
+
+    await _openRow(tester, const Key('edit.schedule'));
+
+    expect(find.byType(ScheduleScreen), findsOneWidget);
   });
 }

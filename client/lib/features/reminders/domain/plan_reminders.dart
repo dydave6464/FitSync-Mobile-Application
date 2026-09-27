@@ -5,18 +5,6 @@ import 'reminders.dart';
 /// Under iOS's limit of 64 pending notifications.
 const maxReminders = 60;
 
-const _manilaOffset = Duration(hours: 8);
-
-/// [hhmm] on the Manila calendar day [day] (a UTC-midnight DateTime carrying
-/// only the date), as a UTC instant.
-DateTime _atManila(DateTime day, String hhmm) => DateTime.utc(
-  day.year,
-  day.month,
-  day.day,
-  int.parse(hhmm.substring(0, 2)),
-  int.parse(hhmm.substring(3, 5)),
-).subtract(_manilaOffset);
-
 /// The reminders for today and the next six days (Manila), soonest first,
 /// capped at [maxReminders]. One-offs rather than repeating rules, so what is
 /// already done today can be skipped; the caller replaces the whole set
@@ -62,7 +50,7 @@ List<PlannedReminder> planReminders({
         if (time == null || !h.weekdays.contains(weekday)) continue;
         if (isToday && done.habitIds.contains(h.habitId)) continue;
         add(
-          _atManila(
+          manilaInstant(
             day,
             time,
           ).subtract(Duration(minutes: settings.habitLeadMin)),
@@ -79,7 +67,7 @@ List<PlannedReminder> planReminders({
         trainingDay &&
         !(isToday && done.workout)) {
       add(
-        _atManila(day, settings.workoutTime),
+        manilaInstant(day, settings.workoutTime),
         'Workout today',
         planName,
         'routine',
@@ -88,7 +76,7 @@ List<PlannedReminder> planReminders({
 
     if (settings.checkinEnabled && !(isToday && done.checkin)) {
       add(
-        _atManila(day, settings.checkinTime),
+        manilaInstant(day, settings.checkinTime),
         'Morning check-in',
         'How did you sleep?',
         'recovery',
