@@ -55,6 +55,17 @@ class FakeAuthRepository implements AuthRepository {
     required String email,
     required String password,
   }) => throw UnimplementedError();
+
+  @override
+  Future<void> verifyEmail({required String email, required String code}) =>
+      throw UnimplementedError();
+
+  @override
+  Future<void> resetPassword({
+    required String email,
+    required String code,
+    required String password,
+  }) => throw UnimplementedError();
 }
 
 Future<void> _pump(WidgetTester tester, FakeAuthRepository repo) =>

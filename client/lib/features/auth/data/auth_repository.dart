@@ -69,4 +69,32 @@ class AuthRepository {
       'password': password,
     });
   }
+
+  /// The 6-digit code from the verification email. Signs nobody in: the
+  /// caller signs in afterwards with the credentials it already holds. Any
+  /// wrong, expired or used code is `ApiException('CODE_INVALID')`.
+  Future<void> verifyEmail({
+    required String email,
+    required String code,
+  }) async {
+    await _api.postJson('/api/v1/auth/verify-email', {
+      'email': email,
+      'code': code,
+    });
+  }
+
+  /// Sets a new password with the 6-digit code from the reset email. Signs
+  /// nobody in, as [verifyEmail]. A too-short password is refused before the
+  /// code is looked at, so it costs no attempt.
+  Future<void> resetPassword({
+    required String email,
+    required String code,
+    required String password,
+  }) async {
+    await _api.postJson('/api/v1/auth/password-reset', {
+      'email': email,
+      'code': code,
+      'password': password,
+    });
+  }
 }

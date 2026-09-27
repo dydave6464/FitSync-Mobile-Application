@@ -124,6 +124,74 @@ void main() {
     await repo.resendVerification(email: 'a@b.com', password: 's3cret-pass');
   });
 
+  test('verifyEmail posts the email and code', () async {
+    late http.Request sent;
+    final tokens = TokenStore(backing: InMemorySecureStore());
+    final repo = AuthRepository(
+      ApiClient(
+        tokens: tokens,
+        client: MockClient((request) async {
+          sent = request;
+          return http.Response('{"data":{"verified":true}}', 200);
+        }),
+      ),
+      tokens,
+    );
+
+    await repo.verifyEmail(email: 'a@b.com', code: '048213');
+
+    expect(sent.method, 'POST');
+    expect(sent.url.path, '/api/v1/auth/verify-email');
+    expect(jsonDecode(sent.body), {'email': 'a@b.com', 'code': '048213'});
+    expect(await tokens.read(), isNull, reason: 'verifying signs nobody in');
+  });
+
+  test('a refused code surfaces as CODE_INVALID', () async {
+    final tokens = TokenStore(backing: InMemorySecureStore());
+    final repo = AuthRepository(
+      _clientReturning(
+        '{"error":{"code":"CODE_INVALID","message":"That code is wrong or has expired.","details":[]}}',
+        400,
+        tokens: tokens,
+      ),
+      tokens,
+    );
+    expect(
+      () => repo.verifyEmail(email: 'a@b.com', code: '000000'),
+      throwsA(
+        isA<ApiException>().having((e) => e.code, 'code', 'CODE_INVALID'),
+      ),
+    );
+  });
+
+  test('resetPassword posts the email, code and new password', () async {
+    late http.Request sent;
+    final tokens = TokenStore(backing: InMemorySecureStore());
+    final repo = AuthRepository(
+      ApiClient(
+        tokens: tokens,
+        client: MockClient((request) async {
+          sent = request;
+          return http.Response('{"data":{"reset":true}}', 200);
+        }),
+      ),
+      tokens,
+    );
+
+    await repo.resetPassword(
+      email: 'a@b.com',
+      code: '048213',
+      password: 'a whole new password',
+    );
+
+    expect(sent.url.path, '/api/v1/auth/password-reset');
+    expect(jsonDecode(sent.body), {
+      'email': 'a@b.com',
+      'code': '048213',
+      'password': 'a whole new password',
+    });
+  });
+
   test('signOut clears the token', () async {
     final tokens = TokenStore(backing: InMemorySecureStore());
     await tokens.write('tok');
