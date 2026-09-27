@@ -272,8 +272,12 @@ class _Readiness extends ConsumerWidget {
     return ref
         .watch(recoveryOverviewProvider)
         .when(
-          // The card's own height, so Home does not jump when it lands.
-          loading: () => const SizedBox(height: 124),
+          // The card's own with-data height plus its 14dp bottom gap, so Home
+          // does not jump when it lands: 156, measured with today's scored
+          // estimate on the default 800dp test surface. An earlier day's adds
+          // a "From" line, and a narrow phone can wrap the injury-risk line,
+          // so either may still land a little taller.
+          loading: () => const SizedBox(height: 170),
           error: (_, _) => const SizedBox.shrink(),
           data: (overview) => Padding(
             padding: const EdgeInsets.only(bottom: 14),

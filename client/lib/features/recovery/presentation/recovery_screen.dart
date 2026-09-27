@@ -157,6 +157,21 @@ class _EstimateCard extends StatelessWidget {
             ),
           ),
         ),
+        // The same score the other way up -- what Home's readiness ring
+        // shows -- so the two screens can be read against each other.
+        if (estimate.readiness case final readiness?) ...[
+          const SizedBox(height: 10),
+          Center(
+            child: Text(
+              'Readiness $readiness',
+              style: TextStyle(
+                fontSize: 13,
+                fontWeight: FontWeight.w600,
+                color: t.text2,
+              ),
+            ),
+          ),
+        ],
         if (today != null && !isToday) ...[
           const SizedBox(height: 10),
           Center(
@@ -226,6 +241,12 @@ class _FeedsScoreCard extends ConsumerWidget {
               style: TextStyle(fontSize: 12, color: t.text3),
             ),
           ],
+        ),
+        const SizedBox(height: 12),
+        Text(
+          'Readiness reads the same check-in and training load the other '
+          'way up: higher is better.',
+          style: TextStyle(fontSize: 12, color: t.text3),
         ),
       ],
     );

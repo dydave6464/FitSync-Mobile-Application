@@ -50,8 +50,11 @@ async function generatePlan(profile = {}) {
 
 async function estimateInjuryRisk() {
   // C-6: accuracy is bounded by user input, so the stub reports the
-  // conservative floor rather than inventing a risk signal.
-  return { riskLevel: 'low', trainingLoadScore: 0 };
+  // conservative floor rather than inventing a risk signal -- and no score,
+  // since it computed none. The app shows readiness as 100 minus the score,
+  // so a stub 0 would read as "100 READY" for everyone, whatever they
+  // answered; with null it shows the level and no number.
+  return { riskLevel: 'low', trainingLoadScore: null };
 }
 
 module.exports = { generatePlan, estimateInjuryRisk };
