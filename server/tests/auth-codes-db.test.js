@@ -146,4 +146,28 @@ test('auth codes db', async (t) => {
   await t.test('checking with no code issued is simply false', async () => {
     assert.equal(await check(await newUser(), '123456'), false);
   });
+
+  await t.test('two simultaneous first issues give exactly one code', async () => {
+    const u = await newUser();
+    const results = await Promise.all([issue(u), issue(u)]);
+    const codes = results.filter((r) => r !== null);
+    const nulls = results.filter((r) => r === null);
+    assert.equal(codes.length, 1, 'exactly one code returned');
+    assert.equal(nulls.length, 1, 'exactly one null returned');
+    assert.match(codes[0], /^\d{6}$/);
+    assert.equal(await check(u, codes[0]), true, 'the code checks true');
+  });
+
+  await t.test('two simultaneous re-issues after a minute give exactly one code', async () => {
+    const u = await newUser();
+    await issue(u);
+    await age(u);
+    const results = await Promise.all([issue(u), issue(u)]);
+    const codes = results.filter((r) => r !== null);
+    const nulls = results.filter((r) => r === null);
+    assert.equal(codes.length, 1, 'exactly one code returned');
+    assert.equal(nulls.length, 1, 'exactly one null returned');
+    assert.match(codes[0], /^\d{6}$/);
+    assert.equal(await check(u, codes[0]), true, 'the code checks true');
+  });
 });

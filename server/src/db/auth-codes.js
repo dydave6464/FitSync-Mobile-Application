@@ -5,27 +5,57 @@ const {
 
 /// A new code for [userId] and [purpose], replacing any earlier one, or null
 /// when the last one was issued less than a minute ago -- the resend limit.
+/// Uses row-level locking to ensure only one request succeeds if called
+/// simultaneously for the same user+purpose. Returns null if another request
+/// issued a code at the same moment (answers the same as the resend limit).
 /// The caller answers the same either way; only the email is held back.
 async function issueCode(pool, { key, userId, purpose }) {
   const ttl = TTL_MINUTES[purpose];
   if (!ttl) throw new Error(`Unknown code purpose: ${purpose}`);
 
-  const [[recent]] = await pool.query(
-    `SELECT created_at > DATE_SUB(NOW(), INTERVAL ? SECOND) AS fresh
-       FROM auth_codes WHERE user_id = ? AND purpose = ?`,
-    [RESEND_COOLDOWN_SECONDS, userId, purpose],
-  );
-  if (recent && Number(recent.fresh) === 1) return null;
+  const conn = await pool.getConnection();
+  try {
+    await conn.beginTransaction();
+    const [[row]] = await conn.query(
+      `SELECT created_at > DATE_SUB(NOW(), INTERVAL ? SECOND) AS fresh
+         FROM auth_codes WHERE user_id = ? AND purpose = ? FOR UPDATE`,
+      [RESEND_COOLDOWN_SECONDS, userId, purpose],
+    );
 
-  const code = generateCode();
-  await pool.query(
-    `INSERT INTO auth_codes (user_id, purpose, code_hash, expires_at, attempts, created_at)
-     VALUES (?, ?, ?, DATE_ADD(NOW(), INTERVAL ? MINUTE), 0, NOW())
-     ON DUPLICATE KEY UPDATE code_hash = VALUES(code_hash), expires_at = VALUES(expires_at),
-                             attempts = 0, created_at = VALUES(created_at)`,
-    [userId, purpose, hashCode(key, { userId, purpose, code }), ttl],
-  );
-  return code;
+    if (row) {
+      if (Number(row.fresh) === 1) {
+        await conn.commit();
+        return null;
+      }
+      // Row exists but is older, update it
+      const code = generateCode();
+      await conn.query(
+        `UPDATE auth_codes SET code_hash = ?, expires_at = DATE_ADD(NOW(), INTERVAL ? MINUTE),
+                              attempts = 0, created_at = NOW() WHERE user_id = ? AND purpose = ?`,
+        [hashCode(key, { userId, purpose, code }), ttl, userId, purpose],
+      );
+      await conn.commit();
+      return code;
+    } else {
+      // No row exists, insert new one
+      const code = generateCode();
+      await conn.query(
+        `INSERT INTO auth_codes (user_id, purpose, code_hash, expires_at, attempts, created_at)
+         VALUES (?, ?, ?, DATE_ADD(NOW(), INTERVAL ? MINUTE), 0, NOW())`,
+        [userId, purpose, hashCode(key, { userId, purpose, code }), ttl],
+      );
+      await conn.commit();
+      return code;
+    }
+  } catch (err) {
+    await conn.rollback();
+    if (err.code === 'ER_DUP_ENTRY' || err.code === 'ER_LOCK_DEADLOCK') {
+      return null;
+    }
+    throw err;
+  } finally {
+    conn.release();
+  }
 }
 
 /// Whether [code] is the live code for [userId] and [purpose]. A match is
