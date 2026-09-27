@@ -8,6 +8,8 @@ const { buildTestApp } = require('./helpers/test-app');
 const { testDbConfig, dropAllTables } = require('./helpers/test-db');
 const { createMailService } = require('../src/services/mail');
 
+const codeIn = (message) => message.subject.match(/(\d{6})$/)[1];
+
 test('password reset', async (t) => {
   const pool = createPool(testDbConfig());
   await dropAllTables(pool);
@@ -19,124 +21,102 @@ test('password reset', async (t) => {
 
   const ask = (email) =>
     request(app).post('/api/v1/auth/password-reset/request').send({ email });
+  const reset = (body) => request(app).post('/api/v1/auth/password-reset').send(body);
+  const mailsTo = (email, pattern) =>
+    mail.sent.filter((m) => m.to === email && pattern.test(m.subject));
+  const registerVerified = async (email, password = 'correct horse') => {
+    await request(app).post('/api/v1/auth/register').send({ email, password, fullName: 'R' });
+    const [m] = mailsTo(email, /^Your FitSync code:/);
+    await request(app).post('/api/v1/auth/verify-email').send({ email, code: codeIn(m) });
+  };
+  const resetCode = (email) => codeIn(mailsTo(email, /password reset code/).at(-1));
+  const other = (code) => (code === '000000' ? '111111' : '000000');
+  const login = (email, password) =>
+    request(app).post('/api/v1/auth/login').send({ email, password });
 
   await t.test('the response is identical for every kind of address, including verified', async () => {
     await request(app).post('/api/v1/auth/register').send({
-      email: 'known@example.com', password: 'correct horse', fullName: 'K',
+      email: 'unverified@example.com', password: 'correct horse', fullName: 'U',
     });
-    await request(app).post('/api/v1/auth/register').send({
-      email: 'verified@example.com', password: 'correct horse', fullName: 'V',
-    });
-    const verifyLink = mail.sent.find((m) => /verify-email/.test(m.text) && m.to === 'verified@example.com');
-    const verifyToken = verifyLink.text.match(/token=([a-f0-9]{64})/)[1];
-    await request(app).get(`/api/v1/auth/verify-email?token=${verifyToken}`);
+    await registerVerified('verified@example.com');
 
     const unknown = await ask('nobody@example.com');
-    const unverified = await ask('known@example.com');
-    // The verified branch is the only one of the three that actually does
-    // something different -- it issues a token and sends mail -- so it is
-    // the only branch that can actually reveal a difference. Comparing just
-    // unknown vs. unverified (as this test used to) would still pass even if
-    // the verified branch returned a different status entirely.
+    const unverified = await ask('unverified@example.com');
     const verified = await ask('verified@example.com');
-
-    assert.equal(unknown.status, 202);
-    assert.equal(unverified.status, 202);
-    assert.equal(verified.status, 202);
-    // Byte-identical, not just deepEqual on the parsed body: the spec asks
-    // for responses an observer cannot tell apart, and comparing raw text
-    // also catches a difference in headers/whitespace that JSON parsing
-    // would silently normalize away.
-    assert.equal(unknown.text, unverified.text,
-      'any difference here makes this an account-enumeration oracle');
+    for (const r of [unknown, unverified, verified]) assert.equal(r.status, 202);
+    assert.equal(unknown.text, unverified.text);
     assert.equal(unverified.text, verified.text,
       'the verified branch actually sends mail, but must still look identical');
   });
 
-  await t.test('an unverified account is sent no reset link', async () => {
-    const before = mail.sent.length;
-    await ask('known@example.com');
-    const resets = mail.sent.slice(before).filter((m) => /password-reset/.test(m.text));
-    assert.equal(resets.length, 0,
+  await t.test('an unverified account is sent no reset code', async () => {
+    assert.equal(mailsTo('unverified@example.com', /password reset code/).length, 0,
       'mailing a reset to an unproven address is a takeover path, not recovery');
   });
 
-  await t.test('a verified account can reset and sign in with the new password', async () => {
-    const verify = mail.sent.find((m) => /verify-email/.test(m.text));
-    const vToken = verify.text.match(/token=([a-f0-9]{64})/)[1];
-    await request(app).get(`/api/v1/auth/verify-email?token=${vToken}`);
-
-    const before = mail.sent.length;
-    await ask('known@example.com');
-    const reset = mail.sent.slice(before).find((m) => /password-reset/.test(m.text));
-    assert.ok(reset, 'a verified account does get a link');
-    const token = reset.text.match(/token=([a-f0-9]{64})/)[1];
-
-    const form = await request(app).get(`/api/v1/auth/password-reset?token=${token}`);
-    assert.equal(form.status, 200);
-    assert.match(form.headers['content-type'], /html/);
-    assert.equal(form.headers['cache-control'], 'no-store',
-      'this page embeds a live reset token in a hidden field and must never be cached');
-
-    const done = await request(app).post('/api/v1/auth/password-reset')
-      .type('form').send({ token, password: 'a whole new password' });
-    assert.equal(done.status, 200);
-
-    const login = await request(app).post('/api/v1/auth/login')
-      .send({ email: 'known@example.com', password: 'a whole new password' });
-    assert.equal(login.status, 200);
+  await t.test('the reset email carries a code and no link', async () => {
+    const [m] = mailsTo('verified@example.com', /password reset code/);
+    assert.match(m.subject, /^Your FitSync password reset code: \d{6}$/);
+    assert.ok(m.text.includes(codeIn(m)));
+    assert.doesNotMatch(m.text, /https?:\/\//);
+    assert.match(m.text, /15 minutes/);
   });
 
-  await t.test('opening the form does not spend the token', async () => {
-    // Otherwise merely clicking the link, or a mail client prefetching it,
-    // would burn the reset before the user typed anything.
-    const before = mail.sent.length;
-    await ask('known@example.com');
-    const token = mail.sent.slice(before)
-      .find((m) => /password-reset/.test(m.text)).text.match(/token=([a-f0-9]{64})/)[1];
-
-    await request(app).get(`/api/v1/auth/password-reset?token=${token}`);
-    const done = await request(app).post('/api/v1/auth/password-reset')
-      .type('form').send({ token, password: 'still works fine' });
+  await t.test('a too-short password is refused without spending an attempt', async () => {
+    const code = resetCode('verified@example.com');
+    for (let i = 0; i < 6; i += 1) {
+      const res = await reset({ email: 'verified@example.com', code, password: 'short' });
+      assert.equal(res.status, 400);
+      assert.equal(res.body.error.code, 'INVALID_PROFILE_FIELD');
+    }
+    // Six refusals, more than the five-attempt limit: the code must still work.
+    const done = await reset({
+      email: 'verified@example.com', code, password: 'a whole new password',
+    });
     assert.equal(done.status, 200);
+    assert.deepEqual(done.body, { data: { reset: true } });
   });
 
-  await t.test('a verification token cannot be spent as a reset', async () => {
-    const verify = mail.sent.find((m) => /verify-email/.test(m.text));
-    const vToken = verify.text.match(/token=([a-f0-9]{64})/)[1];
-    const res = await request(app).post('/api/v1/auth/password-reset')
-      .type('form').send({ token: vToken, password: 'should not work' });
+  await t.test('the new password signs in and the old one does not', async () => {
+    assert.equal((await login('verified@example.com', 'a whole new password')).status, 200);
+    assert.equal((await login('verified@example.com', 'correct horse')).status, 401);
+  });
+
+  await t.test('a used code is CODE_INVALID', async () => {
+    const res = await reset({
+      email: 'verified@example.com', code: resetCode('verified@example.com'),
+      password: 'yet another password',
+    });
     assert.equal(res.status, 400);
-    // This route is opened straight from an emailed link -- a rejected
-    // (here: wrong-purpose) token must fail into a page, not the JSON error
-    // envelope the JSON API uses everywhere else.
-    assert.match(res.headers['content-type'], /html/,
-      'a browser-facing route must fail into a page, not a JSON error object');
+    assert.equal(res.body.error.code, 'CODE_INVALID');
   });
 
-  await t.test('a too-short password does not spend the token', async () => {
-    // consumeToken marks the row spent unconditionally, so a rejected
-    // password must be validated BEFORE the token is consumed -- otherwise a
-    // simple mistake burns the one-time link and forces a whole new email.
-    const before = mail.sent.length;
-    await ask('known@example.com');
-    const token = mail.sent.slice(before)
-      .find((m) => /password-reset/.test(m.text)).text.match(/token=([a-f0-9]{64})/)[1];
+  await t.test('every wrong answer looks exactly the same', async () => {
+    await registerVerified('second@example.com');
+    await ask('second@example.com');
+    const good = resetCode('second@example.com');
+    const body = (email, code) => ({ email, code, password: 'a fine new password' });
+    const responses = [
+      await reset(body('second@example.com', other(good))),
+      await reset(body('nobody@example.com', good)),
+      await reset(body('unverified@example.com', good)),
+      await reset(body('second@example.com', '12345')),
+      await reset(body('second@example.com', undefined)),
+    ];
+    for (const r of responses) {
+      assert.equal(r.status, 400);
+      assert.equal(r.body.error.code, 'CODE_INVALID');
+    }
+    assert.equal(new Set(responses.map((r) => r.text)).size, 1);
+  });
 
-    const tooShort = await request(app).post('/api/v1/auth/password-reset')
-      .type('form').send({ token, password: 'short' });
-    assert.equal(tooShort.status, 400,
-      'a rejected password must not look like a successful reset');
-    assert.match(tooShort.headers['content-type'], /html/,
-      'the retry must be a page the user can act on, not a JSON error object');
-    assert.match(tooShort.text, new RegExp(`value="${token}"`),
-      'the token must survive into the retry form so the user does not have to reopen the email');
-    assert.equal(tooShort.headers['cache-control'], 'no-store',
-      'this page embeds a live reset token and must never be cached');
+  await t.test('a second request within a minute sends nothing', async () => {
+    const before = mailsTo('second@example.com', /password reset code/).length;
+    await ask('second@example.com');
+    assert.equal(mailsTo('second@example.com', /password reset code/).length, before);
+  });
 
-    const retry = await request(app).post('/api/v1/auth/password-reset')
-      .type('form').send({ token, password: 'a good password this time' });
-    assert.equal(retry.status, 200,
-      'the same token must still work -- the failed attempt must not have spent it');
+  await t.test('the old link form is gone', async () => {
+    assert.equal((await request(app).get('/api/v1/auth/password-reset?token=abc')).status, 404);
   });
 });
