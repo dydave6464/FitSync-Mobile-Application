@@ -1,4 +1,5 @@
 'use strict';
+const { toPlanPayload, toRiskPayload } = require('./profile-payload');
 
 const REQUEST_TIMEOUT_MS = 10000;
 
@@ -30,9 +31,11 @@ function create(baseUrl) {
     }
   }
 
+  // Mapped here, at the one place a request leaves Node, so every caller --
+  // onboarding, regenerate, check-in -- sends only what the service reads.
   return {
-    generatePlan: (profile) => post('/generate-plan', profile),
-    estimateInjuryRisk: (payload) => post('/injury-risk', payload),
+    generatePlan: (profile) => post('/generate-plan', toPlanPayload(profile)),
+    estimateInjuryRisk: (payload) => post('/injury-risk', toRiskPayload(payload)),
   };
 }
 
