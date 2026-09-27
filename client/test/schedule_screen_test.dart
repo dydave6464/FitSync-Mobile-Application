@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -125,11 +127,14 @@ Profile _profile(bool notificationsEnabled) => Profile(
 /// Records every patch; applies `notificationsEnabled`, or throws when
 /// [failPatch].
 class _Profile extends ProfileNotifier {
-  _Profile(this.masterOn, {this.patches, this.failPatch = false});
+  _Profile(this.masterOn, {this.patches, this.failPatch = false, this.gate});
 
   final bool masterOn;
   final List<Map<String, dynamic>>? patches;
-  final bool failPatch;
+  bool failPatch;
+
+  /// When set, each patch waits on it -- a save still in flight.
+  final Completer<void>? gate;
 
   @override
   Future<Profile> build() async => _profile(masterOn);
@@ -137,6 +142,7 @@ class _Profile extends ProfileNotifier {
   @override
   Future<void> patch(Map<String, dynamic> fields) async {
     patches?.add(fields);
+    if (gate != null) await gate!.future;
     if (failPatch) throw const ApiException('SERVER_ERROR', 'Could not save.');
     state = AsyncData(_profile(fields['notificationsEnabled'] as bool));
   }
@@ -220,6 +226,7 @@ Future<_FakeCalendarRepo> _pump(
   List<Map<String, dynamic>>? patches,
   bool failPatch = false,
   _Scheduler? scheduler,
+  _Profile? profile,
 }) async {
   // Tall enough that the grid and the whole list are built at once.
   tester.view.physicalSize = const Size(800, 1800);
@@ -235,7 +242,9 @@ Future<_FakeCalendarRepo> _pump(
       overrides: [
         calendarRepositoryProvider.overrideWithValue(repo),
         profileProvider.overrideWith(
-          () => _Profile(masterOn, patches: patches, failPatch: failPatch),
+          () =>
+              profile ??
+              _Profile(masterOn, patches: patches, failPatch: failPatch),
         ),
         reminderSettingsProvider.overrideWith(() => _Settings(settings)),
         reminderSchedulerProvider.overrideWithValue(scheduler ?? _Scheduler()),
@@ -349,6 +358,22 @@ void main() {
 
       expect(find.text('Today · Stretch · 9:00 PM'), findsOneWidget);
       expect(find.text('Today · Walk · Any time'), findsOneWidget);
+    },
+  );
+
+  testWidgets(
+    'a device clock a day behind the server still shows its tomorrow',
+    (tester) async {
+      // 10:00 on 23 Sep by the phone; the server already says 24 Sep.
+      await _pump(
+        tester,
+        now: DateTime.utc(2026, 9, 23, 2),
+        answer: (from, to) =>
+            _range(from, to, days: _fixture, today: '2026-09-24'),
+      );
+
+      expect(find.text('Today · Walk · Any time'), findsOneWidget);
+      expect(find.text('Tomorrow · Read · Any time'), findsOneWidget);
     },
   );
 
@@ -781,6 +806,133 @@ void main() {
 
       expect(find.text('Could not save.'), findsOneWidget);
       expect(find.text('Reminders on'), findsOneWidget);
+    });
+    testWidgets('master and every reminder type off: it opens Reminders', (
+      tester,
+    ) async {
+      final patches = <Map<String, dynamic>>[];
+      final scheduler = _Scheduler(granted: false);
+      await _pump(
+        tester,
+        masterOn: false,
+        patches: patches,
+        scheduler: scheduler,
+        settings: const ReminderSettings(
+          habitsEnabled: false,
+          habitLeadMin: 15,
+          workoutEnabled: false,
+          workoutTime: '07:00',
+          checkinEnabled: false,
+          checkinTime: '07:00',
+        ),
+      );
+
+      await tester.tap(tag());
+      await tester.pumpAndSettle();
+
+      expect(find.byType(RemindersScreen), findsOneWidget);
+      expect(patches, isEmpty);
+      expect(scheduler.requests, 0);
+    });
+
+    testWidgets('a second tap while a save is in flight is ignored', (
+      tester,
+    ) async {
+      final patches = <Map<String, dynamic>>[];
+      final gate = Completer<void>();
+      await _pump(
+        tester,
+        profile: _Profile(true, patches: patches, gate: gate),
+      );
+
+      await tester.tap(tag());
+      await tester.pump();
+      await tester.tap(tag());
+      await tester.pump();
+      expect(patches, hasLength(1));
+
+      gate.complete();
+      await tester.pumpAndSettle();
+      expect(patches, hasLength(1));
+      expect(find.text('Reminders off'), findsOneWidget);
+    });
+
+    testWidgets('after a failed save, the next tap tries again', (
+      tester,
+    ) async {
+      final patches = <Map<String, dynamic>>[];
+      final profile = _Profile(true, patches: patches, failPatch: true);
+      await _pump(tester, profile: profile);
+
+      await tester.tap(tag());
+      await tester.pumpAndSettle();
+      expect(find.text('Reminders on'), findsOneWidget);
+
+      profile.failPatch = false;
+      await tester.tap(tag());
+      await tester.pumpAndSettle();
+      expect(patches, hasLength(2));
+      expect(find.text('Reminders off'), findsOneWidget);
+    });
+
+    testWidgets(
+      'closing the screen mid-save neither throws nor loses the message',
+      (tester) async {
+        final gate = Completer<void>();
+        final profile = _Profile(true, failPatch: true, gate: gate);
+        await tester.pumpWidget(
+          ProviderScope(
+            overrides: [
+              calendarRepositoryProvider.overrideWithValue(
+                _FakeCalendarRepo(
+                  (from, to) => _range(from, to, days: _fixture),
+                ),
+              ),
+              profileProvider.overrideWith(() => profile),
+              reminderSettingsProvider.overrideWith(
+                () => _Settings(ReminderSettings.defaults),
+              ),
+              reminderSchedulerProvider.overrideWithValue(_Scheduler()),
+            ],
+            child: MaterialApp(
+              // A Scaffold underneath, as in the app: Schedule is always
+              // pushed from Daily Routine or Profile.
+              home: Scaffold(
+                body: Builder(
+                  builder: (context) => TextButton(
+                    onPressed: () => Navigator.of(context).push(
+                      MaterialPageRoute<void>(
+                        builder: (_) => ScheduleScreen(now: () => _now),
+                      ),
+                    ),
+                    child: const Text('open'),
+                  ),
+                ),
+              ),
+            ),
+          ),
+        );
+        await tester.tap(find.text('open'));
+        await tester.pumpAndSettle();
+
+        await tester.tap(tag());
+        await tester.pump();
+        Navigator.of(tester.element(find.byType(ScheduleScreen))).pop();
+        await tester.pumpAndSettle();
+        expect(find.byType(ScheduleScreen), findsNothing);
+
+        gate.complete();
+        await tester.pumpAndSettle();
+
+        expect(tester.takeException(), isNull);
+        expect(find.text('Could not save.'), findsOneWidget);
+      },
+    );
+
+    testWidgets('is at least 48 high to tap', (tester) async {
+      await _pump(tester);
+
+      expect(tester.getSize(tag()).height, greaterThanOrEqualTo(48));
     });
   });
 }

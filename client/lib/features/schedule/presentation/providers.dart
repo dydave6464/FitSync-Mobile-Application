@@ -12,7 +12,7 @@ final calendarRepositoryProvider = Provider<CalendarRepository>(
   (ref) => CalendarRepository(ref.watch(apiClientProvider)),
 );
 
-/// One range of the Schedule -- the grid's six weeks, or the coming week.
+/// One range of the Schedule -- the grid's six weeks, or Upcoming's days.
 /// autoDispose: it lives only while the Schedule is open, so it needs no
 /// place on sign-out's list of per-user caches.
 final calendarProvider = FutureProvider.autoDispose

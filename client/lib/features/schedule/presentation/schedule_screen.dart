@@ -11,7 +11,8 @@ import '../../reminders/data/reminder_scheduler.dart'
     show reminderSchedulerProvider;
 import '../../reminders/presentation/providers.dart'
     show reminderSettingsProvider;
-import '../../reminders/presentation/reminders_screen.dart';
+import '../../reminders/presentation/reminders_screen.dart'
+    show RemindersScreen, remindersBlockedText;
 import '../domain/calendar.dart';
 import '../domain/schedule_view.dart';
 import 'providers.dart';
@@ -54,12 +55,12 @@ class _ScheduleScreenState extends ConsumerState<ScheduleScreen> {
 
   /// The Reminders tag: on turns the master switch off; off because of the
   /// master switch turns it back on -- asking for the phone's permission
-  /// first when it is not granted, as the Reminders screen does. Off because
-  /// every kind of reminder is off has nothing to flip, so it opens that
-  /// screen instead.
+  /// first when it is not granted, as the Reminders screen does. With every
+  /// kind of reminder off there is nothing the master switch alone would
+  /// start, whichever way it is set, so it opens that screen instead.
   Future<void> _tapReminders(ReminderContext reminders) async {
     if (_savingReminders) return;
-    if (reminders.masterOn && !remindersOn(reminders)) {
+    if (!anyReminderKindOn(reminders.settings)) {
       Navigator.of(
         context,
       ).push(MaterialPageRoute<void>(builder: (_) => const RemindersScreen()));
@@ -112,13 +113,13 @@ class _ScheduleScreenState extends ConsumerState<ScheduleScreen> {
     // phone whose clock disagrees with the server's around midnight: its
     // guess at "today" can be a day off. [upcomingItems] keeps only the
     // server's own today and tomorrow, so the extra days cost nothing.
-    final CalendarSpan weekSpan = (
+    final CalendarSpan upcomingSpan = (
       from: addDays(deviceToday, -1),
       to: addDays(deviceToday, 2),
     );
-    final week = ref.watch(calendarProvider(weekSpan));
-    final today = week.hasValue && !week.hasError
-        ? week.value!.today
+    final upcoming = ref.watch(calendarProvider(upcomingSpan));
+    final today = upcoming.hasValue && !upcoming.hasError
+        ? upcoming.value!.today
         : deviceToday;
 
     final month = _pinnedMonth ?? monthOf(today);
@@ -203,14 +204,14 @@ class _ScheduleScreenState extends ConsumerState<ScheduleScreen> {
           if (showDay)
             ..._day(selected, loaded)
           else
-            ..._upcoming(week, weekSpan, reminders),
+            ..._upcoming(upcoming, upcomingSpan, reminders),
         ],
       ),
     );
   }
 
   List<Widget> _upcoming(
-    AsyncValue<CalendarRange> week,
+    AsyncValue<CalendarRange> upcoming,
     CalendarSpan span,
     ReminderContext? reminders,
   ) => [
@@ -220,12 +221,15 @@ class _ScheduleScreenState extends ConsumerState<ScheduleScreen> {
         if (reminders != null)
           _RemindersTag(
             on: remindersOn(reminders),
+            // With every kind off, a tap opens the Reminders screen rather
+            // than flipping anything.
+            toggles: anyReminderKindOn(reminders.settings),
             onTap: _savingReminders ? null : () => _tapReminders(reminders),
           ),
       ],
     ),
     const SizedBox(height: 10),
-    week.when(
+    upcoming.when(
       loading: () => const SizedBox(
         height: 120,
         child: Center(child: CircularProgressIndicator()),
@@ -237,6 +241,9 @@ class _ScheduleScreenState extends ConsumerState<ScheduleScreen> {
       ),
       data: (range) {
         final items = upcomingItems(range);
+        // One clock for every row, so two rows never disagree about what
+        // has already fired.
+        final now = widget.now();
         if (items.isEmpty) {
           return const _Empty('Nothing left for today or tomorrow.');
         }
@@ -249,7 +256,7 @@ class _ScheduleScreenState extends ConsumerState<ScheduleScreen> {
                 line1: upcomingLine(item, range.today),
                 line2: reminders == null
                     ? null
-                    : reminderLine(item, reminders, now: widget.now()),
+                    : reminderLine(item, reminders, now: now),
               ),
           ],
         );
@@ -293,11 +300,19 @@ class _ScheduleScreenState extends ConsumerState<ScheduleScreen> {
 }
 
 /// "Reminders on" / "Reminders off" with a bell, tappable; [onTap] null
-/// while a tap is still saving.
+/// while a tap is still saving. The pill stays small; the tap target around
+/// it is the 48dp minimum.
 class _RemindersTag extends StatelessWidget {
-  const _RemindersTag({required this.on, required this.onTap});
+  const _RemindersTag({
+    required this.on,
+    required this.toggles,
+    required this.onTap,
+  });
 
   final bool on;
+
+  /// False when a tap opens the Reminders screen instead of flipping.
+  final bool toggles;
   final VoidCallback? onTap;
 
   @override
@@ -306,39 +321,44 @@ class _RemindersTag extends StatelessWidget {
     final radius = BorderRadius.circular(FsRadius.pill);
     return Semantics(
       button: true,
-      toggled: on,
-      child: Material(
-        color: t.surface2,
-        shape: RoundedRectangleBorder(
-          borderRadius: radius,
-          side: BorderSide(color: t.line),
-        ),
-        child: InkWell(
-          key: const Key('schedule.reminders'),
-          borderRadius: radius,
-          onTap: onTap,
-          child: Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
-            child: Row(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Icon(
-                  on
-                      ? Icons.notifications_outlined
-                      : Icons.notifications_off_outlined,
-                  size: 13,
-                  color: on ? t.accent : t.text3,
-                ),
-                const SizedBox(width: 5),
-                Text(
-                  on ? 'Reminders on' : 'Reminders off',
-                  style: TextStyle(
-                    fontSize: 11,
-                    fontWeight: FontWeight.w600,
-                    color: t.text2,
+      enabled: onTap != null,
+      toggled: toggles ? on : null,
+      child: InkWell(
+        key: const Key('schedule.reminders'),
+        borderRadius: radius,
+        onTap: onTap,
+        child: ConstrainedBox(
+          constraints: const BoxConstraints(minHeight: 48),
+          child: Center(
+            widthFactor: 1,
+            child: Container(
+              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+              decoration: BoxDecoration(
+                color: t.surface2,
+                borderRadius: radius,
+                border: Border.all(color: t.line),
+              ),
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Icon(
+                    on
+                        ? Icons.notifications_outlined
+                        : Icons.notifications_off_outlined,
+                    size: 13,
+                    color: on ? t.accent : t.text3,
                   ),
-                ),
-              ],
+                  const SizedBox(width: 5),
+                  Text(
+                    on ? 'Reminders on' : 'Reminders off',
+                    style: TextStyle(
+                      fontSize: 11,
+                      fontWeight: FontWeight.w600,
+                      color: t.text2,
+                    ),
+                  ),
+                ],
+              ),
             ),
           ),
         ),

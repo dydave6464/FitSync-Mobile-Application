@@ -1,3 +1,4 @@
+import '../../../core/manila_day.dart';
 import '../../reminders/domain/reminders.dart';
 import '../../routine/domain/routine.dart' show formatClock;
 import 'calendar.dart';
@@ -169,19 +170,6 @@ String upcomingLine(ScheduleItem item, String today) =>
 /// settings.
 typedef ReminderContext = ({bool masterOn, ReminderSettings settings});
 
-/// The instant [clock] (`HH:MM`) on [date] in Manila, less [leadMin]
-/// minutes. Manila keeps no daylight saving, so a fixed +08:00 is exact.
-DateTime _manilaInstant(String date, String clock, {int leadMin = 0}) {
-  final d = _parse(date);
-  return DateTime.utc(
-    d.year,
-    d.month,
-    d.day,
-    int.parse(clock.substring(0, 2)) - 8,
-    int.parse(clock.substring(3, 5)) - leadMin,
-  );
-}
-
 /// What will remind about [item], or null when nothing will: a timed habit
 /// with habit reminders on, or the workout with workout reminders on -- and
 /// only while that reminder is still ahead of [now], as the phone schedules
@@ -195,27 +183,32 @@ String? reminderLine(
   final s = r.settings;
   if (item.isWorkout) {
     if (!s.workoutEnabled) return null;
-    final fires = _manilaInstant(item.date, s.workoutTime);
+    final fires = manilaInstant(_parse(item.date), s.workoutTime);
     return fires.isAfter(now)
         ? 'Reminder at ${formatClock(s.workoutTime)}'
         : null;
   }
   final time = item.time;
   if (!s.habitsEnabled || time == null) return null;
-  final fires = _manilaInstant(item.date, time, leadMin: s.habitLeadMin);
+  final fires = manilaInstant(
+    _parse(item.date),
+    time,
+  ).subtract(Duration(minutes: s.habitLeadMin));
   if (!fires.isAfter(now)) return null;
   return s.habitLeadMin == 0
       ? 'Reminder at the time'
       : 'Reminder ${s.habitLeadMin} min before';
 }
 
+/// Whether any of the three kinds of reminder is on, whatever the master
+/// switch says.
+bool anyReminderKindOn(ReminderSettings s) =>
+    s.habitsEnabled || s.workoutEnabled || s.checkinEnabled;
+
 /// The Upcoming header's tag: on when the master switch and at least one of
 /// the three reminders are.
 bool remindersOn(ReminderContext r) =>
-    r.masterOn &&
-    (r.settings.habitsEnabled ||
-        r.settings.workoutEnabled ||
-        r.settings.checkinEnabled);
+    r.masterOn && anyReminderKindOn(r.settings);
 
 /// A dot under a grid day: filled for done, a ring for planned or due.
 enum DotState { none, planned, done }

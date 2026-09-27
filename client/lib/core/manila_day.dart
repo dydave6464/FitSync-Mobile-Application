@@ -10,3 +10,15 @@ String manilaDayOf(DateTime instant) {
   String pad(int n) => n.toString().padLeft(2, '0');
   return '${manila.year}-${pad(manila.month)}-${pad(manila.day)}';
 }
+
+/// [hhmm] (`HH:MM`, 24-hour) on the Manila calendar day [day] -- a
+/// UTC-midnight DateTime carrying only the date -- as a UTC instant. The
+/// reminder planner and the Schedule's reminder lines both use it, so the
+/// Schedule never promises a time the phone would not schedule.
+DateTime manilaInstant(DateTime day, String hhmm) => DateTime.utc(
+  day.year,
+  day.month,
+  day.day,
+  int.parse(hhmm.substring(0, 2)) - 8,
+  int.parse(hhmm.substring(3, 5)),
+);
