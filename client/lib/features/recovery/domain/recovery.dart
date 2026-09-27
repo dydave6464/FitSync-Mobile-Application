@@ -60,6 +60,37 @@ class InjuryRiskEstimate {
     _ => 'Low',
   };
 
+  /// The same score the other way up: 100 minus the 0-100 risk score, so
+  /// high is good. Home leads with it, as the prototype and the manuscript's
+  /// "recovery readiness" do; Recovery keeps the injury-risk estimate as its
+  /// headline and shows this beside it.
+  ///
+  /// Rounded up, so it always lands on its level's side of the bands: risk
+  /// is moderate from 40 and high from 70, so readiness is 61+ when low,
+  /// 31-60 when moderate and 30 or under when high. Null for an estimate
+  /// saved without a score -- its level still shows, but no number is
+  /// invented for it.
+  int? get readiness {
+    final score = trainingLoadScore;
+    if (score == null) return null;
+    return (100 - score).ceil().clamp(0, 100);
+  }
+
+  /// The readiness card's tag, by level rather than by number -- the same
+  /// reason [ringValue] is.
+  String get recoveryLabel => switch (riskLevel) {
+    'high' => 'Recovery low',
+    'moderate' => 'Recovery fair',
+    _ => 'Recovery good',
+  };
+
+  /// What today's readiness suggests. Guidance, as the estimate is.
+  String get readinessHeadline => switch (riskLevel) {
+    'high' => 'Consider a lighter day',
+    'moderate' => 'Train, but go a little easier',
+    _ => "You're primed to train",
+  };
+
   factory InjuryRiskEstimate.fromJson(Map<String, dynamic> json) =>
       InjuryRiskEstimate(
         riskLevel: json['riskLevel'] as String,

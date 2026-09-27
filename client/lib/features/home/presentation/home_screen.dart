@@ -272,8 +272,9 @@ class _Readiness extends ConsumerWidget {
     return ref
         .watch(recoveryOverviewProvider)
         .when(
-          // The card's own height, so Home does not jump when it lands.
-          loading: () => const SizedBox(height: 124),
+          // The card's own with-data height (156, measured) plus its 14dp
+          // bottom gap, so Home does not jump when it lands.
+          loading: () => const SizedBox(height: 170),
           error: (_, _) => const SizedBox.shrink(),
           data: (overview) => Padding(
             padding: const EdgeInsets.only(bottom: 14),

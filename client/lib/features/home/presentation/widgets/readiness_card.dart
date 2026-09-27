@@ -7,14 +7,14 @@ import '../../../recovery/domain/recovery.dart';
 import '../../../sessions/presentation/widgets/share_report_sheet.dart'
     show formatShareExpiry;
 
-/// Home's readiness hero: the latest injury-risk estimate, in the Recovery
-/// tab's own ring.
+/// Home's readiness hero, as the prototype draws it: a 0-100 READY score in
+/// a ring, a recovery tag and a line of guidance.
 ///
-/// The prototype draws a 0-100 "READY" score here. The app has no such score
-/// -- it has a low/moderate/high estimate -- so this shows that, with the same
-/// ring value, colour and label Recovery uses, and says what it is: an injury
-/// risk. The ring fills as risk rises, so calling it readiness would read
-/// backwards.
+/// Readiness is the injury-risk score the other way up (see
+/// [InjuryRiskEstimate.readiness]) -- one score, two readings -- so this card
+/// also names the injury-risk level it comes from, and the Recovery tab keeps
+/// the injury-risk estimate as its headline, as the manuscript's "View
+/// Injury-Risk Estimate" has it. The ring fills as readiness rises.
 class ReadinessCard extends StatelessWidget {
   const ReadinessCard({
     super.key,
@@ -61,11 +61,10 @@ class ReadinessCard extends StatelessWidget {
           ? Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                const FsEyebrow('Injury-risk estimate'),
+                const FsEyebrow('Readiness'),
                 const SizedBox(height: 8),
-                // Recovery's own empty-state sentence, verbatim.
                 Text(
-                  'Check in this morning to get your first estimate.',
+                  'Check in this morning to get your first score.',
                   style: TextStyle(
                     fontSize: 15,
                     fontWeight: FontWeight.w700,
@@ -78,51 +77,38 @@ class ReadinessCard extends StatelessWidget {
             )
           : Row(
               children: [
-                FsRing(
-                  value: estimate.ringValue,
-                  color: switch (estimate.riskLevel) {
-                    'high' => t.red,
-                    'moderate' => t.amber,
-                    _ => t.accent,
-                  },
-                  size: 78,
-                  stroke: 9,
-                  child: Text(
-                    estimate.label,
-                    style: TextStyle(
-                      fontSize: 13,
-                      fontWeight: FontWeight.w700,
-                      color: t.text,
-                    ),
-                  ),
-                ),
+                _ReadinessRing(estimate: estimate),
                 const SizedBox(width: 16),
                 Expanded(
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      const FsEyebrow('Injury-risk estimate'),
-                      const SizedBox(height: 6),
+                      FsTag(estimate.recoveryLabel),
+                      const SizedBox(height: 8),
                       Text(
                         !isToday
                             ? (today == null
                                   ? "Check in for today's estimate"
                                   : "Today's estimate is unavailable")
-                            : switch (estimate.riskLevel) {
-                                'high' => 'Consider a lighter day',
-                                'moderate' => 'Worth easing in today',
-                                _ => 'Load and check-ins look manageable',
-                              },
+                            : estimate.readinessHeadline,
                         style: TextStyle(
                           fontSize: 15,
                           fontWeight: FontWeight.w700,
                           color: t.text,
                         ),
                       ),
+                      const SizedBox(height: 4),
+                      Text(
+                        isToday
+                            ? 'Injury risk: ${estimate.label.toLowerCase()} · '
+                                  "from your training load & today's check-in"
+                            : 'Injury risk: ${estimate.label.toLowerCase()}',
+                        style: TextStyle(fontSize: 11.5, color: t.text2),
+                      ),
                       // Recovery's rule: an estimate from today's check-in
                       // is already dated by "today"; any other says its day.
                       if (!isToday) ...[
-                        const SizedBox(height: 4),
+                        const SizedBox(height: 2),
                         Text(
                           'From ${formatShareExpiry(DateTime.parse(estimate.checkinDate))}',
                           style: TextStyle(fontSize: 11.5, color: t.text3),
@@ -137,4 +123,59 @@ class ReadinessCard extends StatelessWidget {
             ),
     );
   }
+}
+
+/// The READY ring: readiness out of 100, coloured by the risk level it comes
+/// from. An estimate saved without a score has no number to show, so the ring
+/// takes its level's share and the centre stays blank rather than invent one.
+class _ReadinessRing extends StatelessWidget {
+  const _ReadinessRing({required this.estimate});
+
+  final InjuryRiskEstimate estimate;
+
+  @override
+  Widget build(BuildContext context) {
+    final t = context.fs;
+    final readiness = estimate.readiness;
+    return FsRing(
+      value: readiness == null ? 1 - estimate.ringValue : readiness / 100,
+      color: switch (estimate.riskLevel) {
+        'high' => t.red,
+        'moderate' => t.amber,
+        _ => t.accent,
+      },
+      size: 78,
+      stroke: 9,
+      // The ring is a fixed 78dp while system text can double, so the
+      // centre shrinks to fit inside the stroke rather than spill past it.
+      child: Padding(
+        padding: const EdgeInsets.all(12),
+        child: FittedBox(fit: BoxFit.scaleDown, child: _centre(readiness, t)),
+      ),
+    );
+  }
+
+  Widget _centre(int? readiness, FsTokens t) => readiness == null
+      ? Text('–', style: TextStyle(fontSize: 20, color: t.text3))
+      : Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Text(
+              '$readiness',
+              style: TextStyle(
+                fontSize: 20,
+                fontWeight: FontWeight.w800,
+                color: t.text,
+              ),
+            ),
+            Text(
+              'READY',
+              style: TextStyle(
+                fontSize: 8.5,
+                letterSpacing: 0.7,
+                color: t.text3,
+              ),
+            ),
+          ],
+        );
 }

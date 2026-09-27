@@ -93,6 +93,49 @@ void main() {
     },
   );
 
+  testWidgets(
+    'keeps the injury-risk estimate as its headline, readiness beside it',
+    (tester) async {
+      await _pump(
+        tester,
+        const RecoveryOverview(
+          todayCheckin: null,
+          latestEstimate: _estimate,
+          load: [],
+        ),
+      );
+
+      expect(find.text('INJURY-RISK ESTIMATE'), findsOneWidget);
+      expect(find.text('Moderate'), findsOneWidget);
+      // 100 - 42.5, rounded up.
+      expect(find.text('Readiness 58'), findsOneWidget);
+      expect(
+        find.textContaining('Readiness is 100 minus the risk score'),
+        findsOneWidget,
+      );
+    },
+  );
+
+  testWidgets('an estimate saved without a score shows no readiness number', (
+    tester,
+  ) async {
+    await _pump(
+      tester,
+      const RecoveryOverview(
+        todayCheckin: null,
+        latestEstimate: InjuryRiskEstimate(
+          riskLevel: 'low',
+          trainingLoadScore: null,
+          checkinDate: '2026-09-18',
+        ),
+        load: [],
+      ),
+    );
+
+    expect(find.text('Low'), findsOneWidget);
+    expect(find.textContaining(RegExp(r'^Readiness \d')), findsNothing);
+  });
+
   testWidgets('last trained lists each group in the order the server sent', (
     tester,
   ) async {

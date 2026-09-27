@@ -44,28 +44,58 @@ Future<({List<String> taps})> _pump(
   return (taps: taps);
 }
 
-void main() {
-  for (final (level, label) in [
-    ('low', 'Low'),
-    ('moderate', 'Moderate'),
-    ('high', 'High'),
-  ]) {
-    testWidgets('shows a $level estimate in Recovery\'s ring', (tester) async {
-      await _pump(tester, estimate: _estimate(level), todayCheckin: _today);
+InjuryRiskEstimate _scored(String level, double? score) => InjuryRiskEstimate(
+  riskLevel: level,
+  trainingLoadScore: score,
+  checkinDate: '2026-09-24',
+);
 
-      expect(find.text('INJURY-RISK ESTIMATE'), findsOneWidget);
-      expect(find.text(label), findsOneWidget);
+void main() {
+  for (final (level, score, readiness, tag, headline) in [
+    ('low', 18.0, '82', 'Recovery good', "You're primed to train"),
+    ('moderate', 50.0, '50', 'Recovery fair', 'Train, but go a little easier'),
+    ('high', 75.5, '25', 'Recovery low', 'Consider a lighter day'),
+  ]) {
+    testWidgets('a $level estimate reads as readiness $readiness', (
+      tester,
+    ) async {
+      await _pump(
+        tester,
+        estimate: _scored(level, score),
+        todayCheckin: _today,
+      );
+
+      expect(find.text(readiness), findsOneWidget);
+      expect(find.text('READY'), findsOneWidget);
+      expect(find.text(tag), findsOneWidget);
+      expect(find.text(headline), findsOneWidget);
+      // The manuscript's term stays on Home, beside the readiness it drives.
+      expect(
+        find.text(
+          "Injury risk: $level · from your training load & today's check-in",
+        ),
+        findsOneWidget,
+      );
       final ring = tester.widget<FsRing>(find.byType(FsRing));
-      expect(ring.value, _estimate(level).ringValue);
+      expect(ring.value, int.parse(readiness) / 100);
     });
   }
 
+  testWidgets('an estimate saved without a score shows no number', (
+    tester,
+  ) async {
+    await _pump(tester, estimate: _scored('low', null), todayCheckin: _today);
+
+    expect(find.text('Recovery good'), findsOneWidget);
+    expect(find.text('READY'), findsNothing);
+    expect(find.textContaining(RegExp(r'^\d+$')), findsNothing);
+  });
+
   testWidgets('with no estimate it asks for a check-in', (tester) async {
     await _pump(tester);
-    expect(find.text('INJURY-RISK ESTIMATE'), findsOneWidget);
-    // Recovery's own empty-state sentence, not a Home-specific rewrite.
+    expect(find.text('READINESS'), findsOneWidget);
     expect(
-      find.text('Check in this morning to get your first estimate.'),
+      find.text('Check in this morning to get your first score.'),
       findsOneWidget,
     );
     expect(find.byType(FsRing), findsNothing);
@@ -86,8 +116,10 @@ void main() {
 
       expect(find.text('Check in for today\'s estimate'), findsOneWidget);
       expect(find.text('Consider a lighter day'), findsNothing);
-      expect(find.text('Worth easing in today'), findsNothing);
-      expect(find.text('Load and check-ins look manageable'), findsNothing);
+      expect(find.text('Train, but go a little easier'), findsNothing);
+      expect(find.text("You're primed to train"), findsNothing);
+      // Not today's, so no "today's check-in" either.
+      expect(find.text('Injury risk: high'), findsOneWidget);
     },
   );
 
