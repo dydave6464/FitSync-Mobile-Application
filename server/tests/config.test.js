@@ -130,6 +130,8 @@ test('refuses to start with PUBLIC_BASE_URL unset in production', () => {
     (err) => {
       assert.match(err.message, /PUBLIC_BASE_URL/);
       assert.match(err.message, /NODE_ENV/);
+      assert.match(err.message, /coach-report links/);
+      assert.doesNotMatch(err.message, /password reset/, 'codes, not links, since email-codes');
       return true;
     },
   );
