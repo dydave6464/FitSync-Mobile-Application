@@ -8,6 +8,8 @@ const {
   markEmailVerified, updatePasswordHash,
 } = require('../db/users');
 const { issueToken, consumeToken } = require('../lib/auth-tokens');
+const { codeKey, normaliseCode, TTL_MINUTES } = require('../lib/auth-codes');
+const { issueCode, checkCode } = require('../db/auth-codes');
 const requireAuth = require('../middleware/require-auth');
 const { renderPage, escapeHtml } = require('./auth-pages');
 
@@ -71,26 +73,45 @@ function requireEmail(value) {
   return email;
 }
 
+/// One answer for every failed code, whatever the reason -- unknown address,
+/// wrong, expired, used up, already verified -- so the route cannot be used to
+/// learn which accounts exist.
+const codeInvalid = () => AppError.badRequest('CODE_INVALID', 'That code is wrong or has expired.');
+
+/// The email as a code route receives it: trimmed and lowercased, or '' when
+/// it is not a string. Deliberately not requireEmail, whose own 400 would
+/// differ from CODE_INVALID and so reveal the difference it exists to hide.
+const emailFrom = (value) => (typeof value === 'string' ? value.trim().toLowerCase() : '');
+
 module.exports = function buildAuthRouter({
   pool, jwt, google, mail, publicBaseUrl = 'http://localhost:3000',
 }) {
   const router = express.Router();
 
+  // Derived on first use rather than here: some tests build the app without
+  // a JWT config and never touch these routes.
+  let key = null;
+  const codesKey = () => {
+    key = key || codeKey(jwt.secret);
+    return key;
+  };
+
   // Shared by /register and /verify-email/request. A failed send must never
-  // fail the caller: the account exists and the token is already stored, so
-  // a mail outage should leave the user able to ask for a resend, not unable
-  // to have an account.
+  // fail the caller: the account exists and the code is already stored, so a
+  // mail outage should leave the user able to ask for a new code, not unable
+  // to have an account. A null code means the resend limit held it back.
   async function sendVerification(req, user) {
-    const token = await issueToken(pool, {
-      userId: user.user_id, purpose: 'verify_email',
+    const code = await issueCode(pool, {
+      key: codesKey(), userId: user.user_id, purpose: 'verify_email',
     });
-    const link = `${publicBaseUrl}/api/v1/auth/verify-email?token=${token}`;
+    if (code === null) return;
     try {
       await mail.send({
         to: user.email,
-        subject: 'Verify your FitSync email',
-        text: `Confirm your address to finish setting up FitSync:\n\n${link}\n\n`
-          + 'This link works once and expires in 24 hours.',
+        subject: `Your FitSync code: ${code}`,
+        text: `Enter this code in the FitSync app to verify your email: ${code}\n\n`
+          + `It expires in ${TTL_MINUTES.verify_email} minutes. `
+          + "If you didn't sign up for FitSync, you can ignore this email.",
       });
     } catch (err) {
       req.log?.error({ err }, 'verification email failed to send');
@@ -115,7 +136,7 @@ module.exports = function buildAuthRouter({
       });
       await sendVerification(req, user);
       // Hard gate: no token here. Nothing is signed in until the address is
-      // proven by following the verification link.
+      // proven by entering the emailed code.
       res.status(201).json({ data: { user: toPublicUser(user) } });
     } catch (err) { next(err); }
   });
@@ -182,27 +203,22 @@ module.exports = function buildAuthRouter({
     } catch (err) { next(err); }
   });
 
-  // Opened straight out of a mail client, so a stale, reused or mistyped
-  // token must fail into a page a human can read, not the JSON error
-  // envelope the rest of the API uses. This route never hands the browser a
-  // token to hold onto, so it does not need Cache-Control: no-store -- see
-  // the two password-reset handlers below, which do.
-  router.get('/verify-email', async (req, res, next) => {
+  // The code typed into the app. Every failure is the same CODE_INVALID (see
+  // codeInvalid). A malformed code or an unknown address never reaches
+  // checkCode, so it spends nobody's attempts. Unknown addresses return a
+  // little sooner than known ones; that is left alone, because /register
+  // already answers EMAIL_TAKEN for a known address.
+  router.post('/verify-email', async (req, res, next) => {
     try {
-      const result = await consumeToken(pool, { token: req.query.token, purpose: 'verify_email' });
-      if (!result) {
-        res.status(400).send(renderPage({
-          title: 'Verification link invalid',
-          body: '<p>This verification link is invalid or has expired. '
-            + 'Request a new one from the app and try again.</p>',
-        }));
-        return;
-      }
-      await markEmailVerified(pool, result.userId);
-      res.status(200).send(renderPage({
-        title: 'Email verified',
-        body: '<p>Your address is verified. You can sign in to FitSync now.</p>',
+      const email = emailFrom(req.body.email);
+      const code = normaliseCode(req.body.code);
+      const user = email && code ? await findUserByEmail(pool, email) : null;
+      const ok = Boolean(user && !user.email_verified && await checkCode(pool, {
+        key: codesKey(), userId: user.user_id, purpose: 'verify_email', code,
       }));
+      if (!ok) throw codeInvalid();
+      await markEmailVerified(pool, user.user_id);
+      res.json({ data: { verified: true } });
     } catch (err) { next(err); }
   });
 
