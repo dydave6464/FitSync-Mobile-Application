@@ -36,12 +36,18 @@ function hashCode(key, { userId, purpose, code }) {
   return crypto.createHmac('sha256', key).update(`${userId}:${purpose}:${code}`).digest('hex');
 }
 
-/// Constant-time, so how long a wrong guess takes says nothing about how
-/// close it was.
+/// Constant-time comparison of exactly the hashes hashCode produces. Returns
+/// false unless both arguments are strings matching /^[a-f0-9]{64}$/ — the
+/// exact format hashCode produces. This prevents Buffer.from silently truncating
+/// invalid hex. Timing-safe, so how long a wrong guess takes says nothing about
+/// how close it was.
 function sameHash(a, b) {
-  const x = Buffer.from(String(a), 'hex');
-  const y = Buffer.from(String(b), 'hex');
-  return x.length > 0 && x.length === y.length && crypto.timingSafeEqual(x, y);
+  const pattern = /^[a-f0-9]{64}$/;
+  if (typeof a !== 'string' || !pattern.test(a)) return false;
+  if (typeof b !== 'string' || !pattern.test(b)) return false;
+  const x = Buffer.from(a, 'hex');
+  const y = Buffer.from(b, 'hex');
+  return crypto.timingSafeEqual(x, y);
 }
 
 /// A code as typed or pasted -- spaces allowed -- or null when it cannot be

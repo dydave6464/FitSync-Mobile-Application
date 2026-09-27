@@ -44,6 +44,11 @@ test('hashes compare equal only when they are', () => {
   assert.equal(sameHash(h, hashCode(KEY, { userId: 1, purpose: 'verify_email', code: '123457' })), false);
   assert.equal(sameHash(h, ''), false);
   assert.equal(sameHash(h, 'abc'), false);
+  assert.equal(sameHash(h, h + 'zz'), false);
+  assert.equal(sameHash(h + 'zz', h + 'ww'), false);
+  assert.equal(sameHash(h.toUpperCase(), h), false);
+  assert.equal(sameHash(h.slice(0, 62), h.slice(0, 62)), false);
+  assert.equal(sameHash(undefined, h), false);
 });
 
 test('a code is accepted with spaces, and only as six digits', () => {
