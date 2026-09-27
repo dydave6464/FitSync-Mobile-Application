@@ -30,6 +30,7 @@ class FakeAuthRepository implements AuthRepository {
 
   int loginCalls = 0;
   int registerCalls = 0;
+  int resendCalls = 0;
   String? lastEmail;
   String? lastFullName;
 
@@ -65,11 +66,16 @@ class FakeAuthRepository implements AuthRepository {
   @override
   Future<void> requestPasswordReset(String email) => throw UnimplementedError();
 
+  /// Answered, not thrown: CheckEmailScreen opened from sign-in asks for a
+  /// fresh code as soon as it appears.
   @override
   Future<void> resendVerification({
     required String email,
     required String password,
-  }) => throw UnimplementedError();
+  }) {
+    resendCalls++;
+    return Future<void>.value();
+  }
 
   @override
   Future<void> verifyEmail({required String email, required String code}) =>
@@ -277,6 +283,14 @@ void main() {
       isEmpty,
       reason: 'a registration with no session must never reach the controller',
     );
+    expect(
+      tester
+          .widget<CheckEmailScreen>(find.byType(CheckEmailScreen))
+          .sendCodeOnOpen,
+      isFalse,
+      reason: 'registration has just sent a code',
+    );
+    expect(repo.resendCalls, 0);
   });
 
   testWidgets('EMAIL_NOT_VERIFIED on login shows the check-your-email screen', (
@@ -300,6 +314,14 @@ void main() {
       reason: 'the way forward should be obvious, not a generic error',
     );
     expect(find.text('Verify your email before signing in.'), findsNothing);
+    expect(
+      tester
+          .widget<CheckEmailScreen>(find.byType(CheckEmailScreen))
+          .sendCodeOnOpen,
+      isTrue,
+      reason: 'the code on file has most likely expired by now',
+    );
+    expect(repo.resendCalls, 1);
   });
 
   testWidgets('Forgot password? opens the reset screen', (tester) async {

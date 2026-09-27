@@ -19,6 +19,7 @@ class CheckEmailScreen extends ConsumerStatefulWidget {
     super.key,
     required this.email,
     required this.password,
+    this.sendCodeOnOpen = false,
   });
 
   final String email;
@@ -27,6 +28,13 @@ class CheckEmailScreen extends ConsumerStatefulWidget {
   /// password because there is no JWT yet, and signing in after a correct
   /// code needs it too.
   final String password;
+
+  /// Ask for a fresh code as soon as the screen appears, exactly as if "Send
+  /// a new code" had been tapped (the one-per-minute limit still applies).
+  /// Set when sign-in finds the address unverified: a code lasts 60 minutes,
+  /// so by the time someone comes back through sign-in the one on file has
+  /// most likely expired. Not set after registration, which has just sent one.
+  final bool sendCodeOnOpen;
 
   @override
   ConsumerState<CheckEmailScreen> createState() => _CheckEmailScreenState();
@@ -46,6 +54,12 @@ class _CheckEmailScreenState extends ConsumerState<CheckEmailScreen> {
   void initState() {
     super.initState();
     _code.addListener(_onCodeChanged);
+    if (widget.sendCodeOnOpen) {
+      // After the first frame: _resend calls setState, not allowed mid-build.
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) _resend();
+      });
+    }
   }
 
   void _onCodeChanged() => setState(() {});

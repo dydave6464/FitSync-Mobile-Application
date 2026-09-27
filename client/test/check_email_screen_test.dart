@@ -105,8 +105,9 @@ class RecordingAuthController extends AuthController {
 /// see the screen close again.
 Future<List<AuthUser>> _pump(
   WidgetTester tester,
-  FakeAuthRepository repo,
-) async {
+  FakeAuthRepository repo, {
+  bool sendCodeOnOpen = false,
+}) async {
   final seen = <AuthUser>[];
   await tester.pumpWidget(
     ProviderScope(
@@ -122,9 +123,10 @@ Future<List<AuthUser>> _pump(
             body: TextButton(
               onPressed: () => Navigator.of(context).push(
                 MaterialPageRoute<void>(
-                  builder: (_) => const CheckEmailScreen(
+                  builder: (_) => CheckEmailScreen(
                     email: 'juan@example.com',
                     password: 's3cret-pass',
+                    sendCodeOnOpen: sendCodeOnOpen,
                   ),
                 ),
               ),
@@ -295,6 +297,26 @@ void main() {
     expect(repo.lastEmail, 'juan@example.com');
     expect(repo.lastPassword, 's3cret-pass');
     expect(find.text(newCodeMessage), findsOneWidget);
+  });
+
+  testWidgets('opened from sign-in, it asks for a fresh code once', (
+    tester,
+  ) async {
+    final repo = FakeAuthRepository();
+    await _pump(tester, repo, sendCodeOnOpen: true);
+
+    expect(repo.resendCalls, 1);
+    expect(repo.lastEmail, 'juan@example.com');
+    expect(repo.lastPassword, 's3cret-pass');
+    expect(find.text(newCodeMessage), findsOneWidget);
+  });
+
+  testWidgets('by default it sends no code on open', (tester) async {
+    final repo = FakeAuthRepository();
+    await _pump(tester, repo);
+
+    expect(repo.resendCalls, 0, reason: 'registration has just sent one');
+    expect(find.text(newCodeMessage), findsNothing);
   });
 
   testWidgets('a resend failure surfaces the server message', (tester) async {
