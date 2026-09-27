@@ -21,6 +21,39 @@ test('smtp mode refuses to start without credentials', () => {
   assert.throws(() => createMailService({ mode: 'smtp' }), /SMTP_HOST/);
 });
 
+test('brevo mode refuses to start without its key or sender', () => {
+  assert.throws(() => createMailService({ mode: 'brevo' }), /BREVO_API_KEY/);
+  assert.throws(() => createMailService({ mode: 'brevo' }), /MAIL_FROM/);
+  assert.throws(
+    () => createMailService({ mode: 'brevo', brevo: { apiKey: 'k' } }),
+    (err) => /MAIL_FROM/.test(err.message) && !/BREVO_API_KEY/.test(err.message),
+  );
+});
+
+test('brevo mode builds a sender when both are set', () => {
+  const mail = createMailService({
+    mode: 'brevo', brevo: { apiKey: 'k', from: 'FitSync <hello@fitsync.test>' },
+  });
+  assert.equal(typeof mail.send, 'function');
+});
+
+test('the config reads BREVO_API_KEY and MAIL_FROM for brevo mode', () => {
+  const config = load({
+    ...baseEnv, MAIL_MODE: 'brevo', BREVO_API_KEY: 'xkeysib-1', MAIL_FROM: 'a@b.c',
+  });
+  assert.equal(config.mail.mode, 'brevo');
+  assert.deepEqual(config.mail.brevo, { apiKey: 'xkeysib-1', from: 'a@b.c' });
+});
+
+test('brevo mail in production is allowed', () => {
+  const config = load({
+    ...baseEnv, NODE_ENV: 'production', GOOGLE_MODE: 'http', GOOGLE_CLIENT_ID: 'x',
+    MAIL_MODE: 'brevo', BREVO_API_KEY: 'k', MAIL_FROM: 'a@b.c',
+    PUBLIC_BASE_URL: 'https://api.fitsync.test',
+  });
+  assert.equal(config.mail.mode, 'brevo');
+});
+
 test('an unknown mode is refused', () => {
   assert.throws(() => createMailService({ mode: 'carrier-pigeon' }), /carrier-pigeon/);
 });
@@ -31,7 +64,7 @@ test('stub mail in production refuses to boot', () => {
   assert.throws(
     () => load({ ...baseEnv, NODE_ENV: 'production', GOOGLE_MODE: 'http',
                  GOOGLE_CLIENT_ID: 'x', MAIL_MODE: 'stub' }),
-    /MAIL_MODE/,
+    /MAIL_MODE=smtp or MAIL_MODE=brevo/,
   );
 });
 

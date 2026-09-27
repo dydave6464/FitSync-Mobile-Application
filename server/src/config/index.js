@@ -42,7 +42,7 @@ function load(env = process.env) {
     throw new Error(
       'MAIL_MODE is "stub" (or unset) while NODE_ENV is "production". '
         + 'Verification email would never be sent and no user could register '
-        + '— set MAIL_MODE=smtp.',
+        + '— set MAIL_MODE=smtp or MAIL_MODE=brevo.',
     );
   }
 
@@ -108,6 +108,10 @@ function load(env = process.env) {
         port: env.SMTP_PORT ? parsePositiveInteger('SMTP_PORT', env.SMTP_PORT) : null,
         user: env.SMTP_USER || null,
         password: env.SMTP_PASSWORD || null,
+        from: env.MAIL_FROM || null,
+      },
+      brevo: {
+        apiKey: env.BREVO_API_KEY || null,
         from: env.MAIL_FROM || null,
       },
     },
