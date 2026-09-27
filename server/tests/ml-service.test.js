@@ -56,11 +56,13 @@ test('generatePlan falls back to safe defaults for a bare profile', async () => 
   assert.ok(plan.daysPerWeek >= 1 && plan.daysPerWeek <= 7);
 });
 
-test('estimateInjuryRisk returns a valid enum level and numeric score', async () => {
+test('estimateInjuryRisk returns a valid enum level and no score it never computed', async () => {
   const ml = createMlService({ mode: 'stub' });
   const result = await ml.estimateInjuryRisk({ checkins: [], load: 0, injuryHistory: [] });
   assert.ok(RISK_LEVELS.includes(result.riskLevel));
-  assert.equal(typeof result.trainingLoadScore, 'number');
+  // The app shows readiness as 100 minus this score; a stub 0 would read as
+  // "100 READY" for everyone, whatever they answered.
+  assert.equal(result.trainingLoadScore, null);
 });
 
 test('estimateInjuryRisk stays conservative with no data (FR-5.2, C-6)', async () => {

@@ -110,7 +110,7 @@ void main() {
       // 100 - 42.5, rounded up.
       expect(find.text('Readiness 58'), findsOneWidget);
       expect(
-        find.textContaining('Readiness is 100 minus the risk score'),
+        find.textContaining('the other way up: higher is better'),
         findsOneWidget,
       );
     },

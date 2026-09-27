@@ -36,4 +36,11 @@ void main() {
     );
     expect(_estimate('high', 80).readinessHeadline, 'Consider a lighter day');
   });
+
+  test('the words follow the level even if a score disagreed with it', () {
+    // The thresholds live in the ML service; the words must not second-guess
+    // its level from the number.
+    expect(_estimate('low', 55).recoveryLabel, 'Recovery good');
+    expect(_estimate('high', 20).readinessHeadline, 'Consider a lighter day');
+  });
 }

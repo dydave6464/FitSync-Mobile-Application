@@ -77,7 +77,7 @@ class ReadinessCard extends StatelessWidget {
             )
           : Row(
               children: [
-                _ReadinessRing(estimate: estimate),
+                _ReadinessRing(estimate: estimate, isToday: isToday),
                 const SizedBox(width: 16),
                 Expanded(
                   child: Column(
@@ -126,12 +126,15 @@ class ReadinessCard extends StatelessWidget {
 }
 
 /// The READY ring: readiness out of 100, coloured by the risk level it comes
-/// from. An estimate saved without a score has no number to show, so the ring
-/// takes its level's share and the centre stays blank rather than invent one.
+/// from -- or greyed out when the estimate is an earlier day's, so its number
+/// is not read as today's. An estimate saved without a score has no number to
+/// show, so the ring takes its level's share and the centre shows a dash
+/// rather than invent one.
 class _ReadinessRing extends StatelessWidget {
-  const _ReadinessRing({required this.estimate});
+  const _ReadinessRing({required this.estimate, required this.isToday});
 
   final InjuryRiskEstimate estimate;
+  final bool isToday;
 
   @override
   Widget build(BuildContext context) {
@@ -139,18 +142,27 @@ class _ReadinessRing extends StatelessWidget {
     final readiness = estimate.readiness;
     return FsRing(
       value: readiness == null ? 1 - estimate.ringValue : readiness / 100,
-      color: switch (estimate.riskLevel) {
-        'high' => t.red,
-        'moderate' => t.amber,
-        _ => t.accent,
-      },
+      color: !isToday
+          ? t.text3
+          : switch (estimate.riskLevel) {
+              'high' => t.red,
+              'moderate' => t.amber,
+              _ => t.accent,
+            },
       size: 78,
       stroke: 9,
       // The ring is a fixed 78dp while system text can double, so the
       // centre shrinks to fit inside the stroke rather than spill past it.
       child: Padding(
         padding: const EdgeInsets.all(12),
-        child: FittedBox(fit: BoxFit.scaleDown, child: _centre(readiness, t)),
+        // One phrase for a screen reader, not "82" then "READY".
+        child: Semantics(
+          label: readiness == null
+              ? 'Readiness not scored'
+              : 'Readiness $readiness out of 100',
+          excludeSemantics: true,
+          child: FittedBox(fit: BoxFit.scaleDown, child: _centre(readiness, t)),
+        ),
       ),
     );
   }

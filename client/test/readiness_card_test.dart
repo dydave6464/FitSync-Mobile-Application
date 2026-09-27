@@ -84,12 +84,85 @@ void main() {
   testWidgets('an estimate saved without a score shows no number', (
     tester,
   ) async {
+    final semantics = tester.ensureSemantics();
     await _pump(tester, estimate: _scored('low', null), todayCheckin: _today);
 
     expect(find.text('Recovery good'), findsOneWidget);
     expect(find.text('READY'), findsNothing);
     expect(find.textContaining(RegExp(r'^\d+$')), findsNothing);
+    expect(find.text('–'), findsOneWidget);
+    // The level's share of the ring, the other way up: low draws 0.8.
+    expect(
+      tester.widget<FsRing>(find.byType(FsRing)).value,
+      closeTo(0.8, 1e-9),
+    );
+    // The card is one tappable node; the ring's phrase leads its label.
+    expect(
+      find.bySemanticsLabel(RegExp(r'^Readiness not scored\n')),
+      findsOneWidget,
+    );
+    semantics.dispose();
   });
+
+  testWidgets('a screen reader hears the score as one phrase', (tester) async {
+    final semantics = tester.ensureSemantics();
+    await _pump(tester, estimate: _scored('low', 18), todayCheckin: _today);
+    // The card is one tappable node; the ring's phrase leads its label, and
+    // the visual "82" / "READY" pair is not read out separately.
+    expect(
+      find.bySemanticsLabel(RegExp(r'^Readiness 82 out of 100\nRecovery good')),
+      findsOneWidget,
+    );
+    expect(find.bySemanticsLabel(RegExp('READY')), findsNothing);
+    semantics.dispose();
+  });
+
+  testWidgets('an earlier day\'s score keeps its number but greys the ring', (
+    tester,
+  ) async {
+    // Dated by "From ...", so the number and tag still show -- but in a
+    // muted ring, so they do not read as today's.
+    await _pump(tester, estimate: _estimate('low', date: '2026-09-20'));
+
+    expect(find.text('90'), findsOneWidget);
+    expect(find.text('Recovery good'), findsOneWidget);
+    final ring = tester.widget<FsRing>(find.byType(FsRing));
+    expect(ring.color, FsTokens.light.text3);
+  });
+
+  for (final (name, estimate, checkin) in [
+    ('an earlier day\'s score', _estimate('high', date: '2026-09-20'), null),
+    ('an unscored estimate', _scored('moderate', null), _today),
+  ]) {
+    testWidgets('$name fits a narrow phone at 2x text', (tester) async {
+      tester.view.physicalSize = const Size(320, 1400);
+      tester.view.devicePixelRatio = 1;
+      addTearDown(tester.view.reset);
+      tester.platformDispatcher.textScaleFactorTestValue = 2.0;
+      addTearDown(tester.platformDispatcher.clearTextScaleFactorTestValue);
+
+      await tester.pumpWidget(
+        MaterialApp(
+          theme: fsLightTheme(),
+          home: Scaffold(
+            body: ListView(
+              padding: const EdgeInsets.all(20),
+              children: [
+                ReadinessCard(
+                  estimate: estimate,
+                  todayCheckin: checkin,
+                  onCheckIn: () {},
+                  onTap: () {},
+                ),
+              ],
+            ),
+          ),
+        ),
+      );
+
+      expect(tester.takeException(), isNull);
+    });
+  }
 
   testWidgets('with no estimate it asks for a check-in', (tester) async {
     await _pump(tester);

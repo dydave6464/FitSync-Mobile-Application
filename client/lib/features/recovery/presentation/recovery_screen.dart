@@ -244,8 +244,8 @@ class _FeedsScoreCard extends ConsumerWidget {
         ),
         const SizedBox(height: 12),
         Text(
-          'Readiness is 100 minus the risk score: the same check-in and '
-          'training load, read the other way up.',
+          'Readiness reads the same check-in and training load the other '
+          'way up: higher is better.',
           style: TextStyle(fontSize: 12, color: t.text3),
         ),
       ],
