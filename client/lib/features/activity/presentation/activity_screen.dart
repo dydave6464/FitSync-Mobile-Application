@@ -27,21 +27,26 @@ class ActivityScreen extends ConsumerStatefulWidget {
 }
 
 class _ActivityScreenState extends ConsumerState<ActivityScreen> {
-  // Read in initState and kept: ref may not be used in dispose.
-  late final ActivityController _activity;
+  // Captured in initState and kept: ref may not be used in dispose. The
+  // container is read fresh at sync time rather than caching the notifier
+  // itself, so a periodic tick or the leaving-sync never calls into a
+  // reference the provider has since replaced.
+  late final ProviderContainer _container;
   Timer? _timer;
 
   @override
   void initState() {
     super.initState();
-    _activity = ref.read(activityProvider.notifier);
-    _timer = Timer.periodic(widget.syncEvery, (_) => _activity.sync());
+    _container = ProviderScope.containerOf(context, listen: false);
+    _timer = Timer.periodic(widget.syncEvery, (_) => _sync());
   }
+
+  void _sync() => unawaited(_container.read(activityProvider.notifier).sync());
 
   @override
   void dispose() {
     _timer?.cancel();
-    unawaited(_activity.sync());
+    _sync();
     super.dispose();
   }
 

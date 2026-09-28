@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 
+import 'package:fitsync/core/api_exception.dart';
 import 'package:fitsync/features/activity/domain/activity.dart';
 import 'package:fitsync/features/activity/domain/step_readings.dart';
 import 'package:fitsync/features/activity/presentation/activity_screen.dart';
@@ -41,6 +42,33 @@ Future<_StubActivity> _pump(WidgetTester tester, ActivityState state) async {
   ));
   await tester.pumpAndSettle();
   return stub;
+}
+
+class _RetrySyncCount {
+  int calls = 0;
+}
+
+/// First build fails, like a real server error; the next one (after "Try
+/// again" invalidates the provider) succeeds. `sync()` mirrors the real
+/// [ActivityController.sync]'s first line -- reading `state.value` -- the
+/// call that throws `UnmountedRefException` if it ever runs against a
+/// disposed instance.
+class _RetryStub extends ActivityController {
+  _RetryStub(this.calls);
+  final _RetrySyncCount calls;
+  int attempt = 0;
+
+  @override
+  Future<ActivityState> build() async {
+    if (attempt++ == 0) throw const ApiException('SERVER_ERROR', 'broke');
+    return ActivityState(today: const DaySteps(steps: 6420), week: _week(), offline: false);
+  }
+
+  @override
+  Future<void> sync() async {
+    state.value;
+    calls.calls++;
+  }
 }
 
 void main() {
@@ -107,5 +135,29 @@ void main() {
     await tester.pump();
 
     expect(stub.syncs, 1);
+  });
+
+  testWidgets('a retry after an error keeps syncing correctly', (tester) async {
+    final calls = _RetrySyncCount();
+    await tester.pumpWidget(ProviderScope(
+      overrides: [
+        activityProvider.overrideWith(() => _RetryStub(calls)),
+        liveStepsProvider.overrideWith((ref) => const Stream<int>.empty()),
+      ],
+      child: const MaterialApp(home: ActivityScreen()),
+    ));
+    await tester.pumpAndSettle();
+
+    expect(find.text('broke'), findsOneWidget);
+
+    await tester.tap(find.text('Try again'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('6,420'), findsOneWidget);
+
+    await tester.pumpWidget(const SizedBox());
+    await tester.pump();
+
+    expect(calls.calls, 1);
   });
 }
