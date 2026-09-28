@@ -219,7 +219,7 @@ class _UsualBar extends StatelessWidget {
       builder: (context, box) {
         final width = box.maxWidth;
         return SizedBox(
-          height: 22,
+          height: 28,
           child: Stack(
             clipBehavior: Clip.none,
             children: [
@@ -244,11 +244,16 @@ class _UsualBar extends StatelessWidget {
                   ),
                 ),
               ),
+              // A ▲ just under the bar, pointing up at the usual. The icon's
+              // triangle spans y 9-14 of its 24px box, so top 6 puts it right
+              // below the bar (which ends at 14) and centring the box centres
+              // the tip on the usual.
               if (usual != null)
                 Positioned(
-                  left: width * usual! / scale - 1,
-                  top: 0,
-                  child: Container(width: 2, height: 18, color: t.text),
+                  key: const Key('activity.usualMarker'),
+                  left: width * usual! / scale - 12,
+                  top: 6,
+                  child: Icon(Icons.arrow_drop_up, size: 24, color: t.text),
                 ),
             ],
           ),

@@ -84,6 +84,14 @@ void main() {
     expect(find.text('6,420'), findsOneWidget);
     expect(find.text('steps today'), findsOneWidget);
     expect(find.text('1,240 above your usual'), findsOneWidget);
+    // The usual is marked with a ▲ under the bar.
+    expect(
+      find.descendant(
+        of: find.byKey(const Key('activity.usualMarker')),
+        matching: find.byIcon(Icons.arrow_drop_up),
+      ),
+      findsOneWidget,
+    );
     expect(find.descendant(of: find.byKey(const Key('activity.kcal')), matching: find.text('158')), findsOneWidget);
     expect(find.descendant(of: find.byKey(const Key('activity.km')), matching: find.text('4.52')), findsOneWidget);
     expect(find.descendant(of: find.byKey(const Key('activity.minutes')), matching: find.text('64')), findsOneWidget);
@@ -92,12 +100,13 @@ void main() {
     expect(find.text('avg 4.9k/day'), findsOneWidget);
   });
 
-  testWidgets('before three days there is no usual yet', (tester) async {
+  testWidgets('before three days there is no usual and no marker yet', (tester) async {
     await _pump(tester, ActivityState(
       today: const DaySteps(steps: 6420), week: _week(usual: null), offline: false,
     ));
 
     expect(find.text('Your usual appears after 3 days of walking'), findsOneWidget);
+    expect(find.byKey(const Key('activity.usualMarker')), findsNothing);
   });
 
   testWidgets('missing height shows dashes and a way to Profile', (tester) async {
