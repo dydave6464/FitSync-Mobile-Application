@@ -1,3 +1,5 @@
+import 'dart:math' as math;
+
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../core/api_exception.dart';
@@ -63,6 +65,10 @@ class ActivityState {
   final bool offline;
 }
 
+/// The most steps the server takes for a day; mirrors `MAX_STEPS` in
+/// server/src/routes/activity.js. A count above it is saved as this.
+const maxSavedSteps = 100000;
+
 /// Not autoDispose -- see [stepAccessProvider].
 final activityProvider =
     AsyncNotifierProvider<ActivityController, ActivityState>(
@@ -86,17 +92,29 @@ class ActivityController extends AsyncNotifier<ActivityState> {
       final known = previous ?? await repo.week();
       // A 0-step day is never saved: its row would count toward "usual"
       // (days with a row) and drag it down for a day with no data.
-      if (today.steps > 0) await repo.saveDay(manilaDayOf(now), today.steps);
+      if (today.steps > 0) await _save(repo, manilaDayOf(now), today.steps);
       final stored = {for (final d in known.days) d.date: d.steps ?? -1};
       for (final entry in (await source.earlierDays(now)).entries) {
-        if (entry.value > 0 && entry.value > (stored[entry.key] ?? -1)) {
-          await repo.saveDay(entry.key, entry.value);
+        final steps = math.min(entry.value, maxSavedSteps);
+        if (steps > 0 && steps > (stored[entry.key] ?? -1)) {
+          await _save(repo, entry.key, steps);
         }
       }
       return ActivityState(today: today, week: await repo.week(), offline: false);
     } on ApiException catch (error) {
       if (error.code != 'NETWORK_ERROR') rethrow;
       return ActivityState(today: today, week: previous, offline: true);
+    }
+  }
+
+  /// Saves one day, capped at [maxSavedSteps]. A day the server rejects
+  /// (e.g. DATE_OUT_OF_RANGE when the phone's clock is off) is skipped so
+  /// the rest still loads; NETWORK_ERROR goes on to [_load]'s offline branch.
+  Future<void> _save(ActivityRepository repo, String date, int steps) async {
+    try {
+      await repo.saveDay(date, math.min(steps, maxSavedSteps));
+    } on ApiException catch (error) {
+      if (error.code == 'NETWORK_ERROR') rethrow;
     }
   }
 

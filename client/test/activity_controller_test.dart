@@ -59,10 +59,12 @@ class _FakeRepo implements ActivityRepository {
   final stored = <String, int>{};
   final saves = <String>[];
   Object? failWith;
+  Object? saveFailWith;
 
   @override
   Future<ActivityDay> saveDay(String date, int steps) async {
     if (failWith != null) throw failWith!;
+    if (saveFailWith != null) throw saveFailWith!;
     saves.add('$date=$steps');
     stored[date] = steps > (stored[date] ?? -1) ? steps : stored[date]!;
     return _d(date, stored[date]);
@@ -143,6 +145,33 @@ void main() {
     final c = _container(_FakeSource(), repo);
 
     await expectLater(c.read(activityProvider.future), throwsA(isA<ApiException>()));
+  });
+
+  test('a day over the server\'s limit is saved at the limit; today shows the phone\'s count', () async {
+    final repo = _FakeRepo();
+    final c = _container(
+      _FakeSource(todaySteps: 150000, earlier: {'2026-09-27': 120000}),
+      repo,
+    );
+
+    final s = await c.read(activityProvider.future);
+
+    expect(repo.saves, ['2026-09-28=100000', '2026-09-27=100000']);
+    expect(s.today.steps, 150000);
+  });
+
+  test('a day the server rejects is skipped; the week still loads', () async {
+    final repo = _FakeRepo()
+      ..stored['2026-09-27'] = 4000
+      ..saveFailWith = const ApiException('STEPS_INVALID', 'too many');
+    final c = _container(_FakeSource(todaySteps: 6420, earlier: {'2026-09-27': 5000}), repo);
+
+    final s = await c.read(activityProvider.future);
+
+    expect(s.today.steps, 6420);
+    expect(s.offline, isFalse);
+    expect(s.week, isNotNull);
+    expect(s.week!.days[5].steps, 4000);
   });
 
   test('0 steps today are never saved', () async {

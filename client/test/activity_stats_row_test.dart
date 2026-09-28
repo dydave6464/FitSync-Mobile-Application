@@ -82,6 +82,18 @@ void main() {
     expect(permission.log, ['request', 'settings']);
   });
 
+  testWidgets('refused, granted when asked again: no Settings, the stats show', (tester) async {
+    final permission = _Permission(StepAccess.refused, onRequest: StepAccess.granted);
+    await _pump(tester, permission);
+
+    expect(find.text('Step counting is off'), findsOneWidget);
+    await tester.tap(find.byKey(const Key('home.activity.off')));
+    await tester.pumpAndSettle();
+    expect(permission.log, ['request']);
+    expect(find.byKey(const Key('home.activity.steps')), findsOneWidget);
+    expect(find.byKey(const Key('home.activity.off')), findsNothing);
+  });
+
   testWidgets('on: steps, kcal and km, each opening Activity', (tester) async {
     await _pump(tester, _Permission(StepAccess.granted));
 
