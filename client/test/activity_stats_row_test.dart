@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -102,6 +104,29 @@ void main() {
     expect(find.text('Step counting is off — tap to allow'), findsNothing);
   });
 
+  testWidgets('while step access loads: zero tiles that do nothing when tapped', (tester) async {
+    final pending = Completer<StepAccess>();
+    await tester.pumpWidget(ProviderScope(
+      overrides: [
+        stepPermissionProvider.overrideWithValue(_PendingPermission(pending.future)),
+      ],
+      child: const MaterialApp(home: Scaffold(body: ActivityStatsRow())),
+    ));
+    await tester.pump();
+
+    expect(tile('steps', '0'), findsOneWidget);
+    expect(tile('kcal', '0'), findsOneWidget);
+    expect(tile('km', '0.0'), findsOneWidget);
+    expect(find.text('Tap to start counting your steps'), findsNothing);
+    await tester.tap(find.byKey(const Key('home.activity.steps')));
+    await tester.pump();
+    expect(find.byType(ActivationScreen), findsNothing);
+
+    pending.complete(StepAccess.notAsked);
+    await tester.pumpAndSettle();
+    expect(find.text('Tap to start counting your steps'), findsOneWidget);
+  });
+
   testWidgets('on: steps, kcal and km, each opening Activity', (tester) async {
     await _pump(tester, _Permission(StepAccess.granted));
 
@@ -119,4 +144,17 @@ void main() {
     expect(find.descendant(of: find.byKey(const Key('home.activity.kcal')), matching: find.text('—')), findsOneWidget);
     expect(find.descendant(of: find.byKey(const Key('home.activity.km')), matching: find.text('4.5')), findsOneWidget);
   });
+}
+
+/// A permission whose status has not answered yet.
+class _PendingPermission implements StepPermission {
+  _PendingPermission(this._status);
+  final Future<StepAccess> _status;
+
+  @override
+  Future<StepAccess> status() => _status;
+  @override
+  Future<StepAccess> request() async => StepAccess.refused;
+  @override
+  Future<void> openSettings() async {}
 }
