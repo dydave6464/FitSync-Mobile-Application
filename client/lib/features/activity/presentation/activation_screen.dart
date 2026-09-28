@@ -32,7 +32,12 @@ class _ActivationScreenState extends ConsumerState<ActivationScreen> {
   Future<void> _start() async {
     final navigator = Navigator.of(context);
     setState(() => _busy = true);
-    final access = await ref.read(stepAccessProvider.notifier).request();
+    StepAccess access;
+    try {
+      access = await ref.read(stepAccessProvider.notifier).request();
+    } catch (_) {
+      access = StepAccess.refused;
+    }
     if (!mounted) return;
     setState(() => _busy = false);
     if (access == StepAccess.granted) {
