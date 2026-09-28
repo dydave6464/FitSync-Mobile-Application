@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -62,22 +64,30 @@ Future<void> _pump(WidgetTester tester, _Permission permission, {ActivityWeek? w
 }
 
 void main() {
-  testWidgets('not turned on: one tile that opens the activation screen', (tester) async {
+  Finder tile(String key, String value) => find.descendant(
+    of: find.byKey(Key('home.activity.$key')),
+    matching: find.text(value),
+  );
+
+  testWidgets('not turned on: three zero tiles, any of them opens the activation screen', (tester) async {
     await _pump(tester, _Permission(StepAccess.notAsked));
 
-    expect(find.text('Count your steps'), findsOneWidget);
-    expect(find.text('Tap to start'), findsOneWidget);
-    await tester.tap(find.byKey(const Key('home.activity.turnOn')));
+    expect(tile('steps', '0'), findsOneWidget);
+    expect(tile('kcal', '0'), findsOneWidget);
+    expect(tile('km', '0.0'), findsOneWidget);
+    expect(find.text('Tap to start counting your steps'), findsOneWidget);
+    await tester.tap(find.byKey(const Key('home.activity.kcal')));
     await tester.pumpAndSettle();
     expect(find.byType(ActivationScreen), findsOneWidget);
   });
 
-  testWidgets('refused: asks again, then opens Settings if still refused', (tester) async {
+  testWidgets('refused: zero tiles; a tap asks again, then opens Settings if still refused', (tester) async {
     final permission = _Permission(StepAccess.refused);
     await _pump(tester, permission);
 
-    expect(find.text('Step counting is off'), findsOneWidget);
-    await tester.tap(find.byKey(const Key('home.activity.off')));
+    expect(tile('steps', '0'), findsOneWidget);
+    expect(find.text('Step counting is off — tap to allow'), findsOneWidget);
+    await tester.tap(find.byKey(const Key('home.activity.steps')));
     await tester.pumpAndSettle();
     expect(permission.log, ['request', 'settings']);
   });
@@ -86,12 +96,35 @@ void main() {
     final permission = _Permission(StepAccess.refused, onRequest: StepAccess.granted);
     await _pump(tester, permission);
 
-    expect(find.text('Step counting is off'), findsOneWidget);
-    await tester.tap(find.byKey(const Key('home.activity.off')));
+    expect(find.text('Step counting is off — tap to allow'), findsOneWidget);
+    await tester.tap(find.byKey(const Key('home.activity.km')));
     await tester.pumpAndSettle();
     expect(permission.log, ['request']);
-    expect(find.byKey(const Key('home.activity.steps')), findsOneWidget);
-    expect(find.byKey(const Key('home.activity.off')), findsNothing);
+    expect(tile('steps', '6,420'), findsOneWidget);
+    expect(find.text('Step counting is off — tap to allow'), findsNothing);
+  });
+
+  testWidgets('while step access loads: zero tiles that do nothing when tapped', (tester) async {
+    final pending = Completer<StepAccess>();
+    await tester.pumpWidget(ProviderScope(
+      overrides: [
+        stepPermissionProvider.overrideWithValue(_PendingPermission(pending.future)),
+      ],
+      child: const MaterialApp(home: Scaffold(body: ActivityStatsRow())),
+    ));
+    await tester.pump();
+
+    expect(tile('steps', '0'), findsOneWidget);
+    expect(tile('kcal', '0'), findsOneWidget);
+    expect(tile('km', '0.0'), findsOneWidget);
+    expect(find.text('Tap to start counting your steps'), findsNothing);
+    await tester.tap(find.byKey(const Key('home.activity.steps')));
+    await tester.pump();
+    expect(find.byType(ActivationScreen), findsNothing);
+
+    pending.complete(StepAccess.notAsked);
+    await tester.pumpAndSettle();
+    expect(find.text('Tap to start counting your steps'), findsOneWidget);
   });
 
   testWidgets('on: steps, kcal and km, each opening Activity', (tester) async {
@@ -111,4 +144,17 @@ void main() {
     expect(find.descendant(of: find.byKey(const Key('home.activity.kcal')), matching: find.text('—')), findsOneWidget);
     expect(find.descendant(of: find.byKey(const Key('home.activity.km')), matching: find.text('4.5')), findsOneWidget);
   });
+}
+
+/// A permission whose status has not answered yet.
+class _PendingPermission implements StepPermission {
+  _PendingPermission(this._status);
+  final Future<StepAccess> _status;
+
+  @override
+  Future<StepAccess> status() => _status;
+  @override
+  Future<StepAccess> request() async => StepAccess.refused;
+  @override
+  Future<void> openSettings() async {}
 }
