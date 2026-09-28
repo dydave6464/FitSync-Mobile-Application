@@ -893,7 +893,7 @@ void main() {
 
   testWidgets('Home offers step counting under the routine', (tester) async {
     await _pumpHome(tester);
-    await tester.scrollUntilVisible(find.text('Count your steps'), 200);
-    expect(find.text('Count your steps'), findsOneWidget);
+    await tester.scrollUntilVisible(find.text('Tap to start counting your steps'), 200);
+    expect(find.byKey(const Key('home.activity.steps')), findsOneWidget);
   });
 }
