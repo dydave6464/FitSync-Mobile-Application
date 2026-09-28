@@ -41,11 +41,7 @@ const _day = Duration(days: 1);
 
 /// Core Motion answers "steps between two times" for the last seven days.
 class IosStepSource implements StepSource {
-  IosStepSource({
-    MethodChannel methods = _methodChannel,
-    EventChannel events = _liveChannel,
-  }) : _methods = methods,
-       _events = events;
+  IosStepSource({this._methods = _methodChannel, this._events = _liveChannel});
 
   final MethodChannel _methods;
   final EventChannel _events;
@@ -85,12 +81,10 @@ class IosStepSource implements StepSource {
 /// out from readings kept on the phone (domain/step_readings.dart).
 class AndroidStepSource implements StepSource {
   AndroidStepSource({
-    SecureStore store = const PluginSecureStore(),
-    MethodChannel methods = _methodChannel,
-    EventChannel events = _liveChannel,
-  }) : _store = store,
-       _methods = methods,
-       _events = events;
+    this._store = const PluginSecureStore(),
+    this._methods = _methodChannel,
+    this._events = _liveChannel,
+  });
 
   static const _key = 'step_readings';
   final SecureStore _store;

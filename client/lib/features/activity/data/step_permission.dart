@@ -35,12 +35,11 @@ class NoStepPermission implements StepPermission {
 /// from "refused" reliably, so the app remembers that it asked.
 class DeviceStepPermission implements StepPermission {
   DeviceStepPermission({
-    SecureStore store = const PluginSecureStore(),
+    this._store = const PluginSecureStore(),
     Future<bool> Function()? isGranted,
     Future<bool> Function()? requestGrant,
     Future<void> Function()? openSettings,
-  }) : _store = store,
-       _isGranted = isGranted ?? (() async => (await _permission.status).isGranted),
+  }) : _isGranted = isGranted ?? (() async => (await _permission.status).isGranted),
        _requestGrant = requestGrant ?? (() async => (await _permission.request()).isGranted),
        _openSettings = openSettings ?? (() async {
          await ph.openAppSettings();
