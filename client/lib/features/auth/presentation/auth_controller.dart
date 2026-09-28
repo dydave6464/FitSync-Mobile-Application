@@ -3,6 +3,8 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../core/api_exception.dart';
 import '../../../core/token_store.dart';
+import '../../activity/presentation/providers.dart'
+    show activityProvider, stepAccessProvider;
 import '../../exercises/presentation/providers.dart';
 import '../../plans/presentation/providers.dart';
 import '../../recovery/presentation/providers.dart';
@@ -130,10 +132,10 @@ class AuthController extends AsyncNotifier<AuthState> {
   /// `routineTodayProvider`, `homeSummaryProvider`, `trainingSummaryProvider`,
   /// `trainingAnalyticsProvider`, `sessionHistoryProvider`,
   /// `lastWorkoutProvider`, `pendingOutcomeProvider`, `recoveryOverviewProvider`,
-  /// `streakProvider` and `reminderSettingsProvider` belong on this list for
-  /// the same reason: none of them is autoDispose, and each carries another
-  /// account's training, recovery, routine or reminder data across the
-  /// sign-out.
+  /// `streakProvider`, `reminderSettingsProvider`, `activityProvider` and
+  /// `stepAccessProvider` belong on this list for the same reason: none of
+  /// them is autoDispose, and each carries another account's training,
+  /// recovery, routine, reminder or activity data across the sign-out.
   void _clearUserScopedCaches() {
     ref.invalidate(profileProvider);
     ref.invalidate(activePlanProvider);
@@ -152,6 +154,8 @@ class AuthController extends AsyncNotifier<AuthState> {
     ref.invalidate(recoveryOverviewProvider);
     ref.invalidate(streakProvider);
     ref.invalidate(reminderSettingsProvider);
+    ref.invalidate(activityProvider);
+    ref.invalidate(stepAccessProvider);
   }
 
   Future<void> signOut() async {

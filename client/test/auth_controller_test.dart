@@ -3,6 +3,10 @@ import 'package:flutter_test/flutter_test.dart';
 
 import 'package:fitsync/core/api_exception.dart';
 import 'package:fitsync/core/token_store.dart';
+import 'package:fitsync/features/activity/data/activity_repository.dart';
+import 'package:fitsync/features/activity/data/step_permission.dart';
+import 'package:fitsync/features/activity/domain/activity.dart';
+import 'package:fitsync/features/activity/presentation/providers.dart';
 import 'package:fitsync/features/auth/data/auth_repository.dart';
 import 'package:fitsync/features/auth/domain/auth_user.dart';
 import 'package:fitsync/features/auth/presentation/auth_controller.dart';
@@ -216,6 +220,64 @@ class _SequenceStreakRepository implements StreakRepository {
     loads += 1;
     return s;
   }
+}
+
+ActivityDay _activityDay(String date, int steps) => ActivityDay(
+  date: date,
+  steps: steps,
+  caloriesBurned: 100,
+  distanceKm: 3.0,
+  activeMinutes: 40,
+);
+
+ActivityWeek _activityWeek(int todaySteps) => ActivityWeek(
+  days: [_activityDay('2026-09-28', todaySteps)],
+  usual: null,
+  missing: const [],
+);
+
+/// Hands out a different week on each call, so a cached one is
+/// distinguishable from a freshly loaded one. `ActivityController._load`
+/// calls `week()` twice per full load (once for what is already stored, once
+/// for the fresh state it returns), so each pair of entries is one account's
+/// answer.
+class _SequenceActivityRepository implements ActivityRepository {
+  _SequenceActivityRepository(this._weeks);
+
+  final List<ActivityWeek> _weeks;
+  int loads = 0;
+
+  @override
+  Future<ActivityWeek> week() async {
+    final w = _weeks[loads.clamp(0, _weeks.length - 1)];
+    loads += 1;
+    return w;
+  }
+
+  @override
+  Future<ActivityDay> saveDay(String date, int steps) =>
+      throw UnimplementedError();
+}
+
+/// Hands out a different answer on each call, so a cached one is
+/// distinguishable from a freshly loaded one.
+class _SequenceStepPermission implements StepPermission {
+  _SequenceStepPermission(this._answers);
+
+  final List<StepAccess> _answers;
+  int loads = 0;
+
+  @override
+  Future<StepAccess> status() async {
+    final a = _answers[loads.clamp(0, _answers.length - 1)];
+    loads += 1;
+    return a;
+  }
+
+  @override
+  Future<StepAccess> request() => throw UnimplementedError();
+  @override
+  Future<void> openSettings() => throw UnimplementedError();
 }
 
 class _RecordingScheduler implements ReminderScheduler {
@@ -507,6 +569,66 @@ void main() {
     );
     expect(streaks.loads, 2);
   });
+
+  test(
+    "signing out drops the previous account's activity and step access",
+    () async {
+      final tokens = TokenStore(backing: InMemorySecureStore());
+      await tokens.write('tok');
+      final activity = _SequenceActivityRepository([
+        _activityWeek(6000),
+        _activityWeek(6000),
+        _activityWeek(0),
+        _activityWeek(0),
+      ]);
+      final permission = _SequenceStepPermission([
+        StepAccess.granted,
+        StepAccess.notAsked,
+      ]);
+      final container = ProviderContainer(
+        overrides: [
+          tokenStoreProvider.overrideWithValue(tokens),
+          authRepositoryProvider.overrideWithValue(
+            FakeAuthRepository(
+              tokens,
+              onMe: () async => _user(onboardingCompleted: true),
+            ),
+          ),
+          activityRepositoryProvider.overrideWithValue(activity),
+          stepPermissionProvider.overrideWithValue(permission),
+        ],
+      );
+      addTearDown(container.dispose);
+
+      await container.read(authControllerProvider.future);
+      final beforeActivity = await container.read(activityProvider.future);
+      final beforeAccess = await container.read(stepAccessProvider.future);
+      expect(beforeActivity.week!.today.steps, 6000);
+      expect(beforeAccess, StepAccess.granted);
+
+      await container.read(authControllerProvider.notifier).signOut();
+
+      final afterActivity = await container.read(activityProvider.future);
+      final afterAccess = await container.read(stepAccessProvider.future);
+      expect(
+        afterActivity.week!.today.steps,
+        0,
+        reason: "the next account was handed the previous account's activity",
+      );
+      expect(
+        afterAccess,
+        StepAccess.notAsked,
+        reason:
+            "the next account was handed the previous account's step access",
+      );
+      expect(
+        activity.loads,
+        4,
+        reason: 'the activity week was not re-fetched',
+      );
+      expect(permission.loads, 2, reason: 'step access was not re-checked');
+    },
+  );
 
   test('signOut still completes when cancelAll throws', () async {
     final tokens = TokenStore(backing: InMemorySecureStore());

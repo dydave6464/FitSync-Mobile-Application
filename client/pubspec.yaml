@@ -41,6 +41,9 @@ dependencies:
   fl_chart: 1.2.0
   flutter_local_notifications: ^22.3.1
   timezone: ^0.11.1
+  # 12.x on purpose: 13.x's Android module needs compileSdk 37, and the app
+  # pins 36 (android/app/build.gradle.kts).
+  permission_handler: ^12.0.3
 
 dev_dependencies:
   flutter_test:

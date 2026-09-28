@@ -5,6 +5,9 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:fitsync/core/api_exception.dart';
 import 'package:fitsync/core/widgets/fs_charts.dart' show FsRing;
 import 'package:fitsync/core/widgets/fs_kit.dart' hide FsRing;
+import 'package:fitsync/features/activity/data/step_permission.dart';
+import 'package:fitsync/features/activity/data/step_source.dart';
+import 'package:fitsync/features/activity/presentation/providers.dart';
 import 'package:fitsync/features/exercises/domain/exercise.dart';
 import 'package:fitsync/features/exercises/presentation/providers.dart'
     show exerciseDetailProvider;
@@ -315,6 +318,8 @@ Future<void> _pumpHome(
         reminderPromptStoreProvider.overrideWithValue(
           inMemoryReminderPromptStore(),
         ),
+        stepPermissionProvider.overrideWithValue(const NoStepPermission()),
+        stepSourceProvider.overrideWithValue(const NoStepSource()),
       ],
       child: MaterialApp(
         home: HomeScreen(
@@ -884,5 +889,11 @@ void main() {
         expect(find.byType(RoutineScreen), findsNothing);
       },
     );
+  });
+
+  testWidgets('Home offers step counting under the routine', (tester) async {
+    await _pumpHome(tester);
+    await tester.scrollUntilVisible(find.text('Count your steps'), 200);
+    expect(find.text('Count your steps'), findsOneWidget);
   });
 }
