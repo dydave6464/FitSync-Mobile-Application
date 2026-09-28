@@ -31,14 +31,18 @@ class _StubActivity extends ActivityController {
   Future<void> sync() async => syncs++;
 }
 
-Future<_StubActivity> _pump(WidgetTester tester, ActivityState state) async {
+Future<_StubActivity> _pump(
+  WidgetTester tester,
+  ActivityState state, {
+  ActivityScreen screen = const ActivityScreen(),
+}) async {
   final stub = _StubActivity(state);
   await tester.pumpWidget(ProviderScope(
     overrides: [
       activityProvider.overrideWith(() => stub),
       liveStepsProvider.overrideWith((ref) => const Stream<int>.empty()),
     ],
-    child: const MaterialApp(home: ActivityScreen()),
+    child: MaterialApp(home: screen),
   ));
   await tester.pumpAndSettle();
   return stub;
@@ -135,6 +139,20 @@ void main() {
     await tester.pump();
 
     expect(stub.syncs, 1);
+  });
+
+  testWidgets('while open, syncs every syncEvery', (tester) async {
+    final stub = await _pump(
+      tester,
+      ActivityState(today: const DaySteps(steps: 6420), week: _week(), offline: false),
+      screen: const ActivityScreen(syncEvery: Duration(seconds: 1)),
+    );
+    expect(stub.syncs, 0);
+
+    await tester.pump(const Duration(seconds: 1));
+    await tester.pump(const Duration(seconds: 1));
+
+    expect(stub.syncs, 2);
   });
 
   testWidgets('a retry after an error keeps syncing correctly', (tester) async {

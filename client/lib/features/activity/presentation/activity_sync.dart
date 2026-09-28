@@ -6,7 +6,9 @@ import 'providers.dart';
 
 /// Every resume: re-check the permission (it may have changed in Settings)
 /// and, when counting is on, save the day. DayRollover only acts on a new
-/// day, so this is its own listener, as the Reminders screen's is.
+/// day, so this is its own listener -- as the Reminders screen
+/// (reminders_screen.dart) has its own AppLifecycleListener; ReminderSync
+/// does not listen for resumes.
 class ActivitySync extends ConsumerStatefulWidget {
   const ActivitySync({super.key, required this.child});
 
