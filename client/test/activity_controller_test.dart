@@ -3,6 +3,7 @@ import 'package:flutter_test/flutter_test.dart';
 
 import 'package:fitsync/core/api_exception.dart';
 import 'package:fitsync/features/activity/data/activity_repository.dart';
+import 'package:fitsync/features/activity/data/step_permission.dart';
 import 'package:fitsync/features/activity/data/step_source.dart';
 import 'package:fitsync/features/activity/domain/activity.dart';
 import 'package:fitsync/features/activity/domain/step_readings.dart';
@@ -35,6 +36,23 @@ class _FakeSource implements StepSource {
   Future<Map<String, int>> earlierDays(DateTime now) async => earlier;
   @override
   Stream<int> live(DateTime now) => const Stream.empty();
+}
+
+class _FakePermission implements StepPermission {
+  _FakePermission({
+    this.statusValue = StepAccess.notAsked,
+    this.requestValue = StepAccess.granted,
+  });
+  StepAccess statusValue;
+  StepAccess requestValue;
+  int openSettingsCalls = 0;
+
+  @override
+  Future<StepAccess> status() async => statusValue;
+  @override
+  Future<StepAccess> request() async => requestValue;
+  @override
+  Future<void> openSettings() async => openSettingsCalls += 1;
 }
 
 class _FakeRepo implements ActivityRepository {
@@ -126,4 +144,38 @@ void main() {
 
     await expectLater(c.read(activityProvider.future), throwsA(isA<ApiException>()));
   });
+
+  test('0 steps today are never saved', () async {
+    final repo = _FakeRepo();
+    final c = _container(_FakeSource(todaySteps: 0), repo);
+
+    await c.read(activityProvider.future);
+
+    expect(repo.saves, isEmpty);
+  });
+
+  test(
+    'StepAccessController reads status, applies request, and delegates '
+    'openSettings',
+    () async {
+      final permission = _FakePermission(
+        statusValue: StepAccess.refused,
+        requestValue: StepAccess.granted,
+      );
+      final c = ProviderContainer(
+        overrides: [stepPermissionProvider.overrideWithValue(permission)],
+      );
+      addTearDown(c.dispose);
+
+      expect(await c.read(stepAccessProvider.future), StepAccess.refused);
+
+      final result = await c.read(stepAccessProvider.notifier).request();
+
+      expect(result, StepAccess.granted);
+      expect(c.read(stepAccessProvider).value, StepAccess.granted);
+
+      await c.read(stepAccessProvider.notifier).openSettings();
+      expect(permission.openSettingsCalls, 1);
+    },
+  );
 }
