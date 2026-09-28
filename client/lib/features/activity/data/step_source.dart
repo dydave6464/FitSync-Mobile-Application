@@ -11,11 +11,13 @@ import '../domain/step_readings.dart';
 /// tests never touch the platform channel: `main.dart` overrides the no-op
 /// default with the platform's implementation.
 abstract interface class StepSource {
-  /// Steps since Manila midnight on [now]'s day.
+  /// Steps since Manila midnight on [now]'s day. On iPhone this may throw a
+  /// [PlatformException] (e.g. Motion & Fitness refused).
   Future<DaySteps> today(DateTime now);
 
   /// Steps for each of the six Manila days before today, keyed
-  /// `YYYY-MM-DD`; empty where the phone keeps no history (Android).
+  /// `YYYY-MM-DD`; empty where the phone keeps no history (Android). On
+  /// iPhone this may throw a [PlatformException], as [today] may.
   Future<Map<String, int>> earlierDays(DateTime now);
 
   /// Today's running total while listened to.

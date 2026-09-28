@@ -67,8 +67,33 @@ final class StepsPlugin: NSObject, FlutterPlugin, FlutterStreamHandler {
           }
         }
       }
+    case "authorizationStatus":
+      result(StepsPlugin.authorization())
+    case "requestAuthorization":
+      guard CMPedometer.isStepCountingAvailable() else {
+        result("restricted")
+        return
+      }
+      // Any query shows the Motion & Fitness prompt while the choice is
+      // not determined; the handler runs once the user has answered.
+      pedometer.queryPedometerData(from: Date(), to: Date()) { _, _ in
+        DispatchQueue.main.async {
+          result(StepsPlugin.authorization())
+        }
+      }
     default:
       result(FlutterMethodNotImplemented)
+    }
+  }
+
+  /// Motion & Fitness, as step_permission.dart reads it.
+  private static func authorization() -> String {
+    switch CMPedometer.authorizationStatus() {
+    case .authorized: return "granted"
+    case .denied: return "denied"
+    case .restricted: return "restricted"
+    case .notDetermined: return "notDetermined"
+    @unknown default: return "notDetermined"
     }
   }
 
