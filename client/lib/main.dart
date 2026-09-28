@@ -1,18 +1,32 @@
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import 'app_shell.dart';
 import 'core/theme.dart';
 import 'core/theme_controller.dart';
+import 'features/activity/data/step_permission.dart';
+import 'features/activity/data/step_source.dart';
+import 'features/activity/presentation/providers.dart';
 import 'features/reminders/data/local_reminder_scheduler.dart';
 import 'features/reminders/data/reminder_scheduler.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
   final scheduler = await LocalReminderScheduler.create();
+  final iPhone = defaultTargetPlatform == TargetPlatform.iOS;
+  final android = defaultTargetPlatform == TargetPlatform.android;
   runApp(
     ProviderScope(
-      overrides: [reminderSchedulerProvider.overrideWithValue(scheduler)],
+      overrides: [
+        reminderSchedulerProvider.overrideWithValue(scheduler),
+        if (iPhone || android) ...[
+          stepSourceProvider.overrideWithValue(
+            iPhone ? IosStepSource() : AndroidStepSource(),
+          ),
+          stepPermissionProvider.overrideWithValue(DeviceStepPermission()),
+        ],
+      ],
       child: const FitSyncApp(),
     ),
   );

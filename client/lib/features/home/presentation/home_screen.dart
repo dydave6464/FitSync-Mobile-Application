@@ -24,6 +24,7 @@ import '../../profile/presentation/providers.dart';
 import '../../plans/domain/workout_plan.dart';
 import '../../streaks/presentation/providers.dart' show streakProvider;
 import '../../streaks/presentation/streaks_screen.dart';
+import '../../activity/presentation/widgets/activity_stats_row.dart';
 import 'widgets/active_workout_card.dart';
 import 'widgets/greeting.dart';
 import 'widgets/plan_card.dart';
@@ -36,10 +37,10 @@ import 'widgets/routine_card.dart';
 /// The signed-in landing screen.
 ///
 /// Only sections with a live API are here. The routine checklist now has one
-/// -- see [_Routine] -- but the design's quick stats and ad still need a
-/// server slice that does not exist yet, and a placeholder showing invented
-/// figures cannot be told apart from a real one by anyone looking at the
-/// screen.
+/// -- see [_Routine] -- but the design's ad still needs a server slice that
+/// does not exist yet (the quick stats are now [ActivityStatsRow]), and a
+/// placeholder showing invented figures cannot be told apart from a real one
+/// by anyone looking at the screen.
 class HomeScreen extends ConsumerWidget {
   const HomeScreen({
     super.key,
@@ -118,6 +119,8 @@ class HomeScreen extends ConsumerWidget {
               _Progress(onTap: () => onGoToProgress?.call()),
               const SizedBox(height: 14),
               _Routine(onGoToTrain: onGoToTrain),
+              const SizedBox(height: 14),
+              ActivityStatsRow(onGoToProfile: onGoToProfile),
             ],
           ),
         ),

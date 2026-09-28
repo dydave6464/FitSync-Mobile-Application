@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../core/widgets/fs_kit.dart';
+import '../../activity/presentation/activity_sync.dart';
 import '../../exercises/presentation/exercise_list_screen.dart';
 import '../../plans/presentation/start_workout_sheet.dart';
 import '../../reminders/presentation/reminder_sync.dart';
@@ -135,7 +136,7 @@ class _NavShellState extends State<NavShell> {
         _popToShell();
         _openTrainAt('recovery');
       },
-      child: DayRollover(
+      child: ActivitySync(child: DayRollover(
         child: Scaffold(
           body: IndexedStack(
             index: _index,
@@ -176,7 +177,7 @@ class _NavShellState extends State<NavShell> {
             onFabTap: () => showStartWorkoutSheet(context),
           ),
         ),
-      ),
+      )),
     );
   }
 }
