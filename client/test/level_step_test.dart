@@ -78,6 +78,38 @@ Future<void> _pickLocation(WidgetTester tester, String value) async {
   await tester.pumpAndSettle();
 }
 
+/// Holds the answers between taps, the way the onboarding flow does.
+Future<LevelAnswers Function()> _pumpLive(
+  WidgetTester tester, {
+  LevelAnswers initial = const LevelAnswers(),
+}) async {
+  var current = initial;
+  await tester.pumpWidget(
+    ProviderScope(
+      overrides: [
+        equipmentOptionsProvider.overrideWith(
+          (ref) => Future.value(_keyedEquipment),
+        ),
+      ],
+      child: MaterialApp(
+        theme: fsLightTheme(),
+        home: Scaffold(
+          body: SingleChildScrollView(
+            child: StatefulBuilder(
+              builder: (context, setState) => LevelStep(
+                value: current,
+                onChanged: (v) => setState(() => current = v),
+              ),
+            ),
+          ),
+        ),
+      ),
+    ),
+  );
+  await tester.pumpAndSettle();
+  return () => current;
+}
+
 void main() {
   testWidgets('offers exactly three experience levels, New to training first', (
     tester,
@@ -479,4 +511,56 @@ void main() {
       },
     );
   }
+
+  testWidgets('offers "not familiar" with its subtitle', (tester) async {
+    await _pumpLive(tester);
+    expect(find.text("I'm not familiar with any of these"), findsOneWidget);
+    expect(
+      find.text("We'll start you on bodyweight exercises."),
+      findsOneWidget,
+    );
+  });
+
+  testWidgets('"not familiar" replaces the ticks with Bodyweight alone', (
+    tester,
+  ) async {
+    final answers = await _pumpLive(
+      tester,
+      initial: const LevelAnswers(equipmentIds: [1, 2, 7]),
+    );
+    await _tapKey(tester, const Key('equipment.unfamiliar'));
+    expect(answers().equipmentIds, [8]);
+    expect(answers().unfamiliar, isTrue);
+    // The chips read as unticked while it is the choice.
+    expect(
+      tester.widget<FsChip>(find.byKey(const Key('equipment.8'))).selected,
+      isFalse,
+    );
+  });
+
+  testWidgets('ticking a chip clears "not familiar" and keeps only that tick', (
+    tester,
+  ) async {
+    final answers = await _pumpLive(tester);
+    await _tapKey(tester, const Key('equipment.unfamiliar'));
+    await _tapKey(tester, const Key('equipment.2'));
+    expect(answers().unfamiliar, isFalse);
+    expect(answers().equipmentIds, [2]);
+  });
+
+  testWidgets('a location chosen after "not familiar" does not pre-tick', (
+    tester,
+  ) async {
+    final answers = await _pumpLive(tester);
+    await _tapKey(tester, const Key('equipment.unfamiliar'));
+    await _pickLocation(tester, 'commercial_gym');
+    expect(answers().equipmentIds, [8]);
+  });
+
+  testWidgets('no Bodyweight option means no "not familiar" choice', (
+    tester,
+  ) async {
+    await _pump(tester); // _serverEquipment: no keys, no Bodyweight
+    expect(find.byKey(const Key('equipment.unfamiliar')), findsNothing);
+  });
 }

@@ -5,6 +5,7 @@ import '../../../../core/theme.dart';
 import '../../../../core/widgets/fs_kit.dart';
 import '../../../exercises/presentation/exercise_list_screen.dart'
     show describeError;
+import '../../../profile/domain/profile.dart';
 import '../../../profile/presentation/providers.dart';
 
 /// The answers step 3 collects.
@@ -84,6 +85,12 @@ class LevelStep extends ConsumerWidget {
   final ValueChanged<LevelAnswers> onChanged;
 
   void _toggleEquipment(int equipmentId) {
+    // Ticking anything is a change of mind about "not familiar": the tick
+    // just made is the whole selection, not an addition to Bodyweight.
+    if (value.unfamiliar) {
+      onChanged(value.copyWith(equipmentIds: [equipmentId], unfamiliar: false));
+      return;
+    }
     final next = [...value.equipmentIds];
     // remove() reports whether it was there, so this is one pass either way.
     if (!next.remove(equipmentId)) next.add(equipmentId);
@@ -194,7 +201,11 @@ class LevelStep extends ConsumerWidget {
           mainAxisAlignment: MainAxisAlignment.spaceBetween,
           children: [
             const Flexible(child: FsEyebrow('Available equipment')),
-            FsTag('${value.equipmentIds.length} selected'),
+            FsTag(
+              value.unfamiliar
+                  ? 'Bodyweight only'
+                  : '${value.equipmentIds.length} selected',
+            ),
           ],
         ),
         const SizedBox(height: 12),
@@ -225,20 +236,77 @@ class LevelStep extends ConsumerWidget {
                   'No equipment options are available right now.',
                   style: TextStyle(fontSize: 11, color: t.text3),
                 )
-              : Wrap(
-                  spacing: 8,
-                  runSpacing: 8,
+              : Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: [
-                    for (final option in options)
-                      FsChip(
-                        key: Key('equipment.${option.equipmentId}'),
-                        label: option.name,
-                        selected: value.equipmentIds.contains(
-                          option.equipmentId,
-                        ),
-                        showCheck: true,
-                        onTap: () => _toggleEquipment(option.equipmentId),
-                      ),
+                    Wrap(
+                      spacing: 8,
+                      runSpacing: 8,
+                      children: [
+                        for (final option in options)
+                          FsChip(
+                            key: Key('equipment.${option.equipmentId}'),
+                            label: option.name,
+                            selected:
+                                !value.unfamiliar &&
+                                value.equipmentIds.contains(option.equipmentId),
+                            showCheck: true,
+                            onTap: () => _toggleEquipment(option.equipmentId),
+                          ),
+                      ],
+                    ),
+                    const SizedBox(height: 12),
+                    Builder(
+                      builder: (context) {
+                        EquipmentOption? bodyweight;
+                        for (final option in options) {
+                          if (option.key == 'body weight') {
+                            bodyweight = option;
+                          }
+                        }
+                        if (bodyweight == null) return const SizedBox.shrink();
+                        final id = bodyweight.equipmentId;
+                        return FsCard(
+                          key: const Key('equipment.unfamiliar'),
+                          small: true,
+                          accent: value.unfamiliar,
+                          onTap: () => onChanged(
+                            value.copyWith(
+                              equipmentIds: [id],
+                              unfamiliar: true,
+                            ),
+                          ),
+                          child: Row(
+                            children: [
+                              FsRadioDot(selected: value.unfamiliar),
+                              const SizedBox(width: 12),
+                              Expanded(
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    const Text(
+                                      "I'm not familiar with any of these",
+                                      style: TextStyle(
+                                        fontSize: 13.5,
+                                        fontWeight: FontWeight.w600,
+                                      ),
+                                    ),
+                                    const SizedBox(height: 2),
+                                    Text(
+                                      "We'll start you on bodyweight exercises.",
+                                      style: TextStyle(
+                                        fontSize: 11.5,
+                                        color: t.text3,
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                            ],
+                          ),
+                        );
+                      },
+                    ),
                   ],
                 ),
         ),
