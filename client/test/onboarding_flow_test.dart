@@ -10,6 +10,8 @@ import 'package:fitsync/core/token_store.dart' show InMemorySecureStore;
 import 'package:fitsync/core/widgets/fs_kit.dart';
 import 'package:fitsync/features/auth/domain/auth_user.dart';
 import 'package:fitsync/features/auth/presentation/auth_controller.dart';
+import 'package:fitsync/features/health/domain/health_answers.dart';
+import 'package:fitsync/features/health/presentation/providers.dart';
 import 'package:fitsync/features/onboarding/presentation/generating_view.dart';
 import 'package:fitsync/features/onboarding/presentation/onboarding_flow.dart';
 import 'package:fitsync/features/profile/data/profile_repository.dart';
@@ -19,6 +21,8 @@ import 'package:fitsync/features/reminders/data/reminder_prompt_store.dart';
 import 'package:fitsync/features/reminders/data/reminder_scheduler.dart';
 import 'package:fitsync/features/reminders/domain/reminders.dart'
     show PlannedReminder;
+
+import 'helpers/fake_health.dart';
 
 Profile _emptyProfile() => const Profile(
   userId: 7,
@@ -226,6 +230,7 @@ Future<void> _pumpFlow(
   Future<void> Function()? onSetGoals,
   List<String> seedGoals = const [],
   String? seedMainGoal,
+  FakeHealthRepository? health,
 }) async {
   await tester.pumpWidget(
     ProviderScope(
@@ -249,6 +254,9 @@ Future<void> _pumpFlow(
         ),
         equipmentOptionsProvider.overrideWith((ref) async => _equipment),
         injuryOptionsProvider.overrideWith((ref) async => _injuries),
+        healthRepositoryProvider.overrideWithValue(
+          health ?? FakeHealthRepository(),
+        ),
         if (scheduler != null)
           reminderSchedulerProvider.overrideWithValue(scheduler),
         reminderPromptStoreProvider.overrideWithValue(
@@ -273,11 +281,22 @@ Future<void> _skip(WidgetTester tester) async {
   await tester.pumpAndSettle();
 }
 
+/// Answers the health step with nothing to report and continues. The health
+/// step has no Skip, so every test that reaches the reminders step passes
+/// through here.
+Future<void> _passHealthClear(WidgetTester tester) async {
+  await _tapKey(tester, const Key('health.none'));
+  for (final q in healthQuestions) {
+    await _tapKey(tester, Key('health.${q.field}.no'));
+  }
+  await _tapKey(tester, const Key('continue'));
+}
+
 void main() {
-  testWidgets('starts on step 1 of 5', (tester) async {
+  testWidgets('starts on step 1 of 6', (tester) async {
     await _pumpFlow(tester, patches: []);
 
-    expect(find.text('STEP 1 / 5'), findsOneWidget);
+    expect(find.text('STEP 1 / 6'), findsOneWidget);
     expect(find.byKey(const Key('goal.lose_weight')), findsOneWidget);
   });
 
@@ -296,7 +315,7 @@ void main() {
     expect(goalWrites.single.goals, ['build_muscle', 'lose_weight']);
     expect(goalWrites.single.mainGoal, 'build_muscle');
     expect(patches, isEmpty, reason: 'goals have their own endpoint now');
-    expect(find.text('STEP 2 / 5'), findsOneWidget);
+    expect(find.text('STEP 2 / 6'), findsOneWidget);
   });
 
   testWidgets('Skip advances without saving', (tester) async {
@@ -306,7 +325,7 @@ void main() {
     await _skip(tester);
 
     expect(patches, isEmpty);
-    expect(find.text('STEP 2 / 5'), findsOneWidget);
+    expect(find.text('STEP 2 / 6'), findsOneWidget);
   });
 
   testWidgets('Continue with nothing chosen saves nothing but still advances', (
@@ -323,7 +342,7 @@ void main() {
       isEmpty,
       reason: 'an empty patch is a pointless round trip',
     );
-    expect(find.text('STEP 2 / 5'), findsOneWidget);
+    expect(find.text('STEP 2 / 6'), findsOneWidget);
   });
 
   testWidgets('Continue on step 1 with nothing ticked writes no goals', (
@@ -340,7 +359,7 @@ void main() {
       isEmpty,
       reason: 'nothing ticked is "not answered yet", not "no goals"',
     );
-    expect(find.text('STEP 2 / 5'), findsOneWidget);
+    expect(find.text('STEP 2 / 6'), findsOneWidget);
   });
 
   testWidgets('a failed save shows the message and stays on the step', (
@@ -362,7 +381,7 @@ void main() {
 
     expect(find.text('That goal is not one we recognise.'), findsOneWidget);
     expect(
-      find.text('STEP 1 / 5'),
+      find.text('STEP 1 / 6'),
       findsOneWidget,
       reason: 'advancing past a step whose answer was rejected would lose it',
     );
@@ -387,7 +406,7 @@ void main() {
       // focus falls back to it.
       expect(goalWrites.single.goals, ['build_muscle', 'lose_weight']);
       expect(goalWrites.single.mainGoal, 'build_muscle');
-      expect(find.text('STEP 2 / 5'), findsOneWidget);
+      expect(find.text('STEP 2 / 6'), findsOneWidget);
     },
   );
 
@@ -400,7 +419,7 @@ void main() {
 
     await _skip(tester);
     await _skip(tester);
-    expect(find.text('STEP 3 / 5'), findsOneWidget);
+    expect(find.text('STEP 3 / 6'), findsOneWidget);
 
     await _tapKey(tester, const Key('segment.beginner'));
     await _tapKey(tester, const Key('equipment.3'));
@@ -411,7 +430,7 @@ void main() {
     expect(equipmentWrites.single, [
       3,
     ], reason: 'equipment is a replace-set write, not part of the patch');
-    expect(find.text('STEP 4 / 5'), findsOneWidget);
+    expect(find.text('STEP 4 / 6'), findsOneWidget);
   });
 
   testWidgets('step 3 saves New to training and the home gym pre-fill', (
@@ -443,7 +462,7 @@ void main() {
     await _pumpFlow(tester, patches: []);
     await _skip(tester);
     await _skip(tester);
-    expect(find.text('STEP 3 / 5'), findsOneWidget);
+    expect(find.text('STEP 3 / 6'), findsOneWidget);
 
     // Read the rendered chips back in tree order, not just check presence —
     // display order is the point of the curated list, and `find.text` alone
@@ -474,7 +493,7 @@ void main() {
     await _pumpFlow(tester, patches: []);
     await _skip(tester);
     await _skip(tester);
-    expect(find.text('STEP 3 / 5'), findsOneWidget);
+    expect(find.text('STEP 3 / 6'), findsOneWidget);
 
     // Scope the icon search to this one chip's subtree. A bare
     // find.byIcon(Icons.check) would also match FsRadioDot on the fitness
@@ -503,7 +522,7 @@ void main() {
     await _pumpFlow(tester, patches: []);
     await _skip(tester);
     await _skip(tester);
-    expect(find.text('STEP 3 / 5'), findsOneWidget);
+    expect(find.text('STEP 3 / 6'), findsOneWidget);
 
     expect(find.text('0 selected'), findsOneWidget);
     await _tapKey(tester, const Key('equipment.3'));
@@ -520,7 +539,7 @@ void main() {
     await _skip(tester);
     await _skip(tester);
     await _skip(tester);
-    expect(find.text('STEP 4 / 5'), findsOneWidget);
+    expect(find.text('STEP 4 / 6'), findsOneWidget);
 
     await tester.tap(find.byKey(const Key('continue')));
     await tester.pumpAndSettle();
@@ -528,15 +547,180 @@ void main() {
     // "Nothing hurts" is the common answer and has to be savable.
     expect(injuryWrites.single, isEmpty);
     expect(
-      find.text('STEP 5 / 5'),
+      find.text('STEP 5 / 6'),
       findsOneWidget,
       reason:
-          'Continue on the injuries step only saves and advances -- the plan '
-          'is not built until the reminders step is answered',
+          'Continue on the injuries step only saves and advances -- the '
+          'health check comes next',
     );
   });
 
-  testWidgets('the fifth step offers reminders before the plan is built', (
+  testWidgets('the health step comes after injuries and has no Skip', (
+    tester,
+  ) async {
+    await _pumpFlow(tester, patches: []);
+
+    for (var i = 0; i < 4; i++) {
+      await _skip(tester);
+    }
+
+    expect(find.text('STEP 5 / 6'), findsOneWidget);
+    expect(find.text('Your health'), findsOneWidget);
+    expect(find.byKey(const Key('skip')), findsNothing);
+  });
+
+  testWidgets('Continue does nothing until the health step is answered', (
+    tester,
+  ) async {
+    final health = FakeHealthRepository();
+    await _pumpFlow(tester, patches: [], health: health);
+    for (var i = 0; i < 4; i++) {
+      await _skip(tester);
+    }
+
+    await _tapKey(tester, const Key('continue'));
+    expect(find.text('STEP 5 / 6'), findsOneWidget);
+    expect(health.writes, isEmpty);
+
+    await _passHealthClear(tester);
+
+    expect(find.text('STEP 6 / 6'), findsOneWidget);
+    expect(health.writes.single.toJson(), {
+      'conditions': <String>[],
+      'chestPain': false,
+      'dizziness': false,
+      'supervisedOnly': false,
+      'consent': false,
+      'acknowledged': false,
+    });
+    expect(health.deletes, 0, reason: 'a save must not also delete');
+  });
+
+  testWidgets('a positive health answer needs both boxes, then saves', (
+    tester,
+  ) async {
+    final health = FakeHealthRepository();
+    await _pumpFlow(tester, patches: [], health: health);
+    for (var i = 0; i < 4; i++) {
+      await _skip(tester);
+    }
+
+    await _tapKey(tester, const Key('health.asthma'));
+    for (final q in healthQuestions) {
+      await _tapKey(tester, Key('health.${q.field}.no'));
+    }
+    await _tapKey(tester, const Key('continue'));
+    expect(find.text('STEP 5 / 6'), findsOneWidget, reason: 'no boxes yet');
+
+    await _tapKey(tester, const Key('health.ack'));
+    await _tapKey(tester, const Key('continue'));
+    expect(find.text('STEP 5 / 6'), findsOneWidget, reason: 'no consent yet');
+
+    await _tapKey(tester, const Key('health.consent'));
+    await _tapKey(tester, const Key('continue'));
+
+    expect(find.text('STEP 6 / 6'), findsOneWidget);
+    final saved = health.writes.single;
+    expect(saved.conditions, ['asthma']);
+    expect(saved.consent, isTrue);
+    expect(saved.acknowledged, isTrue);
+    expect(health.deletes, 0, reason: 'a save must not also delete');
+  });
+
+  testWidgets("Don't save my answers continues without storing anything", (
+    tester,
+  ) async {
+    final health = FakeHealthRepository();
+    await _pumpFlow(tester, patches: [], health: health);
+    for (var i = 0; i < 4; i++) {
+      await _skip(tester);
+    }
+
+    await _tapKey(tester, const Key('health.none'));
+    await _tapKey(tester, const Key('health.chestPain.yes'));
+    await _tapKey(tester, const Key('health.dizziness.no'));
+    await _tapKey(tester, const Key('health.supervisedOnly.no'));
+    await _tapKey(tester, const Key('health.optOut'));
+    await _tapKey(tester, const Key('continue'));
+
+    expect(find.text('STEP 6 / 6'), findsOneWidget);
+    expect(health.writes, isEmpty);
+    expect(health.deletes, 1);
+  });
+
+  testWidgets('opting out deletes answers stored earlier', (tester) async {
+    // Simulates a row a previous, non-opted-out save already put on the
+    // server -- opting out now must remove it, not just skip writing.
+    final health = FakeHealthRepository(stored: const HealthAnswers());
+    await _pumpFlow(tester, patches: [], health: health);
+    for (var i = 0; i < 4; i++) {
+      await _skip(tester);
+    }
+
+    await _tapKey(tester, const Key('health.asthma'));
+    for (final q in healthQuestions) {
+      await _tapKey(tester, Key('health.${q.field}.no'));
+    }
+    await _tapKey(tester, const Key('health.optOut'));
+    await _tapKey(tester, const Key('continue'));
+
+    expect(find.text('STEP 6 / 6'), findsOneWidget);
+    expect(health.deletes, 1);
+    expect(health.writes, isEmpty);
+  });
+
+  testWidgets(
+    'saving positively, then opting out after Back, deletes what was saved',
+    (tester) async {
+      final health = FakeHealthRepository();
+      await _pumpFlow(tester, patches: [], health: health);
+      for (var i = 0; i < 4; i++) {
+        await _skip(tester);
+      }
+
+      await _tapKey(tester, const Key('health.asthma'));
+      for (final q in healthQuestions) {
+        await _tapKey(tester, Key('health.${q.field}.no'));
+      }
+      await _tapKey(tester, const Key('health.ack'));
+      await _tapKey(tester, const Key('health.consent'));
+      await _tapKey(tester, const Key('continue'));
+
+      expect(find.text('STEP 6 / 6'), findsOneWidget);
+      expect(health.writes.length, 1);
+
+      await _tapKey(tester, const Key('back'));
+      expect(find.text('STEP 5 / 6'), findsOneWidget);
+
+      await _tapKey(tester, const Key('health.optOut'));
+      await _tapKey(tester, const Key('continue'));
+
+      expect(find.text('STEP 6 / 6'), findsOneWidget);
+      expect(health.deletes, 1);
+    },
+  );
+
+  testWidgets('a failed health save shows the message and stays', (
+    tester,
+  ) async {
+    final health = FakeHealthRepository()
+      ..writeError = const ApiException(
+        'HEALTH_CONSENT_REQUIRED',
+        'Health answers that report a condition or a warning sign are '
+            'stored only with consent.',
+      );
+    await _pumpFlow(tester, patches: [], health: health);
+    for (var i = 0; i < 4; i++) {
+      await _skip(tester);
+    }
+
+    await _passHealthClear(tester);
+
+    expect(find.text('STEP 5 / 6'), findsOneWidget);
+    expect(find.byKey(const Key('error')), findsOneWidget);
+  });
+
+  testWidgets('the last step offers reminders before the plan is built', (
     tester,
   ) async {
     await _pumpFlow(tester, patches: []);
@@ -545,8 +729,9 @@ void main() {
     await _skip(tester);
     await _skip(tester);
     await _skip(tester);
+    await _passHealthClear(tester);
 
-    expect(find.text('STEP 5 / 5'), findsOneWidget);
+    expect(find.text('STEP 6 / 6'), findsOneWidget);
     expect(find.text('Stay on track'), findsOneWidget);
     expect(
       find.text(
@@ -577,6 +762,7 @@ void main() {
     await _skip(tester);
     await _skip(tester);
     await _skip(tester);
+    await _passHealthClear(tester);
     await tester.tap(find.byKey(const Key('continue')));
     await tester.pumpAndSettle();
 
@@ -603,6 +789,7 @@ void main() {
     await _skip(tester);
     await _skip(tester);
     await _skip(tester);
+    await _passHealthClear(tester);
     await tester.tap(find.byKey(const Key('secondary')));
     await tester.pumpAndSettle();
 
@@ -628,6 +815,7 @@ void main() {
     await _skip(tester);
     await _skip(tester);
     await _skip(tester);
+    await _passHealthClear(tester);
     await tester.tap(find.byKey(const Key('secondary')));
     await tester.pumpAndSettle();
 
@@ -655,6 +843,7 @@ void main() {
       await _skip(tester);
       await _skip(tester);
       await _skip(tester);
+      await _passHealthClear(tester);
       await tester.tap(find.byKey(const Key('secondary')));
       await tester.pumpAndSettle();
 
@@ -679,6 +868,7 @@ void main() {
       await _skip(tester);
       await _skip(tester);
       await _skip(tester);
+      await _passHealthClear(tester);
       await tester.tap(find.byKey(const Key('secondary')));
       await tester.pumpAndSettle();
 
@@ -705,6 +895,7 @@ void main() {
       await _skip(tester);
       await _skip(tester);
       await _skip(tester);
+      await _passHealthClear(tester);
       await tester.tap(find.byKey(const Key('continue')));
       await tester.pumpAndSettle();
 
@@ -728,6 +919,7 @@ void main() {
     await _skip(tester);
     await _skip(tester);
     await _skip(tester);
+    await _passHealthClear(tester);
     await tester.tap(find.byKey(const Key('continue')));
     await tester.pumpAndSettle();
 
@@ -759,11 +951,12 @@ void main() {
     await _skip(tester);
     await _skip(tester);
     await _skip(tester);
+    await _passHealthClear(tester);
     await tester.tap(find.byKey(const Key('continue')));
     await tester.pumpAndSettle();
 
     expect(find.text('Could not build a plan right now.'), findsOneWidget);
-    expect(find.text('STEP 5 / 5'), findsOneWidget);
+    expect(find.text('STEP 6 / 6'), findsOneWidget);
 
     await tester.tap(find.byKey(const Key('continue')));
     await tester.pumpAndSettle();
@@ -781,12 +974,13 @@ void main() {
     await _skip(tester);
     await _skip(tester);
     await _skip(tester);
+    await _passHealthClear(tester);
     await tester.tap(find.byKey(const Key('continue')));
     await tester.pump();
 
     expect(find.text('Building your plan…'), findsOneWidget);
     expect(
-      find.text('STEP 5 / 5'),
+      find.text('STEP 6 / 6'),
       findsNothing,
       reason: 'the wizard chrome has no place on the generating screen',
     );
@@ -808,6 +1002,7 @@ void main() {
     // Skip, not Continue -- _injuries is local state set by the tap above,
     // and this test does not care whether the write itself lands.
     await _skip(tester);
+    await _passHealthClear(tester);
     await tester.tap(find.byKey(const Key('continue')));
     await tester.pump();
 
@@ -828,14 +1023,15 @@ void main() {
       await _skip(tester);
       await _skip(tester);
       await _skip(tester);
-      expect(find.text('STEP 4 / 5'), findsOneWidget);
+      expect(find.text('STEP 4 / 6'), findsOneWidget);
 
       await _tapKey(tester, const Key('injury.1'));
       // Skip, not Continue -- this is the case that used to lose the pick:
-      // Skip advances without saving, and only the step-5 completion path
-      // (fixed to save injuries too) is left to send it.
+      // Skip advances without saving, and only the final step's completion
+      // path (fixed to save injuries too) is left to send it.
       await _skip(tester);
-      expect(find.text('STEP 5 / 5'), findsOneWidget);
+      expect(find.text('STEP 5 / 6'), findsOneWidget);
+      await _passHealthClear(tester);
 
       await tester.tap(find.byKey(const Key('continue')));
       await tester.pumpAndSettle();
@@ -863,6 +1059,7 @@ void main() {
     await _skip(tester);
     await _skip(tester);
     await _skip(tester);
+    await _passHealthClear(tester);
     await tester.tap(find.byKey(const Key('continue')));
     await tester.pump();
     // Well past the point where the writes have all resolved, and far enough
@@ -895,6 +1092,7 @@ void main() {
     await _skip(tester);
     await _skip(tester);
     await _skip(tester);
+    await _passHealthClear(tester);
     await tester.tap(find.byKey(const Key('continue')));
     await tester.pump();
 
@@ -928,11 +1126,11 @@ void main() {
     await _pumpFlow(tester, patches: []);
 
     await _skip(tester);
-    expect(find.text('STEP 2 / 5'), findsOneWidget);
+    expect(find.text('STEP 2 / 6'), findsOneWidget);
 
     await tester.tap(find.byKey(const Key('back')));
     await tester.pumpAndSettle();
 
-    expect(find.text('STEP 1 / 5'), findsOneWidget);
+    expect(find.text('STEP 1 / 6'), findsOneWidget);
   });
 }

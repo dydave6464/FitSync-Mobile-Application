@@ -29,7 +29,9 @@ class OnboardingScaffold extends StatelessWidget {
   final int step;
   final int total;
   final Widget child;
-  final VoidCallback onContinue;
+
+  /// Null disables Continue: a step whose answer is not yet valid.
+  final VoidCallback? onContinue;
   final VoidCallback? onSkip;
   final VoidCallback? onBack;
   final String continueLabel;

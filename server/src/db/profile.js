@@ -72,6 +72,15 @@ async function getProfile(pool, userId) {
     'SELECT goal FROM user_goals WHERE user_id = ? ORDER BY position', [userId],
   );
 
+  // Only the yes/no the generator needs. The answers themselves stay behind
+  // GET /profile/health and are never part of the profile payload.
+  const [[caution]] = await pool.query(
+    `SELECT COUNT(*) AS n FROM health_checks
+      WHERE user_id = ?
+        AND (conditions <> '' OR chest_pain OR dizziness OR supervised_only)`,
+    [userId],
+  );
+
   return {
     userId: u.user_id,
     email: u.email,
@@ -91,6 +100,9 @@ async function getProfile(pool, userId) {
     activityLevel: u.activity_level,
     trainingLocation: u.training_location,
     city: u.city,
+    // A stored health check that reports a condition or a warning sign. It
+    // makes the generated plan gentler (minimum sets, 45-minute sessions).
+    healthCaution: Number(caution.n) > 0,
     isPremium: Boolean(u.is_premium),
     notificationsEnabled: Boolean(u.notifications_enabled),
     weightUnit: u.weight_unit,

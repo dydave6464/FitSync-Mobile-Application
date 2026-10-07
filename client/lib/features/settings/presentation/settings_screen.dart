@@ -8,9 +8,12 @@ import '../../../core/widgets/fs_kit.dart';
 import '../../auth/presentation/auth_controller.dart';
 import '../../exercises/presentation/exercise_list_screen.dart'
     show describeError;
+import '../../health/domain/health_answers.dart';
+import '../../health/presentation/providers.dart';
 import '../../onboarding/presentation/edit_scaffold.dart';
 import '../../onboarding/presentation/steps/about_step.dart';
 import '../../onboarding/presentation/steps/goal_step.dart';
+import '../../onboarding/presentation/steps/health_step.dart';
 import '../../onboarding/presentation/steps/injuries_step.dart';
 import '../../onboarding/presentation/steps/level_step.dart';
 import '../../plans/presentation/widgets/training_days_row.dart';
@@ -230,6 +233,12 @@ class _SettingsList extends ConsumerWidget {
                 label: 'Injuries',
                 iconColor: t.red,
                 onTap: () => _open(context, const _InjuriesEditor()),
+              ),
+              _SettingsRow(
+                rowKey: const Key('edit.health'),
+                icon: Icons.health_and_safety_outlined,
+                label: 'Health',
+                onTap: () => _open(context, const _HealthEditor()),
               ),
               _SettingsRow(
                 rowKey: const Key('edit.trainingDays'),
@@ -581,6 +590,146 @@ class _InjuriesEditorState extends _EditorState<_InjuriesEditor> {
 
   @override
   Future<void> save(ProfileNotifier notifier) => notifier.setInjuries(_value);
+}
+
+/// The health check, edited outside onboarding.
+///
+/// Not an [_EditorState]: those seed from the profile, and the answers are
+/// deliberately not part of the profile. Saving or deleting changes the next
+/// plan built, not the plan the user has now.
+class _HealthEditor extends ConsumerStatefulWidget {
+  const _HealthEditor();
+
+  @override
+  ConsumerState<_HealthEditor> createState() => _HealthEditorState();
+}
+
+class _HealthEditorState extends ConsumerState<_HealthEditor> {
+  HealthAnswers _value = const HealthAnswers();
+  bool _seeded = false;
+  bool _busy = false;
+  String? _error;
+
+  /// Runs a write, then closes with [done]; a refused write stays open and
+  /// shows why, like the other editors.
+  Future<void> _run(Future<void> Function() write, String done) async {
+    if (_busy) return;
+    setState(() {
+      _busy = true;
+      _error = null;
+    });
+    final messenger = ScaffoldMessenger.of(context);
+    try {
+      await write();
+    } on ApiException catch (error) {
+      if (!mounted) return;
+      setState(() {
+        _error = error.message;
+        _busy = false;
+      });
+      return;
+    }
+    // No invalidate: healthProvider is autoDispose and only this editor
+    // watches it, so closing the editor drops the cached answers anyway.
+    // Invalidating here would flash the loading spinner before the pop.
+    if (!mounted) return;
+    Navigator.of(context).pop();
+    messenger.showSnackBar(SnackBar(content: Text(done)));
+  }
+
+  Future<void> _save() => _run(
+    () => ref.read(healthRepositoryProvider).setHealth(_value),
+    'Health saved',
+  );
+
+  Future<void> _delete() async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (dialog) => AlertDialog(
+        title: const Text('Delete your health answers?'),
+        content: const Text(
+          'Your next plan goes back to your usual sets and session length.',
+        ),
+        actions: [
+          TextButton(
+            key: const Key('health.delete.cancel'),
+            onPressed: () => Navigator.of(dialog).pop(false),
+            child: const Text('Cancel'),
+          ),
+          TextButton(
+            key: const Key('health.delete.confirm'),
+            onPressed: () => Navigator.of(dialog).pop(true),
+            child: const Text('Delete'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true || !mounted) return;
+    await _run(
+      () => ref.read(healthRepositoryProvider).deleteHealth(),
+      'Health answers deleted',
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final stored = ref.watch(healthProvider);
+
+    return stored.when(
+      loading: () =>
+          const Scaffold(body: Center(child: CircularProgressIndicator())),
+      error: (error, _) => Scaffold(
+        appBar: AppBar(title: const Text('Health')),
+        body: Center(
+          child: Padding(
+            padding: const EdgeInsets.all(24),
+            child: Text(describeError(error), textAlign: TextAlign.center),
+          ),
+        ),
+      ),
+      data: (saved) {
+        if (!_seeded) {
+          _seeded = true;
+          if (saved != null) _value = saved;
+        }
+        return EditScaffold(
+          title: 'Health',
+          busy: _busy,
+          onSave: _value.isValid ? _save : null,
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              HealthStep(
+                value: _value,
+                allowOptOut: false,
+                onChanged: (v) => setState(() => _value = v),
+              ),
+              if (saved != null) ...[
+                const SizedBox(height: 24),
+                FsButton(
+                  key: const Key('health.delete'),
+                  label: 'Delete my health answers',
+                  kind: FsButtonKind.ghost,
+                  danger: true,
+                  small: true,
+                  onPressed: _busy ? null : _delete,
+                ),
+              ],
+              if (_error != null) ...[
+                const SizedBox(height: 16),
+                Text(
+                  _error!,
+                  key: const Key('error'),
+                  style: TextStyle(fontSize: 12.5, color: context.fs.red),
+                ),
+              ],
+            ],
+          ),
+        );
+      },
+    );
+  }
 }
 
 class _TrainingDaysEditor extends ConsumerStatefulWidget {

@@ -194,3 +194,35 @@ def test_endurance_is_high_reps_at_three_sets():
 
 def test_endurance_is_a_forty_five_minute_session():
     assert derive(profile(mainGoal="improve_endurance")).session_length_min == 45
+
+
+@pytest.mark.parametrize(
+    "goal",
+    ["gain_strength", "build_muscle", "lose_weight", "general_fitness", "improve_endurance"],
+)
+def test_a_health_caution_gets_the_minimum_sets_for_every_goal(goal):
+    params = derive(profile(mainGoal=goal, healthCaution=True))
+    assert params.target_sets == 2
+
+
+def test_a_health_caution_keeps_the_goals_rep_range():
+    params = derive(profile(mainGoal="build_muscle", healthCaution=True))
+    assert params.target_reps == "8-12"
+
+
+def test_a_health_caution_caps_the_session_at_forty_five_minutes():
+    params = derive(profile(mainGoal="build_muscle", healthCaution=True))
+    assert params.session_length_min == 45
+
+
+def test_a_health_caution_and_new_to_training_do_not_stack():
+    params = derive(profile(mainGoal="build_muscle", fitnessLevel="new",
+                            healthCaution=True))
+    assert params.target_sets == 2
+    assert params.session_length_min == 45
+
+
+def test_no_health_caution_leaves_the_plan_alone():
+    params = derive(profile(mainGoal="build_muscle", healthCaution=False))
+    assert params.target_sets == 4
+    assert params.session_length_min == 60
