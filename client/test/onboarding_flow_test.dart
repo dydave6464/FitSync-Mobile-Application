@@ -33,14 +33,14 @@ Profile _emptyProfile() => const Profile(
 
 // The curated list the server now returns, in display order.
 const _equipment = [
-  EquipmentOption(equipmentId: 1, name: 'Barbell'),
-  EquipmentOption(equipmentId: 2, name: 'Dumbbells'),
-  EquipmentOption(equipmentId: 3, name: 'Bench'),
-  EquipmentOption(equipmentId: 4, name: 'Pull-up bar'),
-  EquipmentOption(equipmentId: 5, name: 'Kettlebell'),
-  EquipmentOption(equipmentId: 6, name: 'Bands'),
-  EquipmentOption(equipmentId: 7, name: 'Machines'),
-  EquipmentOption(equipmentId: 8, name: 'Bodyweight'),
+  EquipmentOption(equipmentId: 1, name: 'Barbell', key: 'barbell'),
+  EquipmentOption(equipmentId: 2, name: 'Dumbbells', key: 'dumbbell'),
+  EquipmentOption(equipmentId: 3, name: 'Bench', key: 'bench'),
+  EquipmentOption(equipmentId: 4, name: 'Pull-up bar', key: 'pull-up bar'),
+  EquipmentOption(equipmentId: 5, name: 'Kettlebell', key: 'kettlebell'),
+  EquipmentOption(equipmentId: 6, name: 'Bands', key: 'band'),
+  EquipmentOption(equipmentId: 7, name: 'Machines', key: 'machines'),
+  EquipmentOption(equipmentId: 8, name: 'Bodyweight', key: 'body weight'),
 ];
 const _injuries = [
   InjuryOption(
@@ -330,6 +330,29 @@ void main() {
       3,
     ], reason: 'equipment is a replace-set write, not part of the patch');
     expect(find.text('STEP 4 / 5'), findsOneWidget);
+  });
+
+  testWidgets('step 3 saves New to training and the home gym pre-fill', (
+    tester,
+  ) async {
+    final patches = <Map<String, dynamic>>[];
+    final equipmentWrites = <List<int>>[];
+    await _pumpFlow(tester, patches: patches, equipmentWrites: equipmentWrites);
+    await _skip(tester);
+    await _skip(tester);
+
+    await _tapKey(tester, const Key('segment.new'));
+    await _tapKey(tester, const Key('trainingLocation'));
+    await tester.tap(find.byKey(const Key('location.home_gym')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const Key('continue')));
+    await tester.pumpAndSettle();
+
+    expect(patches.single, {
+      'fitnessLevel': 'new',
+      'trainingLocation': 'home_gym',
+    });
+    expect(equipmentWrites.single.toSet(), {2, 6, 8});
   });
 
   testWidgets('step 3 shows the eight chips the design specifies, in order', (

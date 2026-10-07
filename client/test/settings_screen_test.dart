@@ -57,6 +57,7 @@ class FakeProfileNotifier extends ProfileNotifier {
     this.failPatch = false,
     this.trainingDays = const [],
     this.failTrainingDays = false,
+    this.fitnessLevel,
   });
 
   final List<Map<String, dynamic>> patches;
@@ -72,6 +73,10 @@ class FakeProfileNotifier extends ProfileNotifier {
   /// Rejects `setTrainingDays`, so a test can prove a failed save reports the
   /// error and leaves the editor open rather than looking saved.
   final bool failTrainingDays;
+
+  /// Seeds the profile's stored fitness level, so a test can check how the
+  /// header words it.
+  final String? fitnessLevel;
 
   /// The weekdays the screen last asked to save, recorded whether or not the
   /// write went on to succeed.
@@ -90,6 +95,7 @@ class FakeProfileNotifier extends ProfileNotifier {
     trainingDays: trainingDays,
     city: _baseProfile.city,
     mainGoal: _baseProfile.mainGoal,
+    fitnessLevel: fitnessLevel,
   );
 
   @override
@@ -159,12 +165,14 @@ Future<void> _pump(
   bool failPatch = false,
   List<int> trainingDays = const [],
   bool failTrainingDays = false,
+  String? fitnessLevel,
 }) async {
   _profile = FakeProfileNotifier(
     patches ?? <Map<String, dynamic>>[],
     failPatch: failPatch,
     trainingDays: trainingDays,
     failTrainingDays: failTrainingDays,
+    fitnessLevel: fitnessLevel,
   );
   await tester.pumpWidget(
     ProviderScope(
@@ -211,6 +219,13 @@ void main() {
 
     expect(find.text('Juan Dela Cruz'), findsOneWidget);
     expect(find.textContaining('Cebu City'), findsOneWidget);
+  });
+
+  testWidgets('words the header as New to training, not New', (tester) async {
+    await _pump(tester, patches: [], fitnessLevel: 'new');
+
+    expect(find.textContaining('New to training'), findsOneWidget);
+    expect(find.text('New'), findsNothing);
   });
 
   // Reachable when you are not mid-workout: the logger's header toggle is the
