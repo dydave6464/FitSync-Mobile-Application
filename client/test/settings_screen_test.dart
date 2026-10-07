@@ -315,6 +315,27 @@ void main() {
     }
   });
 
+  testWidgets('a profile seeded with goals but no focus does not crash Save', (
+    tester,
+  ) async {
+    final goalWrites = <({List<String> goals, String mainGoal})>[];
+    await _pump(
+      tester,
+      goals: ['lose_weight', 'build_muscle'],
+      goalWrites: goalWrites,
+    );
+
+    await _openRow(tester, const Key('edit.goal'));
+    await tester.tap(find.byKey(const Key('save')));
+    await tester.pumpAndSettle();
+
+    expect(tester.takeException(), isNull);
+    // build_muscle comes before lose_weight in card order, so a null
+    // focus falls back to it.
+    expect(goalWrites.single.goals, ['build_muscle', 'lose_weight']);
+    expect(goalWrites.single.mainGoal, 'build_muscle');
+  });
+
   testWidgets('saving an edited goal writes it and returns', (tester) async {
     final patches = <Map<String, dynamic>>[];
     final goalWrites = <({List<String> goals, String mainGoal})>[];

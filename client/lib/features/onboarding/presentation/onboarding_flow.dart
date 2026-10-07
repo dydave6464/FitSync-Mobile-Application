@@ -56,13 +56,7 @@ class _OnboardingFlowState extends ConsumerState<OnboardingFlow> {
   void _seedFrom(Profile profile) {
     if (_seeded) return;
     _seeded = true;
-    _goals = GoalAnswers(
-      goals: [
-        for (final g in goalValues)
-          if (profile.goals.contains(g)) g,
-      ],
-      mainGoal: profile.mainGoal,
-    );
+    _goals = GoalAnswers.fromProfile(profile);
     _about = AboutAnswers(
       sex: profile.sex,
       dateOfBirth: profile.dateOfBirth,

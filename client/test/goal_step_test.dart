@@ -3,6 +3,7 @@ import 'package:flutter_test/flutter_test.dart';
 
 import 'package:fitsync/core/widgets/fs_kit.dart';
 import 'package:fitsync/features/onboarding/presentation/steps/goal_step.dart';
+import 'package:fitsync/features/profile/domain/profile.dart';
 
 /// The wire values the server's `main_goal` ENUM accepts. Pinned as literals
 /// on purpose: if a label is reworded to "Improve endurance" and someone
@@ -43,7 +44,60 @@ Future<void> _tap(WidgetTester tester, String key) async {
   await tester.pumpAndSettle();
 }
 
+/// A minimal profile carrying only what `GoalAnswers.fromProfile` reads.
+Profile _profileWithGoals(List<String> goals, {String? mainGoal}) => Profile(
+  userId: 1,
+  email: 'a@example.com',
+  fullName: 'A',
+  onboardingCompleted: false,
+  isPremium: false,
+  notificationsEnabled: true,
+  equipment: const [],
+  injuries: const [],
+  goals: goals,
+  mainGoal: mainGoal,
+);
+
 void main() {
+  group('GoalAnswers.fromProfile', () {
+    test('goals come back in card order, not profile order', () {
+      final answers = GoalAnswers.fromProfile(
+        _profileWithGoals(['general_fitness', 'lose_weight']),
+      );
+      expect(answers.goals, ['lose_weight', 'general_fitness']);
+    });
+
+    test('a focus among the goals is kept', () {
+      final answers = GoalAnswers.fromProfile(
+        _profileWithGoals([
+          'lose_weight',
+          'improve_endurance',
+        ], mainGoal: 'improve_endurance'),
+      );
+      expect(answers.mainGoal, 'improve_endurance');
+    });
+
+    test('a null focus with goals falls back to the first, in card order', () {
+      final answers = GoalAnswers.fromProfile(
+        _profileWithGoals(['lose_weight', 'build_muscle']),
+      );
+      expect(answers.mainGoal, 'build_muscle');
+    });
+
+    test('a focus not among the goals falls back to the first goal', () {
+      final answers = GoalAnswers.fromProfile(
+        _profileWithGoals(['lose_weight'], mainGoal: 'build_muscle'),
+      );
+      expect(answers.mainGoal, 'lose_weight');
+    });
+
+    test('no goals means no focus', () {
+      final answers = GoalAnswers.fromProfile(_profileWithGoals(const []));
+      expect(answers.goals, isEmpty);
+      expect(answers.mainGoal, isNull);
+    });
+  });
+
   testWidgets('renders exactly the four goals', (tester) async {
     await tester.pumpWidget(
       MaterialApp(
@@ -171,5 +225,40 @@ void main() {
       tester.widget<FsCard>(find.byKey(const Key('goal.lose_weight'))).accent,
       isFalse,
     );
+  });
+
+  testWidgets(
+    'a stale focus not among the ticked goals is treated as none before '
+    'toggling',
+    (tester) async {
+      // mainGoal here is left over from a goal that is no longer ticked --
+      // the shape a seeded-but-inconsistent profile could hand the step.
+      final answers = await _pumpLive(
+        tester,
+        initial: const GoalAnswers(
+          goals: ['lose_weight'],
+          mainGoal: 'build_muscle',
+        ),
+      );
+      await _tap(tester, 'goal.improve_endurance');
+      expect(answers().goals, ['lose_weight', 'improve_endurance']);
+      // Not improve_endurance (just ticked) -- the already-ticked goal,
+      // first in card order, since the stale focus counts as having none.
+      expect(answers().mainGoal, 'lose_weight');
+    },
+  );
+
+  testWidgets('unticking a non-focus goal leaves the focus unchanged', (
+    tester,
+  ) async {
+    final answers = await _pumpLive(tester);
+    await _tap(tester, 'goal.build_muscle');
+    await _tap(tester, 'goal.lose_weight');
+    await _tap(tester, 'goal.improve_endurance');
+    expect(answers().mainGoal, 'build_muscle'); // first ticked
+    // Untick a goal that is neither the one just checked nor the focus.
+    await _tap(tester, 'goal.lose_weight');
+    expect(answers().goals, ['build_muscle', 'improve_endurance']);
+    expect(answers().mainGoal, 'build_muscle');
   });
 }

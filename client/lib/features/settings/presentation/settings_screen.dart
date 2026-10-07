@@ -441,13 +441,7 @@ class _GoalEditorState extends _EditorState<_GoalEditor> {
   Widget buildStep(Profile profile) {
     if (!_seeded) {
       _seeded = true;
-      _value = GoalAnswers(
-        goals: [
-          for (final g in goalValues)
-            if (profile.goals.contains(g)) g,
-        ],
-        mainGoal: profile.mainGoal,
-      );
+      _value = GoalAnswers.fromProfile(profile);
     }
     return GoalStep(
       value: _value,

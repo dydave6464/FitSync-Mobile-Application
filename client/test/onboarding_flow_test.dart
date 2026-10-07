@@ -61,6 +61,8 @@ class FakeProfileNotifier extends ProfileNotifier {
     this.onComplete,
     this.goalWrites,
     this.onSetGoals,
+    this.seedGoals = const [],
+    this.seedMainGoal,
   });
 
   final List<Map<String, dynamic>> patches;
@@ -77,8 +79,25 @@ class FakeProfileNotifier extends ProfileNotifier {
   /// attempt and succeed on the retry.
   final Future<void> Function(int attempt)? onComplete;
 
+  /// Seeds the loaded profile's goals and main focus, the way a returning
+  /// user's saved answers would -- without this, a test can never see
+  /// `_seedFrom` work from anything but an empty profile.
+  final List<String> seedGoals;
+  final String? seedMainGoal;
+
   @override
-  Future<Profile> build() async => _emptyProfile();
+  Future<Profile> build() async => Profile(
+    userId: 7,
+    email: 'juan@example.com',
+    fullName: 'Juan Dela Cruz',
+    onboardingCompleted: false,
+    isPremium: false,
+    notificationsEnabled: true,
+    equipment: const [],
+    injuries: const [],
+    goals: seedGoals,
+    mainGoal: seedMainGoal,
+  );
 
   @override
   Future<void> patch(Map<String, dynamic> fields) async {
@@ -205,6 +224,8 @@ Future<void> _pumpFlow(
   ReminderPromptStore? store,
   List<({List<String> goals, String mainGoal})>? goalWrites,
   Future<void> Function()? onSetGoals,
+  List<String> seedGoals = const [],
+  String? seedMainGoal,
 }) async {
   await tester.pumpWidget(
     ProviderScope(
@@ -219,6 +240,8 @@ Future<void> _pumpFlow(
             onComplete: onComplete,
             goalWrites: goalWrites,
             onSetGoals: onSetGoals,
+            seedGoals: seedGoals,
+            seedMainGoal: seedMainGoal,
           ),
         ),
         authControllerProvider.overrideWith(
@@ -344,6 +367,29 @@ void main() {
       reason: 'advancing past a step whose answer was rejected would lose it',
     );
   });
+
+  testWidgets(
+    'a profile seeded with goals but no focus does not crash Continue',
+    (tester) async {
+      final goalWrites = <({List<String> goals, String mainGoal})>[];
+      await _pumpFlow(
+        tester,
+        patches: [],
+        goalWrites: goalWrites,
+        seedGoals: const ['lose_weight', 'build_muscle'],
+      );
+
+      await tester.tap(find.byKey(const Key('continue')));
+      await tester.pumpAndSettle();
+
+      expect(tester.takeException(), isNull);
+      // build_muscle comes before lose_weight in card order, so a null
+      // focus falls back to it.
+      expect(goalWrites.single.goals, ['build_muscle', 'lose_weight']);
+      expect(goalWrites.single.mainGoal, 'build_muscle');
+      expect(find.text('STEP 2 / 5'), findsOneWidget);
+    },
+  );
 
   testWidgets('step 3 saves the level fields and the equipment set', (
     tester,

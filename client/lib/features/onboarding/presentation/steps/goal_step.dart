@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../../../../core/theme.dart';
 import '../../../../core/widgets/fs_kit.dart';
+import '../../../profile/domain/profile.dart';
 
 /// The four goals, paired with the exact `main_goal` ENUM values the server
 /// accepts. Labels and order follow the prototype; the value is a wire
@@ -46,6 +47,22 @@ class GoalAnswers {
 
   final List<String> goals;
   final String? mainGoal;
+
+  /// Seeds a working value from the saved profile: every ticked goal, in
+  /// card order, and a focus guaranteed to be among them (or null when there
+  /// are none) -- even when the profile itself disagrees, e.g. a main focus
+  /// left behind after the goal it named was removed elsewhere. Onboarding
+  /// and Settings both call this instead of repeating the same comprehension.
+  factory GoalAnswers.fromProfile(Profile profile) {
+    final goals = [
+      for (final g in goalValues)
+        if (profile.goals.contains(g)) g,
+    ];
+    final mainGoal = goals.contains(profile.mainGoal)
+        ? profile.mainGoal
+        : (goals.isEmpty ? null : goals.first);
+    return GoalAnswers(goals: goals, mainGoal: mainGoal);
+  }
 }
 
 /// Step 1: what the user is training for.
@@ -71,14 +88,18 @@ class GoalStep extends StatelessWidget {
       for (final g in _goals)
         if (g.value == goal ? !ticked : value.goals.contains(g.value)) g.value,
     ];
-    var focus = value.mainGoal;
-    if (ticked && focus == goal) {
-      // The focus was unticked: hand it to the first goal still ticked.
-      focus = next.isEmpty ? null : next.first;
-    } else if (!ticked) {
-      // The first goal ticked becomes the focus; later ticks do not take it.
-      focus ??= goal;
-    }
+    // A focus that is not among the goals ticked right now counts as none --
+    // whether that is because nothing has been ticked yet, or because the
+    // value handed in (e.g. seeded from a profile) is stale. Carrying a
+    // stale focus forward is what used to reach the server as mainGoal for a
+    // goal that was not ticked, and crash the save.
+    final currentFocus = value.goals.contains(value.mainGoal)
+        ? value.mainGoal
+        : null;
+    final hasNoFocus = currentFocus == null || (ticked && currentFocus == goal);
+    final focus = hasNoFocus
+        ? (next.isEmpty ? null : next.first)
+        : currentFocus;
     onChanged(GoalAnswers(goals: next, mainGoal: focus));
   }
 
