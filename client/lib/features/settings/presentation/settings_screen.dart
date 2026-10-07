@@ -209,7 +209,7 @@ class _SettingsList extends ConsumerWidget {
               _SettingsRow(
                 rowKey: const Key('edit.goal'),
                 icon: Icons.flag_outlined,
-                label: 'Goal',
+                label: 'Goals',
                 onTap: () => _open(context, const _GoalEditor()),
               ),
               _SettingsRow(
@@ -435,7 +435,7 @@ class _GoalEditorState extends _EditorState<_GoalEditor> {
   bool _seeded = false;
 
   @override
-  String get title => 'Goal';
+  String get title => 'Goals';
 
   @override
   Widget buildStep(Profile profile) {

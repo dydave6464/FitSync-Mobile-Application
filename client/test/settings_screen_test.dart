@@ -401,7 +401,7 @@ void main() {
 
     // Returning to Settings was the only signal a write had happened, which
     // looks the same as a screen that closed without doing anything.
-    expect(find.text('Goal saved'), findsOneWidget);
+    expect(find.text('Goals saved'), findsOneWidget);
   });
 
   testWidgets('the message names the section, not a generic success', (
@@ -427,7 +427,7 @@ void main() {
 
     // Not textContaining('saved') — the rejection message itself reads "That
     // could not be saved", which such a matcher would catch and call a pass.
-    expect(find.text('Goal saved'), findsNothing);
+    expect(find.text('Goals saved'), findsNothing);
     expect(find.byType(SnackBar), findsNothing);
     expect(
       find.byKey(const Key('error')),

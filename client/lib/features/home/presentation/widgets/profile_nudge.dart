@@ -46,7 +46,7 @@ class ProfileNudge extends StatelessWidget {
                 Text('Finish your profile', style: theme.textTheme.titleMedium),
                 const SizedBox(height: 2),
                 Text(
-                  'Using safe defaults — add your goal and equipment for a '
+                  'Using safe defaults — add your goals and equipment for a '
                   'better plan.',
                   style: TextStyle(fontSize: 11, color: t.text3),
                 ),
