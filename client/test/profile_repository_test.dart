@@ -321,6 +321,13 @@ void main() {
   test('equipment and injury lookups parse their option lists', () async {
     final (repo, _) = _repoReturning({
       'data': {
+        'equipment': [
+          {'equipmentId': 1, 'name': 'Barbell', 'key': 'barbell'},
+          {'equipmentId': 8, 'name': 'Bodyweight', 'key': 'body weight'},
+          // No 'key' at all: a server that predates the column, which must
+          // read as null rather than throw.
+          {'equipmentId': 41, 'name': 'Resistance band'},
+        ],
         'injuries': [
           {
             'injuryId': 5,
@@ -337,6 +344,14 @@ void main() {
         ],
       },
     });
+
+    final equipment = await repo.equipmentOptions();
+
+    expect(equipment[0].equipmentId, 1);
+    expect(equipment[0].name, 'Barbell');
+    expect(equipment[0].key, 'barbell');
+    expect(equipment[1].key, 'body weight');
+    expect(equipment.last.key, isNull);
 
     final options = await repo.injuryOptions();
 
