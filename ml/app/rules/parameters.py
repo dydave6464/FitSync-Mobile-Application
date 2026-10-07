@@ -72,7 +72,10 @@ def derive(profile: Mapping[str, Any],
            overrides: Optional[Mapping[str, Any]] = None) -> PlanParameters:
     overrides = overrides or {}
     level = profile.get("fitnessLevel")
-    is_new = level == "new"
+    # A health caution gets the same gentler plan as New to training: the
+    # minimum sets and the beginner session cap. The two do not stack -- the
+    # minimum is already the floor.
+    is_new = level == "new" or bool(profile.get("healthCaution"))
     # New to training sits inside the beginner tier: the same session cap,
     # and the minimum sets rather than one fewer than the goal's.
     is_beginner = level == "beginner" or is_new

@@ -60,6 +60,10 @@ class ProfileRequest(BaseModel):
     equipment: List[EquipmentRef] = Field(default_factory=list)
     injuries: List[InjuryRef] = Field(default_factory=list)
     overrides: Optional[PlanOverrides] = None
+    # True when the user's stored health check reports a condition or a
+    # warning sign. The answers themselves never leave Node; this flag is all
+    # the generator is told.
+    healthCaution: bool = False
 
 
 class PlanExercise(BaseModel):

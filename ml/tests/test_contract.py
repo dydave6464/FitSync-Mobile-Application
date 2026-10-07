@@ -476,3 +476,18 @@ def test_unknown_goals_are_ignored_in_the_name(client):
 def test_no_goal_is_named_general_health(client):
     plan = post_plan(client)
     assert plan["name"] == "Full Body — General Health"
+
+
+def test_a_health_caution_reaches_the_plan(client):
+    plan = post_plan(client, mainGoal="build_muscle", fitnessLevel="intermediate",
+                     healthCaution=True)
+    assert plan["sessionLengthMin"] == 45
+    assert {e["targetSets"] for e in plan["exercises"]} == {2}
+
+
+def test_health_answers_are_not_part_of_the_contract(client):
+    # Node never sends them; if something did, it must not change the plan.
+    plain = post_plan(client, mainGoal="build_muscle")
+    extra = post_plan(client, mainGoal="build_muscle",
+                      conditions=["asthma"], chestPain=True)
+    assert plain == extra
