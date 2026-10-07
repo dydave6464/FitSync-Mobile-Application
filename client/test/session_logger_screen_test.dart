@@ -22,6 +22,8 @@ import 'package:fitsync/features/sessions/presentation/session_logger_screen.dar
 import 'package:fitsync/features/sessions/presentation/widgets/rest_timer.dart';
 import 'package:fitsync/features/sessions/presentation/widgets/set_row.dart';
 
+import 'helpers/fake_training_settings.dart';
+
 const _plan = WorkoutPlan(
   planId: 42,
   name: 'Week 1 — Full body',
@@ -415,6 +417,9 @@ Future<FakeSessionController> _pump(
   // the disposed-State invalidation test below reads it; every other test
   // leaves it null.
   VoidCallback? onActivePlanRead,
+  // The saved rest between sets. Every test gets the store, since the logger
+  // reads it on its first frame; a test that cares passes its own.
+  FakeTrainingSettings? training,
 }) async {
   final controller = FakeSessionController(session ?? _session());
 
@@ -441,6 +446,9 @@ Future<FakeSessionController> _pump(
           (ref, key) async => lastGate != null ? lastGate.future : last,
         ),
         if (plans != null) planRepositoryProvider.overrideWithValue(plans),
+        trainingSettingsRepositoryProvider.overrideWithValue(
+          training ?? FakeTrainingSettings(),
+        ),
         // Live for every test in this file: the demo stage reads this too, and
         // an unstubbed fetch would hang pumpAndSettle. `cues` lets one test
         // supply an AI answer; the rest get the catalogue default.
@@ -512,6 +520,7 @@ Future<FakeSessionController> _pumpLogging(
   List<Map<String, dynamic>>? patches,
   WorkoutPlan? plan = _plan,
   Map<int, LastPerformance> last = const {},
+  FakeTrainingSettings? training,
 }) async {
   final controller = await _pump(
     tester,
@@ -520,6 +529,7 @@ Future<FakeSessionController> _pumpLogging(
     patches: patches,
     plan: plan,
     last: last,
+    training: training,
   );
   await tester.tap(find.byKey(const Key('logger.primary')));
   await tester.pumpAndSettle();
@@ -984,14 +994,14 @@ void main() {
       expect(
         find.descendant(
           of: find.byKey(const Key('jump.101')),
-          matching: find.text('1/3'),
+          matching: find.text('1/3 sets'),
         ),
         findsOneWidget,
       );
       expect(
         find.descendant(
           of: find.byKey(const Key('jump.102')),
-          matching: find.text('0/2'),
+          matching: find.text('0/2 sets'),
         ),
         findsOneWidget,
       );
@@ -1282,7 +1292,7 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.text('Exercise 2 of 2'), findsOneWidget);
-    expect(find.text('2 × 10-15'), findsOneWidget);
+    expect(find.text('2 sets × 10-15 reps'), findsOneWidget);
   });
 
   testWidgets('finishing sends the elapsed minutes and shows a summary', (
@@ -2103,5 +2113,310 @@ void main() {
     // screen itself once the sheet -- not the dialog -- has actually
     // resolved. Nothing above proves that pop ever happened.
     expect(find.byType(SessionLoggerScreen), findsNothing);
+  });
+
+  group('encouragement', () {
+    const squatDone = [
+      LoggedSet(exerciseId: 101, setNumber: 1, weightKg: 20, reps: 10),
+      LoggedSet(exerciseId: 101, setNumber: 2, weightKg: 20, reps: 10),
+      LoggedSet(exerciseId: 101, setNumber: 3, weightKg: 20, reps: 10),
+    ];
+
+    testWidgets('says nothing while the exercise has sets left', (
+      tester,
+    ) async {
+      await _pumpLogging(tester);
+      expect(find.byKey(const Key('logger.encouragement')), findsNothing);
+    });
+
+    testWidgets('appears when the last set of an exercise is logged', (
+      tester,
+    ) async {
+      await _pumpLogging(
+        tester,
+        session: _session(sets: squatDone.sublist(0, 2)),
+      );
+      expect(find.byKey(const Key('logger.encouragement')), findsNothing);
+
+      // Complete set 3 -- the one the footer names.
+      await tester.tap(find.byKey(const Key('logger.primary')));
+      await tester.pumpAndSettle();
+
+      // Two exercises in the plan, so the first finished is halfway.
+      expect(find.byKey(const Key('logger.encouragement')), findsOneWidget);
+      // Which halfway line shows varies by session; every one gives the count.
+      expect(find.textContaining('1 of 2'), findsOneWidget);
+      expect(find.text('Up next: Push-up'), findsOneWidget);
+    });
+
+    testWidgets('goes away when a set of the exercise is reopened', (
+      tester,
+    ) async {
+      await _pumpLogging(tester, session: _session(sets: squatDone));
+      expect(find.byKey(const Key('logger.encouragement')), findsOneWidget);
+
+      await tester.tap(find.byKey(const Key('set.3.row')));
+      await tester.pumpAndSettle();
+
+      expect(find.byKey(const Key('logger.encouragement')), findsNothing);
+    });
+
+    testWidgets('closes the session out once every set is done', (
+      tester,
+    ) async {
+      await _pumpLogging(
+        tester,
+        session: _session(
+          sets: const [
+            ...squatDone,
+            LoggedSet(exerciseId: 102, setNumber: 1, reps: 12),
+            LoggedSet(exerciseId: 102, setNumber: 2, reps: 12),
+          ],
+        ),
+      );
+      // Which closing line shows varies by session; every one points at Finish.
+      expect(
+        find.textContaining('Tap Finish session to save it.'),
+        findsOneWidget,
+      );
+    });
+
+    testWidgets('is not shown on the demo stage', (tester) async {
+      await _pump(tester, session: _session(sets: squatDone));
+      expect(find.byKey(const Key('logger.demo')), findsOneWidget);
+      expect(find.byKey(const Key('logger.encouragement')), findsNothing);
+    });
+  });
+
+  group('restart this exercise', () {
+    const twoSquatSets = [
+      LoggedSet(exerciseId: 101, setNumber: 1, weightKg: 20, reps: 10),
+      LoggedSet(exerciseId: 101, setNumber: 2, weightKg: 20, reps: 10),
+    ];
+    // Logged against the next exercise, so a restart that touched more than
+    // the exercise on screen would show up in the calls.
+    const pushUpSet = LoggedSet(exerciseId: 102, setNumber: 1, reps: 12);
+
+    Future<bool> restartEnabled(WidgetTester tester) async {
+      await tester.tap(find.byKey(const Key('logger.menu')));
+      await tester.pumpAndSettle();
+      final enabled = tester
+          .widget<PopupMenuItem<String>>(
+            find.byKey(const Key('logger.restart')),
+          )
+          .enabled;
+      // Close the menu again without choosing anything.
+      await tester.tapAt(const Offset(5, 5));
+      await tester.pumpAndSettle();
+      return enabled;
+    }
+
+    testWidgets('asks first, naming the exercise and how many sets go', (
+      tester,
+    ) async {
+      await _pumpLogging(tester, session: _session(sets: twoSquatSets));
+
+      await _menu(tester, 'restart');
+
+      expect(find.text('Restart Goblet squat?'), findsOneWidget);
+      expect(
+        find.text(
+          'Your 2 logged sets for this exercise will be cleared. '
+          'The rest of your session is kept.',
+        ),
+        findsOneWidget,
+      );
+    });
+
+    testWidgets('one logged set is singular in the question', (tester) async {
+      await _pumpLogging(
+        tester,
+        session: _session(sets: twoSquatSets.sublist(0, 1)),
+      );
+
+      await _menu(tester, 'restart');
+
+      expect(
+        find.textContaining('Your 1 logged set for this exercise'),
+        findsOneWidget,
+      );
+    });
+
+    testWidgets('clears only the exercise on screen and stays on its table', (
+      tester,
+    ) async {
+      final controller = await _pumpLogging(
+        tester,
+        session: _session(sets: const [...twoSquatSets, pushUpSet]),
+      );
+
+      await _menu(tester, 'restart');
+      await tester.tap(find.text('Restart'));
+      await tester.pumpAndSettle();
+
+      expect(controller.calls, containsAll(['unlog:101:1', 'unlog:101:2']));
+      expect(controller.calls, isNot(contains('unlog:102:1')));
+      expect(controller.calls, isNot(contains('abandon')));
+      // Still logging, back at set 1, with the cleared rows emptied.
+      expect(find.byType(SessionLoggerScreen), findsOneWidget);
+      expect(find.text('Complete set 1'), findsOneWidget);
+      expect(
+        tester
+            .widget<TextField>(find.byKey(const Key('set.1.reps')))
+            .controller!
+            .text,
+        isEmpty,
+      );
+    });
+
+    testWidgets('Keep leaves every set where it was', (tester) async {
+      final controller = await _pumpLogging(
+        tester,
+        session: _session(sets: twoSquatSets),
+      );
+
+      await _menu(tester, 'restart');
+      await tester.tap(find.text('Keep'));
+      await tester.pumpAndSettle();
+
+      expect(controller.calls.where((c) => c.startsWith('unlog')), isEmpty);
+      expect(find.text('Complete set 3'), findsOneWidget);
+    });
+
+    testWidgets('stops a rest that was counting down', (tester) async {
+      await _pumpLogging(tester, session: _session(sets: twoSquatSets));
+      await tester.tap(find.byKey(const Key('logger.primary')));
+      await tester.pump();
+      expect(find.byType(RestTimer), findsOneWidget);
+
+      await _menu(tester, 'restart');
+      await tester.tap(find.text('Restart'));
+      await tester.pumpAndSettle();
+
+      expect(find.byType(RestTimer), findsNothing);
+    });
+
+    testWidgets('is unavailable before anything is logged on the exercise', (
+      tester,
+    ) async {
+      await _pumpLogging(tester, session: _session(sets: const [pushUpSet]));
+      expect(await restartEnabled(tester), isFalse);
+    });
+
+    testWidgets('is unavailable on the demo stage', (tester) async {
+      await _pump(tester, session: _session(sets: twoSquatSets));
+      expect(await restartEnabled(tester), isFalse);
+    });
+
+    testWidgets('a restart that fails says so and keeps the session', (
+      tester,
+    ) async {
+      final controller = await _pumpLogging(
+        tester,
+        session: _session(sets: twoSquatSets),
+      );
+      controller.unlogSetError = Exception('offline');
+
+      await _menu(tester, 'restart');
+      await tester.tap(find.text('Restart'));
+      await tester.pumpAndSettle();
+
+      expect(
+        find.textContaining("Couldn't finish restarting Goblet squat."),
+        findsOneWidget,
+      );
+      expect(find.byType(SessionLoggerScreen), findsOneWidget);
+      expect(tester.takeException(), isNull);
+    });
+
+    testWidgets('a session closed elsewhere leaves the logger', (tester) async {
+      final controller = await _pumpLogging(
+        tester,
+        session: _session(sets: twoSquatSets),
+      );
+      controller.unlogSetError = const ApiException(
+        'SESSION_NOT_IN_PROGRESS',
+        'This session has already been closed.',
+      );
+
+      await _menu(tester, 'restart');
+      await tester.tap(find.text('Restart'));
+      await tester.pumpAndSettle();
+
+      expect(find.byType(SessionLoggerScreen), findsNothing);
+      expect(find.text('This session was already finished.'), findsOneWidget);
+    });
+  });
+
+  group('rest time', () {
+    testWidgets('a rest starts from the saved rest time', (tester) async {
+      await _pumpLogging(tester, training: FakeTrainingSettings(120));
+
+      await tester.tap(find.byKey(const Key('logger.primary')));
+      await tester.pump();
+
+      expect(
+        tester.widget<Text>(find.byKey(const Key('rest.remaining'))).data,
+        '2:00',
+      );
+    });
+
+    testWidgets('the menu names the rest time and opens its sheet', (
+      tester,
+    ) async {
+      await _pump(tester, training: FakeTrainingSettings(150));
+
+      await tester.tap(find.byKey(const Key('logger.menu')));
+      await tester.pumpAndSettle();
+      expect(find.text('Rest time: 2:30'), findsOneWidget);
+
+      await tester.tap(find.byKey(const Key('logger.restTime')));
+      await tester.pumpAndSettle();
+
+      expect(find.byKey(const Key('rest.sheet')), findsOneWidget);
+      // Opened before any rest is running, so there is no countdown to show.
+      expect(find.byKey(const Key('rest.sheet.remaining')), findsNothing);
+    });
+
+    testWidgets('a default chosen from the menu is the next rest\'s length', (
+      tester,
+    ) async {
+      final training = FakeTrainingSettings();
+      await _pumpLogging(tester, training: training);
+
+      await _menu(tester, 'restTime');
+      await tester.tap(find.byKey(const Key('rest.preset.60')));
+      await tester.pumpAndSettle();
+      expect(training.writes, [60]);
+      // Close the sheet the way a user would.
+      await tester.tapAt(const Offset(5, 5));
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.byKey(const Key('logger.primary')));
+      await tester.pump();
+
+      expect(
+        tester.widget<Text>(find.byKey(const Key('rest.remaining'))).data,
+        '1:00',
+      );
+    });
+
+    testWidgets('the running rest\'s tag opens the sheet with its countdown', (
+      tester,
+    ) async {
+      await _pumpLogging(tester);
+      await tester.tap(find.byKey(const Key('logger.primary')));
+      await tester.pump();
+
+      await tester.tap(find.byKey(const Key('rest.open')));
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 400));
+
+      expect(find.byKey(const Key('rest.sheet.remaining')), findsOneWidget);
+      await tester.tap(find.byKey(const Key('rest.skip')));
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 400));
+      expect(find.byType(RestTimer), findsNothing);
+    });
   });
 }

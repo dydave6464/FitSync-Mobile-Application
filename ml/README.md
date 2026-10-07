@@ -107,10 +107,11 @@ ML_SERVICE_URL=http://localhost:8000
 ```
 
 Node sends only what the rules read, built from an allowed list in
-`server/src/services/ml/profile-payload.js`: goal, fitness level, equipment
-and injury ids, each injury's body region, the generator's choices, and
-check-in answers. No email, name, city, date of birth or body measurements
-cross the wire, so `http` mode is fine outside development too.
+`server/src/services/ml/profile-payload.js`: goal, fitness level, training
+location, equipment and injury ids, each injury's body region, the
+generator's choices, and check-in answers. No email, name, city, date of
+birth or body measurements cross the wire, so `http` mode is fine outside
+development too.
 
 Restart the Node server. `ML_MODE=stub` is the default and remains valid — the
 two are interchangeable by design, and `server/tests/ml-service.test.js`

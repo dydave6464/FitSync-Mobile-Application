@@ -413,4 +413,66 @@ def test_a_plan_is_named_after_the_split_it_actually_is(client):
 def test_the_goal_suffix_survives_the_split_becoming_part_of_the_name(client):
     plan = post_plan(client, mainGoal="lose_weight",
                      overrides={"splitStyle": "upper_lower"})
-    assert plan["name"] == "Upper / Lower — Lose Weight"
+    assert plan["name"] == "Upper / Lower — Lose Fat"
+
+
+def test_training_location_reaches_the_candidate_order(settings, engine, catalogue):
+    from app.main import _candidates
+
+    eq = catalogue["equipment"]
+    owned = [eq["body weight"], eq["dumbbell"], eq["machines"]]
+    gym = _candidates(engine, owned, owned, [], [], "commercial_gym")
+    home = _candidates(engine, owned, owned, [], [], "home_gym")
+    assert gym[0].name == "fixture cable row"
+    assert home[-1].name == "fixture cable row"
+
+
+def test_a_plan_request_with_a_location_is_accepted(client, catalogue):
+    eq = catalogue["equipment"]
+    plan = post_plan(
+        client,
+        mainGoal="build_muscle",
+        trainingLocation="home_gym",
+        equipment=[{"equipmentId": eq["body weight"]}],
+    )
+    assert plan["exercises"]
+
+
+def test_endurance_is_named_for_itself(client):
+    plan = post_plan(client, mainGoal="improve_endurance")
+    assert plan["name"] == "Full Body — Improve Endurance"
+
+
+def test_one_other_goal_is_named_after_the_focus(client):
+    plan = post_plan(client, mainGoal="build_muscle",
+                     goals=["build_muscle", "lose_weight"])
+    assert plan["name"] == "Full Body — Build Muscle + Lose Fat"
+
+
+def test_the_focus_leads_whatever_order_the_goals_arrive_in(client):
+    plan = post_plan(client, mainGoal="lose_weight",
+                     goals=["build_muscle", "lose_weight"])
+    assert plan["name"] == "Full Body — Lose Fat + Build Muscle"
+
+
+@pytest.mark.parametrize(
+    "goals,suffix",
+    [
+        (["build_muscle", "lose_weight", "improve_endurance"], "+ 2 more"),
+        (["build_muscle", "lose_weight", "improve_endurance", "general_fitness"], "+ 3 more"),
+    ],
+)
+def test_several_other_goals_are_counted(client, goals, suffix):
+    plan = post_plan(client, mainGoal="build_muscle", goals=goals)
+    assert plan["name"] == "Full Body — Build Muscle {}".format(suffix)
+
+
+def test_unknown_goals_are_ignored_in_the_name(client):
+    plan = post_plan(client, mainGoal="build_muscle",
+                     goals=["build_muscle", "become_a_bird"])
+    assert plan["name"] == "Full Body — Build Muscle"
+
+
+def test_no_goal_is_named_general_health(client):
+    plan = post_plan(client)
+    assert plan["name"] == "Full Body — General Health"

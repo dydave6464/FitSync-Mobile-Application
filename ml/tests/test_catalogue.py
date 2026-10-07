@@ -1,3 +1,5 @@
+import pytest
+
 from app.catalogue import fetch_candidates
 
 
@@ -153,3 +155,55 @@ def test_preference_never_changes_which_exercises_are_eligible(engine, catalogue
     assert sorted(ordered(fetch_candidates(engine, owned, [], [], [eq["dumbbell"]]))) == sorted(
         ordered(fetch_candidates(engine, owned, [], []))
     )
+
+
+def test_a_gym_puts_machine_exercises_first(engine, catalogue):
+    eq = catalogue["equipment"]
+    owned = [eq["body weight"], eq["dumbbell"], eq["machines"]]
+    result = ordered(
+        fetch_candidates(engine, owned, [], [], owned, "commercial_gym")
+    )
+    assert result[0] == "fixture cable row"
+
+
+def test_a_home_gym_puts_machine_exercises_last(engine, catalogue):
+    eq = catalogue["equipment"]
+    owned = [eq["body weight"], eq["dumbbell"], eq["machines"]]
+    result = ordered(fetch_candidates(engine, owned, [], [], owned, "home_gym"))
+    assert result[-1] == "fixture cable row"
+
+
+def test_somewhere_else_puts_body_weight_before_dumbbells(engine, catalogue):
+    eq = catalogue["equipment"]
+    owned = [eq["body weight"], eq["dumbbell"]]
+    result = ordered(fetch_candidates(engine, owned, [], [], owned, "other"))
+    assert result.index("fixture inverted row") < result.index("fixture dumbbell curl")
+
+
+@pytest.mark.parametrize("location", ["both", None, "the_moon"])
+def test_no_location_preference_keeps_the_existing_order(engine, catalogue, location):
+    eq = catalogue["equipment"]
+    owned = [eq["body weight"], eq["dumbbell"], eq["machines"]]
+    assert ordered(
+        fetch_candidates(engine, owned, [], [], owned, location)
+    ) == ordered(fetch_candidates(engine, owned, [], [], owned))
+
+
+@pytest.mark.parametrize("location", ["commercial_gym", "home_gym", "other"])
+def test_location_never_changes_which_exercises_are_eligible(engine, catalogue, location):
+    eq = catalogue["equipment"]
+    owned = [eq["body weight"], eq["dumbbell"], eq["machines"]]
+    assert sorted(
+        ordered(fetch_candidates(engine, owned, [], [], owned, location))
+    ) == sorted(ordered(fetch_candidates(engine, owned, [], [], owned)))
+
+
+def test_selected_equipment_still_outranks_location(engine, catalogue):
+    # A gym-goer who ticked only dumbbells still gets dumbbells first: what
+    # they chose beats what their location suggests.
+    eq = catalogue["equipment"]
+    owned = [eq["body weight"], eq["dumbbell"], eq["machines"]]
+    result = ordered(
+        fetch_candidates(engine, owned, [], [], [eq["dumbbell"]], "commercial_gym")
+    )
+    assert result[0] == "fixture dumbbell curl"

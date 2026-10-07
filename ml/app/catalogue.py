@@ -17,7 +17,7 @@ raw catalogue tags ('cable', 'smith machine') which are children of them.
 Comparing raw tag against curated id directly would make every machine
 exercise invisible to every user. See the design, sections 3 and 5.
 """
-from typing import List, NamedTuple, Sequence
+from typing import List, NamedTuple, Optional, Sequence, Tuple, Dict
 
 from sqlalchemy import bindparam, text
 from sqlalchemy.engine import Engine
@@ -33,6 +33,7 @@ _BASE = """
 SELECT x.exercise_id, x.name, x.muscle_group
   FROM exercises x
   JOIN equipment eq ON eq.equipment_id = x.equipment_id
+  LEFT JOIN equipment peq ON peq.equipment_id = eq.parent_equipment_id
   LEFT JOIN exercise_categories cat ON cat.exercise_id = x.exercise_id
  WHERE x.status = 'live'
    AND COALESCE(cat.category, 'strength') = 'strength'
@@ -56,10 +57,6 @@ _MUSCLE = """
    AND x.muscle_group NOT IN :excluded_muscle_groups
 """
 
-_ORDER = """
- ORDER BY x.exercise_id ASC
-"""
-
 # Body weight is unioned into `owned` unconditionally (see main.py), so
 # body-weight exercises are eligible for every user -- and they cluster at low
 # exercise_ids, so ordering by id alone hands a dumbbell owner a plan of
@@ -77,13 +74,37 @@ _ORDER = """
 # Ordering, not ranking: fetch_candidates supplies the default order and a
 # loaded model may reorder afterwards -- select() honours its caller's order.
 # Tiering inside select() would silently override any future ranker.
-_PREFER_SELECTED = """
- ORDER BY CASE
-            WHEN COALESCE(eq.parent_equipment_id, eq.equipment_id) IN :selected
-            THEN 0 ELSE 1
-          END,
-          x.exercise_id ASC
-"""
+_SELECTED_TIER = """
+            CASE
+              WHEN COALESCE(eq.parent_equipment_id, eq.equipment_id) IN :selected
+              THEN 0 ELSE 1
+            END"""
+
+# Where the user trains decides which version of a movement comes first, once
+# what they ticked has been honoured: machines and barbells at a gym, dumbbells,
+# bands and body weight at home, kit-free work somewhere else. Matched on the
+# curated name -- the parent's when there is one, as the eligibility filter
+# walks it -- so 'cable' counts as 'machines'.
+#
+# ORDER only, never WHERE: a location can reshuffle a muscle group's options
+# but never empty one, so it cannot produce a day the user cannot train.
+# 'both' and an unanswered location express no preference.
+LOCATION_FIRST: Dict[str, Tuple[str, ...]] = {
+    "commercial_gym": ("machines", "barbell"),
+    "home_gym": ("dumbbell", "band", "body weight", "kettlebell"),
+    # 'pull-up bar' has no exercises tagged to it today -- the seed
+    # (server/src/db/seed-equipment.js) creates the chip with none attached --
+    # so it orders nothing yet. It is listed anyway so a future exercise
+    # tagged to it is preferred outdoors as soon as one exists, with no
+    # catalogue.py change needed then.
+    "other": ("body weight", "band", "pull-up bar"),
+}
+
+_LOCATION_TIER = """
+            CASE
+              WHEN COALESCE(peq.name, eq.name) IN :location_first
+              THEN 0 ELSE 1
+            END"""
 
 
 def fetch_candidates(
@@ -92,6 +113,7 @@ def fetch_candidates(
     injury_ids: Sequence[int],
     excluded_muscle_groups: Sequence[str],
     selected_equipment_ids: Sequence[int] = (),
+    training_location: Optional[str] = None,
 ) -> List[Candidate]:
     # An empty ownership list means the user owns nothing, not that no filter
     # applies. Returning [] is the safe reading; the caller substitutes body
@@ -108,13 +130,19 @@ def fetch_candidates(
     if excluded_muscle_groups:
         sql += _MUSCLE
         params["excluded_muscle_groups"] = tuple(excluded_muscle_groups)
+
+    order = []
     if selected_equipment_ids:
-        sql += _PREFER_SELECTED
+        order.append(_SELECTED_TIER)
         params["selected"] = tuple(selected_equipment_ids)
-    else:
-        # An empty IN () is not valid SQL, and a user who selected nothing has
-        # no preference to express -- fall back to the plain id order.
-        sql += _ORDER
+    location_first = LOCATION_FIRST.get(training_location or "")
+    if location_first:
+        order.append(_LOCATION_TIER)
+        params["location_first"] = location_first
+    # exercise_id last, always: the tiers above only ever group rows, and a
+    # stable final key is what keeps a plan identical across repeat requests.
+    order.append("\n            x.exercise_id ASC")
+    sql += "\n ORDER BY" + ",".join(order) + "\n"
 
     # expanding=True is what turns a Python tuple into a safely-parameterised
     # IN (...) list. Without it the tuple is bound as a single opaque value and

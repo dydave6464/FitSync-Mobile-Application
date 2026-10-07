@@ -59,6 +59,23 @@ class PlanExercise {
     return tag == 'bodyweight' || tag == 'body weight';
   }
 
+  /// The target spelled out -- "3 sets × 8-12 reps" -- wherever it is shown.
+  ///
+  /// Bare "3 × 8-12" left a reader to guess which number was which. Written
+  /// once here so the demo, the set table, the plan list and the jump sheet
+  /// cannot word it four ways.
+  ///
+  /// Only a count or a range is called reps. [targetReps] is free text, and a
+  /// timed target like "30s" reads wrong as "30s reps", so anything else is
+  /// shown as written.
+  String get prescription {
+    final sets = '$targetSets ${targetSets == 1 ? 'set' : 'sets'}';
+    final reps = targetReps.trim();
+    if (reps.isEmpty) return sets;
+    if (!RegExp(r'^\d+(-\d+)?$').hasMatch(reps)) return '$sets × $reps';
+    return '$sets × $reps ${reps == '1' ? 'rep' : 'reps'}';
+  }
+
   factory PlanExercise.fromJson(Map<String, dynamic> json) => PlanExercise(
     planExerciseId: json['planExerciseId'] as int,
     exerciseId: json['exerciseId'] as int,

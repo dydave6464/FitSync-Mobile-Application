@@ -62,6 +62,12 @@ class ProfileNotifier extends AsyncNotifier<Profile> {
     );
   }
 
+  Future<void> setGoals(List<String> goals, String mainGoal) async {
+    state = AsyncData(
+      await ref.read(profileRepositoryProvider).setGoals(goals, mainGoal),
+    );
+  }
+
   Future<CompletedOnboarding> completeOnboarding() async {
     final result = await ref
         .read(profileRepositoryProvider)

@@ -53,6 +53,17 @@ class ProfileRepository {
         as Map<String, dynamic>,
   );
 
+  /// Replaces every goal and sets the main focus. The server rejects a focus
+  /// that is not among [goals].
+  Future<Profile> setGoals(List<String> goals, String mainGoal) async =>
+      Profile.fromJson(
+        (await _api.putJson('/api/v1/profile/goals', {
+              'goals': goals,
+              'mainGoal': mainGoal,
+            }))['profile']
+            as Map<String, dynamic>,
+      );
+
   Future<CompletedOnboarding> completeOnboarding() async {
     final data = await _api.postJson(
       '/api/v1/profile/complete-onboarding',

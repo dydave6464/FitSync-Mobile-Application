@@ -15,7 +15,7 @@ const PROFILE = {
   weightKg: 68.5,
   goalWeightKg: 65,
   weightUnit: 'kg',
-  trainingLocation: 'home',
+  trainingLocation: 'home_gym',
   isPremium: false,
   notificationsEnabled: true,
   onboardingCompleted: true,
@@ -34,9 +34,21 @@ test('a plan request carries only what the generator reads', () => {
   assert.deepEqual(toPlanPayload(PROFILE), {
     mainGoal: 'build_muscle',
     fitnessLevel: 'beginner',
+    trainingLocation: 'home_gym',
     equipment: [{ equipmentId: 41 }],
     injuries: [{ injuryId: 3, regionGroup: 'lower_body' }],
+    goals: [],
   });
+});
+
+test('the training location is sent, since it orders the exercises', () => {
+  const payload = toPlanPayload({ trainingLocation: 'home_gym' });
+  assert.equal(payload.trainingLocation, 'home_gym');
+});
+
+test('every goal is sent so the plan can be named after them', () => {
+  const payload = toPlanPayload({ mainGoal: 'build_muscle', goals: ['build_muscle', 'lose_weight'] });
+  assert.deepEqual(payload.goals, ['build_muscle', 'lose_weight']);
 });
 
 test('no personal or unread field survives, by key or by value', () => {
@@ -46,7 +58,7 @@ test('no personal or unread field survives, by key or by value', () => {
     assert.ok(!sent.includes(value), `${value} was sent`);
   }
   for (const key of ['userId', 'email', 'fullName', 'city', 'dateOfBirth', 'sex', 'heightCm',
-    'weightKg', 'goalWeightKg', 'trainingLocation', 'isPremium', 'notificationsEnabled',
+    'weightKg', 'goalWeightKg', 'isPremium', 'notificationsEnabled',
     'onboardingCompleted', 'joinedAt', 'trainingDays', 'weightUnit', 'activityLevel']) {
     assert.ok(!(key in toPlanPayload(PROFILE)), `${key} was sent`);
   }
@@ -66,7 +78,7 @@ test("the generator screen's three choices pass through, and nothing else inside
 });
 
 test('a sparse or missing profile maps without inventing values or throwing', () => {
-  const empty = { mainGoal: null, fitnessLevel: null, equipment: [], injuries: [] };
+  const empty = { mainGoal: null, fitnessLevel: null, trainingLocation: null, equipment: [], injuries: [], goals: [] };
   assert.deepEqual(toPlanPayload({}), empty);
   assert.deepEqual(toPlanPayload(null), empty);
   assert.deepEqual(toPlanPayload(undefined), empty);

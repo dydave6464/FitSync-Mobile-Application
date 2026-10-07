@@ -5,6 +5,7 @@ import '../../../../core/theme.dart';
 import '../../../../core/widgets/fs_kit.dart';
 import '../../../exercises/presentation/exercise_list_screen.dart'
     show describeError;
+import '../../../profile/domain/profile.dart';
 import '../../../profile/presentation/providers.dart';
 
 /// The answers step 3 collects.
@@ -13,6 +14,7 @@ class LevelAnswers {
     this.fitnessLevel,
     this.equipmentIds = const [],
     this.trainingLocation,
+    this.unfamiliar = false,
   });
 
   final String? fitnessLevel;
@@ -23,35 +25,67 @@ class LevelAnswers {
 
   final String? trainingLocation;
 
+  /// Whether "I'm not familiar with any of these" is the choice on screen.
+  /// UI state for this visit only, never saved: it is stored as Bodyweight
+  /// alone, and reopening the step shows exactly that.
+  final bool unfamiliar;
+
   LevelAnswers copyWith({
     String? fitnessLevel,
     List<int>? equipmentIds,
     String? trainingLocation,
+    bool? unfamiliar,
   }) => LevelAnswers(
     fitnessLevel: fitnessLevel ?? this.fitnessLevel,
     equipmentIds: equipmentIds ?? this.equipmentIds,
     trainingLocation: trainingLocation ?? this.trainingLocation,
+    unfamiliar: unfamiliar ?? this.unfamiliar,
   );
 }
 
-/// `fitness_level` ENUM values. The schema offers two; there is no "advanced".
+/// `fitness_level` ENUM values, gentlest first. There is no "advanced": the
+/// app is for beginner and intermediate trainees.
 const _levels = <({String value, String label})>[
+  (value: 'new', label: 'New to training'),
   (value: 'beginner', label: 'Beginner'),
   (value: 'intermediate', label: 'Intermediate'),
 ];
 
 /// `training_location` ENUM values.
 ///
-/// Behind a picker rather than on the step: the design gives location a single
-/// row at the foot of the screen, so a second chip strip cannot compete with
-/// the equipment set — the one place on this step where chips mean
-/// "choose several".
+/// Behind a picker rather than on the step: the design gives location a
+/// single row above the equipment, so it can pre-fill it, and so a second
+/// chip strip cannot compete with the equipment set — the one place on this
+/// step where chips mean "choose several".
 const _locations = <({String value, String label})>[
   (value: 'home_gym', label: 'Home gym'),
   (value: 'commercial_gym', label: 'Commercial gym'),
   (value: 'both', label: 'Both'),
   (value: 'other', label: 'Somewhere else'),
 ];
+
+/// What choosing a location pre-ticks, by equipment key. Null means every
+/// chip except Bodyweight (see below for why). Applied only while nothing is
+/// ticked, so it can save tapping but never undo a choice. Unlisted locations
+/// pre-tick nothing.
+///
+/// Bodyweight is excluded from every list here except "other": the generator
+/// (ml/app/main.py) unions body weight into `owned` unconditionally, so it is
+/// already eligible for every user regardless of what is ticked. Ticking its
+/// chip adds nothing eligible — it only moves body-weight exercises into the
+/// "selected" ordering tier (ml/app/catalogue.py), where their low
+/// exercise_ids put them ahead of the user's real equipment. Measured on the
+/// dev DB: a home_gym pre-fill of dumbbell + band + body weight produced 3
+/// body-weight / 2 band / 1 dumbbell exercises; dumbbell + band alone
+/// produced 5 band / 1 dumbbell. "Other" is the one case where leading with
+/// body weight is the intent: a user with no gym or home equipment should see
+/// bodyweight work first.
+const locationPrefill = <String, List<String>?>{
+  'commercial_gym': null,
+  'both': null,
+  'home_gym': ['dumbbell', 'band'],
+  'other': ['body weight', 'band', 'pull-up bar'],
+};
 
 /// Step 3: experience, equipment and where the training happens.
 ///
@@ -64,6 +98,12 @@ class LevelStep extends ConsumerWidget {
   final ValueChanged<LevelAnswers> onChanged;
 
   void _toggleEquipment(int equipmentId) {
+    // Ticking anything is a change of mind about "not familiar": the tick
+    // just made is the whole selection, not an addition to Bodyweight.
+    if (value.unfamiliar) {
+      onChanged(value.copyWith(equipmentIds: [equipmentId], unfamiliar: false));
+      return;
+    }
     final next = [...value.equipmentIds];
     // remove() reports whether it was there, so this is one pass either way.
     if (!next.remove(equipmentId)) next.add(equipmentId);
@@ -77,7 +117,7 @@ class LevelStep extends ConsumerWidget {
     return 'Not set';
   }
 
-  Future<void> _pickLocation(BuildContext context) async {
+  Future<void> _pickLocation(BuildContext context, WidgetRef ref) async {
     final picked = await showModalBottomSheet<String>(
       context: context,
       builder: (sheet) => SafeArea(
@@ -103,7 +143,26 @@ class LevelStep extends ConsumerWidget {
         ),
       ),
     );
-    if (picked != null) onChanged(value.copyWith(trainingLocation: picked));
+    if (picked == null) return;
+    var next = value.copyWith(trainingLocation: picked);
+    if (value.equipmentIds.isEmpty && !value.unfamiliar) {
+      next = next.copyWith(equipmentIds: _prefill(picked, ref));
+    }
+    onChanged(next);
+  }
+
+  List<int> _prefill(String location, WidgetRef ref) {
+    if (!locationPrefill.containsKey(location)) return const [];
+    final keys = locationPrefill[location];
+    final options = ref.read(equipmentOptionsProvider).value ?? const [];
+    return [
+      for (final option in options)
+        if (option.key != null &&
+            (keys == null
+                ? option.key != 'body weight'
+                : keys.contains(option.key)))
+          option.equipmentId,
+    ];
   }
 
   @override
@@ -126,11 +185,43 @@ class LevelStep extends ConsumerWidget {
           onSelected: (level) => onChanged(value.copyWith(fitnessLevel: level)),
         ),
         const SizedBox(height: 22),
+        FsCard(
+          key: const Key('trainingLocation'),
+          small: true,
+          onTap: () => _pickLocation(context, ref),
+          child: Row(
+            children: [
+              Icon(Icons.home_outlined, size: 18, color: t.text2),
+              const SizedBox(width: 11),
+              const Expanded(
+                child: Text(
+                  'Training location',
+                  style: TextStyle(fontSize: 13.5),
+                ),
+              ),
+              Text(
+                _locationLabel,
+                style: TextStyle(
+                  fontSize: 13.5,
+                  fontWeight: FontWeight.w600,
+                  color: value.trainingLocation == null ? t.text3 : t.text,
+                ),
+              ),
+              const SizedBox(width: 6),
+              Icon(Icons.chevron_right, size: 16, color: t.text3),
+            ],
+          ),
+        ),
+        const SizedBox(height: 22),
         Row(
           mainAxisAlignment: MainAxisAlignment.spaceBetween,
           children: [
             const Flexible(child: FsEyebrow('Available equipment')),
-            FsTag('${value.equipmentIds.length} selected'),
+            FsTag(
+              value.unfamiliar
+                  ? 'Bodyweight only'
+                  : '${value.equipmentIds.length} selected',
+            ),
           ],
         ),
         const SizedBox(height: 12),
@@ -161,50 +252,79 @@ class LevelStep extends ConsumerWidget {
                   'No equipment options are available right now.',
                   style: TextStyle(fontSize: 11, color: t.text3),
                 )
-              : Wrap(
-                  spacing: 8,
-                  runSpacing: 8,
+              : Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: [
-                    for (final option in options)
-                      FsChip(
-                        key: Key('equipment.${option.equipmentId}'),
-                        label: option.name,
-                        selected: value.equipmentIds.contains(
-                          option.equipmentId,
-                        ),
-                        showCheck: true,
-                        onTap: () => _toggleEquipment(option.equipmentId),
-                      ),
+                    Wrap(
+                      spacing: 8,
+                      runSpacing: 8,
+                      children: [
+                        for (final option in options)
+                          FsChip(
+                            key: Key('equipment.${option.equipmentId}'),
+                            label: option.name,
+                            selected:
+                                !value.unfamiliar &&
+                                value.equipmentIds.contains(option.equipmentId),
+                            showCheck: true,
+                            onTap: () => _toggleEquipment(option.equipmentId),
+                          ),
+                      ],
+                    ),
+                    const SizedBox(height: 12),
+                    Builder(
+                      builder: (context) {
+                        EquipmentOption? bodyweight;
+                        for (final option in options) {
+                          if (option.key == 'body weight') {
+                            bodyweight = option;
+                          }
+                        }
+                        if (bodyweight == null) return const SizedBox.shrink();
+                        final id = bodyweight.equipmentId;
+                        return FsCard(
+                          key: const Key('equipment.unfamiliar'),
+                          small: true,
+                          accent: value.unfamiliar,
+                          onTap: () => onChanged(
+                            value.copyWith(
+                              equipmentIds: [id],
+                              unfamiliar: true,
+                            ),
+                          ),
+                          child: Row(
+                            children: [
+                              FsRadioDot(selected: value.unfamiliar),
+                              const SizedBox(width: 12),
+                              Expanded(
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    const Text(
+                                      "I'm not familiar with any of these",
+                                      style: TextStyle(
+                                        fontSize: 13.5,
+                                        fontWeight: FontWeight.w600,
+                                      ),
+                                    ),
+                                    const SizedBox(height: 2),
+                                    Text(
+                                      "We'll start you on bodyweight exercises.",
+                                      style: TextStyle(
+                                        fontSize: 11.5,
+                                        color: t.text3,
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                            ],
+                          ),
+                        );
+                      },
+                    ),
                   ],
                 ),
-        ),
-        const SizedBox(height: 22),
-        FsCard(
-          key: const Key('trainingLocation'),
-          small: true,
-          onTap: () => _pickLocation(context),
-          child: Row(
-            children: [
-              Icon(Icons.home_outlined, size: 18, color: t.text2),
-              const SizedBox(width: 11),
-              const Expanded(
-                child: Text(
-                  'Training location',
-                  style: TextStyle(fontSize: 13.5),
-                ),
-              ),
-              Text(
-                _locationLabel,
-                style: TextStyle(
-                  fontSize: 13.5,
-                  fontWeight: FontWeight.w600,
-                  color: value.trainingLocation == null ? t.text3 : t.text,
-                ),
-              ),
-              const SizedBox(width: 6),
-              Icon(Icons.chevron_right, size: 16, color: t.text3),
-            ],
-          ),
         ),
       ],
     );

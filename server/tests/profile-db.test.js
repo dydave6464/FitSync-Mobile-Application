@@ -46,6 +46,53 @@ test('profile queries', async (t) => {
     assert.ok(await getProfile(pool, userId));
   });
 
+  // updateProfile's own UPDATE users and the user_goals rewrite it triggers
+  // for a PATCH carrying mainGoal must commit or roll back together. This
+  // wraps the real pool: `query` passes straight through (so the UPDATE
+  // users call -- plain pool.query before the fix -- actually lands), while
+  // `getConnection` hands back a real connection whose `query` rejects the
+  // goal-row INSERT, forcing writeGoalRows to fail mid-write. Reading
+  // users.main_goal back through the untouched real pool afterwards is what
+  // tells apart "rolled back together" from "half-committed".
+  await t.test(
+    'a failed goal-row write rolls back the main_goal update too',
+    async () => {
+      await reset();
+      await updateProfile(pool, userId, { mainGoal: 'improve_endurance' });
+
+      const flakyPool = {
+        query: (...args) => pool.query(...args),
+        getConnection: async () => {
+          const conn = await pool.getConnection();
+          return {
+            query: async (sql, params) => {
+              if (typeof sql === 'string' && sql.startsWith('INSERT INTO user_goals')) {
+                throw new Error('forced failure for the atomicity test');
+              }
+              return conn.query(sql, params);
+            },
+            beginTransaction: () => conn.beginTransaction(),
+            commit: () => conn.commit(),
+            rollback: () => conn.rollback(),
+            release: () => conn.release(),
+          };
+        },
+      };
+
+      await assert.rejects(
+        () => updateProfile(flakyPool, userId, { mainGoal: 'build_muscle' }),
+        (err) => err.message === 'forced failure for the atomicity test',
+      );
+
+      const p = await getProfile(pool, userId);
+      assert.equal(
+        p.mainGoal,
+        'improve_endurance',
+        'users.main_goal must roll back with the goal rows it disagreed with',
+      );
+    },
+  );
+
   await t.test('equipment is replaced, not appended', async () => {
     await reset();
     await pool.query("INSERT INTO equipment (name) VALUES ('barbell'), ('dumbbell')");

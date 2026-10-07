@@ -4,6 +4,7 @@ const assert = require('node:assert/strict');
 const { migrate } = require('../src/db/migrate');
 const { createPool } = require('../src/db/pool');
 const { testDbConfig, dropAllTables, tableNames } = require('./helpers/test-db');
+const { ENUMS } = require('../src/routes/profile');
 
 const EXPECTED_TABLES = [
   'activity_logs', 'admins', 'advertisements', 'auth_code_issues', 'auth_codes', 'auth_tokens', 'body_weight_logs', 'coaching_cues',
@@ -13,7 +14,7 @@ const EXPECTED_TABLES = [
   'plan_swaps', 'plan_swap_alternatives',
   'progress_reports', 'reminder_settings', 'reminders', 'routine_checks', 'routine_habit_days', 'routine_habits', 'routine_items', 'session_exercises', 'session_outcomes', 'set_logs',
   'shared_reports', 'streaks',
-  'subscriptions', 'user_equipment', 'user_identities', 'user_injuries', 'user_training_days',
+  'subscriptions', 'training_settings', 'user_equipment', 'user_goals', 'user_identities', 'user_injuries', 'user_training_days',
   'users', 'workout_plans', 'workout_sessions',
 ];
 
@@ -27,10 +28,10 @@ test('complete FitSync schema', async (t) => {
     await pool.end();
   });
 
-  await t.test('creates exactly the 45 tables from the data dictionary', async () => {
+  await t.test('creates exactly the 47 tables from the data dictionary', async () => {
     const names = (await tableNames(pool)).filter((n) => n !== 'schema_migrations');
     assert.deepEqual(names.sort(), [...EXPECTED_TABLES].sort());
-    assert.equal(names.length, 45);
+    assert.equal(names.length, 47);
   });
 
   await t.test('every table is InnoDB and utf8mb4', async () => {
@@ -55,7 +56,7 @@ test('complete FitSync schema', async (t) => {
     );
     const composite = rows.filter((r) => r.cols > 1 && r.t !== 'schema_migrations' && r.t !== 'auth_codes');
     assert.deepEqual(composite, [], 'no table may use a composite primary key');
-    assert.equal(rows.length, 46); // 45 tables + schema_migrations
+    assert.equal(rows.length, 48); // 47 tables + schema_migrations
   });
 
   await t.test('a user has exactly one streak record', async () => {
@@ -152,7 +153,7 @@ test('complete FitSync schema', async (t) => {
     assert.equal(srows[0].plan_day_no, null, 'a session predating 013 has no day');
   });
 
-  await t.test('all twenty-six migrations are recorded', async () => {
+  await t.test('all twenty-nine migrations are recorded', async () => {
     const [rows] = await pool.query('SELECT version FROM schema_migrations ORDER BY version');
     assert.deepEqual(rows.map((r) => r.version), [
       '001_account_and_profile.sql',
@@ -181,6 +182,9 @@ test('complete FitSync schema', async (t) => {
       '024_reminder_settings.sql',
       '025_auth_codes.sql',
       '026_auth_code_issues.sql',
+      '027_training_settings.sql',
+      '028_new_to_training_level.sql',
+      '029_user_goals.sql',
     ]);
   });
 
@@ -215,6 +219,29 @@ test('complete FitSync schema', async (t) => {
       'SELECT split_style FROM workout_plans WHERE plan_id = ?', [p.insertId],
     );
     assert.equal(rows[0].split_style, 'cardio_core');
+  });
+
+  // Pins the three places the goal list is spelled out -- the route's own
+  // ENUMS.mainGoal, users.main_goal, and user_goals.goal -- together, so
+  // adding or renaming a goal in one and not the other two surfaces here
+  // rather than as a 400 or a silently truncated save.
+  await t.test('users.main_goal and user_goals.goal match the route\'s goal list', async () => {
+    const enumValues = (columnType) =>
+      [...columnType.matchAll(/'([^']+)'/g)].map((m) => m[1]);
+
+    const [[usersCol]] = await pool.query(
+      `SELECT column_type AS type FROM information_schema.columns
+        WHERE table_schema = ? AND table_name = 'users' AND column_name = 'main_goal'`,
+      [testDbConfig().database],
+    );
+    const [[userGoalsCol]] = await pool.query(
+      `SELECT column_type AS type FROM information_schema.columns
+        WHERE table_schema = ? AND table_name = 'user_goals' AND column_name = 'goal'`,
+      [testDbConfig().database],
+    );
+
+    assert.deepEqual(enumValues(usersCol.type).sort(), [...ENUMS.mainGoal].sort());
+    assert.deepEqual(enumValues(userGoalsCol.type).sort(), [...ENUMS.mainGoal].sort());
   });
 
   await t.test('workout_plans records whether a plan was generated or written', async () => {

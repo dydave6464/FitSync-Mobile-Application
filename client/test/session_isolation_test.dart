@@ -77,6 +77,9 @@ class SequenceProfileRepository implements ProfileRepository {
   Future<Profile> setTrainingDays(List<int> weekdays) =>
       throw UnimplementedError();
   @override
+  Future<Profile> setGoals(List<String> goals, String mainGoal) =>
+      throw UnimplementedError();
+  @override
   Future<CompletedOnboarding> completeOnboarding() =>
       throw UnimplementedError();
   @override

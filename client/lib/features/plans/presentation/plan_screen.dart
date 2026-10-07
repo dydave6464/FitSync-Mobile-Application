@@ -281,8 +281,7 @@ class _PlanExerciseCard extends StatelessWidget {
                 ),
                 const SizedBox(height: 3),
                 Text(
-                  '${exercise.muscleGroup} · '
-                  '${exercise.targetSets} × ${exercise.targetReps}',
+                  '${exercise.muscleGroup} · ${exercise.prescription}',
                   style: TextStyle(
                     fontFamily: fsMonoFamily,
                     fontSize: 11,

@@ -2,15 +2,27 @@ import '../../../core/units.dart';
 
 /// A piece of equipment the user can own, as the server names it.
 class EquipmentOption {
-  const EquipmentOption({required this.equipmentId, required this.name});
+  const EquipmentOption({
+    required this.equipmentId,
+    required this.name,
+    this.key,
+  });
 
   final int equipmentId;
+
+  /// The label shown on the chip.
   final String name;
+
+  /// The server's stable name for the row ('body weight'), which pre-fill and
+  /// "not familiar" match on. Null from a server that predates it, which
+  /// simply turns both of those off.
+  final String? key;
 
   factory EquipmentOption.fromJson(Map<String, dynamic> json) =>
       EquipmentOption(
         equipmentId: json['equipmentId'] as int,
         name: json['name'] as String,
+        key: json['key'] as String?,
       );
 }
 
@@ -81,6 +93,7 @@ class Profile {
     this.weightKg,
     this.goalWeightKg,
     this.mainGoal,
+    this.goals = const [],
     this.fitnessLevel,
     this.activityLevel,
     this.trainingLocation,
@@ -124,6 +137,10 @@ class Profile {
   final double? weightKg;
   final double? goalWeightKg;
   final String? mainGoal;
+
+  /// Every goal the user picked, the main focus included, in screen order.
+  /// [mainGoal] is the one that sets the plan's sets and reps.
+  final List<String> goals;
   final String? fitnessLevel;
   final String? activityLevel;
   final String? trainingLocation;
@@ -183,6 +200,12 @@ class Profile {
     weightKg: _toDouble(json['weightKg']),
     goalWeightKg: _toDouble(json['goalWeightKg']),
     mainGoal: json['mainGoal'] as String?,
+    // An older server sends only mainGoal; that is the user's one goal.
+    goals: json['goals'] is List
+        ? (json['goals'] as List).cast<String>().toList(growable: false)
+        : (json['mainGoal'] is String
+              ? [json['mainGoal'] as String]
+              : const <String>[]),
     fitnessLevel: json['fitnessLevel'] as String?,
     activityLevel: json['activityLevel'] as String?,
     trainingLocation: json['trainingLocation'] as String?,

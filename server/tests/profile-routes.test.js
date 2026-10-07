@@ -9,6 +9,7 @@ const { testDbConfig, dropAllTables } = require('./helpers/test-db');
 const { seedInjuries } = require('../src/db/seed-injuries');
 const { seedEquipment } = require('../src/db/seed-equipment');
 const { markEmailVerified } = require('../src/db/users');
+const { setGoals } = require('../src/db/profile');
 
 test('profile endpoints', async (t) => {
   const pool = createPool(testDbConfig());
@@ -24,6 +25,7 @@ test('profile endpoints', async (t) => {
   });
 
   let auth;
+  let userId;
   const reset = async () => {
     await pool.query('DELETE FROM user_injuries');
     await pool.query('DELETE FROM user_equipment');
@@ -40,6 +42,11 @@ test('profile endpoints', async (t) => {
     const login = await request(app).post('/api/v1/auth/login')
       .send({ email: 'p@example.com', password: 's3cret-pass' }).expect(200);
     auth = `Bearer ${login.body.data.token}`;
+    // No userId variable exists elsewhere in this file for direct SQL against
+    // the signed-in user; read it back from the profile itself.
+    const profile = await request(app).get('/api/v1/profile')
+      .set('Authorization', auth).expect(200);
+    userId = profile.body.data.profile.userId;
   };
 
   await t.test('requires a token', async () => {
@@ -81,11 +88,63 @@ test('profile endpoints', async (t) => {
     assert.equal(res.body.data.profile.fitnessLevel, 'intermediate');
   });
 
+  await t.test('accepts New to training as a fitness level', async () => {
+    await reset();
+    const res = await request(app).patch('/api/v1/profile')
+      .set('Authorization', auth)
+      .send({ fitnessLevel: 'new' }).expect(200);
+    assert.equal(res.body.data.profile.fitnessLevel, 'new');
+  });
+
   await t.test('rejects a value outside the enum', async () => {
     await reset();
     const res = await request(app).patch('/api/v1/profile').set('Authorization', auth)
       .send({ mainGoal: 'gain_strength' }).expect(400);
     assert.equal(res.body.error.code, 'INVALID_PROFILE_FIELD');
+  });
+
+  await t.test('a new profile has no goals', async () => {
+    await reset();
+    const res = await request(app).get('/api/v1/profile')
+      .set('Authorization', auth).expect(200);
+    assert.deepEqual(res.body.data.profile.goals, []);
+  });
+
+  await t.test('patching mainGoal makes it the only goal, and null clears both', async () => {
+    await reset();
+    await request(app).patch('/api/v1/profile').set('Authorization', auth)
+      .send({ mainGoal: 'lose_weight' }).expect(200);
+    let res = await request(app).get('/api/v1/profile').set('Authorization', auth).expect(200);
+    assert.deepEqual(res.body.data.profile.goals, ['lose_weight']);
+    assert.equal(res.body.data.profile.mainGoal, 'lose_weight');
+
+    await request(app).patch('/api/v1/profile').set('Authorization', auth)
+      .send({ mainGoal: null }).expect(200);
+    res = await request(app).get('/api/v1/profile').set('Authorization', auth).expect(200);
+    assert.deepEqual(res.body.data.profile.goals, []);
+    assert.equal(res.body.data.profile.mainGoal, null);
+  });
+
+  await t.test('an account with only main_goal reads it back as its one goal', async () => {
+    await reset();
+    // An account from before user_goals existed: the column set, no rows.
+    await pool.query("UPDATE users SET main_goal = 'build_muscle' WHERE user_id = ?", [userId]);
+    await pool.query('DELETE FROM user_goals WHERE user_id = ?', [userId]);
+    const res = await request(app).get('/api/v1/profile').set('Authorization', auth).expect(200);
+    assert.deepEqual(res.body.data.profile.goals, ['build_muscle']);
+  });
+
+  await t.test('setGoals stores every goal in order and the focus', async () => {
+    await reset();
+    await setGoals(pool, userId, ['lose_weight', 'improve_endurance', 'build_muscle'], 'improve_endurance');
+    const res = await request(app).get('/api/v1/profile').set('Authorization', auth).expect(200);
+    assert.deepEqual(res.body.data.profile.goals, ['lose_weight', 'improve_endurance', 'build_muscle']);
+    assert.equal(res.body.data.profile.mainGoal, 'improve_endurance');
+
+    // A second write replaces, it does not append.
+    await setGoals(pool, userId, ['general_fitness'], 'general_fitness');
+    const again = await request(app).get('/api/v1/profile').set('Authorization', auth).expect(200);
+    assert.deepEqual(again.body.data.profile.goals, ['general_fitness']);
   });
 
   // Weights are stored in kilograms whatever this says -- it decides what the
@@ -271,6 +330,16 @@ test('profile endpoints', async (t) => {
     ], 'the non-selectable "yoga mat" row must not be in this list');
   });
 
+  await t.test('each option carries its stable key alongside the label', async () => {
+    await reset();
+    const res = await request(app).get('/api/v1/equipment')
+      .set('Authorization', auth).expect(200);
+    assert.deepEqual(res.body.data.equipment.map((e) => e.key), [
+      'barbell', 'dumbbell', 'bench', 'pull-up bar',
+      'kettlebell', 'band', 'machines', 'body weight',
+    ]);
+  });
+
   // The subtest above cannot fail if `ORDER BY display_order` were removed:
   // seedEquipment inserts the eight rows in display order on a fresh table, so
   // insertion (id) order coincidentally satisfies that assertion too. Perturbing
@@ -420,5 +489,42 @@ test('profile endpoints', async (t) => {
     await reset();
     await request(app).put('/api/v1/profile/training-days')
       .send({ trainingDays: [1] }).expect(401);
+  });
+
+  await t.test('PUT goals saves several goals and the focus', async () => {
+    await reset();
+    const res = await request(app).put('/api/v1/profile/goals').set('Authorization', auth)
+      .send({ goals: ['build_muscle', 'lose_weight'], mainGoal: 'lose_weight' }).expect(200);
+    assert.deepEqual(res.body.data.profile.goals, ['build_muscle', 'lose_weight']);
+    assert.equal(res.body.data.profile.mainGoal, 'lose_weight');
+  });
+
+  await t.test('PUT goals with one goal makes it the focus when none is given', async () => {
+    await reset();
+    const res = await request(app).put('/api/v1/profile/goals').set('Authorization', auth)
+      .send({ goals: ['improve_endurance'] }).expect(200);
+    assert.equal(res.body.data.profile.mainGoal, 'improve_endurance');
+  });
+
+  await t.test('PUT goals refuses invalid combinations', async () => {
+    await reset();
+    for (const [body, field] of [
+      [{}, 'goals'],
+      [{ goals: [] }, 'goals'],
+      [{ goals: 'build_muscle' }, 'goals'],
+      [{ goals: ['become_a_bird'] }, 'goals'],
+      [{ goals: ['build_muscle', 'build_muscle'] }, 'goals'],
+      [{ goals: ['build_muscle', 'lose_weight'] }, 'mainGoal'],
+      [{ goals: ['build_muscle'], mainGoal: 'lose_weight' }, 'mainGoal'],
+    ]) {
+      const res = await request(app).put('/api/v1/profile/goals').set('Authorization', auth)
+        .send(body).expect(400);
+      assert.equal(res.body.error.code, 'INVALID_PROFILE_FIELD', JSON.stringify(body));
+      assert.equal(res.body.error.details[0].field, field, JSON.stringify(body));
+    }
+  });
+
+  await t.test('PUT goals requires sign-in', async () => {
+    await request(app).put('/api/v1/profile/goals').send({ goals: ['build_muscle'] }).expect(401);
   });
 });

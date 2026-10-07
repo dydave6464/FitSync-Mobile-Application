@@ -33,14 +33,14 @@ Profile _emptyProfile() => const Profile(
 
 // The curated list the server now returns, in display order.
 const _equipment = [
-  EquipmentOption(equipmentId: 1, name: 'Barbell'),
-  EquipmentOption(equipmentId: 2, name: 'Dumbbells'),
-  EquipmentOption(equipmentId: 3, name: 'Bench'),
-  EquipmentOption(equipmentId: 4, name: 'Pull-up bar'),
-  EquipmentOption(equipmentId: 5, name: 'Kettlebell'),
-  EquipmentOption(equipmentId: 6, name: 'Bands'),
-  EquipmentOption(equipmentId: 7, name: 'Machines'),
-  EquipmentOption(equipmentId: 8, name: 'Bodyweight'),
+  EquipmentOption(equipmentId: 1, name: 'Barbell', key: 'barbell'),
+  EquipmentOption(equipmentId: 2, name: 'Dumbbells', key: 'dumbbell'),
+  EquipmentOption(equipmentId: 3, name: 'Bench', key: 'bench'),
+  EquipmentOption(equipmentId: 4, name: 'Pull-up bar', key: 'pull-up bar'),
+  EquipmentOption(equipmentId: 5, name: 'Kettlebell', key: 'kettlebell'),
+  EquipmentOption(equipmentId: 6, name: 'Bands', key: 'band'),
+  EquipmentOption(equipmentId: 7, name: 'Machines', key: 'machines'),
+  EquipmentOption(equipmentId: 8, name: 'Bodyweight', key: 'body weight'),
 ];
 const _injuries = [
   InjuryOption(
@@ -59,6 +59,10 @@ class FakeProfileNotifier extends ProfileNotifier {
     this.injuryWrites,
     this.completions,
     this.onComplete,
+    this.goalWrites,
+    this.onSetGoals,
+    this.seedGoals = const [],
+    this.seedMainGoal,
   });
 
   final List<Map<String, dynamic>> patches;
@@ -66,13 +70,34 @@ class FakeProfileNotifier extends ProfileNotifier {
   final List<List<int>>? equipmentWrites;
   final List<List<SelectedInjury>>? injuryWrites;
   final List<int>? completions;
+  final List<({List<String> goals, String mainGoal})>? goalWrites;
+
+  /// Lets a test fail the goals write the way [onPatch] fails a patch.
+  final Future<void> Function()? onSetGoals;
 
   /// Called before each completion resolves, so a test can fail the first
   /// attempt and succeed on the retry.
   final Future<void> Function(int attempt)? onComplete;
 
+  /// Seeds the loaded profile's goals and main focus, the way a returning
+  /// user's saved answers would -- without this, a test can never see
+  /// `_seedFrom` work from anything but an empty profile.
+  final List<String> seedGoals;
+  final String? seedMainGoal;
+
   @override
-  Future<Profile> build() async => _emptyProfile();
+  Future<Profile> build() async => Profile(
+    userId: 7,
+    email: 'juan@example.com',
+    fullName: 'Juan Dela Cruz',
+    onboardingCompleted: false,
+    isPremium: false,
+    notificationsEnabled: true,
+    equipment: const [],
+    injuries: const [],
+    goals: seedGoals,
+    mainGoal: seedMainGoal,
+  );
 
   @override
   Future<void> patch(Map<String, dynamic> fields) async {
@@ -88,6 +113,12 @@ class FakeProfileNotifier extends ProfileNotifier {
   @override
   Future<void> setInjuries(List<SelectedInjury> injuries) async {
     injuryWrites?.add(injuries);
+  }
+
+  @override
+  Future<void> setGoals(List<String> goals, String mainGoal) async {
+    goalWrites?.add((goals: goals, mainGoal: mainGoal));
+    if (onSetGoals != null) await onSetGoals!();
   }
 
   @override
@@ -191,6 +222,10 @@ Future<void> _pumpFlow(
   List<bool>? completed,
   ReminderScheduler? scheduler,
   ReminderPromptStore? store,
+  List<({List<String> goals, String mainGoal})>? goalWrites,
+  Future<void> Function()? onSetGoals,
+  List<String> seedGoals = const [],
+  String? seedMainGoal,
 }) async {
   await tester.pumpWidget(
     ProviderScope(
@@ -203,6 +238,10 @@ Future<void> _pumpFlow(
             injuryWrites: injuryWrites,
             completions: completions,
             onComplete: onComplete,
+            goalWrites: goalWrites,
+            onSetGoals: onSetGoals,
+            seedGoals: seedGoals,
+            seedMainGoal: seedMainGoal,
           ),
         ),
         authControllerProvider.overrideWith(
@@ -242,18 +281,21 @@ void main() {
     expect(find.byKey(const Key('goal.lose_weight')), findsOneWidget);
   });
 
-  testWidgets('Continue saves the step and advances', (tester) async {
+  testWidgets('Continue saves the goals and advances', (tester) async {
     final patches = <Map<String, dynamic>>[];
-    await _pumpFlow(tester, patches: patches);
+    final goalWrites = <({List<String> goals, String mainGoal})>[];
+    await _pumpFlow(tester, patches: patches, goalWrites: goalWrites);
 
     await tester.tap(find.byKey(const Key('goal.build_muscle')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const Key('goal.lose_weight')));
     await tester.pumpAndSettle();
     await tester.tap(find.byKey(const Key('continue')));
     await tester.pumpAndSettle();
 
-    expect(patches, [
-      {'mainGoal': 'build_muscle'},
-    ], reason: 'a dropout after step 1 must still have their goal saved');
+    expect(goalWrites.single.goals, ['build_muscle', 'lose_weight']);
+    expect(goalWrites.single.mainGoal, 'build_muscle');
+    expect(patches, isEmpty, reason: 'goals have their own endpoint now');
     expect(find.text('STEP 2 / 5'), findsOneWidget);
   });
 
@@ -284,13 +326,30 @@ void main() {
     expect(find.text('STEP 2 / 5'), findsOneWidget);
   });
 
+  testWidgets('Continue on step 1 with nothing ticked writes no goals', (
+    tester,
+  ) async {
+    final goalWrites = <({List<String> goals, String mainGoal})>[];
+    await _pumpFlow(tester, patches: [], goalWrites: goalWrites);
+
+    await tester.tap(find.byKey(const Key('continue')));
+    await tester.pumpAndSettle();
+
+    expect(
+      goalWrites,
+      isEmpty,
+      reason: 'nothing ticked is "not answered yet", not "no goals"',
+    );
+    expect(find.text('STEP 2 / 5'), findsOneWidget);
+  });
+
   testWidgets('a failed save shows the message and stays on the step', (
     tester,
   ) async {
     await _pumpFlow(
       tester,
       patches: [],
-      onPatch: () async => throw const ApiException(
+      onSetGoals: () async => throw const ApiException(
         'INVALID_PROFILE_FIELD',
         'That goal is not one we recognise.',
       ),
@@ -308,6 +367,29 @@ void main() {
       reason: 'advancing past a step whose answer was rejected would lose it',
     );
   });
+
+  testWidgets(
+    'a profile seeded with goals but no focus does not crash Continue',
+    (tester) async {
+      final goalWrites = <({List<String> goals, String mainGoal})>[];
+      await _pumpFlow(
+        tester,
+        patches: [],
+        goalWrites: goalWrites,
+        seedGoals: const ['lose_weight', 'build_muscle'],
+      );
+
+      await tester.tap(find.byKey(const Key('continue')));
+      await tester.pumpAndSettle();
+
+      expect(tester.takeException(), isNull);
+      // build_muscle comes before lose_weight in card order, so a null
+      // focus falls back to it.
+      expect(goalWrites.single.goals, ['build_muscle', 'lose_weight']);
+      expect(goalWrites.single.mainGoal, 'build_muscle');
+      expect(find.text('STEP 2 / 5'), findsOneWidget);
+    },
+  );
 
   testWidgets('step 3 saves the level fields and the equipment set', (
     tester,
@@ -330,6 +412,29 @@ void main() {
       3,
     ], reason: 'equipment is a replace-set write, not part of the patch');
     expect(find.text('STEP 4 / 5'), findsOneWidget);
+  });
+
+  testWidgets('step 3 saves New to training and the home gym pre-fill', (
+    tester,
+  ) async {
+    final patches = <Map<String, dynamic>>[];
+    final equipmentWrites = <List<int>>[];
+    await _pumpFlow(tester, patches: patches, equipmentWrites: equipmentWrites);
+    await _skip(tester);
+    await _skip(tester);
+
+    await _tapKey(tester, const Key('segment.new'));
+    await _tapKey(tester, const Key('trainingLocation'));
+    await tester.tap(find.byKey(const Key('location.home_gym')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const Key('continue')));
+    await tester.pumpAndSettle();
+
+    expect(patches.single, {
+      'fitnessLevel': 'new',
+      'trainingLocation': 'home_gym',
+    });
+    expect(equipmentWrites.single.toSet(), {2, 6});
   });
 
   testWidgets('step 3 shows the eight chips the design specifies, in order', (

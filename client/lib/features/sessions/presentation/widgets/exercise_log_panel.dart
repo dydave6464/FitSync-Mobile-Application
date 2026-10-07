@@ -111,7 +111,7 @@ class _ExerciseLogPanelState extends State<ExerciseLogPanel> {
   /// The mockup's single mono line under the exercise name.
   String get _targetLine {
     final exercise = widget.exercise;
-    final target = 'Target ${exercise.targetSets} × ${exercise.targetReps}';
+    final target = 'Target: ${exercise.prescription}';
     final previous = widget.last?.weightKg;
     if (previous == null) return target;
     return '$target · last ${formatWeightWithUnit(previous, widget.unit)}';

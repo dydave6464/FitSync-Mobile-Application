@@ -87,6 +87,15 @@ class _ThemeToggleButton extends ConsumerWidget {
   }
 }
 
+/// The level as the level step words it. Capitalising the stored value read
+/// fine for beginner and intermediate and as "New" for New to training.
+String _levelLabel(String level) => switch (level) {
+  'new' => 'New to training',
+  'beginner' => 'Beginner',
+  'intermediate' => 'Intermediate',
+  _ => level,
+};
+
 class _SettingsList extends ConsumerWidget {
   const _SettingsList({required this.profile});
 
@@ -109,9 +118,7 @@ class _SettingsList extends ConsumerWidget {
     final theme = Theme.of(context);
 
     final subtitle = [
-      if (profile.fitnessLevel != null)
-        profile.fitnessLevel![0].toUpperCase() +
-            profile.fitnessLevel!.substring(1),
+      if (profile.fitnessLevel != null) _levelLabel(profile.fitnessLevel!),
       if (profile.city != null) profile.city!,
       if (profile.fitnessLevel == null && profile.city == null) profile.email,
     ].join(' · ');
@@ -202,7 +209,7 @@ class _SettingsList extends ConsumerWidget {
               _SettingsRow(
                 rowKey: const Key('edit.goal'),
                 icon: Icons.flag_outlined,
-                label: 'Goal',
+                label: 'Goals',
                 onTap: () => _open(context, const _GoalEditor()),
               ),
               _SettingsRow(
@@ -424,28 +431,28 @@ class _GoalEditor extends ConsumerStatefulWidget {
 }
 
 class _GoalEditorState extends _EditorState<_GoalEditor> {
-  String? _value;
+  GoalAnswers _value = const GoalAnswers();
   bool _seeded = false;
 
   @override
-  String get title => 'Goal';
+  String get title => 'Goals';
 
   @override
   Widget buildStep(Profile profile) {
     if (!_seeded) {
       _seeded = true;
-      _value = profile.mainGoal;
+      _value = GoalAnswers.fromProfile(profile);
     }
     return GoalStep(
       value: _value,
-      onChanged: (value) => setState(() => _value = value),
+      onChanged: (v) => setState(() => _value = v),
     );
   }
 
   @override
   Future<void> save(ProfileNotifier notifier) async {
-    if (_value == null) return;
-    await notifier.patch({'mainGoal': _value});
+    if (_value.goals.isEmpty) return;
+    await notifier.setGoals(_value.goals, _value.mainGoal!);
   }
 }
 

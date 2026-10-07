@@ -73,8 +73,8 @@ test('generatePlan sends the mapped profile, never the personal fields', () => {
         equipment: [], injuries: [], overrides: { daysPerWeek: 3 },
       });
       assert.deepEqual(body, {
-        mainGoal: 'lose_weight', fitnessLevel: 'beginner',
-        equipment: [], injuries: [], overrides: { daysPerWeek: 3 },
+        mainGoal: 'lose_weight', fitnessLevel: 'beginner', trainingLocation: null,
+        equipment: [], injuries: [], goals: [], overrides: { daysPerWeek: 3 },
       });
     },
   );

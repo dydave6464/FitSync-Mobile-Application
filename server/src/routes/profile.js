@@ -3,7 +3,7 @@ const express = require('express');
 const AppError = require('../lib/app-error');
 const requireAuth = require('../middleware/require-auth');
 const {
-  getProfile, updateProfile, setEquipment, setInjuries, setTrainingDays,
+  getProfile, updateProfile, setEquipment, setInjuries, setTrainingDays, setGoals,
   listEquipment, listInjuries, markOnboardingComplete, WRITABLE,
 } = require('../db/profile');
 const { savePlan, getActivePlan } = require('../db/plans');
@@ -12,7 +12,7 @@ const bodyWeight = require('../db/body-weight');
 const ENUMS = {
   sex: ['male', 'female', 'prefer_not_to_say'],
   mainGoal: ['lose_weight', 'build_muscle', 'improve_endurance', 'general_fitness'],
-  fitnessLevel: ['beginner', 'intermediate'],
+  fitnessLevel: ['beginner', 'intermediate', 'new'],
   activityLevel: ['sedentary', 'light', 'moderate', 'active', 'very_active'],
   trainingLocation: ['home_gym', 'commercial_gym', 'both', 'other'],
   weightUnit: ['kg', 'lb'],
@@ -119,6 +119,33 @@ function validateIds(name, raw) {
     throw invalid(name, `${name} must not contain duplicate ids.`);
   }
   return ids;
+}
+
+/// The goal step's answer: every ticked goal and the one that sets the plan's
+/// volume. One goal needs no focus named; several do.
+function validateGoals(body) {
+  const { goals } = body;
+  if (!Array.isArray(goals) || goals.length === 0) {
+    throw invalid('goals', 'goals must be a non-empty array.');
+  }
+  for (const goal of goals) {
+    if (!ENUMS.mainGoal.includes(goal)) {
+      throw invalid('goals', `goals must be from: ${ENUMS.mainGoal.join(', ')}.`);
+    }
+  }
+  if (new Set(goals).size !== goals.length) {
+    throw invalid('goals', 'goals must not repeat.');
+  }
+  let { mainGoal } = body;
+  if (mainGoal === undefined || mainGoal === null) {
+    if (goals.length > 1) {
+      throw invalid('mainGoal', 'mainGoal is required when more than one goal is chosen.');
+    }
+    [mainGoal] = goals;
+  } else if (!goals.includes(mainGoal)) {
+    throw invalid('mainGoal', 'mainGoal must be one of goals.');
+  }
+  return { goals, mainGoal };
 }
 
 module.exports = function buildProfileRouter(deps) {
@@ -237,6 +264,14 @@ module.exports = function buildProfileRouter(deps) {
     } catch (err) { next(err); }
   });
 
+  router.put('/profile/goals', auth, async (req, res, next) => {
+    try {
+      const { goals, mainGoal } = validateGoals(req.body || {});
+      await setGoals(pool, req.user.userId, goals, mainGoal);
+      await respond(res, req.user.userId);
+    } catch (err) { next(err); }
+  });
+
   // Profile data that happens to be drawn on the Progress screen, which is
   // why it lives here rather than under /sessions: the current weight and its
   // history belong to the same feature.
@@ -315,3 +350,8 @@ module.exports = function buildProfileRouter(deps) {
 
   return router;
 };
+
+// Exposed so a schema test can pin users.main_goal and user_goals.goal to
+// exactly this list, rather than a second copy of the four values that could
+// drift from it.
+module.exports.ENUMS = ENUMS;

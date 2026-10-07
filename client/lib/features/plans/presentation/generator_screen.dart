@@ -762,7 +762,7 @@ class _DescribeCardState extends ConsumerState<_DescribeCard> {
     WeekTopic.sessionLength =>
       'Session length follows your goal and fitness level, so it is not '
           'set here.',
-    WeekTopic.goal => 'Your goal is set in your profile.',
+    WeekTopic.goal => 'Your goals are set in your profile.',
     WeekTopic.dayCount =>
       'How many days you train follows the weekdays you have chosen '
           'below, so that count was not applied.',

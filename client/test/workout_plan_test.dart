@@ -231,4 +231,41 @@ void main() {
       expect(flat.todayDayNo(7), 1);
     });
   });
+
+  group('prescription', () {
+    PlanExercise prescribed({required int sets, required String reps}) =>
+        PlanExercise(
+          planExerciseId: 1,
+          exerciseId: 1,
+          name: 'Push-up',
+          muscleGroup: 'chest',
+          orderNo: 1,
+          targetSets: sets,
+          targetReps: reps,
+        );
+
+    test('names both numbers, with the range the generator writes', () {
+      expect(
+        prescribed(sets: 3, reps: '8-12').prescription,
+        '3 sets × 8-12 reps',
+      );
+    });
+
+    test('a bare rep count reads as reps too', () {
+      expect(prescribed(sets: 4, reps: '10').prescription, '4 sets × 10 reps');
+    });
+
+    test('one set and one rep are singular', () {
+      expect(prescribed(sets: 1, reps: '1').prescription, '1 set × 1 rep');
+    });
+
+    test('a timed target is shown as written, not called reps', () {
+      expect(prescribed(sets: 3, reps: '30s').prescription, '3 sets × 30s');
+    });
+
+    test('no rep target leaves just the sets', () {
+      expect(prescribed(sets: 3, reps: '').prescription, '3 sets');
+      expect(prescribed(sets: 3, reps: '  ').prescription, '3 sets');
+    });
+  });
 }

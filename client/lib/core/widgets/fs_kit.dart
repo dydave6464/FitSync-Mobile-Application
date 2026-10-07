@@ -434,7 +434,13 @@ class FsSegmented extends StatelessWidget {
                       child: Text(
                         option.label,
                         textAlign: TextAlign.center,
-                        maxLines: 1,
+                        // A label that fits in one line renders at exactly
+                        // that height (unchanged from before); one that
+                        // doesn't wraps to a second line rather than
+                        // ellipsizing — "New to training" at 320dp is the
+                        // case this guards, and a label is a binding
+                        // constraint that must never be shortened.
+                        maxLines: 2,
                         overflow: TextOverflow.ellipsis,
                         style: TextStyle(
                           fontSize: 12.5,

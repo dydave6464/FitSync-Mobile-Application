@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import 'package:flutter/rendering.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 
@@ -10,7 +11,7 @@ import 'package:fitsync/features/onboarding/presentation/steps/level_step.dart';
 import 'package:fitsync/features/profile/domain/profile.dart';
 import 'package:fitsync/features/profile/presentation/providers.dart';
 
-const _fitnessLevels = ['beginner', 'intermediate'];
+const _fitnessLevels = ['new', 'beginner', 'intermediate'];
 const _locations = ['home_gym', 'commercial_gym', 'both', 'other'];
 
 /// Deliberately not the mockup's "Barbell, Dumbbells, Bench". The real
@@ -19,6 +20,17 @@ const _locations = ['home_gym', 'commercial_gym', 'both', 'other'];
 const _serverEquipment = [
   EquipmentOption(equipmentId: 41, name: 'Resistance band'),
   EquipmentOption(equipmentId: 62, name: 'Sled machine'),
+];
+
+const _keyedEquipment = [
+  EquipmentOption(equipmentId: 1, name: 'Barbell', key: 'barbell'),
+  EquipmentOption(equipmentId: 2, name: 'Dumbbells', key: 'dumbbell'),
+  EquipmentOption(equipmentId: 3, name: 'Bench', key: 'bench'),
+  EquipmentOption(equipmentId: 4, name: 'Pull-up bar', key: 'pull-up bar'),
+  EquipmentOption(equipmentId: 5, name: 'Kettlebell', key: 'kettlebell'),
+  EquipmentOption(equipmentId: 6, name: 'Bands', key: 'band'),
+  EquipmentOption(equipmentId: 7, name: 'Machines', key: 'machines'),
+  EquipmentOption(equipmentId: 8, name: 'Bodyweight', key: 'body weight'),
 ];
 
 Future<LevelAnswers?> _pump(
@@ -60,13 +72,62 @@ Future<void> _tapKey(WidgetTester tester, Key key) async {
   await tester.pumpAndSettle();
 }
 
+/// Picks a location through the sheet, the way a user does.
+Future<void> _pickLocation(WidgetTester tester, String value) async {
+  await _tapKey(tester, const Key('trainingLocation'));
+  await tester.tap(find.byKey(Key('location.$value')));
+  await tester.pumpAndSettle();
+}
+
+/// Holds the answers between taps, the way the onboarding flow does.
+Future<LevelAnswers Function()> _pumpLive(
+  WidgetTester tester, {
+  LevelAnswers initial = const LevelAnswers(),
+}) async {
+  var current = initial;
+  await tester.pumpWidget(
+    ProviderScope(
+      overrides: [
+        equipmentOptionsProvider.overrideWith(
+          (ref) => Future.value(_keyedEquipment),
+        ),
+      ],
+      child: MaterialApp(
+        theme: fsLightTheme(),
+        home: Scaffold(
+          body: SingleChildScrollView(
+            child: StatefulBuilder(
+              builder: (context, setState) => LevelStep(
+                value: current,
+                onChanged: (v) => setState(() => current = v),
+              ),
+            ),
+          ),
+        ),
+      ),
+    ),
+  );
+  await tester.pumpAndSettle();
+  return () => current;
+}
+
 void main() {
-  testWidgets('offers exactly two experience levels', (tester) async {
+  testWidgets('offers exactly three experience levels, New to training first', (
+    tester,
+  ) async {
     await _pump(tester);
 
+    expect(
+      find.descendant(
+        of: find.byType(FsSegmented),
+        matching: find.byType(InkWell),
+      ),
+      findsNWidgets(3),
+    );
     for (final value in _fitnessLevels) {
       expect(find.byKey(Key('segment.$value')), findsOneWidget);
     }
+    expect(find.text('New to training'), findsOneWidget);
   });
 
   testWidgets('emits the fitness level enum value', (tester) async {
@@ -184,6 +245,111 @@ void main() {
       findsNothing,
       reason: 'a picker left open would cover the step it just edited',
     );
+  });
+
+  testWidgets('location is asked before the equipment', (tester) async {
+    await _pump(tester, equipment: _keyedEquipment);
+    final location = tester
+        .getTopLeft(find.byKey(const Key('trainingLocation')))
+        .dy;
+    final firstChip = tester
+        .getTopLeft(find.byKey(const Key('equipment.1')))
+        .dy;
+    expect(location, lessThan(firstChip));
+  });
+
+  for (final (location, ids) in [
+    ('commercial_gym', [1, 2, 3, 4, 5, 6, 7]),
+    ('both', [1, 2, 3, 4, 5, 6, 7]),
+    ('home_gym', [2, 6]),
+    ('other', [4, 6, 8]),
+  ]) {
+    testWidgets(
+      'choosing $location with nothing ticked pre-ticks its equipment',
+      (tester) async {
+        LevelAnswers? emitted;
+        await tester.pumpWidget(
+          ProviderScope(
+            overrides: [
+              equipmentOptionsProvider.overrideWith(
+                (ref) => Future.value(_keyedEquipment),
+              ),
+            ],
+            child: MaterialApp(
+              theme: fsLightTheme(),
+              home: Scaffold(
+                body: SingleChildScrollView(
+                  child: LevelStep(
+                    value: const LevelAnswers(),
+                    onChanged: (v) => emitted = v,
+                  ),
+                ),
+              ),
+            ),
+          ),
+        );
+        await tester.pumpAndSettle();
+        await _pickLocation(tester, location);
+        expect(emitted!.trainingLocation, location);
+        expect(emitted!.equipmentIds.toSet(), ids.toSet());
+      },
+    );
+  }
+
+  testWidgets('a location never overwrites equipment already ticked', (
+    tester,
+  ) async {
+    LevelAnswers? emitted;
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          equipmentOptionsProvider.overrideWith(
+            (ref) => Future.value(_keyedEquipment),
+          ),
+        ],
+        child: MaterialApp(
+          theme: fsLightTheme(),
+          home: Scaffold(
+            body: SingleChildScrollView(
+              child: LevelStep(
+                value: const LevelAnswers(equipmentIds: [5]),
+                onChanged: (v) => emitted = v,
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+    await _pickLocation(tester, 'commercial_gym');
+    expect(emitted!.equipmentIds, [5]);
+  });
+
+  testWidgets('options without keys pre-tick nothing', (tester) async {
+    LevelAnswers? emitted;
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          equipmentOptionsProvider.overrideWith(
+            (ref) => Future.value(_serverEquipment),
+          ),
+        ],
+        child: MaterialApp(
+          theme: fsLightTheme(),
+          home: Scaffold(
+            body: SingleChildScrollView(
+              child: LevelStep(
+                value: const LevelAnswers(),
+                onChanged: (v) => emitted = v,
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+    await _pickLocation(tester, 'home_gym');
+    expect(emitted!.equipmentIds, isEmpty);
   });
 
   testWidgets(
@@ -320,7 +486,10 @@ void main() {
         tester.platformDispatcher.textScaleFactorTestValue = scale;
         addTearDown(tester.platformDispatcher.clearTextScaleFactorTestValue);
 
-        await _pump(tester);
+        // Keyed equipment at the higher scale too, cheaply: it is what makes
+        // the "not familiar" card render, and that card is the step's tallest
+        // content, so it belongs in at least one overflow case here.
+        await _pump(tester, equipment: scale == 2.0 ? _keyedEquipment : null);
 
         // A bare takeException() catches any overflow anywhere on the step,
         // not just the eyebrow row's. That is deliberate breadth, not
@@ -346,4 +515,81 @@ void main() {
       },
     );
   }
+
+  testWidgets('"New to training" does not truncate at 320dp', (tester) async {
+    // 320dp splits the three segments to ~87dp apiece (minus the control's
+    // own padding and gaps); "New to training" at 12.5px/w600 needs ~95dp on
+    // one line, which used to ellipsize it. The label is a binding
+    // constraint and must never be shortened, so it has to wrap instead.
+    tester.view.physicalSize = const Size(320, 1400);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+
+    await _pump(tester);
+
+    expect(find.text('New to training'), findsOneWidget);
+    final paragraph = tester.renderObject<RenderParagraph>(
+      find.text('New to training'),
+    );
+    expect(
+      paragraph.didExceedMaxLines,
+      isFalse,
+      reason:
+          'wrapping to a second line must be enough; it must not need '
+          'a third or ellipsize',
+    );
+  });
+
+  testWidgets('offers "not familiar" with its subtitle', (tester) async {
+    await _pumpLive(tester);
+    expect(find.text("I'm not familiar with any of these"), findsOneWidget);
+    expect(
+      find.text("We'll start you on bodyweight exercises."),
+      findsOneWidget,
+    );
+  });
+
+  testWidgets('"not familiar" replaces the ticks with Bodyweight alone', (
+    tester,
+  ) async {
+    final answers = await _pumpLive(
+      tester,
+      initial: const LevelAnswers(equipmentIds: [1, 2, 7]),
+    );
+    await _tapKey(tester, const Key('equipment.unfamiliar'));
+    expect(answers().equipmentIds, [8]);
+    expect(answers().unfamiliar, isTrue);
+    // The chips read as unticked while it is the choice.
+    expect(
+      tester.widget<FsChip>(find.byKey(const Key('equipment.8'))).selected,
+      isFalse,
+    );
+  });
+
+  testWidgets('ticking a chip clears "not familiar" and keeps only that tick', (
+    tester,
+  ) async {
+    final answers = await _pumpLive(tester);
+    await _tapKey(tester, const Key('equipment.unfamiliar'));
+    await _tapKey(tester, const Key('equipment.2'));
+    expect(answers().unfamiliar, isFalse);
+    expect(answers().equipmentIds, [2]);
+  });
+
+  testWidgets('a location chosen after "not familiar" does not pre-tick', (
+    tester,
+  ) async {
+    final answers = await _pumpLive(tester);
+    await _tapKey(tester, const Key('equipment.unfamiliar'));
+    await _pickLocation(tester, 'commercial_gym');
+    expect(answers().equipmentIds, [8]);
+  });
+
+  testWidgets('no Bodyweight option means no "not familiar" choice', (
+    tester,
+  ) async {
+    await _pump(tester); // _serverEquipment: no keys, no Bodyweight
+    expect(find.byKey(const Key('equipment.unfamiliar')), findsNothing);
+  });
 }
