@@ -531,6 +531,90 @@ class _SessionLoggerScreenState extends ConsumerState<SessionLoggerScreen> {
     }
   }
 
+  /// Clears what has been logged against [exercise] so it can be done again,
+  /// leaving the rest of the session alone -- the per-exercise counterpart to
+  /// Discard, which throws the whole workout away.
+  ///
+  /// One delete per stored set, through the same call the set table's reopen
+  /// uses, so nothing new is needed server-side. Each delete lands on its own:
+  /// if the connection drops partway, the sets already cleared stay cleared
+  /// and the message says the restart did not finish, rather than pretending
+  /// either everything or nothing happened.
+  Future<void> _restartExercise(
+    PlanExercise exercise,
+    ActiveSession session,
+  ) async {
+    final logged = [
+      for (final set in session.sets)
+        if (set.exerciseId == exercise.exerciseId) set.setNumber,
+    ];
+    if (logged.isEmpty) return;
+
+    final count = logged.length == 1
+        ? '1 logged set'
+        : '${logged.length} logged sets';
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        key: const Key('logger.restartConfirm'),
+        title: Text('Restart ${exercise.name}?'),
+        content: Text(
+          'Your $count for this exercise will be cleared. '
+          'The rest of your session is kept.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(dialogContext).pop(false),
+            child: const Text('Keep'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.of(dialogContext).pop(true),
+            child: const Text('Restart'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true || !mounted) return;
+
+    // A rest counts down between sets of this exercise, and there are none
+    // left to rest between.
+    setState(() => _resting = false);
+    final messenger = ScaffoldMessenger.of(context);
+    final drafts = _drafts;
+    for (final setNumber in logged) {
+      try {
+        await ref
+            .read(activeSessionProvider.notifier)
+            .unlogSet(exerciseId: exercise.exerciseId, setNumber: setNumber);
+      } on ApiException catch (error) {
+        if (_handledSetWriteClosure(error, messenger)) return;
+        _restartFailed(messenger, exercise, error);
+        return;
+      } catch (error) {
+        _restartFailed(messenger, exercise, error);
+        return;
+      }
+      // Re-seeded from last session on the next build, the way a fresh
+      // table is -- see SetDrafts.release.
+      drafts.release(setNumber);
+    }
+  }
+
+  void _restartFailed(
+    ScaffoldMessengerState messenger,
+    PlanExercise exercise,
+    Object error,
+  ) {
+    if (!mounted) return;
+    messenger.showSnackBar(
+      SnackBar(
+        content: Text(
+          "Couldn't finish restarting ${exercise.name}. ${describeError(error)}",
+        ),
+      ),
+    );
+  }
+
   /// The logger's chrome, shared by the loaded state and the empty-day
   /// one below. Both need the same way out: back steps through the
   /// workout, and the overflow still carries Finish and Discard. The
@@ -540,7 +624,15 @@ class _SessionLoggerScreenState extends ConsumerState<SessionLoggerScreen> {
   ///
   /// [doneSets] only keys the rest countdown, which restarts on each
   /// new set; the empty state never rests, so it passes zero.
-  PreferredSizeWidget _appBar(FsTokens t, {int doneSets = 0}) => AppBar(
+  ///
+  /// [onRestart] is null whenever there is nothing to restart -- the demo
+  /// stage, an exercise with no sets logged yet, the empty day -- which
+  /// greys the item out rather than hiding it, so the menu keeps one shape.
+  PreferredSizeWidget _appBar(
+    FsTokens t, {
+    int doneSets = 0,
+    VoidCallback? onRestart,
+  }) => AppBar(
     // The mockup's 38px rounded-square icon button, not Material's bare
     // arrow. Tooltipped 'Back' so the platform affordance -- and
     // tester.pageBack -- still finds it, and maybePop routes it through
@@ -596,14 +688,24 @@ class _SessionLoggerScreenState extends ConsumerState<SessionLoggerScreen> {
       // workout early does not mean paging to the end of it first.
       PopupMenuButton<String>(
         key: const Key('logger.menu'),
-        onSelected: (value) => value == 'finish' ? _finish() : _discard(),
-        itemBuilder: (_) => const [
+        onSelected: (value) => switch (value) {
+          'restart' => onRestart?.call(),
+          'finish' => _finish(),
+          _ => _discard(),
+        },
+        itemBuilder: (_) => [
           PopupMenuItem(
+            key: const Key('logger.restart'),
+            value: 'restart',
+            enabled: onRestart != null,
+            child: const Text('Restart this exercise'),
+          ),
+          const PopupMenuItem(
             key: Key('logger.finish'),
             value: 'finish',
             child: Text('Finish session'),
           ),
-          PopupMenuItem(
+          const PopupMenuItem(
             key: Key('logger.discard'),
             value: 'discard',
             child: Text('Discard session'),
@@ -744,7 +846,15 @@ class _SessionLoggerScreenState extends ConsumerState<SessionLoggerScreen> {
       },
       child: Scaffold(
         backgroundColor: t.bg,
-        appBar: _appBar(t, doneSets: doneSets),
+        appBar: _appBar(
+          t,
+          doneSets: doneSets,
+          onRestart:
+              _stage == _LoggerStage.logging &&
+                  _hasLoggedSets(exercise, session)
+              ? () => _restartExercise(exercise, session)
+              : null,
+        ),
         body: Column(
           children: [
             Padding(
