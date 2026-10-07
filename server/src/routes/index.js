@@ -12,6 +12,7 @@ const buildRoutineRouter = require('./routine');
 const buildStreakRouter = require('./streak');
 const buildGoalsRouter = require('./goals');
 const buildRemindersRouter = require('./reminders');
+const buildTrainingRouter = require('./training');
 const buildCalendarRouter = require('./calendar');
 const buildActivityRouter = require('./activity');
 const requireAuth = require('../middleware/require-auth');
@@ -29,6 +30,7 @@ module.exports = function buildRoutes(deps = {}) {
   router.use('/streak', buildStreakRouter(deps));
   router.use('/goals', buildGoalsRouter(deps));
   router.use('/reminders', buildRemindersRouter(deps));
+  router.use('/training', buildTrainingRouter(deps));
   router.use('/calendar', buildCalendarRouter(deps));
   router.use('/activity', buildActivityRouter(deps));
   // The catalogue is reference data, but the app requires sign-in to reach any
