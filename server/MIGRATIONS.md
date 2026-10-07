@@ -69,10 +69,10 @@ sub-project** — it has not been designed yet.
 ## Exceptions: `007`, `008`, `011`, `012`, `013`, `014` and `028`
 
 `007_auth_identities.sql`, `008_equipment_curation.sql`,
-`011_email_verification.sql`, `012_weight_unit.sql`, `013_plan_days.sql` and
-`014_cardio_core_split.sql`.
+`011_email_verification.sql`, `012_weight_unit.sql`, `013_plan_days.sql`,
+`014_cardio_core_split.sql` and `028_new_to_training_level.sql`.
 
-All six files break the rule above on purpose, for the same reason: each
+All seven files break the rule above on purpose, for the same reason: each
 needs to change tables that migrations `001`–`006` already defined and that
 may already be applied on someone's database. The runner has no checksum
 (see the gap recorded below): it decides whether to apply a file solely by
@@ -81,10 +81,10 @@ these columns would not be replayed on a database where `001` was already
 recorded as applied — the edit would be silently invisible there, exactly
 the failure mode the pre-release policy above depends on nobody hitting. A
 new, forward-only file sidesteps that. The tradeoff is the one below: unlike
-a `CREATE TABLE IF NOT EXISTS`-only file, five of the six are not safe to
-replay after a partial failure. `014` is the exception to the exception: it
-restates a column definition rather than adding to one, so it replays
-cleanly. Which of the six you are holding is the thing to know before
+a `CREATE TABLE IF NOT EXISTS`-only file, five of the seven are not safe to
+replay after a partial failure. `014` and `028` are the exceptions to the exception: both
+restate a column definition rather than adding to one, so they replay
+cleanly. Which of the seven you are holding is the thing to know before
 retrying one.
 
 **`007_auth_identities.sql`** — alongside its
@@ -131,7 +131,7 @@ existing row means.
 the enum `001` defined. Appended at the END for the same reason as 014. Like
 014 it restates the whole column definition, so it replays cleanly.
 
-**Consequence: five of the six are not replay-safe.** Unlike every other
+**Consequence: five of the seven are not replay-safe.** Unlike every other
 migration file, if 007, 008, 011, 012 or 013 fails partway through, `IF NOT
 EXISTS` does not protect the `ALTER TABLE` (or, for 008, the trailing
 `CREATE INDEX`) statements — a second run will hit `ER_DUP_FIELDNAME` (or,
@@ -140,12 +140,12 @@ statement had already committed. Because `ALTER TABLE` and `CREATE INDEX`
 both implicitly commit, a partial failure is not rolled back by the runner
 failing to record the version.
 
-**014 is the one that can simply be re-run.** `MODIFY COLUMN` restates the
-column's whole definition rather than adding to it, so running it twice
-leaves the same five-value enum both times and there is no
+**014 and 028 are the ones that can simply be re-run.** Both use `MODIFY COLUMN`, which restates the
+column's whole definition rather than adding to it. `014` runs it twice on the split_style enum,
+`028` on fitness_level, leaving the same values both times with no
 `ER_DUP_FIELDNAME` to hit. That is a property of the statement, not of the
 runner — the runner still has no checksum and still records a file only once
-it fully succeeds — so it applies to this file and not to the other five.
+it fully succeeds — so it applies to these two files and not to the other five.
 
 **If 007, 008, 011, 012 or 013 fails partway through**, recovery is manual:
 
