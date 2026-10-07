@@ -593,6 +593,7 @@ void main() {
       'consent': false,
       'acknowledged': false,
     });
+    expect(health.deletes, 0, reason: 'a save must not also delete');
   });
 
   testWidgets('a positive health answer needs both boxes, then saves', (
@@ -623,6 +624,7 @@ void main() {
     expect(saved.conditions, ['asthma']);
     expect(saved.consent, isTrue);
     expect(saved.acknowledged, isTrue);
+    expect(health.deletes, 0, reason: 'a save must not also delete');
   });
 
   testWidgets("Don't save my answers continues without storing anything", (
@@ -643,7 +645,60 @@ void main() {
 
     expect(find.text('STEP 6 / 6'), findsOneWidget);
     expect(health.writes, isEmpty);
+    expect(health.deletes, 1);
   });
+
+  testWidgets('opting out deletes answers stored earlier', (tester) async {
+    // Simulates a row a previous, non-opted-out save already put on the
+    // server -- opting out now must remove it, not just skip writing.
+    final health = FakeHealthRepository(stored: const HealthAnswers());
+    await _pumpFlow(tester, patches: [], health: health);
+    for (var i = 0; i < 4; i++) {
+      await _skip(tester);
+    }
+
+    await _tapKey(tester, const Key('health.asthma'));
+    for (final q in healthQuestions) {
+      await _tapKey(tester, Key('health.${q.field}.no'));
+    }
+    await _tapKey(tester, const Key('health.optOut'));
+    await _tapKey(tester, const Key('continue'));
+
+    expect(find.text('STEP 6 / 6'), findsOneWidget);
+    expect(health.deletes, 1);
+    expect(health.writes, isEmpty);
+  });
+
+  testWidgets(
+    'saving positively, then opting out after Back, deletes what was saved',
+    (tester) async {
+      final health = FakeHealthRepository();
+      await _pumpFlow(tester, patches: [], health: health);
+      for (var i = 0; i < 4; i++) {
+        await _skip(tester);
+      }
+
+      await _tapKey(tester, const Key('health.asthma'));
+      for (final q in healthQuestions) {
+        await _tapKey(tester, Key('health.${q.field}.no'));
+      }
+      await _tapKey(tester, const Key('health.ack'));
+      await _tapKey(tester, const Key('health.consent'));
+      await _tapKey(tester, const Key('continue'));
+
+      expect(find.text('STEP 6 / 6'), findsOneWidget);
+      expect(health.writes.length, 1);
+
+      await _tapKey(tester, const Key('back'));
+      expect(find.text('STEP 5 / 6'), findsOneWidget);
+
+      await _tapKey(tester, const Key('health.optOut'));
+      await _tapKey(tester, const Key('continue'));
+
+      expect(find.text('STEP 6 / 6'), findsOneWidget);
+      expect(health.deletes, 1);
+    },
+  );
 
   testWidgets('a failed health save shows the message and stays', (
     tester,

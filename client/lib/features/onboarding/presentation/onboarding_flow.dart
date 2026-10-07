@@ -124,11 +124,19 @@ class _OnboardingFlowState extends ConsumerState<OnboardingFlow> {
     if (_index == 2) await notifier.setEquipment(_level.equipmentIds);
     if (_index == 3) await notifier.setInjuries(_injuries);
 
-    // Only with consent: "Don't save my answers" writes nothing, so the plan
-    // stays as it is. A save invalidates the cached answers so Settings reads
-    // what is stored now.
-    if (_index == _healthIndex && !_health.optedOut) {
-      await ref.read(healthRepositoryProvider).setHealth(_health);
+    // "Don't save my answers" means nothing stored, whether or not the
+    // answers are positive -- including a row an earlier, non-opted-out save
+    // on this same visit already put on the server. DELETE is idempotent
+    // server-side (200 with no row), so it is safe to call even when nothing
+    // was ever saved. Otherwise the current answers are saved as usual.
+    // Either way, invalidate the cached answers so Settings reads what is
+    // stored now.
+    if (_index == _healthIndex) {
+      if (_health.optedOut) {
+        await ref.read(healthRepositoryProvider).deleteHealth();
+      } else {
+        await ref.read(healthRepositoryProvider).setHealth(_health);
+      }
       ref.invalidate(healthProvider);
     }
 
