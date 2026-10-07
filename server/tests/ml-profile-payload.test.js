@@ -15,7 +15,7 @@ const PROFILE = {
   weightKg: 68.5,
   goalWeightKg: 65,
   weightUnit: 'kg',
-  trainingLocation: 'home',
+  trainingLocation: 'home_gym',
   isPremium: false,
   notificationsEnabled: true,
   onboardingCompleted: true,
@@ -34,7 +34,7 @@ test('a plan request carries only what the generator reads', () => {
   assert.deepEqual(toPlanPayload(PROFILE), {
     mainGoal: 'build_muscle',
     fitnessLevel: 'beginner',
-    trainingLocation: 'home',
+    trainingLocation: 'home_gym',
     equipment: [{ equipmentId: 41 }],
     injuries: [{ injuryId: 3, regionGroup: 'lower_body' }],
   });

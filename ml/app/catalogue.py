@@ -92,6 +92,11 @@ _SELECTED_TIER = """
 LOCATION_FIRST: Dict[str, Tuple[str, ...]] = {
     "commercial_gym": ("machines", "barbell"),
     "home_gym": ("dumbbell", "band", "body weight", "kettlebell"),
+    # 'pull-up bar' has no exercises tagged to it today -- the seed
+    # (server/src/db/seed-equipment.js) creates the chip with none attached --
+    # so it orders nothing yet. It is listed anyway so a future exercise
+    # tagged to it is preferred outdoors as soon as one exists, with no
+    # catalogue.py change needed then.
     "other": ("body weight", "band", "pull-up bar"),
 }
 

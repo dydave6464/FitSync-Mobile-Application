@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import 'package:flutter/rendering.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 
@@ -258,9 +259,9 @@ void main() {
   });
 
   for (final (location, ids) in [
-    ('commercial_gym', [1, 2, 3, 4, 5, 6, 7, 8]),
-    ('both', [1, 2, 3, 4, 5, 6, 7, 8]),
-    ('home_gym', [2, 6, 8]),
+    ('commercial_gym', [1, 2, 3, 4, 5, 6, 7]),
+    ('both', [1, 2, 3, 4, 5, 6, 7]),
+    ('home_gym', [2, 6]),
     ('other', [4, 6, 8]),
   ]) {
     testWidgets(
@@ -485,7 +486,10 @@ void main() {
         tester.platformDispatcher.textScaleFactorTestValue = scale;
         addTearDown(tester.platformDispatcher.clearTextScaleFactorTestValue);
 
-        await _pump(tester);
+        // Keyed equipment at the higher scale too, cheaply: it is what makes
+        // the "not familiar" card render, and that card is the step's tallest
+        // content, so it belongs in at least one overflow case here.
+        await _pump(tester, equipment: scale == 2.0 ? _keyedEquipment : null);
 
         // A bare takeException() catches any overflow anywhere on the step,
         // not just the eyebrow row's. That is deliberate breadth, not
@@ -511,6 +515,31 @@ void main() {
       },
     );
   }
+
+  testWidgets('"New to training" does not truncate at 320dp', (tester) async {
+    // 320dp splits the three segments to ~87dp apiece (minus the control's
+    // own padding and gaps); "New to training" at 12.5px/w600 needs ~95dp on
+    // one line, which used to ellipsize it. The label is a binding
+    // constraint and must never be shortened, so it has to wrap instead.
+    tester.view.physicalSize = const Size(320, 1400);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+
+    await _pump(tester);
+
+    expect(find.text('New to training'), findsOneWidget);
+    final paragraph = tester.renderObject<RenderParagraph>(
+      find.text('New to training'),
+    );
+    expect(
+      paragraph.didExceedMaxLines,
+      isFalse,
+      reason:
+          'wrapping to a second line must be enough; it must not need '
+          'a third or ellipsize',
+    );
+  });
 
   testWidgets('offers "not familiar" with its subtitle', (tester) async {
     await _pumpLive(tester);

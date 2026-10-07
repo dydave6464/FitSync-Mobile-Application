@@ -53,10 +53,10 @@ const _levels = <({String value, String label})>[
 
 /// `training_location` ENUM values.
 ///
-/// Behind a picker rather than on the step: the design gives location a single
-/// row at the foot of the screen, so a second chip strip cannot compete with
-/// the equipment set — the one place on this step where chips mean
-/// "choose several".
+/// Behind a picker rather than on the step: the design gives location a
+/// single row above the equipment, so it can pre-fill it, and so a second
+/// chip strip cannot compete with the equipment set — the one place on this
+/// step where chips mean "choose several".
 const _locations = <({String value, String label})>[
   (value: 'home_gym', label: 'Home gym'),
   (value: 'commercial_gym', label: 'Commercial gym'),
@@ -65,12 +65,25 @@ const _locations = <({String value, String label})>[
 ];
 
 /// What choosing a location pre-ticks, by equipment key. Null means every
-/// chip. Applied only while nothing is ticked, so it can save tapping but
-/// never undo a choice. Unlisted locations pre-tick nothing.
+/// chip except Bodyweight (see below for why). Applied only while nothing is
+/// ticked, so it can save tapping but never undo a choice. Unlisted locations
+/// pre-tick nothing.
+///
+/// Bodyweight is excluded from every list here except "other": the generator
+/// (ml/app/main.py) unions body weight into `owned` unconditionally, so it is
+/// already eligible for every user regardless of what is ticked. Ticking its
+/// chip adds nothing eligible — it only moves body-weight exercises into the
+/// "selected" ordering tier (ml/app/catalogue.py), where their low
+/// exercise_ids put them ahead of the user's real equipment. Measured on the
+/// dev DB: a home_gym pre-fill of dumbbell + band + body weight produced 3
+/// body-weight / 2 band / 1 dumbbell exercises; dumbbell + band alone
+/// produced 5 band / 1 dumbbell. "Other" is the one case where leading with
+/// body weight is the intent: a user with no gym or home equipment should see
+/// bodyweight work first.
 const locationPrefill = <String, List<String>?>{
   'commercial_gym': null,
   'both': null,
-  'home_gym': ['dumbbell', 'band', 'body weight'],
+  'home_gym': ['dumbbell', 'band'],
   'other': ['body weight', 'band', 'pull-up bar'],
 };
 
@@ -144,7 +157,10 @@ class LevelStep extends ConsumerWidget {
     final options = ref.read(equipmentOptionsProvider).value ?? const [];
     return [
       for (final option in options)
-        if (option.key != null && (keys == null || keys.contains(option.key)))
+        if (option.key != null &&
+            (keys == null
+                ? option.key != 'body weight'
+                : keys.contains(option.key)))
           option.equipmentId,
     ];
   }

@@ -352,7 +352,7 @@ void main() {
       'fitnessLevel': 'new',
       'trainingLocation': 'home_gym',
     });
-    expect(equipmentWrites.single.toSet(), {2, 6, 8});
+    expect(equipmentWrites.single.toSet(), {2, 6});
   });
 
   testWidgets('step 3 shows the eight chips the design specifies, in order', (
