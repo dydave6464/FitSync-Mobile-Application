@@ -490,4 +490,41 @@ test('profile endpoints', async (t) => {
     await request(app).put('/api/v1/profile/training-days')
       .send({ trainingDays: [1] }).expect(401);
   });
+
+  await t.test('PUT goals saves several goals and the focus', async () => {
+    await reset();
+    const res = await request(app).put('/api/v1/profile/goals').set('Authorization', auth)
+      .send({ goals: ['build_muscle', 'lose_weight'], mainGoal: 'lose_weight' }).expect(200);
+    assert.deepEqual(res.body.data.profile.goals, ['build_muscle', 'lose_weight']);
+    assert.equal(res.body.data.profile.mainGoal, 'lose_weight');
+  });
+
+  await t.test('PUT goals with one goal makes it the focus when none is given', async () => {
+    await reset();
+    const res = await request(app).put('/api/v1/profile/goals').set('Authorization', auth)
+      .send({ goals: ['improve_endurance'] }).expect(200);
+    assert.equal(res.body.data.profile.mainGoal, 'improve_endurance');
+  });
+
+  await t.test('PUT goals refuses invalid combinations', async () => {
+    await reset();
+    for (const [body, field] of [
+      [{}, 'goals'],
+      [{ goals: [] }, 'goals'],
+      [{ goals: 'build_muscle' }, 'goals'],
+      [{ goals: ['become_a_bird'] }, 'goals'],
+      [{ goals: ['build_muscle', 'build_muscle'] }, 'goals'],
+      [{ goals: ['build_muscle', 'lose_weight'] }, 'mainGoal'],
+      [{ goals: ['build_muscle'], mainGoal: 'lose_weight' }, 'mainGoal'],
+    ]) {
+      const res = await request(app).put('/api/v1/profile/goals').set('Authorization', auth)
+        .send(body).expect(400);
+      assert.equal(res.body.error.code, 'INVALID_PROFILE_FIELD', JSON.stringify(body));
+      assert.equal(res.body.error.details[0].field, field, JSON.stringify(body));
+    }
+  });
+
+  await t.test('PUT goals requires sign-in', async () => {
+    await request(app).put('/api/v1/profile/goals').send({ goals: ['build_muscle'] }).expect(401);
+  });
 });

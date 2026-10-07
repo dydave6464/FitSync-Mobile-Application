@@ -9,11 +9,11 @@
 ///
 /// Read today, and so sent: the goal, fitness level and training location;
 /// equipment and injury ids; each injury's body region (it excludes muscle
-/// groups); the generator screen's split, days per week and session length;
-/// and each check-in's four answers with the training-load index. Never sent:
-/// email, name, user id, city, date of birth, sex, height, weight, goal
-/// weight, activity level, account flags, catalogue names, injury side, and
-/// check-in ids and dates -- no rule reads any of them.
+/// groups); every chosen goal (to name the plan); the generator screen's split,
+/// days per week and session length; and each check-in's four answers with the
+/// training-load index. Never sent: email, name, user id, city, date of birth,
+/// sex, height, weight, goal weight, activity level, account flags, catalogue
+/// names, injury side, and check-in ids and dates -- no rule reads any of them.
 
 function list(value) {
   return Array.isArray(value) ? value : [];
@@ -43,6 +43,7 @@ function toPlanPayload(profile) {
     trainingLocation: p.trainingLocation ?? null,
     equipment: list(p.equipment).map((e) => ({ equipmentId: e.equipmentId })),
     injuries: list(p.injuries).map(toInjuryRef),
+    goals: list(p.goals),
   };
   if (p.overrides && typeof p.overrides === 'object') {
     payload.overrides = toOverrides(p.overrides);
