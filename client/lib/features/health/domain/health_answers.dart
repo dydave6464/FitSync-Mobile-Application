@@ -160,9 +160,21 @@ class HealthAnswers {
     );
   }
 
-  /// "None of these" is exclusive: ticking it clears every condition.
-  HealthAnswers toggleNone() =>
-      _copy(conditions: const [], noneOfThese: !noneOfThese);
+  /// "None of these" is exclusive: ticking it clears every condition. Ticking
+  /// it also answers each still-blank question No, the usual answer for
+  /// someone with nothing to report. A Yes already given stays: None is about
+  /// the checklist, and erasing a reported warning sign would hide its
+  /// medical clearance card. Unticking None leaves the answers as they are.
+  HealthAnswers toggleNone() {
+    if (noneOfThese) return _copy(noneOfThese: false);
+    return _copy(
+      conditions: const [],
+      noneOfThese: true,
+      chestPain: chestPain ?? false,
+      dizziness: dizziness ?? false,
+      supervisedOnly: supervisedOnly ?? false,
+    );
+  }
 
   HealthAnswers answer(String field, bool yes) => switch (field) {
     'chestPain' => _copy(chestPain: yes),

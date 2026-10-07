@@ -41,8 +41,32 @@ void main() {
     expect(const HealthAnswers().isValid, isFalse);
     expect(_allNo(const HealthAnswers()).isValid, isFalse,
         reason: 'no checklist choice yet');
-    expect(const HealthAnswers().toggleNone().answer('chestPain', false).isValid,
+    expect(const HealthAnswers(noneOfThese: true, chestPain: false).isValid,
         isFalse, reason: 'two questions unanswered');
+  });
+
+  test('ticking None answers every blank question No, keeping any Yes', () {
+    final fresh = const HealthAnswers().toggleNone();
+    expect(fresh.chestPain, isFalse);
+    expect(fresh.dizziness, isFalse);
+    expect(fresh.supervisedOnly, isFalse);
+    expect(fresh.isValid, isTrue);
+
+    // A warning sign already reported must survive: None is about the
+    // checklist, and erasing a Yes would hide the medical clearance card.
+    final withYes = const HealthAnswers().answer('dizziness', true).toggleNone();
+    expect(withYes.chestPain, isFalse);
+    expect(withYes.dizziness, isTrue);
+    expect(withYes.supervisedOnly, isFalse);
+    expect(withYes.hasWarning, isTrue);
+  });
+
+  test('unticking None leaves the answers as they are', () {
+    final a = const HealthAnswers().toggleNone().toggleNone();
+    expect(a.noneOfThese, isFalse);
+    expect(a.chestPain, isFalse);
+    expect(a.dizziness, isFalse);
+    expect(a.supervisedOnly, isFalse);
   });
 
   test('a clear check is valid without the boxes', () {

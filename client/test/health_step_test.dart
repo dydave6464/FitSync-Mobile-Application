@@ -86,6 +86,24 @@ void main() {
     expect(read().noneOfThese, isTrue);
   });
 
+  testWidgets('None of these answers the questions No, keeping a Yes', (
+    tester,
+  ) async {
+    final read = await _pumpLive(tester);
+
+    await _tap(tester, 'health.chestPain.yes');
+    await _tap(tester, 'health.none');
+
+    expect(read().chestPain, isTrue, reason: 'a reported Yes stays');
+    expect(read().dizziness, isFalse);
+    expect(read().supervisedOnly, isFalse);
+    expect(
+      find.byKey(const Key('health.notice.warning')),
+      findsOneWidget,
+      reason: 'the clearance card still shows for the kept Yes',
+    );
+  });
+
   testWidgets('a condition shows its line and tip under a doctor notice', (
     tester,
   ) async {
