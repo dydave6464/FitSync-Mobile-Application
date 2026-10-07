@@ -24,6 +24,8 @@ const PROFILE = {
   mainGoal: 'build_muscle',
   fitnessLevel: 'beginner',
   activityLevel: 'moderately_active',
+  healthCaution: true,
+  health: { conditions: ['asthma'], chestPain: true },
   equipment: [{ equipmentId: 41, name: 'Dumbbell', extra: 'x' }],
   injuries: [{
     injuryId: 3, name: 'Knee', isLateral: true, regionGroup: 'lower_body', side: 'left', notes: 'x',
@@ -35,6 +37,7 @@ test('a plan request carries only what the generator reads', () => {
     mainGoal: 'build_muscle',
     fitnessLevel: 'beginner',
     trainingLocation: 'home_gym',
+    healthCaution: true,
     equipment: [{ equipmentId: 41 }],
     injuries: [{ injuryId: 3, regionGroup: 'lower_body' }],
     goals: [],
@@ -78,7 +81,7 @@ test("the generator screen's three choices pass through, and nothing else inside
 });
 
 test('a sparse or missing profile maps without inventing values or throwing', () => {
-  const empty = { mainGoal: null, fitnessLevel: null, trainingLocation: null, equipment: [], injuries: [], goals: [] };
+  const empty = { mainGoal: null, fitnessLevel: null, trainingLocation: null, healthCaution: false, equipment: [], injuries: [], goals: [] };
   assert.deepEqual(toPlanPayload({}), empty);
   assert.deepEqual(toPlanPayload(null), empty);
   assert.deepEqual(toPlanPayload(undefined), empty);
@@ -102,4 +105,13 @@ test('a missing or sparse risk request maps without throwing', () => {
   const empty = { checkins: [], load: 0, injuryHistory: [] };
   assert.deepEqual(toRiskPayload(undefined), empty);
   assert.deepEqual(toRiskPayload({ checkins: null, injuryHistory: null }), empty);
+});
+
+test('the plan request carries the caution flag, never the health answers', () => {
+  const payload = toPlanPayload(PROFILE);
+  assert.equal(payload.healthCaution, true);
+  assert.equal(JSON.stringify(payload).includes('asthma'), false);
+  assert.equal('health' in payload, false);
+  assert.equal(toPlanPayload({}).healthCaution, false);
+  assert.equal(toPlanPayload({ healthCaution: 'yes' }).healthCaution, false);
 });

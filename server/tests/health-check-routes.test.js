@@ -32,6 +32,7 @@ test('health check endpoints', async (t) => {
       get: () => request(app).get('/api/v1/profile/health').set(auth),
       put: (b) => request(app).put('/api/v1/profile/health').set(auth).send(b),
       del: () => request(app).delete('/api/v1/profile/health').set(auth),
+      profile: () => request(app).get('/api/v1/profile').set(auth),
     };
   };
   const rowCount = async (userId) => {
@@ -133,5 +134,29 @@ test('health check endpoints', async (t) => {
     await u.put(CLEAR).expect(200);
     await pool.query('DELETE FROM users WHERE user_id = ?', [u.userId]);
     assert.equal(await rowCount(u.userId), 0);
+  });
+
+  await t.test('the profile carries healthCaution and never the answers', async () => {
+    const u = await freshUser();
+    let profile = (await u.profile().expect(200)).body.data.profile;
+    assert.equal(profile.healthCaution, false, 'no row');
+
+    await u.put(CLEAR).expect(200);
+    profile = (await u.profile().expect(200)).body.data.profile;
+    assert.equal(profile.healthCaution, false, 'a clear check');
+
+    await u.put({ ...CLEAR, supervisedOnly: true, consent: true, acknowledged: true }).expect(200);
+    profile = (await u.profile().expect(200)).body.data.profile;
+    assert.equal(profile.healthCaution, true, 'a warning sign');
+
+    await u.put({ ...CLEAR, conditions: ['pregnancy'], consent: true, acknowledged: true }).expect(200);
+    profile = (await u.profile().expect(200)).body.data.profile;
+    assert.equal(profile.healthCaution, true, 'a condition');
+    assert.equal(profile.conditions, undefined);
+    assert.equal(profile.health, undefined);
+
+    await u.del().expect(200);
+    profile = (await u.profile().expect(200)).body.data.profile;
+    assert.equal(profile.healthCaution, false, 'deleted');
   });
 });
