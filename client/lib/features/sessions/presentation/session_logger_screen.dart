@@ -22,6 +22,7 @@ import 'widgets/exercise_demo_stage.dart';
 import 'widgets/exercise_jump_sheet.dart';
 import 'widgets/exercise_log_panel.dart';
 import 'widgets/logger_action.dart';
+import 'widgets/rest_sheet.dart';
 import 'widgets/rest_timer.dart';
 import 'widgets/set_drafts.dart';
 import 'workout_draft.dart' show chosenSplitStyleProvider;
@@ -51,8 +52,6 @@ enum _LoggerStage { demo, logging }
 String _positionLabel(int index, int count) => 'Exercise ${index + 1} / $count';
 
 class _SessionLoggerScreenState extends ConsumerState<SessionLoggerScreen> {
-  static const _restDuration = Duration(seconds: 90);
-
   /// Which exercise is on screen.
   ///
   /// Read through a clamp rather than corrected on write: the active plan can
@@ -628,8 +627,14 @@ class _SessionLoggerScreenState extends ConsumerState<SessionLoggerScreen> {
   /// [onRestart] is null whenever there is nothing to restart -- the demo
   /// stage, an exercise with no sets logged yet, the empty day -- which
   /// greys the item out rather than hiding it, so the menu keeps one shape.
+  ///
+  /// [restSeconds] is passed in rather than read here: the screen watches it
+  /// from its first frame, so the saved value has landed by the first rest.
+  /// Read lazily from in here, it would only start loading when the first
+  /// rest began -- and that rest would count from the fallback instead.
   PreferredSizeWidget _appBar(
     FsTokens t, {
+    required int restSeconds,
     int doneSets = 0,
     VoidCallback? onRestart,
   }) => AppBar(
@@ -678,7 +683,10 @@ class _SessionLoggerScreenState extends ConsumerState<SessionLoggerScreen> {
         RestTimer(
           // A fresh key restarts the countdown on each new set.
           key: ValueKey('rest-$doneSets'),
-          duration: _restDuration,
+          // The account's saved rest. A new RestTimer reads it as each rest
+          // starts, so a default changed in the sheet lands on the next set
+          // rather than rewinding the one already counting.
+          duration: Duration(seconds: restSeconds),
           onDone: () => setState(() => _resting = false),
           onSkip: () => setState(() => _resting = false),
         ),
@@ -689,11 +697,20 @@ class _SessionLoggerScreenState extends ConsumerState<SessionLoggerScreen> {
       PopupMenuButton<String>(
         key: const Key('logger.menu'),
         onSelected: (value) => switch (value) {
+          'restTime' => showRestSheet(context),
           'restart' => onRestart?.call(),
           'finish' => _finish(),
           _ => _discard(),
         },
         itemBuilder: (_) => [
+          // Reachable before the first set, when there is no rest tag yet to
+          // tap. Names the current value so the menu answers the question
+          // without opening anything.
+          PopupMenuItem(
+            key: const Key('logger.restTime'),
+            value: 'restTime',
+            child: Text('Rest time: ${formatRest(restSeconds)}'),
+          ),
           PopupMenuItem(
             key: const Key('logger.restart'),
             value: 'restart',
@@ -723,6 +740,8 @@ class _SessionLoggerScreenState extends ConsumerState<SessionLoggerScreen> {
     final plan = asyncPlan.value;
     final live = ref.watch(activeSessionProvider).value;
     final unit = ref.watch(weightUnitProvider);
+    final restSeconds =
+        ref.watch(restSecondsProvider).value ?? defaultRestSeconds;
     if (live != null) _lastSeenSession = live;
     final session = live ?? _lastSeenSession;
 
@@ -760,7 +779,7 @@ class _SessionLoggerScreenState extends ConsumerState<SessionLoggerScreen> {
       // to be able to leave or discard.
       return Scaffold(
         backgroundColor: t.bg,
-        appBar: _appBar(t),
+        appBar: _appBar(t, restSeconds: restSeconds),
         body: Center(
           key: const Key('logger.emptyDay'),
           child: Padding(
@@ -848,6 +867,7 @@ class _SessionLoggerScreenState extends ConsumerState<SessionLoggerScreen> {
         backgroundColor: t.bg,
         appBar: _appBar(
           t,
+          restSeconds: restSeconds,
           doneSets: doneSets,
           onRestart:
               _stage == _LoggerStage.logging &&

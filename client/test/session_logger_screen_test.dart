@@ -22,6 +22,8 @@ import 'package:fitsync/features/sessions/presentation/session_logger_screen.dar
 import 'package:fitsync/features/sessions/presentation/widgets/rest_timer.dart';
 import 'package:fitsync/features/sessions/presentation/widgets/set_row.dart';
 
+import 'helpers/fake_training_settings.dart';
+
 const _plan = WorkoutPlan(
   planId: 42,
   name: 'Week 1 — Full body',
@@ -415,6 +417,9 @@ Future<FakeSessionController> _pump(
   // the disposed-State invalidation test below reads it; every other test
   // leaves it null.
   VoidCallback? onActivePlanRead,
+  // The saved rest between sets. Every test gets the store, since the logger
+  // reads it on its first frame; a test that cares passes its own.
+  FakeTrainingSettings? training,
 }) async {
   final controller = FakeSessionController(session ?? _session());
 
@@ -441,6 +446,9 @@ Future<FakeSessionController> _pump(
           (ref, key) async => lastGate != null ? lastGate.future : last,
         ),
         if (plans != null) planRepositoryProvider.overrideWithValue(plans),
+        trainingSettingsRepositoryProvider.overrideWithValue(
+          training ?? FakeTrainingSettings(),
+        ),
         // Live for every test in this file: the demo stage reads this too, and
         // an unstubbed fetch would hang pumpAndSettle. `cues` lets one test
         // supply an AI answer; the rest get the catalogue default.
@@ -512,6 +520,7 @@ Future<FakeSessionController> _pumpLogging(
   List<Map<String, dynamic>>? patches,
   WorkoutPlan? plan = _plan,
   Map<int, LastPerformance> last = const {},
+  FakeTrainingSettings? training,
 }) async {
   final controller = await _pump(
     tester,
@@ -520,6 +529,7 @@ Future<FakeSessionController> _pumpLogging(
     patches: patches,
     plan: plan,
     last: last,
+    training: training,
   );
   await tester.tap(find.byKey(const Key('logger.primary')));
   await tester.pumpAndSettle();
@@ -2335,6 +2345,78 @@ void main() {
 
       expect(find.byType(SessionLoggerScreen), findsNothing);
       expect(find.text('This session was already finished.'), findsOneWidget);
+    });
+  });
+
+  group('rest time', () {
+    testWidgets('a rest starts from the saved rest time', (tester) async {
+      await _pumpLogging(tester, training: FakeTrainingSettings(120));
+
+      await tester.tap(find.byKey(const Key('logger.primary')));
+      await tester.pump();
+
+      expect(
+        tester.widget<Text>(find.byKey(const Key('rest.remaining'))).data,
+        '2:00',
+      );
+    });
+
+    testWidgets('the menu names the rest time and opens its sheet', (
+      tester,
+    ) async {
+      await _pump(tester, training: FakeTrainingSettings(150));
+
+      await tester.tap(find.byKey(const Key('logger.menu')));
+      await tester.pumpAndSettle();
+      expect(find.text('Rest time: 2:30'), findsOneWidget);
+
+      await tester.tap(find.byKey(const Key('logger.restTime')));
+      await tester.pumpAndSettle();
+
+      expect(find.byKey(const Key('rest.sheet')), findsOneWidget);
+      // Opened before any rest is running, so there is no countdown to show.
+      expect(find.byKey(const Key('rest.sheet.remaining')), findsNothing);
+    });
+
+    testWidgets('a default chosen from the menu is the next rest\'s length', (
+      tester,
+    ) async {
+      final training = FakeTrainingSettings();
+      await _pumpLogging(tester, training: training);
+
+      await _menu(tester, 'restTime');
+      await tester.tap(find.byKey(const Key('rest.preset.60')));
+      await tester.pumpAndSettle();
+      expect(training.writes, [60]);
+      // Close the sheet the way a user would.
+      await tester.tapAt(const Offset(5, 5));
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.byKey(const Key('logger.primary')));
+      await tester.pump();
+
+      expect(
+        tester.widget<Text>(find.byKey(const Key('rest.remaining'))).data,
+        '1:00',
+      );
+    });
+
+    testWidgets('the running rest\'s tag opens the sheet with its countdown', (
+      tester,
+    ) async {
+      await _pumpLogging(tester);
+      await tester.tap(find.byKey(const Key('logger.primary')));
+      await tester.pump();
+
+      await tester.tap(find.byKey(const Key('rest.open')));
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 400));
+
+      expect(find.byKey(const Key('rest.sheet.remaining')), findsOneWidget);
+      await tester.tap(find.byKey(const Key('rest.skip')));
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 400));
+      expect(find.byType(RestTimer), findsNothing);
     });
   });
 }

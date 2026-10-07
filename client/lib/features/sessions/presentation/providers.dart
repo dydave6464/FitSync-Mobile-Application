@@ -7,6 +7,7 @@ import '../../recovery/presentation/providers.dart'
 import '../../routine/presentation/providers.dart' show routineTodayProvider;
 import '../../streaks/presentation/providers.dart' show streakProvider;
 import '../data/session_repository.dart';
+import '../data/training_settings_repository.dart';
 import '../domain/active_session.dart';
 import '../domain/session_history.dart';
 import '../domain/session_outcome.dart';
@@ -15,6 +16,39 @@ import '../domain/training_analytics.dart';
 final sessionRepositoryProvider = Provider<SessionRepository>(
   (ref) => SessionRepository(ref.watch(apiClientProvider)),
 );
+
+final trainingSettingsRepositoryProvider = Provider<TrainingSettingsRepository>(
+  (ref) => TrainingSettingsRepository(ref.watch(apiClientProvider)),
+);
+
+/// The rest between sets the logger counts down, in seconds.
+///
+/// Saved to the account, like the weight unit: nobody wants to re-pick it
+/// every workout. A failed write leaves state on what the server last
+/// confirmed and rethrows, so the sheet can say so rather than showing a
+/// choice that was never stored.
+class RestSecondsController extends AsyncNotifier<int> {
+  @override
+  Future<int> build() =>
+      ref.watch(trainingSettingsRepositoryProvider).restSeconds();
+
+  Future<void> set(int seconds) async {
+    state = AsyncData(
+      await ref
+          .read(trainingSettingsRepositoryProvider)
+          .setRestSeconds(seconds),
+    );
+  }
+}
+
+final restSecondsProvider = AsyncNotifierProvider<RestSecondsController, int>(
+  RestSecondsController.new,
+  retry: apiRetryPolicy,
+);
+
+/// What the countdown starts from while [restSecondsProvider] is loading or
+/// could not be read -- the 90 seconds the logger always used.
+const defaultRestSeconds = 90;
 
 /// The session being logged right now, or null.
 ///
