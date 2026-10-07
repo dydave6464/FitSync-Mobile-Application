@@ -7,6 +7,8 @@ import '../../../core/api_exception.dart';
 import '../../auth/presentation/auth_controller.dart';
 import '../../exercises/presentation/exercise_list_screen.dart'
     show describeError;
+import '../../health/domain/health_answers.dart';
+import '../../health/presentation/providers.dart';
 import '../../profile/domain/profile.dart';
 import '../../profile/presentation/providers.dart';
 import '../../reminders/data/reminder_prompt_store.dart';
@@ -15,11 +17,12 @@ import 'generating_view.dart';
 import 'onboarding_scaffold.dart';
 import 'steps/about_step.dart';
 import 'steps/goal_step.dart';
+import 'steps/health_step.dart';
 import 'steps/injuries_step.dart';
 import 'steps/level_step.dart';
 import 'steps/reminders_step.dart';
 
-/// Sequences the five onboarding steps.
+/// Sequences the six onboarding steps.
 ///
 /// Saves on every Continue rather than once at the end: a user who drops out
 /// on step 3 keeps what they answered on steps 1 and 2, and comes back to a
@@ -32,7 +35,10 @@ class OnboardingFlow extends ConsumerStatefulWidget {
 }
 
 class _OnboardingFlowState extends ConsumerState<OnboardingFlow> {
-  static const _total = 5;
+  static const _total = 6;
+
+  /// The health check: no Skip, and Continue only once it is answered.
+  static const _healthIndex = 4;
 
   int _index = 0;
   bool _busy = false;
@@ -52,6 +58,7 @@ class _OnboardingFlowState extends ConsumerState<OnboardingFlow> {
   AboutAnswers _about = const AboutAnswers();
   LevelAnswers _level = const LevelAnswers();
   List<SelectedInjury> _injuries = const [];
+  HealthAnswers _health = const HealthAnswers();
 
   void _seedFrom(Profile profile) {
     if (_seeded) return;
@@ -116,6 +123,14 @@ class _OnboardingFlowState extends ConsumerState<OnboardingFlow> {
     // list is empty would make that unsavable.
     if (_index == 2) await notifier.setEquipment(_level.equipmentIds);
     if (_index == 3) await notifier.setInjuries(_injuries);
+
+    // Only with consent: "Don't save my answers" writes nothing, so the plan
+    // stays as it is. A save invalidates the cached answers so Settings reads
+    // what is stored now.
+    if (_index == _healthIndex && !_health.optedOut) {
+      await ref.read(healthRepositoryProvider).setHealth(_health);
+      ref.invalidate(healthProvider);
+    }
 
     if (_index == _total - 1) {
       // Whatever is selected on the injuries step is saved here too, not
@@ -260,6 +275,10 @@ class _OnboardingFlowState extends ConsumerState<OnboardingFlow> {
       value: _injuries,
       onChanged: (value) => setState(() => _injuries = value),
     ),
+    _healthIndex => HealthStep(
+      value: _health,
+      onChanged: (value) => setState(() => _health = value),
+    ),
     _ => const RemindersStep(),
   };
 
@@ -307,17 +326,23 @@ class _OnboardingFlowState extends ConsumerState<OnboardingFlow> {
         }
 
         final onLastStep = _index == _total - 1;
+        final onHealthStep = _index == _healthIndex;
 
         return OnboardingScaffold(
           step: _index + 1,
           total: _total,
           busy: _busy,
           continueLabel: onLastStep ? 'Turn on reminders' : 'Continue',
-          onContinue: onLastStep ? _turnOnReminders : _continue,
+          // The health step has no Skip, so Continue waits for a valid answer.
+          onContinue: onHealthStep && !_health.isValid
+              ? null
+              : (onLastStep ? _turnOnReminders : _continue),
           // The last step has no header Skip -- "Not now" is its own button
-          // under Continue instead (see secondaryLabel below). Every earlier
-          // step keeps the plain header Skip, advancing without saving.
-          onSkip: onLastStep ? null : (_busy ? null : _advance),
+          // under Continue instead (see secondaryLabel below). The health
+          // step also has no Skip: there is no innocuous answer to advance
+          // past without one. Every earlier step keeps the plain header
+          // Skip, advancing without saving.
+          onSkip: onLastStep || onHealthStep ? null : (_busy ? null : _advance),
           // Not now still saves and builds the plan -- it only skips asking
           // for permission first -- so it routes through _continue rather
           // than the plain _advance every earlier step's Skip uses.
