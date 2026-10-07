@@ -69,7 +69,11 @@ def _nearest_session_length(requested: int) -> int:
 def derive(profile: Mapping[str, Any],
            overrides: Optional[Mapping[str, Any]] = None) -> PlanParameters:
     overrides = overrides or {}
-    is_beginner = profile.get("fitnessLevel") == "beginner"
+    level = profile.get("fitnessLevel")
+    is_new = level == "new"
+    # New to training sits inside the beginner tier: the same session cap,
+    # and the minimum sets rather than one fewer than the goal's.
+    is_beginner = level == "beginner" or is_new
 
     goal = profile.get("mainGoal")
     session = LONG_SESSION_MIN if goal in LONG_SESSION_GOALS else SHORT_SESSION_MIN
@@ -84,7 +88,9 @@ def derive(profile: Mapping[str, Any],
         session = _nearest_session_length(int(requested_length))
 
     sets, reps = VOLUME.get(goal, DEFAULT_VOLUME)
-    if is_beginner:
+    if is_new:
+        sets = MIN_SETS
+    elif is_beginner:
         sets = max(sets - 1, MIN_SETS)
 
     # Resolved, not passed through: an unrecognised value becomes full_body

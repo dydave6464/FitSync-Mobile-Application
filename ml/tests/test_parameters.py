@@ -165,3 +165,22 @@ def test_a_beginner_override_is_still_honoured():
     # is the user's, and overriding it silently would make the slider lie.
     params = derive(profile(fitnessLevel="beginner"), {"sessionLengthMin": 60})
     assert params.session_length_min == 60
+
+
+@pytest.mark.parametrize(
+    "goal",
+    ["gain_strength", "build_muscle", "lose_weight", "general_fitness"],
+)
+def test_new_to_training_gets_the_minimum_sets_for_every_goal(goal):
+    params = derive(profile(mainGoal=goal, fitnessLevel="new"))
+    assert params.target_sets == 2
+
+
+def test_new_to_training_keeps_the_goals_rep_range():
+    params = derive(profile(mainGoal="build_muscle", fitnessLevel="new"))
+    assert params.target_reps == "8-12"
+
+
+def test_new_to_training_is_capped_like_a_beginner():
+    params = derive(profile(mainGoal="build_muscle", fitnessLevel="new"))
+    assert params.session_length_min == 45
