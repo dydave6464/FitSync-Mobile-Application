@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 
+import 'package:fitsync/core/widgets/fs_kit.dart';
 import 'package:fitsync/features/auth/domain/auth_user.dart';
 import 'package:fitsync/features/auth/presentation/auth_controller.dart';
 import 'package:fitsync/features/onboarding/presentation/edit_scaffold.dart';
@@ -38,7 +39,6 @@ const _baseProfile = Profile(
   equipment: [],
   injuries: [],
   city: 'Cebu City',
-  mainGoal: 'lose_weight',
 );
 
 const _equipment = [EquipmentOption(equipmentId: 41, name: 'Resistance band')];
@@ -58,12 +58,21 @@ class FakeProfileNotifier extends ProfileNotifier {
     this.trainingDays = const [],
     this.failTrainingDays = false,
     this.fitnessLevel,
+    this.goals = const [],
+    this.mainGoal,
+    this.goalWrites,
+    this.failGoals = false,
   });
 
   final List<Map<String, dynamic>> patches;
 
   /// Rejects the write, so a test can tell "saved" from "tried to save".
   final bool failPatch;
+
+  /// Rejects `setGoals`, the way [failPatch] rejects `patch` -- goals save on
+  /// their own endpoint now, so a goal-editor failure test has to fail that
+  /// one instead.
+  final bool failGoals;
 
   /// Seeds the profile the editor opens with, mirroring how `injuries` seeds
   /// `_InjuriesEditor` -- without this a picker test could never see a day
@@ -77,6 +86,16 @@ class FakeProfileNotifier extends ProfileNotifier {
   /// Seeds the profile's stored fitness level, so a test can check how the
   /// header words it.
   final String? fitnessLevel;
+
+  /// Seeds the profile's goals and main focus, the way `fitnessLevel` seeds
+  /// the stored level -- without this the goal editor's "opens already
+  /// accented" test could never see a goal already ticked.
+  final List<String> goals;
+  final String? mainGoal;
+
+  /// Records every `setGoals` call, the way `equipmentWrites` would for
+  /// equipment -- empty by default so tests that do not care never see it.
+  final List<({List<String> goals, String mainGoal})>? goalWrites;
 
   /// The weekdays the screen last asked to save, recorded whether or not the
   /// write went on to succeed.
@@ -94,7 +113,8 @@ class FakeProfileNotifier extends ProfileNotifier {
     injuries: _baseProfile.injuries,
     trainingDays: trainingDays,
     city: _baseProfile.city,
-    mainGoal: _baseProfile.mainGoal,
+    mainGoal: mainGoal,
+    goals: goals,
     fitnessLevel: fitnessLevel,
   );
 
@@ -111,6 +131,14 @@ class FakeProfileNotifier extends ProfileNotifier {
 
   @override
   Future<void> setInjuries(List<SelectedInjury> injuries) async {}
+
+  @override
+  Future<void> setGoals(List<String> goals, String mainGoal) async {
+    if (failGoals) {
+      throw const ApiException('PROFILE_INVALID', 'That could not be saved.');
+    }
+    goalWrites?.add((goals: goals, mainGoal: mainGoal));
+  }
 
   @override
   Future<void> setTrainingDays(List<int> weekdays) async {
@@ -166,6 +194,10 @@ Future<void> _pump(
   List<int> trainingDays = const [],
   bool failTrainingDays = false,
   String? fitnessLevel,
+  List<String> goals = const [],
+  String? mainGoal,
+  List<({List<String> goals, String mainGoal})>? goalWrites,
+  bool failGoals = false,
 }) async {
   _profile = FakeProfileNotifier(
     patches ?? <Map<String, dynamic>>[],
@@ -173,6 +205,10 @@ Future<void> _pump(
     trainingDays: trainingDays,
     failTrainingDays: failTrainingDays,
     fitnessLevel: fitnessLevel,
+    goals: goals,
+    mainGoal: mainGoal,
+    goalWrites: goalWrites,
+    failGoals: failGoals,
   );
   await tester.pumpWidget(
     ProviderScope(
@@ -279,9 +315,10 @@ void main() {
     }
   });
 
-  testWidgets('saving an edited goal patches it and returns', (tester) async {
+  testWidgets('saving an edited goal writes it and returns', (tester) async {
     final patches = <Map<String, dynamic>>[];
-    await _pump(tester, patches: patches);
+    final goalWrites = <({List<String> goals, String mainGoal})>[];
+    await _pump(tester, patches: patches, goalWrites: goalWrites);
 
     await _openRow(tester, const Key('edit.goal'));
     await tester.tap(find.byKey(const Key('goal.build_muscle')));
@@ -289,13 +326,48 @@ void main() {
     await tester.tap(find.byKey(const Key('save')));
     await tester.pumpAndSettle();
 
-    expect(patches.single, {'mainGoal': 'build_muscle'});
+    // Not a single record comparison: a record's == delegates to each
+    // field's own ==, and List's is identity-based, so two structurally
+    // identical records holding equal-but-distinct lists would never match.
+    expect(goalWrites.single.goals, ['build_muscle']);
+    expect(goalWrites.single.mainGoal, 'build_muscle');
+    expect(patches, isEmpty, reason: 'goals have their own endpoint now');
     expect(
       find.byType(EditScaffold),
       findsNothing,
       reason: 'a successful save should return to Settings',
     );
   });
+
+  testWidgets(
+    'the goal editor opens seeded with every goal and the right focus chip',
+    (tester) async {
+      await _pump(
+        tester,
+        goals: ['lose_weight', 'improve_endurance'],
+        mainGoal: 'improve_endurance',
+      );
+
+      await _openRow(tester, const Key('edit.goal'));
+
+      expect(
+        tester.widget<FsCard>(find.byKey(const Key('goal.lose_weight'))).accent,
+        isTrue,
+      );
+      expect(
+        tester
+            .widget<FsCard>(find.byKey(const Key('goal.improve_endurance')))
+            .accent,
+        isTrue,
+      );
+      expect(
+        tester
+            .widget<FsChip>(find.byKey(const Key('focus.improve_endurance')))
+            .selected,
+        isTrue,
+      );
+    },
+  );
 
   testWidgets('a save says so, naming what was saved', (tester) async {
     await _pump(tester, patches: []);
@@ -324,7 +396,7 @@ void main() {
   });
 
   testWidgets('a failed save says nothing about having saved', (tester) async {
-    await _pump(tester, patches: [], failPatch: true);
+    await _pump(tester, patches: [], failGoals: true);
 
     await _openRow(tester, const Key('edit.goal'));
     await tester.tap(find.byKey(const Key('goal.build_muscle')));
@@ -431,7 +503,7 @@ void main() {
           step: 1,
           total: 4,
           onContinue: () {},
-          child: GoalStep(value: null, onChanged: (_) {}),
+          child: GoalStep(value: const GoalAnswers(), onChanged: (_) {}),
         ),
       ),
     );
@@ -443,7 +515,7 @@ void main() {
         home: EditScaffold(
           title: 'Goal',
           onSave: () {},
-          child: GoalStep(value: null, onChanged: (_) {}),
+          child: GoalStep(value: const GoalAnswers(), onChanged: (_) {}),
         ),
       ),
     );

@@ -431,7 +431,7 @@ class _GoalEditor extends ConsumerStatefulWidget {
 }
 
 class _GoalEditorState extends _EditorState<_GoalEditor> {
-  String? _value;
+  GoalAnswers _value = const GoalAnswers();
   bool _seeded = false;
 
   @override
@@ -441,18 +441,24 @@ class _GoalEditorState extends _EditorState<_GoalEditor> {
   Widget buildStep(Profile profile) {
     if (!_seeded) {
       _seeded = true;
-      _value = profile.mainGoal;
+      _value = GoalAnswers(
+        goals: [
+          for (final g in goalValues)
+            if (profile.goals.contains(g)) g,
+        ],
+        mainGoal: profile.mainGoal,
+      );
     }
     return GoalStep(
       value: _value,
-      onChanged: (value) => setState(() => _value = value),
+      onChanged: (v) => setState(() => _value = v),
     );
   }
 
   @override
   Future<void> save(ProfileNotifier notifier) async {
-    if (_value == null) return;
-    await notifier.patch({'mainGoal': _value});
+    if (_value.goals.isEmpty) return;
+    await notifier.setGoals(_value.goals, _value.mainGoal!);
   }
 }
 

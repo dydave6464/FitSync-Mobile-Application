@@ -48,7 +48,7 @@ class _OnboardingFlowState extends ConsumerState<OnboardingFlow> {
 
   // The working answers. Seeded once from the loaded profile so a returning
   // user sees what they already chose.
-  String? _mainGoal;
+  GoalAnswers _goals = const GoalAnswers();
   AboutAnswers _about = const AboutAnswers();
   LevelAnswers _level = const LevelAnswers();
   List<SelectedInjury> _injuries = const [];
@@ -56,7 +56,13 @@ class _OnboardingFlowState extends ConsumerState<OnboardingFlow> {
   void _seedFrom(Profile profile) {
     if (_seeded) return;
     _seeded = true;
-    _mainGoal = profile.mainGoal;
+    _goals = GoalAnswers(
+      goals: [
+        for (final g in goalValues)
+          if (profile.goals.contains(g)) g,
+      ],
+      mainGoal: profile.mainGoal,
+    );
     _about = AboutAnswers(
       sex: profile.sex,
       dateOfBirth: profile.dateOfBirth,
@@ -79,7 +85,7 @@ class _OnboardingFlowState extends ConsumerState<OnboardingFlow> {
   /// as "leave alone" and an explicit null as "clear", so sending the whole
   /// object would wipe fields this step never asked about.
   Map<String, dynamic> _patchForCurrentStep() => switch (_index) {
-    0 => {if (_mainGoal != null) 'mainGoal': _mainGoal},
+    0 => const {},
     1 => {
       if (_about.sex != null) 'sex': _about.sex,
       if (_about.dateOfBirth != null) 'dateOfBirth': _about.dateOfBirth,
@@ -103,6 +109,12 @@ class _OnboardingFlowState extends ConsumerState<OnboardingFlow> {
 
     final fields = _patchForCurrentStep();
     if (fields.isNotEmpty) await notifier.patch(fields);
+
+    // Goals replace the whole set on their own endpoint. Nothing ticked is
+    // "not answered yet", not "no goals", so it writes nothing.
+    if (_index == 0 && _goals.goals.isNotEmpty) {
+      await notifier.setGoals(_goals.goals, _goals.mainGoal!);
+    }
 
     // Both of these are replace-set writes on their own endpoints, sent
     // unconditionally and only on Continue. An empty list is a real answer —
@@ -233,8 +245,8 @@ class _OnboardingFlowState extends ConsumerState<OnboardingFlow> {
 
   Widget _stepContent() => switch (_index) {
     0 => GoalStep(
-      value: _mainGoal,
-      onChanged: (value) => setState(() => _mainGoal = value),
+      value: _goals,
+      onChanged: (value) => setState(() => _goals = value),
     ),
     1 => AboutStep(
       value: _about,

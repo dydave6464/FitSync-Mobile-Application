@@ -59,6 +59,8 @@ class FakeProfileNotifier extends ProfileNotifier {
     this.injuryWrites,
     this.completions,
     this.onComplete,
+    this.goalWrites,
+    this.onSetGoals,
   });
 
   final List<Map<String, dynamic>> patches;
@@ -66,6 +68,10 @@ class FakeProfileNotifier extends ProfileNotifier {
   final List<List<int>>? equipmentWrites;
   final List<List<SelectedInjury>>? injuryWrites;
   final List<int>? completions;
+  final List<({List<String> goals, String mainGoal})>? goalWrites;
+
+  /// Lets a test fail the goals write the way [onPatch] fails a patch.
+  final Future<void> Function()? onSetGoals;
 
   /// Called before each completion resolves, so a test can fail the first
   /// attempt and succeed on the retry.
@@ -88,6 +94,12 @@ class FakeProfileNotifier extends ProfileNotifier {
   @override
   Future<void> setInjuries(List<SelectedInjury> injuries) async {
     injuryWrites?.add(injuries);
+  }
+
+  @override
+  Future<void> setGoals(List<String> goals, String mainGoal) async {
+    goalWrites?.add((goals: goals, mainGoal: mainGoal));
+    if (onSetGoals != null) await onSetGoals!();
   }
 
   @override
@@ -191,6 +203,8 @@ Future<void> _pumpFlow(
   List<bool>? completed,
   ReminderScheduler? scheduler,
   ReminderPromptStore? store,
+  List<({List<String> goals, String mainGoal})>? goalWrites,
+  Future<void> Function()? onSetGoals,
 }) async {
   await tester.pumpWidget(
     ProviderScope(
@@ -203,6 +217,8 @@ Future<void> _pumpFlow(
             injuryWrites: injuryWrites,
             completions: completions,
             onComplete: onComplete,
+            goalWrites: goalWrites,
+            onSetGoals: onSetGoals,
           ),
         ),
         authControllerProvider.overrideWith(
@@ -242,18 +258,21 @@ void main() {
     expect(find.byKey(const Key('goal.lose_weight')), findsOneWidget);
   });
 
-  testWidgets('Continue saves the step and advances', (tester) async {
+  testWidgets('Continue saves the goals and advances', (tester) async {
     final patches = <Map<String, dynamic>>[];
-    await _pumpFlow(tester, patches: patches);
+    final goalWrites = <({List<String> goals, String mainGoal})>[];
+    await _pumpFlow(tester, patches: patches, goalWrites: goalWrites);
 
     await tester.tap(find.byKey(const Key('goal.build_muscle')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const Key('goal.lose_weight')));
     await tester.pumpAndSettle();
     await tester.tap(find.byKey(const Key('continue')));
     await tester.pumpAndSettle();
 
-    expect(patches, [
-      {'mainGoal': 'build_muscle'},
-    ], reason: 'a dropout after step 1 must still have their goal saved');
+    expect(goalWrites.single.goals, ['build_muscle', 'lose_weight']);
+    expect(goalWrites.single.mainGoal, 'build_muscle');
+    expect(patches, isEmpty, reason: 'goals have their own endpoint now');
     expect(find.text('STEP 2 / 5'), findsOneWidget);
   });
 
@@ -284,13 +303,30 @@ void main() {
     expect(find.text('STEP 2 / 5'), findsOneWidget);
   });
 
+  testWidgets('Continue on step 1 with nothing ticked writes no goals', (
+    tester,
+  ) async {
+    final goalWrites = <({List<String> goals, String mainGoal})>[];
+    await _pumpFlow(tester, patches: [], goalWrites: goalWrites);
+
+    await tester.tap(find.byKey(const Key('continue')));
+    await tester.pumpAndSettle();
+
+    expect(
+      goalWrites,
+      isEmpty,
+      reason: 'nothing ticked is "not answered yet", not "no goals"',
+    );
+    expect(find.text('STEP 2 / 5'), findsOneWidget);
+  });
+
   testWidgets('a failed save shows the message and stays on the step', (
     tester,
   ) async {
     await _pumpFlow(
       tester,
       patches: [],
-      onPatch: () async => throw const ApiException(
+      onSetGoals: () async => throw const ApiException(
         'INVALID_PROFILE_FIELD',
         'That goal is not one we recognise.',
       ),
