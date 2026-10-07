@@ -196,8 +196,8 @@ void main() {
 
     expect(find.text('Goblet squat'), findsOneWidget);
     expect(find.text('Push-up'), findsOneWidget);
-    expect(find.textContaining('3 × 8-12'), findsOneWidget);
-    expect(find.textContaining('3 × 10-15'), findsOneWidget);
+    expect(find.textContaining('3 sets × 8-12 reps'), findsOneWidget);
+    expect(find.textContaining('3 sets × 10-15 reps'), findsOneWidget);
   });
 
   testWidgets('tapping an exercise opens its detail screen', (tester) async {

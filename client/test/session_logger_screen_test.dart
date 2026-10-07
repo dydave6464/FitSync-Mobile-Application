@@ -984,14 +984,14 @@ void main() {
       expect(
         find.descendant(
           of: find.byKey(const Key('jump.101')),
-          matching: find.text('1/3'),
+          matching: find.text('1/3 sets'),
         ),
         findsOneWidget,
       );
       expect(
         find.descendant(
           of: find.byKey(const Key('jump.102')),
-          matching: find.text('0/2'),
+          matching: find.text('0/2 sets'),
         ),
         findsOneWidget,
       );
@@ -1282,7 +1282,7 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.text('Exercise 2 of 2'), findsOneWidget);
-    expect(find.text('2 × 10-15'), findsOneWidget);
+    expect(find.text('2 sets × 10-15 reps'), findsOneWidget);
   });
 
   testWidgets('finishing sends the elapsed minutes and shows a summary', (

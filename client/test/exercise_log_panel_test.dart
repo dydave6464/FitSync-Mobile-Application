@@ -73,7 +73,7 @@ void main() {
     );
 
     expect(find.text('Goblet squat'), findsOneWidget);
-    expect(find.text('Target 3 × 8-12'), findsOneWidget);
+    expect(find.text('Target: 3 sets × 8-12 reps'), findsOneWidget);
   });
 
   // The unit only ever existed as the weight field's hint, which disappears
@@ -155,7 +155,7 @@ void main() {
       ),
     );
 
-    expect(find.text('Target 3 × 8-12 · last 49.6 lb'), findsOneWidget);
+    expect(find.text('Target: 3 sets × 8-12 reps · last 49.6 lb'), findsOneWidget);
     expect(
       find.text('+5.5 lb vs last session — nice progressive overload.'),
       findsOneWidget,
@@ -365,7 +365,7 @@ void main() {
       ),
     );
 
-    expect(find.text('Target 3 × 8-12 · last 22.5 kg'), findsOneWidget);
+    expect(find.text('Target: 3 sets × 8-12 reps · last 22.5 kg'), findsOneWidget);
     final field = tester.widget<TextField>(
       find.byKey(const Key('set.1.weight')),
     );

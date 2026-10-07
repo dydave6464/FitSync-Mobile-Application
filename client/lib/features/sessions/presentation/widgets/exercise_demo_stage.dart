@@ -88,7 +88,7 @@ class ExerciseDemoStage extends ConsumerWidget {
             Text(positionLabel, style: fsEyebrow(t)),
             const Spacer(),
             Text(
-              '${exercise.targetSets} × ${exercise.targetReps}',
+              exercise.prescription,
               style: TextStyle(
                 fontFamily: fsMonoFamily,
                 fontSize: 13,

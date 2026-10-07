@@ -102,7 +102,7 @@ void main() {
     await _pump(tester);
 
     expect(find.text('Exercise 1 of 6'), findsOneWidget);
-    expect(find.text('4 × 8-10'), findsOneWidget);
+    expect(find.text('4 sets × 8-10 reps'), findsOneWidget);
     expect(find.text('Goblet squat'), findsWidgets);
     expect(find.textContaining('Sit between your hips'), findsOneWidget);
     expect(find.textContaining('Keep your chest tall'), findsOneWidget);
@@ -151,7 +151,7 @@ void main() {
       // The position/prescription header lives inside the data branch, so a
       // failed fetch must not show stale or fabricated prescription text.
       expect(find.text('Exercise 1 of 6'), findsNothing);
-      expect(find.text('4 × 8-10'), findsNothing);
+      expect(find.text('4 sets × 8-10 reps'), findsNothing);
 
       expect(find.byKey(const Key('insession.done')), findsOneWidget);
       await tester.tap(find.byKey(const Key('insession.done')));

@@ -106,7 +106,7 @@ class ExerciseJumpSheet extends StatelessWidget {
               ),
             ),
             Text(
-              '$done/${exercise.targetSets}',
+              '$done/${exercise.targetSets} sets',
               style: TextStyle(
                 fontFamily: fsMonoFamily,
                 fontSize: 12,
