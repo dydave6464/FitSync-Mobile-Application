@@ -2,11 +2,13 @@
 
 Node sends a subset of these request fields: only what the rules read, built
 from an allowed list in server/src/services/ml/profile-payload.js. The other
-optional profile fields (sex, dateOfBirth, body measurements,
-trainingLocation, activityLevel, reference names, injury side) are accepted
-but never arrive. The request model is permissive on purpose: a profile can
-be almost empty during onboarding, and rejecting it would block a user rather
-than give them a plan. See the design, section 4.
+optional profile fields (sex, dateOfBirth, body measurements, activityLevel,
+reference names, injury side) are accepted but never arrive. The request
+model is permissive on purpose: a profile can be almost empty during
+onboarding, and rejecting it would block a user rather than give them a plan.
+See the design, section 4.
+
+trainingLocation arrives and orders the candidates (catalogue.LOCATION_FIRST).
 """
 import math
 from typing import Any, Dict, List, Optional, Tuple

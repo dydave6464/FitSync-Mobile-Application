@@ -414,3 +414,25 @@ def test_the_goal_suffix_survives_the_split_becoming_part_of_the_name(client):
     plan = post_plan(client, mainGoal="lose_weight",
                      overrides={"splitStyle": "upper_lower"})
     assert plan["name"] == "Upper / Lower — Lose Weight"
+
+
+def test_training_location_reaches_the_candidate_order(settings, engine, catalogue):
+    from app.main import _candidates
+
+    eq = catalogue["equipment"]
+    owned = [eq["body weight"], eq["dumbbell"], eq["machines"]]
+    gym = _candidates(engine, owned, owned, [], [], "commercial_gym")
+    home = _candidates(engine, owned, owned, [], [], "home_gym")
+    assert gym[0].name == "fixture cable row"
+    assert home[-1].name == "fixture cable row"
+
+
+def test_a_plan_request_with_a_location_is_accepted(client, catalogue):
+    eq = catalogue["equipment"]
+    plan = post_plan(
+        client,
+        mainGoal="build_muscle",
+        trainingLocation="home_gym",
+        equipment=[{"equipmentId": eq["body weight"]}],
+    )
+    assert plan["exercises"]
