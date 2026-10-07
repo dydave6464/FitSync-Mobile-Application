@@ -68,6 +68,9 @@ async function getProfile(pool, userId) {
     'SELECT weekday FROM user_training_days WHERE user_id = ? ORDER BY weekday',
     [userId],
   );
+  const [goalRows] = await pool.query(
+    'SELECT goal FROM user_goals WHERE user_id = ? ORDER BY position', [userId],
+  );
 
   return {
     userId: u.user_id,
@@ -79,6 +82,11 @@ async function getProfile(pool, userId) {
     weightKg: u.weight_kg,
     goalWeightKg: u.goal_weight_kg,
     mainGoal: u.main_goal,
+    // Every ticked goal, focus included. An account from before user_goals
+    // existed has only main_goal, which reads as its one goal.
+    goals: goalRows.length > 0
+      ? goalRows.map((r) => r.goal)
+      : (u.main_goal ? [u.main_goal] : []),
     fitnessLevel: u.fitness_level,
     activityLevel: u.activity_level,
     trainingLocation: u.training_location,
@@ -145,6 +153,22 @@ async function updateProfile(pool, userId, fields) {
   params.push(userId);
   await pool.query(`UPDATE users SET ${sets.join(', ')} WHERE user_id = ?`, params);
 
+  // A single-goal write from an older client (or any PATCH of mainGoal) makes
+  // that goal the whole list, so user_goals and main_goal never disagree.
+  if (Object.prototype.hasOwnProperty.call(fields, 'mainGoal')) {
+    const conn = await pool.getConnection();
+    try {
+      await conn.beginTransaction();
+      await writeGoalRows(conn, userId, fields.mainGoal === null ? [] : [fields.mainGoal]);
+      await conn.commit();
+    } catch (err) {
+      await conn.rollback();
+      throw err;
+    } finally {
+      conn.release();
+    }
+  }
+
   // The chart starts with a point rather than an empty card, and a genuine
   // weight edit anywhere in the profile should reach it too -- users.weight_kg
   // and the log can never be allowed to disagree. But an unchanged resend (a
@@ -160,6 +184,33 @@ async function updateProfile(pool, userId, fields) {
   // a fabricated point on the chart.
   if (hasWeight && Number(fields.weightKg) !== priorWeightKg) {
     await writeEntry(pool, userId, { weightKg: fields.weightKg });
+  }
+}
+
+/// Replaces every goal row with `goals` (position = order given) and sets the
+/// focus in users.main_goal, in one transaction. Callers validate first.
+async function setGoals(pool, userId, goals, mainGoal) {
+  const conn = await pool.getConnection();
+  try {
+    await conn.beginTransaction();
+    await writeGoalRows(conn, userId, goals);
+    await conn.query('UPDATE users SET main_goal = ? WHERE user_id = ?', [mainGoal, userId]);
+    await conn.commit();
+  } catch (err) {
+    await conn.rollback();
+    throw err;
+  } finally {
+    conn.release();
+  }
+}
+
+async function writeGoalRows(conn, userId, goals) {
+  await conn.query('DELETE FROM user_goals WHERE user_id = ?', [userId]);
+  for (const [position, goal] of goals.entries()) {
+    await conn.query(
+      'INSERT INTO user_goals (user_id, goal, position) VALUES (?, ?, ?)',
+      [userId, goal, position],
+    );
   }
 }
 
@@ -266,6 +317,6 @@ async function markOnboardingComplete(pool, userId) {
 }
 
 module.exports = {
-  getProfile, updateProfile, setEquipment, setInjuries, setTrainingDays,
+  getProfile, updateProfile, setGoals, setEquipment, setInjuries, setTrainingDays,
   listEquipment, listInjuries, markOnboardingComplete, WRITABLE,
 };
