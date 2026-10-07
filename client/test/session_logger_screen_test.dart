@@ -2104,4 +2104,80 @@ void main() {
     // resolved. Nothing above proves that pop ever happened.
     expect(find.byType(SessionLoggerScreen), findsNothing);
   });
+
+  group('encouragement', () {
+    const squatDone = [
+      LoggedSet(exerciseId: 101, setNumber: 1, weightKg: 20, reps: 10),
+      LoggedSet(exerciseId: 101, setNumber: 2, weightKg: 20, reps: 10),
+      LoggedSet(exerciseId: 101, setNumber: 3, weightKg: 20, reps: 10),
+    ];
+
+    testWidgets('says nothing while the exercise has sets left', (
+      tester,
+    ) async {
+      await _pumpLogging(tester);
+      expect(find.byKey(const Key('logger.encouragement')), findsNothing);
+    });
+
+    testWidgets('appears when the last set of an exercise is logged', (
+      tester,
+    ) async {
+      await _pumpLogging(
+        tester,
+        session: _session(sets: squatDone.sublist(0, 2)),
+      );
+      expect(find.byKey(const Key('logger.encouragement')), findsNothing);
+
+      // Complete set 3 -- the one the footer names.
+      await tester.tap(find.byKey(const Key('logger.primary')));
+      await tester.pumpAndSettle();
+
+      // Two exercises in the plan, so the first finished is halfway.
+      expect(find.byKey(const Key('logger.encouragement')), findsOneWidget);
+      expect(
+        find.text("Halfway there — 1 of 2 exercises done. You're doing great!"),
+        findsOneWidget,
+      );
+      expect(find.text('Up next: Push-up'), findsOneWidget);
+    });
+
+    testWidgets('goes away when a set of the exercise is reopened', (
+      tester,
+    ) async {
+      await _pumpLogging(tester, session: _session(sets: squatDone));
+      expect(find.byKey(const Key('logger.encouragement')), findsOneWidget);
+
+      await tester.tap(find.byKey(const Key('set.3.row')));
+      await tester.pumpAndSettle();
+
+      expect(find.byKey(const Key('logger.encouragement')), findsNothing);
+    });
+
+    testWidgets('closes the session out once every set is done', (
+      tester,
+    ) async {
+      await _pumpLogging(
+        tester,
+        session: _session(
+          sets: const [
+            ...squatDone,
+            LoggedSet(exerciseId: 102, setNumber: 1, reps: 12),
+            LoggedSet(exerciseId: 102, setNumber: 2, reps: 12),
+          ],
+        ),
+      );
+      expect(
+        find.text(
+          'Every set done — great session! Tap Finish session to save it.',
+        ),
+        findsOneWidget,
+      );
+    });
+
+    testWidgets('is not shown on the demo stage', (tester) async {
+      await _pump(tester, session: _session(sets: squatDone));
+      expect(find.byKey(const Key('logger.demo')), findsOneWidget);
+      expect(find.byKey(const Key('logger.encouragement')), findsNothing);
+    });
+  });
 }

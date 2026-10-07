@@ -14,8 +14,10 @@ import '../../plans/presentation/add_to_plan_sheet.dart';
 import '../../plans/presentation/providers.dart';
 import '../../profile/presentation/providers.dart';
 import '../domain/active_session.dart';
+import '../domain/encouragement.dart';
 import 'in_session_exercise_screen.dart';
 import 'providers.dart';
+import 'widgets/encouragement_card.dart';
 import 'widgets/exercise_demo_stage.dart';
 import 'widgets/exercise_jump_sheet.dart';
 import 'widgets/exercise_log_panel.dart';
@@ -700,6 +702,11 @@ class _SessionLoggerScreenState extends ConsumerState<SessionLoggerScreen> {
     _unitOnScreen = unit;
     final exercise = exercises[index];
     final isLast = index == exercises.length - 1;
+    final encouragement = encouragementFor(
+      exercises: exercises,
+      index: index,
+      session: session,
+    );
 
     final targetSets = exercises.fold<int>(
       0,
@@ -818,44 +825,66 @@ class _SessionLoggerScreenState extends ConsumerState<SessionLoggerScreen> {
                     )
                   : SingleChildScrollView(
                       padding: const EdgeInsets.fromLTRB(20, 0, 20, 20),
-                      child: ExerciseLogPanel(
-                        exercise: exercise,
-                        session: session,
-                        // The same value the footer button names below.
-                        activeSetNumber: _activeSetNumber(exercise, session),
-                        last: last?[exercise.exerciseId],
-                        drafts: _drafts,
-                        unit: unit,
-                        onUnitChanged: _setUnit,
-                        baseUrl: ref.watch(exerciseRepositoryProvider).baseUrl,
-                        onUndoSet: (setNumber) async {
-                          final messenger = ScaffoldMessenger.of(context);
-                          try {
-                            await ref
-                                .read(activeSessionProvider.notifier)
-                                .unlogSet(
-                                  exerciseId: exercise.exerciseId,
-                                  setNumber: setNumber,
-                                );
-                          } on ApiException catch (error) {
-                            if (!_handledSetWriteClosure(error, messenger)) {
-                              rethrow;
-                            }
-                            return;
-                          }
-                          // The stored set is gone; let the table re-seed
-                          // this row from it on the next build.
-                          _drafts.release(setNumber);
-                        },
-                        onOpenDemo: () => Navigator.of(context).push(
-                          MaterialPageRoute<void>(
-                            builder: (_) => InSessionExerciseScreen(
-                              exercise: exercise,
-                              position: index + 1,
-                              total: exercises.length,
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.stretch,
+                        children: [
+                          ExerciseLogPanel(
+                            exercise: exercise,
+                            session: session,
+                            // The same value the footer button names below.
+                            activeSetNumber: _activeSetNumber(
+                              exercise,
+                              session,
+                            ),
+                            last: last?[exercise.exerciseId],
+                            drafts: _drafts,
+                            unit: unit,
+                            onUnitChanged: _setUnit,
+                            baseUrl: ref
+                                .watch(exerciseRepositoryProvider)
+                                .baseUrl,
+                            onUndoSet: (setNumber) async {
+                              final messenger = ScaffoldMessenger.of(context);
+                              try {
+                                await ref
+                                    .read(activeSessionProvider.notifier)
+                                    .unlogSet(
+                                      exerciseId: exercise.exerciseId,
+                                      setNumber: setNumber,
+                                    );
+                              } on ApiException catch (error) {
+                                if (!_handledSetWriteClosure(
+                                  error,
+                                  messenger,
+                                )) {
+                                  rethrow;
+                                }
+                                return;
+                              }
+                              // The stored set is gone; let the table re-seed
+                              // this row from it on the next build.
+                              _drafts.release(setNumber);
+                            },
+                            onOpenDemo: () => Navigator.of(context).push(
+                              MaterialPageRoute<void>(
+                                builder: (_) => InSessionExerciseScreen(
+                                  exercise: exercise,
+                                  position: index + 1,
+                                  total: exercises.length,
+                                ),
+                              ),
                             ),
                           ),
-                        ),
+                          // Directly above the footer that moves on, so the
+                          // praise and the next step are read together.
+                          if (encouragement != null) ...[
+                            const SizedBox(height: 12),
+                            EncouragementCard(
+                              key: const Key('logger.encouragement'),
+                              message: encouragement,
+                            ),
+                          ],
+                        ],
                       ),
                     ),
             ),
