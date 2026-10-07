@@ -350,3 +350,8 @@ module.exports = function buildProfileRouter(deps) {
 
   return router;
 };
+
+// Exposed so a schema test can pin users.main_goal and user_goals.goal to
+// exactly this list, rather than a second copy of the four values that could
+// drift from it.
+module.exports.ENUMS = ENUMS;

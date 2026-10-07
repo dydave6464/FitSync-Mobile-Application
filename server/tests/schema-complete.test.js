@@ -4,6 +4,7 @@ const assert = require('node:assert/strict');
 const { migrate } = require('../src/db/migrate');
 const { createPool } = require('../src/db/pool');
 const { testDbConfig, dropAllTables, tableNames } = require('./helpers/test-db');
+const { ENUMS } = require('../src/routes/profile');
 
 const EXPECTED_TABLES = [
   'activity_logs', 'admins', 'advertisements', 'auth_code_issues', 'auth_codes', 'auth_tokens', 'body_weight_logs', 'coaching_cues',
@@ -218,6 +219,29 @@ test('complete FitSync schema', async (t) => {
       'SELECT split_style FROM workout_plans WHERE plan_id = ?', [p.insertId],
     );
     assert.equal(rows[0].split_style, 'cardio_core');
+  });
+
+  // Pins the three places the goal list is spelled out -- the route's own
+  // ENUMS.mainGoal, users.main_goal, and user_goals.goal -- together, so
+  // adding or renaming a goal in one and not the other two surfaces here
+  // rather than as a 400 or a silently truncated save.
+  await t.test('users.main_goal and user_goals.goal match the route\'s goal list', async () => {
+    const enumValues = (columnType) =>
+      [...columnType.matchAll(/'([^']+)'/g)].map((m) => m[1]);
+
+    const [[usersCol]] = await pool.query(
+      `SELECT column_type AS type FROM information_schema.columns
+        WHERE table_schema = ? AND table_name = 'users' AND column_name = 'main_goal'`,
+      [testDbConfig().database],
+    );
+    const [[userGoalsCol]] = await pool.query(
+      `SELECT column_type AS type FROM information_schema.columns
+        WHERE table_schema = ? AND table_name = 'user_goals' AND column_name = 'goal'`,
+      [testDbConfig().database],
+    );
+
+    assert.deepEqual(enumValues(usersCol.type).sort(), [...ENUMS.mainGoal].sort());
+    assert.deepEqual(enumValues(userGoalsCol.type).sort(), [...ENUMS.mainGoal].sort());
   });
 
   await t.test('workout_plans records whether a plan was generated or written', async () => {
