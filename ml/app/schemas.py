@@ -53,6 +53,7 @@ class ProfileRequest(BaseModel):
     weightKg: Optional[float] = None
     goalWeightKg: Optional[float] = None
     mainGoal: Optional[str] = None
+    goals: List[str] = Field(default_factory=list)
     fitnessLevel: Optional[str] = None
     activityLevel: Optional[str] = None
     trainingLocation: Optional[str] = None
@@ -119,9 +120,13 @@ INJURY_MUSCLE_GROUPS: Dict[str, Tuple[str, ...]] = {
                    "adductors", "abductors"),
 }
 
+# Worded as the app's goal screen words them, so a plan reads the way the
+# user chose it. gain_strength is a legacy key the database can no longer
+# store; kept so an old request still names its plan.
 GOAL_LABELS = {
     "gain_strength": "Gain Strength",
     "build_muscle": "Build Muscle",
-    "lose_weight": "Lose Weight",
-    "general_fitness": "General Fitness",
+    "lose_weight": "Lose Fat",
+    "improve_endurance": "Improve Endurance",
+    "general_fitness": "General Health",
 }

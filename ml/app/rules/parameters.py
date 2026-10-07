@@ -36,6 +36,8 @@ VOLUME = {
     "build_muscle": (4, "8-12"),
     "lose_weight": (3, "12-15"),
     "general_fitness": (3, "10-12"),
+    # Muscular endurance: lighter loads, high reps. Not a long-session goal.
+    "improve_endurance": (3, "15-20"),
 }
 DEFAULT_VOLUME = VOLUME["general_fitness"]
 MIN_SETS = 2

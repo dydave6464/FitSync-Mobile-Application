@@ -184,3 +184,13 @@ def test_new_to_training_keeps_the_goals_rep_range():
 def test_new_to_training_is_capped_like_a_beginner():
     params = derive(profile(mainGoal="build_muscle", fitnessLevel="new"))
     assert params.session_length_min == 45
+
+
+def test_endurance_is_high_reps_at_three_sets():
+    params = derive(profile(mainGoal="improve_endurance"))
+    assert params.target_sets == 3
+    assert params.target_reps == "15-20"
+
+
+def test_endurance_is_a_forty_five_minute_session():
+    assert derive(profile(mainGoal="improve_endurance")).session_length_min == 45

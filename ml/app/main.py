@@ -45,8 +45,20 @@ def _plan_name(profile: ProfileRequest, split: Split) -> str:
     names the plan is actually built from, and leaves full_body reading
     exactly as it always has.
     """
-    goal = GOAL_LABELS.get(profile.mainGoal or "", "General Fitness")
-    return "{} — {}".format(split_label(split), goal)
+    focus = profile.mainGoal or ""
+    label = GOAL_LABELS.get(focus, "General Health")
+    # The other goals, in the order they arrived, known ones only, once each.
+    # Only the focus sets the volume; the rest are named so the plan reads
+    # the way the user chose it.
+    others = []
+    for goal in profile.goals:
+        if goal != focus and goal in GOAL_LABELS and goal not in others:
+            others.append(goal)
+    if len(others) == 1:
+        label = "{} + {}".format(label, GOAL_LABELS[others[0]])
+    elif len(others) > 1:
+        label = "{} + {} more".format(label, len(others))
+    return "{} — {}".format(split_label(split), label)
 
 
 def _candidates(engine, owned, selected, injury_ids, excluded, training_location=None):
