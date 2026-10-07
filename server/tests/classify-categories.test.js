@@ -31,6 +31,29 @@ test('skill holds and striking are other', () => {
   assert.equal(cat('left hook. boxing'), 'other');
 });
 
+test('the bare forward and backward jump drills are other', () => {
+  assert.equal(cat('backward jump'), 'other');
+  assert.equal(cat('forward jump'), 'other');
+});
+
+test('every other jump in the catalogue stays strength', () => {
+  // The jump rule is anchored to the two bare drills. These loaded or
+  // compound jumps are real leg work and must keep reaching plans.
+  for (const name of [
+    'barbell jump squat',
+    'barbell squat jump step rear lunge',
+    'bodyweight drop jump squat',
+    'box jump down with one leg stabilization',
+    'incline push up depth jump',
+    'jump squat',
+    'jump squat v. 2',
+    'kneeling jump squat',
+    'lunge with jump',
+  ]) {
+    assert.equal(cat(name), 'strength', name);
+  }
+});
+
 test('first match wins: a name with two signals takes the earlier rule', () => {
   // Contains both 'circles' and 'stretch'. The stretch rule is first.
   assert.equal(cat('circles knee stretch'), 'stretch');

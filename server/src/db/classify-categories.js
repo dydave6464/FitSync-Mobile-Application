@@ -34,6 +34,12 @@ const RULES = [
   { category: 'other',    pattern: /^(back|front) lever\b/ },
   { category: 'other',    pattern: /^balance board$/ },
   { category: 'other',    pattern: /\bboxing\b/ },
+  // Plyometric jump drills, not strength work. They sorted first among body
+  // weight quads, so every kit-free plan opened legs with a jump; the user
+  // prefers the bench split squat that follows them (exercise 'quads').
+  // Anchored to the two bare names: 'jump squat', 'lunge with jump' and the
+  // other loaded jumps stay strength.
+  { category: 'other',    pattern: /^(backward|forward) jump$/ },
 ];
 
 function classifyCategory(exercise) {
