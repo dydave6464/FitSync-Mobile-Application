@@ -151,14 +151,18 @@ async function updateProfile(pool, userId, fields) {
   }
 
   params.push(userId);
-  await pool.query(`UPDATE users SET ${sets.join(', ')} WHERE user_id = ?`, params);
+  const sql = `UPDATE users SET ${sets.join(', ')} WHERE user_id = ?`;
 
   // A single-goal write from an older client (or any PATCH of mainGoal) makes
-  // that goal the whole list, so user_goals and main_goal never disagree.
+  // that goal the whole list, so user_goals and main_goal never disagree --
+  // which means the two writes must commit or roll back together, on one
+  // connection, rather than the UPDATE auto-committing before a separate
+  // transaction has even opened for the goal rows.
   if (Object.prototype.hasOwnProperty.call(fields, 'mainGoal')) {
     const conn = await pool.getConnection();
     try {
       await conn.beginTransaction();
+      await conn.query(sql, params);
       await writeGoalRows(conn, userId, fields.mainGoal === null ? [] : [fields.mainGoal]);
       await conn.commit();
     } catch (err) {
@@ -167,6 +171,8 @@ async function updateProfile(pool, userId, fields) {
     } finally {
       conn.release();
     }
+  } else {
+    await pool.query(sql, params);
   }
 
   // The chart starts with a point rather than an empty card, and a genuine
