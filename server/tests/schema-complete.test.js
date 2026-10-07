@@ -9,7 +9,7 @@ const { ENUMS } = require('../src/routes/profile');
 const EXPECTED_TABLES = [
   'activity_logs', 'admins', 'advertisements', 'auth_code_issues', 'auth_codes', 'auth_tokens', 'body_weight_logs', 'coaching_cues',
   'equipment', 'exercise_categories', 'exercise_contraindications', 'exercise_equipment_requirements',
-  'exercise_ai_cues', 'exercises', 'food_recognitions', 'foods', 'goals', 'injuries',
+  'exercise_ai_cues', 'exercises', 'food_recognitions', 'foods', 'goals', 'health_checks', 'injuries',
   'injury_risk_estimates', 'lift_goals', 'meal_logs', 'morning_checkins', 'plan_exercises',
   'plan_swaps', 'plan_swap_alternatives',
   'progress_reports', 'reminder_settings', 'reminders', 'routine_checks', 'routine_habit_days', 'routine_habits', 'routine_items', 'session_exercises', 'session_outcomes', 'set_logs',
@@ -28,10 +28,10 @@ test('complete FitSync schema', async (t) => {
     await pool.end();
   });
 
-  await t.test('creates exactly the 47 tables from the data dictionary', async () => {
+  await t.test('creates exactly the 48 tables from the data dictionary', async () => {
     const names = (await tableNames(pool)).filter((n) => n !== 'schema_migrations');
     assert.deepEqual(names.sort(), [...EXPECTED_TABLES].sort());
-    assert.equal(names.length, 47);
+    assert.equal(names.length, 48);
   });
 
   await t.test('every table is InnoDB and utf8mb4', async () => {
@@ -56,7 +56,7 @@ test('complete FitSync schema', async (t) => {
     );
     const composite = rows.filter((r) => r.cols > 1 && r.t !== 'schema_migrations' && r.t !== 'auth_codes');
     assert.deepEqual(composite, [], 'no table may use a composite primary key');
-    assert.equal(rows.length, 48); // 47 tables + schema_migrations
+    assert.equal(rows.length, 49); // 48 tables + schema_migrations
   });
 
   await t.test('a user has exactly one streak record', async () => {
@@ -153,7 +153,7 @@ test('complete FitSync schema', async (t) => {
     assert.equal(srows[0].plan_day_no, null, 'a session predating 013 has no day');
   });
 
-  await t.test('all twenty-nine migrations are recorded', async () => {
+  await t.test('all thirty migrations are recorded', async () => {
     const [rows] = await pool.query('SELECT version FROM schema_migrations ORDER BY version');
     assert.deepEqual(rows.map((r) => r.version), [
       '001_account_and_profile.sql',
@@ -185,6 +185,7 @@ test('complete FitSync schema', async (t) => {
       '027_training_settings.sql',
       '028_new_to_training_level.sql',
       '029_user_goals.sql',
+      '030_health_checks.sql',
     ]);
   });
 
