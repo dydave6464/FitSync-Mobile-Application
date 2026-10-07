@@ -2,15 +2,27 @@ import '../../../core/units.dart';
 
 /// A piece of equipment the user can own, as the server names it.
 class EquipmentOption {
-  const EquipmentOption({required this.equipmentId, required this.name});
+  const EquipmentOption({
+    required this.equipmentId,
+    required this.name,
+    this.key,
+  });
 
   final int equipmentId;
+
+  /// The label shown on the chip.
   final String name;
+
+  /// The server's stable name for the row ('body weight'), which pre-fill and
+  /// "not familiar" match on. Null from a server that predates it, which
+  /// simply turns both of those off.
+  final String? key;
 
   factory EquipmentOption.fromJson(Map<String, dynamic> json) =>
       EquipmentOption(
         equipmentId: json['equipmentId'] as int,
         name: json['name'] as String,
+        key: json['key'] as String?,
       );
 }
 

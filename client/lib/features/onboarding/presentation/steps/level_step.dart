@@ -13,6 +13,7 @@ class LevelAnswers {
     this.fitnessLevel,
     this.equipmentIds = const [],
     this.trainingLocation,
+    this.unfamiliar = false,
   });
 
   final String? fitnessLevel;
@@ -23,19 +24,28 @@ class LevelAnswers {
 
   final String? trainingLocation;
 
+  /// Whether "I'm not familiar with any of these" is the choice on screen.
+  /// UI state for this visit only, never saved: it is stored as Bodyweight
+  /// alone, and reopening the step shows exactly that.
+  final bool unfamiliar;
+
   LevelAnswers copyWith({
     String? fitnessLevel,
     List<int>? equipmentIds,
     String? trainingLocation,
+    bool? unfamiliar,
   }) => LevelAnswers(
     fitnessLevel: fitnessLevel ?? this.fitnessLevel,
     equipmentIds: equipmentIds ?? this.equipmentIds,
     trainingLocation: trainingLocation ?? this.trainingLocation,
+    unfamiliar: unfamiliar ?? this.unfamiliar,
   );
 }
 
-/// `fitness_level` ENUM values. The schema offers two; there is no "advanced".
+/// `fitness_level` ENUM values, gentlest first. There is no "advanced": the
+/// app is for beginner and intermediate trainees.
 const _levels = <({String value, String label})>[
+  (value: 'new', label: 'New to training'),
   (value: 'beginner', label: 'Beginner'),
   (value: 'intermediate', label: 'Intermediate'),
 ];
@@ -52,6 +62,16 @@ const _locations = <({String value, String label})>[
   (value: 'both', label: 'Both'),
   (value: 'other', label: 'Somewhere else'),
 ];
+
+/// What choosing a location pre-ticks, by equipment key. Null means every
+/// chip. Applied only while nothing is ticked, so it can save tapping but
+/// never undo a choice. Unlisted locations pre-tick nothing.
+const locationPrefill = <String, List<String>?>{
+  'commercial_gym': null,
+  'both': null,
+  'home_gym': ['dumbbell', 'band', 'body weight'],
+  'other': ['body weight', 'band', 'pull-up bar'],
+};
 
 /// Step 3: experience, equipment and where the training happens.
 ///
@@ -77,7 +97,7 @@ class LevelStep extends ConsumerWidget {
     return 'Not set';
   }
 
-  Future<void> _pickLocation(BuildContext context) async {
+  Future<void> _pickLocation(BuildContext context, WidgetRef ref) async {
     final picked = await showModalBottomSheet<String>(
       context: context,
       builder: (sheet) => SafeArea(
@@ -103,7 +123,23 @@ class LevelStep extends ConsumerWidget {
         ),
       ),
     );
-    if (picked != null) onChanged(value.copyWith(trainingLocation: picked));
+    if (picked == null) return;
+    var next = value.copyWith(trainingLocation: picked);
+    if (value.equipmentIds.isEmpty && !value.unfamiliar) {
+      next = next.copyWith(equipmentIds: _prefill(picked, ref));
+    }
+    onChanged(next);
+  }
+
+  List<int> _prefill(String location, WidgetRef ref) {
+    if (!locationPrefill.containsKey(location)) return const [];
+    final keys = locationPrefill[location];
+    final options = ref.read(equipmentOptionsProvider).value ?? const [];
+    return [
+      for (final option in options)
+        if (option.key != null && (keys == null || keys.contains(option.key)))
+          option.equipmentId,
+    ];
   }
 
   @override
@@ -124,6 +160,34 @@ class LevelStep extends ConsumerWidget {
           options: _levels,
           selected: value.fitnessLevel,
           onSelected: (level) => onChanged(value.copyWith(fitnessLevel: level)),
+        ),
+        const SizedBox(height: 22),
+        FsCard(
+          key: const Key('trainingLocation'),
+          small: true,
+          onTap: () => _pickLocation(context, ref),
+          child: Row(
+            children: [
+              Icon(Icons.home_outlined, size: 18, color: t.text2),
+              const SizedBox(width: 11),
+              const Expanded(
+                child: Text(
+                  'Training location',
+                  style: TextStyle(fontSize: 13.5),
+                ),
+              ),
+              Text(
+                _locationLabel,
+                style: TextStyle(
+                  fontSize: 13.5,
+                  fontWeight: FontWeight.w600,
+                  color: value.trainingLocation == null ? t.text3 : t.text,
+                ),
+              ),
+              const SizedBox(width: 6),
+              Icon(Icons.chevron_right, size: 16, color: t.text3),
+            ],
+          ),
         ),
         const SizedBox(height: 22),
         Row(
@@ -177,34 +241,6 @@ class LevelStep extends ConsumerWidget {
                       ),
                   ],
                 ),
-        ),
-        const SizedBox(height: 22),
-        FsCard(
-          key: const Key('trainingLocation'),
-          small: true,
-          onTap: () => _pickLocation(context),
-          child: Row(
-            children: [
-              Icon(Icons.home_outlined, size: 18, color: t.text2),
-              const SizedBox(width: 11),
-              const Expanded(
-                child: Text(
-                  'Training location',
-                  style: TextStyle(fontSize: 13.5),
-                ),
-              ),
-              Text(
-                _locationLabel,
-                style: TextStyle(
-                  fontSize: 13.5,
-                  fontWeight: FontWeight.w600,
-                  color: value.trainingLocation == null ? t.text3 : t.text,
-                ),
-              ),
-              const SizedBox(width: 6),
-              Icon(Icons.chevron_right, size: 16, color: t.text3),
-            ],
-          ),
         ),
       ],
     );

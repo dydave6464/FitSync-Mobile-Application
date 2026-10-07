@@ -10,7 +10,7 @@ import 'package:fitsync/features/onboarding/presentation/steps/level_step.dart';
 import 'package:fitsync/features/profile/domain/profile.dart';
 import 'package:fitsync/features/profile/presentation/providers.dart';
 
-const _fitnessLevels = ['beginner', 'intermediate'];
+const _fitnessLevels = ['new', 'beginner', 'intermediate'];
 const _locations = ['home_gym', 'commercial_gym', 'both', 'other'];
 
 /// Deliberately not the mockup's "Barbell, Dumbbells, Bench". The real
@@ -19,6 +19,17 @@ const _locations = ['home_gym', 'commercial_gym', 'both', 'other'];
 const _serverEquipment = [
   EquipmentOption(equipmentId: 41, name: 'Resistance band'),
   EquipmentOption(equipmentId: 62, name: 'Sled machine'),
+];
+
+const _keyedEquipment = [
+  EquipmentOption(equipmentId: 1, name: 'Barbell', key: 'barbell'),
+  EquipmentOption(equipmentId: 2, name: 'Dumbbells', key: 'dumbbell'),
+  EquipmentOption(equipmentId: 3, name: 'Bench', key: 'bench'),
+  EquipmentOption(equipmentId: 4, name: 'Pull-up bar', key: 'pull-up bar'),
+  EquipmentOption(equipmentId: 5, name: 'Kettlebell', key: 'kettlebell'),
+  EquipmentOption(equipmentId: 6, name: 'Bands', key: 'band'),
+  EquipmentOption(equipmentId: 7, name: 'Machines', key: 'machines'),
+  EquipmentOption(equipmentId: 8, name: 'Bodyweight', key: 'body weight'),
 ];
 
 Future<LevelAnswers?> _pump(
@@ -60,13 +71,30 @@ Future<void> _tapKey(WidgetTester tester, Key key) async {
   await tester.pumpAndSettle();
 }
 
+/// Picks a location through the sheet, the way a user does.
+Future<void> _pickLocation(WidgetTester tester, String value) async {
+  await _tapKey(tester, const Key('trainingLocation'));
+  await tester.tap(find.byKey(Key('location.$value')));
+  await tester.pumpAndSettle();
+}
+
 void main() {
-  testWidgets('offers exactly two experience levels', (tester) async {
+  testWidgets('offers exactly three experience levels, New to training first', (
+    tester,
+  ) async {
     await _pump(tester);
 
+    expect(
+      find.descendant(
+        of: find.byType(FsSegmented),
+        matching: find.byType(InkWell),
+      ),
+      findsNWidgets(3),
+    );
     for (final value in _fitnessLevels) {
       expect(find.byKey(Key('segment.$value')), findsOneWidget);
     }
+    expect(find.text('New to training'), findsOneWidget);
   });
 
   testWidgets('emits the fitness level enum value', (tester) async {
@@ -184,6 +212,111 @@ void main() {
       findsNothing,
       reason: 'a picker left open would cover the step it just edited',
     );
+  });
+
+  testWidgets('location is asked before the equipment', (tester) async {
+    await _pump(tester, equipment: _keyedEquipment);
+    final location = tester
+        .getTopLeft(find.byKey(const Key('trainingLocation')))
+        .dy;
+    final firstChip = tester
+        .getTopLeft(find.byKey(const Key('equipment.1')))
+        .dy;
+    expect(location, lessThan(firstChip));
+  });
+
+  for (final (location, ids) in [
+    ('commercial_gym', [1, 2, 3, 4, 5, 6, 7, 8]),
+    ('both', [1, 2, 3, 4, 5, 6, 7, 8]),
+    ('home_gym', [2, 6, 8]),
+    ('other', [4, 6, 8]),
+  ]) {
+    testWidgets(
+      'choosing $location with nothing ticked pre-ticks its equipment',
+      (tester) async {
+        LevelAnswers? emitted;
+        await tester.pumpWidget(
+          ProviderScope(
+            overrides: [
+              equipmentOptionsProvider.overrideWith(
+                (ref) => Future.value(_keyedEquipment),
+              ),
+            ],
+            child: MaterialApp(
+              theme: fsLightTheme(),
+              home: Scaffold(
+                body: SingleChildScrollView(
+                  child: LevelStep(
+                    value: const LevelAnswers(),
+                    onChanged: (v) => emitted = v,
+                  ),
+                ),
+              ),
+            ),
+          ),
+        );
+        await tester.pumpAndSettle();
+        await _pickLocation(tester, location);
+        expect(emitted!.trainingLocation, location);
+        expect(emitted!.equipmentIds.toSet(), ids.toSet());
+      },
+    );
+  }
+
+  testWidgets('a location never overwrites equipment already ticked', (
+    tester,
+  ) async {
+    LevelAnswers? emitted;
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          equipmentOptionsProvider.overrideWith(
+            (ref) => Future.value(_keyedEquipment),
+          ),
+        ],
+        child: MaterialApp(
+          theme: fsLightTheme(),
+          home: Scaffold(
+            body: SingleChildScrollView(
+              child: LevelStep(
+                value: const LevelAnswers(equipmentIds: [5]),
+                onChanged: (v) => emitted = v,
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+    await _pickLocation(tester, 'commercial_gym');
+    expect(emitted!.equipmentIds, [5]);
+  });
+
+  testWidgets('options without keys pre-tick nothing', (tester) async {
+    LevelAnswers? emitted;
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          equipmentOptionsProvider.overrideWith(
+            (ref) => Future.value(_serverEquipment),
+          ),
+        ],
+        child: MaterialApp(
+          theme: fsLightTheme(),
+          home: Scaffold(
+            body: SingleChildScrollView(
+              child: LevelStep(
+                value: const LevelAnswers(),
+                onChanged: (v) => emitted = v,
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+    await _pickLocation(tester, 'home_gym');
+    expect(emitted!.equipmentIds, isEmpty);
   });
 
   testWidgets(
