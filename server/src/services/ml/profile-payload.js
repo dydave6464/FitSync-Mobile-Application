@@ -7,13 +7,13 @@
 /// the profile, so a field added to the profile later stays in Node unless
 /// someone adds it here on purpose (ML service design, section 9.1).
 ///
-/// Read today, and so sent: the goal and fitness level; equipment and injury
-/// ids; each injury's body region (it excludes muscle groups); the generator
-/// screen's split, days per week and session length; and each check-in's four
-/// answers with the training-load index. Never sent: email, name, user id,
-/// city, date of birth, sex, height, weight, goal weight, training location,
-/// activity level, account flags, catalogue names, injury side, and check-in
-/// ids and dates -- no rule reads any of them.
+/// Read today, and so sent: the goal, fitness level and training location;
+/// equipment and injury ids; each injury's body region (it excludes muscle
+/// groups); the generator screen's split, days per week and session length;
+/// and each check-in's four answers with the training-load index. Never sent:
+/// email, name, user id, city, date of birth, sex, height, weight, goal
+/// weight, activity level, account flags, catalogue names, injury side, and
+/// check-in ids and dates -- no rule reads any of them.
 
 function list(value) {
   return Array.isArray(value) ? value : [];
@@ -40,6 +40,7 @@ function toPlanPayload(profile) {
   const payload = {
     mainGoal: p.mainGoal ?? null,
     fitnessLevel: p.fitnessLevel ?? null,
+    trainingLocation: p.trainingLocation ?? null,
     equipment: list(p.equipment).map((e) => ({ equipmentId: e.equipmentId })),
     injuries: list(p.injuries).map(toInjuryRef),
   };

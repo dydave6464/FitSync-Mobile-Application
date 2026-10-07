@@ -279,6 +279,16 @@ test('profile endpoints', async (t) => {
     ], 'the non-selectable "yoga mat" row must not be in this list');
   });
 
+  await t.test('each option carries its stable key alongside the label', async () => {
+    await reset();
+    const res = await request(app).get('/api/v1/equipment')
+      .set('Authorization', auth).expect(200);
+    assert.deepEqual(res.body.data.equipment.map((e) => e.key), [
+      'barbell', 'dumbbell', 'bench', 'pull-up bar',
+      'kettlebell', 'band', 'machines', 'body weight',
+    ]);
+  });
+
   // The subtest above cannot fail if `ORDER BY display_order` were removed:
   // seedEquipment inserts the eight rows in display order on a fresh table, so
   // insertion (id) order coincidentally satisfies that assertion too. Perturbing

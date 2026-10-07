@@ -231,12 +231,20 @@ async function setTrainingDays(pool, userId, weekdays) {
 async function listEquipment(pool) {
   // Only the curated chips. Raw catalogue tags stay out of onboarding; see
   // seed-equipment.js for what promotes a row into this list.
+  //
+  // `key` is the row's own name ('body weight'), stable where display_name is
+  // copy: the client pre-fills chips by location and finds the Bodyweight chip
+  // for "not familiar" by key, so renaming a label cannot break either.
   const [rows] = await pool.query(
-    `SELECT equipment_id, display_name FROM equipment
+    `SELECT equipment_id, name, display_name FROM equipment
       WHERE is_user_selectable = 1
       ORDER BY display_order`,
   );
-  return rows.map((r) => ({ equipmentId: r.equipment_id, name: r.display_name }));
+  return rows.map((r) => ({
+    equipmentId: r.equipment_id,
+    name: r.display_name,
+    key: r.name,
+  }));
 }
 
 async function listInjuries(pool) {
