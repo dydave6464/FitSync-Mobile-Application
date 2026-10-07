@@ -173,6 +173,29 @@ void main() {
     expect(profile.goalWeightKg, 64.0);
   });
 
+  test('parses the chosen goals', () {
+    final profile = Profile.fromJson({
+      ..._fullProfileJson,
+      'goals': ['lose_weight', 'build_muscle'],
+    });
+
+    expect(profile.goals, ['lose_weight', 'build_muscle']);
+  });
+
+  test('falls back to mainGoal, then to none, on an older server', () {
+    // _fullProfileJson carries mainGoal but no goals key at all.
+    final withMainGoalOnly = Profile.fromJson(
+      Map<String, dynamic>.from(_fullProfileJson),
+    );
+    expect(withMainGoalOnly.goals, ['lose_weight']);
+
+    // _emptyProfileJson has neither.
+    final withNeither = Profile.fromJson(
+      Map<String, dynamic>.from(_emptyProfileJson),
+    );
+    expect(withNeither.goals, isEmpty);
+  });
+
   test('patch sends only the keys it was given', () async {
     final (repo, captured) = _repoReturning({
       'data': {'profile': _fullProfileJson},
@@ -282,6 +305,32 @@ void main() {
     expect(jsonDecode(seen.body), {
       'trainingDays': [2, 4],
     });
+  });
+
+  test('setGoals sends every chosen goal and the main focus', () async {
+    final (repo, captured) = _repoReturning({
+      'data': {
+        'profile': {
+          ..._fullProfileJson,
+          'goals': ['build_muscle', 'lose_weight'],
+          'mainGoal': 'lose_weight',
+        },
+      },
+    });
+
+    final profile = await repo.setGoals([
+      'build_muscle',
+      'lose_weight',
+    ], 'lose_weight');
+
+    expect(captured.requests.single.url.path, '/api/v1/profile/goals');
+    expect(captured.requests.single.method, 'PUT');
+    expect(jsonDecode(captured.requests.single.body), {
+      'goals': ['build_muscle', 'lose_weight'],
+      'mainGoal': 'lose_weight',
+    });
+    expect(profile.goals, ['build_muscle', 'lose_weight']);
+    expect(profile.mainGoal, 'lose_weight');
   });
 
   test('completeOnboarding returns the profile and the plan', () async {

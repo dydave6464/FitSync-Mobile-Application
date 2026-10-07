@@ -93,6 +93,7 @@ class Profile {
     this.weightKg,
     this.goalWeightKg,
     this.mainGoal,
+    this.goals = const [],
     this.fitnessLevel,
     this.activityLevel,
     this.trainingLocation,
@@ -136,6 +137,10 @@ class Profile {
   final double? weightKg;
   final double? goalWeightKg;
   final String? mainGoal;
+
+  /// Every goal the user picked, the main focus included, in screen order.
+  /// [mainGoal] is the one that sets the plan's sets and reps.
+  final List<String> goals;
   final String? fitnessLevel;
   final String? activityLevel;
   final String? trainingLocation;
@@ -195,6 +200,12 @@ class Profile {
     weightKg: _toDouble(json['weightKg']),
     goalWeightKg: _toDouble(json['goalWeightKg']),
     mainGoal: json['mainGoal'] as String?,
+    // An older server sends only mainGoal; that is the user's one goal.
+    goals: json['goals'] is List
+        ? (json['goals'] as List).cast<String>().toList(growable: false)
+        : (json['mainGoal'] is String
+              ? [json['mainGoal'] as String]
+              : const <String>[]),
     fitnessLevel: json['fitnessLevel'] as String?,
     activityLevel: json['activityLevel'] as String?,
     trainingLocation: json['trainingLocation'] as String?,
