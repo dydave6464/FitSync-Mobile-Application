@@ -20,7 +20,9 @@ class EditScaffold extends StatelessWidget {
 
   final String title;
   final Widget child;
-  final VoidCallback onSave;
+
+  /// Null disables Save: the answer on screen is not yet valid.
+  final VoidCallback? onSave;
   final bool busy;
 
   @override

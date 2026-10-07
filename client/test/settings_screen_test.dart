@@ -13,6 +13,9 @@ import 'package:fitsync/features/onboarding/presentation/steps/injuries_step.dar
 import 'package:fitsync/features/onboarding/presentation/steps/level_step.dart';
 import 'package:fitsync/core/api_exception.dart';
 import 'package:fitsync/core/theme_controller.dart';
+import 'package:fitsync/features/health/domain/health_answers.dart';
+import 'package:fitsync/features/health/presentation/providers.dart';
+import 'package:fitsync/features/onboarding/presentation/steps/health_step.dart';
 import 'package:fitsync/features/plans/presentation/widgets/training_days_row.dart';
 import 'package:fitsync/features/profile/domain/profile.dart';
 import 'package:fitsync/features/profile/presentation/providers.dart';
@@ -28,6 +31,8 @@ import 'package:fitsync/features/streaks/presentation/streaks_screen.dart';
 import 'package:fitsync/features/schedule/domain/calendar.dart';
 import 'package:fitsync/features/schedule/presentation/providers.dart';
 import 'package:fitsync/features/schedule/presentation/schedule_screen.dart';
+
+import 'helpers/fake_health.dart';
 
 const _baseProfile = Profile(
   userId: 7,
@@ -198,6 +203,7 @@ Future<void> _pump(
   String? mainGoal,
   List<({List<String> goals, String mainGoal})>? goalWrites,
   bool failGoals = false,
+  FakeHealthRepository? health,
 }) async {
   _profile = FakeProfileNotifier(
     patches ?? <Map<String, dynamic>>[],
@@ -228,6 +234,9 @@ Future<void> _pump(
         calendarProvider.overrideWith(
           (ref, span) async =>
               const CalendarRange(today: '2026-09-24', days: []),
+        ),
+        healthRepositoryProvider.overrideWithValue(
+          health ?? FakeHealthRepository(),
         ),
       ],
       child: const MaterialApp(home: SettingsScreen()),
@@ -299,6 +308,7 @@ void main() {
       (key: const Key('edit.about'), type: AboutStep),
       (key: const Key('edit.level'), type: LevelStep),
       (key: const Key('edit.injuries'), type: InjuriesStep),
+      (key: const Key('edit.health'), type: HealthStep),
     ]) {
       await _openRow(tester, row.key);
 
@@ -595,5 +605,88 @@ void main() {
     await _openRow(tester, const Key('edit.schedule'));
 
     expect(find.byType(ScheduleScreen), findsOneWidget);
+  });
+
+  final storedAsthma = HealthAnswers.fromJson(const {
+    'conditions': ['asthma'],
+    'chestPain': false,
+    'dizziness': false,
+    'supervisedOnly': false,
+    'consentedAt': '2026-10-07T01:00:00.000Z',
+    'acknowledgedAt': '2026-10-07T01:00:00.000Z',
+  });
+
+  testWidgets('the Health editor shows the stored answers, without opt-out', (
+    tester,
+  ) async {
+    await _pump(tester, health: FakeHealthRepository(stored: storedAsthma));
+
+    await _openRow(tester, const Key('edit.health'));
+
+    expect(find.byType(EditScaffold), findsOneWidget);
+    final step = tester.widget<HealthStep>(find.byType(HealthStep));
+    expect(step.value.conditions, ['asthma']);
+    expect(step.value.consent, isTrue);
+    expect(find.byKey(const Key('health.optOut')), findsNothing);
+  });
+
+  testWidgets('Save waits for a valid answer, then writes it', (tester) async {
+    final health = FakeHealthRepository();
+    await _pump(tester, health: health);
+    await _openRow(tester, const Key('edit.health'));
+
+    await tester.tap(find.byKey(const Key('save')));
+    await tester.pumpAndSettle();
+    expect(health.writes, isEmpty);
+    expect(find.byType(HealthStep), findsOneWidget, reason: 'still open');
+
+    for (final key in [
+      'health.none',
+      'health.chestPain.no',
+      'health.dizziness.no',
+      'health.supervisedOnly.no',
+    ]) {
+      await tester.ensureVisible(find.byKey(Key(key)));
+      await tester.tap(find.byKey(Key(key)));
+      await tester.pumpAndSettle();
+    }
+    await tester.tap(find.byKey(const Key('save')));
+    await tester.pumpAndSettle();
+
+    expect(health.writes.single.conditions, isEmpty);
+    expect(find.byType(HealthStep), findsNothing, reason: 'closed');
+    expect(find.text('Health saved'), findsOneWidget);
+  });
+
+  testWidgets('there is no delete button without stored answers', (
+    tester,
+  ) async {
+    await _pump(tester);
+    await _openRow(tester, const Key('edit.health'));
+
+    expect(find.byKey(const Key('health.delete')), findsNothing);
+  });
+
+  testWidgets('delete asks first, then removes the answers', (tester) async {
+    final health = FakeHealthRepository(stored: storedAsthma);
+    await _pump(tester, health: health);
+    await _openRow(tester, const Key('edit.health'));
+
+    await tester.ensureVisible(find.byKey(const Key('health.delete')));
+    await tester.tap(find.byKey(const Key('health.delete')));
+    await tester.pumpAndSettle();
+    expect(find.text('Delete your health answers?'), findsOneWidget);
+    await tester.tap(find.byKey(const Key('health.delete.cancel')));
+    await tester.pumpAndSettle();
+    expect(health.deletes, 0);
+
+    await tester.tap(find.byKey(const Key('health.delete')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const Key('health.delete.confirm')));
+    await tester.pumpAndSettle();
+
+    expect(health.deletes, 1);
+    expect(find.byType(HealthStep), findsNothing, reason: 'closed');
+    expect(find.text('Health answers deleted'), findsOneWidget);
   });
 }
