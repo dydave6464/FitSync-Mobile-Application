@@ -2134,10 +2134,8 @@ void main() {
 
       // Two exercises in the plan, so the first finished is halfway.
       expect(find.byKey(const Key('logger.encouragement')), findsOneWidget);
-      expect(
-        find.text("Halfway there — 1 of 2 exercises done. You're doing great!"),
-        findsOneWidget,
-      );
+      // Which halfway line shows varies by session; every one gives the count.
+      expect(find.textContaining('1 of 2'), findsOneWidget);
       expect(find.text('Up next: Push-up'), findsOneWidget);
     });
 
@@ -2166,10 +2164,9 @@ void main() {
           ],
         ),
       );
+      // Which closing line shows varies by session; every one points at Finish.
       expect(
-        find.text(
-          'Every set done — great session! Tap Finish session to save it.',
-        ),
+        find.textContaining('Tap Finish session to save it.'),
         findsOneWidget,
       );
     });
