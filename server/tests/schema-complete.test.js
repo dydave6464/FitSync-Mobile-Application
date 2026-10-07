@@ -152,7 +152,7 @@ test('complete FitSync schema', async (t) => {
     assert.equal(srows[0].plan_day_no, null, 'a session predating 013 has no day');
   });
 
-  await t.test('all twenty-seven migrations are recorded', async () => {
+  await t.test('all twenty-eight migrations are recorded', async () => {
     const [rows] = await pool.query('SELECT version FROM schema_migrations ORDER BY version');
     assert.deepEqual(rows.map((r) => r.version), [
       '001_account_and_profile.sql',
@@ -182,6 +182,7 @@ test('complete FitSync schema', async (t) => {
       '025_auth_codes.sql',
       '026_auth_code_issues.sql',
       '027_training_settings.sql',
+      '028_new_to_training_level.sql',
     ]);
   });
 

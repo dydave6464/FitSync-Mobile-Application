@@ -45,12 +45,20 @@ test('001 account and profile schema', async (t) => {
     assert.equal(rows[0].is_premium, 0);
   });
 
-  await t.test('fitness_level accepts only beginner and intermediate (C-1)', async () => {
+  await t.test('fitness_level rejects advanced (C-1)', async () => {
     await assert.rejects(
       () => pool.query(
         "INSERT INTO users (email, password_hash, full_name, fitness_level) VALUES ('adv@b.com','x','Adv','advanced')",
       ),
     );
+  });
+
+  await t.test('fitness_level also accepts new, for New to training', async () => {
+    const [res] = await pool.query(
+      "INSERT INTO users (email, password_hash, full_name, fitness_level) VALUES ('new@b.com','x','New','new')",
+    );
+    const [rows] = await pool.query('SELECT fitness_level FROM users WHERE user_id = ?', [res.insertId]);
+    assert.equal(rows[0].fitness_level, 'new');
   });
 
   await t.test('a user may hold more than one subscription over time', async () => {

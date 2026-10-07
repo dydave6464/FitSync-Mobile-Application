@@ -81,6 +81,14 @@ test('profile endpoints', async (t) => {
     assert.equal(res.body.data.profile.fitnessLevel, 'intermediate');
   });
 
+  await t.test('accepts New to training as a fitness level', async () => {
+    await reset();
+    const res = await request(app).patch('/api/v1/profile')
+      .set('Authorization', auth)
+      .send({ fitnessLevel: 'new' }).expect(200);
+    assert.equal(res.body.data.profile.fitnessLevel, 'new');
+  });
+
   await t.test('rejects a value outside the enum', async () => {
     await reset();
     const res = await request(app).patch('/api/v1/profile').set('Authorization', auth)

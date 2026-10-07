@@ -66,7 +66,7 @@ migrations (or an equivalent forward-only mechanism) with a real rollback
 and data-migration story. That transition is an **open item for a later
 sub-project** — it has not been designed yet.
 
-## Exceptions: `007`, `008`, `011`, `012`, `013` and `014`
+## Exceptions: `007`, `008`, `011`, `012`, `013`, `014` and `028`
 
 `007_auth_identities.sql`, `008_equipment_curation.sql`,
 `011_email_verification.sql`, `012_weight_unit.sql`, `013_plan_days.sql` and
@@ -125,6 +125,11 @@ what makes its absence from this section worth correcting.
 list: MySQL stores an enum as an index into that list, so inserting in the
 middle would renumber the values after it and silently change what every
 existing row means.
+
+**`028_new_to_training_level.sql`** — one
+`ALTER TABLE users MODIFY COLUMN fitness_level` statement, appending `new` to
+the enum `001` defined. Appended at the END for the same reason as 014. Like
+014 it restates the whole column definition, so it replays cleanly.
 
 **Consequence: five of the six are not replay-safe.** Unlike every other
 migration file, if 007, 008, 011, 012 or 013 fails partway through, `IF NOT

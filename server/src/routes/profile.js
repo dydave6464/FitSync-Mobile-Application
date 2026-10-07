@@ -12,7 +12,7 @@ const bodyWeight = require('../db/body-weight');
 const ENUMS = {
   sex: ['male', 'female', 'prefer_not_to_say'],
   mainGoal: ['lose_weight', 'build_muscle', 'improve_endurance', 'general_fitness'],
-  fitnessLevel: ['beginner', 'intermediate'],
+  fitnessLevel: ['beginner', 'intermediate', 'new'],
   activityLevel: ['sedentary', 'light', 'moderate', 'active', 'very_active'],
   trainingLocation: ['home_gym', 'commercial_gym', 'both', 'other'],
   weightUnit: ['kg', 'lb'],
