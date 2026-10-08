@@ -46,6 +46,25 @@ function correctEquipment(record) {
   return EQUIPMENT_OVERRIDES.get(String(record.source_id)) || record.equipment;
 }
 
+// Upstream names that do not say what the exercise is, keyed by source_id and
+// applied the same way as EQUIPMENT_OVERRIDES. Lowercase like every other
+// catalogue name. Only the name changes: muscle_group stays upstream's, so a
+// renamed exercise keeps its place in plans and in Browse.
+//
+// The name is not only a label. The generator returns plans by name and
+// savePlan resolves them back to exercise_id, so a rename has to land in the
+// exercises table, where both sides read it, rather than in the app alone.
+//
+// '3533' quads -- named after its target muscle; the animation is a
+// rear-foot-elevated split squat with the back foot on a bench.
+const NAME_OVERRIDES = new Map([
+  ['3533', 'bulgarian split squat'],
+]);
+
+function correctName(record) {
+  return NAME_OVERRIDES.get(String(record.source_id)) || record.name;
+}
+
 function storageKeys(sourceId) {
   return {
     animation: `exercises/${sourceId}/animation.gif`,
@@ -95,6 +114,8 @@ module.exports = {
   NICHE_EQUIPMENT,
   EQUIPMENT_OVERRIDES,
   correctEquipment,
+  NAME_OVERRIDES,
+  correctName,
   shouldPromote,
   storageKeys,
   normalizeRecord,
