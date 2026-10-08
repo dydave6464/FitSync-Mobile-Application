@@ -18,6 +18,7 @@ class ExerciseDemoBody extends StatelessWidget {
     this.baseUrl,
     this.header,
     this.cues,
+    this.cueSection,
   });
 
   final ExerciseDetail exercise;
@@ -32,6 +33,10 @@ class ExerciseDemoBody extends StatelessWidget {
   /// Rendered above the name -- e.g. the in-session position counter and
   /// prescription. Absent on the Browse tab's plain detail screen.
   final Widget? header;
+
+  /// Replaces the cue list entirely. The workout's demo stage passes a
+  /// CoachPanel here for an exercise coached for an injury.
+  final Widget? cueSection;
 
   @override
   Widget build(BuildContext context) {
@@ -68,7 +73,8 @@ class ExerciseDemoBody extends StatelessWidget {
         // One cue renderer for all three screens that show this body -- the
         // Browse tab's detail, the mid-set detour, and the workout's demo
         // stage. Only the last of those ever passes anything in.
-        AiCueList(cues: cues ?? ExerciseCues.catalogue(exercise.cues)),
+        cueSection ??
+            AiCueList(cues: cues ?? ExerciseCues.catalogue(exercise.cues)),
         const SizedBox(height: 32),
       ],
     );

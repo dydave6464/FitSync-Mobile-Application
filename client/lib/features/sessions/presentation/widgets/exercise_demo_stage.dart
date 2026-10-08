@@ -2,7 +2,9 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../../core/theme.dart';
+import '../../../exercises/domain/exercise_cues.dart';
 import '../../../exercises/presentation/providers.dart';
+import '../../../exercises/presentation/widgets/coach_panel.dart';
 import '../../../exercises/presentation/widgets/exercise_demo_body.dart';
 import '../../../plans/domain/workout_plan.dart';
 
@@ -79,6 +81,18 @@ class ExerciseDemoStage extends ConsumerWidget {
         // already carries. The reader has usable cues from the first frame,
         // and nothing on screen claims to be AI-written until it is.
         cues: cues.value,
+        // A coached exercise gets the coach panel, driven by the full
+        // AsyncValue so loading and failure are visible states rather than a
+        // silent fallback; every other exercise keeps the plain steps.
+        cueSection: exercise.coaching == null
+            ? null
+            : CoachPanel(
+                injuryName: exercise.coaching!.injuryName,
+                cues: cues,
+                catalogue: ExerciseCues.catalogue(loaded.cues),
+                onRetry: () =>
+                    ref.invalidate(exerciseCuesProvider(exercise.exerciseId)),
+              ),
         header: Row(
           children: [
             // Not FsEyebrow: that widget forces its text to uppercase, which
