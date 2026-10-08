@@ -158,6 +158,7 @@ PlanExercise _sessionExercise(Map<String, dynamic> json) => PlanExercise(
   // which reads this. Null from a server that predates the field, which
   // reads as unknown equipment -- the same as an exercise with none.
   equipment: json['equipment'] as String?,
+  coaching: parseCoaching(json['coaching']),
 );
 
 /// What the user last lifted on one exercise — the heaviest set of their most

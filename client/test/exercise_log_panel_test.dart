@@ -76,6 +76,50 @@ void main() {
     expect(find.text('Target: 3 sets × 8-12 reps'), findsOneWidget);
   });
 
+  testWidgets('a coached exercise shows the AI-coaching tag in its header', (
+    tester,
+  ) async {
+    await tester.pumpWidget(
+      _host(
+        ExerciseLogPanel(
+          exercise: const PlanExercise(
+            planExerciseId: 601,
+            exerciseId: 101,
+            name: 'Goblet squat',
+            muscleGroup: 'quadriceps',
+            orderNo: 1,
+            targetSets: 3,
+            targetReps: '8-12',
+            coaching: (injuryId: 3, injuryName: 'Knee'),
+          ),
+          session: _session(),
+          drafts: _drafts(tester),
+          onUndoSet: (_) async {},
+        ),
+      ),
+    );
+
+    expect(find.byKey(const Key('coaching.tag.header')), findsOneWidget);
+    expect(find.text('Knee · AI coached'), findsOneWidget);
+  });
+
+  testWidgets('an uncoached exercise shows no AI-coaching tag', (
+    tester,
+  ) async {
+    await tester.pumpWidget(
+      _host(
+        ExerciseLogPanel(
+          exercise: _exercise,
+          session: _session(),
+          drafts: _drafts(tester),
+          onUndoSet: (_) async {},
+        ),
+      ),
+    );
+
+    expect(find.byKey(const Key('coaching.tag.header')), findsNothing);
+  });
+
   // The unit only ever existed as the weight field's hint, which disappears
   // the moment a value is typed -- so a logged set showed a bare number with
   // nothing on screen saying what it measured. The header is what keeps the

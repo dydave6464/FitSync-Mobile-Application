@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../../../../core/theme.dart';
+import '../../../exercises/presentation/widgets/coaching_tag.dart';
 import '../../../plans/domain/workout_plan.dart';
 import '../../domain/active_session.dart';
 
@@ -96,13 +97,26 @@ class ExerciseJumpSheet extends StatelessWidget {
               ),
             ),
             Expanded(
-              child: Text(
-                exercise.name,
-                style: TextStyle(
-                  fontSize: 13.5,
-                  fontWeight: current ? FontWeight.w700 : FontWeight.w500,
-                  color: t.text,
-                ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Text(
+                    exercise.name,
+                    style: TextStyle(
+                      fontSize: 13.5,
+                      fontWeight: current ? FontWeight.w700 : FontWeight.w500,
+                      color: t.text,
+                    ),
+                  ),
+                  if (exercise.coaching != null) ...[
+                    const SizedBox(height: 4),
+                    CoachingTag(
+                      key: Key('coaching.jump.${exercise.planExerciseId}'),
+                      injuryName: exercise.coaching!.injuryName,
+                    ),
+                  ],
+                ],
               ),
             ),
             Text(

@@ -4,6 +4,7 @@ import '../../../../core/theme.dart';
 import '../../../../core/units.dart';
 import '../../../../core/widgets/fs_kit.dart';
 import '../../../exercises/presentation/exercise_thumb.dart';
+import '../../../exercises/presentation/widgets/coaching_tag.dart';
 import '../../../plans/domain/workout_plan.dart';
 import '../../domain/active_session.dart';
 import 'set_drafts.dart';
@@ -211,6 +212,13 @@ class _ExerciseLogPanelState extends State<ExerciseLogPanel> {
                               color: t.text3,
                             ),
                           ),
+                          if (exercise.coaching != null) ...[
+                            const SizedBox(height: 4),
+                            CoachingTag(
+                              key: const Key('coaching.tag.header'),
+                              injuryName: exercise.coaching!.injuryName,
+                            ),
+                          ],
                           // On the exercise rather than in the table: the
                           // column it restores belongs to every set, and the
                           // table's own header row has no width to spare for
