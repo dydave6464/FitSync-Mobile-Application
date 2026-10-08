@@ -22,23 +22,17 @@ const _detail = ExerciseDetail(
   cues: ['Stand tall.'],
 );
 
-// targetSets: 1 with no targetReps keeps the header's prescription text
-// ("1 set") short. exercise_demo_stage.dart's header Row has no
-// Flexible/Expanded around either Text, and on this 390pt surface widget
-// tests render with a fallback font whose metrics are wider than the real
-// SpaceGrotesk/JetBrainsMono faces (not loaded in flutter_test) -- a longer
-// prescription like "3 sets x 8-12 reps" overflows the Row under that
-// substitute font even though the production fonts fit it. Reproduced in
-// isolation outside this file; fixing the header's robustness is outside
-// this fix round's scope, so the workaround lives in the test's own data.
+// A realistic prescription: the header's own regression coverage needs the
+// long form ("3 sets × 8-12 reps") on screen, not the short one a workaround
+// would substitute to dodge the overflow it is supposed to catch.
 PlanExercise _exercise({Coaching? coaching}) => PlanExercise(
   planExerciseId: 1,
   exerciseId: 1,
   name: 'Leg press',
   muscleGroup: 'quads',
   orderNo: 1,
-  targetSets: 1,
-  targetReps: '',
+  targetSets: 3,
+  targetReps: '8-12',
   coaching: coaching,
 );
 
@@ -93,6 +87,9 @@ void main() {
 
     expect(find.byKey(const Key('coach.panel')), findsOneWidget);
     expect(find.text('AI coaching for your knee'), findsOneWidget);
+    // The header's own regression: a realistic prescription ("3 sets ×
+    // 8-12 reps") must not overflow the Row on a narrow phone.
+    expect(tester.takeException(), isNull);
   });
 
   testWidgets(

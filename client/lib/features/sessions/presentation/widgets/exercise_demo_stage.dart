@@ -101,13 +101,21 @@ class ExerciseDemoStage extends ConsumerWidget {
             // fsEyebrow(t).
             Text(positionLabel, style: fsEyebrow(t)),
             const Spacer(),
-            Text(
-              exercise.prescription,
-              style: TextStyle(
-                fontFamily: fsMonoFamily,
-                fontSize: 13,
-                fontWeight: FontWeight.w700,
-                color: t.text,
+            // A long prescription ("3 sets × 8-12 reps") plus a long position
+            // label ("Exercise 12 / 12") can out-measure a narrow phone's
+            // width; without this the Row overflows instead of truncating.
+            Flexible(
+              child: Text(
+                exercise.prescription,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                textAlign: TextAlign.right,
+                style: TextStyle(
+                  fontFamily: fsMonoFamily,
+                  fontSize: 13,
+                  fontWeight: FontWeight.w700,
+                  color: t.text,
+                ),
               ),
             ),
           ],
