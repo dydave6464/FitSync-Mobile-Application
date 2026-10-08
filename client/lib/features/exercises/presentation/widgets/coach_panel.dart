@@ -62,7 +62,7 @@ class CoachPanel extends StatelessWidget {
             key: const Key('coach.freeLimit'),
             message:
                 "You've used today's free AI coaching. Here are the "
-                'standard steps. Pro gives AI coaching on every exercise.',
+                'standard steps. Pro has no daily limit.',
             steps: c,
           );
         }

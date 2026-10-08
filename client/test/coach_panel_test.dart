@@ -169,7 +169,7 @@ void main() {
     expect(
       find.text(
         "You've used today's free AI coaching. Here are the standard steps. "
-        'Pro gives AI coaching on every exercise.',
+        'Pro has no daily limit.',
       ),
       findsOneWidget,
     );
