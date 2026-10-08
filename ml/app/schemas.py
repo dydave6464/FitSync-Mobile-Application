@@ -11,7 +11,7 @@ See the design, section 4.
 trainingLocation arrives and orders the candidates (catalogue.LOCATION_FIRST).
 """
 import math
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Optional
 
 from pydantic import BaseModel, Field, field_validator
 
@@ -112,17 +112,6 @@ class InjuryRiskResponse(BaseModel):
     riskLevel: str
     trainingLoadScore: float
 
-
-# Target exclusion: the muscle groups a reported region rules out directly.
-# This is the first of the two injury mechanisms; the second is the
-# contraindication table, applied in SQL. See the design, section 6.5(a).
-INJURY_MUSCLE_GROUPS: Dict[str, Tuple[str, ...]] = {
-    "upper_body": ("delts", "pectorals", "triceps", "biceps", "forearms",
-                   "lats", "upper back", "traps"),
-    "back_core": ("spine", "abs", "upper back", "traps", "levator scapulae"),
-    "lower_body": ("quads", "hamstrings", "glutes", "calves",
-                   "adductors", "abductors"),
-}
 
 # Worded as the app's goal screen words them, so a plan reads the way the
 # user chose it. gain_strength is a legacy key the database can no longer

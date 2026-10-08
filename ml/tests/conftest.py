@@ -117,6 +117,11 @@ def catalogue(engine):
         # This is what makes Pull reachable on body weight alone, matching
         # Push and Legs. traps because no existing test asserts against it.
         ("fixture inverted row", "traps", "back", "body weight"),
+        # A knee-safe leg exercise. Glutes is in the Legs pool, so a Knee injury
+        # (which contraindicates only `fixture squat`) still leaves Legs
+        # fillable under Fix 2. Contraindicated for Lower back below, so Knee +
+        # Lower back together empty Legs: the one unfillable case left.
+        ("fixture glute bridge", "glutes", "upper legs", "body weight"),
     ]
     # (exercise name, required curated equipment name)
     requirements = [
@@ -124,7 +129,10 @@ def catalogue(engine):
         ("fixture dumbbell bench press", "bench"),
     ]
     # (exercise name, injury region name)
-    contraindications = [("fixture squat", "Knee")]
+    contraindications = [
+        ("fixture squat", "Knee"),
+        ("fixture glute bridge", "Lower back"),
+    ]
 
     # (exercise name, category). `fixture push-up` is deliberately absent: it
     # is the uncategorised row that proves the COALESCE path still offers an
