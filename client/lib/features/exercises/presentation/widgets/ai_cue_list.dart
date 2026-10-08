@@ -41,7 +41,7 @@ class AiCueList extends StatelessWidget {
                 ),
               ),
             ),
-            if (cues.injuryName != null) FsTag(cues.injuryName!),
+            if (cues.isAi && cues.injuryName != null) FsTag(cues.injuryName!),
           ],
         ),
         const SizedBox(height: 10),

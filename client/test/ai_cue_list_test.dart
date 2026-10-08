@@ -31,6 +31,16 @@ const _catalogue = ExerciseCues(
   cues: [Cue(title: 'Brace before you press.')],
 );
 
+/// A fallback carrying the injury the server flagged the exercise for --
+/// `injury` is set whenever the exercise is flagged, including on a
+/// fallback, per the cue-gate contract. The pill names what wrote the cues,
+/// and the catalogue's own seeded steps did not.
+const _catalogueFallbackForInjury = ExerciseCues(
+  source: 'catalogue',
+  injuryName: 'Shoulder',
+  cues: [Cue(title: 'Brace before you press.')],
+);
+
 void main() {
   group('the model', () {
     test('reads the endpoint envelope', () {
@@ -100,6 +110,20 @@ void main() {
     expect(find.text('AI coaching cues'), findsNothing);
     expect(find.text('Brace before you press.'), findsOneWidget);
   });
+
+  // The pill claims AI wrote these cues; a fallback did not, so it must not
+  // show one even while the flagged injury rides along on the response.
+  testWidgets(
+    'a catalogue fallback for an injury shows no pill',
+    (tester) async {
+      await tester.pumpWidget(
+        _host(const AiCueList(cues: _catalogueFallbackForInjury)),
+      );
+
+      expect(find.text('How to perform'), findsOneWidget);
+      expect(find.text('Shoulder'), findsNothing);
+    },
+  );
 
   testWidgets('a cue with no detail renders its title alone', (tester) async {
     await tester.pumpWidget(_host(const AiCueList(cues: _catalogue)));
