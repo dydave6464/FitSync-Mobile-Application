@@ -427,6 +427,24 @@ def test_an_injured_area_keeps_its_safe_exercises(client, catalogue):
     assert legs == ["fixture glute bridge"]
 
 
+def test_a_knee_injury_no_longer_empties_the_legs_day(client, catalogue):
+    # The §24 bug itself. lose_weight is a 45-minute session, so exercise_count
+    # is 6. With everything owned, the old region exclusion left exactly 6
+    # upper-body candidates, so its whole-plan relaxation never fired and the
+    # Legs day came back empty (503). Fix 2 keeps the knee-safe glute bridge.
+    eq, inj = catalogue["equipment"], catalogue["injuries"]
+    plan = post_plan(
+        client,
+        mainGoal="lose_weight",
+        equipment=[{"equipmentId": eq[n], "name": n} for n in EVERYTHING],
+        injuries=[{"injuryId": inj["Knee"], "regionGroup": "lower_body"}],
+        overrides={"splitStyle": "push_pull_legs"},
+    )
+    legs = [e["name"] for e in plan["exercises"] if e["dayNo"] == 3]
+    assert legs == ["fixture glute bridge"]
+    assert "fixture squat" not in [e["name"] for e in plan["exercises"]]
+
+
 def test_a_full_body_plan_is_named_exactly_what_it_always_was(client):
     # The name was hardcoded "Full Body — {goal}" before splits could differ.
     # Onboarding still sends no overrides, so this is what every first plan
