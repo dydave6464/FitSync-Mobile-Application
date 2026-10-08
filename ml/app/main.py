@@ -132,6 +132,24 @@ def create_app(settings: Settings) -> FastAPI:
         owned = list(set(selected) | set(_body_weight_ids(engine())))
 
         injury_ids = [i.injuryId for i in profile.injuries]
+        if injury_ids and not _safety_data_loaded(engine()):
+            # An empty table reads identically to "nothing is contraindicated"
+            # -- every exercise would look safe for every injury, which is the
+            # one failure mode this service must never return 200 for. Refuse
+            # rather than silently generate an unsafe plan.
+            logger.error(
+                "generate-plan called with injuries %s but "
+                "exercise_contraindications has no rows -- has seed:safety run?",
+                injury_ids,
+            )
+            raise HTTPException(
+                status_code=503,
+                detail=(
+                    "Injury safety data is not loaded: run "
+                    "`npm run seed:safety` in server/ before generating "
+                    "plans for injured users."
+                ),
+            )
         # An injury removes only the exercises the contraindication table rules
         # out for it (catalogue._INJURY). It used to remove every muscle group
         # of its body area too, which emptied whole split days: a knee took
@@ -232,6 +250,22 @@ def create_app(settings: Settings) -> FastAPI:
         return estimate_injury_risk(payload)
 
     return app
+
+
+def _safety_data_loaded(engine_obj) -> bool:
+    """Whether `exercise_contraindications` has been seeded at all.
+
+    One cheap existence check, not a per-injury lookup: the guard this backs
+    only needs to know the table is not simply empty (seed:safety never run),
+    which would otherwise let every exercise look safe for every injury.
+    """
+    from sqlalchemy import text
+
+    with engine_obj.connect() as conn:
+        row = conn.execute(
+            text("SELECT 1 FROM exercise_contraindications LIMIT 1")
+        ).fetchone()
+    return row is not None
 
 
 def _body_weight_ids(engine_obj):

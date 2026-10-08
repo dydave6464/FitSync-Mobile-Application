@@ -132,12 +132,16 @@ def test_no_equipment_is_treated_as_body_weight_not_as_no_filter(client, catalog
 def test_an_empty_session_fails_loudly_rather_than_returning_an_empty_plan(
     client, catalogue
 ):
-    # Owning only 'bench' -- a curated chip with no exercises tagged to it -- and
-    # nothing else would once have been an empty plan. Body weight is always
-    # unioned in now, so force the empty case with an equipment id that exists
-    # but that no exercise resolves to, and no body-weight row in this fixture's
-    # world reachable... instead, exclude every muscle group the fixture offers
-    # AND every contraindication, leaving nothing selectable.
+    # Owning only 'bench' -- a curated chip with no exercises tagged to it --
+    # would once have been an empty plan on its own. Body weight is always
+    # unioned in now, so this leans on contraindications instead: Knee removes
+    # fixture squat and Lower back removes fixture glute bridge, the only two
+    # rows this fixture ties to either injury. Equipment and contraindications
+    # are the whole story now -- nothing is excluded by region or body area --
+    # so the fixture's other body-weight rows (push-up, quad stretch, inverted
+    # row) can still fill a day. Hence the loose assertion below: this profile
+    # no longer reliably forces the empty case, only proves a 200 never
+    # carries one if the pool happens to come back bare.
     eq, inj = catalogue["equipment"], catalogue["injuries"]
     response = client.post("/generate-plan", json={
         "mainGoal": "build_muscle",
@@ -150,6 +154,58 @@ def test_an_empty_session_fails_loudly_rather_than_returning_an_empty_plan(
     assert response.status_code in (200, 503)
     if response.status_code == 200:
         assert response.json()["exercises"], "a 200 must never carry an empty plan"
+
+
+def test_an_injured_profile_refuses_when_safety_data_is_missing(client, catalogue, engine):
+    # An empty exercise_contraindications table reads identically to "nothing
+    # is contraindicated" -- seed:safety not having run must not silently
+    # make every exercise look safe for every injury. Delete the fixture's
+    # own contraindication rows (and only those) to simulate an unseeded
+    # table, then restore them so later tests see the fixture they expect.
+    from sqlalchemy import bindparam, text
+
+    eq, inj = catalogue["equipment"], catalogue["injuries"]
+    exercise_ids = tuple(catalogue["exercises"].values())
+    select_stmt = text(
+        "SELECT exercise_id, injury_id, pattern FROM exercise_contraindications "
+        "WHERE exercise_id IN :ids"
+    ).bindparams(bindparam("ids", expanding=True))
+    delete_stmt = text(
+        "DELETE FROM exercise_contraindications WHERE exercise_id IN :ids"
+    ).bindparams(bindparam("ids", expanding=True))
+
+    with engine.begin() as conn:
+        saved_rows = conn.execute(select_stmt, {"ids": exercise_ids}).fetchall()
+        conn.execute(delete_stmt, {"ids": exercise_ids})
+
+    try:
+        response = client.post("/generate-plan", json={
+            "mainGoal": "build_muscle",
+            "equipment": [{"equipmentId": eq["body weight"], "name": "Bodyweight"}],
+            "injuries": [{"injuryId": inj["Knee"], "regionGroup": "lower_body"}],
+        })
+        assert response.status_code == 503, response.text
+        assert "seed:safety" in response.json()["detail"]
+
+        # An uninjured profile never consults the table, so it still gets a
+        # plan even while it is empty.
+        plan = post_plan(
+            client,
+            mainGoal="build_muscle",
+            equipment=[{"equipmentId": eq["body weight"], "name": "Bodyweight"}],
+            injuries=[],
+        )
+        assert plan["exercises"]
+    finally:
+        with engine.begin() as conn:
+            for exercise_id, injury_id, pattern in saved_rows:
+                conn.execute(
+                    text(
+                        "INSERT INTO exercise_contraindications "
+                        "(exercise_id, injury_id, pattern) VALUES (:x, :i, :p)"
+                    ),
+                    {"x": exercise_id, "i": injury_id, "p": pattern},
+                )
 
 
 def test_a_models_ordering_reaches_the_response(client, catalogue):
