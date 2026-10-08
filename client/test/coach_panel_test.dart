@@ -82,31 +82,36 @@ void main() {
     expect(inPanel('Lower slowly'), findsOneWidget);
   });
 
-  testWidgets('the cards slide in, and appear at once with reduce motion', (
+  Finder firstCardFade() => find
+      .ancestor(
+        of: find.text('Keep the front knee over the toes'),
+        matching: find.byType(FadeTransition),
+      )
+      .first;
+
+  testWidgets('the cards slide in across time', (tester) async {
+    await _pump(tester, const AsyncValue.data(_ai));
+
+    // Immediately after the first frame the controller has not advanced at
+    // all, so the opacity would trivially read 0 and prove nothing about an
+    // animation in progress. Pumping partway through it is what shows the
+    // card genuinely mid-transition rather than merely not-yet-started.
+    await tester.pump(const Duration(milliseconds: 100));
+    final mid = tester.widget<FadeTransition>(firstCardFade());
+    expect(mid.opacity.value, greaterThan(0.0), reason: 'animating in');
+    expect(mid.opacity.value, lessThan(1.0), reason: 'animating in');
+
+    await tester.pumpAndSettle();
+    final settled = tester.widget<FadeTransition>(firstCardFade());
+    expect(settled.opacity.value, 1.0);
+  });
+
+  testWidgets('reduce motion shows the cards at once, with no animation', (
     tester,
   ) async {
-    await _pump(tester, const AsyncValue.data(_ai));
-    final first = tester.widget<FadeTransition>(
-      find
-          .ancestor(
-            of: find.text('Keep the front knee over the toes'),
-            matching: find.byType(FadeTransition),
-          )
-          .first,
-    );
-    expect(first.opacity.value, lessThan(1.0), reason: 'animating in');
+    await _pump(tester, const AsyncValue.data(_ai), reduceMotion: true);
 
-    await _pump(tester, const AsyncValue.data(_ai), reduceMotion: true);
-    await tester.pumpWidget(const SizedBox()); // reset the state
-    await _pump(tester, const AsyncValue.data(_ai), reduceMotion: true);
-    final still = tester.widget<FadeTransition>(
-      find
-          .ancestor(
-            of: find.text('Keep the front knee over the toes'),
-            matching: find.byType(FadeTransition),
-          )
-          .first,
-    );
+    final still = tester.widget<FadeTransition>(firstCardFade());
     expect(still.opacity.value, 1.0);
   });
 
