@@ -54,6 +54,7 @@ test('GET /exercises/:id/cues', async (t) => {
 
     assert.equal(res.body.data.source, 'catalogue');
     assert.equal(res.body.data.injury, null);
+    assert.equal(res.body.data.notice, null);
     assert.equal(res.body.data.cues.length, 1);
     assert.equal(res.body.data.cues[0].title, 'Brace before you press.');
     assert.equal(res.body.data.cues[0].detail, null);
