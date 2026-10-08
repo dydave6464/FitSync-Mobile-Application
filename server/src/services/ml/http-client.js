@@ -11,11 +11,15 @@ function unfillableDayError(detail) {
   const days = [...String(detail).matchAll(/day \d+ \(([^)]+)\)/g)].map((m) => m[1]);
   if (days.length === 0) return null;
   const which = days.length === 1 ? `${days[0]} day` : `${days.join(' and ')} days`;
+  // Full body has no other day to suggest -- "Try Full body" would be
+  // telling the user to retry the very split that just came back empty.
+  const suggestion = days.length === 1 && days[0] === 'Full body'
+    ? 'Try adding equipment.'
+    : 'Try Full body, or add equipment.';
   return new AppError(
     422,
     'UNFILLABLE_PLAN_DAY',
-    `Nothing suitable for the ${which} with your injuries and equipment. `
-      + 'Try Full body, or add equipment.',
+    `Nothing suitable for the ${which} with your injuries and equipment. ${suggestion}`,
   );
 }
 
