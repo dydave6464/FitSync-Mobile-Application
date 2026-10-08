@@ -63,6 +63,34 @@ test('exercise catalogue seed', async (t) => {
     assert.deepEqual(pending.map((r) => r.source_id), ['0005']);
   });
 
+  await t.test('an overridden name reaches the database, muscle group unchanged', async () => {
+    await reset();
+    const { NAME_OVERRIDES } = require('../src/db/seeds/normalize');
+    const [sourceId, corrected] = [...NAME_OVERRIDES.entries()][0];
+
+    const m = manifest();
+    m.exercises = [{
+      ...m.exercises[0],
+      source_id: sourceId,
+      name: 'quads',
+      muscle_group: 'quads',
+    }];
+    await seedExercises(testDbConfig(), m);
+
+    const [rows] = await pool.query(
+      'SELECT name, muscle_group FROM exercises WHERE source_id = ?', [sourceId],
+    );
+    assert.equal(rows[0].name, corrected);
+    assert.equal(rows[0].muscle_group, 'quads', 'a rename never moves its muscle group');
+
+    // A re-seed with the upstream name still lands on the corrected one.
+    await seedExercises(testDbConfig(), m);
+    const [again] = await pool.query(
+      'SELECT name FROM exercises WHERE source_id = ?', [sourceId],
+    );
+    assert.equal(again[0].name, corrected);
+  });
+
   await t.test('an overridden equipment tag reaches the database corrected', async () => {
     // A wrong primary tag is not cosmetic: the candidate query filters on it,
     // and the plan generator prefers exercises whose equipment the user chose

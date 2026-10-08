@@ -1,6 +1,6 @@
 'use strict';
 const mysql = require('mysql2/promise');
-const { correctEquipment } = require('./seeds/normalize');
+const { correctEquipment, correctName } = require('./seeds/normalize');
 
 // MySQL 8.0.46: the row-alias form. VALUES() is deprecated since 8.0.20.
 const UPSERT_EQUIPMENT = `
@@ -51,9 +51,9 @@ async function seedExercises(dbConfig, manifest, { logger = null } = {}) {
     // Corrections first, before anything reads an equipment tag. Applying them
     // only at the per-exercise lookup below would still upsert an equipment row
     // for the wrong tag, leaving an orphan nothing references. See
-    // EQUIPMENT_OVERRIDES in seeds/normalize.js.
+    // EQUIPMENT_OVERRIDES and NAME_OVERRIDES in seeds/normalize.js.
     const exercises = manifest.exercises.map(
-      (e) => ({ ...e, equipment: correctEquipment(e) }),
+      (e) => ({ ...e, name: correctName(e), equipment: correctEquipment(e) }),
     );
 
     // Equipment first: exercises.equipment_id is ON DELETE RESTRICT, so the

@@ -110,6 +110,24 @@ test('a miscategorised upstream equipment tag is corrected on the way in', () =>
   );
 });
 
+test('an upstream name that does not say what the exercise is gets corrected', () => {
+  const { NAME_OVERRIDES, correctName } = require('../src/db/seeds/normalize');
+
+  // Source 3533 is a rear-foot-elevated split squat (back foot on a bench),
+  // but upstream names it after its target muscle, so the app's title read
+  // just "quads".
+  assert.equal(NAME_OVERRIDES.get('3533'), 'bulgarian split squat');
+  assert.equal(
+    correctName({ source_id: '3533', name: 'quads' }),
+    'bulgarian split squat',
+  );
+});
+
+test('an exercise with no name override keeps its upstream name', () => {
+  const { correctName } = require('../src/db/seeds/normalize');
+  assert.equal(correctName({ source_id: '2368', name: 'split squats' }), 'split squats');
+});
+
 test('an exercise with no override keeps its upstream equipment', () => {
   const { correctEquipment } = require('../src/db/seeds/normalize');
   assert.equal(
