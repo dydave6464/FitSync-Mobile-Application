@@ -31,6 +31,11 @@ class CoachPanel extends StatelessWidget {
     final injury = injuryName.toLowerCase();
 
     return cues.when(
+      // Retry invalidates the provider, which Riverpod reports as a refresh,
+      // not a reload -- when's default skips `loading` for a refresh and
+      // keeps the stale fallback on screen instead. Showing it is the point
+      // of "Try again": it is the only sign a second request is in flight.
+      skipLoadingOnRefresh: false,
       loading: () => _Frame(
         key: const Key('coach.loading'),
         tinted: true,

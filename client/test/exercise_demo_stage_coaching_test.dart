@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -117,24 +119,33 @@ void main() {
   );
 
   testWidgets(
-    'an unavailable notice shows coach.unavailable, and retry refetches',
+    'an unavailable notice shows coach.unavailable, and retry shows '
+    'loading before the next answer lands',
     (tester) async {
       _usePortraitSurface(tester);
       var fetches = 0;
+      // The retry's answer is held open on a Completer rather than resolved
+      // immediately, so the test can observe the loading frame in between --
+      // an immediately-resolving future would settle before a pump could
+      // ever catch it on screen.
+      final retryAnswer = Completer<ExerciseCues>();
       await tester.pumpWidget(
         ProviderScope(
           overrides: [
             exerciseDetailProvider.overrideWith((ref, id) async => _detail),
             exerciseCuesProvider.overrideWith((ref, id) async {
               fetches++;
-              return ExerciseCues.fromJson({
-                'source': 'catalogue',
-                'injury': {'injuryId': 3, 'name': 'Knee'},
-                'notice': 'unavailable',
-                'cues': [
-                  {'title': 'Stand tall.'},
-                ],
-              });
+              if (fetches == 1) {
+                return ExerciseCues.fromJson({
+                  'source': 'catalogue',
+                  'injury': {'injuryId': 3, 'name': 'Knee'},
+                  'notice': 'unavailable',
+                  'cues': [
+                    {'title': 'Stand tall.'},
+                  ],
+                });
+              }
+              return retryAnswer.future;
             }),
           ],
           child: MaterialApp(
@@ -156,13 +167,26 @@ void main() {
 
       await tester.tap(find.byKey(const Key('coach.retry')));
       // The retry invalidates exerciseCuesProvider for this exercise id,
-      // which puts the panel back into its loading state -- the repeating
-      // shimmer never settles, so pump explicit frames rather than
-      // pumpAndSettle.
+      // which puts the panel back into its loading state rather than
+      // leaving the stale "unavailable" fallback on screen -- the repeating
+      // shimmer never settles, so pump an explicit frame rather than
+      // pumpAndSettle while it is up.
       await tester.pump();
-      await tester.pump(const Duration(milliseconds: 100));
 
+      expect(find.byKey(const Key('coach.loading')), findsOneWidget);
       expect(fetches, 2);
+
+      retryAnswer.complete(
+        const ExerciseCues(
+          source: 'ai',
+          injuryName: 'Knee',
+          cues: [Cue(title: 'Keep the knee soft.')],
+        ),
+      );
+      await tester.pump();
+      await tester.pumpAndSettle();
+
+      expect(find.byKey(const Key('coach.panel')), findsOneWidget);
     },
   );
 }
