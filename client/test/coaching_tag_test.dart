@@ -72,5 +72,13 @@ void main() {
     );
     expect(find.byKey(const Key('coaching.jump.7')), findsOneWidget);
     expect(find.byKey(const Key('coaching.jump.8')), findsNothing);
+
+    // The tag adds a second line under the name, which must not push the
+    // index number down with it -- the number has to stay level with the
+    // name's own top, exactly as it is for a row with no tag.
+    expect(
+      tester.getTopLeft(find.text('1')).dy,
+      tester.getTopLeft(find.text('glute bridge')).dy,
+    );
   });
 }

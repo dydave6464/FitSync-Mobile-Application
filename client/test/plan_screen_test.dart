@@ -236,6 +236,7 @@ void main() {
 
     expect(find.byKey(const Key('coaching.tag.601')), findsOneWidget);
     expect(find.text('Knee · AI coached'), findsOneWidget);
+    expect(find.byKey(const Key('coaching.tag.602')), findsNothing);
   });
 
   testWidgets('tapping an exercise opens its detail screen', (tester) async {
