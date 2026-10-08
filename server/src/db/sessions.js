@@ -1,5 +1,6 @@
 'use strict';
 const AppError = require('../lib/app-error');
+const { flagsFor, toCoaching } = require('./cue-gate');
 
 /// `session_date` is a DATE, which mysql2 hands back as a JS Date in local
 /// time. `toISOString()` would convert to UTC first and can therefore report
@@ -76,7 +77,7 @@ async function loadSets(pool, sessionId) {
 }
 
 /// A session's own chosen exercises, empty for a plan-backed session.
-async function loadSessionExercises(pool, sessionId) {
+async function loadSessionExercises(pool, userId, sessionId) {
   // Joined rather than id-only: the logger draws each exercise's name and its
   // artwork, so a list of bare ids leaves it rendering blank rows for a
   // session the user just picked by name.
@@ -107,6 +108,7 @@ async function loadSessionExercises(pool, sessionId) {
       ORDER BY se.order_no`,
     [sessionId],
   );
+  const flags = await flagsFor(pool, userId, rows.map((r) => r.exercise_id));
   return rows.map((row) => ({
     sessionExerciseId: row.session_exercise_id,
     exerciseId: row.exercise_id,
@@ -117,6 +119,7 @@ async function loadSessionExercises(pool, sessionId) {
     muscleGroup: row.muscle_group,
     thumbnailUrl: row.thumbnail_url,
     equipment: row.equipment ?? null,
+    coaching: toCoaching(flags.get(row.exercise_id)),
   }));
 }
 
@@ -133,7 +136,7 @@ async function getSessionById(pool, userId, sessionId) {
   return toSession(
     rows[0],
     await loadSets(pool, rows[0].session_id),
-    await loadSessionExercises(pool, rows[0].session_id),
+    await loadSessionExercises(pool, userId, rows[0].session_id),
   );
 }
 
@@ -149,7 +152,7 @@ async function getActiveSession(pool, userId) {
   return toSession(
     rows[0],
     await loadSets(pool, rows[0].session_id),
-    await loadSessionExercises(pool, rows[0].session_id),
+    await loadSessionExercises(pool, userId, rows[0].session_id),
   );
 }
 

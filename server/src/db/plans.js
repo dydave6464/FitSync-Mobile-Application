@@ -1,5 +1,6 @@
 'use strict';
 const AppError = require('../lib/app-error');
+const { flagsFor, toCoaching } = require('./cue-gate');
 
 // Day names are derived from the split style rather than stored, because
 // nothing lets anyone type one: generated and custom plans both PICK a split,
@@ -161,6 +162,7 @@ async function getActivePlan(pool, userId) {
        LEFT JOIN equipment parent ON parent.equipment_id = eq.parent_equipment_id
       WHERE pe.plan_id = ? ORDER BY pe.day_no, pe.order_no`, [p.plan_id],
   );
+  const flags = await flagsFor(pool, userId, exercises.map((e) => e.exercise_id));
 
   return {
     planId: p.plan_id,
@@ -198,6 +200,9 @@ async function getActivePlan(pool, userId) {
       targetSets: e.target_sets,
       targetReps: e.target_reps,
       equipment: e.equipment,
+      // Exactly the exercises that get AI cues (cue-gate.js), computed on
+      // read so a change to injuries re-tags an existing plan at once.
+      coaching: toCoaching(flags.get(e.exercise_id)),
     })),
   };
 }
