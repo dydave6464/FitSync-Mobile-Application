@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../core/theme.dart';
 import '../../../core/widgets/fs_kit.dart';
 import '../../exercises/presentation/exercise_thumb.dart';
+import '../../exercises/presentation/widgets/coaching_tag.dart';
 import '../../exercises/presentation/exercise_detail_screen.dart';
 import '../../exercises/presentation/exercise_list_screen.dart'
     show describeError;
@@ -288,6 +289,16 @@ class _PlanExerciseCard extends StatelessWidget {
                     color: t.text3,
                   ),
                 ),
+                if (exercise.coaching != null) ...[
+                  const SizedBox(height: 6),
+                  Align(
+                    alignment: Alignment.centerLeft,
+                    child: CoachingTag(
+                      key: Key('coaching.tag.${exercise.planExerciseId}'),
+                      injuryName: exercise.coaching!.injuryName,
+                    ),
+                  ),
+                ],
               ],
             ),
           ),

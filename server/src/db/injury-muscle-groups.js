@@ -1,13 +1,13 @@
 'use strict';
 
-// A port of INJURY_MUSCLE_GROUPS in `ml/app/schemas.py`. The plan generator
-// applies it in Python to EXCLUDE exercises; anything here applies it to decide
-// whether a movement loads a region the user has reported injured — the
-// opposite decision from the same fact.
+// The server's own region map for the cue gate (`./cue-gate.js`): which
+// plan and session exercises get AI cues and the "AI coached" tag. An
+// exercise with no direct contraindication still flags when it loads a
+// muscle group belonging to a region the user reported injured.
 //
-// Duplicated rather than fetched: the ML service is optional (ML_MODE=stub is
-// the default) and this must work when it is not running at all. Keep the two
-// in sync — a region added there and not here goes unnoticed on this side.
+// The plan generator (`ml/app/main.py`) no longer excludes by region at
+// all -- it removes only what `exercise_contraindications` names for an
+// injury -- so there is nothing on that side to keep this in sync with.
 const INJURY_MUSCLE_GROUPS = {
   upper_body: ['delts', 'pectorals', 'triceps', 'biceps', 'forearms', 'lats', 'upper back', 'traps'],
   back_core: ['spine', 'abs', 'upper back', 'traps', 'levator scapulae'],

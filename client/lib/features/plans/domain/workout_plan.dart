@@ -1,3 +1,17 @@
+/// Which injury an exercise's AI cues are written for, as the server's cue
+/// gate decides it. Null for an exercise that gets the standard steps.
+typedef Coaching = ({int injuryId, String injuryName});
+
+/// Reads a `coaching` field. Anything malformed reads as none: a bad payload
+/// must cost the tag, never the plan.
+Coaching? parseCoaching(Object? json) {
+  if (json is! Map<String, dynamic>) return null;
+  final id = json['injuryId'];
+  final name = json['injuryName'];
+  if (id is! int || name is! String || name.isEmpty) return null;
+  return (injuryId: id, injuryName: name);
+}
+
 /// One prescribed exercise within a plan.
 class PlanExercise {
   const PlanExercise({
@@ -11,6 +25,7 @@ class PlanExercise {
     this.thumbnailUrl,
     this.equipment,
     this.dayNo = 1,
+    this.coaching,
   });
 
   /// Identifies this row within the plan. Swapping addresses this, not
@@ -39,6 +54,10 @@ class PlanExercise {
   /// The curated equipment name the server resolved for this exercise, or
   /// null — `exercises.equipment_id` is nullable.
   final String? equipment;
+
+  /// The injury this exercise is AI-coached for, or null. Drives the
+  /// "✦ Knee · AI coached" tag and the coach panel.
+  final Coaching? coaching;
 
   /// Whether this exercise is done against the body alone, and so has no
   /// external load to type.
@@ -89,6 +108,7 @@ class PlanExercise {
     thumbnailUrl: json['thumbnailUrl'] as String?,
     equipment: json['equipment'] as String?,
     dayNo: json['dayNo'] as int? ?? 1,
+    coaching: parseCoaching(json['coaching']),
   );
 }
 

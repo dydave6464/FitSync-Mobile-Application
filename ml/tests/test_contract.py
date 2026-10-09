@@ -132,12 +132,16 @@ def test_no_equipment_is_treated_as_body_weight_not_as_no_filter(client, catalog
 def test_an_empty_session_fails_loudly_rather_than_returning_an_empty_plan(
     client, catalogue
 ):
-    # Owning only 'bench' -- a curated chip with no exercises tagged to it -- and
-    # nothing else would once have been an empty plan. Body weight is always
-    # unioned in now, so force the empty case with an equipment id that exists
-    # but that no exercise resolves to, and no body-weight row in this fixture's
-    # world reachable... instead, exclude every muscle group the fixture offers
-    # AND every contraindication, leaving nothing selectable.
+    # Owning only 'bench' -- a curated chip with no exercises tagged to it --
+    # would once have been an empty plan on its own. Body weight is always
+    # unioned in now, so this leans on contraindications instead: Knee removes
+    # fixture squat and Lower back removes fixture glute bridge, the only two
+    # rows this fixture ties to either injury. Equipment and contraindications
+    # are the whole story now -- nothing is excluded by region or body area --
+    # so the fixture's other body-weight rows (push-up, quad stretch, inverted
+    # row) can still fill a day. Hence the loose assertion below: this profile
+    # no longer reliably forces the empty case, only proves a 200 never
+    # carries one if the pool happens to come back bare.
     eq, inj = catalogue["equipment"], catalogue["injuries"]
     response = client.post("/generate-plan", json={
         "mainGoal": "build_muscle",
@@ -150,6 +154,58 @@ def test_an_empty_session_fails_loudly_rather_than_returning_an_empty_plan(
     assert response.status_code in (200, 503)
     if response.status_code == 200:
         assert response.json()["exercises"], "a 200 must never carry an empty plan"
+
+
+def test_an_injured_profile_refuses_when_safety_data_is_missing(client, catalogue, engine):
+    # An empty exercise_contraindications table reads identically to "nothing
+    # is contraindicated" -- seed:safety not having run must not silently
+    # make every exercise look safe for every injury. Delete the fixture's
+    # own contraindication rows (and only those) to simulate an unseeded
+    # table, then restore them so later tests see the fixture they expect.
+    from sqlalchemy import bindparam, text
+
+    eq, inj = catalogue["equipment"], catalogue["injuries"]
+    exercise_ids = tuple(catalogue["exercises"].values())
+    select_stmt = text(
+        "SELECT exercise_id, injury_id, pattern FROM exercise_contraindications "
+        "WHERE exercise_id IN :ids"
+    ).bindparams(bindparam("ids", expanding=True))
+    delete_stmt = text(
+        "DELETE FROM exercise_contraindications WHERE exercise_id IN :ids"
+    ).bindparams(bindparam("ids", expanding=True))
+
+    with engine.begin() as conn:
+        saved_rows = conn.execute(select_stmt, {"ids": exercise_ids}).fetchall()
+        conn.execute(delete_stmt, {"ids": exercise_ids})
+
+    try:
+        response = client.post("/generate-plan", json={
+            "mainGoal": "build_muscle",
+            "equipment": [{"equipmentId": eq["body weight"], "name": "Bodyweight"}],
+            "injuries": [{"injuryId": inj["Knee"], "regionGroup": "lower_body"}],
+        })
+        assert response.status_code == 503, response.text
+        assert "seed:safety" in response.json()["detail"]
+
+        # An uninjured profile never consults the table, so it still gets a
+        # plan even while it is empty.
+        plan = post_plan(
+            client,
+            mainGoal="build_muscle",
+            equipment=[{"equipmentId": eq["body weight"], "name": "Bodyweight"}],
+            injuries=[],
+        )
+        assert plan["exercises"]
+    finally:
+        with engine.begin() as conn:
+            for exercise_id, injury_id, pattern in saved_rows:
+                conn.execute(
+                    text(
+                        "INSERT INTO exercise_contraindications "
+                        "(exercise_id, injury_id, pattern) VALUES (:x, :i, :p)"
+                    ),
+                    {"x": exercise_id, "i": injury_id, "p": pattern},
+                )
 
 
 def test_a_models_ordering_reaches_the_response(client, catalogue):
@@ -354,43 +410,95 @@ def test_day_one_of_push_pull_legs_is_actually_push_muscles(client, engine):
 def test_a_split_whose_day_cannot_be_filled_is_refused(client, catalogue):
     """A hole in the rotation is not a shippable plan.
 
-    Section 4's pools are disjoint, so an injury that empties one group's
-    worth of them empties a whole training day while the rest of the split
-    fills normally. The 503 below used to fire only when EVERY day came back
-    empty, so this shipped a `push_pull_legs` plan with no Legs day at all --
-    and POST /sessions had already created the session row by the time the
-    logger discovered there was nothing to train.
-
-    The equipment list is deliberately everything the fixture offers. The
-    advisory relaxation in main.py compares the TOTAL candidate count against
-    `exercise_count`, which is a per-day number: the six upper-body candidates
-    this equipment reaches are exactly `exercise_count`, and owning one item
-    less drops the total below it, relaxes the exclusion away and refills Legs
-    -- which is the fixture being small, not the guard being wrong. Against
-    the real catalogue hundreds of legs candidates survive an `upper_body`
-    injury and the relaxation never triggers at all. `machines` rather than
-    `cable`: ownership reaches a child of what you own, not a parent, so the
-    cable row needs the parent chip.
+    Under Fix 2 an injury removes only its contraindicated exercises, so a day
+    empties only when those leave its pool bare. In this fixture the Legs pool
+    is `fixture squat` (contraindicated for Knee) and `fixture glute bridge`
+    (contraindicated for Lower back); `fixture quad stretch` is a stretch and
+    never eligible. Both injuries together leave Legs with nothing.
     """
     eq, inj = catalogue["equipment"], catalogue["injuries"]
     response = client.post("/generate-plan", json={
-        # 45 minutes, so exercise_count is 6 -- the smallest the table knows.
         "mainGoal": "lose_weight",
         "equipment": [
             {"equipmentId": eq[name], "name": name}
             for name in ("dumbbell", "machines", "bench", "pull-up bar")
         ],
-        "injuries": [{"injuryId": inj["Lower back"], "regionGroup": "lower_body"}],
+        "injuries": [
+            {"injuryId": inj["Knee"], "regionGroup": "lower_body"},
+            {"injuryId": inj["Lower back"], "regionGroup": "back_core"},
+        ],
         "overrides": {"splitStyle": "push_pull_legs"},
     })
 
     assert response.status_code == 503, response.text
     detail = response.json()["detail"]
-    # Named, not just counted: "nothing suitable" leaves a user with no move,
-    # while "nothing for the Legs day of this split" tells them to pick a
-    # different split.
     assert "Legs" in detail, detail
     assert "day 3" in detail, detail
+
+
+STRENGTH_SPLITS = ("full_body", "upper_lower", "push_pull_legs")
+EVERYTHING = ("dumbbell", "machines", "bench", "pull-up bar")
+
+
+@pytest.mark.parametrize("split", STRENGTH_SPLITS)
+@pytest.mark.parametrize("injury", ["Knee", "Lower back"])
+@pytest.mark.parametrize("kit", ["body weight only", "everything"])
+def test_one_injury_still_gets_a_plan_on_every_strength_split(
+    client, catalogue, split, injury, kit
+):
+    # The bug this replaces: an injury removed its whole body area, so a
+    # Legs-only day came back empty and the generator answered 503.
+    eq, inj = catalogue["equipment"], catalogue["injuries"]
+    equipment = (
+        [{"equipmentId": eq["body weight"], "name": "body weight"}]
+        if kit == "body weight only"
+        else [{"equipmentId": eq[n], "name": n} for n in EVERYTHING]
+    )
+    plan = post_plan(
+        client,
+        mainGoal="build_muscle",
+        equipment=equipment,
+        injuries=[{"injuryId": inj[injury], "regionGroup": "lower_body"}],
+        overrides={"splitStyle": split},
+    )
+    names = [e["name"] for e in plan["exercises"]]
+    assert names
+    contraindicated = {"Knee": "fixture squat", "Lower back": "fixture glute bridge"}
+    assert contraindicated[injury] not in names
+
+
+def test_an_injured_area_keeps_its_safe_exercises(client, catalogue):
+    # Fix 2: a knee injury used to remove every lower-body muscle group. Now it
+    # removes only what the contraindication table names for the knee, and the
+    # glute bridge stays in the Legs day (the server tags it for AI cues).
+    eq, inj = catalogue["equipment"], catalogue["injuries"]
+    plan = post_plan(
+        client,
+        mainGoal="build_muscle",
+        equipment=[{"equipmentId": eq["body weight"], "name": "body weight"}],
+        injuries=[{"injuryId": inj["Knee"], "regionGroup": "lower_body"}],
+        overrides={"splitStyle": "push_pull_legs"},
+    )
+    legs = [e["name"] for e in plan["exercises"] if e["dayNo"] == 3]
+    assert legs == ["fixture glute bridge"]
+
+
+def test_a_knee_injury_no_longer_empties_the_legs_day(client, catalogue):
+    # The §24 bug itself. lose_weight is a 45-minute session, so exercise_count
+    # is 6. With everything owned, the old region exclusion left exactly 6
+    # upper-body candidates, so its whole-plan relaxation never fired and the
+    # Legs day came back empty (503). Fix 2 keeps the knee-safe glute bridge.
+    eq, inj = catalogue["equipment"], catalogue["injuries"]
+    plan = post_plan(
+        client,
+        mainGoal="lose_weight",
+        equipment=[{"equipmentId": eq[n], "name": n} for n in EVERYTHING],
+        injuries=[{"injuryId": inj["Knee"], "regionGroup": "lower_body"}],
+        overrides={"splitStyle": "push_pull_legs"},
+    )
+    legs = [e["name"] for e in plan["exercises"] if e["dayNo"] == 3]
+    assert legs == ["fixture glute bridge"]
+    assert "fixture squat" not in [e["name"] for e in plan["exercises"]]
 
 
 def test_a_full_body_plan_is_named_exactly_what_it_always_was(client):

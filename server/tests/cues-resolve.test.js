@@ -81,6 +81,7 @@ test('resolving the cues for an exercise', async (t) => {
 
       assert.equal(result.source, 'catalogue');
       assert.equal(result.injury, null);
+      assert.equal(result.notice, null);
       assert.equal(result.cues.length, 1);
       assert.equal(result.cues[0].title, 'Brace before you press.');
       // One shape for the client either way; a catalogue cue has no second line.
@@ -163,6 +164,8 @@ test('resolving the cues for an exercise', async (t) => {
     const result = await resolveCues(pool, service, userId, exerciseId);
 
     assert.equal(result.source, 'catalogue');
+    assert.equal(result.injury.name, 'Shoulder');
+    assert.equal(result.notice, 'unavailable');
     assert.equal(result.cues[0].title, 'Brace before you press.');
     const [stored] = await pool.query('SELECT * FROM exercise_ai_cues');
     assert.equal(stored.length, 0);

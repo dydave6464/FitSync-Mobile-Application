@@ -20,7 +20,6 @@ from app.rules import parameters, selection
 from app.rules.splits import Split, label as split_label, resolve as resolve_split
 from app.schemas import (
     GOAL_LABELS,
-    INJURY_MUSCLE_GROUPS,
     InjuryRiskRequest,
     InjuryRiskResponse,
     PlanExercise,
@@ -133,33 +132,33 @@ def create_app(settings: Settings) -> FastAPI:
         owned = list(set(selected) | set(_body_weight_ids(engine())))
 
         injury_ids = [i.injuryId for i in profile.injuries]
-        excluded = []
-        for injury in profile.injuries:
-            excluded.extend(INJURY_MUSCLE_GROUPS.get(injury.regionGroup or "", ()))
-
-        candidates = _candidates(
-            engine(), owned, selected, injury_ids, sorted(set(excluded)),
-            profile.trainingLocation,
-        )
-
-        if excluded and len(candidates) < params.exercise_count:
-            # Target exclusion is advisory. The three region_group lists together
-            # name 17 of the catalogue's 18 muscle groups, so a user reporting one
-            # injury per group is left with nothing -- 64 of 128 such combinations
-            # returned no exercises at all. Section 6.5 argues at length that
-            # muscle_group cannot be trusted for inclusion; the same holds for
-            # exclusion. The contraindication table is the precise instrument and
-            # is never relaxed here -- only the coarse group map is.
-            relaxed = _candidates(
-                engine(), owned, selected, injury_ids, [], profile.trainingLocation
+        if injury_ids and not _safety_data_loaded(engine()):
+            # An empty table reads identically to "nothing is contraindicated"
+            # -- every exercise would look safe for every injury, which is the
+            # one failure mode this service must never return 200 for. Refuse
+            # rather than silently generate an unsafe plan.
+            logger.error(
+                "generate-plan called with injuries %s but "
+                "exercise_contraindications has no rows -- has seed:safety run?",
+                injury_ids,
             )
-            if len(relaxed) > len(candidates):
-                logger.warning(
-                    "target-muscle exclusion left %d candidates for %d injuries; "
-                    "relaxing to contraindications only (%d candidates)",
-                    len(candidates), len(profile.injuries), len(relaxed),
-                )
-                candidates = relaxed
+            raise HTTPException(
+                status_code=503,
+                detail=(
+                    "Injury safety data is not loaded: run "
+                    "`npm run seed:safety` in server/ before generating "
+                    "plans for injured users."
+                ),
+            )
+        # An injury removes only the exercises the contraindication table rules
+        # out for it (catalogue._INJURY). It used to remove every muscle group
+        # of its body area too, which emptied whole split days: a knee took
+        # every Legs exercise. The exercises it keeps now carry AI cues written
+        # for the injury (server/src/db/cue-gate.js), so the area is coached,
+        # not dropped.
+        candidates = _candidates(
+            engine(), owned, selected, injury_ids, [], profile.trainingLocation,
+        )
 
         ranked = app.state.ranker.rank(candidates)
 
@@ -210,9 +209,9 @@ def create_app(settings: Settings) -> FastAPI:
             # This subsumes the older every-day-empty case: every split has at
             # least one day, so a plan with no exercises at all always has an
             # empty day 1 and lands here. Every realistic profile has
-            # candidates -- even a body-weight-only user with a back injury has
-            # 89 across 10 muscle groups -- so that case still means something
-            # upstream is broken, most likely an unseeded catalogue.
+            # candidates; an empty day now means the contraindications for
+            # several injuries cleared a pool, or something upstream is
+            # broken, most likely an unseeded catalogue.
             #
             # Fail loudly: complete-onboarding generates before it marks the
             # user complete, so a 503 leaves them able to retry rather than
@@ -251,6 +250,22 @@ def create_app(settings: Settings) -> FastAPI:
         return estimate_injury_risk(payload)
 
     return app
+
+
+def _safety_data_loaded(engine_obj) -> bool:
+    """Whether `exercise_contraindications` has been seeded at all.
+
+    One cheap existence check, not a per-injury lookup: the guard this backs
+    only needs to know the table is not simply empty (seed:safety never run),
+    which would otherwise let every exercise look safe for every injury.
+    """
+    from sqlalchemy import text
+
+    with engine_obj.connect() as conn:
+        row = conn.execute(
+            text("SELECT 1 FROM exercise_contraindications LIMIT 1")
+        ).fetchone()
+    return row is not None
 
 
 def _body_weight_ids(engine_obj):

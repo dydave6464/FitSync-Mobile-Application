@@ -26,11 +26,16 @@ class ExerciseCues {
     required this.source,
     required this.injuryName,
     required this.cues,
+    this.notice,
   });
 
   final String source;
   final String? injuryName;
   final List<Cue> cues;
+
+  /// Why AI cues were withheld from a flagged exercise: 'free_limit' or
+  /// 'unavailable'. Null when AI cues were served or none were due.
+  final String? notice;
 
   bool get isAi => source == 'ai';
 
@@ -50,6 +55,7 @@ class ExerciseCues {
   factory ExerciseCues.fromJson(Map<String, dynamic> json) => ExerciseCues(
     source: json['source'] as String? ?? 'catalogue',
     injuryName: (json['injury'] as Map<String, dynamic>?)?['name'] as String?,
+    notice: json['notice'] as String?,
     cues: ((json['cues'] as List<dynamic>?) ?? const [])
         .map((e) => Cue.fromJson(e as Map<String, dynamic>))
         .toList(growable: false),

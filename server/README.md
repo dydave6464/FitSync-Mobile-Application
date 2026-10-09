@@ -124,9 +124,13 @@ exercise catalogue and the curated equipment list — `seed:equipment`'s
 catalogue adoption step needs the catalogue's rows to already exist (see
 [Equipment options](#equipment-options)) — then `npm run seed:injuries` to
 restore the injury regions lookup (see [Injury regions](#injury-regions)),
-and `npm run seed:categories` to restore the exercise category assignments
-(see [Exercise catalogue](#exercise-catalogue)) — it depends only on `seed`,
-so it can run any time after it. `npm test` migrates `<DB_NAME>_test` from
+then `npm run seed:safety` to restore the requirement and contraindication
+rows (see [Exercise catalogue](#exercise-catalogue)) — it resolves curated
+equipment names and injury region names to ids, so it must run after `seed`,
+`seed:equipment` AND `seed:injuries`, never before — and `npm run
+seed:categories` to restore the exercise category assignments (see
+[Exercise catalogue](#exercise-catalogue)) — it depends only on `seed`, so it
+can run any time after it. `npm test` migrates `<DB_NAME>_test` from
 scratch on every run, so the test database needs nothing done to it.
 
 ## Exercise catalogue

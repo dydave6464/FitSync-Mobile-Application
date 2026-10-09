@@ -105,3 +105,80 @@ test('estimateInjuryRisk sends the mapped check-ins', () => {
     },
   );
 });
+
+const DETAIL_ONE = 'No exercises could be selected for day 3 (Legs) of the push_pull_legs split. '
+  + 'If the catalogue is seeded, the reported injuries and available equipment leave nothing suitable for it.';
+const DETAIL_TWO = 'No exercises could be selected for day 2 (Pull) and day 3 (Legs) of the push_pull_legs split. '
+  + 'If the catalogue is seeded, the reported injuries and available equipment leave nothing suitable for it.';
+const DETAIL_FULL_BODY = 'No exercises could be selected for day 1 (Full body) of the full_body split. '
+  + 'If the catalogue is seeded, the reported injuries and available equipment leave nothing suitable for it.';
+
+test('an unfillable plan day becomes a readable 422 naming the day', () =>
+  withFakeFetch(
+    async () => ({ ok: false, status: 503, json: async () => ({ detail: DETAIL_ONE }) }),
+    async () => {
+      const ml = httpClient.create('http://localhost:8000');
+      await assert.rejects(() => ml.generatePlan({}), (err) => {
+        assert.equal(err.status, 422);
+        assert.equal(err.code, 'UNFILLABLE_PLAN_DAY');
+        assert.equal(
+          err.message,
+          'Nothing suitable for the Legs day with your injuries and equipment. '
+            + 'Try Full body, or add equipment.',
+        );
+        return true;
+      });
+    },
+  ));
+
+test('two unfillable days are both named', () =>
+  withFakeFetch(
+    async () => ({ ok: false, status: 503, json: async () => ({ detail: DETAIL_TWO }) }),
+    async () => {
+      const ml = httpClient.create('http://localhost:8000');
+      await assert.rejects(() => ml.generatePlan({}), (err) => {
+        assert.match(err.message, /^Nothing suitable for the Pull and Legs days /);
+        return true;
+      });
+    },
+  ));
+
+test('Full body as the only unfillable day gets its own suggestion', () =>
+  withFakeFetch(
+    async () => ({ ok: false, status: 503, json: async () => ({ detail: DETAIL_FULL_BODY }) }),
+    async () => {
+      const ml = httpClient.create('http://localhost:8000');
+      await assert.rejects(() => ml.generatePlan({}), (err) => {
+        assert.equal(err.status, 422);
+        assert.equal(err.code, 'UNFILLABLE_PLAN_DAY');
+        assert.equal(
+          err.message,
+          'Nothing suitable for the Full body day with your injuries and equipment. '
+            + 'Try adding equipment.',
+        );
+        return true;
+      });
+    },
+  ));
+
+test('any other 503 stays an internal error', () =>
+  withFakeFetch(
+    async () => ({ ok: false, status: 503, json: async () => ({ detail: 'model loading' }) }),
+    async () => {
+      const ml = httpClient.create('http://localhost:8000');
+      await assert.rejects(() => ml.generatePlan({}), (err) => {
+        assert.equal(err.code, undefined);
+        assert.match(err.message, /responded 503/);
+        return true;
+      });
+    },
+  ));
+
+test('a 503 whose body is not JSON stays an internal error', () =>
+  withFakeFetch(
+    async () => ({ ok: false, status: 503, json: async () => { throw new SyntaxError('bad'); } }),
+    async () => {
+      const ml = httpClient.create('http://localhost:8000');
+      await assert.rejects(() => ml.generatePlan({}), /responded 503/);
+    },
+  ));

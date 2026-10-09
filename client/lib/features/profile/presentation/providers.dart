@@ -3,6 +3,8 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../core/units.dart';
 import '../../exercises/presentation/providers.dart'
     show apiClientProvider, apiRetryPolicy;
+import '../../plans/presentation/providers.dart' show activePlanProvider;
+import '../../sessions/presentation/providers.dart' show activeSessionProvider;
 import '../data/profile_repository.dart';
 import '../domain/body_weight.dart';
 import '../domain/profile.dart';
@@ -54,6 +56,10 @@ class ProfileNotifier extends AsyncNotifier<Profile> {
     state = AsyncData(
       await ref.read(profileRepositoryProvider).setInjuries(injuries),
     );
+    // Both hold exercises tagged with `coaching` from the OLD injury list --
+    // only a fresh fetch reads the gate again under the new one.
+    ref.invalidate(activePlanProvider);
+    ref.invalidate(activeSessionProvider);
   }
 
   Future<void> setTrainingDays(List<int> weekdays) async {

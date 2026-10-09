@@ -200,6 +200,45 @@ void main() {
     expect(find.textContaining('3 sets × 10-15 reps'), findsOneWidget);
   });
 
+  testWidgets('a coached exercise shows its AI-coached tag', (tester) async {
+    await _pump(
+      tester,
+      const WorkoutPlan(
+        planId: 42,
+        name: 'Week 1 — Full body',
+        splitStyle: 'full_body',
+        daysPerWeek: 3,
+        sessionLengthMin: 45,
+        weekNo: 1,
+        exercises: [
+          PlanExercise(
+            planExerciseId: 601,
+            exerciseId: 101,
+            name: 'Goblet squat',
+            muscleGroup: 'quadriceps',
+            orderNo: 1,
+            targetSets: 3,
+            targetReps: '8-12',
+            coaching: (injuryId: 3, injuryName: 'Knee'),
+          ),
+          PlanExercise(
+            planExerciseId: 602,
+            exerciseId: 102,
+            name: 'Push-up',
+            muscleGroup: 'chest',
+            orderNo: 2,
+            targetSets: 3,
+            targetReps: '10-15',
+          ),
+        ],
+      ),
+    );
+
+    expect(find.byKey(const Key('coaching.tag.601')), findsOneWidget);
+    expect(find.text('Knee · AI coached'), findsOneWidget);
+    expect(find.byKey(const Key('coaching.tag.602')), findsNothing);
+  });
+
   testWidgets('tapping an exercise opens its detail screen', (tester) async {
     await _pump(tester, _plan);
 
