@@ -70,16 +70,18 @@ class _LogFoodSheetState extends State<LogFoodSheet> {
     final gramsOk = [p, c, fat].every((g) => g != null && g >= 0 && g <= 500) &&
         (fiber == null || (fiber >= 0 && fiber <= 500));
     // Only a real change makes this the user's own entry; opening the boxes
-    // and logging untouched still logs the listed food.
-    final macrosChanged = p != f.proteinG || c != f.carbsG || fat != f.fatG;
-    final changed = _editing && gramsOk && (macrosChanged || fiber != f.fiberG);
-    final canLog = !_editing || (gramsOk && p! + c! + fat! > 0);
-    // Fiber never changes calories: only a real, in-range change to protein,
-    // carbs or fat recomputes kcal from the macros. `macrosChanged` alone
-    // isn't enough to guard the `!`s below -- unreadable text (e.g. a lone
-    // ".") makes `_grams` return null, which also differs from the listed
-    // value.
-    final perKcal = (gramsOk && macrosChanged) ? manualKcal(p!, c!, fat!) : f.kcal;
+    // and logging untouched still logs the listed food, whatever its numbers
+    // (a 0-macro drink, or a listed value over 500 g). Unreadable text (null,
+    // or NaN for fiber) differs from any listed value, so it counts as one.
+    final touched = _editing &&
+        (p != f.proteinG || c != f.carbsG || fat != f.fatG || fiber != f.fiberG);
+    final changed = touched && gramsOk;
+    final noMacros = changed && p! + c! + fat! == 0;
+    final canLog = !touched || (changed && !noMacros);
+    // Any change, fiber alone included, is logged as the user's own entry,
+    // and the server works out a manual entry's kcal as 4·4·9 -- so the
+    // preview does too. Fiber itself never adds calories.
+    final perKcal = changed ? manualKcal(p!, c!, fat!) : f.kcal;
     final shown = changed
         ? (p: p!, c: c!, f: fat!, fb: fiber)
         : (p: f.proteinG, c: f.carbsG, f: f.fatG, fb: f.fiberG);
@@ -166,10 +168,15 @@ class _LogFoodSheetState extends State<LogFoodSheet> {
                 const SizedBox(width: 10),
                 gramsField('Fiber (g)', 'logSheet.fiber', _fiber),
               ]),
-              if (!gramsOk)
+              if (touched && !gramsOk)
                 Padding(
                   padding: const EdgeInsets.only(top: 6),
                   child: Text('Each value must be 0–500 g', style: TextStyle(color: t.red, fontSize: 12)),
+                )
+              else if (noMacros)
+                Padding(
+                  padding: const EdgeInsets.only(top: 6),
+                  child: Text('Add some protein, carbs or fat', style: TextStyle(color: t.red, fontSize: 12)),
                 ),
             ],
             const SizedBox(height: 16),
@@ -184,8 +191,10 @@ class _LogFoodSheetState extends State<LogFoodSheet> {
                         edited: changed
                             ? Food(
                                 source: 'manual',
-                                name: f.name,
-                                servingDesc: f.servingDesc,
+                                // A FatSecret name or serving can be longer
+                                // than a manual entry may be.
+                                name: _clip(f.name, _maxName),
+                                servingDesc: f.servingDesc == null ? null : _clip(f.servingDesc!, _maxServingDesc),
                                 kcal: perKcal,
                                 proteinG: p!,
                                 carbsG: c!,
@@ -201,6 +210,24 @@ class _LogFoodSheetState extends State<LogFoodSheet> {
       ),
     );
   }
+}
+
+/// The longest name and serving a manual entry may have
+/// (server/src/routes/nutrition.js).
+const _maxName = 100;
+const _maxServingDesc = 60;
+
+/// [text], trimmed and cut to at most [max] UTF-16 units -- what the server's
+/// length check counts -- without splitting a character, then trimmed again.
+String _clip(String text, int max) {
+  final trimmed = text.trim();
+  if (trimmed.length <= max) return trimmed;
+  final out = StringBuffer();
+  for (final ch in trimmed.characters) {
+    if (out.length + ch.length > max) break;
+    out.write(ch);
+  }
+  return out.toString().trimRight();
 }
 
 /// 4.3 -> "4.3", 28.0 -> "28": a number as someone would type it.

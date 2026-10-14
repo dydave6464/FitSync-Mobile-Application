@@ -19,9 +19,10 @@ String mealForTime(DateTime instant) {
   return 'snack';
 }
 
-/// Atwater: what the server computes for a manual food.
+/// Atwater: what the server computes for a manual food. Like the server, it
+/// rounds each gram to 2 decimals first, so the preview never differs.
 int manualKcal(double proteinG, double carbsG, double fatG) =>
-    (4 * proteinG + 4 * carbsG + 9 * fatG).round();
+    (4 * _r2(proteinG) + 4 * _r2(carbsG) + 9 * _r2(fatG)).round();
 
 /// 1.0 -> "1", 1.5 -> "1.5": how a servings count reads on screen.
 String formatServings(double servings) =>

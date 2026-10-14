@@ -160,12 +160,15 @@ void main() {
     expect(edited.kcal, 222);
   });
 
-  testWidgets('changing only fiber logs a manual entry with the new fiberG and an unchanged kcal', (tester) async {
+  testWidgets('changing only fiber logs a manual entry whose kcal is worked out from protein, carbs and fat', (tester) async {
     final result = await _openForResult(tester, _rice);
     await _editNumbers(tester);
     await tester.enterText(find.descendant(of: find.byKey(const Key('logSheet.fiber')), matching: find.byType(TextField)), '5');
     await tester.pump();
-    expect(find.text('205 kcal'), findsOneWidget, reason: 'fiber never changes kcal');
+    // The server works out every manual entry's kcal as 4·4·9, so the preview
+    // must too: 4*4.3 + 4*44.5 + 9*0.4 = 198.8 -> 199, not the listed 205.
+    expect(find.text('199 kcal'), findsOneWidget);
+    expect(find.text('Calories worked out from protein, carbs and fat.'), findsOneWidget);
     await tester.tap(find.byKey(const Key('logSheet.log')));
     await tester.pumpAndSettle();
     final edited = result()!.edited!;
@@ -174,7 +177,61 @@ void main() {
     expect(edited.carbsG, _rice.carbsG);
     expect(edited.fatG, _rice.fatG);
     expect(edited.fiberG, 5);
-    expect(edited.kcal, _rice.kcal);
+    expect(edited.kcal, 199, reason: 'what the server will compute');
+  });
+
+  testWidgets('the edited kcal matches the server, which rounds each gram to 2 decimals first', (tester) async {
+    final result = await _openForResult(tester, _rice);
+    await _editNumbers(tester);
+    await tester.enterText(find.descendant(of: find.byKey(const Key('logSheet.fat')), matching: find.byType(TextField)), '0.1449');
+    await tester.pump();
+    // Server: 0.1449 -> 0.14 g; 4*4.3 + 4*44.5 + 9*0.14 = 196.46 -> 196 (unrounded: 196.50 -> 197).
+    expect(find.text('196 kcal'), findsOneWidget);
+    await tester.tap(find.byKey(const Key('logSheet.log')));
+    await tester.pumpAndSettle();
+    expect(result()!.edited!.kcal, 196);
+  });
+
+  testWidgets('an edited food with a long name and serving fits what the server accepts', (tester) async {
+    final longName = 'Rice ' * 24; // 120 characters
+    final longServing = '1 large bowl, ' * 5; // 70 characters
+    final result = await _openForResult(tester, Food(
+      source: 'fatsecret', externalId: 'fs-long', name: longName, servingDesc: longServing,
+      kcal: 205, proteinG: 4.3, carbsG: 44.5, fatG: 0.4,
+    ));
+    await _editNumbers(tester);
+    await tester.enterText(find.descendant(of: find.byKey(const Key('logSheet.protein')), matching: find.byType(TextField)), '10');
+    await tester.pump();
+    // The long name wraps, so Log sits below the fold.
+    await tester.ensureVisible(find.byKey(const Key('logSheet.log')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const Key('logSheet.log')));
+    await tester.pumpAndSettle();
+    final edited = result()!.edited!;
+    expect(edited.name.length, lessThanOrEqualTo(100));
+    expect(edited.servingDesc!.length, lessThanOrEqualTo(60));
+    // Cut at 100, then the trailing space trimmed.
+    expect(edited.name, ('Rice ' * 20).trimRight());
+    expect(edited.servingDesc, longServing.substring(0, 60));
+  });
+
+  testWidgets('clipping counts what the server counts and never splits a character', (tester) async {
+    // Each 🍚 is one character but two UTF-16 units, which is what the
+    // server's length check counts.
+    final result = await _openForResult(tester, Food(
+      source: 'fatsecret', externalId: 'fs-emoji', name: '🍚' * 60, servingDesc: '🍚' * 35,
+      kcal: 205, proteinG: 4.3, carbsG: 44.5, fatG: 0.4,
+    ));
+    await _editNumbers(tester);
+    await tester.enterText(find.descendant(of: find.byKey(const Key('logSheet.protein')), matching: find.byType(TextField)), '10');
+    await tester.pump();
+    await tester.ensureVisible(find.byKey(const Key('logSheet.log')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const Key('logSheet.log')));
+    await tester.pumpAndSettle();
+    final edited = result()!.edited!;
+    expect(edited.name, '🍚' * 50);
+    expect(edited.servingDesc, '🍚' * 30);
   });
 
   testWidgets('clearing fiber logs it as unknown', (tester) async {
@@ -193,6 +250,44 @@ void main() {
     await tester.tap(find.byKey(const Key('logSheet.log')));
     await tester.pumpAndSettle();
     expect(result()!.edited, isNull);
+  });
+
+  testWidgets('a food with no protein, carbs or fat can still be logged with the boxes open', (tester) async {
+    final result = await _openForResult(tester, const Food(
+      source: 'local', id: 40, name: 'Diet soda', servingDesc: '1 can', kcal: 0, proteinG: 0, carbsG: 0, fatG: 0,
+    ));
+    await _editNumbers(tester);
+    expect(find.text('Add some protein, carbs or fat'), findsNothing, reason: 'nothing was changed');
+    await tester.tap(find.byKey(const Key('logSheet.log')));
+    await tester.pumpAndSettle();
+    expect(result(), isNotNull);
+    expect(result()!.edited, isNull, reason: 'logged as listed');
+  });
+
+  testWidgets('a listed value over 500 g the user did not change does not block Log', (tester) async {
+    final result = await _openForResult(tester, const Food(
+      source: 'fatsecret', externalId: 'fs-cake', name: 'Whole cake', servingDesc: '1 cake',
+      kcal: 4990, proteinG: 60, carbsG: 520, fatG: 290,
+    ));
+    await _editNumbers(tester);
+    expect(find.text('Each value must be 0–500 g'), findsNothing, reason: 'nothing was changed');
+    await tester.tap(find.byKey(const Key('logSheet.log')));
+    await tester.pumpAndSettle();
+    expect(result(), isNotNull);
+    expect(result()!.edited, isNull, reason: 'logged as listed');
+  });
+
+  testWidgets('changing every macro to 0 says why and Log stays off', (tester) async {
+    final result = await _openForResult(tester, _rice);
+    await _editNumbers(tester);
+    for (final key in ['logSheet.protein', 'logSheet.carbs', 'logSheet.fat']) {
+      await tester.enterText(find.descendant(of: find.byKey(Key(key)), matching: find.byType(TextField)), '0');
+    }
+    await tester.pump();
+    expect(find.text('Add some protein, carbs or fat'), findsOneWidget);
+    await tester.tap(find.byKey(const Key('logSheet.log')));
+    await tester.pumpAndSettle();
+    expect(result(), isNull, reason: 'the sheet stays open');
   });
 
   testWidgets('an out-of-range number says so and Log stays off', (tester) async {

@@ -40,6 +40,13 @@ void main() {
     expect(manualKcal(0.3, 0, 0), 1);
   });
 
+  test('manualKcal rounds each gram to 2 decimals first, as the server does', () {
+    // Server: fat 0.0551 -> 0.06 g -> 0.54 kcal -> 1. Unrounded: 0.4959 -> 0.
+    expect(manualKcal(0, 0, 0.0551), 1);
+    // Server: fat 0.1449 -> 0.14 g; 4*4.3 + 4*44.5 + 9*0.14 = 196.46 -> 196.
+    expect(manualKcal(4.3, 44.5, 0.1449), 196);
+  });
+
   test('describeMissing names fields in plain words', () {
     expect(describeMissing(const []), isNull);
     expect(describeMissing(const ['weightKg']), 'Add your weight to see a target');

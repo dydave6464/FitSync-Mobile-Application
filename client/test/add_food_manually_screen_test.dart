@@ -51,6 +51,14 @@ void main() {
     expect(find.text('198 kcal'), findsOneWidget);
   });
 
+  testWidgets('calories match the server, which rounds each gram to 2 decimals first', (tester) async {
+    await _pump(tester);
+    await tester.enterText(find.byKey(const Key('manual.fat')), '0.0551');
+    await tester.pump();
+    // 0.0551 -> 0.06 g -> 0.54 kcal -> 1 (unrounded it would show 0).
+    expect(find.text('1 kcal'), findsOneWidget);
+  });
+
   testWidgets('Log stays off until there is a name and some macros', (tester) async {
     final repo = await _pump(tester);
     await tester.tap(find.byKey(const Key('manual.log')));
