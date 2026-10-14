@@ -151,6 +151,7 @@ test('food search and recents', async (t) => {
   await t.test('recents: distinct, newest first, per serving', async () => {
     const log = (food, servings = 1) => request(app).post('/api/v1/nutrition/entries').set(auth)
       .send({ mealType: 'lunch', servings, food }).expect(201);
+    await pool.query('UPDATE foods SET fiber_g = 2.5 WHERE food_id = ?', [chicken]);
     await log({ source: 'local', id: pork });
     await log({ source: 'manual', name: 'Turon', proteinG: 2, carbsG: 34, fatG: 6 }, 2);
     await log({ source: 'local', id: chicken });
@@ -158,6 +159,7 @@ test('food search and recents', async (t) => {
     const { foods } = (await request(app).get('/api/v1/foods/recent').set(auth).expect(200)).body.data;
     assert.deepEqual(foods.map((f) => f.name), ['Pork adobo', 'Chicken adobo', 'Turon']);
     assert.equal(foods[0].kcal, 300, 'a catalogue food reads its own per-serving numbers');
+    assert.equal(foods[1].fiberG, 2.5, "a catalogue food's known fiber reaches recents");
     assert.deepEqual(foods[2], {
       id: null, source: 'manual', externalId: null, name: 'Turon', servingDesc: null,
       kcal: 198, proteinG: 2, carbsG: 34, fatG: 6, fiberG: null,

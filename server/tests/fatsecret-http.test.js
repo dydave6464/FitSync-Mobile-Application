@@ -111,14 +111,18 @@ test('get returns fiberG null when fiber is absent or an empty string', async ()
   assert.equal((await clientEmpty.get('2')).fiberG, null);
 });
 
-test('an implausible fiber value drops the food from get(), like any other field', async () => {
-  const { impl } = fakeFetch([TOKEN, ['server.api', () => reply({
-    food: { food_id: '5', food_name: 'Weird Fiber', servings: { serving: {
-      serving_description: '1 cup', calories: '100', protein: '1', carbohydrate: '1', fat: '1', fiber: '1000', is_default: '1',
-    } } },
-  })]]);
-  const client = create({ clientId: 'id', clientSecret: 's', fetchImpl: impl });
-  assert.equal(await client.get('5'), null);
+test('an implausible fiber value becomes unknown; the food itself is kept', async () => {
+  for (const fiber of ['1000', 'abc', '-1']) {
+    const { impl } = fakeFetch([TOKEN, ['server.api', () => reply({
+      food: { food_id: '5', food_name: 'Weird Fiber', servings: { serving: {
+        serving_description: '1 cup', calories: '100', protein: '1', carbohydrate: '1', fat: '1', fiber, is_default: '1',
+      } } },
+    })]]);
+    const client = create({ clientId: 'id', clientSecret: 's', fetchImpl: impl });
+    assert.deepEqual(await client.get('5'), {
+      externalId: '5', name: 'Weird Fiber', servingDesc: '1 cup', kcal: 100, proteinG: 1, carbsG: 1, fatG: 1, fiberG: null,
+    }, `fiber ${fiber}`);
+  }
 });
 
 test('get answers null for an unknown food', async () => {
