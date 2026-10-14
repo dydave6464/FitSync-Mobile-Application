@@ -13,7 +13,7 @@ function silentLogger() {
 function buildTestApp(deps = {}) {
   const {
     pool = null, ml = null, extend = null, storage = null, storageConfig = null, mail = null,
-    cues = null,
+    cues = null, fatsecret = null,
   } = deps;
   const extraRouter = express.Router();
   if (extend) extend(extraRouter);
@@ -25,6 +25,7 @@ function buildTestApp(deps = {}) {
     ml,
     storage,
     cues,
+    fatsecret,
     extraRouter: extend ? extraRouter : null,
     jwt: deps.jwt || { secret: 'test-secret-value-at-least-32-chars', expiresIn: '30d' },
     google: deps.google || require('../../src/services/google').createGoogleVerifier({ mode: 'stub' }),
