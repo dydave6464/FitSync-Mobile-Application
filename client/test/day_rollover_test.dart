@@ -6,6 +6,8 @@ import 'package:flutter_test/flutter_test.dart';
 
 import 'package:fitsync/core/manila_day.dart';
 import 'package:fitsync/features/home/presentation/day_rollover.dart';
+import 'package:fitsync/features/nutrition/domain/nutrition.dart';
+import 'package:fitsync/features/nutrition/presentation/providers.dart';
 import 'package:fitsync/features/recovery/domain/recovery.dart';
 import 'package:fitsync/features/recovery/presentation/providers.dart'
     show recoveryOverviewProvider;
@@ -38,6 +40,17 @@ class _CountingRoutine extends RoutineController {
   Future<RoutineDay> build() {
     builds.update('routine', (n) => n + 1, ifAbsent: () => 1);
     return _pending();
+  }
+}
+
+class _CountingNutrition extends NutritionDayController {
+  _CountingNutrition(this.builds);
+  final Map<String, int> builds;
+
+  @override
+  Future<NutritionDay> build() {
+    builds.update('nutrition', (n) => n + 1, ifAbsent: () => 1);
+    return _pending<NutritionDay>();
   }
 }
 
@@ -91,6 +104,7 @@ void main() {
               count('streak');
               return _pending<Streak>();
             }),
+            nutritionDayProvider.overrideWith(() => _CountingNutrition(builds)),
           ],
           child: MaterialApp(
             home: DayRollover(
@@ -106,6 +120,7 @@ void main() {
                   ref.watch(completedDaysProvider);
                   ref.watch(pendingOutcomeProvider);
                   ref.watch(streakProvider);
+                  ref.watch(nutritionDayProvider);
                   return const SizedBox();
                 },
               ),
@@ -135,6 +150,7 @@ void main() {
       'completedDays',
       'pendingOutcome',
       'streak',
+      'nutrition',
     };
 
     setUp(() => builds = {});
