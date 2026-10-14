@@ -17,7 +17,15 @@ const pool = createPool(config.db);
 const ml = createMlService(config.ml);
 // Throws here, not on the first workout, when CUES_MODE=groq has no key.
 const cues = createCueService(config.cues);
-const fatsecret = createFatsecretService(config.fatsecret);
+// FATSECRET_MODE left empty means the stub, whose invented foods would show in
+// search labelled FatSecret and be copied into foods when logged. In
+// production that is worse than no FatSecret: run without it (search returns
+// FitSync's own foods, logging a FatSecret food is a 502) and say why.
+const fatsecretStubInProduction = config.env === 'production' && config.fatsecret.mode === 'stub';
+if (fatsecretStubInProduction) {
+  logger.warn('FATSECRET_MODE is stub in production: FatSecret search is off; set FATSECRET_MODE=http');
+}
+const fatsecret = fatsecretStubInProduction ? null : createFatsecretService(config.fatsecret);
 const storage = createStorage(config.storage);
 const google = createGoogleVerifier(config.google);
 const mail = createMailService(config.mail, logger);

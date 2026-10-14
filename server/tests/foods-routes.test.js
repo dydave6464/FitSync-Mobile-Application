@@ -7,6 +7,7 @@ const { createPool } = require('../src/db/pool');
 const { buildTestApp } = require('./helpers/test-app');
 const { testDbConfig, dropAllTables } = require('./helpers/test-db');
 const { markEmailVerified } = require('../src/db/users');
+const { silentLogger } = require('./helpers/test-app');
 
 test('food search and recents', async (t) => {
   const pool = createPool(testDbConfig());
@@ -18,11 +19,17 @@ test('food search and recents', async (t) => {
     async search(q) {
       if (mode === 'down') throw new Error('down');
       if (mode === 'slow') return new Promise(() => {}); // never answers
+      // Fails just after the route stops waiting, as the real client's own
+      // abort timer does when FatSecret is slow.
+      if (mode === 'late') return new Promise((_, reject) => { setTimeout(() => reject(new Error('aborted')), 80); });
       return [{ externalId: 'fs-9', name: `FatSecret ${q}`, servingDesc: '1 cup', kcal: 200, proteinG: 10, carbsG: 20, fatG: 8 }];
     },
     async get() { return null; },
   };
-  const app = buildTestApp({ pool, fatsecret });
+  const warnings = [];
+  const logger = silentLogger();
+  logger.warn = (_fields, msg) => { warnings.push(msg); };
+  const app = buildTestApp({ pool, fatsecret, logger });
   t.after(async () => { await dropAllTables(pool); await pool.end(); });
 
   const insert = (name) => pool.query(
@@ -76,6 +83,30 @@ test('food search and recents', async (t) => {
       assert.ok(foods.every((f) => f.source === 'local'), m);
     }
     mode = 'ok';
+  });
+
+  await t.test('a timed-out search is not logged as a failure, even when it fails late', async () => {
+    const failures = () => warnings.filter((m) => m === 'FatSecret food search failed');
+    warnings.length = 0;
+    mode = 'late';
+    assert.equal((await search('adobo').expect(200)).body.data.fatsecretUnavailable, true);
+    await new Promise((resolve) => { setTimeout(resolve, 150); });
+    assert.deepEqual(failures(), []);
+    mode = 'down';
+    await search('adobo').expect(200);
+    assert.equal(failures().length, 1, 'a real failure still is');
+    mode = 'ok';
+  });
+
+  await t.test('no FatSecret service (stub mode in production): own foods + flag, FatSecret log -> 502', async () => {
+    const off = buildTestApp({ pool, fatsecret: null });
+    const { foods, fatsecretUnavailable } = (await request(off).get('/api/v1/foods/search')
+      .query({ q: 'adobo' }).set(auth).expect(200)).body.data;
+    assert.equal(fatsecretUnavailable, true);
+    assert.ok(foods.length > 0 && foods.every((f) => f.source === 'local'));
+    const res = await request(off).post('/api/v1/nutrition/entries').set(auth)
+      .send({ mealType: 'lunch', servings: 1, food: { source: 'fatsecret', externalId: 'stub-1' } }).expect(502);
+    assert.equal(res.body.error.code, 'FATSECRET_UNAVAILABLE');
   });
 
   await t.test('q must be 2 to 60 characters', async () => {

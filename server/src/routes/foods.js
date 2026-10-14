@@ -30,17 +30,22 @@ function fromFatsecret(f) {
 /// failure is swallowed into null for the caller (FitSync's own foods still
 /// come back with a 200), but it is still logged -- a silent 502 upstream
 /// must leave a server-side trace. A timeout is not logged: FatSecret being
-/// slow isn't a failure worth a warning every time.
+/// slow isn't a failure worth a warning every time -- including the abort the
+/// client's own timer raises a moment after this one gives up.
 async function searchFatsecret(fatsecret, q, logger) {
   if (!fatsecret) return null;
   let timer;
+  let timedOut = false;
   const timeout = new Promise((resolve) => {
-    timer = setTimeout(() => resolve(null), fatsecret.timeoutMs || FATSECRET_TIMEOUT_MS);
+    timer = setTimeout(() => {
+      timedOut = true;
+      resolve(null);
+    }, fatsecret.timeoutMs || FATSECRET_TIMEOUT_MS);
   });
   try {
     return await Promise.race([
       fatsecret.search(q).catch((e) => {
-        if (logger) logger.warn({ err: e.message }, 'FatSecret food search failed');
+        if (logger && !timedOut) logger.warn({ err: e.message }, 'FatSecret food search failed');
         return null;
       }),
       timeout,

@@ -20,7 +20,7 @@ function buildTestApp(deps = {}) {
 
   return createApp({
     config: { env: 'test', logLevel: 'silent', storage: storageConfig },
-    logger: silentLogger(),
+    logger: deps.logger || silentLogger(),
     pool,
     ml,
     storage,

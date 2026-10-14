@@ -3,8 +3,9 @@ const stub = require('./stub');
 const httpClient = require('./http-client');
 
 /// Picks the FatSecret driver, like services/cues. Defaults to the stub so no
-/// test makes a network call. No production guard, for the reason cues has
-/// none: a stub degrades search to FitSync's own foods, which still works.
+/// test makes a network call. The production guard is in server.js rather
+/// than here: the stub's invented foods look like FatSecret's, so production
+/// in stub mode runs with no FatSecret at all instead of refusing to boot.
 function createFatsecretService(cfg = {}, { fetchImpl, now } = {}) {
   const mode = cfg.mode || 'stub';
   if (mode === 'stub') return stub;
