@@ -18,19 +18,19 @@ async function seedFoods(dbConfig) {
     let updated = 0;
     let unchanged = 0;
     for (const f of FOODS) {
-      const values = [f.category, f.servingDesc, f.kcal, f.proteinG, f.carbsG, f.fatG];
+      const values = [f.category, f.servingDesc, f.kcal, f.proteinG, f.carbsG, f.fatG, f.fiberG];
       const [[own]] = await pool.query(FIND_OWN, [f.name]);
       if (!own) {
         await pool.query(
-          `INSERT INTO foods (name, category, serving_desc, calories, protein_g, carbs_g, fat_g)
-           VALUES (?, ?, ?, ?, ?, ?, ?)`,
+          `INSERT INTO foods (name, category, serving_desc, calories, protein_g, carbs_g, fat_g, fiber_g)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
           [f.name, ...values],
         );
         inserted += 1;
         continue;
       }
       const [res] = await pool.query(
-        `UPDATE foods SET category = ?, serving_desc = ?, calories = ?, protein_g = ?, carbs_g = ?, fat_g = ?
+        `UPDATE foods SET category = ?, serving_desc = ?, calories = ?, protein_g = ?, carbs_g = ?, fat_g = ?, fiber_g = ?
           WHERE food_id = ?`,
         [...values, own.food_id],
       );
