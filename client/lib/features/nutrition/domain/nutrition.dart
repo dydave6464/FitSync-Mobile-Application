@@ -8,13 +8,11 @@ String mealLabel(String mealType) => switch (mealType) {
 };
 
 /// The meal a "Log …" button offers at [instant], by the Manila clock:
-/// before 10:00 breakfast, before 15:00 lunch, before 21:00 dinner, else
-/// snack. The Manila hour is computed without wrapping at midnight (UTC
-/// hour + 8, left as-is rather than reduced mod 24), so the small hours
-/// after midnight stay "snack" — a continuation of the previous night —
-/// instead of resetting to "breakfast".
+/// 21:00–04:59 snack (a late-night meal is a snack), 05:00–09:59 breakfast,
+/// 10:00–14:59 lunch, 15:00–20:59 dinner.
 String mealForTime(DateTime instant) {
-  final hour = instant.toUtc().hour + 8;
+  final hour = instant.toUtc().add(const Duration(hours: 8)).hour;
+  if (hour < 5) return 'snack';
   if (hour < 10) return 'breakfast';
   if (hour < 15) return 'lunch';
   if (hour < 21) return 'dinner';

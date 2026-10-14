@@ -25,6 +25,8 @@ void main() {
     expect(mealForTime(DateTime.utc(2026, 10, 14, 7, 0)), 'dinner'); // 15:00
     expect(mealForTime(DateTime.utc(2026, 10, 14, 13, 0)), 'snack'); // 21:00
     expect(mealForTime(DateTime.utc(2026, 10, 14, 17, 0)), 'snack'); // 01:00
+    expect(mealForTime(DateTime.utc(2026, 10, 13, 20, 59)), 'snack'); // 04:59
+    expect(mealForTime(DateTime.utc(2026, 10, 13, 21, 0)), 'breakfast'); // 05:00
   });
 
   test('manualKcal is 4-4-9, rounded', () {
