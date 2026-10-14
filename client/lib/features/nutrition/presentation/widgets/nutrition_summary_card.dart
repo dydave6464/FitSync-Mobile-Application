@@ -6,7 +6,7 @@ import '../../../../core/widgets/fs_kit.dart' show FsCard;
 import '../../../sessions/presentation/progress_screen.dart' show groupThousands;
 import '../../domain/nutrition.dart';
 
-/// The prototype's top card: a calorie ring, and Protein / Carbs / Fat bars.
+/// The prototype's top card: a calorie ring, and Protein / Carbs / Fat / Fiber bars.
 class NutritionSummaryCard extends StatelessWidget {
   const NutritionSummaryCard({super.key, required this.day, this.onGoToProfile});
 

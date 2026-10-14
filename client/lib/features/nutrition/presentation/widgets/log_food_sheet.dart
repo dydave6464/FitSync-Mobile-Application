@@ -41,7 +41,7 @@ class _LogFoodSheetState extends State<LogFoodSheet> {
   double _servings = 1;
 
   /// "Edit numbers" is hidden until asked for: most people log a food as
-  /// listed, and three boxes on every log would be noise.
+  /// listed, and four boxes on every log would be noise.
   bool _editing = false;
   late final _protein = TextEditingController(text: _plain(widget.food.proteinG));
   late final _carbs = TextEditingController(text: _plain(widget.food.carbsG));
