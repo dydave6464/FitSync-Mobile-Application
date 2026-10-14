@@ -135,7 +135,8 @@ class _LogFoodScreenState extends ConsumerState<LogFoodScreen> {
               onSelected: (v) => setState(() => _tab = v),
             ),
           ),
-          if (_loadingFood) const LinearProgressIndicator(minHeight: 2),
+          // The bar's 2 px are kept when idle, so the list never jumps.
+          if (_loadingFood) const LinearProgressIndicator(minHeight: 2) else const SizedBox(height: 2),
           Expanded(child: _tab == 'recents' ? _recents() : _results()),
         ],
       ),
@@ -190,7 +191,7 @@ class _StartHint extends StatelessWidget {
           spacing: 8,
           runSpacing: 8,
           children: [
-            for (final name in _suggestions) ActionChip(label: Text(name), onPressed: () => onPick(name)),
+            for (final name in _suggestions) FsChip(label: name, selected: false, onTap: () => onPick(name)),
           ],
         ),
       ],

@@ -1,7 +1,10 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 
+import 'package:fitsync/core/widgets/fs_kit.dart';
 import 'package:fitsync/features/nutrition/domain/nutrition.dart';
 import 'package:fitsync/features/nutrition/presentation/log_food_screen.dart';
 import 'package:fitsync/features/nutrition/presentation/providers.dart';
@@ -25,6 +28,14 @@ class _SearchRepo extends FakeNutritionRepository {
   @override
   Future<List<Food>> recent() async =>
       const [Food(source: 'manual', name: 'Turon', kcal: 198, proteinG: 2, carbsG: 34, fatG: 6)];
+}
+
+/// A FatSecret detail that loads only when the test says so.
+class _GatedRepo extends _SearchRepo {
+  final gate = Completer<Food>();
+
+  @override
+  Future<Food> fatsecretFood(String externalId) => gate.future;
 }
 
 Future<void> _pump(WidgetTester tester, _SearchRepo repo) async {
@@ -144,16 +155,36 @@ void main() {
     expect(find.text('What did you eat?'), findsOneWidget);
     expect(find.text('Search by name, like adobo or rice'), findsOneWidget);
     for (final food in ['Rice', 'Chicken adobo', 'Egg', 'Tapsilog', 'Banana']) {
-      expect(find.widgetWithText(ActionChip, food), findsOneWidget);
+      // The design system's chip, so it follows the theme.
+      expect(find.widgetWithText(FsChip, food), findsOneWidget);
     }
     expect(find.textContaining('at least 2 letters'), findsNothing);
     expect(find.textContaining('FatSecret'), findsNothing);
   });
 
+  testWidgets('the suggested foods fit a 320 dp phone at large text', (tester) async {
+    tester.view.physicalSize = const Size(320, 640);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.reset);
+    await tester.pumpWidget(ProviderScope(
+      overrides: [nutritionRepositoryProvider.overrideWithValue(_SearchRepo())],
+      child: MaterialApp(
+        builder: (context, child) => MediaQuery(
+          data: MediaQuery.of(context).copyWith(textScaler: const TextScaler.linear(1.6)),
+          child: child!,
+        ),
+        home: const LogFoodScreen(mealType: 'lunch'),
+      ),
+    ));
+    await tester.pumpAndSettle();
+    expect(tester.takeException(), isNull);
+    expect(find.byType(FsChip), findsNWidgets(5));
+  });
+
   testWidgets('tapping a suggested food searches for it', (tester) async {
     final repo = _SearchRepo();
     await _pump(tester, repo);
-    await tester.tap(find.widgetWithText(ActionChip, 'Chicken adobo'));
+    await tester.tap(find.text('Chicken adobo'));
     await tester.pumpAndSettle();
     expect(repo.queries, ['Chicken adobo']);
     expect(find.text('Adobo Flakes'), findsOneWidget);
@@ -199,6 +230,22 @@ void main() {
     await tester.pumpAndSettle();
     expect(find.text("Couldn't load this food. Try again."), findsOneWidget);
     expect(find.byKey(const Key('logSheet.log')), findsNothing);
+  });
+
+  testWidgets('loading a FatSecret food shows a bar without moving the list', (tester) async {
+    final repo = _GatedRepo();
+    await _pump(tester, repo);
+    await searchAdobo(tester);
+    final before = tester.getTopLeft(find.text('Chicken adobo'));
+    await tester.tap(find.text('Adobo Flakes'));
+    await tester.pump();
+    expect(find.byType(LinearProgressIndicator), findsOneWidget);
+    expect(tester.getTopLeft(find.text('Chicken adobo')), before, reason: 'the bar has its own space');
+    repo.gate.complete(const Food(source: 'fatsecret', externalId: 'fs-2', name: 'Adobo Flakes',
+        servingDesc: '1 bowl', kcal: 300, proteinG: 22, carbsG: 2, fatG: 22));
+    await tester.pumpAndSettle();
+    expect(find.byType(LinearProgressIndicator), findsNothing);
+    expect(find.text('Per 1 bowl'), findsOneWidget);
   });
 
   testWidgets('a FitSync food opens straight away, with no lookup', (tester) async {
