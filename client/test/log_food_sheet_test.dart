@@ -6,6 +6,7 @@ import 'package:fitsync/features/nutrition/presentation/widgets/log_food_sheet.d
 
 const _rice = Food(source: 'local', id: 3, name: 'Steamed white rice', servingDesc: '1 cup', kcal: 205, proteinG: 4.3, carbsG: 44.5, fatG: 0.4);
 const _shake = Food(source: 'fatsecret', externalId: 'fs-1', name: 'Mango Shake', servingDesc: '1 glass', kcal: 250, proteinG: 4, carbsG: 50, fatG: 3.5);
+const _oatmeal = Food(source: 'local', id: 9, name: 'Oatmeal', servingDesc: '1 bowl', kcal: 150, proteinG: 5, carbsG: 27, fatG: 3, fiberG: 3);
 
 Future<LogChoice?> _open(WidgetTester tester, Food food) async {
   LogChoice? result;
@@ -111,9 +112,27 @@ void main() {
     expect(find.text('Protein (g)'), findsOneWidget);
     expect(find.text('Carbs (g)'), findsOneWidget);
     expect(find.text('Fat (g)'), findsOneWidget);
+    expect(find.text('Fiber (g)'), findsOneWidget);
     expect(_fieldText(tester, 'logSheet.protein'), '4.3');
     expect(_fieldText(tester, 'logSheet.carbs'), '44.5');
     expect(_fieldText(tester, 'logSheet.fat'), '0.4');
+    expect(_fieldText(tester, 'logSheet.fiber'), '', reason: 'unknown fiber starts blank, not 0');
+  });
+
+  testWidgets('Edit numbers prefills fiber when the food lists it', (tester) async {
+    await _open(tester, _oatmeal);
+    await _editNumbers(tester);
+    expect(_fieldText(tester, 'logSheet.fiber'), '3');
+  });
+
+  testWidgets('the numbers line shows fiber when the food lists it', (tester) async {
+    await _open(tester, _oatmeal);
+    expect(find.textContaining('Fiber 3 g'), findsOneWidget);
+  });
+
+  testWidgets('the numbers line says fiber is not listed when the food has none', (tester) async {
+    await _open(tester, _rice);
+    expect(find.textContaining('Fiber not listed'), findsOneWidget);
   });
 
   testWidgets('edited numbers are logged as your own entry, times the servings', (tester) async {
@@ -141,6 +160,33 @@ void main() {
     expect(edited.kcal, 222);
   });
 
+  testWidgets('changing only fiber logs a manual entry with the new fiberG and an unchanged kcal', (tester) async {
+    final result = await _openForResult(tester, _rice);
+    await _editNumbers(tester);
+    await tester.enterText(find.descendant(of: find.byKey(const Key('logSheet.fiber')), matching: find.byType(TextField)), '5');
+    await tester.pump();
+    expect(find.text('205 kcal'), findsOneWidget, reason: 'fiber never changes kcal');
+    await tester.tap(find.byKey(const Key('logSheet.log')));
+    await tester.pumpAndSettle();
+    final edited = result()!.edited!;
+    expect(edited.source, 'manual');
+    expect(edited.proteinG, _rice.proteinG);
+    expect(edited.carbsG, _rice.carbsG);
+    expect(edited.fatG, _rice.fatG);
+    expect(edited.fiberG, 5);
+    expect(edited.kcal, _rice.kcal);
+  });
+
+  testWidgets('clearing fiber logs it as unknown', (tester) async {
+    final result = await _openForResult(tester, _oatmeal);
+    await _editNumbers(tester);
+    await tester.enterText(find.descendant(of: find.byKey(const Key('logSheet.fiber')), matching: find.byType(TextField)), '');
+    await tester.pump();
+    await tester.tap(find.byKey(const Key('logSheet.log')));
+    await tester.pumpAndSettle();
+    expect(result()!.edited!.fiberG, isNull);
+  });
+
   testWidgets('opening Edit numbers without changing anything logs the original food', (tester) async {
     final result = await _openForResult(tester, _rice);
     await _editNumbers(tester);
@@ -153,6 +199,17 @@ void main() {
     final result = await _openForResult(tester, _rice);
     await _editNumbers(tester);
     await tester.enterText(find.descendant(of: find.byKey(const Key('logSheet.fat')), matching: find.byType(TextField)), '600');
+    await tester.pump();
+    expect(find.text('Each value must be 0–500 g'), findsOneWidget);
+    await tester.tap(find.byKey(const Key('logSheet.log')));
+    await tester.pumpAndSettle();
+    expect(result(), isNull, reason: 'the sheet stays open');
+  });
+
+  testWidgets('an out-of-range fiber says so and Log stays off', (tester) async {
+    final result = await _openForResult(tester, _rice);
+    await _editNumbers(tester);
+    await tester.enterText(find.descendant(of: find.byKey(const Key('logSheet.fiber')), matching: find.byType(TextField)), '600');
     await tester.pump();
     expect(find.text('Each value must be 0–500 g'), findsOneWidget);
     await tester.tap(find.byKey(const Key('logSheet.log')));

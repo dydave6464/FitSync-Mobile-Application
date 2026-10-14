@@ -46,12 +46,14 @@ class _LogFoodSheetState extends State<LogFoodSheet> {
   late final _protein = TextEditingController(text: _plain(widget.food.proteinG));
   late final _carbs = TextEditingController(text: _plain(widget.food.carbsG));
   late final _fat = TextEditingController(text: _plain(widget.food.fatG));
+  late final _fiber = TextEditingController(text: widget.food.fiberG == null ? '' : _plain(widget.food.fiberG!));
 
   @override
   void dispose() {
     _protein.dispose();
     _carbs.dispose();
     _fat.dispose();
+    _fiber.dispose();
     super.dispose();
   }
 
@@ -64,13 +66,20 @@ class _LogFoodSheetState extends State<LogFoodSheet> {
     final f = widget.food;
 
     final p = _grams(_protein), c = _grams(_carbs), fat = _grams(_fat);
-    final gramsOk = [p, c, fat].every((g) => g != null && g >= 0 && g <= 500);
+    final fiber = _fiberGrams(_fiber);
+    final gramsOk = [p, c, fat].every((g) => g != null && g >= 0 && g <= 500) &&
+        (fiber == null || (fiber >= 0 && fiber <= 500));
     // Only a real change makes this the user's own entry; opening the boxes
     // and logging untouched still logs the listed food.
-    final changed = _editing && gramsOk && (p != f.proteinG || c != f.carbsG || fat != f.fatG);
+    final macrosChanged = p != f.proteinG || c != f.carbsG || fat != f.fatG;
+    final changed = _editing && gramsOk && (macrosChanged || fiber != f.fiberG);
     final canLog = !_editing || (gramsOk && p! + c! + fat! > 0);
-    final perKcal = changed ? manualKcal(p!, c!, fat!) : f.kcal;
-    final shown = changed ? (p: p!, c: c!, f: fat!) : (p: f.proteinG, c: f.carbsG, f: f.fatG);
+    // Fiber never changes calories: only a real change to protein, carbs or
+    // fat recomputes kcal from the macros.
+    final perKcal = macrosChanged ? manualKcal(p!, c!, fat!) : f.kcal;
+    final shown = changed
+        ? (p: p!, c: c!, f: fat!, fb: fiber)
+        : (p: f.proteinG, c: f.carbsG, f: f.fatG, fb: f.fiberG);
 
     Widget gramsField(String label, String key, TextEditingController controller) => Expanded(
       child: Column(
@@ -121,7 +130,8 @@ class _LogFoodSheetState extends State<LogFoodSheet> {
             const SizedBox(height: 8),
             Text('${(perKcal * _servings).round()} kcal', style: theme.textTheme.titleLarge),
             Text(
-              'Protein ${_g(shown.p * _servings)} g · Carbs ${_g(shown.c * _servings)} g · Fat ${_g(shown.f * _servings)} g',
+              'Protein ${_g(shown.p * _servings)} g · Carbs ${_g(shown.c * _servings)} g · Fat ${_g(shown.f * _servings)} g'
+              ' · Fiber ${shown.fb == null ? 'not listed' : '${_g(shown.fb! * _servings)} g'}',
               style: TextStyle(color: t.text2, fontSize: 13),
             ),
             if (changed)
@@ -140,12 +150,18 @@ class _LogFoodSheetState extends State<LogFoodSheet> {
               const SizedBox(height: 12),
               Text('Your numbers, per serving', style: theme.textTheme.titleSmall),
               const SizedBox(height: 8),
+              // Two rows of two, not one row of four: four boxes in a row
+              // overflow a narrow phone at large text.
               Row(children: [
                 gramsField('Protein (g)', 'logSheet.protein', _protein),
                 const SizedBox(width: 10),
                 gramsField('Carbs (g)', 'logSheet.carbs', _carbs),
-                const SizedBox(width: 10),
+              ]),
+              const SizedBox(height: 10),
+              Row(children: [
                 gramsField('Fat (g)', 'logSheet.fat', _fat),
+                const SizedBox(width: 10),
+                gramsField('Fiber (g)', 'logSheet.fiber', _fiber),
               ]),
               if (!gramsOk)
                 Padding(
@@ -171,6 +187,7 @@ class _LogFoodSheetState extends State<LogFoodSheet> {
                                 proteinG: p!,
                                 carbsG: c!,
                                 fatG: fat!,
+                                fiberG: fiber,
                               )
                             : null,
                       )),
@@ -188,3 +205,11 @@ String _plain(double v) => v == v.roundToDouble() ? v.toStringAsFixed(0) : v.toS
 
 /// An empty box counts as 0; anything unreadable as null (invalid).
 double? _grams(TextEditingController c) => c.text.trim().isEmpty ? 0 : double.tryParse(c.text.trim());
+
+/// Fiber is the one macro where blank is a real value (unknown, not 0).
+/// Anything else unreadable comes back as NaN, which fails every `gramsOk`
+/// range check the same way an out-of-range number would.
+double? _fiberGrams(TextEditingController c) {
+  final text = c.text.trim();
+  return text.isEmpty ? null : (double.tryParse(text) ?? double.nan);
+}

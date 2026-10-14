@@ -42,6 +42,7 @@ class NutritionSummaryCard extends StatelessWidget {
         _MacroBar(label: 'Protein', eaten: eaten.proteinG, target: target?.proteinG, color: t.accent),
         _MacroBar(label: 'Carbs', eaten: eaten.carbsG, target: target?.carbsG, color: t.blue),
         _MacroBar(label: 'Fat', eaten: eaten.fatG, target: target?.fatG, color: t.violet),
+        _MacroBar(label: 'Fiber', eaten: eaten.fiberG, target: target?.fiberG, color: t.amber),
       ],
     );
 

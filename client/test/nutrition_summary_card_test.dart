@@ -13,7 +13,7 @@ NutritionDay _day() => NutritionDay(
   meals: {for (final m in mealTypes) m: const []},
 );
 
-Future<void> _pump(WidgetTester tester, {required double width, double textScale = 1}) async {
+Future<void> _pump(WidgetTester tester, {required double width, double textScale = 1, NutritionDay? day}) async {
   tester.view.physicalSize = Size(width, 800);
   tester.view.devicePixelRatio = 1;
   addTearDown(tester.view.reset);
@@ -27,7 +27,7 @@ Future<void> _pump(WidgetTester tester, {required double width, double textScale
     home: Scaffold(
       body: ListView(
         padding: const EdgeInsets.symmetric(horizontal: 20),
-        children: [NutritionSummaryCard(day: _day())],
+        children: [NutritionSummaryCard(day: day ?? _day())],
       ),
     ),
   ));
@@ -38,7 +38,7 @@ Future<void> _pump(WidgetTester tester, {required double width, double textScale
 /// beside it, filling the rest (screens-nutrition.jsx, `accent-card row`).
 void _expectBarsBesideRing(WidgetTester tester) {
   final ring = tester.getRect(find.byType(FsRing));
-  for (final label in ['Protein', 'Carbs', 'Fat']) {
+  for (final label in ['Protein', 'Carbs', 'Fat', 'Fiber']) {
     final bar = tester.getRect(find.text(label));
     expect(bar.left, greaterThan(ring.right), reason: '$label sits to the right of the ring');
   }
@@ -64,5 +64,29 @@ void main() {
     await _pump(tester, width: 320, textScale: 1.6);
     expect(tester.takeException(), isNull);
     _expectBarsBesideRing(tester);
+  });
+
+  testWidgets('a 4th bar shows Fiber, beside the ring like the others', (tester) async {
+    await _pump(tester, width: 390, day: NutritionDay(
+      date: '2026-10-14',
+      target: const NutritionTarget(kcal: 2100, proteinG: 95, carbsG: 300, fatG: 58, fiberG: 26),
+      targetMissing: const [],
+      totals: const MacroTotals(kcal: 0, proteinG: 0, carbsG: 0, fatG: 0, fiberG: 12),
+      meals: {for (final m in mealTypes) m: const []},
+    ));
+    expect(find.text('Fiber'), findsOneWidget);
+    expect(find.text('12 / 26 g'), findsOneWidget);
+    _expectBarsBesideRing(tester);
+  });
+
+  testWidgets('Fiber shows just the total when there is no target', (tester) async {
+    await _pump(tester, width: 390, day: NutritionDay(
+      date: '2026-10-14',
+      target: null,
+      targetMissing: const ['sex'],
+      totals: const MacroTotals(kcal: 0, proteinG: 0, carbsG: 0, fatG: 0, fiberG: 12),
+      meals: {for (final m in mealTypes) m: const []},
+    ));
+    expect(find.text('12 g'), findsOneWidget);
   });
 }
