@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../core/theme.dart';
@@ -13,6 +14,9 @@ import 'widgets/fatsecret_attribution.dart';
 import 'widgets/log_food_sheet.dart';
 
 const foodSearchDebounce = Duration(milliseconds: 300);
+
+/// The server refuses a longer q with INVALID_FOOD_QUERY.
+const _maxQuery = 60;
 
 class LogFoodScreen extends ConsumerStatefulWidget {
   const LogFoodScreen({super.key, required this.mealType});
@@ -89,6 +93,7 @@ class _LogFoodScreenState extends ConsumerState<LogFoodScreen> {
               icon: Icons.search,
               onChanged: _onChanged,
               textInputAction: TextInputAction.search,
+              inputFormatters: [LengthLimitingTextInputFormatter(_maxQuery)],
             ),
           ),
           Padding(

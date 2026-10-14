@@ -65,6 +65,15 @@ void main() {
     expect(find.text('Powered by fatsecret Platform API'), findsOneWidget);
   });
 
+  testWidgets('the search stops at 60 characters, the most the server accepts', (tester) async {
+    final repo = _SearchRepo();
+    await _pump(tester, repo);
+    await tester.enterText(find.byKey(const Key('food.search')), 'a' * 70);
+    await tester.pump(const Duration(milliseconds: 300));
+    await tester.pumpAndSettle();
+    expect(repo.queries, ['a' * 60]);
+  });
+
   testWidgets('FatSecret down shows a quiet note', (tester) async {
     final repo = _SearchRepo()..unavailable = true;
     await _pump(tester, repo);
