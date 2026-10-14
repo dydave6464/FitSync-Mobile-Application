@@ -23,12 +23,12 @@ test('food search and recents', async (t) => {
       // Fails just after the route stops waiting, as the real client's own
       // abort timer does when FatSecret is slow.
       if (mode === 'late') return new Promise((_, reject) => { setTimeout(() => reject(new Error('aborted')), 80); });
-      return [{ externalId: 'fs-9', name: `FatSecret ${q}`, servingDesc: '1 cup', kcal: 200, proteinG: 10, carbsG: 20, fatG: 8 }];
+      return [{ externalId: 'fs-9', name: `FatSecret ${q}`, servingDesc: '1 cup', kcal: 200, proteinG: 10, carbsG: 20, fatG: 8, fiberG: null }];
     },
     async get(externalId) {
       if (getMode === 'down') throw new Error('down');
       if (externalId === 'fs-9') {
-        return { externalId: 'fs-9', name: 'FatSecret chicken thigh', servingDesc: '1 thigh', kcal: 107, proteinG: 12, carbsG: 2, fatG: 6 };
+        return { externalId: 'fs-9', name: 'FatSecret chicken thigh', servingDesc: '1 thigh', kcal: 107, proteinG: 12, carbsG: 2, fatG: 6, fiberG: 2.4 };
       }
       return null;
     },
@@ -69,11 +69,11 @@ test('food search and recents', async (t) => {
     assert.deepEqual(foods.map((f) => f.name), ['Adobong kangkong', 'Chicken adobo', 'Pork adobo', 'FatSecret adobo']);
     assert.deepEqual(foods[1], {
       id: chicken, source: 'local', externalId: null, name: 'Chicken adobo', servingDesc: '1 cup',
-      kcal: 300, proteinG: 20, carbsG: 10, fatG: 15,
+      kcal: 300, proteinG: 20, carbsG: 10, fatG: 15, fiberG: null,
     });
     assert.deepEqual(foods[3], {
       id: null, source: 'fatsecret', externalId: 'fs-9', name: 'FatSecret adobo', servingDesc: '1 cup',
-      kcal: 200, proteinG: 10, carbsG: 20, fatG: 8,
+      kcal: 200, proteinG: 10, carbsG: 20, fatG: 8, fiberG: null,
     });
   });
 
@@ -130,7 +130,7 @@ test('food search and recents', async (t) => {
     const ok = await request(app).get('/api/v1/foods/fatsecret/fs-9').set(auth).expect(200);
     assert.deepEqual(ok.body.data.food, {
       id: null, source: 'fatsecret', externalId: 'fs-9', name: 'FatSecret chicken thigh', servingDesc: '1 thigh',
-      kcal: 107, proteinG: 12, carbsG: 2, fatG: 6,
+      kcal: 107, proteinG: 12, carbsG: 2, fatG: 6, fiberG: 2.4,
     });
 
     const missing = await request(app).get('/api/v1/foods/fatsecret/fs-missing').set(auth).expect(404);
@@ -160,7 +160,7 @@ test('food search and recents', async (t) => {
     assert.equal(foods[0].kcal, 300, 'a catalogue food reads its own per-serving numbers');
     assert.deepEqual(foods[2], {
       id: null, source: 'manual', externalId: null, name: 'Turon', servingDesc: null,
-      kcal: 198, proteinG: 2, carbsG: 34, fatG: 6,
+      kcal: 198, proteinG: 2, carbsG: 34, fatG: 6, fiberG: null,
     });
   });
 });

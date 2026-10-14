@@ -1,6 +1,7 @@
 'use strict';
 
 const round2 = (n) => Math.round(Number(n) * 100) / 100;
+const nullable2 = (n) => (n == null ? null : round2(n));
 
 function asFood(r) {
   return {
@@ -11,12 +12,13 @@ function asFood(r) {
     proteinG: round2(r.protein_g),
     carbsG: round2(r.carbs_g),
     fatG: round2(r.fat_g),
+    fiberG: nullable2(r.fiber_g),
     externalId: r.external_id || null,
   };
 }
 
 const SELECT_FOOD = `
-  SELECT f.food_id, f.name, f.serving_desc, f.calories, f.protein_g, f.carbs_g, f.fat_g, s.external_id
+  SELECT f.food_id, f.name, f.serving_desc, f.calories, f.protein_g, f.carbs_g, f.fat_g, f.fiber_g, s.external_id
     FROM foods f LEFT JOIN food_sources s ON s.food_id = f.food_id
 `;
 
@@ -50,14 +52,14 @@ async function searchOwnFoods(pool, q, limit = 20) {
 /// back with it, and its one retry finds the winner's row.
 async function upsertFatsecretFood(pool, food, retry = true) {
   const servingDesc = food.servingDesc == null ? null : String(food.servingDesc).slice(0, 255);
-  const values = [food.name.slice(0, 255), servingDesc, food.kcal, food.proteinG, food.carbsG, food.fatG];
+  const values = [food.name.slice(0, 255), servingDesc, food.kcal, food.proteinG, food.carbsG, food.fatG, food.fiberG ?? null];
   const [[existing]] = await pool.query(
     "SELECT food_id FROM food_sources WHERE provider = 'fatsecret' AND external_id = ?",
     [food.externalId],
   );
   if (existing) {
     await pool.query(
-      'UPDATE foods SET name = ?, serving_desc = ?, calories = ?, protein_g = ?, carbs_g = ?, fat_g = ? WHERE food_id = ?',
+      'UPDATE foods SET name = ?, serving_desc = ?, calories = ?, protein_g = ?, carbs_g = ?, fat_g = ?, fiber_g = ? WHERE food_id = ?',
       [...values, existing.food_id],
     );
     return existing.food_id;
@@ -66,8 +68,8 @@ async function upsertFatsecretFood(pool, food, retry = true) {
   try {
     await conn.beginTransaction();
     const [ins] = await conn.query(
-      `INSERT INTO foods (name, serving_desc, calories, protein_g, carbs_g, fat_g, category)
-       VALUES (?, ?, ?, ?, ?, ?, 'international')`,
+      `INSERT INTO foods (name, serving_desc, calories, protein_g, carbs_g, fat_g, fiber_g, category)
+       VALUES (?, ?, ?, ?, ?, ?, ?, 'international')`,
       values,
     );
     await conn.query(

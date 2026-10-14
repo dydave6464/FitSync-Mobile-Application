@@ -16,14 +16,14 @@ const FATSECRET_TIMEOUT_MS = 3000;
 function own(f) {
   return {
     id: f.foodId, source: 'local', externalId: null, name: f.name, servingDesc: f.servingDesc,
-    kcal: f.kcal, proteinG: f.proteinG, carbsG: f.carbsG, fatG: f.fatG,
+    kcal: f.kcal, proteinG: f.proteinG, carbsG: f.carbsG, fatG: f.fatG, fiberG: f.fiberG ?? null,
   };
 }
 
 function fromFatsecret(f) {
   return {
     id: null, source: 'fatsecret', externalId: f.externalId, name: f.name, servingDesc: f.servingDesc,
-    kcal: f.kcal, proteinG: f.proteinG, carbsG: f.carbsG, fatG: f.fatG,
+    kcal: f.kcal, proteinG: f.proteinG, carbsG: f.carbsG, fatG: f.fatG, fiberG: f.fiberG ?? null,
   };
 }
 

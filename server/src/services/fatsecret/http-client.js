@@ -32,7 +32,8 @@ function parseDescription(text) {
 
 function plausible(f) {
   return f.kcal >= 0 && f.kcal <= MAX_KCAL
-    && [f.proteinG, f.carbsG, f.fatG].every((g) => Number.isFinite(g) && g >= 0 && g <= MAX_GRAMS);
+    && [f.proteinG, f.carbsG, f.fatG].every((g) => Number.isFinite(g) && g >= 0 && g <= MAX_GRAMS)
+    && (f.fiberG == null || (Number.isFinite(f.fiberG) && f.fiberG >= 0 && f.fiberG <= MAX_GRAMS));
 }
 
 function displayName(item) {
@@ -94,8 +95,9 @@ function create({ clientId, clientSecret, fetchImpl = fetch, now = Date.now }) {
           return parsed && { externalId: String(item.food_id), name: displayName(item), ...parsed };
         })
         .filter((f) => f && plausible(f))
-        .map(({ externalId, name, servingDesc, kcal, proteinG, carbsG, fatG }) => ({
-          externalId, name, servingDesc, kcal, proteinG, carbsG, fatG,
+        .map((f) => ({ ...f, fiberG: null }))
+        .map(({ externalId, name, servingDesc, kcal, proteinG, carbsG, fatG, fiberG }) => ({
+          externalId, name, servingDesc, kcal, proteinG, carbsG, fatG, fiberG,
         }));
     },
 
@@ -117,6 +119,7 @@ function create({ clientId, clientSecret, fetchImpl = fetch, now = Date.now }) {
         proteinG: round2(Number(s.protein)),
         carbsG: round2(Number(s.carbohydrate)),
         fatG: round2(Number(s.fat)),
+        fiberG: s.fiber == null || s.fiber === '' ? null : round2(Number(s.fiber)),
       };
       return plausible(food) ? food : null;
     },

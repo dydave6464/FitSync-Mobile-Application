@@ -19,6 +19,14 @@ test('the stub gets by id, or null', async () => {
   assert.equal(await fs.get('no-such-id'), null);
 });
 
+test('the stub carries a fiberG for each of its foods', async () => {
+  const fs = createFatsecretService({ mode: 'stub' });
+  const byName = async (q) => (await fs.search(q))[0];
+  assert.equal((await byName('banana')).fiberG, 3.1);
+  assert.equal((await byName('fried chicken')).fiberG, 0.5);
+  assert.equal((await byName('white rice')).fiberG, 0.6);
+});
+
 test('http mode needs both credentials', () => {
   assert.throws(() => createFatsecretService({ mode: 'http', clientId: 'a' }), /FATSECRET_CONSUMER_SECRET/);
 });
