@@ -41,41 +41,49 @@ async function searchOwnFoods(pool, q, limit = 20) {
 
 /// The foods row for a FatSecret food: created the first time anyone logs it,
 /// refreshed with FatSecret's current numbers every time after. Returns its id.
+///
+/// The lookup is a plain SELECT, not SELECT ... FOR UPDATE: on a key that
+/// isn't there yet InnoDB takes a gap lock, and two first-time copies holding
+/// one each block each other's INSERT -- a deadlock, never the duplicate key a
+/// retry could recover from. The unique key on food_sources decides the race
+/// instead: the loser's INSERT fails with ER_DUP_ENTRY, its foods row rolls
+/// back with it, and its one retry finds the winner's row.
 async function upsertFatsecretFood(pool, food, retry = true) {
+  const servingDesc = food.servingDesc == null ? null : String(food.servingDesc).slice(0, 255);
+  const values = [food.name.slice(0, 255), servingDesc, food.kcal, food.proteinG, food.carbsG, food.fatG];
+  const [[existing]] = await pool.query(
+    "SELECT food_id FROM food_sources WHERE provider = 'fatsecret' AND external_id = ?",
+    [food.externalId],
+  );
+  if (existing) {
+    await pool.query(
+      'UPDATE foods SET name = ?, serving_desc = ?, calories = ?, protein_g = ?, carbs_g = ?, fat_g = ? WHERE food_id = ?',
+      [...values, existing.food_id],
+    );
+    return existing.food_id;
+  }
   const conn = await pool.getConnection();
   try {
     await conn.beginTransaction();
-    const [[existing]] = await conn.query(
-      "SELECT food_id FROM food_sources WHERE provider = 'fatsecret' AND external_id = ? FOR UPDATE",
-      [food.externalId],
+    const [ins] = await conn.query(
+      `INSERT INTO foods (name, serving_desc, calories, protein_g, carbs_g, fat_g, category)
+       VALUES (?, ?, ?, ?, ?, ?, 'international')`,
+      values,
     );
-    const servingDesc = food.servingDesc == null ? null : String(food.servingDesc).slice(0, 255);
-    const values = [food.name.slice(0, 255), servingDesc, food.kcal, food.proteinG, food.carbsG, food.fatG];
-    let foodId;
-    if (existing) {
-      foodId = existing.food_id;
-      await conn.query(
-        'UPDATE foods SET name = ?, serving_desc = ?, calories = ?, protein_g = ?, carbs_g = ?, fat_g = ? WHERE food_id = ?',
-        [...values, foodId],
-      );
-    } else {
-      const [ins] = await conn.query(
-        `INSERT INTO foods (name, serving_desc, calories, protein_g, carbs_g, fat_g, category)
-         VALUES (?, ?, ?, ?, ?, ?, 'international')`,
-        values,
-      );
-      foodId = ins.insertId;
-      await conn.query(
-        "INSERT INTO food_sources (food_id, provider, external_id) VALUES (?, 'fatsecret', ?)",
-        [foodId, food.externalId],
-      );
-    }
+    await conn.query(
+      "INSERT INTO food_sources (food_id, provider, external_id) VALUES (?, 'fatsecret', ?)",
+      [ins.insertId, food.externalId],
+    );
     await conn.commit();
-    return foodId;
+    return ins.insertId;
   } catch (err) {
     await conn.rollback();
-    // Two first-time logs of the same food raced; the other one won. Once.
-    if (retry && err.code === 'ER_DUP_ENTRY') return upsertFatsecretFood(pool, food, false);
+    // Another first-time copy of the same food won (ER_DUP_ENTRY), or InnoDB
+    // chose this transaction to break a lock wait (ER_LOCK_DEADLOCK, which
+    // the plain SELECT should make rare). Once: the retry reads the winner.
+    if (retry && (err.code === 'ER_DUP_ENTRY' || err.code === 'ER_LOCK_DEADLOCK')) {
+      return upsertFatsecretFood(pool, food, false);
+    }
     throw err;
   } finally {
     conn.release();
