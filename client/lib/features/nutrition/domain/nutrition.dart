@@ -23,6 +23,10 @@ String mealForTime(DateTime instant) {
 int manualKcal(double proteinG, double carbsG, double fatG) =>
     (4 * proteinG + 4 * carbsG + 9 * fatG).round();
 
+/// 1.0 -> "1", 1.5 -> "1.5": how a servings count reads on screen.
+String formatServings(double servings) =>
+    servings == servings.roundToDouble() ? servings.toStringAsFixed(0) : servings.toString();
+
 const _missingLabels = {
   'sex': 'sex',
   'dateOfBirth': 'birthday',

@@ -19,7 +19,6 @@ Future<LogChoice?> showLogFoodSheet(BuildContext context, Food food, {required S
       builder: (_) => LogFoodSheet(food: food, mealType: mealType),
     );
 
-String _servingsLabel(double s) => s == s.roundToDouble() ? s.toStringAsFixed(0) : s.toString();
 String _g(double v) => v == v.roundToDouble() ? v.toStringAsFixed(0) : v.toStringAsFixed(1);
 
 class LogFoodSheet extends StatefulWidget {
@@ -68,7 +67,7 @@ class _LogFoodSheetState extends State<LogFoodSheet> {
                 IconButton(key: const Key('servings.minus'), onPressed: () => _step(-0.5), icon: const Icon(Icons.remove)),
                 SizedBox(
                   width: 48,
-                  child: Text(_servingsLabel(_servings), textAlign: TextAlign.center, style: theme.textTheme.titleMedium),
+                  child: Text(formatServings(_servings), textAlign: TextAlign.center, style: theme.textTheme.titleMedium),
                 ),
                 IconButton(key: const Key('servings.plus'), onPressed: () => _step(0.5), icon: const Icon(Icons.add)),
               ],

@@ -4,8 +4,6 @@ import '../../../../core/theme.dart';
 import '../../../../core/widgets/fs_kit.dart' show FsCard, FsEyebrow;
 import '../../domain/nutrition.dart';
 
-String _servings(double s) => s == s.roundToDouble() ? s.toStringAsFixed(0) : s.toString();
-
 class MealSection extends StatelessWidget {
   const MealSection({
     super.key,
@@ -55,7 +53,7 @@ class MealSection extends StatelessWidget {
                       children: [
                         Text(e.name, style: const TextStyle(fontWeight: FontWeight.w600)),
                         Text(
-                          [if (e.servingDesc != null) e.servingDesc!, if (e.servings != 1) '× ${_servings(e.servings)}'].join(' '),
+                          [if (e.servingDesc != null) e.servingDesc!, if (e.servings != 1) '× ${formatServings(e.servings)}'].join(' '),
                           style: TextStyle(fontSize: 12, color: t.text3),
                         ),
                       ],

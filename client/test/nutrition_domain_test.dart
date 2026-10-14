@@ -87,4 +87,9 @@ void main() {
     expect(NutritionDay.fromJson(_day(lunch: [_entry()])).hasFatsecret, isFalse);
     expect(NutritionDay.fromJson(_day(lunch: [_entry(source: 'fatsecret')])).hasFatsecret, isTrue);
   });
+
+  test('formatServings drops the decimal only when whole', () {
+    expect(formatServings(1), '1');
+    expect(formatServings(1.5), '1.5');
+  });
 }
