@@ -66,14 +66,14 @@ migrations (or an equivalent forward-only mechanism) with a real rollback
 and data-migration story. That transition is an **open item for a later
 sub-project** — it has not been designed yet.
 
-## Exceptions: `007`, `008`, `011`, `012`, `013`, `014`, `017` and `028`
+## Exceptions: `007`, `008`, `011`, `012`, `013`, `014`, `017`, `028` and `032`
 
 `007_auth_identities.sql`, `008_equipment_curation.sql`,
 `011_email_verification.sql`, `012_weight_unit.sql`, `013_plan_days.sql`,
-`014_cardio_core_split.sql`, `017_plan_source.sql` and
-`028_new_to_training_level.sql`.
+`014_cardio_core_split.sql`, `017_plan_source.sql`,
+`028_new_to_training_level.sql` and `032_nutrition_tracking.sql`.
 
-All eight files break the rule above on purpose, for the same reason: each
+All nine files break the rule above on purpose, for the same reason: each
 needs to change tables that migrations `001`–`006` already defined and that
 may already be applied on someone's database. The runner has no checksum
 (see the gap recorded below): it decides whether to apply a file solely by
@@ -82,10 +82,10 @@ these columns would not be replayed on a database where `001` was already
 recorded as applied — the edit would be silently invisible there, exactly
 the failure mode the pre-release policy above depends on nobody hitting. A
 new, forward-only file sidesteps that. The tradeoff is the one below: unlike
-a `CREATE TABLE IF NOT EXISTS`-only file, six of the eight are not safe to
-replay after a partial failure. `014` and `028` are the exceptions to the
+a `CREATE TABLE IF NOT EXISTS`-only file, six of the nine are not safe to
+replay after a partial failure. `014`, `028` and `032` are the exceptions to the
 exception: both restate a column definition rather than adding to one, so
-they replay cleanly. Which of the eight you are holding is the thing to know
+they replay cleanly. Which of the nine you are holding is the thing to know
 before retrying one.
 
 **`007_auth_identities.sql`** — alongside its
@@ -139,7 +139,13 @@ replay-safe.
 the enum `001` defined. Appended at the END for the same reason as 014. Like
 014 it restates the whole column definition, so it replays cleanly.
 
-**Consequence: six of the eight are not replay-safe.** Unlike every other
+**`032_nutrition_tracking.sql`** — a `CREATE TABLE IF NOT EXISTS food_sources`
+followed by ONE `ALTER TABLE meal_logs` (adds `serving_desc`, widens
+`protein_g`/`carbs_g`/`fat_g` to DECIMAL(7,2)). The ALTER is last and is a
+single atomic statement, so a failure anywhere replays cleanly: before it,
+nothing non-idempotent has run; inside it, nothing was applied.
+
+**Consequence: six of the nine are not replay-safe.** Unlike every other
 migration file, if 007, 008, 011, 012, 013 or 017 fails partway through,
 `IF NOT EXISTS` does not protect the `ALTER TABLE` (or, for 008, the
 trailing `CREATE INDEX`) statements — a second run will hit
