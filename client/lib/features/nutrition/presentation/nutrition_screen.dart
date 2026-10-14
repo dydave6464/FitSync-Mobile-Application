@@ -35,6 +35,9 @@ class NutritionScreen extends ConsumerWidget {
   Future<void> _delete(BuildContext context, WidgetRef ref, FoodEntry entry) async {
     final messenger = ScaffoldMessenger.of(context);
     final controller = ref.read(nutritionDayProvider.notifier);
+    // The entry's own day: the arrows still work while the snackbar shows,
+    // and Undo must not log it into whichever day is on screen by then.
+    final date = ref.read(nutritionDayProvider).value?.date;
     try {
       await controller.remove(entry);
     } catch (_) {
@@ -47,7 +50,7 @@ class NutritionScreen extends ConsumerWidget {
       action: SnackBarAction(
         label: 'Undo',
         onPressed: () => controller
-            .log(entry.asFood(), mealType: entry.mealType, servings: entry.servings)
+            .log(entry.asFood(), mealType: entry.mealType, servings: entry.servings, date: date)
             .catchError((_) => messenger.showSnackBar(const SnackBar(content: Text("Couldn't save — try again.")))),
       ),
     ));

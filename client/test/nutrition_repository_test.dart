@@ -36,6 +36,19 @@ void main() {
     expect(day.targetMissing, ['weightKg']);
   });
 
+  test("getDay with no date sends none, so the server picks its own today", () async {
+    final repo = _repo(MockClient((r) async {
+      expect(r.url.path, '/api/v1/nutrition/day');
+      expect(r.url.queryParameters.containsKey('date'), isFalse);
+      return _ok({'day': {
+        'date': '2026-10-14', 'target': null, 'targetMissing': [],
+        'totals': {'kcal': 0, 'proteinG': 0, 'carbsG': 0, 'fatG': 0},
+        'meals': {'breakfast': [], 'lunch': [], 'dinner': [], 'snack': []},
+      }});
+    }));
+    expect((await repo.getDay(null)).date, '2026-10-14');
+  });
+
   test('logEntry POSTs date, meal, servings and the food ref', () async {
     final repo = _repo(MockClient((r) async {
       expect(r.method, 'POST');

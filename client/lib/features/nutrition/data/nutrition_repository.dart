@@ -7,8 +7,11 @@ class NutritionRepository {
 
   final ApiClient _api;
 
-  Future<NutritionDay> getDay(String date) async {
-    final data = await _api.getJson('/api/v1/nutrition/day', query: {'date': date});
+  /// A null [date] sends none, and the server answers with its own today: a
+  /// phone clock a little ahead near midnight would otherwise ask for a day
+  /// the server still calls the future.
+  Future<NutritionDay> getDay(String? date) async {
+    final data = await _api.getJson('/api/v1/nutrition/day', query: {'date': ?date});
     return NutritionDay.fromJson(data['day'] as Map<String, dynamic>);
   }
 

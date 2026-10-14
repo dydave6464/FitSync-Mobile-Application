@@ -109,6 +109,20 @@ void main() {
     expect(find.text('Chicken adobo'), findsOneWidget);
   });
 
+  testWidgets('Undo after switching days logs back to the day it was removed from', (tester) async {
+    final repo = await _pump(tester, today: _day('2026-10-14', lunch: [_adobo()]));
+    await tester.tap(find.byKey(const Key('entry.delete.7')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const Key('day.prev')));
+    await tester.pumpAndSettle();
+    expect(find.text('Yesterday'), findsOneWidget);
+    await tester.tap(find.text('Undo'));
+    await tester.pumpAndSettle();
+    expect(repo.calls, contains('log 2026-10-14 lunch Chicken adobo x1.0'));
+    expect(repo.calls.where((c) => c.startsWith('log 2026-10-13')), isEmpty);
+    expect(find.text('Chicken adobo'), findsNothing, reason: 'yesterday stays as it was');
+  });
+
   testWidgets('no target: names what is missing and links to the profile', (tester) async {
     var opened = false;
     await _pump(tester,

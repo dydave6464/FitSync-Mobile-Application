@@ -52,43 +52,54 @@ class NutritionDayController extends AsyncNotifier<NutritionDay> {
 
   NutritionRepository get _repo => ref.read(nutritionRepositoryProvider);
 
+  /// While following today it sends no date, and the server's answer says
+  /// which day today is; logs then use that day's date.
   @override
-  Future<NutritionDay> build() {
-    final date = ref.watch(nutritionDateProvider) ?? nutritionToday(ref);
-    return _repo.getDay(date);
-  }
+  Future<NutritionDay> build() => _repo.getDay(ref.watch(nutritionDateProvider));
 
-  /// Shows the entry at once. If the save fails, takes it back out and
-  /// rethrows, so the caller can say so.
-  Future<void> log(Food food, {required String mealType, required double servings}) async {
-    final day = state.value;
-    if (day == null) return;
+  /// Saves to [date], or to the day on screen. The entry shows at once if
+  /// that day is the one on screen. If the save fails, it comes back out and
+  /// this rethrows, so the caller can say so. With no [date] and no day
+  /// loaded there is nowhere to save, which throws a [StateError].
+  Future<void> log(Food food, {required String mealType, required double servings, String? date}) async {
+    final target = date ?? state.value?.date;
+    if (target == null) throw StateError('No day is loaded to log to.');
     final pending = FoodEntry.pending(id: --_pendingIds, food: food, mealType: mealType, servings: servings);
-    state = AsyncData(day.withEntry(pending));
+    _onDay(target, (day) => day.withEntry(pending));
+    final FoodEntry saved;
     try {
-      await _repo.logEntry(date: day.date, mealType: mealType, servings: servings, food: food);
+      saved = await _repo.logEntry(date: target, mealType: mealType, servings: servings, food: food);
     } catch (_) {
-      final now = state.value;
-      if (now != null) state = AsyncData(now.without(pending.id));
+      _onDay(target, (day) => day.without(pending.id));
       rethrow;
     }
+    // The real entry, so it can be deleted even if the refetch below fails.
+    _onDay(target, (day) => day.without(pending.id).withEntry(saved));
     ref.invalidate(recentFoodsProvider);
-    await _settle(day.date);
+    await _settle(target);
   }
 
-  /// Hides the entry at once. If the delete fails, puts it back and rethrows.
+  /// Hides the entry at once. If the delete fails, puts it back -- on its own
+  /// day only, if the user has moved on -- and rethrows.
   Future<void> remove(FoodEntry entry) async {
-    final day = state.value;
-    if (day == null) return;
-    state = AsyncData(day.without(entry.id));
+    final date = state.value?.date;
+    if (date == null) throw StateError('No day is loaded to remove from.');
+    _onDay(date, (day) => day.without(entry.id));
     try {
       await _repo.deleteEntry(entry.id);
     } catch (_) {
-      final now = state.value;
-      if (now != null) state = AsyncData(now.withEntry(entry));
+      _onDay(date, (day) => day.withEntry(entry));
       rethrow;
     }
-    await _settle(day.date);
+    ref.invalidate(recentFoodsProvider);
+    await _settle(date);
+  }
+
+  /// Applies [change] to the day on screen if it is [date]'s; otherwise the
+  /// write belongs to a day the user has left, and this leaves the screen be.
+  void _onDay(String date, NutritionDay Function(NutritionDay day) change) {
+    final day = state.value;
+    if (day != null && day.date == date) state = AsyncData(change(day));
   }
 
   /// Replaces the optimistic day with the server's, if the user is still on
