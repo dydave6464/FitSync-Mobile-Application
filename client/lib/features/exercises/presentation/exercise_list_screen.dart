@@ -20,9 +20,10 @@ class ExerciseListScreen extends ConsumerStatefulWidget {
 
   /// Whether rows are being picked for a workout rather than browsed.
   ///
-  /// The Browse tab and the manual-logging picker are the same list over the
-  /// same catalogue, filters and pagination; only what a tap means differs.
-  /// A second screen would have to copy all of that to change one gesture.
+  /// Train's Exercises tab and the manual-logging picker are the same list
+  /// over the same catalogue, filters and pagination; only what a tap means
+  /// differs. A second screen would have to copy all of that to change one
+  /// gesture.
   final bool selecting;
 
   /// Hosted inside Train's tab body, under Train's own header: no AppBar,

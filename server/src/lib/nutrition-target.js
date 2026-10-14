@@ -4,8 +4,10 @@
 ///
 /// Maintenance is the same Mifflin-St Jeor estimate the app's onboarding
 /// shows (client/lib/features/onboarding/domain/daily_targets.dart), rounded
-/// the same way, so the two never disagree about the same person. A shared
-/// fixture (tests/fixtures/daily-targets-parity.json) holds them together.
+/// the same way, so the two agree about the same person. A shared fixture
+/// (tests/fixtures/daily-targets-parity.json) holds them together. The
+/// onboarding estimate has no calorie floor, so with no goal adjustment the
+/// two agree only when maintenance is at or above the floor below.
 
 const SEX_CONSTANTS = { male: 5, female: -161 };
 const MULTIPLIERS = {

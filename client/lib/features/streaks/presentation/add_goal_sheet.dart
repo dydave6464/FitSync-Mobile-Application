@@ -54,8 +54,8 @@ class _AddGoalSheetState extends ConsumerState<_AddGoalSheet> {
     super.dispose();
   }
 
-  /// The same 300 ms wait as Browse's search, so each keystroke is not a
-  /// request.
+  /// The same 300 ms wait as the exercise catalogue's search, so each
+  /// keystroke is not a request.
   void _onSearch(String value) {
     _debounce?.cancel();
     _debounce = Timer(const Duration(milliseconds: 300), () {

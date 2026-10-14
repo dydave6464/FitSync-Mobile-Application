@@ -126,8 +126,8 @@ class _GeneratorScreenState extends ConsumerState<GeneratorScreen> {
       }
       // Before the pop, and on the messenger captured above rather than one
       // looked up after it, so the message survives the screen leaving. The
-      // "+" is global: generating from Home or Browse pops back to Home or
-      // Browse, where the new plan is invisible and the only irreversible
+      // "+" is global: generating from Home or Nutrition pops back to Home or
+      // Nutrition, where the new plan is invisible and the only irreversible
       // action in this slice would otherwise finish with no evidence it
       // happened at all.
       messenger.showSnackBar(

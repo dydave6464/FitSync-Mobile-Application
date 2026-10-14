@@ -84,9 +84,10 @@ the failure mode the pre-release policy above depends on nobody hitting. A
 new, forward-only file sidesteps that. The tradeoff is the one below: unlike
 a `CREATE TABLE IF NOT EXISTS`-only file, six of the nine are not safe to
 replay after a partial failure. `014`, `028` and `032` are the exceptions to the
-exception: both restate a column definition rather than adding to one, so
-they replay cleanly. Which of the nine you are holding is the thing to know
-before retrying one.
+exception, and they replay cleanly for different reasons: `014` and `028`
+restate a column definition rather than adding to one, while `032` relies on
+statement ordering and MySQL 8's atomic DDL (see its entry below). Which of
+the nine you are holding is the thing to know before retrying one.
 
 **`007_auth_identities.sql`** — alongside its
 `CREATE TABLE IF NOT EXISTS user_identities`, it contains six `ALTER TABLE`
@@ -154,14 +155,23 @@ error) on whichever statement had already committed. Because `ALTER TABLE`
 and `CREATE INDEX` both implicitly commit, a partial failure is not rolled
 back by the runner failing to record the version.
 
-**014 and 028 are the ones that can simply be re-run.** Both use `MODIFY
-COLUMN`, which restates the column's whole definition rather than adding to
-it, so re-running the file is what is safe: it sets the same values both
-times — `014` on the split_style enum, `028` on fitness_level — with no
-`ER_DUP_FIELDNAME` to hit. That is a property of the statement, not of the
-runner — the runner still has no checksum and still records a file only once
-it fully succeeds — so it applies to these two files and not to the other
-six.
+**014, 028 and 032 are the ones that can simply be re-run.** 014 and 028
+both use `MODIFY COLUMN`, which restates the column's whole definition rather
+than adding to it, so re-running the file is what is safe: it sets the same
+values both times — `014` on the split_style enum, `028` on fitness_level —
+with no `ER_DUP_FIELDNAME` to hit. That is a property of the statement, not
+of the runner — the runner still has no checksum and still records a file
+only once it fully succeeds — so it applies to these two files and not to the
+other six.
+
+032 is different, and the caveat matters: its `ALTER TABLE` does `ADD
+COLUMN`, which would hit `ER_DUP_FIELDNAME` if it ever ran twice. It replays
+cleanly only because of statement ordering plus MySQL 8's atomic DDL — the
+`CREATE TABLE IF NOT EXISTS` before it is idempotent, and the one `ALTER` is
+last and either applies whole or not at all, so a failed run never leaves
+part of it behind to collide with. Split that `ALTER` in two, add a statement
+after it, or run it on a server without atomic DDL, and 032 is no more
+replay-safe than the six.
 
 **If 007, 008, 011, 012, 013 or 017 fails partway through**, recovery is
 manual:

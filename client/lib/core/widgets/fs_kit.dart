@@ -643,7 +643,7 @@ class FsNav extends StatelessWidget {
   /// Opens the start-workout sheet. Null on any bar that has no fab.
   ///
   /// Deliberately NOT an [FsNavItem]: the fab selects nothing, has no label
-  /// and no active state, and adding it to `items` would shift Browse from 2
+  /// and no active state, and adding it to `items` would shift Nutrition from 2
   /// to 3 and Profile from 3 to 4 — renumbering every `nav.$index` key the
   /// shell's tests tap.
   final VoidCallback? onFabTap;
