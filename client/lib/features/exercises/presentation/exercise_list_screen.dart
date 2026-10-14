@@ -16,7 +16,7 @@ String describeError(Object error) =>
     error is ApiException ? error.message : 'Something went wrong.';
 
 class ExerciseListScreen extends ConsumerStatefulWidget {
-  const ExerciseListScreen({super.key, this.selecting = false});
+  const ExerciseListScreen({super.key, this.selecting = false, this.embedded = false});
 
   /// Whether rows are being picked for a workout rather than browsed.
   ///
@@ -24,6 +24,10 @@ class ExerciseListScreen extends ConsumerStatefulWidget {
   /// same catalogue, filters and pagination; only what a tap means differs.
   /// A second screen would have to copy all of that to change one gesture.
   final bool selecting;
+
+  /// Hosted inside Train's tab body, under Train's own header: no AppBar,
+  /// or the screen would carry two titles.
+  final bool embedded;
 
   @override
   ConsumerState<ExerciseListScreen> createState() => _ExerciseListScreenState();
@@ -81,7 +85,7 @@ class _ExerciseListScreenState extends ConsumerState<ExerciseListScreen> {
     });
 
     return Scaffold(
-      appBar: AppBar(
+      appBar: widget.embedded ? null : AppBar(
         title: Text(widget.selecting ? 'Exercise library' : 'Exercises'),
         actions: [
           if (widget.selecting)

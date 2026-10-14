@@ -5,10 +5,12 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:fitsync/core/api_exception.dart';
 import 'package:fitsync/core/theme.dart';
 import 'package:fitsync/features/exercises/domain/exercise.dart';
+import 'package:fitsync/features/exercises/presentation/exercise_list_screen.dart';
 import 'package:fitsync/features/exercises/presentation/providers.dart'
-    show exerciseDetailProvider;
+    show exerciseDetailProvider, exerciseRepositoryProvider;
 import 'package:fitsync/features/plans/domain/workout_plan.dart';
 import 'package:fitsync/features/plans/presentation/providers.dart';
+import 'package:fitsync/features/plans/presentation/widgets/regenerate_plan_button.dart';
 import 'package:fitsync/features/profile/domain/body_weight.dart';
 import 'package:fitsync/features/profile/domain/profile.dart';
 import 'package:fitsync/features/profile/presentation/providers.dart'
@@ -25,6 +27,8 @@ import 'package:fitsync/features/plans/presentation/generator_screen.dart';
 import 'package:fitsync/features/recovery/presentation/recovery_screen.dart';
 import 'package:fitsync/features/sessions/presentation/progress_screen.dart';
 import 'package:fitsync/features/training/presentation/training_shell.dart';
+
+import 'nav_shell_test.dart' show FakeExerciseRepository;
 
 /// A quiet, zero-everything analytics reading. What every Progress-tab
 /// provider below is stubbed to, since this file is about the tab bar, not
@@ -109,10 +113,12 @@ Future<void> _pump(
   bool reduceMotion = false,
   TrainTabRequest? tabRequest,
   bool hosted = false,
+  double textScale = 1,
 }) async {
   await tester.pumpWidget(
     ProviderScope(
       overrides: [
+        exerciseRepositoryProvider.overrideWithValue(FakeExerciseRepository()),
         activePlanProvider.overrideWith((ref) async => _plan),
         activeSessionProvider.overrideWith(() => _StubController(session)),
         completedDaysProvider.overrideWith((ref) async => const <String>{}),
@@ -166,7 +172,10 @@ Future<void> _pump(
       child: MaterialApp(
         theme: fsLightTheme(),
         home: MediaQuery(
-          data: MediaQueryData(disableAnimations: reduceMotion),
+          data: MediaQueryData(
+            disableAnimations: reduceMotion,
+            textScaler: TextScaler.linear(textScale),
+          ),
           child: hosted
               ? const _RequestHost()
               : TrainingShell(tabRequest: tabRequest),
@@ -585,5 +594,27 @@ void main() {
 
       expect(find.byType(ProgressScreen), findsNothing);
     });
+  });
+
+  testWidgets('the Exercises tab is built only once visited, then shows the catalogue', (tester) async {
+    await _pump(tester);
+    expect(find.byType(ExerciseListScreen, skipOffstage: false), findsNothing,
+        reason: 'opening Train must not fetch the whole catalogue');
+    await tester.tap(find.byKey(const Key('tab.exercises')));
+    await tester.pumpAndSettle();
+    expect(find.byType(ExerciseListScreen), findsOneWidget);
+    expect(find.byType(RegeneratePlanButton), findsNothing, reason: 'regenerate belongs to Plan only');
+  });
+
+  testWidgets('the four tabs fit a 320 dp phone at large text', (tester) async {
+    tester.view.physicalSize = const Size(320, 640);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.reset);
+    await _pump(tester, textScale: 1.6);
+    expect(tester.takeException(), isNull);
+    await tester.ensureVisible(find.byKey(const Key('tab.exercises')));
+    await tester.tap(find.byKey(const Key('tab.exercises')));
+    await tester.pumpAndSettle();
+    expect(find.byType(ExerciseListScreen), findsOneWidget);
   });
 }

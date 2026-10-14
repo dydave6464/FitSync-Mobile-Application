@@ -533,4 +533,14 @@ void main() {
 
     expect(find.textContaining('No exercises'), findsOneWidget);
   });
+
+  testWidgets('embedded drops the AppBar (Train already has a header)', (tester) async {
+    await tester.pumpWidget(ProviderScope(
+      overrides: [exerciseRepositoryProvider.overrideWithValue(FakeRepository())],
+      child: const MaterialApp(home: ExerciseListScreen(embedded: true)),
+    ));
+    await tester.pumpAndSettle();
+    expect(find.byType(AppBar), findsNothing);
+    expect(find.text('Sit-up 1'), findsOneWidget);
+  });
 }
