@@ -89,4 +89,16 @@ void main() {
     expect(found.fatsecretUnavailable, isFalse);
     expect((await repo.recent()).single.name, 'Mango Shake');
   });
+
+  test('fatsecretFood reads one FatSecret food\'s detailed serving', () async {
+    final repo = _repo(MockClient((r) async {
+      expect(r.method, 'GET');
+      expect(r.url.path, '/api/v1/foods/fatsecret/fs-1');
+      return _ok({'food': {..._food, 'servingDesc': '1 thigh', 'kcal': 107}});
+    }));
+    final food = await repo.fatsecretFood('fs-1');
+    expect(food.servingDesc, '1 thigh');
+    expect(food.kcal, 107);
+    expect(food.isFatsecret, isTrue);
+  });
 }

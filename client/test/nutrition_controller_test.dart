@@ -64,6 +64,20 @@ class FakeNutritionRepository implements NutritionRepository {
   @override
   Future<FoodSearchResult> search(String q) async => const FoodSearchResult(foods: [rice], fatsecretUnavailable: false);
 
+  /// What `fatsecretFood` returns per external id; [failFatsecret] makes it throw.
+  final Map<String, Food> fatsecretDetails = {};
+  bool failFatsecret = false;
+  final List<String> fatsecretCalls = [];
+
+  @override
+  Future<Food> fatsecretFood(String externalId) async {
+    fatsecretCalls.add(externalId);
+    if (failFatsecret) throw const ApiException('FATSECRET_UNAVAILABLE', 'down');
+    final food = fatsecretDetails[externalId];
+    if (food == null) throw const ApiException('FOOD_NOT_FOUND', 'FatSecret has no such food.');
+    return food;
+  }
+
   @override
   Future<List<Food>> recent() async {
     recentCalls++;

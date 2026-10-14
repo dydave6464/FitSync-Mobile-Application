@@ -167,4 +167,47 @@ void main() {
     expect(find.text('What did you eat?'), findsNothing);
     expect(find.textContaining('at least 2 letters'), findsNothing);
   });
+
+  Future<void> searchAdobo(WidgetTester tester) async {
+    await tester.enterText(find.byKey(const Key('food.search')), 'adobo');
+    await tester.pump(const Duration(milliseconds: 300));
+    await tester.pumpAndSettle();
+  }
+
+  testWidgets('a FatSecret food opens with its real serving, and that is what gets logged', (tester) async {
+    final repo = _SearchRepo()
+      ..fatsecretDetails['fs-2'] = const Food(source: 'fatsecret', externalId: 'fs-2', name: 'Adobo Flakes',
+          servingDesc: '1 bowl', kcal: 300, proteinG: 22, carbsG: 2, fatG: 22);
+    await _pump(tester, repo);
+    await searchAdobo(tester);
+    await tester.tap(find.text('Adobo Flakes'));
+    await tester.pumpAndSettle();
+    expect(repo.fatsecretCalls, ['fs-2']);
+    expect(find.text('Per 1 bowl'), findsOneWidget);
+    expect(find.text('300 kcal'), findsOneWidget, reason: 'not the list\'s 410');
+    await tester.tap(find.byKey(const Key('logSheet.log')));
+    await tester.pumpAndSettle();
+    expect(repo.lastLogged!.kcal, 300);
+    expect(repo.lastLogged!.servingDesc, '1 bowl');
+  });
+
+  testWidgets('if a FatSecret food can\'t be loaded, it says so and opens nothing', (tester) async {
+    final repo = _SearchRepo()..failFatsecret = true;
+    await _pump(tester, repo);
+    await searchAdobo(tester);
+    await tester.tap(find.text('Adobo Flakes'));
+    await tester.pumpAndSettle();
+    expect(find.text("Couldn't load this food. Try again."), findsOneWidget);
+    expect(find.byKey(const Key('logSheet.log')), findsNothing);
+  });
+
+  testWidgets('a FitSync food opens straight away, with no lookup', (tester) async {
+    final repo = _SearchRepo();
+    await _pump(tester, repo);
+    await searchAdobo(tester);
+    await tester.tap(find.text('Chicken adobo'));
+    await tester.pumpAndSettle();
+    expect(repo.fatsecretCalls, isEmpty);
+    expect(find.byKey(const Key('logSheet.log')), findsOneWidget);
+  });
 }

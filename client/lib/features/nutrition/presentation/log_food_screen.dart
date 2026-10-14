@@ -54,7 +54,29 @@ class _LogFoodScreenState extends ConsumerState<LogFoodScreen> {
     setState(() => _query = name);
   }
 
-  Future<void> _choose(Food food) async {
+  /// True while a FatSecret food's details load, so a second tap is ignored.
+  bool _loadingFood = false;
+
+  Future<void> _choose(Food listed) async {
+    if (_loadingFood) return;
+    var food = listed;
+    // FatSecret's search list describes a food by one serving and its detail
+    // by another; the server logs the detail, so the sheet must show it too.
+    if (listed.isFatsecret) {
+      setState(() => _loadingFood = true);
+      try {
+        food = await ref.read(nutritionRepositoryProvider).fatsecretFood(listed.externalId!);
+      } catch (_) {
+        if (mounted) {
+          ScaffoldMessenger.of(context)
+              .showSnackBar(const SnackBar(content: Text("Couldn't load this food. Try again.")));
+        }
+        return;
+      } finally {
+        if (mounted) setState(() => _loadingFood = false);
+      }
+      if (!mounted) return;
+    }
     final choice = await showLogFoodSheet(context, food, mealType: widget.mealType);
     if (choice == null || !mounted) return;
     final messenger = ScaffoldMessenger.of(context);
@@ -113,6 +135,7 @@ class _LogFoodScreenState extends ConsumerState<LogFoodScreen> {
               onSelected: (v) => setState(() => _tab = v),
             ),
           ),
+          if (_loadingFood) const LinearProgressIndicator(minHeight: 2),
           Expanded(child: _tab == 'recents' ? _recents() : _results()),
         ],
       ),
