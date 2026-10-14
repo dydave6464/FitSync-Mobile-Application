@@ -14,6 +14,7 @@ test('food search and recents', async (t) => {
   await dropAllTables(pool);
   await migrate(testDbConfig());
   let mode = 'ok';
+  let getMode = 'ok';
   const fatsecret = {
     timeoutMs: 50,
     async search(q) {
@@ -24,7 +25,13 @@ test('food search and recents', async (t) => {
       if (mode === 'late') return new Promise((_, reject) => { setTimeout(() => reject(new Error('aborted')), 80); });
       return [{ externalId: 'fs-9', name: `FatSecret ${q}`, servingDesc: '1 cup', kcal: 200, proteinG: 10, carbsG: 20, fatG: 8 }];
     },
-    async get() { return null; },
+    async get(externalId) {
+      if (getMode === 'down') throw new Error('down');
+      if (externalId === 'fs-9') {
+        return { externalId: 'fs-9', name: 'FatSecret chicken thigh', servingDesc: '1 thigh', kcal: 107, proteinG: 12, carbsG: 2, fatG: 6 };
+      }
+      return null;
+    },
   };
   const warnings = [];
   const logger = silentLogger();
@@ -115,6 +122,30 @@ test('food search and recents', async (t) => {
       assert.equal(res.body.error.code, 'INVALID_FOOD_QUERY');
     }
     await request(app).get('/api/v1/foods/search').set(auth).expect(400);
+  });
+
+  await t.test('GET /foods/fatsecret/:externalId: the same detail the log sheet will show', async () => {
+    await request(app).get('/api/v1/foods/fatsecret/fs-9').expect(401);
+
+    const ok = await request(app).get('/api/v1/foods/fatsecret/fs-9').set(auth).expect(200);
+    assert.deepEqual(ok.body.data.food, {
+      id: null, source: 'fatsecret', externalId: 'fs-9', name: 'FatSecret chicken thigh', servingDesc: '1 thigh',
+      kcal: 107, proteinG: 12, carbsG: 2, fatG: 6,
+    });
+
+    const missing = await request(app).get('/api/v1/foods/fatsecret/fs-missing').set(auth).expect(404);
+    assert.equal(missing.body.error.code, 'FOOD_NOT_FOUND');
+
+    warnings.length = 0;
+    getMode = 'down';
+    const down = await request(app).get('/api/v1/foods/fatsecret/fs-9').set(auth).expect(502);
+    assert.equal(down.body.error.code, 'FATSECRET_UNAVAILABLE');
+    // The error handler also logs the 502 itself; the route's own line must be there too.
+    assert.ok(warnings.includes('FatSecret food lookup failed'), JSON.stringify(warnings));
+    getMode = 'ok';
+
+    const long = await request(app).get(`/api/v1/foods/fatsecret/${'x'.repeat(65)}`).set(auth).expect(400);
+    assert.equal(long.body.error.code, 'INVALID_FOOD_QUERY');
   });
 
   await t.test('recents: distinct, newest first, per serving', async () => {

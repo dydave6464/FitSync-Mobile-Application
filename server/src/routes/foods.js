@@ -8,6 +8,7 @@ const { listRecentFoods } = require('../db/nutrition');
 const MIN_Q = 2;
 const MAX_Q = 60;
 const LIMIT = 20;
+const MAX_EXTERNAL_ID = 64;
 // The whole FatSecret search (token + request) gets this long before the
 // response goes out with FitSync's own foods alone.
 const FATSECRET_TIMEOUT_MS = 3000;
@@ -74,6 +75,30 @@ module.exports = function buildFoodsRouter(deps) {
           fatsecretUnavailable: theirs === null,
         },
       });
+    } catch (err) { next(err); }
+  });
+
+  // The detailed serving behind one FatSecret id -- the same food.get.v2 call
+  // the logging route makes -- so the log sheet can preview exactly what
+  // gets logged instead of the search description line.
+  router.get('/fatsecret/:externalId', auth, async (req, res, next) => {
+    try {
+      const { externalId } = req.params;
+      if (typeof externalId !== 'string' || externalId === '' || externalId.length > MAX_EXTERNAL_ID) {
+        throw AppError.badRequest('INVALID_FOOD_QUERY', `externalId must be 1 to ${MAX_EXTERNAL_ID} characters.`);
+      }
+      let food;
+      try {
+        food = deps.fatsecret ? await deps.fatsecret.get(externalId) : undefined;
+      } catch (e) {
+        if (deps.logger) deps.logger.warn({ externalId, err: e.message }, 'FatSecret food lookup failed');
+        food = undefined;
+      }
+      if (food === undefined) {
+        throw new AppError(502, 'FATSECRET_UNAVAILABLE', "Couldn't reach FatSecret. Try again, or add the food manually.");
+      }
+      if (food === null) throw AppError.notFound('FOOD_NOT_FOUND', 'FatSecret has no such food.');
+      res.json({ data: { food: fromFatsecret(food) } });
     } catch (err) { next(err); }
   });
 
