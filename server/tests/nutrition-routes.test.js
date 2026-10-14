@@ -11,6 +11,13 @@ const { manilaDay } = require('../src/lib/manila-day');
 const { dailyTarget } = require('../src/lib/nutrition-target');
 
 const FS_FOOD = { externalId: 'fs-1', name: 'Mango Shake', servingDesc: '1 glass', kcal: 250, proteinG: 4, carbsG: 50, fatG: 3.5 };
+// A serving description FatSecret could plausibly send that is longer than
+// foods.serving_desc (VARCHAR(255)); upsertFatsecretFood must cap it rather
+// than let the INSERT throw ER_DATA_TOO_LONG.
+const FS_LONG_FOOD = {
+  externalId: 'fs-long', name: 'Long Serving Food', servingDesc: 'x'.repeat(300),
+  kcal: 100, proteinG: 1, carbsG: 1, fatG: 1,
+};
 
 test('nutrition endpoints', async (t) => {
   const pool = createPool(testDbConfig());
@@ -23,7 +30,9 @@ test('nutrition endpoints', async (t) => {
     async get(id) {
       fatsecretGets += 1;
       if (fatsecretDown) throw new Error('down');
-      return id === FS_FOOD.externalId ? { ...FS_FOOD } : null;
+      if (id === FS_FOOD.externalId) return { ...FS_FOOD };
+      if (id === FS_LONG_FOOD.externalId) return { ...FS_LONG_FOOD };
+      return null;
     },
   };
   const app = buildTestApp({ pool, fatsecret });
@@ -121,6 +130,15 @@ test('nutrition endpoints', async (t) => {
     assert.equal(b.kcal, 500);
     const [[{ n }]] = await pool.query("SELECT COUNT(*) AS n FROM food_sources WHERE external_id = 'fs-1'");
     assert.equal(Number(n), 1);
+  });
+
+  await t.test('a FatSecret serving description longer than 255 chars is stored, not a 500', async () => {
+    const u = await freshUser();
+    const { entry } = (await u.log({
+      mealType: 'snack', servings: 1, food: { source: 'fatsecret', externalId: 'fs-long' },
+    }).expect(201)).body.data;
+    assert.equal(entry.servingDesc.length, 255);
+    assert.equal(entry.servingDesc, 'x'.repeat(255));
   });
 
   await t.test('FatSecret down -> 502, unknown FatSecret food -> 404', async () => {

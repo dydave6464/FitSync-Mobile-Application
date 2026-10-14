@@ -49,7 +49,8 @@ async function upsertFatsecretFood(pool, food, retry = true) {
       "SELECT food_id FROM food_sources WHERE provider = 'fatsecret' AND external_id = ? FOR UPDATE",
       [food.externalId],
     );
-    const values = [food.name.slice(0, 255), food.servingDesc, food.kcal, food.proteinG, food.carbsG, food.fatG];
+    const servingDesc = food.servingDesc == null ? null : String(food.servingDesc).slice(0, 255);
+    const values = [food.name.slice(0, 255), servingDesc, food.kcal, food.proteinG, food.carbsG, food.fatG];
     let foodId;
     if (existing) {
       foodId = existing.food_id;

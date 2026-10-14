@@ -111,6 +111,12 @@ module.exports = function buildNutritionRouter(deps) {
         try {
           fetched = deps.fatsecret ? await deps.fatsecret.get(food.externalId) : undefined;
         } catch (e) {
+          // The 502 below is deliberately generic -- "FatSecret is down" --
+          // but that must not also be true of a real bug on our side (a bad
+          // externalId we built, a client misuse). Log the message only:
+          // never the whole error object (stack may embed request internals)
+          // or anything from the request itself.
+          if (deps.logger) deps.logger.warn({ externalId: food.externalId, err: e.message }, 'FatSecret food lookup failed');
           fetched = undefined;
         }
         if (fetched === undefined) {
