@@ -24,8 +24,10 @@ function invalid(field, message) {
 function checkDate(value) {
   const today = manilaDay();
   if (value === undefined) return today;
-  const ok = typeof value === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(value)
-    && new Date(`${value}T00:00:00Z`).toISOString().slice(0, 10) === value;
+  // A month or day out of range (2026-13-01) parses to an Invalid Date, whose
+  // toISOString() throws; February 30th parses, rolls over, and fails the compare.
+  const d = typeof value === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(value) ? new Date(`${value}T00:00:00Z`) : null;
+  const ok = d !== null && !Number.isNaN(d.getTime()) && d.toISOString().slice(0, 10) === value;
   if (!ok) throw AppError.badRequest('INVALID_DATE', 'date must be a real date as YYYY-MM-DD.');
   if (value > today) throw AppError.badRequest('INVALID_DATE', 'date cannot be in the future.');
   return value;
@@ -102,7 +104,9 @@ module.exports = function buildNutritionRouter(deps) {
       if (food.source === 'local') {
         const found = Number.isInteger(food.id) ? await findFood(pool, food.id) : null;
         if (!found) throw AppError.notFound('FOOD_NOT_FOUND', 'That food is not in the list.');
-        base = { ...found, customName: null, servingDesc: null };
+        // The serving text is stored on the entry, not read through the foods
+        // row, so a later seed re-run can't relabel what was already logged.
+        base = { ...found, customName: null };
       } else if (food.source === 'fatsecret') {
         if (typeof food.externalId !== 'string' || food.externalId === '' || food.externalId.length > 64) {
           throw invalid('food', 'externalId is required for a FatSecret food.');
@@ -124,7 +128,11 @@ module.exports = function buildNutritionRouter(deps) {
         }
         if (fetched === null) throw AppError.notFound('FOOD_NOT_FOUND', 'FatSecret has no such food.');
         const foodId = await upsertFatsecretFood(pool, fetched);
-        base = { ...fetched, foodId, customName: null, servingDesc: null };
+        // Stored on the entry for the same reason (the next log of this food
+        // refreshes the copy), and capped like it: meal_logs.serving_desc is
+        // VARCHAR(255) too.
+        const servingDesc = fetched.servingDesc == null ? null : String(fetched.servingDesc).slice(0, 255);
+        base = { ...fetched, foodId, customName: null, servingDesc };
       } else if (food.source === 'manual') {
         const m = checkManual(food);
         base = { ...m, foodId: null, customName: m.name };

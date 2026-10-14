@@ -176,6 +176,15 @@ test('nutrition endpoints', async (t) => {
     await u.day('yesterday').expect(400);
   });
 
+  await t.test('a month or day out of range is INVALID_DATE, not a 500', async () => {
+    const u = await freshUser();
+    for (const date of ['2026-13-01', '2026-00-10', '2026-01-32']) {
+      assert.equal((await u.day(date).expect(400)).body.error.code, 'INVALID_DATE', date);
+      const res = await u.log({ date, mealType: 'lunch', servings: 1, food: { source: 'local', id: ADOBO } }).expect(400);
+      assert.equal(res.body.error.code, 'INVALID_DATE', date);
+    }
+  });
+
   await t.test('a past date logs to that day, not today', async () => {
     const u = await freshUser();
     const yesterday = manilaDay(1);
@@ -193,5 +202,21 @@ test('nutrition endpoints', async (t) => {
     assert.deepEqual((await owner.del(entry.id).expect(200)).body, { data: { deleted: true } });
     await owner.del(entry.id).expect(404);
     await owner.del('abc').expect(404);
+  });
+
+  await t.test('an entry keeps the serving text it was logged with', async () => {
+    const u = await freshUser();
+    const [soup] = await pool.query(
+      `INSERT INTO foods (name, category, serving_desc, calories, protein_g, carbs_g, fat_g)
+       VALUES ('Sinigang', 'filipino', '1 bowl', 180, 15, 8, 9)`,
+    );
+    await u.log({ mealType: 'dinner', servings: 1, food: { source: 'local', id: soup.insertId } }).expect(201);
+    const fs = (await u.log({
+      mealType: 'dinner', servings: 1, food: { source: 'fatsecret', externalId: 'fs-1' },
+    }).expect(201)).body.data.entry;
+    // A seed re-run or a later FatSecret refresh rewrites the foods rows.
+    await pool.query("UPDATE foods SET serving_desc = 'relabelled' WHERE food_id IN (?, ?)", [soup.insertId, fs.foodId]);
+    const { day } = (await u.day().expect(200)).body.data;
+    assert.deepEqual(day.meals.dinner.map((e) => e.servingDesc), ['1 bowl', '1 glass']);
   });
 });
