@@ -21,7 +21,7 @@ class NutritionSummaryCard extends StatelessWidget {
     final missing = describeMissing(day.targetMissing);
 
     final ring = FsRing(
-      size: 92,
+      size: 76,
       stroke: 9,
       color: t.accent,
       value: target == null || target.kcal == 0 ? 0 : eaten.kcal / target.kcal,
@@ -50,11 +50,11 @@ class NutritionSummaryCard extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          Wrap(
-            spacing: 16,
-            runSpacing: 12,
-            crossAxisAlignment: WrapCrossAlignment.center,
-            children: [ring, ConstrainedBox(constraints: const BoxConstraints(minWidth: 150, maxWidth: 260), child: bars)],
+          // A row, as in the prototype: the ring, then the bars filling the
+          // rest. Not a Wrap: the bars' column stretches to whatever width it
+          // is offered, so a Wrap always pushed them onto a line of their own.
+          Row(
+            children: [ring, const SizedBox(width: 16), Expanded(child: bars)],
           ),
           if (missing != null) ...[
             const SizedBox(height: 12),
