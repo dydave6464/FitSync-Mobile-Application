@@ -74,9 +74,12 @@ class _LogFoodSheetState extends State<LogFoodSheet> {
     final macrosChanged = p != f.proteinG || c != f.carbsG || fat != f.fatG;
     final changed = _editing && gramsOk && (macrosChanged || fiber != f.fiberG);
     final canLog = !_editing || (gramsOk && p! + c! + fat! > 0);
-    // Fiber never changes calories: only a real change to protein, carbs or
-    // fat recomputes kcal from the macros.
-    final perKcal = macrosChanged ? manualKcal(p!, c!, fat!) : f.kcal;
+    // Fiber never changes calories: only a real, in-range change to protein,
+    // carbs or fat recomputes kcal from the macros. `macrosChanged` alone
+    // isn't enough to guard the `!`s below -- unreadable text (e.g. a lone
+    // ".") makes `_grams` return null, which also differs from the listed
+    // value.
+    final perKcal = (gramsOk && macrosChanged) ? manualKcal(p!, c!, fat!) : f.kcal;
     final shown = changed
         ? (p: p!, c: c!, f: fat!, fb: fiber)
         : (p: f.proteinG, c: f.carbsG, f: f.fatG, fb: f.fiberG);

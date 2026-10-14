@@ -97,13 +97,13 @@ class _AddFoodManuallyScreenState extends ConsumerState<AddFoodManuallyScreen> {
           // Two rows of two, not one row of four: four boxes in a row
           // overflow a narrow phone at large text.
           Row(children: [
-            gramsField('Protein', const Key('manual.protein'), _protein),
+            gramsField('Protein (g)', const Key('manual.protein'), _protein),
             const SizedBox(width: 10),
-            gramsField('Carbs', const Key('manual.carbs'), _carbs),
+            gramsField('Carbs (g)', const Key('manual.carbs'), _carbs),
           ]),
           const SizedBox(height: 10),
           Row(children: [
-            gramsField('Fat', const Key('manual.fat'), _fat),
+            gramsField('Fat (g)', const Key('manual.fat'), _fat),
             const SizedBox(width: 10),
             gramsField('Fiber (g)', const Key('manual.fiber'), _fiber),
           ]),

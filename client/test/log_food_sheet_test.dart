@@ -217,6 +217,18 @@ void main() {
     expect(result(), isNull, reason: 'the sheet stays open');
   });
 
+  testWidgets('a lone dot in protein is unreadable, not a change, and does not crash', (tester) async {
+    final result = await _openForResult(tester, _rice);
+    await _editNumbers(tester);
+    await tester.enterText(find.descendant(of: find.byKey(const Key('logSheet.protein')), matching: find.byType(TextField)), '.');
+    await tester.pump();
+    expect(tester.takeException(), isNull);
+    expect(find.text('Each value must be 0–500 g'), findsOneWidget);
+    await tester.tap(find.byKey(const Key('logSheet.log')));
+    await tester.pumpAndSettle();
+    expect(result(), isNull, reason: 'the sheet stays open');
+  });
+
   testWidgets('the boxes fit a 320 dp phone at large text', (tester) async {
     tester.view.physicalSize = const Size(320, 640);
     tester.view.devicePixelRatio = 1;
