@@ -23,7 +23,7 @@ class ExerciseTile extends StatelessWidget {
   /// the list is being browsed rather than picked from.
   ///
   /// Nullable rather than defaulting to false: "not chosen" and "there is
-  /// nothing to choose for" look different, and a tick on the Browse tab
+  /// nothing to choose for" look different, and a tick on Train's Exercises tab
   /// would promise a basket that does not exist there.
   final bool? selected;
 

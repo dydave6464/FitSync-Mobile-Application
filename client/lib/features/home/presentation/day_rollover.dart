@@ -2,6 +2,7 @@ import 'package:flutter/widgets.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../core/manila_day.dart';
+import '../../nutrition/presentation/providers.dart' show nutritionDayProvider;
 import '../../recovery/presentation/providers.dart'
     show recoveryOverviewProvider;
 import '../../routine/presentation/providers.dart' show routineTodayProvider;
@@ -63,6 +64,7 @@ class _DayRolloverState extends ConsumerState<DayRollover> {
       ..invalidate(trainingAnalyticsProvider) // every period
       ..invalidate(completedDaysProvider)
       ..invalidate(streakProvider)
+      ..invalidate(nutritionDayProvider)
       // Yesterday's session becomes askable about at midnight.
       ..invalidate(pendingOutcomeProvider);
   }

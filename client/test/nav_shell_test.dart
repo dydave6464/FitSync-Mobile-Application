@@ -17,6 +17,9 @@ import 'package:fitsync/features/exercises/presentation/exercise_list_screen.dar
 import 'package:fitsync/features/exercises/presentation/providers.dart';
 import 'package:fitsync/features/home/presentation/day_rollover.dart';
 import 'package:fitsync/features/home/presentation/nav_shell.dart';
+import 'package:fitsync/features/nutrition/presentation/nutrition_screen.dart';
+import 'package:fitsync/features/nutrition/presentation/providers.dart'
+    show nutritionRepositoryProvider;
 import 'package:fitsync/features/plans/domain/exercise_alternative.dart';
 import 'package:fitsync/features/plans/domain/workout_plan.dart';
 import 'package:fitsync/features/plans/presentation/plan_screen.dart';
@@ -47,6 +50,7 @@ import 'package:fitsync/features/streaks/presentation/providers.dart'
 import 'package:fitsync/features/training/presentation/training_shell.dart';
 
 import 'helpers/in_memory_secure_store.dart';
+import 'nutrition_controller_test.dart' show FakeNutritionRepository;
 
 /// Enough rows that the catalogue's list is taller than the test viewport,
 /// so it actually has somewhere to scroll to.
@@ -260,7 +264,9 @@ Future<void> _pumpShell(
         (ref) async =>
             const Streak(current: 0, best: 0, todayActive: false, week: []),
       ),
-      // Browse tab (ExerciseListScreen).
+      // Nutrition tab.
+      nutritionRepositoryProvider.overrideWithValue(FakeNutritionRepository()),
+      // Train's Exercises tab (ExerciseListScreen).
       exerciseRepositoryProvider.overrideWithValue(FakeExerciseRepository()),
       // Profile tab (SettingsScreen).
       profileProvider.overrideWith(StubProfileNotifier.new),
@@ -294,9 +300,13 @@ void main() {
     'keeps a tab mounted across a switch away and back, so its scroll '
     'position survives the trip',
     (tester) async {
+      // The catalogue moved into Train's Exercises tab, so reaching it now
+      // takes two taps (nav.1, then the Exercises sub-tab) rather than one.
       await _pumpShell(tester);
 
-      await tester.tap(find.byKey(const Key('nav.2')));
+      await tester.tap(find.byKey(const Key('nav.1')));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const Key('tab.exercises')));
       await tester.pumpAndSettle();
 
       // IndexedStack in this Flutter version builds every child immediately on
@@ -318,7 +328,7 @@ void main() {
 
       await tester.tap(find.byKey(const Key('nav.0')));
       await tester.pumpAndSettle();
-      await tester.tap(find.byKey(const Key('nav.2')));
+      await tester.tap(find.byKey(const Key('nav.1')));
       await tester.pumpAndSettle();
 
       final positionAfterReturn = tester
@@ -352,9 +362,9 @@ void main() {
         reason: 'Train must not mount until the user visits it',
       );
       expect(
-        find.byType(ExerciseListScreen, skipOffstage: false),
+        find.byType(NutritionScreen, skipOffstage: false),
         findsNothing,
-        reason: 'Browse must not mount until the user visits it',
+        reason: 'Nutrition must not mount until the user visits it',
       );
       expect(
         find.byType(SettingsScreen, skipOffstage: false),
@@ -362,22 +372,22 @@ void main() {
         reason: 'Profile must not mount until the user visits it',
       );
 
-      // Visit Browse, then leave it for Home. It must still be mounted (just
-      // offstage), so the state-preservation IndexedStack exists for keeps
-      // working — this half is also covered by the scroll-preservation test
-      // above, but asserted here too since it is the other side of the same
-      // change.
+      // Visit Nutrition, then leave it for Home. It must still be mounted
+      // (just offstage), so the state-preservation IndexedStack exists for
+      // keeps working — this half is also covered by the scroll-preservation
+      // test above, but asserted here too since it is the other side of the
+      // same change.
       await tester.tap(find.byKey(const Key('nav.2')));
       await tester.pumpAndSettle();
-      expect(find.byType(ExerciseListScreen), findsOneWidget);
+      expect(find.byType(NutritionScreen), findsOneWidget);
 
       await tester.tap(find.byKey(const Key('nav.0')));
       await tester.pumpAndSettle();
       expect(
-        find.byType(ExerciseListScreen, skipOffstage: false),
+        find.byType(NutritionScreen, skipOffstage: false),
         findsOneWidget,
         reason:
-            'once visited, Browse must stay mounted underneath (offstage), '
+            'once visited, Nutrition must stay mounted underneath (offstage), '
             'not be torn down when another tab is selected',
       );
 
@@ -406,15 +416,14 @@ void main() {
     expect(find.byType(TrainingShell), findsOneWidget);
   });
 
-  testWidgets('tapping Browse reaches the exercise catalogue', (tester) async {
+  testWidgets('tapping Nutrition reaches the food log', (tester) async {
     await _pumpShell(tester);
+    expect(find.text('Nutrition'), findsOneWidget, reason: 'the nav label');
+    expect(find.text('Browse'), findsNothing);
+
     await tester.tap(find.byKey(const Key('nav.2')));
     await tester.pumpAndSettle();
-    expect(
-      find.text('Exercises'),
-      findsOneWidget,
-      reason: 'the Browse tab shows the catalogue, previously unreachable',
-    );
+    expect(find.byType(NutritionScreen), findsOneWidget);
   });
 
   testWidgets('tapping Profile reaches account settings', (tester) async {

@@ -87,6 +87,13 @@ function load(env = process.env) {
       apiKey: env.GROQ_API_KEY || null,
       model: env.CUES_MODEL || null,
     },
+    fatsecret: {
+      // FatSecret's OAuth 2.0 Client ID and Secret are the consumer key and
+      // secret the developer console shows.
+      mode: env.FATSECRET_MODE || 'stub',
+      clientId: env.FATSECRET_CONSUMER_KEY || null,
+      clientSecret: env.FATSECRET_CONSUMER_SECRET || null,
+    },
     storage: {
       mode: env.STORAGE_MODE || 'local',
       localDir: env.STORAGE_LOCAL_DIR || 'storage',

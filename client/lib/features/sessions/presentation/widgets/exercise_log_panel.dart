@@ -61,9 +61,9 @@ class ExerciseLogPanel extends StatefulWidget {
   /// reasoning as [onOpenDemo] below.
   final ValueChanged<WeightUnit>? onUnitChanged;
 
-  /// Opens the same demo and cues the Browse tab shows, mid-workout. Null
-  /// renders the affordance disabled rather than hiding it, so the header
-  /// row's layout stays identical whether or not a caller wires it up.
+  /// Opens the same demo and cues Train's Exercises tab shows, mid-workout.
+  /// Null renders the affordance disabled rather than hiding it, so the
+  /// header row's layout stays identical whether or not a caller wires it up.
   final VoidCallback? onOpenDemo;
 
   @override

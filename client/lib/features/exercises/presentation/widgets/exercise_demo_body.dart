@@ -31,7 +31,8 @@ class ExerciseDemoBody extends StatelessWidget {
   final ExerciseCues? cues;
 
   /// Rendered above the name -- e.g. the in-session position counter and
-  /// prescription. Absent on the Browse tab's plain detail screen.
+  /// prescription. Absent on the plain detail screen Train's Exercises tab
+  /// opens.
   final Widget? header;
 
   /// Replaces the cue list entirely. The workout's demo stage passes a
@@ -71,8 +72,8 @@ class ExerciseDemoBody extends StatelessWidget {
         ),
         const SizedBox(height: 24),
         // One cue renderer for all three screens that show this body -- the
-        // Browse tab's detail, the mid-set detour, and the workout's demo
-        // stage. Only the last of those ever passes anything in.
+        // detail Train's Exercises tab opens, the mid-set detour, and the
+        // workout's demo stage. Only the last of those ever passes anything in.
         cueSection ??
             AiCueList(cues: cues ?? ExerciseCues.catalogue(exercise.cues)),
         const SizedBox(height: 32),

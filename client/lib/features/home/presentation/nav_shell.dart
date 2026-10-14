@@ -3,7 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../core/widgets/fs_kit.dart';
 import '../../activity/presentation/activity_sync.dart';
-import '../../exercises/presentation/exercise_list_screen.dart';
+import '../../nutrition/presentation/nutrition_screen.dart';
 import '../../plans/presentation/start_workout_sheet.dart';
 import '../../reminders/presentation/reminder_sync.dart';
 import '../../routine/presentation/routine_screen.dart';
@@ -38,7 +38,7 @@ class _NavShellState extends State<NavShell> {
   ///
   /// IndexedStack builds every one of its children immediately, offstage or
   /// not — it does not build lazily on its own. Left alone, that means all
-  /// four tabs' data providers (two catalogue requests for Browse, on top of
+  /// four tabs' data providers (Nutrition's single day request, on top of
   /// Home's own profile and plan) fire the moment the shell first builds,
   /// for tabs the user may never open. Tracking visited indices here and
   /// swapping an unvisited slot's real screen for a cheap placeholder is
@@ -121,7 +121,7 @@ class _NavShellState extends State<NavShell> {
   static const _items = [
     FsNavItem(icon: Icons.home_outlined, label: 'Home'),
     FsNavItem(icon: Icons.fitness_center_outlined, label: 'Train'),
-    FsNavItem(icon: Icons.menu_book_outlined, label: 'Browse'),
+    FsNavItem(icon: Icons.restaurant_outlined, label: 'Nutrition'),
     FsNavItem(icon: Icons.person_outline, label: 'Profile'),
   ];
 
@@ -166,7 +166,7 @@ class _NavShellState extends State<NavShell> {
                   tabRequest: _trainTab,
                 ),
               ),
-              _tab(2, () => const ExerciseListScreen()),
+              _tab(2, () => NutritionScreen(onGoToProfile: () => _select(3))),
               _tab(3, () => const SettingsScreen()),
             ],
           ),

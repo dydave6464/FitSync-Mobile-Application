@@ -1,0 +1,6 @@
+[
+  { "today": "2026-10-14", "sex": "male", "dateOfBirth": "1996-01-15", "heightCm": 175, "weightKg": 70, "activityLevel": "moderate", "kcal": 2550, "proteinG": 110 },
+  { "today": "2026-10-14", "sex": "female", "dateOfBirth": "2001-03-02", "heightCm": 165, "weightKg": 60, "activityLevel": "light", "kcal": 1850, "proteinG": 95 },
+  { "today": "2026-10-14", "sex": "female", "dateOfBirth": "1996-01-15", "heightCm": 150, "weightKg": 45, "activityLevel": "sedentary", "kcal": 1300, "proteinG": 70 },
+  { "today": "2026-10-14", "sex": "male", "dateOfBirth": "1996-10-20", "heightCm": 180, "weightKg": 85, "activityLevel": "very_active", "kcal": 3500, "proteinG": 135 }
+]

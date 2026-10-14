@@ -6,6 +6,8 @@ import '../../../core/token_store.dart';
 import '../../activity/presentation/providers.dart'
     show activityProvider, stepAccessProvider;
 import '../../exercises/presentation/providers.dart';
+import '../../nutrition/presentation/providers.dart'
+    show nutritionDayProvider, nutritionDateProvider, recentFoodsProvider;
 import '../../plans/presentation/providers.dart';
 import '../../recovery/presentation/providers.dart';
 import '../../reminders/data/reminder_scheduler.dart';
@@ -156,6 +158,9 @@ class AuthController extends AsyncNotifier<AuthState> {
     ref.invalidate(reminderSettingsProvider);
     ref.invalidate(activityProvider);
     ref.invalidate(stepAccessProvider);
+    ref.invalidate(nutritionDayProvider);
+    ref.invalidate(nutritionDateProvider);
+    ref.invalidate(recentFoodsProvider);
   }
 
   Future<void> signOut() async {

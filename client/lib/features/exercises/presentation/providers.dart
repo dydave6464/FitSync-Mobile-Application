@@ -112,7 +112,7 @@ class ExerciseListState {
 }
 
 /// Muscle groups the whole catalogue view is confined to, set by the picker
-/// from the training day the user chose. Empty on the Browse tab.
+/// from the training day the user chose. Empty on Train's Exercises tab.
 class CatalogueConstraintNotifier extends Notifier<List<String>> {
   @override
   List<String> build() => const [];

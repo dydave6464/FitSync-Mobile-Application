@@ -160,3 +160,9 @@ test('allows PUBLIC_BASE_URL to default to localhost outside production', () => 
   const cfg = load({ ...validEnv, NODE_ENV: 'development' });
   assert.equal(cfg.publicBaseUrl, 'http://localhost:3000');
 });
+
+test('fatsecret defaults to the stub and passes credentials through', () => {
+  assert.deepEqual(load(validEnv).fatsecret, { mode: 'stub', clientId: null, clientSecret: null });
+  const cfg = load({ ...validEnv, FATSECRET_MODE: 'http', FATSECRET_CONSUMER_KEY: 'k', FATSECRET_CONSUMER_SECRET: 's' });
+  assert.deepEqual(cfg.fatsecret, { mode: 'http', clientId: 'k', clientSecret: 's' });
+});
