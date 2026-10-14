@@ -87,14 +87,21 @@ void main() {
     expect(find.text('Powered by fatsecret Platform API'), findsNothing);
   });
 
-  testWidgets('the sheet says which serving and which list the numbers come from', (tester) async {
+  testWidgets('the sheet says which serving the numbers are for, without naming a source', (tester) async {
     await _open(tester, _rice);
-    expect(find.text('Per 1 cup · FitSync food list'), findsOneWidget);
+    expect(find.text('Per 1 cup'), findsOneWidget);
+    expect(find.textContaining('FitSync food list'), findsNothing);
   });
 
-  testWidgets('a FatSecret food is labelled as FatSecret', (tester) async {
+  testWidgets('a FatSecret food shows its serving but no source label', (tester) async {
     await _open(tester, _shake);
-    expect(find.text('Per 1 glass · FatSecret'), findsOneWidget);
+    expect(find.text('Per 1 glass'), findsOneWidget);
+    expect(find.text('FatSecret'), findsNothing);
+  });
+
+  testWidgets('your own entry is marked as yours', (tester) async {
+    await _open(tester, const Food(source: 'manual', name: 'Turon', servingDesc: '1 piece', kcal: 198, proteinG: 2, carbsG: 34, fatG: 6));
+    expect(find.text('Per 1 piece · your entry'), findsOneWidget);
   });
 
   testWidgets('Edit numbers shows labelled boxes filled with the food\'s numbers', (tester) async {

@@ -47,6 +47,13 @@ class _LogFoodScreenState extends ConsumerState<LogFoodScreen> {
     });
   }
 
+  /// A suggested food was tapped: fill the box and search straight away.
+  void _searchFor(String name) {
+    _debounce?.cancel();
+    _search.text = name;
+    setState(() => _query = name);
+  }
+
   Future<void> _choose(Food food) async {
     final choice = await showLogFoodSheet(context, food, mealType: widget.mealType);
     if (choice == null || !mounted) return;
@@ -113,16 +120,16 @@ class _LogFoodScreenState extends ConsumerState<LogFoodScreen> {
   }
 
   Widget _results() {
-    if (_query.length < 2) {
-      return const _Hint('Type at least 2 letters to search FitSync foods and FatSecret.');
-    }
+    if (_query.isEmpty) return _StartHint(onPick: _searchFor);
+    // One letter: wait for the next, with nothing to read in the meantime.
+    if (_query.length < 2) return const SizedBox.shrink();
     return ref.watch(foodSearchProvider(_query)).when(
       loading: () => const Center(child: CircularProgressIndicator()),
       error: (e, _) => _Hint(describeError(e)),
       data: (r) => _FoodList(
         foods: r.foods,
         onTap: _choose,
-        note: r.fatsecretUnavailable ? 'Showing FitSync foods only' : null,
+        note: r.fatsecretUnavailable ? "Some foods couldn't load. Check your connection." : null,
         empty: 'No foods match "$_query". Try another word, or add it manually.',
       ),
     );
@@ -133,6 +140,39 @@ class _LogFoodScreenState extends ConsumerState<LogFoodScreen> {
     error: (e, _) => _Hint(describeError(e)),
     data: (foods) => _FoodList(foods: foods, onTap: _choose, empty: 'Foods you log show up here.'),
   );
+}
+
+/// Shown before anything is typed: a prompt and a few foods to tap, rather
+/// than rules about how much to type.
+class _StartHint extends StatelessWidget {
+  const _StartHint({required this.onPick});
+
+  final ValueChanged<String> onPick;
+
+  static const _suggestions = ['Rice', 'Chicken adobo', 'Egg', 'Tapsilog', 'Banana'];
+
+  @override
+  Widget build(BuildContext context) {
+    final t = context.fs;
+    return ListView(
+      padding: const EdgeInsets.fromLTRB(20, 24, 20, 24),
+      children: [
+        Text('What did you eat?', textAlign: TextAlign.center, style: Theme.of(context).textTheme.titleMedium),
+        const SizedBox(height: 4),
+        Text('Search by name, like adobo or rice',
+            textAlign: TextAlign.center, style: TextStyle(color: t.text2)),
+        const SizedBox(height: 16),
+        Wrap(
+          alignment: WrapAlignment.center,
+          spacing: 8,
+          runSpacing: 8,
+          children: [
+            for (final name in _suggestions) ActionChip(label: Text(name), onPressed: () => onPick(name)),
+          ],
+        ),
+      ],
+    );
+  }
 }
 
 class _Hint extends StatelessWidget {
@@ -158,7 +198,7 @@ class _FoodList extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final t = context.fs;
-    if (foods.isEmpty) return _Hint(note == null ? empty : '$note. $empty');
+    if (foods.isEmpty) return _Hint(note == null ? empty : '$note $empty');
     final anyFatsecret = foods.any((f) => f.isFatsecret);
     return ListView(
       padding: const EdgeInsets.fromLTRB(20, 12, 20, 12),
@@ -178,7 +218,6 @@ class _FoodList extends StatelessWidget {
               crossAxisAlignment: WrapCrossAlignment.center,
               children: [
                 if (f.servingDesc != null) Text(f.servingDesc!),
-                if (f.isFatsecret) const FsTag('FatSecret'),
               ],
             ),
             trailing: Text('${f.kcal} kcal'),

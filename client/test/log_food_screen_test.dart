@@ -61,7 +61,7 @@ void main() {
     expect(repo.queries, ['adobo']);
     expect(find.text('Chicken adobo'), findsOneWidget);
     expect(find.text('Adobo Flakes'), findsOneWidget);
-    expect(find.text('FatSecret'), findsOneWidget);
+    expect(find.text('FatSecret'), findsNothing, reason: 'no source tag on rows');
     expect(find.text('Powered by fatsecret Platform API'), findsOneWidget);
   });
 
@@ -80,7 +80,7 @@ void main() {
     await tester.enterText(find.byKey(const Key('food.search')), 'adobo');
     await tester.pump(const Duration(milliseconds: 300));
     await tester.pumpAndSettle();
-    expect(find.text('Showing FitSync foods only'), findsOneWidget);
+    expect(find.text("Some foods couldn't load. Check your connection."), findsOneWidget);
     expect(find.text('Powered by fatsecret Platform API'), findsNothing);
   });
 
@@ -136,5 +136,35 @@ void main() {
     expect(repo.lastLogged!.source, 'manual');
     expect(repo.lastLogged!.name, 'Chicken adobo');
     expect(repo.lastLogged!.proteinG, 30);
+  });
+
+  testWidgets('before typing, it asks what you ate and offers foods to tap', (tester) async {
+    final repo = _SearchRepo();
+    await _pump(tester, repo);
+    expect(find.text('What did you eat?'), findsOneWidget);
+    expect(find.text('Search by name, like adobo or rice'), findsOneWidget);
+    for (final food in ['Rice', 'Chicken adobo', 'Egg', 'Tapsilog', 'Banana']) {
+      expect(find.widgetWithText(ActionChip, food), findsOneWidget);
+    }
+    expect(find.textContaining('at least 2 letters'), findsNothing);
+    expect(find.textContaining('FatSecret'), findsNothing);
+  });
+
+  testWidgets('tapping a suggested food searches for it', (tester) async {
+    final repo = _SearchRepo();
+    await _pump(tester, repo);
+    await tester.tap(find.widgetWithText(ActionChip, 'Chicken adobo'));
+    await tester.pumpAndSettle();
+    expect(repo.queries, ['Chicken adobo']);
+    expect(find.text('Adobo Flakes'), findsOneWidget);
+  });
+
+  testWidgets('one letter just waits, with nothing to read', (tester) async {
+    await _pump(tester, _SearchRepo());
+    await tester.enterText(find.byKey(const Key('food.search')), 'a');
+    await tester.pump(const Duration(milliseconds: 300));
+    await tester.pumpAndSettle();
+    expect(find.text('What did you eat?'), findsNothing);
+    expect(find.textContaining('at least 2 letters'), findsNothing);
   });
 }

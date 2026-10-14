@@ -98,7 +98,7 @@ class _LogFoodSheetState extends State<LogFoodSheet> {
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
             Text(f.name, style: theme.textTheme.titleMedium),
-            Text('Per ${f.servingDesc ?? 'serving'} · ${_sourceLabel(f.source)}',
+            Text('Per ${f.servingDesc ?? 'serving'}${f.source == 'manual' ? ' · your entry' : ''}',
                 style: TextStyle(color: t.text2, fontSize: 13)),
             const SizedBox(height: 16),
             FsSegmented(
@@ -182,13 +182,6 @@ class _LogFoodSheetState extends State<LogFoodSheet> {
     );
   }
 }
-
-/// Where a food's numbers come from, as the sheet names it.
-String _sourceLabel(String source) => switch (source) {
-  'fatsecret' => 'FatSecret',
-  'manual' => 'your entry',
-  _ => 'FitSync food list',
-};
 
 /// 4.3 -> "4.3", 28.0 -> "28": a number as someone would type it.
 String _plain(double v) => v == v.roundToDouble() ? v.toStringAsFixed(0) : v.toString();
