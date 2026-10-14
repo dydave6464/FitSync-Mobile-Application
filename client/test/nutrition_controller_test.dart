@@ -10,7 +10,7 @@ import 'package:fitsync/features/nutrition/presentation/providers.dart';
 
 NutritionDay emptyDay(String date) => NutritionDay(
   date: date, target: null, targetMissing: const [],
-  totals: const MacroTotals(kcal: 0, proteinG: 0, carbsG: 0, fatG: 0),
+  totals: const MacroTotals(kcal: 0, proteinG: 0, carbsG: 0, fatG: 0, fiberG: 0),
   meals: {for (final m in mealTypes) m: const []},
 );
 
@@ -26,6 +26,8 @@ class FakeNutritionRepository implements NutritionRepository {
   /// The tests' clocks sit on this day in Manila.
   String today = '2026-10-14';
   bool failNext = false;
+  /// The last food passed to logEntry, so a test can see what was saved.
+  Food? lastLogged;
   bool failNextGet = false;
   Completer<void>? hold;
   int recentCalls = 0;
@@ -43,6 +45,7 @@ class FakeNutritionRepository implements NutritionRepository {
   @override
   Future<FoodEntry> logEntry({required String date, required String mealType, required double servings, required Food food}) async {
     calls.add('log $date $mealType ${food.name} x$servings');
+    lastLogged = food;
     if (hold != null) await hold!.future;
     if (failNext) { failNext = false; throw const ApiException('NETWORK_ERROR', 'offline'); }
     final saved = FoodEntry.pending(id: _ids++, food: food, mealType: mealType, servings: servings);
@@ -60,6 +63,20 @@ class FakeNutritionRepository implements NutritionRepository {
 
   @override
   Future<FoodSearchResult> search(String q) async => const FoodSearchResult(foods: [rice], fatsecretUnavailable: false);
+
+  /// What `fatsecretFood` returns per external id; [failFatsecret] makes it throw.
+  final Map<String, Food> fatsecretDetails = {};
+  bool failFatsecret = false;
+  final List<String> fatsecretCalls = [];
+
+  @override
+  Future<Food> fatsecretFood(String externalId) async {
+    fatsecretCalls.add(externalId);
+    if (failFatsecret) throw const ApiException('FATSECRET_UNAVAILABLE', 'down');
+    final food = fatsecretDetails[externalId];
+    if (food == null) throw const ApiException('FOOD_NOT_FOUND', 'FatSecret has no such food.');
+    return food;
+  }
 
   @override
   Future<List<Food>> recent() async {

@@ -22,11 +22,12 @@ class _AddFoodManuallyScreenState extends ConsumerState<AddFoodManuallyScreen> {
   final _protein = TextEditingController();
   final _carbs = TextEditingController();
   final _fat = TextEditingController();
+  final _fiber = TextEditingController();
   late String _meal = widget.mealType;
 
   @override
   void dispose() {
-    for (final c in [_name, _serving, _protein, _carbs, _fat]) {
+    for (final c in [_name, _serving, _protein, _carbs, _fat, _fiber]) {
       c.dispose();
     }
     super.dispose();
@@ -34,12 +35,22 @@ class _AddFoodManuallyScreenState extends ConsumerState<AddFoodManuallyScreen> {
 
   double? _grams(TextEditingController c) => c.text.trim().isEmpty ? 0 : double.tryParse(c.text.trim());
 
+  /// Fiber is optional: blank is unknown (null), not 0. Anything else
+  /// unreadable comes back as NaN, which fails the 0-500 range check below
+  /// the same way an out-of-range number would.
+  double? _fiberGrams(TextEditingController c) {
+    final text = c.text.trim();
+    return text.isEmpty ? null : (double.tryParse(text) ?? double.nan);
+  }
+
   @override
   Widget build(BuildContext context) {
     final t = context.fs;
     final theme = Theme.of(context);
     final p = _grams(_protein), c = _grams(_carbs), f = _grams(_fat);
-    final gramsOk = [p, c, f].every((g) => g != null && g >= 0 && g <= 500);
+    final fiber = _fiberGrams(_fiber);
+    final gramsOk = [p, c, f].every((g) => g != null && g >= 0 && g <= 500) &&
+        (fiber == null || (fiber >= 0 && fiber <= 500));
     final kcal = gramsOk ? manualKcal(p!, c!, f!) : null;
     final name = _name.text.trim();
     final valid = name.isNotEmpty && name.length <= 100 && _serving.text.trim().length <= 60
@@ -83,12 +94,18 @@ class _AddFoodManuallyScreenState extends ConsumerState<AddFoodManuallyScreen> {
           const SizedBox(height: 16),
           Text('Macros · per serving', style: theme.textTheme.titleSmall),
           const SizedBox(height: 8),
+          // Two rows of two, not one row of four: four boxes in a row
+          // overflow a narrow phone at large text.
           Row(children: [
-            gramsField('Protein', const Key('manual.protein'), _protein),
+            gramsField('Protein (g)', const Key('manual.protein'), _protein),
             const SizedBox(width: 10),
-            gramsField('Carbs', const Key('manual.carbs'), _carbs),
+            gramsField('Carbs (g)', const Key('manual.carbs'), _carbs),
+          ]),
+          const SizedBox(height: 10),
+          Row(children: [
+            gramsField('Fat (g)', const Key('manual.fat'), _fat),
             const SizedBox(width: 10),
-            gramsField('Fat', const Key('manual.fat'), _fat),
+            gramsField('Fiber (g)', const Key('manual.fiber'), _fiber),
           ]),
           if (!gramsOk)
             Padding(
@@ -109,7 +126,7 @@ class _AddFoodManuallyScreenState extends ConsumerState<AddFoodManuallyScreen> {
               final food = Food(
                 source: 'manual', name: name,
                 servingDesc: _serving.text.trim().isEmpty ? null : _serving.text.trim(),
-                kcal: kcal!, proteinG: p, carbsG: c, fatG: f,
+                kcal: kcal!, proteinG: p, carbsG: c, fatG: f, fiberG: fiber,
               );
               Navigator.of(context).pop(true);
               try {

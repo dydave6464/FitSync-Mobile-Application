@@ -6,7 +6,7 @@ import '../../../../core/widgets/fs_kit.dart' show FsCard;
 import '../../../sessions/presentation/progress_screen.dart' show groupThousands;
 import '../../domain/nutrition.dart';
 
-/// The prototype's top card: a calorie ring, and Protein / Carbs / Fat bars.
+/// The prototype's top card: a calorie ring, and Protein / Carbs / Fat / Fiber bars.
 class NutritionSummaryCard extends StatelessWidget {
   const NutritionSummaryCard({super.key, required this.day, this.onGoToProfile});
 
@@ -42,6 +42,7 @@ class NutritionSummaryCard extends StatelessWidget {
         _MacroBar(label: 'Protein', eaten: eaten.proteinG, target: target?.proteinG, color: t.accent),
         _MacroBar(label: 'Carbs', eaten: eaten.carbsG, target: target?.carbsG, color: t.blue),
         _MacroBar(label: 'Fat', eaten: eaten.fatG, target: target?.fatG, color: t.violet),
+        _MacroBar(label: 'Fiber', eaten: eaten.fiberG, target: target?.fiberG, color: t.amber),
       ],
     );
 

@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 
 import '../../../../core/theme.dart';
 import '../../../../core/widgets/fs_kit.dart';
@@ -6,10 +7,14 @@ import '../../domain/nutrition.dart';
 import 'fatsecret_attribution.dart';
 
 class LogChoice {
-  const LogChoice({required this.mealType, required this.servings});
+  const LogChoice({required this.mealType, required this.servings, this.edited});
 
   final String mealType;
   final double servings;
+
+  /// The user's own numbers for this food, per serving, when they changed
+  /// them under "Edit numbers"; null when they logged the food as listed.
+  final Food? edited;
 }
 
 Future<LogChoice?> showLogFoodSheet(BuildContext context, Food food, {required String mealType}) =>
@@ -35,6 +40,23 @@ class _LogFoodSheetState extends State<LogFoodSheet> {
   late String _meal = widget.mealType;
   double _servings = 1;
 
+  /// "Edit numbers" is hidden until asked for: most people log a food as
+  /// listed, and four boxes on every log would be noise.
+  bool _editing = false;
+  late final _protein = TextEditingController(text: _plain(widget.food.proteinG));
+  late final _carbs = TextEditingController(text: _plain(widget.food.carbsG));
+  late final _fat = TextEditingController(text: _plain(widget.food.fatG));
+  late final _fiber = TextEditingController(text: widget.food.fiberG == null ? '' : _plain(widget.food.fiberG!));
+
+  @override
+  void dispose() {
+    _protein.dispose();
+    _carbs.dispose();
+    _fat.dispose();
+    _fiber.dispose();
+    super.dispose();
+  }
+
   void _step(double by) => setState(() => _servings = (_servings + by).clamp(0.5, 20));
 
   @override
@@ -42,18 +64,56 @@ class _LogFoodSheetState extends State<LogFoodSheet> {
     final t = context.fs;
     final theme = Theme.of(context);
     final f = widget.food;
-    final kcal = (f.kcal * _servings).round();
+
+    final p = _grams(_protein), c = _grams(_carbs), fat = _grams(_fat);
+    final fiber = _fiberGrams(_fiber);
+    final gramsOk = [p, c, fat].every((g) => g != null && g >= 0 && g <= 500) &&
+        (fiber == null || (fiber >= 0 && fiber <= 500));
+    // Only a real change makes this the user's own entry; opening the boxes
+    // and logging untouched still logs the listed food, whatever its numbers
+    // (a 0-macro drink, or a listed value over 500 g). Unreadable text (null,
+    // or NaN for fiber) differs from any listed value, so it counts as one.
+    final touched = _editing &&
+        (p != f.proteinG || c != f.carbsG || fat != f.fatG || fiber != f.fiberG);
+    final changed = touched && gramsOk;
+    final noMacros = changed && p! + c! + fat! == 0;
+    final canLog = !touched || (changed && !noMacros);
+    // Any change, fiber alone included, is logged as the user's own entry,
+    // and the server works out a manual entry's kcal as 4·4·9 -- so the
+    // preview does too. Fiber itself never adds calories.
+    final perKcal = changed ? manualKcal(p!, c!, fat!) : f.kcal;
+    final shown = changed
+        ? (p: p!, c: c!, f: fat!, fb: fiber)
+        : (p: f.proteinG, c: f.carbsG, f: f.fatG, fb: f.fiberG);
+
+    Widget gramsField(String label, String key, TextEditingController controller) => Expanded(
+      child: Column(
+        key: Key(key),
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(label, style: TextStyle(color: t.text2, fontSize: 12)),
+          const SizedBox(height: 4),
+          FsField(
+            controller: controller,
+            hint: 'g',
+            keyboardType: const TextInputType.numberWithOptions(decimal: true),
+            inputFormatters: [FilteringTextInputFormatter.allow(RegExp(r'[0-9.]'))],
+            onChanged: (_) => setState(() {}),
+          ),
+        ],
+      ),
+    );
 
     return SafeArea(
       child: SingleChildScrollView(
-        padding: const EdgeInsets.fromLTRB(20, 20, 20, 16),
+        padding: EdgeInsets.fromLTRB(20, 20, 20, 16 + MediaQuery.viewInsetsOf(context).bottom),
         child: Column(
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
             Text(f.name, style: theme.textTheme.titleMedium),
-            if (f.servingDesc != null)
-              Text('Per serving: ${f.servingDesc}', style: TextStyle(color: t.text2, fontSize: 13)),
+            Text('Per ${f.servingDesc ?? 'serving'}${f.source == 'manual' ? ' · your entry' : ''}',
+                style: TextStyle(color: t.text2, fontSize: 13)),
             const SizedBox(height: 16),
             FsSegmented(
               options: [for (final m in mealTypes) (value: m, label: mealLabel(m))],
@@ -73,16 +133,76 @@ class _LogFoodSheetState extends State<LogFoodSheet> {
               ],
             ),
             const SizedBox(height: 8),
-            Text('$kcal kcal', style: theme.textTheme.titleLarge),
+            Text('${(perKcal * _servings).round()} kcal', style: theme.textTheme.titleLarge),
             Text(
-              'Protein ${_g(f.proteinG * _servings)} g · Carbs ${_g(f.carbsG * _servings)} g · Fat ${_g(f.fatG * _servings)} g',
+              'Protein ${_g(shown.p * _servings)} g · Carbs ${_g(shown.c * _servings)} g · Fat ${_g(shown.f * _servings)} g'
+              ' · Fiber ${shown.fb == null ? 'not listed' : '${_g(shown.fb! * _servings)} g'}',
               style: TextStyle(color: t.text2, fontSize: 13),
             ),
+            if (changed)
+              Text('Calories worked out from protein, carbs and fat.',
+                  style: TextStyle(color: t.text3, fontSize: 12)),
+            if (!_editing)
+              Align(
+                alignment: Alignment.centerLeft,
+                child: TextButton(
+                  key: const Key('logSheet.edit'),
+                  onPressed: () => setState(() => _editing = true),
+                  child: const Text('Edit numbers'),
+                ),
+              )
+            else ...[
+              const SizedBox(height: 12),
+              Text('Your numbers, per serving', style: theme.textTheme.titleSmall),
+              const SizedBox(height: 8),
+              // Two rows of two, not one row of four: four boxes in a row
+              // overflow a narrow phone at large text.
+              Row(children: [
+                gramsField('Protein (g)', 'logSheet.protein', _protein),
+                const SizedBox(width: 10),
+                gramsField('Carbs (g)', 'logSheet.carbs', _carbs),
+              ]),
+              const SizedBox(height: 10),
+              Row(children: [
+                gramsField('Fat (g)', 'logSheet.fat', _fat),
+                const SizedBox(width: 10),
+                gramsField('Fiber (g)', 'logSheet.fiber', _fiber),
+              ]),
+              if (touched && !gramsOk)
+                Padding(
+                  padding: const EdgeInsets.only(top: 6),
+                  child: Text('Each value must be 0–500 g', style: TextStyle(color: t.red, fontSize: 12)),
+                )
+              else if (noMacros)
+                Padding(
+                  padding: const EdgeInsets.only(top: 6),
+                  child: Text('Add some protein, carbs or fat', style: TextStyle(color: t.red, fontSize: 12)),
+                ),
+            ],
             const SizedBox(height: 16),
             FsButton(
               key: const Key('logSheet.log'),
               label: 'Log',
-              onPressed: () => Navigator.of(context).pop(LogChoice(mealType: _meal, servings: _servings)),
+              onPressed: !canLog
+                  ? null
+                  : () => Navigator.of(context).pop(LogChoice(
+                        mealType: _meal,
+                        servings: _servings,
+                        edited: changed
+                            ? Food(
+                                source: 'manual',
+                                // A FatSecret name or serving can be longer
+                                // than a manual entry may be.
+                                name: _clip(f.name, _maxName),
+                                servingDesc: f.servingDesc == null ? null : _clip(f.servingDesc!, _maxServingDesc),
+                                kcal: perKcal,
+                                proteinG: p!,
+                                carbsG: c!,
+                                fatG: fat!,
+                                fiberG: fiber,
+                              )
+                            : null,
+                      )),
             ),
             if (f.isFatsecret) const FatsecretAttribution(),
           ],
@@ -90,4 +210,36 @@ class _LogFoodSheetState extends State<LogFoodSheet> {
       ),
     );
   }
+}
+
+/// The longest name and serving a manual entry may have
+/// (server/src/routes/nutrition.js).
+const _maxName = 100;
+const _maxServingDesc = 60;
+
+/// [text], trimmed and cut to at most [max] UTF-16 units -- what the server's
+/// length check counts -- without splitting a character, then trimmed again.
+String _clip(String text, int max) {
+  final trimmed = text.trim();
+  if (trimmed.length <= max) return trimmed;
+  final out = StringBuffer();
+  for (final ch in trimmed.characters) {
+    if (out.length + ch.length > max) break;
+    out.write(ch);
+  }
+  return out.toString().trimRight();
+}
+
+/// 4.3 -> "4.3", 28.0 -> "28": a number as someone would type it.
+String _plain(double v) => v == v.roundToDouble() ? v.toStringAsFixed(0) : v.toString();
+
+/// An empty box counts as 0; anything unreadable as null (invalid).
+double? _grams(TextEditingController c) => c.text.trim().isEmpty ? 0 : double.tryParse(c.text.trim());
+
+/// Fiber is the one macro where blank is a real value (unknown, not 0).
+/// Anything else unreadable comes back as NaN, which fails every `gramsOk`
+/// range check the same way an out-of-range number would.
+double? _fiberGrams(TextEditingController c) {
+  final text = c.text.trim();
+  return text.isEmpty ? null : (double.tryParse(text) ?? double.nan);
 }

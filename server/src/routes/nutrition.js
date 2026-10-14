@@ -63,14 +63,25 @@ function checkManual(food) {
     throw invalid('food', 'A manual food needs some protein, carbs or fat.');
   }
   const kcal = Math.round(4 * grams.proteinG + 4 * grams.carbsG + 9 * grams.fatG);
-  return { name, servingDesc, kcal, ...grams };
+  let fiberG = null;
+  if (food.fiberG != null) {
+    if (typeof food.fiberG !== 'number' || !Number.isFinite(food.fiberG) || food.fiberG < 0 || food.fiberG > MAX_GRAMS) {
+      throw invalid('fiberG', `fiberG must be 0 to ${MAX_GRAMS}.`);
+    }
+    fiberG = round2(food.fiberG);
+  }
+  return { name, servingDesc, kcal, fiberG, ...grams };
 }
 
 function totalsOf(entries) {
   const t = entries.reduce((a, e) => ({
     kcal: a.kcal + e.kcal, proteinG: a.proteinG + e.proteinG, carbsG: a.carbsG + e.carbsG, fatG: a.fatG + e.fatG,
-  }), { kcal: 0, proteinG: 0, carbsG: 0, fatG: 0 });
-  return { kcal: t.kcal, proteinG: round1(t.proteinG), carbsG: round1(t.carbsG), fatG: round1(t.fatG) };
+    fiberG: a.fiberG + (e.fiberG ?? 0),
+  }), { kcal: 0, proteinG: 0, carbsG: 0, fatG: 0, fiberG: 0 });
+  return {
+    kcal: t.kcal, proteinG: round1(t.proteinG), carbsG: round1(t.carbsG), fatG: round1(t.fatG),
+    fiberG: round1(t.fiberG),
+  };
 }
 
 module.exports = function buildNutritionRouter(deps) {
@@ -148,6 +159,7 @@ module.exports = function buildNutritionRouter(deps) {
         proteinG: round2(base.proteinG * servings),
         carbsG: round2(base.carbsG * servings),
         fatG: round2(base.fatG * servings),
+        fiberG: base.fiberG == null ? null : round2(base.fiberG * servings),
         loggedVia,
       });
       res.status(201).json({ data: { entry: await getEntry(pool, req.user.userId, id) } });

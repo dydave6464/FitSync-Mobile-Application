@@ -12,8 +12,9 @@ const MAN = {
 test('build muscle adds 250 to rounded maintenance; macros follow', () => {
   // BMR 1648.75 x 1.55 = 2555.6 -> 2550; +250 = 2800. Protein 112 -> 110.
   // Fat round(2800*0.25/9) = 78. Carbs round((2800-440-702)/4) = 415.
+  // Fiber round(14*2800/1000) = 39 -> capped at 38 (IOM adult men max).
   assert.deepEqual(dailyTarget(MAN, '2026-10-14'), {
-    target: { kcal: 2800, proteinG: 110, carbsG: 415, fatG: 78 }, missing: [],
+    target: { kcal: 2800, proteinG: 110, carbsG: 415, fatG: 78, fiberG: 38 }, missing: [],
   });
 });
 
@@ -23,10 +24,23 @@ test('lose weight subtracts 500 but never goes below the floor', () => {
     activityLevel: 'sedentary', mainGoal: 'lose_weight',
   };
   // Maintenance 1300 - 500 = 800 -> floor 1200. Protein 72 -> 70. Fat 33. Carbs 156.
+  // Fiber round(14*1200/1000) = 17 -> floored at 25 (PDRI/FDA label minimum).
   assert.deepEqual(dailyTarget(small, '2026-10-14').target,
-    { kcal: 1200, proteinG: 70, carbsG: 156, fatG: 33 });
+    { kcal: 1200, proteinG: 70, carbsG: 156, fatG: 33, fiberG: 25 });
   const man = { ...MAN, heightCm: 150, weightKg: 45, activityLevel: 'sedentary', mainGoal: 'lose_weight' };
   assert.equal(dailyTarget(man, '2026-10-14').target.kcal, 1500);
+});
+
+test('fiber follows the goal-adjusted kcal at 14 g per 1,000 kcal', () => {
+  // Female, 45kg, 150cm, age 30, active (1.725): BMR 1076.5 x 1.725 = 1857.06
+  // -> maintenance 1850. Fiber round(14*1850/1000) = round(25.9) = 26.
+  const profile = {
+    sex: 'female', dateOfBirth: '1996-01-15', heightCm: 150, weightKg: 45,
+    activityLevel: 'active', mainGoal: 'general_fitness',
+  };
+  const { target } = dailyTarget(profile, '2026-10-14');
+  assert.equal(target.kcal, 1850);
+  assert.equal(target.fiberG, 26);
 });
 
 test('endurance, general fitness and no goal keep maintenance', () => {

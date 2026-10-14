@@ -48,8 +48,8 @@ test('search gets a token with client credentials, then maps results', async () 
   assert.match(calls[1].url, /search_expression=adobo/);
   assert.equal(calls[1].init.headers.Authorization, 'Bearer tok');
   assert.deepEqual(found, [
-    { externalId: '33691', name: 'Chicken Adobo', servingDesc: '1 cup', kcal: 466, proteinG: 40.6, carbsG: 5.46, fatG: 30.71 },
-    { externalId: '9', name: 'Tuna (Century)', servingDesc: '1 can', kcal: 130, proteinG: 29, carbsG: 0, fatG: 1 },
+    { externalId: '33691', name: 'Chicken Adobo', servingDesc: '1 cup', kcal: 466, proteinG: 40.6, carbsG: 5.46, fatG: 30.71, fiberG: null },
+    { externalId: '9', name: 'Tuna (Century)', servingDesc: '1 can', kcal: 130, proteinG: 29, carbsG: 0, fatG: 1, fiberG: null },
   ]);
 });
 
@@ -82,15 +82,47 @@ test('get picks the default serving', async () => {
   const { impl, calls } = fakeFetch([TOKEN, ['server.api', () => reply({
     food: { food_id: '33691', food_name: 'Chicken Adobo', servings: { serving: [
       { serving_description: '100 g', calories: '199', protein: '17.4', carbohydrate: '2.3', fat: '13.1' },
-      { serving_description: '1 cup', calories: '466', protein: '40.60', carbohydrate: '5.46', fat: '30.71', is_default: '1' },
+      { serving_description: '1 cup', calories: '466', protein: '40.60', carbohydrate: '5.46', fat: '30.71', fiber: '0.30', is_default: '1' },
     ] } },
   })]]);
   const client = create({ clientId: 'id', clientSecret: 's', fetchImpl: impl });
   assert.deepEqual(await client.get('33691'), {
-    externalId: '33691', name: 'Chicken Adobo', servingDesc: '1 cup', kcal: 466, proteinG: 40.6, carbsG: 5.46, fatG: 30.71,
+    externalId: '33691', name: 'Chicken Adobo', servingDesc: '1 cup', kcal: 466, proteinG: 40.6, carbsG: 5.46, fatG: 30.71, fiberG: 0.3,
   });
   assert.match(calls[1].url, /method=food\.get\.v2/);
   assert.match(calls[1].url, /food_id=33691/);
+});
+
+test('get returns fiberG null when fiber is absent or an empty string', async () => {
+  const { impl: implAbsent } = fakeFetch([TOKEN, ['server.api', () => reply({
+    food: { food_id: '1', food_name: 'No Fiber Field', servings: { serving: {
+      serving_description: '1 cup', calories: '100', protein: '1', carbohydrate: '1', fat: '1', is_default: '1',
+    } } },
+  })]]);
+  const clientAbsent = create({ clientId: 'id', clientSecret: 's', fetchImpl: implAbsent });
+  assert.equal((await clientAbsent.get('1')).fiberG, null);
+
+  const { impl: implEmpty } = fakeFetch([TOKEN, ['server.api', () => reply({
+    food: { food_id: '2', food_name: 'Empty Fiber', servings: { serving: {
+      serving_description: '1 cup', calories: '100', protein: '1', carbohydrate: '1', fat: '1', fiber: '', is_default: '1',
+    } } },
+  })]]);
+  const clientEmpty = create({ clientId: 'id', clientSecret: 's', fetchImpl: implEmpty });
+  assert.equal((await clientEmpty.get('2')).fiberG, null);
+});
+
+test('an implausible fiber value becomes unknown; the food itself is kept', async () => {
+  for (const fiber of ['1000', 'abc', '-1']) {
+    const { impl } = fakeFetch([TOKEN, ['server.api', () => reply({
+      food: { food_id: '5', food_name: 'Weird Fiber', servings: { serving: {
+        serving_description: '1 cup', calories: '100', protein: '1', carbohydrate: '1', fat: '1', fiber, is_default: '1',
+      } } },
+    })]]);
+    const client = create({ clientId: 'id', clientSecret: 's', fetchImpl: impl });
+    assert.deepEqual(await client.get('5'), {
+      externalId: '5', name: 'Weird Fiber', servingDesc: '1 cup', kcal: 100, proteinG: 1, carbsG: 1, fatG: 1, fiberG: null,
+    }, `fiber ${fiber}`);
+  }
 });
 
 test('get answers null for an unknown food', async () => {

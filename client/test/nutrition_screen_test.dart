@@ -12,9 +12,9 @@ import 'nutrition_controller_test.dart' show FakeNutritionRepository;
 NutritionDay _day(String date, {bool target = true, List<FoodEntry> lunch = const [], List<String> missing = const []}) {
   final base = NutritionDay(
     date: date,
-    target: target ? const NutritionTarget(kcal: 2150, proteinG: 95, carbsG: 280, fatG: 60) : null,
+    target: target ? const NutritionTarget(kcal: 2150, proteinG: 95, carbsG: 280, fatG: 60, fiberG: 0) : null,
     targetMissing: missing,
-    totals: const MacroTotals(kcal: 0, proteinG: 0, carbsG: 0, fatG: 0),
+    totals: const MacroTotals(kcal: 0, proteinG: 0, carbsG: 0, fatG: 0, fiberG: 0),
     meals: {for (final m in mealTypes) m: const []},
   );
   return lunch.fold(base, (d, e) => d.withEntry(e));

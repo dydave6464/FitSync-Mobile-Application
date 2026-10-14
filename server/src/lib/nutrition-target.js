@@ -19,6 +19,12 @@ const GOAL_ADJUST = { lose_weight: -500, build_muscle: 250 };
 const FLOORS = { female: 1200, male: 1500 };
 const PROTEIN_PER_KG = 1.6;
 const FAT_SHARE = 0.25;
+// Fiber follows the goal through the calorie target: 14 g per 1,000 kcal
+// (Institute of Medicine), never below the PDRI 2015 adult 20–25 g/day top
+// (25 g, the FDA PH label value) and never above 38 g (IOM, adult men).
+const FIBER_PER_1000_KCAL = 14;
+const FIBER_MIN = 25;
+const FIBER_MAX = 38;
 
 function ageOn(dateOfBirth, today) {
   const [by, bm, bd] = dateOfBirth.split('-').map(Number);
@@ -51,7 +57,8 @@ function dailyTarget(profile, today) {
   const proteinG = Math.round((weightKg * PROTEIN_PER_KG) / 5) * 5;
   const fatG = Math.round((kcal * FAT_SHARE) / 9);
   const carbsG = Math.max(0, Math.round((kcal - 4 * proteinG - 9 * fatG) / 4));
-  return { target: { kcal, proteinG, carbsG, fatG }, missing: [] };
+  const fiberG = Math.min(FIBER_MAX, Math.max(FIBER_MIN, Math.round((FIBER_PER_1000_KCAL * kcal) / 1000)));
+  return { target: { kcal, proteinG, carbsG, fatG, fiberG }, missing: [] };
 }
 
 module.exports = { dailyTarget, ageOn };

@@ -2,9 +2,15 @@ import 'package:flutter_test/flutter_test.dart';
 
 import 'package:fitsync/features/nutrition/domain/nutrition.dart';
 
-Map<String, dynamic> _entry({int id = 1, String meal = 'lunch', String source = 'local', double servings = 2}) => {
+Map<String, dynamic> _entry({
+  int id = 1,
+  String meal = 'lunch',
+  String source = 'local',
+  double servings = 2,
+  double? fiberG,
+}) => {
   'id': id, 'mealType': meal, 'name': 'Chicken adobo', 'servingDesc': '1 serving',
-  'servings': servings, 'kcal': 640, 'proteinG': 56, 'carbsG': 8, 'fatG': 42,
+  'servings': servings, 'kcal': 640, 'proteinG': 56, 'carbsG': 8, 'fatG': 42, 'fiberG': fiberG,
   'source': source, 'foodId': source == 'manual' ? null : 7,
   'externalId': source == 'fatsecret' ? 'fs-1' : null,
 };
@@ -32,6 +38,13 @@ void main() {
   test('manualKcal is 4-4-9, rounded', () {
     expect(manualKcal(2, 34, 6), 198);
     expect(manualKcal(0.3, 0, 0), 1);
+  });
+
+  test('manualKcal rounds each gram to 2 decimals first, as the server does', () {
+    // Server: fat 0.0551 -> 0.06 g -> 0.54 kcal -> 1. Unrounded: 0.4959 -> 0.
+    expect(manualKcal(0, 0, 0.0551), 1);
+    // Server: fat 0.1449 -> 0.14 g; 4*4.3 + 4*44.5 + 9*0.14 = 196.46 -> 196.
+    expect(manualKcal(4.3, 44.5, 0.1449), 196);
   });
 
   test('describeMissing names fields in plain words', () {
@@ -91,5 +104,67 @@ void main() {
   test('formatServings drops the decimal only when whole', () {
     expect(formatServings(1), '1');
     expect(formatServings(1.5), '1.5');
+  });
+
+  test('Food.fromJson reads fiberG, or null when absent', () {
+    Map<String, dynamic> rice([Object? fiberG]) => {
+      'id': 3, 'source': 'local', 'externalId': null, 'name': 'Rice', 'servingDesc': '1 cup',
+      'kcal': 205, 'proteinG': 4.3, 'carbsG': 44.5, 'fatG': 0.4, 'fiberG': fiberG,
+    };
+    expect(Food.fromJson(rice(0.6)).fiberG, 0.6);
+    expect(Food.fromJson(rice()).fiberG, isNull);
+  });
+
+  test('a manual Food.toRef includes fiberG only when known', () {
+    const withFiber = Food(
+      source: 'manual', name: 'Turon', kcal: 198, proteinG: 2, carbsG: 34, fatG: 6, fiberG: 4.0,
+    );
+    expect(withFiber.toRef(), {
+      'source': 'manual', 'name': 'Turon', 'proteinG': 2.0, 'carbsG': 34.0, 'fatG': 6.0, 'fiberG': 4.0,
+    });
+    const noFiber = Food(source: 'manual', name: 'Turon', kcal: 198, proteinG: 2, carbsG: 34, fatG: 6);
+    expect(noFiber.toRef(), {'source': 'manual', 'name': 'Turon', 'proteinG': 2.0, 'carbsG': 34.0, 'fatG': 6.0});
+  });
+
+  test('FoodEntry.fromJson reads a nullable fiberG', () {
+    expect(FoodEntry.fromJson(_entry(fiberG: 3.2)).fiberG, 3.2);
+    expect(FoodEntry.fromJson(_entry()).fiberG, isNull);
+  });
+
+  test('FoodEntry.pending multiplies fiber when known, and keeps null otherwise', () {
+    final withFiber = Food.fromJson(const {
+      'id': 3, 'source': 'local', 'externalId': null, 'name': 'Rice', 'servingDesc': '1 cup',
+      'kcal': 205, 'proteinG': 4.3, 'carbsG': 44.5, 'fatG': 0.4, 'fiberG': 2.0,
+    });
+    expect(FoodEntry.pending(id: -1, food: withFiber, mealType: 'lunch', servings: 2).fiberG, 4.0);
+
+    final noFiber = Food.fromJson(const {
+      'id': 3, 'source': 'local', 'externalId': null, 'name': 'Rice', 'servingDesc': '1 cup',
+      'kcal': 205, 'proteinG': 4.3, 'carbsG': 44.5, 'fatG': 0.4, 'fiberG': null,
+    });
+    expect(FoodEntry.pending(id: -1, food: noFiber, mealType: 'lunch', servings: 2).fiberG, isNull);
+  });
+
+  test("asFood divides fiber back, or null", () {
+    expect(FoodEntry.fromJson(_entry(fiberG: 8.0, servings: 2)).asFood().fiberG, 4.0);
+    expect(FoodEntry.fromJson(_entry()).asFood().fiberG, isNull);
+  });
+
+  test('MacroTotals.fromJson reads fiberG, defaulting a missing one to 0', () {
+    expect(MacroTotals.fromJson(const {'kcal': 0, 'proteinG': 0, 'carbsG': 0, 'fatG': 0, 'fiberG': 5.5}).fiberG, 5.5);
+    expect(MacroTotals.fromJson(const {'kcal': 0, 'proteinG': 0, 'carbsG': 0, 'fatG': 0}).fiberG, 0);
+  });
+
+  test('MacroTotals.of sums the known fiber and lets an unknown one add nothing', () {
+    final known = FoodEntry.fromJson(_entry(fiberG: 2.0));
+    final unknown = FoodEntry.fromJson(_entry(id: 2, fiberG: null));
+    expect(MacroTotals.of([known, unknown]).fiberG, 2.0);
+  });
+
+  test('NutritionTarget.fromJson reads fiberG as an int', () {
+    expect(
+      NutritionTarget.fromJson(const {'kcal': 1850, 'proteinG': 95, 'carbsG': 253, 'fatG': 51, 'fiberG': 26}).fiberG,
+      26,
+    );
   });
 }

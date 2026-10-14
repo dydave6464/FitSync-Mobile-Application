@@ -44,6 +44,13 @@ class NutritionRepository {
 
   Future<List<Food>> recent() async => _foods(await _api.getJson('/api/v1/foods/recent'));
 
+  /// One FatSecret food with its default serving: the same numbers the server
+  /// logs, so the log sheet previews exactly what will be saved.
+  Future<Food> fatsecretFood(String externalId) async {
+    final data = await _api.getJson('/api/v1/foods/fatsecret/${Uri.encodeComponent(externalId)}');
+    return Food.fromJson(data['food'] as Map<String, dynamic>);
+  }
+
   List<Food> _foods(Map<String, dynamic> data) =>
       [for (final f in data['foods'] as List) Food.fromJson(f as Map<String, dynamic>)];
 }
