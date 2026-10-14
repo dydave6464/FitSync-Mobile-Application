@@ -26,6 +26,8 @@ class FakeNutritionRepository implements NutritionRepository {
   /// The tests' clocks sit on this day in Manila.
   String today = '2026-10-14';
   bool failNext = false;
+  /// The last food passed to logEntry, so a test can see what was saved.
+  Food? lastLogged;
   bool failNextGet = false;
   Completer<void>? hold;
   int recentCalls = 0;
@@ -43,6 +45,7 @@ class FakeNutritionRepository implements NutritionRepository {
   @override
   Future<FoodEntry> logEntry({required String date, required String mealType, required double servings, required Food food}) async {
     calls.add('log $date $mealType ${food.name} x$servings');
+    lastLogged = food;
     if (hold != null) await hold!.future;
     if (failNext) { failNext = false; throw const ApiException('NETWORK_ERROR', 'offline'); }
     final saved = FoodEntry.pending(id: _ids++, food: food, mealType: mealType, servings: servings);

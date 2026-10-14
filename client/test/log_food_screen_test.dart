@@ -118,4 +118,23 @@ void main() {
     await tester.pumpAndSettle();
     expect(find.text("Couldn't save — try again."), findsOneWidget);
   });
+
+  testWidgets('a food with edited numbers is saved as your own entry', (tester) async {
+    final repo = _SearchRepo();
+    await _pump(tester, repo);
+    await tester.enterText(find.byKey(const Key('food.search')), 'adobo');
+    await tester.pump(const Duration(milliseconds: 300));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Chicken adobo'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const Key('logSheet.edit')));
+    await tester.pumpAndSettle();
+    await tester.enterText(find.descendant(of: find.byKey(const Key('logSheet.protein')), matching: find.byType(TextField)), '30');
+    await tester.pump();
+    await tester.tap(find.byKey(const Key('logSheet.log')));
+    await tester.pumpAndSettle();
+    expect(repo.lastLogged!.source, 'manual');
+    expect(repo.lastLogged!.name, 'Chicken adobo');
+    expect(repo.lastLogged!.proteinG, 30);
+  });
 }

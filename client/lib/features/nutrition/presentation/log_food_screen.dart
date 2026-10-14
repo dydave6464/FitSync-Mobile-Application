@@ -54,7 +54,9 @@ class _LogFoodScreenState extends ConsumerState<LogFoodScreen> {
     final controller = ref.read(nutritionDayProvider.notifier);
     Navigator.of(context).pop();
     try {
-      await controller.log(food, mealType: choice.mealType, servings: choice.servings);
+      // Edited numbers are saved as the user's own entry; the listed food
+      // itself is never changed.
+      await controller.log(choice.edited ?? food, mealType: choice.mealType, servings: choice.servings);
     } catch (_) {
       messenger.showSnackBar(const SnackBar(content: Text("Couldn't save — try again.")));
     }
