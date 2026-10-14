@@ -90,6 +90,26 @@ void main() {
     expect((await repo.recent()).single.name, 'Mango Shake');
   });
 
+  test('getDay parses fiberG on an entry, the totals and the target', () async {
+    final repo = _repo(MockClient((r) async {
+      return _ok({'day': {
+        'date': '2026-10-14',
+        'target': {'kcal': 1850, 'proteinG': 95, 'carbsG': 253, 'fatG': 51, 'fiberG': 26},
+        'targetMissing': <String>[],
+        'totals': {'kcal': 640, 'proteinG': 56, 'carbsG': 8, 'fatG': 42, 'fiberG': 6.5},
+        'meals': {'breakfast': [], 'lunch': [{
+          'id': 1, 'mealType': 'lunch', 'name': 'Chicken adobo', 'servingDesc': '1 serving',
+          'servings': 2, 'kcal': 640, 'proteinG': 56, 'carbsG': 8, 'fatG': 42, 'fiberG': 6.5,
+          'source': 'local', 'foodId': 7, 'externalId': null,
+        }], 'dinner': [], 'snack': []},
+      }});
+    }));
+    final day = await repo.getDay('2026-10-14');
+    expect(day.target!.fiberG, 26);
+    expect(day.totals.fiberG, 6.5);
+    expect(day.meals['lunch']!.single.fiberG, 6.5);
+  });
+
   test('fatsecretFood reads one FatSecret food\'s detailed serving', () async {
     final repo = _repo(MockClient((r) async {
       expect(r.method, 'GET');

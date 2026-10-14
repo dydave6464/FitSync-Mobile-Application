@@ -7,9 +7,9 @@ import 'package:fitsync/features/nutrition/presentation/widgets/nutrition_summar
 
 NutritionDay _day() => NutritionDay(
   date: '2026-10-14',
-  target: const NutritionTarget(kcal: 2100, proteinG: 95, carbsG: 300, fatG: 58),
+  target: const NutritionTarget(kcal: 2100, proteinG: 95, carbsG: 300, fatG: 58, fiberG: 0),
   targetMissing: const [],
-  totals: const MacroTotals(kcal: 0, proteinG: 0, carbsG: 0, fatG: 0),
+  totals: const MacroTotals(kcal: 0, proteinG: 0, carbsG: 0, fatG: 0, fiberG: 0),
   meals: {for (final m in mealTypes) m: const []},
 );
 

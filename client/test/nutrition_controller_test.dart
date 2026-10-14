@@ -10,7 +10,7 @@ import 'package:fitsync/features/nutrition/presentation/providers.dart';
 
 NutritionDay emptyDay(String date) => NutritionDay(
   date: date, target: null, targetMissing: const [],
-  totals: const MacroTotals(kcal: 0, proteinG: 0, carbsG: 0, fatG: 0),
+  totals: const MacroTotals(kcal: 0, proteinG: 0, carbsG: 0, fatG: 0, fiberG: 0),
   meals: {for (final m in mealTypes) m: const []},
 );
 
