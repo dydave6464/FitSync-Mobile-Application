@@ -60,10 +60,7 @@ class FsLineChart extends StatelessWidget {
   /// around its midpoint when the data is flatter than that, and always
   /// including [referenceY] so the dashed line cannot fall off the card.
   (double, double) get resolvedYRange {
-    final values = [
-      ...points.map((p) => p.y),
-      if (referenceY != null) referenceY!,
-    ];
+    final values = [...points.map((p) => p.y), ?referenceY];
     if (values.isEmpty) return (0, minYBand);
 
     var lo = values.reduce((a, b) => a < b ? a : b);
