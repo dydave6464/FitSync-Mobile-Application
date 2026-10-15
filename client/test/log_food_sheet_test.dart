@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
+import 'package:fitsync/core/theme.dart';
 import 'package:fitsync/features/nutrition/domain/nutrition.dart';
 import 'package:fitsync/features/nutrition/presentation/widgets/log_food_sheet.dart';
 
@@ -143,6 +144,12 @@ void main() {
     await _open(tester, _juice);
     expect(find.byKey(const Key('logSheet.extras')), findsOneWidget);
     expect(find.text('Sugar 9.7 g · Sodium 124 mg'), findsOneWidget);
+  });
+
+  testWidgets('the extras line is readable, not a dim caption: it carries data', (tester) async {
+    await _open(tester, _juice);
+    final style = tester.widget<Text>(find.byKey(const Key('logSheet.extras'))).style!;
+    expect(style.color, FsTokens.light.text2, reason: 'text3 falls below WCAG AA for this line');
   });
 
   testWidgets('the extras line shows only the known part when one is unknown', (tester) async {

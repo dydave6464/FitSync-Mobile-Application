@@ -155,7 +155,10 @@ class _LogFoodSheetState extends State<LogFoodSheet> {
                   if (shown.na != null) 'Sodium ${groupThousands(shown.na! * _servings)} mg',
                 ].join(' · '),
                 key: const Key('logSheet.extras'),
-                style: TextStyle(color: t.text3, fontSize: 12),
+                // text2, not text3: this line carries data (not a caption),
+                // so it needs to clear AA contrast. Staying smaller than the
+                // 13 sp macro line above is what keeps it visually quieter.
+                style: TextStyle(color: t.text2, fontSize: 12),
               ),
             if (changed)
               Text('Calories worked out from protein, carbs and fat.',
