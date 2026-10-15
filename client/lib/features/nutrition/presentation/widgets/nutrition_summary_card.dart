@@ -133,10 +133,12 @@ class _MoreNutrientsState extends State<_MoreNutrients> {
     final still = MediaQuery.disableAnimationsOf(context);
     Widget row(String label, String value) => Padding(
           padding: const EdgeInsets.symmetric(vertical: 3),
-          child: Row(children: [
-            Expanded(child: Text(label, style: TextStyle(color: t.text2, fontSize: 13))),
-            Text(value, style: const TextStyle(fontSize: 13, fontFeatures: [FontFeature.tabularFigures()])),
-          ]),
+          child: MergeSemantics(
+            child: Row(children: [
+              Expanded(child: Text(label, style: TextStyle(color: t.text2, fontSize: 13))),
+              Text(value, style: const TextStyle(fontSize: 13, fontFeatures: [FontFeature.tabularFigures()])),
+            ]),
+          ),
         );
     final body = _open
         ? Column(

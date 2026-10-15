@@ -91,6 +91,8 @@ void main() {
     await tester.enterText(find.byKey(const Key('manual.fiber')), '4');
     await tester.pump();
     expect(find.text('198 kcal'), findsOneWidget, reason: 'kcal comes from protein, carbs and fat only');
+    // `.first` is the screen's outer list; the TextFields above it each own a
+    // later Scrollable of their own (for text selection/editing).
     await tester.scrollUntilVisible(find.byKey(const Key('manual.log')), 200, scrollable: find.byType(Scrollable).first);
     await tester.pumpAndSettle();
     await tester.tap(find.byKey(const Key('manual.log')));

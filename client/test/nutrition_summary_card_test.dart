@@ -155,6 +155,21 @@ void main() {
     expect(tester.getSize(find.byKey(const Key('nutrition.moreNutrients'))).height, greaterThanOrEqualTo(44));
   });
 
+  testWidgets('each More nutrients row merges its label and value into one semantics node', (tester) async {
+    final handle = tester.ensureSemantics();
+    await _pump(tester, width: 390, day: _dayWithSugarSodium());
+
+    await tester.tap(find.byKey(const Key('nutrition.moreNutrients')));
+    await tester.pumpAndSettle();
+
+    final sugar = tester.getSemantics(find.bySemanticsLabel(RegExp('Sugar')));
+    // Exactly "Sugar\n48 g" and nothing else merged in: a weaker `contains`
+    // check would also pass against the whole card's single ambient node.
+    expect(sugar.label, 'Sugar\n48 g');
+
+    handle.dispose();
+  });
+
   testWidgets('with reduced motion, the body appears after a single pump following the tap', (tester) async {
     await _pump(tester, width: 390, day: _dayWithSugarSodium(), disableAnimations: true);
 
@@ -163,6 +178,7 @@ void main() {
 
     expect(find.byKey(const Key('nutrition.moreNutrients.body')), findsOneWidget);
     expect(find.text('Sugar'), findsOneWidget);
+    expect(find.byType(AnimatedSize), findsNothing);
   });
 
   testWidgets('a 320 dp phone at large text shows More nutrients open without overflow, bars unchanged', (
