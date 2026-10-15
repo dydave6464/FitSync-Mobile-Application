@@ -88,7 +88,7 @@ void main() {
     expect(find.byKey(const Key('coach.panel')), findsOneWidget);
     expect(find.text('AI coaching for your knee'), findsOneWidget);
     // The header's own regression: a realistic prescription ("3 sets ×
-    // 8-12 reps") must not overflow the Row on a narrow phone.
+    // 8-12 reps") must not overflow the header on a narrow phone.
     expect(tester.takeException(), isNull);
   });
 

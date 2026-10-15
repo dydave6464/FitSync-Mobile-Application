@@ -93,29 +93,30 @@ class ExerciseDemoStage extends ConsumerWidget {
                 onRetry: () =>
                     ref.invalidate(exerciseCuesProvider(exercise.exerciseId)),
               ),
-        header: Row(
+        // The target is never cut to "…": it is what the user is about to
+        // do. With room it sits at the right; a long prescription ("3 sets ×
+        // 8-12 reps") beside a long label ("Exercise 12 / 12") on a narrow
+        // phone at large text drops it under the counter instead. (A Row
+        // with a Spacer beside a Flexible split the free width in half, and
+        // clipped the target even when the line fitted.)
+        header: Wrap(
+          alignment: WrapAlignment.spaceBetween,
+          crossAxisAlignment: WrapCrossAlignment.center,
+          spacing: 12,
+          runSpacing: 4,
           children: [
             // Not FsEyebrow: that widget forces its text to uppercase, which
             // would render "EXERCISE 1 / 6" instead of the position counter's
             // actual wording. The eyebrow *style* still applies via
             // fsEyebrow(t).
             Text(positionLabel, style: fsEyebrow(t)),
-            const Spacer(),
-            // A long prescription ("3 sets × 8-12 reps") plus a long position
-            // label ("Exercise 12 / 12") can out-measure a narrow phone's
-            // width; without this the Row overflows instead of truncating.
-            Flexible(
-              child: Text(
-                exercise.prescription,
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-                textAlign: TextAlign.right,
-                style: TextStyle(
-                  fontFamily: fsMonoFamily,
-                  fontSize: 13,
-                  fontWeight: FontWeight.w700,
-                  color: t.text,
-                ),
+            Text(
+              exercise.prescription,
+              style: TextStyle(
+                fontFamily: fsMonoFamily,
+                fontSize: 13,
+                fontWeight: FontWeight.w700,
+                color: t.text,
               ),
             ),
           ],
