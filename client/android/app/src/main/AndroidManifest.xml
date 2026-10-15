@@ -6,6 +6,8 @@
     <!-- The rest timer's alert must land when the rest ends, not whenever
          Android batches it: exact alarms, granted without asking, as a timer. -->
     <uses-permission android:name="android.permission.USE_EXACT_ALARM"/>
+    <!-- USE_EXACT_ALARM starts at Android 13; on 12/12L this one is pre-granted, no prompt. -->
+    <uses-permission android:name="android.permission.SCHEDULE_EXACT_ALARM" android:maxSdkVersion="32"/>
     <!-- The phone's own step counter (TYPE_STEP_COUNTER); a runtime permission on Android 10+. -->
     <uses-permission android:name="android.permission.ACTIVITY_RECOGNITION"/>
     <uses-feature android:name="android.hardware.sensor.stepcounter" android:required="false"/>
