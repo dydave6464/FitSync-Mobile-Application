@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:fitsync/core/theme.dart';
 import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
 
@@ -116,10 +117,11 @@ class _NoSessionController extends ActiveSessionController {
 /// A profile that either carries chosen training days or never arrives. The
 /// strip has to tell those apart: only the first is an answer.
 class _FakeProfileNotifier extends ProfileNotifier {
-  _FakeProfileNotifier({this.trainingDays, this.fails = false});
+  _FakeProfileNotifier({this.trainingDays, this.fails = false, this.fitnessLevel});
 
   final List<int>? trainingDays;
   final bool fails;
+  final String? fitnessLevel;
 
   @override
   Future<Profile> build() async {
@@ -136,6 +138,7 @@ class _FakeProfileNotifier extends ProfileNotifier {
       equipment: const [],
       injuries: const [],
       trainingDays: trainingDays ?? const [],
+      fitnessLevel: fitnessLevel,
     );
   }
 }
@@ -494,5 +497,70 @@ void main() {
     // Full body has a rotation of one; labelling it is noise.
     await _pump(tester, _fullBodyPlan);
     expect(find.text('Full body'), findsNothing);
+  });
+
+  // Why the plan looks the way it does: one line under the session card,
+  // from the user's experience level. Only on a generated plan -- the level
+  // does not shape one the user built themselves.
+  group('the why-this-plan line', () {
+    const why = Key('plan.why');
+    final cases = {
+      'new': "Gentle start because you're new to training.",
+      'beginner': 'Beginner plan: one set fewer, sessions up to 45 minutes.',
+      null: 'Beginner plan: set your level in Settings.',
+    };
+    for (final entry in cases.entries) {
+      testWidgets('for ${entry.key ?? 'a skipped level'}', (tester) async {
+        await _pump(tester, _plan,
+            profile: () => _FakeProfileNotifier(fitnessLevel: entry.key));
+
+        expect(tester.widget<Text>(find.byKey(why)).data, entry.value);
+        expect(tester.widget<Text>(find.byKey(why)).style?.color, isNot(FsTokens.light.text3));
+      });
+    }
+
+    testWidgets('says nothing for intermediate', (tester) async {
+      await _pump(tester, _plan,
+          profile: () => _FakeProfileNotifier(fitnessLevel: 'intermediate'));
+
+      expect(find.byKey(why), findsNothing);
+    });
+
+    testWidgets('says nothing on a plan the user built', (tester) async {
+      const custom = WorkoutPlan(
+        planId: 43,
+        name: 'My plan',
+        splitStyle: 'full_body',
+        daysPerWeek: 3,
+        sessionLengthMin: 45,
+        weekNo: 1,
+        exercises: [],
+        source: 'custom',
+      );
+      await _pump(tester, custom,
+          profile: () => _FakeProfileNotifier(fitnessLevel: 'beginner'));
+
+      expect(find.byKey(why), findsNothing);
+    });
+
+    testWidgets('fits a 320 dp phone at large text', (tester) async {
+      tester.view.physicalSize = const Size(320, 900);
+      tester.view.devicePixelRatio = 1;
+      tester.platformDispatcher.textScaleFactorTestValue = 1.6;
+      addTearDown(tester.view.reset);
+      addTearDown(tester.platformDispatcher.clearTextScaleFactorTestValue);
+
+      await _pump(tester, _plan,
+          profile: () => _FakeProfileNotifier(fitnessLevel: 'beginner'));
+
+      expect(tester.takeException(), isNull);
+      expect(find.byKey(why), findsOneWidget);
+    });
+
+    testWidgets('says nothing while the profile is unknown', (tester) async {
+      await _pump(tester, _plan, profile: () => _FakeProfileNotifier(fails: true));
+
+      expect(find.byKey(why), findsNothing);
+    });
   });
 }
