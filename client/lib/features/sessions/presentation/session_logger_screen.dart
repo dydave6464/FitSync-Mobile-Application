@@ -252,17 +252,11 @@ class _SessionLoggerScreenState extends ConsumerState<SessionLoggerScreen> {
     ActiveSession? session,
     int current,
   ) async {
-    final chosen = await showModalBottomSheet<int>(
-      context: context,
-      backgroundColor: context.fs.surface,
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(22)),
-      ),
-      builder: (_) => ExerciseJumpSheet(
-        exercises: exercises,
-        session: session,
-        currentIndex: current,
-      ),
+    final chosen = await showExerciseJumpSheet(
+      context,
+      exercises: exercises,
+      session: session,
+      currentIndex: current,
     );
     if (chosen != null && mounted) {
       setState(() {
