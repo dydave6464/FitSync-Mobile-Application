@@ -9,7 +9,7 @@ NutritionDay _day() => NutritionDay(
   date: '2026-10-14',
   target: const NutritionTarget(kcal: 2100, proteinG: 95, carbsG: 300, fatG: 58, fiberG: 0),
   targetMissing: const [],
-  totals: const MacroTotals(kcal: 0, proteinG: 0, carbsG: 0, fatG: 0, fiberG: 0),
+  totals: const MacroTotals(kcal: 0, proteinG: 0, carbsG: 0, fatG: 0, fiberG: 0, sugarG: 0, sodiumMg: 0),
   meals: {for (final m in mealTypes) m: const []},
 );
 
@@ -71,7 +71,7 @@ void main() {
       date: '2026-10-14',
       target: const NutritionTarget(kcal: 2100, proteinG: 95, carbsG: 300, fatG: 58, fiberG: 26),
       targetMissing: const [],
-      totals: const MacroTotals(kcal: 0, proteinG: 0, carbsG: 0, fatG: 0, fiberG: 12),
+      totals: const MacroTotals(kcal: 0, proteinG: 0, carbsG: 0, fatG: 0, fiberG: 12, sugarG: 0, sodiumMg: 0),
       meals: {for (final m in mealTypes) m: const []},
     ));
     expect(find.text('Fiber'), findsOneWidget);
@@ -84,7 +84,7 @@ void main() {
       date: '2026-10-14',
       target: null,
       targetMissing: const ['sex'],
-      totals: const MacroTotals(kcal: 0, proteinG: 0, carbsG: 0, fatG: 0, fiberG: 12),
+      totals: const MacroTotals(kcal: 0, proteinG: 0, carbsG: 0, fatG: 0, fiberG: 12, sugarG: 0, sodiumMg: 0),
       meals: {for (final m in mealTypes) m: const []},
     ));
     expect(find.text('12 g'), findsOneWidget);

@@ -48,6 +48,7 @@ String? describeMissing(List<String> fields) {
 
 double _d(Object? v) => (v as num).toDouble();
 double _r2(double v) => (v * 100).round() / 100;
+double _r1(double v) => (v * 10).round() / 10;
 
 /// A food to log: per serving.
 class Food {
@@ -62,6 +63,8 @@ class Food {
     required this.carbsG,
     required this.fatG,
     this.fiberG,
+    this.sugarG,
+    this.sodiumMg,
   });
 
   factory Food.fromJson(Map<String, dynamic> j) => Food(
@@ -75,6 +78,8 @@ class Food {
     carbsG: _d(j['carbsG']),
     fatG: _d(j['fatG']),
     fiberG: j['fiberG'] == null ? null : _d(j['fiberG']),
+    sugarG: j['sugarG'] == null ? null : _d(j['sugarG']),
+    sodiumMg: j['sodiumMg'] == null ? null : _d(j['sodiumMg']),
   );
 
   /// 'local', 'fatsecret' or 'manual'.
@@ -88,6 +93,8 @@ class Food {
   final double carbsG;
   final double fatG;
   final double? fiberG;
+  final double? sugarG;
+  final double? sodiumMg;
 
   bool get isFatsecret => source == 'fatsecret';
 
@@ -104,6 +111,8 @@ class Food {
       'carbsG': carbsG,
       'fatG': fatG,
       if (fiberG != null) 'fiberG': fiberG,
+      if (sugarG != null) 'sugarG': sugarG,
+      if (sodiumMg != null) 'sodiumMg': sodiumMg,
     },
   };
 }
@@ -121,6 +130,8 @@ class FoodEntry {
     required this.carbsG,
     required this.fatG,
     this.fiberG,
+    this.sugarG,
+    this.sodiumMg,
     required this.source,
     this.foodId,
     this.externalId,
@@ -137,6 +148,8 @@ class FoodEntry {
     carbsG: _d(j['carbsG']),
     fatG: _d(j['fatG']),
     fiberG: j['fiberG'] == null ? null : _d(j['fiberG']),
+    sugarG: j['sugarG'] == null ? null : _d(j['sugarG']),
+    sodiumMg: j['sodiumMg'] == null ? null : _d(j['sodiumMg']),
     source: j['source'] as String,
     foodId: j['foodId'] as int?,
     externalId: j['externalId'] as String?,
@@ -160,6 +173,8 @@ class FoodEntry {
     carbsG: _r2(food.carbsG * servings),
     fatG: _r2(food.fatG * servings),
     fiberG: food.fiberG == null ? null : _r2(food.fiberG! * servings),
+    sugarG: food.sugarG == null ? null : _r2(food.sugarG! * servings),
+    sodiumMg: food.sodiumMg == null ? null : _r1(food.sodiumMg! * servings),
     source: food.source,
     foodId: food.id,
     externalId: food.externalId,
@@ -175,6 +190,8 @@ class FoodEntry {
   final double carbsG;
   final double fatG;
   final double? fiberG;
+  final double? sugarG;
+  final double? sodiumMg;
   final String source;
   final int? foodId;
   final String? externalId;
@@ -191,6 +208,8 @@ class FoodEntry {
     carbsG: _r2(carbsG / servings),
     fatG: _r2(fatG / servings),
     fiberG: fiberG == null ? null : _r2(fiberG! / servings),
+    sugarG: sugarG == null ? null : _r2(sugarG! / servings),
+    sodiumMg: sodiumMg == null ? null : _r1(sodiumMg! / servings),
   );
 }
 
@@ -225,6 +244,8 @@ class MacroTotals {
     required this.carbsG,
     required this.fatG,
     required this.fiberG,
+    required this.sugarG,
+    required this.sodiumMg,
   });
 
   factory MacroTotals.fromJson(Map<String, dynamic> j) => MacroTotals(
@@ -233,19 +254,23 @@ class MacroTotals {
     carbsG: _d(j['carbsG']),
     fatG: _d(j['fatG']),
     fiberG: j['fiberG'] == null ? 0 : _d(j['fiberG']),
+    sugarG: j['sugarG'] == null ? 0 : _d(j['sugarG']),
+    sodiumMg: j['sodiumMg'] == null ? 0 : _d(j['sodiumMg']),
   );
 
   factory MacroTotals.of(Iterable<FoodEntry> entries) {
     var kcal = 0;
-    var p = 0.0, c = 0.0, f = 0.0, fb = 0.0;
+    var p = 0.0, c = 0.0, f = 0.0, fb = 0.0, sg = 0.0, na = 0.0;
     for (final e in entries) {
       kcal += e.kcal;
       p += e.proteinG;
       c += e.carbsG;
       f += e.fatG;
       fb += e.fiberG ?? 0;
+      sg += e.sugarG ?? 0;
+      na += e.sodiumMg ?? 0;
     }
-    return MacroTotals(kcal: kcal, proteinG: p, carbsG: c, fatG: f, fiberG: fb);
+    return MacroTotals(kcal: kcal, proteinG: p, carbsG: c, fatG: f, fiberG: fb, sugarG: sg, sodiumMg: na);
   }
 
   final int kcal;
@@ -253,6 +278,8 @@ class MacroTotals {
   final double carbsG;
   final double fatG;
   final double fiberG;
+  final double sugarG;
+  final double sodiumMg;
 }
 
 class NutritionDay {

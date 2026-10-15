@@ -110,6 +110,27 @@ void main() {
     expect(day.meals['lunch']!.single.fiberG, 6.5);
   });
 
+  test('getDay parses sugarG and sodiumMg on an entry and the totals', () async {
+    final repo = _repo(MockClient((r) async {
+      return _ok({'day': {
+        'date': '2026-10-14',
+        'target': {'kcal': 1850, 'proteinG': 95, 'carbsG': 253, 'fatG': 51},
+        'targetMissing': <String>[],
+        'totals': {'kcal': 640, 'proteinG': 56, 'carbsG': 8, 'fatG': 42, 'sugarG': 9.7, 'sodiumMg': 124},
+        'meals': {'breakfast': [], 'lunch': [{
+          'id': 1, 'mealType': 'lunch', 'name': 'Chicken adobo', 'servingDesc': '1 serving',
+          'servings': 2, 'kcal': 640, 'proteinG': 56, 'carbsG': 8, 'fatG': 42, 'sugarG': 9.7, 'sodiumMg': 124,
+          'source': 'local', 'foodId': 7, 'externalId': null,
+        }], 'dinner': [], 'snack': []},
+      }});
+    }));
+    final day = await repo.getDay('2026-10-14');
+    expect(day.totals.sugarG, 9.7);
+    expect(day.totals.sodiumMg, 124);
+    expect(day.meals['lunch']!.single.sugarG, 9.7);
+    expect(day.meals['lunch']!.single.sodiumMg, 124);
+  });
+
   test('fatsecretFood reads one FatSecret food\'s detailed serving', () async {
     final repo = _repo(MockClient((r) async {
       expect(r.method, 'GET');
