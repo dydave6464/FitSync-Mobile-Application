@@ -11,6 +11,7 @@ const INVALID_ID = 106;
 // Sanity bounds: foods.calories is INT, the macro columns DECIMAL(5,2).
 const MAX_KCAL = 5000;
 const MAX_GRAMS = 999.99;
+const MAX_SODIUM_MG = 99999.9;
 
 const DESCRIPTION = /^Per (.+?) - Calories: ([\d.]+)kcal \| Fat: ([\d.]+)g \| Carbs: ([\d.]+)g \| Protein: ([\d.]+)g/;
 
@@ -37,12 +38,20 @@ function plausible(f) {
     && [f.proteinG, f.carbsG, f.fatG].every(plausibleGrams);
 }
 
-/// FatSecret's fiber, or null (unknown) when it is missing, blank or not a
-/// plausible number. A bad fiber never costs the user the whole food.
-function fiberOf(raw) {
+/// An optional gram value (fiber, sugar), or null (unknown) when missing,
+/// blank or implausible. A bad value never costs the user the whole food.
+function optionalGrams(raw) {
   if (raw == null || raw === '') return null;
   const g = round2(Number(raw));
   return plausibleGrams(g) ? g : null;
+}
+
+/// FatSecret's sodium in mg, or null (unknown) when missing, blank or not a
+/// plausible number. Like fiber, a bad value never costs the user the food.
+function sodiumOf(raw) {
+  if (raw == null || raw === '') return null;
+  const mg = Math.round(Number(raw) * 10) / 10;
+  return Number.isFinite(mg) && mg >= 0 && mg <= MAX_SODIUM_MG ? mg : null;
 }
 
 function displayName(item) {
@@ -104,9 +113,9 @@ function create({ clientId, clientSecret, fetchImpl = fetch, now = Date.now }) {
           return parsed && { externalId: String(item.food_id), name: displayName(item), ...parsed };
         })
         .filter((f) => f && plausible(f))
-        .map((f) => ({ ...f, fiberG: null }))
-        .map(({ externalId, name, servingDesc, kcal, proteinG, carbsG, fatG, fiberG }) => ({
-          externalId, name, servingDesc, kcal, proteinG, carbsG, fatG, fiberG,
+        .map((f) => ({ ...f, fiberG: null, sugarG: null, sodiumMg: null }))
+        .map(({ externalId, name, servingDesc, kcal, proteinG, carbsG, fatG, fiberG, sugarG, sodiumMg }) => ({
+          externalId, name, servingDesc, kcal, proteinG, carbsG, fatG, fiberG, sugarG, sodiumMg,
         }));
     },
 
@@ -128,7 +137,9 @@ function create({ clientId, clientSecret, fetchImpl = fetch, now = Date.now }) {
         proteinG: round2(Number(s.protein)),
         carbsG: round2(Number(s.carbohydrate)),
         fatG: round2(Number(s.fat)),
-        fiberG: fiberOf(s.fiber),
+        fiberG: optionalGrams(s.fiber),
+        sugarG: optionalGrams(s.sugar),
+        sodiumMg: sodiumOf(s.sodium),
       };
       return plausible(food) ? food : null;
     },

@@ -53,4 +53,17 @@ test('upsertFatsecretFood: concurrent first-time copies', async (t) => {
     const [[row]] = await pool.query('SELECT calories, serving_desc FROM foods WHERE food_id = ?', [first]);
     assert.deepEqual({ ...row }, { calories: 140, serving_desc: '1 bowl' });
   });
+
+  await t.test('sugar_g and sodium_mg are written on insert and updated on refresh', async () => {
+    const first = await upsertFatsecretFood(pool, { ...food('sugar-sodium'), sugarG: 1.2, sodiumMg: 345.5 });
+    const [[row1]] = await pool.query('SELECT sugar_g, sodium_mg FROM foods WHERE food_id = ?', [first]);
+    assert.equal(Number(row1.sugar_g), 1.2);
+    assert.equal(Number(row1.sodium_mg), 345.5);
+
+    const again = await upsertFatsecretFood(pool, { ...food('sugar-sodium'), sugarG: 2.5, sodiumMg: 500 });
+    assert.equal(again, first);
+    const [[row2]] = await pool.query('SELECT sugar_g, sodium_mg FROM foods WHERE food_id = ?', [first]);
+    assert.equal(Number(row2.sugar_g), 2.5);
+    assert.equal(Number(row2.sodium_mg), 500);
+  });
 });

@@ -57,6 +57,7 @@ class NutritionSummaryCard extends StatelessWidget {
           Row(
             children: [ring, const SizedBox(width: 16), Expanded(child: bars)],
           ),
+          _MoreNutrients(eaten: eaten),
           if (missing != null) ...[
             const SizedBox(height: 12),
             Text(missing, style: TextStyle(color: t.text2, fontSize: 13)),
@@ -107,6 +108,83 @@ class _MacroBar extends StatelessWidget {
           ),
         ],
       ),
+    );
+  }
+}
+
+/// Sugar and sodium for the day, folded away until asked for: the card's job
+/// is calories and the four macros (content-priority), and these two have no
+/// target to measure against.
+class _MoreNutrients extends StatefulWidget {
+  const _MoreNutrients({required this.eaten});
+
+  final MacroTotals eaten;
+
+  @override
+  State<_MoreNutrients> createState() => _MoreNutrientsState();
+}
+
+class _MoreNutrientsState extends State<_MoreNutrients> {
+  bool _open = false;
+
+  @override
+  Widget build(BuildContext context) {
+    final t = context.fs;
+    final still = MediaQuery.disableAnimationsOf(context);
+    Widget row(String label, String value) => Padding(
+          padding: const EdgeInsets.symmetric(vertical: 3),
+          child: MergeSemantics(
+            child: Row(children: [
+              Expanded(child: Text(label, style: TextStyle(color: t.text2, fontSize: 13))),
+              Text(value, style: const TextStyle(fontSize: 13, fontFeatures: [FontFeature.tabularFigures()])),
+            ]),
+          ),
+        );
+    final body = _open
+        ? Column(
+            key: const Key('nutrition.moreNutrients.body'),
+            children: [
+              row('Sugar', '${widget.eaten.sugarG.round()} g'),
+              row('Sodium', '${groupThousands(widget.eaten.sodiumMg)} mg'),
+            ],
+          )
+        : const SizedBox(width: double.infinity);
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        const SizedBox(height: 8),
+        Divider(height: 1, color: t.line),
+        Semantics(
+          button: true,
+          expanded: _open,
+          child: InkWell(
+            key: const Key('nutrition.moreNutrients'),
+            onTap: () => setState(() => _open = !_open),
+            child: ConstrainedBox(
+              constraints: const BoxConstraints(minHeight: 44),
+              child: Row(children: [
+                Expanded(child: Text('More nutrients', style: TextStyle(color: t.text2, fontSize: 13))),
+                ExcludeSemantics(
+                  child: Icon(_open ? Icons.expand_more : Icons.chevron_right, size: 20, color: t.text2),
+                ),
+              ]),
+            ),
+          ),
+        ),
+        // Reduced motion skips AnimatedSize entirely rather than giving it a
+        // zero duration: a zero-duration resize completes synchronously
+        // inside AnimatedSize's own layout pass, which re-dirties the render
+        // object while it is still laying out and Flutter disallows that.
+        if (still)
+          body
+        else
+          AnimatedSize(
+            duration: const Duration(milliseconds: 200),
+            curve: Curves.easeOut,
+            alignment: Alignment.topCenter,
+            child: body,
+          ),
+      ],
     );
   }
 }

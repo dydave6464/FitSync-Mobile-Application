@@ -23,12 +23,18 @@ test('food search and recents', async (t) => {
       // Fails just after the route stops waiting, as the real client's own
       // abort timer does when FatSecret is slow.
       if (mode === 'late') return new Promise((_, reject) => { setTimeout(() => reject(new Error('aborted')), 80); });
-      return [{ externalId: 'fs-9', name: `FatSecret ${q}`, servingDesc: '1 cup', kcal: 200, proteinG: 10, carbsG: 20, fatG: 8, fiberG: null }];
+      return [{
+        externalId: 'fs-9', name: `FatSecret ${q}`, servingDesc: '1 cup', kcal: 200, proteinG: 10, carbsG: 20, fatG: 8,
+        fiberG: null, sugarG: null, sodiumMg: null,
+      }];
     },
     async get(externalId) {
       if (getMode === 'down') throw new Error('down');
       if (externalId === 'fs-9') {
-        return { externalId: 'fs-9', name: 'FatSecret chicken thigh', servingDesc: '1 thigh', kcal: 107, proteinG: 12, carbsG: 2, fatG: 6, fiberG: 2.4 };
+        return {
+          externalId: 'fs-9', name: 'FatSecret chicken thigh', servingDesc: '1 thigh', kcal: 107, proteinG: 12, carbsG: 2, fatG: 6,
+          fiberG: 2.4, sugarG: 1.1, sodiumMg: 310,
+        };
       }
       return null;
     },
@@ -69,11 +75,11 @@ test('food search and recents', async (t) => {
     assert.deepEqual(foods.map((f) => f.name), ['Adobong kangkong', 'Chicken adobo', 'Pork adobo', 'FatSecret adobo']);
     assert.deepEqual(foods[1], {
       id: chicken, source: 'local', externalId: null, name: 'Chicken adobo', servingDesc: '1 cup',
-      kcal: 300, proteinG: 20, carbsG: 10, fatG: 15, fiberG: null,
+      kcal: 300, proteinG: 20, carbsG: 10, fatG: 15, fiberG: null, sugarG: null, sodiumMg: null,
     });
     assert.deepEqual(foods[3], {
       id: null, source: 'fatsecret', externalId: 'fs-9', name: 'FatSecret adobo', servingDesc: '1 cup',
-      kcal: 200, proteinG: 10, carbsG: 20, fatG: 8, fiberG: null,
+      kcal: 200, proteinG: 10, carbsG: 20, fatG: 8, fiberG: null, sugarG: null, sodiumMg: null,
     });
   });
 
@@ -130,7 +136,7 @@ test('food search and recents', async (t) => {
     const ok = await request(app).get('/api/v1/foods/fatsecret/fs-9').set(auth).expect(200);
     assert.deepEqual(ok.body.data.food, {
       id: null, source: 'fatsecret', externalId: 'fs-9', name: 'FatSecret chicken thigh', servingDesc: '1 thigh',
-      kcal: 107, proteinG: 12, carbsG: 2, fatG: 6, fiberG: 2.4,
+      kcal: 107, proteinG: 12, carbsG: 2, fatG: 6, fiberG: 2.4, sugarG: 1.1, sodiumMg: 310,
     });
 
     const missing = await request(app).get('/api/v1/foods/fatsecret/fs-missing').set(auth).expect(404);
@@ -151,18 +157,25 @@ test('food search and recents', async (t) => {
   await t.test('recents: distinct, newest first, per serving', async () => {
     const log = (food, servings = 1) => request(app).post('/api/v1/nutrition/entries').set(auth)
       .send({ mealType: 'lunch', servings, food }).expect(201);
-    await pool.query('UPDATE foods SET fiber_g = 2.5 WHERE food_id = ?', [chicken]);
+    await pool.query('UPDATE foods SET fiber_g = 2.5, sugar_g = 1.5, sodium_mg = 320 WHERE food_id = ?', [chicken]);
     await log({ source: 'local', id: pork });
     await log({ source: 'manual', name: 'Turon', proteinG: 2, carbsG: 34, fatG: 6 }, 2);
     await log({ source: 'local', id: chicken });
     await log({ source: 'local', id: pork }, 3);
+    await log({ source: 'manual', name: 'Suman', proteinG: 1, carbsG: 20, fatG: 1, sugarG: 10, sodiumMg: 40 }, 2);
     const { foods } = (await request(app).get('/api/v1/foods/recent').set(auth).expect(200)).body.data;
-    assert.deepEqual(foods.map((f) => f.name), ['Pork adobo', 'Chicken adobo', 'Turon']);
-    assert.equal(foods[0].kcal, 300, 'a catalogue food reads its own per-serving numbers');
-    assert.equal(foods[1].fiberG, 2.5, "a catalogue food's known fiber reaches recents");
-    assert.deepEqual(foods[2], {
+    assert.deepEqual(foods.map((f) => f.name), ['Suman', 'Pork adobo', 'Chicken adobo', 'Turon']);
+    assert.equal(foods[1].kcal, 300, 'a catalogue food reads its own per-serving numbers');
+    assert.equal(foods[2].fiberG, 2.5, "a catalogue food's known fiber reaches recents");
+    assert.equal(foods[2].sugarG, 1.5, "a catalogue food's known sugar reaches recents");
+    assert.equal(foods[2].sodiumMg, 320, "a catalogue food's known sodium reaches recents");
+    assert.deepEqual(foods[3], {
       id: null, source: 'manual', externalId: null, name: 'Turon', servingDesc: null,
-      kcal: 198, proteinG: 2, carbsG: 34, fatG: 6, fiberG: null,
+      kcal: 198, proteinG: 2, carbsG: 34, fatG: 6, fiberG: null, sugarG: null, sodiumMg: null,
     });
+    assert.deepEqual(foods[0], {
+      id: null, source: 'manual', externalId: null, name: 'Suman', servingDesc: null,
+      kcal: 93, proteinG: 1, carbsG: 20, fatG: 1, fiberG: null, sugarG: 10, sodiumMg: 40,
+    }, "a manual recent divides sugarG/sodiumMg back by servings");
   });
 });

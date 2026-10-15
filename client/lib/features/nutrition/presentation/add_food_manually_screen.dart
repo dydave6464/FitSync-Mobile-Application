@@ -23,11 +23,13 @@ class _AddFoodManuallyScreenState extends ConsumerState<AddFoodManuallyScreen> {
   final _carbs = TextEditingController();
   final _fat = TextEditingController();
   final _fiber = TextEditingController();
+  final _sugar = TextEditingController();
+  final _sodium = TextEditingController();
   late String _meal = widget.mealType;
 
   @override
   void dispose() {
-    for (final c in [_name, _serving, _protein, _carbs, _fat, _fiber]) {
+    for (final c in [_name, _serving, _protein, _carbs, _fat, _fiber, _sugar, _sodium]) {
       c.dispose();
     }
     super.dispose();
@@ -35,10 +37,9 @@ class _AddFoodManuallyScreenState extends ConsumerState<AddFoodManuallyScreen> {
 
   double? _grams(TextEditingController c) => c.text.trim().isEmpty ? 0 : double.tryParse(c.text.trim());
 
-  /// Fiber is optional: blank is unknown (null), not 0. Anything else
-  /// unreadable comes back as NaN, which fails the 0-500 range check below
-  /// the same way an out-of-range number would.
-  double? _fiberGrams(TextEditingController c) {
+  /// Blank is unknown (null); anything else unreadable is NaN, which fails
+  /// every range check.
+  double? _optionalNumber(TextEditingController c) {
     final text = c.text.trim();
     return text.isEmpty ? null : (double.tryParse(text) ?? double.nan);
   }
@@ -48,15 +49,17 @@ class _AddFoodManuallyScreenState extends ConsumerState<AddFoodManuallyScreen> {
     final t = context.fs;
     final theme = Theme.of(context);
     final p = _grams(_protein), c = _grams(_carbs), f = _grams(_fat);
-    final fiber = _fiberGrams(_fiber);
+    final fiber = _optionalNumber(_fiber);
+    final sugar = _optionalNumber(_sugar), sodium = _optionalNumber(_sodium);
     final gramsOk = [p, c, f].every((g) => g != null && g >= 0 && g <= 500) &&
-        (fiber == null || (fiber >= 0 && fiber <= 500));
+        [fiber, sugar].every((g) => g == null || (g >= 0 && g <= 500));
+    final sodiumOk = sodium == null || (sodium >= 0 && sodium <= 20000);
     final kcal = gramsOk ? manualKcal(p!, c!, f!) : null;
     final name = _name.text.trim();
     final valid = name.isNotEmpty && name.length <= 100 && _serving.text.trim().length <= 60
-        && gramsOk && (p! + c! + f!) > 0;
+        && gramsOk && sodiumOk && (p! + c! + f!) > 0;
 
-    Widget gramsField(String label, Key key, TextEditingController ctrl) => Expanded(
+    Widget gramsField(String label, Key key, TextEditingController ctrl, {String hint = 'g'}) => Expanded(
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -65,7 +68,7 @@ class _AddFoodManuallyScreenState extends ConsumerState<AddFoodManuallyScreen> {
           FsField(
             controller: ctrl,
             fieldKey: key,
-            hint: 'g',
+            hint: hint,
             keyboardType: const TextInputType.numberWithOptions(decimal: true),
             inputFormatters: [FilteringTextInputFormatter.allow(RegExp(r'[0-9.]'))],
             onChanged: (_) => setState(() {}),
@@ -107,10 +110,21 @@ class _AddFoodManuallyScreenState extends ConsumerState<AddFoodManuallyScreen> {
             const SizedBox(width: 10),
             gramsField('Fiber (g)', const Key('manual.fiber'), _fiber),
           ]),
+          const SizedBox(height: 10),
+          Row(children: [
+            gramsField('Sugar (g)', const Key('manual.sugar'), _sugar),
+            const SizedBox(width: 10),
+            gramsField('Sodium (mg)', const Key('manual.sodium'), _sodium, hint: 'mg'),
+          ]),
           if (!gramsOk)
             Padding(
               padding: const EdgeInsets.only(top: 6),
               child: Text('Each value must be 0–500 g', style: TextStyle(color: t.red, fontSize: 12)),
+            )
+          else if (!sodiumOk)
+            Padding(
+              padding: const EdgeInsets.only(top: 6),
+              child: Text('Sodium must be 0–20,000 mg', style: TextStyle(color: t.red, fontSize: 12)),
             ),
           const SizedBox(height: 16),
           Text('Calories', style: TextStyle(color: t.text2, fontSize: 12)),
@@ -127,6 +141,7 @@ class _AddFoodManuallyScreenState extends ConsumerState<AddFoodManuallyScreen> {
                 source: 'manual', name: name,
                 servingDesc: _serving.text.trim().isEmpty ? null : _serving.text.trim(),
                 kcal: kcal!, proteinG: p, carbsG: c, fatG: f, fiberG: fiber,
+                sugarG: sugar, sodiumMg: sodium,
               );
               Navigator.of(context).pop(true);
               try {

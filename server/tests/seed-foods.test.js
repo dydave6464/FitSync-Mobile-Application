@@ -8,15 +8,19 @@ const { seedFoods, FOODS } = require('../src/db/seed-foods');
 const { searchOwnFoods } = require('../src/db/foods');
 
 test('the seed list is well formed', () => {
-  assert.ok(FOODS.length >= 60, `expected about 60 foods, got ${FOODS.length}`);
+  assert.ok(FOODS.length >= 240, `expected about 240 foods, got ${FOODS.length}`);
   assert.equal(new Set(FOODS.map((f) => f.name)).size, FOODS.length, 'names must be unique');
   for (const f of FOODS) {
     assert.ok(['filipino', 'international'].includes(f.category), f.name);
     assert.ok(typeof f.source === 'string' && f.source.length > 0, `${f.name} needs a source`);
     for (const k of ['proteinG', 'carbsG', 'fatG']) assert.ok(f[k] >= 0 && f[k] < 1000, `${f.name} ${k}`);
     assert.ok(typeof f.fiberG === 'number' && f.fiberG >= 0 && f.fiberG < 100, `${f.name} fiberG`);
-    // Atwater check, to catch a typo: within 40 kcal or 20 %.
-    const atwater = 4 * f.proteinG + 4 * f.carbsG + 9 * f.fatG;
+    if (f.alcoholG !== undefined) assert.ok(typeof f.alcoholG === 'number' && f.alcoholG > 0 && f.alcoholG < 100, `${f.name} alcoholG`);
+    assert.ok(typeof f.sugarG === 'number' && f.sugarG >= 0 && f.sugarG <= f.carbsG, `${f.name} sugarG`);
+    assert.ok(typeof f.sodiumMg === 'number' && f.sodiumMg >= 0 && f.sodiumMg <= 10000, `${f.name} sodiumMg`);
+    assert.ok(f.fiberG <= f.carbsG, `${f.name}: fiber is part of carbs`);
+    // Atwater check, to catch a typo: within 40 kcal or 20 %. Alcohol is 7 kcal/g.
+    const atwater = 4 * f.proteinG + 4 * f.carbsG + 9 * f.fatG + 7 * (f.alcoholG ?? 0);
     assert.ok(Math.abs(atwater - f.kcal) <= Math.max(40, f.kcal * 0.2), `${f.name}: ${f.kcal} vs ${atwater}`);
   }
 });
@@ -37,6 +41,18 @@ test('food seed', async (t) => {
   await t.test('seeds Ginisang monggo\'s fiber_g as 6', async () => {
     const [[row]] = await pool.query("SELECT fiber_g FROM foods WHERE name = 'Ginisang monggo'");
     assert.equal(Number(row.fiber_g), 6);
+  });
+
+  await t.test('seeds Nescafé Original\'s sugar and sodium from its label', async () => {
+    const [[row]] = await pool.query("SELECT sugar_g, sodium_mg FROM foods WHERE name = 'Nescafé Original 3-in-1 coffee'");
+    assert.deepEqual([Number(row.sugar_g), Number(row.sodium_mg)], [9.7, 124]);
+  });
+
+  // A beer's calories are mostly alcohol (7 kcal/g), which only the seed
+  // file's alcoholG accounts for; the database keeps the drink's real kcal.
+  await t.test('seeds a beer with its alcohol calories included', async () => {
+    const [[row]] = await pool.query("SELECT calories FROM foods WHERE name = 'San Miguel Pale Pilsen'");
+    assert.equal(row.calories, 129);
   });
 
   // The current PH label (2025): the sachet shrank from 28 g to 20 g, so the

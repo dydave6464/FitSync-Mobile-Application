@@ -3,6 +3,7 @@ import 'package:flutter/services.dart';
 
 import '../../../../core/theme.dart';
 import '../../../../core/widgets/fs_kit.dart';
+import '../../../sessions/presentation/progress_screen.dart' show groupThousands;
 import '../../domain/nutrition.dart';
 import 'fatsecret_attribution.dart';
 
@@ -47,6 +48,8 @@ class _LogFoodSheetState extends State<LogFoodSheet> {
   late final _carbs = TextEditingController(text: _plain(widget.food.carbsG));
   late final _fat = TextEditingController(text: _plain(widget.food.fatG));
   late final _fiber = TextEditingController(text: widget.food.fiberG == null ? '' : _plain(widget.food.fiberG!));
+  late final _sugar = TextEditingController(text: widget.food.sugarG == null ? '' : _plain(widget.food.sugarG!));
+  late final _sodium = TextEditingController(text: widget.food.sodiumMg == null ? '' : _plain(widget.food.sodiumMg!));
 
   @override
   void dispose() {
@@ -54,6 +57,8 @@ class _LogFoodSheetState extends State<LogFoodSheet> {
     _carbs.dispose();
     _fat.dispose();
     _fiber.dispose();
+    _sugar.dispose();
+    _sodium.dispose();
     super.dispose();
   }
 
@@ -66,27 +71,31 @@ class _LogFoodSheetState extends State<LogFoodSheet> {
     final f = widget.food;
 
     final p = _grams(_protein), c = _grams(_carbs), fat = _grams(_fat);
-    final fiber = _fiberGrams(_fiber);
+    final fiber = _optionalNumber(_fiber);
+    final sugar = _optionalNumber(_sugar), sodium = _optionalNumber(_sodium);
     final gramsOk = [p, c, fat].every((g) => g != null && g >= 0 && g <= 500) &&
-        (fiber == null || (fiber >= 0 && fiber <= 500));
+        [fiber, sugar].every((g) => g == null || (g >= 0 && g <= 500));
+    final sodiumOk = sodium == null || (sodium >= 0 && sodium <= 20000);
     // Only a real change makes this the user's own entry; opening the boxes
     // and logging untouched still logs the listed food, whatever its numbers
     // (a 0-macro drink, or a listed value over 500 g). Unreadable text (null,
-    // or NaN for fiber) differs from any listed value, so it counts as one.
+    // or NaN for an optional field) differs from any listed value, so it
+    // counts as one.
     final touched = _editing &&
-        (p != f.proteinG || c != f.carbsG || fat != f.fatG || fiber != f.fiberG);
-    final changed = touched && gramsOk;
+        (p != f.proteinG || c != f.carbsG || fat != f.fatG || fiber != f.fiberG ||
+            sugar != f.sugarG || sodium != f.sodiumMg);
+    final changed = touched && gramsOk && sodiumOk;
     final noMacros = changed && p! + c! + fat! == 0;
     final canLog = !touched || (changed && !noMacros);
-    // Any change, fiber alone included, is logged as the user's own entry,
-    // and the server works out a manual entry's kcal as 4·4·9 -- so the
-    // preview does too. Fiber itself never adds calories.
+    // Any change, fiber/sugar/sodium alone included, is logged as the user's
+    // own entry, and the server works out a manual entry's kcal as 4·4·9 --
+    // so the preview does too. None of the three ever adds calories.
     final perKcal = changed ? manualKcal(p!, c!, fat!) : f.kcal;
     final shown = changed
-        ? (p: p!, c: c!, f: fat!, fb: fiber)
-        : (p: f.proteinG, c: f.carbsG, f: f.fatG, fb: f.fiberG);
+        ? (p: p!, c: c!, f: fat!, fb: fiber, sg: sugar, na: sodium)
+        : (p: f.proteinG, c: f.carbsG, f: f.fatG, fb: f.fiberG, sg: f.sugarG, na: f.sodiumMg);
 
-    Widget gramsField(String label, String key, TextEditingController controller) => Expanded(
+    Widget gramsField(String label, String key, TextEditingController controller, {String hint = 'g'}) => Expanded(
       child: Column(
         key: Key(key),
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -95,7 +104,7 @@ class _LogFoodSheetState extends State<LogFoodSheet> {
           const SizedBox(height: 4),
           FsField(
             controller: controller,
-            hint: 'g',
+            hint: hint,
             keyboardType: const TextInputType.numberWithOptions(decimal: true),
             inputFormatters: [FilteringTextInputFormatter.allow(RegExp(r'[0-9.]'))],
             onChanged: (_) => setState(() {}),
@@ -136,9 +145,21 @@ class _LogFoodSheetState extends State<LogFoodSheet> {
             Text('${(perKcal * _servings).round()} kcal', style: theme.textTheme.titleLarge),
             Text(
               'Protein ${_g(shown.p * _servings)} g · Carbs ${_g(shown.c * _servings)} g · Fat ${_g(shown.f * _servings)} g'
-              ' · Fiber ${shown.fb == null ? 'not listed' : '${_g(shown.fb! * _servings)} g'}',
+              '${shown.fb == null ? '' : ' · Fiber ${_g(shown.fb! * _servings)} g'}',
               style: TextStyle(color: t.text2, fontSize: 13),
             ),
+            if (shown.sg != null || shown.na != null)
+              Text(
+                [
+                  if (shown.sg != null) 'Sugar ${_g(shown.sg! * _servings)} g',
+                  if (shown.na != null) 'Sodium ${groupThousands(shown.na! * _servings)} mg',
+                ].join(' · '),
+                key: const Key('logSheet.extras'),
+                // text2, not text3: this line carries data (not a caption),
+                // so it needs to clear AA contrast. Staying smaller than the
+                // 13 sp macro line above is what keeps it visually quieter.
+                style: TextStyle(color: t.text2, fontSize: 12),
+              ),
             if (changed)
               Text('Calories worked out from protein, carbs and fat.',
                   style: TextStyle(color: t.text3, fontSize: 12)),
@@ -168,10 +189,21 @@ class _LogFoodSheetState extends State<LogFoodSheet> {
                 const SizedBox(width: 10),
                 gramsField('Fiber (g)', 'logSheet.fiber', _fiber),
               ]),
+              const SizedBox(height: 10),
+              Row(children: [
+                gramsField('Sugar (g)', 'logSheet.sugar', _sugar),
+                const SizedBox(width: 10),
+                gramsField('Sodium (mg)', 'logSheet.sodium', _sodium, hint: 'mg'),
+              ]),
               if (touched && !gramsOk)
                 Padding(
                   padding: const EdgeInsets.only(top: 6),
                   child: Text('Each value must be 0–500 g', style: TextStyle(color: t.red, fontSize: 12)),
+                )
+              else if (touched && !sodiumOk)
+                Padding(
+                  padding: const EdgeInsets.only(top: 6),
+                  child: Text('Sodium must be 0–20,000 mg', style: TextStyle(color: t.red, fontSize: 12)),
                 )
               else if (noMacros)
                 Padding(
@@ -200,6 +232,8 @@ class _LogFoodSheetState extends State<LogFoodSheet> {
                                 carbsG: c!,
                                 fatG: fat!,
                                 fiberG: fiber,
+                                sugarG: sugar,
+                                sodiumMg: sodium,
                               )
                             : null,
                       )),
@@ -236,10 +270,9 @@ String _plain(double v) => v == v.roundToDouble() ? v.toStringAsFixed(0) : v.toS
 /// An empty box counts as 0; anything unreadable as null (invalid).
 double? _grams(TextEditingController c) => c.text.trim().isEmpty ? 0 : double.tryParse(c.text.trim());
 
-/// Fiber is the one macro where blank is a real value (unknown, not 0).
-/// Anything else unreadable comes back as NaN, which fails every `gramsOk`
-/// range check the same way an out-of-range number would.
-double? _fiberGrams(TextEditingController c) {
+/// Blank is unknown (null); anything else unreadable is NaN, which fails
+/// every range check.
+double? _optionalNumber(TextEditingController c) {
   final text = c.text.trim();
   return text.isEmpty ? null : (double.tryParse(text) ?? double.nan);
 }

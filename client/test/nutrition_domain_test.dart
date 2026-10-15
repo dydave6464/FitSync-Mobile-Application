@@ -8,9 +8,12 @@ Map<String, dynamic> _entry({
   String source = 'local',
   double servings = 2,
   double? fiberG,
+  double? sugarG,
+  double? sodiumMg,
 }) => {
   'id': id, 'mealType': meal, 'name': 'Chicken adobo', 'servingDesc': '1 serving',
   'servings': servings, 'kcal': 640, 'proteinG': 56, 'carbsG': 8, 'fatG': 42, 'fiberG': fiberG,
+  'sugarG': sugarG, 'sodiumMg': sodiumMg,
   'source': source, 'foodId': source == 'manual' ? null : 7,
   'externalId': source == 'fatsecret' ? 'fs-1' : null,
 };
@@ -166,5 +169,84 @@ void main() {
       NutritionTarget.fromJson(const {'kcal': 1850, 'proteinG': 95, 'carbsG': 253, 'fatG': 51, 'fiberG': 26}).fiberG,
       26,
     );
+  });
+
+  test('Food.fromJson reads sugarG and sodiumMg, or null when absent', () {
+    Map<String, dynamic> rice([Object? sugarG, Object? sodiumMg]) => {
+      'id': 3, 'source': 'local', 'externalId': null, 'name': 'Rice', 'servingDesc': '1 cup',
+      'kcal': 205, 'proteinG': 4.3, 'carbsG': 44.5, 'fatG': 0.4, 'sugarG': sugarG, 'sodiumMg': sodiumMg,
+    };
+    final food = Food.fromJson(rice(0.1, 1.0));
+    expect(food.sugarG, 0.1);
+    expect(food.sodiumMg, 1.0);
+    expect(Food.fromJson(rice()).sugarG, isNull);
+    expect(Food.fromJson(rice()).sodiumMg, isNull);
+  });
+
+  test('a manual Food.toRef includes sugarG and sodiumMg only when known', () {
+    const withBoth = Food(
+      source: 'manual', name: 'Turon', kcal: 198, proteinG: 2, carbsG: 34, fatG: 6,
+      sugarG: 9.7, sodiumMg: 124.0,
+    );
+    expect(withBoth.toRef(), {
+      'source': 'manual', 'name': 'Turon', 'proteinG': 2.0, 'carbsG': 34.0, 'fatG': 6.0,
+      'sugarG': 9.7, 'sodiumMg': 124.0,
+    });
+    const neither = Food(source: 'manual', name: 'Turon', kcal: 198, proteinG: 2, carbsG: 34, fatG: 6);
+    expect(neither.toRef(), {'source': 'manual', 'name': 'Turon', 'proteinG': 2.0, 'carbsG': 34.0, 'fatG': 6.0});
+  });
+
+  test('FoodEntry.fromJson reads sugarG and sodiumMg as nullable', () {
+    final entry = FoodEntry.fromJson(_entry(sugarG: 9.7, sodiumMg: 124.0));
+    expect(entry.sugarG, 9.7);
+    expect(entry.sodiumMg, 124.0);
+    expect(FoodEntry.fromJson(_entry()).sugarG, isNull);
+    expect(FoodEntry.fromJson(_entry()).sodiumMg, isNull);
+  });
+
+  test('FoodEntry.pending multiplies sugar (2dp) and sodium (1dp) by servings, or keeps null', () {
+    final withBoth = Food.fromJson(const {
+      'id': 3, 'source': 'local', 'externalId': null, 'name': 'Rice', 'servingDesc': '1 cup',
+      'kcal': 205, 'proteinG': 4.3, 'carbsG': 44.5, 'fatG': 0.4, 'sugarG': 0.333, 'sodiumMg': 0.37,
+    });
+    final pending = FoodEntry.pending(id: -1, food: withBoth, mealType: 'lunch', servings: 2);
+    expect(pending.sugarG, 0.67);
+    expect(pending.sodiumMg, 0.7);
+
+    final neither = Food.fromJson(const {
+      'id': 3, 'source': 'local', 'externalId': null, 'name': 'Rice', 'servingDesc': '1 cup',
+      'kcal': 205, 'proteinG': 4.3, 'carbsG': 44.5, 'fatG': 0.4, 'sugarG': null, 'sodiumMg': null,
+    });
+    final pendingNeither = FoodEntry.pending(id: -1, food: neither, mealType: 'lunch', servings: 2);
+    expect(pendingNeither.sugarG, isNull);
+    expect(pendingNeither.sodiumMg, isNull);
+  });
+
+  test('asFood divides sugar and sodium back, or null', () {
+    final divided = FoodEntry.fromJson(_entry(sugarG: 8.0, sodiumMg: 250.0, servings: 2)).asFood();
+    expect(divided.sugarG, 4.0);
+    expect(divided.sodiumMg, 125.0);
+    final none = FoodEntry.fromJson(_entry()).asFood();
+    expect(none.sugarG, isNull);
+    expect(none.sodiumMg, isNull);
+  });
+
+  test('MacroTotals.fromJson reads sugarG and sodiumMg, defaulting missing ones to 0', () {
+    final full = MacroTotals.fromJson(const {
+      'kcal': 0, 'proteinG': 0, 'carbsG': 0, 'fatG': 0, 'sugarG': 9.7, 'sodiumMg': 124.0,
+    });
+    expect(full.sugarG, 9.7);
+    expect(full.sodiumMg, 124.0);
+    final missing = MacroTotals.fromJson(const {'kcal': 0, 'proteinG': 0, 'carbsG': 0, 'fatG': 0});
+    expect(missing.sugarG, 0);
+    expect(missing.sodiumMg, 0);
+  });
+
+  test('MacroTotals.of sums the known sugar and sodium and lets an unknown one add nothing', () {
+    final known = FoodEntry.fromJson(_entry(sugarG: 2.0, sodiumMg: 50.0));
+    final unknown = FoodEntry.fromJson(_entry(id: 2, sugarG: null, sodiumMg: null));
+    final totals = MacroTotals.of([known, unknown]);
+    expect(totals.sugarG, 2.0);
+    expect(totals.sodiumMg, 50.0);
   });
 }

@@ -11,6 +11,7 @@ const {
 
 const MAX_SERVINGS = 20;
 const MAX_GRAMS = 500;
+const MAX_SODIUM_MG = 20000;
 const MAX_NAME = 100;
 const MAX_SERVING_DESC = 60;
 const round1 = (n) => Math.round(n * 10) / 10;
@@ -40,6 +41,17 @@ function checkServings(s) {
   return s;
 }
 
+/// An optional manual value: absent or null is unknown (null); otherwise a
+/// number from 0 to [max]. Never part of kcal.
+function optional(food, key, max, round) {
+  const v = food[key];
+  if (v == null) return null;
+  if (typeof v !== 'number' || !Number.isFinite(v) || v < 0 || v > max) {
+    throw invalid(key, `${key} must be 0 to ${max}.`);
+  }
+  return round(v);
+}
+
 function checkManual(food) {
   const name = typeof food.name === 'string' ? food.name.trim() : '';
   if (name.length < 1 || name.length > MAX_NAME) throw invalid('name', `name must be 1 to ${MAX_NAME} characters.`);
@@ -63,24 +75,20 @@ function checkManual(food) {
     throw invalid('food', 'A manual food needs some protein, carbs or fat.');
   }
   const kcal = Math.round(4 * grams.proteinG + 4 * grams.carbsG + 9 * grams.fatG);
-  let fiberG = null;
-  if (food.fiberG != null) {
-    if (typeof food.fiberG !== 'number' || !Number.isFinite(food.fiberG) || food.fiberG < 0 || food.fiberG > MAX_GRAMS) {
-      throw invalid('fiberG', `fiberG must be 0 to ${MAX_GRAMS}.`);
-    }
-    fiberG = round2(food.fiberG);
-  }
-  return { name, servingDesc, kcal, fiberG, ...grams };
+  const fiberG = optional(food, 'fiberG', MAX_GRAMS, round2);
+  const sugarG = optional(food, 'sugarG', MAX_GRAMS, round2);
+  const sodiumMg = optional(food, 'sodiumMg', MAX_SODIUM_MG, round1);
+  return { name, servingDesc, kcal, fiberG, sugarG, sodiumMg, ...grams };
 }
 
 function totalsOf(entries) {
   const t = entries.reduce((a, e) => ({
     kcal: a.kcal + e.kcal, proteinG: a.proteinG + e.proteinG, carbsG: a.carbsG + e.carbsG, fatG: a.fatG + e.fatG,
-    fiberG: a.fiberG + (e.fiberG ?? 0),
-  }), { kcal: 0, proteinG: 0, carbsG: 0, fatG: 0, fiberG: 0 });
+    fiberG: a.fiberG + (e.fiberG ?? 0), sugarG: a.sugarG + (e.sugarG ?? 0), sodiumMg: a.sodiumMg + (e.sodiumMg ?? 0),
+  }), { kcal: 0, proteinG: 0, carbsG: 0, fatG: 0, fiberG: 0, sugarG: 0, sodiumMg: 0 });
   return {
     kcal: t.kcal, proteinG: round1(t.proteinG), carbsG: round1(t.carbsG), fatG: round1(t.fatG),
-    fiberG: round1(t.fiberG),
+    fiberG: round1(t.fiberG), sugarG: round1(t.sugarG), sodiumMg: Math.round(t.sodiumMg),
   };
 }
 
@@ -160,6 +168,8 @@ module.exports = function buildNutritionRouter(deps) {
         carbsG: round2(base.carbsG * servings),
         fatG: round2(base.fatG * servings),
         fiberG: base.fiberG == null ? null : round2(base.fiberG * servings),
+        sugarG: base.sugarG == null ? null : round2(base.sugarG * servings),
+        sodiumMg: base.sodiumMg == null ? null : round1(base.sodiumMg * servings),
         loggedVia,
       });
       res.status(201).json({ data: { entry: await getEntry(pool, req.user.userId, id) } });
