@@ -592,4 +592,33 @@ void main() {
     await _pump(tester); // _serverEquipment: no keys, no Bodyweight
     expect(find.byKey(const Key('equipment.unfamiliar')), findsNothing);
   });
+
+  // What each level does to the plan, said under the selector. The copy
+  // describes the kind of change rather than numbers, so it cannot drift from
+  // the generator (ml/app/rules/parameters.py), where the numbers depend on
+  // the goal too.
+  group('the level hint', () {
+    const hint = Key('level.hint');
+    final cases = {
+      null: 'Not sure? Pick Beginner. You can change it later in Settings.',
+      'new': 'The gentlest start: 2 sets per exercise, shorter sessions.',
+      'beginner': 'One set fewer than the standard plan, sessions up to 45 minutes.',
+      'intermediate': 'The full plan for your goal.',
+    };
+    for (final entry in cases.entries) {
+      testWidgets('for ${entry.key ?? 'no level yet'}', (tester) async {
+        await _pump(tester, value: LevelAnswers(fitnessLevel: entry.key));
+        await tester.pumpAndSettle();
+
+        expect(tester.widget<Text>(find.byKey(hint)).data, entry.value);
+      });
+    }
+
+    testWidgets('is readable grey, not the faint caption colour', (tester) async {
+      await _pump(tester);
+      await tester.pumpAndSettle();
+
+      expect(tester.widget<Text>(find.byKey(hint)).style?.color, FsTokens.light.text2);
+    });
+  });
 }
