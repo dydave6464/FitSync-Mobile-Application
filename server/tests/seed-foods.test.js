@@ -5,6 +5,7 @@ const { migrate } = require('../src/db/migrate');
 const { createPool } = require('../src/db/pool');
 const { testDbConfig, dropAllTables } = require('./helpers/test-db');
 const { seedFoods, FOODS } = require('../src/db/seed-foods');
+const { searchOwnFoods } = require('../src/db/foods');
 
 test('the seed list is well formed', () => {
   assert.ok(FOODS.length >= 60, `expected about 60 foods, got ${FOODS.length}`);
@@ -36,6 +37,44 @@ test('food seed', async (t) => {
   await t.test('seeds Ginisang monggo\'s fiber_g as 6', async () => {
     const [[row]] = await pool.query("SELECT fiber_g FROM foods WHERE name = 'Ginisang monggo'");
     assert.equal(Number(row.fiber_g), 6);
+  });
+
+  // The current PH label (2025): the sachet shrank from 28 g to 20 g, so the
+  // weight belongs in the serving text.
+  await t.test('seeds Nescafé Original as one 20 g sachet, as its label prints', async () => {
+    const [[row]] = await pool.query(
+      "SELECT serving_desc, calories, protein_g, carbs_g, fat_g, fiber_g FROM foods WHERE name = 'Nescafé Original 3-in-1 coffee'",
+    );
+    assert.ok(row, 'Nescafé Original 3-in-1 coffee is seeded');
+    assert.deepEqual(
+      [row.serving_desc, row.calories, Number(row.protein_g), Number(row.carbs_g), Number(row.fat_g), Number(row.fiber_g)],
+      ['1 sachet (20 g)', 88, 0.27, 14, 3.4, 0.34],
+    );
+  });
+
+  // People type "nescafe" without the accent; the collation must match "é".
+  await t.test('a search without the accent finds the Nescafé packs', async () => {
+    const names = (await searchOwnFoods(pool, 'nescafe')).map((f) => f.name);
+    assert.deepEqual(names.sort(), [
+      'Nescafé Creamy White coffee', 'Nescafé Original 3-in-1 coffee', 'Nescafé Sugarfree Original coffee',
+    ]);
+  });
+
+  await t.test('searching "coffee" finds every coffee pack', async () => {
+    const names = (await searchOwnFoods(pool, 'coffee')).map((f) => f.name);
+    assert.deepEqual(names.sort(), [
+      '3-in-1 coffee', 'Black coffee', 'Great Taste White coffee', 'Kopiko Blanca coffee', 'Kopiko Brown coffee',
+      'Nescafé Creamy White coffee', 'Nescafé Original 3-in-1 coffee', 'Nescafé Sugarfree Original coffee',
+      'San Mig Sugar Free Original coffee', 'UCC 3-in-1 Regular coffee',
+    ]);
+  });
+
+  await t.test('searching "bread" finds the loaf slices and named breads', async () => {
+    const names = (await searchOwnFoods(pool, 'bread')).map((f) => f.name);
+    assert.deepEqual(names.sort(), [
+      'Cheese bread', 'Gardenia Classic White bread', 'Gardenia High Fiber Whole Wheat bread', 'Pinoy Tasty bread',
+      'Spanish bread', 'Whole wheat bread',
+    ]);
   });
 
   await t.test('is idempotent and reports nothing changed', async () => {
