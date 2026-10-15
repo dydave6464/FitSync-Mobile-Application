@@ -149,7 +149,7 @@ test('an implausible fiber value becomes unknown; the food itself is kept', asyn
 });
 
 test('an implausible sodium value becomes unknown; the food itself is kept', async () => {
-  for (const sodium of ['-1', 'abc']) {
+  for (const sodium of ['-1', 'abc', '100000']) {
     const { impl } = fakeFetch([TOKEN, ['server.api', () => reply({
       food: { food_id: '6', food_name: 'Weird Sodium', servings: { serving: {
         serving_description: '1 cup', calories: '100', protein: '1', carbohydrate: '1', fat: '1', sodium, is_default: '1',

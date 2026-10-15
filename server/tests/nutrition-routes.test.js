@@ -226,6 +226,22 @@ test('nutrition endpoints', async (t) => {
     await u.day('yesterday').expect(400);
   });
 
+  await t.test('sugar and sodium accept their top boundary, and sodium rounds to one decimal', async () => {
+    const u = await freshUser();
+    const { entry } = (await u.log({
+      mealType: 'snack', servings: 1,
+      food: { source: 'manual', name: 'Boundary', proteinG: 1, carbsG: 0, fatG: 0, sugarG: 500, sodiumMg: 20000 },
+    }).expect(201)).body.data;
+    assert.equal(entry.sugarG, 500);
+    assert.equal(entry.sodiumMg, 20000);
+
+    const { entry: rounded } = (await u.log({
+      mealType: 'snack', servings: 1,
+      food: { source: 'manual', name: 'Fractional sodium', proteinG: 1, carbsG: 0, fatG: 0, sodiumMg: 123.456 },
+    }).expect(201)).body.data;
+    assert.equal(rounded.sodiumMg, 123.5);
+  });
+
   await t.test('a month or day out of range is INVALID_DATE, not a 500', async () => {
     const u = await freshUser();
     for (const date of ['2026-13-01', '2026-00-10', '2026-01-32']) {
