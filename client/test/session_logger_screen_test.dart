@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 
@@ -23,6 +24,25 @@ import 'package:fitsync/features/sessions/presentation/widgets/rest_timer.dart';
 import 'package:fitsync/features/sessions/presentation/widgets/set_row.dart';
 
 import 'helpers/fake_training_settings.dart';
+
+/// Records haptic calls, which go to the platform channel.
+List<String> _recordHaptics(WidgetTester tester) {
+  final calls = <String>[];
+  tester.binding.defaultBinaryMessenger.setMockMethodCallHandler(
+    SystemChannels.platform,
+    (call) async {
+      if (call.method.startsWith('HapticFeedback')) calls.add(call.method);
+      return null;
+    },
+  );
+  addTearDown(
+    () => tester.binding.defaultBinaryMessenger.setMockMethodCallHandler(
+      SystemChannels.platform,
+      null,
+    ),
+  );
+  return calls;
+}
 
 const _plan = WorkoutPlan(
   planId: 42,
@@ -2500,6 +2520,108 @@ void main() {
 
       expect(find.byKey(const Key('rest.sheet')), findsNothing);
       expect(tester.takeException(), isNull);
+    });
+  });
+
+  group('the end of a rest', () {
+    testWidgets(
+      'running out buzzes once, says "Rest over", shows it for 5 seconds',
+      (tester) async {
+        final haptics = _recordHaptics(tester);
+        await _pumpLogging(tester);
+        await tester.tap(find.byKey(const Key('logger.primary')));
+        await tester.pump();
+        tester.takeAnnouncements();
+
+        await tester.pump(const Duration(seconds: 90));
+
+        expect(haptics, ['HapticFeedback.vibrate']);
+        expect(
+          tester.takeAnnouncements().map((a) => a.message),
+          contains('Rest over'),
+        );
+        expect(find.byKey(const Key('rest.over')), findsOneWidget);
+
+        await tester.pump(const Duration(seconds: 5));
+        expect(find.byKey(const Key('rest.over')), findsNothing);
+        expect(find.byType(RestTimer), findsNothing);
+
+        await tester.pump(const Duration(seconds: 30));
+        expect(haptics, hasLength(1));
+      },
+    );
+
+    testWidgets('Skip ends it quietly', (tester) async {
+      final haptics = _recordHaptics(tester);
+      await _pumpLogging(tester);
+      await tester.tap(find.byKey(const Key('logger.primary')));
+      await tester.pump();
+
+      await tester.tap(find.byKey(const Key('rest.open')));
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 400));
+      await tester.tap(find.byKey(const Key('rest.skip')));
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 400));
+
+      expect(haptics, isEmpty);
+      expect(find.byKey(const Key('rest.over')), findsNothing);
+      expect(find.byType(RestTimer), findsNothing);
+    });
+
+    testWidgets('−30s down to nothing ends it quietly', (tester) async {
+      final haptics = _recordHaptics(tester);
+      await _pumpLogging(tester);
+      await tester.tap(find.byKey(const Key('logger.primary')));
+      await tester.pump();
+      await tester.pump(const Duration(seconds: 70));
+
+      await tester.tap(find.byKey(const Key('rest.open')));
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 400));
+      await tester.tap(find.byKey(const Key('rest.minus')));
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 400));
+
+      expect(haptics, isEmpty);
+      expect(find.byKey(const Key('rest.over')), findsNothing);
+    });
+
+    testWidgets('a set logged during "Rest over" starts a fresh rest', (
+      tester,
+    ) async {
+      _recordHaptics(tester);
+      await _pumpLogging(tester);
+      await tester.tap(find.byKey(const Key('logger.primary')));
+      await tester.pump();
+      await tester.pump(const Duration(seconds: 90));
+      expect(find.byKey(const Key('rest.over')), findsOneWidget);
+
+      await tester.tap(find.byKey(const Key('logger.primary')));
+      await tester.pump();
+
+      expect(find.byKey(const Key('rest.over')), findsNothing);
+      expect(
+        tester.widget<Text>(find.byKey(const Key('rest.remaining'))).data,
+        '1:30',
+      );
+    });
+
+    testWidgets('a second set mid-rest restarts the rest at full length', (
+      tester,
+    ) async {
+      await _pumpLogging(tester);
+      await tester.tap(find.byKey(const Key('logger.primary')));
+      await tester.pump();
+      await tester.pump(const Duration(seconds: 30));
+
+      await tester.tap(find.byKey(const Key('logger.primary')));
+      await tester.pump();
+
+      expect(
+        tester.widget<Text>(find.byKey(const Key('rest.remaining'))).data,
+        '1:30',
+      );
     });
   });
 }

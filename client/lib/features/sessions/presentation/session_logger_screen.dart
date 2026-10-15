@@ -1,6 +1,8 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import 'package:flutter/semantics.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../core/api_exception.dart';
@@ -80,11 +82,21 @@ class _SessionLoggerScreenState extends ConsumerState<SessionLoggerScreen> {
   /// the phone is locked, costs nothing.
   Timer? _restTicker;
 
+  /// The few seconds after a rest runs out, when the tag says so in words.
+  bool _restOver = false;
+  Timer? _restOverTimer;
+
   DateTime _now() => ref.read(restNowProvider)();
 
   void _startRest(int seconds) {
+    _restOverTimer?.cancel();
+    _restOver = false;
     _rest = RestPeriod.start(_now(), seconds);
-    _restTicker ??= Timer.periodic(
+    // A fresh ticker rather than the running one, so a rest started mid-rest
+    // ticks in step with its own start: the old one's phase would show the
+    // first number late and notice the end up to a second after it.
+    _restTicker?.cancel();
+    _restTicker = Timer.periodic(
       const Duration(seconds: 1),
       (_) => _onRestTick(),
     );
@@ -95,7 +107,8 @@ class _SessionLoggerScreenState extends ConsumerState<SessionLoggerScreen> {
     final rest = _rest;
     if (rest == null || !mounted) return;
     if (rest.isOverAt(_now())) {
-      setState(_endRest);
+      setState(() => _endRest(ranOut: true));
+      _signalRestOver();
     } else {
       _publishRest();
     }
@@ -125,12 +138,32 @@ class _SessionLoggerScreenState extends ConsumerState<SessionLoggerScreen> {
   }
 
   /// Stops the rest, if one is running. Callers wrap it in setState: the tag
-  /// goes with it.
-  void _endRest() {
+  /// changes with it. Only a rest that [ranOut] says "Rest over" -- Skip,
+  /// −30s to nothing and the like were the user's own doing, and need no
+  /// telling.
+  void _endRest({bool ranOut = false}) {
     _restTicker?.cancel();
     _restTicker = null;
+    if (_rest == null) return;
     _rest = null;
     _restReading.value = null;
+    if (!ranOut) return;
+    _restOver = true;
+    _restOverTimer?.cancel();
+    _restOverTimer = Timer(const Duration(seconds: 5), () {
+      if (mounted) setState(() => _restOver = false);
+    });
+  }
+
+  /// One buzz and one announcement, never repeated: the tag says "Rest over"
+  /// for whoever is looking, this is for whoever is not.
+  void _signalRestOver() {
+    HapticFeedback.vibrate();
+    SemanticsService.sendAnnouncement(
+      View.of(context),
+      'Rest over',
+      TextDirection.ltr,
+    );
   }
 
   /// One store per exercise on screen. Rebuilt when the exercise changes, so
@@ -172,6 +205,7 @@ class _SessionLoggerScreenState extends ConsumerState<SessionLoggerScreen> {
   void dispose() {
     _drafts.dispose();
     _restTicker?.cancel();
+    _restOverTimer?.cancel();
     _restReading.dispose();
     super.dispose();
   }
@@ -343,6 +377,9 @@ class _SessionLoggerScreenState extends ConsumerState<SessionLoggerScreen> {
           .read(activeSessionProvider.notifier)
           .complete(_elapsedMinutes(session.startedAt));
       if (!mounted) return;
+      // The summary sits over this screen; a rest still running under it
+      // would buzz at a finished workout.
+      setState(_endRest);
       await _showSummary(done);
     } on ApiException catch (error) {
       if (!mounted) return;
@@ -625,8 +662,8 @@ class _SessionLoggerScreenState extends ConsumerState<SessionLoggerScreen> {
     );
     if (confirmed != true || !mounted) return;
 
-    // A rest counts down between sets of this exercise, and there are none
-    // left to rest between.
+    // Restarting is a fresh start on this exercise, and the rest goes with
+    // the sets it followed: those are being taken back.
     setState(_endRest);
     final messenger = ScaffoldMessenger.of(context);
     final drafts = _drafts;
@@ -724,17 +761,20 @@ class _SessionLoggerScreenState extends ConsumerState<SessionLoggerScreen> {
       // content, so ticking a set does not shove the set table down.
       // On both stages: the rest carries across exercises, so the demo of
       // the next one is exactly where it is still running.
-      if (_rest != null) ...[
+      if (_rest != null || _restOver) ...[
         RestTimer(
           reading: _restReading,
-          onOpen: () => showRestSheet(
-            context,
-            countdown: RestCountdown(
-              reading: _restReading,
-              onAdjust: (seconds) => setState(() => _adjustRest(seconds)),
-              onSkip: () => setState(_endRest),
-            ),
-          ),
+          over: _rest == null && _restOver,
+          onOpen: _rest == null
+              ? null
+              : () => showRestSheet(
+                  context,
+                  countdown: RestCountdown(
+                    reading: _restReading,
+                    onAdjust: (seconds) => setState(() => _adjustRest(seconds)),
+                    onSkip: () => setState(_endRest),
+                  ),
+                ),
         ),
         const SizedBox(width: 6),
       ],
