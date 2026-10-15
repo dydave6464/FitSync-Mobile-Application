@@ -249,16 +249,30 @@ class _RestSheetState extends ConsumerState<RestSheet> {
                         key: const Key('rest.ring'),
                         value: reading?.fractionLeft ?? 0,
                         color: t.amber,
-                        child: Text(
-                          formatRest(seconds),
-                          key: const Key('rest.sheet.remaining'),
-                          style: TextStyle(
-                            fontFamily: fsMonoFamily,
-                            fontSize: 40,
-                            fontWeight: FontWeight.w700,
-                            // Amber numbers measured 2.95:1 on the light
-                            // sheet; the ring carries the amber.
-                            color: t.text,
+                        // The ring stays 132 at any text size, so the
+                        // number shrinks to fit inside the stroke rather
+                        // than wrapping or running under it; at normal
+                        // sizes it already fits and is left alone.
+                        child: Padding(
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 18, // 11 stroke + air
+                          ),
+                          child: FittedBox(
+                            fit: BoxFit.scaleDown,
+                            child: Text(
+                              formatRest(seconds),
+                              key: const Key('rest.sheet.remaining'),
+                              maxLines: 1,
+                              softWrap: false,
+                              style: TextStyle(
+                                fontFamily: fsMonoFamily,
+                                fontSize: 40,
+                                fontWeight: FontWeight.w700,
+                                // Amber numbers measured 2.95:1 on the light
+                                // sheet; the ring carries the amber.
+                                color: t.text,
+                              ),
+                            ),
                           ),
                         ),
                       ),
@@ -397,11 +411,14 @@ class _RestAlertRowState extends ConsumerState<_RestAlertRow> {
     super.dispose();
   }
 
+  // Both read what they need before the first wait: the sheet closes itself
+  // when the rest runs out, which can land mid-wait, and `ref` is gone then.
   Future<void> _refresh() async {
-    final granted = await ref
-        .read(restAlertSchedulerProvider)
-        .permissionGranted();
-    final asked = await ref.read(restAlertStoreProvider).asked();
+    final scheduler = ref.read(restAlertSchedulerProvider);
+    final store = ref.read(restAlertStoreProvider);
+    final granted = await scheduler.permissionGranted();
+    if (!mounted) return;
+    final asked = await store.asked();
     if (!mounted) return;
     setState(() {
       _granted = granted;
@@ -410,10 +427,16 @@ class _RestAlertRowState extends ConsumerState<_RestAlertRow> {
   }
 
   Future<void> _set(bool on) async {
-    await ref.read(restAlertEnabledProvider.notifier).set(on);
+    final enabled = ref.read(restAlertEnabledProvider.notifier);
+    final scheduler = ref.read(restAlertSchedulerProvider);
+    final store = ref.read(restAlertStoreProvider);
+    await enabled.set(on);
+    if (!mounted) return;
     if (on && !_granted && !_asked) {
-      await ref.read(restAlertStoreProvider).markAsked();
-      await ref.read(restAlertSchedulerProvider).requestPermission();
+      await store.markAsked();
+      if (!mounted) return;
+      await scheduler.requestPermission();
+      if (!mounted) return;
     }
     await _refresh();
   }

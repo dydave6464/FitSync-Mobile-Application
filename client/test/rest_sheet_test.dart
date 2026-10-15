@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:ui' show SemanticsAction;
 
 import 'package:flutter/material.dart';
@@ -306,7 +307,7 @@ void main() {
         List<int> skips,
       })
     >
-    openRunning(WidgetTester tester) async {
+    openRunning(WidgetTester tester, {FakeRestAlertScheduler? alerts}) async {
       final reading = ValueNotifier<RestReading?>((
         secondsLeft: 60,
         fractionLeft: 1.0,
@@ -320,7 +321,7 @@ void main() {
               FakeTrainingSettings(),
             ),
             restAlertSchedulerProvider.overrideWithValue(
-              FakeRestAlertScheduler(),
+              alerts ?? FakeRestAlertScheduler(),
             ),
             restAlertStoreProvider.overrideWithValue(
               RestAlertStore(backing: InMemorySecureStore()),
@@ -394,6 +395,38 @@ void main() {
       expect(find.byKey(const Key('rest.sheet')), findsNothing);
       expect(tester.takeException(), isNull);
     });
+
+    testWidgets(
+      'a permission check still out when the sheet closes is dropped',
+      (tester) async {
+        final alerts = _SlowRestAlertScheduler();
+        final h = await openRunning(tester, alerts: alerts);
+        final gate = Completer<bool>();
+        alerts.gate = gate;
+
+        // Back from the phone's settings: the sheet reads the permission again,
+        // and the rest runs out before the phone answers.
+        for (final state in [
+          AppLifecycleState.inactive,
+          AppLifecycleState.hidden,
+          AppLifecycleState.paused,
+          AppLifecycleState.hidden,
+          AppLifecycleState.inactive,
+          AppLifecycleState.resumed,
+        ]) {
+          tester.binding.handleAppLifecycleStateChanged(state);
+        }
+        h.reading.value = null;
+        await tester.pumpAndSettle();
+        expect(find.byKey(const Key('rest.sheet')), findsNothing);
+
+        gate.complete(true);
+        await tester.pump();
+
+        expect(tester.takeException(), isNull);
+      },
+    );
+
     testWidgets('a ring around the time, the numbers in the text colour', (
       tester,
     ) async {
@@ -439,9 +472,44 @@ void main() {
       addTearDown(tester.view.reset);
       addTearDown(tester.platformDispatcher.clearTextScaleFactorTestValue);
 
-      await openRunning(tester);
+      final h = await openRunning(tester);
+      expect(tester.takeException(), isNull);
 
+      // The number shrinks to fit inside the ring's stroke rather than
+      // wrapping or running under it -- a clipped paragraph throws nothing.
+      void expectInsideRing() {
+        final ring = tester.getRect(find.byKey(const Key('rest.ring')));
+        final number = tester.getRect(
+          find.byKey(const Key('rest.sheet.remaining')),
+        );
+        final inside = ring.deflate(11);
+        expect(
+          inside.contains(number.topLeft) &&
+              inside.contains(number.bottomRight - const Offset(0.01, 0.01)),
+          isTrue,
+          reason: '$number should lie inside $inside',
+        );
+      }
+
+      expectInsideRing();
+
+      h.reading.value = (secondsLeft: 600, fractionLeft: 1.0);
+      await tester.pump();
+      expect(
+        tester.widget<Text>(find.byKey(const Key('rest.sheet.remaining'))).data,
+        '10:00',
+      );
+      expectInsideRing();
       expect(tester.takeException(), isNull);
     });
   });
+}
+
+/// A phone slow to say whether notifications are allowed: [permissionGranted]
+/// waits on [gate] while one is set.
+class _SlowRestAlertScheduler extends FakeRestAlertScheduler {
+  Completer<bool>? gate;
+
+  @override
+  Future<bool> permissionGranted() => gate?.future ?? super.permissionGranted();
 }
