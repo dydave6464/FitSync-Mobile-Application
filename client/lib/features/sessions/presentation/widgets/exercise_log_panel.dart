@@ -33,7 +33,6 @@ class ExerciseLogPanel extends StatefulWidget {
     this.onUnitChanged,
     this.baseUrl = '',
     this.animationUrl,
-    this.firstTime = false,
   });
 
   final PlanExercise exercise;
@@ -63,10 +62,6 @@ class ExerciseLogPanel extends StatefulWidget {
   /// logger passes the URL the demo stage already loaded; null keeps the
   /// tile still.
   final String? animationUrl;
-
-  /// True when this exercise has no history (last-performance answered, with
-  /// no entry for it): the header adds a tip for choosing a starting weight.
-  final bool firstTime;
 
   /// Null renders the header's toggle inert rather than absent, on the same
   /// reasoning as [onOpenDemo] below.
@@ -275,16 +270,6 @@ class _ExerciseLogPanelState extends State<ExerciseLogPanel> {
                               color: t.text3,
                             ),
                           ),
-                          // Only where there is a weight to choose: a tip for
-                          // a field that is not on the table is noise.
-                          if (widget.firstTime && showWeight) ...[
-                            const SizedBox(height: 4),
-                            Text(
-                              'First time? Pick a weight you could lift 2–3 more times.',
-                              key: const Key('logpanel.firstTime'),
-                              style: TextStyle(fontSize: 11.5, color: t.text2),
-                            ),
-                          ],
                           if (exercise.coaching != null) ...[
                             const SizedBox(height: 4),
                             CoachingTag(

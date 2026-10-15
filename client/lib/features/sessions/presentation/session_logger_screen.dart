@@ -973,12 +973,6 @@ class _SessionLoggerScreenState extends ConsumerState<SessionLoggerScreen> {
                             baseUrl: ref
                                 .watch(exerciseRepositoryProvider)
                                 .baseUrl,
-                            // No history once last-performance has answered;
-                            // while it is in flight nobody is a first-timer,
-                            // so the tip cannot flash on and off.
-                            firstTime:
-                                last != null &&
-                                !last.containsKey(exercise.exerciseId),
                             // The demo stage usually fetched this exercise's
                             // detail on the way in, and the provider keeps it,
                             // so this is normally a cache read and the tile
