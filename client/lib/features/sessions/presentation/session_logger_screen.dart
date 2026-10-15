@@ -6,7 +6,7 @@ import '../../../core/theme.dart';
 import '../../../core/units.dart';
 import '../../../core/widgets/fs_kit.dart';
 import '../../exercises/presentation/providers.dart'
-    show exerciseRepositoryProvider;
+    show exerciseDetailProvider, exerciseRepositoryProvider;
 import '../../exercises/presentation/exercise_list_screen.dart'
     show describeError;
 import '../../plans/domain/workout_plan.dart';
@@ -973,6 +973,24 @@ class _SessionLoggerScreenState extends ConsumerState<SessionLoggerScreen> {
                             baseUrl: ref
                                 .watch(exerciseRepositoryProvider)
                                 .baseUrl,
+                            // No history once last-performance has answered;
+                            // while it is in flight nobody is a first-timer,
+                            // so the tip cannot flash on and off.
+                            firstTime:
+                                last != null &&
+                                !last.containsKey(exercise.exerciseId),
+                            // The demo stage usually fetched this exercise's
+                            // detail on the way in, and the provider keeps it,
+                            // so this is normally a cache read and the tile
+                            // plays the GIF the stage already loaded. (Not
+                            // after a jump straight to a table the demo never
+                            // showed this run.) Null until it lands: still tile.
+                            animationUrl: ref
+                                .watch(
+                                  exerciseDetailProvider(exercise.exerciseId),
+                                )
+                                .value
+                                ?.animationUrl,
                             onUndoSet: (setNumber) async {
                               final messenger = ScaffoldMessenger.of(context);
                               try {

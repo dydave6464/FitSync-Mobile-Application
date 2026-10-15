@@ -69,6 +69,22 @@ def test_a_beginner_loses_one_set_but_keeps_the_rep_range():
     assert params.target_reps == "4-6"
 
 
+@pytest.mark.parametrize("missing", [None, "", "unknown"])
+def test_a_skipped_level_is_planned_as_a_beginner(missing):
+    # Skipping the level step used to land on the full intermediate volume --
+    # the most demanding plan -- while Home called it "safe defaults". A
+    # missing or unrecognised level now gets the beginner plan.
+    profile_ = profile(mainGoal="build_muscle")
+    profile_["fitnessLevel"] = missing
+    params = derive(profile_)
+    assert (params.target_sets, params.session_length_min, params.exercise_count) == (3, 45, 6)
+
+
+def test_intermediate_keeps_the_full_volume():
+    params = derive(profile(mainGoal="build_muscle", fitnessLevel="intermediate"))
+    assert (params.target_sets, params.session_length_min, params.exercise_count) == (4, 60, 8)
+
+
 def test_sets_never_fall_below_two():
     params = derive(profile(mainGoal="lose_weight", fitnessLevel="beginner"))
     assert params.target_sets == 2

@@ -7,6 +7,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import 'package:fitsync/core/theme.dart';
+import 'package:fitsync/features/exercises/presentation/exercise_thumb.dart';
 import 'package:fitsync/features/plans/domain/workout_plan.dart';
 import 'package:fitsync/features/sessions/domain/active_session.dart';
 import 'package:fitsync/features/sessions/presentation/widgets/exercise_log_panel.dart';
@@ -86,4 +87,124 @@ void main() {
       expect(tile.onTap, isNull);
     },
   );
+
+  // The movement stays in view while logging: the tile plays the same
+  // animation the demo stage already loaded.
+  group('the animated tile', () {
+    const gif = '/storage/exercises/101/anim.gif';
+    final animation = find.byKey(const ValueKey('thumb.animation'));
+
+    Widget panel(SetDrafts drafts, {VoidCallback? onOpenDemo}) =>
+        ExerciseLogPanel(
+          exercise: _exercise,
+          session: _session(),
+          drafts: drafts,
+          onUndoSet: (_) async {},
+          onOpenDemo: onOpenDemo ?? () {},
+          baseUrl: 'http://test.local',
+          animationUrl: gif,
+        );
+
+    testWidgets('plays the animation at 72 dp', (tester) async {
+      await tester.pumpWidget(_host(panel(_drafts(tester))));
+
+      expect(animation, findsOneWidget);
+      expect(
+        (tester.widget<Image>(animation).image as NetworkImage).url,
+        'http://test.local$gif',
+      );
+      expect(tester.getSize(find.byType(ExerciseThumb)), const Size(72, 72));
+    });
+
+    // Typing a number with a loop moving beside the field pulls the eye, so
+    // the tile freezes in place while one of the panel's fields has focus
+    // (the keyboard is up) and plays again once it is dismissed. Frozen, not
+    // swapped for the still picture: a swap can flash blank on first focus.
+    testWidgets('freezes while a set field is being typed into', (
+      tester,
+    ) async {
+      bool ticking() => tester
+          .widget<TickerMode>(find.byKey(const Key('logpanel.demo.ticker')))
+          .enabled;
+
+      await tester.pumpWidget(_host(panel(_drafts(tester))));
+      expect(ticking(), isTrue);
+
+      await tester.tap(find.byType(TextField).first);
+      await tester.pump();
+      expect(ticking(), isFalse);
+      expect(animation, findsOneWidget);
+
+      FocusManager.instance.primaryFocus?.unfocus();
+      await tester.pump();
+      expect(ticking(), isTrue);
+    });
+
+    testWidgets('says what it opens, and still opens the demo', (tester) async {
+      var opened = false;
+      final handle = tester.ensureSemantics();
+      await tester.pumpWidget(
+        _host(panel(_drafts(tester), onOpenDemo: () => opened = true)),
+      );
+
+      expect(
+        tester.getSemantics(_demoButton),
+        isSemantics(isButton: true, label: 'Watch how to do Goblet squat'),
+      );
+      expect(find.byIcon(Icons.open_in_full), findsOneWidget);
+
+      await tester.tap(_demoButton);
+      await tester.pumpAndSettle();
+      expect(opened, isTrue);
+      handle.dispose();
+    });
+
+    testWidgets('with no demo to open, the tile is announced as disabled', (
+      tester,
+    ) async {
+      final handle = tester.ensureSemantics();
+      await tester.pumpWidget(
+        _host(
+          ExerciseLogPanel(
+            exercise: _exercise,
+            session: _session(),
+            drafts: _drafts(tester),
+            onUndoSet: (_) async {},
+            baseUrl: 'http://test.local',
+            animationUrl: gif,
+          ),
+        ),
+      );
+
+      expect(
+        tester.getSemantics(_demoButton),
+        isSemantics(isButton: true, hasEnabledState: true, isEnabled: false),
+      );
+      handle.dispose();
+    });
+
+    testWidgets('fits a 320 dp phone at large text', (tester) async {
+      tester.view.physicalSize = const Size(320, 640);
+      tester.view.devicePixelRatio = 1;
+      addTearDown(tester.view.reset);
+
+      await tester.pumpWidget(
+        MaterialApp(
+          theme: fsLightTheme(),
+          home: MediaQuery(
+            data: const MediaQueryData(
+              size: Size(320, 640),
+              textScaler: TextScaler.linear(1.6),
+            ),
+            child: Scaffold(
+              body: SingleChildScrollView(child: panel(_drafts(tester))),
+            ),
+          ),
+        ),
+      );
+
+      expect(tester.takeException(), isNull);
+      expect(animation, findsOneWidget);
+    });
+  });
 }

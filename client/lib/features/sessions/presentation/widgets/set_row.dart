@@ -21,6 +21,7 @@ class SetRow extends StatelessWidget {
     this.unit = WeightUnit.kg,
     this.showWeight = true,
     this.active = false,
+    this.repsHint = 'reps',
     this.onReopen,
   });
 
@@ -61,6 +62,10 @@ class SetRow extends StatelessWidget {
   /// is next -- every empty row is otherwise identical.
   final bool active;
 
+  /// What the empty reps box says: the exercise's target range ("8-12") when
+  /// there is one, so the number to aim for sits where it is typed.
+  final String repsHint;
+
   /// Reopens a stored set for editing. Null leaves the row inert.
   final VoidCallback? onReopen;
 
@@ -81,10 +86,12 @@ class SetRow extends StatelessWidget {
       filled: true,
       fillColor: active ? t.accentDim : t.surface2,
       contentPadding: const EdgeInsets.symmetric(vertical: 9),
+      // text2, not text3: the reps hint is the target range, which is data
+      // the user reads, and text3 fails contrast on these fills.
       hintStyle: TextStyle(
         fontFamily: fsMonoFamily,
         fontSize: 13,
-        color: t.text3,
+        color: t.text2,
       ),
       border: OutlineInputBorder(
         borderRadius: BorderRadius.circular(SetRow.cellRadius),
@@ -130,48 +137,56 @@ class SetRow extends StatelessWidget {
             ),
             if (showWeight) ...[
               Expanded(
-                child: TextField(
-                  key: Key('set.$setNumber.weight'),
-                  controller: drafts.weight(setNumber),
-                  enabled: editable,
-                  textAlign: TextAlign.center,
-                  keyboardType: const TextInputType.numberWithOptions(
-                    decimal: true,
-                  ),
-                  inputFormatters: [
-                    // Three digits and two decimals: weight_kg is DECIMAL(6,2)
-                    // and the server rejects anything above 999.99 anyway.
-                    FilteringTextInputFormatter.allow(
-                      RegExp(r'^\d{0,3}\.?\d{0,2}'),
+                // Named for screen readers: the hint is only the unit, and it
+                // goes once a number is typed.
+                child: Semantics(
+                  label: 'Weight',
+                  child: TextField(
+                    key: Key('set.$setNumber.weight'),
+                    controller: drafts.weight(setNumber),
+                    enabled: editable,
+                    textAlign: TextAlign.center,
+                    keyboardType: const TextInputType.numberWithOptions(
+                      decimal: true,
                     ),
-                  ],
-                  decoration: decoration(unit.api),
-                  style: TextStyle(
-                    fontFamily: fsMonoFamily,
-                    fontSize: 14,
-                    fontWeight: FontWeight.w600,
-                    color: t.text,
+                    inputFormatters: [
+                      // Three digits and two decimals: weight_kg is DECIMAL(6,2)
+                      // and the server rejects anything above 999.99 anyway.
+                      FilteringTextInputFormatter.allow(
+                        RegExp(r'^\d{0,3}\.?\d{0,2}'),
+                      ),
+                    ],
+                    decoration: decoration(unit.api),
+                    style: TextStyle(
+                      fontFamily: fsMonoFamily,
+                      fontSize: 14,
+                      fontWeight: FontWeight.w600,
+                      color: t.text,
+                    ),
                   ),
                 ),
               ),
               const SizedBox(width: SetRow.columnGap),
             ],
             Expanded(
-              child: TextField(
-                key: Key('set.$setNumber.reps'),
-                controller: drafts.reps(setNumber),
-                enabled: editable,
-                textAlign: TextAlign.center,
-                keyboardType: TextInputType.number,
-                inputFormatters: [
-                  FilteringTextInputFormatter.allow(RegExp(r'^\d{0,3}')),
-                ],
-                decoration: decoration('reps'),
-                style: TextStyle(
-                  fontFamily: fsMonoFamily,
-                  fontSize: 14,
-                  fontWeight: FontWeight.w600,
-                  color: t.text,
+              child: Semantics(
+                label: 'Reps',
+                child: TextField(
+                  key: Key('set.$setNumber.reps'),
+                  controller: drafts.reps(setNumber),
+                  enabled: editable,
+                  textAlign: TextAlign.center,
+                  keyboardType: TextInputType.number,
+                  inputFormatters: [
+                    FilteringTextInputFormatter.allow(RegExp(r'^\d{0,3}')),
+                  ],
+                  decoration: decoration(repsHint),
+                  style: TextStyle(
+                    fontFamily: fsMonoFamily,
+                    fontSize: 14,
+                    fontWeight: FontWeight.w600,
+                    color: t.text,
+                  ),
                 ),
               ),
             ),

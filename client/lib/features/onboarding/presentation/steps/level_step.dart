@@ -51,6 +51,19 @@ const _levels = <({String value, String label})>[
   (value: 'intermediate', label: 'Intermediate'),
 ];
 
+/// What the chosen level does to the plan (ml/app/rules/parameters.py), in
+/// words rather than numbers: the numbers also depend on the goal -- New and
+/// Beginner both get 2 sets and 45 minutes for most goals -- and a copy of
+/// them here would drift from the generator. A skipped level is planned as a
+/// beginner, which is why that is the suggestion. No pointer to Settings:
+/// this step is reused as the Settings editor.
+String _levelHint(String? level) => switch (level) {
+  'new' => 'The gentlest start: the fewest sets per exercise.',
+  'beginner' => 'One set fewer than the standard plan.',
+  'intermediate' => 'The full plan for your goal.',
+  _ => 'Not sure? Pick Beginner.',
+};
+
 /// `training_location` ENUM values.
 ///
 /// Behind a picker rather than on the step: the design gives location a
@@ -183,6 +196,12 @@ class LevelStep extends ConsumerWidget {
           options: _levels,
           selected: value.fitnessLevel,
           onSelected: (level) => onChanged(value.copyWith(fitnessLevel: level)),
+        ),
+        const SizedBox(height: 8),
+        Text(
+          _levelHint(value.fitnessLevel),
+          key: const Key('level.hint'),
+          style: TextStyle(fontSize: 12.5, color: t.text2),
         ),
         const SizedBox(height: 22),
         FsCard(

@@ -626,6 +626,96 @@ void main() {
     expect(find.byType(SetRow), findsWidgets);
   });
 
+  // The set table's tile plays the animation the demo stage already fetched
+  // (exerciseDetailProvider), joined to the same base URL, so it is the
+  // cached image rather than a second download.
+  testWidgets('the set table tile plays the exercise animation', (
+    tester,
+  ) async {
+    await _pump(
+      tester,
+      session: _manualSession,
+      plan: null,
+      detail: (id) => Future.value(
+        ExerciseDetail(
+          exerciseId: id,
+          name: 'Cable fly',
+          muscleGroup: 'pectorals',
+          equipment: null,
+          thumbnailUrl: null,
+          animationUrl: '/storage/exercises/$id/anim.gif',
+          cues: const [],
+        ),
+      ),
+    );
+    // The URL the demo stage loads -- the one the image cache now holds.
+    final demoUrls = tester
+        .widgetList<Image>(find.byType(Image))
+        .map((i) => i.image)
+        .whereType<NetworkImage>()
+        .map((n) => n.url)
+        .where((u) => u.endsWith('/storage/exercises/301/anim.gif'))
+        .toList();
+    expect(demoUrls, hasLength(1));
+
+    await tester.tap(find.byKey(const Key('logger.primary')));
+    await tester.pumpAndSettle();
+
+    final animation = find.byKey(const ValueKey('thumb.animation'));
+    expect(animation, findsOneWidget);
+    expect(
+      (tester.widget<Image>(animation).image as NetworkImage).url,
+      demoUrls.single,
+    );
+  });
+
+  // The starting-weight tip is for an exercise with no history. "No history"
+  // needs last-performance to have answered: while it is in flight the tip
+  // must not flash on for an exercise the user has done before.
+  group('the first-time tip', () {
+    final tip = find.byKey(const Key('logpanel.firstTime'));
+
+    testWidgets('shows when last-performance has no entry for the exercise', (
+      tester,
+    ) async {
+      await _pumpLogging(tester, session: _manualSession, plan: null);
+
+      expect(tip, findsOneWidget);
+    });
+
+    testWidgets('stays hidden once the exercise has history', (tester) async {
+      await _pumpLogging(
+        tester,
+        session: _manualSession,
+        plan: null,
+        last: const {
+          301: LastPerformance(
+            exerciseId: 301,
+            weightKg: 20,
+            reps: 10,
+            sessionDate: '2026-09-12',
+          ),
+        },
+      );
+
+      expect(tip, findsNothing);
+    });
+
+    testWidgets('stays hidden while last-performance is still loading', (
+      tester,
+    ) async {
+      final gate = Completer<Map<int, LastPerformance>>();
+      await _pump(tester, session: _manualSession, plan: null, lastGate: gate);
+      await tester.tap(find.byKey(const Key('logger.primary')));
+      await tester.pumpAndSettle();
+
+      expect(tip, findsNothing);
+      gate.complete(const {});
+      await tester.pumpAndSettle();
+      expect(tip, findsOneWidget);
+    });
+  });
+
   testWidgets('the rest timer is not shown on the demo stage', (tester) async {
     await _pump(tester, session: _manualSession, plan: null);
 

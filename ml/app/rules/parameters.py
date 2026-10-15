@@ -77,8 +77,11 @@ def derive(profile: Mapping[str, Any],
     # minimum is already the floor.
     is_new = level == "new" or bool(profile.get("healthCaution"))
     # New to training sits inside the beginner tier: the same session cap,
-    # and the minimum sets rather than one fewer than the goal's.
-    is_beginner = level == "beginner" or is_new
+    # and the minimum sets rather than one fewer than the goal's. A skipped
+    # (missing) level is planned as a beginner too: the full intermediate
+    # volume is the most demanding plan, the wrong default for someone who
+    # did not say. The column holds only new/beginner/intermediate.
+    is_beginner = level != "intermediate" or is_new
 
     goal = profile.get("mainGoal")
     session = LONG_SESSION_MIN if goal in LONG_SESSION_GOALS else SHORT_SESSION_MIN
