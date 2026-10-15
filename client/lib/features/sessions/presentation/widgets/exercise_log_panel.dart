@@ -32,6 +32,7 @@ class ExerciseLogPanel extends StatefulWidget {
     this.unit = WeightUnit.kg,
     this.onUnitChanged,
     this.baseUrl = '',
+    this.animationUrl,
   });
 
   final PlanExercise exercise;
@@ -57,6 +58,11 @@ class ExerciseLogPanel extends StatefulWidget {
   /// fallback, which is what a panel built without a repository shows.
   final String baseUrl;
 
+  /// The exercise's looping demo, which the set table's tile plays. The
+  /// logger passes the URL the demo stage already loaded; null keeps the
+  /// tile still.
+  final String? animationUrl;
+
   /// Null renders the header's toggle inert rather than absent, on the same
   /// reasoning as [onOpenDemo] below.
   final ValueChanged<WeightUnit>? onUnitChanged;
@@ -78,6 +84,32 @@ class _ExerciseLogPanelState extends State<ExerciseLogPanel> {
   /// set 2 alone. UI state, not storage -- nothing new is persisted to
   /// remember it, and [_showWeight] explains what stands in.
   bool _weightAdded = false;
+
+  /// True while one of this exercise's fields has focus -- on a phone, while
+  /// the keyboard is up. The tile holds its animation still then, so a loop
+  /// does not pull the eye from the number being typed. Focus, not
+  /// MediaQuery.viewInsets: the logger's Scaffold strips the keyboard inset
+  /// from its body, so the panel would never see it.
+  bool _typing = false;
+
+  @override
+  void initState() {
+    super.initState();
+    FocusManager.instance.addListener(_onFocusChanged);
+  }
+
+  @override
+  void dispose() {
+    FocusManager.instance.removeListener(_onFocusChanged);
+    super.dispose();
+  }
+
+  void _onFocusChanged() {
+    final focused = FocusManager.instance.primaryFocus?.context;
+    final typing = focused != null &&
+        focused.findAncestorStateOfType<_ExerciseLogPanelState>() == this;
+    if (mounted && typing != _typing) setState(() => _typing = typing);
+  }
 
   /// Whether the set table has a weight column at all.
   ///
@@ -162,27 +194,43 @@ class _ExerciseLogPanelState extends State<ExerciseLogPanel> {
                 padding: const EdgeInsets.all(14),
                 child: Row(
                   children: [
-                    InkWell(
-                      key: Key('logpanel.demo.${exercise.exerciseId}'),
-                      onTap: widget.onOpenDemo,
-                      borderRadius: BorderRadius.circular(FsRadius.md),
-                      child: ExerciseThumb(
-                        size: 54,
-                        radius: FsRadius.md,
-                        baseUrl: widget.baseUrl,
-                        thumbnailUrl: exercise.thumbnailUrl,
-                        equipment: exercise.equipment,
-                        // The artwork is the way into the demo, so it says so.
-                        overlay: Container(
-                          padding: const EdgeInsets.all(5),
-                          decoration: BoxDecoration(
-                            color: t.bg.withValues(alpha: 0.55),
-                            shape: BoxShape.circle,
-                          ),
-                          child: Icon(
-                            Icons.play_arrow,
-                            size: 16,
-                            color: widget.onOpenDemo == null ? t.text3 : t.text,
+                    // The movement stays in view while logging: the tile plays
+                    // the demo's own animation (72 dp, big enough to read the
+                    // shape of it), and a tap still opens the full demo.
+                    Semantics(
+                      container: true,
+                      button: true,
+                      enabled: widget.onOpenDemo != null,
+                      label: 'Watch how to do ${exercise.name}',
+                      child: InkWell(
+                        key: Key('logpanel.demo.${exercise.exerciseId}'),
+                        onTap: widget.onOpenDemo,
+                        borderRadius: BorderRadius.circular(FsRadius.md),
+                        child: ExcludeSemantics(
+                          child: ExerciseThumb(
+                            size: 72,
+                            radius: FsRadius.md,
+                            baseUrl: widget.baseUrl,
+                            thumbnailUrl: exercise.thumbnailUrl,
+                            animationUrl: widget.animationUrl,
+                            animate: !_typing,
+                            equipment: exercise.equipment,
+                            // The artwork is the way into the demo, so it says
+                            // so -- in a corner, clear of the movement.
+                            overlayAlignment: Alignment.bottomRight,
+                            overlay: Container(
+                              margin: const EdgeInsets.all(4),
+                              padding: const EdgeInsets.all(3),
+                              decoration: BoxDecoration(
+                                color: t.bg.withValues(alpha: 0.7),
+                                shape: BoxShape.circle,
+                              ),
+                              child: Icon(
+                                Icons.open_in_full,
+                                size: 13,
+                                color: widget.onOpenDemo == null ? t.text3 : t.text,
+                              ),
+                            ),
                           ),
                         ),
                       ),
@@ -285,9 +333,15 @@ class _ExerciseLogPanelState extends State<ExerciseLogPanel> {
                           if (showWeight) ...[
                             Expanded(
                               child: Center(
-                                child: FsUnitToggle(
-                                  value: widget.unit,
-                                  onChanged: widget.onUnitChanged,
+                                // At 320 dp with large text the toggle is a
+                                // couple of pixels wider than its column;
+                                // shrink it there rather than overflow.
+                                child: FittedBox(
+                                  fit: BoxFit.scaleDown,
+                                  child: FsUnitToggle(
+                                    value: widget.unit,
+                                    onChanged: widget.onUnitChanged,
+                                  ),
                                 ),
                               ),
                             ),

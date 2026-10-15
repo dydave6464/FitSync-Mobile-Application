@@ -6,7 +6,7 @@ import '../../../core/theme.dart';
 import '../../../core/units.dart';
 import '../../../core/widgets/fs_kit.dart';
 import '../../exercises/presentation/providers.dart'
-    show exerciseRepositoryProvider;
+    show exerciseDetailProvider, exerciseRepositoryProvider;
 import '../../exercises/presentation/exercise_list_screen.dart'
     show describeError;
 import '../../plans/domain/workout_plan.dart';
@@ -973,6 +973,14 @@ class _SessionLoggerScreenState extends ConsumerState<SessionLoggerScreen> {
                             baseUrl: ref
                                 .watch(exerciseRepositoryProvider)
                                 .baseUrl,
+                            // The demo stage fetched this exercise's detail on
+                            // the way in and the provider keeps it, so this is
+                            // a cache read: the tile plays the GIF the stage
+                            // already loaded. Null until it lands (still tile).
+                            animationUrl: ref
+                                .watch(exerciseDetailProvider(exercise.exerciseId))
+                                .value
+                                ?.animationUrl,
                             onUndoSet: (setNumber) async {
                               final messenger = ScaffoldMessenger.of(context);
                               try {
