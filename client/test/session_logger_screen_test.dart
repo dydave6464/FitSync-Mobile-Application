@@ -7,6 +7,7 @@ import 'package:flutter_test/flutter_test.dart';
 
 import 'package:fitsync/core/api_exception.dart';
 import 'package:fitsync/core/theme.dart';
+import 'package:fitsync/core/token_store.dart';
 import 'package:fitsync/core/units.dart';
 import 'package:fitsync/features/exercises/domain/exercise.dart';
 import 'package:fitsync/features/exercises/domain/exercise_cues.dart';
@@ -17,12 +18,14 @@ import 'package:fitsync/features/plans/domain/workout_plan.dart';
 import 'package:fitsync/features/profile/domain/profile.dart';
 import 'package:fitsync/features/profile/presentation/providers.dart';
 import 'package:fitsync/features/plans/presentation/providers.dart';
+import 'package:fitsync/features/sessions/data/rest_alerts.dart';
 import 'package:fitsync/features/sessions/domain/active_session.dart';
 import 'package:fitsync/features/sessions/presentation/providers.dart';
 import 'package:fitsync/features/sessions/presentation/session_logger_screen.dart';
 import 'package:fitsync/features/sessions/presentation/widgets/rest_timer.dart';
 import 'package:fitsync/features/sessions/presentation/widgets/set_row.dart';
 
+import 'helpers/fake_rest_alerts.dart';
 import 'helpers/fake_training_settings.dart';
 
 /// Records haptic calls, which go to the platform channel.
@@ -42,6 +45,29 @@ List<String> _recordHaptics(WidgetTester tester) {
     ),
   );
   return calls;
+}
+
+/// The order a phone reports going away: locked, or the app switched.
+Future<void> _background(WidgetTester tester) async {
+  for (final state in [
+    AppLifecycleState.inactive,
+    AppLifecycleState.hidden,
+    AppLifecycleState.paused,
+  ]) {
+    tester.binding.handleAppLifecycleStateChanged(state);
+  }
+  await tester.pump();
+}
+
+Future<void> _foreground(WidgetTester tester) async {
+  for (final state in [
+    AppLifecycleState.hidden,
+    AppLifecycleState.inactive,
+    AppLifecycleState.resumed,
+  ]) {
+    tester.binding.handleAppLifecycleStateChanged(state);
+  }
+  await tester.pump();
 }
 
 const _plan = WorkoutPlan(
@@ -440,6 +466,11 @@ Future<FakeSessionController> _pump(
   // The saved rest between sets. Every test gets the store, since the logger
   // reads it on its first frame; a test that cares passes its own.
   FakeTrainingSettings? training,
+  // The phone's notifications for the rest alert. Every test gets a fake --
+  // granted, so the first rest asks nothing -- and an in-memory store, so no
+  // test touches a platform channel.
+  FakeRestAlertScheduler? alerts,
+  RestAlertStore? alertStore,
 }) async {
   final controller = FakeSessionController(session ?? _session());
 
@@ -471,6 +502,12 @@ Future<FakeSessionController> _pump(
         if (plans != null) planRepositoryProvider.overrideWithValue(plans),
         trainingSettingsRepositoryProvider.overrideWithValue(
           training ?? FakeTrainingSettings(),
+        ),
+        restAlertSchedulerProvider.overrideWithValue(
+          alerts ?? FakeRestAlertScheduler(),
+        ),
+        restAlertStoreProvider.overrideWithValue(
+          alertStore ?? RestAlertStore(backing: InMemorySecureStore()),
         ),
         // Live for every test in this file: the demo stage reads this too, and
         // an unstubbed fetch would hang pumpAndSettle. `cues` lets one test
@@ -543,6 +580,8 @@ Future<FakeSessionController> _pumpLogging(
   List<Map<String, dynamic>>? patches,
   WorkoutPlan? plan = _plan,
   FakeTrainingSettings? training,
+  FakeRestAlertScheduler? alerts,
+  RestAlertStore? alertStore,
 }) async {
   final controller = await _pump(
     tester,
@@ -551,6 +590,8 @@ Future<FakeSessionController> _pumpLogging(
     patches: patches,
     plan: plan,
     training: training,
+    alerts: alerts,
+    alertStore: alertStore,
   );
   await tester.tap(find.byKey(const Key('logger.primary')));
   await tester.pumpAndSettle();
@@ -2622,6 +2663,152 @@ void main() {
         tester.widget<Text>(find.byKey(const Key('rest.remaining'))).data,
         '1:30',
       );
+    });
+  });
+
+  group('the rest alert', () {
+    testWidgets('going away mid-rest schedules one alert for its end', (
+      tester,
+    ) async {
+      final alerts = FakeRestAlertScheduler();
+      await _pumpLogging(tester, alerts: alerts);
+      final started = tester.binding.clock.now();
+      await tester.tap(find.byKey(const Key('logger.primary')));
+      await tester.pump();
+
+      await _background(tester);
+
+      expect(alerts.scheduled, hasLength(1));
+      expect(
+        alerts.scheduled.single.at,
+        started.add(const Duration(seconds: 90)),
+      );
+      expect(alerts.scheduled.single.title, 'Rest over');
+      expect(
+        alerts.scheduled.single.body,
+        'Next: set 2 of ${_plan.exercises.first.name}',
+      );
+    });
+
+    testWidgets('the alert names the exercise on screen', (tester) async {
+      final alerts = FakeRestAlertScheduler();
+      await _pumpLogging(tester, alerts: alerts);
+      await tester.tap(find.byKey(const Key('logger.primary')));
+      await tester.pump();
+
+      // The rest carries across exercises, so the alert has to follow the
+      // move rather than keep the body it would have had at the set.
+      await tester.tap(find.byKey(const Key('logger.position')));
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 400));
+      await tester.tap(find.byKey(const Key('jump.102')));
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 400));
+
+      await _background(tester);
+
+      expect(alerts.scheduled, hasLength(1));
+      expect(
+        alerts.scheduled.single.body,
+        'Next: set 1 of ${_plan.exercises[1].name}',
+      );
+    });
+
+    testWidgets('coming back withdraws it', (tester) async {
+      final alerts = FakeRestAlertScheduler();
+      await _pumpLogging(tester, alerts: alerts);
+      await tester.tap(find.byKey(const Key('logger.primary')));
+      await tester.pump();
+      await _background(tester);
+      final cancelsBefore = alerts.cancels;
+
+      await _foreground(tester);
+
+      expect(alerts.cancels, greaterThan(cancelsBefore));
+      expect(alerts.scheduled, hasLength(1));
+    });
+
+    testWidgets('no alert without a rest running', (tester) async {
+      final alerts = FakeRestAlertScheduler();
+      await _pumpLogging(tester, alerts: alerts);
+
+      await _background(tester);
+
+      expect(alerts.scheduled, isEmpty);
+    });
+
+    testWidgets('no alert when switched off', (tester) async {
+      final alerts = FakeRestAlertScheduler();
+      final store = RestAlertStore(backing: InMemorySecureStore());
+      await store.setEnabled(false);
+      await _pumpLogging(tester, alerts: alerts, alertStore: store);
+      await tester.tap(find.byKey(const Key('logger.primary')));
+      await tester.pump();
+
+      await _background(tester);
+
+      expect(alerts.scheduled, isEmpty);
+    });
+
+    testWidgets('no alert without permission', (tester) async {
+      final alerts = FakeRestAlertScheduler(granted: false);
+      final store = RestAlertStore(backing: InMemorySecureStore());
+      await store.markAsked();
+      await _pumpLogging(tester, alerts: alerts, alertStore: store);
+      await tester.tap(find.byKey(const Key('logger.primary')));
+      await tester.pump();
+
+      await _background(tester);
+
+      expect(alerts.scheduled, isEmpty);
+    });
+
+    testWidgets(
+      'a rest that ran out while away shows "Rest over" on return, no buzz',
+      (tester) async {
+        final haptics = _recordHaptics(tester);
+        await _pumpLogging(tester);
+        await tester.tap(find.byKey(const Key('logger.primary')));
+        await tester.pump();
+        await _background(tester);
+
+        await tester.pump(const Duration(seconds: 120));
+        await _foreground(tester);
+
+        expect(find.byKey(const Key('rest.over')), findsOneWidget);
+        expect(haptics, isEmpty);
+      },
+    );
+
+    testWidgets('the first rest asks for permission, once per phone', (
+      tester,
+    ) async {
+      final alerts = FakeRestAlertScheduler(granted: false);
+      final store = RestAlertStore(backing: InMemorySecureStore());
+      await _pumpLogging(tester, alerts: alerts, alertStore: store);
+
+      await tester.tap(find.byKey(const Key('logger.primary')));
+      await tester.pump();
+      await tester.pump();
+      expect(alerts.requests, 1);
+      expect(await store.asked(), isTrue);
+
+      // The next set: no second prompt.
+      await tester.tap(find.byKey(const Key('logger.primary')));
+      await tester.pump();
+      await tester.pump();
+      expect(alerts.requests, 1);
+    });
+
+    testWidgets('never asks when permission is already there', (tester) async {
+      final alerts = FakeRestAlertScheduler();
+      await _pumpLogging(tester, alerts: alerts);
+
+      await tester.tap(find.byKey(const Key('logger.primary')));
+      await tester.pump();
+      await tester.pump();
+
+      expect(alerts.requests, 0);
     });
   });
 }

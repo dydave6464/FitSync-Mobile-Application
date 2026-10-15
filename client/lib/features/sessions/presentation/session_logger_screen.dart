@@ -17,6 +17,7 @@ import '../../plans/domain/workout_plan.dart';
 import '../../plans/presentation/add_to_plan_sheet.dart';
 import '../../plans/presentation/providers.dart';
 import '../../profile/presentation/providers.dart';
+import '../data/rest_alerts.dart';
 import '../domain/active_session.dart';
 import '../domain/encouragement.dart';
 import '../domain/rest_period.dart';
@@ -56,7 +57,8 @@ enum _LoggerStage { demo, logging }
 /// neither call site writes it out.
 String _positionLabel(int index, int count) => 'Exercise ${index + 1} / $count';
 
-class _SessionLoggerScreenState extends ConsumerState<SessionLoggerScreen> {
+class _SessionLoggerScreenState extends ConsumerState<SessionLoggerScreen>
+    with WidgetsBindingObserver {
   /// Which exercise is on screen.
   ///
   /// Read through a clamp rather than corrected on write: the active plan can
@@ -86,6 +88,84 @@ class _SessionLoggerScreenState extends ConsumerState<SessionLoggerScreen> {
   bool _restOver = false;
   Timer? _restOverTimer;
 
+  /// Whether the logger is on screen, as the app lifecycle reports it. Away,
+  /// the rest's end belongs to the phone's notification, not to a buzz
+  /// nobody feels.
+  bool _appVisible = true;
+
+  /// The alert's text, from the exercise on screen. Set in build rather than
+  /// as each rest starts: a rest carries across exercises, and a body fixed
+  /// at the set would name an exercise the user has already left.
+  String _restAlertBody = 'Time for your next exercise.';
+
+  /// Read once, in initState: dispose cancels through it, and a first
+  /// `ref.read` during dispose is not allowed.
+  late final RestAlertScheduler _alerts;
+
+  @override
+  void initState() {
+    super.initState();
+    _alerts = ref.read(restAlertSchedulerProvider);
+    WidgetsBinding.instance.addObserver(this);
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    switch (state) {
+      case AppLifecycleState.hidden:
+      case AppLifecycleState.paused:
+        // Hidden and then paused: one alert, scheduled on the first.
+        if (!_appVisible) return;
+        _appVisible = false;
+        unawaited(_scheduleRestAlert());
+      case AppLifecycleState.resumed:
+        _appVisible = true;
+        unawaited(_alerts.cancel());
+        // A rest that ran out while away ends now: shown, not buzzed -- the
+        // notification already said so.
+        final rest = _rest;
+        if (rest != null && rest.isOverAt(_now()) && mounted) {
+          setState(() => _endRest(ranOut: true));
+        } else if (rest != null) {
+          _publishRest();
+        }
+      case AppLifecycleState.inactive:
+      case AppLifecycleState.detached:
+        break;
+    }
+  }
+
+  /// One notification for the moment the rest ends, while the phone is away.
+  /// Re-checked after every wait: coming back can land in between, and an
+  /// alert scheduled after that would fire at someone looking at the screen.
+  Future<void> _scheduleRestAlert() async {
+    final rest = _rest;
+    if (rest == null || rest.isOverAt(_now())) return;
+    final enabled = await ref.read(restAlertEnabledProvider.future);
+    if (!enabled || _appVisible || _rest != rest) return;
+    if (!await _alerts.permissionGranted()) return;
+    if (_appVisible || _rest != rest) return;
+    await _alerts.schedule(
+      at: rest.endsAt,
+      title: 'Rest over',
+      body: _restAlertBody,
+    );
+    if (_appVisible || _rest != rest) await _alerts.cancel();
+  }
+
+  /// The first rest is when an alert first makes sense, so it is where the
+  /// phone's permission prompt appears -- once per phone. On an iPhone a "no"
+  /// is final, and asking again on every rest would only nag; the sheet's
+  /// switch points to the phone's settings instead.
+  Future<void> _askRestAlertPermissionOnce() async {
+    final store = ref.read(restAlertStoreProvider);
+    final enabled = await ref.read(restAlertEnabledProvider.future);
+    if (!enabled || await _alerts.permissionGranted()) return;
+    if (await store.asked()) return;
+    await store.markAsked();
+    await _alerts.requestPermission();
+  }
+
   DateTime _now() => ref.read(restNowProvider)();
 
   void _startRest(int seconds) {
@@ -106,6 +186,9 @@ class _SessionLoggerScreenState extends ConsumerState<SessionLoggerScreen> {
   void _onRestTick() {
     final rest = _rest;
     if (rest == null || !mounted) return;
+    // Away, nothing to repaint and nobody to buzz: a rest that runs out in
+    // the meantime is ended on the way back (didChangeAppLifecycleState).
+    if (!_appVisible) return;
     if (rest.isOverAt(_now())) {
       setState(() => _endRest(ranOut: true));
       _signalRestOver();
@@ -207,6 +290,8 @@ class _SessionLoggerScreenState extends ConsumerState<SessionLoggerScreen> {
     _restTicker?.cancel();
     _restOverTimer?.cancel();
     _restReading.dispose();
+    WidgetsBinding.instance.removeObserver(this);
+    unawaited(_alerts.cancel());
     super.dispose();
   }
 
@@ -908,6 +993,13 @@ class _SessionLoggerScreenState extends ConsumerState<SessionLoggerScreen> {
     }
     _unitOnScreen = unit;
     final exercise = exercises[index];
+    // The rest alert speaks of the exercise on screen, whichever one the rest
+    // was started from. A plain assignment, like [_lastSeenSession]: nothing
+    // drawn depends on it.
+    final next = _activeSetNumber(exercise, session);
+    _restAlertBody = next != null
+        ? 'Next: set $next of ${exercise.name}'
+        : 'Time for your next exercise.';
     final isLast = index == exercises.length - 1;
     final encouragement = encouragementFor(
       exercises: exercises,
@@ -1158,7 +1250,9 @@ class _SessionLoggerScreenState extends ConsumerState<SessionLoggerScreen> {
                           // default changed in the sheet lands on the next
                           // rest rather than rewinding the one already
                           // counting.
-                          if (mounted) setState(() => _startRest(restSeconds));
+                          if (!mounted) return;
+                          setState(() => _startRest(restSeconds));
+                          unawaited(_askRestAlertPermissionOnce());
                         },
                         // The next exercise opens on its demo, the same as
                         // the first one did.
