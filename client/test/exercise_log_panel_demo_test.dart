@@ -94,6 +94,10 @@ void main() {
     const gif = '/storage/exercises/101/anim.gif';
     final animation = find.byKey(const ValueKey('thumb.animation'));
 
+    bool ticking(WidgetTester tester) => tester
+        .widget<TickerMode>(find.byKey(const Key('logpanel.demo.ticker')))
+        .enabled;
+
     Widget panel(SetDrafts drafts, {VoidCallback? onOpenDemo}) =>
         ExerciseLogPanel(
           exercise: _exercise,
@@ -123,21 +127,62 @@ void main() {
     testWidgets('freezes while a set field is being typed into', (
       tester,
     ) async {
-      bool ticking() => tester
-          .widget<TickerMode>(find.byKey(const Key('logpanel.demo.ticker')))
-          .enabled;
-
       await tester.pumpWidget(_host(panel(_drafts(tester))));
-      expect(ticking(), isTrue);
+      expect(ticking(tester), isTrue);
 
       await tester.tap(find.byType(TextField).first);
       await tester.pump();
-      expect(ticking(), isFalse);
+      expect(ticking(tester), isFalse);
       expect(animation, findsOneWidget);
 
       FocusManager.instance.primaryFocus?.unfocus();
       await tester.pump();
-      expect(ticking(), isTrue);
+      expect(ticking(tester), isTrue);
+    });
+
+    // A phone's text field keeps the cursor when a finger taps elsewhere
+    // (Flutter only lets go for a mouse), so the tile stayed frozen with the
+    // keyboard up until it was closed some other way -- and the number pad
+    // on an iPhone has no key to close it.
+    testWidgets('a tap away from the fields lets go of them, and the tile '
+        'plays again', (tester) async {
+      await tester.pumpWidget(_host(panel(_drafts(tester))));
+      await tester.tap(find.byKey(const Key('set.1.reps')));
+      await tester.pump();
+      expect(ticking(tester), isFalse);
+
+      await tester.tap(find.text('Goblet squat'));
+      await tester.pump();
+
+      expect(tester.testTextInput.isVisible, isFalse);
+      expect(ticking(tester), isTrue);
+    });
+
+    // Going from one box to the next is still typing: the keyboard stays up
+    // and the tile stays still the whole way -- checked with the finger still
+    // down too, where a release-then-refocus would flash the keyboard shut.
+    testWidgets('moving from the weight box to the reps box keeps typing', (
+      tester,
+    ) async {
+      await tester.pumpWidget(_host(panel(_drafts(tester))));
+      await tester.tap(find.byKey(const Key('set.1.weight')));
+      await tester.pump();
+      tester.testTextInput.log.clear();
+
+      final finger = await tester.startGesture(
+        tester.getCenter(find.byKey(const Key('set.1.reps'))),
+      );
+      await tester.pump();
+      expect(tester.testTextInput.isVisible, isTrue);
+      expect(ticking(tester), isFalse);
+      await finger.up();
+      await tester.pump();
+
+      expect(
+        tester.testTextInput.log.where((c) => c.method == 'TextInput.hide'),
+        isEmpty,
+      );
+      expect(ticking(tester), isFalse);
     });
 
     testWidgets('says what it opens, and still opens the demo', (tester) async {

@@ -69,6 +69,15 @@ class SetRow extends StatelessWidget {
   /// Reopens a stored set for editing. Null leaves the row inert.
   final VoidCallback? onReopen;
 
+  /// A touch anywhere but a text field -- the start of a scroll included --
+  /// takes the cursor out of this one, which closes the keyboard and lets
+  /// the tile play again. Flutter does that only for a mouse: a finger on a
+  /// phone left the field focused, and the iPhone number pad has no key to
+  /// close it. Another field is not "outside" -- text fields share a tap
+  /// region -- so moving from weight to reps keeps the keyboard up.
+  static void _letGo(PointerDownEvent event) =>
+      FocusManager.instance.primaryFocus?.unfocus();
+
   @override
   Widget build(BuildContext context) {
     final t = context.fs;
@@ -145,6 +154,7 @@ class SetRow extends StatelessWidget {
                     key: Key('set.$setNumber.weight'),
                     controller: drafts.weight(setNumber),
                     enabled: editable,
+                    onTapOutside: _letGo,
                     textAlign: TextAlign.center,
                     keyboardType: const TextInputType.numberWithOptions(
                       decimal: true,
@@ -175,6 +185,7 @@ class SetRow extends StatelessWidget {
                   key: Key('set.$setNumber.reps'),
                   controller: drafts.reps(setNumber),
                   enabled: editable,
+                  onTapOutside: _letGo,
                   textAlign: TextAlign.center,
                   keyboardType: TextInputType.number,
                   inputFormatters: [
