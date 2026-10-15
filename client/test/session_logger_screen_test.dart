@@ -629,20 +629,24 @@ void main() {
   // The set table's tile plays the animation the demo stage already fetched
   // (exerciseDetailProvider), joined to the same base URL, so it is the
   // cached image rather than a second download.
-  testWidgets('the set table tile plays the exercise animation', (tester) async {
+  testWidgets('the set table tile plays the exercise animation', (
+    tester,
+  ) async {
     await _pump(
       tester,
       session: _manualSession,
       plan: null,
-      detail: (id) => Future.value(ExerciseDetail(
-        exerciseId: id,
-        name: 'Cable fly',
-        muscleGroup: 'pectorals',
-        equipment: null,
-        thumbnailUrl: null,
-        animationUrl: '/storage/exercises/$id/anim.gif',
-        cues: const [],
-      )),
+      detail: (id) => Future.value(
+        ExerciseDetail(
+          exerciseId: id,
+          name: 'Cable fly',
+          muscleGroup: 'pectorals',
+          equipment: null,
+          thumbnailUrl: null,
+          animationUrl: '/storage/exercises/$id/anim.gif',
+          cues: const [],
+        ),
+      ),
     );
     // The URL the demo stage loads -- the one the image cache now holds.
     final demoUrls = tester
@@ -659,7 +663,10 @@ void main() {
 
     final animation = find.byKey(const ValueKey('thumb.animation'));
     expect(animation, findsOneWidget);
-    expect((tester.widget<Image>(animation).image as NetworkImage).url, demoUrls.single);
+    expect(
+      (tester.widget<Image>(animation).image as NetworkImage).url,
+      demoUrls.single,
+    );
   });
 
   // The starting-weight tip is for an exercise with no history. "No history"
@@ -668,7 +675,9 @@ void main() {
   group('the first-time tip', () {
     final tip = find.byKey(const Key('logpanel.firstTime'));
 
-    testWidgets('shows when last-performance has no entry for the exercise', (tester) async {
+    testWidgets('shows when last-performance has no entry for the exercise', (
+      tester,
+    ) async {
       await _pumpLogging(tester, session: _manualSession, plan: null);
 
       expect(tip, findsOneWidget);
@@ -692,7 +701,9 @@ void main() {
       expect(tip, findsNothing);
     });
 
-    testWidgets('stays hidden while last-performance is still loading', (tester) async {
+    testWidgets('stays hidden while last-performance is still loading', (
+      tester,
+    ) async {
       final gate = Completer<Map<int, LastPerformance>>();
       await _pump(tester, session: _manualSession, plan: null, lastGate: gate);
       await tester.tap(find.byKey(const Key('logger.primary')));

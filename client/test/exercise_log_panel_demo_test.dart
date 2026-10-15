@@ -88,21 +88,22 @@ void main() {
     },
   );
 
-  // The teacher's request: the movement stays in view while logging. The
-  // tile plays the same animation the demo stage already loaded.
+  // The movement stays in view while logging: the tile plays the same
+  // animation the demo stage already loaded.
   group('the animated tile', () {
     const gif = '/storage/exercises/101/anim.gif';
     final animation = find.byKey(const ValueKey('thumb.animation'));
 
-    Widget panel(SetDrafts drafts, {VoidCallback? onOpenDemo}) => ExerciseLogPanel(
-      exercise: _exercise,
-      session: _session(),
-      drafts: drafts,
-      onUndoSet: (_) async {},
-      onOpenDemo: onOpenDemo ?? () {},
-      baseUrl: 'http://test.local',
-      animationUrl: gif,
-    );
+    Widget panel(SetDrafts drafts, {VoidCallback? onOpenDemo}) =>
+        ExerciseLogPanel(
+          exercise: _exercise,
+          session: _session(),
+          drafts: drafts,
+          onUndoSet: (_) async {},
+          onOpenDemo: onOpenDemo ?? () {},
+          baseUrl: 'http://test.local',
+          animationUrl: gif,
+        );
 
     testWidgets('plays the animation at 72 dp', (tester) async {
       await tester.pumpWidget(_host(panel(_drafts(tester))));
@@ -115,26 +116,36 @@ void main() {
       expect(tester.getSize(find.byType(ExerciseThumb)), const Size(72, 72));
     });
 
-    // Typing a number with a loop moving beside the field pulls the eye; the
-    // tile holds still while one of the panel's fields has focus (the
-    // keyboard is up) and plays again once it is dismissed.
-    testWidgets('holds still while a set field is being typed into', (tester) async {
+    // Typing a number with a loop moving beside the field pulls the eye, so
+    // the tile freezes in place while one of the panel's fields has focus
+    // (the keyboard is up) and plays again once it is dismissed. Frozen, not
+    // swapped for the still picture: a swap can flash blank on first focus.
+    testWidgets('freezes while a set field is being typed into', (
+      tester,
+    ) async {
+      bool ticking() => tester
+          .widget<TickerMode>(find.byKey(const Key('logpanel.demo.ticker')))
+          .enabled;
+
       await tester.pumpWidget(_host(panel(_drafts(tester))));
-      expect(animation, findsOneWidget);
+      expect(ticking(), isTrue);
 
       await tester.tap(find.byType(TextField).first);
       await tester.pump();
-      expect(animation, findsNothing);
+      expect(ticking(), isFalse);
+      expect(animation, findsOneWidget);
 
       FocusManager.instance.primaryFocus?.unfocus();
       await tester.pump();
-      expect(animation, findsOneWidget);
+      expect(ticking(), isTrue);
     });
 
     testWidgets('says what it opens, and still opens the demo', (tester) async {
       var opened = false;
       final handle = tester.ensureSemantics();
-      await tester.pumpWidget(_host(panel(_drafts(tester), onOpenDemo: () => opened = true)));
+      await tester.pumpWidget(
+        _host(panel(_drafts(tester), onOpenDemo: () => opened = true)),
+      );
 
       expect(
         tester.getSemantics(_demoButton),
@@ -148,16 +159,22 @@ void main() {
       handle.dispose();
     });
 
-    testWidgets('with no demo to open, the tile is announced as disabled', (tester) async {
+    testWidgets('with no demo to open, the tile is announced as disabled', (
+      tester,
+    ) async {
       final handle = tester.ensureSemantics();
-      await tester.pumpWidget(_host(ExerciseLogPanel(
-        exercise: _exercise,
-        session: _session(),
-        drafts: _drafts(tester),
-        onUndoSet: (_) async {},
-        baseUrl: 'http://test.local',
-        animationUrl: gif,
-      )));
+      await tester.pumpWidget(
+        _host(
+          ExerciseLogPanel(
+            exercise: _exercise,
+            session: _session(),
+            drafts: _drafts(tester),
+            onUndoSet: (_) async {},
+            baseUrl: 'http://test.local',
+            animationUrl: gif,
+          ),
+        ),
+      );
 
       expect(
         tester.getSemantics(_demoButton),
@@ -171,13 +188,20 @@ void main() {
       tester.view.devicePixelRatio = 1;
       addTearDown(tester.view.reset);
 
-      await tester.pumpWidget(MaterialApp(
-        theme: fsLightTheme(),
-        home: MediaQuery(
-          data: const MediaQueryData(size: Size(320, 640), textScaler: TextScaler.linear(1.6)),
-          child: Scaffold(body: SingleChildScrollView(child: panel(_drafts(tester)))),
+      await tester.pumpWidget(
+        MaterialApp(
+          theme: fsLightTheme(),
+          home: MediaQuery(
+            data: const MediaQueryData(
+              size: Size(320, 640),
+              textScaler: TextScaler.linear(1.6),
+            ),
+            child: Scaffold(
+              body: SingleChildScrollView(child: panel(_drafts(tester))),
+            ),
+          ),
         ),
-      ));
+      );
 
       expect(tester.takeException(), isNull);
       expect(animation, findsOneWidget);

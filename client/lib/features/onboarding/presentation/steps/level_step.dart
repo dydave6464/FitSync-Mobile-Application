@@ -52,14 +52,16 @@ const _levels = <({String value, String label})>[
 ];
 
 /// What the chosen level does to the plan (ml/app/rules/parameters.py), in
-/// words rather than numbers: the numbers also depend on the goal, and a copy
-/// of them here would drift from the generator. A skipped level is planned as
-/// a beginner, which is why that is the suggestion.
+/// words rather than numbers: the numbers also depend on the goal -- New and
+/// Beginner both get 2 sets and 45 minutes for most goals -- and a copy of
+/// them here would drift from the generator. A skipped level is planned as a
+/// beginner, which is why that is the suggestion. No pointer to Settings:
+/// this step is reused as the Settings editor.
 String _levelHint(String? level) => switch (level) {
-  'new' => 'The gentlest start: 2 sets per exercise, shorter sessions.',
-  'beginner' => 'One set fewer than the standard plan, sessions up to 45 minutes.',
+  'new' => 'The gentlest start: the fewest sets per exercise.',
+  'beginner' => 'One set fewer than the standard plan.',
   'intermediate' => 'The full plan for your goal.',
-  _ => 'Not sure? Pick Beginner. You can change it later in Settings.',
+  _ => 'Not sure? Pick Beginner.',
 };
 
 /// `training_location` ENUM values.

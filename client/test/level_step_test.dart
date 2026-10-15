@@ -600,9 +600,10 @@ void main() {
   group('the level hint', () {
     const hint = Key('level.hint');
     final cases = {
-      null: 'Not sure? Pick Beginner. You can change it later in Settings.',
-      'new': 'The gentlest start: 2 sets per exercise, shorter sessions.',
-      'beginner': 'One set fewer than the standard plan, sessions up to 45 minutes.',
+      // No "change it in Settings": this step is also the Settings editor.
+      null: 'Not sure? Pick Beginner.',
+      'new': 'The gentlest start: the fewest sets per exercise.',
+      'beginner': 'One set fewer than the standard plan.',
       'intermediate': 'The full plan for your goal.',
     };
     for (final entry in cases.entries) {
@@ -614,11 +615,16 @@ void main() {
       });
     }
 
-    testWidgets('is readable grey, not the faint caption colour', (tester) async {
+    testWidgets('is readable grey, not the faint caption colour', (
+      tester,
+    ) async {
       await _pump(tester);
       await tester.pumpAndSettle();
 
-      expect(tester.widget<Text>(find.byKey(hint)).style?.color, FsTokens.light.text2);
+      expect(
+        tester.widget<Text>(find.byKey(hint)).style?.color,
+        FsTokens.light.text2,
+      );
     });
   });
 }

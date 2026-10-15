@@ -973,17 +973,22 @@ class _SessionLoggerScreenState extends ConsumerState<SessionLoggerScreen> {
                             baseUrl: ref
                                 .watch(exerciseRepositoryProvider)
                                 .baseUrl,
-                            // The demo stage fetched this exercise's detail on
-                            // the way in and the provider keeps it, so this is
-                            // a cache read: the tile plays the GIF the stage
-                            // already loaded. Null until it lands (still tile).
                             // No history once last-performance has answered;
                             // while it is in flight nobody is a first-timer,
                             // so the tip cannot flash on and off.
-                            firstTime: last != null &&
+                            firstTime:
+                                last != null &&
                                 !last.containsKey(exercise.exerciseId),
+                            // The demo stage usually fetched this exercise's
+                            // detail on the way in, and the provider keeps it,
+                            // so this is normally a cache read and the tile
+                            // plays the GIF the stage already loaded. (Not
+                            // after a jump straight to a table the demo never
+                            // showed this run.) Null until it lands: still tile.
                             animationUrl: ref
-                                .watch(exerciseDetailProvider(exercise.exerciseId))
+                                .watch(
+                                  exerciseDetailProvider(exercise.exerciseId),
+                                )
                                 .value
                                 ?.animationUrl,
                             onUndoSet: (setNumber) async {

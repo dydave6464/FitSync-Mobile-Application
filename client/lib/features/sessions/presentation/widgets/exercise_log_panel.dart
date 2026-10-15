@@ -91,7 +91,7 @@ class _ExerciseLogPanelState extends State<ExerciseLogPanel> {
   bool _weightAdded = false;
 
   /// True while one of this exercise's fields has focus -- on a phone, while
-  /// the keyboard is up. The tile holds its animation still then, so a loop
+  /// the keyboard is up. The tile freezes its animation then, so a loop
   /// does not pull the eye from the number being typed. Focus, not
   /// MediaQuery.viewInsets: the logger's Scaffold strips the keyboard inset
   /// from its body, so the panel would never see it.
@@ -111,7 +111,8 @@ class _ExerciseLogPanelState extends State<ExerciseLogPanel> {
 
   void _onFocusChanged() {
     final focused = FocusManager.instance.primaryFocus?.context;
-    final typing = focused != null &&
+    final typing =
+        focused != null &&
         focused.findAncestorStateOfType<_ExerciseLogPanelState>() == this;
     if (mounted && typing != _typing) setState(() => _typing = typing);
   }
@@ -212,28 +213,37 @@ class _ExerciseLogPanelState extends State<ExerciseLogPanel> {
                         onTap: widget.onOpenDemo,
                         borderRadius: BorderRadius.circular(FsRadius.md),
                         child: ExcludeSemantics(
-                          child: ExerciseThumb(
-                            size: 72,
-                            radius: FsRadius.md,
-                            baseUrl: widget.baseUrl,
-                            thumbnailUrl: exercise.thumbnailUrl,
-                            animationUrl: widget.animationUrl,
-                            animate: !_typing,
-                            equipment: exercise.equipment,
-                            // The artwork is the way into the demo, so it says
-                            // so -- in a corner, clear of the movement.
-                            overlayAlignment: Alignment.bottomRight,
-                            overlay: Container(
-                              margin: const EdgeInsets.all(4),
-                              padding: const EdgeInsets.all(3),
-                              decoration: BoxDecoration(
-                                color: t.bg.withValues(alpha: 0.7),
-                                shape: BoxShape.circle,
-                              ),
-                              child: Icon(
-                                Icons.open_in_full,
-                                size: 13,
-                                color: widget.onOpenDemo == null ? t.text3 : t.text,
+                          // Frozen in place while a field has focus, rather
+                          // than swapped for the still: Image honours
+                          // TickerMode, and a swap can flash blank.
+                          child: TickerMode(
+                            key: const Key('logpanel.demo.ticker'),
+                            enabled: !_typing,
+                            child: ExerciseThumb(
+                              size: 72,
+                              radius: FsRadius.md,
+                              baseUrl: widget.baseUrl,
+                              thumbnailUrl: exercise.thumbnailUrl,
+                              animationUrl: widget.animationUrl,
+                              animate: true,
+                              equipment: exercise.equipment,
+                              // The artwork is the way into the demo, so it says
+                              // so -- in a corner, clear of the movement.
+                              overlayAlignment: Alignment.bottomRight,
+                              overlay: Container(
+                                margin: const EdgeInsets.all(4),
+                                padding: const EdgeInsets.all(3),
+                                decoration: BoxDecoration(
+                                  color: t.bg.withValues(alpha: 0.7),
+                                  shape: BoxShape.circle,
+                                ),
+                                child: Icon(
+                                  Icons.open_in_full,
+                                  size: 13,
+                                  color: widget.onOpenDemo == null
+                                      ? t.text3
+                                      : t.text,
+                                ),
                               ),
                             ),
                           ),
