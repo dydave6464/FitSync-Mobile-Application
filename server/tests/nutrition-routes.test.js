@@ -10,7 +10,10 @@ const { markEmailVerified } = require('../src/db/users');
 const { manilaDay } = require('../src/lib/manila-day');
 const { dailyTarget } = require('../src/lib/nutrition-target');
 
-const FS_FOOD = { externalId: 'fs-1', name: 'Mango Shake', servingDesc: '1 glass', kcal: 250, proteinG: 4, carbsG: 50, fatG: 3.5, fiberG: 5 };
+const FS_FOOD = {
+  externalId: 'fs-1', name: 'Mango Shake', servingDesc: '1 glass', kcal: 250, proteinG: 4, carbsG: 50, fatG: 3.5,
+  fiberG: 5, sugarG: 40, sodiumMg: 15,
+};
 // A serving description FatSecret could plausibly send that is longer than
 // foods.serving_desc (VARCHAR(255)); upsertFatsecretFood must cap it rather
 // than let the INSERT throw ER_DATA_TOO_LONG.
@@ -75,7 +78,7 @@ test('nutrition endpoints', async (t) => {
     assert.equal(day.date, manilaDay());
     assert.equal(day.target, null);
     assert.deepEqual(day.targetMissing, ['sex', 'dateOfBirth', 'heightCm', 'weightKg', 'activityLevel']);
-    assert.deepEqual(day.totals, { kcal: 0, proteinG: 0, carbsG: 0, fatG: 0, fiberG: 0 });
+    assert.deepEqual(day.totals, { kcal: 0, proteinG: 0, carbsG: 0, fatG: 0, fiberG: 0, sugarG: 0, sodiumMg: 0 });
     assert.deepEqual(day.meals, { breakfast: [], lunch: [], dinner: [], snack: [] });
   });
 
@@ -93,19 +96,21 @@ test('nutrition endpoints', async (t) => {
 
   await t.test('logs a catalogue food, multiplying by servings', async () => {
     const u = await freshUser();
+    await pool.query('UPDATE foods SET sugar_g = 2.5, sodium_mg = 300 WHERE food_id = ?', [ADOBO]);
     const res = await u.log({ mealType: 'lunch', servings: 1.5, food: { source: 'local', id: ADOBO } }).expect(201);
     const { entry } = res.body.data;
     assert.deepEqual({ ...entry, id: undefined }, {
       id: undefined, mealType: 'lunch', name: 'Chicken adobo', servingDesc: '1 serving (150 g)',
       servings: 1.5, kcal: 480, proteinG: 42, carbsG: 6, fatG: 31.5, fiberG: 3.75,
+      sugarG: 3.75, sodiumMg: 450,
       source: 'local', foodId: ADOBO, externalId: null,
     });
     const { day } = (await u.day().expect(200)).body.data;
     assert.equal(day.meals.lunch.length, 1);
-    assert.deepEqual(day.totals, { kcal: 480, proteinG: 42, carbsG: 6, fatG: 31.5, fiberG: 3.8 });
+    assert.deepEqual(day.totals, { kcal: 480, proteinG: 42, carbsG: 6, fatG: 31.5, fiberG: 3.8, sugarG: 3.8, sodiumMg: 450 });
   });
 
-  await t.test('a food with unknown fiber logs fiberG null, and totals are unaffected', async () => {
+  await t.test('a food with unknown fiber, sugar and sodium logs them null, and totals are unaffected', async () => {
     const u = await freshUser();
     const [plain] = await pool.query(
       `INSERT INTO foods (name, category, serving_desc, calories, protein_g, carbs_g, fat_g)
@@ -115,28 +120,39 @@ test('nutrition endpoints', async (t) => {
       mealType: 'lunch', servings: 1, food: { source: 'local', id: plain.insertId },
     }).expect(201)).body.data;
     assert.equal(entry.fiberG, null);
+    assert.equal(entry.sugarG, null);
+    assert.equal(entry.sodiumMg, null);
     const { day } = (await u.day().expect(200)).body.data;
     assert.equal(day.totals.fiberG, 0);
+    assert.equal(day.totals.sugarG, 0);
+    assert.equal(day.totals.sodiumMg, 0);
   });
 
   await t.test('logs a manual food with calories from 4-4-9', async () => {
     const u = await freshUser();
     const { entry } = (await u.log({
       mealType: 'snack', servings: 1,
-      food: { source: 'manual', name: '  Turon  ', servingDesc: '1 piece', proteinG: 2, carbsG: 34, fatG: 6, fiberG: 4 },
+      food: {
+        source: 'manual', name: '  Turon  ', servingDesc: '1 piece', proteinG: 2, carbsG: 34, fatG: 6,
+        fiberG: 4, sugarG: 4, sodiumMg: 250,
+      },
     }).expect(201)).body.data;
     assert.equal(entry.name, 'Turon');
-    assert.equal(entry.kcal, 198); // 8 + 136 + 54, unaffected by fiber
+    assert.equal(entry.kcal, 198); // 8 + 136 + 54, unaffected by fiber, sugar or sodium
     assert.equal(entry.source, 'manual');
     assert.equal(entry.foodId, null);
     assert.equal(entry.servingDesc, '1 piece');
     assert.equal(entry.fiberG, 4);
+    assert.equal(entry.sugarG, 4);
+    assert.equal(entry.sodiumMg, 250);
 
     const { entry: noFiber } = (await u.log({
       mealType: 'snack', servings: 1,
       food: { source: 'manual', name: 'Unlisted', proteinG: 2, carbsG: 34, fatG: 6 },
     }).expect(201)).body.data;
     assert.equal(noFiber.fiberG, null);
+    assert.equal(noFiber.sugarG, null);
+    assert.equal(noFiber.sodiumMg, null);
   });
 
   await t.test('a FatSecret food is fetched by id, copied once, then reused', async () => {
@@ -151,6 +167,10 @@ test('nutrition endpoints', async (t) => {
     assert.equal(b.kcal, 500);
     assert.equal(a.fiberG, 5, "snapshots the fake's fiberG");
     assert.equal(b.fiberG, 10, 'scaled by servings like any other number');
+    assert.equal(a.sugarG, 40, "snapshots the fake's sugarG");
+    assert.equal(b.sugarG, 80, 'scaled by servings like any other number');
+    assert.equal(a.sodiumMg, 15, "snapshots the fake's sodiumMg");
+    assert.equal(b.sodiumMg, 30, 'scaled by servings like any other number');
     const [[{ n }]] = await pool.query("SELECT COUNT(*) AS n FROM food_sources WHERE external_id = 'fs-1'");
     assert.equal(Number(n), 1);
   });
@@ -163,6 +183,8 @@ test('nutrition endpoints', async (t) => {
     assert.equal(entry.servingDesc.length, 255);
     assert.equal(entry.servingDesc, 'x'.repeat(255));
     assert.equal(entry.fiberG, null, 'FS_LONG_FOOD has no fiberG at all, not just a null one');
+    assert.equal(entry.sugarG, null);
+    assert.equal(entry.sodiumMg, null);
   });
 
   await t.test('FatSecret down -> 502, unknown FatSecret food -> 404', async () => {
@@ -194,6 +216,9 @@ test('nutrition endpoints', async (t) => {
     await bad({ ...ok, food: { source: 'manual', name: 'Water', proteinG: 0, carbsG: 0, fatG: 0 } }, 'food');
     await bad({ ...ok, food: { source: 'manual', name: 'X', proteinG: 501, carbsG: 0, fatG: 0 } }, 'proteinG');
     await bad({ ...ok, food: { source: 'manual', name: 'X', proteinG: 1, carbsG: 0, fatG: 0, fiberG: 501 } }, 'fiberG');
+    await bad({ ...ok, food: { source: 'manual', name: 'X', proteinG: 1, carbsG: 0, fatG: 0, sugarG: 501 } }, 'sugarG');
+    await bad({ ...ok, food: { source: 'manual', name: 'X', proteinG: 1, carbsG: 0, fatG: 0, sodiumMg: 20001 } }, 'sodiumMg');
+    await bad({ ...ok, food: { source: 'manual', name: 'X', proteinG: 1, carbsG: 0, fatG: 0, sodiumMg: 'x' } }, 'sodiumMg');
     await bad({ ...ok, food: { source: 'manual', name: 'X', servingDesc: 'y'.repeat(61), proteinG: 1, carbsG: 0, fatG: 0 } }, 'servingDesc');
     await bad({ ...ok, date: '2999-01-01' });
     await bad({ ...ok, date: '2026-02-30' });

@@ -17,6 +17,7 @@ function own(f) {
   return {
     id: f.foodId, source: 'local', externalId: null, name: f.name, servingDesc: f.servingDesc,
     kcal: f.kcal, proteinG: f.proteinG, carbsG: f.carbsG, fatG: f.fatG, fiberG: f.fiberG ?? null,
+    sugarG: f.sugarG ?? null, sodiumMg: f.sodiumMg ?? null,
   };
 }
 
@@ -24,6 +25,7 @@ function fromFatsecret(f) {
   return {
     id: null, source: 'fatsecret', externalId: f.externalId, name: f.name, servingDesc: f.servingDesc,
     kcal: f.kcal, proteinG: f.proteinG, carbsG: f.carbsG, fatG: f.fatG, fiberG: f.fiberG ?? null,
+    sugarG: f.sugarG ?? null, sodiumMg: f.sodiumMg ?? null,
   };
 }
 

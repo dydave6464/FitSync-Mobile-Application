@@ -3,6 +3,7 @@
 const MEALS = ['breakfast', 'lunch', 'dinner', 'snack'];
 const round2 = (n) => Math.round(Number(n) * 100) / 100;
 const nullable2 = (n) => (n == null ? null : round2(n));
+const nullable1 = (n) => (n == null ? null : Math.round(Number(n) * 10) / 10);
 
 function sourceOf(r) {
   if (r.food_id == null) return 'manual';
@@ -21,6 +22,8 @@ function asEntry(r) {
     carbsG: round2(r.carbs_g),
     fatG: round2(r.fat_g),
     fiberG: nullable2(r.fiber_g),
+    sugarG: nullable2(r.sugar_g),
+    sodiumMg: nullable1(r.sodium_mg),
     source: sourceOf(r),
     foodId: r.food_id,
     externalId: r.external_id || null,
@@ -28,7 +31,7 @@ function asEntry(r) {
 }
 
 const SELECT_ENTRY = `
-  SELECT m.meal_log_id, m.meal_type, m.servings, m.calories, m.protein_g, m.carbs_g, m.fat_g, m.fiber_g,
+  SELECT m.meal_log_id, m.meal_type, m.servings, m.calories, m.protein_g, m.carbs_g, m.fat_g, m.fiber_g, m.sugar_g, m.sodium_mg,
          m.food_id, COALESCE(f.name, m.custom_name) AS name,
          COALESCE(m.serving_desc, f.serving_desc) AS serving_desc, s.external_id
     FROM meal_logs m
@@ -37,14 +40,14 @@ const SELECT_ENTRY = `
 `;
 
 /// [e]: { date, mealType, servings, foodId|null, customName|null, servingDesc|null,
-/// kcal, proteinG, carbsG, fatG, fiberG|null, loggedVia } -- numbers already multiplied.
+/// kcal, proteinG, carbsG, fatG, fiberG|null, sugarG|null, sodiumMg|null, loggedVia } -- numbers already multiplied.
 async function insertEntry(pool, userId, e) {
   const [res] = await pool.query(
     `INSERT INTO meal_logs (user_id, food_id, custom_name, serving_desc, meal_type, servings,
-                            calories, protein_g, carbs_g, fat_g, fiber_g, logged_via, log_date)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+                            calories, protein_g, carbs_g, fat_g, fiber_g, sugar_g, sodium_mg, logged_via, log_date)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     [userId, e.foodId, e.customName, e.servingDesc, e.mealType, e.servings,
-      e.kcal, e.proteinG, e.carbsG, e.fatG, e.fiberG, e.loggedVia, e.date],
+      e.kcal, e.proteinG, e.carbsG, e.fatG, e.fiberG, e.sugarG, e.sodiumMg, e.loggedVia, e.date],
   );
   return res.insertId;
 }
@@ -94,9 +97,10 @@ async function listRecentFoods(pool, userId, limit = 20) {
   const [rows] = await pool.query(
     `SELECT * FROM (
        SELECT m.meal_log_id, m.created_at, m.food_id, m.custom_name, m.serving_desc AS m_serving,
-              m.servings, m.calories, m.protein_g, m.carbs_g, m.fat_g, m.fiber_g,
+              m.servings, m.calories, m.protein_g, m.carbs_g, m.fat_g, m.fiber_g, m.sugar_g, m.sodium_mg,
               f.name AS f_name, f.serving_desc AS f_serving, f.calories AS f_kcal,
-              f.protein_g AS f_protein, f.carbs_g AS f_carbs, f.fat_g AS f_fat, f.fiber_g AS f_fiber, s.external_id,
+              f.protein_g AS f_protein, f.carbs_g AS f_carbs, f.fat_g AS f_fat, f.fiber_g AS f_fiber,
+              f.sugar_g AS f_sugar, f.sodium_mg AS f_sodium, s.external_id,
               ROW_NUMBER() OVER (
                 PARTITION BY COALESCE(CONCAT('f', m.food_id), CONCAT('m', m.custom_name))
                 ORDER BY m.created_at DESC, m.meal_log_id DESC
@@ -117,7 +121,7 @@ async function listRecentFoods(pool, userId, limit = 20) {
         id: r.food_id, source: r.external_id ? 'fatsecret' : 'local', externalId: r.external_id || null,
         name: r.f_name, servingDesc: r.f_serving, kcal: r.f_kcal,
         proteinG: round2(r.f_protein), carbsG: round2(r.f_carbs), fatG: round2(r.f_fat),
-        fiberG: nullable2(r.f_fiber),
+        fiberG: nullable2(r.f_fiber), sugarG: nullable2(r.f_sugar), sodiumMg: nullable1(r.f_sodium),
       };
     }
     const n = Number(r.servings);
@@ -126,6 +130,8 @@ async function listRecentFoods(pool, userId, limit = 20) {
       kcal: Math.round(r.calories / n),
       proteinG: round2(r.protein_g / n), carbsG: round2(r.carbs_g / n), fatG: round2(r.fat_g / n),
       fiberG: r.fiber_g == null ? null : round2(r.fiber_g / n),
+      sugarG: r.sugar_g == null ? null : round2(r.sugar_g / n),
+      sodiumMg: r.sodium_mg == null ? null : Math.round((r.sodium_mg / n) * 10) / 10,
     };
   });
 }
