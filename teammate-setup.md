@@ -188,11 +188,16 @@ This service **does not reload by itself**, so restart it after changing anythin
 **Server tests**, from `server\`. They need MySQL running and use `fitsync_test`:
 
 ```powershell
-node --test --test-concurrency=1 --test-timeout=120000 "tests/**/*.test.js"
+npm test
 ```
 
-> On Windows use the command above, **not `npm test`**. The `npm test` script quotes its file pattern the Mac/Linux way, which PowerShell and cmd don't understand.
->
+The full run takes about 10 minutes. To give slow tests more time, or to run a single file, call Node directly:
+
+```powershell
+node --test --test-concurrency=1 --test-timeout=120000 "tests/**/*.test.js"
+node --test --test-concurrency=1 tests/foods-routes.test.js
+```
+
 > If one test fails with `ECONNRESET`, a foreign `403`, or `HPE_INVALID_CONSTANT` while `npm run dev` is running, that's a known clash with the running server. Run that one file again on its own.
 
 **App tests**, from `client\`:
