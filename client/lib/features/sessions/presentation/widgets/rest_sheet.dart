@@ -190,6 +190,8 @@ class _RestSheetState extends ConsumerState<RestSheet> {
 
   /// A chip is painted small; its tap area is not. The chip's own ripple
   /// still answers a tap on the chip, and this catches the band around it.
+  /// The band stays out of the semantics tree, so a screen reader stops on
+  /// the labelled chip once rather than on a blank wrapper as well.
   Widget _chipTarget({
     required Key key,
     required VoidCallback onTap,
@@ -197,6 +199,7 @@ class _RestSheetState extends ConsumerState<RestSheet> {
   }) => GestureDetector(
     key: key,
     behavior: HitTestBehavior.opaque,
+    excludeFromSemantics: true,
     onTap: onTap,
     child: ConstrainedBox(
       constraints: const BoxConstraints(minHeight: 48),
@@ -377,10 +380,21 @@ class _RestAlertRowState extends ConsumerState<_RestAlertRow> {
   bool _granted = true;
   bool _asked = false;
 
+  // "Open settings" leaves the app; on the way back the permission may have
+  // changed, so the open sheet reads it again rather than going stale.
+  late final AppLifecycleListener _lifecycle;
+
   @override
   void initState() {
     super.initState();
+    _lifecycle = AppLifecycleListener(onResume: _refresh);
     _refresh();
+  }
+
+  @override
+  void dispose() {
+    _lifecycle.dispose();
+    super.dispose();
   }
 
   Future<void> _refresh() async {

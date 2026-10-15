@@ -1,3 +1,5 @@
+import 'dart:ui' show SemanticsAction;
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -154,6 +156,34 @@ void main() {
     );
   });
 
+  // The band around a chip must not be a focus stop of its own: a screen
+  // reader should land on the chip, with its label, once.
+  testWidgets('each chip is one labelled node, not wrapped in a blank one', (
+    tester,
+  ) async {
+    final handle = tester.ensureSemantics();
+    await _open(tester);
+
+    final keys = [for (final s in restPresets) 'rest.preset.$s', 'rest.custom'];
+    for (final key in keys) {
+      final node = tester.getSemantics(
+        find.descendant(
+          of: find.byKey(Key(key)),
+          matching: find.byType(InkWell),
+        ),
+      );
+      expect(node.label, isNotEmpty, reason: key);
+      expect(node.getSemanticsData().hasAction(SemanticsAction.tap), isTrue);
+      final around = node.parent!.getSemanticsData();
+      expect(
+        around.hasAction(SemanticsAction.tap) && around.label.isEmpty,
+        isFalse,
+        reason: '$key sits inside an unlabelled tap node',
+      );
+    }
+    handle.dispose();
+  });
+
   group('the alert switch', () {
     testWidgets('is on by default, and turning it off is remembered', (
       tester,
@@ -188,6 +218,22 @@ void main() {
       );
       await tester.tap(find.byKey(const Key('rest.alert.settings')));
       expect(alerts.settingsOpened, 1);
+    });
+
+    testWidgets('drops the blocked note once allowed in the phone settings', (
+      tester,
+    ) async {
+      final alerts = FakeRestAlertScheduler(granted: false);
+      final store = RestAlertStore(backing: InMemorySecureStore());
+      await store.markAsked();
+      await _open(tester, alerts: alerts, alertStore: store);
+      expect(find.byKey(const Key('rest.alert.blocked')), findsOneWidget);
+
+      alerts.granted = true;
+      tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.resumed);
+      await tester.pumpAndSettle();
+
+      expect(find.byKey(const Key('rest.alert.blocked')), findsNothing);
     });
 
     testWidgets('switching on before ever asking asks once', (tester) async {
