@@ -977,6 +977,11 @@ class _SessionLoggerScreenState extends ConsumerState<SessionLoggerScreen> {
                             // the way in and the provider keeps it, so this is
                             // a cache read: the tile plays the GIF the stage
                             // already loaded. Null until it lands (still tile).
+                            // No history once last-performance has answered;
+                            // while it is in flight nobody is a first-timer,
+                            // so the tip cannot flash on and off.
+                            firstTime: last != null &&
+                                !last.containsKey(exercise.exerciseId),
                             animationUrl: ref
                                 .watch(exerciseDetailProvider(exercise.exerciseId))
                                 .value

@@ -21,6 +21,7 @@ class SetRow extends StatelessWidget {
     this.unit = WeightUnit.kg,
     this.showWeight = true,
     this.active = false,
+    this.repsHint = 'reps',
     this.onReopen,
   });
 
@@ -60,6 +61,10 @@ class SetRow extends StatelessWidget {
   /// Drawn in accent, which is the only thing on the table saying which row
   /// is next -- every empty row is otherwise identical.
   final bool active;
+
+  /// What the empty reps box says: the exercise's target range ("8-12") when
+  /// there is one, so the number to aim for sits where it is typed.
+  final String repsHint;
 
   /// Reopens a stored set for editing. Null leaves the row inert.
   final VoidCallback? onReopen;
@@ -166,7 +171,7 @@ class SetRow extends StatelessWidget {
                 inputFormatters: [
                   FilteringTextInputFormatter.allow(RegExp(r'^\d{0,3}')),
                 ],
-                decoration: decoration('reps'),
+                decoration: decoration(repsHint),
                 style: TextStyle(
                   fontFamily: fsMonoFamily,
                   fontSize: 14,
