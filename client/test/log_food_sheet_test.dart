@@ -7,6 +7,7 @@ import 'package:fitsync/features/nutrition/presentation/widgets/log_food_sheet.d
 const _rice = Food(source: 'local', id: 3, name: 'Steamed white rice', servingDesc: '1 cup', kcal: 205, proteinG: 4.3, carbsG: 44.5, fatG: 0.4);
 const _shake = Food(source: 'fatsecret', externalId: 'fs-1', name: 'Mango Shake', servingDesc: '1 glass', kcal: 250, proteinG: 4, carbsG: 50, fatG: 3.5);
 const _oatmeal = Food(source: 'local', id: 9, name: 'Oatmeal', servingDesc: '1 bowl', kcal: 150, proteinG: 5, carbsG: 27, fatG: 3, fiberG: 3);
+const _juice = Food(source: 'local', id: 11, name: 'Mango juice', servingDesc: '1 glass', kcal: 120, proteinG: 1, carbsG: 28, fatG: 0, sugarG: 9.7, sodiumMg: 124);
 
 Future<LogChoice?> _open(WidgetTester tester, Food food) async {
   LogChoice? result;
@@ -72,6 +73,8 @@ void main() {
     await tester.pumpAndSettle();
     await tester.tap(find.text('Dinner'));
     await tester.tap(find.byKey(const Key('servings.plus')));
+    await tester.ensureVisible(find.byKey(const Key('logSheet.log')));
+    await tester.pumpAndSettle();
     await tester.tap(find.byKey(const Key('logSheet.log')));
     await tester.pumpAndSettle();
     expect(result!.mealType, 'dinner');
@@ -130,9 +133,109 @@ void main() {
     expect(find.textContaining('Fiber 3 g'), findsOneWidget);
   });
 
-  testWidgets('the numbers line says fiber is not listed when the food has none', (tester) async {
+  testWidgets('the numbers line omits fiber when the food has none, with no "not listed" text', (tester) async {
     await _open(tester, _rice);
-    expect(find.textContaining('Fiber not listed'), findsOneWidget);
+    expect(find.textContaining('Fiber'), findsNothing);
+    expect(find.textContaining('not listed'), findsNothing);
+  });
+
+  testWidgets('the extras line shows sugar and sodium when both are known', (tester) async {
+    await _open(tester, _juice);
+    expect(find.byKey(const Key('logSheet.extras')), findsOneWidget);
+    expect(find.text('Sugar 9.7 g · Sodium 124 mg'), findsOneWidget);
+  });
+
+  testWidgets('the extras line shows only the known part when one is unknown', (tester) async {
+    await _open(tester, const Food(
+      source: 'local', id: 12, name: 'Banana', servingDesc: '1 pc', kcal: 105, proteinG: 1.3, carbsG: 27, fatG: 0.4, sugarG: 9.7,
+    ));
+    expect(find.text('Sugar 9.7 g'), findsOneWidget);
+    expect(find.textContaining('Sodium'), findsNothing);
+  });
+
+  testWidgets('there is no extras line when neither sugar nor sodium is known', (tester) async {
+    await _open(tester, _rice);
+    expect(find.byKey(const Key('logSheet.extras')), findsNothing);
+  });
+
+  testWidgets('sodium on the extras line scales with servings and groups thousands', (tester) async {
+    await _open(tester, const Food(
+      source: 'local', id: 13, name: 'Instant noodles', servingDesc: '1 pack', kcal: 380, proteinG: 8, carbsG: 51, fatG: 15, sodiumMg: 925,
+    ));
+    await tester.tap(find.byKey(const Key('servings.plus')));
+    await tester.tap(find.byKey(const Key('servings.plus')));
+    await tester.pump();
+    expect(find.text('Sodium 1,850 mg'), findsOneWidget);
+  });
+
+  testWidgets('Edit numbers shows sugar and sodium boxes prefilled when the food lists them', (tester) async {
+    await _open(tester, _juice);
+    await _editNumbers(tester);
+    expect(find.text('Sugar (g)'), findsOneWidget);
+    expect(find.text('Sodium (mg)'), findsOneWidget);
+    expect(_fieldText(tester, 'logSheet.sugar'), '9.7');
+    expect(_fieldText(tester, 'logSheet.sodium'), '124');
+  });
+
+  testWidgets('Edit numbers leaves sugar and sodium blank when the food lists neither', (tester) async {
+    await _open(tester, _rice);
+    await _editNumbers(tester);
+    expect(_fieldText(tester, 'logSheet.sugar'), '');
+    expect(_fieldText(tester, 'logSheet.sodium'), '');
+  });
+
+  testWidgets('changing only sugar logs a manual entry with the new sugar and kcal worked out from protein, carbs and fat', (tester) async {
+    final result = await _openForResult(tester, _rice);
+    await _editNumbers(tester);
+    await tester.enterText(find.descendant(of: find.byKey(const Key('logSheet.sugar')), matching: find.byType(TextField)), '12');
+    await tester.pump();
+    // 4*4.3 + 4*44.5 + 9*0.4 = 198.8 -> 199, same as any other manual entry; sugar never adds calories.
+    expect(find.text('199 kcal'), findsOneWidget);
+    await tester.ensureVisible(find.byKey(const Key('logSheet.log')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const Key('logSheet.log')));
+    await tester.pumpAndSettle();
+    final edited = result()!.edited!;
+    expect(edited.sugarG, 12);
+    expect(edited.kcal, 199);
+  });
+
+  testWidgets('clearing sodium logs it as unknown', (tester) async {
+    final result = await _openForResult(tester, _juice);
+    await _editNumbers(tester);
+    await tester.enterText(find.descendant(of: find.byKey(const Key('logSheet.sodium')), matching: find.byType(TextField)), '');
+    await tester.pump();
+    await tester.ensureVisible(find.byKey(const Key('logSheet.log')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const Key('logSheet.log')));
+    await tester.pumpAndSettle();
+    expect(result()!.edited!.sodiumMg, isNull);
+  });
+
+  testWidgets('an out-of-range sodium says so and Log stays off', (tester) async {
+    final result = await _openForResult(tester, _rice);
+    await _editNumbers(tester);
+    await tester.enterText(find.descendant(of: find.byKey(const Key('logSheet.sodium')), matching: find.byType(TextField)), '20001');
+    await tester.pump();
+    expect(find.text('Sodium must be 0–20,000 mg'), findsOneWidget);
+    await tester.ensureVisible(find.byKey(const Key('logSheet.log')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const Key('logSheet.log')));
+    await tester.pumpAndSettle();
+    expect(result(), isNull, reason: 'the sheet stays open');
+  });
+
+  testWidgets('an out-of-range sugar says so and Log stays off', (tester) async {
+    final result = await _openForResult(tester, _rice);
+    await _editNumbers(tester);
+    await tester.enterText(find.descendant(of: find.byKey(const Key('logSheet.sugar')), matching: find.byType(TextField)), '600');
+    await tester.pump();
+    expect(find.text('Each value must be 0–500 g'), findsOneWidget);
+    await tester.ensureVisible(find.byKey(const Key('logSheet.log')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const Key('logSheet.log')));
+    await tester.pumpAndSettle();
+    expect(result(), isNull, reason: 'the sheet stays open');
   });
 
   testWidgets('edited numbers are logged as your own entry, times the servings', (tester) async {
@@ -146,6 +249,8 @@ void main() {
     await tester.tap(find.byKey(const Key('servings.plus')));
     await tester.pump();
     expect(find.text('333 kcal'), findsOneWidget); // 221.6 x 1.5 = 332.4 -> per-serving 222 x 1.5 = 333
+    await tester.ensureVisible(find.byKey(const Key('logSheet.log')));
+    await tester.pumpAndSettle();
     await tester.tap(find.byKey(const Key('logSheet.log')));
     await tester.pumpAndSettle();
     final choice = result()!;
@@ -169,6 +274,8 @@ void main() {
     // must too: 4*4.3 + 4*44.5 + 9*0.4 = 198.8 -> 199, not the listed 205.
     expect(find.text('199 kcal'), findsOneWidget);
     expect(find.text('Calories worked out from protein, carbs and fat.'), findsOneWidget);
+    await tester.ensureVisible(find.byKey(const Key('logSheet.log')));
+    await tester.pumpAndSettle();
     await tester.tap(find.byKey(const Key('logSheet.log')));
     await tester.pumpAndSettle();
     final edited = result()!.edited!;
@@ -187,6 +294,8 @@ void main() {
     await tester.pump();
     // Server: 0.1449 -> 0.14 g; 4*4.3 + 4*44.5 + 9*0.14 = 196.46 -> 196 (unrounded: 196.50 -> 197).
     expect(find.text('196 kcal'), findsOneWidget);
+    await tester.ensureVisible(find.byKey(const Key('logSheet.log')));
+    await tester.pumpAndSettle();
     await tester.tap(find.byKey(const Key('logSheet.log')));
     await tester.pumpAndSettle();
     expect(result()!.edited!.kcal, 196);
@@ -239,6 +348,8 @@ void main() {
     await _editNumbers(tester);
     await tester.enterText(find.descendant(of: find.byKey(const Key('logSheet.fiber')), matching: find.byType(TextField)), '');
     await tester.pump();
+    await tester.ensureVisible(find.byKey(const Key('logSheet.log')));
+    await tester.pumpAndSettle();
     await tester.tap(find.byKey(const Key('logSheet.log')));
     await tester.pumpAndSettle();
     expect(result()!.edited!.fiberG, isNull);
@@ -247,6 +358,8 @@ void main() {
   testWidgets('opening Edit numbers without changing anything logs the original food', (tester) async {
     final result = await _openForResult(tester, _rice);
     await _editNumbers(tester);
+    await tester.ensureVisible(find.byKey(const Key('logSheet.log')));
+    await tester.pumpAndSettle();
     await tester.tap(find.byKey(const Key('logSheet.log')));
     await tester.pumpAndSettle();
     expect(result()!.edited, isNull);
@@ -258,6 +371,8 @@ void main() {
     ));
     await _editNumbers(tester);
     expect(find.text('Add some protein, carbs or fat'), findsNothing, reason: 'nothing was changed');
+    await tester.ensureVisible(find.byKey(const Key('logSheet.log')));
+    await tester.pumpAndSettle();
     await tester.tap(find.byKey(const Key('logSheet.log')));
     await tester.pumpAndSettle();
     expect(result(), isNotNull);
@@ -271,6 +386,8 @@ void main() {
     ));
     await _editNumbers(tester);
     expect(find.text('Each value must be 0–500 g'), findsNothing, reason: 'nothing was changed');
+    await tester.ensureVisible(find.byKey(const Key('logSheet.log')));
+    await tester.pumpAndSettle();
     await tester.tap(find.byKey(const Key('logSheet.log')));
     await tester.pumpAndSettle();
     expect(result(), isNotNull);
@@ -285,6 +402,8 @@ void main() {
     }
     await tester.pump();
     expect(find.text('Add some protein, carbs or fat'), findsOneWidget);
+    await tester.ensureVisible(find.byKey(const Key('logSheet.log')));
+    await tester.pumpAndSettle();
     await tester.tap(find.byKey(const Key('logSheet.log')));
     await tester.pumpAndSettle();
     expect(result(), isNull, reason: 'the sheet stays open');
@@ -296,6 +415,8 @@ void main() {
     await tester.enterText(find.descendant(of: find.byKey(const Key('logSheet.fat')), matching: find.byType(TextField)), '600');
     await tester.pump();
     expect(find.text('Each value must be 0–500 g'), findsOneWidget);
+    await tester.ensureVisible(find.byKey(const Key('logSheet.log')));
+    await tester.pumpAndSettle();
     await tester.tap(find.byKey(const Key('logSheet.log')));
     await tester.pumpAndSettle();
     expect(result(), isNull, reason: 'the sheet stays open');
@@ -307,6 +428,8 @@ void main() {
     await tester.enterText(find.descendant(of: find.byKey(const Key('logSheet.fiber')), matching: find.byType(TextField)), '600');
     await tester.pump();
     expect(find.text('Each value must be 0–500 g'), findsOneWidget);
+    await tester.ensureVisible(find.byKey(const Key('logSheet.log')));
+    await tester.pumpAndSettle();
     await tester.tap(find.byKey(const Key('logSheet.log')));
     await tester.pumpAndSettle();
     expect(result(), isNull, reason: 'the sheet stays open');
@@ -319,6 +442,8 @@ void main() {
     await tester.pump();
     expect(tester.takeException(), isNull);
     expect(find.text('Each value must be 0–500 g'), findsOneWidget);
+    await tester.ensureVisible(find.byKey(const Key('logSheet.log')));
+    await tester.pumpAndSettle();
     await tester.tap(find.byKey(const Key('logSheet.log')));
     await tester.pumpAndSettle();
     expect(result(), isNull, reason: 'the sheet stays open');
