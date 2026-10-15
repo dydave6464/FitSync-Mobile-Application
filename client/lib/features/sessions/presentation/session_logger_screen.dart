@@ -250,36 +250,23 @@ class _SessionLoggerScreenState extends ConsumerState<SessionLoggerScreen> {
     return null;
   }
 
-  /// Every move this screen makes: which exercise, which face of it, and what
-  /// that does to the rest countdown. Call it inside a setState.
+  /// Every move this screen makes: which exercise, and which face of it.
+  /// Call it inside a setState. Five paths lead here -- Start logging, Next
+  /// exercise, both halves of back, and the jump sheet.
   ///
-  /// The countdown belongs to the set table and nowhere else. Leaving the
-  /// table for a demo hides the tag, which unmounts [RestTimer] and stops the
-  /// countdown dead -- onDone can never fire, so the flag is stuck true and
-  /// its only possible future is to resurface as a fresh 90 seconds that
-  /// measured nothing. Changing exercise does the same thing to it, and a rest
-  /// between two different exercises would not mean anything anyway.
-  ///
-  /// So the clearing hangs off the move rather than off any one call site.
-  /// Five paths lead here -- Start logging, Next exercise, both halves of
-  /// back, and the jump sheet -- and a sixth added later is covered by
-  /// construction rather than by remembering. Pausing and resuming instead
-  /// would be defensible, but it is more machinery than a bar tag on one
-  /// table needs.
+  /// Moving never touches the rest: a rest is the user's, between their sets,
+  /// whichever exercise is on screen -- the walk from one station to the next
+  /// is part of it.
   ///
   /// One route does NOT come through here, and is left alone deliberately:
   /// the index clamp in build() reads [_index] against a plan that may have
   /// shrunk under a resumed session, so the exercise on screen can change
-  /// without a move having been made -- [_stage] is not reset and [_rest]
-  /// is not cleared. It needs the active plan to lose exercises while a
-  /// session against it is open, and the result is no worse than it was
-  /// before this branch, so it is written down rather than fixed.
+  /// without a move having been made -- [_stage] is not reset. It needs the
+  /// active plan to lose exercises while a session against it is open, and
+  /// the result is no worse than it was before this branch, so it is written
+  /// down rather than fixed.
   void _moveTo({int? index, required _LoggerStage stage}) {
-    if (index != null && index != _index) {
-      _index = index;
-      _endRest();
-    }
-    if (stage == _LoggerStage.demo) _endRest();
+    if (index != null) _index = index;
     _stage = stage;
   }
 
@@ -688,10 +675,9 @@ class _SessionLoggerScreenState extends ConsumerState<SessionLoggerScreen> {
   /// stage, an exercise with no sets logged yet, the empty day -- which
   /// greys the item out rather than hiding it, so the menu keeps one shape.
   ///
-  /// [restSeconds] is passed in rather than read here: the screen watches it
-  /// from its first frame, so the saved value has landed by the first rest.
-  /// Read lazily from in here, it would only start loading when the first
-  /// rest began -- and that rest would count from the fallback instead.
+  /// [restSeconds] feeds the menu's 'Rest time' label. It is passed in
+  /// rather than read here because the screen already watches it for the
+  /// rest itself, which takes its length when a set is completed.
   PreferredSizeWidget _appBar(
     FsTokens t, {
     required int restSeconds,
@@ -736,9 +722,9 @@ class _SessionLoggerScreenState extends ConsumerState<SessionLoggerScreen> {
     actions: [
       // The rest countdown is a tag up here rather than a card over the
       // content, so ticking a set does not shove the set table down.
-      // Logging stage only: the demo has no sets on it, so a countdown
-      // between sets has nothing to count between there.
-      if (_rest != null && _stage == _LoggerStage.logging) ...[
+      // On both stages: the rest carries across exercises, so the demo of
+      // the next one is exactly where it is still running.
+      if (_rest != null) ...[
         RestTimer(
           reading: _restReading,
           onOpen: () => showRestSheet(
@@ -1128,11 +1114,14 @@ class _SessionLoggerScreenState extends ConsumerState<SessionLoggerScreen> {
                             }
                             return;
                           }
+                          // The length is read here, at the set, so a
+                          // default changed in the sheet lands on the next
+                          // rest rather than rewinding the one already
+                          // counting.
                           if (mounted) setState(() => _startRest(restSeconds));
                         },
                         // The next exercise opens on its demo, the same as
-                        // the first one did, and with no rest running --
-                        // see _moveTo.
+                        // the first one did.
                         onNextExercise: () => setState(
                           () => _moveTo(
                             index: index + 1,

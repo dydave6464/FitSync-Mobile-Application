@@ -670,19 +670,15 @@ void main() {
     );
   });
 
-  testWidgets('the rest timer is not shown on the demo stage', (tester) async {
+  testWidgets('no rest tag before a set is logged', (tester) async {
     await _pump(tester, session: _manualSession, plan: null);
 
     expect(find.byType(RestTimer), findsNothing);
   });
 
-  // The same constraint with a rest actually running. The test above can only
-  // ever see a logger that has never rested, so it would pass just as well
-  // with the app bar's countdown left unguarded; this one is what the guard
-  // is for -- a set completed on the table starts the countdown, and stepping
-  // back to the demo must leave it behind rather than carry it onto a stage
-  // that has no sets on it.
-  testWidgets('a rest started on the table does not follow it onto the demo', (
+  // A rest is the user's, between their sets, whichever exercise is on
+  // screen: walking from the squat rack to the bench is part of it.
+  testWidgets('a rest started on the table keeps counting on the demo', (
     tester,
   ) async {
     await _pumpLogging(tester, session: _manualSession, plan: null);
@@ -690,27 +686,23 @@ void main() {
     await tester.enterText(find.byKey(const Key('set.1.weight')), '20');
     await tester.enterText(find.byKey(const Key('set.1.reps')), '10');
     await tester.tap(find.byKey(const Key('logger.primary')));
-    // Single frames rather than pumpAndSettle: settling runs the 90s
-    // countdown out, and a tag that left because it expired would prove
-    // nothing about the stage.
     await tester.pump();
     await tester.pump();
-    expect(find.byType(RestTimer), findsOneWidget);
+    await tester.pump(const Duration(seconds: 10));
 
     await tester.tap(find.byKey(const Key('logger.back')));
     await tester.pump();
 
     expect(find.byKey(const Key('logger.demo')), findsOneWidget);
-    expect(find.byType(RestTimer), findsNothing);
+    expect(
+      tester.widget<Text>(find.byKey(const Key('rest.remaining'))).data,
+      '1:20',
+    );
   });
 
-  // The countdown used to run continuously through an exercise change and
-  // clear itself at zero. It cannot any more: the next exercise opens on its
-  // demo, the stage guard hides the tag, RestTimer unmounts and the countdown
-  // stops dead -- so onDone never fires and the flag is stuck true. Left
-  // alone, Start logging on the next exercise raises a fresh 90 seconds over
-  // an empty set table, having rested nothing.
-  testWidgets('the rest from one exercise does not carry into the next', (
+  // The rest after the last set of an exercise is the one most worth keeping:
+  // it is the walk to the next one.
+  testWidgets('the rest after the last set carries into the next exercise', (
     tester,
   ) async {
     await _pumpLogging(
@@ -723,35 +715,31 @@ void main() {
       ),
     );
 
-    // The last set of exercise 1 starts the countdown.
     await tester.enterText(find.byKey(const Key('set.3.weight')), '20');
     await tester.enterText(find.byKey(const Key('set.3.reps')), '10');
     await tester.tap(find.byKey(const Key('logger.primary')));
     await tester.pump();
     await tester.pump();
-    expect(find.byType(RestTimer), findsOneWidget);
+    await tester.pump(const Duration(seconds: 5));
 
-    // Next exercise, then its table. Single frames throughout: settling would
-    // run the 90 seconds out and take the tag away for a reason that has
-    // nothing to do with the exercise change.
+    // Next exercise (its demo), then its table.
     await tester.tap(find.byKey(const Key('logger.primary')));
     await tester.pump();
     await tester.pump();
+    expect(find.byType(RestTimer), findsOneWidget);
     await tester.tap(find.byKey(const Key('logger.primary')));
     await tester.pump();
     await tester.pump();
 
     expect(find.byType(SetRow), findsWidgets);
-    expect(find.byType(RestTimer), findsNothing);
+    // The same rest, 5 seconds down -- not a fresh 90.
+    expect(
+      tester.widget<Text>(find.byKey(const Key('rest.remaining'))).data,
+      '1:25',
+    );
   });
 
-  // The same bug with no index change, which is why clearing the flag hangs
-  // off entering the demo rather than off moving exercise. Back from the table
-  // lands on the SAME exercise's demo, the stage guard hides the tag, the
-  // timer unmounts and the countdown stops dead -- onDone can never fire, so a
-  // flag left true resurfaces as a fresh 90 seconds the moment Start logging
-  // is tapped again, having rested nothing.
-  testWidgets('the rest does not survive stepping back to the same demo', (
+  testWidgets('stepping back and forth keeps the same rest, not a fresh one', (
     tester,
   ) async {
     await _pumpLogging(tester, session: _manualSession, plan: null);
@@ -761,11 +749,8 @@ void main() {
     await tester.tap(find.byKey(const Key('logger.primary')));
     await tester.pump();
     await tester.pump();
-    expect(find.byType(RestTimer), findsOneWidget);
+    await tester.pump(const Duration(seconds: 10));
 
-    // Back to this exercise's own demo, then forward to its table again.
-    // Single frames throughout: settling would run the 90 seconds out and the
-    // tag would be gone for a reason that has nothing to do with the stage.
     await tester.tap(find.byKey(const Key('logger.back')));
     await tester.pump();
     await tester.tap(find.byKey(const Key('logger.primary')));
@@ -773,17 +758,13 @@ void main() {
     await tester.pump();
 
     expect(find.byType(SetRow), findsWidgets);
-    expect(find.byType(RestTimer), findsNothing);
+    expect(
+      tester.widget<Text>(find.byKey(const Key('rest.remaining'))).data,
+      '1:20',
+    );
   });
 
-  // _moveTo clears the rest on an index change as well as on entering the
-  // demo, and this is the only path where those two rules come apart: a jump
-  // to an exercise that already has sets logged against it lands on the
-  // TABLE, so the demo rule never fires and the index rule is the only thing
-  // left to stop exercise 1's countdown running on exercise 2's table. Every
-  // other rest test above is satisfied by the demo rule alone -- deleting
-  // `_resting = false` from the index branch leaves all of them green.
-  testWidgets('a rest does not follow a jump onto another exercise\'s table', (
+  testWidgets("a rest follows a jump onto another exercise's table", (
     tester,
   ) async {
     await _pumpLogging(
@@ -792,24 +773,18 @@ void main() {
         sets: const [
           LoggedSet(exerciseId: 101, setNumber: 1, weightKg: 20, reps: 10),
           LoggedSet(exerciseId: 101, setNumber: 2, weightKg: 20, reps: 10),
-          // Push-up already has a set, so the jump lands on its table rather
-          // than its demo. That is the whole point of this fixture.
+          // Push-up already has a set, so the jump lands on its table.
           LoggedSet(exerciseId: 102, setNumber: 1, weightKg: 0, reps: 12),
         ],
       ),
     );
 
-    // The last set of exercise 1 starts the countdown.
     await tester.enterText(find.byKey(const Key('set.3.weight')), '20');
     await tester.enterText(find.byKey(const Key('set.3.reps')), '10');
     await tester.tap(find.byKey(const Key('logger.primary')));
     await tester.pump();
     await tester.pump();
-    expect(find.byType(RestTimer), findsOneWidget);
 
-    // Single frames, never pumpAndSettle: settling runs the 90 seconds out
-    // and the tag would be gone for a reason that has nothing to do with the
-    // jump. 800ms is enough for the sheet in and out, and nowhere near 90s.
     await tester.tap(find.byKey(const Key('logger.position')));
     await tester.pump();
     await tester.pump(const Duration(milliseconds: 400));
@@ -817,11 +792,8 @@ void main() {
     await tester.pump();
     await tester.pump(const Duration(milliseconds: 400));
 
-    // Landed on the table, so the demo rule never fired -- the index rule is
-    // what cleared the countdown.
-    expect(find.byKey(const Key('logger.demo')), findsNothing);
     expect(find.byType(SetRow), findsWidgets);
-    expect(find.byType(RestTimer), findsNothing);
+    expect(find.byType(RestTimer), findsOneWidget);
   });
 
   testWidgets('back from the set table returns to the demo', (tester) async {
