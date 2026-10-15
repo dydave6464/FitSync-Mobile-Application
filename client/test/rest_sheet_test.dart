@@ -155,4 +155,96 @@ void main() {
       expect(settings.writes, [10, 600]);
     });
   });
+
+  group('with a running rest', () {
+    Future<
+      ({
+        ValueNotifier<RestReading?> reading,
+        List<int> adjusts,
+        List<int> skips,
+      })
+    >
+    openRunning(WidgetTester tester) async {
+      final reading = ValueNotifier<RestReading?>((
+        secondsLeft: 60,
+        fractionLeft: 1.0,
+      ));
+      final adjusts = <int>[];
+      final skips = <int>[];
+      await tester.pumpWidget(
+        ProviderScope(
+          overrides: [
+            trainingSettingsRepositoryProvider.overrideWithValue(
+              FakeTrainingSettings(),
+            ),
+          ],
+          child: MaterialApp(
+            theme: fsLightTheme(),
+            home: Scaffold(
+              body: Builder(
+                builder: (context) => TextButton(
+                  onPressed: () => showRestSheet(
+                    context,
+                    countdown: RestCountdown(
+                      reading: reading,
+                      onAdjust: adjusts.add,
+                      onSkip: () => skips.add(1),
+                    ),
+                  ),
+                  child: const Text('open'),
+                ),
+              ),
+            ),
+          ),
+        ),
+      );
+      await tester.tap(find.text('open'));
+      await tester.pumpAndSettle();
+      return (reading: reading, adjusts: adjusts, skips: skips);
+    }
+
+    testWidgets('shows the live time left', (tester) async {
+      final h = await openRunning(tester);
+      expect(
+        tester.widget<Text>(find.byKey(const Key('rest.sheet.remaining'))).data,
+        '1:00',
+      );
+
+      h.reading.value = (secondsLeft: 59, fractionLeft: 0.98);
+      await tester.pump();
+      expect(
+        tester.widget<Text>(find.byKey(const Key('rest.sheet.remaining'))).data,
+        '0:59',
+      );
+    });
+
+    testWidgets('±30s asks for 30 seconds more or less', (tester) async {
+      final h = await openRunning(tester);
+
+      await tester.tap(find.byKey(const Key('rest.plus')));
+      await tester.tap(find.byKey(const Key('rest.minus')));
+
+      expect(h.adjusts, [30, -30]);
+    });
+
+    testWidgets('Skip rest skips and closes the sheet', (tester) async {
+      final h = await openRunning(tester);
+
+      await tester.tap(find.byKey(const Key('rest.skip')));
+      await tester.pumpAndSettle();
+
+      expect(h.skips, [1]);
+      expect(find.byKey(const Key('rest.sheet')), findsNothing);
+    });
+
+    testWidgets('closes itself once the rest is over', (tester) async {
+      final h = await openRunning(tester);
+
+      h.reading.value = null;
+      await tester.pumpAndSettle();
+
+      expect(find.byKey(const Key('rest.sheet')), findsNothing);
+      expect(tester.takeException(), isNull);
+    });
+  });
 }

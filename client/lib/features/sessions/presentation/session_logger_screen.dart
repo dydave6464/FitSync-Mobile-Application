@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
@@ -15,6 +17,7 @@ import '../../plans/presentation/providers.dart';
 import '../../profile/presentation/providers.dart';
 import '../domain/active_session.dart';
 import '../domain/encouragement.dart';
+import '../domain/rest_period.dart';
 import 'in_session_exercise_screen.dart';
 import 'providers.dart';
 import 'widgets/encouragement_card.dart';
@@ -64,7 +67,71 @@ class _SessionLoggerScreenState extends ConsumerState<SessionLoggerScreen> {
   /// every later move sets it explicitly at the point the move is made.
   _LoggerStage _stage = _LoggerStage.demo;
 
-  bool _resting = false;
+  /// The rest between sets, while one is running. Held here rather than in
+  /// the app-bar tag, which is rebuilt with the bar: the rest has to outlive
+  /// that, and the tag and the sheet both draw it.
+  RestPeriod? _rest;
+
+  /// What the tag and an open rest sheet draw; null when no rest is running.
+  final _restReading = ValueNotifier<RestReading?>(null);
+
+  /// Repaints the rest once a second. Only a repaint: the time left is always
+  /// worked out from the clock, so a tick that is late, or never comes while
+  /// the phone is locked, costs nothing.
+  Timer? _restTicker;
+
+  DateTime _now() => ref.read(restNowProvider)();
+
+  void _startRest(int seconds) {
+    _rest = RestPeriod.start(_now(), seconds);
+    _restTicker ??= Timer.periodic(
+      const Duration(seconds: 1),
+      (_) => _onRestTick(),
+    );
+    _publishRest();
+  }
+
+  void _onRestTick() {
+    final rest = _rest;
+    if (rest == null || !mounted) return;
+    if (rest.isOverAt(_now())) {
+      setState(_endRest);
+    } else {
+      _publishRest();
+    }
+  }
+
+  void _publishRest() {
+    final rest = _rest!;
+    final now = _now();
+    _restReading.value = (
+      secondsLeft: rest.secondsLeft(now),
+      fractionLeft: rest.fractionLeft(now),
+    );
+  }
+
+  /// ±seconds from the sheet: this rest only, never the saved default.
+  /// Cutting it to nothing ends it.
+  void _adjustRest(int seconds) {
+    final rest = _rest;
+    if (rest == null) return;
+    final next = rest.adjusted(seconds, _now(), maxSeconds: restMaxSeconds);
+    if (next == null) {
+      _endRest();
+      return;
+    }
+    _rest = next;
+    _publishRest();
+  }
+
+  /// Stops the rest, if one is running. Callers wrap it in setState: the tag
+  /// goes with it.
+  void _endRest() {
+    _restTicker?.cancel();
+    _restTicker = null;
+    _rest = null;
+    _restReading.value = null;
+  }
 
   /// One store per exercise on screen. Rebuilt when the exercise changes, so
   /// a set number means one thing at a time.
@@ -104,6 +171,8 @@ class _SessionLoggerScreenState extends ConsumerState<SessionLoggerScreen> {
   @override
   void dispose() {
     _drafts.dispose();
+    _restTicker?.cancel();
+    _restReading.dispose();
     super.dispose();
   }
 
@@ -201,16 +270,16 @@ class _SessionLoggerScreenState extends ConsumerState<SessionLoggerScreen> {
   /// One route does NOT come through here, and is left alone deliberately:
   /// the index clamp in build() reads [_index] against a plan that may have
   /// shrunk under a resumed session, so the exercise on screen can change
-  /// without a move having been made -- [_stage] is not reset and [_resting]
+  /// without a move having been made -- [_stage] is not reset and [_rest]
   /// is not cleared. It needs the active plan to lose exercises while a
   /// session against it is open, and the result is no worse than it was
   /// before this branch, so it is written down rather than fixed.
   void _moveTo({int? index, required _LoggerStage stage}) {
     if (index != null && index != _index) {
       _index = index;
-      _resting = false;
+      _endRest();
     }
-    if (stage == _LoggerStage.demo) _resting = false;
+    if (stage == _LoggerStage.demo) _endRest();
     _stage = stage;
   }
 
@@ -571,7 +640,7 @@ class _SessionLoggerScreenState extends ConsumerState<SessionLoggerScreen> {
 
     // A rest counts down between sets of this exercise, and there are none
     // left to rest between.
-    setState(() => _resting = false);
+    setState(_endRest);
     final messenger = ScaffoldMessenger.of(context);
     final drafts = _drafts;
     for (final setNumber in logged) {
@@ -615,9 +684,6 @@ class _SessionLoggerScreenState extends ConsumerState<SessionLoggerScreen> {
   /// the session row by the time this screen can see the day is empty,
   /// so a screen without them would strand a real session.
   ///
-  /// [doneSets] only keys the rest countdown, which restarts on each
-  /// new set; the empty state never rests, so it passes zero.
-  ///
   /// [onRestart] is null whenever there is nothing to restart -- the demo
   /// stage, an exercise with no sets logged yet, the empty day -- which
   /// greys the item out rather than hiding it, so the menu keeps one shape.
@@ -629,7 +695,6 @@ class _SessionLoggerScreenState extends ConsumerState<SessionLoggerScreen> {
   PreferredSizeWidget _appBar(
     FsTokens t, {
     required int restSeconds,
-    int doneSets = 0,
     VoidCallback? onRestart,
   }) => AppBar(
     // The mockup's 38px rounded-square icon button, not Material's bare
@@ -673,16 +738,17 @@ class _SessionLoggerScreenState extends ConsumerState<SessionLoggerScreen> {
       // content, so ticking a set does not shove the set table down.
       // Logging stage only: the demo has no sets on it, so a countdown
       // between sets has nothing to count between there.
-      if (_resting && _stage == _LoggerStage.logging) ...[
+      if (_rest != null && _stage == _LoggerStage.logging) ...[
         RestTimer(
-          // A fresh key restarts the countdown on each new set.
-          key: ValueKey('rest-$doneSets'),
-          // The account's saved rest. A new RestTimer reads it as each rest
-          // starts, so a default changed in the sheet lands on the next set
-          // rather than rewinding the one already counting.
-          duration: Duration(seconds: restSeconds),
-          onDone: () => setState(() => _resting = false),
-          onSkip: () => setState(() => _resting = false),
+          reading: _restReading,
+          onOpen: () => showRestSheet(
+            context,
+            countdown: RestCountdown(
+              reading: _restReading,
+              onAdjust: (seconds) => setState(() => _adjustRest(seconds)),
+              onSkip: () => setState(_endRest),
+            ),
+          ),
         ),
         const SizedBox(width: 6),
       ],
@@ -862,7 +928,6 @@ class _SessionLoggerScreenState extends ConsumerState<SessionLoggerScreen> {
         appBar: _appBar(
           t,
           restSeconds: restSeconds,
-          doneSets: doneSets,
           onRestart:
               _stage == _LoggerStage.logging &&
                   _hasLoggedSets(exercise, session)
@@ -1063,7 +1128,7 @@ class _SessionLoggerScreenState extends ConsumerState<SessionLoggerScreen> {
                             }
                             return;
                           }
-                          if (mounted) setState(() => _resting = true);
+                          if (mounted) setState(() => _startRest(restSeconds));
                         },
                         // The next exercise opens on its demo, the same as
                         // the first one did, and with no rest running --

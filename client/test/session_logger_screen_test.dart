@@ -426,6 +426,9 @@ Future<FakeSessionController> _pump(
   await tester.pumpWidget(
     ProviderScope(
       overrides: [
+        // The rest reads time from here; the binding's fake clock advances
+        // with every pump, so a test can run a rest down by pumping.
+        restNowProvider.overrideWithValue(() => tester.binding.clock.now()),
         activePlanProvider.overrideWith((ref) async {
           onActivePlanRead?.call();
           // Routed through the fake repository when one is supplied, mirroring
@@ -2458,6 +2461,73 @@ void main() {
       await tester.pump();
       await tester.pump(const Duration(milliseconds: 400));
       expect(find.byType(RestTimer), findsNothing);
+    });
+
+    // The countdown works from the moment the rest ends, not from ticks.
+    testWidgets('a rest counts down with the clock', (tester) async {
+      await _pumpLogging(tester);
+      await tester.tap(find.byKey(const Key('logger.primary')));
+      await tester.pump();
+
+      await tester.pump(const Duration(seconds: 30));
+
+      expect(
+        tester.widget<Text>(find.byKey(const Key('rest.remaining'))).data,
+        '1:00',
+      );
+    });
+
+    testWidgets('+30s from the sheet adds to the running rest', (tester) async {
+      await _pumpLogging(tester);
+      await tester.tap(find.byKey(const Key('logger.primary')));
+      await tester.pump();
+
+      await tester.tap(find.byKey(const Key('rest.open')));
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 400));
+      await tester.tap(find.byKey(const Key('rest.plus')));
+      await tester.pump();
+
+      expect(
+        tester.widget<Text>(find.byKey(const Key('rest.remaining'))).data,
+        '2:00',
+      );
+    });
+
+    testWidgets('−30s down to nothing ends the rest and closes the sheet', (
+      tester,
+    ) async {
+      await _pumpLogging(tester);
+      await tester.tap(find.byKey(const Key('logger.primary')));
+      await tester.pump();
+      await tester.pump(const Duration(seconds: 70)); // 0:20 left
+
+      await tester.tap(find.byKey(const Key('rest.open')));
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 400));
+      await tester.tap(find.byKey(const Key('rest.minus')));
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 400));
+
+      expect(find.byKey(const Key('rest.sheet')), findsNothing);
+      expect(find.byKey(const Key('rest.remaining')), findsNothing);
+    });
+
+    testWidgets('the sheet closes itself when the rest runs out', (
+      tester,
+    ) async {
+      await _pumpLogging(tester);
+      await tester.tap(find.byKey(const Key('logger.primary')));
+      await tester.pump();
+      await tester.tap(find.byKey(const Key('rest.open')));
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 400));
+
+      await tester.pump(const Duration(seconds: 90));
+      await tester.pump(const Duration(milliseconds: 400));
+
+      expect(find.byKey(const Key('rest.sheet')), findsNothing);
+      expect(tester.takeException(), isNull);
     });
   });
 }

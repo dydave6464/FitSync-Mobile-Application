@@ -29,16 +29,32 @@ int? parseRest(String text) {
   return int.parse(match[1]!) * 60 + int.parse(match[2]!);
 }
 
+/// A running rest as the tag and the sheet draw it: the whole seconds left,
+/// and the share of the rest still to go (the ring's sweep).
+typedef RestReading = ({int secondsLeft, double fractionLeft});
+
+/// "1 minute 30 seconds" for 90 -- what a screen reader says, where "1:30"
+/// would be read as a clock time.
+String spokenRest(int seconds) {
+  final minutes = seconds ~/ 60;
+  final rest = seconds % 60;
+  String unit(int n, String word) => '$n $word${n == 1 ? '' : 's'}';
+  if (minutes == 0) return unit(rest, 'second');
+  if (rest == 0) return unit(minutes, 'minute');
+  return '${unit(minutes, 'minute')} ${unit(rest, 'second')}';
+}
+
 /// What a sheet opened from a running rest can do to that rest.
 class RestCountdown {
   const RestCountdown({
-    required this.remaining,
+    required this.reading,
     required this.onAdjust,
     required this.onSkip,
   });
 
-  /// Seconds left, ticking. Reaching zero closes the sheet.
-  final ValueListenable<int> remaining;
+  /// The rest's time left, repainted every second. Null once the rest is
+  /// over, however it ended -- which closes the sheet.
+  final ValueListenable<RestReading?> reading;
 
   /// Adds (or with a negative value, takes) seconds from this rest only.
   final void Function(int seconds) onAdjust;
@@ -79,21 +95,21 @@ class _RestSheetState extends ConsumerState<RestSheet> {
   @override
   void initState() {
     super.initState();
-    widget.countdown?.remaining.addListener(_onTick);
+    widget.countdown?.reading.addListener(_onTick);
   }
 
   @override
   void dispose() {
-    // Safe even once the timer has disposed its notifier: removeListener
+    // Safe even once the logger has disposed its notifier: removeListener
     // returns immediately after dispose.
-    widget.countdown?.remaining.removeListener(_onTick);
+    widget.countdown?.reading.removeListener(_onTick);
     super.dispose();
   }
 
-  /// A rest that runs out -- or is cut to nothing with −30s -- takes its
-  /// sheet with it: a countdown sitting at 0:00 has nothing left to control.
+  /// A rest that ends -- run out, skipped, or cut to nothing with −30s --
+  /// takes its sheet with it: there is nothing left to control.
   void _onTick() {
-    if (widget.countdown!.remaining.value > 0) return;
+    if (widget.countdown!.reading.value != null) return;
     _close();
   }
 
@@ -155,10 +171,10 @@ class _RestSheetState extends ConsumerState<RestSheet> {
               Center(child: Text('Rest', style: fsEyebrow(t))),
               const SizedBox(height: 6),
               Center(
-                child: ValueListenableBuilder<int>(
-                  valueListenable: countdown.remaining,
-                  builder: (_, seconds, _) => Text(
-                    formatRest(seconds),
+                child: ValueListenableBuilder<RestReading?>(
+                  valueListenable: countdown.reading,
+                  builder: (_, reading, _) => Text(
+                    formatRest(reading?.secondsLeft ?? 0),
                     key: const Key('rest.sheet.remaining'),
                     style: TextStyle(
                       fontFamily: fsMonoFamily,

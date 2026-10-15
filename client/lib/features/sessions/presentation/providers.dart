@@ -50,6 +50,11 @@ final restSecondsProvider = AsyncNotifierProvider<RestSecondsController, int>(
 /// could not be read -- the 90 seconds the logger always used.
 const defaultRestSeconds = 90;
 
+/// The clock the rest timer reads. A provider so widget tests can hand it the
+/// binding's fake clock, which advances with every pump; everywhere else it
+/// is the phone's.
+final restNowProvider = Provider<DateTime Function()>((ref) => DateTime.now);
+
 /// The session being logged right now, or null.
 ///
 /// Writes fold the server's response back into state rather than refetching:
