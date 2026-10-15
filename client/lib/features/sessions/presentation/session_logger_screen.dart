@@ -142,15 +142,17 @@ class _SessionLoggerScreenState extends ConsumerState<SessionLoggerScreen>
     final rest = _rest;
     if (rest == null || rest.isOverAt(_now())) return;
     final enabled = await ref.read(restAlertEnabledProvider.future);
-    if (!enabled || _appVisible || _rest != rest) return;
+    if (!mounted || !enabled || _appVisible || _rest != rest) return;
     if (!await _alerts.permissionGranted()) return;
-    if (_appVisible || _rest != rest) return;
+    if (!mounted || _appVisible || _rest != rest) return;
     await _alerts.schedule(
       at: rest.endsAt,
       title: 'Rest over',
       body: _restAlertBody,
     );
-    if (_appVisible || _rest != rest) await _alerts.cancel();
+    // Not `_rest != rest`: a newer rest has scheduled its own alert by now,
+    // under the same id, and cancelling would take that one away too.
+    if (!mounted || _appVisible || _rest == null) await _alerts.cancel();
   }
 
   /// The first rest is when an alert first makes sense, so it is where the
@@ -1252,7 +1254,17 @@ class _SessionLoggerScreenState extends ConsumerState<SessionLoggerScreen>
                           // counting.
                           if (!mounted) return;
                           setState(() => _startRest(restSeconds));
-                          unawaited(_askRestAlertPermissionOnce());
+                          if (_appVisible) {
+                            unawaited(_askRestAlertPermissionOnce());
+                          } else {
+                            // Locked before the server answered: the
+                            // lifecycle event that schedules the alert has
+                            // already gone by, so this rest schedules its
+                            // own. Same id, so it replaces one set for an
+                            // earlier rest. No prompt: one shown from the
+                            // background would spend the single ask unseen.
+                            unawaited(_scheduleRestAlert());
+                          }
                         },
                         // The next exercise opens on its demo, the same as
                         // the first one did.

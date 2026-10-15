@@ -156,6 +156,10 @@ class FakeSessionController extends ActiveSessionController {
   /// that race.
   Completer<void>? completeGate;
 
+  /// When set, [logSet] suspends here after recording the call -- a set
+  /// still saving when the phone is locked. Null resolves immediately.
+  Completer<void>? logSetGate;
+
   @override
   Future<ActiveSession?> build() async => initial;
 
@@ -167,6 +171,7 @@ class FakeSessionController extends ActiveSessionController {
     int? reps,
   }) async {
     calls.add('log:$exerciseId:$setNumber:$weightKg:$reps');
+    if (logSetGate != null) await logSetGate!.future;
     if (logSetError != null) throw logSetError!;
     state = AsyncValue.data(
       state.value!.withSet(
@@ -2583,7 +2588,9 @@ void main() {
         );
         expect(find.byKey(const Key('rest.over')), findsOneWidget);
 
-        await tester.pump(const Duration(seconds: 5));
+        await tester.pump(const Duration(seconds: 4));
+        expect(find.byKey(const Key('rest.over')), findsOneWidget);
+        await tester.pump(const Duration(seconds: 1));
         expect(find.byKey(const Key('rest.over')), findsNothing);
         expect(find.byType(RestTimer), findsNothing);
 
@@ -2798,6 +2805,86 @@ void main() {
       await tester.pump();
       await tester.pump();
       expect(alerts.requests, 1);
+    });
+
+    testWidgets('a set still saving when the phone locks gets its own alert', (
+      tester,
+    ) async {
+      final alerts = FakeRestAlertScheduler();
+      final controller = await _pumpLogging(tester, alerts: alerts);
+      final gate = Completer<void>();
+      controller.logSetGate = gate;
+      await tester.tap(find.byKey(const Key('logger.primary')));
+      await tester.pump();
+
+      // Locked before the server answered: no rest yet, so nothing to alert.
+      await _background(tester);
+      expect(alerts.scheduled, isEmpty);
+
+      final started = tester.binding.clock.now();
+      gate.complete();
+      await tester.pump();
+
+      expect(alerts.scheduled, hasLength(1));
+      expect(
+        alerts.scheduled.single.at,
+        started.add(const Duration(seconds: 90)),
+      );
+    });
+
+    testWidgets(
+      'a set saved while locked mid-rest moves the alert to its end',
+      (tester) async {
+        final alerts = FakeRestAlertScheduler();
+        final controller = await _pumpLogging(tester, alerts: alerts);
+        await tester.tap(find.byKey(const Key('logger.primary')));
+        await tester.pump();
+        await tester.pump(const Duration(seconds: 30));
+
+        final gate = Completer<void>();
+        controller.logSetGate = gate;
+        await tester.tap(find.byKey(const Key('logger.primary')));
+        await tester.pump();
+        // The first rest is still running, so locking schedules its end.
+        await _background(tester);
+        expect(alerts.scheduled, hasLength(1));
+
+        final started = tester.binding.clock.now();
+        gate.complete();
+        await tester.pump();
+
+        expect(
+          alerts.scheduled.last.at,
+          started.add(const Duration(seconds: 90)),
+        );
+        expect(alerts.events.last, 'schedule', reason: 'nothing cancels it');
+      },
+    );
+
+    testWidgets('a set saved while locked never uses up the one prompt', (
+      tester,
+    ) async {
+      final alerts = FakeRestAlertScheduler(granted: false);
+      final store = RestAlertStore(backing: InMemorySecureStore());
+      final controller = await _pumpLogging(
+        tester,
+        alerts: alerts,
+        alertStore: store,
+      );
+      final gate = Completer<void>();
+      controller.logSetGate = gate;
+      await tester.tap(find.byKey(const Key('logger.primary')));
+      await tester.pump();
+      await _background(tester);
+
+      gate.complete();
+      await tester.pump();
+      await tester.pump();
+
+      // Android blocks a prompt from the background: asking now would spend
+      // the single ask on a dialog nobody sees.
+      expect(alerts.requests, 0);
+      expect(await store.asked(), isFalse);
     });
 
     testWidgets('never asks when permission is already there', (tester) async {

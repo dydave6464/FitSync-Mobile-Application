@@ -11,6 +11,9 @@ class FakeRestAlertScheduler implements RestAlertScheduler {
   int settingsOpened = 0;
   final scheduled = <({DateTime at, String title, String body})>[];
 
+  /// 'schedule' and 'cancel', in the order they were called.
+  final events = <String>[];
+
   @override
   Future<bool> permissionGranted() async => granted;
 
@@ -29,8 +32,14 @@ class FakeRestAlertScheduler implements RestAlertScheduler {
     required DateTime at,
     required String title,
     required String body,
-  }) async => scheduled.add((at: at, title: title, body: body));
+  }) async {
+    events.add('schedule');
+    scheduled.add((at: at, title: title, body: body));
+  }
 
   @override
-  Future<void> cancel() async => cancels++;
+  Future<void> cancel() async {
+    events.add('cancel');
+    cancels++;
+  }
 }
