@@ -8,7 +8,6 @@ import '../../exercises/presentation/widgets/coaching_tag.dart';
 import '../../exercises/presentation/exercise_detail_screen.dart';
 import '../../exercises/presentation/exercise_list_screen.dart'
     show describeError;
-import '../../profile/domain/profile.dart';
 import '../../profile/presentation/providers.dart';
 import '../../sessions/presentation/providers.dart';
 import '../../sessions/presentation/session_logger_screen.dart';
@@ -185,15 +184,6 @@ class _PlanViewState extends ConsumerState<_PlanView> {
           starting: _starting,
           onStart: _startOrResume,
         ),
-        if (_whyThisPlan(plan, ref.watch(profileProvider).value)
-            case final why?) ...[
-          const SizedBox(height: 8),
-          Text(
-            why,
-            key: const Key('plan.why'),
-            style: TextStyle(fontSize: 12.5, color: t.text2),
-          ),
-        ],
         const SizedBox(height: 22),
         const FsEyebrow('Exercises'),
         if (dayName != null && dayName.isNotEmpty) ...[
@@ -317,19 +307,4 @@ class _PlanExerciseCard extends StatelessWidget {
       ),
     );
   }
-}
-
-/// Why a generated plan looks the way it does, from the user's experience
-/// level -- the rule is ml/app/rules/parameters.py, where a skipped level is
-/// planned as a beginner. Null for intermediate (the standard plan), for a
-/// plan the user built themselves (the level did not shape it), and while the
-/// profile is unknown.
-String? _whyThisPlan(WorkoutPlan plan, Profile? profile) {
-  if (plan.isCustom || profile == null) return null;
-  return switch (profile.fitnessLevel) {
-    'new' => "Gentle start because you're new to training.",
-    'beginner' => 'Beginner plan: one set fewer, sessions up to 45 minutes.',
-    'intermediate' => null,
-    _ => 'Beginner plan: set your level in Settings.',
-  };
 }
