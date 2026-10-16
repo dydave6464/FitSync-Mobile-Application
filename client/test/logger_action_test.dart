@@ -437,4 +437,91 @@ void main() {
       expect(find.textContaining('SocketException'), findsNothing);
     });
   });
+
+  group('a failed save leaves Retry reachable', () {
+    // The logger's button is its footer, at the bottom of the Scaffold body,
+    // which is exactly where a default SnackBar lands. The host puts it there.
+    Widget footerHost(Widget action) => MaterialApp(
+      theme: fsLightTheme(),
+      home: Scaffold(
+        body: Column(
+          children: [
+            const Expanded(child: SizedBox.expand()),
+            Padding(padding: const EdgeInsets.all(16), child: action),
+          ],
+        ),
+      ),
+    );
+
+    Future<void> checkRetryReachable(WidgetTester tester) async {
+      final drafts = SetDrafts();
+      addTearDown(drafts.dispose);
+      drafts.reps(1).text = '8';
+      var calls = 0;
+      await tester.pumpWidget(
+        footerHost(
+          LoggerAction(
+            activeSetNumber: 1,
+            isLastExercise: false,
+            drafts: drafts,
+            unit: WeightUnit.kg,
+            onCompleteSet: (_, _, _) async {
+              calls++;
+              if (calls == 1) {
+                throw const ApiException(
+                  'NETWORK_ERROR',
+                  'No connection. Check your internet and try again.',
+                );
+              }
+            },
+            onNextExercise: () {},
+            onFinish: () {},
+          ),
+        ),
+      );
+      await tester.tap(find.byKey(const Key('logger.primary')));
+      await tester.pumpAndSettle();
+
+      final snackBar = find.byType(SnackBar);
+      expect(snackBar, findsOneWidget);
+      final primary = find.byKey(const Key('logger.primary'));
+      expect(find.text('Retry set 1'), findsOneWidget);
+      // The bar's own surface: the SnackBar widget's box also spans the
+      // margin below it, which is see-through and lets taps pass.
+      final bar = find
+          .descendant(of: snackBar, matching: find.byType(Material))
+          .first;
+      expect(
+        tester.getRect(bar).overlaps(tester.getRect(primary)),
+        isFalse,
+        reason: 'the SnackBar explains Retry; it must not cover it',
+      );
+
+      await tester.tap(primary);
+      await tester.pumpAndSettle();
+      expect(calls, 2, reason: 'the Retry tap reached the button');
+      expect(
+        find.byType(SnackBar),
+        findsNothing,
+        reason: 'a save that worked leaves no stale failure showing',
+      );
+      expect(find.text('Complete set 1'), findsOneWidget);
+    }
+
+    testWidgets('on a normal phone', (tester) async {
+      tester.view.physicalSize = const Size(360, 780);
+      tester.view.devicePixelRatio = 1;
+      addTearDown(tester.view.reset);
+      await checkRetryReachable(tester);
+    });
+
+    testWidgets('on a 320 dp screen at 2.0x text', (tester) async {
+      tester.view.physicalSize = const Size(320, 780);
+      tester.view.devicePixelRatio = 1;
+      tester.platformDispatcher.textScaleFactorTestValue = 2.0;
+      addTearDown(tester.view.reset);
+      addTearDown(tester.platformDispatcher.clearTextScaleFactorTestValue);
+      await checkRetryReachable(tester);
+    });
+  });
 }

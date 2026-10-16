@@ -86,6 +86,12 @@ class _LoggerActionState extends State<LoggerAction> {
       _failed = false;
     });
     final messenger = ScaffoldMessenger.maybeOf(context);
+    // A failure from the last attempt is old news once this one starts, and
+    // left up it would still read "No connection" over a save that worked.
+    messenger?.hideCurrentSnackBar();
+    // Measured now, while this context is safe to use: after the await the
+    // widget may be gone.
+    final clearance = _clearanceBelowTop();
     try {
       await widget.onCompleteSet(
         setNumber,
@@ -98,12 +104,37 @@ class _LoggerActionState extends State<LoggerAction> {
       // "Retry" alone does not say whether to try again now or after
       // finding signal. describeError keeps the wording plain: an
       // ApiException's own message, never an exception's raw text.
+      // Floating, and lifted past this button: a SnackBar along the bottom
+      // edge would sit on the very "Retry" it explains for as long as it
+      // shows. Same treatment as "Swapped to" on the logger screen.
       messenger
         ?..hideCurrentSnackBar()
-        ..showSnackBar(SnackBar(content: Text(describeError(error))));
+        ..showSnackBar(
+          SnackBar(
+            behavior: SnackBarBehavior.floating,
+            margin: EdgeInsets.fromLTRB(16, 0, 16, clearance + 8),
+            content: Text(describeError(error)),
+          ),
+        );
     } finally {
       if (mounted) setState(() => _busy = false);
     }
+  }
+
+  /// How far this button's top edge sits above the bottom of the enclosing
+  /// Scaffold, which is where a floating SnackBar's margin is counted from.
+  /// Measured rather than fixed: the button grows with large text, and what
+  /// sits below it is the host's business.
+  double _clearanceBelowTop() {
+    final box = context.findRenderObject() as RenderBox?;
+    final scaffold =
+        Scaffold.maybeOf(context)?.context.findRenderObject() as RenderBox?;
+    if (box == null || !box.hasSize || scaffold == null || !scaffold.hasSize) {
+      return 0;
+    }
+    final top = box.localToGlobal(Offset.zero).dy;
+    final bottom = scaffold.localToGlobal(Offset(0, scaffold.size.height)).dy;
+    return (bottom - top).clamp(0, double.infinity).toDouble();
   }
 
   /// True to log the set as it stands, false to go back and add reps, null
