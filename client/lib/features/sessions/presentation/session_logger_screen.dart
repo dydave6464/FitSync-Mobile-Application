@@ -15,6 +15,7 @@ import '../../exercises/presentation/exercise_list_screen.dart'
     show describeError;
 import '../../plans/domain/workout_plan.dart';
 import '../../plans/presentation/add_to_plan_sheet.dart';
+import '../../plans/presentation/exercise_swap_sheet.dart';
 import '../../plans/presentation/providers.dart';
 import '../../profile/presentation/providers.dart';
 import '../data/rest_alerts.dart';
@@ -56,6 +57,15 @@ enum _LoggerStage { demo, logging }
 /// own eyebrow -- and two spellings of one number read as two numbers. So
 /// neither call site writes it out.
 String _positionLabel(int index, int count) => 'Exercise ${index + 1} / $count';
+
+/// Whether the exercise on screen can be switched, for the app bar's menu and
+/// the demo stage's link. [onSwitch] is null while it cannot: the menu greys
+/// its item and the link is not shown.
+class _SwitchState {
+  const _SwitchState(this.onSwitch);
+
+  final VoidCallback? onSwitch;
+}
 
 class _SessionLoggerScreenState extends ConsumerState<SessionLoggerScreen>
     with WidgetsBindingObserver {
@@ -257,7 +267,10 @@ class _SessionLoggerScreenState extends ConsumerState<SessionLoggerScreen>
   /// One store per exercise on screen. Rebuilt when the exercise changes, so
   /// a set number means one thing at a time.
   SetDrafts _drafts = SetDrafts();
-  int _draftsForIndex = 0;
+
+  /// The position and exercise [_drafts] was made for. Both, because a switch
+  /// changes the exercise and leaves the position alone.
+  (int, int)? _draftsFor;
 
   /// The unit last confirmed on screen -- i.e. actually read back from
   /// [weightUnitProvider], not merely requested. Null until the first build
@@ -274,7 +287,14 @@ class _SessionLoggerScreenState extends ConsumerState<SessionLoggerScreen>
   WeightUnit? _unitOnScreen;
 
   /// Swaps the store when the exercise changes. Called from build, which is
-  /// the only place that knows the clamped index.
+  /// the only place that knows the clamped index and the exercise at it.
+  ///
+  /// Keyed on the exercise as well as the index: a switch keeps the index,
+  /// and its new plan can land with no word from the sheet -- dismissed while
+  /// the swap was still in flight -- or after a slow refetch the user has
+  /// already started typing into. Either way the numbers on screen were meant
+  /// for the exercise just replaced, and a prefill only fills blank fields,
+  /// so they would otherwise stay.
   ///
   /// One job, deliberately. Resetting [_stage] from here as well would tie the
   /// stage to the store's lifetime, and the back handler would then need the
@@ -282,11 +302,12 @@ class _SessionLoggerScreenState extends ConsumerState<SessionLoggerScreen>
   /// skips the swap too, and hands the previous exercise the kg and reps typed
   /// against this one. Stage is an outcome of navigation, so every move sets
   /// it where the move is made.
-  void _syncDrafts(int index) {
-    if (index == _draftsForIndex) return;
+  void _syncDrafts(int index, int exerciseId) {
+    final key = (index, exerciseId);
+    if (key == _draftsFor) return;
     _drafts.dispose();
     _drafts = SetDrafts();
-    _draftsForIndex = index;
+    _draftsFor = key;
   }
 
   @override
@@ -377,8 +398,8 @@ class _SessionLoggerScreenState extends ConsumerState<SessionLoggerScreen>
   }
 
   /// Every move this screen makes: which exercise, and which face of it.
-  /// Call it inside a setState. Five paths lead here -- Start logging, Next
-  /// exercise, both halves of back, and the jump sheet.
+  /// Call it inside a setState. Six paths lead here -- Start logging, Next
+  /// exercise, both halves of back, the jump sheet, and a switch.
   ///
   /// Moving never touches the rest: a rest is the user's, between their sets,
   /// whichever exercise is on screen -- the walk from one station to the next
@@ -406,6 +427,70 @@ class _SessionLoggerScreenState extends ConsumerState<SessionLoggerScreen>
       if (session.setFor(exercise.exerciseId, number) != null) return true;
     }
     return false;
+  }
+
+  /// Replaces [exercise] in the plan, from inside the workout: the same sheet
+  /// and the same server swap the Plan tab's Change button uses, so the plan
+  /// row itself changes, for every later session too.
+  ///
+  /// The sheet refreshes the active plan, which this screen watches, so the
+  /// new exercise arrives at the same position on its own; [_index] is left
+  /// where it is. Nothing moves until that refreshed plan has landed: until
+  /// then the old exercise is still on screen, Switch link and all, and a
+  /// "Swapped to" over it would be a claim the screen contradicts. If the
+  /// refetch fails, the old plan stays, so the screen stays with it and says
+  /// why rather than announcing a switch it cannot show.
+  ///
+  /// Once it lands, the demo is what shows next -- the user has not read this
+  /// one yet. The drafts need nothing here: the new exercise at this position
+  /// already gave [_syncDrafts] a new key in the build that drew it. The rest
+  /// is not touched; see [_moveTo].
+  ///
+  /// No Undo on the SnackBar. Every swap is recorded server-side as "rejected
+  /// this, chose that" for the recommender, so swapping straight back would
+  /// record a rejection the user never meant; Switch again is the way back.
+  Future<void> _switchExercise(PlanExercise exercise) async {
+    final messenger = ScaffoldMessenger.of(context);
+    final swappedTo = await showModalBottomSheet<String>(
+      context: context,
+      isScrollControlled: true,
+      builder: (_) => ExerciseSwapSheet(
+        planExerciseId: exercise.planExerciseId,
+        exerciseName: exercise.name,
+        onGoToProfile: null,
+      ),
+    );
+    if (swappedTo == null || !mounted) return;
+    try {
+      await ref.read(activePlanProvider.future);
+    } catch (error) {
+      if (!mounted) return;
+      messenger.showSnackBar(SnackBar(content: Text(describeError(error))));
+      return;
+    }
+    if (!mounted) return;
+    setState(() => _moveTo(stage: _LoggerStage.demo));
+    messenger.showSnackBar(
+      SnackBar(
+        // Floating, and lifted past the footer: Start logging is the next
+        // tap after a switch, and a SnackBar along the bottom edge would sit
+        // on it for as long as it shows.
+        behavior: SnackBarBehavior.floating,
+        margin: EdgeInsets.fromLTRB(16, 0, 16, _footerHeight() + 8),
+        duration: const Duration(seconds: 4),
+        content: Text('Swapped to $swappedTo'),
+      ),
+    );
+  }
+
+  /// Marks the footer, so a SnackBar can be lifted clear of it.
+  final _footerKey = GlobalKey();
+
+  /// How tall the footer is now, safe area included. Measured rather than
+  /// fixed: the button grows with large text.
+  double _footerHeight() {
+    final box = _footerKey.currentContext?.findRenderObject() as RenderBox?;
+    return box != null && box.hasSize ? box.size.height : 0;
   }
 
   /// Opens the jump sheet and moves to whatever it returns.
@@ -812,10 +897,17 @@ class _SessionLoggerScreenState extends ConsumerState<SessionLoggerScreen>
   /// [restSeconds] feeds the menu's 'Rest time' label. It is passed in
   /// rather than read here because the screen already watches it for the
   /// rest itself, which takes its length when a set is completed.
+  ///
+  /// [switchState] is null when the session has no plan to change -- one
+  /// started from a chosen list, or the empty day -- and the item is then
+  /// absent rather than greyed: there is nothing it could ever do. On a
+  /// plan-backed session it stays, greyed with its reason once sets are
+  /// logged against the exercise on screen.
   PreferredSizeWidget _appBar(
     FsTokens t, {
     required int restSeconds,
     VoidCallback? onRestart,
+    _SwitchState? switchState,
   }) => AppBar(
     // The mockup's 38px rounded-square icon button, not Material's bare
     // arrow. Tooltipped 'Back' so the platform affordance -- and
@@ -882,6 +974,7 @@ class _SessionLoggerScreenState extends ConsumerState<SessionLoggerScreen>
         onSelected: (value) => switch (value) {
           'restTime' => showRestSheet(context),
           'restart' => onRestart?.call(),
+          'switch' => switchState?.onSwitch?.call(),
           'finish' => _finish(),
           _ => _discard(),
         },
@@ -900,6 +993,27 @@ class _SessionLoggerScreenState extends ConsumerState<SessionLoggerScreen>
             enabled: onRestart != null,
             child: const Text('Restart this exercise'),
           ),
+          if (switchState != null)
+            PopupMenuItem(
+              key: const Key('logger.switch.menu'),
+              value: 'switch',
+              enabled: switchState.onSwitch != null,
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Text('Switch exercise'),
+                  // Greyed with no reason reads as broken. t.text2 rather
+                  // than the item's own disabled grey, so the reason stays
+                  // readable.
+                  if (switchState.onSwitch == null)
+                    Text(
+                      "You've logged sets on this one",
+                      style: TextStyle(fontSize: 12, color: t.text2),
+                    ),
+                ],
+              ),
+            ),
           const PopupMenuItem(
             key: Key('logger.finish'),
             value: 'finish',
@@ -941,7 +1055,11 @@ class _SessionLoggerScreenState extends ConsumerState<SessionLoggerScreen>
     // Only a session that needs the plan waits for it. Falling through while
     // it is still in flight would flash the empty state at a plan-backed
     // session whose exercises are one frame away.
-    if (carried.isEmpty && asyncPlan.isLoading) {
+    //
+    // Only the first load, though. A swap refreshes the plan under an open
+    // session, and a refresh still holds the plan it is replacing -- falling
+    // to the spinner then would blank the whole logger for a frame.
+    if (carried.isEmpty && asyncPlan.isLoading && !asyncPlan.hasValue) {
       return const Scaffold(body: Center(child: CircularProgressIndicator()));
     }
 
@@ -990,7 +1108,7 @@ class _SessionLoggerScreenState extends ConsumerState<SessionLoggerScreen>
       );
     }
     final index = _index.clamp(0, exercises.length - 1);
-    _syncDrafts(index);
+    _syncDrafts(index, exercises[index].exerciseId);
     // After the swap above, never before it. An exercise change and a unit
     // confirmation can land in the same frame -- the jump sheet is one tap
     // away from the header's toggle -- and converting first would rewrite the
@@ -1013,6 +1131,17 @@ class _SessionLoggerScreenState extends ConsumerState<SessionLoggerScreen>
         ? 'Next: set $next of ${exercise.name}'
         : 'Time for your next exercise.';
     final isLast = index == exercises.length - 1;
+    // A switch replaces the exercise in the plan, so only a session whose
+    // exercises come from the plan has one; and only before anything is
+    // logged against it, since those sets would be left naming an exercise
+    // the plan no longer holds.
+    final switchState = carried.isNotEmpty
+        ? null
+        : _SwitchState(
+            _hasLoggedSets(exercise, session)
+                ? null
+                : () => _switchExercise(exercise),
+          );
     final encouragement = encouragementFor(
       exercises: exercises,
       index: index,
@@ -1063,6 +1192,7 @@ class _SessionLoggerScreenState extends ConsumerState<SessionLoggerScreen>
                   _hasLoggedSets(exercise, session)
               ? () => _restartExercise(exercise, session)
               : null,
+          switchState: switchState,
         ),
         body: Column(
           children: [
@@ -1141,6 +1271,7 @@ class _SessionLoggerScreenState extends ConsumerState<SessionLoggerScreen>
                       key: const Key('logger.demo'),
                       exercise: exercise,
                       positionLabel: _positionLabel(index, exercises.length),
+                      onSwitch: switchState?.onSwitch,
                     )
                   : SingleChildScrollView(
                       padding: const EdgeInsets.fromLTRB(20, 0, 20, 20),
@@ -1220,6 +1351,7 @@ class _SessionLoggerScreenState extends ConsumerState<SessionLoggerScreen>
                     ),
             ),
             SafeArea(
+              key: _footerKey,
               top: false,
               child: Padding(
                 padding: const EdgeInsets.fromLTRB(20, 0, 20, 16),

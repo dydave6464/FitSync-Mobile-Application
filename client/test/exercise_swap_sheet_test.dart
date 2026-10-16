@@ -317,11 +317,75 @@ Future<double> _pumpAsSheet(
   return tester.getSize(find.byType(ExerciseSwapSheet)).height;
 }
 
+/// The sheet as the Plan tab and the logger open it -- a real modal route --
+/// with its swap held on [completer], so a test can try to close it while the
+/// server is still answering. [result] receives whatever the route pops.
+Future<void> _pumpModalSheet(
+  WidgetTester tester, {
+  required Completer<WorkoutPlan> completer,
+  required void Function(String?) result,
+}) async {
+  await tester.pumpWidget(
+    ProviderScope(
+      overrides: [
+        planRepositoryProvider.overrideWithValue(_SlowRepo(completer)),
+        alternativesProvider.overrideWith((ref, key) async => const [_alt]),
+        exerciseDetailProvider.overrideWith((ref, id) async => _detail),
+        activePlanProvider.overrideWith((ref) async => _plan),
+      ],
+      child: MaterialApp(
+        home: Scaffold(
+          body: Builder(
+            builder: (context) => TextButton(
+              onPressed: () => showModalBottomSheet<String>(
+                context: context,
+                isScrollControlled: true,
+                builder: (_) => const ExerciseSwapSheet(
+                  planExerciseId: 77,
+                  exerciseName: 'Cable Fly',
+                ),
+              ).then(result),
+              child: const Text('open'),
+            ),
+          ),
+        ),
+      ),
+    ),
+  );
+  await tester.tap(find.text('open'));
+  await tester.pumpAndSettle();
+  await tester.tap(find.byKey(const Key('swap.alt.12')));
+  await tester.pumpAndSettle();
+}
+
+/// Drags the sheet down from its top edge, well past the point where a
+/// modal bottom sheet closes.
+Future<void> _dragSheetDown(WidgetTester tester) async {
+  final top = tester.getRect(find.byType(ExerciseSwapSheet)).topCenter;
+  await tester.dragFrom(top + const Offset(0, 8), const Offset(0, 600));
+}
+
 void main() {
   testWidgets('names the exercise being replaced', (tester) async {
     await _pump(tester, const [_alt]);
 
     expect(find.text('Replace Cable Fly'), findsOneWidget);
+  });
+
+  // The sheet opens from the Plan tab and from inside a workout, and from the
+  // workout a swap reads like a one-off. It is not: the plan row changes for
+  // every later session too, so the sheet says so under its heading.
+  testWidgets('says under the heading that the swap changes the plan', (
+    tester,
+  ) async {
+    await _pump(tester, const [_alt]);
+
+    final caption = find.text('Changes your plan from now on, not just today.');
+    expect(caption, findsOneWidget);
+    expect(
+      tester.getTopLeft(caption).dy,
+      greaterThan(tester.getBottomLeft(find.text('Replace Cable Fly')).dy - 1),
+    );
   });
 
   testWidgets('lists the alternatives', (tester) async {
@@ -716,5 +780,67 @@ void main() {
     // exactly when someone is comparing several.
     expect(find.text('push'), findsOneWidget);
     expect(find.byKey(const Key('swap.alt.12')), findsOneWidget);
+  });
+  group('while a swap is in flight the sheet stays open', () {
+    // Closing it mid-request used to let the swap land with nobody to say
+    // so: the plan changed under a screen that thought it had cancelled.
+    late Completer<WorkoutPlan> completer;
+    late List<String?> popped;
+
+    Future<void> confirm(WidgetTester tester) async {
+      completer = Completer<WorkoutPlan>();
+      popped = [];
+      await _pumpModalSheet(tester, completer: completer, result: popped.add);
+      await tester.tap(find.byKey(const Key('swap.preview.confirm')));
+      // Not pumpAndSettle: the busy button spins until the swap lands.
+      await tester.pump();
+    }
+
+    Future<void> landSwap(WidgetTester tester) async {
+      expect(find.byType(ExerciseSwapSheet), findsOneWidget);
+      expect(popped, isEmpty);
+      completer.complete(_plan);
+      await tester.pumpAndSettle();
+      expect(find.byType(ExerciseSwapSheet), findsNothing);
+      expect(popped, ['Push-up']);
+    }
+
+    testWidgets('a tap on the barrier', (tester) async {
+      await confirm(tester);
+      await tester.tapAt(const Offset(5, 5));
+      await tester.pump(const Duration(milliseconds: 500));
+      await landSwap(tester);
+    });
+
+    testWidgets('system back', (tester) async {
+      await confirm(tester);
+      await tester.binding.handlePopRoute();
+      await tester.pump(const Duration(milliseconds: 500));
+      await landSwap(tester);
+    });
+
+    testWidgets('a drag down', (tester) async {
+      await confirm(tester);
+      await _dragSheetDown(tester);
+      await tester.pump(const Duration(milliseconds: 500));
+      await landSwap(tester);
+    });
+  });
+
+  testWidgets('with no swap in flight a drag down still closes the sheet', (
+    tester,
+  ) async {
+    final popped = <String?>[];
+    await _pumpModalSheet(
+      tester,
+      completer: Completer<WorkoutPlan>(),
+      result: popped.add,
+    );
+
+    await _dragSheetDown(tester);
+    await tester.pumpAndSettle();
+
+    expect(find.byType(ExerciseSwapSheet), findsNothing);
+    expect(popped, [null]);
   });
 }

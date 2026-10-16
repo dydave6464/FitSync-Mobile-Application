@@ -325,7 +325,7 @@ class _ExerciseSwapSheetState extends ConsumerState<ExerciseSwapSheet> {
 
     final previewing = _previewing;
 
-    return SizedBox(
+    final sheet = SizedBox(
       height: visible + insets,
       child: SafeArea(
         child: Padding(
@@ -346,6 +346,14 @@ class _ExerciseSwapSheetState extends ConsumerState<ExerciseSwapSheet> {
                     Text(
                       'Replace ${widget.exerciseName}',
                       style: Theme.of(context).textTheme.titleLarge,
+                    ),
+                    const SizedBox(height: 2),
+                    // Opened from inside a workout, a swap reads like a
+                    // one-off for today. It is not: the plan row itself
+                    // changes, for every later session too.
+                    Text(
+                      'Changes your plan from now on, not just today.',
+                      style: TextStyle(fontSize: 12.5, color: t.text2),
                     ),
                     const SizedBox(height: 12),
                     TextField(
@@ -428,6 +436,22 @@ class _ExerciseSwapSheetState extends ConsumerState<ExerciseSwapSheet> {
                   ],
                 ),
         ),
+      ),
+    );
+
+    // Held open while a swap is in flight. Closed mid-request, the swap still
+    // lands, but nobody is left to say so: the plan changes under a screen
+    // that thinks it was cancelled. PopScope covers a tap on the barrier and
+    // system back, which both ask the route to pop. A drag down never asks:
+    // the bottom sheet pops its route itself once the drag ends. So while
+    // busy, a drag is claimed here first -- the innermost vertical-drag
+    // recognizer wins the gesture arena -- and the sheet's own never starts.
+    return PopScope(
+      canPop: !_busy,
+      child: GestureDetector(
+        behavior: HitTestBehavior.opaque,
+        onVerticalDragStart: _busy ? (_) {} : null,
+        child: sheet,
       ),
     );
   }
