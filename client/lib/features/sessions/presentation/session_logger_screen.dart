@@ -305,15 +305,9 @@ class _SessionLoggerScreenState extends ConsumerState<SessionLoggerScreen>
   void _syncDrafts(int index, int exerciseId) {
     final key = (index, exerciseId);
     if (key == _draftsFor) return;
-    _resetDrafts();
-    _draftsFor = key;
-  }
-
-  /// A fresh store for the position on screen. Also called directly by a
-  /// switch, which changes the exercise without changing the index.
-  void _resetDrafts() {
     _drafts.dispose();
     _drafts = SetDrafts();
+    _draftsFor = key;
   }
 
   @override
@@ -404,8 +398,8 @@ class _SessionLoggerScreenState extends ConsumerState<SessionLoggerScreen>
   }
 
   /// Every move this screen makes: which exercise, and which face of it.
-  /// Call it inside a setState. Five paths lead here -- Start logging, Next
-  /// exercise, both halves of back, and the jump sheet.
+  /// Call it inside a setState. Six paths lead here -- Start logging, Next
+  /// exercise, both halves of back, the jump sheet, and a switch.
   ///
   /// Moving never touches the rest: a rest is the user's, between their sets,
   /// whichever exercise is on screen -- the walk from one station to the next
@@ -441,9 +435,16 @@ class _SessionLoggerScreenState extends ConsumerState<SessionLoggerScreen>
   ///
   /// The sheet refreshes the active plan, which this screen watches, so the
   /// new exercise arrives at the same position on its own; [_index] is left
-  /// where it is. The demo is what shows next -- the user has not read this
-  /// one yet -- and the drafts go: anything typed was typed against the
-  /// exercise just replaced. The rest is not touched; see [_moveTo].
+  /// where it is. Nothing moves until that refreshed plan has landed: until
+  /// then the old exercise is still on screen, Switch link and all, and a
+  /// "Swapped to" over it would be a claim the screen contradicts. If the
+  /// refetch fails, the old plan stays, so the screen stays with it and says
+  /// why rather than announcing a switch it cannot show.
+  ///
+  /// Once it lands, the demo is what shows next -- the user has not read this
+  /// one yet. The drafts need nothing here: the new exercise at this position
+  /// already gave [_syncDrafts] a new key in the build that drew it. The rest
+  /// is not touched; see [_moveTo].
   ///
   /// No Undo on the SnackBar. Every swap is recorded server-side as "rejected
   /// this, chose that" for the recommender, so swapping straight back would
@@ -460,11 +461,36 @@ class _SessionLoggerScreenState extends ConsumerState<SessionLoggerScreen>
       ),
     );
     if (swappedTo == null || !mounted) return;
-    setState(() {
-      _resetDrafts();
-      _moveTo(stage: _LoggerStage.demo);
-    });
-    messenger.showSnackBar(SnackBar(content: Text('Swapped to $swappedTo')));
+    try {
+      await ref.read(activePlanProvider.future);
+    } catch (error) {
+      if (!mounted) return;
+      messenger.showSnackBar(SnackBar(content: Text(describeError(error))));
+      return;
+    }
+    if (!mounted) return;
+    setState(() => _moveTo(stage: _LoggerStage.demo));
+    messenger.showSnackBar(
+      SnackBar(
+        // Floating, and lifted past the footer: Start logging is the next
+        // tap after a switch, and a SnackBar along the bottom edge would sit
+        // on it for as long as it shows.
+        behavior: SnackBarBehavior.floating,
+        margin: EdgeInsets.fromLTRB(16, 0, 16, _footerHeight() + 8),
+        duration: const Duration(seconds: 4),
+        content: Text('Swapped to $swappedTo'),
+      ),
+    );
+  }
+
+  /// Marks the footer, so a SnackBar can be lifted clear of it.
+  final _footerKey = GlobalKey();
+
+  /// How tall the footer is now, safe area included. Measured rather than
+  /// fixed: the button grows with large text.
+  double _footerHeight() {
+    final box = _footerKey.currentContext?.findRenderObject() as RenderBox?;
+    return box != null && box.hasSize ? box.size.height : 0;
   }
 
   /// Opens the jump sheet and moves to whatever it returns.
@@ -1325,6 +1351,7 @@ class _SessionLoggerScreenState extends ConsumerState<SessionLoggerScreen>
                     ),
             ),
             SafeArea(
+              key: _footerKey,
               top: false,
               child: Padding(
                 padding: const EdgeInsets.fromLTRB(20, 0, 20, 16),

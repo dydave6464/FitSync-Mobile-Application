@@ -18,6 +18,7 @@ import 'package:fitsync/features/plans/domain/exercise_alternative.dart';
 import 'package:fitsync/features/plans/domain/workout_plan.dart';
 import 'package:fitsync/features/profile/domain/profile.dart';
 import 'package:fitsync/features/profile/presentation/providers.dart';
+import 'package:fitsync/features/plans/presentation/exercise_swap_sheet.dart';
 import 'package:fitsync/features/plans/presentation/providers.dart';
 import 'package:fitsync/features/sessions/data/rest_alerts.dart';
 import 'package:fitsync/features/sessions/domain/active_session.dart';
@@ -324,6 +325,8 @@ class RecordingPlanRepository implements PlanRepository {
     this.gate,
     this.swapped,
     this.swapGate,
+    this.refetchGate,
+    this.refetchError,
     this.alternativeRows = const [],
   });
 
@@ -346,6 +349,15 @@ class RecordingPlanRepository implements PlanRepository {
   /// sheet while the server is still answering.
   final Completer<void>? swapGate;
 
+  /// When set, every `activePlan` after a swap holds here until it completes,
+  /// so a test can look at the logger between the sheet closing and the new
+  /// plan landing.
+  final Completer<void>? refetchGate;
+
+  /// When set, every `activePlan` after a swap fails with this, as a refetch
+  /// that never reaches the server would.
+  final Object? refetchError;
+
   /// When set, `planFromSession` suspends here instead of resolving
   /// immediately -- mirrors [FakeSessionController.completeGate], and for the
   /// same kind of test: it lets a real network round trip outlive the
@@ -359,7 +371,13 @@ class RecordingPlanRepository implements PlanRepository {
   String? lastSplitStyle;
 
   @override
-  Future<WorkoutPlan?> activePlan() async => active;
+  Future<WorkoutPlan?> activePlan() async {
+    if (swaps.isNotEmpty) {
+      await refetchGate?.future;
+      if (refetchError != null) throw refetchError!;
+    }
+    return active;
+  }
 
   @override
   Future<List<ExerciseAlternative>> alternatives(
@@ -3144,6 +3162,8 @@ void main() {
         ),
       );
 
+      // On the demo, where the link would be: absent here means absent.
+      expect(find.byKey(const Key('logger.demo')), findsOneWidget);
       expect(find.byKey(const Key('logger.switch')), findsNothing);
 
       await tester.tap(find.byKey(const Key('logger.menu')));
@@ -3185,9 +3205,6 @@ void main() {
         expect(find.byKey(const Key('logger.demo')), findsOneWidget);
         expect(find.text('Detail 201'), findsOneWidget);
 
-        // The "Swapped to" SnackBar sits over the footer until it times out.
-        await tester.pump(const Duration(seconds: 5));
-        await tester.pumpAndSettle();
         await tester.tap(find.byKey(const Key('logger.primary')));
         await tester.pumpAndSettle();
         for (final field in ['set.1.weight', 'set.1.reps']) {
@@ -3201,7 +3218,7 @@ void main() {
     );
 
     testWidgets(
-      'a swap that lands after the sheet is dismissed still drops the drafts',
+      'a tap outside mid-swap leaves the sheet open, and the switch lands clean',
       (tester) async {
         final gate = Completer<void>();
         final plans = RecordingPlanRepository(
@@ -3219,12 +3236,23 @@ void main() {
         await _menu(tester, 'switch.menu');
         await choose(tester, boxSquat);
         // The sheet looks stuck on a slow connection; the user taps outside.
+        // It stays: closed now, the swap would land with nothing to say so.
+        // Not pumpAndSettle: the confirm button spins until the swap lands.
         await tester.tapAt(const Offset(5, 5));
-        await tester.pumpAndSettle();
+        await tester.pump(const Duration(milliseconds: 500));
+        expect(find.byType(ExerciseSwapSheet), findsOneWidget);
+
         gate.complete();
         await tester.pumpAndSettle();
 
         expect(plans.swaps, [(601, 201)]);
+        expect(find.byKey(const Key('logger.demo')), findsOneWidget);
+        expect(find.text('Swapped to Box squat'), findsOneWidget);
+        await tester.tap(find.byKey(const Key('logger.primary')));
+        await tester.pumpAndSettle();
+        // The empty fields belong to the new exercise, not to a table that
+        // never changed.
+        expect(find.text('Box squat'), findsWidgets);
         for (final field in ['set.1.weight', 'set.1.reps']) {
           expect(
             tester.widget<TextField>(find.byKey(Key(field))).controller!.text,
@@ -3276,10 +3304,101 @@ void main() {
 
       expect(plans.swaps, [(602, 202)]);
       expect(find.text('Detail 202'), findsOneWidget);
+      // Position 2, not the index's default 0: the switch kept it.
+      expect(_metaPosition('Exercise 2 / 2'), findsOneWidget);
       expect(
         tester.widget<Text>(find.byKey(const Key('rest.remaining'))).data,
         '1:29',
       );
+    });
+    testWidgets('the switch waits for the new plan before it shows', (
+      tester,
+    ) async {
+      final refetch = Completer<void>();
+      final plans = RecordingPlanRepository(
+        active: _plan,
+        swapped: swappedPlan(601, boxSquat),
+        refetchGate: refetch,
+        alternativeRows: const [boxSquat],
+      );
+      await _pump(tester, plans: plans);
+      await tester.tap(find.byKey(const Key('logger.primary')));
+      await tester.pumpAndSettle();
+
+      await _menu(tester, 'switch.menu');
+      await choose(tester, boxSquat);
+      await tester.pumpAndSettle();
+
+      // The sheet has closed and the server has swapped, but the plan on
+      // screen is still the old one: nothing may claim the switch yet.
+      expect(plans.swaps, [(601, 201)]);
+      expect(find.byType(ExerciseSwapSheet), findsNothing);
+      expect(find.byKey(const Key('logger.demo')), findsNothing);
+      expect(find.textContaining('Swapped to'), findsNothing);
+      expect(find.text('Goblet squat'), findsWidgets);
+
+      refetch.complete();
+      await tester.pumpAndSettle();
+
+      expect(find.byKey(const Key('logger.demo')), findsOneWidget);
+      expect(find.text('Detail 201'), findsOneWidget);
+      expect(find.text('Swapped to Box squat'), findsOneWidget);
+    });
+
+    testWidgets('a refetch that fails says so instead of "Swapped to"', (
+      tester,
+    ) async {
+      final plans = RecordingPlanRepository(
+        active: _plan,
+        swapped: swappedPlan(601, boxSquat),
+        refetchError: const ApiException(
+          'PLAN_LOAD_FAILED',
+          'Could not load your plan.',
+        ),
+        alternativeRows: const [boxSquat],
+      );
+      await _pump(tester, plans: plans);
+      await tester.tap(find.byKey(const Key('logger.primary')));
+      await tester.pumpAndSettle();
+
+      await _menu(tester, 'switch.menu');
+      await choose(tester, boxSquat);
+      await tester.pumpAndSettle();
+
+      expect(find.text('Could not load your plan.'), findsOneWidget);
+      expect(find.textContaining('Swapped to'), findsNothing);
+      // Stayed put: the old exercise's table, not a demo of either.
+      expect(find.byKey(const Key('logger.demo')), findsNothing);
+      expect(find.byKey(const Key('set.1.weight')), findsOneWidget);
+    });
+
+    testWidgets('"Swapped to" floats clear of Start logging', (tester) async {
+      await _pump(tester, plans: squatPlans());
+
+      await tester.tap(find.byKey(const Key('logger.switch')));
+      await tester.pumpAndSettle();
+      await choose(tester, boxSquat);
+      await tester.pumpAndSettle();
+
+      final snackBar = find.byType(SnackBar);
+      expect(snackBar, findsOneWidget);
+      expect(find.text('Swapped to Box squat'), findsOneWidget);
+      final primary = find.byKey(const Key('logger.primary'));
+      // The bar's own surface: the SnackBar widget's box also spans the
+      // margin below it, which is see-through and lets taps pass.
+      final bar = find
+          .descendant(of: snackBar, matching: find.byType(Material))
+          .first;
+      expect(
+        tester.getRect(bar).overlaps(tester.getRect(primary)),
+        isFalse,
+        reason: 'Start logging is the very next tap after a switch',
+      );
+
+      await tester.tap(primary);
+      await tester.pumpAndSettle();
+      expect(find.byKey(const Key('logger.demo')), findsNothing);
+      expect(find.byKey(const Key('set.1.weight')), findsOneWidget);
     });
   });
 }
