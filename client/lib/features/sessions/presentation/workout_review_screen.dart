@@ -15,6 +15,9 @@ import 'workout_draft.dart';
 /// What the user chose to do about a workout that was already open.
 enum _Blocked { open, replace }
 
+/// What a review row's ⋮ menu offers.
+enum _RowAction { moveUp, moveDown, remove }
+
 /// The last look at a manual workout before it becomes a session.
 ///
 /// The library used to start the workout directly from its footer, which made
@@ -38,6 +41,34 @@ class _WorkoutReviewScreenState extends ConsumerState<WorkoutReviewScreen> {
   /// flight -- POST /sessions is idempotent, but a second logger pushed on
   /// top of the first is not something the server can undo.
   bool _starting = false;
+
+  /// The Undo message for the last removal, while it is showing.
+  ///
+  /// It lives on the app's root messenger, so on its own it would follow the
+  /// user to the library or the logger, where its Undo can do nothing --
+  /// and with a screen reader on it never times out, so it would sit there
+  /// holding back every message after it. [dispose] takes it down instead.
+  ({
+    ScaffoldMessengerState messenger,
+    ScaffoldFeatureController<SnackBar, SnackBarClosedReason> controller,
+  })?
+  _undo;
+
+  @override
+  void dispose() {
+    // Not hidden here and now: with a screen reader on, Flutter hides a
+    // SnackBar instantly rather than animating it out, which rebuilds the
+    // messenger on the spot -- and while this screen is being torn down the
+    // widget tree is locked, so that throws and the dead Undo stays up. Right
+    // after this frame the tree is free again.
+    final undo = _undo;
+    if (undo != null) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (undo.messenger.mounted) undo.messenger.hideCurrentSnackBar();
+      });
+    }
+    super.dispose();
+  }
 
   /// Starts the reviewed workout and opens the logger on it.
   ///
@@ -121,6 +152,61 @@ class _WorkoutReviewScreenState extends ConsumerState<WorkoutReviewScreen> {
     }
   }
 
+  /// Takes [exercise] out of the workout and offers to put it back.
+  ///
+  /// Removal used to be final: one tap on a small ✕ and the pick was gone,
+  /// with the only way back being to find it again in the library -- where
+  /// re-adding appends it to the end rather than where it was.
+  void _remove(ExerciseSummary exercise, int index) {
+    final draft = ref.read(workoutDraftProvider.notifier);
+    draft.remove(exercise.exerciseId);
+
+    final messenger = ScaffoldMessenger.of(context)..hideCurrentSnackBar();
+    final controller = messenger.showSnackBar(
+      SnackBar(
+        content: Text('Removed ${exercise.name}'),
+        // A SnackBar with an action stays up until dismissed by default,
+        // which here would sit over the Start button indefinitely. A screen
+        // reader is the exception: reaching Undo by swiping takes longer than
+        // the four seconds a timed one gets, so for them it waits.
+        persist: MediaQuery.accessibleNavigationOf(context),
+        action: SnackBarAction(
+          label: 'Undo',
+          onPressed: () {
+            // Once this screen is gone the workout either started or was left
+            // for the library; restoring a pick into either would be a surprise.
+            if (!mounted) return;
+            final current = ref.read(workoutDraftProvider);
+            if (current.holds(exercise.exerciseId)) return;
+            // Clamped, not trusted: other rows may have been removed since,
+            // and the same slot is then as close as the list allows.
+            draft.replaceWith(
+              [...current]..insert(index.clamp(0, current.length), exercise),
+            );
+          },
+        ),
+      ),
+    );
+    _undo = (messenger: messenger, controller: controller);
+    controller.closed.then((_) {
+      // Only forget it if it is still the latest; a newer removal's message
+      // has already taken its place.
+      if (identical(_undo?.controller, controller)) _undo = null;
+    });
+  }
+
+  void _onRowAction(_RowAction action, ExerciseSummary exercise, int index) {
+    final draft = ref.read(workoutDraftProvider.notifier);
+    switch (action) {
+      case _RowAction.moveUp:
+        draft.reorder(index, index - 1);
+      case _RowAction.moveDown:
+        draft.reorder(index, index + 1);
+      case _RowAction.remove:
+        _remove(exercise, index);
+    }
+  }
+
   Future<void> _createSession() async {
     final draft = ref.read(workoutDraftProvider);
     final messenger = ScaffoldMessenger.of(context);
@@ -173,59 +259,47 @@ class _WorkoutReviewScreenState extends ConsumerState<WorkoutReviewScreen> {
       ),
       body: draft.isEmpty
           ? _EmptyReview(onAddMore: () => Navigator.of(context).pop())
-          : Column(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                Padding(
-                  padding: const EdgeInsets.fromLTRB(20, 12, 20, 4),
-                  child: Text(
-                    _summarise(draft),
-                    key: const Key('review.summary'),
-                    style: TextStyle(
-                      fontSize: 13,
-                      color: t.text2,
-                      height: 1.35,
+          // One scrolling list, header and footer included, rather than a
+          // fixed header above a list: at large text on a small phone the
+          // summary and hint alone can outgrow the screen, and a fixed block
+          // has nowhere to put the overflow.
+          : ReorderableListView.builder(
+              padding: const EdgeInsets.only(bottom: 8),
+              header: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  Padding(
+                    padding: const EdgeInsets.fromLTRB(20, 12, 20, 4),
+                    child: Text(
+                      _summarise(draft),
+                      key: const Key('review.summary'),
+                      style: TextStyle(
+                        fontSize: 13,
+                        color: t.text2,
+                        height: 1.35,
+                      ),
                     ),
                   ),
-                ),
-                Padding(
-                  padding: const EdgeInsets.fromLTRB(20, 0, 20, 8),
-                  child: Text(
-                    'Drag to set the order you will train them in.',
-                    style: TextStyle(
-                      fontSize: 12,
-                      color: t.text3,
-                      height: 1.35,
+                  Padding(
+                    padding: const EdgeInsets.fromLTRB(20, 0, 20, 8),
+                    child: Text(
+                      'Drag, or use ⋮, to set the order you will train them in.',
+                      key: const Key('review.hint'),
+                      style: TextStyle(
+                        fontSize: 12,
+                        // text2, not text3: this is the only place the screen
+                        // says the order can be changed at all.
+                        color: t.text2,
+                        height: 1.35,
+                      ),
                     ),
                   ),
-                ),
-                Expanded(
-                  child: ReorderableListView.builder(
-                    padding: const EdgeInsets.only(bottom: 8),
-                    itemCount: draft.length,
-                    onReorderItem: (oldIndex, newIndex) => ref
-                        .read(workoutDraftProvider.notifier)
-                        .reorder(oldIndex, newIndex),
-                    itemBuilder: (context, index) {
-                      final exercise = draft[index];
-                      return _ReviewRow(
-                        // Keyed by exercise, not by index: a list keyed by
-                        // position cannot tell a reorder from a rebuild, and
-                        // ReorderableListView requires a stable child key.
-                        key: ValueKey(exercise.exerciseId),
-                        exercise: exercise,
-                        position: index + 1,
-                        index: index,
-                        baseUrl: baseUrl,
-                        onRemove: () => ref
-                            .read(workoutDraftProvider.notifier)
-                            .remove(exercise.exerciseId),
-                      );
-                    },
-                  ),
-                ),
-                Padding(
-                  padding: const EdgeInsets.fromLTRB(20, 4, 20, 12),
+                ],
+              ),
+              footer: Padding(
+                padding: const EdgeInsets.fromLTRB(20, 4, 20, 12),
+                child: Align(
+                  alignment: AlignmentDirectional.centerStart,
                   child: TextButton.icon(
                     key: const Key('review.addMore'),
                     icon: const Icon(Icons.add, size: 18),
@@ -236,7 +310,26 @@ class _WorkoutReviewScreenState extends ConsumerState<WorkoutReviewScreen> {
                     onPressed: () => Navigator.of(context).pop(),
                   ),
                 ),
-              ],
+              ),
+              itemCount: draft.length,
+              onReorderItem: (oldIndex, newIndex) => ref
+                  .read(workoutDraftProvider.notifier)
+                  .reorder(oldIndex, newIndex),
+              itemBuilder: (context, index) {
+                final exercise = draft[index];
+                return _ReviewRow(
+                  // Keyed by exercise, not by index: a list keyed by
+                  // position cannot tell a reorder from a rebuild, and
+                  // ReorderableListView requires a stable child key.
+                  key: ValueKey(exercise.exerciseId),
+                  exercise: exercise,
+                  position: index + 1,
+                  index: index,
+                  isLast: index == draft.length - 1,
+                  baseUrl: baseUrl,
+                  onAction: (action) => _onRowAction(action, exercise, index),
+                );
+              },
             ),
     );
   }
@@ -298,8 +391,9 @@ class _ReviewRow extends StatelessWidget {
     required this.exercise,
     required this.position,
     required this.index,
+    required this.isLast,
     required this.baseUrl,
-    required this.onRemove,
+    required this.onAction,
   });
 
   final ExerciseSummary exercise;
@@ -311,29 +405,55 @@ class _ReviewRow extends StatelessWidget {
   /// needs, and deliberately not derived from [position] at the use site.
   final int index;
 
+  /// Whether this is the bottom row, which has nowhere further down to go.
+  final bool isLast;
+
   final String baseUrl;
-  final VoidCallback onRemove;
+  final ValueChanged<_RowAction> onAction;
 
   @override
   Widget build(BuildContext context) {
     final t = context.fs;
 
     return ListTile(
+      // The handle's touch area is 48 wide but its icon still 20, so the
+      // start padding gives back what the wider box takes: the icon sits
+      // where it always did, and only the reach around it grew.
+      contentPadding: const EdgeInsetsDirectional.only(start: 2, end: 8),
       leading: SizedBox(
-        width: 76,
+        width: 94,
         child: Row(
           mainAxisSize: MainAxisSize.min,
           children: [
             // An explicit handle rather than long-press-anywhere: the row also
-            // carries a remove button, and a long press that starts a drag
+            // carries a menu button, and a long press that starts a drag
             // from the whole row makes mis-grabs easy on a list people are
             // about to commit to.
             ReorderableDragStartListener(
               key: Key('review.drag.${exercise.exerciseId}'),
               index: index,
-              child: Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 4),
-                child: Icon(Icons.drag_indicator, size: 20, color: t.text3),
+              // Its own node, so the row is still announced by its name
+              // alone; the list's Move up/down actions sit on the row.
+              child: Semantics(
+                container: true,
+                label: 'Reorder ${exercise.name}',
+                // Painted, if invisibly, so the whole 48 dp box catches the
+                // touch: the listener defers to its child, and an empty
+                // SizedBox would leave only the 20 dp glyph to land on.
+                child: ColoredBox(
+                  color: Colors.transparent,
+                  child: SizedBox(
+                    width: 48,
+                    height: 48,
+                    child: Center(
+                      child: Icon(
+                        Icons.drag_indicator,
+                        size: 20,
+                        color: t.text3,
+                      ),
+                    ),
+                  ),
+                ),
               ),
             ),
             const SizedBox(width: 2),
@@ -367,13 +487,36 @@ class _ReviewRow extends StatelessWidget {
         ].join(' · '),
         maxLines: 1,
         overflow: TextOverflow.ellipsis,
-        style: TextStyle(fontSize: 12, color: t.text3),
+        style: TextStyle(fontSize: 12, color: t.text2),
       ),
-      trailing: IconButton(
-        key: Key('review.remove.${exercise.exerciseId}'),
-        icon: const Icon(Icons.close, size: 18),
-        tooltip: 'Remove ${exercise.name}',
-        onPressed: onRemove,
+      // One ⋮ rather than a ✕ beside new arrow buttons: three icon buttons
+      // would leave a 320 dp screen at large text almost no room for the
+      // name, and dragging stays the quick way to move. Remove joins the
+      // menu because its Undo makes the extra tap the only cost.
+      trailing: PopupMenuButton<_RowAction>(
+        key: Key('review.more.${exercise.exerciseId}'),
+        icon: const Icon(Icons.more_vert),
+        tooltip: 'More options for ${exercise.name}',
+        onSelected: onAction,
+        itemBuilder: (context) => [
+          PopupMenuItem(
+            key: Key('review.moveUp.${exercise.exerciseId}'),
+            value: _RowAction.moveUp,
+            enabled: index > 0,
+            child: const Text('Move up'),
+          ),
+          PopupMenuItem(
+            key: Key('review.moveDown.${exercise.exerciseId}'),
+            value: _RowAction.moveDown,
+            enabled: !isLast,
+            child: const Text('Move down'),
+          ),
+          PopupMenuItem(
+            key: Key('review.remove.${exercise.exerciseId}'),
+            value: _RowAction.remove,
+            child: const Text('Remove'),
+          ),
+        ],
       ),
     );
   }
