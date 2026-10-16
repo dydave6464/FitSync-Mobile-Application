@@ -144,12 +144,11 @@ class _OnboardingFlowState extends ConsumerState<OnboardingFlow> {
   Future<void> _saveCurrentStep() async {
     final notifier = ref.read(profileProvider.notifier);
 
-    // The server takes height and the two weights only as 0 < n < 1000, and
-    // FsStatField's formatter already stops anything from 1000 up. A typed 0
-    // is the one value left that it would reject, and a rejection would keep
-    // Skip on the step, so it is dropped like any other unusable answer.
-    final fields = {..._patchForCurrentStep()}
-      ..removeWhere((_, value) => value is num && value <= 0);
+    // Unlike Skip, a typed 0 is sent as it is. Continue is an explicit
+    // answer, so the server's rejection is shown in plain words and the user
+    // stays on the step to correct it, instead of the 0 being dropped while
+    // the field still shows it.
+    final fields = _patchForCurrentStep();
     if (fields.isNotEmpty) await notifier.patch(fields);
 
     // Goals replace the whole set on their own endpoint. Nothing ticked is

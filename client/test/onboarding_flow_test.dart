@@ -1210,6 +1210,38 @@ void main() {
     expect(find.text('STEP 3 / 6'), findsOneWidget);
   });
 
+  testWidgets('Continue sends a typed zero and explains the rejection', (
+    tester,
+  ) async {
+    final patches = <Map<String, dynamic>>[];
+    await _pumpFlow(
+      tester,
+      patches: patches,
+      onPatch: () async {
+        if (patches.last['heightCm'] == 0) {
+          throw const ApiException(
+            'INVALID_PROFILE_FIELD',
+            'heightCm must be a number between 0 and 1000.',
+          );
+        }
+      },
+    );
+    await _skip(tester);
+    expect(find.text('STEP 2 / 6'), findsOneWidget);
+
+    await tester.enterText(find.byKey(const Key('weightKg')), '72');
+    await tester.enterText(find.byKey(const Key('heightCm')), '0');
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const Key('continue')));
+    await tester.pumpAndSettle();
+
+    expect(patches, [
+      {'heightCm': 0.0, 'weightKg': 72.0},
+    ], reason: 'Continue is an explicit answer, so a 0 is sent, not dropped');
+    expect(find.text(_rejectedAnswer), findsOneWidget);
+    expect(find.text('STEP 2 / 6'), findsOneWidget);
+  });
+
   testWidgets('a rejected answer is explained without field names', (
     tester,
   ) async {
