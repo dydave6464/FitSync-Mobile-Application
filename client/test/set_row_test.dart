@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import 'package:fitsync/core/theme.dart';
+import 'package:fitsync/features/sessions/domain/active_session.dart';
 import 'package:fitsync/features/sessions/presentation/widgets/set_drafts.dart';
 import 'package:fitsync/features/sessions/presentation/widgets/set_row.dart';
 
@@ -77,5 +78,48 @@ void main() {
     final alone = await repsWidth(showWeight: false);
 
     expect(alone, greaterThan(shared));
+  });
+  // The whole logged row is a button that reopens the set; a screen reader
+  // has to say so, or the tap that undoes a set is a surprise.
+  testWidgets('a logged row tells a screen reader it reopens the set', (
+    tester,
+  ) async {
+    final handle = tester.ensureSemantics();
+    await tester.pumpWidget(
+      _host(
+        SetRow(
+          setNumber: 2,
+          logged: const LoggedSet(
+            exerciseId: 1,
+            setNumber: 2,
+            weightKg: 20,
+            reps: 8,
+          ),
+          drafts: _drafts(tester),
+          onReopen: () {},
+        ),
+      ),
+    );
+
+    expect(
+      tester.getSemantics(find.byKey(const Key('set.2.row'))),
+      isSemantics(hint: 'Reopen set 2', hasTapAction: true),
+    );
+    handle.dispose();
+  });
+
+  testWidgets('an unlogged row offers nothing to reopen', (tester) async {
+    final handle = tester.ensureSemantics();
+    await tester.pumpWidget(
+      _host(SetRow(setNumber: 2, logged: null, drafts: _drafts(tester))),
+    );
+
+    expect(
+      find.byWidgetPredicate(
+        (w) => w is Semantics && w.properties.hint == 'Reopen set 2',
+      ),
+      findsNothing,
+    );
+    handle.dispose();
   });
 }

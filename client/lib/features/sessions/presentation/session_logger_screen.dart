@@ -483,6 +483,102 @@ class _SessionLoggerScreenState extends ConsumerState<SessionLoggerScreen>
     );
   }
 
+  /// Takes a stored set back so it can be corrected: the tap on a logged row.
+  ///
+  /// The row keeps the set's own numbers. Emptying it let the next build fill
+  /// the blanks with last session's, so a mis-tap cost the numbers actually
+  /// lifted. The seed is authoritative, so it replaces what the row showed,
+  /// and a prefill only fills blank fields, so it leaves these alone.
+  ///
+  /// Undo rather than a question first: reopening is frequent and costs
+  /// nothing once Undo can put the set back.
+  Future<void> _reopenSet(PlanExercise exercise, int setNumber) async {
+    final messenger = ScaffoldMessenger.of(context);
+    // Read before the delete, which is what takes it out of the session.
+    final stored = ref
+        .read(activeSessionProvider)
+        .value
+        ?.setFor(exercise.exerciseId, setNumber);
+    final drafts = _drafts;
+    try {
+      await ref
+          .read(activeSessionProvider.notifier)
+          .unlogSet(exerciseId: exercise.exerciseId, setNumber: setNumber);
+    } on ApiException catch (error) {
+      if (!_handledSetWriteClosure(error, messenger)) rethrow;
+      return;
+    }
+    // A move while the delete was in flight has thrown this store away, and
+    // the store now on screen belongs to another exercise.
+    if (!mounted || !identical(drafts, _drafts)) return;
+    if (stored == null) {
+      drafts.release(setNumber);
+      return;
+    }
+    drafts.seed(
+      setNumber: setNumber,
+      weightKg: stored.weightKg,
+      reps: stored.reps,
+      unit: _unitOnScreen ?? ref.read(weightUnitProvider),
+      authoritative: true,
+    );
+    messenger.showSnackBar(
+      SnackBar(
+        // Lifted past the footer, as "Swapped to" is: Complete set is how a
+        // corrected set is saved, so it is the next tap.
+        behavior: SnackBarBehavior.floating,
+        margin: EdgeInsets.fromLTRB(16, 0, 16, _footerHeight() + 8),
+        duration: const Duration(seconds: 4),
+        content: Text('Set $setNumber reopened'),
+        action: SnackBarAction(
+          label: 'Undo',
+          onPressed: () => _undoReopen(stored, messenger),
+        ),
+      ),
+    );
+  }
+
+  /// Logs [stored] again exactly as it was. Not a new set, so no rest starts:
+  /// only Complete set starts one.
+  ///
+  /// Nothing happens if the set is already stored again -- corrected and
+  /// saved before Undo was tapped. That correction is the user's latest word,
+  /// and the old numbers must not overwrite it.
+  Future<void> _undoReopen(
+    LoggedSet stored,
+    ScaffoldMessengerState messenger,
+  ) async {
+    // The SnackBar outlives the logger: it belongs to the host's messenger.
+    if (!mounted) return;
+    final session = ref.read(activeSessionProvider).value;
+    if (session == null ||
+        session.setFor(stored.exerciseId, stored.setNumber) != null) {
+      return;
+    }
+    try {
+      await ref
+          .read(activeSessionProvider.notifier)
+          .logSet(
+            exerciseId: stored.exerciseId,
+            setNumber: stored.setNumber,
+            weightKg: stored.weightKg,
+            reps: stored.reps,
+          );
+    } on ApiException catch (error) {
+      if (_handledSetWriteClosure(error, messenger)) return;
+      _undoFailed(messenger, error);
+    } catch (error) {
+      _undoFailed(messenger, error);
+    }
+  }
+
+  /// The set stays open with its numbers in the row, so Complete set still
+  /// saves it; the message says why Undo did not.
+  void _undoFailed(ScaffoldMessengerState messenger, Object error) {
+    if (!mounted) return;
+    messenger.showSnackBar(SnackBar(content: Text(describeError(error))));
+  }
+
   /// Marks the footer, so a SnackBar can be lifted clear of it.
   final _footerKey = GlobalKey();
 
@@ -1305,28 +1401,8 @@ class _SessionLoggerScreenState extends ConsumerState<SessionLoggerScreen>
                                 )
                                 .value
                                 ?.animationUrl,
-                            onUndoSet: (setNumber) async {
-                              final messenger = ScaffoldMessenger.of(context);
-                              try {
-                                await ref
-                                    .read(activeSessionProvider.notifier)
-                                    .unlogSet(
-                                      exerciseId: exercise.exerciseId,
-                                      setNumber: setNumber,
-                                    );
-                              } on ApiException catch (error) {
-                                if (!_handledSetWriteClosure(
-                                  error,
-                                  messenger,
-                                )) {
-                                  rethrow;
-                                }
-                                return;
-                              }
-                              // The stored set is gone; let the table re-seed
-                              // this row from it on the next build.
-                              _drafts.release(setNumber);
-                            },
+                            onUndoSet: (setNumber) =>
+                                _reopenSet(exercise, setNumber),
                             onOpenDemo: () => Navigator.of(context).push(
                               MaterialPageRoute<void>(
                                 builder: (_) => InSessionExerciseScreen(

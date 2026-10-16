@@ -648,6 +648,7 @@ Future<FakeSessionController> _pumpLogging(
   FakeTrainingSettings? training,
   FakeRestAlertScheduler? alerts,
   RestAlertStore? alertStore,
+  Map<int, LastPerformance> last = const {},
 }) async {
   final controller = await _pump(
     tester,
@@ -658,6 +659,7 @@ Future<FakeSessionController> _pumpLogging(
     training: training,
     alerts: alerts,
     alertStore: alertStore,
+    last: last,
   );
   await tester.tap(find.byKey(const Key('logger.primary')));
   await tester.pumpAndSettle();
@@ -684,6 +686,26 @@ Future<void> _menu(WidgetTester tester, String action) async {
   await tester.pumpAndSettle();
   await tester.tap(find.byKey(Key('logger.$action')));
   await tester.pumpAndSettle();
+}
+
+/// A 320 x 640 phone at twice the text size, for the checks that the
+/// logger's dialogs and messages still fit.
+void _smallPhoneLargeText(WidgetTester tester) {
+  tester.view.physicalSize = const Size(320, 640);
+  tester.view.devicePixelRatio = 1;
+  tester.platformDispatcher.textScaleFactorTestValue = 2.0;
+  addTearDown(tester.view.reset);
+  addTearDown(tester.platformDispatcher.clearTextScaleFactorTestValue);
+}
+
+/// Takes the one overflow the logger reports before anything is tapped on a
+/// small phone at large text: the meta row's "12 min elapsed", in a monospace
+/// font that the test font draws a full em wide per glyph. A phone's monospace
+/// is narrower and fits. Flutter reports an overflow once per row, so taking
+/// it here leaves later checks to see only what the tapped flow adds.
+void _drainMetaRowOverflow(WidgetTester tester) {
+  final error = tester.takeException();
+  if (error != null) expect('$error', contains('RenderFlex overflowed'));
 }
 
 void main() {
@@ -1712,50 +1734,46 @@ void main() {
     },
   );
 
-  // Critical fix (review of task 2): _drafts.release(setNumber) has to run
-  // in session_logger_screen.dart's own onUndoSet, not just be documented as
-  // a later task's job -- otherwise a reopened row keeps showing the number
-  // that was just undone. This is the one test that can actually catch a
-  // regression here: exercise_log_panel_test.dart drives ExerciseLogPanel
-  // directly and supplies its own onUndoSet, so it can never see whether
-  // this screen's real handler calls release() or not.
-  testWidgets('undoing a set clears its typed values from the reopened row', (
+  // A mis-tap on a logged row used to cost the set: it was deleted, the row
+  // emptied, and the next build filled the blanks with last session's
+  // numbers, so the numbers actually lifted were gone. The row keeps its own
+  // numbers now. [last] differs from the stored set so a prefill would show.
+  // This has to be driven through the screen: exercise_log_panel_test.dart
+  // supplies its own onUndoSet, so it can never see what this handler does.
+  testWidgets('reopening a set keeps its own numbers, not last session\'s', (
     tester,
   ) async {
-    await _pumpLogging(
+    final controller = await _pumpLogging(
       tester,
       session: _session(
         sets: const [
           LoggedSet(exerciseId: 101, setNumber: 1, weightKg: 22.5, reps: 10),
         ],
       ),
+      last: const {
+        101: LastPerformance(
+          exerciseId: 101,
+          sessionDate: '2026-09-01',
+          weightKg: 30,
+          reps: 5,
+        ),
+      },
     );
 
-    expect(
-      tester
-          .widget<TextField>(find.byKey(const Key('set.1.weight')))
-          .controller!
-          .text,
-      '22.5',
-    );
-
-    await tester.tap(find.byKey(const Key('set.1.tick')));
+    await tester.tap(find.byKey(const Key('set.1.row')));
     await tester.pumpAndSettle();
 
-    expect(
-      tester
-          .widget<TextField>(find.byKey(const Key('set.1.weight')))
-          .controller!
-          .text,
-      isEmpty,
+    expect(controller.calls, ['unlog:101:1']);
+    final weight = tester.widget<TextField>(
+      find.byKey(const Key('set.1.weight')),
     );
-    expect(
-      tester
-          .widget<TextField>(find.byKey(const Key('set.1.reps')))
-          .controller!
-          .text,
-      isEmpty,
-    );
+    final reps = tester.widget<TextField>(find.byKey(const Key('set.1.reps')));
+    // Open for editing, holding what was stored.
+    expect(weight.enabled, isTrue);
+    expect(weight.controller!.text, '22.5');
+    expect(reps.controller!.text, '10');
+    // The footer names the reopened set, so fixing it is one tap.
+    expect(find.text('Complete set 1'), findsOneWidget);
   });
 
   testWidgets('a 409 on an undo closes the logger too', (tester) async {
@@ -1780,6 +1798,132 @@ void main() {
     expect(find.text('open logger'), findsOneWidget);
     expect(find.text('This session was already finished.'), findsOneWidget);
     expect(tester.takeException(), isNull);
+  });
+
+  group('reopening a logged set', () {
+    ActiveSession squatSet1() => _session(
+      sets: const [
+        LoggedSet(exerciseId: 101, setNumber: 1, weightKg: 22.5, reps: 10),
+      ],
+    );
+
+    Finder undo() => find.widgetWithText(SnackBarAction, 'Undo');
+
+    testWidgets('says so, with an Undo', (tester) async {
+      await _pumpLogging(tester, session: squatSet1());
+
+      await tester.tap(find.byKey(const Key('set.1.row')));
+      await tester.pumpAndSettle();
+
+      expect(find.text('Set 1 reopened'), findsOneWidget);
+      expect(undo(), findsOneWidget);
+    });
+
+    // The footer is the next tap after a reopen -- Complete set 1 is how the
+    // fix is saved -- so the message must not sit on it.
+    testWidgets('the message floats clear of the footer', (tester) async {
+      await _pumpLogging(tester, session: squatSet1());
+
+      await tester.tap(find.byKey(const Key('set.1.row')));
+      await tester.pumpAndSettle();
+
+      final snackBar = find.byType(SnackBar);
+      // The bar's own surface: the SnackBar widget's box also spans the
+      // margin below it, which is see-through and lets taps pass.
+      final bar = find
+          .descendant(of: snackBar, matching: find.byType(Material))
+          .first;
+      expect(
+        tester
+            .getRect(bar)
+            .overlaps(tester.getRect(find.byKey(const Key('logger.primary')))),
+        isFalse,
+      );
+    });
+
+    // Undo puts back what was there; it is not a new set, so no rest.
+    testWidgets('Undo logs the set again as it was, and starts no rest', (
+      tester,
+    ) async {
+      final controller = await _pumpLogging(tester, session: squatSet1());
+
+      await tester.tap(find.byKey(const Key('set.1.row')));
+      await tester.pumpAndSettle();
+      await tester.tap(undo());
+      await tester.pumpAndSettle();
+
+      expect(controller.calls, ['unlog:101:1', 'log:101:1:22.5:10']);
+      expect(controller.heldSession!.setFor(101, 1), isNotNull);
+      expect(find.byKey(const Key('rest.remaining')), findsNothing);
+      expect(find.text('Complete set 2'), findsOneWidget);
+    });
+
+    // Fixed and saved before Undo was tapped: the fix is the user's latest
+    // word, and Undo must not overwrite it with the old numbers.
+    testWidgets('Undo does nothing once the set is stored again', (
+      tester,
+    ) async {
+      final controller = await _pumpLogging(tester, session: squatSet1());
+
+      await tester.tap(find.byKey(const Key('set.1.row')));
+      await tester.pumpAndSettle();
+      await tester.enterText(find.byKey(const Key('set.1.reps')), '12');
+      await tester.tap(find.byKey(const Key('logger.primary')));
+      await tester.pumpAndSettle();
+      await tester.tap(undo());
+      await tester.pumpAndSettle();
+
+      expect(controller.calls, ['unlog:101:1', 'log:101:1:22.5:12']);
+      expect(controller.heldSession!.setFor(101, 1)!.reps, 12);
+    });
+
+    testWidgets('an Undo that fails says so and leaves the set open', (
+      tester,
+    ) async {
+      final controller = await _pumpLogging(tester, session: squatSet1());
+
+      await tester.tap(find.byKey(const Key('set.1.row')));
+      await tester.pumpAndSettle();
+      controller.logSetError = const ApiException('NETWORK', 'No connection.');
+      await tester.tap(undo());
+      await tester.pumpAndSettle();
+
+      expect(find.text('No connection.'), findsOneWidget);
+      expect(controller.heldSession!.setFor(101, 1), isNull);
+      expect(find.byType(SessionLoggerScreen), findsOneWidget);
+      expect(tester.takeException(), isNull);
+    });
+
+    testWidgets('an Undo on a session closed elsewhere leaves the logger', (
+      tester,
+    ) async {
+      final controller = await _pumpLogging(tester, session: squatSet1());
+
+      await tester.tap(find.byKey(const Key('set.1.row')));
+      await tester.pumpAndSettle();
+      controller.logSetError = const ApiException(
+        'SESSION_NOT_IN_PROGRESS',
+        'This session has already been closed.',
+      );
+      await tester.tap(undo());
+      await tester.pumpAndSettle();
+
+      expect(find.byType(SessionLoggerScreen), findsNothing);
+      expect(find.text('This session was already finished.'), findsOneWidget);
+      expect(tester.takeException(), isNull);
+    });
+
+    testWidgets('fits a 320 dp phone at large text', (tester) async {
+      _smallPhoneLargeText(tester);
+
+      await _pumpLogging(tester, session: squatSet1());
+      _drainMetaRowOverflow(tester);
+      await tester.tap(find.byKey(const Key('set.1.row')));
+      await tester.pumpAndSettle();
+
+      expect(find.text('Set 1 reopened'), findsOneWidget);
+      expect(tester.takeException(), isNull);
+    });
   });
 
   // Beyond the brief -- startedAt is the SERVER's NOW(). A phone clock behind
