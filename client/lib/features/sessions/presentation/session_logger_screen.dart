@@ -341,6 +341,8 @@ class _SessionLoggerScreenState extends ConsumerState<SessionLoggerScreen>
   /// already cleared it. Staying here would leave a screen editing a session
   /// that accepts no writes, so refetch and get out.
   void _handleAlreadyClosed(ScaffoldMessengerState messenger) {
+    // As in _discard: the rest's alert goes now, not when the pop finishes.
+    setState(_endRest);
     ref.invalidate(activeSessionProvider);
     Navigator.of(context).pop();
     messenger.showSnackBar(
@@ -691,7 +693,12 @@ class _SessionLoggerScreenState extends ConsumerState<SessionLoggerScreen>
     final messenger = ScaffoldMessenger.of(context);
     try {
       await ref.read(activeSessionProvider.notifier).abandon();
-      if (mounted) Navigator.of(context).pop();
+      if (!mounted) return;
+      // Ended here rather than left to dispose: on a locked phone the pop
+      // waits for frames, and the rest's alert would fire for a workout
+      // that was thrown away.
+      setState(_endRest);
+      Navigator.of(context).pop();
     } on StateError {
       // Same _current contract as _finish: already closed elsewhere by the
       // time this reached the controller. Same resolution as the 409 path.
