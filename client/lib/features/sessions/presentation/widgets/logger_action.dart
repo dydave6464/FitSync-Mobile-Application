@@ -1,3 +1,5 @@
+import 'dart:math' as math;
+
 import 'package:flutter/material.dart';
 
 import '../../../../core/units.dart';
@@ -106,7 +108,7 @@ class _LoggerActionState extends State<LoggerAction> {
       // ApiException's own message, never an exception's raw text.
       // Floating, and lifted past this button: a SnackBar along the bottom
       // edge would sit on the very "Retry" it explains for as long as it
-      // shows. Same treatment as "Swapped to" on the logger screen.
+      // shows. Same idea as "Swapped to" on the logger screen.
       messenger
         ?..hideCurrentSnackBar()
         ..showSnackBar(
@@ -121,20 +123,37 @@ class _LoggerActionState extends State<LoggerAction> {
     }
   }
 
-  /// How far this button's top edge sits above the bottom of the enclosing
-  /// Scaffold, which is where a floating SnackBar's margin is counted from.
-  /// Measured rather than fixed: the button grows with large text, and what
-  /// sits below it is the host's business.
+  /// How far this button's top edge sits above the line a floating SnackBar's
+  /// margin is counted from. Measured rather than fixed: the button grows
+  /// with large text, and what sits below it is the host's business.
+  ///
+  /// That line is not the Scaffold's bottom edge. The Scaffold lifts a
+  /// floating SnackBar above the keyboard (when it resizes for it) and above
+  /// the system's bottom inset, whichever is taller. Both are left out here,
+  /// or they would be counted twice: the keyboard is often still up when the
+  /// button is tapped, and the bar would land that far up the screen, over
+  /// the sets or off its top.
   double _clearanceBelowTop() {
     final box = context.findRenderObject() as RenderBox?;
-    final scaffold =
-        Scaffold.maybeOf(context)?.context.findRenderObject() as RenderBox?;
-    if (box == null || !box.hasSize || scaffold == null || !scaffold.hasSize) {
+    final scaffold = Scaffold.maybeOf(context);
+    final scaffoldBox = scaffold?.context.findRenderObject() as RenderBox?;
+    if (box == null ||
+        !box.hasSize ||
+        scaffold == null ||
+        scaffoldBox == null ||
+        !scaffoldBox.hasSize) {
       return 0;
     }
+    final keyboard = scaffold.widget.resizeToAvoidBottomInset ?? true
+        ? MediaQuery.viewInsetsOf(scaffold.context).bottom
+        : 0.0;
+    final systemBar = MediaQuery.viewPaddingOf(scaffold.context).bottom;
     final top = box.localToGlobal(Offset.zero).dy;
-    final bottom = scaffold.localToGlobal(Offset(0, scaffold.size.height)).dy;
-    return (bottom - top).clamp(0, double.infinity).toDouble();
+    final bottom = scaffoldBox
+        .localToGlobal(Offset(0, scaffoldBox.size.height))
+        .dy;
+    final base = bottom - math.max(keyboard, systemBar);
+    return (base - top).clamp(0, double.infinity).toDouble();
   }
 
   /// True to log the set as it stands, false to go back and add reps, null

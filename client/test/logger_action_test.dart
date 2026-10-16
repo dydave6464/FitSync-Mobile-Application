@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
@@ -440,24 +442,49 @@ void main() {
 
   group('a failed save leaves Retry reachable', () {
     // The logger's button is its footer, at the bottom of the Scaffold body,
-    // which is exactly where a default SnackBar lands. The host puts it there.
+    // which is exactly where a default SnackBar lands. The host builds the
+    // footer the way the logger screen does: SafeArea, then its padding.
     Widget footerHost(Widget action) => MaterialApp(
       theme: fsLightTheme(),
       home: Scaffold(
         body: Column(
           children: [
             const Expanded(child: SizedBox.expand()),
-            Padding(padding: const EdgeInsets.all(16), child: action),
+            SafeArea(
+              top: false,
+              child: Padding(
+                padding: const EdgeInsets.fromLTRB(20, 0, 20, 16),
+                child: action,
+              ),
+            ),
           ],
         ),
       ),
     );
 
-    Future<void> checkRetryReachable(WidgetTester tester) async {
+    // On a phone the keyboard is usually still up when Complete is tapped:
+    // the set row only starts hiding it on pointer-down. While it is up the
+    // system's bottom inset (a gesture bar, say) is drawn under it, so the
+    // body's own bottom padding is what is left over.
+    void setKeyboard(WidgetTester tester, double inset, double systemBar) {
+      tester.view.viewInsets = FakeViewPadding(bottom: inset);
+      tester.view.viewPadding = FakeViewPadding(bottom: systemBar);
+      tester.view.padding = FakeViewPadding(
+        bottom: (systemBar - inset).clamp(0, double.infinity).toDouble(),
+      );
+    }
+
+    Future<void> checkRetryReachable(
+      WidgetTester tester, {
+      double keyboardAtTap = 0,
+      double keyboardAtFailure = 0,
+      double systemBar = 0,
+    }) async {
       final drafts = SetDrafts();
       addTearDown(drafts.dispose);
       drafts.reps(1).text = '8';
       var calls = 0;
+      final firstSave = Completer<void>();
       await tester.pumpWidget(
         footerHost(
           LoggerAction(
@@ -467,20 +494,29 @@ void main() {
             unit: WeightUnit.kg,
             onCompleteSet: (_, _, _) async {
               calls++;
-              if (calls == 1) {
-                throw const ApiException(
-                  'NETWORK_ERROR',
-                  'No connection. Check your internet and try again.',
-                );
-              }
+              if (calls == 1) await firstSave.future;
             },
             onNextExercise: () {},
             onFinish: () {},
           ),
         ),
       );
-      await tester.tap(find.byKey(const Key('logger.primary')));
+      setKeyboard(tester, keyboardAtTap, systemBar);
       await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const Key('logger.primary')));
+      await tester.pump();
+      // The keyboard goes down (or part way) while the save is in flight.
+      setKeyboard(tester, keyboardAtFailure, systemBar);
+      // Not pumpAndSettle: the button's spinner turns until the save ends.
+      await tester.pump(const Duration(milliseconds: 300));
+      firstSave.completeError(
+        const ApiException(
+          'NETWORK_ERROR',
+          'No connection. Check your internet and try again.',
+        ),
+      );
+      await tester.pumpAndSettle();
+      expect(tester.takeException(), isNull);
 
       final snackBar = find.byType(SnackBar);
       expect(snackBar, findsOneWidget);
@@ -496,6 +532,11 @@ void main() {
         isFalse,
         reason: 'the SnackBar explains Retry; it must not cover it',
       );
+      expect(
+        tester.getRect(primary).top - tester.getRect(bar).bottom,
+        moreOrLessEquals(8, epsilon: 0.5),
+        reason: 'the SnackBar sits just above Retry, not far up the screen',
+      );
 
       await tester.tap(primary);
       await tester.pumpAndSettle();
@@ -508,20 +549,70 @@ void main() {
       expect(find.text('Complete set 1'), findsOneWidget);
     }
 
-    testWidgets('on a normal phone', (tester) async {
-      tester.view.physicalSize = const Size(360, 780);
-      tester.view.devicePixelRatio = 1;
-      addTearDown(tester.view.reset);
-      await checkRetryReachable(tester);
-    });
+    void onScreen(
+      String name,
+      Size size, {
+      double textScale = 1,
+      double keyboardAtTap = 0,
+      double keyboardAtFailure = 0,
+      double systemBar = 0,
+    }) {
+      testWidgets(name, (tester) async {
+        tester.view.physicalSize = size;
+        tester.view.devicePixelRatio = 1;
+        tester.platformDispatcher.textScaleFactorTestValue = textScale;
+        addTearDown(tester.view.reset);
+        addTearDown(tester.platformDispatcher.clearTextScaleFactorTestValue);
+        await checkRetryReachable(
+          tester,
+          keyboardAtTap: keyboardAtTap,
+          keyboardAtFailure: keyboardAtFailure,
+          systemBar: systemBar,
+        );
+      });
+    }
 
-    testWidgets('on a 320 dp screen at 2.0x text', (tester) async {
-      tester.view.physicalSize = const Size(320, 780);
-      tester.view.devicePixelRatio = 1;
-      tester.platformDispatcher.textScaleFactorTestValue = 2.0;
-      addTearDown(tester.view.reset);
-      addTearDown(tester.platformDispatcher.clearTextScaleFactorTestValue);
-      await checkRetryReachable(tester);
-    });
+    onScreen('on a normal phone', const Size(360, 780));
+    onScreen(
+      'on a 320 dp screen at 2.0x text',
+      const Size(320, 780),
+      textScale: 2,
+    );
+    onScreen(
+      'with a gesture bar below the footer',
+      const Size(360, 780),
+      systemBar: 24,
+    );
+    onScreen(
+      'when the keyboard was up at the tap',
+      const Size(360, 780),
+      keyboardAtTap: 250,
+      systemBar: 24,
+    );
+    onScreen(
+      'when the keyboard was up at the tap, on a shorter phone',
+      const Size(360, 740),
+      keyboardAtTap: 280,
+    );
+    onScreen(
+      'when the keyboard is part way down at the failure',
+      const Size(360, 780),
+      keyboardAtTap: 250,
+      keyboardAtFailure: 100,
+      systemBar: 24,
+    );
+    onScreen(
+      'when the keyboard was up, on a 320 dp screen at 2.0x text',
+      const Size(320, 780),
+      textScale: 2,
+      keyboardAtTap: 250,
+      systemBar: 24,
+    );
+    onScreen(
+      'when the keyboard was up, on a short phone at 2.0x text',
+      const Size(360, 640),
+      textScale: 2,
+      keyboardAtTap: 250,
+    );
   });
 }
