@@ -232,6 +232,9 @@ class _SessionLoggerScreenState extends ConsumerState<SessionLoggerScreen>
     if (_rest == null) return;
     _rest = null;
     _restReading.value = null;
+    // However it ended, an alert scheduled for its end is now wrong: Finish
+    // can land after the phone has locked and one was scheduled.
+    unawaited(_alerts.cancel());
     if (!ranOut) return;
     _restOver = true;
     _restOverTimer?.cancel();

@@ -2897,5 +2897,29 @@ void main() {
 
       expect(alerts.requests, 0);
     });
+
+    // Finish tapped mid-rest, then the screen goes off before the server
+    // answers: the alert scheduled at lock time must not fire "Rest over"
+    // over a workout that has already finished.
+    testWidgets('a finish that lands while away withdraws the alert', (
+      tester,
+    ) async {
+      final alerts = FakeRestAlertScheduler();
+      final controller = await _pumpLogging(tester, alerts: alerts);
+      await tester.tap(find.byKey(const Key('logger.primary')));
+      await tester.pump();
+      final gate = Completer<void>();
+      controller.completeGate = gate;
+
+      await _menu(tester, 'finish');
+      await _background(tester);
+      expect(alerts.events, ['schedule']);
+
+      gate.complete();
+      await tester.pump();
+      await tester.pump();
+
+      expect(alerts.events, ['schedule', 'cancel']);
+    });
   });
 }
