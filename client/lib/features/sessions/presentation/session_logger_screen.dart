@@ -567,6 +567,11 @@ class _SessionLoggerScreenState extends ConsumerState<SessionLoggerScreen>
         behavior: SnackBarBehavior.floating,
         margin: EdgeInsets.fromLTRB(16, 0, 16, _footerHeight() + 8),
         duration: const Duration(seconds: 4),
+        // An action makes a SnackBar persist by default, which would keep
+        // this one up after its Undo stopped meaning anything, with every
+        // later message queued behind it. It times out like "Swapped to",
+        // except for a screen reader, which needs time to reach Undo.
+        persist: MediaQuery.accessibleNavigationOf(context),
         content: Text('Set $setNumber reopened'),
         action: SnackBarAction(
           label: 'Undo',
@@ -686,6 +691,9 @@ class _SessionLoggerScreenState extends ConsumerState<SessionLoggerScreen>
     // belongs on the screen underneath.
     final messenger = ScaffoldMessenger.of(context);
     Navigator.of(context).pop();
+    // A reopen's Undo is still up for up to four seconds; it would hold this
+    // message back, and leaving is the newer news.
+    messenger.removeCurrentSnackBar();
     messenger.showSnackBar(
       const SnackBar(
         content: Text('Workout saved. Resume it any time from Train.'),

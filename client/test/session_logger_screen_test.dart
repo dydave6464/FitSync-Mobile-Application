@@ -1833,6 +1833,42 @@ void main() {
       expect(undo(), findsOneWidget);
     });
 
+    // An action makes a SnackBar persist by default, which would leave this
+    // one up for good -- after its Undo stopped meaning anything, and with
+    // every later message queued behind it. It goes in four seconds, as
+    // "Swapped to" does.
+    testWidgets('the message goes after four seconds', (tester) async {
+      await _pumpLogging(tester, session: squatSet1());
+
+      await tester.tap(find.byKey(const Key('set.1.row')));
+      await tester.pumpAndSettle();
+      expect(find.text('Set 1 reopened'), findsOneWidget);
+
+      await tester.pump(const Duration(seconds: 5));
+      await tester.pumpAndSettle();
+
+      expect(find.text('Set 1 reopened'), findsNothing);
+    });
+
+    // Leaving straight after a reopen: the saved message is the one that
+    // matters, and it must not wait behind the reopen one.
+    testWidgets('leaving right after still says the workout is saved', (
+      tester,
+    ) async {
+      await _pumpLogging(tester, session: squatSet1());
+
+      await tester.tap(find.byKey(const Key('set.1.row')));
+      await tester.pumpAndSettle();
+      await _menu(tester, 'leave');
+
+      expect(find.byType(SessionLoggerScreen), findsNothing);
+      expect(find.text('Set 1 reopened'), findsNothing);
+      expect(
+        find.text('Workout saved. Resume it any time from Train.'),
+        findsOneWidget,
+      );
+    });
+
     // The footer is the next tap after a reopen -- Complete set 1 is how the
     // fix is saved -- so the message must not sit on it.
     testWidgets('the message floats clear of the footer', (tester) async {
@@ -2241,6 +2277,14 @@ void main() {
         tester,
         session: _session(sets: squatDone.sublist(0, 1)),
       );
+      // Away from where Keep going would land -- squat, with sets left -- so
+      // staying put and moving look different.
+      await tester.tap(find.byKey(const Key('logger.position')));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const Key('jump.102')));
+      await tester.pumpAndSettle();
+      expect(_metaPosition('Exercise 2 / 2'), findsOneWidget);
+      expect(find.byKey(const Key('logger.demo')), findsOneWidget);
 
       await _menu(tester, 'finish');
       await tester.tapAt(const Offset(5, 5));
@@ -2248,8 +2292,8 @@ void main() {
 
       expect(dialog(), findsNothing);
       expect(completes(controller), 0);
-      expect(_metaPosition('Exercise 1 / 2'), findsOneWidget);
-      expect(find.text('Complete set 2'), findsOneWidget);
+      expect(_metaPosition('Exercise 2 / 2'), findsOneWidget);
+      expect(find.byKey(const Key('logger.demo')), findsOneWidget);
 
       // Not locked out either: the guard is set only once Finish is chosen.
       await _menu(tester, 'finish');
