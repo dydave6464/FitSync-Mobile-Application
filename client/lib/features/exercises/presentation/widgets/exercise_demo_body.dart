@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../../../../core/theme.dart';
 import '../../domain/exercise.dart';
 import '../../domain/exercise_cues.dart';
 import '../equipment_icon.dart';
@@ -51,19 +52,7 @@ class ExerciseDemoBody extends StatelessWidget {
       padding: const EdgeInsets.all(16),
       children: [
         if (exercise.animationUrl != null)
-          AspectRatio(
-            aspectRatio: 1,
-            child: Image.network(
-              '$baseUrl${exercise.animationUrl}',
-              fit: BoxFit.contain,
-              // Flutter's Image plays animated GIFs natively — no package.
-              // flutter_lints (this SDK) flags __/___ as unnecessary now
-              // that repeated `_` is a valid wildcard for each parameter.
-              errorBuilder: (_, _, _) => Center(
-                child: Icon(equipmentIcon(exercise.equipment), size: 48),
-              ),
-            ),
-          ),
+          _DemoPlayer(exercise: exercise, baseUrl: baseUrl),
         const SizedBox(height: 16),
         if (header != null) ...[header!, const SizedBox(height: 8)],
         Text(exercise.name, style: Theme.of(context).textTheme.headlineSmall),
@@ -85,6 +74,130 @@ class ExerciseDemoBody extends StatelessWidget {
             AiCueList(cues: cues ?? ExerciseCues.catalogue(exercise.cues)),
         const SizedBox(height: 32),
       ],
+    );
+  }
+}
+
+/// The exercise's animation, which the viewer can pause, and which waits for
+/// a tap under Reduce Motion.
+///
+/// The GIF is paused with [TickerMode] rather than by swapping in the still:
+/// [Image] only listens to its frame stream while tickers are enabled, so
+/// turning them off freezes the frame on screen -- the pose the viewer
+/// stopped on is the one they wanted to look at.
+class _DemoPlayer extends StatefulWidget {
+  const _DemoPlayer({required this.exercise, required this.baseUrl});
+
+  final ExerciseDetail exercise;
+  final String? baseUrl;
+
+  /// Every animation in the catalogue store is 180x180.
+  static const _sourcePx = 180.0;
+
+  /// How far past its own resolution the demo may be blown up. Filling a
+  /// tablet's width asked for six times the source and looked soft for it;
+  /// three matches the cap the swap sheet's preview already settled on.
+  static const _maxUpscale = 3.0;
+
+  @override
+  State<_DemoPlayer> createState() => _DemoPlayerState();
+}
+
+class _DemoPlayerState extends State<_DemoPlayer> {
+  /// The viewer's own choice, once they have tapped. Until then the demo
+  /// follows Reduce Motion, so turning it on mid-screen still holds it.
+  bool? _chosenPlaying;
+
+  /// Whether the animation has been on screen at all. Before that, Reduce
+  /// Motion shows the still thumbnail; after, a pause keeps the GIF's frame.
+  bool _started = false;
+
+  void _toggle(bool playing) => setState(() {
+    _chosenPlaying = !playing;
+    _started = true;
+  });
+
+  Widget _fallback() =>
+      Center(child: Icon(equipmentIcon(widget.exercise.equipment), size: 48));
+
+  @override
+  Widget build(BuildContext context) {
+    final t = context.fs;
+    final playing = _chosenPlaying ?? !MediaQuery.disableAnimationsOf(context);
+    final thumb = widget.exercise.thumbnailUrl;
+    final still = thumb == null
+        ? null
+        : Image.network(
+            '${widget.baseUrl}$thumb',
+            fit: BoxFit.contain,
+            // flutter_lints (this SDK) flags __/___ as unnecessary now that
+            // repeated `_` is a valid wildcard for each parameter.
+            errorBuilder: (_, _, _) => _fallback(),
+          );
+
+    final Widget picture;
+    if (!playing && !_started && still != null) {
+      picture = still;
+    } else {
+      picture = TickerMode(
+        enabled: playing,
+        // Flutter's Image plays animated GIFs natively -- no package.
+        child: Image.network(
+          '${widget.baseUrl}${widget.exercise.animationUrl}',
+          fit: BoxFit.contain,
+          filterQuality: FilterQuality.medium,
+          // Until the first frame lands, the still stands in, so the box is
+          // never blank while a slow connection fetches the whole GIF.
+          frameBuilder: (_, child, frame, wasSynchronouslyLoaded) =>
+              frame == null && !wasSynchronouslyLoaded
+              ? (still ?? child)
+              : child,
+          errorBuilder: (_, _, _) => _fallback(),
+        ),
+      );
+    }
+
+    return Center(
+      child: ConstrainedBox(
+        constraints: const BoxConstraints(
+          maxWidth: _DemoPlayer._sourcePx * _DemoPlayer._maxUpscale,
+        ),
+        child: AspectRatio(
+          aspectRatio: 1,
+          child: Semantics(
+            button: true,
+            label: playing ? 'Pause demo' : 'Play demo',
+            excludeSemantics: true,
+            onTap: () => _toggle(playing),
+            child: GestureDetector(
+              behavior: HitTestBehavior.opaque,
+              onTap: () => _toggle(playing),
+              child: Stack(
+                fit: StackFit.expand,
+                children: [
+                  picture,
+                  if (!playing)
+                    Center(
+                      child: Container(
+                        width: 64,
+                        height: 64,
+                        decoration: BoxDecoration(
+                          color: t.bg.withValues(alpha: 0.72),
+                          shape: BoxShape.circle,
+                        ),
+                        child: Icon(
+                          Icons.play_arrow_rounded,
+                          size: 40,
+                          color: t.text,
+                        ),
+                      ),
+                    ),
+                ],
+              ),
+            ),
+          ),
+        ),
+      ),
     );
   }
 }
