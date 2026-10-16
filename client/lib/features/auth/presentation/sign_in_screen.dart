@@ -19,6 +19,9 @@ import 'forgot_password_screen.dart';
 /// A successful registration and an `EMAIL_NOT_VERIFIED` login both push
 /// [CheckEmailScreen] rather than proceeding further: under the hard
 /// verification gate neither leaves the caller with a session.
+/// Which field a validation message belongs under.
+enum _Field { fullName, email, password }
+
 class SignInScreen extends ConsumerStatefulWidget {
   const SignInScreen({super.key});
 
@@ -33,7 +36,17 @@ class _SignInScreenState extends ConsumerState<SignInScreen> {
 
   bool _registering = false;
   bool _busy = false;
+
+  /// Starts hidden, as any password field does; the eye reveals it so a
+  /// mistyped character can be found without retyping the whole thing.
+  bool _obscurePassword = true;
+
+  /// A message from the server or Google, about the request as a whole.
   String? _error;
+
+  /// A validation message, shown under the field it is about so the user
+  /// does not have to work out which box to fix.
+  ({_Field field, String message})? _fieldError;
 
   @override
   void dispose() {
@@ -43,15 +56,35 @@ class _SignInScreenState extends ConsumerState<SignInScreen> {
     super.dispose();
   }
 
-  /// Returns the message to show, or null when the form is usable.
-  String? _validate() {
-    if (_email.text.trim().isEmpty) return 'Enter your email.';
-    if (!_email.text.contains('@')) return 'That does not look like an email.';
-    if (_password.text.isEmpty) return 'Enter your password.';
+  /// Returns the first problem and the field it is about, or null when the
+  /// form is usable.
+  ({_Field field, String message})? _validate() {
+    if (_email.text.trim().isEmpty) {
+      return (field: _Field.email, message: 'Enter your email.');
+    }
+    if (!_email.text.contains('@')) {
+      return (
+        field: _Field.email,
+        message: 'That does not look like an email.',
+      );
+    }
+    if (_password.text.isEmpty) {
+      return (field: _Field.password, message: 'Enter your password.');
+    }
     if (_registering && _fullName.text.trim().isEmpty) {
-      return 'Enter your name.';
+      return (field: _Field.fullName, message: 'Enter your name.');
     }
     return null;
+  }
+
+  String? _errorFor(_Field field) =>
+      _fieldError?.field == field ? _fieldError!.message : null;
+
+  /// Drops a field's message once the user edits that field: the message
+  /// described the old text, and leaving it up would claim the new text is
+  /// wrong too.
+  void _clearErrorFor(_Field field) {
+    if (_fieldError?.field == field) setState(() => _fieldError = null);
   }
 
   Future<void> _signInWithGoogle() async {
@@ -60,6 +93,7 @@ class _SignInScreenState extends ConsumerState<SignInScreen> {
     setState(() {
       _busy = true;
       _error = null;
+      _fieldError = null;
     });
 
     try {
@@ -89,13 +123,17 @@ class _SignInScreenState extends ConsumerState<SignInScreen> {
 
     final problem = _validate();
     if (problem != null) {
-      setState(() => _error = problem);
+      setState(() {
+        _fieldError = problem;
+        _error = null;
+      });
       return;
     }
 
     setState(() {
       _busy = true;
       _error = null;
+      _fieldError = null;
     });
 
     final email = _email.text.trim();
@@ -191,30 +229,94 @@ class _SignInScreenState extends ConsumerState<SignInScreen> {
                   style: TextStyle(fontSize: 12.5, color: t.text2, height: 1.5),
                 ),
                 const SizedBox(height: 30),
-                if (_registering) ...[
-                  FsField(
-                    fieldKey: const Key('fullName'),
-                    controller: _fullName,
-                    hint: 'Full name',
-                    icon: Icons.person_outline,
-                    textCapitalization: TextCapitalization.words,
+                // One group so a password manager fills the email and the
+                // password together, and offers to save them on success.
+                AutofillGroup(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      if (_registering) ...[
+                        _LabeledField(
+                          label: 'Full name',
+                          error: _errorFor(_Field.fullName),
+                          field: FsField(
+                            fieldKey: const Key('fullName'),
+                            controller: _fullName,
+                            hint: 'Juan Dela Cruz',
+                            icon: Icons.person_outline,
+                            keyboardType: TextInputType.name,
+                            textCapitalization: TextCapitalization.words,
+                            textInputAction: TextInputAction.next,
+                            autofillHints: const [AutofillHints.name],
+                            onChanged: (_) => _clearErrorFor(_Field.fullName),
+                          ),
+                        ),
+                        const SizedBox(height: 14),
+                      ],
+                      _LabeledField(
+                        label: 'Email',
+                        error: _errorFor(_Field.email),
+                        field: FsField(
+                          fieldKey: const Key('email'),
+                          controller: _email,
+                          hint: 'you@email.com',
+                          icon: Icons.mail_outline,
+                          keyboardType: TextInputType.emailAddress,
+                          textInputAction: TextInputAction.next,
+                          autofillHints: const [AutofillHints.email],
+                          onChanged: (_) => _clearErrorFor(_Field.email),
+                        ),
+                      ),
+                      const SizedBox(height: 14),
+                      _LabeledField(
+                        label: 'Password',
+                        // The same minimum the server enforces on register
+                        // and on reset, stated before the user picks one
+                        // rather than after the server turns it down.
+                        helper: _registering ? 'At least 8 characters' : null,
+                        error: _errorFor(_Field.password),
+                        field: FsField(
+                          fieldKey: const Key('password'),
+                          controller: _password,
+                          hint: _registering
+                              ? 'Create a password'
+                              : 'Your password',
+                          icon: Icons.lock_outline,
+                          obscure: _obscurePassword,
+                          textInputAction: TextInputAction.done,
+                          onSubmitted: (_) => _submit(),
+                          // A new password lets the manager suggest a strong
+                          // one; a current one lets it fill the saved one.
+                          autofillHints: [
+                            _registering
+                                ? AutofillHints.newPassword
+                                : AutofillHints.password,
+                          ],
+                          onChanged: (_) => _clearErrorFor(_Field.password),
+                          trailing: IconButton(
+                            key: const Key('togglePassword'),
+                            tooltip: _obscurePassword
+                                ? 'Show password'
+                                : 'Hide password',
+                            constraints: const BoxConstraints(
+                              minWidth: 48,
+                              minHeight: 48,
+                            ),
+                            icon: Icon(
+                              _obscurePassword
+                                  ? Icons.visibility_outlined
+                                  : Icons.visibility_off_outlined,
+                              size: 20,
+                              color: t.text2,
+                            ),
+                            onPressed: () => setState(
+                              () => _obscurePassword = !_obscurePassword,
+                            ),
+                          ),
+                        ),
+                      ),
+                    ],
                   ),
-                  const SizedBox(height: 8),
-                ],
-                FsField(
-                  fieldKey: const Key('email'),
-                  controller: _email,
-                  hint: 'you@email.com',
-                  icon: Icons.mail_outline,
-                  keyboardType: TextInputType.emailAddress,
-                ),
-                const SizedBox(height: 8),
-                FsField(
-                  fieldKey: const Key('password'),
-                  controller: _password,
-                  hint: 'Password',
-                  icon: Icons.lock_outline,
-                  obscure: true,
                 ),
                 // Only in sign-in mode, matching the prototype: there is no
                 // password to reset for an account that does not exist yet.
@@ -287,6 +389,7 @@ class _SignInScreenState extends ConsumerState<SignInScreen> {
                         : () => setState(() {
                             _registering = !_registering;
                             _error = null;
+                            _fieldError = null;
                           }),
                     child: Text.rich(
                       TextSpan(
@@ -338,16 +441,75 @@ class _Logo extends StatelessWidget {
           child: Icon(Icons.bolt, size: 22, color: t.onAccent),
         ),
         const SizedBox(width: 9),
-        Text(
-          'FitSync',
-          style: TextStyle(
-            fontSize: 21,
-            fontWeight: FontWeight.w700,
-            letterSpacing: -0.84,
-            color: t.text,
+        // Shrinks rather than overflowing on a narrow phone at large text: a
+        // wordmark cut to an ellipsis would no longer be the name.
+        Flexible(
+          child: FittedBox(
+            fit: BoxFit.scaleDown,
+            alignment: AlignmentDirectional.centerStart,
+            child: Text(
+              'FitSync',
+              maxLines: 1,
+              style: TextStyle(
+                fontSize: 21,
+                fontWeight: FontWeight.w700,
+                letterSpacing: -0.84,
+                color: t.text,
+              ),
+            ),
           ),
         ),
       ],
+    );
+  }
+}
+
+/// A field with its name above it and its helper or error text below.
+///
+/// The placeholder alone vanishes as soon as the user types, taking the
+/// field's name with it. Merged into one semantics node so a screen reader
+/// announces the label, the field and any message about it together.
+class _LabeledField extends StatelessWidget {
+  const _LabeledField({
+    required this.label,
+    required this.field,
+    this.helper,
+    this.error,
+  });
+
+  final String label;
+  final Widget field;
+  final String? helper;
+  final String? error;
+
+  @override
+  Widget build(BuildContext context) {
+    final t = context.fs;
+
+    return MergeSemantics(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Text(
+            label,
+            style: TextStyle(
+              fontSize: 12.5,
+              fontWeight: FontWeight.w600,
+              color: t.text2,
+            ),
+          ),
+          const SizedBox(height: 6),
+          field,
+          if (helper != null) ...[
+            const SizedBox(height: 6),
+            Text(helper!, style: TextStyle(fontSize: 12, color: t.text2)),
+          ],
+          if (error != null) ...[
+            const SizedBox(height: 6),
+            Text(error!, style: TextStyle(fontSize: 12.5, color: t.red)),
+          ],
+        ],
+      ),
     );
   }
 }
