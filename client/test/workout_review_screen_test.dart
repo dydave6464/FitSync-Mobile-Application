@@ -611,6 +611,51 @@ void main() {
       expect(find.text('Library'), findsOneWidget);
       expect(find.text('Removed Goblet squat'), findsNothing);
     });
+
+    group('with a screen reader on', () {
+      // TalkBack hides a SnackBar instantly rather than animating it out,
+      // which rebuilds the messenger on the spot. Done while the screen is
+      // being torn down, that is a framework error, and the dead Undo stays.
+      void screenReaderOn(WidgetTester tester) {
+        tester.platformDispatcher.accessibilityFeaturesTestValue =
+            const FakeAccessibilityFeatures(accessibleNavigation: true);
+        addTearDown(
+          tester.platformDispatcher.clearAccessibilityFeaturesTestValue,
+        );
+      }
+
+      testWidgets('the Undo message does not follow Add more', (tester) async {
+        screenReaderOn(tester);
+        await _pump(tester, picks: const [_squat, _fly], overLibrary: true);
+
+        await _pickFromMenu(tester, 101, 'remove');
+        expect(find.text('Removed Goblet squat'), findsOneWidget);
+
+        await tester.tap(find.byKey(const Key('review.addMore')));
+        await tester.pumpAndSettle();
+
+        expect(tester.takeException(), isNull);
+        expect(find.text('Library'), findsOneWidget);
+        expect(find.text('Removed Goblet squat'), findsNothing);
+      });
+
+      testWidgets('the Undo message does not follow Start into the logger', (
+        tester,
+      ) async {
+        screenReaderOn(tester);
+        await _pump(tester, picks: const [_squat, _fly], overLibrary: true);
+
+        await _pickFromMenu(tester, 101, 'remove');
+        expect(find.text('Removed Goblet squat'), findsOneWidget);
+
+        await tester.tap(_start());
+        await tester.pumpAndSettle();
+
+        expect(tester.takeException(), isNull);
+        expect(find.byType(SessionLoggerScreen), findsOneWidget);
+        expect(find.text('Removed Goblet squat'), findsNothing);
+      });
+    });
   });
 
   group('the drag handle', () {

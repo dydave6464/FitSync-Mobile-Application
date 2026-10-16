@@ -56,7 +56,17 @@ class _WorkoutReviewScreenState extends ConsumerState<WorkoutReviewScreen> {
 
   @override
   void dispose() {
-    _undo?.messenger.hideCurrentSnackBar();
+    // Not hidden here and now: with a screen reader on, Flutter hides a
+    // SnackBar instantly rather than animating it out, which rebuilds the
+    // messenger on the spot -- and while this screen is being torn down the
+    // widget tree is locked, so that throws and the dead Undo stays up. Right
+    // after this frame the tree is free again.
+    final undo = _undo;
+    if (undo != null) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (undo.messenger.mounted) undo.messenger.hideCurrentSnackBar();
+      });
+    }
     super.dispose();
   }
 
