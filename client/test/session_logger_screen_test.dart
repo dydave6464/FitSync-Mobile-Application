@@ -149,6 +149,10 @@ class FakeSessionController extends ActiveSessionController {
   Object? completeError;
   Object? abandonError;
 
+  /// When set, [abandon] suspends here after recording the call -- a discard
+  /// still in flight when the phone is locked. Null resolves immediately.
+  Completer<void>? abandonGate;
+
   /// When set, [complete] suspends here before doing anything else -- lets a
   /// test dispatch a second Finish tap while the first is still in flight,
   /// the way two rapid taps would race a real network round trip. Null (the
@@ -230,6 +234,7 @@ class FakeSessionController extends ActiveSessionController {
   @override
   Future<void> abandon() async {
     calls.add('abandon');
+    if (abandonGate != null) await abandonGate!.future;
     if (abandonError != null) throw abandonError!;
     state = const AsyncValue.data(null);
   }
@@ -2897,5 +2902,80 @@ void main() {
 
       expect(alerts.requests, 0);
     });
+
+    // Finish tapped mid-rest, then the screen goes off before the server
+    // answers: the alert scheduled at lock time must not fire "Rest over"
+    // over a workout that has already finished.
+    testWidgets('a finish that lands while away withdraws the alert', (
+      tester,
+    ) async {
+      final alerts = FakeRestAlertScheduler();
+      final controller = await _pumpLogging(tester, alerts: alerts);
+      await tester.tap(find.byKey(const Key('logger.primary')));
+      await tester.pump();
+      final gate = Completer<void>();
+      controller.completeGate = gate;
+
+      await _menu(tester, 'finish');
+      await _background(tester);
+      expect(alerts.events, ['schedule']);
+
+      gate.complete();
+      await tester.pump();
+      await tester.pump();
+
+      expect(alerts.events, ['schedule', 'cancel']);
+    });
+
+    // The same, for the two other ways out that never reach Finish's end of
+    // the rest: Discard, and a session already closed somewhere else. Both
+    // pop the screen, but a locked phone draws no frames, so the pop -- and
+    // the dispose that would cancel -- waits for the user to come back.
+    testWidgets('a discard that lands while away withdraws the alert', (
+      tester,
+    ) async {
+      final alerts = FakeRestAlertScheduler();
+      final controller = await _pumpLogging(tester, alerts: alerts);
+      await tester.tap(find.byKey(const Key('logger.primary')));
+      await tester.pump();
+      final gate = Completer<void>();
+      controller.abandonGate = gate;
+
+      await _menu(tester, 'discard');
+      await tester.tap(find.text('Discard'));
+      await tester.pump();
+      await _background(tester);
+      expect(alerts.events, ['schedule']);
+
+      gate.complete();
+      await tester.pump();
+
+      expect(alerts.events, ['schedule', 'cancel']);
+    });
+
+    testWidgets(
+      'a session found closed elsewhere while away withdraws the alert',
+      (tester) async {
+        final alerts = FakeRestAlertScheduler();
+        final controller = await _pumpLogging(tester, alerts: alerts);
+        await tester.tap(find.byKey(const Key('logger.primary')));
+        await tester.pump();
+        final gate = Completer<void>();
+        controller.completeGate = gate;
+        controller.completeError = const ApiException(
+          'SESSION_NOT_IN_PROGRESS',
+          'This session has already been closed.',
+        );
+
+        await _menu(tester, 'finish');
+        await _background(tester);
+        expect(alerts.events, ['schedule']);
+
+        gate.complete();
+        await tester.pump();
+
+        expect(alerts.events, ['schedule', 'cancel']);
+      },
+    );
   });
 }
