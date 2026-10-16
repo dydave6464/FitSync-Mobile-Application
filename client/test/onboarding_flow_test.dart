@@ -157,6 +157,15 @@ class RecordingAuthController extends AuthController {
     completed.add(true);
     super.onOnboardingCompleted();
   }
+
+  /// Counted rather than run: the real sign-out reaches the token store and
+  /// the notification plugin, neither of which a widget test has.
+  int signOuts = 0;
+
+  @override
+  Future<void> signOut() async {
+    signOuts += 1;
+  }
 }
 
 /// Records `requestPermission` calls for the reminders step's tests.
@@ -231,6 +240,7 @@ Future<void> _pumpFlow(
   List<String> seedGoals = const [],
   String? seedMainGoal,
   FakeHealthRepository? health,
+  RecordingAuthController? auth,
 }) async {
   await tester.pumpWidget(
     ProviderScope(
@@ -250,7 +260,7 @@ Future<void> _pumpFlow(
           ),
         ),
         authControllerProvider.overrideWith(
-          () => RecordingAuthController(completed ?? []),
+          () => auth ?? RecordingAuthController(completed ?? []),
         ),
         equipmentOptionsProvider.overrideWith((ref) async => _equipment),
         injuryOptionsProvider.overrideWith((ref) async => _injuries),
@@ -318,7 +328,9 @@ void main() {
     expect(find.text('STEP 2 / 6'), findsOneWidget);
   });
 
-  testWidgets('Skip advances without saving', (tester) async {
+  testWidgets('Skip with nothing typed advances without saving', (
+    tester,
+  ) async {
     final patches = <Map<String, dynamic>>[];
     await _pumpFlow(tester, patches: patches);
 
@@ -1026,9 +1038,8 @@ void main() {
       expect(find.text('STEP 4 / 6'), findsOneWidget);
 
       await _tapKey(tester, const Key('injury.1'));
-      // Skip, not Continue -- this is the case that used to lose the pick:
-      // Skip advances without saving, and only the final step's completion
-      // path (fixed to save injuries too) is left to send it.
+      // Skip, not Continue -- this is the case that used to lose the pick,
+      // back when Skip advanced without saving anything at all.
       await _skip(tester);
       expect(find.text('STEP 5 / 6'), findsOneWidget);
       await _passHealthClear(tester);
@@ -1066,7 +1077,7 @@ void main() {
     // in that a sub-second floor would already have handed off. Deliberately
     // short of the real floor so the exact duration stays a tunable number
     // rather than something this test pins down.
-    await tester.pump(const Duration(seconds: 3));
+    await tester.pump(const Duration(seconds: 2));
 
     expect(find.text('Building your plan…'), findsOneWidget);
     expect(
@@ -1132,5 +1143,171 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.text('STEP 1 / 6'), findsOneWidget);
+  });
+
+  group('Android back', () {
+    testWidgets('on step 3 goes to step 2, not out of the app', (tester) async {
+      await _pumpFlow(tester, patches: []);
+      await _skip(tester);
+      await _skip(tester);
+      expect(find.text('STEP 3 / 6'), findsOneWidget);
+
+      await tester.binding.handlePopRoute();
+      await tester.pumpAndSettle();
+
+      expect(find.text('STEP 2 / 6'), findsOneWidget);
+      expect(find.byType(OnboardingFlow), findsOneWidget);
+    });
+
+    testWidgets('on step 1 is left to the system, as before', (tester) async {
+      await _pumpFlow(tester, patches: []);
+
+      final scope = tester.widget<PopScope<Object?>>(
+        find.byKey(const Key('onboarding.pop')),
+      );
+      expect(scope.canPop, isTrue);
+      expect(find.text('STEP 1 / 6'), findsOneWidget);
+    });
+  });
+
+  testWidgets('Skip keeps the valid answers typed on the step', (tester) async {
+    final patches = <Map<String, dynamic>>[];
+    await _pumpFlow(tester, patches: patches);
+    await _skip(tester);
+    expect(find.text('STEP 2 / 6'), findsOneWidget);
+
+    await tester.enterText(find.byKey(const Key('weightKg')), '72');
+    await tester.enterText(find.byKey(const Key('heightCm')), 'abc');
+    await tester.pumpAndSettle();
+    await _skip(tester);
+
+    expect(patches, [
+      {'weightKg': 72.0},
+    ], reason: 'the typed weight is kept; the unreadable height is not sent');
+    expect(find.text('STEP 3 / 6'), findsOneWidget);
+  });
+
+  testWidgets('Skip keeps the goals ticked on step 1', (tester) async {
+    final goalWrites = <({List<String> goals, String mainGoal})>[];
+    await _pumpFlow(tester, patches: [], goalWrites: goalWrites);
+
+    await tester.tap(find.byKey(const Key('goal.build_muscle')));
+    await tester.pumpAndSettle();
+    await _skip(tester);
+
+    expect(goalWrites.single.goals, ['build_muscle']);
+    expect(find.text('STEP 2 / 6'), findsOneWidget);
+  });
+
+  testWidgets('an error shows above Continue, in plain words, and is read '
+      'aloud', (tester) async {
+    await _pumpFlow(
+      tester,
+      patches: [],
+      onSetGoals: () async => throw const ApiException(
+        'NETWORK_ERROR',
+        'Could not reach http://localhost:3000. Check the server is running, '
+            'and that "adb reverse tcp:3000 tcp:3000" has been run.',
+      ),
+    );
+    await tester.tap(find.byKey(const Key('goal.build_muscle')));
+    await tester.pumpAndSettle();
+    tester.takeAnnouncements();
+
+    await tester.tap(find.byKey(const Key('continue')));
+    await tester.pumpAndSettle();
+
+    final error = find.byKey(const Key('error'));
+    expect(error, findsOneWidget);
+    final message = find.descendant(
+      of: error,
+      matching: find.text(
+        "Couldn't reach FitSync. Check your connection and try again.",
+      ),
+    );
+    expect(message, findsOneWidget);
+    expect(find.textContaining('localhost'), findsNothing);
+    expect(find.textContaining('adb'), findsNothing);
+
+    // Directly above Continue: below everything the step shows, and its
+    // bottom edge sits on Continue's top edge (give or take the gap).
+    final errorRect = tester.getRect(error);
+    final continueRect = tester.getRect(find.byKey(const Key('continue')));
+    expect(errorRect.bottom, lessThanOrEqualTo(continueRect.top));
+    expect(continueRect.top - errorRect.bottom, lessThan(24));
+
+    expect(
+      tester.takeAnnouncements().map((a) => a.message),
+      contains("Couldn't reach FitSync. Check your connection and try again."),
+    );
+  });
+
+  testWidgets('a failed plan build offers Try again, which builds again', (
+    tester,
+  ) async {
+    final completions = <int>[];
+    final completed = <bool>[];
+    final scheduler = _FakeScheduler();
+    await _pumpFlow(
+      tester,
+      patches: [],
+      completions: completions,
+      completed: completed,
+      scheduler: scheduler,
+      onComplete: (attempt) async {
+        if (attempt == 0) {
+          throw const ApiException(
+            'PLAN_GENERATION_FAILED',
+            'Could not build a plan right now.',
+          );
+        }
+      },
+    );
+    for (var i = 0; i < 4; i++) {
+      await _skip(tester);
+    }
+    await _passHealthClear(tester);
+    await tester.tap(find.byKey(const Key('continue')));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Could not build a plan right now.'), findsOneWidget);
+    expect(find.text('Try again'), findsOneWidget);
+    expect(
+      find.byKey(const Key('secondary')),
+      findsNothing,
+      reason:
+          'the reminder question is already answered; only the build is '
+          'left to retry',
+    );
+
+    await tester.tap(find.text('Try again'));
+    await tester.pumpAndSettle();
+
+    expect(completions, hasLength(2));
+    expect(completed, [true]);
+    expect(
+      scheduler.requestPermissionCalls,
+      1,
+      reason: 'retrying the build must not ask for permission a second time',
+    );
+  });
+
+  group('Sign out on step 1', () {
+    testWidgets('signs out', (tester) async {
+      final auth = RecordingAuthController([]);
+      await _pumpFlow(tester, patches: [], auth: auth);
+
+      await _tapKey(tester, const Key('signOut'));
+
+      expect(find.text('Sign out'), findsOneWidget);
+      expect(auth.signOuts, 1);
+    });
+
+    testWidgets('is only on step 1', (tester) async {
+      await _pumpFlow(tester, patches: []);
+      await _skip(tester);
+
+      expect(find.byKey(const Key('signOut')), findsNothing);
+    });
   });
 }

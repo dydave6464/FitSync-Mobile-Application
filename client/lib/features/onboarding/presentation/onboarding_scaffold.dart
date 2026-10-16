@@ -24,6 +24,8 @@ class OnboardingScaffold extends StatelessWidget {
     this.secondaryLabel,
     this.onSecondary,
     this.busy = false,
+    this.error,
+    this.onSignOut,
   });
 
   final int step;
@@ -44,6 +46,16 @@ class OnboardingScaffold extends StatelessWidget {
   final String? secondaryLabel;
   final VoidCallback? onSecondary;
   final bool busy;
+
+  /// What went wrong with the last Continue, in plain words. Shown directly
+  /// above Continue rather than under the step's content, where on a long
+  /// step it landed below the fold and the user saw nothing happen.
+  final String? error;
+
+  /// When set, a small "Sign out" under the buttons: the way out for someone
+  /// who signed in with the wrong account and would otherwise have to finish
+  /// onboarding for it first.
+  final VoidCallback? onSignOut;
 
   @override
   Widget build(BuildContext context) {
@@ -68,6 +80,7 @@ class OnboardingScaffold extends StatelessWidget {
                             : _IconButton(
                                 key: const Key('back'),
                                 icon: Icons.chevron_left,
+                                label: 'Back',
                                 onTap: busy ? null : onBack,
                               ),
                       ),
@@ -110,6 +123,10 @@ class OnboardingScaffold extends StatelessWidget {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
+                  if (error != null) ...[
+                    _ErrorLine(error!),
+                    const SizedBox(height: 10),
+                  ],
                   FsButton(
                     key: const Key('continue'),
                     label: continueLabel,
@@ -125,6 +142,24 @@ class OnboardingScaffold extends StatelessWidget {
                       onPressed: busy ? null : onSecondary,
                     ),
                   ],
+                  if (onSignOut != null) ...[
+                    const SizedBox(height: 4),
+                    Center(
+                      child: TextButton(
+                        key: const Key('signOut'),
+                        onPressed: busy ? null : onSignOut,
+                        style: TextButton.styleFrom(
+                          foregroundColor: t.text2,
+                          minimumSize: const Size(48, 48),
+                          textStyle: const TextStyle(
+                            fontSize: 12.5,
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
+                        child: const Text('Sign out'),
+                      ),
+                    ),
+                  ],
                 ],
               ),
             ),
@@ -135,30 +170,73 @@ class OnboardingScaffold extends StatelessWidget {
   }
 }
 
+/// The last Continue's failure. The icon carries the red so the sentence
+/// itself can stay in body text, which reads at full contrast in both themes.
+class _ErrorLine extends StatelessWidget {
+  const _ErrorLine(this.message);
+
+  final String message;
+
+  @override
+  Widget build(BuildContext context) {
+    final t = context.fs;
+
+    return Row(
+      key: const Key('error'),
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Padding(
+          padding: const EdgeInsets.only(top: 1),
+          child: Icon(Icons.error_outline, size: 16, color: t.red),
+        ),
+        const SizedBox(width: 8),
+        Expanded(
+          child: Text(
+            message,
+            style: TextStyle(fontSize: 13, height: 1.4, color: t.text),
+          ),
+        ),
+      ],
+    );
+  }
+}
+
 /// `.icon-btn` — a bordered square tap target.
 class _IconButton extends StatelessWidget {
-  const _IconButton({super.key, required this.icon, required this.onTap});
+  const _IconButton({
+    super.key,
+    required this.icon,
+    required this.label,
+    required this.onTap,
+  });
 
   final IconData icon;
+
+  /// What a screen reader says for it; the glyph alone says nothing.
+  final String label;
   final VoidCallback? onTap;
 
   @override
   Widget build(BuildContext context) {
     final t = context.fs;
 
-    return Material(
-      color: t.surface,
-      shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(FsRadius.sm),
-        side: BorderSide(color: t.line),
-      ),
-      child: InkWell(
-        onTap: onTap,
-        borderRadius: BorderRadius.circular(FsRadius.sm),
-        child: SizedBox(
-          height: 38,
-          width: 38,
-          child: Icon(icon, size: 19, color: t.text2),
+    return Semantics(
+      button: true,
+      label: label,
+      child: Material(
+        color: t.surface,
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(FsRadius.sm),
+          side: BorderSide(color: t.line),
+        ),
+        child: InkWell(
+          onTap: onTap,
+          borderRadius: BorderRadius.circular(FsRadius.sm),
+          child: SizedBox(
+            height: 38,
+            width: 38,
+            child: Icon(icon, size: 19, color: t.text2),
+          ),
         ),
       ),
     );
