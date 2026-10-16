@@ -123,9 +123,21 @@ class VolumeTrendCard extends StatelessWidget {
                     Row(
                       crossAxisAlignment: CrossAxisAlignment.center,
                       children: [
-                        Text(
-                          formatWeightCompact(analytics.change.totalKg, unit),
-                          style: Theme.of(context).textTheme.headlineSmall,
+                        // Scaled down rather than overflowed: at 2x text on a
+                        // 320 dp phone the "lb lifted" label leaves this
+                        // column too narrow for the headline's natural size.
+                        Flexible(
+                          child: FittedBox(
+                            fit: BoxFit.scaleDown,
+                            alignment: Alignment.centerLeft,
+                            child: Text(
+                              formatWeightCompact(
+                                analytics.change.totalKg,
+                                unit,
+                              ),
+                              style: Theme.of(context).textTheme.headlineSmall,
+                            ),
+                          ),
                         ),
                         if (analytics.change.hasChange) ...[
                           const SizedBox(width: 8),
@@ -152,7 +164,10 @@ class VolumeTrendCard extends StatelessWidget {
               for (var i = 0; i < buckets.length; i++)
                 FsPoint(
                   x: i.toDouble(),
-                  y: buckets[i].volumeKg,
+                  // Converted like the headline: fl_chart's touch tooltip
+                  // reads this value out, so kilograms here would hand a
+                  // pound user a bare kilo figure.
+                  y: convertFromKg(buckets[i].volumeKg, unit),
                   label: buckets[i].label,
                 ),
             ],
@@ -201,7 +216,13 @@ class VolumeByMuscleCard extends StatelessWidget {
           // than hiding it.
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            children: const [FsEyebrow('Volume by muscle'), FsTag('Pro')],
+            // Flexible so the eyebrow ellipsizes at large text instead of
+            // pushing the Pro badge off a narrow card.
+            children: const [
+              Flexible(child: FsEyebrow('Volume by muscle')),
+              SizedBox(width: 8),
+              FsTag('Pro'),
+            ],
           ),
           const SizedBox(height: 8),
           if (locked) ...[

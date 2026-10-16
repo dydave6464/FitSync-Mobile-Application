@@ -9,9 +9,21 @@ import '../../domain/body_weight.dart';
 /// The Progress tab's body-weight card: a chart when there is data, or a
 /// prompt to log a first entry when there is not.
 class BodyWeightCard extends StatelessWidget {
-  const BodyWeightCard({super.key, required this.series, this.onAdd});
+  const BodyWeightCard({
+    super.key,
+    required this.series,
+    this.unit,
+    this.onAdd,
+  });
 
   final BodyWeightSeries series;
+
+  /// The unit to show, from `weightUnitProvider`. `series.unit` is the unit
+  /// the server saw when the series was fetched, and the series provider is
+  /// kept alive and not refetched on a unit switch, so it goes stale the
+  /// moment the user flips kg/lb. Null falls back to it, for callers (and
+  /// tests) with no live unit to hand.
+  final WeightUnit? unit;
 
   /// `FsChip` takes a NON-nullable `onTap`, so the card supplies a no-op when
   /// no handler is given — which is what the widget tests pump.
@@ -47,7 +59,7 @@ class BodyWeightCard extends StatelessWidget {
     // is what keeps the headline, the chart, the reference line and the
     // noise band all reading as the same unit instead of a half-converted
     // card.
-    final unit = WeightUnit.fromApi(series.unit);
+    final unit = this.unit ?? WeightUnit.fromApi(series.unit);
     final latest = points.last.weightKg;
     final reference = series.reference;
 
