@@ -1,11 +1,13 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import 'package:fitsync/core/api_exception.dart';
 import 'package:fitsync/core/theme.dart';
+import 'package:fitsync/core/token_store.dart';
 import 'package:fitsync/core/units.dart';
 import 'package:fitsync/features/exercises/domain/exercise.dart';
 import 'package:fitsync/features/exercises/domain/exercise_cues.dart';
@@ -16,13 +18,57 @@ import 'package:fitsync/features/plans/domain/workout_plan.dart';
 import 'package:fitsync/features/profile/domain/profile.dart';
 import 'package:fitsync/features/profile/presentation/providers.dart';
 import 'package:fitsync/features/plans/presentation/providers.dart';
+import 'package:fitsync/features/sessions/data/rest_alerts.dart';
 import 'package:fitsync/features/sessions/domain/active_session.dart';
 import 'package:fitsync/features/sessions/presentation/providers.dart';
 import 'package:fitsync/features/sessions/presentation/session_logger_screen.dart';
 import 'package:fitsync/features/sessions/presentation/widgets/rest_timer.dart';
 import 'package:fitsync/features/sessions/presentation/widgets/set_row.dart';
 
+import 'helpers/fake_rest_alerts.dart';
 import 'helpers/fake_training_settings.dart';
+
+/// Records haptic calls, which go to the platform channel.
+List<String> _recordHaptics(WidgetTester tester) {
+  final calls = <String>[];
+  tester.binding.defaultBinaryMessenger.setMockMethodCallHandler(
+    SystemChannels.platform,
+    (call) async {
+      if (call.method.startsWith('HapticFeedback')) calls.add(call.method);
+      return null;
+    },
+  );
+  addTearDown(
+    () => tester.binding.defaultBinaryMessenger.setMockMethodCallHandler(
+      SystemChannels.platform,
+      null,
+    ),
+  );
+  return calls;
+}
+
+/// The order a phone reports going away: locked, or the app switched.
+Future<void> _background(WidgetTester tester) async {
+  for (final state in [
+    AppLifecycleState.inactive,
+    AppLifecycleState.hidden,
+    AppLifecycleState.paused,
+  ]) {
+    tester.binding.handleAppLifecycleStateChanged(state);
+  }
+  await tester.pump();
+}
+
+Future<void> _foreground(WidgetTester tester) async {
+  for (final state in [
+    AppLifecycleState.hidden,
+    AppLifecycleState.inactive,
+    AppLifecycleState.resumed,
+  ]) {
+    tester.binding.handleAppLifecycleStateChanged(state);
+  }
+  await tester.pump();
+}
 
 const _plan = WorkoutPlan(
   planId: 42,
@@ -110,6 +156,10 @@ class FakeSessionController extends ActiveSessionController {
   /// that race.
   Completer<void>? completeGate;
 
+  /// When set, [logSet] suspends here after recording the call -- a set
+  /// still saving when the phone is locked. Null resolves immediately.
+  Completer<void>? logSetGate;
+
   @override
   Future<ActiveSession?> build() async => initial;
 
@@ -121,6 +171,7 @@ class FakeSessionController extends ActiveSessionController {
     int? reps,
   }) async {
     calls.add('log:$exerciseId:$setNumber:$weightKg:$reps');
+    if (logSetGate != null) await logSetGate!.future;
     if (logSetError != null) throw logSetError!;
     state = AsyncValue.data(
       state.value!.withSet(
@@ -420,12 +471,20 @@ Future<FakeSessionController> _pump(
   // The saved rest between sets. Every test gets the store, since the logger
   // reads it on its first frame; a test that cares passes its own.
   FakeTrainingSettings? training,
+  // The phone's notifications for the rest alert. Every test gets a fake --
+  // granted, so the first rest asks nothing -- and an in-memory store, so no
+  // test touches a platform channel.
+  FakeRestAlertScheduler? alerts,
+  RestAlertStore? alertStore,
 }) async {
   final controller = FakeSessionController(session ?? _session());
 
   await tester.pumpWidget(
     ProviderScope(
       overrides: [
+        // The rest reads time from here; the binding's fake clock advances
+        // with every pump, so a test can run a rest down by pumping.
+        restNowProvider.overrideWithValue(() => tester.binding.clock.now()),
         activePlanProvider.overrideWith((ref) async {
           onActivePlanRead?.call();
           // Routed through the fake repository when one is supplied, mirroring
@@ -448,6 +507,12 @@ Future<FakeSessionController> _pump(
         if (plans != null) planRepositoryProvider.overrideWithValue(plans),
         trainingSettingsRepositoryProvider.overrideWithValue(
           training ?? FakeTrainingSettings(),
+        ),
+        restAlertSchedulerProvider.overrideWithValue(
+          alerts ?? FakeRestAlertScheduler(),
+        ),
+        restAlertStoreProvider.overrideWithValue(
+          alertStore ?? RestAlertStore(backing: InMemorySecureStore()),
         ),
         // Live for every test in this file: the demo stage reads this too, and
         // an unstubbed fetch would hang pumpAndSettle. `cues` lets one test
@@ -520,6 +585,8 @@ Future<FakeSessionController> _pumpLogging(
   List<Map<String, dynamic>>? patches,
   WorkoutPlan? plan = _plan,
   FakeTrainingSettings? training,
+  FakeRestAlertScheduler? alerts,
+  RestAlertStore? alertStore,
 }) async {
   final controller = await _pump(
     tester,
@@ -528,6 +595,8 @@ Future<FakeSessionController> _pumpLogging(
     patches: patches,
     plan: plan,
     training: training,
+    alerts: alerts,
+    alertStore: alertStore,
   );
   await tester.tap(find.byKey(const Key('logger.primary')));
   await tester.pumpAndSettle();
@@ -667,19 +736,15 @@ void main() {
     );
   });
 
-  testWidgets('the rest timer is not shown on the demo stage', (tester) async {
+  testWidgets('no rest tag before a set is logged', (tester) async {
     await _pump(tester, session: _manualSession, plan: null);
 
     expect(find.byType(RestTimer), findsNothing);
   });
 
-  // The same constraint with a rest actually running. The test above can only
-  // ever see a logger that has never rested, so it would pass just as well
-  // with the app bar's countdown left unguarded; this one is what the guard
-  // is for -- a set completed on the table starts the countdown, and stepping
-  // back to the demo must leave it behind rather than carry it onto a stage
-  // that has no sets on it.
-  testWidgets('a rest started on the table does not follow it onto the demo', (
+  // A rest is the user's, between their sets, whichever exercise is on
+  // screen: walking from the squat rack to the bench is part of it.
+  testWidgets('a rest started on the table keeps counting on the demo', (
     tester,
   ) async {
     await _pumpLogging(tester, session: _manualSession, plan: null);
@@ -687,27 +752,23 @@ void main() {
     await tester.enterText(find.byKey(const Key('set.1.weight')), '20');
     await tester.enterText(find.byKey(const Key('set.1.reps')), '10');
     await tester.tap(find.byKey(const Key('logger.primary')));
-    // Single frames rather than pumpAndSettle: settling runs the 90s
-    // countdown out, and a tag that left because it expired would prove
-    // nothing about the stage.
     await tester.pump();
     await tester.pump();
-    expect(find.byType(RestTimer), findsOneWidget);
+    await tester.pump(const Duration(seconds: 10));
 
     await tester.tap(find.byKey(const Key('logger.back')));
     await tester.pump();
 
     expect(find.byKey(const Key('logger.demo')), findsOneWidget);
-    expect(find.byType(RestTimer), findsNothing);
+    expect(
+      tester.widget<Text>(find.byKey(const Key('rest.remaining'))).data,
+      '1:20',
+    );
   });
 
-  // The countdown used to run continuously through an exercise change and
-  // clear itself at zero. It cannot any more: the next exercise opens on its
-  // demo, the stage guard hides the tag, RestTimer unmounts and the countdown
-  // stops dead -- so onDone never fires and the flag is stuck true. Left
-  // alone, Start logging on the next exercise raises a fresh 90 seconds over
-  // an empty set table, having rested nothing.
-  testWidgets('the rest from one exercise does not carry into the next', (
+  // The rest after the last set of an exercise is the one most worth keeping:
+  // it is the walk to the next one.
+  testWidgets('the rest after the last set carries into the next exercise', (
     tester,
   ) async {
     await _pumpLogging(
@@ -720,35 +781,31 @@ void main() {
       ),
     );
 
-    // The last set of exercise 1 starts the countdown.
     await tester.enterText(find.byKey(const Key('set.3.weight')), '20');
     await tester.enterText(find.byKey(const Key('set.3.reps')), '10');
     await tester.tap(find.byKey(const Key('logger.primary')));
     await tester.pump();
     await tester.pump();
-    expect(find.byType(RestTimer), findsOneWidget);
+    await tester.pump(const Duration(seconds: 5));
 
-    // Next exercise, then its table. Single frames throughout: settling would
-    // run the 90 seconds out and take the tag away for a reason that has
-    // nothing to do with the exercise change.
+    // Next exercise (its demo), then its table.
     await tester.tap(find.byKey(const Key('logger.primary')));
     await tester.pump();
     await tester.pump();
+    expect(find.byType(RestTimer), findsOneWidget);
     await tester.tap(find.byKey(const Key('logger.primary')));
     await tester.pump();
     await tester.pump();
 
     expect(find.byType(SetRow), findsWidgets);
-    expect(find.byType(RestTimer), findsNothing);
+    // The same rest, 5 seconds down -- not a fresh 90.
+    expect(
+      tester.widget<Text>(find.byKey(const Key('rest.remaining'))).data,
+      '1:25',
+    );
   });
 
-  // The same bug with no index change, which is why clearing the flag hangs
-  // off entering the demo rather than off moving exercise. Back from the table
-  // lands on the SAME exercise's demo, the stage guard hides the tag, the
-  // timer unmounts and the countdown stops dead -- onDone can never fire, so a
-  // flag left true resurfaces as a fresh 90 seconds the moment Start logging
-  // is tapped again, having rested nothing.
-  testWidgets('the rest does not survive stepping back to the same demo', (
+  testWidgets('stepping back and forth keeps the same rest, not a fresh one', (
     tester,
   ) async {
     await _pumpLogging(tester, session: _manualSession, plan: null);
@@ -758,11 +815,8 @@ void main() {
     await tester.tap(find.byKey(const Key('logger.primary')));
     await tester.pump();
     await tester.pump();
-    expect(find.byType(RestTimer), findsOneWidget);
+    await tester.pump(const Duration(seconds: 10));
 
-    // Back to this exercise's own demo, then forward to its table again.
-    // Single frames throughout: settling would run the 90 seconds out and the
-    // tag would be gone for a reason that has nothing to do with the stage.
     await tester.tap(find.byKey(const Key('logger.back')));
     await tester.pump();
     await tester.tap(find.byKey(const Key('logger.primary')));
@@ -770,17 +824,13 @@ void main() {
     await tester.pump();
 
     expect(find.byType(SetRow), findsWidgets);
-    expect(find.byType(RestTimer), findsNothing);
+    expect(
+      tester.widget<Text>(find.byKey(const Key('rest.remaining'))).data,
+      '1:20',
+    );
   });
 
-  // _moveTo clears the rest on an index change as well as on entering the
-  // demo, and this is the only path where those two rules come apart: a jump
-  // to an exercise that already has sets logged against it lands on the
-  // TABLE, so the demo rule never fires and the index rule is the only thing
-  // left to stop exercise 1's countdown running on exercise 2's table. Every
-  // other rest test above is satisfied by the demo rule alone -- deleting
-  // `_resting = false` from the index branch leaves all of them green.
-  testWidgets('a rest does not follow a jump onto another exercise\'s table', (
+  testWidgets("a rest follows a jump onto another exercise's table", (
     tester,
   ) async {
     await _pumpLogging(
@@ -789,24 +839,18 @@ void main() {
         sets: const [
           LoggedSet(exerciseId: 101, setNumber: 1, weightKg: 20, reps: 10),
           LoggedSet(exerciseId: 101, setNumber: 2, weightKg: 20, reps: 10),
-          // Push-up already has a set, so the jump lands on its table rather
-          // than its demo. That is the whole point of this fixture.
+          // Push-up already has a set, so the jump lands on its table.
           LoggedSet(exerciseId: 102, setNumber: 1, weightKg: 0, reps: 12),
         ],
       ),
     );
 
-    // The last set of exercise 1 starts the countdown.
     await tester.enterText(find.byKey(const Key('set.3.weight')), '20');
     await tester.enterText(find.byKey(const Key('set.3.reps')), '10');
     await tester.tap(find.byKey(const Key('logger.primary')));
     await tester.pump();
     await tester.pump();
-    expect(find.byType(RestTimer), findsOneWidget);
 
-    // Single frames, never pumpAndSettle: settling runs the 90 seconds out
-    // and the tag would be gone for a reason that has nothing to do with the
-    // jump. 800ms is enough for the sheet in and out, and nowhere near 90s.
     await tester.tap(find.byKey(const Key('logger.position')));
     await tester.pump();
     await tester.pump(const Duration(milliseconds: 400));
@@ -814,11 +858,8 @@ void main() {
     await tester.pump();
     await tester.pump(const Duration(milliseconds: 400));
 
-    // Landed on the table, so the demo rule never fired -- the index rule is
-    // what cleared the countdown.
-    expect(find.byKey(const Key('logger.demo')), findsNothing);
     expect(find.byType(SetRow), findsWidgets);
-    expect(find.byType(RestTimer), findsNothing);
+    expect(find.byType(RestTimer), findsOneWidget);
   });
 
   testWidgets('back from the set table returns to the demo', (tester) async {
@@ -2458,6 +2499,403 @@ void main() {
       await tester.pump();
       await tester.pump(const Duration(milliseconds: 400));
       expect(find.byType(RestTimer), findsNothing);
+    });
+
+    // The countdown works from the moment the rest ends, not from ticks.
+    testWidgets('a rest counts down with the clock', (tester) async {
+      await _pumpLogging(tester);
+      await tester.tap(find.byKey(const Key('logger.primary')));
+      await tester.pump();
+
+      await tester.pump(const Duration(seconds: 30));
+
+      expect(
+        tester.widget<Text>(find.byKey(const Key('rest.remaining'))).data,
+        '1:00',
+      );
+    });
+
+    testWidgets('+30s from the sheet adds to the running rest', (tester) async {
+      await _pumpLogging(tester);
+      await tester.tap(find.byKey(const Key('logger.primary')));
+      await tester.pump();
+
+      await tester.tap(find.byKey(const Key('rest.open')));
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 400));
+      await tester.tap(find.byKey(const Key('rest.plus')));
+      await tester.pump();
+
+      expect(
+        tester.widget<Text>(find.byKey(const Key('rest.remaining'))).data,
+        '2:00',
+      );
+    });
+
+    testWidgets('−30s down to nothing ends the rest and closes the sheet', (
+      tester,
+    ) async {
+      await _pumpLogging(tester);
+      await tester.tap(find.byKey(const Key('logger.primary')));
+      await tester.pump();
+      await tester.pump(const Duration(seconds: 70)); // 0:20 left
+
+      await tester.tap(find.byKey(const Key('rest.open')));
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 400));
+      await tester.tap(find.byKey(const Key('rest.minus')));
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 400));
+
+      expect(find.byKey(const Key('rest.sheet')), findsNothing);
+      expect(find.byKey(const Key('rest.remaining')), findsNothing);
+    });
+
+    testWidgets('the sheet closes itself when the rest runs out', (
+      tester,
+    ) async {
+      await _pumpLogging(tester);
+      await tester.tap(find.byKey(const Key('logger.primary')));
+      await tester.pump();
+      await tester.tap(find.byKey(const Key('rest.open')));
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 400));
+
+      await tester.pump(const Duration(seconds: 90));
+      await tester.pump(const Duration(milliseconds: 400));
+
+      expect(find.byKey(const Key('rest.sheet')), findsNothing);
+      expect(tester.takeException(), isNull);
+    });
+  });
+
+  group('the end of a rest', () {
+    testWidgets(
+      'running out buzzes once, says "Rest over", shows it for 5 seconds',
+      (tester) async {
+        final haptics = _recordHaptics(tester);
+        await _pumpLogging(tester);
+        await tester.tap(find.byKey(const Key('logger.primary')));
+        await tester.pump();
+        tester.takeAnnouncements();
+
+        await tester.pump(const Duration(seconds: 90));
+
+        expect(haptics, ['HapticFeedback.vibrate']);
+        expect(
+          tester.takeAnnouncements().map((a) => a.message),
+          contains('Rest over'),
+        );
+        expect(find.byKey(const Key('rest.over')), findsOneWidget);
+
+        await tester.pump(const Duration(seconds: 4));
+        expect(find.byKey(const Key('rest.over')), findsOneWidget);
+        await tester.pump(const Duration(seconds: 1));
+        expect(find.byKey(const Key('rest.over')), findsNothing);
+        expect(find.byType(RestTimer), findsNothing);
+
+        await tester.pump(const Duration(seconds: 30));
+        expect(haptics, hasLength(1));
+      },
+    );
+
+    testWidgets('Skip ends it quietly', (tester) async {
+      final haptics = _recordHaptics(tester);
+      await _pumpLogging(tester);
+      await tester.tap(find.byKey(const Key('logger.primary')));
+      await tester.pump();
+
+      await tester.tap(find.byKey(const Key('rest.open')));
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 400));
+      await tester.tap(find.byKey(const Key('rest.skip')));
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 400));
+
+      expect(haptics, isEmpty);
+      expect(find.byKey(const Key('rest.over')), findsNothing);
+      expect(find.byType(RestTimer), findsNothing);
+    });
+
+    testWidgets('−30s down to nothing ends it quietly', (tester) async {
+      final haptics = _recordHaptics(tester);
+      await _pumpLogging(tester);
+      await tester.tap(find.byKey(const Key('logger.primary')));
+      await tester.pump();
+      await tester.pump(const Duration(seconds: 70));
+
+      await tester.tap(find.byKey(const Key('rest.open')));
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 400));
+      await tester.tap(find.byKey(const Key('rest.minus')));
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 400));
+
+      expect(haptics, isEmpty);
+      expect(find.byKey(const Key('rest.over')), findsNothing);
+    });
+
+    testWidgets('a set logged during "Rest over" starts a fresh rest', (
+      tester,
+    ) async {
+      _recordHaptics(tester);
+      await _pumpLogging(tester);
+      await tester.tap(find.byKey(const Key('logger.primary')));
+      await tester.pump();
+      await tester.pump(const Duration(seconds: 90));
+      expect(find.byKey(const Key('rest.over')), findsOneWidget);
+
+      await tester.tap(find.byKey(const Key('logger.primary')));
+      await tester.pump();
+
+      expect(find.byKey(const Key('rest.over')), findsNothing);
+      expect(
+        tester.widget<Text>(find.byKey(const Key('rest.remaining'))).data,
+        '1:30',
+      );
+    });
+
+    testWidgets('a second set mid-rest restarts the rest at full length', (
+      tester,
+    ) async {
+      await _pumpLogging(tester);
+      await tester.tap(find.byKey(const Key('logger.primary')));
+      await tester.pump();
+      await tester.pump(const Duration(seconds: 30));
+
+      await tester.tap(find.byKey(const Key('logger.primary')));
+      await tester.pump();
+
+      expect(
+        tester.widget<Text>(find.byKey(const Key('rest.remaining'))).data,
+        '1:30',
+      );
+    });
+  });
+
+  group('the rest alert', () {
+    testWidgets('going away mid-rest schedules one alert for its end', (
+      tester,
+    ) async {
+      final alerts = FakeRestAlertScheduler();
+      await _pumpLogging(tester, alerts: alerts);
+      final started = tester.binding.clock.now();
+      await tester.tap(find.byKey(const Key('logger.primary')));
+      await tester.pump();
+
+      await _background(tester);
+
+      expect(alerts.scheduled, hasLength(1));
+      expect(
+        alerts.scheduled.single.at,
+        started.add(const Duration(seconds: 90)),
+      );
+      expect(alerts.scheduled.single.title, 'Rest over');
+      expect(
+        alerts.scheduled.single.body,
+        'Next: set 2 of ${_plan.exercises.first.name}',
+      );
+    });
+
+    testWidgets('the alert names the exercise on screen', (tester) async {
+      final alerts = FakeRestAlertScheduler();
+      await _pumpLogging(tester, alerts: alerts);
+      await tester.tap(find.byKey(const Key('logger.primary')));
+      await tester.pump();
+
+      // The rest carries across exercises, so the alert has to follow the
+      // move rather than keep the body it would have had at the set.
+      await tester.tap(find.byKey(const Key('logger.position')));
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 400));
+      await tester.tap(find.byKey(const Key('jump.102')));
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 400));
+
+      await _background(tester);
+
+      expect(alerts.scheduled, hasLength(1));
+      expect(
+        alerts.scheduled.single.body,
+        'Next: set 1 of ${_plan.exercises[1].name}',
+      );
+    });
+
+    testWidgets('coming back withdraws it', (tester) async {
+      final alerts = FakeRestAlertScheduler();
+      await _pumpLogging(tester, alerts: alerts);
+      await tester.tap(find.byKey(const Key('logger.primary')));
+      await tester.pump();
+      await _background(tester);
+      final cancelsBefore = alerts.cancels;
+
+      await _foreground(tester);
+
+      expect(alerts.cancels, greaterThan(cancelsBefore));
+      expect(alerts.scheduled, hasLength(1));
+    });
+
+    testWidgets('no alert without a rest running', (tester) async {
+      final alerts = FakeRestAlertScheduler();
+      await _pumpLogging(tester, alerts: alerts);
+
+      await _background(tester);
+
+      expect(alerts.scheduled, isEmpty);
+    });
+
+    testWidgets('no alert when switched off', (tester) async {
+      final alerts = FakeRestAlertScheduler();
+      final store = RestAlertStore(backing: InMemorySecureStore());
+      await store.setEnabled(false);
+      await _pumpLogging(tester, alerts: alerts, alertStore: store);
+      await tester.tap(find.byKey(const Key('logger.primary')));
+      await tester.pump();
+
+      await _background(tester);
+
+      expect(alerts.scheduled, isEmpty);
+    });
+
+    testWidgets('no alert without permission', (tester) async {
+      final alerts = FakeRestAlertScheduler(granted: false);
+      final store = RestAlertStore(backing: InMemorySecureStore());
+      await store.markAsked();
+      await _pumpLogging(tester, alerts: alerts, alertStore: store);
+      await tester.tap(find.byKey(const Key('logger.primary')));
+      await tester.pump();
+
+      await _background(tester);
+
+      expect(alerts.scheduled, isEmpty);
+    });
+
+    testWidgets(
+      'a rest that ran out while away shows "Rest over" on return, no buzz',
+      (tester) async {
+        final haptics = _recordHaptics(tester);
+        await _pumpLogging(tester);
+        await tester.tap(find.byKey(const Key('logger.primary')));
+        await tester.pump();
+        await _background(tester);
+
+        await tester.pump(const Duration(seconds: 120));
+        await _foreground(tester);
+
+        expect(find.byKey(const Key('rest.over')), findsOneWidget);
+        expect(haptics, isEmpty);
+      },
+    );
+
+    testWidgets('the first rest asks for permission, once per phone', (
+      tester,
+    ) async {
+      final alerts = FakeRestAlertScheduler(granted: false);
+      final store = RestAlertStore(backing: InMemorySecureStore());
+      await _pumpLogging(tester, alerts: alerts, alertStore: store);
+
+      await tester.tap(find.byKey(const Key('logger.primary')));
+      await tester.pump();
+      await tester.pump();
+      expect(alerts.requests, 1);
+      expect(await store.asked(), isTrue);
+
+      // The next set: no second prompt.
+      await tester.tap(find.byKey(const Key('logger.primary')));
+      await tester.pump();
+      await tester.pump();
+      expect(alerts.requests, 1);
+    });
+
+    testWidgets('a set still saving when the phone locks gets its own alert', (
+      tester,
+    ) async {
+      final alerts = FakeRestAlertScheduler();
+      final controller = await _pumpLogging(tester, alerts: alerts);
+      final gate = Completer<void>();
+      controller.logSetGate = gate;
+      await tester.tap(find.byKey(const Key('logger.primary')));
+      await tester.pump();
+
+      // Locked before the server answered: no rest yet, so nothing to alert.
+      await _background(tester);
+      expect(alerts.scheduled, isEmpty);
+
+      final started = tester.binding.clock.now();
+      gate.complete();
+      await tester.pump();
+
+      expect(alerts.scheduled, hasLength(1));
+      expect(
+        alerts.scheduled.single.at,
+        started.add(const Duration(seconds: 90)),
+      );
+    });
+
+    testWidgets(
+      'a set saved while locked mid-rest moves the alert to its end',
+      (tester) async {
+        final alerts = FakeRestAlertScheduler();
+        final controller = await _pumpLogging(tester, alerts: alerts);
+        await tester.tap(find.byKey(const Key('logger.primary')));
+        await tester.pump();
+        await tester.pump(const Duration(seconds: 30));
+
+        final gate = Completer<void>();
+        controller.logSetGate = gate;
+        await tester.tap(find.byKey(const Key('logger.primary')));
+        await tester.pump();
+        // The first rest is still running, so locking schedules its end.
+        await _background(tester);
+        expect(alerts.scheduled, hasLength(1));
+
+        final started = tester.binding.clock.now();
+        gate.complete();
+        await tester.pump();
+
+        expect(
+          alerts.scheduled.last.at,
+          started.add(const Duration(seconds: 90)),
+        );
+        expect(alerts.events.last, 'schedule', reason: 'nothing cancels it');
+      },
+    );
+
+    testWidgets('a set saved while locked never uses up the one prompt', (
+      tester,
+    ) async {
+      final alerts = FakeRestAlertScheduler(granted: false);
+      final store = RestAlertStore(backing: InMemorySecureStore());
+      final controller = await _pumpLogging(
+        tester,
+        alerts: alerts,
+        alertStore: store,
+      );
+      final gate = Completer<void>();
+      controller.logSetGate = gate;
+      await tester.tap(find.byKey(const Key('logger.primary')));
+      await tester.pump();
+      await _background(tester);
+
+      gate.complete();
+      await tester.pump();
+      await tester.pump();
+
+      // Android blocks a prompt from the background: asking now would spend
+      // the single ask on a dialog nobody sees.
+      expect(alerts.requests, 0);
+      expect(await store.asked(), isFalse);
+    });
+
+    testWidgets('never asks when permission is already there', (tester) async {
+      final alerts = FakeRestAlertScheduler();
+      await _pumpLogging(tester, alerts: alerts);
+
+      await tester.tap(find.byKey(const Key('logger.primary')));
+      await tester.pump();
+      await tester.pump();
+
+      expect(alerts.requests, 0);
     });
   });
 }

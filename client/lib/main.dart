@@ -10,6 +10,8 @@ import 'features/activity/data/step_source.dart';
 import 'features/activity/presentation/providers.dart';
 import 'features/reminders/data/local_reminder_scheduler.dart';
 import 'features/reminders/data/reminder_scheduler.dart';
+import 'features/sessions/data/local_rest_alert_scheduler.dart';
+import 'features/sessions/data/rest_alerts.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -20,6 +22,11 @@ Future<void> main() async {
     ProviderScope(
       overrides: [
         reminderSchedulerProvider.overrideWithValue(scheduler),
+        // After LocalReminderScheduler.create(): the rest alert uses the
+        // plugin that call initialised, and asks permission through it.
+        restAlertSchedulerProvider.overrideWithValue(
+          LocalRestAlertScheduler(scheduler),
+        ),
         if (iPhone || android) ...[
           stepSourceProvider.overrideWithValue(
             iPhone ? IosStepSource() : AndroidStepSource(),

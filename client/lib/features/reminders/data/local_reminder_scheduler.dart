@@ -3,6 +3,7 @@ import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:timezone/data/latest_10y.dart' as tz_data;
 import 'package:timezone/timezone.dart' as tz;
 
+import '../../../core/notification_ids.dart';
 import '../domain/reminders.dart';
 import 'reminder_scheduler.dart';
 import 'tap_relay.dart';
@@ -121,10 +122,23 @@ class LocalReminderScheduler implements ReminderScheduler {
     return permissionGranted();
   }
 
+  /// Clears every reminder -- pending or already showing -- and only
+  /// reminders. ReminderSync calls this before each reschedule, including the
+  /// routine refresh right after a set is logged, so the plugin's own
+  /// cancelAll would also take a rest alert set the moment the phone locked.
   @override
   Future<void> cancelAll() async {
     try {
-      await _plugin.cancelAll();
+      final pending = await _plugin.pendingNotificationRequests();
+      final showing = await _plugin.getActiveNotifications();
+      final ids = {
+        for (final request in pending) request.id,
+        for (final notification in showing)
+          if (notification.id != null) notification.id!,
+      };
+      for (final id in reminderIdsToCancel(ids)) {
+        await _plugin.cancel(id: id);
+      }
     } catch (error) {
       debugPrint('Reminder cancelAll failed: $error');
     }
@@ -158,3 +172,8 @@ class LocalReminderScheduler implements ReminderScheduler {
   @override
   Stream<String> get taps => _relay.stream;
 }
+
+/// Of [ids], the ones that are reminders: all but the rest alert's.
+@visibleForTesting
+Iterable<int> reminderIdsToCancel(Iterable<int> ids) =>
+    ids.where((id) => id != restAlertNotificationId);
