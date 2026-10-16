@@ -347,6 +347,14 @@ class _ExerciseSwapSheetState extends ConsumerState<ExerciseSwapSheet> {
                       'Replace ${widget.exerciseName}',
                       style: Theme.of(context).textTheme.titleLarge,
                     ),
+                    const SizedBox(height: 2),
+                    // Opened from inside a workout, a swap reads like a
+                    // one-off for today. It is not: the plan row itself
+                    // changes, for every later session too.
+                    Text(
+                      'Changes your plan from now on, not just today.',
+                      style: TextStyle(fontSize: 12.5, color: t.text2),
+                    ),
                     const SizedBox(height: 12),
                     TextField(
                       key: const Key('swap.search'),

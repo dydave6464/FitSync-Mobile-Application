@@ -15,6 +15,7 @@ import '../../exercises/presentation/exercise_list_screen.dart'
     show describeError;
 import '../../plans/domain/workout_plan.dart';
 import '../../plans/presentation/add_to_plan_sheet.dart';
+import '../../plans/presentation/exercise_swap_sheet.dart';
 import '../../plans/presentation/providers.dart';
 import '../../profile/presentation/providers.dart';
 import '../data/rest_alerts.dart';
@@ -56,6 +57,15 @@ enum _LoggerStage { demo, logging }
 /// own eyebrow -- and two spellings of one number read as two numbers. So
 /// neither call site writes it out.
 String _positionLabel(int index, int count) => 'Exercise ${index + 1} / $count';
+
+/// Whether the exercise on screen can be switched, for the app bar's menu and
+/// the demo stage's link. [onSwitch] is null while it cannot: the menu greys
+/// its item and the link is not shown.
+class _SwitchState {
+  const _SwitchState(this.onSwitch);
+
+  final VoidCallback? onSwitch;
+}
 
 class _SessionLoggerScreenState extends ConsumerState<SessionLoggerScreen>
     with WidgetsBindingObserver {
@@ -284,9 +294,15 @@ class _SessionLoggerScreenState extends ConsumerState<SessionLoggerScreen>
   /// it where the move is made.
   void _syncDrafts(int index) {
     if (index == _draftsForIndex) return;
+    _resetDrafts();
+    _draftsForIndex = index;
+  }
+
+  /// A fresh store for the position on screen. Also called directly by a
+  /// switch, which changes the exercise without changing the index.
+  void _resetDrafts() {
     _drafts.dispose();
     _drafts = SetDrafts();
-    _draftsForIndex = index;
   }
 
   @override
@@ -406,6 +422,38 @@ class _SessionLoggerScreenState extends ConsumerState<SessionLoggerScreen>
       if (session.setFor(exercise.exerciseId, number) != null) return true;
     }
     return false;
+  }
+
+  /// Replaces [exercise] in the plan, from inside the workout: the same sheet
+  /// and the same server swap the Plan tab's Change button uses, so the plan
+  /// row itself changes, for every later session too.
+  ///
+  /// The sheet refreshes the active plan, which this screen watches, so the
+  /// new exercise arrives at the same position on its own; [_index] is left
+  /// where it is. The demo is what shows next -- the user has not read this
+  /// one yet -- and the drafts go: anything typed was typed against the
+  /// exercise just replaced. The rest is not touched; see [_moveTo].
+  ///
+  /// No Undo on the SnackBar. Every swap is recorded server-side as "rejected
+  /// this, chose that" for the recommender, so swapping straight back would
+  /// record a rejection the user never meant; Switch again is the way back.
+  Future<void> _switchExercise(PlanExercise exercise) async {
+    final messenger = ScaffoldMessenger.of(context);
+    final swappedTo = await showModalBottomSheet<String>(
+      context: context,
+      isScrollControlled: true,
+      builder: (_) => ExerciseSwapSheet(
+        planExerciseId: exercise.planExerciseId,
+        exerciseName: exercise.name,
+        onGoToProfile: null,
+      ),
+    );
+    if (swappedTo == null || !mounted) return;
+    setState(() {
+      _resetDrafts();
+      _moveTo(stage: _LoggerStage.demo);
+    });
+    messenger.showSnackBar(SnackBar(content: Text('Swapped to $swappedTo')));
   }
 
   /// Opens the jump sheet and moves to whatever it returns.
@@ -812,10 +860,17 @@ class _SessionLoggerScreenState extends ConsumerState<SessionLoggerScreen>
   /// [restSeconds] feeds the menu's 'Rest time' label. It is passed in
   /// rather than read here because the screen already watches it for the
   /// rest itself, which takes its length when a set is completed.
+  ///
+  /// [switchState] is null when the session has no plan to change -- one
+  /// started from a chosen list, or the empty day -- and the item is then
+  /// absent rather than greyed: there is nothing it could ever do. On a
+  /// plan-backed session it stays, greyed with its reason once sets are
+  /// logged against the exercise on screen.
   PreferredSizeWidget _appBar(
     FsTokens t, {
     required int restSeconds,
     VoidCallback? onRestart,
+    _SwitchState? switchState,
   }) => AppBar(
     // The mockup's 38px rounded-square icon button, not Material's bare
     // arrow. Tooltipped 'Back' so the platform affordance -- and
@@ -882,6 +937,7 @@ class _SessionLoggerScreenState extends ConsumerState<SessionLoggerScreen>
         onSelected: (value) => switch (value) {
           'restTime' => showRestSheet(context),
           'restart' => onRestart?.call(),
+          'switch' => switchState?.onSwitch?.call(),
           'finish' => _finish(),
           _ => _discard(),
         },
@@ -900,6 +956,27 @@ class _SessionLoggerScreenState extends ConsumerState<SessionLoggerScreen>
             enabled: onRestart != null,
             child: const Text('Restart this exercise'),
           ),
+          if (switchState != null)
+            PopupMenuItem(
+              key: const Key('logger.switch.menu'),
+              value: 'switch',
+              enabled: switchState.onSwitch != null,
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Text('Switch exercise'),
+                  // Greyed with no reason reads as broken. t.text2 rather
+                  // than the item's own disabled grey, so the reason stays
+                  // readable.
+                  if (switchState.onSwitch == null)
+                    Text(
+                      "You've logged sets on this one",
+                      style: TextStyle(fontSize: 12, color: t.text2),
+                    ),
+                ],
+              ),
+            ),
           const PopupMenuItem(
             key: Key('logger.finish'),
             value: 'finish',
@@ -941,7 +1018,11 @@ class _SessionLoggerScreenState extends ConsumerState<SessionLoggerScreen>
     // Only a session that needs the plan waits for it. Falling through while
     // it is still in flight would flash the empty state at a plan-backed
     // session whose exercises are one frame away.
-    if (carried.isEmpty && asyncPlan.isLoading) {
+    //
+    // Only the first load, though. A swap refreshes the plan under an open
+    // session, and a refresh still holds the plan it is replacing -- falling
+    // to the spinner then would blank the whole logger for a frame.
+    if (carried.isEmpty && asyncPlan.isLoading && !asyncPlan.hasValue) {
       return const Scaffold(body: Center(child: CircularProgressIndicator()));
     }
 
@@ -1013,6 +1094,17 @@ class _SessionLoggerScreenState extends ConsumerState<SessionLoggerScreen>
         ? 'Next: set $next of ${exercise.name}'
         : 'Time for your next exercise.';
     final isLast = index == exercises.length - 1;
+    // A switch replaces the exercise in the plan, so only a session whose
+    // exercises come from the plan has one; and only before anything is
+    // logged against it, since those sets would be left naming an exercise
+    // the plan no longer holds.
+    final switchState = carried.isNotEmpty
+        ? null
+        : _SwitchState(
+            _hasLoggedSets(exercise, session)
+                ? null
+                : () => _switchExercise(exercise),
+          );
     final encouragement = encouragementFor(
       exercises: exercises,
       index: index,
@@ -1063,6 +1155,7 @@ class _SessionLoggerScreenState extends ConsumerState<SessionLoggerScreen>
                   _hasLoggedSets(exercise, session)
               ? () => _restartExercise(exercise, session)
               : null,
+          switchState: switchState,
         ),
         body: Column(
           children: [
@@ -1141,6 +1234,7 @@ class _SessionLoggerScreenState extends ConsumerState<SessionLoggerScreen>
                       key: const Key('logger.demo'),
                       exercise: exercise,
                       positionLabel: _positionLabel(index, exercises.length),
+                      onSwitch: switchState?.onSwitch,
                     )
                   : SingleChildScrollView(
                       padding: const EdgeInsets.fromLTRB(20, 0, 20, 20),

@@ -37,6 +37,7 @@ class ExerciseDemoStage extends ConsumerWidget {
     super.key,
     required this.exercise,
     required this.positionLabel,
+    this.onSwitch,
   });
 
   final PlanExercise exercise;
@@ -49,6 +50,13 @@ class ExerciseDemoStage extends ConsumerWidget {
   /// match it exactly (see `_positionLabel` there), while the pushed route
   /// has no second counter to agree with and reads "Exercise 2 of 6".
   final String positionLabel;
+
+  /// Opens the swap sheet for this exercise. Non-null only on the logger's
+  /// own stage, and only while a switch is allowed there -- a plan-backed
+  /// session with nothing logged against this exercise yet. Null hides the
+  /// link: the pushed route behind the set table's tile never offers it,
+  /// since a switch from there would change the exercise under that table.
+  final VoidCallback? onSwitch;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -92,6 +100,34 @@ class ExerciseDemoStage extends ConsumerWidget {
                 catalogue: ExerciseCues.catalogue(loaded.cues),
                 onRetry: () =>
                     ref.invalidate(exerciseCuesProvider(exercise.exerciseId)),
+              ),
+        // Here, under the name and chips, because this is where "too hard
+        // for me" is decided -- before the first set, not after backing out
+        // to the Plan tab.
+        belowChips: onSwitch == null
+            ? null
+            : Align(
+                alignment: Alignment.centerLeft,
+                child: TextButton.icon(
+                  key: const Key('logger.switch'),
+                  onPressed: onSwitch,
+                  style: TextButton.styleFrom(
+                    foregroundColor: t.accent,
+                    minimumSize: const Size(48, 48),
+                    padding: const EdgeInsets.symmetric(horizontal: 4),
+                    textStyle: const TextStyle(
+                      fontSize: 13,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                  icon: const Icon(Icons.swap_horiz, size: 18),
+                  // The question is for the eye; a screen reader gets the
+                  // action's name alone.
+                  label: const Text(
+                    'Not for you? Switch exercise',
+                    semanticsLabel: 'Switch exercise',
+                  ),
+                ),
               ),
         // The target is never cut to "…": it is what the user is about to
         // do. With room it sits at the right; a long prescription ("3 sets ×

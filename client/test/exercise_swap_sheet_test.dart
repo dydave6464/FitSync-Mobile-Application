@@ -324,6 +324,22 @@ void main() {
     expect(find.text('Replace Cable Fly'), findsOneWidget);
   });
 
+  // The sheet opens from the Plan tab and from inside a workout, and from the
+  // workout a swap reads like a one-off. It is not: the plan row changes for
+  // every later session too, so the sheet says so under its heading.
+  testWidgets('says under the heading that the swap changes the plan', (
+    tester,
+  ) async {
+    await _pump(tester, const [_alt]);
+
+    final caption = find.text('Changes your plan from now on, not just today.');
+    expect(caption, findsOneWidget);
+    expect(
+      tester.getTopLeft(caption).dy,
+      greaterThan(tester.getBottomLeft(find.text('Replace Cable Fly')).dy - 1),
+    );
+  });
+
   testWidgets('lists the alternatives', (tester) async {
     await _pump(tester, const [_alt]);
 

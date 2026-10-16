@@ -108,6 +108,14 @@ void main() {
     expect(find.textContaining('Keep your chest tall'), findsOneWidget);
   });
 
+  // A switch from here would change the exercise under the set table that
+  // pushed this route, mid-set. Only the logger's own demo stage offers one.
+  testWidgets('offers no switch', (tester) async {
+    await _pump(tester);
+
+    expect(find.byKey(const Key('logger.switch')), findsNothing);
+  });
+
   testWidgets('Done returns to the logger', (tester) async {
     await _pump(tester);
 

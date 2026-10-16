@@ -14,6 +14,7 @@ import 'package:fitsync/features/exercises/domain/exercise_cues.dart';
 import 'package:fitsync/features/exercises/presentation/providers.dart'
     show exerciseDetailProvider, exerciseCuesProvider;
 import 'package:fitsync/features/plans/data/plan_repository.dart';
+import 'package:fitsync/features/plans/domain/exercise_alternative.dart';
 import 'package:fitsync/features/plans/domain/workout_plan.dart';
 import 'package:fitsync/features/profile/domain/profile.dart';
 import 'package:fitsync/features/profile/presentation/providers.dart';
@@ -317,10 +318,28 @@ const _customPlan = WorkoutPlan(
 
 /// Records what the summary dialog asked the plan API to do.
 class RecordingPlanRepository implements PlanRepository {
-  RecordingPlanRepository({this.error, this.active, this.gate});
+  RecordingPlanRepository({
+    this.error,
+    this.active,
+    this.gate,
+    this.swapped,
+    this.alternativeRows = const [],
+  });
 
   final Object? error;
-  final WorkoutPlan? active;
+
+  /// What `activePlan` answers -- until a [swap] lands, when it becomes
+  /// [swapped], as the server's plan would.
+  WorkoutPlan? active;
+
+  /// The plan after a swap, for the tests that switch an exercise.
+  final WorkoutPlan? swapped;
+
+  /// What the swap sheet lists, whatever row or search asks.
+  final List<ExerciseAlternative> alternativeRows;
+
+  /// Every swap asked for, as (planExerciseId, exerciseId).
+  final List<(int, int)> swaps = [];
 
   /// When set, `planFromSession` suspends here instead of resolving
   /// immediately -- mirrors [FakeSessionController.completeGate], and for the
@@ -336,6 +355,19 @@ class RecordingPlanRepository implements PlanRepository {
 
   @override
   Future<WorkoutPlan?> activePlan() async => active;
+
+  @override
+  Future<List<ExerciseAlternative>> alternatives(
+    int planExerciseId, {
+    String? q,
+  }) async => alternativeRows;
+
+  @override
+  Future<WorkoutPlan> swap(int planExerciseId, int exerciseId) async {
+    swaps.add((planExerciseId, exerciseId));
+    active = swapped;
+    return swapped!;
+  }
 
   @override
   Future<WorkoutPlan> planFromSession({
@@ -2977,5 +3009,236 @@ void main() {
         expect(alerts.events, ['schedule', 'cancel']);
       },
     );
+  });
+
+  // A user reading the demo who decides "too hard for me" used to back out
+  // through every exercise, change it on the Plan tab, resume and jump back.
+  group('switch exercise', () {
+    const boxSquat = ExerciseAlternative(
+      exerciseId: 201,
+      name: 'Box squat',
+      muscleGroup: 'quadriceps',
+    );
+    const inclinePushUp = ExerciseAlternative(
+      exerciseId: 202,
+      name: 'Incline push-up',
+      muscleGroup: 'chest',
+    );
+
+    /// [_plan] with one row's exercise replaced, as the server answers a swap:
+    /// the same plan row, slot, sets and reps, holding another exercise.
+    WorkoutPlan swappedPlan(int planExerciseId, ExerciseAlternative to) =>
+        WorkoutPlan(
+          planId: _plan.planId,
+          name: _plan.name,
+          splitStyle: _plan.splitStyle,
+          daysPerWeek: _plan.daysPerWeek,
+          sessionLengthMin: _plan.sessionLengthMin,
+          weekNo: _plan.weekNo,
+          exercises: [
+            for (final e in _plan.exercises)
+              e.planExerciseId == planExerciseId
+                  ? PlanExercise(
+                      planExerciseId: e.planExerciseId,
+                      exerciseId: to.exerciseId,
+                      name: to.name,
+                      muscleGroup: to.muscleGroup,
+                      orderNo: e.orderNo,
+                      targetSets: e.targetSets,
+                      targetReps: e.targetReps,
+                    )
+                  : e,
+          ],
+        );
+
+    RecordingPlanRepository squatPlans() => RecordingPlanRepository(
+      active: _plan,
+      swapped: swappedPlan(601, boxSquat),
+      alternativeRows: const [boxSquat],
+    );
+
+    /// Picks [alt] in the open sheet and confirms it from the preview.
+    Future<void> choose(WidgetTester tester, ExerciseAlternative alt) async {
+      await tester.tap(find.byKey(Key('swap.alt.${alt.exerciseId}')));
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 400));
+      await tester.tap(find.byKey(const Key('swap.preview.confirm')));
+      await tester.pump();
+    }
+
+    testWidgets('the demo offers a switch that opens the swap sheet', (
+      tester,
+    ) async {
+      await _pump(tester, plans: squatPlans());
+
+      final link = find.byKey(const Key('logger.switch'));
+      expect(link, findsOneWidget);
+      expect(find.text('Not for you? Switch exercise'), findsOneWidget);
+      expect(find.bySemanticsLabel('Switch exercise'), findsOneWidget);
+      final size = tester.getSize(link);
+      expect(size.height, greaterThanOrEqualTo(48));
+
+      await tester.tap(link);
+      await tester.pumpAndSettle();
+
+      expect(find.text('Replace Goblet squat'), findsOneWidget);
+      expect(
+        find.text('Changes your plan from now on, not just today.'),
+        findsOneWidget,
+      );
+    });
+
+    testWidgets('choosing an alternative swaps it in at the same position', (
+      tester,
+    ) async {
+      final plans = squatPlans();
+      await _pump(tester, plans: plans);
+
+      await tester.tap(find.byKey(const Key('logger.switch')));
+      await tester.pumpAndSettle();
+      await choose(tester, boxSquat);
+
+      // The screen stays itself while the plan refetches -- no spinner in
+      // place of the whole logger for the frame the new plan is in flight.
+      expect(find.byKey(const Key('logger.menu')), findsOneWidget);
+
+      await tester.pumpAndSettle();
+
+      expect(plans.swaps, [(601, 201)]);
+      expect(find.byKey(const Key('logger.demo')), findsOneWidget);
+      expect(find.text('Detail 201'), findsOneWidget);
+      expect(_metaPosition('Exercise 1 / 2'), findsOneWidget);
+      expect(find.text('Swapped to Box squat'), findsOneWidget);
+    });
+
+    testWidgets('a dismissed sheet changes nothing', (tester) async {
+      final plans = squatPlans();
+      await _pump(tester, plans: plans);
+
+      await tester.tap(find.byKey(const Key('logger.switch')));
+      await tester.pumpAndSettle();
+      await tester.tapAt(const Offset(5, 5));
+      await tester.pumpAndSettle();
+
+      expect(plans.swaps, isEmpty);
+      expect(find.text('Detail 101'), findsOneWidget);
+      expect(find.textContaining('Swapped to'), findsNothing);
+    });
+
+    testWidgets('once a set is logged the switch is off, and says why', (
+      tester,
+    ) async {
+      await _pump(
+        tester,
+        plans: squatPlans(),
+        session: _session(
+          sets: const [
+            LoggedSet(exerciseId: 101, setNumber: 1, weightKg: 20, reps: 10),
+          ],
+        ),
+      );
+
+      expect(find.byKey(const Key('logger.switch')), findsNothing);
+
+      await tester.tap(find.byKey(const Key('logger.menu')));
+      await tester.pumpAndSettle();
+
+      final item = tester.widget<PopupMenuItem<String>>(
+        find.byKey(const Key('logger.switch.menu')),
+      );
+      expect(item.enabled, isFalse);
+      expect(find.text('Switch exercise'), findsOneWidget);
+      expect(find.text("You've logged sets on this one"), findsOneWidget);
+    });
+
+    testWidgets('a session from a chosen list has nothing to switch', (
+      tester,
+    ) async {
+      await _pump(tester, session: _manualSession, plan: null);
+
+      expect(find.byKey(const Key('logger.switch')), findsNothing);
+
+      await tester.tap(find.byKey(const Key('logger.menu')));
+      await tester.pumpAndSettle();
+      expect(find.byKey(const Key('logger.switch.menu')), findsNothing);
+    });
+
+    testWidgets(
+      'a switch from the table drops what was typed for the old one',
+      (tester) async {
+        await _pump(tester, plans: squatPlans());
+        await tester.tap(find.byKey(const Key('logger.primary')));
+        await tester.pumpAndSettle();
+        await tester.enterText(find.byKey(const Key('set.1.weight')), '20');
+        await tester.enterText(find.byKey(const Key('set.1.reps')), '10');
+
+        await _menu(tester, 'switch.menu');
+        await choose(tester, boxSquat);
+        await tester.pumpAndSettle();
+
+        expect(find.byKey(const Key('logger.demo')), findsOneWidget);
+        expect(find.text('Detail 201'), findsOneWidget);
+
+        // The "Swapped to" SnackBar sits over the footer until it times out.
+        await tester.pump(const Duration(seconds: 5));
+        await tester.pumpAndSettle();
+        await tester.tap(find.byKey(const Key('logger.primary')));
+        await tester.pumpAndSettle();
+        for (final field in ['set.1.weight', 'set.1.reps']) {
+          expect(
+            tester.widget<TextField>(find.byKey(Key(field))).controller!.text,
+            isEmpty,
+            reason: '$field was typed against Goblet squat, not Box squat',
+          );
+        }
+      },
+    );
+
+    testWidgets('a running rest carries on through a switch', (tester) async {
+      final plans = RecordingPlanRepository(
+        active: _plan,
+        swapped: swappedPlan(602, inclinePushUp),
+        alternativeRows: const [inclinePushUp],
+      );
+      await _pump(
+        tester,
+        plans: plans,
+        session: _session(
+          sets: const [
+            LoggedSet(exerciseId: 101, setNumber: 1, weightKg: 20, reps: 10),
+            LoggedSet(exerciseId: 101, setNumber: 2, weightKg: 20, reps: 10),
+          ],
+        ),
+      );
+      await tester.tap(find.byKey(const Key('logger.primary')));
+      await tester.pumpAndSettle();
+      await tester.enterText(find.byKey(const Key('set.3.weight')), '20');
+      await tester.enterText(find.byKey(const Key('set.3.reps')), '10');
+      await tester.tap(find.byKey(const Key('logger.primary')));
+      await tester.pump();
+      await tester.pump();
+      // Next exercise: Push-up's demo, untouched, with the rest running.
+      await tester.tap(find.byKey(const Key('logger.primary')));
+      await tester.pump();
+      await tester.pump();
+      expect(
+        tester.widget<Text>(find.byKey(const Key('rest.remaining'))).data,
+        '1:30',
+      );
+
+      await tester.tap(find.byKey(const Key('logger.switch')));
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 400));
+      await choose(tester, inclinePushUp);
+      // 400 + 400 + 200 ms so far: one whole second of rest gone, no more.
+      await tester.pump(const Duration(milliseconds: 200));
+
+      expect(plans.swaps, [(602, 202)]);
+      expect(find.text('Detail 202'), findsOneWidget);
+      expect(
+        tester.widget<Text>(find.byKey(const Key('rest.remaining'))).data,
+        '1:29',
+      );
+    });
   });
 }

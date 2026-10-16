@@ -19,6 +19,7 @@ class ExerciseDemoBody extends StatelessWidget {
     this.header,
     this.cues,
     this.cueSection,
+    this.belowChips,
   });
 
   final ExerciseDetail exercise;
@@ -38,6 +39,11 @@ class ExerciseDemoBody extends StatelessWidget {
   /// Replaces the cue list entirely. The workout's demo stage passes a
   /// CoachPanel here for an exercise coached for an injury.
   final Widget? cueSection;
+
+  /// Rendered right after the chips and before the cues -- the workout's demo
+  /// stage puts its "Switch exercise" link here, next to the name it would
+  /// replace. Absent everywhere else.
+  final Widget? belowChips;
 
   @override
   Widget build(BuildContext context) {
@@ -70,6 +76,7 @@ class ExerciseDemoBody extends StatelessWidget {
               Chip(label: Text(exercise.equipment!)),
           ],
         ),
+        ?belowChips,
         const SizedBox(height: 24),
         // One cue renderer for all three screens that show this body -- the
         // detail Train's Exercises tab opens, the mid-set detour, and the
