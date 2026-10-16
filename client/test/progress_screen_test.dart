@@ -139,6 +139,7 @@ Future<FakeSessionRepository> _pump(
   WidgetTester tester, {
   FakeSessionRepository? repo,
   WeightUnit? unit,
+  BodyWeightSeries bodyWeight = _emptyBodyWeight,
 }) async {
   final fake = repo ?? FakeSessionRepository();
   await tester.pumpWidget(
@@ -148,9 +149,7 @@ Future<FakeSessionRepository> _pump(
         // The body-weight card is a separate feature's provider; none of these
         // tests are about it, so it is stubbed quiet rather than left to reach
         // a real ApiClient.
-        bodyWeightProvider.overrideWith(
-          (ref, period) async => _emptyBodyWeight,
-        ),
+        bodyWeightProvider.overrideWith((ref, period) async => bodyWeight),
         profileProvider.overrideWith(_StubProfileNotifier.new),
         // Only the unit tests pin it; everyone else reads the stub profile's
         // default, kilograms, exactly as a real account without a choice does.
@@ -464,6 +463,30 @@ void main() {
       );
       expect(chart.points.last.y, closeTo(2204.62, 0.01));
       expect(find.text('lb lifted'), findsOneWidget);
+    });
+
+    testWidgets('body weight follows the unit switch, not the cached series', (
+      tester,
+    ) async {
+      // The series was fetched while the user was on kilograms, and the
+      // provider keeps it alive; switching to pounds refetches nothing, so
+      // the card has to take the unit the rest of the screen reads.
+      await _pump(
+        tester,
+        bodyWeight: const BodyWeightSeries(
+          widened: false,
+          points: [BodyWeightPoint(loggedOn: '2026-09-15', weightKg: 80)],
+          reference: null,
+          unit: 'kg',
+        ),
+        unit: WeightUnit.lb,
+      );
+
+      expect(
+        find.text(formatWeightWithUnit(80, WeightUnit.lb), skipOffstage: false),
+        findsOneWidget,
+      );
+      expect(find.text('80 kg', skipOffstage: false), findsNothing);
     });
 
     testWidgets('pound history fits a 320 dp screen at double text size', (
