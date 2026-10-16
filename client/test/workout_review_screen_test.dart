@@ -190,6 +190,21 @@ Future<void> _dragOnto(WidgetTester tester, Key handle, Key target) async {
   await tester.pumpAndSettle();
 }
 
+Finder _more(int id) => find.byKey(Key('review.more.$id'));
+
+/// Opens a row's ⋮ menu and picks [item] from it.
+Future<void> _pickFromMenu(WidgetTester tester, int id, String item) async {
+  await tester.tap(_more(id));
+  await tester.pumpAndSettle();
+  await tester.tap(find.byKey(Key('review.$item.$id')));
+  await tester.pumpAndSettle();
+}
+
+/// Whether a row's ⋮ menu item can be chosen, read off the open menu.
+bool _menuItemEnabled(WidgetTester tester, String item, int id) => tester
+    .widget<PopupMenuItem<Object?>>(find.byKey(Key('review.$item.$id')))
+    .enabled;
+
 void main() {
   testWidgets('lists the picks in the order they will be trained', (
     tester,
@@ -226,8 +241,7 @@ void main() {
   testWidgets('removing a row drops it from the workout', (tester) async {
     final container = await _pump(tester, picks: const [_squat, _fly]);
 
-    await tester.tap(find.byKey(const Key('review.remove.101')));
-    await tester.pumpAndSettle();
+    await _pickFromMenu(tester, 101, 'remove');
 
     expect(find.text('Goblet squat'), findsNothing);
     expect(container.read(workoutDraftProvider).exerciseIds, [202]);
@@ -392,13 +406,201 @@ void main() {
   testWidgets('an emptied workout cannot be started', (tester) async {
     await _pump(tester, picks: const [_squat]);
 
-    await tester.tap(find.byKey(const Key('review.remove.101')));
-    await tester.pumpAndSettle();
+    await _pickFromMenu(tester, 101, 'remove');
 
     expect(
       tester.widget<FsButton>(_start()).onPressed,
       isNull,
       reason: 'a workout of no exercises is not a workout',
     );
+  });
+
+  group('reordering without dragging', () {
+    testWidgets('each row has a named ⋮ button with a 48 dp target', (
+      tester,
+    ) async {
+      final semantics = tester.ensureSemantics();
+      await _pump(tester, picks: const [_squat, _fly]);
+
+      // The tooltip is what TalkBack reads as the button's name.
+      expect(find.byTooltip('More options for Goblet squat'), findsOneWidget);
+      final size = tester.getSize(_more(101));
+      expect(size.width, greaterThanOrEqualTo(48));
+      expect(size.height, greaterThanOrEqualTo(48));
+      semantics.dispose();
+    });
+
+    testWidgets('Move up is off on the first row, Move down on the last', (
+      tester,
+    ) async {
+      await _pump(tester, picks: const [_squat, _fly, _press]);
+
+      await tester.tap(_more(101));
+      await tester.pumpAndSettle();
+      expect(_menuItemEnabled(tester, 'moveUp', 101), isFalse);
+      expect(_menuItemEnabled(tester, 'moveDown', 101), isTrue);
+      await tester.tapAt(Offset.zero);
+      await tester.pumpAndSettle();
+
+      await tester.tap(_more(303));
+      await tester.pumpAndSettle();
+      expect(_menuItemEnabled(tester, 'moveUp', 303), isTrue);
+      expect(_menuItemEnabled(tester, 'moveDown', 303), isFalse);
+      await tester.tapAt(Offset.zero);
+      await tester.pumpAndSettle();
+
+      await tester.tap(_more(202));
+      await tester.pumpAndSettle();
+      expect(_menuItemEnabled(tester, 'moveUp', 202), isTrue);
+      expect(_menuItemEnabled(tester, 'moveDown', 202), isTrue);
+    });
+
+    testWidgets('Move down swaps a row with the one below it', (tester) async {
+      final container = await _pump(
+        tester,
+        picks: const [_squat, _fly, _press],
+      );
+
+      await _pickFromMenu(tester, 101, 'moveDown');
+
+      expect(container.read(workoutDraftProvider).exerciseIds, [202, 101, 303]);
+    });
+
+    testWidgets('Move up swaps a row with the one above it', (tester) async {
+      final container = await _pump(
+        tester,
+        picks: const [_squat, _fly, _press],
+      );
+
+      await _pickFromMenu(tester, 303, 'moveUp');
+
+      expect(container.read(workoutDraftProvider).exerciseIds, [101, 303, 202]);
+    });
+
+    testWidgets('a moved row is what starts in its new place', (tester) async {
+      final sessions = FakeSessionRepository();
+      await _pump(
+        tester,
+        picks: const [_squat, _fly, _press],
+        sessions: sessions,
+      );
+
+      await _pickFromMenu(tester, 202, 'moveUp');
+      await tester.tap(_start());
+      await tester.pumpAndSettle();
+
+      expect(sessions.startedWith, [202, 101, 303]);
+    });
+  });
+
+  group('removing can be undone', () {
+    testWidgets('removing says what went and offers Undo', (tester) async {
+      await _pump(tester, picks: const [_squat, _fly, _press]);
+
+      await _pickFromMenu(tester, 202, 'remove');
+
+      expect(find.text('Removed Cable fly'), findsOneWidget);
+      expect(find.widgetWithText(SnackBarAction, 'Undo'), findsOneWidget);
+    });
+
+    testWidgets('Undo puts it back in the same position', (tester) async {
+      final container = await _pump(
+        tester,
+        picks: const [_squat, _fly, _press],
+      );
+
+      await _pickFromMenu(tester, 202, 'remove');
+      expect(container.read(workoutDraftProvider).exerciseIds, [101, 303]);
+
+      await tester.tap(find.text('Undo'));
+      await tester.pumpAndSettle();
+
+      expect(container.read(workoutDraftProvider).exerciseIds, [101, 202, 303]);
+      expect(find.text('Cable fly'), findsOneWidget);
+    });
+
+    testWidgets('Undo brings back the only exercise of an emptied workout', (
+      tester,
+    ) async {
+      final container = await _pump(tester, picks: const [_squat]);
+
+      await _pickFromMenu(tester, 101, 'remove');
+      expect(find.text('Nothing in this workout yet.'), findsOneWidget);
+
+      await tester.tap(find.text('Undo'));
+      await tester.pumpAndSettle();
+
+      expect(container.read(workoutDraftProvider).exerciseIds, [101]);
+      expect(tester.widget<FsButton>(_start()).onPressed, isNotNull);
+    });
+
+    testWidgets('the Undo message goes away on its own', (tester) async {
+      // A SnackBar with an action persists by default, which would leave the
+      // message pinned over the Start button for as long as the screen stays.
+      await _pump(tester, picks: const [_squat, _fly]);
+
+      await _pickFromMenu(tester, 101, 'remove');
+      await tester.pump(const Duration(seconds: 10));
+      await tester.pumpAndSettle();
+
+      expect(find.text('Removed Goblet squat'), findsNothing);
+    });
+  });
+
+  group('the drag handle', () {
+    testWidgets('has a 48 dp touch area and a screen-reader name', (
+      tester,
+    ) async {
+      final semantics = tester.ensureSemantics();
+      await _pump(tester, picks: const [_squat, _fly]);
+
+      final size = tester.getSize(find.byKey(const Key('review.drag.101')));
+      expect(size.width, greaterThanOrEqualTo(48));
+      expect(size.height, greaterThanOrEqualTo(48));
+      expect(find.bySemanticsLabel('Reorder Goblet squat'), findsOneWidget);
+      semantics.dispose();
+    });
+
+    testWidgets('keeps the icon the same size it was', (tester) async {
+      await _pump(tester, picks: const [_squat]);
+
+      final icon = tester.widget<Icon>(
+        find.descendant(
+          of: find.byKey(const Key('review.drag.101')),
+          matching: find.byIcon(Icons.drag_indicator),
+        ),
+      );
+      expect(icon.size, 20);
+    });
+  });
+
+  testWidgets('the hint is not in the faint text colour', (tester) async {
+    await _pump(tester, picks: const [_squat]);
+
+    final hint = tester.widget<Text>(find.byKey(const Key('review.hint')));
+    final t = fsLightTheme().extension<FsTokens>()!;
+    expect(hint.style!.color, isNot(t.text3));
+  });
+
+  testWidgets('fits a 320 dp screen at 2.0× text, menu open too', (
+    tester,
+  ) async {
+    tester.view.physicalSize = const Size(320, 640);
+    tester.view.devicePixelRatio = 1.0;
+    tester.platformDispatcher.textScaleFactorTestValue = 2.0;
+    addTearDown(tester.view.reset);
+    addTearDown(tester.platformDispatcher.clearTextScaleFactorTestValue);
+
+    await _pump(tester, picks: const [_squat, _fly, _press]);
+    expect(tester.takeException(), isNull);
+
+    await tester.tap(_more(202));
+    await tester.pumpAndSettle();
+    expect(tester.takeException(), isNull);
+
+    await tester.tap(find.byKey(const Key('review.remove.202')));
+    await tester.pumpAndSettle();
+    expect(tester.takeException(), isNull);
+    expect(find.text('Removed Cable fly'), findsOneWidget);
   });
 }
