@@ -711,6 +711,17 @@ void _drainMetaRowOverflow(WidgetTester tester) {
   if (error != null) expect('$error', contains('RenderFlex overflowed'));
 }
 
+/// Finish from the menu on a workout with sets still unlogged, which asks
+/// first now (see the "finishing with sets left" group), answered Finish.
+/// For the tests about what finishing does: they log a set or two, not the
+/// whole plan, and the question is not what they are checking.
+Future<void> _finishWithSetsLeft(WidgetTester tester) async {
+  await _menu(tester, 'finish');
+  expect(find.byKey(const Key('logger.finishConfirm')), findsOneWidget);
+  await tester.tap(find.byKey(const Key('logger.finishConfirm.finish')));
+  await tester.pumpAndSettle();
+}
+
 void main() {
   // The mockup's screen 3. It is a stage of this screen, not a route, so the
   // session and the rest timer survive moving between the two.
@@ -1299,7 +1310,7 @@ void main() {
       ),
     );
 
-    await _menu(tester, 'finish');
+    await _finishWithSetsLeft(tester);
 
     // The closed session comes back at 380 kg, which is 837.75... lb.
     expect(find.textContaining('838 lb lifted'), findsOneWidget);
@@ -1475,7 +1486,7 @@ void main() {
       ),
     );
 
-    await _menu(tester, 'finish');
+    await _finishWithSetsLeft(tester);
 
     // The exact minute count, not just the prefix: the fixture started 12
     // minutes ago, and a startsWith('complete:') check is satisfied just as
@@ -1497,7 +1508,7 @@ void main() {
       'This session has already been closed.',
     );
 
-    await _menu(tester, 'finish');
+    await _finishWithSetsLeft(tester);
 
     expect(find.byKey(const Key('logger.summary')), findsNothing);
     // Gone from the stack, not merely summary-less: the host route is back.
@@ -1537,7 +1548,7 @@ void main() {
       final gate = Completer<void>();
       controller.completeGate = gate;
 
-      await _menu(tester, 'finish');
+      await _finishWithSetsLeft(tester);
       await _menu(tester, 'finish');
       gate.complete();
       await tester.pumpAndSettle();
@@ -1565,7 +1576,7 @@ void main() {
       final controller = await _pump(tester);
       controller.completeError = StateError('No session is in progress.');
 
-      await _menu(tester, 'finish');
+      await _finishWithSetsLeft(tester);
 
       expect(find.text('This session was already finished.'), findsOneWidget);
       expect(find.text('Something went wrong.'), findsNothing);
@@ -1625,7 +1636,7 @@ void main() {
         );
         controller.completeError = error;
 
-        await _menu(tester, 'finish');
+        await _finishWithSetsLeft(tester);
 
         expect(find.text(message), findsOneWidget);
         // Not closed, not summarised, and above all not navigated away from:
@@ -1640,7 +1651,7 @@ void main() {
         // guard left stuck would leave a session that can never be finished
         // from here. No wait for the SnackBar to clear any more: Finish moved
         // to the app bar's menu, which a bottom-anchored SnackBar never covers.
-        await _menu(tester, 'finish');
+        await _finishWithSetsLeft(tester);
         expect(
           controller.calls.where((c) => c.startsWith('complete:')).length,
           2,
@@ -2068,6 +2079,233 @@ void main() {
     });
   });
 
+  group('finishing with sets left', () {
+    const squatDone = [
+      LoggedSet(exerciseId: 101, setNumber: 1, weightKg: 20, reps: 10),
+      LoggedSet(exerciseId: 101, setNumber: 2, weightKg: 20, reps: 10),
+      LoggedSet(exerciseId: 101, setNumber: 3, weightKg: 20, reps: 10),
+    ];
+    const pushUpsDone = [
+      LoggedSet(exerciseId: 102, setNumber: 1, weightKg: null, reps: 12),
+      LoggedSet(exerciseId: 102, setNumber: 2, weightKg: null, reps: 12),
+    ];
+
+    /// Five exercises of two sets each, from a chosen list -- enough that the
+    /// list of what is left has to be cut short.
+    ActiveSession fiveExercises({List<LoggedSet> sets = const []}) => _session(
+      sets: sets,
+      exercises: [
+        for (final (i, name) in [
+          'Bench press',
+          'Barbell row',
+          'Overhead press',
+          'Romanian deadlift',
+          'Walking lunge',
+        ].indexed)
+          PlanExercise(
+            planExerciseId: 700 + i,
+            exerciseId: 400 + i,
+            name: name,
+            muscleGroup: 'x',
+            orderNo: i + 1,
+            targetSets: 2,
+            targetReps: '8-12',
+          ),
+      ],
+    );
+
+    Finder dialog() => find.byKey(const Key('logger.finishConfirm'));
+
+    int completes(FakeSessionController controller) =>
+        controller.calls.where((call) => call.startsWith('complete:')).length;
+
+    testWidgets('asks first, counting the sets and naming what is left', (
+      tester,
+    ) async {
+      final controller = await _pumpLogging(
+        tester,
+        session: _session(sets: squatDone.sublist(0, 1)),
+      );
+
+      await _menu(tester, 'finish');
+
+      expect(dialog(), findsOneWidget);
+      expect(find.text('Finish with 1 of 5 sets?'), findsOneWidget);
+      expect(
+        find.text('Not logged yet: Goblet squat and Push-up.'),
+        findsOneWidget,
+      );
+      expect(completes(controller), 0);
+    });
+
+    // Sets past an exercise's target are real work, but they cannot stand in
+    // for another exercise's missing ones: the count stops at each target.
+    testWidgets('extra sets on one exercise do not count towards another', (
+      tester,
+    ) async {
+      await _pumpLogging(
+        tester,
+        session: _session(
+          sets: const [
+            ...squatDone,
+            LoggedSet(exerciseId: 101, setNumber: 4, weightKg: 20, reps: 8),
+          ],
+        ),
+      );
+
+      await _menu(tester, 'finish');
+
+      expect(find.text('Finish with 3 of 5 sets?'), findsOneWidget);
+      expect(find.text('Not logged yet: Push-up.'), findsOneWidget);
+    });
+
+    testWidgets('a long list names three and counts the rest', (tester) async {
+      await _pump(
+        tester,
+        plan: null,
+        session: fiveExercises(
+          sets: const [
+            LoggedSet(exerciseId: 401, setNumber: 1, weightKg: 40, reps: 8),
+          ],
+        ),
+      );
+
+      await _menu(tester, 'finish');
+
+      expect(find.text('Finish with 1 of 10 sets?'), findsOneWidget);
+      expect(
+        find.text(
+          'Not logged yet: Bench press, Barbell row, Overhead press '
+          'and 2 more.',
+        ),
+        findsOneWidget,
+      );
+    });
+
+    testWidgets('Keep going goes to the first exercise with sets left', (
+      tester,
+    ) async {
+      final controller = await _pump(
+        tester,
+        resume: true,
+        session: _session(sets: [...squatDone, ...pushUpsDone.sublist(0, 1)]),
+      );
+      await tester.tap(find.byKey(const Key('logger.position')));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const Key('jump.101')));
+      await tester.pumpAndSettle();
+      expect(_metaPosition('Exercise 1 / 2'), findsOneWidget);
+
+      await _menu(tester, 'finish');
+      await tester.tap(find.byKey(const Key('logger.finishConfirm.keepGoing')));
+      await tester.pumpAndSettle();
+
+      expect(dialog(), findsNothing);
+      // Push-up has a set logged, so its table rather than its demo.
+      expect(_metaPosition('Exercise 2 / 2'), findsOneWidget);
+      expect(find.text('Complete set 2'), findsOneWidget);
+      expect(completes(controller), 0);
+    });
+
+    testWidgets('Keep going opens the demo of an exercise not yet started', (
+      tester,
+    ) async {
+      await _pumpLogging(tester, session: _session(sets: squatDone));
+
+      await _menu(tester, 'finish');
+      await tester.tap(find.byKey(const Key('logger.finishConfirm.keepGoing')));
+      await tester.pumpAndSettle();
+
+      expect(_metaPosition('Exercise 2 / 2'), findsOneWidget);
+      expect(find.byKey(const Key('logger.demo')), findsOneWidget);
+    });
+
+    testWidgets('Finish finishes', (tester) async {
+      final controller = await _pumpLogging(
+        tester,
+        session: _session(sets: squatDone.sublist(0, 1)),
+      );
+
+      await _menu(tester, 'finish');
+      await tester.tap(find.byKey(const Key('logger.finishConfirm.finish')));
+      await tester.pumpAndSettle();
+
+      expect(controller.calls, contains('complete:12'));
+      expect(find.byKey(const Key('logger.summary')), findsOneWidget);
+    });
+
+    // Dismissing is not an answer, and finishing is the final act: nothing
+    // completes. Nor does it move -- that is Keep going's choice to make.
+    testWidgets('dismissing finishes nothing and stays put', (tester) async {
+      final controller = await _pumpLogging(
+        tester,
+        session: _session(sets: squatDone.sublist(0, 1)),
+      );
+
+      await _menu(tester, 'finish');
+      await tester.tapAt(const Offset(5, 5));
+      await tester.pumpAndSettle();
+
+      expect(dialog(), findsNothing);
+      expect(completes(controller), 0);
+      expect(_metaPosition('Exercise 1 / 2'), findsOneWidget);
+      expect(find.text('Complete set 2'), findsOneWidget);
+
+      // Not locked out either: the guard is set only once Finish is chosen.
+      await _menu(tester, 'finish');
+      expect(dialog(), findsOneWidget);
+    });
+
+    // The footer's Finish, on the last exercise, asks the same question.
+    testWidgets('the footer\'s Finish asks too', (tester) async {
+      final controller = await _pump(
+        tester,
+        resume: true,
+        session: _session(sets: pushUpsDone),
+      );
+      await tester.tap(find.byKey(const Key('logger.position')));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const Key('jump.102')));
+      await tester.pumpAndSettle();
+      expect(find.text('Finish session'), findsOneWidget);
+
+      await tester.tap(find.byKey(const Key('logger.primary')));
+      await tester.pumpAndSettle();
+
+      expect(find.text('Finish with 2 of 5 sets?'), findsOneWidget);
+      expect(completes(controller), 0);
+    });
+
+    testWidgets('with every set logged, Finish does not ask', (tester) async {
+      final controller = await _pump(
+        tester,
+        session: _session(sets: [...squatDone, ...pushUpsDone]),
+      );
+
+      await _menu(tester, 'finish');
+
+      expect(dialog(), findsNothing);
+      expect(controller.calls, contains('complete:12'));
+      expect(find.byKey(const Key('logger.summary')), findsOneWidget);
+    });
+
+    testWidgets('the question fits a 320 dp phone at large text', (
+      tester,
+    ) async {
+      _smallPhoneLargeText(tester);
+      await _pump(tester, plan: null, session: fiveExercises());
+      _drainMetaRowOverflow(tester);
+
+      await _menu(tester, 'finish');
+
+      expect(dialog(), findsOneWidget);
+      expect(tester.takeException(), isNull);
+      await tester.tap(find.byKey(const Key('logger.finishConfirm.keepGoing')));
+      await tester.pumpAndSettle();
+      expect(tester.takeException(), isNull);
+    });
+  });
+
   // Beyond the brief -- startedAt is the SERVER's NOW(). A phone clock behind
   // it makes DateTime.now().difference(startedAt) negative, and the route
   // rejects a negative durationMin with 400 DURATION_INVALID: the one failure
@@ -2088,7 +2326,7 @@ void main() {
     // The header must not read "-90 min elapsed" either.
     expect(find.text('0 min elapsed'), findsOneWidget);
 
-    await _menu(tester, 'finish');
+    await _finishWithSetsLeft(tester);
 
     expect(controller.calls, contains('complete:0'));
     expect(find.byKey(const Key('logger.summary')), findsOneWidget);
@@ -2155,7 +2393,7 @@ void main() {
     // forgotten what was in it.
     await _pump(tester, session: _manualSessionWithSets());
 
-    await _menu(tester, 'finish');
+    await _finishWithSetsLeft(tester);
 
     expect(find.byKey(const Key('logger.summary')), findsOneWidget);
     expect(find.byKey(const Key('summary.toPlan')), findsOneWidget);
@@ -2166,7 +2404,7 @@ void main() {
     (tester) async {
       await _pump(tester, session: _planSessionWithSets());
 
-      await _menu(tester, 'finish');
+      await _finishWithSetsLeft(tester);
 
       expect(find.byKey(const Key('logger.summary')), findsOneWidget);
       expect(find.byKey(const Key('summary.toPlan')), findsNothing);
@@ -2177,7 +2415,7 @@ void main() {
     final plans = RecordingPlanRepository();
     await _pump(tester, session: _manualSessionWithSets(), plans: plans);
 
-    await _menu(tester, 'finish');
+    await _finishWithSetsLeft(tester);
     await tester.tap(find.byKey(const Key('summary.toPlan')));
     await tester.pumpAndSettle();
 
@@ -2191,7 +2429,7 @@ void main() {
     final plans = RecordingPlanRepository();
     await _pump(tester, session: _manualSessionWithSets(), plans: plans);
 
-    await _menu(tester, 'finish');
+    await _finishWithSetsLeft(tester);
     await tester.tap(find.text('Done'));
     await tester.pumpAndSettle();
 
@@ -2211,7 +2449,7 @@ void main() {
     (tester) async {
       await _pump(tester, session: _manualSessionWithSets());
 
-      await _menu(tester, 'finish');
+      await _finishWithSetsLeft(tester);
       expect(find.byKey(const Key('logger.summary')), findsOneWidget);
 
       // Outside the AlertDialog's own bounds, on the modal barrier that
@@ -2232,7 +2470,7 @@ void main() {
     );
     await _pump(tester, session: _manualSessionWithSets(), plans: plans);
 
-    await _menu(tester, 'finish');
+    await _finishWithSetsLeft(tester);
     await tester.tap(find.byKey(const Key('summary.toPlan')));
     await tester.pumpAndSettle();
 
@@ -2272,7 +2510,7 @@ void main() {
       );
       final readsBeforeAccept = activePlanReads;
 
-      await _menu(tester, 'finish');
+      await _finishWithSetsLeft(tester);
       await tester.tap(find.byKey(const Key('summary.toPlan')));
       // Lets both pops -- the dialog's, and the logger route's behind it --
       // actually finish. The request stays gated throughout, so nothing here
@@ -2335,7 +2573,7 @@ void main() {
       final plans = RecordingPlanRepository(gate: gate);
       await _pump(tester, session: _manualSessionWithSets(), plans: plans);
 
-      await _menu(tester, 'finish');
+      await _finishWithSetsLeft(tester);
       await tester.tap(find.byKey(const Key('summary.toPlan')));
       await tester.pumpAndSettle();
 
@@ -2363,7 +2601,7 @@ void main() {
       final plans = RecordingPlanRepository(gate: gate);
       await _pump(tester, session: _manualSessionWithSets(), plans: plans);
 
-      await _menu(tester, 'finish');
+      await _finishWithSetsLeft(tester);
       await tester.tap(find.byKey(const Key('summary.toPlan')));
       await tester.pumpAndSettle();
 
@@ -2397,7 +2635,7 @@ void main() {
     final plans = RecordingPlanRepository();
     await _pump(tester, session: _manualSessionWithSets(), plans: plans);
 
-    await _menu(tester, 'finish');
+    await _finishWithSetsLeft(tester);
 
     expect(find.text('Make this my plan'), findsOneWidget);
     expect(find.text('Add to my plan'), findsNothing);
@@ -2409,7 +2647,7 @@ void main() {
     final plans = RecordingPlanRepository(active: _customPlan);
     await _pump(tester, session: _manualSessionWithSets(), plans: plans);
 
-    await _menu(tester, 'finish');
+    await _finishWithSetsLeft(tester);
 
     expect(find.text('Add to my plan'), findsOneWidget);
     expect(find.text('Make this my plan'), findsNothing);
@@ -2426,7 +2664,7 @@ void main() {
     final plans = RecordingPlanRepository(active: _generatedPlan);
     await _pump(tester, session: _manualSessionWithSets(), plans: plans);
 
-    await _menu(tester, 'finish');
+    await _finishWithSetsLeft(tester);
     await tester.tap(find.byKey(const Key('summary.toPlan')));
     await tester.pumpAndSettle();
 
@@ -2448,7 +2686,7 @@ void main() {
     final plans = RecordingPlanRepository(active: _generatedPlan);
     await _pump(tester, session: _manualSessionWithSets(), plans: plans);
 
-    await _menu(tester, 'finish');
+    await _finishWithSetsLeft(tester);
     await tester.tap(find.byKey(const Key('summary.toPlan')));
     await tester.pumpAndSettle();
     await tester.tap(find.text('Keep it'));
@@ -2466,7 +2704,7 @@ void main() {
     final plans = RecordingPlanRepository(active: _generatedPlan);
     await _pump(tester, session: _manualSessionWithSets(), plans: plans);
 
-    await _menu(tester, 'finish');
+    await _finishWithSetsLeft(tester);
     await tester.tap(find.byKey(const Key('summary.toPlan')));
     await tester.pumpAndSettle();
     await tester.tap(find.text('Replace it'));
@@ -2483,7 +2721,7 @@ void main() {
     final plans = RecordingPlanRepository(active: _customPlan);
     await _pump(tester, session: _manualSessionWithSets(), plans: plans);
 
-    await _menu(tester, 'finish');
+    await _finishWithSetsLeft(tester);
     await tester.tap(find.byKey(const Key('summary.toPlan')));
     await tester.pumpAndSettle();
     expect(find.byKey(const Key('addToPlan.newDay')), findsOneWidget);
@@ -2527,7 +2765,7 @@ void main() {
     );
     await _pump(tester, session: _manualSessionWithSets(), plans: plans);
 
-    await _menu(tester, 'finish');
+    await _finishWithSetsLeft(tester);
     await tester.tap(find.byKey(const Key('summary.toPlan')));
     await tester.pumpAndSettle();
 
@@ -3258,7 +3496,7 @@ void main() {
       final gate = Completer<void>();
       controller.completeGate = gate;
 
-      await _menu(tester, 'finish');
+      await _finishWithSetsLeft(tester);
       await _background(tester);
       expect(alerts.events, ['schedule']);
 
@@ -3309,7 +3547,7 @@ void main() {
           'This session has already been closed.',
         );
 
-        await _menu(tester, 'finish');
+        await _finishWithSetsLeft(tester);
         await _background(tester);
         expect(alerts.events, ['schedule']);
 

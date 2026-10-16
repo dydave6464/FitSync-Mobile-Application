@@ -350,6 +350,11 @@ class _SessionLoggerScreenState extends ConsumerState<SessionLoggerScreen>
   /// controller's _current getter and throwing a raw StateError.
   bool _finishing = false;
 
+  /// The exercises the last build drew. Finish is reached from the menu and
+  /// the footer, neither of which carries the list, and its question counts
+  /// and names what is left in it.
+  List<PlanExercise> _exercisesOnScreen = const [];
+
   /// Clamped, because [startedAt] is the SERVER's NOW() while [DateTime.now]
   /// is the phone's. A phone clock behind the server makes the difference
   /// negative, and POST /complete rejects a negative durationMin with
@@ -692,6 +697,10 @@ class _SessionLoggerScreenState extends ConsumerState<SessionLoggerScreen>
     if (_finishing) return;
     final session = ref.read(activeSessionProvider).value;
     if (session == null) return;
+    // Guarded only once the user has said Finish. The footer button locks
+    // while _finishing is set, and a question still open, or answered Keep
+    // going, is not a finish in flight.
+    if (!await _confirmFinish(session) || !mounted || _finishing) return;
 
     setState(() => _finishing = true);
     final messenger = ScaffoldMessenger.of(context);
@@ -730,6 +739,70 @@ class _SessionLoggerScreenState extends ConsumerState<SessionLoggerScreen>
     } finally {
       if (mounted) setState(() => _finishing = false);
     }
+  }
+
+  /// Asks before a workout with planned sets still unlogged is finished,
+  /// since finishing is final. True carries on into the finish; a workout
+  /// with nothing left -- or nothing planned -- does not ask.
+  ///
+  /// Keep going moves to the first exercise with sets left, by the same rule
+  /// as a resume. Dismissing the question is not an answer, so nothing
+  /// finishes, and not a choice to move either, so nothing moves.
+  Future<bool> _confirmFinish(ActiveSession session) async {
+    final exercises = _exercisesOnScreen;
+    var total = 0;
+    var done = 0;
+    final left = <String>[];
+    for (final exercise in exercises) {
+      total += exercise.targetSets;
+      final logged = session.sets
+          .where((set) => set.exerciseId == exercise.exerciseId)
+          .length;
+      // Capped at the target: extra sets on one exercise are real work, but
+      // they do not make up for another exercise's missing ones.
+      done += logged < exercise.targetSets ? logged : exercise.targetSets;
+      if (_activeSetNumber(exercise, session) != null) left.add(exercise.name);
+    }
+    if (done >= total) return true;
+
+    final answer = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        key: const Key('logger.finishConfirm'),
+        title: Text('Finish with $done of $total sets?'),
+        content: Text('Not logged yet: ${_listNames(left)}.'),
+        actions: [
+          TextButton(
+            key: const Key('logger.finishConfirm.keepGoing'),
+            onPressed: () => Navigator.of(dialogContext).pop(false),
+            child: const Text('Keep going'),
+          ),
+          TextButton(
+            key: const Key('logger.finishConfirm.finish'),
+            onPressed: () => Navigator.of(dialogContext).pop(true),
+            child: const Text('Finish'),
+          ),
+        ],
+      ),
+    );
+    if (answer == false && mounted) {
+      setState(() {
+        final (index, stage) = _whereLeftOff(exercises, session);
+        _moveTo(index: index, stage: stage);
+      });
+    }
+    return answer == true;
+  }
+
+  /// "A", "A and B", "A, B and C" -- and past three, "A, B, C and 2 more",
+  /// so a long workout's question still fits a small phone.
+  static String _listNames(List<String> names) {
+    if (names.length > 3) {
+      return '${names.take(3).join(', ')} and ${names.length - 3} more';
+    }
+    if (names.length == 1) return names.single;
+    return '${names.sublist(0, names.length - 1).join(', ')} '
+        'and ${names.last}';
   }
 
   Future<void> _showSummary(ActiveSession done) async {
@@ -1221,6 +1294,7 @@ class _SessionLoggerScreenState extends ConsumerState<SessionLoggerScreen>
     final exercises = carried.isNotEmpty
         ? carried
         : (plan?.exercisesForDay(session.planDayNo) ?? const <PlanExercise>[]);
+    _exercisesOnScreen = exercises;
     if (exercises.isEmpty) {
       // Not a spinner: the plan and the session are both loaded, so there is
       // nothing left to wait for -- this day of the rotation simply holds no
