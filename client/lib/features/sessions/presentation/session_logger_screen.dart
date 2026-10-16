@@ -267,7 +267,10 @@ class _SessionLoggerScreenState extends ConsumerState<SessionLoggerScreen>
   /// One store per exercise on screen. Rebuilt when the exercise changes, so
   /// a set number means one thing at a time.
   SetDrafts _drafts = SetDrafts();
-  int _draftsForIndex = 0;
+
+  /// The position and exercise [_drafts] was made for. Both, because a switch
+  /// changes the exercise and leaves the position alone.
+  (int, int)? _draftsFor;
 
   /// The unit last confirmed on screen -- i.e. actually read back from
   /// [weightUnitProvider], not merely requested. Null until the first build
@@ -284,7 +287,14 @@ class _SessionLoggerScreenState extends ConsumerState<SessionLoggerScreen>
   WeightUnit? _unitOnScreen;
 
   /// Swaps the store when the exercise changes. Called from build, which is
-  /// the only place that knows the clamped index.
+  /// the only place that knows the clamped index and the exercise at it.
+  ///
+  /// Keyed on the exercise as well as the index: a switch keeps the index,
+  /// and its new plan can land with no word from the sheet -- dismissed while
+  /// the swap was still in flight -- or after a slow refetch the user has
+  /// already started typing into. Either way the numbers on screen were meant
+  /// for the exercise just replaced, and a prefill only fills blank fields,
+  /// so they would otherwise stay.
   ///
   /// One job, deliberately. Resetting [_stage] from here as well would tie the
   /// stage to the store's lifetime, and the back handler would then need the
@@ -292,10 +302,11 @@ class _SessionLoggerScreenState extends ConsumerState<SessionLoggerScreen>
   /// skips the swap too, and hands the previous exercise the kg and reps typed
   /// against this one. Stage is an outcome of navigation, so every move sets
   /// it where the move is made.
-  void _syncDrafts(int index) {
-    if (index == _draftsForIndex) return;
+  void _syncDrafts(int index, int exerciseId) {
+    final key = (index, exerciseId);
+    if (key == _draftsFor) return;
     _resetDrafts();
-    _draftsForIndex = index;
+    _draftsFor = key;
   }
 
   /// A fresh store for the position on screen. Also called directly by a
@@ -1071,7 +1082,7 @@ class _SessionLoggerScreenState extends ConsumerState<SessionLoggerScreen>
       );
     }
     final index = _index.clamp(0, exercises.length - 1);
-    _syncDrafts(index);
+    _syncDrafts(index, exercises[index].exerciseId);
     // After the swap above, never before it. An exercise change and a unit
     // confirmation can land in the same frame -- the jump sheet is one tap
     // away from the header's toggle -- and converting first would rewrite the

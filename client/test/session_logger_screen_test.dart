@@ -323,6 +323,7 @@ class RecordingPlanRepository implements PlanRepository {
     this.active,
     this.gate,
     this.swapped,
+    this.swapGate,
     this.alternativeRows = const [],
   });
 
@@ -340,6 +341,10 @@ class RecordingPlanRepository implements PlanRepository {
 
   /// Every swap asked for, as (planExerciseId, exerciseId).
   final List<(int, int)> swaps = [];
+
+  /// When set, `swap` holds here before it lands, so a test can dismiss the
+  /// sheet while the server is still answering.
+  final Completer<void>? swapGate;
 
   /// When set, `planFromSession` suspends here instead of resolving
   /// immediately -- mirrors [FakeSessionController.completeGate], and for the
@@ -365,6 +370,7 @@ class RecordingPlanRepository implements PlanRepository {
   @override
   Future<WorkoutPlan> swap(int planExerciseId, int exerciseId) async {
     swaps.add((planExerciseId, exerciseId));
+    await swapGate?.future;
     active = swapped;
     return swapped!;
   }
@@ -3184,6 +3190,41 @@ void main() {
         await tester.pumpAndSettle();
         await tester.tap(find.byKey(const Key('logger.primary')));
         await tester.pumpAndSettle();
+        for (final field in ['set.1.weight', 'set.1.reps']) {
+          expect(
+            tester.widget<TextField>(find.byKey(Key(field))).controller!.text,
+            isEmpty,
+            reason: '$field was typed against Goblet squat, not Box squat',
+          );
+        }
+      },
+    );
+
+    testWidgets(
+      'a swap that lands after the sheet is dismissed still drops the drafts',
+      (tester) async {
+        final gate = Completer<void>();
+        final plans = RecordingPlanRepository(
+          active: _plan,
+          swapped: swappedPlan(601, boxSquat),
+          swapGate: gate,
+          alternativeRows: const [boxSquat],
+        );
+        await _pump(tester, plans: plans);
+        await tester.tap(find.byKey(const Key('logger.primary')));
+        await tester.pumpAndSettle();
+        await tester.enterText(find.byKey(const Key('set.1.weight')), '20');
+        await tester.enterText(find.byKey(const Key('set.1.reps')), '10');
+
+        await _menu(tester, 'switch.menu');
+        await choose(tester, boxSquat);
+        // The sheet looks stuck on a slow connection; the user taps outside.
+        await tester.tapAt(const Offset(5, 5));
+        await tester.pumpAndSettle();
+        gate.complete();
+        await tester.pumpAndSettle();
+
+        expect(plans.swaps, [(601, 201)]);
         for (final field in ['set.1.weight', 'set.1.reps']) {
           expect(
             tester.widget<TextField>(find.byKey(Key(field))).controller!.text,
