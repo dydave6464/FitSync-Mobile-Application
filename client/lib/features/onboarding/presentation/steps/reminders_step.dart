@@ -27,6 +27,13 @@ class RemindersStep extends StatelessWidget {
           'them any time in Settings.',
           style: TextStyle(fontSize: 12.5, color: t.text2, height: 1.5),
         ),
+        const SizedBox(height: 14),
+        // Both buttons lead straight into building the plan, so say so
+        // before either is pressed rather than let the next screen surprise.
+        Text(
+          "Next, we'll build your plan.",
+          style: TextStyle(fontSize: 12.5, color: t.text2, height: 1.5),
+        ),
       ],
     );
   }

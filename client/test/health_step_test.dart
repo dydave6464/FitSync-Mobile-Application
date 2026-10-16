@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
+import 'package:fitsync/core/theme.dart';
 import 'package:fitsync/features/health/domain/health_answers.dart';
 import 'package:fitsync/features/onboarding/presentation/steps/health_step.dart';
 
@@ -122,13 +123,19 @@ void main() {
       findsOneWidget,
     );
     expect(
-      inNotice("We'll keep your plan gentle: 2 sets per exercise, shorter sessions."),
+      inNotice(
+        "We'll keep your plan gentle: 2 sets per exercise, shorter sessions.",
+      ),
       findsOneWidget,
     );
     expect(inNotice(healthConditions[0].line), findsOneWidget);
     expect(inNotice(healthConditions[0].tip), findsOneWidget);
     expect(inNotice(healthConditions[3].tip), findsOneWidget);
-    expect(inNotice(healthConditions[2].tip), findsNothing, reason: 'diabetes not ticked');
+    expect(
+      inNotice(healthConditions[2].tip),
+      findsNothing,
+      reason: 'diabetes not ticked',
+    );
     expect(
       inNotice('This is general safety guidance, not medical advice.'),
       findsOneWidget,
@@ -196,25 +203,26 @@ void main() {
     expect(read().isValid, isTrue);
   });
 
-  testWidgets("Don't save my answers is valid without the boxes, and undoable", (
-    tester,
-  ) async {
-    final read = await _pumpLive(tester);
+  testWidgets(
+    "Don't save my answers is valid without the boxes, and undoable",
+    (tester) async {
+      final read = await _pumpLive(tester);
 
-    await _tap(tester, 'health.asthma');
-    await _answerAllNo(tester);
-    expect(find.text("Don't save my answers"), findsOneWidget);
+      await _tap(tester, 'health.asthma');
+      await _answerAllNo(tester);
+      expect(find.text("Don't save my answers"), findsOneWidget);
 
-    await _tap(tester, 'health.optOut');
-    expect(read().optedOut, isTrue);
-    expect(read().isValid, isTrue);
-    expect(find.byKey(const Key('health.ack')), findsNothing);
-    expect(find.byKey(const Key('health.consent')), findsNothing);
+      await _tap(tester, 'health.optOut');
+      expect(read().optedOut, isTrue);
+      expect(read().isValid, isTrue);
+      expect(find.byKey(const Key('health.ack')), findsNothing);
+      expect(find.byKey(const Key('health.consent')), findsNothing);
 
-    await _tap(tester, 'health.optOut');
-    expect(read().optedOut, isFalse);
-    expect(find.byKey(const Key('health.ack')), findsOneWidget);
-  });
+      await _tap(tester, 'health.optOut');
+      expect(read().optedOut, isFalse);
+      expect(find.byKey(const Key('health.ack')), findsOneWidget);
+    },
+  );
 
   testWidgets('the opt-out is hidden when not allowed', (tester) async {
     await _pumpLive(tester, allowOptOut: false);
@@ -223,5 +231,148 @@ void main() {
 
     expect(find.byKey(const Key('health.ack')), findsOneWidget);
     expect(find.byKey(const Key('health.optOut')), findsNothing);
+  });
+
+  group('the hint above Continue', () {
+    const unanswered = 'Answer every question to continue';
+    const unticked = 'Tick both boxes to continue';
+
+    testWidgets('names what is missing while the answer is not valid', (
+      tester,
+    ) async {
+      final read = await _pumpLive(tester);
+      expect(read().isValid, isFalse);
+      expect(find.text(unanswered), findsOneWidget);
+
+      // Every question answered but the checklist left blank.
+      await _answerAllNo(tester);
+      expect(find.text(unanswered), findsOneWidget);
+
+      await _tap(tester, 'health.none');
+      expect(read().isValid, isTrue);
+      expect(find.text(unanswered), findsNothing);
+      expect(find.text(unticked), findsNothing);
+    });
+
+    testWidgets('asks for the boxes once every question is answered', (
+      tester,
+    ) async {
+      final read = await _pumpLive(tester);
+
+      await _tap(tester, 'health.asthma');
+      await _answerAllNo(tester);
+      expect(find.text(unanswered), findsNothing);
+      expect(find.text(unticked), findsOneWidget);
+
+      await _tap(tester, 'health.ack');
+      await _tap(tester, 'health.consent');
+      expect(read().isValid, isTrue);
+      expect(find.text(unticked), findsNothing);
+    });
+
+    testWidgets('goes away when the answers are not saved', (tester) async {
+      await _pumpLive(tester);
+
+      await _tap(tester, 'health.asthma');
+      await _answerAllNo(tester);
+      await _tap(tester, 'health.optOut');
+
+      expect(find.text(unticked), findsNothing);
+      expect(find.text(unanswered), findsNothing);
+    });
+
+    testWidgets('says save, not continue, in Settings', (tester) async {
+      await _pumpLive(tester, allowOptOut: false);
+
+      expect(find.text('Answer every question to save'), findsOneWidget);
+      expect(find.text(unanswered), findsNothing);
+
+      await _tap(tester, 'health.asthma');
+      await _answerAllNo(tester);
+      expect(find.text('Tick both boxes to save'), findsOneWidget);
+    });
+
+    testWidgets('is readable text, not the faint tertiary grey', (
+      tester,
+    ) async {
+      await _pumpLive(tester);
+
+      final hint = tester.widget<Text>(find.text(unanswered));
+      final context = tester.element(find.text(unanswered));
+      expect(hint.style?.color, context.fs.text2);
+    });
+  });
+
+  testWidgets('opting out in onboarding promises no plan that is not there', (
+    tester,
+  ) async {
+    await _pumpLive(tester);
+
+    await _tap(tester, 'health.asthma');
+    await _answerAllNo(tester);
+    await _tap(tester, 'health.optOut');
+
+    expect(
+      find.text(
+        "We won't save these answers. You can change this later in Settings.",
+      ),
+      findsOneWidget,
+    );
+    expect(find.textContaining('plan stays'), findsNothing);
+  });
+
+  testWidgets('an opted-out answer in Settings keeps the plan as it is', (
+    tester,
+  ) async {
+    // Settings offers no opt-out button, but the copy has to stay right for a
+    // value that arrives opted out: there, a plan does exist, and the user is
+    // already in Settings.
+    await _pumpLive(
+      tester,
+      allowOptOut: false,
+      initial: const HealthAnswers(
+        conditions: ['asthma'],
+        chestPain: false,
+        dizziness: false,
+        supervisedOnly: false,
+        optedOut: true,
+      ),
+    );
+
+    expect(
+      find.text("We won't save these answers, and your plan stays as it is."),
+      findsOneWidget,
+    );
+    expect(find.textContaining('later in Settings'), findsNothing);
+  });
+
+  testWidgets('fits a 320dp screen at 2x text with the notices open', (
+    tester,
+  ) async {
+    await tester.pumpWidget(
+      MaterialApp(
+        home: MediaQuery(
+          data: const MediaQueryData(
+            size: Size(320, 800),
+            textScaler: TextScaler.linear(2.0),
+          ),
+          child: Scaffold(
+            body: SingleChildScrollView(
+              child: HealthStep(
+                value: const HealthAnswers(
+                  conditions: ['asthma', 'heart_condition'],
+                  chestPain: true,
+                ),
+                onChanged: (_) {},
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(tester.takeException(), isNull);
+    expect(find.text('Answer every question to continue'), findsOneWidget);
   });
 }

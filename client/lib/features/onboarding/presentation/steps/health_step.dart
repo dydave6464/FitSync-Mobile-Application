@@ -11,7 +11,8 @@ import '../../../health/domain/health_answers.dart';
 /// A pure content widget, like GoalStep: it takes the current value, reports
 /// changes, and does not know whether it is inside onboarding or Settings.
 /// Settings passes [allowOptOut] false: there, not saving is just leaving the
-/// screen, and deleting has its own button.
+/// screen, and deleting has its own button. That flag is also how the copy
+/// tells the two apart, since only onboarding offers the opt-out.
 class HealthStep extends StatelessWidget {
   const HealthStep({
     super.key,
@@ -44,7 +45,10 @@ class HealthStep extends StatelessWidget {
           style: TextStyle(fontSize: 12.5, color: t.text2, height: 1.5),
         ),
         const SizedBox(height: 20),
-        Text('Do any of these apply to you?', style: theme.textTheme.titleMedium),
+        Text(
+          'Do any of these apply to you?',
+          style: theme.textTheme.titleMedium,
+        ),
         const SizedBox(height: 10),
         Wrap(
           spacing: 8,
@@ -128,8 +132,13 @@ class HealthStep extends StatelessWidget {
             ),
           ] else
             Text(
-              "We won't save these answers, and your plan stays as it is. "
-              'You can answer again in Settings.',
+              // During onboarding there is no plan yet to "stay" as it is,
+              // and Settings is where the answer can be changed. In Settings
+              // the plan exists and the user is already there.
+              allowOptOut
+                  ? "We won't save these answers. "
+                        'You can change this later in Settings.'
+                  : "We won't save these answers, and your plan stays as it is.",
               style: TextStyle(fontSize: 12.5, color: t.text2, height: 1.5),
             ),
           if (allowOptOut)
@@ -139,13 +148,37 @@ class HealthStep extends StatelessWidget {
                 key: const Key('health.optOut'),
                 onPressed: () => onChanged(value.withOptedOut(!value.optedOut)),
                 child: Text(
-                  value.optedOut ? 'Save my answers instead' : "Don't save my answers",
+                  value.optedOut
+                      ? 'Save my answers instead'
+                      : "Don't save my answers",
                 ),
               ),
             ),
         ],
+        // The last thing in the step, so it sits just above the button it
+        // explains: a disabled Continue (or Save) with no reason given reads
+        // as a broken button.
+        if (_blocker case final blocker?) ...[
+          const SizedBox(height: 16),
+          Text(
+            blocker,
+            key: const Key('health.hint'),
+            textAlign: TextAlign.center,
+            style: TextStyle(fontSize: 12.5, color: t.text2, height: 1.5),
+          ),
+        ],
       ],
     );
+  }
+
+  /// Why the button below cannot be pressed yet, or null when it can. The
+  /// verb follows the button: Continue in onboarding, Save in Settings.
+  String? get _blocker {
+    if (value.isValid) return null;
+    final verb = allowOptOut ? 'continue' : 'save';
+    return value.isComplete
+        ? 'Tick both boxes to $verb'
+        : 'Answer every question to $verb';
   }
 }
 
@@ -205,7 +238,10 @@ class _ConditionCard extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text('Check with your doctor first', style: theme.textTheme.titleMedium),
+          Text(
+            'Check with your doctor first',
+            style: theme.textTheme.titleMedium,
+          ),
           const SizedBox(height: 6),
           Text(
             'You told us about: ${ticked.map((c) => c.label).join(', ')}.',

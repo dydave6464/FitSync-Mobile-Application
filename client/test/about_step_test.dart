@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
+import 'package:fitsync/core/theme.dart';
 import 'package:fitsync/core/units.dart';
 import 'package:fitsync/features/onboarding/presentation/steps/about_step.dart';
 
@@ -299,6 +300,93 @@ void main() {
       );
     },
   );
+
+  testWidgets('the estimate says it is for keeping the weight, not the goal', (
+    tester,
+  ) async {
+    // The figure ignores the goal; Nutrition applies it. Unlabelled, 2,300
+    // here and 1,800 there read as the app contradicting itself.
+    await _pumpAndEdit(tester, (_) async {}, value: _complete);
+
+    expect(
+      find.text(
+        'Estimated 2,300 kcal a day to maintain your weight · '
+        '115g protein',
+      ),
+      findsOneWidget,
+    );
+    expect(find.textContaining('daily target'), findsNothing);
+  });
+
+  group('range hints', () {
+    // The bounds the server already enforces: weightKg's [MIN_KG, MAX_KG] in
+    // server/src/db/body-weight.js, and the shared NUMERIC check (above 0,
+    // below 1000) in server/src/routes/profile.js that is all heightCm has.
+    testWidgets('match the bounds the server accepts, in kilograms', (
+      tester,
+    ) async {
+      await _pumpAndEdit(tester, (_) async {});
+
+      expect(find.byKey(const Key('heightCm.hint')), findsOneWidget);
+      expect(find.text('Under 1,000 cm'), findsOneWidget);
+      expect(find.byKey(const Key('weightKg.hint')), findsOneWidget);
+      expect(find.text('20–500 kg'), findsOneWidget);
+    });
+
+    testWidgets('follow the weight unit in force', (tester) async {
+      await _pumpAndEdit(tester, (_) async {}, unit: WeightUnit.lb);
+
+      expect(
+        find.text(
+          '${formatWeight(20, WeightUnit.lb)}–'
+          '${formatWeight(500, WeightUnit.lb)} lb',
+        ),
+        findsOneWidget,
+      );
+      expect(find.text('20–500 kg'), findsNothing);
+    });
+
+    testWidgets('are readable text, not the faint tertiary grey', (
+      tester,
+    ) async {
+      await _pumpAndEdit(tester, (_) async {});
+
+      for (final key in ['heightCm.hint', 'weightKg.hint']) {
+        final hint = tester.widget<Text>(find.byKey(Key(key)));
+        final context = tester.element(find.byKey(Key(key)));
+        expect(hint.style?.color, context.fs.text2, reason: key);
+      }
+    });
+  });
+
+  testWidgets('the hints and the estimate fit 320dp at 2x text, in pounds', (
+    tester,
+  ) async {
+    await tester.pumpWidget(
+      MaterialApp(
+        home: MediaQuery(
+          data: const MediaQueryData(
+            size: Size(320, 800),
+            textScaler: TextScaler.linear(2.0),
+          ),
+          child: Scaffold(
+            body: SingleChildScrollView(
+              child: AboutStep(
+                value: _complete,
+                unit: WeightUnit.lb,
+                onChanged: _ignore,
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(tester.takeException(), isNull);
+    expect(find.byKey(const Key('weightKg.hint')), findsOneWidget);
+    expect(find.textContaining('to maintain your weight'), findsOneWidget);
+  });
 }
 
 void _ignore(AboutAnswers _) {}
