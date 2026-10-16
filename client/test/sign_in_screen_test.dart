@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import 'package:flutter/semantics.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 
@@ -461,6 +462,34 @@ void main() {
 
     expect(_field(tester, 'password').obscureText, isTrue);
     expect(find.byTooltip('Show password'), findsOneWidget);
+  });
+
+  testWidgets('a screen reader reaches the eye as its own button', (
+    tester,
+  ) async {
+    final semantics = tester.ensureSemantics();
+    await _pump(tester, FakeAuthRepository());
+    await tester.pumpAndSettle();
+
+    final eye = find.byKey(const Key('togglePassword'));
+    final eyeNode = tester.getSemantics(eye);
+    expect(
+      eyeNode.id,
+      isNot(tester.getSemantics(find.byKey(const Key('password'))).id),
+      reason: 'merged into the field, the eye cannot be reached or used',
+    );
+    expect(
+      eyeNode,
+      isSemantics(isButton: true, hasTapAction: true, tooltip: 'Show password'),
+    );
+
+    // The tap a screen reader sends, not a pointer tap on the widget.
+    eyeNode.owner!.performAction(eyeNode.id, SemanticsAction.tap);
+    await tester.pumpAndSettle();
+
+    expect(_field(tester, 'password').obscureText, isFalse);
+    expect(tester.getSemantics(eye).tooltip, 'Hide password');
+    semantics.dispose();
   });
 
   testWidgets('the password rule shows on sign up only', (tester) async {

@@ -19,15 +19,15 @@ import 'forgot_password_screen.dart';
 /// A successful registration and an `EMAIL_NOT_VERIFIED` login both push
 /// [CheckEmailScreen] rather than proceeding further: under the hard
 /// verification gate neither leaves the caller with a session.
-/// Which field a validation message belongs under.
-enum _Field { fullName, email, password }
-
 class SignInScreen extends ConsumerStatefulWidget {
   const SignInScreen({super.key});
 
   @override
   ConsumerState<SignInScreen> createState() => _SignInScreenState();
 }
+
+/// Which field a validation message belongs under.
+enum _Field { fullName, email, password }
 
 class _SignInScreenState extends ConsumerState<SignInScreen> {
   final _email = TextEditingController();
@@ -467,8 +467,11 @@ class _Logo extends StatelessWidget {
 /// A field with its name above it and its helper or error text below.
 ///
 /// The placeholder alone vanishes as soon as the user types, taking the
-/// field's name with it. Merged into one semantics node so a screen reader
-/// announces the label, the field and any message about it together.
+/// field's name with it. The visible texts are hidden from screen readers and
+/// given to the field as its label and hint instead, so the field is announced
+/// with its name and any message about it. Not [MergeSemantics]: that would
+/// also swallow the eye button inside the password field, leaving it
+/// unreachable by TalkBack and VoiceOver.
 class _LabeledField extends StatelessWidget {
   const _LabeledField({
     required this.label,
@@ -486,11 +489,13 @@ class _LabeledField extends StatelessWidget {
   Widget build(BuildContext context) {
     final t = context.fs;
 
-    return MergeSemantics(
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          Text(
+    final hint = [error, helper].nonNulls.join('. ');
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        ExcludeSemantics(
+          child: Text(
             label,
             style: TextStyle(
               fontSize: 12.5,
@@ -498,18 +503,25 @@ class _LabeledField extends StatelessWidget {
               color: t.text2,
             ),
           ),
+        ),
+        const SizedBox(height: 6),
+        Semantics(label: label, hint: hint.isEmpty ? null : hint, child: field),
+        if (helper != null) ...[
           const SizedBox(height: 6),
-          field,
-          if (helper != null) ...[
-            const SizedBox(height: 6),
-            Text(helper!, style: TextStyle(fontSize: 12, color: t.text2)),
-          ],
-          if (error != null) ...[
-            const SizedBox(height: 6),
-            Text(error!, style: TextStyle(fontSize: 12.5, color: t.red)),
-          ],
+          ExcludeSemantics(
+            child: Text(
+              helper!,
+              style: TextStyle(fontSize: 12, color: t.text2),
+            ),
+          ),
         ],
-      ),
+        if (error != null) ...[
+          const SizedBox(height: 6),
+          ExcludeSemantics(
+            child: Text(error!, style: TextStyle(fontSize: 12.5, color: t.red)),
+          ),
+        ],
+      ],
     );
   }
 }
