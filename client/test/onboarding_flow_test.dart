@@ -286,6 +286,10 @@ Future<void> _tapKey(WidgetTester tester, Key key) async {
   await tester.pumpAndSettle();
 }
 
+/// What the flow says when the server rejects one of the step's answers.
+const _rejectedAnswer =
+    "One of these answers can't be saved as it is. Check it and try again.";
+
 Future<void> _skip(WidgetTester tester) async {
   await tester.tap(find.byKey(const Key('skip')));
   await tester.pumpAndSettle();
@@ -391,7 +395,9 @@ void main() {
     await tester.tap(find.byKey(const Key('continue')));
     await tester.pumpAndSettle();
 
-    expect(find.text('That goal is not one we recognise.'), findsOneWidget);
+    // The server's own wording names API fields, so a rejected answer is
+    // always shown in the flow's plain sentence instead.
+    expect(find.text(_rejectedAnswer), findsOneWidget);
     expect(
       find.text('STEP 1 / 6'),
       findsOneWidget,
@@ -1185,6 +1191,46 @@ void main() {
       {'weightKg': 72.0},
     ], reason: 'the typed weight is kept; the unreadable height is not sent');
     expect(find.text('STEP 3 / 6'), findsOneWidget);
+  });
+
+  testWidgets('Skip leaves out a zero the server would reject', (tester) async {
+    final patches = <Map<String, dynamic>>[];
+    await _pumpFlow(tester, patches: patches);
+    await _skip(tester);
+    expect(find.text('STEP 2 / 6'), findsOneWidget);
+
+    await tester.enterText(find.byKey(const Key('weightKg')), '72');
+    await tester.enterText(find.byKey(const Key('heightCm')), '0');
+    await tester.pumpAndSettle();
+    await _skip(tester);
+
+    expect(patches, [
+      {'weightKg': 72.0},
+    ], reason: 'the server rejects a height of 0, so Skip must not send it');
+    expect(find.text('STEP 3 / 6'), findsOneWidget);
+  });
+
+  testWidgets('a rejected answer is explained without field names', (
+    tester,
+  ) async {
+    await _pumpFlow(
+      tester,
+      patches: [],
+      onSetGoals: () async => throw const ApiException(
+        'INVALID_PROFILE_FIELD',
+        'goalWeightKg must be a number between 0 and 1000.',
+      ),
+    );
+
+    await tester.tap(find.byKey(const Key('goal.build_muscle')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const Key('continue')));
+    await tester.pumpAndSettle();
+
+    expect(find.text(_rejectedAnswer), findsOneWidget);
+    expect(find.textContaining('Kg'), findsNothing);
+    expect(find.textContaining('Cm'), findsNothing);
+    expect(find.text('STEP 1 / 6'), findsOneWidget);
   });
 
   testWidgets('Skip keeps the goals ticked on step 1', (tester) async {

@@ -196,6 +196,7 @@ void main() {
   });
 
   testWidgets('holds the ring still under Reduce Motion', (tester) async {
+    final semantics = tester.ensureSemantics();
     await tester.pumpWidget(
       _host(
         const MediaQuery(
@@ -219,7 +220,11 @@ void main() {
     expect(indicators, isNotEmpty);
     expect(indicators.every((i) => i.value != null), isTrue);
     expect(tester.hasRunningAnimations, isFalse);
+    // The still ring's quarter arc is drawing, not a reading: the server
+    // reports no progress, so a screen reader must not hear "25 percent".
+    expect(find.semantics.byValue('25'), findsNothing);
     await _close(tester);
+    semantics.dispose();
   });
 
   testWidgets('spins the ring when motion is allowed', (tester) async {

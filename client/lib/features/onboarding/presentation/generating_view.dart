@@ -264,11 +264,16 @@ class _StillRing extends StatelessWidget {
           SizedBox(
             width: _size,
             height: _size,
-            child: CircularProgressIndicator(
-              value: 0.25,
-              strokeWidth: _stroke,
-              color: t.accent,
-              backgroundColor: t.surface2,
+            // A valued indicator reports itself as a progress bar at 25 %.
+            // The server reports no progress, so this arc is only a drawing
+            // and is kept out of the semantics tree.
+            child: ExcludeSemantics(
+              child: CircularProgressIndicator(
+                value: 0.25,
+                strokeWidth: _stroke,
+                color: t.accent,
+                backgroundColor: t.surface2,
+              ),
             ),
           ),
           child,

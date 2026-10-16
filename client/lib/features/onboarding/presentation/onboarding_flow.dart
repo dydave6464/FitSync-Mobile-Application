@@ -120,7 +120,12 @@ class _OnboardingFlowState extends ConsumerState<OnboardingFlow> {
   Future<void> _saveTypedAnswers() async {
     final notifier = ref.read(profileProvider.notifier);
 
-    final fields = _patchForCurrentStep();
+    // The server takes height and the two weights only as 0 < n < 1000, and
+    // FsStatField's formatter already stops anything from 1000 up. A typed 0
+    // is the one value left that it would reject, and a rejection would keep
+    // Skip on the step, so it is dropped like any other unusable answer.
+    final fields = {..._patchForCurrentStep()}
+      ..removeWhere((_, value) => value is num && value <= 0);
     if (fields.isNotEmpty) await notifier.patch(fields);
 
     if (_index == 0 && _goals.goals.isNotEmpty) {
@@ -139,7 +144,12 @@ class _OnboardingFlowState extends ConsumerState<OnboardingFlow> {
   Future<void> _saveCurrentStep() async {
     final notifier = ref.read(profileProvider.notifier);
 
-    final fields = _patchForCurrentStep();
+    // The server takes height and the two weights only as 0 < n < 1000, and
+    // FsStatField's formatter already stops anything from 1000 up. A typed 0
+    // is the one value left that it would reject, and a rejection would keep
+    // Skip on the step, so it is dropped like any other unusable answer.
+    final fields = {..._patchForCurrentStep()}
+      ..removeWhere((_, value) => value is num && value <= 0);
     if (fields.isNotEmpty) await notifier.patch(fields);
 
     // Goals replace the whole set on their own endpoint. Nothing ticked is
@@ -288,11 +298,14 @@ class _OnboardingFlowState extends ConsumerState<OnboardingFlow> {
 
   /// A failure in words a user can act on. The client's own messages are
   /// written for whoever is running the server -- an address, an adb command
-  /// -- so those are replaced; the server's messages describe the answer it
-  /// rejected and are kept.
+  /// -- so those are replaced. So are the server's rejections of a profile
+  /// answer, which name the API field ("goalWeightKg must be ...") rather
+  /// than anything on screen. Its other messages are already plain and kept.
   static String _plainError(Object error) => switch (error) {
     ApiException(code: 'NETWORK_ERROR') =>
       "Couldn't reach FitSync. Check your connection and try again.",
+    ApiException(code: 'INVALID_PROFILE_FIELD') =>
+      "One of these answers can't be saved as it is. Check it and try again.",
     ApiException(code: 'INVALID_RESPONSE' || 'UNKNOWN_ERROR') =>
       'Something went wrong on our side. Please try again.',
     ApiException() => describeError(error),
