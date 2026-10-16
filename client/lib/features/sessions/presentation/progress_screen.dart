@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../core/theme.dart';
+import '../../../core/units.dart';
 import '../../../core/widgets/fs_kit.dart';
 import '../../exercises/presentation/exercise_list_screen.dart'
     show describeError;
@@ -152,7 +153,7 @@ class ProgressScreen extends ConsumerWidget {
               : Column(
                   children: [
                     for (final entry in page.sessions)
-                      _HistoryRow(entry: entry),
+                      _HistoryRow(entry: entry, unit: unit),
                   ],
                 ),
         ),
@@ -202,9 +203,13 @@ class _CardError extends StatelessWidget {
 }
 
 class _HistoryRow extends StatelessWidget {
-  const _HistoryRow({required this.entry});
+  const _HistoryRow({required this.entry, required this.unit});
 
   final SessionHistoryEntry entry;
+
+  /// The volume is stored in kilograms; this is how it is read out, so a
+  /// pound user's history agrees with the chart above it and the logger.
+  final WeightUnit unit;
 
   @override
   Widget build(BuildContext context) {
@@ -215,7 +220,8 @@ class _HistoryRow extends StatelessWidget {
     final facts = [
       '${entry.setCount} ${entry.setCount == 1 ? 'set' : 'sets'}',
       if (entry.totalVolumeKg != null && entry.totalVolumeKg! > 0)
-        '${groupThousands(entry.totalVolumeKg!)} kg',
+        '${groupThousands(convertFromKg(entry.totalVolumeKg!, unit))} '
+            '${unit.api}',
       if (entry.durationMin != null) '${entry.durationMin} min',
     ].join(' · ');
 
@@ -306,8 +312,8 @@ class _Retry extends StatelessWidget {
   );
 }
 
-/// 8053.0 -> "8,053". Whole kilos only: a gram of barbell volume is noise,
-/// and the separator is what makes a five-figure total readable at a glance.
+/// 8053.0 -> "8,053". Whole units only: a gram or an ounce of barbell volume
+/// is noise, and the separator is what makes a five-figure total readable at a glance.
 String groupThousands(double value) {
   final digits = value.round().toString();
   final out = StringBuffer();
