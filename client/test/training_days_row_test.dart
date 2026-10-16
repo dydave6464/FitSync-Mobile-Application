@@ -180,4 +180,107 @@ void main() {
       expect(calls, 0);
     },
   );
+
+  group('screen readers', () {
+    testWidgets('each day is a button named in full, with its selected state', (
+      tester,
+    ) async {
+      final handle = tester.ensureSemantics();
+      await _pump(tester, selected: const [1], onChanged: (_) {});
+
+      expect(
+        tester.getSemantics(find.byKey(const Key('weekday.1'))),
+        matchesSemantics(
+          label: 'Monday',
+          isButton: true,
+          hasEnabledState: true,
+          isEnabled: true,
+          hasSelectedState: true,
+          isSelected: true,
+          hasTapAction: true,
+        ),
+      );
+      expect(
+        tester.getSemantics(find.byKey(const Key('weekday.2'))),
+        matchesSemantics(
+          label: 'Tuesday',
+          isButton: true,
+          hasEnabledState: true,
+          isEnabled: true,
+          hasSelectedState: true,
+          isSelected: false,
+          hasTapAction: true,
+        ),
+      );
+      expect(find.bySemanticsLabel('Sunday'), findsOneWidget);
+      // The bare letter is not announced alongside the full name.
+      expect(find.bySemanticsLabel('M'), findsNothing);
+      handle.dispose();
+    });
+
+    testWidgets('a screen-reader tap ticks the day', (tester) async {
+      final handle = tester.ensureSemantics();
+      List<int>? emitted;
+      await _pump(tester, onChanged: (next) => emitted = next);
+
+      tester.semantics.tap(find.semantics.byLabel('Wednesday'));
+      expect(emitted, [3]);
+      handle.dispose();
+    });
+
+    testWidgets('a disabled row announces its days as disabled', (
+      tester,
+    ) async {
+      final handle = tester.ensureSemantics();
+      await _pump(tester, enabled: false, onChanged: (_) {});
+
+      expect(
+        tester.getSemantics(find.byKey(const Key('weekday.1'))),
+        matchesSemantics(
+          label: 'Monday',
+          isButton: true,
+          hasEnabledState: true,
+          isEnabled: false,
+          hasSelectedState: true,
+          isSelected: false,
+        ),
+      );
+      handle.dispose();
+    });
+
+    testWidgets('each day offers a 48 dp tall tap target', (tester) async {
+      await _pump(tester, onChanged: (_) {});
+
+      expect(
+        tester.getSize(find.byKey(const Key('weekday.1'))).height,
+        greaterThanOrEqualTo(48),
+      );
+    });
+
+    testWidgets('fits a 320 dp screen at 2x text', (tester) async {
+      tester.view.physicalSize = const Size(320, 640);
+      tester.view.devicePixelRatio = 1;
+      addTearDown(tester.view.reset);
+
+      await tester.pumpWidget(
+        MaterialApp(
+          theme: fsLightTheme(),
+          builder: (context, child) => MediaQuery(
+            data: MediaQuery.of(context)
+                .copyWith(textScaler: const TextScaler.linear(2)),
+            child: child!,
+          ),
+          home: Scaffold(
+            body: TrainingDaysRow(
+              selected: const [1, 4],
+              busyWeekday: 4,
+              onChanged: (_) {},
+            ),
+          ),
+        ),
+      );
+
+      expect(tester.takeException(), isNull);
+    });
+  });
 }
