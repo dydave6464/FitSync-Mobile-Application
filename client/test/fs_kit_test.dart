@@ -539,6 +539,211 @@ void main() {
     await tester.enterText(find.byKey(const Key('f')), 'a1b2');
     expect(controller.text, '12');
   });
+
+  // Screen readers can only say "selected", "disabled" or "button" when the
+  // kit puts those flags on the node; the visuals alone say nothing to them.
+  group('semantics', () {
+    testWidgets('a chip is a button that says whether it is selected', (
+      tester,
+    ) async {
+      final handle = tester.ensureSemantics();
+      await tester.pumpWidget(
+        _host(FsChip(label: 'Bench', selected: true, onTap: _noop)),
+      );
+      expect(
+        tester.getSemantics(find.byType(FsChip)),
+        matchesSemantics(
+          label: 'Bench',
+          isButton: true,
+          hasEnabledState: true,
+          isEnabled: true,
+          hasSelectedState: true,
+          isSelected: true,
+          isFocusable: true,
+          hasTapAction: true,
+          hasFocusAction: true,
+        ),
+      );
+
+      await tester.pumpWidget(
+        _host(FsChip(label: 'Bench', selected: false, onTap: _noop)),
+      );
+      expect(
+        tester.getSemantics(find.byType(FsChip)),
+        isSemantics(label: 'Bench', isButton: true, isSelected: false),
+      );
+      handle.dispose();
+    });
+
+    testWidgets('a chip without onTap is announced as disabled', (
+      tester,
+    ) async {
+      final handle = tester.ensureSemantics();
+      await tester.pumpWidget(
+        _host(const FsChip(label: 'Bench', selected: false, onTap: null)),
+      );
+      expect(
+        tester.getSemantics(find.byType(FsChip)),
+        matchesSemantics(
+          label: 'Bench',
+          isButton: true,
+          hasEnabledState: true,
+          isEnabled: false,
+          hasSelectedState: true,
+          isSelected: false,
+        ),
+      );
+      handle.dispose();
+    });
+
+    testWidgets('each segment is a button with its selected state', (
+      tester,
+    ) async {
+      final handle = tester.ensureSemantics();
+      await tester.pumpWidget(
+        _host(
+          SizedBox(
+            width: 300,
+            child: FsSegmented(
+              options: const [
+                (value: 'male', label: 'Male'),
+                (value: 'female', label: 'Female'),
+              ],
+              selected: 'female',
+              onSelected: _noopString,
+            ),
+          ),
+        ),
+      );
+      expect(
+        tester.getSemantics(find.byKey(const Key('segment.female'))),
+        isSemantics(
+          label: 'Female',
+          hint: '2 of 2',
+          isButton: true,
+          isEnabled: true,
+          hasEnabledState: true,
+          isSelected: true,
+          hasSelectedState: true,
+          isInMutuallyExclusiveGroup: true,
+          hasTapAction: true,
+        ),
+      );
+      expect(
+        tester.getSemantics(find.byKey(const Key('segment.male'))),
+        isSemantics(
+          label: 'Male',
+          hint: '1 of 2',
+          isButton: true,
+          isSelected: false,
+          hasSelectedState: true,
+        ),
+      );
+      handle.dispose();
+    });
+
+    testWidgets('a tappable card is a button; a plain one is not', (
+      tester,
+    ) async {
+      final handle = tester.ensureSemantics();
+      await tester.pumpWidget(
+        _host(const FsCard(onTap: _noop, child: Text('Lose fat'))),
+      );
+      expect(
+        tester.getSemantics(find.byType(FsCard)),
+        isSemantics(
+          label: 'Lose fat',
+          isButton: true,
+          hasTapAction: true,
+          hasSelectedState: false,
+        ),
+      );
+
+      await tester.pumpWidget(_host(const FsCard(child: Text('Summary'))));
+      expect(
+        tester.getSemantics(find.text('Summary')),
+        isSemantics(label: 'Summary', isButton: false),
+      );
+      handle.dispose();
+    });
+
+    testWidgets('a card given a selected state exposes it', (tester) async {
+      final handle = tester.ensureSemantics();
+      await tester.pumpWidget(
+        _host(
+          const FsCard(
+            onTap: _noop,
+            accent: true,
+            selected: true,
+            child: Text('Lose fat'),
+          ),
+        ),
+      );
+      expect(
+        tester.getSemantics(find.byType(FsCard)),
+        isSemantics(
+          label: 'Lose fat',
+          isButton: true,
+          hasSelectedState: true,
+          isSelected: true,
+        ),
+      );
+      handle.dispose();
+    });
+
+    testWidgets(
+      'a button is announced as one, and disabled without onPressed',
+      (tester) async {
+        final handle = tester.ensureSemantics();
+        await tester.pumpWidget(
+          _host(const FsButton(label: 'Continue', onPressed: _noop)),
+        );
+        expect(
+          tester.getSemantics(find.byType(FsButton)),
+          isSemantics(
+            label: 'Continue',
+            isButton: true,
+            hasEnabledState: true,
+            isEnabled: true,
+            hasTapAction: true,
+          ),
+        );
+
+        await tester.pumpWidget(
+          _host(const FsButton(label: 'Continue', onPressed: null)),
+        );
+        expect(
+          tester.getSemantics(find.byType(FsButton)),
+          isSemantics(
+            label: 'Continue',
+            isButton: true,
+            hasEnabledState: true,
+            isEnabled: false,
+          ),
+        );
+        handle.dispose();
+      },
+    );
+
+    testWidgets('a busy button keeps its label and says it is loading', (
+      tester,
+    ) async {
+      final handle = tester.ensureSemantics();
+      await tester.pumpWidget(
+        _host(const FsButton(label: 'Save', onPressed: _noop, busy: true)),
+      );
+      expect(
+        tester.getSemantics(find.byType(FsButton)),
+        isSemantics(
+          label: 'Save, loading',
+          isButton: true,
+          hasEnabledState: true,
+          isEnabled: false,
+        ),
+      );
+      handle.dispose();
+    });
+  });
 }
 
 void _noop() {}

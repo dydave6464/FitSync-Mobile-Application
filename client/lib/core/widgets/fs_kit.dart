@@ -65,76 +65,87 @@ class FsButton extends StatelessWidget {
       ),
     };
 
-    return Opacity(
-      opacity: enabled ? 1 : 0.45,
-      child: DecoratedBox(
-        decoration: BoxDecoration(
-          borderRadius: BorderRadius.circular(FsRadius.pill),
-          boxShadow: kind == FsButtonKind.primary && enabled
-              ? fsAccentGlow(t)
-              : null,
-        ),
-        child: Material(
-          color: bg,
-          shape: RoundedRectangleBorder(
+    // One node that says "button", whether it can be pressed, and its label.
+    // While busy the label is replaced on screen by a spinner, so the node
+    // carries it instead, with "loading" so the wait is announced too.
+    return Semantics(
+      container: true,
+      button: true,
+      enabled: enabled,
+      label: busy ? '$label, loading' : null,
+      child: Opacity(
+        opacity: enabled ? 1 : 0.45,
+        child: DecoratedBox(
+          decoration: BoxDecoration(
             borderRadius: BorderRadius.circular(FsRadius.pill),
-            side: BorderSide(color: border),
+            boxShadow: kind == FsButtonKind.primary && enabled
+                ? fsAccentGlow(t)
+                : null,
           ),
-          child: InkWell(
-            onTap: enabled ? onPressed : null,
-            borderRadius: BorderRadius.circular(FsRadius.pill),
-            child: SizedBox(
-              height: height,
-              // Horizontal room for the label. Invisible on a full-width
-              // button -- Center already had all the space it needed -- but
-              // without it a button sized to its own content shrink-wraps to
-              // the bare word and the pill radius cuts into it.
-              child: Padding(
-                padding: EdgeInsets.symmetric(horizontal: small ? 16 : 20),
-                child: Center(
-                  child: busy
-                      ? SizedBox(
-                          height: 20,
-                          width: 20,
-                          child: CircularProgressIndicator(
-                            strokeWidth: 2,
-                            color: kind == FsButtonKind.primary ? fg : t.accent,
-                          ),
-                        )
-                      : Row(
-                          mainAxisAlignment: MainAxisAlignment.center,
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            if (icon != null) ...[
-                              IconTheme(
-                                data: IconThemeData(color: fg, size: 18),
-                                child: icon!,
-                              ),
-                              const SizedBox(width: 8),
-                            ],
-                            // Flexible so the label shrinks to an ellipsis
-                            // instead of overflowing the row at large
-                            // accessibility text scales on narrow screens —
-                            // the same remedy already used for FsNav and the
-                            // eyebrow row. maxLines: 1 rather than letting it
-                            // wrap, as FsChip does, because this Row sits in a
-                            // fixed-height button and a second line would
-                            // overflow that instead.
-                            Flexible(
-                              child: Text(
-                                label,
-                                maxLines: 1,
-                                overflow: TextOverflow.ellipsis,
-                                style: TextStyle(
-                                  fontSize: small ? 13.5 : 15,
-                                  fontWeight: FontWeight.w700,
-                                  letterSpacing: -0.15,
-                                  color: fg,
+          child: Material(
+            color: bg,
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(FsRadius.pill),
+              side: BorderSide(color: border),
+            ),
+            child: InkWell(
+              onTap: enabled ? onPressed : null,
+              borderRadius: BorderRadius.circular(FsRadius.pill),
+              child: SizedBox(
+                height: height,
+                // Horizontal room for the label. Invisible on a full-width
+                // button -- Center already had all the space it needed -- but
+                // without it a button sized to its own content shrink-wraps to
+                // the bare word and the pill radius cuts into it.
+                child: Padding(
+                  padding: EdgeInsets.symmetric(horizontal: small ? 16 : 20),
+                  child: Center(
+                    child: busy
+                        ? SizedBox(
+                            height: 20,
+                            width: 20,
+                            child: CircularProgressIndicator(
+                              strokeWidth: 2,
+                              color: kind == FsButtonKind.primary
+                                  ? fg
+                                  : t.accent,
+                            ),
+                          )
+                        : Row(
+                            mainAxisAlignment: MainAxisAlignment.center,
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              if (icon != null) ...[
+                                IconTheme(
+                                  data: IconThemeData(color: fg, size: 18),
+                                  child: icon!,
+                                ),
+                                const SizedBox(width: 8),
+                              ],
+                              // Flexible so the label shrinks to an ellipsis
+                              // instead of overflowing the row at large
+                              // accessibility text scales on narrow screens —
+                              // the same remedy already used for FsNav and the
+                              // eyebrow row. maxLines: 1 rather than letting it
+                              // wrap, as FsChip does, because this Row sits in a
+                              // fixed-height button and a second line would
+                              // overflow that instead.
+                              Flexible(
+                                child: Text(
+                                  label,
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                  style: TextStyle(
+                                    fontSize: small ? 13.5 : 15,
+                                    fontWeight: FontWeight.w700,
+                                    letterSpacing: -0.15,
+                                    color: fg,
+                                  ),
                                 ),
                               ),
-                            ),
-                          ],
-                        ),
+                            ],
+                          ),
+                  ),
                 ),
               ),
             ),
@@ -155,6 +166,7 @@ class FsCard extends StatelessWidget {
     this.small = false,
     this.onTap,
     this.padding,
+    this.selected,
   });
 
   final Widget child;
@@ -163,12 +175,17 @@ class FsCard extends StatelessWidget {
   final VoidCallback? onTap;
   final EdgeInsetsGeometry? padding;
 
+  /// Whether this card is a chosen option, for screen readers. Null for a
+  /// card that is not one of a set of choices. Kept apart from [accent],
+  /// which is also used for emphasis on cards nobody selects.
+  final bool? selected;
+
   @override
   Widget build(BuildContext context) {
     final t = context.fs;
     final radius = BorderRadius.circular(small ? FsRadius.md : FsRadius.card);
 
-    return DecoratedBox(
+    final card = DecoratedBox(
       decoration: BoxDecoration(
         borderRadius: radius,
         border: Border.all(color: accent ? t.accentLine : t.line),
@@ -196,6 +213,17 @@ class FsCard extends StatelessWidget {
         ),
       ),
     );
+
+    // A card that only displays something stays out of the semantics tree's
+    // way, so its contents read as they always have. A tappable or
+    // selectable one becomes a single node that says what it is.
+    if (onTap == null && selected == null) return card;
+    return Semantics(
+      container: true,
+      button: onTap != null,
+      selected: selected,
+      child: card,
+    );
   }
 }
 
@@ -212,7 +240,9 @@ class FsChip extends StatelessWidget {
 
   final String label;
   final bool selected;
-  final VoidCallback onTap;
+
+  /// Null leaves the chip inert and announced as disabled.
+  final VoidCallback? onTap;
   final bool small;
 
   /// The equipment chips carry a check when on, as the design shows. The
@@ -224,51 +254,57 @@ class FsChip extends StatelessWidget {
   Widget build(BuildContext context) {
     final t = context.fs;
 
-    return Material(
-      color: selected ? t.accent : t.surface2,
-      shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(FsRadius.pill),
-        side: BorderSide(color: selected ? Colors.transparent : t.line),
-      ),
-      child: InkWell(
-        onTap: onTap,
-        borderRadius: BorderRadius.circular(FsRadius.pill),
-        child: Padding(
-          padding: small
-              ? const EdgeInsets.symmetric(horizontal: 10, vertical: 5)
-              : const EdgeInsets.symmetric(horizontal: 13, vertical: 7),
-          child: Row(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              // The slot is reserved whenever the chip can show a check, not
-              // only while it does. Building it on selection alone made the
-              // chip 18px wider the moment it was ticked, which reflowed the
-              // enclosing Wrap and shunted its neighbours onto another line.
-              if (showCheck) ...[
-                SizedBox(
-                  width: small ? 11 : 13,
-                  height: small ? 11 : 13,
-                  child: selected
-                      ? Icon(
-                          Icons.check,
-                          size: small ? 11 : 13,
-                          color: t.onAccent,
-                        )
-                      : null,
-                ),
-                const SizedBox(width: 5),
-              ],
-              Flexible(
-                child: Text(
-                  label,
-                  style: TextStyle(
-                    fontSize: small ? 11 : 12.5,
-                    fontWeight: FontWeight.w600,
-                    color: selected ? t.onAccent : t.text2,
+    return Semantics(
+      container: true,
+      button: true,
+      enabled: onTap != null,
+      selected: selected,
+      child: Material(
+        color: selected ? t.accent : t.surface2,
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(FsRadius.pill),
+          side: BorderSide(color: selected ? Colors.transparent : t.line),
+        ),
+        child: InkWell(
+          onTap: onTap,
+          borderRadius: BorderRadius.circular(FsRadius.pill),
+          child: Padding(
+            padding: small
+                ? const EdgeInsets.symmetric(horizontal: 10, vertical: 5)
+                : const EdgeInsets.symmetric(horizontal: 13, vertical: 7),
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                // The slot is reserved whenever the chip can show a check, not
+                // only while it does. Building it on selection alone made the
+                // chip 18px wider the moment it was ticked, which reflowed the
+                // enclosing Wrap and shunted its neighbours onto another line.
+                if (showCheck) ...[
+                  SizedBox(
+                    width: small ? 11 : 13,
+                    height: small ? 11 : 13,
+                    child: selected
+                        ? Icon(
+                            Icons.check,
+                            size: small ? 11 : 13,
+                            color: t.onAccent,
+                          )
+                        : null,
+                  ),
+                  const SizedBox(width: 5),
+                ],
+                Flexible(
+                  child: Text(
+                    label,
+                    style: TextStyle(
+                      fontSize: small ? 11 : 12.5,
+                      fontWeight: FontWeight.w600,
+                      color: selected ? t.onAccent : t.text2,
+                    ),
                   ),
                 ),
-              ),
-            ],
+              ],
+            ),
           ),
         ),
       ),
@@ -415,39 +451,50 @@ class FsSegmented extends StatelessWidget {
         padding: const EdgeInsets.all(4),
         child: Row(
           children: [
-            for (final option in options) ...[
+            for (final (index, option) in options.indexed) ...[
               if (option != options.first) const SizedBox(width: 2),
               Expanded(
-                child: InkWell(
-                  key: Key('segment.${option.value}'),
-                  onTap: () => onSelected(option.value),
-                  borderRadius: BorderRadius.circular(FsRadius.pill),
-                  child: DecoratedBox(
-                    decoration: BoxDecoration(
-                      color: selected == option.value
-                          ? t.accent
-                          : Colors.transparent,
-                      borderRadius: BorderRadius.circular(FsRadius.pill),
-                    ),
-                    child: Padding(
-                      padding: const EdgeInsets.symmetric(vertical: 8),
-                      child: Text(
-                        option.label,
-                        textAlign: TextAlign.center,
-                        // A label that fits in one line renders at exactly
-                        // that height (unchanged from before); one that
-                        // doesn't wraps to a second line rather than
-                        // ellipsizing — "New to training" at 320dp is the
-                        // case this guards, and a label is a binding
-                        // constraint that must never be shortened.
-                        maxLines: 2,
-                        overflow: TextOverflow.ellipsis,
-                        style: TextStyle(
-                          fontSize: 12.5,
-                          fontWeight: FontWeight.w600,
-                          color: selected == option.value
-                              ? t.onAccent
-                              : t.text2,
+                // Each segment is its own button in a single-choice group,
+                // with its place in the set, so a screen reader can say
+                // "Female, selected, 2 of 2" rather than just the word.
+                child: Semantics(
+                  container: true,
+                  button: true,
+                  enabled: true,
+                  selected: selected == option.value,
+                  inMutuallyExclusiveGroup: true,
+                  hint: '${index + 1} of ${options.length}',
+                  child: InkWell(
+                    key: Key('segment.${option.value}'),
+                    onTap: () => onSelected(option.value),
+                    borderRadius: BorderRadius.circular(FsRadius.pill),
+                    child: DecoratedBox(
+                      decoration: BoxDecoration(
+                        color: selected == option.value
+                            ? t.accent
+                            : Colors.transparent,
+                        borderRadius: BorderRadius.circular(FsRadius.pill),
+                      ),
+                      child: Padding(
+                        padding: const EdgeInsets.symmetric(vertical: 8),
+                        child: Text(
+                          option.label,
+                          textAlign: TextAlign.center,
+                          // A label that fits in one line renders at exactly
+                          // that height (unchanged from before); one that
+                          // doesn't wraps to a second line rather than
+                          // ellipsizing — "New to training" at 320dp is the
+                          // case this guards, and a label is a binding
+                          // constraint that must never be shortened.
+                          maxLines: 2,
+                          overflow: TextOverflow.ellipsis,
+                          style: TextStyle(
+                            fontSize: 12.5,
+                            fontWeight: FontWeight.w600,
+                            color: selected == option.value
+                                ? t.onAccent
+                                : t.text2,
+                          ),
                         ),
                       ),
                     ),
