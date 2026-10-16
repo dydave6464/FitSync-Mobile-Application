@@ -5,6 +5,8 @@ import 'package:fitsync/core/theme.dart';
 import 'package:fitsync/features/health/domain/health_answers.dart';
 import 'package:fitsync/features/onboarding/presentation/steps/health_step.dart';
 
+import 'helpers/onboarding_screen.dart';
+
 /// Holds the answers between taps, the way onboarding and Settings do.
 Future<HealthAnswers Function()> _pumpLive(
   WidgetTester tester, {
@@ -346,33 +348,27 @@ void main() {
     expect(find.textContaining('later in Settings'), findsNothing);
   });
 
-  testWidgets('fits a 320dp screen at 2x text with the notices open', (
-    tester,
-  ) async {
-    await tester.pumpWidget(
-      MaterialApp(
-        home: MediaQuery(
-          data: const MediaQueryData(
-            size: Size(320, 800),
-            textScaler: TextScaler.linear(2.0),
-          ),
-          child: Scaffold(
-            body: SingleChildScrollView(
-              child: HealthStep(
-                value: const HealthAnswers(
-                  conditions: ['asthma', 'heart_condition'],
-                  chestPain: true,
-                ),
-                onChanged: (_) {},
-              ),
+  for (final screenWidth in phoneWidths) {
+    testWidgets(
+      'fits a ${screenWidth.toInt()}dp phone at 2x text with the notices open',
+      (tester) async {
+        await pumpOnPhone(
+          tester,
+          HealthStep(
+            value: const HealthAnswers(
+              conditions: ['asthma', 'heart_condition'],
+              chestPain: true,
             ),
+            onChanged: (_) {},
           ),
-        ),
-      ),
-    );
-    await tester.pumpAndSettle();
+          screenWidth: screenWidth,
+        );
 
-    expect(tester.takeException(), isNull);
-    expect(find.text('Answer every question to continue'), findsOneWidget);
-  });
+        // Proves the step really was laid out at the phone's width.
+        expect(tester.getSize(find.byType(HealthStep)).width, screenWidth - 40);
+        expect(tester.takeException(), isNull);
+        expect(find.text('Answer every question to continue'), findsOneWidget);
+      },
+    );
+  }
 }

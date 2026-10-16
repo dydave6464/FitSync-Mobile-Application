@@ -250,6 +250,17 @@ class _AboutStepState extends State<AboutStep> {
     _emit();
   }
 
+  /// The space between the Height and Weight cards when they share a row.
+  static const _pairGap = 10.0;
+
+  /// How wide the Weight card must be before its number, unit and kg/lb
+  /// toggle fit on one line. The toggle and unit grow with the text size and
+  /// the card's padding does not; measured, the card needs about 161dp at 2x
+  /// text and 135dp at 1.5x, and this keeps a few dp in hand. Below it the
+  /// cards stack, so the row cannot overflow on a narrow phone at large text.
+  static double _weightCardMinWidth(TextScaler scaler) =>
+      64 + 52 * scaler.scale(12) / 12;
+
   Widget _statField(
     Key key,
     TextEditingController controller,
@@ -349,45 +360,55 @@ class _AboutStepState extends State<AboutStep> {
           ),
         ),
         const SizedBox(height: 14),
-        Row(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                children: [
-                  _statField(const Key('heightCm'), _height, 'Height', 'cm'),
-                  _rangeHint(const Key('heightCm.hint'), _heightHint),
-                ],
-              ),
-            ),
-            const SizedBox(width: 10),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                children: [
-                  _statField(
-                    const Key('weightKg'),
-                    _weight,
-                    'Weight',
-                    widget.unit.api,
-                    // Only this card carries the toggle. Goal weight follows
-                    // it, and two identical switches side by side would be
-                    // noise rather than a second choice.
-                    unitControl: FsUnitToggle(
-                      value: widget.unit,
-                      onChanged: widget.onUnitChanged,
-                    ),
+        LayoutBuilder(
+          builder: (context, constraints) {
+            final height = Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                _statField(const Key('heightCm'), _height, 'Height', 'cm'),
+                _rangeHint(const Key('heightCm.hint'), _heightHint),
+              ],
+            );
+            final weight = Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                _statField(
+                  const Key('weightKg'),
+                  _weight,
+                  'Weight',
+                  widget.unit.api,
+                  // Only this card carries the toggle. Goal weight follows
+                  // it, and two identical switches side by side would be
+                  // noise rather than a second choice.
+                  unitControl: FsUnitToggle(
+                    value: widget.unit,
+                    onChanged: widget.onUnitChanged,
                   ),
-                  _rangeHint(
-                    const Key('weightKg.hint'),
-                    '${formatWeight(_minKg, widget.unit)}\u2013'
-                    '${formatWeight(_maxKg, widget.unit)} ${widget.unit.api}',
-                  ),
-                ],
-              ),
-            ),
-          ],
+                ),
+                _rangeHint(
+                  const Key('weightKg.hint'),
+                  '${formatWeight(_minKg, widget.unit)}\u2013'
+                  '${formatWeight(_maxKg, widget.unit)} ${widget.unit.api}',
+                ),
+              ],
+            );
+
+            if ((constraints.maxWidth - _pairGap) / 2 <
+                _weightCardMinWidth(MediaQuery.textScalerOf(context))) {
+              return Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [height, const SizedBox(height: 10), weight],
+              );
+            }
+            return Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Expanded(child: height),
+                const SizedBox(width: _pairGap),
+                Expanded(child: weight),
+              ],
+            );
+          },
         ),
         const SizedBox(height: 10),
         _statField(

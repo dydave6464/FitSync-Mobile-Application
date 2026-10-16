@@ -5,6 +5,8 @@ import 'package:fitsync/core/theme.dart';
 import 'package:fitsync/core/units.dart';
 import 'package:fitsync/features/onboarding/presentation/steps/about_step.dart';
 
+import 'helpers/onboarding_screen.dart';
+
 /// Pinned as literals for the same reason as the goal step's: these are the
 /// server's ENUM values, not display text.
 const _sexValues = ['male', 'female'];
@@ -236,33 +238,70 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
-  testWidgets(
-    'the paired measurement cards survive a narrow screen at 2x text',
-    (tester) async {
-      // Height and Weight sit side by side in a Row, which is the context
-      // overflow_guard_test.dart documents as the one this kit keeps losing to.
-      // Each card holds its own Row (a flexible number and an unflexed unit),
-      // so a doubled text scale on a 320dp screen squeezes both axes at once.
-      await tester.pumpWidget(
-        MaterialApp(
-          home: MediaQuery(
-            data: const MediaQueryData(
-              size: Size(320, 800),
-              textScaler: TextScaler.linear(2.0),
-            ),
-            child: Scaffold(
-              body: SingleChildScrollView(
-                child: AboutStep(value: _complete, onChanged: _ignore),
-              ),
-            ),
-          ),
-        ),
-      );
-      await tester.pumpAndSettle();
+  // Height and Weight sit side by side in a Row, which is the context
+  // overflow_guard_test.dart documents as the one this kit keeps losing to.
+  // Each card holds its own Row (a flexible number, the unit and, on Weight,
+  // the kg/lb toggle), so doubled text on a narrow phone squeezes both axes.
+  for (final screenWidth in phoneWidths) {
+    for (final unit in WeightUnit.values) {
+      testWidgets(
+        'the measurement cards fit a ${screenWidth.toInt()}dp phone at 2x '
+        'text, in ${unit.api}',
+        (tester) async {
+          await pumpOnPhone(
+            tester,
+            AboutStep(value: _complete, unit: unit, onChanged: _ignore),
+            screenWidth: screenWidth,
+          );
 
-      expect(tester.takeException(), isNull);
-    },
-  );
+          // Proves the step really was laid out at the phone's width.
+          expect(
+            tester.getSize(find.byType(AboutStep)).width,
+            screenWidth - 40,
+          );
+          expect(tester.takeException(), isNull);
+          expect(find.byKey(const Key('weightKg.hint')), findsOneWidget);
+          expect(
+            find.textContaining('to maintain your weight'),
+            findsOneWidget,
+          );
+        },
+      );
+    }
+  }
+
+  testWidgets('Height and Weight stay side by side at normal text size', (
+    tester,
+  ) async {
+    await pumpOnPhone(
+      tester,
+      const AboutStep(value: _complete, onChanged: _ignore),
+      screenWidth: 360,
+      textScale: 1.0,
+    );
+
+    expect(
+      tester.getTopLeft(find.byKey(const Key('weightKg'))).dy,
+      tester.getTopLeft(find.byKey(const Key('heightCm'))).dy,
+    );
+  });
+
+  testWidgets('Weight moves under Height when 2x text would squeeze them', (
+    tester,
+  ) async {
+    await pumpOnPhone(
+      tester,
+      const AboutStep(value: _complete, onChanged: _ignore),
+      screenWidth: 360,
+    );
+
+    expect(
+      tester.getTopLeft(find.byKey(const Key('weightKg'))).dy,
+      greaterThan(
+        tester.getBottomLeft(find.byKey(const Key('heightCm.hint'))).dy,
+      ),
+    );
+  });
 
   // The first weight the app ever asks for, and the one the plan generator is
   // fed. Someone thinking in pounds who typed 150 into a field labelled kg
@@ -357,35 +396,6 @@ void main() {
         expect(hint.style?.color, context.fs.text2, reason: key);
       }
     });
-  });
-
-  testWidgets('the hints and the estimate fit 320dp at 2x text, in pounds', (
-    tester,
-  ) async {
-    await tester.pumpWidget(
-      MaterialApp(
-        home: MediaQuery(
-          data: const MediaQueryData(
-            size: Size(320, 800),
-            textScaler: TextScaler.linear(2.0),
-          ),
-          child: Scaffold(
-            body: SingleChildScrollView(
-              child: AboutStep(
-                value: _complete,
-                unit: WeightUnit.lb,
-                onChanged: _ignore,
-              ),
-            ),
-          ),
-        ),
-      ),
-    );
-    await tester.pumpAndSettle();
-
-    expect(tester.takeException(), isNull);
-    expect(find.byKey(const Key('weightKg.hint')), findsOneWidget);
-    expect(find.textContaining('to maintain your weight'), findsOneWidget);
   });
 }
 
