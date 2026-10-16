@@ -103,6 +103,105 @@ void main() {
     });
   });
 
+  group('OnboardingScaffold additions', () {
+    testWidgets('names the back chevron "Back" for screen readers', (
+      tester,
+    ) async {
+      final handle = tester.ensureSemantics();
+      await tester.pumpWidget(
+        MaterialApp(
+          home: OnboardingScaffold(
+            step: 2,
+            total: 4,
+            onContinue: () {},
+            onBack: () {},
+            child: const Text('content'),
+          ),
+        ),
+      );
+
+      expect(
+        tester.getSemantics(find.byKey(const Key('back'))),
+        isSemantics(label: 'Back', isButton: true, hasTapAction: true),
+      );
+      handle.dispose();
+    });
+
+    testWidgets('shows the error directly above Continue', (tester) async {
+      await tester.pumpWidget(
+        MaterialApp(
+          home: OnboardingScaffold(
+            step: 2,
+            total: 4,
+            onContinue: () {},
+            error: 'That did not save.',
+            child: const Text('content'),
+          ),
+        ),
+      );
+
+      final error = tester.getRect(find.byKey(const Key('error')));
+      final cont = tester.getRect(find.byKey(const Key('continue')));
+      expect(find.text('That did not save.'), findsOneWidget);
+      expect(error.bottom, lessThanOrEqualTo(cont.top));
+      expect(cont.top - error.bottom, lessThan(24));
+    });
+
+    testWidgets('offers Sign out when given one, at least 48dp tall', (
+      tester,
+    ) async {
+      var signedOut = 0;
+      await tester.pumpWidget(
+        MaterialApp(
+          home: OnboardingScaffold(
+            step: 1,
+            total: 4,
+            onContinue: () {},
+            onSignOut: () => signedOut++,
+            child: const Text('content'),
+          ),
+        ),
+      );
+
+      expect(find.text('Sign out'), findsOneWidget);
+      expect(
+        tester.getSize(find.byKey(const Key('signOut'))).height,
+        greaterThanOrEqualTo(48),
+      );
+      await tester.tap(find.byKey(const Key('signOut')));
+      expect(signedOut, 1);
+    });
+
+    testWidgets('fits a 320dp screen at 2x text with an error and Sign out', (
+      tester,
+    ) async {
+      tester.view.physicalSize = const Size(320, 640);
+      tester.view.devicePixelRatio = 1;
+      addTearDown(tester.view.reset);
+      await tester.pumpWidget(
+        MaterialApp(
+          home: MediaQuery.withClampedTextScaling(
+            minScaleFactor: 2,
+            maxScaleFactor: 2,
+            child: OnboardingScaffold(
+              step: 1,
+              total: 6,
+              onContinue: () {},
+              onSkip: () {},
+              onSignOut: () {},
+              error:
+                  "Couldn't reach FitSync. Check your connection and try "
+                  'again.',
+              child: const Text('content'),
+            ),
+          ),
+        ),
+      );
+
+      expect(tester.takeException(), isNull);
+    });
+  });
+
   group('EditScaffold', () {
     testWidgets('shows its title and saves', (tester) async {
       var saved = 0;

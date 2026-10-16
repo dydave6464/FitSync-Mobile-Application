@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import 'package:flutter/semantics.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../core/api_exception.dart';
@@ -44,6 +45,11 @@ class _OnboardingFlowState extends ConsumerState<OnboardingFlow> {
   bool _busy = false;
   String? _error;
   bool _seeded = false;
+
+  /// Whether the last attempt at building the plan failed. Turns the last
+  /// step's Continue into "Try again": the reminder question was answered on
+  /// the way in, so the build is the only thing left to repeat.
+  bool _buildFailed = false;
 
   /// Whether the profile and injury writes have landed. Drives the first tick
   /// on the generating screen, which is why it is a separate flag from [_busy]
@@ -103,11 +109,45 @@ class _OnboardingFlowState extends ConsumerState<OnboardingFlow> {
     _ => const {},
   };
 
+  /// Skip's save: the answers already given on this step, and nothing else.
+  ///
+  /// Skip used to advance without saving, which threw away whatever had been
+  /// typed before the user decided to move on. This sends the same patch as
+  /// Continue -- [_patchForCurrentStep] already leaves out fields that are
+  /// empty or did not parse -- plus the step's own lists when anything is
+  /// picked in them. An empty list stays unsent here, unlike on Continue:
+  /// skipping is not an answer of "none".
+  Future<void> _saveTypedAnswers() async {
+    final notifier = ref.read(profileProvider.notifier);
+
+    // The server takes height and the two weights only as 0 < n < 1000, and
+    // FsStatField's formatter already stops anything from 1000 up. A typed 0
+    // is the one value left that it would reject, and a rejection would keep
+    // Skip on the step, so it is dropped like any other unusable answer.
+    final fields = {..._patchForCurrentStep()}
+      ..removeWhere((_, value) => value is num && value <= 0);
+    if (fields.isNotEmpty) await notifier.patch(fields);
+
+    if (_index == 0 && _goals.goals.isNotEmpty) {
+      await notifier.setGoals(_goals.goals, _goals.mainGoal!);
+    }
+    if (_index == 2 && _level.equipmentIds.isNotEmpty) {
+      await notifier.setEquipment(_level.equipmentIds);
+    }
+    if (_index == 3 && _injuries.isNotEmpty) {
+      await notifier.setInjuries(_injuries);
+    }
+  }
+
   /// Writes whatever the current step collected. Equipment is a separate
   /// endpoint from the profile patch, so step 3 makes two calls.
   Future<void> _saveCurrentStep() async {
     final notifier = ref.read(profileProvider.notifier);
 
+    // Unlike Skip, a typed 0 is sent as it is. Continue is an explicit
+    // answer, so the server's rejection is shown in plain words and the user
+    // stays on the step to correct it, instead of the 0 being dropped while
+    // the field still shows it.
     final fields = _patchForCurrentStep();
     if (fields.isNotEmpty) await notifier.patch(fields);
 
@@ -166,7 +206,7 @@ class _OnboardingFlowState extends ConsumerState<OnboardingFlow> {
       );
       // Generating the plan is the last thing that happens, and the server
       // leaves onboarding incomplete if it fails — so a failure here lands in
-      // _continue's catch, the user stays on this step, and tapping again is a
+      // _save's catch, the user stays on this step, and Try again is a
       // genuine retry rather than a resubmission.
       await notifier.completeOnboarding();
       // The last row describes this call; it may tick now, and the hold below
@@ -208,7 +248,13 @@ class _OnboardingFlowState extends ConsumerState<OnboardingFlow> {
     ];
   }
 
-  Future<void> _continue() async {
+  Future<void> _continue() => _save(_saveCurrentStep);
+
+  Future<void> _skip() => _save(_saveTypedAnswers);
+
+  /// Runs one of the two saves, then moves on -- or, if it failed, stays put
+  /// and says why.
+  Future<void> _save(Future<void> Function() write) async {
     if (_busy) return;
 
     setState(() {
@@ -220,15 +266,27 @@ class _OnboardingFlowState extends ConsumerState<OnboardingFlow> {
     _generatingSince = DateTime.now();
 
     try {
-      await _saveCurrentStep();
-    } on ApiException catch (error) {
+      await write();
+    } catch (error) {
       if (!mounted) return;
       // Staying put is deliberate: advancing past a step whose answer the
-      // server rejected would lose the answer with no way back to it.
+      // server rejected would lose the answer with no way back to it. Any
+      // failure is caught, not only the API's own, because one that escaped
+      // would leave the flow busy -- on the last step, a "Building your
+      // plan…" screen with no way off it.
+      final message = _plainError(error);
       setState(() {
-        _error = error.message;
+        _error = message;
         _busy = false;
+        if (_index == _total - 1) _buildFailed = true;
       });
+      // The message appears by the buttons, but someone not looking there,
+      // or not looking at all, needs to hear that the tap did not work.
+      SemanticsService.sendAnnouncement(
+        View.of(context),
+        message,
+        Directionality.of(context),
+      );
       return;
     }
     if (!mounted) return;
@@ -236,6 +294,22 @@ class _OnboardingFlowState extends ConsumerState<OnboardingFlow> {
 
     _advance();
   }
+
+  /// A failure in words a user can act on. The client's own messages are
+  /// written for whoever is running the server -- an address, an adb command
+  /// -- so those are replaced. So are the server's rejections of a profile
+  /// answer, which name the API field ("goalWeightKg must be ...") rather
+  /// than anything on screen. Its other messages are already plain and kept.
+  static String _plainError(Object error) => switch (error) {
+    ApiException(code: 'NETWORK_ERROR') =>
+      "Couldn't reach FitSync. Check your connection and try again.",
+    ApiException(code: 'INVALID_PROFILE_FIELD') =>
+      "One of these answers can't be saved as it is. Check it and try again.",
+    ApiException(code: 'INVALID_RESPONSE' || 'UNKNOWN_ERROR') =>
+      'Something went wrong on our side. Please try again.',
+    ApiException() => describeError(error),
+    _ => 'Something went wrong. Please try again.',
+  };
 
   /// The last step's Continue: unlike every earlier step, this one has
   /// something to do before `_continue()` -- show the system permission
@@ -257,6 +331,7 @@ class _OnboardingFlowState extends ConsumerState<OnboardingFlow> {
 
   void _back() => setState(() {
     _error = null;
+    _buildFailed = false;
     if (_index > 0) _index--;
   });
 
@@ -335,42 +410,52 @@ class _OnboardingFlowState extends ConsumerState<OnboardingFlow> {
 
         final onLastStep = _index == _total - 1;
         final onHealthStep = _index == _healthIndex;
+        final retrying = onLastStep && _buildFailed;
 
-        return OnboardingScaffold(
-          step: _index + 1,
-          total: _total,
-          busy: _busy,
-          continueLabel: onLastStep ? 'Turn on reminders' : 'Continue',
-          // The health step has no Skip, so Continue waits for a valid answer.
-          onContinue: onHealthStep && !_health.isValid
-              ? null
-              : (onLastStep ? _turnOnReminders : _continue),
-          // The last step has no header Skip -- "Not now" is its own button
-          // under Continue instead (see secondaryLabel below). The health
-          // step also has no Skip: there is no innocuous answer to advance
-          // past without one. Every earlier step keeps the plain header
-          // Skip, advancing without saving.
-          onSkip: onLastStep || onHealthStep ? null : (_busy ? null : _advance),
-          // Not now still saves and builds the plan -- it only skips asking
-          // for permission first -- so it routes through _continue rather
-          // than the plain _advance every earlier step's Skip uses.
-          secondaryLabel: onLastStep ? 'Not now' : null,
-          onSecondary: onLastStep ? (_busy ? null : _continue) : null,
-          onBack: _index == 0 ? null : _back,
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              _stepContent(),
-              if (_error != null) ...[
-                const SizedBox(height: 16),
-                Text(
-                  _error!,
-                  key: const Key('error'),
-                  style: TextStyle(color: Theme.of(context).colorScheme.error),
-                ),
-              ],
-            ],
+        // Android's back goes where the header's back goes. Only the first
+        // step lets it through to the system, as it always has; anywhere
+        // later it used to leave the app, and coming back began at step 1.
+        return PopScope<Object?>(
+          key: const Key('onboarding.pop'),
+          canPop: _index == 0,
+          onPopInvokedWithResult: (didPop, _) {
+            if (didPop || _busy) return;
+            _back();
+          },
+          child: OnboardingScaffold(
+            step: _index + 1,
+            total: _total,
+            busy: _busy,
+            continueLabel: retrying
+                ? 'Try again'
+                : (onLastStep ? 'Turn on reminders' : 'Continue'),
+            // The health step has no Skip, so Continue waits for a valid answer.
+            onContinue: onHealthStep && !_health.isValid
+                ? null
+                : (onLastStep && !retrying ? _turnOnReminders : _continue),
+            // The last step has no header Skip -- "Not now" is its own button
+            // under Continue instead (see secondaryLabel below). The health
+            // step also has no Skip: there is no innocuous answer to advance
+            // past without one. Every earlier step keeps the header Skip,
+            // which keeps what was typed and moves on.
+            onSkip: onLastStep || onHealthStep ? null : (_busy ? null : _skip),
+            // Not now still saves and builds the plan -- it only skips asking
+            // for permission first -- so it routes through _continue rather
+            // than the lighter save every earlier step's Skip uses. Once a
+            // build has failed the question is answered, and Try again is the
+            // only button left.
+            secondaryLabel: onLastStep && !retrying ? 'Not now' : null,
+            onSecondary: onLastStep && !retrying
+                ? (_busy ? null : _continue)
+                : null,
+            onBack: _index == 0 ? null : _back,
+            error: _error,
+            // The only way out of step 1 short of finishing: someone signed in
+            // with the wrong account should not have to onboard it first.
+            onSignOut: _index == 0
+                ? () => ref.read(authControllerProvider.notifier).signOut()
+                : null,
+            child: _stepContent(),
           ),
         );
       },
