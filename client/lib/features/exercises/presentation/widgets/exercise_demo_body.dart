@@ -52,7 +52,14 @@ class ExerciseDemoBody extends StatelessWidget {
       padding: const EdgeInsets.all(16),
       children: [
         if (exercise.animationUrl != null)
-          _DemoPlayer(exercise: exercise, baseUrl: baseUrl),
+          // Keyed by the animation so a different exercise shown in the same
+          // place -- the workout's demo stage after "Switch exercise" -- starts
+          // fresh instead of inheriting the last one's play or pause.
+          _DemoPlayer(
+            key: ValueKey(exercise.animationUrl),
+            exercise: exercise,
+            baseUrl: baseUrl,
+          ),
         const SizedBox(height: 16),
         if (header != null) ...[header!, const SizedBox(height: 8)],
         Text(exercise.name, style: Theme.of(context).textTheme.headlineSmall),
@@ -82,11 +89,16 @@ class ExerciseDemoBody extends StatelessWidget {
 /// a tap under Reduce Motion.
 ///
 /// The GIF is paused with [TickerMode] rather than by swapping in the still:
-/// [Image] only listens to its frame stream while tickers are enabled, so
+/// [Image] stops listening to its frame stream while tickers are disabled, so
 /// turning them off freezes the frame on screen -- the pose the viewer
 /// stopped on is the one they wanted to look at.
+///
+/// [Image] also stops for an inherited Reduce Motion
+/// ([MediaQuery.disableAnimationsOf]), which [TickerMode] cannot override. So
+/// the GIF sits under a [MediaQuery] that lifts it, leaving [TickerMode] -- and
+/// through it the viewer's tap -- as the only thing that decides.
 class _DemoPlayer extends StatefulWidget {
-  const _DemoPlayer({required this.exercise, required this.baseUrl});
+  const _DemoPlayer({super.key, required this.exercise, required this.baseUrl});
 
   final ExerciseDetail exercise;
   final String? baseUrl;
@@ -139,20 +151,26 @@ class _DemoPlayerState extends State<_DemoPlayer> {
     if (!playing && !_started && still != null) {
       picture = still;
     } else {
-      picture = TickerMode(
-        enabled: playing,
-        // Flutter's Image plays animated GIFs natively -- no package.
-        child: Image.network(
-          '${widget.baseUrl}${widget.exercise.animationUrl}',
-          fit: BoxFit.contain,
-          filterQuality: FilterQuality.medium,
-          // Until the first frame lands, the still stands in, so the box is
-          // never blank while a slow connection fetches the whole GIF.
-          frameBuilder: (_, child, frame, wasSynchronouslyLoaded) =>
-              frame == null && !wasSynchronouslyLoaded
-              ? (still ?? child)
-              : child,
-          errorBuilder: (_, _, _) => _fallback(),
+      // Reduce Motion has already been honoured above: [playing] starts false
+      // under it and only a tap turns it on. Left inherited, it would keep
+      // the GIF on its first frame even after that tap.
+      picture = MediaQuery(
+        data: MediaQuery.of(context).copyWith(disableAnimations: false),
+        child: TickerMode(
+          enabled: playing,
+          // Flutter's Image plays animated GIFs natively -- no package.
+          child: Image.network(
+            '${widget.baseUrl}${widget.exercise.animationUrl}',
+            fit: BoxFit.contain,
+            filterQuality: FilterQuality.medium,
+            // Until the first frame lands, the still stands in, so the box is
+            // never blank while a slow connection fetches the whole GIF.
+            frameBuilder: (_, child, frame, wasSynchronouslyLoaded) =>
+                frame == null && !wasSynchronouslyLoaded
+                ? (still ?? child)
+                : child,
+            errorBuilder: (_, _, _) => _fallback(),
+          ),
         ),
       );
     }

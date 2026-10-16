@@ -52,10 +52,14 @@ void _useSurface(WidgetTester tester, Size size) {
   addTearDown(tester.view.resetDevicePixelRatio);
 }
 
-/// Whether [finder]'s widget is allowed to advance frames. Image only listens
-/// to its stream -- and so only animates -- while TickerMode is on.
-bool _ticking(WidgetTester tester, Finder finder) =>
-    TickerMode.valuesOf(tester.element(finder)).enabled;
+/// Whether [finder]'s widget is allowed to advance frames. Image pauses its
+/// frame stream when TickerMode is off *or* when the surrounding MediaQuery
+/// disables animations, so both have to allow it for the GIF to move.
+bool _ticking(WidgetTester tester, Finder finder) {
+  final element = tester.element(finder);
+  return TickerMode.valuesOf(element).enabled &&
+      !MediaQuery.disableAnimationsOf(element);
+}
 
 void main() {
   testWidgets('with Reduce Motion on, shows the still picture and a play '
@@ -74,8 +78,49 @@ void main() {
 
     expect(_imageOf(_gif), findsOneWidget);
     expect(_ticking(tester, _imageOf(_gif)), isTrue);
+    // Image also pauses for an inherited Reduce Motion, so the viewer's tap
+    // has to lift it for the GIF itself, not only turn TickerMode on.
+    expect(
+      MediaQuery.disableAnimationsOf(tester.element(_imageOf(_gif))),
+      isFalse,
+    );
     expect(find.bySemanticsLabel('Pause demo'), findsOneWidget);
     expect(find.byIcon(Icons.play_arrow_rounded), findsNothing);
+  });
+
+  testWidgets('a choice to play one exercise does not carry over to the next '
+      'shown in its place', (tester) async {
+    // The workout's demo stage stays mounted when "Switch exercise" swaps
+    // the exercise it shows, so the player must not inherit the old one's tap.
+    _useSurface(tester, const Size(390, 844));
+    await tester.pumpWidget(_harness(reduceMotion: true));
+    await tester.pump();
+    await tester.tap(find.bySemanticsLabel('Play demo'));
+    await tester.pump();
+    expect(find.bySemanticsLabel('Pause demo'), findsOneWidget);
+
+    const otherThumb = '/storage/exercises/0002/thumb.jpg';
+    const otherGif = '/storage/exercises/0002/animation.gif';
+    await tester.pumpWidget(
+      _harness(
+        reduceMotion: true,
+        exercise: const ExerciseDetail(
+          exerciseId: 2,
+          name: 'Air bike',
+          muscleGroup: 'abs',
+          equipment: 'body weight',
+          thumbnailUrl: otherThumb,
+          animationUrl: otherGif,
+          cues: [],
+        ),
+      ),
+    );
+    await tester.pump();
+
+    expect(_imageOf(otherThumb), findsOneWidget);
+    expect(_imageOf(otherGif), findsNothing);
+    expect(find.bySemanticsLabel('Play demo'), findsOneWidget);
+    expect(find.bySemanticsLabel('Pause demo'), findsNothing);
   });
 
   testWidgets('tapping the demo pauses it and tapping again resumes', (
