@@ -194,7 +194,9 @@ class _ActiveWorkoutState extends ConsumerState<_ActiveWorkout> {
     plan: widget.plan,
     discarding: _discarding,
     onContinue: () => Navigator.of(context).push(
-      MaterialPageRoute<void>(builder: (_) => const SessionLoggerScreen()),
+      MaterialPageRoute<void>(
+        builder: (_) => const SessionLoggerScreen(resume: true),
+      ),
     ),
     onDiscard: _discard,
   );

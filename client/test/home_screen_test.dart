@@ -415,6 +415,13 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.byType(SessionLoggerScreen), findsOneWidget);
+    // On where the workout was left, not exercise 1's demo.
+    expect(
+      tester
+          .widget<SessionLoggerScreen>(find.byType(SessionLoggerScreen))
+          .resume,
+      isTrue,
+    );
   });
 
   testWidgets('discarding asks before throwing the workout away', (
@@ -893,7 +900,10 @@ void main() {
 
   testWidgets('Home offers step counting under the routine', (tester) async {
     await _pumpHome(tester);
-    await tester.scrollUntilVisible(find.text('Tap to start counting your steps'), 200);
+    await tester.scrollUntilVisible(
+      find.text('Tap to start counting your steps'),
+      200,
+    );
     expect(find.byKey(const Key('home.activity.steps')), findsOneWidget);
   });
 }

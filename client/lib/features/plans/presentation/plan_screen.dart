@@ -129,7 +129,9 @@ class _PlanViewState extends ConsumerState<_PlanView> {
       }
       if (!mounted) return;
       await Navigator.of(context).push(
-        MaterialPageRoute<void>(builder: (_) => const SessionLoggerScreen()),
+        MaterialPageRoute<void>(
+          builder: (_) => const SessionLoggerScreen(resume: true),
+        ),
       );
     } catch (error) {
       messenger.showSnackBar(SnackBar(content: Text(describeError(error))));

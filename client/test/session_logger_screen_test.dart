@@ -537,6 +537,9 @@ Future<FakeSessionController> _pump(
   // test touches a platform channel.
   FakeRestAlertScheduler? alerts,
   RestAlertStore? alertStore,
+  // Opens the logger the way Home's card and the Plan tab's Resume do, on
+  // where the workout was left rather than on exercise 1's demo.
+  bool resume = false,
 }) async {
   final controller = FakeSessionController(session ?? _session());
 
@@ -612,7 +615,7 @@ Future<FakeSessionController> _pump(
             builder: (context) => TextButton(
               onPressed: () => Navigator.of(context).push(
                 MaterialPageRoute<void>(
-                  builder: (_) => const SessionLoggerScreen(),
+                  builder: (_) => SessionLoggerScreen(resume: resume),
                 ),
               ),
               child: const Text('open logger'),
@@ -1923,6 +1926,145 @@ void main() {
 
       expect(find.text('Set 1 reopened'), findsOneWidget);
       expect(tester.takeException(), isNull);
+    });
+  });
+
+  group('leave, keep for later', () {
+    const squatDone = [
+      LoggedSet(exerciseId: 101, setNumber: 1, weightKg: 20, reps: 10),
+      LoggedSet(exerciseId: 101, setNumber: 2, weightKg: 20, reps: 10),
+      LoggedSet(exerciseId: 101, setNumber: 3, weightKg: 20, reps: 10),
+    ];
+
+    // Back steps through the exercises, so from exercise 2's table it takes
+    // three presses to get out. The menu item is the one-tap way.
+    testWidgets('leaves from any exercise in one tap, session kept', (
+      tester,
+    ) async {
+      final controller = await _pumpLogging(
+        tester,
+        session: _session(sets: squatDone),
+      );
+      await tester.tap(find.byKey(const Key('logger.primary')));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const Key('logger.primary')));
+      await tester.pumpAndSettle();
+      expect(_metaPosition('Exercise 2 / 2'), findsOneWidget);
+      expect(find.byType(SetRow), findsNWidgets(2));
+
+      await _menu(tester, 'leave');
+
+      expect(find.byType(SessionLoggerScreen), findsNothing);
+      expect(find.text('open logger'), findsOneWidget);
+      expect(
+        find.text('Workout saved. Resume it any time from Train.'),
+        findsOneWidget,
+      );
+      // Nothing written: still in progress, still resumable.
+      expect(controller.calls, isEmpty);
+      expect(controller.heldSession, isNotNull);
+    });
+
+    testWidgets('sits above Finish in the menu', (tester) async {
+      await _pump(tester);
+
+      await tester.tap(find.byKey(const Key('logger.menu')));
+      await tester.pumpAndSettle();
+
+      expect(
+        tester.getTopLeft(find.byKey(const Key('logger.leave'))).dy,
+        lessThan(tester.getTopLeft(find.byKey(const Key('logger.finish'))).dy),
+      );
+      expect(find.text('Leave, keep for later'), findsOneWidget);
+    });
+
+    testWidgets('its message fits a 320 dp phone at large text', (
+      tester,
+    ) async {
+      _smallPhoneLargeText(tester);
+      await _pump(tester);
+      _drainMetaRowOverflow(tester);
+
+      await _menu(tester, 'leave');
+
+      expect(
+        find.text('Workout saved. Resume it any time from Train.'),
+        findsOneWidget,
+      );
+      expect(tester.takeException(), isNull);
+    });
+  });
+
+  group('resume', () {
+    const squatDone = [
+      LoggedSet(exerciseId: 101, setNumber: 1, weightKg: 20, reps: 10),
+      LoggedSet(exerciseId: 101, setNumber: 2, weightKg: 20, reps: 10),
+      LoggedSet(exerciseId: 101, setNumber: 3, weightKg: 20, reps: 10),
+    ];
+    const pushUpsDone = [
+      LoggedSet(exerciseId: 102, setNumber: 1, weightKg: null, reps: 12),
+      LoggedSet(exerciseId: 102, setNumber: 2, weightKg: null, reps: 12),
+    ];
+
+    testWidgets('opens on the next exercise\'s demo when nothing is on it', (
+      tester,
+    ) async {
+      await _pump(tester, resume: true, session: _session(sets: squatDone));
+
+      expect(_metaPosition('Exercise 2 / 2'), findsOneWidget);
+      expect(find.byKey(const Key('logger.demo')), findsOneWidget);
+    });
+
+    testWidgets('opens on the table of an exercise left part done', (
+      tester,
+    ) async {
+      await _pump(
+        tester,
+        resume: true,
+        session: _session(sets: squatDone.sublist(0, 1)),
+      );
+
+      expect(_metaPosition('Exercise 1 / 2'), findsOneWidget);
+      expect(find.byKey(const Key('logger.demo')), findsNothing);
+      expect(find.text('Complete set 2'), findsOneWidget);
+    });
+
+    testWidgets('opens on the last table when every set is done', (
+      tester,
+    ) async {
+      await _pump(
+        tester,
+        resume: true,
+        session: _session(sets: [...squatDone, ...pushUpsDone]),
+      );
+
+      expect(_metaPosition('Exercise 2 / 2'), findsOneWidget);
+      expect(find.byKey(const Key('logger.demo')), findsNothing);
+      expect(find.byType(SetRow), findsNWidgets(2));
+    });
+
+    testWidgets('without it, the workout opens on exercise 1\'s demo', (
+      tester,
+    ) async {
+      await _pump(tester, session: _session(sets: squatDone));
+
+      expect(_metaPosition('Exercise 1 / 2'), findsOneWidget);
+      expect(find.byKey(const Key('logger.demo')), findsOneWidget);
+    });
+
+    // Positioned once, on the way in. A later rebuild must not drag someone
+    // who has moved back to where the workout was left.
+    testWidgets('positions once and then lets the user move', (tester) async {
+      await _pump(tester, resume: true, session: _session(sets: squatDone));
+
+      await tester.pageBack();
+      await tester.pumpAndSettle();
+      // Reopening a set rebuilds the screen with a changed session.
+      await tester.tap(find.byKey(const Key('set.3.row')));
+      await tester.pumpAndSettle();
+
+      expect(_metaPosition('Exercise 1 / 2'), findsOneWidget);
+      expect(find.text('Complete set 3'), findsOneWidget);
     });
   });
 

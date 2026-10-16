@@ -37,7 +37,12 @@ import 'workout_draft.dart' show chosenSplitStyleProvider;
 /// The active workout, one exercise at a time: its set table, Continue to
 /// the next, and the jump sheet for anything out of order.
 class SessionLoggerScreen extends ConsumerStatefulWidget {
-  const SessionLoggerScreen({super.key});
+  const SessionLoggerScreen({super.key, this.resume = false});
+
+  /// Opens on where the workout was left -- the first exercise with a set
+  /// still to do -- instead of exercise 1's demo. For the ways back into a
+  /// session already under way: Home's card and the Plan tab's Resume.
+  final bool resume;
 
   @override
   ConsumerState<SessionLoggerScreen> createState() =>
@@ -77,9 +82,16 @@ class _SessionLoggerScreenState extends ConsumerState<SessionLoggerScreen>
   int _index = 0;
 
   /// Which face of [_index]'s exercise is showing. Demo first: this
-  /// initialiser is what opens the workout on the first exercise's demo, and
-  /// every later move sets it explicitly at the point the move is made.
+  /// initialiser is what opens the workout on the first exercise's demo,
+  /// unless a resume places it -- and every later move sets it explicitly at
+  /// the point the move is made.
   _LoggerStage _stage = _LoggerStage.demo;
+
+  /// Whether the first build with the exercise list still has to put the
+  /// screen where the workout was left -- see [SessionLoggerScreen.resume].
+  /// Once only: a later rebuild that moved the screen again would drag back
+  /// someone who has since moved on their own.
+  late bool _resumePending = widget.resume;
 
   /// The rest between sets, while one is running. Held here rather than in
   /// the app-bar tag, which is rebuilt with the bar: the rest has to outlive
@@ -398,8 +410,9 @@ class _SessionLoggerScreenState extends ConsumerState<SessionLoggerScreen>
   }
 
   /// Every move this screen makes: which exercise, and which face of it.
-  /// Call it inside a setState. Six paths lead here -- Start logging, Next
-  /// exercise, both halves of back, the jump sheet, and a switch.
+  /// Call it inside a setState. Seven paths lead here -- Start logging, Next
+  /// exercise, both halves of back, the jump sheet, a switch, and a resume,
+  /// which is the one that runs inside build rather than a setState.
   ///
   /// Moving never touches the rest: a rest is the user's, between their sets,
   /// whichever exercise is on screen -- the walk from one station to the next
@@ -427,6 +440,26 @@ class _SessionLoggerScreenState extends ConsumerState<SessionLoggerScreen>
       if (session.setFor(exercise.exerciseId, number) != null) return true;
     }
     return false;
+  }
+
+  /// Where the workout was left: the first exercise with a set still to do,
+  /// on its table if anything is logged on it and on its demo if not -- the
+  /// same rule as a jump. With every set done, the last exercise's table,
+  /// where Finish is.
+  (int, _LoggerStage) _whereLeftOff(
+    List<PlanExercise> exercises,
+    ActiveSession session,
+  ) {
+    for (var i = 0; i < exercises.length; i++) {
+      if (_activeSetNumber(exercises[i], session) == null) continue;
+      return (
+        i,
+        _hasLoggedSets(exercises[i], session)
+            ? _LoggerStage.logging
+            : _LoggerStage.demo,
+      );
+    }
+    return (exercises.length - 1, _LoggerStage.logging);
   }
 
   /// Replaces [exercise] in the plan, from inside the workout: the same sheet
@@ -636,6 +669,23 @@ class _SessionLoggerScreenState extends ConsumerState<SessionLoggerScreen>
         );
       });
     }
+  }
+
+  /// Closes the logger and leaves the session in progress, from wherever the
+  /// user is. Back steps through the exercises first, so without this,
+  /// leaving from the last one took a press per exercise. Nothing is written:
+  /// the session is resumable from Train, and opens where it was left. The
+  /// rest ends with the screen, in dispose.
+  void _leave() {
+    // Captured before the pop, as in _handleAlreadyClosed: the message
+    // belongs on the screen underneath.
+    final messenger = ScaffoldMessenger.of(context);
+    Navigator.of(context).pop();
+    messenger.showSnackBar(
+      const SnackBar(
+        content: Text('Workout saved. Resume it any time from Train.'),
+      ),
+    );
   }
 
   Future<void> _finish() async {
@@ -1071,6 +1121,7 @@ class _SessionLoggerScreenState extends ConsumerState<SessionLoggerScreen>
           'restTime' => showRestSheet(context),
           'restart' => onRestart?.call(),
           'switch' => switchState?.onSwitch?.call(),
+          'leave' => _leave(),
           'finish' => _finish(),
           _ => _discard(),
         },
@@ -1110,6 +1161,11 @@ class _SessionLoggerScreenState extends ConsumerState<SessionLoggerScreen>
                 ],
               ),
             ),
+          const PopupMenuItem(
+            key: Key('logger.leave'),
+            value: 'leave',
+            child: Text('Leave, keep for later'),
+          ),
           const PopupMenuItem(
             key: Key('logger.finish'),
             value: 'finish',
@@ -1202,6 +1258,13 @@ class _SessionLoggerScreenState extends ConsumerState<SessionLoggerScreen>
           ),
         ),
       );
+    }
+    if (_resumePending) {
+      _resumePending = false;
+      // Assigned here rather than through setState: this build is the one
+      // that reads them, a few lines down.
+      final (index, stage) = _whereLeftOff(exercises, session);
+      _moveTo(index: index, stage: stage);
     }
     final index = _index.clamp(0, exercises.length - 1);
     _syncDrafts(index, exercises[index].exerciseId);
