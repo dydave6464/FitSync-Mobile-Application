@@ -42,6 +42,24 @@ class _WorkoutReviewScreenState extends ConsumerState<WorkoutReviewScreen> {
   /// top of the first is not something the server can undo.
   bool _starting = false;
 
+  /// The Undo message for the last removal, while it is showing.
+  ///
+  /// It lives on the app's root messenger, so on its own it would follow the
+  /// user to the library or the logger, where its Undo can do nothing --
+  /// and with a screen reader on it never times out, so it would sit there
+  /// holding back every message after it. [dispose] takes it down instead.
+  ({
+    ScaffoldMessengerState messenger,
+    ScaffoldFeatureController<SnackBar, SnackBarClosedReason> controller,
+  })?
+  _undo;
+
+  @override
+  void dispose() {
+    _undo?.messenger.hideCurrentSnackBar();
+    super.dispose();
+  }
+
   /// Starts the reviewed workout and opens the logger on it.
   ///
   /// A session already in progress blocks this. The server is idempotent
@@ -134,12 +152,14 @@ class _WorkoutReviewScreenState extends ConsumerState<WorkoutReviewScreen> {
     draft.remove(exercise.exerciseId);
 
     final messenger = ScaffoldMessenger.of(context)..hideCurrentSnackBar();
-    messenger.showSnackBar(
+    final controller = messenger.showSnackBar(
       SnackBar(
         content: Text('Removed ${exercise.name}'),
         // A SnackBar with an action stays up until dismissed by default,
-        // which here would sit over the Start button indefinitely.
-        persist: false,
+        // which here would sit over the Start button indefinitely. A screen
+        // reader is the exception: reaching Undo by swiping takes longer than
+        // the four seconds a timed one gets, so for them it waits.
+        persist: MediaQuery.accessibleNavigationOf(context),
         action: SnackBarAction(
           label: 'Undo',
           onPressed: () {
@@ -157,6 +177,12 @@ class _WorkoutReviewScreenState extends ConsumerState<WorkoutReviewScreen> {
         ),
       ),
     );
+    _undo = (messenger: messenger, controller: controller);
+    controller.closed.then((_) {
+      // Only forget it if it is still the latest; a newer removal's message
+      // has already taken its place.
+      if (identical(_undo?.controller, controller)) _undo = null;
+    });
   }
 
   void _onRowAction(_RowAction action, ExerciseSummary exercise, int index) {
@@ -401,11 +427,21 @@ class _ReviewRow extends StatelessWidget {
               child: Semantics(
                 container: true,
                 label: 'Reorder ${exercise.name}',
-                child: SizedBox(
-                  width: 48,
-                  height: 48,
-                  child: Center(
-                    child: Icon(Icons.drag_indicator, size: 20, color: t.text3),
+                // Painted, if invisibly, so the whole 48 dp box catches the
+                // touch: the listener defers to its child, and an empty
+                // SizedBox would leave only the 20 dp glyph to land on.
+                child: ColoredBox(
+                  color: Colors.transparent,
+                  child: SizedBox(
+                    width: 48,
+                    height: 48,
+                    child: Center(
+                      child: Icon(
+                        Icons.drag_indicator,
+                        size: 20,
+                        color: t.text3,
+                      ),
+                    ),
                   ),
                 ),
               ),

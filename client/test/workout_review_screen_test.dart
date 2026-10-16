@@ -126,6 +126,7 @@ Future<ProviderContainer> _pump(
   WidgetTester tester, {
   required List<ExerciseSummary> picks,
   FakeSessionRepository? sessions,
+  bool overLibrary = false,
 }) async {
   final container = ProviderContainer(
     overrides: [
@@ -145,11 +146,30 @@ Future<ProviderContainer> _pump(
       container: container,
       child: MaterialApp(
         theme: fsLightTheme(),
-        home: const WorkoutReviewScreen(),
+        // With [overLibrary], a stand-in for the library sits underneath, so
+        // leaving the screen has somewhere to go, as it does in the app.
+        home: overLibrary
+            ? Builder(
+                builder: (context) => Scaffold(
+                  body: TextButton(
+                    onPressed: () => Navigator.of(context).push(
+                      MaterialPageRoute<void>(
+                        builder: (_) => const WorkoutReviewScreen(),
+                      ),
+                    ),
+                    child: const Text('Library'),
+                  ),
+                ),
+              )
+            : const WorkoutReviewScreen(),
       ),
     ),
   );
   await tester.pumpAndSettle();
+  if (overLibrary) {
+    await tester.tap(find.text('Library'));
+    await tester.pumpAndSettle();
+  }
   return container;
 }
 
@@ -168,8 +188,18 @@ Finder _start() => find.byKey(const Key('review.start'));
 /// does not treat as a reorder -- it tracks the pointer across frames to work
 /// out which slot the row is over. Stepping the gesture and pumping between
 /// moves is what a real finger looks like to it.
-Future<void> _dragOnto(WidgetTester tester, Key handle, Key target) async {
-  final from = tester.getCenter(find.byKey(handle));
+///
+/// [grabAt] is where on the handle the finger lands, measured from its top
+/// left corner; by default it is the centre.
+Future<void> _dragOnto(
+  WidgetTester tester,
+  Key handle,
+  Key target, {
+  Offset? grabAt,
+}) async {
+  final from = grabAt == null
+      ? tester.getCenter(find.byKey(handle))
+      : tester.getTopLeft(find.byKey(handle)) + grabAt;
   final to = tester.getCenter(find.byKey(target));
 
   final gesture = await tester.startGesture(from);
@@ -545,6 +575,42 @@ void main() {
 
       expect(find.text('Removed Goblet squat'), findsNothing);
     });
+
+    testWidgets('the Undo message stays up for screen-reader users', (
+      tester,
+    ) async {
+      // Moving to Undo with TalkBack takes longer than the four seconds a
+      // timed SnackBar gives, so with a screen reader on it must wait.
+      tester.platformDispatcher.accessibilityFeaturesTestValue =
+          const FakeAccessibilityFeatures(accessibleNavigation: true);
+      addTearDown(
+        tester.platformDispatcher.clearAccessibilityFeaturesTestValue,
+      );
+      await _pump(tester, picks: const [_squat, _fly]);
+
+      await _pickFromMenu(tester, 101, 'remove');
+      await tester.pump(const Duration(seconds: 10));
+      await tester.pumpAndSettle();
+
+      expect(find.text('Removed Goblet squat'), findsOneWidget);
+    });
+
+    testWidgets('the Undo message does not follow the user off the screen', (
+      tester,
+    ) async {
+      // Its Undo can do nothing once the screen is gone, so it must not be
+      // left showing over the library.
+      await _pump(tester, picks: const [_squat, _fly], overLibrary: true);
+
+      await _pickFromMenu(tester, 101, 'remove');
+      expect(find.text('Removed Goblet squat'), findsOneWidget);
+
+      await tester.tap(find.byKey(const Key('review.addMore')));
+      await tester.pumpAndSettle();
+
+      expect(find.text('Library'), findsOneWidget);
+      expect(find.text('Removed Goblet squat'), findsNothing);
+    });
   });
 
   group('the drag handle', () {
@@ -559,6 +625,27 @@ void main() {
       expect(size.height, greaterThanOrEqualTo(48));
       expect(find.bySemanticsLabel('Reorder Goblet squat'), findsOneWidget);
       semantics.dispose();
+    });
+
+    testWidgets('starts a drag from the edge of its touch area', (
+      tester,
+    ) async {
+      // The 48 dp box has to catch the touch itself; otherwise only a finger
+      // landing on the 20 dp glyph would count, and the bigger area would be
+      // for show.
+      final container = await _pump(
+        tester,
+        picks: const [_squat, _fly, _press],
+      );
+
+      await _dragOnto(
+        tester,
+        const Key('review.drag.303'),
+        const Key('review.drag.101'),
+        grabAt: const Offset(4, 4),
+      );
+
+      expect(container.read(workoutDraftProvider).exerciseIds, [303, 101, 202]);
     });
 
     testWidgets('keeps the icon the same size it was', (tester) async {
