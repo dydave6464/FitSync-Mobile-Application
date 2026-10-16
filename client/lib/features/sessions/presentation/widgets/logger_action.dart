@@ -2,6 +2,8 @@ import 'package:flutter/material.dart';
 
 import '../../../../core/units.dart';
 import '../../../../core/widgets/fs_kit.dart';
+import '../../../exercises/presentation/exercise_list_screen.dart'
+    show describeError;
 import 'set_drafts.dart';
 
 /// The logger's one footer button.
@@ -65,22 +67,91 @@ class _LoggerActionState extends State<LoggerAction> {
   }
 
   Future<void> _complete(int setNumber) async {
+    final repsText = widget.drafts.reps(setNumber).text.trim();
+    // A set with no reps is almost always a tap that came before the typing,
+    // and once stored it is a row nobody can read back. Asked, not refused:
+    // a set the user did not count is still a set they did. Weight alone
+    // never asks -- a bodyweight set has none.
+    if (repsText.isEmpty) {
+      final logAnyway = await _confirmNoReps(setNumber);
+      if (!mounted) return;
+      if (logAnyway != true) {
+        if (logAnyway == false) _focusReps(setNumber);
+        return;
+      }
+    }
+
     setState(() {
       _busy = true;
       _failed = false;
     });
+    final messenger = ScaffoldMessenger.maybeOf(context);
     try {
       await widget.onCompleteSet(
         setNumber,
         // An empty field is "not recorded", never zero.
         parseWeight(widget.drafts.weight(setNumber).text, widget.unit),
-        int.tryParse(widget.drafts.reps(setNumber).text.trim()),
+        int.tryParse(repsText),
       );
-    } catch (_) {
+    } catch (error) {
       if (mounted) setState(() => _failed = true);
+      // "Retry" alone does not say whether to try again now or after
+      // finding signal. describeError keeps the wording plain: an
+      // ApiException's own message, never an exception's raw text.
+      messenger
+        ?..hideCurrentSnackBar()
+        ..showSnackBar(SnackBar(content: Text(describeError(error))));
     } finally {
       if (mounted) setState(() => _busy = false);
     }
+  }
+
+  /// True to log the set as it stands, false to go back and add reps, null
+  /// if the dialog was dismissed -- which, like "Add reps", logs nothing.
+  Future<bool?> _confirmNoReps(int setNumber) => showDialog<bool>(
+    context: context,
+    builder: (dialogContext) => AlertDialog(
+      key: const Key('logger.noReps'),
+      title: Text('Log set $setNumber without reps?'),
+      // At large text on a narrow phone the title alone runs to several lines
+      // and would push the actions off the dialog; scrolling keeps both
+      // answers reachable. The actions already stack when they no longer fit
+      // side by side.
+      scrollable: true,
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.of(dialogContext).pop(false),
+          child: const Text('Add reps'),
+        ),
+        TextButton(
+          onPressed: () => Navigator.of(dialogContext).pop(true),
+          child: const Text('Log anyway'),
+        ),
+      ],
+    ),
+  );
+
+  /// Puts the caret in this set's reps box, if it is on screen.
+  ///
+  /// The box belongs to the set row, which keeps no focus node anyone else
+  /// can reach; what this widget shares with it is the controller. So the
+  /// field is found by that controller -- a one-off walk, taken only after
+  /// "Add reps". A row scrolled out of the tree is simply not focused.
+  void _focusReps(int setNumber) {
+    final controller = widget.drafts.reps(setNumber);
+    FocusNode? found;
+    void visit(Element element) {
+      if (found != null) return;
+      final w = element.widget;
+      if (w is EditableText && w.controller == controller) {
+        found = w.focusNode;
+        return;
+      }
+      element.visitChildElements(visit);
+    }
+
+    WidgetsBinding.instance.rootElement?.visitChildElements(visit);
+    found?.requestFocus();
   }
 
   @override

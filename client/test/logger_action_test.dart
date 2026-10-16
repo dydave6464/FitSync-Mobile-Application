@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
+import 'package:fitsync/core/api_exception.dart';
 import 'package:fitsync/core/theme.dart';
 import 'package:fitsync/core/units.dart';
 import 'package:fitsync/features/sessions/presentation/widgets/logger_action.dart';
@@ -79,6 +80,7 @@ void main() {
     final drafts = SetDrafts();
     addTearDown(drafts.dispose);
     drafts.weight(1).text = '100';
+    drafts.reps(1).text = '5';
 
     double? sentKg;
     await tester.pumpWidget(
@@ -128,6 +130,8 @@ void main() {
     await tester.tap(find.byKey(const Key('logger.primary')));
     await tester.pumpAndSettle();
 
+    // A bodyweight set has no weight; only missing reps asks first.
+    expect(find.byType(AlertDialog), findsNothing);
     expect(called, isTrue);
     expect(sentKg, isNull);
   });
@@ -191,6 +195,7 @@ void main() {
   testWidgets('a failed write shows a retry and logs nothing', (tester) async {
     final drafts = SetDrafts();
     addTearDown(drafts.dispose);
+    drafts.reps(1).text = '8';
 
     var attempts = 0;
     await tester.pumpWidget(
@@ -231,6 +236,7 @@ void main() {
   ) async {
     final drafts = SetDrafts();
     addTearDown(drafts.dispose);
+    drafts.reps(1).text = '8';
 
     var active = 1;
     await tester.pumpWidget(
@@ -271,5 +277,164 @@ void main() {
 
     expect(find.text('Complete set 2'), findsOneWidget);
     expect(find.text('Retry set 2'), findsNothing);
+  });
+  group('a set with no reps asks first', () {
+    // A real reps box for set 2, wired to the same controller the row uses,
+    // so "Add reps" has a field to put the caret in.
+    Widget hostWithField(SetDrafts drafts, LoggerAction action) => _host(
+      Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          TextField(key: const Key('reps2'), controller: drafts.reps(2)),
+          action,
+        ],
+      ),
+    );
+
+    LoggerAction action(SetDrafts drafts, List<int?> logged) => LoggerAction(
+      activeSetNumber: 2,
+      isLastExercise: false,
+      drafts: drafts,
+      unit: WeightUnit.kg,
+      onCompleteSet: (_, _, reps) async => logged.add(reps),
+      onNextExercise: () {},
+      onFinish: () {},
+    );
+
+    testWidgets('Add reps logs nothing and focuses the reps box', (
+      tester,
+    ) async {
+      final drafts = SetDrafts();
+      addTearDown(drafts.dispose);
+      drafts.weight(2).text = '40';
+      final logged = <int?>[];
+
+      await tester.pumpWidget(hostWithField(drafts, action(drafts, logged)));
+      await tester.tap(find.byKey(const Key('logger.primary')));
+      await tester.pumpAndSettle();
+
+      expect(find.text('Log set 2 without reps?'), findsOneWidget);
+      expect(logged, isEmpty);
+
+      await tester.tap(find.text('Add reps'));
+      await tester.pumpAndSettle();
+
+      expect(find.byType(AlertDialog), findsNothing);
+      expect(logged, isEmpty);
+      final field = tester.widget<EditableText>(
+        find.descendant(
+          of: find.byKey(const Key('reps2')),
+          matching: find.byType(EditableText),
+        ),
+      );
+      expect(field.focusNode.hasFocus, isTrue);
+    });
+
+    testWidgets('Log anyway logs the set with no reps', (tester) async {
+      final drafts = SetDrafts();
+      addTearDown(drafts.dispose);
+      final logged = <int?>[];
+
+      await tester.pumpWidget(hostWithField(drafts, action(drafts, logged)));
+      await tester.tap(find.byKey(const Key('logger.primary')));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Log anyway'));
+      await tester.pumpAndSettle();
+
+      expect(find.byType(AlertDialog), findsNothing);
+      expect(logged, [null]);
+    });
+
+    testWidgets('fits a 320 dp screen at 2.0x text', (tester) async {
+      tester.view.physicalSize = const Size(320, 640);
+      tester.view.devicePixelRatio = 1;
+      addTearDown(tester.view.reset);
+      final drafts = SetDrafts();
+      addTearDown(drafts.dispose);
+
+      await tester.pumpWidget(
+        MediaQuery(
+          data: const MediaQueryData(
+            size: Size(320, 640),
+            textScaler: TextScaler.linear(2),
+          ),
+          child: hostWithField(drafts, action(drafts, <int?>[])),
+        ),
+      );
+      expect(tester.takeException(), isNull, reason: 'before tap');
+      await tester.tap(find.byKey(const Key('logger.primary')));
+      await tester.pumpAndSettle();
+
+      expect(find.text('Log set 2 without reps?'), findsOneWidget);
+      expect(tester.takeException(), isNull);
+      // Both actions stay reachable and at least 48 dp tall.
+      for (final label in ['Add reps', 'Log anyway']) {
+        final button = find.ancestor(
+          of: find.text(label),
+          matching: find.byType(TextButton),
+        );
+        expect(tester.getSize(button).height, greaterThanOrEqualTo(48));
+      }
+    });
+  });
+
+  group('a failed save says why', () {
+    Future<void> failWith(WidgetTester tester, Object error) async {
+      final drafts = SetDrafts();
+      addTearDown(drafts.dispose);
+      drafts.reps(1).text = '8';
+      await tester.pumpWidget(
+        _host(
+          LoggerAction(
+            activeSetNumber: 1,
+            isLastExercise: false,
+            drafts: drafts,
+            unit: WeightUnit.kg,
+            onCompleteSet: (_, _, _) async => throw error,
+            onNextExercise: () {},
+            onFinish: () {},
+          ),
+        ),
+      );
+      await tester.tap(find.byKey(const Key('logger.primary')));
+      await tester.pumpAndSettle();
+    }
+
+    testWidgets('an unreachable server is named in plain words', (
+      tester,
+    ) async {
+      await failWith(
+        tester,
+        const ApiException(
+          'NETWORK_ERROR',
+          'No connection. Check your internet and try again.',
+        ),
+      );
+
+      expect(find.text('Retry set 1'), findsOneWidget);
+      expect(
+        find.descendant(
+          of: find.byType(SnackBar),
+          matching: find.text(
+            'No connection. Check your internet and try again.',
+          ),
+        ),
+        findsOneWidget,
+      );
+    });
+
+    testWidgets('an unknown error never shows its raw text', (tester) async {
+      await failWith(tester, Exception('SocketException: errno 61'));
+
+      expect(find.text('Retry set 1'), findsOneWidget);
+      expect(
+        find.descendant(
+          of: find.byType(SnackBar),
+          matching: find.text('Something went wrong.'),
+        ),
+        findsOneWidget,
+      );
+      expect(find.textContaining('SocketException'), findsNothing);
+    });
   });
 }

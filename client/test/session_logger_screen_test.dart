@@ -632,6 +632,11 @@ Future<FakeSessionController> _pump(
   return controller;
 }
 
+const _repsPrefill = {
+  101: LastPerformance(exerciseId: 101, reps: 10, sessionDate: '2026-09-12'),
+  102: LastPerformance(exerciseId: 102, reps: 12, sessionDate: '2026-09-12'),
+};
+
 /// Pumps the logger and advances past the demo stage to the set table, which
 /// is where most of these tests do their work.
 ///
@@ -639,6 +644,13 @@ Future<FakeSessionController> _pump(
 /// -- its fields, its rows, its unit toggle, or the footer's logging labels --
 /// has to walk the one tap a user walks to get there. What those tests assert
 /// is unchanged; only the way they reach the table is.
+///
+/// [last] defaults to last session's reps for both of [_plan]'s exercises, as
+/// anyone who has trained before sees. A set with an empty reps box asks
+/// before logging, and these tests are about what logging a set does, not
+/// that question -- logger_action_test.dart covers it. No weight is
+/// prefilled, so what these tests send as weight is unchanged. A test about
+/// fields being emptied passes `const {}`, or the prefill would refill them.
 Future<FakeSessionController> _pumpLogging(
   WidgetTester tester, {
   ActiveSession? session,
@@ -648,6 +660,7 @@ Future<FakeSessionController> _pumpLogging(
   FakeTrainingSettings? training,
   FakeRestAlertScheduler? alerts,
   RestAlertStore? alertStore,
+  Map<int, LastPerformance> last = _repsPrefill,
 }) async {
   final controller = await _pump(
     tester,
@@ -658,6 +671,7 @@ Future<FakeSessionController> _pumpLogging(
     training: training,
     alerts: alerts,
     alertStore: alertStore,
+    last: last,
   );
   await tester.tap(find.byKey(const Key('logger.primary')));
   await tester.pumpAndSettle();
@@ -1729,6 +1743,7 @@ void main() {
           LoggedSet(exerciseId: 101, setNumber: 1, weightKg: 22.5, reps: 10),
         ],
       ),
+      last: const {},
     );
 
     expect(
@@ -2391,6 +2406,7 @@ void main() {
       final controller = await _pumpLogging(
         tester,
         session: _session(sets: const [...twoSquatSets, pushUpSet]),
+        last: const {},
       );
 
       await _menu(tester, 'restart');
