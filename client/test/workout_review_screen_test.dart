@@ -4,7 +4,7 @@ import 'dart:typed_data';
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
-import 'package:flutter/services.dart' show FontLoader;
+import 'package:flutter/services.dart' show FontLoader, LogicalKeyboardKey;
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 
@@ -652,6 +652,25 @@ void main() {
         lessThanOrEqualTo(400),
         reason: 'a pill stretched 700 dp wide stops reading as a button',
       );
+    });
+
+    testWidgets('Page Down on a hardware keyboard scrolls without failing', (
+      tester,
+    ) async {
+      // Short and large enough that the question and the choices both
+      // scroll. Two scroll views sharing the route's primary controller is
+      // what a keyboard scroll cannot resolve.
+      tester.view.physicalSize = const Size(667, 375);
+      tester.view.devicePixelRatio = 1.0;
+      tester.platformDispatcher.textScaleFactorTestValue = 2.35;
+      addTearDown(tester.view.reset);
+      addTearDown(tester.platformDispatcher.clearTextScaleFactorTestValue);
+      await _blockedBy(tester, _openWorkout(sets: _twoLoggedSets));
+
+      await tester.sendKeyEvent(LogicalKeyboardKey.pageDown);
+      await tester.pumpAndSettle();
+
+      expect(tester.takeException(), isNull);
     });
 
     // The real font at Android's largest text sizes, on a small phone and a

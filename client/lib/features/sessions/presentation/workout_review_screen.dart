@@ -236,6 +236,10 @@ class _WorkoutReviewScreenState extends ConsumerState<WorkoutReviewScreen> {
                 maxHeight: MediaQuery.sizeOf(dialogContext).height / 2,
               ),
               child: SingleChildScrollView(
+                // Not the route's primary scroller: the question's scroll
+                // view already is, and a keyboard Page Down with two attached
+                // cannot tell which to move.
+                primary: false,
                 child: Column(
                   mainAxisSize: MainAxisSize.min,
                   crossAxisAlignment: CrossAxisAlignment.stretch,
