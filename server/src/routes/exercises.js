@@ -5,8 +5,11 @@ const {
   listExercises,
   getExerciseById,
   listFilters,
+  listRecentExercises,
   DEFAULT_LIMIT,
   MAX_LIMIT,
+  RECENT_DEFAULT_LIMIT,
+  RECENT_MAX_LIMIT,
 } = require('../db/exercises');
 const { resolveCues } = require('../db/cues');
 const { createCueService } = require('../services/cues');
@@ -99,6 +102,22 @@ module.exports = function buildExercisesRouter({ pool, storage, cues = null }) {
     try {
       const { muscleGroups, equipment } = await listFilters(pool);
       res.json({ data: { muscleGroups, equipment } });
+    } catch (err) {
+      next(err);
+    }
+  });
+
+  // MUST come before '/:id', for the same reason as '/filters'.
+  //
+  // The caller's own recently logged exercises, in the list's row shape so
+  // the picker draws them with the same widget, injury flag included.
+  router.get('/recent', async (req, res, next) => {
+    try {
+      const limit = parsePositiveInt(
+        'limit', req.query.limit, RECENT_DEFAULT_LIMIT, RECENT_MAX_LIMIT,
+      );
+      const rows = await listRecentExercises(pool, req.user.userId, { limit });
+      res.json({ data: { exercises: rows.map(toSummary) } });
     } catch (err) {
       next(err);
     }
