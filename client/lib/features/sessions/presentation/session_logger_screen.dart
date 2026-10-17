@@ -24,6 +24,7 @@ import '../domain/active_session.dart';
 import '../domain/encouragement.dart';
 import '../domain/rest_period.dart';
 import 'in_session_exercise_screen.dart';
+import 'open_workout_summary.dart';
 import 'providers.dart';
 import 'widgets/encouragement_card.dart';
 import 'widgets/exercise_demo_stage.dart';
@@ -1427,10 +1428,11 @@ class _SessionLoggerScreenState extends ConsumerState<SessionLoggerScreen>
                               Flexible(
                                 child: Text(
                                   '${_positionLabel(index, exercises.length)}'
-                                  // A session started from a chosen list has
-                                  // no plan to name, and trailing off after
-                                  // the separator reads as a rendering fault.
-                                  ' · ${plan?.name ?? 'Manual workout'}',
+                                  // Named the way Home and History name it.
+                                  // Not the active plan's name: a workout
+                                  // the user picked themselves is not a day
+                                  // of the AI plan they may be replacing.
+                                  ' · ${openWorkoutTitle(session, plan)}',
                                   maxLines: 1,
                                   overflow: TextOverflow.ellipsis,
                                   style: TextStyle(

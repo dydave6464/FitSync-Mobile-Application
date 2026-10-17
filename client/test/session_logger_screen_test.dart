@@ -1097,14 +1097,32 @@ void main() {
     },
   );
 
-  testWidgets('a session with no plan says so rather than naming nothing', (
+  testWidgets('a session with no plan is named by what it works', (
     tester,
   ) async {
-    // The header reads "Exercise 1 / 3 · <plan name>". With no plan that
-    // trails off after the separator, which looks like a rendering fault.
+    // The header reads "Exercise 1 / 3 · <name>". A hand-picked workout is
+    // named the way Home and History name it, by the areas it trains.
     await _pumpLogging(tester, session: _manualSession, plan: null);
 
-    expect(find.textContaining('Manual workout'), findsOneWidget);
+    expect(_metaPosition('Chest workout'), findsOneWidget);
+  });
+
+  testWidgets("a hand-picked workout never shows the AI plan's name", (
+    tester,
+  ) async {
+    // The header used to name whatever plan was active, so a workout the
+    // user picked themselves read as a day of the AI plan they were trying
+    // to replace.
+    await _pumpLogging(tester, session: _manualSession, plan: _plan);
+
+    expect(_metaPosition('Week 1 — Full body'), findsNothing);
+    expect(_metaPosition('Chest workout'), findsOneWidget);
+  });
+
+  testWidgets('a plan workout is still named after its plan', (tester) async {
+    await _pumpLogging(tester, session: _session(planId: 42));
+
+    expect(_metaPosition('Week 1 — Full body'), findsOneWidget);
   });
 
   testWidgets('a session carrying exercises prefers them over the plan', (
