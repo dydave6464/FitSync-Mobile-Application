@@ -4,10 +4,16 @@ import 'package:flutter_test/flutter_test.dart';
 
 import 'package:fitsync/core/api_exception.dart';
 import 'package:fitsync/core/theme.dart';
+import 'package:fitsync/core/units.dart';
+import 'package:fitsync/core/widgets/fs_charts.dart';
 import 'package:fitsync/features/profile/domain/body_weight.dart';
 import 'package:fitsync/features/profile/domain/profile.dart';
 import 'package:fitsync/features/profile/presentation/providers.dart'
-    show bodyWeightProvider, profileProvider, ProfileNotifier;
+    show
+        bodyWeightProvider,
+        profileProvider,
+        ProfileNotifier,
+        weightUnitProvider;
 import 'package:fitsync/features/profile/presentation/widgets/body_weight_card.dart';
 import 'package:fitsync/features/sessions/data/session_repository.dart';
 import 'package:fitsync/features/sessions/domain/session_history.dart';
@@ -132,6 +138,8 @@ class _StubProfileNotifier extends ProfileNotifier {
 Future<FakeSessionRepository> _pump(
   WidgetTester tester, {
   FakeSessionRepository? repo,
+  WeightUnit? unit,
+  BodyWeightSeries bodyWeight = _emptyBodyWeight,
 }) async {
   final fake = repo ?? FakeSessionRepository();
   await tester.pumpWidget(
@@ -141,10 +149,11 @@ Future<FakeSessionRepository> _pump(
         // The body-weight card is a separate feature's provider; none of these
         // tests are about it, so it is stubbed quiet rather than left to reach
         // a real ApiClient.
-        bodyWeightProvider.overrideWith(
-          (ref, period) async => _emptyBodyWeight,
-        ),
+        bodyWeightProvider.overrideWith((ref, period) async => bodyWeight),
         profileProvider.overrideWith(_StubProfileNotifier.new),
+        // Only the unit tests pin it; everyone else reads the stub profile's
+        // default, kilograms, exactly as a real account without a choice does.
+        if (unit != null) weightUnitProvider.overrideWithValue(unit),
       ],
       child: MaterialApp(
         theme: fsLightTheme(),
@@ -354,5 +363,164 @@ void main() {
       greaterThan(tester.getTopLeft(find.byType(BodyWeightCard)).dy),
       reason: 'the action comes after what it shares',
     );
+  });
+
+  group('history volume follows the weight unit', () {
+    const heavy = SessionHistoryEntry(
+      sessionId: 40,
+      sessionDate: '2026-09-15',
+      setCount: 10,
+      exerciseCount: 3,
+      durationMin: 30,
+      totalVolumeKg: 1000,
+    );
+
+    testWidgets('a pound user reads pounds, rounded to the whole pound', (
+      tester,
+    ) async {
+      // 1000 kg is 2,204.62 lb; history shows whole numbers, so 2,205.
+      await _pump(
+        tester,
+        repo: FakeSessionRepository(entries: const [heavy]),
+        unit: WeightUnit.lb,
+      );
+
+      expect(
+        find.textContaining('2,205 lb', skipOffstage: false),
+        findsOneWidget,
+      );
+      expect(
+        find.textContaining('1,000 kg', skipOffstage: false),
+        findsNothing,
+      );
+    });
+
+    testWidgets('a kilogram user sees exactly what they did before', (
+      tester,
+    ) async {
+      await _pump(
+        tester,
+        repo: FakeSessionRepository(entries: const [heavy]),
+        unit: WeightUnit.kg,
+      );
+
+      expect(
+        find.text('10 sets · 1,000 kg · 30 min', skipOffstage: false),
+        findsOneWidget,
+      );
+    });
+
+    testWidgets('a bodyweight-only session shows no volume in pounds either', (
+      tester,
+    ) async {
+      await _pump(
+        tester,
+        repo: FakeSessionRepository(
+          entries: const [
+            SessionHistoryEntry(
+              sessionId: 1,
+              sessionDate: '2026-09-13',
+              setCount: 9,
+              exerciseCount: 3,
+              durationMin: 20,
+            ),
+          ],
+        ),
+        unit: WeightUnit.lb,
+      );
+
+      expect(find.text('9 sets · 20 min', skipOffstage: false), findsOneWidget);
+      expect(find.textContaining(' lb', skipOffstage: false), findsNothing);
+    });
+
+    testWidgets('the volume chart plots pounds for a pound user', (
+      tester,
+    ) async {
+      // The chart has no axis labels, but its touch tooltip reads the raw y
+      // value -- so a pound user tapping a point would otherwise get kilos.
+      await _pump(
+        tester,
+        repo: FakeSessionRepository(
+          analyticsValue: const TrainingAnalytics(
+            period: 'week',
+            volume: [
+              VolumeBucket(label: '-1d', volumeKg: 0),
+              VolumeBucket(label: 'Today', volumeKg: 1000),
+            ],
+            change: VolumeChange(totalKg: 1000, previousKg: 0, changePct: null),
+            adherence: Adherence(done: 1, target: null, weeks: 1),
+            muscles: [],
+          ),
+        ),
+        unit: WeightUnit.lb,
+      );
+
+      final chart = tester.widget<FsLineChart>(
+        find.descendant(
+          of: find.byType(VolumeTrendCard),
+          matching: find.byType(FsLineChart),
+        ),
+      );
+      expect(chart.points.last.y, closeTo(2204.62, 0.01));
+      expect(find.text('lb lifted'), findsOneWidget);
+    });
+
+    testWidgets('body weight follows the unit switch, not the cached series', (
+      tester,
+    ) async {
+      // The series was fetched while the user was on kilograms, and the
+      // provider keeps it alive; switching to pounds refetches nothing, so
+      // the card has to take the unit the rest of the screen reads.
+      await _pump(
+        tester,
+        bodyWeight: const BodyWeightSeries(
+          widened: false,
+          points: [BodyWeightPoint(loggedOn: '2026-09-15', weightKg: 80)],
+          reference: null,
+          unit: 'kg',
+        ),
+        unit: WeightUnit.lb,
+      );
+
+      expect(
+        find.text(formatWeightWithUnit(80, WeightUnit.lb), skipOffstage: false),
+        findsOneWidget,
+      );
+      expect(find.text('80 kg', skipOffstage: false), findsNothing);
+    });
+
+    testWidgets('pound history fits a 320 dp screen at double text size', (
+      tester,
+    ) async {
+      tester.view.physicalSize = const Size(320, 6000);
+      tester.view.devicePixelRatio = 1;
+      tester.platformDispatcher.textScaleFactorTestValue = 2.0;
+      addTearDown(tester.view.resetPhysicalSize);
+      addTearDown(tester.view.resetDevicePixelRatio);
+      addTearDown(tester.platformDispatcher.clearTextScaleFactorTestValue);
+
+      await _pump(
+        tester,
+        repo: FakeSessionRepository(
+          entries: const [
+            SessionHistoryEntry(
+              sessionId: 41,
+              sessionDate: '2026-09-15',
+              setCount: 24,
+              exerciseCount: 6,
+              durationMin: 75,
+              totalVolumeKg: 45359.237,
+            ),
+          ],
+        ),
+        unit: WeightUnit.lb,
+      );
+
+      expect(
+        find.textContaining('100,000 lb', skipOffstage: false),
+        findsOneWidget,
+      );
+      expect(tester.takeException(), isNull);
+    });
   });
 }

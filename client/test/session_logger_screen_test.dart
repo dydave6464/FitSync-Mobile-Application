@@ -635,6 +635,11 @@ Future<FakeSessionController> _pump(
   return controller;
 }
 
+const _repsPrefill = {
+  101: LastPerformance(exerciseId: 101, reps: 10, sessionDate: '2026-09-12'),
+  102: LastPerformance(exerciseId: 102, reps: 12, sessionDate: '2026-09-12'),
+};
+
 /// Pumps the logger and advances past the demo stage to the set table, which
 /// is where most of these tests do their work.
 ///
@@ -642,6 +647,13 @@ Future<FakeSessionController> _pump(
 /// -- its fields, its rows, its unit toggle, or the footer's logging labels --
 /// has to walk the one tap a user walks to get there. What those tests assert
 /// is unchanged; only the way they reach the table is.
+///
+/// [last] defaults to last session's reps for both of [_plan]'s exercises, as
+/// anyone who has trained before sees. A set with an empty reps box asks
+/// before logging, and these tests are about what logging a set does, not
+/// that question -- logger_action_test.dart covers it. No weight is
+/// prefilled, so what these tests send as weight is unchanged. A test about
+/// fields being emptied passes `const {}`, or the prefill would refill them.
 Future<FakeSessionController> _pumpLogging(
   WidgetTester tester, {
   ActiveSession? session,
@@ -651,7 +663,7 @@ Future<FakeSessionController> _pumpLogging(
   FakeTrainingSettings? training,
   FakeRestAlertScheduler? alerts,
   RestAlertStore? alertStore,
-  Map<int, LastPerformance> last = const {},
+  Map<int, LastPerformance> last = _repsPrefill,
 }) async {
   final controller = await _pump(
     tester,
@@ -1910,19 +1922,22 @@ void main() {
 
     // Fixed and saved before Undo was tapped: the fix is the user's latest
     // word, and Undo must not overwrite it with the old numbers.
-    testWidgets('Undo does nothing once the set is stored again', (
+    // Saving the reopened set again makes its "reopened" message old news:
+    // the footer clears the current message as a save starts, so there is no
+    // Undo left to tap that could put the old numbers back over the new ones.
+    testWidgets('saving the reopened set again takes its Undo away', (
       tester,
     ) async {
       final controller = await _pumpLogging(tester, session: squatSet1());
 
       await tester.tap(find.byKey(const Key('set.1.row')));
       await tester.pumpAndSettle();
+      expect(undo(), findsOneWidget);
       await tester.enterText(find.byKey(const Key('set.1.reps')), '12');
       await tester.tap(find.byKey(const Key('logger.primary')));
       await tester.pumpAndSettle();
-      await tester.tap(undo());
-      await tester.pumpAndSettle();
 
+      expect(undo(), findsNothing);
       expect(controller.calls, ['unlog:101:1', 'log:101:1:22.5:12']);
       expect(controller.heldSession!.setFor(101, 1)!.reps, 12);
     });
@@ -2959,6 +2974,7 @@ void main() {
       final controller = await _pumpLogging(
         tester,
         session: _session(sets: const [...twoSquatSets, pushUpSet]),
+        last: const {},
       );
 
       await _menu(tester, 'restart');

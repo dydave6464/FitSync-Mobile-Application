@@ -37,6 +37,15 @@ class TrainingDaysRow extends StatelessWidget {
   final bool enabled;
 
   static const _labels = ['M', 'T', 'W', 'T', 'F', 'S', 'S'];
+  static const _dayNames = [
+    'Monday',
+    'Tuesday',
+    'Wednesday',
+    'Thursday',
+    'Friday',
+    'Saturday',
+    'Sunday',
+  ];
 
   @override
   Widget build(BuildContext context) {
@@ -53,6 +62,7 @@ class TrainingDaysRow extends StatelessWidget {
               // Settings would be a lie a test would have to repeat.
               key: Key('weekday.$weekday'),
               label: _labels[weekday - 1],
+              dayName: _dayNames[weekday - 1],
               selected: chosen.contains(weekday),
               busy: busyWeekday == weekday,
               onTap: !enabled || busyWeekday != null
@@ -82,12 +92,18 @@ class TrainingDayCell extends StatelessWidget {
   const TrainingDayCell({
     super.key,
     required this.label,
+    required this.dayName,
     required this.selected,
     required this.busy,
     required this.onTap,
   });
 
   final String label;
+
+  /// The full weekday name, e.g. "Monday". The letter alone is ambiguous --
+  /// two Ts, two Ss -- and is all a screen reader would otherwise say.
+  final String dayName;
+
   final bool selected;
   final bool busy;
   final VoidCallback? onTap;
@@ -96,33 +112,51 @@ class TrainingDayCell extends StatelessWidget {
   Widget build(BuildContext context) {
     final t = context.fs;
 
-    return InkWell(
+    // One button per day, named in full, with its ticked state as the
+    // selected flag rather than a colour. The InkWell's own semantics are
+    // replaced so the letter is not read on top of the name.
+    return Semantics(
+      container: true,
+      button: true,
+      enabled: onTap != null,
+      selected: selected,
+      label: dayName,
+      value: busy ? 'Saving' : null,
       onTap: onTap,
-      borderRadius: BorderRadius.circular(8),
-      child: Container(
-        height: 34,
-        alignment: Alignment.center,
-        decoration: BoxDecoration(
-          color: selected ? t.accent : t.surface2,
-          borderRadius: BorderRadius.circular(8),
+      excludeSemantics: true,
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(8),
+        // 48 dp tall to touch, 34 dp tall to see: the padding keeps the
+        // row's look while giving the thumb the minimum target.
+        child: Padding(
+          padding: const EdgeInsets.symmetric(vertical: 7),
+          child: Container(
+            height: 34,
+            alignment: Alignment.center,
+            decoration: BoxDecoration(
+              color: selected ? t.accent : t.surface2,
+              borderRadius: BorderRadius.circular(8),
+            ),
+            child: busy
+                ? SizedBox(
+                    width: 12,
+                    height: 12,
+                    child: CircularProgressIndicator(
+                      strokeWidth: 2,
+                      color: selected ? t.onAccent : t.text3,
+                    ),
+                  )
+                : Text(
+                    label,
+                    style: TextStyle(
+                      fontSize: 12,
+                      fontWeight: FontWeight.w600,
+                      color: selected ? t.onAccent : t.text2,
+                    ),
+                  ),
+          ),
         ),
-        child: busy
-            ? SizedBox(
-                width: 12,
-                height: 12,
-                child: CircularProgressIndicator(
-                  strokeWidth: 2,
-                  color: selected ? t.onAccent : t.text3,
-                ),
-              )
-            : Text(
-                label,
-                style: TextStyle(
-                  fontSize: 12,
-                  fontWeight: FontWeight.w600,
-                  color: selected ? t.onAccent : t.text3,
-                ),
-              ),
       ),
     );
   }

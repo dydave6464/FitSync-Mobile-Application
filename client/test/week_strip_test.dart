@@ -637,4 +637,137 @@ void main() {
 
     expect(find.textContaining('2 exercises'), findsOneWidget);
   });
+
+  group('screen readers and colour-blind users', () {
+    // Tuesday 8 Sep 2026, Monday trained, Wednesday chosen and still to come,
+    // Thursday not chosen, and last week's Monday absent.
+    Future<void> pumpWeek(WidgetTester tester) => tester.pumpWidget(
+      _host(
+        WeekStrip(
+          daysPerWeek: 3,
+          completedDates: const {'2026-09-07'},
+          today: DateTime(2026, 9, 9), // a Wednesday
+          trainingDays: const [1, 2, 3, 5],
+        ),
+      ),
+    );
+
+    testWidgets('each day is announced once, in words, with its state', (
+      tester,
+    ) async {
+      final handle = tester.ensureSemantics();
+      await pumpWeek(tester);
+
+      expect(find.bySemanticsLabel('Monday, workout done'), findsOneWidget);
+      expect(find.bySemanticsLabel('Tuesday, workout missed'), findsOneWidget);
+      expect(
+        find.bySemanticsLabel('Wednesday, today, workout planned'),
+        findsOneWidget,
+      );
+      expect(find.bySemanticsLabel('Thursday, rest day'), findsOneWidget);
+      expect(find.bySemanticsLabel('Friday, workout planned'), findsOneWidget);
+      // The bare letters are folded into the day's label, not read as well.
+      expect(find.bySemanticsLabel('M'), findsNothing);
+      handle.dispose();
+    });
+
+    testWidgets('a day trained today says both', (tester) async {
+      final handle = tester.ensureSemantics();
+      await tester.pumpWidget(
+        _host(
+          WeekStrip(
+            daysPerWeek: 3,
+            completedDates: const {'2026-09-09'},
+            today: DateTime(2026, 9, 9),
+          ),
+        ),
+      );
+
+      expect(
+        find.bySemanticsLabel('Wednesday, today, workout done'),
+        findsOneWidget,
+      );
+      handle.dispose();
+    });
+
+    testWidgets('a done day carries a check mark, not only a colour', (
+      tester,
+    ) async {
+      await pumpWeek(tester);
+
+      Finder checkIn(int weekday) => find.descendant(
+        of: find.byKey(Key('day.$weekday')),
+        matching: find.byKey(const Key('day.check')),
+      );
+      expect(checkIn(1), findsOneWidget);
+      expect(checkIn(2), findsNothing);
+      expect(checkIn(3), findsNothing);
+    });
+
+    testWidgets('a missed day is a ring, a planned day a solid dot', (
+      tester,
+    ) async {
+      await pumpWeek(tester);
+
+      BoxDecoration dot(int weekday) =>
+          tester
+                  .widget<DecoratedBox>(
+                    find.descendant(
+                      of: find.byKey(Key('day.$weekday')),
+                      matching: find.byKey(const Key('day.dot')),
+                    ),
+                  )
+                  .decoration
+              as BoxDecoration;
+
+      expect(dot(2).border, isNotNull, reason: 'missed is hollow');
+      expect(dot(5).border, isNull, reason: 'planned is filled');
+    });
+
+    testWidgets('today is outlined, not only filled', (tester) async {
+      await pumpWeek(tester);
+
+      double outline(int weekday) =>
+          ((tester
+                              .widget<Container>(
+                                find.descendant(
+                                  of: find.byKey(Key('day.$weekday')),
+                                  matching: find.byKey(const Key('day.box')),
+                                ),
+                              )
+                              .decoration!
+                          as BoxDecoration)
+                      .border!
+                  as Border)
+              .top
+              .width;
+
+      expect(outline(3), greaterThan(outline(2)));
+    });
+
+    testWidgets('fits a 320 dp screen at 2x text', (tester) async {
+      tester.view.physicalSize = const Size(320, 640);
+      tester.view.devicePixelRatio = 1;
+      addTearDown(tester.view.reset);
+
+      await tester.pumpWidget(
+        MediaQuery(
+          data: const MediaQueryData(
+            size: Size(320, 640),
+            textScaler: TextScaler.linear(2),
+          ),
+          child: _host(
+            WeekStrip(
+              daysPerWeek: 3,
+              completedDates: const {'2026-09-07', '2026-09-09'},
+              today: DateTime(2026, 9, 9),
+              trainingDays: const [1, 2, 3, 5],
+            ),
+          ),
+        ),
+      );
+
+      expect(tester.takeException(), isNull);
+    });
+  });
 }

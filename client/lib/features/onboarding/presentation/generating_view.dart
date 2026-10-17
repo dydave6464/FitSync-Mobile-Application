@@ -13,26 +13,28 @@ import '../../../core/widgets/fs_kit.dart';
 /// doing something.
 enum GeneratingPace {
   /// Once, at the end of onboarding, where the wait is the product
-  /// introducing itself.
+  /// introducing itself. About three seconds in all: long enough for each
+  /// tick to be seen, short enough not to read as the app being slow, which
+  /// is how the earlier six to seven seconds came across.
   onboarding(
     revealAt: [
+      Duration(milliseconds: 700),
       Duration(milliseconds: 1500),
-      Duration(milliseconds: 3500),
-      Duration(milliseconds: 5500),
+      Duration(milliseconds: 2300),
     ],
-    tail: Duration(milliseconds: 1200),
+    tail: Duration(milliseconds: 700),
   ),
 
   /// From the generator, which a user may run repeatedly while tuning a
-  /// split. Roughly half, because the same seven seconds that reassure once
-  /// grate on the fourth attempt.
+  /// split. Quicker than onboarding, because a wait that reassures once
+  /// grates on the fourth attempt.
   regenerate(
     revealAt: [
-      Duration(milliseconds: 800),
-      Duration(milliseconds: 1800),
-      Duration(milliseconds: 2800),
+      Duration(milliseconds: 500),
+      Duration(milliseconds: 1000),
+      Duration(milliseconds: 1500),
     ],
-    tail: Duration(milliseconds: 600),
+    tail: Duration(milliseconds: 500),
   );
 
   const GeneratingPace({required this.revealAt, required this.tail});
@@ -73,7 +75,9 @@ enum GeneratingPace {
 /// Mirrors the prototype's generating artboard (`ScreenOnbInjury` rendered
 /// with `generating`), with two deliberate departures from it:
 ///
-/// * the ring is indeterminate, because the server reports no progress; and
+/// * the ring is indeterminate, because the server reports no progress --
+///   and drawn still under Reduce Motion, where a spinner is exactly the
+///   kind of endless movement the setting asks to be spared; and
 /// * no row ticks before the work it describes has finished. The prototype
 ///   ticks three rows on a schedule and hardcodes "Avoiding lower-back load"
 ///   for a user whose injuries it cannot know.
@@ -167,56 +171,113 @@ class _GeneratingViewState extends State<GeneratingView> {
   Widget build(BuildContext context) {
     final t = context.fs;
     final avoiding = widget.avoiding;
+    final still = MediaQuery.disableAnimationsOf(context);
+    final icon = Icon(Icons.auto_awesome, size: 34, color: t.accent);
 
     return PopScope(
       canPop: widget.canPop,
       child: Scaffold(
         backgroundColor: t.bg,
         body: SafeArea(
-          child: Center(
-            child: Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 32),
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  FsRing(
-                    child: Icon(Icons.auto_awesome, size: 34, color: t.accent),
+          // Centred while it fits, scrolling once it does not: at large text
+          // on a narrow phone the checklist runs taller than the screen.
+          child: LayoutBuilder(
+            builder: (context, constraints) => SingleChildScrollView(
+              padding: const EdgeInsets.symmetric(horizontal: 32, vertical: 24),
+              child: ConstrainedBox(
+                constraints: BoxConstraints(
+                  minHeight: (constraints.maxHeight - 48).clamp(
+                    0,
+                    double.infinity,
                   ),
-                  const SizedBox(height: 28),
-                  Text(
-                    widget.title,
-                    style: Theme.of(context).textTheme.headlineSmall,
-                    textAlign: TextAlign.center,
-                  ),
-                  const SizedBox(height: 10),
-                  Text(
-                    widget.subtitle,
-                    textAlign: TextAlign.center,
-                    style: TextStyle(fontSize: 13, height: 1.5, color: t.text2),
-                  ),
-                  const SizedBox(height: 28),
-                  _CheckRow(
-                    id: 'lead',
-                    label: widget.leadLabel,
-                    done: widget.leadDone && _open > 0,
-                  ),
-                  _CheckRow(
-                    id: 'avoiding',
-                    label: avoiding.isEmpty
-                        ? 'No injuries to work around'
-                        : 'Avoiding ${avoiding.join(', ')}',
-                    done: widget.leadDone && _open > 1,
-                  ),
-                  _CheckRow(
-                    id: 'exercises',
-                    label: 'Choosing your exercises',
-                    done: widget.planReady && _open > 2,
-                  ),
-                ],
+                ),
+                child: Column(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    still ? _StillRing(child: icon) : FsRing(child: icon),
+                    const SizedBox(height: 28),
+                    Text(
+                      widget.title,
+                      style: Theme.of(context).textTheme.headlineSmall,
+                      textAlign: TextAlign.center,
+                    ),
+                    const SizedBox(height: 10),
+                    Text(
+                      widget.subtitle,
+                      textAlign: TextAlign.center,
+                      style: TextStyle(
+                        fontSize: 13,
+                        height: 1.5,
+                        color: t.text2,
+                      ),
+                    ),
+                    const SizedBox(height: 28),
+                    _CheckRow(
+                      id: 'lead',
+                      label: widget.leadLabel,
+                      done: widget.leadDone && _open > 0,
+                    ),
+                    _CheckRow(
+                      id: 'avoiding',
+                      label: avoiding.isEmpty
+                          ? 'No injuries to work around'
+                          : 'Avoiding ${avoiding.join(', ')}',
+                      done: widget.leadDone && _open > 1,
+                    ),
+                    _CheckRow(
+                      id: 'exercises',
+                      label: 'Choosing your exercises',
+                      done: widget.planReady && _open > 2,
+                    ),
+                  ],
+                ),
               ),
             ),
           ),
         ),
+      ),
+    );
+  }
+}
+
+/// [FsRing] at rest: the same size, stroke and colours, drawn as a fixed arc
+/// rather than a spinner. Determinate, so nothing about it animates.
+class _StillRing extends StatelessWidget {
+  const _StillRing({required this.child});
+
+  static const _size = 120.0;
+  static const _stroke = 10.0;
+
+  final Widget child;
+
+  @override
+  Widget build(BuildContext context) {
+    final t = context.fs;
+
+    return SizedBox(
+      key: const Key('gen.ring.still'),
+      width: _size,
+      height: _size,
+      child: Stack(
+        alignment: Alignment.center,
+        children: [
+          SizedBox(
+            width: _size,
+            height: _size,
+            // A valued indicator reports itself as a progress bar at 25 %.
+            // The server reports no progress, so this arc is only a drawing
+            // and is kept out of the semantics tree.
+            child: ExcludeSemantics(
+              child: CircularProgressIndicator(
+                value: 0.25,
+                strokeWidth: _stroke,
+                color: t.accent,
+                backgroundColor: t.surface2,
+              ),
+            ),
+          ),
+          child,
+        ],
       ),
     );
   }
@@ -244,7 +305,9 @@ class _CheckRow extends StatelessWidget {
         mainAxisSize: MainAxisSize.min,
         children: [
           AnimatedContainer(
-            duration: const Duration(milliseconds: 220),
+            duration: MediaQuery.disableAnimationsOf(context)
+                ? Duration.zero
+                : const Duration(milliseconds: 220),
             width: 18,
             height: 18,
             decoration: BoxDecoration(

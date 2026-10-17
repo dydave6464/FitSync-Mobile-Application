@@ -87,6 +87,17 @@ int? _ageFrom(String? iso) {
   return now.year - born.year - (hadBirthday ? 0 : 1);
 }
 
+/// The body weight range `server/src/db/body-weight.js` enforces
+/// (`MIN_KG`/`MAX_KG`), the same pair the log-weight sheet checks against.
+/// The hint under the weight card states it; this step does not invent a
+/// stricter one.
+const _minKg = 20.0;
+const _maxKg = 500.0;
+
+/// Height has no range of its own: `server/src/routes/profile.js` holds it
+/// to the shared numeric check, above 0 and below 1000.
+const _heightHint = 'Under 1,000 cm';
+
 /// 2300 as `2,300`. One separator is enough: nobody's daily target reaches
 /// seven figures.
 String _grouped(int value) {
@@ -239,6 +250,17 @@ class _AboutStepState extends State<AboutStep> {
     _emit();
   }
 
+  /// The space between the Height and Weight cards when they share a row.
+  static const _pairGap = 10.0;
+
+  /// How wide the Weight card must be before its number, unit and kg/lb
+  /// toggle fit on one line. The toggle and unit grow with the text size and
+  /// the card's padding does not; measured, the card needs about 161dp at 2x
+  /// text and 135dp at 1.5x, and this keeps a few dp in hand. Below it the
+  /// cards stack, so the row cannot overflow on a narrow phone at large text.
+  static double _weightCardMinWidth(TextScaler scaler) =>
+      64 + 52 * scaler.scale(12) / 12;
+
   Widget _statField(
     Key key,
     TextEditingController controller,
@@ -253,6 +275,17 @@ class _AboutStepState extends State<AboutStep> {
     controller: controller,
     accent: accent,
     unitControl: unitControl,
+  );
+
+  /// What a measurement card accepts, in [FsTokens.text2] so it stays
+  /// readable rather than the faint tertiary grey.
+  Widget _rangeHint(Key key, String text) => Padding(
+    padding: const EdgeInsets.only(top: 6, left: 2),
+    child: Text(
+      text,
+      key: key,
+      style: TextStyle(fontSize: 11, color: context.fs.text2, height: 1.35),
+    ),
   );
 
   @override
@@ -327,29 +360,55 @@ class _AboutStepState extends State<AboutStep> {
           ),
         ),
         const SizedBox(height: 14),
-        Row(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Expanded(
-              child: _statField(const Key('heightCm'), _height, 'Height', 'cm'),
-            ),
-            const SizedBox(width: 10),
-            Expanded(
-              child: _statField(
-                const Key('weightKg'),
-                _weight,
-                'Weight',
-                widget.unit.api,
-                // Only this card carries the toggle. Goal weight follows it,
-                // and two identical switches side by side would be noise
-                // rather than a second choice.
-                unitControl: FsUnitToggle(
-                  value: widget.unit,
-                  onChanged: widget.onUnitChanged,
+        LayoutBuilder(
+          builder: (context, constraints) {
+            final height = Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                _statField(const Key('heightCm'), _height, 'Height', 'cm'),
+                _rangeHint(const Key('heightCm.hint'), _heightHint),
+              ],
+            );
+            final weight = Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                _statField(
+                  const Key('weightKg'),
+                  _weight,
+                  'Weight',
+                  widget.unit.api,
+                  // Only this card carries the toggle. Goal weight follows
+                  // it, and two identical switches side by side would be
+                  // noise rather than a second choice.
+                  unitControl: FsUnitToggle(
+                    value: widget.unit,
+                    onChanged: widget.onUnitChanged,
+                  ),
                 ),
-              ),
-            ),
-          ],
+                _rangeHint(
+                  const Key('weightKg.hint'),
+                  '${formatWeight(_minKg, widget.unit)}\u2013'
+                  '${formatWeight(_maxKg, widget.unit)} ${widget.unit.api}',
+                ),
+              ],
+            );
+
+            if ((constraints.maxWidth - _pairGap) / 2 <
+                _weightCardMinWidth(MediaQuery.textScalerOf(context))) {
+              return Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [height, const SizedBox(height: 10), weight],
+              );
+            }
+            return Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Expanded(child: height),
+                const SizedBox(width: _pairGap),
+                Expanded(child: weight),
+              ],
+            );
+          },
         ),
         const SizedBox(height: 10),
         _statField(
@@ -394,8 +453,11 @@ class _AboutStepState extends State<AboutStep> {
                 const SizedBox(width: 11),
                 Expanded(
                   child: Text(
-                    'Estimated daily target \u2248 ${_grouped(targets.kcal)} kcal'
-                    ' \u00b7 ${targets.proteinG}g protein',
+                    // Labelled as maintenance because that is what it is:
+                    // the estimate ignores the goal, which Nutrition then
+                    // applies, so its own figure differs from this one.
+                    'Estimated ${_grouped(targets.kcal)} kcal a day to '
+                    'maintain your weight \u00b7 ${targets.proteinG}g protein',
                     style: TextStyle(
                       fontSize: 11.5,
                       color: t.text,

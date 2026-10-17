@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import 'package:flutter/semantics.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 
@@ -120,6 +121,46 @@ Future<void> _pump(
   ),
 );
 
+/// The narrowest phone the app supports at the largest text it is tested
+/// with, so a test can prove nothing on the form overflows there.
+Future<void> _pumpSmallLargeText(WidgetTester tester, FakeAuthRepository repo) {
+  tester.view.devicePixelRatio = 2.0;
+  tester.view.physicalSize = const Size(320 * 2.0, 640 * 2.0);
+  addTearDown(tester.view.reset);
+  return tester.pumpWidget(
+    ProviderScope(
+      overrides: [
+        authRepositoryProvider.overrideWithValue(repo),
+        authControllerProvider.overrideWith(() => RecordingAuthController([])),
+      ],
+      child: MaterialApp(
+        builder: (context, child) => MediaQuery(
+          data: MediaQuery.of(context)
+              .copyWith(textScaler: const TextScaler.linear(2.0)),
+          child: child!,
+        ),
+        home: const SignInScreen(),
+      ),
+    ),
+  );
+}
+
+/// Scrolls to a control before tapping it: with labels on every field the
+/// sign-up form is taller than the default test screen.
+Future<void> _tapKey(WidgetTester tester, String key) async {
+  await tester.ensureVisible(find.byKey(Key(key)));
+  await tester.pumpAndSettle();
+  await tester.tap(find.byKey(Key(key)));
+}
+
+Future<void> _toRegister(WidgetTester tester) async {
+  await _tapKey(tester, 'toggleMode');
+  await tester.pumpAndSettle();
+}
+
+TextField _field(WidgetTester tester, String key) =>
+    tester.widget<TextField>(find.byKey(Key(key)));
+
 Future<void> _fillAndSubmit(
   WidgetTester tester, {
   String email = 'juan@example.com',
@@ -127,7 +168,7 @@ Future<void> _fillAndSubmit(
 }) async {
   await tester.enterText(find.byKey(const Key('email')), email);
   await tester.enterText(find.byKey(const Key('password')), password);
-  await tester.tap(find.byKey(const Key('submit')));
+  await _tapKey(tester, 'submit');
 }
 
 void main() {
@@ -146,7 +187,7 @@ void main() {
     await _pump(tester, repo);
     await tester.pumpAndSettle();
 
-    await tester.tap(find.byKey(const Key('submit')));
+    await _tapKey(tester, 'submit');
     await tester.pumpAndSettle();
 
     expect(find.text('Enter your email.'), findsOneWidget);
@@ -205,8 +246,7 @@ void main() {
     await _pump(tester, repo);
     await tester.pumpAndSettle();
 
-    await tester.tap(find.byKey(const Key('toggleMode')));
-    await tester.pumpAndSettle();
+    await _toRegister(tester);
 
     await tester.enterText(find.byKey(const Key('fullName')), 'Juan Dela Cruz');
     await _fillAndSubmit(tester);
@@ -240,12 +280,13 @@ void main() {
     await _pump(tester, repo);
     await tester.pumpAndSettle();
 
-    await tester.tap(find.byKey(const Key('toggleMode')));
-    await tester.pumpAndSettle();
+    await _toRegister(tester);
     await tester.enterText(find.byKey(const Key('fullName')), 'Juan Dela Cruz');
 
     await _fillAndSubmit(tester);
     await tester.pump();
+    // A plain tap: the first one already scrolled the button into view, and
+    // settling would wait forever on the busy spinner.
     await tester.tap(find.byKey(const Key('submit')));
     await tester.pump();
 
@@ -267,8 +308,7 @@ void main() {
     await _pump(tester, repo, seen: seen);
     await tester.pumpAndSettle();
 
-    await tester.tap(find.byKey(const Key('toggleMode')));
-    await tester.pumpAndSettle();
+    await _toRegister(tester);
     await tester.enterText(find.byKey(const Key('fullName')), 'Juan Dela Cruz');
     await _fillAndSubmit(tester);
     await tester.pumpAndSettle();
@@ -338,9 +378,203 @@ void main() {
     await _pump(tester, FakeAuthRepository());
     await tester.pumpAndSettle();
 
-    await tester.tap(find.byKey(const Key('toggleMode')));
-    await tester.pumpAndSettle();
+    await _toRegister(tester);
 
     expect(find.byKey(const Key('forgotPassword')), findsNothing);
+  });
+
+  testWidgets('every field has a visible label on sign in and sign up', (
+    tester,
+  ) async {
+    await _pump(tester, FakeAuthRepository());
+    await tester.pumpAndSettle();
+
+    expect(find.text('Email'), findsOneWidget);
+    expect(find.text('Password'), findsOneWidget);
+    expect(find.text('Full name'), findsNothing);
+
+    await _toRegister(tester);
+
+    expect(find.text('Full name'), findsOneWidget);
+    expect(find.text('Email'), findsOneWidget);
+    expect(find.text('Password'), findsOneWidget);
+  });
+
+  testWidgets('a screen reader hears each label on its field', (tester) async {
+    final semantics = tester.ensureSemantics();
+    await _pump(tester, FakeAuthRepository());
+    await tester.pumpAndSettle();
+    await _toRegister(tester);
+
+    for (final (key, label) in [
+      ('fullName', 'Full name'),
+      ('email', 'Email'),
+      ('password', 'Password'),
+    ]) {
+      expect(
+        tester.getSemantics(find.byKey(Key(key))).label,
+        contains(label),
+        reason: 'the $key field must be announced by its label',
+      );
+    }
+    semantics.dispose();
+  });
+
+  testWidgets('autofill hints match the mode', (tester) async {
+    await _pump(tester, FakeAuthRepository());
+    await tester.pumpAndSettle();
+
+    expect(find.byType(AutofillGroup), findsOneWidget);
+    expect(_field(tester, 'email').autofillHints, [AutofillHints.email]);
+    expect(_field(tester, 'password').autofillHints, [AutofillHints.password]);
+
+    await _toRegister(tester);
+
+    expect(_field(tester, 'fullName').autofillHints, [AutofillHints.name]);
+    expect(_field(tester, 'email').autofillHints, [AutofillHints.email]);
+    expect(
+      _field(tester, 'password').autofillHints,
+      [AutofillHints.newPassword],
+      reason: 'a new password lets the manager offer a strong one and save it',
+    );
+  });
+
+  testWidgets('the eye button shows and hides the password', (tester) async {
+    await _pump(tester, FakeAuthRepository());
+    await tester.pumpAndSettle();
+
+    expect(_field(tester, 'password').obscureText, isTrue);
+    expect(find.byTooltip('Show password'), findsOneWidget);
+    expect(
+      tester.getSize(find.byKey(const Key('togglePassword'))),
+      greaterThanOrEqualTo(const Size(48, 48)),
+    );
+
+    await tester.tap(find.byKey(const Key('togglePassword')));
+    await tester.pumpAndSettle();
+
+    expect(_field(tester, 'password').obscureText, isFalse);
+    expect(find.byTooltip('Hide password'), findsOneWidget);
+    expect(find.byTooltip('Show password'), findsNothing);
+
+    await tester.tap(find.byKey(const Key('togglePassword')));
+    await tester.pumpAndSettle();
+
+    expect(_field(tester, 'password').obscureText, isTrue);
+    expect(find.byTooltip('Show password'), findsOneWidget);
+  });
+
+  testWidgets('a screen reader reaches the eye as its own button', (
+    tester,
+  ) async {
+    final semantics = tester.ensureSemantics();
+    await _pump(tester, FakeAuthRepository());
+    await tester.pumpAndSettle();
+
+    final eye = find.byKey(const Key('togglePassword'));
+    final eyeNode = tester.getSemantics(eye);
+    expect(
+      eyeNode.id,
+      isNot(tester.getSemantics(find.byKey(const Key('password'))).id),
+      reason: 'merged into the field, the eye cannot be reached or used',
+    );
+    expect(
+      eyeNode,
+      isSemantics(isButton: true, hasTapAction: true, tooltip: 'Show password'),
+    );
+
+    // The tap a screen reader sends, not a pointer tap on the widget.
+    eyeNode.owner!.performAction(eyeNode.id, SemanticsAction.tap);
+    await tester.pumpAndSettle();
+
+    expect(_field(tester, 'password').obscureText, isFalse);
+    expect(tester.getSemantics(eye).tooltip, 'Hide password');
+    semantics.dispose();
+  });
+
+  testWidgets('the password rule shows on sign up only', (tester) async {
+    await _pump(tester, FakeAuthRepository());
+    await tester.pumpAndSettle();
+
+    expect(find.text('At least 8 characters'), findsNothing);
+
+    await _toRegister(tester);
+    expect(find.text('At least 8 characters'), findsOneWidget);
+
+    await _toRegister(tester);
+    expect(find.text('At least 8 characters'), findsNothing);
+  });
+
+  testWidgets('a validation message sits under the field it is about', (
+    tester,
+  ) async {
+    await _pump(tester, FakeAuthRepository());
+    await tester.pumpAndSettle();
+    await _toRegister(tester);
+
+    // Email and password filled, name left empty: the name is the problem.
+    await _fillAndSubmit(tester);
+    await tester.pumpAndSettle();
+
+    final message = find.text('Enter your name.');
+    expect(message, findsOneWidget);
+    final name = tester.getRect(find.byKey(const Key('fullName')));
+    final email = tester.getRect(find.byKey(const Key('email')));
+    final top = tester.getRect(message).top;
+    expect(top, greaterThanOrEqualTo(name.bottom));
+    expect(top, lessThan(email.top));
+
+    // An empty password: the message belongs under the password field.
+    await tester.enterText(find.byKey(const Key('fullName')), 'Juan');
+    await tester.enterText(find.byKey(const Key('password')), '');
+    await _tapKey(tester, 'submit');
+    await tester.pumpAndSettle();
+
+    final pwMessage = find.text('Enter your password.');
+    expect(pwMessage, findsOneWidget);
+    expect(find.text('Enter your name.'), findsNothing);
+    final password = tester.getRect(find.byKey(const Key('password')));
+    final submit = tester.getRect(find.byKey(const Key('submit')));
+    expect(
+      tester.getRect(pwMessage).top,
+      greaterThanOrEqualTo(password.bottom),
+    );
+    expect(tester.getRect(pwMessage).bottom, lessThan(submit.top));
+  });
+
+  testWidgets('a bad email is flagged under the email field', (tester) async {
+    await _pump(tester, FakeAuthRepository());
+    await tester.pumpAndSettle();
+
+    await _fillAndSubmit(tester, email: 'juan');
+    await tester.pumpAndSettle();
+
+    final message = find.text('That does not look like an email.');
+    expect(message, findsOneWidget);
+    final email = tester.getRect(find.byKey(const Key('email')));
+    final password = tester.getRect(find.byKey(const Key('password')));
+    expect(tester.getRect(message).top, greaterThanOrEqualTo(email.bottom));
+    expect(tester.getRect(message).bottom, lessThan(password.top));
+  });
+
+  testWidgets('fits 320 dp at 2.0x text in both modes without overflow', (
+    tester,
+  ) async {
+    await _pumpSmallLargeText(tester, FakeAuthRepository());
+    await tester.pumpAndSettle();
+    expect(tester.takeException(), isNull);
+
+    // Sign up with every message showing is the tallest, widest the form gets.
+    await tester.ensureVisible(find.byKey(const Key('toggleMode')));
+    await tester.pumpAndSettle();
+    await _toRegister(tester);
+    await tester.ensureVisible(find.byKey(const Key('submit')));
+    await tester.pumpAndSettle();
+    await _tapKey(tester, 'submit');
+    await tester.pumpAndSettle();
+
+    expect(find.text('Enter your email.'), findsOneWidget);
+    expect(find.text('At least 8 characters'), findsOneWidget);
+    expect(tester.takeException(), isNull);
   });
 }

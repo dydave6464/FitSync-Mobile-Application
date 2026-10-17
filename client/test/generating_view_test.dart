@@ -131,13 +131,13 @@ void main() {
     await _close(tester);
   });
 
-  testWidgets('stays up long enough to be read', (tester) async {
-    // The whole round trip can finish in under a second. Six to seven seconds
-    // is the floor the screen is built around: the last row cannot tick before
-    // 5.5s, and it is held afterwards so its tick is seen.
+  testWidgets('stays up about three seconds', (tester) async {
+    // The whole round trip can finish in under a second, so the screen holds
+    // itself long enough for three ticks to be seen -- but no longer: at six
+    // to seven seconds it read as the app being slow, not careful.
     expect(
       GeneratingPace.onboarding.minimumRun.inMilliseconds,
-      greaterThanOrEqualTo(6000),
+      inInclusiveRange(2500, 3500),
     );
     expect(
       GeneratingPace.onboarding.minimumRun,
@@ -145,12 +145,12 @@ void main() {
     );
   });
 
-  testWidgets('the regenerate pace is roughly half the onboarding pace', (
+  testWidgets('the regenerate pace is quicker than the onboarding pace', (
     tester,
   ) async {
     // Onboarding happens once and the wait is the product introducing itself.
     // Regenerating is something a user does repeatedly while tuning a split,
-    // where seven seconds every time grates.
+    // where the same wait every time grates.
     expect(
       GeneratingPace.regenerate.minimumRun.inMilliseconds,
       lessThan(GeneratingPace.onboarding.minimumRun.inMilliseconds),
@@ -160,6 +160,81 @@ void main() {
       GeneratingPace.regenerate.revealAt.last + GeneratingPace.regenerate.tail,
     );
     expect(GeneratingPace.regenerate.revealAt, hasLength(3));
+  });
+
+  testWidgets('scrolls rather than overflowing at 320dp and 2x text', (
+    tester,
+  ) async {
+    tester.view.physicalSize = const Size(320, 480);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.reset);
+    await tester.pumpWidget(
+      _host(
+        MediaQuery.withClampedTextScaling(
+          minScaleFactor: 2,
+          maxScaleFactor: 2,
+          child: const GeneratingView(
+            title: 'Building your plan…',
+            subtitle:
+                'Matching exercises to your goals, equipment, '
+                'and injury history.',
+            leadLabel: 'Profile saved',
+            leadDone: true,
+            avoiding: ['Lower back', 'Right knee', 'Left shoulder'],
+            planReady: false,
+          ),
+        ),
+      ),
+    );
+
+    expect(tester.takeException(), isNull);
+    expect(find.byType(Scrollable), findsOneWidget);
+    await tester.drag(find.byType(Scrollable), const Offset(0, -400));
+    await tester.pump();
+    expect(find.text('Choosing your exercises'), findsOneWidget);
+    await _close(tester);
+  });
+
+  testWidgets('holds the ring still under Reduce Motion', (tester) async {
+    final semantics = tester.ensureSemantics();
+    await tester.pumpWidget(
+      _host(
+        const MediaQuery(
+          data: MediaQueryData(disableAnimations: true),
+          child: GeneratingView(
+            title: 'Building your plan…',
+            subtitle: 'x',
+            leadLabel: 'Profile saved',
+            leadDone: false,
+            avoiding: [],
+            planReady: false,
+          ),
+        ),
+      ),
+    );
+
+    // A determinate indicator draws once; an indeterminate one is a spinner.
+    final indicators = tester.widgetList<CircularProgressIndicator>(
+      find.byType(CircularProgressIndicator),
+    );
+    expect(indicators, isNotEmpty);
+    expect(indicators.every((i) => i.value != null), isTrue);
+    expect(tester.hasRunningAnimations, isFalse);
+    // The still ring's quarter arc is drawing, not a reading: the server
+    // reports no progress, so a screen reader must not hear "25 percent".
+    expect(find.semantics.byValue('25'), findsNothing);
+    await _close(tester);
+    semantics.dispose();
+  });
+
+  testWidgets('spins the ring when motion is allowed', (tester) async {
+    await _pump(tester);
+
+    final indicator = tester.widget<CircularProgressIndicator>(
+      find.byType(CircularProgressIndicator),
+    );
+    expect(indicator.value, isNull);
+    await _close(tester);
   });
 
   testWidgets('the lead row states the split and the schedule', (tester) async {
@@ -235,7 +310,7 @@ void main() {
     expect(
       find.byKey(const Key('gen.avoiding.done')),
       findsNothing,
-      reason: 'the onboarding slots would still be shut at 0.9s',
+      reason: 'the second slot is still shut just after the first',
     );
 
     await tester.pump(GeneratingPace.regenerate.minimumRun * 2);

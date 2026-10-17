@@ -29,11 +29,16 @@ class WeekDayCell extends StatelessWidget {
   const WeekDayCell({
     super.key,
     required this.label,
+    required this.dayName,
     required this.mark,
     required this.isToday,
   });
 
   final String label;
+
+  /// The full weekday name, e.g. "Monday". A screen reader would otherwise
+  /// read the single letter, and "T" or "S" names two days each.
+  final String dayName;
 
   /// What this day is -- trained, missed, planned, or no mark at all. See
   /// [DayMark] and [WeekStrip] for why there is no "prescribed" state.
@@ -41,51 +46,101 @@ class WeekDayCell extends StatelessWidget {
 
   final bool isToday;
 
+  /// What a screen reader says for the cell. The dot's colour is the only
+  /// other place the state is told, and colour is the one thing a screen
+  /// reader cannot pass on.
+  String get semanticsLabel => [
+    dayName,
+    if (isToday) 'today',
+    switch (mark) {
+      DayMark.trained => 'workout done',
+      DayMark.missed => 'workout missed',
+      DayMark.planned => 'workout planned',
+      DayMark.none => 'rest day',
+    },
+  ].join(', ');
+
   @override
   Widget build(BuildContext context) {
     final t = context.fs;
 
-    return Expanded(
-      child: Container(
-        margin: const EdgeInsets.symmetric(horizontal: 3),
-        padding: const EdgeInsets.symmetric(vertical: 9),
+    // Every state below also differs in shape, not only in colour, for anyone
+    // who cannot tell the accent from the grey or the red: done carries a
+    // check, missed is a hollow ring, planned a solid dot, and today wears a
+    // heavier outline on top of its fill.
+    final Widget marker = switch (mark) {
+      DayMark.trained => DecoratedBox(
+        key: const Key('day.dot'),
         decoration: BoxDecoration(
-          color: isToday ? t.accent : t.surface,
-          borderRadius: BorderRadius.circular(FsRadius.md),
-          border: Border.all(color: isToday ? Colors.transparent : t.line),
+          shape: BoxShape.circle,
+          color: isToday ? t.onAccent : t.accent,
         ),
-        child: Column(
-          children: [
-            Text(
-              label,
-              style: TextStyle(
-                fontSize: 10,
-                fontWeight: FontWeight.w600,
-                color: isToday ? t.onAccent : t.text3,
-              ),
+        child: Icon(
+          Icons.check,
+          key: const Key('day.check'),
+          size: 8,
+          color: isToday ? t.accent : t.onAccent,
+        ),
+      ),
+      _ => Center(
+        child: SizedBox(
+          height: 6,
+          width: 6,
+          child: DecoratedBox(
+            // Keyed because the cell's own Container renders a DecoratedBox
+            // too, and a test reading "the dot's colour" must not be able to
+            // pick up the background by accident.
+            key: const Key('day.dot'),
+            decoration: BoxDecoration(
+              shape: BoxShape.circle,
+              color: switch (mark) {
+                DayMark.missed => Colors.transparent,
+                DayMark.planned =>
+                  isToday ? t.onAccent.withValues(alpha: 0.45) : t.line2,
+                _ => Colors.transparent,
+              },
+              border: mark == DayMark.missed
+                  ? Border.all(color: t.red, width: 1.5)
+                  : null,
             ),
-            const SizedBox(height: 6),
-            SizedBox(
-              height: 6,
-              width: 6,
-              child: DecoratedBox(
-                // Keyed because the cell's own Container renders a
-                // DecoratedBox too, and a test reading "the dot's colour" must
-                // not be able to pick up the background by accident.
-                key: const Key('day.dot'),
-                decoration: BoxDecoration(
-                  shape: BoxShape.circle,
-                  color: switch (mark) {
-                    DayMark.trained => isToday ? t.onAccent : t.accent,
-                    DayMark.missed => t.red,
-                    DayMark.planned =>
-                      isToday ? t.onAccent.withValues(alpha: 0.45) : t.line2,
-                    DayMark.none => Colors.transparent,
-                  },
+          ),
+        ),
+      ),
+    };
+
+    return Expanded(
+      child: Semantics(
+        container: true,
+        label: semanticsLabel,
+        excludeSemantics: true,
+        child: Container(
+          key: const Key('day.box'),
+          margin: const EdgeInsets.symmetric(horizontal: 3),
+          padding: const EdgeInsets.symmetric(vertical: 9),
+          decoration: BoxDecoration(
+            color: isToday ? t.accent : t.surface,
+            borderRadius: BorderRadius.circular(FsRadius.md),
+            border: isToday
+                ? Border.all(color: t.text, width: 2)
+                : Border.all(color: t.line),
+          ),
+          child: Column(
+            children: [
+              Text(
+                label,
+                style: TextStyle(
+                  fontSize: 10,
+                  fontWeight: isToday ? FontWeight.w800 : FontWeight.w600,
+                  color: isToday ? t.onAccent : t.text2,
                 ),
               ),
-            ),
-          ],
+              const SizedBox(height: 2),
+              // Room for the check; the plain dots sit centred in it so a
+              // done day does not make its cell taller than the rest, and the
+              // smaller gap above keeps the cell its old height overall.
+              SizedBox(height: 10, width: 10, child: marker),
+            ],
+          ),
         ),
       ),
     );
@@ -137,6 +192,15 @@ class WeekStrip extends StatelessWidget {
   final List<int>? trainingDays;
 
   static const _labels = ['M', 'T', 'W', 'T', 'F', 'S', 'S'];
+  static const _dayNames = [
+    'Monday',
+    'Tuesday',
+    'Wednesday',
+    'Thursday',
+    'Friday',
+    'Saturday',
+    'Sunday',
+  ];
 
   /// The range `days_per_week` can meaningfully take. Outside it the column
   /// is not a target -- it is a bad row, and "1 of 0" renders that as a
@@ -236,6 +300,7 @@ class WeekStrip extends StatelessWidget {
               WeekDayCell(
                 key: Key('day.${offset + 1}'),
                 label: _labels[offset],
+                dayName: _dayNames[offset],
                 mark: markFor(offset + 1, date),
                 isToday: offset + 1 == today.weekday,
               ),
