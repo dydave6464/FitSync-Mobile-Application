@@ -972,6 +972,9 @@ class _SessionLoggerScreenState extends ConsumerState<SessionLoggerScreen>
               child: const Text('Keep it'),
             ),
             TextButton(
+              style: TextButton.styleFrom(
+                foregroundColor: dialogContext.fs.red,
+              ),
               onPressed: () => Navigator.of(dialogContext).pop(true),
               child: const Text('Replace it'),
             ),
@@ -994,6 +997,7 @@ class _SessionLoggerScreenState extends ConsumerState<SessionLoggerScreen>
             child: const Text('Keep going'),
           ),
           TextButton(
+            style: TextButton.styleFrom(foregroundColor: dialogContext.fs.red),
             onPressed: () => Navigator.of(dialogContext).pop(true),
             child: const Text('Discard'),
           ),
@@ -1063,6 +1067,7 @@ class _SessionLoggerScreenState extends ConsumerState<SessionLoggerScreen>
             child: const Text('Keep'),
           ),
           TextButton(
+            style: TextButton.styleFrom(foregroundColor: dialogContext.fs.red),
             onPressed: () => Navigator.of(dialogContext).pop(true),
             child: const Text('Restart'),
           ),

@@ -161,6 +161,9 @@ class _GeneratorScreenState extends ConsumerState<GeneratorScreen> {
               child: const Text('Keep my plan'),
             ),
             TextButton(
+              style: TextButton.styleFrom(
+                foregroundColor: dialogContext.fs.red,
+              ),
               onPressed: () => Navigator.of(dialogContext).pop(true),
               child: const Text('Replace it'),
             ),

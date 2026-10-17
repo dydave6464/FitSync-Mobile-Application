@@ -1,4 +1,5 @@
 import 'package:flutter/gestures.dart';
+import 'package:flutter/rendering.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -173,12 +174,47 @@ Future<ProviderContainer> _pump(
   return container;
 }
 
-ActiveSession _openWorkout() => ActiveSession(
+ActiveSession _openWorkout({
+  List<LoggedSet> sets = const [],
+  DateTime? startedAt,
+}) => ActiveSession(
   sessionId: 4,
   status: 'in_progress',
   sessionDate: '2026-09-14',
-  startedAt: DateTime.now(),
+  startedAt: startedAt ?? DateTime.now(),
+  sets: sets,
 );
+
+/// Two sets of the old workout's first exercise, so it has work to lose.
+const _twoLoggedSets = [
+  LoggedSet(exerciseId: 101, setNumber: 1, weightKg: 20, reps: 10),
+  LoggedSet(exerciseId: 101, setNumber: 2, weightKg: 20, reps: 10),
+];
+
+/// Taps Start with [open] in the way, so the question about it is showing.
+Future<FakeSessionRepository> _blockedBy(
+  WidgetTester tester,
+  ActiveSession open, {
+  List<ExerciseSummary> picks = const [_squat],
+}) async {
+  final sessions = FakeSessionRepository(existing: open);
+  await _pump(tester, picks: picks, sessions: sessions);
+  await tester.tap(_start());
+  await tester.pumpAndSettle();
+  return sessions;
+}
+
+FsButton _choice(WidgetTester tester, String name) =>
+    tester.widget<FsButton>(find.byKey(Key('blocked.$name')));
+
+/// The colour the label of the button under [button] is painted in.
+Color? _labelColor(WidgetTester tester, Finder button) => tester
+    .renderObject<RenderParagraph>(
+      find.descendant(of: button, matching: find.byType(RichText)).first,
+    )
+    .text
+    .style
+    ?.color;
 
 Finder _start() => find.byKey(const Key('review.start'));
 
@@ -360,77 +396,189 @@ void main() {
     expect(find.byType(SessionLoggerScreen), findsNothing);
   });
 
-  testWidgets('a workout already open is named rather than silently replaced', (
-    tester,
-  ) async {
-    // The server is idempotent here: it returns the running session and
-    // ignores the list, so opening the logger anyway would drop everything
-    // just picked and show a workout the user did not choose.
-    final sessions = FakeSessionRepository(existing: _openWorkout());
-    await _pump(tester, picks: const [_squat], sessions: sessions);
+  group('a workout already open', () {
+    testWidgets('is named rather than silently replaced', (tester) async {
+      // The server is idempotent here: it returns the running session and
+      // ignores the list, so opening the logger anyway would drop everything
+      // just picked and show a workout the user did not choose.
+      final sessions = await _blockedBy(tester, _openWorkout());
 
-    await tester.tap(_start());
-    await tester.pumpAndSettle();
+      expect(find.text('Your own workout'), findsOneWidget);
+      expect(sessions.startCalls, 0);
+      expect(find.byType(SessionLoggerScreen), findsNothing);
+    });
 
-    expect(find.textContaining('already have a workout open'), findsOneWidget);
-    expect(sessions.startCalls, 0);
-    expect(find.byType(SessionLoggerScreen), findsNothing);
-  });
+    testWidgets('says when it was opened', (tester) async {
+      await _blockedBy(
+        tester,
+        _openWorkout(
+          startedAt: DateTime.now().subtract(const Duration(hours: 2)),
+        ),
+      );
 
-  testWidgets('the workout in the way can be opened from the message', (
-    tester,
-  ) async {
-    final sessions = FakeSessionRepository(existing: _openWorkout());
-    await _pump(tester, picks: const [_squat], sessions: sessions);
+      expect(find.textContaining('opened 2 h ago'), findsOneWidget);
+    });
 
-    await tester.tap(_start());
-    await tester.pumpAndSettle();
-    await tester.tap(find.text('Open it'));
-    await tester.pumpAndSettle();
+    group('with nothing logged', () {
+      testWidgets('offers starting the new one as the highlighted choice', (
+        tester,
+      ) async {
+        // Nothing is lost by closing it: it is most often one left open by
+        // backing out of the logger, and the user came here to start this.
+        await _blockedBy(tester, _openWorkout());
 
-    expect(find.byType(SessionLoggerScreen), findsOneWidget);
-    expect(sessions.startCalls, 0, reason: 'opening is not starting');
-    expect(sessions.abandoned, 0, reason: 'opening throws nothing away');
-  });
+        expect(find.text('Start this workout instead?'), findsOneWidget);
+        expect(find.textContaining('Not started yet'), findsOneWidget);
+        expect(_choice(tester, 'replace').label, 'Start new workout');
+        expect(_choice(tester, 'replace').kind, FsButtonKind.primary);
+        expect(_choice(tester, 'open').label, 'Open the other one');
+        expect(_choice(tester, 'open').kind, FsButtonKind.secondary);
+      });
 
-  testWidgets('the workout in the way can be discarded and this one started', (
-    tester,
-  ) async {
-    // Without this the message was a dead end: the only way out was to find
-    // the old session in another tab and close it from inside the logger.
-    final sessions = FakeSessionRepository(existing: _openWorkout());
-    await _pump(tester, picks: const [_squat, _fly], sessions: sessions);
+      testWidgets('Start new workout closes it and starts the picks', (
+        tester,
+      ) async {
+        final sessions = await _blockedBy(
+          tester,
+          _openWorkout(),
+          picks: const [_squat, _fly],
+        );
 
-    await tester.tap(_start());
-    await tester.pumpAndSettle();
-    await tester.tap(find.text('Discard it & start'));
-    await tester.pumpAndSettle();
+        await tester.tap(find.byKey(const Key('blocked.replace')));
+        await tester.pumpAndSettle();
 
-    expect(sessions.abandoned, 1);
-    expect(sessions.startedWith, [101, 202], reason: 'the picks were kept');
-    expect(find.byType(SessionLoggerScreen), findsOneWidget);
-  });
+        expect(sessions.abandoned, 1);
+        expect(sessions.startedWith, [101, 202], reason: 'the picks were kept');
+        expect(find.byType(SessionLoggerScreen), findsOneWidget);
+      });
+    });
 
-  testWidgets('backing out of the message leaves both workouts alone', (
-    tester,
-  ) async {
-    final sessions = FakeSessionRepository(existing: _openWorkout());
-    final container = await _pump(
+    group('with sets logged', () {
+      testWidgets('offers resuming it as the highlighted choice', (
+        tester,
+      ) async {
+        await _blockedBy(tester, _openWorkout(sets: _twoLoggedSets));
+
+        expect(find.text('You have a workout in progress'), findsOneWidget);
+        expect(find.textContaining('2 sets logged'), findsOneWidget);
+        expect(_choice(tester, 'open').label, 'Resume it');
+        expect(_choice(tester, 'open').kind, FsButtonKind.primary);
+      });
+
+      testWidgets('shows discarding in red, apart from the highlighted one', (
+        tester,
+      ) async {
+        await _blockedBy(tester, _openWorkout(sets: _twoLoggedSets));
+
+        final discard = _choice(tester, 'replace');
+        expect(discard.label, 'Discard it & start new');
+        expect(discard.kind, isNot(FsButtonKind.primary));
+        expect(
+          _labelColor(tester, find.byKey(const Key('blocked.replace'))),
+          tester.element(find.byType(AlertDialog)).fs.red,
+        );
+      });
+
+      testWidgets('Resume it opens it where it was left', (tester) async {
+        final sessions = await _blockedBy(
+          tester,
+          _openWorkout(sets: _twoLoggedSets),
+        );
+
+        await tester.tap(find.byKey(const Key('blocked.open')));
+        await tester.pumpAndSettle();
+
+        expect(
+          tester
+              .widget<SessionLoggerScreen>(find.byType(SessionLoggerScreen))
+              .resume,
+          isTrue,
+          reason: 'on the first unfinished exercise, not the first one',
+        );
+        expect(sessions.startCalls, 0, reason: 'opening is not starting');
+        expect(sessions.abandoned, 0, reason: 'opening throws nothing away');
+      });
+
+      testWidgets('Discard it & start new throws it away and starts these', (
+        tester,
+      ) async {
+        // Without this the message was a dead end: the only way out was to
+        // find the old session in another tab and close it from the logger.
+        final sessions = await _blockedBy(
+          tester,
+          _openWorkout(sets: _twoLoggedSets),
+          picks: const [_squat, _fly],
+        );
+
+        await tester.tap(find.byKey(const Key('blocked.replace')));
+        await tester.pumpAndSettle();
+
+        expect(sessions.abandoned, 1);
+        expect(sessions.startedWith, [101, 202], reason: 'the picks were kept');
+        expect(find.byType(SessionLoggerScreen), findsOneWidget);
+      });
+    });
+
+    testWidgets('Open the other one opens it where it was left', (
       tester,
-      picks: const [_squat],
-      sessions: sessions,
-    );
+    ) async {
+      await _blockedBy(tester, _openWorkout());
 
-    await tester.tap(_start());
-    await tester.pumpAndSettle();
-    await tester.tap(find.text('Cancel'));
-    await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const Key('blocked.open')));
+      await tester.pumpAndSettle();
 
-    expect(sessions.abandoned, 0);
-    expect(sessions.startCalls, 0);
-    expect(container.read(workoutDraftProvider).exerciseIds, [
-      101,
-    ], reason: 'the picks must survive a cancelled start');
+      expect(
+        tester
+            .widget<SessionLoggerScreen>(find.byType(SessionLoggerScreen))
+            .resume,
+        isTrue,
+      );
+    });
+
+    testWidgets('backing out of the message leaves both workouts alone', (
+      tester,
+    ) async {
+      final sessions = FakeSessionRepository(
+        existing: _openWorkout(sets: _twoLoggedSets),
+      );
+      final container = await _pump(
+        tester,
+        picks: const [_squat],
+        sessions: sessions,
+      );
+      await tester.tap(_start());
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.byKey(const Key('blocked.cancel')));
+      await tester.pumpAndSettle();
+
+      expect(find.byType(AlertDialog), findsNothing);
+      expect(sessions.abandoned, 0);
+      expect(sessions.startCalls, 0);
+      expect(container.read(workoutDraftProvider).exerciseIds, [
+        101,
+      ], reason: 'the picks must survive a cancelled start');
+    });
+
+    for (final (name, sets) in [
+      ('nothing logged', const <LoggedSet>[]),
+      ('sets logged', _twoLoggedSets),
+    ]) {
+      testWidgets('the message fits a 320 dp phone at 2.0× text, $name', (
+        tester,
+      ) async {
+        tester.view.physicalSize = const Size(320, 640);
+        tester.view.devicePixelRatio = 1.0;
+        tester.platformDispatcher.textScaleFactorTestValue = 2.0;
+        addTearDown(tester.view.reset);
+        addTearDown(tester.platformDispatcher.clearTextScaleFactorTestValue);
+
+        await _blockedBy(tester, _openWorkout(sets: sets));
+
+        expect(tester.takeException(), isNull);
+        expect(find.byType(AlertDialog), findsOneWidget);
+      });
+    }
   });
 
   testWidgets('an emptied workout cannot be started', (tester) async {

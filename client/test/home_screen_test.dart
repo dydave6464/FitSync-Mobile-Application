@@ -35,6 +35,7 @@ import 'package:fitsync/features/streaks/presentation/providers.dart'
     show goalsProvider, streakProvider;
 import 'package:fitsync/features/streaks/presentation/streaks_screen.dart';
 
+import 'helpers/dialog_buttons.dart';
 import 'helpers/in_memory_secure_store.dart';
 
 const _someEquipment = [EquipmentOption(equipmentId: 1, name: 'Dumbbells')];
@@ -435,6 +436,21 @@ void main() {
 
     expect(find.textContaining('Discard this workout?'), findsOneWidget);
     expect(sessions.abandoned, 0, reason: 'asking is not doing');
+  });
+
+  testWidgets('the question shows Discard in red and Keep it plain', (
+    tester,
+  ) async {
+    await _pumpHome(tester, sessions: _FakeSessionRepository(_planSession()));
+
+    await tester.tap(find.byKey(const Key('home.inProgress.discard')));
+    await tester.pumpAndSettle();
+
+    expect(labelColor(tester, dialogButton('Discard')), dialogRed(tester));
+    expect(
+      labelColor(tester, dialogButton('Keep it')),
+      isNot(dialogRed(tester)),
+    );
   });
 
   testWidgets('backing out of the question keeps the workout', (tester) async {
