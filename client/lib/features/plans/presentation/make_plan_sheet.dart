@@ -19,11 +19,16 @@ import '../domain/workout_plan.dart';
 /// there is none. Replacing it cannot be undone -- plan history is out of
 /// scope -- so the sheet names it and the confirming button is red.
 ///
+/// [planUnknown] is for when the current plan could not be loaded. There may
+/// be one, and the server replaces it all the same, so the sheet warns and
+/// stays red without a name to give.
+///
 /// Resolves to the chosen split's slug, or null for Cancel and for any
 /// dismissal (a swipe, a tap outside, back): only the button writes.
 Future<String?> showMakePlanSheet(
   BuildContext context, {
   WorkoutPlan? replacing,
+  bool planUnknown = false,
 }) => showModalBottomSheet<String>(
   context: context,
   showDragHandle: true,
@@ -31,13 +36,18 @@ Future<String?> showMakePlanSheet(
   // are taller than the default 9/16 cap; the scroll view below takes the
   // rest.
   isScrollControlled: true,
-  builder: (_) => _MakePlanSheet(replacing: replacing),
+  // Scroll-controlled, the sheet may grow to the full height of the screen;
+  // this keeps its handle and title out from under a status bar or notch.
+  useSafeArea: true,
+  builder: (_) =>
+      _MakePlanSheet(replacing: replacing, planUnknown: planUnknown),
 );
 
 class _MakePlanSheet extends StatefulWidget {
-  const _MakePlanSheet({this.replacing});
+  const _MakePlanSheet({this.replacing, this.planUnknown = false});
 
   final WorkoutPlan? replacing;
+  final bool planUnknown;
 
   @override
   State<_MakePlanSheet> createState() => _MakePlanSheetState();
@@ -48,10 +58,35 @@ class _MakePlanSheetState extends State<_MakePlanSheet> {
   /// most often is, and the one the setup screen used to start on.
   String _split = splitStyles.first.value;
 
+  /// A chip is painted 32 dp tall, short of the 48 dp a thumb needs. This
+  /// band makes the rest of the row height tappable too, as the rest sheet's
+  /// presets do, while the chip itself stays the one thing screen readers
+  /// announce.
+  Widget _chipTarget({
+    required Key key,
+    required VoidCallback onTap,
+    required Widget chip,
+  }) => GestureDetector(
+    key: key,
+    behavior: HitTestBehavior.opaque,
+    excludeFromSemantics: true,
+    onTap: onTap,
+    child: ConstrainedBox(
+      constraints: const BoxConstraints(minHeight: 48),
+      child: Center(widthFactor: 1, child: chip),
+    ),
+  );
+
   @override
   Widget build(BuildContext context) {
     final t = context.fs;
     final replacing = widget.replacing;
+    final warning = replacing != null
+        ? 'This replaces "${replacing.name}". You can\'t get it back.'
+        : widget.planUnknown
+        ? 'This replaces your current plan, if you have one. '
+              'You can\'t get it back.'
+        : null;
 
     return SafeArea(
       child: SingleChildScrollView(
@@ -68,10 +103,10 @@ class _MakePlanSheetState extends State<_MakePlanSheet> {
                 color: t.text,
               ),
             ),
-            if (replacing != null) ...[
+            if (warning != null) ...[
               const SizedBox(height: 6),
               Text(
-                'This replaces "${replacing.name}". You can\'t get it back.',
+                warning,
                 key: const Key('makePlan.replaces'),
                 style: TextStyle(fontSize: 13, color: t.text2, height: 1.35),
               ),
@@ -79,16 +114,21 @@ class _MakePlanSheetState extends State<_MakePlanSheet> {
             const SizedBox(height: 18),
             const FsEyebrow('Split style'),
             const SizedBox(height: 10),
+            // No run spacing: each chip already sits in a 48 dp band, which
+            // leaves the gap between rows that the spacing used to.
             Wrap(
               spacing: 8,
-              runSpacing: 8,
               children: [
                 for (final style in splitStyles)
-                  FsChip(
-                    key: Key('makePlan.split.${style.value}'),
-                    label: style.label,
-                    selected: style.value == _split,
+                  _chipTarget(
+                    key: Key('makePlan.split.${style.value}.target'),
                     onTap: () => setState(() => _split = style.value),
+                    chip: FsChip(
+                      key: Key('makePlan.split.${style.value}'),
+                      label: style.label,
+                      selected: style.value == _split,
+                      onTap: () => setState(() => _split = style.value),
+                    ),
                   ),
               ],
             ),
@@ -102,7 +142,7 @@ class _MakePlanSheetState extends State<_MakePlanSheet> {
             // question orders them. Both wrap rather than ending in an
             // ellipsis: at the largest text sizes a cut-off "Replace my…"
             // hides what the tap does.
-            if (replacing != null)
+            if (warning != null)
               FsButton(
                 key: const Key('makePlan.confirm'),
                 label: 'Replace my plan',

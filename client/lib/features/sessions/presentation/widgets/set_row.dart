@@ -240,8 +240,11 @@ class SetRow extends StatelessWidget {
                         ),
                         icon: Icon(Icons.close, size: 18, color: t.text2),
                       )
+                    // As tall as the ✕ while the table is wide enough for
+                    // one, so every row keeps one height and the table does
+                    // not jump as the ✕ moves up a row or goes.
                     : SizedBox(
-                        height: 38,
+                        height: trailingWidth == SetRow.removeWidth ? 48 : 38,
                         child: Center(child: _mark(t, done)),
                       ),
               ),

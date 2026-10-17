@@ -392,6 +392,14 @@ void main() {
       find.byType(ExerciseListScreen),
     );
     expect(library.selecting, isTrue, reason: 'it is there to pick from');
+    // Review's Start clears routes by this name, so finishing the workout
+    // lands where the + sheet was opened rather than back on the library.
+    expect(
+      ModalRoute.of(tester.element(find.byType(ExerciseListScreen)))!
+          .settings
+          .name,
+      workoutLibraryRouteName,
+    );
 
     // The sheet must have been popped, not left stacked underneath: a
     // Navigator route that is merely covered by an opaque route above it is

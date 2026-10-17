@@ -329,10 +329,15 @@ class RecordingPlanRepository implements PlanRepository {
     this.swapGate,
     this.refetchGate,
     this.refetchError,
+    this.activeError,
     this.alternativeRows = const [],
   });
 
   final Object? error;
+
+  /// When set, every `activePlan` fails with this, so nothing is known about
+  /// the plan a new one would replace.
+  final Object? activeError;
 
   /// What `activePlan` answers -- until a [swap] lands, when it becomes
   /// [swapped], as the server's plan would.
@@ -374,6 +379,7 @@ class RecordingPlanRepository implements PlanRepository {
 
   @override
   Future<WorkoutPlan?> activePlan() async {
+    if (activeError != null) throw activeError!;
     if (swaps.isNotEmpty) {
       await refetchGate?.future;
       if (refetchError != null) throw refetchError!;
@@ -2817,6 +2823,29 @@ void main() {
     expect(find.byType(SessionLoggerScreen), findsNothing);
   });
 
+  testWidgets('with the plan unknown, the question still warns in red', (
+    tester,
+  ) async {
+    // The plan failed to load, so there may well be one -- and the server
+    // replaces it either way. A harmless-looking primary button would hide
+    // that.
+    final plans = RecordingPlanRepository(
+      activeError: const ApiException('SERVER_ERROR', 'Something went wrong'),
+    );
+    await _pump(tester, session: _manualSessionWithSets(), plans: plans);
+
+    await _finishWithSetsLeft(tester);
+    await tester.tap(find.byKey(const Key('summary.toPlan')));
+    await tester.pumpAndSettle();
+
+    final replace = tester.widget<FsButton>(
+      find.byKey(const Key('makePlan.confirm')),
+    );
+    expect(replace.label, 'Replace my plan');
+    expect(replace.danger, isTrue);
+    expect(find.byKey(const Key('makePlan.replaces')), findsOneWidget);
+  });
+
   testWidgets('the replace question shows Replace my plan in red', (
     tester,
   ) async {
@@ -3106,6 +3135,51 @@ void main() {
 
       expect(find.byKey(const Key('set.4.row')), findsNothing);
       expect(find.byKey(const Key('set.3.row')), findsOneWidget);
+    });
+
+    testWidgets('the row carrying the ✕ is no taller than the rest', (
+      tester,
+    ) async {
+      // Otherwise the table jumps vertically each time the ✕ moves up a
+      // row or goes once the added set is logged.
+      await _pumpLogging(tester, session: _session(sets: squatDone));
+      await tapAddSet(tester);
+      await tapAddSet(tester);
+
+      double height(int set) =>
+          tester.getSize(find.byKey(Key('set.$set.row'))).height;
+      expect(height(5), height(3));
+      expect(height(4), height(3));
+
+      await tester.tap(find.byTooltip('Remove set 5'));
+      await tester.pumpAndSettle();
+      expect(height(4), height(3));
+    });
+
+    testWidgets('a row added after a restart forgets what was typed', (
+      tester,
+    ) async {
+      // The restart clears the logged sets' fields; an added row that was
+      // never logged has to go the same way, or adding it again brings
+      // back numbers typed for a start the user threw away.
+      await _pumpLogging(tester, session: _session(sets: squatDone));
+      await tapAddSet(tester);
+      await tester.enterText(find.byKey(const Key('set.4.reps')), '99');
+      await tester.pumpAndSettle();
+
+      await _menu(tester, 'restart');
+      await tester.tap(dialogButton('Restart'));
+      await tester.pumpAndSettle();
+      await tapAddSet(tester);
+
+      final reps = tester.widget<TextField>(
+        find.descendant(
+          of: find.byKey(const Key('set.4.reps')),
+          matching: find.byType(TextField),
+          matchRoot: true,
+        ),
+      );
+      expect(reps.controller!.text, isNot('99'));
     });
 
     testWidgets('fits a 320 dp phone at large text', (tester) async {

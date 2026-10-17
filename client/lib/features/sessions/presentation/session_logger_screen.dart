@@ -967,7 +967,22 @@ class _SessionLoggerScreenState extends ConsumerState<SessionLoggerScreen>
     final container = ProviderScope.containerOf(context, listen: false);
     Navigator.of(dialogContext).pop(true);
 
-    final active = ref.read(activePlanProvider).value;
+    // Which sheet, and whether it warns, rests on knowing the current plan.
+    // Still loading is worth waiting for; a load that failed is not known to
+    // be "no plan", and the server replaces whatever is there regardless, so
+    // the sheet then warns without a name rather than offering a harmless-
+    // looking primary button.
+    final planState = ref.read(activePlanProvider);
+    WorkoutPlan? active = planState.value;
+    var planKnown = planState.hasValue;
+    if (!planKnown) {
+      try {
+        active = await ref.read(activePlanProvider.future);
+        planKnown = true;
+      } catch (_) {
+        // Left unknown; see above.
+      }
+    }
     int? dayNo;
     String? splitStyle;
     var cancelled = false;
@@ -977,7 +992,11 @@ class _SessionLoggerScreenState extends ConsumerState<SessionLoggerScreen>
       cancelled = choice.cancelled;
       dayNo = choice.dayNo;
     } else {
-      splitStyle = await showMakePlanSheet(context, replacing: active);
+      splitStyle = await showMakePlanSheet(
+        context,
+        replacing: active,
+        planUnknown: !planKnown,
+      );
       cancelled = splitStyle == null;
     }
     // Either way the session is finished, so the logger leaves: _showSummary
@@ -1128,6 +1147,13 @@ class _SessionLoggerScreenState extends ConsumerState<SessionLoggerScreen>
       drafts.release(setNumber);
     }
     if (mounted) {
+      // Added rows that were never logged go too, typing and all, so one
+      // added again starts from last session's numbers like any other row
+      // rather than from what was typed before the restart.
+      final rows = _rowCounts[(index, exercise.exerciseId)] ?? 0;
+      for (var n = exercise.targetSets + 1; n <= rows; n++) {
+        drafts.release(n);
+      }
       setState(() => _rowCounts.remove((index, exercise.exerciseId)));
     }
   }
@@ -1512,14 +1538,14 @@ class _SessionLoggerScreenState extends ConsumerState<SessionLoggerScreen>
                                   overflow: TextOverflow.ellipsis,
                                   style: TextStyle(
                                     fontSize: 11,
-                                    color: t.text3,
+                                    color: t.text2,
                                   ),
                                 ),
                               ),
                               Icon(
                                 Icons.arrow_drop_down,
                                 size: 16,
-                                color: t.text3,
+                                color: t.text2,
                               ),
                             ],
                           ),
@@ -1611,7 +1637,9 @@ class _SessionLoggerScreenState extends ConsumerState<SessionLoggerScreen>
                             }),
                             // The panel only offers this on the last row,
                             // added and unlogged. What was typed into it goes
-                            // with it, so a row added again starts blank.
+                            // with it, so a row added again starts from last
+                            // session's numbers like any other, not from
+                            // what was typed.
                             onRemoveSet: (setNumber) => setState(() {
                               _rowCounts[rowKey] = setNumber - 1;
                               _drafts.release(setNumber);

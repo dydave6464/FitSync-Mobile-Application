@@ -24,6 +24,7 @@ typedef _Outcome = ({bool closed, String? split});
 Future<_Outcome Function()> _open(
   WidgetTester tester, {
   WorkoutPlan? replacing,
+  bool planUnknown = false,
 }) async {
   _Outcome outcome = (closed: false, split: null);
   await tester.pumpWidget(
@@ -36,6 +37,7 @@ Future<_Outcome Function()> _open(
               final split = await showMakePlanSheet(
                 context,
                 replacing: replacing,
+                planUnknown: planUnknown,
               );
               outcome = (closed: true, split: split);
             },
@@ -113,6 +115,27 @@ void main() {
     });
   });
 
+  group('when the current plan could not be loaded', () {
+    testWidgets('warns without a name, in red', (tester) async {
+      final outcome = await _open(tester, planUnknown: true);
+
+      expect(
+        find.text(
+          'This replaces your current plan, if you have one. '
+          'You can\'t get it back.',
+        ),
+        findsOneWidget,
+      );
+      final replace = _button(tester, 'makePlan.confirm');
+      expect(replace.label, 'Replace my plan');
+      expect(replace.danger, isTrue);
+
+      await tester.tap(find.byKey(const Key('makePlan.confirm')));
+      await tester.pumpAndSettle();
+      expect(outcome(), (closed: true, split: 'full_body'));
+    });
+  });
+
   group('with no plan yet', () {
     testWidgets('replaces nothing, so says nothing about it', (tester) async {
       await _open(tester);
@@ -162,6 +185,57 @@ void main() {
     expect(selected('cardio_core'), isTrue);
     expect(selected('full_body'), isFalse);
     expect(find.text('Names your plan and its days.'), findsOneWidget);
+  });
+
+  // At 1.0x text, where a chip is painted shorter than 48 dp, so the band
+  // has room above it to tap.
+  testWidgets('each split is a 48 dp target, edge to edge of its band', (
+    tester,
+  ) async {
+    tester.view.physicalSize = const Size(320, 640);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.reset);
+
+    await _open(tester, replacing: _generated);
+
+    bool selected(String value) => tester
+        .widget<FsChip>(find.byKey(Key('makePlan.split.$value')))
+        .selected;
+    for (final value in [
+      'push_pull_legs',
+      'upper_lower',
+      'cardio_core',
+      'full_body',
+    ]) {
+      final target = find.byKey(Key('makePlan.split.$value.target'));
+      await tester.ensureVisible(target);
+      await tester.pumpAndSettle();
+      final band = tester.getRect(target);
+      final chip = tester.getRect(find.byKey(Key('makePlan.split.$value')));
+      expect(band.height, greaterThanOrEqualTo(48), reason: value);
+
+      // Inside the band but off the painted chip still picks the split.
+      expect(chip.top, greaterThan(band.top + 2), reason: value);
+      await tester.tapAt(Offset(chip.center.dx, band.top + 1));
+      await tester.pumpAndSettle();
+      expect(selected(value), isTrue, reason: value);
+    }
+  });
+
+  testWidgets('keeps clear of a status bar or notch', (tester) async {
+    tester.view.physicalSize = const Size(320, 640);
+    tester.view.devicePixelRatio = 1;
+    tester.view.padding = const FakeViewPadding(top: 40);
+    tester.platformDispatcher.textScaleFactorTestValue = 2.0;
+    addTearDown(tester.view.reset);
+    addTearDown(tester.platformDispatcher.clearTextScaleFactorTestValue);
+
+    await _open(tester, replacing: _generated);
+
+    expect(
+      tester.getTopLeft(find.byType(BottomSheet)).dy,
+      greaterThanOrEqualTo(40),
+    );
   });
 
   testWidgets('fits a 320 dp phone at 2.0× text, buttons reachable', (
