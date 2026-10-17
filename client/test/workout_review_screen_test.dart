@@ -1,6 +1,10 @@
+import 'dart:io';
+import 'dart:typed_data';
+
 import 'package:flutter/gestures.dart';
-import 'package:flutter/rendering.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/rendering.dart';
+import 'package:flutter/services.dart' show FontLoader;
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 
@@ -18,6 +22,19 @@ import 'package:fitsync/features/sessions/presentation/providers.dart';
 import 'package:fitsync/features/sessions/presentation/session_logger_screen.dart';
 import 'package:fitsync/features/sessions/presentation/workout_draft.dart';
 import 'package:fitsync/features/sessions/presentation/workout_review_screen.dart';
+
+import 'helpers/dialog_buttons.dart';
+
+/// The real face, not the test harness's, whose every glyph is 1 em wide:
+/// whether a button label fits at large text is a question about the font
+/// the app ships.
+Future<void> _loadFont() async {
+  final bytes = await File('assets/fonts/SpaceGrotesk-Variable.ttf')
+      .readAsBytes();
+  await (FontLoader(
+    'SpaceGrotesk',
+  )..addFont(Future.value(ByteData.view(bytes.buffer)))).load();
+}
 
 const _squat = ExerciseSummary(
   exerciseId: 101,
@@ -128,6 +145,7 @@ Future<ProviderContainer> _pump(
   required List<ExerciseSummary> picks,
   FakeSessionRepository? sessions,
   bool overLibrary = false,
+  WorkoutPlan? plan,
 }) async {
   final container = ProviderContainer(
     overrides: [
@@ -137,7 +155,7 @@ Future<ProviderContainer> _pump(
       ),
       workoutDraftProvider.overrideWith(() => _Picked(picks)),
       // A manual session has no plan; the logger must not need one.
-      activePlanProvider.overrideWith((ref) async => null),
+      activePlanProvider.overrideWith((ref) async => plan),
     ],
   );
   addTearDown(container.dispose);
@@ -196,9 +214,18 @@ Future<FakeSessionRepository> _blockedBy(
   WidgetTester tester,
   ActiveSession open, {
   List<ExerciseSummary> picks = const [_squat],
+  WorkoutPlan? plan,
 }) async {
   final sessions = FakeSessionRepository(existing: open);
-  await _pump(tester, picks: picks, sessions: sessions);
+  final container = await _pump(
+    tester,
+    picks: picks,
+    sessions: sessions,
+    plan: plan,
+  );
+  // In the app Home has the plan loaded long before this screen: nothing
+  // here watches it, so the question reads whatever is already there.
+  await container.read(activePlanProvider.future);
   await tester.tap(_start());
   await tester.pumpAndSettle();
   return sessions;
@@ -207,14 +234,8 @@ Future<FakeSessionRepository> _blockedBy(
 FsButton _choice(WidgetTester tester, String name) =>
     tester.widget<FsButton>(find.byKey(Key('blocked.$name')));
 
-/// The colour the label of the button under [button] is painted in.
-Color? _labelColor(WidgetTester tester, Finder button) => tester
-    .renderObject<RenderParagraph>(
-      find.descendant(of: button, matching: find.byType(RichText)).first,
-    )
-    .text
-    .style
-    ?.color;
+/// Every choice the question offers, by key.
+const _choices = ['open', 'replace', 'cancel'];
 
 Finder _start() => find.byKey(const Key('review.start'));
 
@@ -272,6 +293,8 @@ bool _menuItemEnabled(WidgetTester tester, String item, int id) => tester
     .enabled;
 
 void main() {
+  setUpAll(_loadFont);
+
   testWidgets('lists the picks in the order they will be trained', (
     tester,
   ) async {
@@ -429,6 +452,9 @@ void main() {
 
         expect(find.text('Start this workout instead?'), findsOneWidget);
         expect(find.textContaining('Not started yet'), findsOneWidget);
+        // Sets, not "nothing": a hand-picked workout's list of exercises
+        // does go with it.
+        expect(find.textContaining('no sets are lost'), findsOneWidget);
         expect(_choice(tester, 'replace').label, 'Start new workout');
         expect(_choice(tester, 'replace').kind, FsButtonKind.primary);
         expect(_choice(tester, 'open').label, 'Open the other one');
@@ -474,8 +500,8 @@ void main() {
         expect(discard.label, 'Discard it & start new');
         expect(discard.kind, isNot(FsButtonKind.primary));
         expect(
-          _labelColor(tester, find.byKey(const Key('blocked.replace'))),
-          tester.element(find.byType(AlertDialog)).fs.red,
+          labelColor(tester, find.byKey(const Key('blocked.replace'))),
+          dialogRed(tester),
         );
       });
 
@@ -560,24 +586,116 @@ void main() {
       ], reason: 'the picks must survive a cancelled start');
     });
 
-    for (final (name, sets) in [
-      ('nothing logged', const <LoggedSet>[]),
-      ('sets logged', _twoLoggedSets),
+    testWidgets('a plan workout is named after the plan, with its exercises', (
+      tester,
+    ) async {
+      const plan = WorkoutPlan(
+        planId: 3,
+        name: 'Push / Pull / Legs',
+        splitStyle: 'push_pull_legs',
+        daysPerWeek: 3,
+        sessionLengthMin: 45,
+        weekNo: 1,
+        days: [PlanDay(dayNo: 2, name: 'Pull')],
+        exercises: [
+          PlanExercise(
+            planExerciseId: 1,
+            exerciseId: 11,
+            name: 'Row',
+            muscleGroup: 'lats',
+            orderNo: 1,
+            targetSets: 3,
+            targetReps: '8-12',
+            dayNo: 2,
+          ),
+          PlanExercise(
+            planExerciseId: 2,
+            exerciseId: 12,
+            name: 'Curl',
+            muscleGroup: 'biceps',
+            orderNo: 2,
+            targetSets: 3,
+            targetReps: '10-12',
+            dayNo: 2,
+          ),
+        ],
+      );
+      final open = ActiveSession(
+        sessionId: 4,
+        status: 'in_progress',
+        sessionDate: '2026-09-14',
+        startedAt: DateTime.now(),
+        planId: 3,
+        planDayNo: 2,
+      );
+
+      await _blockedBy(tester, open, plan: plan);
+
+      expect(find.text('Push / Pull / Legs'), findsOneWidget);
+      expect(find.textContaining('2 exercises'), findsOneWidget);
+    });
+
+    testWidgets('keeps a phone-sized width on a tablet', (tester) async {
+      tester.view.physicalSize = const Size(1024, 768);
+      tester.view.devicePixelRatio = 1.0;
+      addTearDown(tester.view.reset);
+
+      await _blockedBy(tester, _openWorkout(sets: _twoLoggedSets));
+
+      expect(
+        tester.getSize(find.byKey(const Key('blocked.open'))).width,
+        lessThanOrEqualTo(400),
+        reason: 'a pill stretched 700 dp wide stops reading as a button',
+      );
+    });
+
+    // The real font at Android's largest text sizes, on a small phone and a
+    // typical one.
+    for (final (size, scale) in [
+      (const Size(320, 640), 2.0),
+      (const Size(360, 760), 1.8),
     ]) {
-      testWidgets('the message fits a 320 dp phone at 2.0× text, $name', (
-        tester,
-      ) async {
-        tester.view.physicalSize = const Size(320, 640);
-        tester.view.devicePixelRatio = 1.0;
-        tester.platformDispatcher.textScaleFactorTestValue = 2.0;
-        addTearDown(tester.view.reset);
-        addTearDown(tester.platformDispatcher.clearTextScaleFactorTestValue);
+      for (final (name, sets) in [
+        ('nothing logged', const <LoggedSet>[]),
+        ('sets logged', _twoLoggedSets),
+      ]) {
+        testWidgets(
+          'at ${size.width.toInt()} dp and $scale× text, $name, every choice '
+          'is on screen and read in full',
+          (tester) async {
+            tester.view.physicalSize = size;
+            tester.view.devicePixelRatio = 1.0;
+            tester.platformDispatcher.textScaleFactorTestValue = scale;
+            addTearDown(tester.view.reset);
+            addTearDown(
+              tester.platformDispatcher.clearTextScaleFactorTestValue,
+            );
 
-        await _blockedBy(tester, _openWorkout(sets: sets));
+            await _blockedBy(tester, _openWorkout(sets: sets));
 
-        expect(tester.takeException(), isNull);
-        expect(find.byType(AlertDialog), findsOneWidget);
-      });
+            expect(tester.takeException(), isNull);
+            for (final choice in _choices) {
+              final rect = tester.getRect(find.byKey(Key('blocked.$choice')));
+              expect(rect.top, greaterThanOrEqualTo(0), reason: choice);
+              expect(
+                rect.bottom,
+                lessThanOrEqualTo(size.height),
+                reason: choice,
+              );
+            }
+            final cut = tester
+                .renderObjectList<RenderParagraph>(
+                  find.descendant(
+                    of: find.byType(AlertDialog),
+                    matching: find.byType(RichText),
+                  ),
+                )
+                .where((p) => p.didExceedMaxLines)
+                .map((p) => p.text.toPlainText());
+            expect(cut, isEmpty, reason: 'no label may end in an ellipsis');
+          },
+        );
+      }
     }
   });
 

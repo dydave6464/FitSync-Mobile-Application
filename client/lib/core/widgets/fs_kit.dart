@@ -37,6 +37,7 @@ class FsButton extends StatelessWidget {
     this.busy = false,
     this.small = false,
     this.danger = false,
+    this.wrapLabel = false,
   });
 
   final String label;
@@ -48,6 +49,13 @@ class FsButton extends StatelessWidget {
 
   /// Sign out is a ghost button in red.
   final bool danger;
+
+  /// Lets a label too long for one line wrap, the button growing to fit,
+  /// instead of ending in an ellipsis. For choices that must be read whole
+  /// at large text sizes -- a dialog's "Discard it & start new" cut to
+  /// "Discard it &…" hides what the tap does. Off by default, so every other
+  /// button keeps its fixed height.
+  final bool wrapLabel;
 
   @override
   Widget build(BuildContext context) {
@@ -91,15 +99,25 @@ class FsButton extends StatelessWidget {
             child: InkWell(
               onTap: enabled ? onPressed : null,
               borderRadius: BorderRadius.circular(FsRadius.pill),
-              child: SizedBox(
-                height: height,
+              child: ConstrainedBox(
+                constraints: wrapLabel
+                    ? BoxConstraints(minHeight: height)
+                    : BoxConstraints.tightFor(height: height),
                 // Horizontal room for the label. Invisible on a full-width
                 // button -- Center already had all the space it needed -- but
                 // without it a button sized to its own content shrink-wraps to
                 // the bare word and the pill radius cuts into it.
                 child: Padding(
-                  padding: EdgeInsets.symmetric(horizontal: small ? 16 : 20),
+                  padding: EdgeInsets.symmetric(
+                    horizontal: small ? 16 : 20,
+                    // Only a wrapped label can reach the edges top and bottom.
+                    vertical: wrapLabel ? 10 : 0,
+                  ),
                   child: Center(
+                    // A wrapped button has only a minimum height, which a
+                    // plain Center would stretch to fill whatever its parent
+                    // allows. Hug the label instead.
+                    heightFactor: wrapLabel ? 1 : null,
                     child: busy
                         ? SizedBox(
                             height: 20,
@@ -129,12 +147,16 @@ class FsButton extends StatelessWidget {
                               // eyebrow row. maxLines: 1 rather than letting it
                               // wrap, as FsChip does, because this Row sits in a
                               // fixed-height button and a second line would
-                              // overflow that instead.
+                              // overflow that instead -- unless [wrapLabel]
+                              // lets the button grow with it.
                               Flexible(
                                 child: Text(
                                   label,
-                                  maxLines: 1,
-                                  overflow: TextOverflow.ellipsis,
+                                  maxLines: wrapLabel ? null : 1,
+                                  overflow: wrapLabel
+                                      ? null
+                                      : TextOverflow.ellipsis,
+                                  textAlign: TextAlign.center,
                                   style: TextStyle(
                                     fontSize: small ? 13.5 : 15,
                                     fontWeight: FontWeight.w700,

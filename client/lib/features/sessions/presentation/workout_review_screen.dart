@@ -133,14 +133,63 @@ class _WorkoutReviewScreenState extends ConsumerState<WorkoutReviewScreen> {
         void answer(_Blocked? choice) =>
             Navigator.of(dialogContext).pop(choice);
 
+        // The highlighted choice first, then the other, then Cancel. Each
+        // wraps rather than ending in an ellipsis: at the largest text sizes
+        // "Discard it & start new" would otherwise read "Discard it &…".
+        final choices = [
+          if (hasWork) ...[
+            FsButton(
+              key: const Key('blocked.open'),
+              label: 'Resume it',
+              wrapLabel: true,
+              onPressed: () => answer(_Blocked.open),
+            ),
+            FsButton(
+              key: const Key('blocked.replace'),
+              label: 'Discard it & start new',
+              kind: FsButtonKind.ghost,
+              danger: true,
+              wrapLabel: true,
+              onPressed: () => answer(_Blocked.replace),
+            ),
+          ] else ...[
+            FsButton(
+              key: const Key('blocked.replace'),
+              label: 'Start new workout',
+              wrapLabel: true,
+              onPressed: () => answer(_Blocked.replace),
+            ),
+            FsButton(
+              key: const Key('blocked.open'),
+              label: 'Open the other one',
+              kind: FsButtonKind.secondary,
+              wrapLabel: true,
+              onPressed: () => answer(_Blocked.open),
+            ),
+          ],
+          FsButton(
+            key: const Key('blocked.cancel'),
+            label: 'Cancel',
+            kind: FsButtonKind.ghost,
+            wrapLabel: true,
+            onPressed: () => answer(null),
+          ),
+        ];
+
         return AlertDialog(
-          // Three full-width buttons are taller than a small phone at large
-          // text, so the message scrolls rather than overflowing.
+          // At large text on a small phone the dialog is taller than the
+          // screen. The title and message scroll; the choices, in `actions`,
+          // stay in view below them.
           scrollable: true,
+          // Half the default 40 a side: on a 320 dp phone that is the
+          // difference between two-word lines and one-word ones in the
+          // buttons. The cap keeps a tablet from stretching the pills 700 dp
+          // wide.
           insetPadding: const EdgeInsets.symmetric(
             horizontal: 20,
             vertical: 24,
           ),
+          constraints: const BoxConstraints(minWidth: 280, maxWidth: 400),
           title: Text(
             hasWork
                 ? 'You have a workout in progress'
@@ -171,46 +220,24 @@ class _WorkoutReviewScreenState extends ConsumerState<WorkoutReviewScreen> {
                 hasWork
                     ? 'Only one workout can be open at a time. Discarding '
                           'throws away the sets logged in it.'
-                    : 'Nothing is logged in it, so starting this one loses '
-                          'nothing.',
-              ),
-              const SizedBox(height: 20),
-              if (hasWork) ...[
-                FsButton(
-                  key: const Key('blocked.open'),
-                  label: 'Resume it',
-                  onPressed: () => answer(_Blocked.open),
-                ),
-                const SizedBox(height: 8),
-                FsButton(
-                  key: const Key('blocked.replace'),
-                  label: 'Discard it & start new',
-                  kind: FsButtonKind.ghost,
-                  danger: true,
-                  onPressed: () => answer(_Blocked.replace),
-                ),
-              ] else ...[
-                FsButton(
-                  key: const Key('blocked.replace'),
-                  label: 'Start new workout',
-                  onPressed: () => answer(_Blocked.replace),
-                ),
-                const SizedBox(height: 10),
-                FsButton(
-                  key: const Key('blocked.open'),
-                  label: 'Open the other one',
-                  kind: FsButtonKind.secondary,
-                  onPressed: () => answer(_Blocked.open),
-                ),
-              ],
-              FsButton(
-                key: const Key('blocked.cancel'),
-                label: 'Cancel',
-                kind: FsButtonKind.ghost,
-                onPressed: () => answer(null),
+                    // Sets, not "nothing": a hand-picked workout's list of
+                    // exercises does go with it.
+                    : 'Nothing is logged in it yet, so no sets are lost.',
               ),
             ],
           ),
+          actions: [
+            Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                for (final (i, choice) in choices.indexed) ...[
+                  if (i > 0) const SizedBox(height: 8),
+                  choice,
+                ],
+              ],
+            ),
+          ],
         );
       },
     );

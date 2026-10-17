@@ -47,6 +47,13 @@ String? openedAgo(DateTime? openedAt, DateTime now) {
   if (gap.inMinutes < 1) return 'just now';
   if (gap.inHours < 1) return '${gap.inMinutes} min ago';
   if (gap.inDays < 1) return '${gap.inHours} h ago';
-  if (gap.inDays == 1) return 'yesterday';
-  return '${gap.inDays} days ago';
+
+  // Past a day, count calendar days: opened at 23:30 two nights ago is not
+  // "yesterday" just because fewer than 48 hours have gone by. Rounded, not
+  // floored, because a day that crosses a clock change is 23 or 25 hours.
+  final opened = openedAt.toLocal();
+  final today = DateTime(now.year, now.month, now.day);
+  final day = DateTime(opened.year, opened.month, opened.day);
+  final days = (today.difference(day).inHours / 24).round();
+  return days == 1 ? 'yesterday' : '$days days ago';
 }

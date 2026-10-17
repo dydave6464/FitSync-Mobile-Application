@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/rendering.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 
@@ -279,6 +280,51 @@ void main() {
       greaterThanOrEqualTo(24),
       reason: 'the label must not run to the edge of the pill',
     );
+  });
+
+  group('FsButton.wrapLabel', () {
+    Future<void> pumpNarrow(
+      WidgetTester tester, {
+      required String label,
+      required bool wrap,
+    }) => tester.pumpWidget(
+      _host(
+        SizedBox(
+          width: 160,
+          child: FsButton(label: label, wrapLabel: wrap, onPressed: () {}),
+        ),
+      ),
+    );
+
+    testWidgets('a label too long for one line wraps, and the button grows', (
+      tester,
+    ) async {
+      await pumpNarrow(tester, label: 'Discard it & start new', wrap: true);
+
+      expect(tester.takeException(), isNull);
+      expect(
+        tester
+            .renderObject<RenderParagraph>(find.text('Discard it & start new'))
+            .didExceedMaxLines,
+        isFalse,
+        reason: 'read whole, not cut to an ellipsis',
+      );
+      expect(tester.getSize(find.byType(FsButton)).height, greaterThan(52));
+    });
+
+    testWidgets('a label that fits keeps the usual 52 dp', (tester) async {
+      await pumpNarrow(tester, label: 'Cancel', wrap: true);
+
+      expect(tester.getSize(find.byType(FsButton)).height, 52);
+    });
+
+    testWidgets('without it a long label stays on one 52 dp line', (
+      tester,
+    ) async {
+      await pumpNarrow(tester, label: 'Discard it & start new', wrap: false);
+
+      expect(tester.getSize(find.byType(FsButton)).height, 52);
+    });
   });
 
   testWidgets('FsField is single line unless told otherwise', (tester) async {

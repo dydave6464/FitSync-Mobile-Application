@@ -13,7 +13,8 @@ void main() {
       (const Duration(hours: 1), '1 h ago'),
       (const Duration(hours: 23, minutes: 59), '23 h ago'),
       (const Duration(hours: 24), 'yesterday'),
-      (const Duration(hours: 47), 'yesterday'),
+      // 16:30 two days back: two calendar days, though under 48 hours.
+      (const Duration(hours: 47), '2 days ago'),
       (const Duration(days: 2), '2 days ago'),
       (const Duration(days: 9), '9 days ago'),
     ]) {
@@ -21,6 +22,29 @@ void main() {
         expect(openedAgo(now.subtract(gap), now), want);
       });
     }
+
+    test('a day or more counts calendar days, not 24-hour blocks', () {
+      // 24 h 40 min, but opened the day before yesterday.
+      expect(
+        openedAgo(
+          DateTime(2026, 10, 16, 23, 30),
+          DateTime(2026, 10, 18, 0, 10),
+        ),
+        '2 days ago',
+      );
+      // 25 h, and opened the calendar day before.
+      expect(
+        openedAgo(DateTime(2026, 10, 17, 8), DateTime(2026, 10, 18, 9)),
+        'yesterday',
+      );
+    });
+
+    test('under a day reads in hours even across midnight', () {
+      expect(
+        openedAgo(DateTime(2026, 10, 17, 23), DateTime(2026, 10, 18, 1)),
+        '2 h ago',
+      );
+    });
 
     test('a start time ahead of the phone clock reads "just now"', () {
       // The server stamps startedAt; a phone whose clock runs slow sees it a
