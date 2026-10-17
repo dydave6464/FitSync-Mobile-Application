@@ -88,7 +88,9 @@ class FsTokens extends ThemeExtension<FsTokens> {
     accentLine: Color(0x4D0FB04A), // rgba(15,176,74,0.30)
     onAccent: Color(0xFFFFFFFF),
     amber: Color(0xFFC98A10),
-    red: Color(0xFFE0533D),
+    // Darker than the prototype's #E0533D, which was 3.8:1 on white: red
+    // labels the destructive choices and errors, so it is read as text.
+    red: Color(0xFFC43A26),
     blue: Color(0xFF1F8FD0),
     violet: Color(0xFF7A5CF0),
   );
