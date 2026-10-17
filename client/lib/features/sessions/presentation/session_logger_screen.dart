@@ -37,7 +37,12 @@ import 'workout_draft.dart' show chosenSplitStyleProvider;
 /// The active workout, one exercise at a time: its set table, Continue to
 /// the next, and the jump sheet for anything out of order.
 class SessionLoggerScreen extends ConsumerStatefulWidget {
-  const SessionLoggerScreen({super.key});
+  const SessionLoggerScreen({super.key, this.resume = false});
+
+  /// Opens on where the workout was left -- the first exercise with a set
+  /// still to do -- instead of exercise 1's demo. For the ways back into a
+  /// session already under way: Home's card and the Plan tab's Resume.
+  final bool resume;
 
   @override
   ConsumerState<SessionLoggerScreen> createState() =>
@@ -77,9 +82,16 @@ class _SessionLoggerScreenState extends ConsumerState<SessionLoggerScreen>
   int _index = 0;
 
   /// Which face of [_index]'s exercise is showing. Demo first: this
-  /// initialiser is what opens the workout on the first exercise's demo, and
-  /// every later move sets it explicitly at the point the move is made.
+  /// initialiser is what opens the workout on the first exercise's demo,
+  /// unless a resume places it -- and every later move sets it explicitly at
+  /// the point the move is made.
   _LoggerStage _stage = _LoggerStage.demo;
+
+  /// Whether the first build with the exercise list still has to put the
+  /// screen where the workout was left -- see [SessionLoggerScreen.resume].
+  /// Once only: a later rebuild that moved the screen again would drag back
+  /// someone who has since moved on their own.
+  late bool _resumePending = widget.resume;
 
   /// The rest between sets, while one is running. Held here rather than in
   /// the app-bar tag, which is rebuilt with the bar: the rest has to outlive
@@ -338,6 +350,11 @@ class _SessionLoggerScreenState extends ConsumerState<SessionLoggerScreen>
   /// controller's _current getter and throwing a raw StateError.
   bool _finishing = false;
 
+  /// The exercises the last build drew. Finish is reached from the menu and
+  /// the footer, neither of which carries the list, and its question counts
+  /// and names what is left in it.
+  List<PlanExercise> _exercisesOnScreen = const [];
+
   /// Clamped, because [startedAt] is the SERVER's NOW() while [DateTime.now]
   /// is the phone's. A phone clock behind the server makes the difference
   /// negative, and POST /complete rejects a negative durationMin with
@@ -398,8 +415,9 @@ class _SessionLoggerScreenState extends ConsumerState<SessionLoggerScreen>
   }
 
   /// Every move this screen makes: which exercise, and which face of it.
-  /// Call it inside a setState. Six paths lead here -- Start logging, Next
-  /// exercise, both halves of back, the jump sheet, and a switch.
+  /// Call it inside a setState. Seven paths lead here -- Start logging, Next
+  /// exercise, both halves of back, the jump sheet, a switch, and a resume,
+  /// which is the one that runs inside build rather than a setState.
   ///
   /// Moving never touches the rest: a rest is the user's, between their sets,
   /// whichever exercise is on screen -- the walk from one station to the next
@@ -427,6 +445,26 @@ class _SessionLoggerScreenState extends ConsumerState<SessionLoggerScreen>
       if (session.setFor(exercise.exerciseId, number) != null) return true;
     }
     return false;
+  }
+
+  /// Where the workout was left: the first exercise with a set still to do,
+  /// on its table if anything is logged on it and on its demo if not -- the
+  /// same rule as a jump. With every set done, the last exercise's table,
+  /// where Finish is.
+  (int, _LoggerStage) _whereLeftOff(
+    List<PlanExercise> exercises,
+    ActiveSession session,
+  ) {
+    for (var i = 0; i < exercises.length; i++) {
+      if (_activeSetNumber(exercises[i], session) == null) continue;
+      return (
+        i,
+        _hasLoggedSets(exercises[i], session)
+            ? _LoggerStage.logging
+            : _LoggerStage.demo,
+      );
+    }
+    return (exercises.length - 1, _LoggerStage.logging);
   }
 
   /// Replaces [exercise] in the plan, from inside the workout: the same sheet
@@ -481,6 +519,107 @@ class _SessionLoggerScreenState extends ConsumerState<SessionLoggerScreen>
         content: Text('Swapped to $swappedTo'),
       ),
     );
+  }
+
+  /// Takes a stored set back so it can be corrected: the tap on a logged row.
+  ///
+  /// The row keeps the set's own numbers. Emptying it let the next build fill
+  /// the blanks with last session's, so a mis-tap cost the numbers actually
+  /// lifted. The seed is authoritative, so it replaces what the row showed,
+  /// and a prefill only fills blank fields, so it leaves these alone.
+  ///
+  /// Undo rather than a question first: reopening is frequent and costs
+  /// nothing once Undo can put the set back.
+  Future<void> _reopenSet(PlanExercise exercise, int setNumber) async {
+    final messenger = ScaffoldMessenger.of(context);
+    // Read before the delete, which is what takes it out of the session.
+    final stored = ref
+        .read(activeSessionProvider)
+        .value
+        ?.setFor(exercise.exerciseId, setNumber);
+    final drafts = _drafts;
+    try {
+      await ref
+          .read(activeSessionProvider.notifier)
+          .unlogSet(exerciseId: exercise.exerciseId, setNumber: setNumber);
+    } on ApiException catch (error) {
+      if (!_handledSetWriteClosure(error, messenger)) rethrow;
+      return;
+    }
+    // A move while the delete was in flight has thrown this store away, and
+    // the store now on screen belongs to another exercise.
+    if (!mounted || !identical(drafts, _drafts)) return;
+    if (stored == null) {
+      drafts.release(setNumber);
+      return;
+    }
+    drafts.seed(
+      setNumber: setNumber,
+      weightKg: stored.weightKg,
+      reps: stored.reps,
+      unit: _unitOnScreen ?? ref.read(weightUnitProvider),
+      authoritative: true,
+    );
+    messenger.showSnackBar(
+      SnackBar(
+        // Lifted past the footer, as "Swapped to" is: Complete set is how a
+        // corrected set is saved, so it is the next tap.
+        behavior: SnackBarBehavior.floating,
+        margin: EdgeInsets.fromLTRB(16, 0, 16, _footerHeight() + 8),
+        duration: const Duration(seconds: 4),
+        // An action makes a SnackBar persist by default, which would keep
+        // this one up after its Undo stopped meaning anything, with every
+        // later message queued behind it. It times out like "Swapped to",
+        // except for a screen reader, which needs time to reach Undo.
+        persist: MediaQuery.accessibleNavigationOf(context),
+        content: Text('Set $setNumber reopened'),
+        action: SnackBarAction(
+          label: 'Undo',
+          onPressed: () => _undoReopen(stored, messenger),
+        ),
+      ),
+    );
+  }
+
+  /// Logs [stored] again exactly as it was. Not a new set, so no rest starts:
+  /// only Complete set starts one.
+  ///
+  /// Nothing happens if the set is already stored again -- corrected and
+  /// saved before Undo was tapped. That correction is the user's latest word,
+  /// and the old numbers must not overwrite it.
+  Future<void> _undoReopen(
+    LoggedSet stored,
+    ScaffoldMessengerState messenger,
+  ) async {
+    // The SnackBar outlives the logger: it belongs to the host's messenger.
+    if (!mounted) return;
+    final session = ref.read(activeSessionProvider).value;
+    if (session == null ||
+        session.setFor(stored.exerciseId, stored.setNumber) != null) {
+      return;
+    }
+    try {
+      await ref
+          .read(activeSessionProvider.notifier)
+          .logSet(
+            exerciseId: stored.exerciseId,
+            setNumber: stored.setNumber,
+            weightKg: stored.weightKg,
+            reps: stored.reps,
+          );
+    } on ApiException catch (error) {
+      if (_handledSetWriteClosure(error, messenger)) return;
+      _undoFailed(messenger, error);
+    } catch (error) {
+      _undoFailed(messenger, error);
+    }
+  }
+
+  /// The set stays open with its numbers in the row, so Complete set still
+  /// saves it; the message says why Undo did not.
+  void _undoFailed(ScaffoldMessengerState messenger, Object error) {
+    if (!mounted) return;
+    messenger.showSnackBar(SnackBar(content: Text(describeError(error))));
   }
 
   /// Marks the footer, so a SnackBar can be lifted clear of it.
@@ -542,10 +681,34 @@ class _SessionLoggerScreenState extends ConsumerState<SessionLoggerScreen>
     }
   }
 
+  /// Closes the logger and leaves the session in progress, from wherever the
+  /// user is. Back steps through the exercises first, so without this,
+  /// leaving from the last one took a press per exercise. Nothing is written:
+  /// the session is resumable from Train, and opens where it was left. The
+  /// rest ends with the screen, in dispose.
+  void _leave() {
+    // Captured before the pop, as in _handleAlreadyClosed: the message
+    // belongs on the screen underneath.
+    final messenger = ScaffoldMessenger.of(context);
+    Navigator.of(context).pop();
+    // A reopen's Undo is still up for up to four seconds; it would hold this
+    // message back, and leaving is the newer news.
+    messenger.removeCurrentSnackBar();
+    messenger.showSnackBar(
+      const SnackBar(
+        content: Text('Workout saved. Resume it any time from Train.'),
+      ),
+    );
+  }
+
   Future<void> _finish() async {
     if (_finishing) return;
     final session = ref.read(activeSessionProvider).value;
     if (session == null) return;
+    // Guarded only once the user has said Finish. The footer button locks
+    // while _finishing is set, and a question still open, or answered Keep
+    // going, is not a finish in flight.
+    if (!await _confirmFinish(session) || !mounted || _finishing) return;
 
     setState(() => _finishing = true);
     final messenger = ScaffoldMessenger.of(context);
@@ -584,6 +747,70 @@ class _SessionLoggerScreenState extends ConsumerState<SessionLoggerScreen>
     } finally {
       if (mounted) setState(() => _finishing = false);
     }
+  }
+
+  /// Asks before a workout with planned sets still unlogged is finished,
+  /// since finishing is final. True carries on into the finish; a workout
+  /// with nothing left -- or nothing planned -- does not ask.
+  ///
+  /// Keep going moves to the first exercise with sets left, by the same rule
+  /// as a resume. Dismissing the question is not an answer, so nothing
+  /// finishes, and not a choice to move either, so nothing moves.
+  Future<bool> _confirmFinish(ActiveSession session) async {
+    final exercises = _exercisesOnScreen;
+    var total = 0;
+    var done = 0;
+    final left = <String>[];
+    for (final exercise in exercises) {
+      total += exercise.targetSets;
+      final logged = session.sets
+          .where((set) => set.exerciseId == exercise.exerciseId)
+          .length;
+      // Capped at the target: extra sets on one exercise are real work, but
+      // they do not make up for another exercise's missing ones.
+      done += logged < exercise.targetSets ? logged : exercise.targetSets;
+      if (_activeSetNumber(exercise, session) != null) left.add(exercise.name);
+    }
+    if (done >= total) return true;
+
+    final answer = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        key: const Key('logger.finishConfirm'),
+        title: Text('Finish with $done of $total sets?'),
+        content: Text('Not logged yet: ${_listNames(left)}.'),
+        actions: [
+          TextButton(
+            key: const Key('logger.finishConfirm.keepGoing'),
+            onPressed: () => Navigator.of(dialogContext).pop(false),
+            child: const Text('Keep going'),
+          ),
+          TextButton(
+            key: const Key('logger.finishConfirm.finish'),
+            onPressed: () => Navigator.of(dialogContext).pop(true),
+            child: const Text('Finish'),
+          ),
+        ],
+      ),
+    );
+    if (answer == false && mounted) {
+      setState(() {
+        final (index, stage) = _whereLeftOff(exercises, session);
+        _moveTo(index: index, stage: stage);
+      });
+    }
+    return answer == true;
+  }
+
+  /// "A", "A and B", "A, B and C" -- and past three, "A, B, C and 2 more",
+  /// so a long workout's question still fits a small phone.
+  static String _listNames(List<String> names) {
+    if (names.length > 3) {
+      return '${names.take(3).join(', ')} and ${names.length - 3} more';
+    }
+    if (names.length == 1) return names.single;
+    return '${names.sublist(0, names.length - 1).join(', ')} '
+        'and ${names.last}';
   }
 
   Future<void> _showSummary(ActiveSession done) async {
@@ -975,6 +1202,7 @@ class _SessionLoggerScreenState extends ConsumerState<SessionLoggerScreen>
           'restTime' => showRestSheet(context),
           'restart' => onRestart?.call(),
           'switch' => switchState?.onSwitch?.call(),
+          'leave' => _leave(),
           'finish' => _finish(),
           _ => _discard(),
         },
@@ -1014,6 +1242,11 @@ class _SessionLoggerScreenState extends ConsumerState<SessionLoggerScreen>
                 ],
               ),
             ),
+          const PopupMenuItem(
+            key: Key('logger.leave'),
+            value: 'leave',
+            child: Text('Leave, keep for later'),
+          ),
           const PopupMenuItem(
             key: Key('logger.finish'),
             value: 'finish',
@@ -1069,6 +1302,7 @@ class _SessionLoggerScreenState extends ConsumerState<SessionLoggerScreen>
     final exercises = carried.isNotEmpty
         ? carried
         : (plan?.exercisesForDay(session.planDayNo) ?? const <PlanExercise>[]);
+    _exercisesOnScreen = exercises;
     if (exercises.isEmpty) {
       // Not a spinner: the plan and the session are both loaded, so there is
       // nothing left to wait for -- this day of the rotation simply holds no
@@ -1106,6 +1340,13 @@ class _SessionLoggerScreenState extends ConsumerState<SessionLoggerScreen>
           ),
         ),
       );
+    }
+    if (_resumePending) {
+      _resumePending = false;
+      // Assigned here rather than through setState: this build is the one
+      // that reads them, a few lines down.
+      final (index, stage) = _whereLeftOff(exercises, session);
+      _moveTo(index: index, stage: stage);
     }
     final index = _index.clamp(0, exercises.length - 1);
     _syncDrafts(index, exercises[index].exerciseId);
@@ -1305,28 +1546,8 @@ class _SessionLoggerScreenState extends ConsumerState<SessionLoggerScreen>
                                 )
                                 .value
                                 ?.animationUrl,
-                            onUndoSet: (setNumber) async {
-                              final messenger = ScaffoldMessenger.of(context);
-                              try {
-                                await ref
-                                    .read(activeSessionProvider.notifier)
-                                    .unlogSet(
-                                      exerciseId: exercise.exerciseId,
-                                      setNumber: setNumber,
-                                    );
-                              } on ApiException catch (error) {
-                                if (!_handledSetWriteClosure(
-                                  error,
-                                  messenger,
-                                )) {
-                                  rethrow;
-                                }
-                                return;
-                              }
-                              // The stored set is gone; let the table re-seed
-                              // this row from it on the next build.
-                              _drafts.release(setNumber);
-                            },
+                            onUndoSet: (setNumber) =>
+                                _reopenSet(exercise, setNumber),
                             onOpenDemo: () => Navigator.of(context).push(
                               MaterialPageRoute<void>(
                                 builder: (_) => InSessionExerciseScreen(

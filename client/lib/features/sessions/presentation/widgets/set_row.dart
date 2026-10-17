@@ -122,51 +122,81 @@ class SetRow extends StatelessWidget {
       ),
     );
 
-    return InkWell(
-      key: Key('set.$setNumber.row'),
-      // A stored row is the reopen target, and the whole row is it -- the
-      // 28px mark this replaces was under Material's 48dp minimum, on the
-      // control used most. An unlogged row has nothing to reopen.
-      onTap: done ? onReopen : null,
-      child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 5),
-        child: Row(
-          children: [
-            SizedBox(
-              width: SetRow.numberWidth,
-              child: Text(
-                '$setNumber',
-                style: TextStyle(
-                  fontFamily: fsMonoFamily,
-                  fontSize: 13,
-                  fontWeight: FontWeight.w600,
-                  color: t.text3,
+    final reopens = done && onReopen != null;
+    // Says what the tap does. Without it a screen reader announces the row as
+    // a bare "2" that can be tapped, and the tap takes the set back.
+    return Semantics(
+      hint: reopens ? 'Reopen set $setNumber' : null,
+      child: InkWell(
+        key: Key('set.$setNumber.row'),
+        // A stored row is the reopen target, and the whole row is it -- the
+        // 28px mark this replaces was under Material's 48dp minimum, on the
+        // control used most. An unlogged row has nothing to reopen.
+        onTap: reopens ? onReopen : null,
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 5),
+          child: Row(
+            children: [
+              SizedBox(
+                width: SetRow.numberWidth,
+                child: Text(
+                  '$setNumber',
+                  style: TextStyle(
+                    fontFamily: fsMonoFamily,
+                    fontSize: 13,
+                    fontWeight: FontWeight.w600,
+                    color: t.text3,
+                  ),
                 ),
               ),
-            ),
-            if (showWeight) ...[
+              if (showWeight) ...[
+                Expanded(
+                  // Named for screen readers: the hint is only the unit, and it
+                  // goes once a number is typed.
+                  child: Semantics(
+                    label: 'Weight',
+                    child: TextField(
+                      key: Key('set.$setNumber.weight'),
+                      controller: drafts.weight(setNumber),
+                      enabled: editable,
+                      onTapOutside: _letGo,
+                      textAlign: TextAlign.center,
+                      keyboardType: const TextInputType.numberWithOptions(
+                        decimal: true,
+                      ),
+                      inputFormatters: [
+                        // Three digits and two decimals: weight_kg is DECIMAL(6,2)
+                        // and the server rejects anything above 999.99 anyway.
+                        FilteringTextInputFormatter.allow(
+                          RegExp(r'^\d{0,3}\.?\d{0,2}'),
+                        ),
+                      ],
+                      decoration: decoration(unit.api),
+                      style: TextStyle(
+                        fontFamily: fsMonoFamily,
+                        fontSize: 14,
+                        fontWeight: FontWeight.w600,
+                        color: t.text,
+                      ),
+                    ),
+                  ),
+                ),
+                const SizedBox(width: SetRow.columnGap),
+              ],
               Expanded(
-                // Named for screen readers: the hint is only the unit, and it
-                // goes once a number is typed.
                 child: Semantics(
-                  label: 'Weight',
+                  label: 'Reps',
                   child: TextField(
-                    key: Key('set.$setNumber.weight'),
-                    controller: drafts.weight(setNumber),
+                    key: Key('set.$setNumber.reps'),
+                    controller: drafts.reps(setNumber),
                     enabled: editable,
                     onTapOutside: _letGo,
                     textAlign: TextAlign.center,
-                    keyboardType: const TextInputType.numberWithOptions(
-                      decimal: true,
-                    ),
+                    keyboardType: TextInputType.number,
                     inputFormatters: [
-                      // Three digits and two decimals: weight_kg is DECIMAL(6,2)
-                      // and the server rejects anything above 999.99 anyway.
-                      FilteringTextInputFormatter.allow(
-                        RegExp(r'^\d{0,3}\.?\d{0,2}'),
-                      ),
+                      FilteringTextInputFormatter.allow(RegExp(r'^\d{0,3}')),
                     ],
-                    decoration: decoration(unit.api),
+                    decoration: decoration(repsHint),
                     style: TextStyle(
                       fontFamily: fsMonoFamily,
                       fontSize: 14,
@@ -177,37 +207,16 @@ class SetRow extends StatelessWidget {
                 ),
               ),
               const SizedBox(width: SetRow.columnGap),
-            ],
-            Expanded(
-              child: Semantics(
-                label: 'Reps',
-                child: TextField(
-                  key: Key('set.$setNumber.reps'),
-                  controller: drafts.reps(setNumber),
-                  enabled: editable,
-                  onTapOutside: _letGo,
-                  textAlign: TextAlign.center,
-                  keyboardType: TextInputType.number,
-                  inputFormatters: [
-                    FilteringTextInputFormatter.allow(RegExp(r'^\d{0,3}')),
-                  ],
-                  decoration: decoration(repsHint),
-                  style: TextStyle(
-                    fontFamily: fsMonoFamily,
-                    fontSize: 14,
-                    fontWeight: FontWeight.w600,
-                    color: t.text,
-                  ),
+              SizedBox(
+                key: Key('set.$setNumber.tick'),
+                width: SetRow.tickWidth,
+                child: SizedBox(
+                  height: 38,
+                  child: Center(child: _mark(t, done)),
                 ),
               ),
-            ),
-            const SizedBox(width: SetRow.columnGap),
-            SizedBox(
-              key: Key('set.$setNumber.tick'),
-              width: SetRow.tickWidth,
-              child: SizedBox(height: 38, child: Center(child: _mark(t, done))),
-            ),
-          ],
+            ],
+          ),
         ),
       ),
     );

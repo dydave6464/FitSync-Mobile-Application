@@ -537,6 +537,9 @@ Future<FakeSessionController> _pump(
   // test touches a platform channel.
   FakeRestAlertScheduler? alerts,
   RestAlertStore? alertStore,
+  // Opens the logger the way Home's card and the Plan tab's Resume do, on
+  // where the workout was left rather than on exercise 1's demo.
+  bool resume = false,
 }) async {
   final controller = FakeSessionController(session ?? _session());
 
@@ -612,7 +615,7 @@ Future<FakeSessionController> _pump(
             builder: (context) => TextButton(
               onPressed: () => Navigator.of(context).push(
                 MaterialPageRoute<void>(
-                  builder: (_) => const SessionLoggerScreen(),
+                  builder: (_) => SessionLoggerScreen(resume: resume),
                 ),
               ),
               child: const Text('open logger'),
@@ -648,6 +651,7 @@ Future<FakeSessionController> _pumpLogging(
   FakeTrainingSettings? training,
   FakeRestAlertScheduler? alerts,
   RestAlertStore? alertStore,
+  Map<int, LastPerformance> last = const {},
 }) async {
   final controller = await _pump(
     tester,
@@ -658,6 +662,7 @@ Future<FakeSessionController> _pumpLogging(
     training: training,
     alerts: alerts,
     alertStore: alertStore,
+    last: last,
   );
   await tester.tap(find.byKey(const Key('logger.primary')));
   await tester.pumpAndSettle();
@@ -683,6 +688,37 @@ Future<void> _menu(WidgetTester tester, String action) async {
   await tester.tap(find.byKey(const Key('logger.menu')));
   await tester.pumpAndSettle();
   await tester.tap(find.byKey(Key('logger.$action')));
+  await tester.pumpAndSettle();
+}
+
+/// A 320 x 640 phone at twice the text size, for the checks that the
+/// logger's dialogs and messages still fit.
+void _smallPhoneLargeText(WidgetTester tester) {
+  tester.view.physicalSize = const Size(320, 640);
+  tester.view.devicePixelRatio = 1;
+  tester.platformDispatcher.textScaleFactorTestValue = 2.0;
+  addTearDown(tester.view.reset);
+  addTearDown(tester.platformDispatcher.clearTextScaleFactorTestValue);
+}
+
+/// Takes the one overflow the logger reports before anything is tapped on a
+/// small phone at large text: the meta row's "12 min elapsed", in a monospace
+/// font that the test font draws a full em wide per glyph. A phone's monospace
+/// is narrower and fits. Flutter reports an overflow once per row, so taking
+/// it here leaves later checks to see only what the tapped flow adds.
+void _drainMetaRowOverflow(WidgetTester tester) {
+  final error = tester.takeException();
+  if (error != null) expect('$error', contains('RenderFlex overflowed'));
+}
+
+/// Finish from the menu on a workout with sets still unlogged, which asks
+/// first now (see the "finishing with sets left" group), answered Finish.
+/// For the tests about what finishing does: they log a set or two, not the
+/// whole plan, and the question is not what they are checking.
+Future<void> _finishWithSetsLeft(WidgetTester tester) async {
+  await _menu(tester, 'finish');
+  expect(find.byKey(const Key('logger.finishConfirm')), findsOneWidget);
+  await tester.tap(find.byKey(const Key('logger.finishConfirm.finish')));
   await tester.pumpAndSettle();
 }
 
@@ -1274,7 +1310,7 @@ void main() {
       ),
     );
 
-    await _menu(tester, 'finish');
+    await _finishWithSetsLeft(tester);
 
     // The closed session comes back at 380 kg, which is 837.75... lb.
     expect(find.textContaining('838 lb lifted'), findsOneWidget);
@@ -1450,7 +1486,7 @@ void main() {
       ),
     );
 
-    await _menu(tester, 'finish');
+    await _finishWithSetsLeft(tester);
 
     // The exact minute count, not just the prefix: the fixture started 12
     // minutes ago, and a startsWith('complete:') check is satisfied just as
@@ -1472,7 +1508,7 @@ void main() {
       'This session has already been closed.',
     );
 
-    await _menu(tester, 'finish');
+    await _finishWithSetsLeft(tester);
 
     expect(find.byKey(const Key('logger.summary')), findsNothing);
     // Gone from the stack, not merely summary-less: the host route is back.
@@ -1512,7 +1548,7 @@ void main() {
       final gate = Completer<void>();
       controller.completeGate = gate;
 
-      await _menu(tester, 'finish');
+      await _finishWithSetsLeft(tester);
       await _menu(tester, 'finish');
       gate.complete();
       await tester.pumpAndSettle();
@@ -1540,7 +1576,7 @@ void main() {
       final controller = await _pump(tester);
       controller.completeError = StateError('No session is in progress.');
 
-      await _menu(tester, 'finish');
+      await _finishWithSetsLeft(tester);
 
       expect(find.text('This session was already finished.'), findsOneWidget);
       expect(find.text('Something went wrong.'), findsNothing);
@@ -1600,7 +1636,7 @@ void main() {
         );
         controller.completeError = error;
 
-        await _menu(tester, 'finish');
+        await _finishWithSetsLeft(tester);
 
         expect(find.text(message), findsOneWidget);
         // Not closed, not summarised, and above all not navigated away from:
@@ -1615,7 +1651,7 @@ void main() {
         // guard left stuck would leave a session that can never be finished
         // from here. No wait for the SnackBar to clear any more: Finish moved
         // to the app bar's menu, which a bottom-anchored SnackBar never covers.
-        await _menu(tester, 'finish');
+        await _finishWithSetsLeft(tester);
         expect(
           controller.calls.where((c) => c.startsWith('complete:')).length,
           2,
@@ -1712,50 +1748,46 @@ void main() {
     },
   );
 
-  // Critical fix (review of task 2): _drafts.release(setNumber) has to run
-  // in session_logger_screen.dart's own onUndoSet, not just be documented as
-  // a later task's job -- otherwise a reopened row keeps showing the number
-  // that was just undone. This is the one test that can actually catch a
-  // regression here: exercise_log_panel_test.dart drives ExerciseLogPanel
-  // directly and supplies its own onUndoSet, so it can never see whether
-  // this screen's real handler calls release() or not.
-  testWidgets('undoing a set clears its typed values from the reopened row', (
+  // A mis-tap on a logged row used to cost the set: it was deleted, the row
+  // emptied, and the next build filled the blanks with last session's
+  // numbers, so the numbers actually lifted were gone. The row keeps its own
+  // numbers now. [last] differs from the stored set so a prefill would show.
+  // This has to be driven through the screen: exercise_log_panel_test.dart
+  // supplies its own onUndoSet, so it can never see what this handler does.
+  testWidgets('reopening a set keeps its own numbers, not last session\'s', (
     tester,
   ) async {
-    await _pumpLogging(
+    final controller = await _pumpLogging(
       tester,
       session: _session(
         sets: const [
           LoggedSet(exerciseId: 101, setNumber: 1, weightKg: 22.5, reps: 10),
         ],
       ),
+      last: const {
+        101: LastPerformance(
+          exerciseId: 101,
+          sessionDate: '2026-09-01',
+          weightKg: 30,
+          reps: 5,
+        ),
+      },
     );
 
-    expect(
-      tester
-          .widget<TextField>(find.byKey(const Key('set.1.weight')))
-          .controller!
-          .text,
-      '22.5',
-    );
-
-    await tester.tap(find.byKey(const Key('set.1.tick')));
+    await tester.tap(find.byKey(const Key('set.1.row')));
     await tester.pumpAndSettle();
 
-    expect(
-      tester
-          .widget<TextField>(find.byKey(const Key('set.1.weight')))
-          .controller!
-          .text,
-      isEmpty,
+    expect(controller.calls, ['unlog:101:1']);
+    final weight = tester.widget<TextField>(
+      find.byKey(const Key('set.1.weight')),
     );
-    expect(
-      tester
-          .widget<TextField>(find.byKey(const Key('set.1.reps')))
-          .controller!
-          .text,
-      isEmpty,
-    );
+    final reps = tester.widget<TextField>(find.byKey(const Key('set.1.reps')));
+    // Open for editing, holding what was stored.
+    expect(weight.enabled, isTrue);
+    expect(weight.controller!.text, '22.5');
+    expect(reps.controller!.text, '10');
+    // The footer names the reopened set, so fixing it is one tap.
+    expect(find.text('Complete set 1'), findsOneWidget);
   });
 
   testWidgets('a 409 on an undo closes the logger too', (tester) async {
@@ -1782,6 +1814,542 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
+  group('reopening a logged set', () {
+    ActiveSession squatSet1() => _session(
+      sets: const [
+        LoggedSet(exerciseId: 101, setNumber: 1, weightKg: 22.5, reps: 10),
+      ],
+    );
+
+    Finder undo() => find.widgetWithText(SnackBarAction, 'Undo');
+
+    testWidgets('says so, with an Undo', (tester) async {
+      await _pumpLogging(tester, session: squatSet1());
+
+      await tester.tap(find.byKey(const Key('set.1.row')));
+      await tester.pumpAndSettle();
+
+      expect(find.text('Set 1 reopened'), findsOneWidget);
+      expect(undo(), findsOneWidget);
+    });
+
+    // An action makes a SnackBar persist by default, which would leave this
+    // one up for good -- after its Undo stopped meaning anything, and with
+    // every later message queued behind it. It goes in four seconds, as
+    // "Swapped to" does.
+    testWidgets('the message goes after four seconds', (tester) async {
+      await _pumpLogging(tester, session: squatSet1());
+
+      await tester.tap(find.byKey(const Key('set.1.row')));
+      await tester.pumpAndSettle();
+      expect(find.text('Set 1 reopened'), findsOneWidget);
+
+      await tester.pump(const Duration(seconds: 5));
+      await tester.pumpAndSettle();
+
+      expect(find.text('Set 1 reopened'), findsNothing);
+    });
+
+    // Leaving straight after a reopen: the saved message is the one that
+    // matters, and it must not wait behind the reopen one.
+    testWidgets('leaving right after still says the workout is saved', (
+      tester,
+    ) async {
+      await _pumpLogging(tester, session: squatSet1());
+
+      await tester.tap(find.byKey(const Key('set.1.row')));
+      await tester.pumpAndSettle();
+      await _menu(tester, 'leave');
+
+      expect(find.byType(SessionLoggerScreen), findsNothing);
+      expect(find.text('Set 1 reopened'), findsNothing);
+      expect(
+        find.text('Workout saved. Resume it any time from Train.'),
+        findsOneWidget,
+      );
+    });
+
+    // The footer is the next tap after a reopen -- Complete set 1 is how the
+    // fix is saved -- so the message must not sit on it.
+    testWidgets('the message floats clear of the footer', (tester) async {
+      await _pumpLogging(tester, session: squatSet1());
+
+      await tester.tap(find.byKey(const Key('set.1.row')));
+      await tester.pumpAndSettle();
+
+      final snackBar = find.byType(SnackBar);
+      // The bar's own surface: the SnackBar widget's box also spans the
+      // margin below it, which is see-through and lets taps pass.
+      final bar = find
+          .descendant(of: snackBar, matching: find.byType(Material))
+          .first;
+      expect(
+        tester
+            .getRect(bar)
+            .overlaps(tester.getRect(find.byKey(const Key('logger.primary')))),
+        isFalse,
+      );
+    });
+
+    // Undo puts back what was there; it is not a new set, so no rest.
+    testWidgets('Undo logs the set again as it was, and starts no rest', (
+      tester,
+    ) async {
+      final controller = await _pumpLogging(tester, session: squatSet1());
+
+      await tester.tap(find.byKey(const Key('set.1.row')));
+      await tester.pumpAndSettle();
+      await tester.tap(undo());
+      await tester.pumpAndSettle();
+
+      expect(controller.calls, ['unlog:101:1', 'log:101:1:22.5:10']);
+      expect(controller.heldSession!.setFor(101, 1), isNotNull);
+      expect(find.byKey(const Key('rest.remaining')), findsNothing);
+      expect(find.text('Complete set 2'), findsOneWidget);
+    });
+
+    // Fixed and saved before Undo was tapped: the fix is the user's latest
+    // word, and Undo must not overwrite it with the old numbers.
+    testWidgets('Undo does nothing once the set is stored again', (
+      tester,
+    ) async {
+      final controller = await _pumpLogging(tester, session: squatSet1());
+
+      await tester.tap(find.byKey(const Key('set.1.row')));
+      await tester.pumpAndSettle();
+      await tester.enterText(find.byKey(const Key('set.1.reps')), '12');
+      await tester.tap(find.byKey(const Key('logger.primary')));
+      await tester.pumpAndSettle();
+      await tester.tap(undo());
+      await tester.pumpAndSettle();
+
+      expect(controller.calls, ['unlog:101:1', 'log:101:1:22.5:12']);
+      expect(controller.heldSession!.setFor(101, 1)!.reps, 12);
+    });
+
+    testWidgets('an Undo that fails says so and leaves the set open', (
+      tester,
+    ) async {
+      final controller = await _pumpLogging(tester, session: squatSet1());
+
+      await tester.tap(find.byKey(const Key('set.1.row')));
+      await tester.pumpAndSettle();
+      controller.logSetError = const ApiException('NETWORK', 'No connection.');
+      await tester.tap(undo());
+      await tester.pumpAndSettle();
+
+      expect(find.text('No connection.'), findsOneWidget);
+      expect(controller.heldSession!.setFor(101, 1), isNull);
+      expect(find.byType(SessionLoggerScreen), findsOneWidget);
+      expect(tester.takeException(), isNull);
+    });
+
+    testWidgets('an Undo on a session closed elsewhere leaves the logger', (
+      tester,
+    ) async {
+      final controller = await _pumpLogging(tester, session: squatSet1());
+
+      await tester.tap(find.byKey(const Key('set.1.row')));
+      await tester.pumpAndSettle();
+      controller.logSetError = const ApiException(
+        'SESSION_NOT_IN_PROGRESS',
+        'This session has already been closed.',
+      );
+      await tester.tap(undo());
+      await tester.pumpAndSettle();
+
+      expect(find.byType(SessionLoggerScreen), findsNothing);
+      expect(find.text('This session was already finished.'), findsOneWidget);
+      expect(tester.takeException(), isNull);
+    });
+
+    testWidgets('fits a 320 dp phone at large text', (tester) async {
+      _smallPhoneLargeText(tester);
+
+      await _pumpLogging(tester, session: squatSet1());
+      _drainMetaRowOverflow(tester);
+      await tester.tap(find.byKey(const Key('set.1.row')));
+      await tester.pumpAndSettle();
+
+      expect(find.text('Set 1 reopened'), findsOneWidget);
+      expect(tester.takeException(), isNull);
+    });
+  });
+
+  group('leave, keep for later', () {
+    const squatDone = [
+      LoggedSet(exerciseId: 101, setNumber: 1, weightKg: 20, reps: 10),
+      LoggedSet(exerciseId: 101, setNumber: 2, weightKg: 20, reps: 10),
+      LoggedSet(exerciseId: 101, setNumber: 3, weightKg: 20, reps: 10),
+    ];
+
+    // Back steps through the exercises, so from exercise 2's table it takes
+    // three presses to get out. The menu item is the one-tap way.
+    testWidgets('leaves from any exercise in one tap, session kept', (
+      tester,
+    ) async {
+      final controller = await _pumpLogging(
+        tester,
+        session: _session(sets: squatDone),
+      );
+      await tester.tap(find.byKey(const Key('logger.primary')));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const Key('logger.primary')));
+      await tester.pumpAndSettle();
+      expect(_metaPosition('Exercise 2 / 2'), findsOneWidget);
+      expect(find.byType(SetRow), findsNWidgets(2));
+
+      await _menu(tester, 'leave');
+
+      expect(find.byType(SessionLoggerScreen), findsNothing);
+      expect(find.text('open logger'), findsOneWidget);
+      expect(
+        find.text('Workout saved. Resume it any time from Train.'),
+        findsOneWidget,
+      );
+      // Nothing written: still in progress, still resumable.
+      expect(controller.calls, isEmpty);
+      expect(controller.heldSession, isNotNull);
+    });
+
+    testWidgets('sits above Finish in the menu', (tester) async {
+      await _pump(tester);
+
+      await tester.tap(find.byKey(const Key('logger.menu')));
+      await tester.pumpAndSettle();
+
+      expect(
+        tester.getTopLeft(find.byKey(const Key('logger.leave'))).dy,
+        lessThan(tester.getTopLeft(find.byKey(const Key('logger.finish'))).dy),
+      );
+      expect(find.text('Leave, keep for later'), findsOneWidget);
+    });
+
+    testWidgets('its message fits a 320 dp phone at large text', (
+      tester,
+    ) async {
+      _smallPhoneLargeText(tester);
+      await _pump(tester);
+      _drainMetaRowOverflow(tester);
+
+      await _menu(tester, 'leave');
+
+      expect(
+        find.text('Workout saved. Resume it any time from Train.'),
+        findsOneWidget,
+      );
+      expect(tester.takeException(), isNull);
+    });
+  });
+
+  group('resume', () {
+    const squatDone = [
+      LoggedSet(exerciseId: 101, setNumber: 1, weightKg: 20, reps: 10),
+      LoggedSet(exerciseId: 101, setNumber: 2, weightKg: 20, reps: 10),
+      LoggedSet(exerciseId: 101, setNumber: 3, weightKg: 20, reps: 10),
+    ];
+    const pushUpsDone = [
+      LoggedSet(exerciseId: 102, setNumber: 1, weightKg: null, reps: 12),
+      LoggedSet(exerciseId: 102, setNumber: 2, weightKg: null, reps: 12),
+    ];
+
+    testWidgets('opens on the next exercise\'s demo when nothing is on it', (
+      tester,
+    ) async {
+      await _pump(tester, resume: true, session: _session(sets: squatDone));
+
+      expect(_metaPosition('Exercise 2 / 2'), findsOneWidget);
+      expect(find.byKey(const Key('logger.demo')), findsOneWidget);
+    });
+
+    testWidgets('opens on the table of an exercise left part done', (
+      tester,
+    ) async {
+      await _pump(
+        tester,
+        resume: true,
+        session: _session(sets: squatDone.sublist(0, 1)),
+      );
+
+      expect(_metaPosition('Exercise 1 / 2'), findsOneWidget);
+      expect(find.byKey(const Key('logger.demo')), findsNothing);
+      expect(find.text('Complete set 2'), findsOneWidget);
+    });
+
+    testWidgets('opens on the last table when every set is done', (
+      tester,
+    ) async {
+      await _pump(
+        tester,
+        resume: true,
+        session: _session(sets: [...squatDone, ...pushUpsDone]),
+      );
+
+      expect(_metaPosition('Exercise 2 / 2'), findsOneWidget);
+      expect(find.byKey(const Key('logger.demo')), findsNothing);
+      expect(find.byType(SetRow), findsNWidgets(2));
+    });
+
+    testWidgets('without it, the workout opens on exercise 1\'s demo', (
+      tester,
+    ) async {
+      await _pump(tester, session: _session(sets: squatDone));
+
+      expect(_metaPosition('Exercise 1 / 2'), findsOneWidget);
+      expect(find.byKey(const Key('logger.demo')), findsOneWidget);
+    });
+
+    // Positioned once, on the way in. A later rebuild must not drag someone
+    // who has moved back to where the workout was left.
+    testWidgets('positions once and then lets the user move', (tester) async {
+      await _pump(tester, resume: true, session: _session(sets: squatDone));
+
+      await tester.pageBack();
+      await tester.pumpAndSettle();
+      // Reopening a set rebuilds the screen with a changed session.
+      await tester.tap(find.byKey(const Key('set.3.row')));
+      await tester.pumpAndSettle();
+
+      expect(_metaPosition('Exercise 1 / 2'), findsOneWidget);
+      expect(find.text('Complete set 3'), findsOneWidget);
+    });
+  });
+
+  group('finishing with sets left', () {
+    const squatDone = [
+      LoggedSet(exerciseId: 101, setNumber: 1, weightKg: 20, reps: 10),
+      LoggedSet(exerciseId: 101, setNumber: 2, weightKg: 20, reps: 10),
+      LoggedSet(exerciseId: 101, setNumber: 3, weightKg: 20, reps: 10),
+    ];
+    const pushUpsDone = [
+      LoggedSet(exerciseId: 102, setNumber: 1, weightKg: null, reps: 12),
+      LoggedSet(exerciseId: 102, setNumber: 2, weightKg: null, reps: 12),
+    ];
+
+    /// Five exercises of two sets each, from a chosen list -- enough that the
+    /// list of what is left has to be cut short.
+    ActiveSession fiveExercises({List<LoggedSet> sets = const []}) => _session(
+      sets: sets,
+      exercises: [
+        for (final (i, name) in [
+          'Bench press',
+          'Barbell row',
+          'Overhead press',
+          'Romanian deadlift',
+          'Walking lunge',
+        ].indexed)
+          PlanExercise(
+            planExerciseId: 700 + i,
+            exerciseId: 400 + i,
+            name: name,
+            muscleGroup: 'x',
+            orderNo: i + 1,
+            targetSets: 2,
+            targetReps: '8-12',
+          ),
+      ],
+    );
+
+    Finder dialog() => find.byKey(const Key('logger.finishConfirm'));
+
+    int completes(FakeSessionController controller) =>
+        controller.calls.where((call) => call.startsWith('complete:')).length;
+
+    testWidgets('asks first, counting the sets and naming what is left', (
+      tester,
+    ) async {
+      final controller = await _pumpLogging(
+        tester,
+        session: _session(sets: squatDone.sublist(0, 1)),
+      );
+
+      await _menu(tester, 'finish');
+
+      expect(dialog(), findsOneWidget);
+      expect(find.text('Finish with 1 of 5 sets?'), findsOneWidget);
+      expect(
+        find.text('Not logged yet: Goblet squat and Push-up.'),
+        findsOneWidget,
+      );
+      expect(completes(controller), 0);
+    });
+
+    // Sets past an exercise's target are real work, but they cannot stand in
+    // for another exercise's missing ones: the count stops at each target.
+    testWidgets('extra sets on one exercise do not count towards another', (
+      tester,
+    ) async {
+      await _pumpLogging(
+        tester,
+        session: _session(
+          sets: const [
+            ...squatDone,
+            LoggedSet(exerciseId: 101, setNumber: 4, weightKg: 20, reps: 8),
+          ],
+        ),
+      );
+
+      await _menu(tester, 'finish');
+
+      expect(find.text('Finish with 3 of 5 sets?'), findsOneWidget);
+      expect(find.text('Not logged yet: Push-up.'), findsOneWidget);
+    });
+
+    testWidgets('a long list names three and counts the rest', (tester) async {
+      await _pump(
+        tester,
+        plan: null,
+        session: fiveExercises(
+          sets: const [
+            LoggedSet(exerciseId: 401, setNumber: 1, weightKg: 40, reps: 8),
+          ],
+        ),
+      );
+
+      await _menu(tester, 'finish');
+
+      expect(find.text('Finish with 1 of 10 sets?'), findsOneWidget);
+      expect(
+        find.text(
+          'Not logged yet: Bench press, Barbell row, Overhead press '
+          'and 2 more.',
+        ),
+        findsOneWidget,
+      );
+    });
+
+    testWidgets('Keep going goes to the first exercise with sets left', (
+      tester,
+    ) async {
+      final controller = await _pump(
+        tester,
+        resume: true,
+        session: _session(sets: [...squatDone, ...pushUpsDone.sublist(0, 1)]),
+      );
+      await tester.tap(find.byKey(const Key('logger.position')));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const Key('jump.101')));
+      await tester.pumpAndSettle();
+      expect(_metaPosition('Exercise 1 / 2'), findsOneWidget);
+
+      await _menu(tester, 'finish');
+      await tester.tap(find.byKey(const Key('logger.finishConfirm.keepGoing')));
+      await tester.pumpAndSettle();
+
+      expect(dialog(), findsNothing);
+      // Push-up has a set logged, so its table rather than its demo.
+      expect(_metaPosition('Exercise 2 / 2'), findsOneWidget);
+      expect(find.text('Complete set 2'), findsOneWidget);
+      expect(completes(controller), 0);
+    });
+
+    testWidgets('Keep going opens the demo of an exercise not yet started', (
+      tester,
+    ) async {
+      await _pumpLogging(tester, session: _session(sets: squatDone));
+
+      await _menu(tester, 'finish');
+      await tester.tap(find.byKey(const Key('logger.finishConfirm.keepGoing')));
+      await tester.pumpAndSettle();
+
+      expect(_metaPosition('Exercise 2 / 2'), findsOneWidget);
+      expect(find.byKey(const Key('logger.demo')), findsOneWidget);
+    });
+
+    testWidgets('Finish finishes', (tester) async {
+      final controller = await _pumpLogging(
+        tester,
+        session: _session(sets: squatDone.sublist(0, 1)),
+      );
+
+      await _menu(tester, 'finish');
+      await tester.tap(find.byKey(const Key('logger.finishConfirm.finish')));
+      await tester.pumpAndSettle();
+
+      expect(controller.calls, contains('complete:12'));
+      expect(find.byKey(const Key('logger.summary')), findsOneWidget);
+    });
+
+    // Dismissing is not an answer, and finishing is the final act: nothing
+    // completes. Nor does it move -- that is Keep going's choice to make.
+    testWidgets('dismissing finishes nothing and stays put', (tester) async {
+      final controller = await _pumpLogging(
+        tester,
+        session: _session(sets: squatDone.sublist(0, 1)),
+      );
+      // Away from where Keep going would land -- squat, with sets left -- so
+      // staying put and moving look different.
+      await tester.tap(find.byKey(const Key('logger.position')));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const Key('jump.102')));
+      await tester.pumpAndSettle();
+      expect(_metaPosition('Exercise 2 / 2'), findsOneWidget);
+      expect(find.byKey(const Key('logger.demo')), findsOneWidget);
+
+      await _menu(tester, 'finish');
+      await tester.tapAt(const Offset(5, 5));
+      await tester.pumpAndSettle();
+
+      expect(dialog(), findsNothing);
+      expect(completes(controller), 0);
+      expect(_metaPosition('Exercise 2 / 2'), findsOneWidget);
+      expect(find.byKey(const Key('logger.demo')), findsOneWidget);
+
+      // Not locked out either: the guard is set only once Finish is chosen.
+      await _menu(tester, 'finish');
+      expect(dialog(), findsOneWidget);
+    });
+
+    // The footer's Finish, on the last exercise, asks the same question.
+    testWidgets('the footer\'s Finish asks too', (tester) async {
+      final controller = await _pump(
+        tester,
+        resume: true,
+        session: _session(sets: pushUpsDone),
+      );
+      await tester.tap(find.byKey(const Key('logger.position')));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const Key('jump.102')));
+      await tester.pumpAndSettle();
+      expect(find.text('Finish session'), findsOneWidget);
+
+      await tester.tap(find.byKey(const Key('logger.primary')));
+      await tester.pumpAndSettle();
+
+      expect(find.text('Finish with 2 of 5 sets?'), findsOneWidget);
+      expect(completes(controller), 0);
+    });
+
+    testWidgets('with every set logged, Finish does not ask', (tester) async {
+      final controller = await _pump(
+        tester,
+        session: _session(sets: [...squatDone, ...pushUpsDone]),
+      );
+
+      await _menu(tester, 'finish');
+
+      expect(dialog(), findsNothing);
+      expect(controller.calls, contains('complete:12'));
+      expect(find.byKey(const Key('logger.summary')), findsOneWidget);
+    });
+
+    testWidgets('the question fits a 320 dp phone at large text', (
+      tester,
+    ) async {
+      _smallPhoneLargeText(tester);
+      await _pump(tester, plan: null, session: fiveExercises());
+      _drainMetaRowOverflow(tester);
+
+      await _menu(tester, 'finish');
+
+      expect(dialog(), findsOneWidget);
+      expect(tester.takeException(), isNull);
+      await tester.tap(find.byKey(const Key('logger.finishConfirm.keepGoing')));
+      await tester.pumpAndSettle();
+      expect(tester.takeException(), isNull);
+    });
+  });
+
   // Beyond the brief -- startedAt is the SERVER's NOW(). A phone clock behind
   // it makes DateTime.now().difference(startedAt) negative, and the route
   // rejects a negative durationMin with 400 DURATION_INVALID: the one failure
@@ -1802,7 +2370,7 @@ void main() {
     // The header must not read "-90 min elapsed" either.
     expect(find.text('0 min elapsed'), findsOneWidget);
 
-    await _menu(tester, 'finish');
+    await _finishWithSetsLeft(tester);
 
     expect(controller.calls, contains('complete:0'));
     expect(find.byKey(const Key('logger.summary')), findsOneWidget);
@@ -1869,7 +2437,7 @@ void main() {
     // forgotten what was in it.
     await _pump(tester, session: _manualSessionWithSets());
 
-    await _menu(tester, 'finish');
+    await _finishWithSetsLeft(tester);
 
     expect(find.byKey(const Key('logger.summary')), findsOneWidget);
     expect(find.byKey(const Key('summary.toPlan')), findsOneWidget);
@@ -1880,7 +2448,7 @@ void main() {
     (tester) async {
       await _pump(tester, session: _planSessionWithSets());
 
-      await _menu(tester, 'finish');
+      await _finishWithSetsLeft(tester);
 
       expect(find.byKey(const Key('logger.summary')), findsOneWidget);
       expect(find.byKey(const Key('summary.toPlan')), findsNothing);
@@ -1891,7 +2459,7 @@ void main() {
     final plans = RecordingPlanRepository();
     await _pump(tester, session: _manualSessionWithSets(), plans: plans);
 
-    await _menu(tester, 'finish');
+    await _finishWithSetsLeft(tester);
     await tester.tap(find.byKey(const Key('summary.toPlan')));
     await tester.pumpAndSettle();
 
@@ -1905,7 +2473,7 @@ void main() {
     final plans = RecordingPlanRepository();
     await _pump(tester, session: _manualSessionWithSets(), plans: plans);
 
-    await _menu(tester, 'finish');
+    await _finishWithSetsLeft(tester);
     await tester.tap(find.text('Done'));
     await tester.pumpAndSettle();
 
@@ -1925,7 +2493,7 @@ void main() {
     (tester) async {
       await _pump(tester, session: _manualSessionWithSets());
 
-      await _menu(tester, 'finish');
+      await _finishWithSetsLeft(tester);
       expect(find.byKey(const Key('logger.summary')), findsOneWidget);
 
       // Outside the AlertDialog's own bounds, on the modal barrier that
@@ -1946,7 +2514,7 @@ void main() {
     );
     await _pump(tester, session: _manualSessionWithSets(), plans: plans);
 
-    await _menu(tester, 'finish');
+    await _finishWithSetsLeft(tester);
     await tester.tap(find.byKey(const Key('summary.toPlan')));
     await tester.pumpAndSettle();
 
@@ -1986,7 +2554,7 @@ void main() {
       );
       final readsBeforeAccept = activePlanReads;
 
-      await _menu(tester, 'finish');
+      await _finishWithSetsLeft(tester);
       await tester.tap(find.byKey(const Key('summary.toPlan')));
       // Lets both pops -- the dialog's, and the logger route's behind it --
       // actually finish. The request stays gated throughout, so nothing here
@@ -2049,7 +2617,7 @@ void main() {
       final plans = RecordingPlanRepository(gate: gate);
       await _pump(tester, session: _manualSessionWithSets(), plans: plans);
 
-      await _menu(tester, 'finish');
+      await _finishWithSetsLeft(tester);
       await tester.tap(find.byKey(const Key('summary.toPlan')));
       await tester.pumpAndSettle();
 
@@ -2077,7 +2645,7 @@ void main() {
       final plans = RecordingPlanRepository(gate: gate);
       await _pump(tester, session: _manualSessionWithSets(), plans: plans);
 
-      await _menu(tester, 'finish');
+      await _finishWithSetsLeft(tester);
       await tester.tap(find.byKey(const Key('summary.toPlan')));
       await tester.pumpAndSettle();
 
@@ -2111,7 +2679,7 @@ void main() {
     final plans = RecordingPlanRepository();
     await _pump(tester, session: _manualSessionWithSets(), plans: plans);
 
-    await _menu(tester, 'finish');
+    await _finishWithSetsLeft(tester);
 
     expect(find.text('Make this my plan'), findsOneWidget);
     expect(find.text('Add to my plan'), findsNothing);
@@ -2123,7 +2691,7 @@ void main() {
     final plans = RecordingPlanRepository(active: _customPlan);
     await _pump(tester, session: _manualSessionWithSets(), plans: plans);
 
-    await _menu(tester, 'finish');
+    await _finishWithSetsLeft(tester);
 
     expect(find.text('Add to my plan'), findsOneWidget);
     expect(find.text('Make this my plan'), findsNothing);
@@ -2140,7 +2708,7 @@ void main() {
     final plans = RecordingPlanRepository(active: _generatedPlan);
     await _pump(tester, session: _manualSessionWithSets(), plans: plans);
 
-    await _menu(tester, 'finish');
+    await _finishWithSetsLeft(tester);
     await tester.tap(find.byKey(const Key('summary.toPlan')));
     await tester.pumpAndSettle();
 
@@ -2162,7 +2730,7 @@ void main() {
     final plans = RecordingPlanRepository(active: _generatedPlan);
     await _pump(tester, session: _manualSessionWithSets(), plans: plans);
 
-    await _menu(tester, 'finish');
+    await _finishWithSetsLeft(tester);
     await tester.tap(find.byKey(const Key('summary.toPlan')));
     await tester.pumpAndSettle();
     await tester.tap(find.text('Keep it'));
@@ -2180,7 +2748,7 @@ void main() {
     final plans = RecordingPlanRepository(active: _generatedPlan);
     await _pump(tester, session: _manualSessionWithSets(), plans: plans);
 
-    await _menu(tester, 'finish');
+    await _finishWithSetsLeft(tester);
     await tester.tap(find.byKey(const Key('summary.toPlan')));
     await tester.pumpAndSettle();
     await tester.tap(find.text('Replace it'));
@@ -2197,7 +2765,7 @@ void main() {
     final plans = RecordingPlanRepository(active: _customPlan);
     await _pump(tester, session: _manualSessionWithSets(), plans: plans);
 
-    await _menu(tester, 'finish');
+    await _finishWithSetsLeft(tester);
     await tester.tap(find.byKey(const Key('summary.toPlan')));
     await tester.pumpAndSettle();
     expect(find.byKey(const Key('addToPlan.newDay')), findsOneWidget);
@@ -2241,7 +2809,7 @@ void main() {
     );
     await _pump(tester, session: _manualSessionWithSets(), plans: plans);
 
-    await _menu(tester, 'finish');
+    await _finishWithSetsLeft(tester);
     await tester.tap(find.byKey(const Key('summary.toPlan')));
     await tester.pumpAndSettle();
 
@@ -2972,7 +3540,7 @@ void main() {
       final gate = Completer<void>();
       controller.completeGate = gate;
 
-      await _menu(tester, 'finish');
+      await _finishWithSetsLeft(tester);
       await _background(tester);
       expect(alerts.events, ['schedule']);
 
@@ -3023,7 +3591,7 @@ void main() {
           'This session has already been closed.',
         );
 
-        await _menu(tester, 'finish');
+        await _finishWithSetsLeft(tester);
         await _background(tester);
         expect(alerts.events, ['schedule']);
 

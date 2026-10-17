@@ -385,6 +385,15 @@ void main() {
       reason: 'the button must reach the controller, not just relabel itself',
     );
     expect(find.byType(SessionLoggerScreen), findsOneWidget);
+    // The same button resumes a session left in progress, so it opens on
+    // where that was left. A fresh session has nothing logged, which puts
+    // it on exercise 1 anyway.
+    expect(
+      tester
+          .widget<SessionLoggerScreen>(find.byType(SessionLoggerScreen))
+          .resume,
+      isTrue,
+    );
   });
 
   // Beyond the brief -- a failed start (the realistic case: the user's plan
@@ -596,15 +605,25 @@ void main() {
     });
   });
 
-  testWidgets('the Exercises tab is built only once visited, then shows the catalogue', (tester) async {
-    await _pump(tester);
-    expect(find.byType(ExerciseListScreen, skipOffstage: false), findsNothing,
-        reason: 'opening Train must not fetch the whole catalogue');
-    await tester.tap(find.byKey(const Key('tab.exercises')));
-    await tester.pumpAndSettle();
-    expect(find.byType(ExerciseListScreen), findsOneWidget);
-    expect(find.byType(RegeneratePlanButton), findsNothing, reason: 'regenerate belongs to Plan only');
-  });
+  testWidgets(
+    'the Exercises tab is built only once visited, then shows the catalogue',
+    (tester) async {
+      await _pump(tester);
+      expect(
+        find.byType(ExerciseListScreen, skipOffstage: false),
+        findsNothing,
+        reason: 'opening Train must not fetch the whole catalogue',
+      );
+      await tester.tap(find.byKey(const Key('tab.exercises')));
+      await tester.pumpAndSettle();
+      expect(find.byType(ExerciseListScreen), findsOneWidget);
+      expect(
+        find.byType(RegeneratePlanButton),
+        findsNothing,
+        reason: 'regenerate belongs to Plan only',
+      );
+    },
+  );
 
   testWidgets('the four tabs fit a 320 dp phone at large text', (tester) async {
     tester.view.physicalSize = const Size(320, 640);
