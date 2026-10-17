@@ -658,6 +658,7 @@ class _HealthEditorState extends ConsumerState<_HealthEditor> {
           ),
           TextButton(
             key: const Key('health.delete.confirm'),
+            style: TextButton.styleFrom(foregroundColor: dialog.fs.red),
             onPressed: () => Navigator.of(dialog).pop(true),
             child: const Text('Delete'),
           ),

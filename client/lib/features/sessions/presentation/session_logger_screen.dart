@@ -41,7 +41,8 @@ class SessionLoggerScreen extends ConsumerStatefulWidget {
 
   /// Opens on where the workout was left -- the first exercise with a set
   /// still to do -- instead of exercise 1's demo. For the ways back into a
-  /// session already under way: Home's card and the Plan tab's Resume.
+  /// session already under way: Home's card, the Plan tab's Resume, and the
+  /// review screen's question about a workout already open.
   final bool resume;
 
   @override
@@ -972,6 +973,9 @@ class _SessionLoggerScreenState extends ConsumerState<SessionLoggerScreen>
               child: const Text('Keep it'),
             ),
             TextButton(
+              style: TextButton.styleFrom(
+                foregroundColor: dialogContext.fs.red,
+              ),
               onPressed: () => Navigator.of(dialogContext).pop(true),
               child: const Text('Replace it'),
             ),
@@ -994,6 +998,7 @@ class _SessionLoggerScreenState extends ConsumerState<SessionLoggerScreen>
             child: const Text('Keep going'),
           ),
           TextButton(
+            style: TextButton.styleFrom(foregroundColor: dialogContext.fs.red),
             onPressed: () => Navigator.of(dialogContext).pop(true),
             child: const Text('Discard'),
           ),
@@ -1063,6 +1068,7 @@ class _SessionLoggerScreenState extends ConsumerState<SessionLoggerScreen>
             child: const Text('Keep'),
           ),
           TextButton(
+            style: TextButton.styleFrom(foregroundColor: dialogContext.fs.red),
             onPressed: () => Navigator.of(dialogContext).pop(true),
             child: const Text('Restart'),
           ),

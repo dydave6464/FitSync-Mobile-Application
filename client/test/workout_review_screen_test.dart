@@ -1,5 +1,10 @@
+import 'dart:io';
+import 'dart:typed_data';
+
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/rendering.dart';
+import 'package:flutter/services.dart' show FontLoader, LogicalKeyboardKey;
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 
@@ -17,6 +22,24 @@ import 'package:fitsync/features/sessions/presentation/providers.dart';
 import 'package:fitsync/features/sessions/presentation/session_logger_screen.dart';
 import 'package:fitsync/features/sessions/presentation/workout_draft.dart';
 import 'package:fitsync/features/sessions/presentation/workout_review_screen.dart';
+
+import 'helpers/dialog_buttons.dart';
+
+/// The real face, not the test harness's, whose every glyph is 1 em wide:
+/// whether a button label fits at large text is a question about the font
+/// the app ships. Loaded for the whole file, since a font cannot be unloaded.
+///
+/// The test engine seems not to apply the variable font's weight axis (w700
+/// measures within 0.2 px of w400), so bold labels on a phone run a few
+/// percent wider than measured here. The wrap checks still hold; the
+/// on-screen ones have a little less margin than they appear to.
+Future<void> _loadFont() async {
+  final bytes = await File('assets/fonts/SpaceGrotesk-Variable.ttf')
+      .readAsBytes();
+  await (FontLoader(
+    'SpaceGrotesk',
+  )..addFont(Future.value(ByteData.view(bytes.buffer)))).load();
+}
 
 const _squat = ExerciseSummary(
   exerciseId: 101,
@@ -127,6 +150,7 @@ Future<ProviderContainer> _pump(
   required List<ExerciseSummary> picks,
   FakeSessionRepository? sessions,
   bool overLibrary = false,
+  WorkoutPlan? plan,
 }) async {
   final container = ProviderContainer(
     overrides: [
@@ -136,7 +160,7 @@ Future<ProviderContainer> _pump(
       ),
       workoutDraftProvider.overrideWith(() => _Picked(picks)),
       // A manual session has no plan; the logger must not need one.
-      activePlanProvider.overrideWith((ref) async => null),
+      activePlanProvider.overrideWith((ref) async => plan),
     ],
   );
   addTearDown(container.dispose);
@@ -173,12 +197,50 @@ Future<ProviderContainer> _pump(
   return container;
 }
 
-ActiveSession _openWorkout() => ActiveSession(
+ActiveSession _openWorkout({
+  List<LoggedSet> sets = const [],
+  DateTime? startedAt,
+}) => ActiveSession(
   sessionId: 4,
   status: 'in_progress',
   sessionDate: '2026-09-14',
-  startedAt: DateTime.now(),
+  startedAt: startedAt ?? DateTime.now(),
+  sets: sets,
 );
+
+/// Two sets of the old workout's first exercise, so it has work to lose.
+const _twoLoggedSets = [
+  LoggedSet(exerciseId: 101, setNumber: 1, weightKg: 20, reps: 10),
+  LoggedSet(exerciseId: 101, setNumber: 2, weightKg: 20, reps: 10),
+];
+
+/// Taps Start with [open] in the way, so the question about it is showing.
+Future<FakeSessionRepository> _blockedBy(
+  WidgetTester tester,
+  ActiveSession open, {
+  List<ExerciseSummary> picks = const [_squat],
+  WorkoutPlan? plan,
+}) async {
+  final sessions = FakeSessionRepository(existing: open);
+  final container = await _pump(
+    tester,
+    picks: picks,
+    sessions: sessions,
+    plan: plan,
+  );
+  // In the app Home has the plan loaded long before this screen: nothing
+  // here watches it, so the question reads whatever is already there.
+  await container.read(activePlanProvider.future);
+  await tester.tap(_start());
+  await tester.pumpAndSettle();
+  return sessions;
+}
+
+FsButton _choice(WidgetTester tester, String name) =>
+    tester.widget<FsButton>(find.byKey(Key('blocked.$name')));
+
+/// Every choice the question offers, by key.
+const _choices = ['open', 'replace', 'cancel'];
 
 Finder _start() => find.byKey(const Key('review.start'));
 
@@ -236,6 +298,8 @@ bool _menuItemEnabled(WidgetTester tester, String item, int id) => tester
     .enabled;
 
 void main() {
+  setUpAll(_loadFont);
+
   testWidgets('lists the picks in the order they will be trained', (
     tester,
   ) async {
@@ -360,77 +424,353 @@ void main() {
     expect(find.byType(SessionLoggerScreen), findsNothing);
   });
 
-  testWidgets('a workout already open is named rather than silently replaced', (
-    tester,
-  ) async {
-    // The server is idempotent here: it returns the running session and
-    // ignores the list, so opening the logger anyway would drop everything
-    // just picked and show a workout the user did not choose.
-    final sessions = FakeSessionRepository(existing: _openWorkout());
-    await _pump(tester, picks: const [_squat], sessions: sessions);
+  group('a workout already open', () {
+    testWidgets('is named rather than silently replaced', (tester) async {
+      // The server is idempotent here: it returns the running session and
+      // ignores the list, so opening the logger anyway would drop everything
+      // just picked and show a workout the user did not choose.
+      final sessions = await _blockedBy(tester, _openWorkout());
 
-    await tester.tap(_start());
-    await tester.pumpAndSettle();
+      expect(find.text('Your own workout'), findsOneWidget);
+      expect(sessions.startCalls, 0);
+      expect(find.byType(SessionLoggerScreen), findsNothing);
+    });
 
-    expect(find.textContaining('already have a workout open'), findsOneWidget);
-    expect(sessions.startCalls, 0);
-    expect(find.byType(SessionLoggerScreen), findsNothing);
-  });
+    testWidgets('says when it was opened', (tester) async {
+      await _blockedBy(
+        tester,
+        _openWorkout(
+          startedAt: DateTime.now().subtract(const Duration(hours: 2)),
+        ),
+      );
 
-  testWidgets('the workout in the way can be opened from the message', (
-    tester,
-  ) async {
-    final sessions = FakeSessionRepository(existing: _openWorkout());
-    await _pump(tester, picks: const [_squat], sessions: sessions);
+      expect(find.textContaining('opened 2 h ago'), findsOneWidget);
+    });
 
-    await tester.tap(_start());
-    await tester.pumpAndSettle();
-    await tester.tap(find.text('Open it'));
-    await tester.pumpAndSettle();
+    group('with nothing logged', () {
+      testWidgets('offers starting the new one as the highlighted choice', (
+        tester,
+      ) async {
+        // Nothing is lost by closing it: it is most often one left open by
+        // backing out of the logger, and the user came here to start this.
+        await _blockedBy(tester, _openWorkout());
 
-    expect(find.byType(SessionLoggerScreen), findsOneWidget);
-    expect(sessions.startCalls, 0, reason: 'opening is not starting');
-    expect(sessions.abandoned, 0, reason: 'opening throws nothing away');
-  });
+        expect(find.text('Start this workout instead?'), findsOneWidget);
+        expect(find.textContaining('Not started yet'), findsOneWidget);
+        // Sets, not "nothing": a hand-picked workout's list of exercises
+        // does go with it.
+        expect(find.textContaining('no sets are lost'), findsOneWidget);
+        expect(_choice(tester, 'replace').label, 'Start new workout');
+        expect(_choice(tester, 'replace').kind, FsButtonKind.primary);
+        expect(_choice(tester, 'open').label, 'Open the other one');
+        expect(_choice(tester, 'open').kind, FsButtonKind.secondary);
+      });
 
-  testWidgets('the workout in the way can be discarded and this one started', (
-    tester,
-  ) async {
-    // Without this the message was a dead end: the only way out was to find
-    // the old session in another tab and close it from inside the logger.
-    final sessions = FakeSessionRepository(existing: _openWorkout());
-    await _pump(tester, picks: const [_squat, _fly], sessions: sessions);
+      testWidgets('Start new workout closes it and starts the picks', (
+        tester,
+      ) async {
+        final sessions = await _blockedBy(
+          tester,
+          _openWorkout(),
+          picks: const [_squat, _fly],
+        );
 
-    await tester.tap(_start());
-    await tester.pumpAndSettle();
-    await tester.tap(find.text('Discard it & start'));
-    await tester.pumpAndSettle();
+        await tester.tap(find.byKey(const Key('blocked.replace')));
+        await tester.pumpAndSettle();
 
-    expect(sessions.abandoned, 1);
-    expect(sessions.startedWith, [101, 202], reason: 'the picks were kept');
-    expect(find.byType(SessionLoggerScreen), findsOneWidget);
-  });
+        expect(sessions.abandoned, 1);
+        expect(sessions.startedWith, [101, 202], reason: 'the picks were kept');
+        expect(find.byType(SessionLoggerScreen), findsOneWidget);
+      });
+    });
 
-  testWidgets('backing out of the message leaves both workouts alone', (
-    tester,
-  ) async {
-    final sessions = FakeSessionRepository(existing: _openWorkout());
-    final container = await _pump(
+    group('with sets logged', () {
+      testWidgets('offers resuming it as the highlighted choice', (
+        tester,
+      ) async {
+        await _blockedBy(tester, _openWorkout(sets: _twoLoggedSets));
+
+        expect(find.text('You have a workout in progress'), findsOneWidget);
+        expect(find.textContaining('2 sets logged'), findsOneWidget);
+        expect(_choice(tester, 'open').label, 'Resume it');
+        expect(_choice(tester, 'open').kind, FsButtonKind.primary);
+      });
+
+      testWidgets('shows discarding in red, apart from the highlighted one', (
+        tester,
+      ) async {
+        await _blockedBy(tester, _openWorkout(sets: _twoLoggedSets));
+
+        final discard = _choice(tester, 'replace');
+        expect(discard.label, 'Discard it & start new');
+        expect(discard.kind, isNot(FsButtonKind.primary));
+        expect(
+          labelColor(tester, find.byKey(const Key('blocked.replace'))),
+          dialogRed(tester),
+        );
+      });
+
+      testWidgets('Resume it opens it where it was left', (tester) async {
+        final sessions = await _blockedBy(
+          tester,
+          _openWorkout(sets: _twoLoggedSets),
+        );
+
+        await tester.tap(find.byKey(const Key('blocked.open')));
+        await tester.pumpAndSettle();
+
+        expect(
+          tester
+              .widget<SessionLoggerScreen>(find.byType(SessionLoggerScreen))
+              .resume,
+          isTrue,
+          reason: 'on the first unfinished exercise, not the first one',
+        );
+        expect(sessions.startCalls, 0, reason: 'opening is not starting');
+        expect(sessions.abandoned, 0, reason: 'opening throws nothing away');
+      });
+
+      testWidgets('Discard it & start new throws it away and starts these', (
+        tester,
+      ) async {
+        // Without this the message was a dead end: the only way out was to
+        // find the old session in another tab and close it from the logger.
+        final sessions = await _blockedBy(
+          tester,
+          _openWorkout(sets: _twoLoggedSets),
+          picks: const [_squat, _fly],
+        );
+
+        await tester.tap(find.byKey(const Key('blocked.replace')));
+        await tester.pumpAndSettle();
+
+        expect(sessions.abandoned, 1);
+        expect(sessions.startedWith, [101, 202], reason: 'the picks were kept');
+        expect(find.byType(SessionLoggerScreen), findsOneWidget);
+      });
+    });
+
+    testWidgets('Open the other one opens it where it was left', (
       tester,
-      picks: const [_squat],
-      sessions: sessions,
-    );
+    ) async {
+      await _blockedBy(tester, _openWorkout());
 
-    await tester.tap(_start());
-    await tester.pumpAndSettle();
-    await tester.tap(find.text('Cancel'));
-    await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const Key('blocked.open')));
+      await tester.pumpAndSettle();
 
-    expect(sessions.abandoned, 0);
-    expect(sessions.startCalls, 0);
-    expect(container.read(workoutDraftProvider).exerciseIds, [
-      101,
-    ], reason: 'the picks must survive a cancelled start');
+      expect(
+        tester
+            .widget<SessionLoggerScreen>(find.byType(SessionLoggerScreen))
+            .resume,
+        isTrue,
+      );
+    });
+
+    testWidgets('backing out of the message leaves both workouts alone', (
+      tester,
+    ) async {
+      final sessions = FakeSessionRepository(
+        existing: _openWorkout(sets: _twoLoggedSets),
+      );
+      final container = await _pump(
+        tester,
+        picks: const [_squat],
+        sessions: sessions,
+      );
+      await tester.tap(_start());
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.byKey(const Key('blocked.cancel')));
+      await tester.pumpAndSettle();
+
+      expect(find.byType(AlertDialog), findsNothing);
+      expect(sessions.abandoned, 0);
+      expect(sessions.startCalls, 0);
+      expect(container.read(workoutDraftProvider).exerciseIds, [
+        101,
+      ], reason: 'the picks must survive a cancelled start');
+    });
+
+    testWidgets('a plan workout is named after the plan, with its exercises', (
+      tester,
+    ) async {
+      const plan = WorkoutPlan(
+        planId: 3,
+        name: 'Push / Pull / Legs',
+        splitStyle: 'push_pull_legs',
+        daysPerWeek: 3,
+        sessionLengthMin: 45,
+        weekNo: 1,
+        days: [PlanDay(dayNo: 2, name: 'Pull')],
+        exercises: [
+          PlanExercise(
+            planExerciseId: 1,
+            exerciseId: 11,
+            name: 'Row',
+            muscleGroup: 'lats',
+            orderNo: 1,
+            targetSets: 3,
+            targetReps: '8-12',
+            dayNo: 2,
+          ),
+          PlanExercise(
+            planExerciseId: 2,
+            exerciseId: 12,
+            name: 'Curl',
+            muscleGroup: 'biceps',
+            orderNo: 2,
+            targetSets: 3,
+            targetReps: '10-12',
+            dayNo: 2,
+          ),
+        ],
+      );
+      final open = ActiveSession(
+        sessionId: 4,
+        status: 'in_progress',
+        sessionDate: '2026-09-14',
+        startedAt: DateTime.now(),
+        planId: 3,
+        planDayNo: 2,
+      );
+
+      await _blockedBy(tester, open, plan: plan);
+
+      expect(find.text('Push / Pull / Legs'), findsOneWidget);
+      expect(find.textContaining('2 exercises'), findsOneWidget);
+    });
+
+    testWidgets('keeps a phone-sized width on a tablet', (tester) async {
+      tester.view.physicalSize = const Size(1024, 768);
+      tester.view.devicePixelRatio = 1.0;
+      addTearDown(tester.view.reset);
+
+      await _blockedBy(tester, _openWorkout(sets: _twoLoggedSets));
+
+      expect(
+        tester.getSize(find.byKey(const Key('blocked.open'))).width,
+        lessThanOrEqualTo(400),
+        reason: 'a pill stretched 700 dp wide stops reading as a button',
+      );
+    });
+
+    testWidgets('Page Down on a hardware keyboard scrolls without failing', (
+      tester,
+    ) async {
+      // Short and large enough that the question and the choices both
+      // scroll. Two scroll views sharing the route's primary controller is
+      // what a keyboard scroll cannot resolve.
+      tester.view.physicalSize = const Size(667, 375);
+      tester.view.devicePixelRatio = 1.0;
+      tester.platformDispatcher.textScaleFactorTestValue = 2.35;
+      addTearDown(tester.view.reset);
+      addTearDown(tester.platformDispatcher.clearTextScaleFactorTestValue);
+      await _blockedBy(tester, _openWorkout(sets: _twoLoggedSets));
+
+      await tester.sendKeyEvent(LogicalKeyboardKey.pageDown);
+      await tester.pumpAndSettle();
+
+      expect(tester.takeException(), isNull);
+    });
+
+    // The real font at Android's largest text sizes, on a small phone and a
+    // typical one.
+    for (final (size, scale) in [
+      (const Size(320, 640), 2.0),
+      (const Size(360, 760), 1.8),
+    ]) {
+      for (final (name, sets) in [
+        ('nothing logged', const <LoggedSet>[]),
+        ('sets logged', _twoLoggedSets),
+      ]) {
+        testWidgets(
+          'at ${size.width.toInt()} dp and $scale× text, $name, every choice '
+          'is on screen and read in full',
+          (tester) async {
+            tester.view.physicalSize = size;
+            tester.view.devicePixelRatio = 1.0;
+            tester.platformDispatcher.textScaleFactorTestValue = scale;
+            addTearDown(tester.view.reset);
+            addTearDown(
+              tester.platformDispatcher.clearTextScaleFactorTestValue,
+            );
+
+            await _blockedBy(tester, _openWorkout(sets: sets));
+
+            expect(tester.takeException(), isNull);
+            for (final choice in _choices) {
+              final rect = tester.getRect(find.byKey(Key('blocked.$choice')));
+              expect(rect.top, greaterThanOrEqualTo(0), reason: choice);
+              expect(
+                rect.bottom,
+                lessThanOrEqualTo(size.height),
+                reason: choice,
+              );
+            }
+            final cut = tester
+                .renderObjectList<RenderParagraph>(
+                  find.descendant(
+                    of: find.byType(AlertDialog),
+                    matching: find.byType(RichText),
+                  ),
+                )
+                .where((p) => p.didExceedMaxLines)
+                .map((p) => p.text.toPlainText());
+            expect(cut, isEmpty, reason: 'no label may end in an ellipsis');
+          },
+        );
+      }
+    }
+
+    // iOS's accessibility sizes go past Android's 2.0× (AX3 ≈ 2.35×, AX5 ≈
+    // 3.12×), on short screens: landscape, and a 4-inch phone. There the
+    // choices alone are taller than the dialog, so they may scroll -- but
+    // the question itself must never be squeezed out of view.
+    for (final (size, scale) in [
+      (const Size(667, 375), 2.35),
+      (const Size(844, 390), 3.12),
+      (const Size(320, 568), 3.12),
+    ]) {
+      for (final (name, sets, highlighted) in [
+        ('nothing logged', const <LoggedSet>[], 'replace'),
+        ('sets logged', _twoLoggedSets, 'open'),
+      ]) {
+        testWidgets(
+          'at ${size.width.toInt()}×${size.height.toInt()} and $scale× text, '
+          '$name, the question keeps room and the highlighted choice shows',
+          (tester) async {
+            tester.view.physicalSize = size;
+            tester.view.devicePixelRatio = 1.0;
+            tester.platformDispatcher.textScaleFactorTestValue = scale;
+            addTearDown(tester.view.reset);
+            addTearDown(
+              tester.platformDispatcher.clearTextScaleFactorTestValue,
+            );
+
+            await _blockedBy(tester, _openWorkout(sets: sets));
+
+            expect(tester.takeException(), isNull);
+            // The first scroll view in the dialog is the title and message.
+            final question = find
+                .descendant(
+                  of: find.byType(AlertDialog),
+                  matching: find.byType(SingleChildScrollView),
+                )
+                .first;
+            expect(
+              tester.getSize(question).height,
+              greaterThanOrEqualTo(60),
+              reason: 'at least a couple of lines of the question',
+            );
+            final rect = tester.getRect(
+              find.byKey(Key('blocked.$highlighted')),
+            );
+            expect(rect.top, greaterThanOrEqualTo(0));
+            expect(rect.bottom, lessThanOrEqualTo(size.height));
+          },
+        );
+      }
+    }
   });
 
   testWidgets('an emptied workout cannot be started', (tester) async {

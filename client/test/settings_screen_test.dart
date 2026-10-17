@@ -32,6 +32,7 @@ import 'package:fitsync/features/schedule/domain/calendar.dart';
 import 'package:fitsync/features/schedule/presentation/providers.dart';
 import 'package:fitsync/features/schedule/presentation/schedule_screen.dart';
 
+import 'helpers/dialog_buttons.dart';
 import 'helpers/fake_health.dart';
 
 const _baseProfile = Profile(
@@ -665,6 +666,24 @@ void main() {
     await _openRow(tester, const Key('edit.health'));
 
     expect(find.byKey(const Key('health.delete')), findsNothing);
+  });
+
+  testWidgets('the delete question shows Delete in red', (tester) async {
+    await _pump(tester, health: FakeHealthRepository(stored: storedAsthma));
+    await _openRow(tester, const Key('edit.health'));
+
+    await tester.ensureVisible(find.byKey(const Key('health.delete')));
+    await tester.tap(find.byKey(const Key('health.delete')));
+    await tester.pumpAndSettle();
+
+    expect(
+      labelColor(tester, find.byKey(const Key('health.delete.confirm'))),
+      dialogRed(tester),
+    );
+    expect(
+      labelColor(tester, find.byKey(const Key('health.delete.cancel'))),
+      isNot(dialogRed(tester)),
+    );
   });
 
   testWidgets('delete asks first, then removes the answers', (tester) async {

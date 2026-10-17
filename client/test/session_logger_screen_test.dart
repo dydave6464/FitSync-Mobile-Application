@@ -27,6 +27,7 @@ import 'package:fitsync/features/sessions/presentation/session_logger_screen.dar
 import 'package:fitsync/features/sessions/presentation/widgets/rest_timer.dart';
 import 'package:fitsync/features/sessions/presentation/widgets/set_row.dart';
 
+import 'helpers/dialog_buttons.dart';
 import 'helpers/fake_rest_alerts.dart';
 import 'helpers/fake_training_settings.dart';
 
@@ -1529,6 +1530,18 @@ void main() {
     expect(find.text('This session was already finished.'), findsOneWidget);
   });
 
+  testWidgets('the discard question shows Discard in red', (tester) async {
+    await _pump(tester);
+
+    await _menu(tester, 'discard');
+
+    expect(labelColor(tester, dialogButton('Discard')), dialogRed(tester));
+    expect(
+      labelColor(tester, dialogButton('Keep going')),
+      isNot(dialogRed(tester)),
+    );
+  });
+
   testWidgets('discarding asks first, then abandons', (tester) async {
     final controller = await _pump(tester);
 
@@ -2759,6 +2772,21 @@ void main() {
     expect(find.byType(SessionLoggerScreen), findsNothing);
   });
 
+  testWidgets('the replace question shows Replace it in red', (tester) async {
+    final plans = RecordingPlanRepository(active: _generatedPlan);
+    await _pump(tester, session: _manualSessionWithSets(), plans: plans);
+
+    await _finishWithSetsLeft(tester);
+    await tester.tap(find.byKey(const Key('summary.toPlan')));
+    await tester.pumpAndSettle();
+
+    expect(labelColor(tester, dialogButton('Replace it')), dialogRed(tester));
+    expect(
+      labelColor(tester, dialogButton('Keep it')),
+      isNot(dialogRed(tester)),
+    );
+  });
+
   testWidgets('confirming replaces the generated plan', (tester) async {
     final plans = RecordingPlanRepository(active: _generatedPlan);
     await _pump(tester, session: _manualSessionWithSets(), plans: plans);
@@ -2951,6 +2979,18 @@ void main() {
           'The rest of your session is kept.',
         ),
         findsOneWidget,
+      );
+    });
+
+    testWidgets('the question shows Restart in red', (tester) async {
+      await _pumpLogging(tester, session: _session(sets: twoSquatSets));
+
+      await _menu(tester, 'restart');
+
+      expect(labelColor(tester, dialogButton('Restart')), dialogRed(tester));
+      expect(
+        labelColor(tester, dialogButton('Keep')),
+        isNot(dialogRed(tester)),
       );
     });
 

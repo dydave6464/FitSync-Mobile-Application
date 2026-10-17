@@ -8,6 +8,9 @@ import '../../exercises/presentation/equipment_icon.dart';
 import '../../exercises/presentation/exercise_list_screen.dart'
     show describeError;
 import '../../exercises/presentation/providers.dart';
+import '../../plans/presentation/providers.dart' show activePlanProvider;
+import '../domain/active_session.dart';
+import 'open_workout_summary.dart';
 import 'providers.dart';
 import 'session_logger_screen.dart';
 import 'workout_draft.dart';
@@ -87,13 +90,18 @@ class _WorkoutReviewScreenState extends ConsumerState<WorkoutReviewScreen> {
     if (_starting) return;
     if (ref.read(workoutDraftProvider).isEmpty) return;
 
-    if (ref.read(activeSessionProvider).value != null) {
-      final choice = await _askAboutOpenWorkout();
+    final open = ref.read(activeSessionProvider).value;
+    if (open != null) {
+      final choice = await _askAboutOpenWorkout(open);
       if (choice == null || !mounted) return;
 
       if (choice == _Blocked.open) {
         await Navigator.of(context).push(
-          MaterialPageRoute<void>(builder: (_) => const SessionLoggerScreen()),
+          MaterialPageRoute<void>(
+            // Where it was left, the way Home's card and the Plan tab open
+            // it, rather than back at its first exercise.
+            builder: (_) => const SessionLoggerScreen(resume: true),
+          ),
         );
         return;
       }
@@ -105,31 +113,150 @@ class _WorkoutReviewScreenState extends ConsumerState<WorkoutReviewScreen> {
     await _createSession();
   }
 
-  /// Names the workout in the way and offers the three honest answers.
-  Future<_Blocked?> _askAboutOpenWorkout() => showDialog<_Blocked>(
-    context: context,
-    builder: (dialogContext) => AlertDialog(
-      title: const Text('You already have a workout open'),
-      content: const Text(
-        'Only one workout can be open at a time. Discarding throws away '
-        'everything logged in the old one.',
-      ),
-      actions: [
-        TextButton(
-          onPressed: () => Navigator.of(dialogContext).pop(),
-          child: const Text('Cancel'),
-        ),
-        TextButton(
-          onPressed: () => Navigator.of(dialogContext).pop(_Blocked.open),
-          child: const Text('Open it'),
-        ),
-        TextButton(
-          onPressed: () => Navigator.of(dialogContext).pop(_Blocked.replace),
-          child: const Text('Discard it & start'),
-        ),
-      ],
-    ),
-  );
+  /// Names the workout in the way and offers the three honest answers, with
+  /// the likely one highlighted.
+  ///
+  /// Which one is likely depends on what the old workout holds. With nothing
+  /// logged it is most often one left open by backing out of the logger:
+  /// closing it loses nothing, and the user came here to start this one. With
+  /// sets logged it is real work, so going back to it is the safe choice, and
+  /// throwing it away is shown in red and kept apart from it.
+  Future<_Blocked?> _askAboutOpenWorkout(ActiveSession open) {
+    final plan = ref.read(activePlanProvider).value;
+    final hasWork = open.completedSetCount > 0;
+    final ago = openedAgo(open.startedAt, DateTime.now());
+
+    return showDialog<_Blocked>(
+      context: context,
+      builder: (dialogContext) {
+        final t = dialogContext.fs;
+        void answer(_Blocked? choice) =>
+            Navigator.of(dialogContext).pop(choice);
+
+        // The highlighted choice first, then the other, then Cancel. Each
+        // wraps rather than ending in an ellipsis: at the largest text sizes
+        // "Discard it & start new" would otherwise read "Discard it &…".
+        final choices = [
+          if (hasWork) ...[
+            FsButton(
+              key: const Key('blocked.open'),
+              label: 'Resume it',
+              wrapLabel: true,
+              onPressed: () => answer(_Blocked.open),
+            ),
+            FsButton(
+              key: const Key('blocked.replace'),
+              label: 'Discard it & start new',
+              kind: FsButtonKind.ghost,
+              danger: true,
+              wrapLabel: true,
+              onPressed: () => answer(_Blocked.replace),
+            ),
+          ] else ...[
+            FsButton(
+              key: const Key('blocked.replace'),
+              label: 'Start new workout',
+              wrapLabel: true,
+              onPressed: () => answer(_Blocked.replace),
+            ),
+            FsButton(
+              key: const Key('blocked.open'),
+              label: 'Open the other one',
+              kind: FsButtonKind.secondary,
+              wrapLabel: true,
+              onPressed: () => answer(_Blocked.open),
+            ),
+          ],
+          FsButton(
+            key: const Key('blocked.cancel'),
+            label: 'Cancel',
+            kind: FsButtonKind.ghost,
+            wrapLabel: true,
+            onPressed: () => answer(null),
+          ),
+        ];
+
+        return AlertDialog(
+          // At large text on a small phone the dialog is taller than the
+          // screen. The title and message scroll; the choices, in `actions`,
+          // stay in view below them.
+          scrollable: true,
+          // Half the default 40 a side: on a 320 dp phone that is the
+          // difference between two-word lines and one-word ones in the
+          // buttons. The cap keeps a tablet from stretching the pills 700 dp
+          // wide.
+          insetPadding: const EdgeInsets.symmetric(
+            horizontal: 20,
+            vertical: 24,
+          ),
+          constraints: const BoxConstraints(minWidth: 280, maxWidth: 400),
+          title: Text(
+            hasWork
+                ? 'You have a workout in progress'
+                : 'Start this workout instead?',
+          ),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Text(
+                openWorkoutTitle(open, plan),
+                style: TextStyle(
+                  fontSize: 14,
+                  fontWeight: FontWeight.w700,
+                  color: t.text,
+                ),
+              ),
+              const SizedBox(height: 2),
+              Text(
+                [
+                  openWorkoutFacts(open, plan),
+                  if (ago != null) 'opened $ago',
+                ].join(' · '),
+                style: TextStyle(fontSize: 12.5, color: t.text2),
+              ),
+              const SizedBox(height: 12),
+              Text(
+                hasWork
+                    ? 'Only one workout can be open at a time. Discarding '
+                          'throws away the sets logged in it.'
+                    // Sets, not "nothing": a hand-picked workout's list of
+                    // exercises does go with it.
+                    : 'Nothing is logged in it yet, so no sets are lost.',
+              ),
+            ],
+          ),
+          actions: [
+            // Capped at half the screen, scrolling past that: at iOS's
+            // largest text in landscape the wrapped choices alone are taller
+            // than the dialog, and uncapped they would squeeze the question
+            // above them down to nothing.
+            ConstrainedBox(
+              constraints: BoxConstraints(
+                maxHeight: MediaQuery.sizeOf(dialogContext).height / 2,
+              ),
+              child: SingleChildScrollView(
+                // Not the route's primary scroller: the question's scroll
+                // view already is, and a keyboard Page Down with two attached
+                // cannot tell which to move.
+                primary: false,
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    for (final (i, choice) in choices.indexed) ...[
+                      if (i > 0) const SizedBox(height: 8),
+                      choice,
+                    ],
+                  ],
+                ),
+              ),
+            ),
+          ],
+        );
+      },
+    );
+  }
 
   /// True when the old workout is gone and this one may start.
   Future<bool> _discardOpenWorkout() async {

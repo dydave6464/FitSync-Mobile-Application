@@ -161,6 +161,7 @@ class _ActiveWorkoutState extends ConsumerState<_ActiveWorkout> {
             child: const Text('Keep it'),
           ),
           TextButton(
+            style: TextButton.styleFrom(foregroundColor: dialogContext.fs.red),
             onPressed: () => Navigator.of(dialogContext).pop(true),
             child: const Text('Discard'),
           ),

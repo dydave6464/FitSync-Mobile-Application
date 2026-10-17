@@ -17,6 +17,8 @@ import 'package:fitsync/features/profile/data/profile_repository.dart';
 import 'package:fitsync/features/profile/domain/profile.dart';
 import 'package:fitsync/features/profile/presentation/providers.dart';
 
+import 'helpers/dialog_buttons.dart';
+
 const _pplPlan = WorkoutPlan(
   planId: 7,
   name: 'Week 1 — Push/Pull/Legs',
@@ -801,6 +803,20 @@ void main() {
 
     expect(repo.regenerateCalls, 1, reason: 'no second attempt was made');
     expect(repo.lastReplaceCustomPlan, isFalse);
+  });
+
+  testWidgets('the replace question shows Replace it in red', (tester) async {
+    final repo = FakePlanRepository(refuseCustomPlan: true);
+    await _pump(tester, plan: _pplPlan, repo: repo);
+
+    await tester.tap(find.byKey(const Key('gen.generate')));
+    await tester.pumpAndSettle();
+
+    expect(labelColor(tester, dialogButton('Replace it')), dialogRed(tester));
+    expect(
+      labelColor(tester, dialogButton('Keep my plan')),
+      isNot(dialogRed(tester)),
+    );
   });
 
   testWidgets('confirming regenerates and says so explicitly', (tester) async {
