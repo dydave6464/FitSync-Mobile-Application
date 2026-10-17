@@ -148,6 +148,56 @@ async function listExercises(pool, options = {}) {
   return { rows, total };
 }
 
+const RECENT_DEFAULT_LIMIT = 10;
+const RECENT_MAX_LIMIT = 30;
+
+/// The caller's own exercises, newest first by when each was last logged --
+/// the picker's "Recent" strip, so someone logging by hand reaches what they
+/// actually do without searching for it again.
+///
+/// A logged set is a ticked one in a session that was not thrown away: an
+/// abandoned session is not a training record (see abandonSession), but the
+/// workout in progress is, so what you just did shows up at once.
+///
+/// Through the list query's own WHERE clause, so a demoted or unreviewed
+/// exercise never shows here when the list would hide it -- a shortcut into
+/// the catalogue must not lead somewhere the catalogue refuses to go.
+///
+/// set_logs carries no timestamp, so "when" is the session's date, with the
+/// newest set row breaking a tie between exercises trained the same day.
+/// Aggregated in a derived table and joined after, so each exercise is one row
+/// and the outer query never groups over the catalogue columns.
+async function listRecentExercises(pool, userId, { limit = RECENT_DEFAULT_LIMIT } = {}) {
+  const { sql: where, params } = buildWhere({});
+  const flag = contraindicatedSelect(userId);
+  const [rows] = await pool.query(
+    `SELECT x.exercise_id, x.name, x.muscle_group, e.name AS equipment, x.thumbnail_url,
+            ${flag.sql}
+       FROM (
+         SELECT sl.exercise_id,
+                MAX(ws.session_date) AS last_date,
+                MAX(sl.set_log_id) AS last_set
+           FROM set_logs sl
+           JOIN workout_sessions ws ON ws.session_id = sl.session_id
+          WHERE ws.user_id = ?
+            AND ws.status <> 'abandoned'
+            AND sl.is_completed = TRUE
+          GROUP BY sl.exercise_id
+       ) r
+       JOIN exercises x ON x.exercise_id = r.exercise_id
+       LEFT JOIN equipment e ON e.equipment_id = x.equipment_id
+       ${EQUIPMENT_PARENT}
+      WHERE ${where}
+      ORDER BY r.last_date DESC, r.last_set DESC
+      LIMIT ?`,
+    // Placeholders bind in the order they appear: the SELECT list's flag,
+    // then the derived table's user, then the WHERE clause. See
+    // contraindicatedSelect for what getting this wrong silently does.
+    [...flag.params, userId, ...params, limit],
+  );
+  return rows;
+}
+
 async function getExerciseById(pool, exerciseId, userId = null) {
   const flag = contraindicatedSelect(userId);
   const [rows] = await pool.query(
@@ -210,7 +260,10 @@ async function listFilters(pool) {
 module.exports = {
   DEFAULT_LIMIT,
   MAX_LIMIT,
+  RECENT_DEFAULT_LIMIT,
+  RECENT_MAX_LIMIT,
   listExercises,
+  listRecentExercises,
   getExerciseById,
   listFilters,
 };

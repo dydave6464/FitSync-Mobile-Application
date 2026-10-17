@@ -9,6 +9,7 @@ const { createStorage } = require('../src/services/storage');
 const { testDbConfig, dropAllTables } = require('./helpers/test-db');
 const { seedExercises } = require('../src/db/seed-exercises');
 const { markEmailVerified } = require('../src/db/users');
+const { listHistoryInWindow } = require('../src/db/sessions');
 const FIXTURE = require('./fixtures/seeds/manifest-fixture.json');
 
 test('session history', async (t) => {
@@ -185,6 +186,99 @@ test('session history', async (t) => {
     const second = await history(u.token, '?page=2&limit=2');
     assert.equal(second.sessions.length, 1);
     assert.equal(second.sessions[0].totalVolumeKg, 100, 'the oldest is last');
+  });
+
+  // Raw rows again, and for the same reason as writeSession: these tests are
+  // about what history reports, and they need a list whose muscles and order
+  // they choose themselves.
+  const writeOwnList = async (userId, exerciseIds, { daysAgo = 0 } = {}) => {
+    const [s] = await pool.query(
+      `INSERT INTO workout_sessions (user_id, plan_id, status, session_date, started_at, duration_min, total_volume_kg)
+       VALUES (?, NULL, 'completed', DATE_SUB(CURDATE(), INTERVAL ? DAY), NOW(), 30, 500)`,
+      [userId, daysAgo],
+    );
+    // Inserted out of order on purpose, so a result that follows insertion
+    // rather than order_no shows up as wrong.
+    const rows = exerciseIds.map((id, i) => [s.insertId, id, i + 1]).reverse();
+    for (const row of rows) {
+      await pool.query(
+        'INSERT INTO session_exercises (session_id, exercise_id, order_no) VALUES (?, ?, ?)',
+        row,
+      );
+    }
+    return s.insertId;
+  };
+
+  // Any status: history reports what was trained, and the fixture's only
+  // quads exercise is not live.
+  const [byMuscle] = await pool.query(
+    'SELECT exercise_id, muscle_group FROM exercises ORDER BY exercise_id',
+  );
+  // The nth exercise of a group. A session holds an exercise once (its own
+  // unique key), so a repeated group means two different exercises in it.
+  const ofGroup = (group, nth = 0) =>
+    byMuscle.filter((r) => r.muscle_group === group)[nth].exercise_id;
+
+  await t.test('a hand-picked session lists its muscles in order, repeats kept', async () => {
+    // One entry per exercise, not per group: the client weighs the body areas
+    // by count, so de-duplicating here would make one curl count as much as
+    // three ab exercises.
+    const u = await freshUser('hm1@example.com');
+    await writeOwnList(u.userId, [ofGroup('abs'), ofGroup('quads'), ofGroup('abs', 1)]);
+
+    const { sessions } = await history(u.token);
+    assert.deepEqual(sessions[0].muscleGroups, ['abs', 'quads', 'abs']);
+  });
+
+  await t.test('a plan session lists no muscles; its plan names it', async () => {
+    const u = await freshUser('hm2@example.com');
+    await writeSession(u.userId, { planName: 'Upper Body · Push' });
+
+    const { sessions } = await history(u.token);
+    assert.deepEqual(sessions[0].muscleGroups, []);
+  });
+
+  await t.test('every session on a page gets its own muscles, in one query', async () => {
+    const u = await freshUser('hm3@example.com');
+    await writeOwnList(u.userId, [ofGroup('biceps')], { daysAgo: 2 });
+    await writeSession(u.userId, { planName: 'Legs', daysAgo: 1 });
+    await writeOwnList(u.userId, [ofGroup('quads'), ofGroup('abs')], { daysAgo: 0 });
+
+    const { sessions } = await history(u.token);
+    assert.deepEqual(
+      sessions.map((s) => s.muscleGroups),
+      [['quads', 'abs'], [], ['biceps']],
+    );
+
+    // Counts every query the request makes, auth included. A page of one
+    // session and a page of five must cost the same: a lookup per row would
+    // make the second one four queries dearer.
+    const countQueries = async (token) => {
+      const original = pool.query;
+      let n = 0;
+      pool.query = function counted(...args) { n += 1; return original.apply(this, args); };
+      try { await history(token); } finally { pool.query = original; }
+      return n;
+    };
+    const one = await freshUser('hm4@example.com');
+    await writeOwnList(one.userId, [ofGroup('abs')]);
+    const five = await freshUser('hm5@example.com');
+    for (let i = 0; i < 5; i += 1) {
+      await writeOwnList(five.userId, [ofGroup('abs'), ofGroup('quads')], { daysAgo: i });
+    }
+
+    assert.equal(await countQueries(five.token), await countQueries(one.token));
+  });
+
+  await t.test("a shared report's sessions carry their muscles too", async () => {
+    // The report page lists sessions through listHistoryInWindow, and names a
+    // hand-picked one the same way the History screen does.
+    const u = await freshUser('hm6@example.com');
+    await writeOwnList(u.userId, [ofGroup('biceps'), ofGroup('abs')]);
+    await writeSession(u.userId, { planName: 'Legs', daysAgo: 1 });
+
+    const rows = await listHistoryInWindow(pool, u.userId, 'week');
+    assert.deepEqual(rows.map((r) => r.muscleGroups), [['biceps', 'abs'], []]);
   });
 
   await t.test('summary adds up what was done this week', async () => {
