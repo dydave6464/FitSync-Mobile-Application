@@ -7,6 +7,7 @@ import 'package:fitsync/features/exercises/data/exercise_repository.dart';
 import 'package:fitsync/features/exercises/domain/exercise_cues.dart';
 import 'package:fitsync/features/exercises/domain/exercise.dart';
 import 'package:fitsync/features/exercises/domain/exercise_filters.dart';
+import 'package:fitsync/features/exercises/domain/muscle_regions.dart';
 import 'package:fitsync/features/exercises/presentation/providers.dart';
 
 /// A repository double whose page-1 responses are fixed per muscle group and
@@ -71,13 +72,13 @@ void main() {
       final fake = FakeExerciseRepository(
         pageOneByMuscleGroup: {
           'abs': ExercisePage(
-            items: [_summary(1, 'abs page 1')],
+            items: [_summary(1, 'core page 1')],
             page: 1,
             limit: 20,
             total: 40,
           ),
           'biceps': ExercisePage(
-            items: [_summary(101, 'biceps page 1')],
+            items: [_summary(101, 'arms page 1')],
             page: 1,
             limit: 20,
             total: 40,
@@ -92,7 +93,9 @@ void main() {
       addTearDown(container.dispose);
 
       // Select filter A and let its page 1 settle.
-      container.read(selectedFiltersProvider.notifier).setMuscleGroup('abs');
+      container
+          .read(selectedFiltersProvider.notifier)
+          .setRegion(MuscleRegion.core);
       await container.read(exerciseListProvider.future);
 
       // Start loading page 2 for filter A, but don't let it resolve yet.
@@ -102,13 +105,15 @@ void main() {
 
       // Switch to filter B while filter A's page-2 request is still in flight.
       // build() reruns and settles on filter B's page 1.
-      container.read(selectedFiltersProvider.notifier).setMuscleGroup('biceps');
+      container
+          .read(selectedFiltersProvider.notifier)
+          .setRegion(MuscleRegion.arms);
       await container.read(exerciseListProvider.future);
 
       // Now let the stale filter-A page-2 response arrive.
       page2Completer.complete(
         ExercisePage(
-          items: [_summary(2, 'abs page 2')],
+          items: [_summary(2, 'core page 2')],
           page: 2,
           limit: 20,
           total: 40,
@@ -117,7 +122,7 @@ void main() {
       await loadMoreFuture;
 
       final state = container.read(exerciseListProvider).value!;
-      expect(state.items.map((e) => e.name), ['biceps page 1']);
+      expect(state.items.map((e) => e.name), ['arms page 1']);
     },
   );
 
@@ -156,4 +161,75 @@ void main() {
       expect(state.page, 2);
     },
   );
+
+  group('the muscle region', () {
+    test('a region asks for exactly its own muscle groups', () {
+      for (final region in MuscleRegion.values) {
+        expect(
+          resolveMuscleGroups(region, const []),
+          region.muscleGroups,
+          reason: region.label,
+        );
+      }
+    });
+
+    test('All asks for no muscle group at all', () {
+      expect(resolveMuscleGroups(null, const []), isEmpty);
+    });
+
+    test('a region refines a training day by winning over it', () {
+      // The day still narrows the list when no button is chosen; a chosen
+      // button is the narrower question and is asked instead.
+      expect(resolveMuscleGroups(null, const ['delts', 'triceps']), [
+        'delts',
+        'triceps',
+      ]);
+      expect(
+        resolveMuscleGroups(MuscleRegion.chest, const ['delts', 'triceps']),
+        MuscleRegion.chest.muscleGroups,
+      );
+    });
+
+    test('clearing the filters takes the region off and keeps the term', () {
+      final container = ProviderContainer();
+      addTearDown(container.dispose);
+      final notifier = container.read(selectedFiltersProvider.notifier);
+
+      notifier.setRegion(MuscleRegion.legs);
+      notifier.setEquipment('dumbbell');
+      notifier.setSearch('squat');
+      expect(container.read(selectedFiltersProvider).hasChipFilter, isTrue);
+
+      notifier.clear();
+
+      final after = container.read(selectedFiltersProvider);
+      expect(after.region, isNull);
+      expect(after.equipment, isNull);
+      expect(after.search, 'squat');
+      expect(after.hasChipFilter, isFalse);
+    });
+
+    test('a region alone counts as a filter', () {
+      const filters = SelectedFilters(region: MuscleRegion.back);
+      expect(filters.isEmpty, isFalse);
+      expect(filters.hasChipFilter, isTrue);
+      expect(filters, const SelectedFilters(region: MuscleRegion.back));
+      expect(
+        filters == const SelectedFilters(region: MuscleRegion.chest),
+        isFalse,
+      );
+    });
+
+    test('setting one filter leaves the others as they were', () {
+      const start = SelectedFilters(
+        region: MuscleRegion.arms,
+        equipment: 'cable',
+        search: 'curl',
+      );
+      expect(start.withEquipment(null).region, MuscleRegion.arms);
+      expect(start.withSearch(null).region, MuscleRegion.arms);
+      expect(start.withRegion(null).equipment, 'cable');
+      expect(start.withRegion(null).search, 'curl');
+    });
+  });
 }

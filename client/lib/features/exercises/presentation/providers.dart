@@ -3,9 +3,11 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../core/api_client.dart';
 import '../../../core/api_exception.dart';
 import '../data/exercise_repository.dart';
+import '../data/recent_exercises_repository.dart';
 import '../domain/exercise.dart';
 import '../domain/exercise_cues.dart';
 import '../domain/exercise_filters.dart';
+import '../domain/muscle_regions.dart';
 
 /// How many times a transient failure is retried before the error is shown.
 ///
@@ -46,6 +48,22 @@ final exerciseRepositoryProvider = Provider<ExerciseRepository>(
   (ref) => ExerciseRepository(ref.watch(apiClientProvider)),
 );
 
+final recentExercisesRepositoryProvider = Provider<RecentExercisesRepository>(
+  (ref) => RecentExercisesRepository(ref.watch(apiClientProvider)),
+);
+
+/// The user's recently logged exercises, for the library's "Recent" strip.
+///
+/// autoDispose so a library opened afresh asks again: a workout logged since
+/// the last visit is exactly what should appear here next time. Train's
+/// Exercises tab stays mounted and keeps its answer, so the picker also
+/// invalidates this on open rather than relying on disposal.
+final recentExercisesProvider =
+    FutureProvider.autoDispose<List<ExerciseSummary>>(
+      (ref) => ref.watch(recentExercisesRepositoryProvider).recent(),
+      retry: apiRetryPolicy,
+    );
+
 /// The cues for one exercise, which the server may have written for the user's
 /// injury. autoDispose because a workout touches a handful of exercises and
 /// never returns to most of them.
@@ -65,7 +83,7 @@ class SelectedFiltersNotifier extends Notifier<SelectedFilters> {
   @override
   SelectedFilters build() => const SelectedFilters();
 
-  void setMuscleGroup(String? value) => state = state.withMuscleGroup(value);
+  void setRegion(MuscleRegion? value) => state = state.withRegion(value);
   void setEquipment(String? value) => state = state.withEquipment(value);
   void setSearch(String? value) => state = state.withSearch(value);
 
@@ -127,12 +145,14 @@ final catalogueConstraintProvider =
 
 /// What to actually ask the catalogue for.
 ///
-/// A chip picks one group; the training day constrains the whole list to
-/// several. Resolved here into a single request rather than sent as two
-/// parameters the server would AND together: the chip is a refinement WITHIN
-/// the day, so a chosen chip simply wins.
-List<String> resolveMuscleGroups(String? chip, List<String> constraint) =>
-    chip != null ? [chip] : constraint;
+/// A muscle button picks one body area, itself several groups; the training
+/// day constrains the whole list to several more. Resolved here into a single
+/// request rather than sent as two parameters the server would AND together:
+/// the button is a refinement WITHIN the day, so a chosen button simply wins.
+List<String> resolveMuscleGroups(
+  MuscleRegion? region,
+  List<String> constraint,
+) => region != null ? region.muscleGroups : constraint;
 
 class ExerciseListNotifier extends AsyncNotifier<ExerciseListState> {
   @override
@@ -145,7 +165,7 @@ class ExerciseListNotifier extends AsyncNotifier<ExerciseListState> {
     final repo = ref.watch(exerciseRepositoryProvider);
 
     final result = await repo.list(
-      muscleGroups: resolveMuscleGroups(filters.muscleGroup, constraint),
+      muscleGroups: resolveMuscleGroups(filters.region, constraint),
       equipment: filters.equipment,
       search: filters.search,
       page: 1,
@@ -171,7 +191,7 @@ class ExerciseListNotifier extends AsyncNotifier<ExerciseListState> {
 
     try {
       final next = await repo.list(
-        muscleGroups: resolveMuscleGroups(filters.muscleGroup, constraint),
+        muscleGroups: resolveMuscleGroups(filters.region, constraint),
         equipment: filters.equipment,
         search: filters.search,
         page: current.page + 1,
