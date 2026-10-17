@@ -1,8 +1,80 @@
 import 'package:flutter_test/flutter_test.dart';
 
+import 'package:fitsync/features/exercises/domain/exercise.dart';
+import 'package:fitsync/features/plans/domain/workout_plan.dart';
+import 'package:fitsync/features/sessions/domain/active_session.dart';
+import 'package:fitsync/features/sessions/domain/session_history.dart';
 import 'package:fitsync/features/sessions/presentation/open_workout_summary.dart';
 
+PlanExercise _picked(int id, String muscle) => PlanExercise(
+  planExerciseId: id,
+  exerciseId: id,
+  name: 'Ex $id',
+  muscleGroup: muscle,
+  orderNo: id,
+  targetSets: 3,
+  targetReps: '8-12',
+);
+
+ExerciseSummary _summary(int id, String muscle) => ExerciseSummary(
+  exerciseId: id,
+  name: 'Ex $id',
+  muscleGroup: muscle,
+  equipment: 'dumbbell',
+  thumbnailUrl: null,
+);
+
 void main() {
+  group('openWorkoutTitle', () {
+    test('a hand-picked workout is named by its muscles', () {
+      final session = ActiveSession(
+        sessionId: 1,
+        status: 'in_progress',
+        sessionDate: '2026-10-18',
+        exercises: [
+          _picked(1, 'pectorals'),
+          _picked(2, 'triceps'),
+          _picked(3, 'pectorals'),
+        ],
+      );
+
+      expect(openWorkoutTitle(session, null), 'Chest & Arms workout');
+    });
+
+    test(
+      'a hand-picked workout with nothing to name keeps the plain title',
+      () {
+        const session = ActiveSession(
+          sessionId: 1,
+          status: 'in_progress',
+          sessionDate: '2026-10-18',
+        );
+
+        expect(openWorkoutTitle(session, null), 'Your own workout');
+      },
+    );
+  });
+
+  test('the last workout, when hand-picked, is named by its muscles', () {
+    final last = LastWorkout(
+      sessionId: 5,
+      sessionDate: '2026-10-17',
+      exercises: [_summary(1, 'quads'), _summary(2, 'hamstrings')],
+    );
+
+    expect(last.title, 'Legs workout');
+  });
+
+  test('the last workout from a plan keeps the plan name', () {
+    final last = LastWorkout(
+      sessionId: 5,
+      sessionDate: '2026-10-17',
+      planName: 'Push / Pull / Legs',
+      exercises: [_summary(1, 'quads')],
+    );
+
+    expect(last.title, 'Push / Pull / Legs');
+  });
   final now = DateTime(2026, 10, 18, 15, 30);
 
   group('openedAgo', () {

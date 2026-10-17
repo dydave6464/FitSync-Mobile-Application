@@ -168,7 +168,9 @@ void main() {
 
     expect(find.byKey(const Key('start.repeat')), findsOneWidget);
     expect(find.text('Repeat last workout'), findsOneWidget);
-    expect(find.textContaining('Your own workout'), findsOneWidget);
+    // Named by its muscles. The fixture's "quadriceps" is not a value the
+    // catalogue stores ("quads" is), so only the chest exercise names it.
+    expect(find.textContaining('Chest workout'), findsOneWidget);
     expect(find.textContaining('2 exercises'), findsOneWidget);
   });
 

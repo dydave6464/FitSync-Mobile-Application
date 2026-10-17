@@ -110,6 +110,37 @@ void main() {
       expect((await repo.history()).sessions.single.title, 'Upper Body · Push');
     });
 
+    test('a hand-picked session is named by the muscles it worked', () async {
+      // `muscleGroups` is what the server adds for a session with no plan,
+      // so a list of them is not a column of "Your own workout".
+      final repo = _repo(
+        MockClient(
+          (_) async => http.Response(
+            jsonEncode({
+              'data': {
+                'sessions': [
+                  {
+                    ..._entryJson,
+                    'muscleGroups': ['pectorals', 'lats', 'pectorals'],
+                  },
+                ],
+                'total': 1,
+                'page': 1,
+                'limit': 20,
+              },
+            }),
+            200,
+            headers: {'content-type': 'application/json'},
+          ),
+        ),
+      );
+
+      expect(
+        (await repo.history()).sessions.single.title,
+        'Chest & Back workout',
+      );
+    });
+
     test('an integer volume is not an error', () async {
       // jsonDecode hands back 2953 as an int; MySQL's DECIMAL may round to a
       // whole number, so `as double` would throw on perfectly good data.
