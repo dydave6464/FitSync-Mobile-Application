@@ -10,13 +10,19 @@ import 'exercise_detail_screen.dart';
 import 'providers.dart';
 import 'widgets/exercise_tile.dart';
 import 'widgets/equipment_filter_button.dart';
+import 'widgets/recent_strip.dart';
+import 'widgets/region_filter_bar.dart';
 import 'widgets/search_field.dart';
 
 String describeError(Object error) =>
     error is ApiException ? error.message : 'Something went wrong.';
 
 class ExerciseListScreen extends ConsumerStatefulWidget {
-  const ExerciseListScreen({super.key, this.selecting = false, this.embedded = false});
+  const ExerciseListScreen({
+    super.key,
+    this.selecting = false,
+    this.embedded = false,
+  });
 
   /// Whether rows are being picked for a workout rather than browsed.
   ///
@@ -68,6 +74,15 @@ class _ExerciseListScreenState extends ConsumerState<ExerciseListScreen> {
     context,
   ).push(MaterialPageRoute<void>(builder: (_) => const WorkoutReviewScreen()));
 
+  void _open(ExerciseSummary exercise) => Navigator.of(context).push(
+    MaterialPageRoute<void>(
+      builder: (_) => ExerciseDetailScreen(exerciseId: exercise.exerciseId),
+    ),
+  );
+
+  void _toggle(ExerciseSummary exercise) =>
+      ref.read(workoutDraftProvider.notifier).toggle(exercise);
+
   @override
   Widget build(BuildContext context) {
     final listing = ref.watch(exerciseListProvider);
@@ -75,6 +90,27 @@ class _ExerciseListScreenState extends ConsumerState<ExerciseListScreen> {
     final draft = widget.selecting
         ? ref.watch(workoutDraftProvider)
         : const <ExerciseSummary>[];
+    final filters = ref.watch(selectedFiltersProvider);
+
+    // Recent work is a shortcut for the unfiltered library only. Under a
+    // search, an area or a piece of gear, the user has asked a question, and
+    // a strip that ignored it would sit on top of the answer.
+    final showRecent =
+        filters.isEmpty && ref.watch(catalogueConstraintProvider).isEmpty;
+    // Held for as long as the library is open, not just while the strip is
+    // built: it is the list's first row, and scrolling it out of view would
+    // otherwise drop the answer and refetch it -- the strip blinking out and
+    // the list jumping -- on the way back up.
+    ref.watch(recentExercisesProvider);
+    final recent = showRecent
+        ? RecentStrip(
+            baseUrl: baseUrl,
+            onTap: widget.selecting ? _toggle : _open,
+            isAdded: widget.selecting
+                ? (exercise) => draft.holds(exercise.exerciseId)
+                : null,
+          )
+        : null;
 
     // A pagination failure is reported without discarding the pages already on
     // screen, so it surfaces as a snack bar rather than an error page.
@@ -86,16 +122,18 @@ class _ExerciseListScreenState extends ConsumerState<ExerciseListScreen> {
     });
 
     return Scaffold(
-      appBar: widget.embedded ? null : AppBar(
-        title: Text(widget.selecting ? 'Exercise library' : 'Exercises'),
-        actions: [
-          if (widget.selecting)
-            Padding(
-              padding: const EdgeInsets.only(right: 16),
-              child: Center(child: FsTag('${draft.length} added')),
+      appBar: widget.embedded
+          ? null
+          : AppBar(
+              title: Text(widget.selecting ? 'Exercise library' : 'Exercises'),
+              actions: [
+                if (widget.selecting)
+                  Padding(
+                    padding: const EdgeInsets.only(right: 16),
+                    child: Center(child: FsTag('${draft.length} added')),
+                  ),
+              ],
             ),
-        ],
-      ),
       bottomNavigationBar: !widget.selecting
           ? null
           : SafeArea(
@@ -115,6 +153,9 @@ class _ExerciseListScreenState extends ConsumerState<ExerciseListScreen> {
           // button narrows the catalogue to one kind of gear, the box finds
           // one movement by name.
           const ExerciseSearchField(),
+          // Under the box and above the equipment, as the design draws it:
+          // the area is the first thing a person narrows a session by.
+          const RegionFilterBar(),
           const EquipmentFilterButton(),
           Expanded(
             child: listing.when(
@@ -132,14 +173,25 @@ class _ExerciseListScreenState extends ConsumerState<ExerciseListScreen> {
               ),
               data: (state) {
                 if (state.items.isEmpty) {
-                  return const Center(
-                    child: Text('No exercises match those filters.'),
+                  return _EmptyView(
+                    // Only the chips: the search box carries its own clear
+                    // button, and the term is still on screen above.
+                    onClear: filters.hasChipFilter
+                        ? ref.read(selectedFiltersProvider.notifier).clear
+                        : null,
                   );
                 }
+                // The strip rides at the top of the list rather than above
+                // it, so it scrolls away with the rows instead of holding
+                // part of a small screen for good.
+                final lead = recent == null ? 0 : 1;
                 return ListView.builder(
                   controller: _controller,
-                  itemCount: state.items.length + (state.loadingMore ? 1 : 0),
-                  itemBuilder: (context, index) {
+                  itemCount:
+                      lead + state.items.length + (state.loadingMore ? 1 : 0),
+                  itemBuilder: (context, position) {
+                    if (position < lead) return recent;
+                    final index = position - lead;
                     if (index >= state.items.length) {
                       return const Padding(
                         padding: EdgeInsets.all(16),
@@ -154,16 +206,12 @@ class _ExerciseListScreenState extends ConsumerState<ExerciseListScreen> {
                           ? draft.holds(exercise.exerciseId)
                           : null,
                       onTap: widget.selecting
-                          ? () => ref
-                                .read(workoutDraftProvider.notifier)
-                                .toggle(exercise)
-                          : () => Navigator.of(context).push(
-                              MaterialPageRoute<void>(
-                                builder: (_) => ExerciseDetailScreen(
-                                  exerciseId: exercise.exerciseId,
-                                ),
-                              ),
-                            ),
+                          ? () => _toggle(exercise)
+                          : () => _open(exercise),
+                      // Picking took the row's tap, so the demo needs a
+                      // button of its own: choosing an exercise is easier
+                      // once you have seen what it is.
+                      onInfo: widget.selecting ? () => _open(exercise) : null,
                     );
                   },
                 );
@@ -174,6 +222,38 @@ class _ExerciseListScreenState extends ConsumerState<ExerciseListScreen> {
       ),
     );
   }
+}
+
+class _EmptyView extends StatelessWidget {
+  const _EmptyView({required this.onClear});
+
+  /// Null when no chip is lit, so there is nothing for the button to clear.
+  final VoidCallback? onClear;
+
+  @override
+  Widget build(BuildContext context) => Center(
+    child: SingleChildScrollView(
+      padding: const EdgeInsets.all(24),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          const Text(
+            'No exercises match those filters.',
+            textAlign: TextAlign.center,
+          ),
+          if (onClear != null) ...[
+            const SizedBox(height: 8),
+            TextButton(
+              key: const Key('library.clearFilters'),
+              style: TextButton.styleFrom(minimumSize: const Size(48, 48)),
+              onPressed: onClear,
+              child: const Text('Clear filters'),
+            ),
+          ],
+        ],
+      ),
+    ),
+  );
 }
 
 class _ErrorView extends StatelessWidget {
