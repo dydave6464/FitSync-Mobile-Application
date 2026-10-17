@@ -16,8 +16,11 @@ import 'package:fitsync/core/api_client.dart';
 import 'package:fitsync/core/api_exception.dart';
 import 'package:fitsync/core/theme.dart';
 import 'package:fitsync/core/token_store.dart';
+import 'package:fitsync/features/exercises/data/exercise_repository.dart';
+import 'package:fitsync/features/exercises/domain/exercise_cues.dart';
+import 'package:fitsync/features/exercises/domain/exercise_filters.dart';
 import 'package:fitsync/features/exercises/presentation/providers.dart'
-    show apiClientProvider;
+    show apiClientProvider, exerciseRepositoryProvider;
 import 'package:fitsync/features/plans/domain/workout_plan.dart';
 import 'package:fitsync/features/plans/presentation/generator_screen.dart';
 import 'package:fitsync/features/plans/presentation/providers.dart';
@@ -32,7 +35,6 @@ import 'package:fitsync/features/sessions/presentation/widgets/outcome_sheet.dar
     show outcomeNotSavedMessage;
 import 'package:fitsync/features/sessions/presentation/workout_draft.dart';
 import 'package:fitsync/features/sessions/presentation/workout_review_screen.dart';
-import 'package:fitsync/features/sessions/presentation/workout_setup_screen.dart';
 
 /// The real face, not the test harness's. The default test font renders
 /// FsTag('Recommended') at 136dp against Space Grotesk's ~62dp, which is
@@ -43,6 +45,35 @@ Future<void> _loadFont() async {
   await (FontLoader(
     'SpaceGrotesk',
   )..addFont(Future.value(ByteData.view(bytes.buffer)))).load();
+}
+
+/// The library's catalogue, answered locally. Empty: these tests are about
+/// which screen arrives and what it holds, not about its rows, and the
+/// library has a test file of its own.
+class _EmptyCatalogue implements ExerciseRepository {
+  @override
+  String get baseUrl => 'http://test.local';
+
+  @override
+  Future<ExercisePage> list({
+    List<String> muscleGroups = const [],
+    String? equipment,
+    String? search,
+    int page = 1,
+    int limit = 20,
+  }) async => ExercisePage(items: const [], page: page, limit: limit, total: 0);
+
+  @override
+  Future<ExerciseFilters> filters() async =>
+      const ExerciseFilters(muscleGroups: [], equipment: []);
+
+  @override
+  Future<ExerciseCues> cues(int id) async =>
+      const ExerciseCues(source: 'catalogue', injuryName: null, cues: []);
+
+  @override
+  dynamic noSuchMethod(Invocation invocation) =>
+      throw UnimplementedError('${invocation.memberName} is not used here');
 }
 
 /// A workout already trained, as GET /sessions/last reports it.
@@ -106,6 +137,7 @@ Future<ProviderContainer> _open(
         return pending;
       }),
       injuryOptionsProvider.overrideWith((ref) async => const []),
+      exerciseRepositoryProvider.overrideWithValue(_EmptyCatalogue()),
       if (client != null)
         apiClientProvider.overrideWithValue(
           ApiClient(
@@ -347,36 +379,47 @@ void main() {
     expect(row.onTap, isNotNull);
   });
 
-  testWidgets('log manually opens the setup screen', (tester) async {
-    // The library is now a step further in: the setup screen is where the
-    // split, length and injuries that describe the workout are shown, and
-    // its own button opens the picker.
+  testWidgets('log a workout opens the library directly', (tester) async {
+    // No setup screen in between any more. Asking for a split before a
+    // single exercise was picked made logging feel like planning; the split
+    // is asked at the end now, only if the workout is made the plan.
     await _open(tester);
 
     await tester.tap(find.byKey(const Key('start.manual')));
-    // Pumped rather than settled: a regression that pushes the library
-    // instead lands on a progress indicator that animates forever, and
-    // pumpAndSettle would report a timeout rather than which screen arrived.
-    await tester.pump();
-    await tester.pump(const Duration(seconds: 1));
+    await tester.pumpAndSettle();
 
-    expect(find.byType(WorkoutSetupScreen), findsOneWidget);
-    expect(
+    final library = tester.widget<ExerciseListScreen>(
       find.byType(ExerciseListScreen),
-      findsNothing,
-      reason: 'the picker is reached from the setup screen, not the sheet',
     );
+    expect(library.selecting, isTrue, reason: 'it is there to pick from');
 
     // The sheet must have been popped, not left stacked underneath: a
     // Navigator route that is merely covered by an opaque route above it is
     // absent from find.text either way, so the only way to tell is to go
     // back and see what resurfaces.
     await tester.pageBack();
-    await tester.pump();
-    await tester.pump(const Duration(seconds: 1));
+    await tester.pumpAndSettle();
 
     expect(find.text('Start a workout'), findsNothing);
     expect(find.text('open'), findsOneWidget);
+  });
+
+  testWidgets('after repeating, Add more exercises opens the library', (
+    tester,
+  ) async {
+    // A repeat lands on review with no library underneath, so "Add more"
+    // used to pop straight out of the flow and back to where the sheet was
+    // opened. It opens the library now, with the repeated picks still in.
+    final container = await _open(tester, last: _lastWorkout);
+
+    await tester.tap(find.byKey(const Key('start.repeat')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const Key('review.addMore')));
+    await tester.pumpAndSettle();
+
+    expect(find.byType(ExerciseListScreen), findsOneWidget);
+    expect(find.text('2 added'), findsOneWidget);
+    expect(container.read(workoutDraftProvider).exerciseIds, [101, 202]);
   });
 
   testWidgets('the generator row is tappable', (tester) async {
