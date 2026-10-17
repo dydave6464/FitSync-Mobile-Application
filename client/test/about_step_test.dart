@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
-import 'package:fitsync/core/theme.dart';
 import 'package:fitsync/core/units.dart';
 import 'package:fitsync/features/onboarding/presentation/steps/about_step.dart';
 
@@ -129,6 +128,28 @@ void main() {
       expect(find.textContaining('yrs'), findsOneWidget);
     },
   );
+
+  testWidgets('the date of birth card has no line under the date', (
+    tester,
+  ) async {
+    // "Used for age-based targets" was turned down (2026-10-18): the date and
+    // the age tag are the whole card.
+    await _pumpAndEdit(
+      tester,
+      (_) async {},
+      value: const AboutAnswers(dateOfBirth: '1998-03-14'),
+    );
+
+    expect(
+      find.descendant(
+        of: find.byKey(const Key('dateOfBirth')),
+        matching: find.byType(Text),
+      ),
+      findsNWidgets(2),
+      reason: 'the date and the "N yrs" tag, nothing else',
+    );
+    expect(find.textContaining('age-based'), findsNothing);
+  });
 
   testWidgets('the estimate waits until every input it needs is there', (
     tester,
@@ -260,11 +281,7 @@ void main() {
             screenWidth - 40,
           );
           expect(tester.takeException(), isNull);
-          expect(find.byKey(const Key('weightKg.hint')), findsOneWidget);
-          expect(
-            find.textContaining('to maintain your weight'),
-            findsOneWidget,
-          );
+          expect(find.textContaining('kcal'), findsOneWidget);
         },
       );
     }
@@ -297,9 +314,7 @@ void main() {
 
     expect(
       tester.getTopLeft(find.byKey(const Key('weightKg'))).dy,
-      greaterThan(
-        tester.getBottomLeft(find.byKey(const Key('heightCm.hint'))).dy,
-      ),
+      greaterThan(tester.getBottomLeft(find.byKey(const Key('heightCm'))).dy),
     );
   });
 
@@ -340,63 +355,33 @@ void main() {
     },
   );
 
-  testWidgets('the estimate says it is for keeping the weight, not the goal', (
-    tester,
-  ) async {
-    // The figure ignores the goal; Nutrition applies it. Unlabelled, 2,300
-    // here and 1,800 there read as the app contradicting itself.
+  testWidgets('the estimate reads as the daily target', (tester) async {
+    // The user's chosen wording (2026-10-18). A "to maintain your weight"
+    // version was tried and turned down.
     await _pumpAndEdit(tester, (_) async {}, value: _complete);
 
     expect(
-      find.text(
-        'Estimated 2,300 kcal a day to maintain your weight · '
-        '115g protein',
-      ),
+      find.text('Estimated daily target ≈ 2,300 kcal · 115g protein'),
       findsOneWidget,
     );
-    expect(find.textContaining('daily target'), findsNothing);
+    expect(find.textContaining('maintain'), findsNothing);
   });
 
-  group('range hints', () {
-    // The bounds the server already enforces: weightKg's [MIN_KG, MAX_KG] in
-    // server/src/db/body-weight.js, and the shared NUMERIC check (above 0,
-    // below 1000) in server/src/routes/profile.js that is all heightCm has.
-    testWidgets('match the bounds the server accepts, in kilograms', (
+  // Range hints under Height and Weight were tried and turned down
+  // (2026-10-18). The server still rejects impossible numbers, and the
+  // onboarding flow shows that error above Continue.
+  for (final unit in WeightUnit.values) {
+    testWidgets('Height and Weight carry no range hint, in ${unit.api}', (
       tester,
     ) async {
-      await _pumpAndEdit(tester, (_) async {});
+      await _pumpAndEdit(tester, (_) async {}, value: _complete, unit: unit);
 
-      expect(find.byKey(const Key('heightCm.hint')), findsOneWidget);
-      expect(find.text('Under 1,000 cm'), findsOneWidget);
-      expect(find.byKey(const Key('weightKg.hint')), findsOneWidget);
-      expect(find.text('20–500 kg'), findsOneWidget);
+      expect(find.byKey(const Key('heightCm.hint')), findsNothing);
+      expect(find.byKey(const Key('weightKg.hint')), findsNothing);
+      expect(find.textContaining('1,000 cm'), findsNothing);
+      expect(find.textContaining('–'), findsNothing);
     });
-
-    testWidgets('follow the weight unit in force', (tester) async {
-      await _pumpAndEdit(tester, (_) async {}, unit: WeightUnit.lb);
-
-      expect(
-        find.text(
-          '${formatWeight(20, WeightUnit.lb)}–'
-          '${formatWeight(500, WeightUnit.lb)} lb',
-        ),
-        findsOneWidget,
-      );
-      expect(find.text('20–500 kg'), findsNothing);
-    });
-
-    testWidgets('are readable text, not the faint tertiary grey', (
-      tester,
-    ) async {
-      await _pumpAndEdit(tester, (_) async {});
-
-      for (final key in ['heightCm.hint', 'weightKg.hint']) {
-        final hint = tester.widget<Text>(find.byKey(Key(key)));
-        final context = tester.element(find.byKey(Key(key)));
-        expect(hint.style?.color, context.fs.text2, reason: key);
-      }
-    });
-  });
+  }
 }
 
 void _ignore(AboutAnswers _) {}

@@ -87,17 +87,6 @@ int? _ageFrom(String? iso) {
   return now.year - born.year - (hadBirthday ? 0 : 1);
 }
 
-/// The body weight range `server/src/db/body-weight.js` enforces
-/// (`MIN_KG`/`MAX_KG`), the same pair the log-weight sheet checks against.
-/// The hint under the weight card states it; this step does not invent a
-/// stricter one.
-const _minKg = 20.0;
-const _maxKg = 500.0;
-
-/// Height has no range of its own: `server/src/routes/profile.js` holds it
-/// to the shared numeric check, above 0 and below 1000.
-const _heightHint = 'Under 1,000 cm';
-
 /// 2300 as `2,300`. One separator is enough: nobody's daily target reaches
 /// seven figures.
 String _grouped(int value) {
@@ -277,17 +266,6 @@ class _AboutStepState extends State<AboutStep> {
     unitControl: unitControl,
   );
 
-  /// What a measurement card accepts, in [FsTokens.text2] so it stays
-  /// readable rather than the faint tertiary grey.
-  Widget _rangeHint(Key key, String text) => Padding(
-    padding: const EdgeInsets.only(top: 6, left: 2),
-    child: Text(
-      text,
-      key: key,
-      style: TextStyle(fontSize: 11, color: context.fs.text2, height: 1.35),
-    ),
-  );
-
   @override
   Widget build(BuildContext context) {
     final t = context.fs;
@@ -335,23 +313,13 @@ class _AboutStepState extends State<AboutStep> {
               const FsIconTile(icon: Icons.calendar_today_outlined, size: 38),
               const SizedBox(width: 12),
               Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      _readableDate(_dateOfBirth) ?? 'Not set',
-                      style: TextStyle(
-                        fontSize: 13.5,
-                        fontWeight: FontWeight.w600,
-                        color: _dateOfBirth == null ? t.text3 : t.text,
-                      ),
-                    ),
-                    const SizedBox(height: 1),
-                    Text(
-                      'Used for age-based targets',
-                      style: TextStyle(fontSize: 11, color: t.text3),
-                    ),
-                  ],
+                child: Text(
+                  _readableDate(_dateOfBirth) ?? 'Not set',
+                  style: TextStyle(
+                    fontSize: 13.5,
+                    fontWeight: FontWeight.w600,
+                    color: _dateOfBirth == null ? t.text3 : t.text,
+                  ),
                 ),
               ),
               if (age != null) ...[FsTag('$age yrs'), const SizedBox(width: 8)],
@@ -362,35 +330,24 @@ class _AboutStepState extends State<AboutStep> {
         const SizedBox(height: 14),
         LayoutBuilder(
           builder: (context, constraints) {
-            final height = Column(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                _statField(const Key('heightCm'), _height, 'Height', 'cm'),
-                _rangeHint(const Key('heightCm.hint'), _heightHint),
-              ],
+            final height = _statField(
+              const Key('heightCm'),
+              _height,
+              'Height',
+              'cm',
             );
-            final weight = Column(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                _statField(
-                  const Key('weightKg'),
-                  _weight,
-                  'Weight',
-                  widget.unit.api,
-                  // Only this card carries the toggle. Goal weight follows
-                  // it, and two identical switches side by side would be
-                  // noise rather than a second choice.
-                  unitControl: FsUnitToggle(
-                    value: widget.unit,
-                    onChanged: widget.onUnitChanged,
-                  ),
-                ),
-                _rangeHint(
-                  const Key('weightKg.hint'),
-                  '${formatWeight(_minKg, widget.unit)}\u2013'
-                  '${formatWeight(_maxKg, widget.unit)} ${widget.unit.api}',
-                ),
-              ],
+            final weight = _statField(
+              const Key('weightKg'),
+              _weight,
+              'Weight',
+              widget.unit.api,
+              // Only this card carries the toggle. Goal weight follows it,
+              // and two identical switches side by side would be noise
+              // rather than a second choice.
+              unitControl: FsUnitToggle(
+                value: widget.unit,
+                onChanged: widget.onUnitChanged,
+              ),
             );
 
             if ((constraints.maxWidth - _pairGap) / 2 <
@@ -453,11 +410,8 @@ class _AboutStepState extends State<AboutStep> {
                 const SizedBox(width: 11),
                 Expanded(
                   child: Text(
-                    // Labelled as maintenance because that is what it is:
-                    // the estimate ignores the goal, which Nutrition then
-                    // applies, so its own figure differs from this one.
-                    'Estimated ${_grouped(targets.kcal)} kcal a day to '
-                    'maintain your weight \u00b7 ${targets.proteinG}g protein',
+                    'Estimated daily target \u2248 ${_grouped(targets.kcal)} kcal'
+                    ' \u00b7 ${targets.proteinG}g protein',
                     style: TextStyle(
                       fontSize: 11.5,
                       color: t.text,
