@@ -23,6 +23,8 @@ class SetRow extends StatelessWidget {
     this.active = false,
     this.repsHint = 'reps',
     this.onReopen,
+    this.onRemove,
+    this.trailingWidth = tickWidth,
   });
 
   /// Column geometry, shared with the panel's header row above it. Two
@@ -31,6 +33,11 @@ class SetRow extends StatelessWidget {
   static const numberWidth = 28.0;
   static const columnGap = 10.0;
   static const tickWidth = 28.0;
+
+  /// The trailing column while a set table holds an added row: wide enough
+  /// for the ✕ that removes one to be a full 48 dp target. The whole table
+  /// widens together, header included, so its columns stay in line.
+  static const removeWidth = 48.0;
 
   /// The mockup's set cells are rounded 9px -- between FsRadius.sm and a
   /// square, and small enough that borrowing either reads as a different
@@ -68,6 +75,15 @@ class SetRow extends StatelessWidget {
 
   /// Reopens a stored set for editing. Null leaves the row inert.
   final VoidCallback? onReopen;
+
+  /// Takes this row off the table: a set added past the target and not yet
+  /// logged. Non-null puts a ✕ where the mark would be. Only the last such
+  /// row carries it, so rows are only ever removed from the end.
+  final VoidCallback? onRemove;
+
+  /// How wide the mark's column is -- [tickWidth], or [removeWidth] while
+  /// the table has an added row. See [removeWidth].
+  final double trailingWidth;
 
   /// A touch anywhere but a text field -- the start of a scroll included --
   /// takes the cursor out of this one, which closes the keyboard and lets
@@ -209,11 +225,25 @@ class SetRow extends StatelessWidget {
               const SizedBox(width: SetRow.columnGap),
               SizedBox(
                 key: Key('set.$setNumber.tick'),
-                width: SetRow.tickWidth,
-                child: SizedBox(
-                  height: 38,
-                  child: Center(child: _mark(t, done)),
-                ),
+                width: trailingWidth,
+                child: onRemove != null && !done
+                    ? IconButton(
+                        key: Key('set.$setNumber.remove'),
+                        // The tooltip is also the button's name for a screen
+                        // reader, which a bare ✕ would not have.
+                        tooltip: 'Remove set $setNumber',
+                        onPressed: onRemove,
+                        padding: EdgeInsets.zero,
+                        constraints: const BoxConstraints.tightFor(
+                          width: 48,
+                          height: 48,
+                        ),
+                        icon: Icon(Icons.close, size: 18, color: t.text2),
+                      )
+                    : SizedBox(
+                        height: 38,
+                        child: Center(child: _mark(t, done)),
+                      ),
               ),
             ],
           ),

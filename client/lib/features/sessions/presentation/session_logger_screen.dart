@@ -324,6 +324,50 @@ class _SessionLoggerScreenState extends ConsumerState<SessionLoggerScreen>
     _draftsFor = key;
   }
 
+  /// How many rows each exercise's set table has, for the exercises whose
+  /// count the user has changed with "+ Add set" or a row's ✕. Keyed like
+  /// the drafts, by position and exercise, so a switch starts the new
+  /// exercise on its own target.
+  ///
+  /// Kept on the screen only: nothing on the server records rows that were
+  /// never logged, so a resumed workout shows its target, or as many rows as
+  /// were logged if that is more -- see [_rowsFor].
+  final Map<(int, int), int> _rowCounts = {};
+
+  /// The rows [exercise] shows at [index]: the target, or the count the user
+  /// set, or the highest set logged against it, whichever is most. The last
+  /// is what keeps an extra set logged before a resume on screen.
+  int _rowsFor(int index, PlanExercise exercise, ActiveSession session) {
+    var rows = _rowCounts[(index, exercise.exerciseId)] ?? exercise.targetSets;
+    for (final set in session.sets) {
+      if (set.exerciseId == exercise.exerciseId && set.setNumber > rows) {
+        rows = set.setNumber;
+      }
+    }
+    return rows;
+  }
+
+  /// [exercise] with its rows as its target, for everything that walks its
+  /// sets: the next set to do, the finish question, the progress bar, the
+  /// jump sheet and the encouragement all count added rows like any other.
+  /// Only the prescription on screen keeps the plan's own number.
+  static PlanExercise _withRows(PlanExercise exercise, int rows) =>
+      rows == exercise.targetSets
+      ? exercise
+      : PlanExercise(
+          planExerciseId: exercise.planExerciseId,
+          exerciseId: exercise.exerciseId,
+          name: exercise.name,
+          muscleGroup: exercise.muscleGroup,
+          orderNo: exercise.orderNo,
+          targetSets: rows,
+          targetReps: exercise.targetReps,
+          thumbnailUrl: exercise.thumbnailUrl,
+          equipment: exercise.equipment,
+          dayNo: exercise.dayNo,
+          coaching: exercise.coaching,
+        );
+
   @override
   void dispose() {
     _drafts.dispose();
@@ -532,8 +576,20 @@ class _SessionLoggerScreenState extends ConsumerState<SessionLoggerScreen>
   ///
   /// Undo rather than a question first: reopening is frequent and costs
   /// nothing once Undo can put the set back.
-  Future<void> _reopenSet(PlanExercise exercise, int setNumber) async {
+  ///
+  /// [rows] is the table's row count as drawn. It is pinned before the
+  /// delete: a row past the target that is only on screen because it was
+  /// logged would otherwise vanish the moment it is reopened.
+  Future<void> _reopenSet(
+    int index,
+    PlanExercise exercise,
+    int rows,
+    int setNumber,
+  ) async {
     final messenger = ScaffoldMessenger.of(context);
+    if (rows > exercise.targetSets) {
+      _rowCounts[(index, exercise.exerciseId)] = rows;
+    }
     // Read before the delete, which is what takes it out of the session.
     final stored = ref
         .read(activeSessionProvider)
@@ -1008,7 +1064,11 @@ class _SessionLoggerScreenState extends ConsumerState<SessionLoggerScreen>
   /// if the connection drops partway, the sets already cleared stay cleared
   /// and the message says the restart did not finish, rather than pretending
   /// either everything or nothing happened.
+  ///
+  /// A fresh start goes back to the plan's own rows too: any added with
+  /// "+ Add set" are dropped once every logged set is cleared.
   Future<void> _restartExercise(
+    int index,
     PlanExercise exercise,
     ActiveSession session,
   ) async {
@@ -1066,6 +1126,9 @@ class _SessionLoggerScreenState extends ConsumerState<SessionLoggerScreen>
       // Re-seeded from last session on the next build, the way a fresh
       // table is -- see SetDrafts.release.
       drafts.release(setNumber);
+    }
+    if (mounted) {
+      setState(() => _rowCounts.remove((index, exercise.exerciseId)));
     }
   }
 
@@ -1273,9 +1336,16 @@ class _SessionLoggerScreenState extends ConsumerState<SessionLoggerScreen>
     // The session's own list wins: a manual session must not fall through to
     // whatever plan the user happens to have and log against someone else's
     // day.
-    final exercises = carried.isNotEmpty
+    final planned = carried.isNotEmpty
         ? carried
         : (plan?.exercisesForDay(session.planDayNo) ?? const <PlanExercise>[]);
+    // Each exercise as many sets long as its table is -- see [_withRows].
+    // [planned] keeps the plan's own targets, for what the screen shows of
+    // the prescription.
+    final exercises = [
+      for (final (i, exercise) in planned.indexed)
+        _withRows(exercise, _rowsFor(i, exercise, session)),
+    ];
     _exercisesOnScreen = exercises;
     if (exercises.isEmpty) {
       // Not a spinner: the plan and the session are both loaded, so there is
@@ -1337,7 +1407,12 @@ class _SessionLoggerScreenState extends ConsumerState<SessionLoggerScreen>
       _drafts.convert(_unitOnScreen!, unit);
     }
     _unitOnScreen = unit;
+    // Two views of the exercise on screen: [exercise] is as many sets long
+    // as its table, [planExercise] as the plan wrote it -- the one whose
+    // prescription is shown, and the one a switch or a restart acts on.
     final exercise = exercises[index];
+    final planExercise = planned[index];
+    final rowKey = (index, exercise.exerciseId);
     // The rest alert speaks of the exercise on screen, whichever one the rest
     // was started from. A plain assignment, like [_lastSeenSession]: nothing
     // drawn depends on it.
@@ -1355,7 +1430,7 @@ class _SessionLoggerScreenState extends ConsumerState<SessionLoggerScreen>
         : _SwitchState(
             _hasLoggedSets(exercise, session)
                 ? null
-                : () => _switchExercise(exercise),
+                : () => _switchExercise(planExercise),
           );
     final encouragement = encouragementFor(
       exercises: exercises,
@@ -1405,7 +1480,7 @@ class _SessionLoggerScreenState extends ConsumerState<SessionLoggerScreen>
           onRestart:
               _stage == _LoggerStage.logging &&
                   _hasLoggedSets(exercise, session)
-              ? () => _restartExercise(exercise, session)
+              ? () => _restartExercise(index, planExercise, session)
               : null,
           switchState: switchState,
         ),
@@ -1485,7 +1560,7 @@ class _SessionLoggerScreenState extends ConsumerState<SessionLoggerScreen>
               child: _stage == _LoggerStage.demo
                   ? ExerciseDemoStage(
                       key: const Key('logger.demo'),
-                      exercise: exercise,
+                      exercise: planExercise,
                       positionLabel: _positionLabel(index, exercises.length),
                       onSwitch: switchState?.onSwitch,
                     )
@@ -1495,7 +1570,8 @@ class _SessionLoggerScreenState extends ConsumerState<SessionLoggerScreen>
                         crossAxisAlignment: CrossAxisAlignment.stretch,
                         children: [
                           ExerciseLogPanel(
-                            exercise: exercise,
+                            exercise: planExercise,
+                            setCount: exercise.targetSets,
                             session: session,
                             // The same value the footer button names below.
                             activeSetNumber: _activeSetNumber(
@@ -1521,12 +1597,29 @@ class _SessionLoggerScreenState extends ConsumerState<SessionLoggerScreen>
                                 )
                                 .value
                                 ?.animationUrl,
-                            onUndoSet: (setNumber) =>
-                                _reopenSet(exercise, setNumber),
+                            onUndoSet: (setNumber) => _reopenSet(
+                              index,
+                              planExercise,
+                              exercise.targetSets,
+                              setNumber,
+                            ),
+                            onAddSet: () => setState(() {
+                              final rows = exercise.targetSets;
+                              if (rows < maxSetsPerExercise) {
+                                _rowCounts[rowKey] = rows + 1;
+                              }
+                            }),
+                            // The panel only offers this on the last row,
+                            // added and unlogged. What was typed into it goes
+                            // with it, so a row added again starts blank.
+                            onRemoveSet: (setNumber) => setState(() {
+                              _rowCounts[rowKey] = setNumber - 1;
+                              _drafts.release(setNumber);
+                            }),
                             onOpenDemo: () => Navigator.of(context).push(
                               MaterialPageRoute<void>(
                                 builder: (_) => InSessionExerciseScreen(
-                                  exercise: exercise,
+                                  exercise: planExercise,
                                   position: index + 1,
                                   total: exercises.length,
                                 ),

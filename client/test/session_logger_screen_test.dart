@@ -2231,8 +2231,10 @@ void main() {
       expect(completes(controller), 0);
     });
 
-    // Sets past an exercise's target are real work, but they cannot stand in
-    // for another exercise's missing ones: the count stops at each target.
+    // Sets past an exercise's target are real work, and a logged fourth set
+    // is a fourth row of the table, so it counts -- but it cannot stand in
+    // for another exercise's missing ones: the question is still asked, and
+    // still names what is left.
     testWidgets('extra sets on one exercise do not count towards another', (
       tester,
     ) async {
@@ -2248,7 +2250,7 @@ void main() {
 
       await _menu(tester, 'finish');
 
-      expect(find.text('Finish with 3 of 5 sets?'), findsOneWidget);
+      expect(find.text('Finish with 4 of 6 sets?'), findsOneWidget);
       expect(find.text('Not logged yet: Push-up.'), findsOneWidget);
     });
 
@@ -2923,6 +2925,200 @@ void main() {
     // screen itself once the sheet -- not the dialog -- has actually
     // resolved. Nothing above proves that pop ever happened.
     expect(find.byType(SessionLoggerScreen), findsNothing);
+  });
+
+  group('add a set', () {
+    const squatDone = [
+      LoggedSet(exerciseId: 101, setNumber: 1, weightKg: 20, reps: 10),
+      LoggedSet(exerciseId: 101, setNumber: 2, weightKg: 20, reps: 10),
+      LoggedSet(exerciseId: 101, setNumber: 3, weightKg: 20, reps: 10),
+    ];
+    const pushUpsDone = [
+      LoggedSet(exerciseId: 102, setNumber: 1, weightKg: null, reps: 12),
+      LoggedSet(exerciseId: 102, setNumber: 2, weightKg: null, reps: 12),
+    ];
+
+    Finder addSet() => find.byKey(const Key('logpanel.addSet'));
+
+    Future<void> tapAddSet(WidgetTester tester) async {
+      await tester.ensureVisible(addSet());
+      await tester.pumpAndSettle();
+      await tester.tap(addSet());
+      await tester.pumpAndSettle();
+    }
+
+    String primaryLabel(WidgetTester tester) =>
+        tester.widget<FsButton>(find.byKey(const Key('logger.primary'))).label;
+
+    testWidgets('appends a row, and the footer offers to complete it', (
+      tester,
+    ) async {
+      // Three sets was a ceiling: someone with a fourth set in them had
+      // nowhere to log it. The target is a starting point now.
+      await _pumpLogging(tester, session: _session(sets: squatDone));
+      expect(find.byKey(const Key('set.4.row')), findsNothing);
+      expect(primaryLabel(tester), 'Next exercise');
+
+      await tapAddSet(tester);
+
+      expect(find.byKey(const Key('set.4.row')), findsOneWidget);
+      expect(primaryLabel(tester), 'Complete set 4');
+    });
+
+    testWidgets('logs the added set like any other', (tester) async {
+      final controller = await _pumpLogging(
+        tester,
+        session: _session(sets: squatDone),
+      );
+
+      await tapAddSet(tester);
+      await tester.tap(find.byKey(const Key('logger.primary')));
+      await tester.pumpAndSettle();
+
+      expect(controller.calls, contains('log:101:4:null:10'));
+      expect(primaryLabel(tester), 'Next exercise');
+    });
+
+    testWidgets('is named for screen readers and is a full-size target', (
+      tester,
+    ) async {
+      await _pumpLogging(tester);
+      final semantics = tester.ensureSemantics();
+
+      expect(
+        tester.getSemantics(addSet()),
+        isSemantics(label: 'Add a set to Goblet squat', isButton: true),
+      );
+      expect(tester.getSize(addSet()).height, greaterThanOrEqualTo(48));
+      semantics.dispose();
+    });
+
+    testWidgets('only the last unlogged added row can be removed', (
+      tester,
+    ) async {
+      await _pumpLogging(tester, session: _session(sets: squatDone));
+      await tapAddSet(tester);
+      await tapAddSet(tester);
+
+      expect(find.byTooltip('Remove set 5'), findsOneWidget);
+      expect(find.byTooltip('Remove set 4'), findsNothing);
+      expect(find.byTooltip('Remove set 3'), findsNothing);
+
+      await tester.tap(find.byTooltip('Remove set 5'));
+      await tester.pumpAndSettle();
+
+      expect(find.byKey(const Key('set.5.row')), findsNothing);
+      expect(find.byTooltip('Remove set 4'), findsOneWidget);
+      final remove = tester.getSize(find.byTooltip('Remove set 4'));
+      expect(remove.width, greaterThanOrEqualTo(48));
+      expect(remove.height, greaterThanOrEqualTo(48));
+    });
+
+    testWidgets('a row the plan asked for cannot be removed', (tester) async {
+      await _pumpLogging(tester);
+
+      expect(find.byTooltip('Remove set 3'), findsNothing);
+    });
+
+    testWidgets('a logged added row keeps its place and loses its ✕', (
+      tester,
+    ) async {
+      await _pumpLogging(tester, session: _session(sets: squatDone));
+      await tapAddSet(tester);
+      await tester.tap(find.byKey(const Key('logger.primary')));
+      await tester.pumpAndSettle();
+
+      expect(find.byKey(const Key('set.4.row')), findsOneWidget);
+      expect(find.byTooltip('Remove set 4'), findsNothing);
+    });
+
+    testWidgets('a logged extra set is still there on resume', (tester) async {
+      // Nothing stores how many rows were added, so a resumed session reads
+      // them back from what was logged.
+      await _pumpLogging(
+        tester,
+        session: _session(
+          sets: const [
+            ...squatDone,
+            LoggedSet(exerciseId: 101, setNumber: 4, weightKg: 20, reps: 8),
+          ],
+        ),
+      );
+
+      expect(find.byKey(const Key('set.4.row')), findsOneWidget);
+      expect(find.byTooltip('Remove set 4'), findsNothing);
+      expect(primaryLabel(tester), 'Next exercise');
+    });
+
+    testWidgets('reopening a resumed extra set keeps its row', (tester) async {
+      await _pumpLogging(
+        tester,
+        session: _session(
+          sets: const [
+            ...squatDone,
+            LoggedSet(exerciseId: 101, setNumber: 4, weightKg: 20, reps: 8),
+          ],
+        ),
+      );
+
+      await tester.tap(find.byKey(const Key('set.4.row')));
+      await tester.pumpAndSettle();
+
+      expect(find.byKey(const Key('set.4.row')), findsOneWidget);
+      expect(primaryLabel(tester), 'Complete set 4');
+    });
+
+    testWidgets('the finish question counts added rows', (tester) async {
+      await _pumpLogging(
+        tester,
+        session: _session(sets: const [...squatDone, ...pushUpsDone]),
+      );
+
+      await tapAddSet(tester);
+      await _menu(tester, 'finish');
+
+      expect(find.text('Finish with 5 of 6 sets?'), findsOneWidget);
+      expect(find.text('Not logged yet: Goblet squat.'), findsOneWidget);
+    });
+
+    testWidgets('stops at 20 sets and says so', (tester) async {
+      await _pumpLogging(tester);
+
+      for (var rows = 3; rows < 20; rows++) {
+        await tapAddSet(tester);
+      }
+
+      expect(find.byKey(const Key('set.20.row')), findsOneWidget);
+      expect(addSet(), findsNothing);
+      expect(find.byKey(const Key('logpanel.setCap')), findsOneWidget);
+    });
+
+    testWidgets('restarting the exercise drops rows that were added', (
+      tester,
+    ) async {
+      await _pumpLogging(tester, session: _session(sets: squatDone));
+      await tapAddSet(tester);
+      expect(find.byKey(const Key('set.4.row')), findsOneWidget);
+
+      await _menu(tester, 'restart');
+      await tester.tap(dialogButton('Restart'));
+      await tester.pumpAndSettle();
+
+      expect(find.byKey(const Key('set.4.row')), findsNothing);
+      expect(find.byKey(const Key('set.3.row')), findsOneWidget);
+    });
+
+    testWidgets('fits a 320 dp phone at large text', (tester) async {
+      _smallPhoneLargeText(tester);
+
+      await _pumpLogging(tester, session: _session(sets: squatDone));
+      _drainMetaRowOverflow(tester);
+      await tapAddSet(tester);
+      await tapAddSet(tester);
+
+      expect(find.byTooltip('Remove set 5'), findsOneWidget);
+      expect(tester.takeException(), isNull);
+    });
   });
 
   group('encouragement', () {
