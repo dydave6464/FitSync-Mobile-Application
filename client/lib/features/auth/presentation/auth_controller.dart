@@ -145,7 +145,6 @@ class AuthController extends AsyncNotifier<AuthState> {
     ref.invalidate(completedDaysProvider);
     ref.invalidate(workoutDraftProvider);
     ref.invalidate(selectedFiltersProvider);
-    ref.invalidate(chosenSplitStyleProvider);
     ref.invalidate(routineTodayProvider);
     ref.invalidate(homeSummaryProvider);
     ref.invalidate(trainingSummaryProvider);

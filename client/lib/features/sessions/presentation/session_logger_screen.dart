@@ -16,6 +16,7 @@ import '../../exercises/presentation/exercise_list_screen.dart'
 import '../../plans/domain/workout_plan.dart';
 import '../../plans/presentation/add_to_plan_sheet.dart';
 import '../../plans/presentation/exercise_swap_sheet.dart';
+import '../../plans/presentation/make_plan_sheet.dart';
 import '../../plans/presentation/providers.dart';
 import '../../profile/presentation/providers.dart';
 import '../data/rest_alerts.dart';
@@ -32,7 +33,6 @@ import 'widgets/logger_action.dart';
 import 'widgets/rest_sheet.dart';
 import 'widgets/rest_timer.dart';
 import 'widgets/set_drafts.dart';
-import 'workout_draft.dart' show chosenSplitStyleProvider;
 
 /// The active workout, one exercise at a time: its set table, Continue to
 /// the next, and the jump sheet for anything out of order.
@@ -879,15 +879,21 @@ class _SessionLoggerScreenState extends ConsumerState<SessionLoggerScreen>
   ///
   /// [dialogContext] is popped first, with `true` -- see [_showSummary] --
   /// so the summary does not sit over a snack bar the user cannot read, and
-  /// so that dialog's own pop does not race the add-to-plan sheet below.
-  /// This method closes the screen itself once there is nothing left for the
-  /// user to interact with: immediately when there is no day to choose, or
-  /// once the sheet (or the replace-my-plan question) resolves when there is.
+  /// so that dialog's own pop does not race the sheet below. This method
+  /// closes the screen itself once there is nothing left for the user to
+  /// interact with: once the sheet it asks on resolves, however it resolves.
+  ///
+  /// Which sheet depends on the plan already active. A plan of the user's own
+  /// has days to choose between, and the workout is added among them. Any
+  /// other -- a generated plan, or none -- is replaced by a plan made from
+  /// this workout, and [showMakePlanSheet] asks for the split that names it
+  /// and, when a plan is about to go, confirms it by name.
+  ///
   /// That pop, and the rest of this method, still has to survive a disposed
-  /// State: `showAddToPlanSheet` keeps the screen alive for as long as it is
-  /// open, but the write it leads to does not wait for it, and neither did
-  /// the version of this method before the sheet existed. The messenger and
-  /// the container are both captured before any await, but for different
+  /// State: the sheet keeps the screen alive for as long as it is open, but
+  /// the write it leads to does not wait for it, and neither did the version
+  /// of this method before the sheets existed. The messenger and the
+  /// container are both captured before any await, but for different
   /// reasons: `planFromSession` can easily still be in flight after the
   /// screen (and this State with it) is gone, and `ref.invalidate` would
   /// throw against a disposed State -- the container outlives the widget, so
@@ -905,24 +911,17 @@ class _SessionLoggerScreenState extends ConsumerState<SessionLoggerScreen>
     Navigator.of(dialogContext).pop(true);
 
     final active = ref.read(activePlanProvider).value;
-    // Only an existing custom plan has days to choose between. A first
-    // workout, or one landing on top of a generated plan, creates the plan --
-    // there is nothing to place it among yet.
     int? dayNo;
+    String? splitStyle;
     var cancelled = false;
+    if (!mounted) return;
     if (active != null && active.isCustom) {
-      if (!mounted) return;
       final choice = await showAddToPlanSheet(context, active);
       cancelled = choice.cancelled;
       dayNo = choice.dayNo;
-    } else if (active != null) {
-      // A generated plan is about to be deactivated and replaced by a
-      // one-day plan built from this workout, and plan history is out of
-      // scope -- nothing brings it back. The generator already asks before
-      // replacing a plan the user built; this is the same question in the
-      // direction that used to be silent.
-      if (!mounted) return;
-      cancelled = !await _confirmReplacing(active);
+    } else {
+      splitStyle = await showMakePlanSheet(context, replacing: active);
+      cancelled = splitStyle == null;
     }
     // Either way the session is finished, so the logger leaves: _showSummary
     // handed its own pop to this method the moment the offer was tapped, and
@@ -936,7 +935,7 @@ class _SessionLoggerScreenState extends ConsumerState<SessionLoggerScreen>
           .read(planRepositoryProvider)
           .planFromSession(
             sessionId: done.sessionId,
-            splitStyle: ref.read(chosenSplitStyleProvider),
+            splitStyle: splitStyle,
             dayNo: dayNo,
           );
       // The Plan tab and Home both read this, and neither was watching while
@@ -953,38 +952,6 @@ class _SessionLoggerScreenState extends ConsumerState<SessionLoggerScreen>
       messenger.showSnackBar(SnackBar(content: Text(describeError(error))));
     }
   }
-
-  /// Asks before a plan the user did not build is replaced by one made from
-  /// this workout. Names the plan, because "your plan" is not enough to
-  /// decide by.
-  Future<bool> _confirmReplacing(WorkoutPlan plan) async =>
-      await showDialog<bool>(
-        context: context,
-        builder: (dialogContext) => AlertDialog(
-          key: const Key('summary.replacePlan'),
-          title: const Text('Replace your current plan?'),
-          content: Text(
-            'This workout becomes a plan of your own, and "${plan.name}" '
-            'goes. You cannot get it back.',
-          ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.of(dialogContext).pop(false),
-              child: const Text('Keep it'),
-            ),
-            TextButton(
-              style: TextButton.styleFrom(
-                foregroundColor: dialogContext.fs.red,
-              ),
-              onPressed: () => Navigator.of(dialogContext).pop(true),
-              child: const Text('Replace it'),
-            ),
-          ],
-        ),
-        // A barrier dismiss is not an answer, and the destructive reading of
-        // silence is the wrong one here.
-      ) ??
-      false;
 
   Future<void> _discard() async {
     final confirmed = await showDialog<bool>(

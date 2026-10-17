@@ -9,6 +9,7 @@ import 'package:fitsync/core/api_exception.dart';
 import 'package:fitsync/core/theme.dart';
 import 'package:fitsync/core/token_store.dart';
 import 'package:fitsync/core/units.dart';
+import 'package:fitsync/core/widgets/fs_kit.dart';
 import 'package:fitsync/features/exercises/domain/exercise.dart';
 import 'package:fitsync/features/exercises/domain/exercise_cues.dart';
 import 'package:fitsync/features/exercises/presentation/providers.dart'
@@ -732,6 +733,16 @@ Future<void> _finishWithSetsLeft(WidgetTester tester) async {
   await _menu(tester, 'finish');
   expect(find.byKey(const Key('logger.finishConfirm')), findsOneWidget);
   await tester.tap(find.byKey(const Key('logger.finishConfirm.finish')));
+  await tester.pumpAndSettle();
+}
+
+/// The summary's offer to keep the workout, accepted on the sheet that
+/// follows it with the split it starts on. For the tests about what the
+/// write does rather than what the sheet asks.
+Future<void> _makeItMyPlan(WidgetTester tester) async {
+  await tester.tap(find.byKey(const Key('summary.toPlan')));
+  await tester.pumpAndSettle();
+  await tester.tap(find.byKey(const Key('makePlan.confirm')));
   await tester.pumpAndSettle();
 }
 
@@ -2488,11 +2499,11 @@ void main() {
     await _pump(tester, session: _manualSessionWithSets(), plans: plans);
 
     await _finishWithSetsLeft(tester);
-    await tester.tap(find.byKey(const Key('summary.toPlan')));
-    await tester.pumpAndSettle();
+    await _makeItMyPlan(tester);
 
     expect(plans.fromSessionCalls, 1);
     expect(plans.lastSessionId, 9);
+    expect(plans.lastSplitStyle, 'full_body', reason: 'the sheet\'s default');
   });
 
   testWidgets('declining changes nothing', (tester) async {
@@ -2543,8 +2554,7 @@ void main() {
     await _pump(tester, session: _manualSessionWithSets(), plans: plans);
 
     await _finishWithSetsLeft(tester);
-    await tester.tap(find.byKey(const Key('summary.toPlan')));
-    await tester.pumpAndSettle();
+    await _makeItMyPlan(tester);
 
     expect(find.textContaining('Could not reach the server.'), findsOneWidget);
   });
@@ -2584,6 +2594,8 @@ void main() {
 
       await _finishWithSetsLeft(tester);
       await tester.tap(find.byKey(const Key('summary.toPlan')));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const Key('makePlan.confirm')));
       // Lets both pops -- the dialog's, and the logger route's behind it --
       // actually finish. The request stays gated throughout, so nothing here
       // depends on it resolving yet.
@@ -2646,8 +2658,7 @@ void main() {
       await _pump(tester, session: _manualSessionWithSets(), plans: plans);
 
       await _finishWithSetsLeft(tester);
-      await tester.tap(find.byKey(const Key('summary.toPlan')));
-      await tester.pumpAndSettle();
+      await _makeItMyPlan(tester);
 
       expect(find.byType(SessionLoggerScreen), findsNothing);
 
@@ -2674,8 +2685,7 @@ void main() {
       await _pump(tester, session: _manualSessionWithSets(), plans: plans);
 
       await _finishWithSetsLeft(tester);
-      await tester.tap(find.byKey(const Key('summary.toPlan')));
-      await tester.pumpAndSettle();
+      await _makeItMyPlan(tester);
 
       expect(find.byType(SessionLoggerScreen), findsNothing);
 
@@ -2740,15 +2750,12 @@ void main() {
     await tester.tap(find.byKey(const Key('summary.toPlan')));
     await tester.pumpAndSettle();
 
-    expect(find.byKey(const Key('summary.replacePlan')), findsOneWidget);
-    // Scoped to the dialog: the logger's own chrome behind it also carries
-    // the plan name, so an unscoped finder would pass on the wrong widget.
+    expect(find.text('Make this your plan'), findsOneWidget);
+    // By key: the logger's own chrome behind the sheet may carry the plan
+    // name too, so a bare text finder could pass on the wrong widget.
     expect(
-      find.descendant(
-        of: find.byKey(const Key('summary.replacePlan')),
-        matching: find.textContaining('Week 1 — Full body'),
-      ),
-      findsOneWidget,
+      tester.widget<Text>(find.byKey(const Key('makePlan.replaces'))).data,
+      'This replaces "Week 1 — Full body". You can\'t get it back.',
       reason: 'the question has to name what goes',
     );
     expect(plans.fromSessionCalls, 0, reason: 'nothing is written until asked');
@@ -2761,7 +2768,7 @@ void main() {
     await _finishWithSetsLeft(tester);
     await tester.tap(find.byKey(const Key('summary.toPlan')));
     await tester.pumpAndSettle();
-    await tester.tap(find.text('Keep it'));
+    await tester.tap(find.byKey(const Key('makePlan.cancel')));
     await tester.pumpAndSettle();
 
     expect(plans.fromSessionCalls, 0);
@@ -2772,33 +2779,59 @@ void main() {
     expect(find.byType(SessionLoggerScreen), findsNothing);
   });
 
-  testWidgets('the replace question shows Replace it in red', (tester) async {
+  testWidgets('dismissing the make-your-plan sheet writes nothing', (
+    tester,
+  ) async {
+    // A swipe or a tap outside is not a vote to replace a plan.
     final plans = RecordingPlanRepository(active: _generatedPlan);
     await _pump(tester, session: _manualSessionWithSets(), plans: plans);
 
     await _finishWithSetsLeft(tester);
     await tester.tap(find.byKey(const Key('summary.toPlan')));
     await tester.pumpAndSettle();
+    await tester.tapAt(const Offset(5, 5));
+    await tester.pumpAndSettle();
 
-    expect(labelColor(tester, dialogButton('Replace it')), dialogRed(tester));
-    expect(
-      labelColor(tester, dialogButton('Keep it')),
-      isNot(dialogRed(tester)),
-    );
+    expect(find.text('Make this your plan'), findsNothing);
+    expect(plans.fromSessionCalls, 0);
+    expect(find.byType(SessionLoggerScreen), findsNothing);
   });
 
-  testWidgets('confirming replaces the generated plan', (tester) async {
+  testWidgets('the replace question shows Replace my plan in red', (
+    tester,
+  ) async {
     final plans = RecordingPlanRepository(active: _generatedPlan);
     await _pump(tester, session: _manualSessionWithSets(), plans: plans);
 
     await _finishWithSetsLeft(tester);
     await tester.tap(find.byKey(const Key('summary.toPlan')));
     await tester.pumpAndSettle();
-    await tester.tap(find.text('Replace it'));
+
+    final replace = tester.widget<FsButton>(
+      find.byKey(const Key('makePlan.confirm')),
+    );
+    expect(replace.label, 'Replace my plan');
+    expect(replace.danger, isTrue);
+  });
+
+  testWidgets('confirming replaces the generated plan with the chosen split', (
+    tester,
+  ) async {
+    final plans = RecordingPlanRepository(active: _generatedPlan);
+    await _pump(tester, session: _manualSessionWithSets(), plans: plans);
+
+    await _finishWithSetsLeft(tester);
+    await tester.tap(find.byKey(const Key('summary.toPlan')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const Key('makePlan.split.push_pull_legs')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const Key('makePlan.confirm')));
     await tester.pumpAndSettle();
 
     expect(plans.fromSessionCalls, 1);
     expect(plans.lastSessionId, 9);
+    expect(plans.lastSplitStyle, 'push_pull_legs');
+    expect(find.byType(SessionLoggerScreen), findsNothing);
   });
 
   testWidgets('dismissing the day sheet adds no day at all', (tester) async {
@@ -2862,6 +2895,11 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(plans.lastDayNo, 1);
+    expect(
+      plans.lastSplitStyle,
+      isNull,
+      reason: 'adding to a plan of their own asks no split',
+    );
     // The handoff this race fix depends on: _showSummary sees the dialog
     // resolve true and skips its own pop, leaving _addToPlan to pop the
     // screen itself once the sheet -- not the dialog -- has actually
