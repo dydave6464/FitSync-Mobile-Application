@@ -105,6 +105,7 @@ class _RecentCard extends StatelessWidget {
   final VoidCallback onTap;
 
   static const _width = 112.0;
+  static const _maxWidth = 176.0;
 
   @override
   Widget build(BuildContext context) {
@@ -125,9 +126,17 @@ class _RecentCard extends StatelessWidget {
       button: true,
       selected: added,
       label: label,
+      // excludeSemantics drops the InkWell's own tap action along with its
+      // children, so the card has to offer it, or a screen reader would
+      // announce a button that does nothing.
+      onTap: onTap,
       excludeSemantics: true,
       child: SizedBox(
-        width: _width,
+        // Wider with larger text, up to a limit, so a long name still fits
+        // in its two lines; the strip scrolls sideways to make room.
+        width: MediaQuery.textScalerOf(context)
+            .scale(_width)
+            .clamp(_width, _maxWidth),
         child: Material(
           color: chosen ? t.accent.withValues(alpha: 0.10) : t.surface,
           shape: RoundedRectangleBorder(

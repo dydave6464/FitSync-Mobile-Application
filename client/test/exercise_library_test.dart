@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import 'package:flutter/semantics.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 
@@ -92,7 +93,8 @@ class FakeExerciseRepository implements ExerciseRepository {
 class FakeRecentRepository implements RecentExercisesRepository {
   FakeRecentRepository({this.items = const [], this.error, this.hang = false});
 
-  final List<ExerciseSummary> items;
+  /// Not final, so a test can change the user's history between visits.
+  List<ExerciseSummary> items;
   final Object? error;
   final bool hang;
   int calls = 0;
@@ -456,6 +458,96 @@ void main() {
         7,
       );
       expect(container.read(workoutDraftProvider), isEmpty);
+    });
+
+    testWidgets('picking: a screen reader can toggle a card', (tester) async {
+      final handle = tester.ensureSemantics();
+      final container = _container();
+      await _pump(tester, container, selecting: true);
+
+      final node = tester.getSemantics(_recentCard(7));
+      expect(node.getSemanticsData().hasAction(SemanticsAction.tap), isTrue);
+      tester.semantics.tap(
+        find.semantics.byLabel('Bench press, recent, not added'),
+      );
+      await tester.pumpAndSettle();
+
+      expect(container.read(workoutDraftProvider).exerciseIds, [7]);
+      handle.dispose();
+    });
+
+    testWidgets('browsing: a screen reader can open a card', (tester) async {
+      final handle = tester.ensureSemantics();
+      await _pump(tester, _container());
+
+      tester.semantics.tap(find.semantics.byLabel('Bench press, recent'));
+      await tester.pumpAndSettle();
+
+      expect(
+        tester
+            .widget<ExerciseDetailScreen>(find.byType(ExerciseDetailScreen))
+            .exerciseId,
+        7,
+      );
+      handle.dispose();
+    });
+
+    testWidgets(
+      'the picker asks again even while the Exercises tab holds the list',
+      (tester) async {
+        final recent = FakeRecentRepository(items: const [_bench]);
+        final container = _container(recent: recent);
+        final navigator = GlobalKey<NavigatorState>();
+        await tester.pumpWidget(
+          UncontrolledProviderScope(
+            container: container,
+            child: MaterialApp(
+              navigatorKey: navigator,
+              theme: fsLightTheme(),
+              home: const ExerciseListScreen(embedded: true),
+            ),
+          ),
+        );
+        await tester.pumpAndSettle();
+        expect(recent.calls, 1);
+        expect(_recentCard(8), findsNothing);
+
+        // A workout logged since: the deadlift is now the latest.
+        recent.items = const [_deadlift, _bench];
+        navigator.currentState!.push(
+          MaterialPageRoute<void>(
+            builder: (_) => const ExerciseListScreen(selecting: true),
+          ),
+        );
+        await tester.pumpAndSettle();
+
+        expect(recent.calls, 2);
+        expect(_recentCard(8), findsOneWidget);
+      },
+    );
+
+    testWidgets('cards widen with large text', (tester) async {
+      tester.view.physicalSize = const Size(320, 640);
+      tester.view.devicePixelRatio = 1;
+      addTearDown(tester.view.reset);
+      await tester.pumpWidget(
+        UncontrolledProviderScope(
+          container: _container(),
+          child: MaterialApp(
+            theme: fsLightTheme(),
+            home: const MediaQuery(
+              data: MediaQueryData(
+                size: Size(320, 640),
+                textScaler: TextScaler.linear(2),
+              ),
+              child: ExerciseListScreen(),
+            ),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      expect(tester.getSize(_recentCard(8)).width, greaterThan(112));
     });
 
     testWidgets('every card is a full-size tap target', (tester) async {

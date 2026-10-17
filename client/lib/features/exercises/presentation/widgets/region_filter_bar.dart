@@ -109,6 +109,9 @@ class _RegionFilterBarState extends ConsumerState<RegionFilterBar> {
                 label: option?.label ?? 'All',
                 selected: option == selected,
                 onTap: () => _choose(option),
+                // Small, as the design draws them; the band around each chip
+                // keeps the tap target at full size.
+                small: true,
               ),
             ),
         ],

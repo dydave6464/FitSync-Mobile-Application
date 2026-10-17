@@ -54,8 +54,10 @@ final recentExercisesRepositoryProvider = Provider<RecentExercisesRepository>(
 
 /// The user's recently logged exercises, for the library's "Recent" strip.
 ///
-/// autoDispose so every visit to the library asks again: a workout logged
-/// since the last visit is exactly what should appear here next time.
+/// autoDispose so a library opened afresh asks again: a workout logged since
+/// the last visit is exactly what should appear here next time. Train's
+/// Exercises tab stays mounted and keeps its answer, so the picker also
+/// invalidates this on open rather than relying on disposal.
 final recentExercisesProvider =
     FutureProvider.autoDispose<List<ExerciseSummary>>(
       (ref) => ref.watch(recentExercisesRepositoryProvider).recent(),

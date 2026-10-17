@@ -47,6 +47,17 @@ class _ExerciseListScreenState extends ConsumerState<ExerciseListScreen> {
   void initState() {
     super.initState();
     _controller.addListener(_onScroll);
+    // Train's Exercises tab stays mounted once opened and keeps listening to
+    // the recent list, so autoDispose alone never lets it go. A picker is
+    // opened to log a workout, and one logged since the tab first asked is
+    // exactly what its strip should show, so it asks again on every open.
+    // After the first frame, because initState runs while the route is being
+    // built, and invalidating then would rebuild the tab mid-build.
+    if (widget.selecting) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) ref.invalidate(recentExercisesProvider);
+      });
+    }
   }
 
   @override
