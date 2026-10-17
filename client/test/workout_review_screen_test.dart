@@ -27,7 +27,12 @@ import 'helpers/dialog_buttons.dart';
 
 /// The real face, not the test harness's, whose every glyph is 1 em wide:
 /// whether a button label fits at large text is a question about the font
-/// the app ships.
+/// the app ships. Loaded for the whole file, since a font cannot be unloaded.
+///
+/// The test engine seems not to apply the variable font's weight axis (w700
+/// measures within 0.2 px of w400), so bold labels on a phone run a few
+/// percent wider than measured here. The wrap checks still hold; the
+/// on-screen ones have a little less margin than they appear to.
 Future<void> _loadFont() async {
   final bytes = await File('assets/fonts/SpaceGrotesk-Variable.ttf')
       .readAsBytes();
@@ -693,6 +698,56 @@ void main() {
                 .where((p) => p.didExceedMaxLines)
                 .map((p) => p.text.toPlainText());
             expect(cut, isEmpty, reason: 'no label may end in an ellipsis');
+          },
+        );
+      }
+    }
+
+    // iOS's accessibility sizes go past Android's 2.0× (AX3 ≈ 2.35×, AX5 ≈
+    // 3.12×), on short screens: landscape, and a 4-inch phone. There the
+    // choices alone are taller than the dialog, so they may scroll -- but
+    // the question itself must never be squeezed out of view.
+    for (final (size, scale) in [
+      (const Size(667, 375), 2.35),
+      (const Size(844, 390), 3.12),
+      (const Size(320, 568), 3.12),
+    ]) {
+      for (final (name, sets, highlighted) in [
+        ('nothing logged', const <LoggedSet>[], 'replace'),
+        ('sets logged', _twoLoggedSets, 'open'),
+      ]) {
+        testWidgets(
+          'at ${size.width.toInt()}×${size.height.toInt()} and $scale× text, '
+          '$name, the question keeps room and the highlighted choice shows',
+          (tester) async {
+            tester.view.physicalSize = size;
+            tester.view.devicePixelRatio = 1.0;
+            tester.platformDispatcher.textScaleFactorTestValue = scale;
+            addTearDown(tester.view.reset);
+            addTearDown(
+              tester.platformDispatcher.clearTextScaleFactorTestValue,
+            );
+
+            await _blockedBy(tester, _openWorkout(sets: sets));
+
+            expect(tester.takeException(), isNull);
+            // The first scroll view in the dialog is the title and message.
+            final question = find
+                .descendant(
+                  of: find.byType(AlertDialog),
+                  matching: find.byType(SingleChildScrollView),
+                )
+                .first;
+            expect(
+              tester.getSize(question).height,
+              greaterThanOrEqualTo(60),
+              reason: 'at least a couple of lines of the question',
+            );
+            final rect = tester.getRect(
+              find.byKey(Key('blocked.$highlighted')),
+            );
+            expect(rect.top, greaterThanOrEqualTo(0));
+            expect(rect.bottom, lessThanOrEqualTo(size.height));
           },
         );
       }

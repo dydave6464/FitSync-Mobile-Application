@@ -55,5 +55,7 @@ String? openedAgo(DateTime? openedAt, DateTime now) {
   final today = DateTime(now.year, now.month, now.day);
   final day = DateTime(opened.year, opened.month, opened.day);
   final days = (today.difference(day).inHours / 24).round();
+  // A 25-hour clock-change day can hold a full day's gap on one date.
+  if (days < 1) return '${gap.inHours} h ago';
   return days == 1 ? 'yesterday' : '$days days ago';
 }

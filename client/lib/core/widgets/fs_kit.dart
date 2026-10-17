@@ -156,7 +156,12 @@ class FsButton extends StatelessWidget {
                                   overflow: wrapLabel
                                       ? null
                                       : TextOverflow.ellipsis,
-                                  textAlign: TextAlign.center,
+                                  // Centred lines only when there can be more
+                                  // than one; every other button draws as it
+                                  // always has.
+                                  textAlign: wrapLabel
+                                      ? TextAlign.center
+                                      : null,
                                   style: TextStyle(
                                     fontSize: small ? 13.5 : 15,
                                     fontWeight: FontWeight.w700,

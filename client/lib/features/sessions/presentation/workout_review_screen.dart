@@ -227,15 +227,26 @@ class _WorkoutReviewScreenState extends ConsumerState<WorkoutReviewScreen> {
             ],
           ),
           actions: [
-            Column(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                for (final (i, choice) in choices.indexed) ...[
-                  if (i > 0) const SizedBox(height: 8),
-                  choice,
-                ],
-              ],
+            // Capped at half the screen, scrolling past that: at iOS's
+            // largest text in landscape the wrapped choices alone are taller
+            // than the dialog, and uncapped they would squeeze the question
+            // above them down to nothing.
+            ConstrainedBox(
+              constraints: BoxConstraints(
+                maxHeight: MediaQuery.sizeOf(dialogContext).height / 2,
+              ),
+              child: SingleChildScrollView(
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    for (final (i, choice) in choices.indexed) ...[
+                      if (i > 0) const SizedBox(height: 8),
+                      choice,
+                    ],
+                  ],
+                ),
+              ),
             ),
           ],
         );
