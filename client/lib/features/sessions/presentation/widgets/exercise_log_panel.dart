@@ -10,6 +10,13 @@ import '../../domain/active_session.dart';
 import 'set_drafts.dart';
 import 'set_row.dart';
 
+/// The most rows one exercise's set table grows to with "+ Add set".
+///
+/// The server takes set numbers up to 99, but twenty sets of one exercise is
+/// already past any session anyone logs by hand; past it the control would
+/// only ever be a mis-tap.
+const maxSetsPerExercise = 20;
+
 /// The exercise on screen in the paged logger: its prescription, what was
 /// lifted last time, and its set table.
 ///
@@ -33,9 +40,27 @@ class ExerciseLogPanel extends StatefulWidget {
     this.onUnitChanged,
     this.baseUrl = '',
     this.animationUrl,
+    this.setCount,
+    this.onAddSet,
+    this.onRemoveSet,
   });
 
   final PlanExercise exercise;
+
+  /// How many rows the set table has: the target, plus any the user added,
+  /// or as many as were logged if that is more. Worked out by the logger,
+  /// which also counts these rows for the footer and the finish question.
+  /// Null is the target alone.
+  final int? setCount;
+
+  /// Adds a row below the last. Null leaves the table at [setCount] rows
+  /// with no control to grow it, which is how a panel built without a
+  /// logger behind it is drawn.
+  final VoidCallback? onAddSet;
+
+  /// Removes the last row, which must be one added past the target and not
+  /// yet logged. Its ✕ appears only on such a row.
+  final ValueChanged<int>? onRemoveSet;
   final ActiveSession? session;
   final LastPerformance? last;
   final Future<void> Function(int setNumber) onUndoSet;
@@ -178,6 +203,23 @@ class _ExerciseLogPanelState extends State<ExerciseLogPanel> {
     final t = context.fs;
     final exercise = widget.exercise;
     final showWeight = _showWeight;
+    final rows = widget.setCount ?? exercise.targetSets;
+    // Only the last row, and only one added past the target that has not
+    // been logged: rows come off the end, and a logged set is the record --
+    // reopening it is how it changes.
+    final removable =
+        widget.onRemoveSet != null &&
+            rows > exercise.targetSets &&
+            widget.session?.setFor(exercise.exerciseId, rows) == null
+        ? rows
+        : null;
+    // The table widens its mark column for the ✕ while it holds added rows,
+    // not just while one is removable, so logging an added set does not
+    // shift the columns under the user's thumb.
+    final trailingWidth =
+        widget.onRemoveSet != null && rows > exercise.targetSets
+        ? SetRow.removeWidth
+        : SetRow.tickWidth;
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -368,15 +410,11 @@ class _ExerciseLogPanelState extends State<ExerciseLogPanel> {
                             ),
                           ),
                           const SizedBox(width: SetRow.columnGap),
-                          const SizedBox(width: SetRow.tickWidth),
+                          SizedBox(width: trailingWidth),
                         ],
                       ),
                     ),
-                    for (
-                      var setNumber = 1;
-                      setNumber <= exercise.targetSets;
-                      setNumber++
-                    )
+                    for (var setNumber = 1; setNumber <= rows; setNumber++)
                       Builder(
                         builder: (context) {
                           final stored = widget.session?.setFor(
@@ -420,8 +458,18 @@ class _ExerciseLogPanelState extends State<ExerciseLogPanel> {
                                 ? 'reps'
                                 : exercise.targetReps,
                             onReopen: () => widget.onUndoSet(setNumber),
+                            trailingWidth: trailingWidth,
+                            onRemove: setNumber == removable
+                                ? () => widget.onRemoveSet!(setNumber)
+                                : null,
                           );
                         },
+                      ),
+                    if (widget.onAddSet != null)
+                      _AddSet(
+                        exerciseName: exercise.name,
+                        atCap: rows >= maxSetsPerExercise,
+                        onAddSet: widget.onAddSet!,
                       ),
                   ],
                 ),
@@ -454,6 +502,55 @@ class _ExerciseLogPanelState extends State<ExerciseLogPanel> {
           ),
         ],
       ],
+    );
+  }
+}
+
+/// "+ Add set" under the set table, or why there is none once the table is
+/// full.
+class _AddSet extends StatelessWidget {
+  const _AddSet({
+    required this.exerciseName,
+    required this.atCap,
+    required this.onAddSet,
+  });
+
+  final String exerciseName;
+  final bool atCap;
+  final VoidCallback onAddSet;
+
+  @override
+  Widget build(BuildContext context) {
+    final t = context.fs;
+
+    if (atCap) {
+      // Said rather than greyed out: a disabled control with no reason reads
+      // as broken.
+      return Padding(
+        key: const Key('logpanel.setCap'),
+        padding: const EdgeInsets.fromLTRB(4, 8, 4, 8),
+        child: Text(
+          '$maxSetsPerExercise sets is the most one exercise can hold.',
+          style: TextStyle(fontSize: 12, color: t.text2, height: 1.35),
+        ),
+      );
+    }
+
+    return Align(
+      alignment: AlignmentDirectional.centerStart,
+      child: TextButton.icon(
+        key: const Key('logpanel.addSet'),
+        onPressed: onAddSet,
+        icon: const Icon(Icons.add, size: 18),
+        // The exercise is named for a screen reader, which reaches this
+        // control without the card's heading in view.
+        label: Text('Add set', semanticsLabel: 'Add a set to $exerciseName'),
+        style: TextButton.styleFrom(
+          foregroundColor: t.accent,
+          minimumSize: const Size(48, 48),
+          textStyle: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600),
+        ),
+      ),
     );
   }
 }

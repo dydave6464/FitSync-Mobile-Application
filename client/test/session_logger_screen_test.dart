@@ -9,6 +9,7 @@ import 'package:fitsync/core/api_exception.dart';
 import 'package:fitsync/core/theme.dart';
 import 'package:fitsync/core/token_store.dart';
 import 'package:fitsync/core/units.dart';
+import 'package:fitsync/core/widgets/fs_kit.dart';
 import 'package:fitsync/features/exercises/domain/exercise.dart';
 import 'package:fitsync/features/exercises/domain/exercise_cues.dart';
 import 'package:fitsync/features/exercises/presentation/providers.dart'
@@ -328,10 +329,15 @@ class RecordingPlanRepository implements PlanRepository {
     this.swapGate,
     this.refetchGate,
     this.refetchError,
+    this.activeError,
     this.alternativeRows = const [],
   });
 
   final Object? error;
+
+  /// When set, every `activePlan` fails with this, so nothing is known about
+  /// the plan a new one would replace.
+  final Object? activeError;
 
   /// What `activePlan` answers -- until a [swap] lands, when it becomes
   /// [swapped], as the server's plan would.
@@ -373,6 +379,7 @@ class RecordingPlanRepository implements PlanRepository {
 
   @override
   Future<WorkoutPlan?> activePlan() async {
+    if (activeError != null) throw activeError!;
     if (swaps.isNotEmpty) {
       await refetchGate?.future;
       if (refetchError != null) throw refetchError!;
@@ -735,6 +742,16 @@ Future<void> _finishWithSetsLeft(WidgetTester tester) async {
   await tester.pumpAndSettle();
 }
 
+/// The summary's offer to keep the workout, accepted on the sheet that
+/// follows it with the split it starts on. For the tests about what the
+/// write does rather than what the sheet asks.
+Future<void> _makeItMyPlan(WidgetTester tester) async {
+  await tester.tap(find.byKey(const Key('summary.toPlan')));
+  await tester.pumpAndSettle();
+  await tester.tap(find.byKey(const Key('makePlan.confirm')));
+  await tester.pumpAndSettle();
+}
+
 void main() {
   // The mockup's screen 3. It is a stage of this screen, not a route, so the
   // session and the rest timer survive moving between the two.
@@ -1086,14 +1103,32 @@ void main() {
     },
   );
 
-  testWidgets('a session with no plan says so rather than naming nothing', (
+  testWidgets('a session with no plan is named by what it works', (
     tester,
   ) async {
-    // The header reads "Exercise 1 / 3 · <plan name>". With no plan that
-    // trails off after the separator, which looks like a rendering fault.
+    // The header reads "Exercise 1 / 3 · <name>". A hand-picked workout is
+    // named the way Home and History name it, by the areas it trains.
     await _pumpLogging(tester, session: _manualSession, plan: null);
 
-    expect(find.textContaining('Manual workout'), findsOneWidget);
+    expect(_metaPosition('Chest workout'), findsOneWidget);
+  });
+
+  testWidgets("a hand-picked workout never shows the AI plan's name", (
+    tester,
+  ) async {
+    // The header used to name whatever plan was active, so a workout the
+    // user picked themselves read as a day of the AI plan they were trying
+    // to replace.
+    await _pumpLogging(tester, session: _manualSession, plan: _plan);
+
+    expect(_metaPosition('Week 1 — Full body'), findsNothing);
+    expect(_metaPosition('Chest workout'), findsOneWidget);
+  });
+
+  testWidgets('a plan workout is still named after its plan', (tester) async {
+    await _pumpLogging(tester, session: _session(planId: 42));
+
+    expect(_metaPosition('Week 1 — Full body'), findsOneWidget);
   });
 
   testWidgets('a session carrying exercises prefers them over the plan', (
@@ -2202,8 +2237,10 @@ void main() {
       expect(completes(controller), 0);
     });
 
-    // Sets past an exercise's target are real work, but they cannot stand in
-    // for another exercise's missing ones: the count stops at each target.
+    // Sets past an exercise's target are real work, and a logged fourth set
+    // is a fourth row of the table, so it counts -- but it cannot stand in
+    // for another exercise's missing ones: the question is still asked, and
+    // still names what is left.
     testWidgets('extra sets on one exercise do not count towards another', (
       tester,
     ) async {
@@ -2219,7 +2256,7 @@ void main() {
 
       await _menu(tester, 'finish');
 
-      expect(find.text('Finish with 3 of 5 sets?'), findsOneWidget);
+      expect(find.text('Finish with 4 of 6 sets?'), findsOneWidget);
       expect(find.text('Not logged yet: Push-up.'), findsOneWidget);
     });
 
@@ -2488,11 +2525,11 @@ void main() {
     await _pump(tester, session: _manualSessionWithSets(), plans: plans);
 
     await _finishWithSetsLeft(tester);
-    await tester.tap(find.byKey(const Key('summary.toPlan')));
-    await tester.pumpAndSettle();
+    await _makeItMyPlan(tester);
 
     expect(plans.fromSessionCalls, 1);
     expect(plans.lastSessionId, 9);
+    expect(plans.lastSplitStyle, 'full_body', reason: 'the sheet\'s default');
   });
 
   testWidgets('declining changes nothing', (tester) async {
@@ -2543,8 +2580,7 @@ void main() {
     await _pump(tester, session: _manualSessionWithSets(), plans: plans);
 
     await _finishWithSetsLeft(tester);
-    await tester.tap(find.byKey(const Key('summary.toPlan')));
-    await tester.pumpAndSettle();
+    await _makeItMyPlan(tester);
 
     expect(find.textContaining('Could not reach the server.'), findsOneWidget);
   });
@@ -2584,6 +2620,8 @@ void main() {
 
       await _finishWithSetsLeft(tester);
       await tester.tap(find.byKey(const Key('summary.toPlan')));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const Key('makePlan.confirm')));
       // Lets both pops -- the dialog's, and the logger route's behind it --
       // actually finish. The request stays gated throughout, so nothing here
       // depends on it resolving yet.
@@ -2646,8 +2684,7 @@ void main() {
       await _pump(tester, session: _manualSessionWithSets(), plans: plans);
 
       await _finishWithSetsLeft(tester);
-      await tester.tap(find.byKey(const Key('summary.toPlan')));
-      await tester.pumpAndSettle();
+      await _makeItMyPlan(tester);
 
       expect(find.byType(SessionLoggerScreen), findsNothing);
 
@@ -2674,8 +2711,7 @@ void main() {
       await _pump(tester, session: _manualSessionWithSets(), plans: plans);
 
       await _finishWithSetsLeft(tester);
-      await tester.tap(find.byKey(const Key('summary.toPlan')));
-      await tester.pumpAndSettle();
+      await _makeItMyPlan(tester);
 
       expect(find.byType(SessionLoggerScreen), findsNothing);
 
@@ -2740,15 +2776,12 @@ void main() {
     await tester.tap(find.byKey(const Key('summary.toPlan')));
     await tester.pumpAndSettle();
 
-    expect(find.byKey(const Key('summary.replacePlan')), findsOneWidget);
-    // Scoped to the dialog: the logger's own chrome behind it also carries
-    // the plan name, so an unscoped finder would pass on the wrong widget.
+    expect(find.text('Make this your plan'), findsOneWidget);
+    // By key: the logger's own chrome behind the sheet may carry the plan
+    // name too, so a bare text finder could pass on the wrong widget.
     expect(
-      find.descendant(
-        of: find.byKey(const Key('summary.replacePlan')),
-        matching: find.textContaining('Week 1 — Full body'),
-      ),
-      findsOneWidget,
+      tester.widget<Text>(find.byKey(const Key('makePlan.replaces'))).data,
+      'This replaces "Week 1 — Full body". You can\'t get it back.',
       reason: 'the question has to name what goes',
     );
     expect(plans.fromSessionCalls, 0, reason: 'nothing is written until asked');
@@ -2761,7 +2794,7 @@ void main() {
     await _finishWithSetsLeft(tester);
     await tester.tap(find.byKey(const Key('summary.toPlan')));
     await tester.pumpAndSettle();
-    await tester.tap(find.text('Keep it'));
+    await tester.tap(find.byKey(const Key('makePlan.cancel')));
     await tester.pumpAndSettle();
 
     expect(plans.fromSessionCalls, 0);
@@ -2772,33 +2805,82 @@ void main() {
     expect(find.byType(SessionLoggerScreen), findsNothing);
   });
 
-  testWidgets('the replace question shows Replace it in red', (tester) async {
+  testWidgets('dismissing the make-your-plan sheet writes nothing', (
+    tester,
+  ) async {
+    // A swipe or a tap outside is not a vote to replace a plan.
     final plans = RecordingPlanRepository(active: _generatedPlan);
     await _pump(tester, session: _manualSessionWithSets(), plans: plans);
 
     await _finishWithSetsLeft(tester);
     await tester.tap(find.byKey(const Key('summary.toPlan')));
     await tester.pumpAndSettle();
+    await tester.tapAt(const Offset(5, 5));
+    await tester.pumpAndSettle();
 
-    expect(labelColor(tester, dialogButton('Replace it')), dialogRed(tester));
-    expect(
-      labelColor(tester, dialogButton('Keep it')),
-      isNot(dialogRed(tester)),
-    );
+    expect(find.text('Make this your plan'), findsNothing);
+    expect(plans.fromSessionCalls, 0);
+    expect(find.byType(SessionLoggerScreen), findsNothing);
   });
 
-  testWidgets('confirming replaces the generated plan', (tester) async {
+  testWidgets('with the plan unknown, the question still warns in red', (
+    tester,
+  ) async {
+    // The plan failed to load, so there may well be one -- and the server
+    // replaces it either way. A harmless-looking primary button would hide
+    // that.
+    final plans = RecordingPlanRepository(
+      activeError: const ApiException('SERVER_ERROR', 'Something went wrong'),
+    );
+    await _pump(tester, session: _manualSessionWithSets(), plans: plans);
+
+    await _finishWithSetsLeft(tester);
+    await tester.tap(find.byKey(const Key('summary.toPlan')));
+    await tester.pumpAndSettle();
+
+    final replace = tester.widget<FsButton>(
+      find.byKey(const Key('makePlan.confirm')),
+    );
+    expect(replace.label, 'Replace my plan');
+    expect(replace.danger, isTrue);
+    expect(find.byKey(const Key('makePlan.replaces')), findsOneWidget);
+  });
+
+  testWidgets('the replace question shows Replace my plan in red', (
+    tester,
+  ) async {
     final plans = RecordingPlanRepository(active: _generatedPlan);
     await _pump(tester, session: _manualSessionWithSets(), plans: plans);
 
     await _finishWithSetsLeft(tester);
     await tester.tap(find.byKey(const Key('summary.toPlan')));
     await tester.pumpAndSettle();
-    await tester.tap(find.text('Replace it'));
+
+    final replace = tester.widget<FsButton>(
+      find.byKey(const Key('makePlan.confirm')),
+    );
+    expect(replace.label, 'Replace my plan');
+    expect(replace.danger, isTrue);
+  });
+
+  testWidgets('confirming replaces the generated plan with the chosen split', (
+    tester,
+  ) async {
+    final plans = RecordingPlanRepository(active: _generatedPlan);
+    await _pump(tester, session: _manualSessionWithSets(), plans: plans);
+
+    await _finishWithSetsLeft(tester);
+    await tester.tap(find.byKey(const Key('summary.toPlan')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const Key('makePlan.split.push_pull_legs')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const Key('makePlan.confirm')));
     await tester.pumpAndSettle();
 
     expect(plans.fromSessionCalls, 1);
     expect(plans.lastSessionId, 9);
+    expect(plans.lastSplitStyle, 'push_pull_legs');
+    expect(find.byType(SessionLoggerScreen), findsNothing);
   });
 
   testWidgets('dismissing the day sheet adds no day at all', (tester) async {
@@ -2862,11 +2944,255 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(plans.lastDayNo, 1);
+    expect(
+      plans.lastSplitStyle,
+      isNull,
+      reason: 'adding to a plan of their own asks no split',
+    );
     // The handoff this race fix depends on: _showSummary sees the dialog
     // resolve true and skips its own pop, leaving _addToPlan to pop the
     // screen itself once the sheet -- not the dialog -- has actually
     // resolved. Nothing above proves that pop ever happened.
     expect(find.byType(SessionLoggerScreen), findsNothing);
+  });
+
+  group('add a set', () {
+    const squatDone = [
+      LoggedSet(exerciseId: 101, setNumber: 1, weightKg: 20, reps: 10),
+      LoggedSet(exerciseId: 101, setNumber: 2, weightKg: 20, reps: 10),
+      LoggedSet(exerciseId: 101, setNumber: 3, weightKg: 20, reps: 10),
+    ];
+    const pushUpsDone = [
+      LoggedSet(exerciseId: 102, setNumber: 1, weightKg: null, reps: 12),
+      LoggedSet(exerciseId: 102, setNumber: 2, weightKg: null, reps: 12),
+    ];
+
+    Finder addSet() => find.byKey(const Key('logpanel.addSet'));
+
+    Future<void> tapAddSet(WidgetTester tester) async {
+      await tester.ensureVisible(addSet());
+      await tester.pumpAndSettle();
+      await tester.tap(addSet());
+      await tester.pumpAndSettle();
+    }
+
+    String primaryLabel(WidgetTester tester) =>
+        tester.widget<FsButton>(find.byKey(const Key('logger.primary'))).label;
+
+    testWidgets('appends a row, and the footer offers to complete it', (
+      tester,
+    ) async {
+      // Three sets was a ceiling: someone with a fourth set in them had
+      // nowhere to log it. The target is a starting point now.
+      await _pumpLogging(tester, session: _session(sets: squatDone));
+      expect(find.byKey(const Key('set.4.row')), findsNothing);
+      expect(primaryLabel(tester), 'Next exercise');
+
+      await tapAddSet(tester);
+
+      expect(find.byKey(const Key('set.4.row')), findsOneWidget);
+      expect(primaryLabel(tester), 'Complete set 4');
+    });
+
+    testWidgets('logs the added set like any other', (tester) async {
+      final controller = await _pumpLogging(
+        tester,
+        session: _session(sets: squatDone),
+      );
+
+      await tapAddSet(tester);
+      await tester.tap(find.byKey(const Key('logger.primary')));
+      await tester.pumpAndSettle();
+
+      expect(controller.calls, contains('log:101:4:null:10'));
+      expect(primaryLabel(tester), 'Next exercise');
+    });
+
+    testWidgets('is named for screen readers and is a full-size target', (
+      tester,
+    ) async {
+      await _pumpLogging(tester);
+      final semantics = tester.ensureSemantics();
+
+      expect(
+        tester.getSemantics(addSet()),
+        isSemantics(label: 'Add a set to Goblet squat', isButton: true),
+      );
+      expect(tester.getSize(addSet()).height, greaterThanOrEqualTo(48));
+      semantics.dispose();
+    });
+
+    testWidgets('only the last unlogged added row can be removed', (
+      tester,
+    ) async {
+      await _pumpLogging(tester, session: _session(sets: squatDone));
+      await tapAddSet(tester);
+      await tapAddSet(tester);
+
+      expect(find.byTooltip('Remove set 5'), findsOneWidget);
+      expect(find.byTooltip('Remove set 4'), findsNothing);
+      expect(find.byTooltip('Remove set 3'), findsNothing);
+
+      await tester.tap(find.byTooltip('Remove set 5'));
+      await tester.pumpAndSettle();
+
+      expect(find.byKey(const Key('set.5.row')), findsNothing);
+      expect(find.byTooltip('Remove set 4'), findsOneWidget);
+      final remove = tester.getSize(find.byTooltip('Remove set 4'));
+      expect(remove.width, greaterThanOrEqualTo(48));
+      expect(remove.height, greaterThanOrEqualTo(48));
+    });
+
+    testWidgets('a row the plan asked for cannot be removed', (tester) async {
+      await _pumpLogging(tester);
+
+      expect(find.byTooltip('Remove set 3'), findsNothing);
+    });
+
+    testWidgets('a logged added row keeps its place and loses its ✕', (
+      tester,
+    ) async {
+      await _pumpLogging(tester, session: _session(sets: squatDone));
+      await tapAddSet(tester);
+      await tester.tap(find.byKey(const Key('logger.primary')));
+      await tester.pumpAndSettle();
+
+      expect(find.byKey(const Key('set.4.row')), findsOneWidget);
+      expect(find.byTooltip('Remove set 4'), findsNothing);
+    });
+
+    testWidgets('a logged extra set is still there on resume', (tester) async {
+      // Nothing stores how many rows were added, so a resumed session reads
+      // them back from what was logged.
+      await _pumpLogging(
+        tester,
+        session: _session(
+          sets: const [
+            ...squatDone,
+            LoggedSet(exerciseId: 101, setNumber: 4, weightKg: 20, reps: 8),
+          ],
+        ),
+      );
+
+      expect(find.byKey(const Key('set.4.row')), findsOneWidget);
+      expect(find.byTooltip('Remove set 4'), findsNothing);
+      expect(primaryLabel(tester), 'Next exercise');
+    });
+
+    testWidgets('reopening a resumed extra set keeps its row', (tester) async {
+      await _pumpLogging(
+        tester,
+        session: _session(
+          sets: const [
+            ...squatDone,
+            LoggedSet(exerciseId: 101, setNumber: 4, weightKg: 20, reps: 8),
+          ],
+        ),
+      );
+
+      await tester.tap(find.byKey(const Key('set.4.row')));
+      await tester.pumpAndSettle();
+
+      expect(find.byKey(const Key('set.4.row')), findsOneWidget);
+      expect(primaryLabel(tester), 'Complete set 4');
+    });
+
+    testWidgets('the finish question counts added rows', (tester) async {
+      await _pumpLogging(
+        tester,
+        session: _session(sets: const [...squatDone, ...pushUpsDone]),
+      );
+
+      await tapAddSet(tester);
+      await _menu(tester, 'finish');
+
+      expect(find.text('Finish with 5 of 6 sets?'), findsOneWidget);
+      expect(find.text('Not logged yet: Goblet squat.'), findsOneWidget);
+    });
+
+    testWidgets('stops at 20 sets and says so', (tester) async {
+      await _pumpLogging(tester);
+
+      for (var rows = 3; rows < 20; rows++) {
+        await tapAddSet(tester);
+      }
+
+      expect(find.byKey(const Key('set.20.row')), findsOneWidget);
+      expect(addSet(), findsNothing);
+      expect(find.byKey(const Key('logpanel.setCap')), findsOneWidget);
+    });
+
+    testWidgets('restarting the exercise drops rows that were added', (
+      tester,
+    ) async {
+      await _pumpLogging(tester, session: _session(sets: squatDone));
+      await tapAddSet(tester);
+      expect(find.byKey(const Key('set.4.row')), findsOneWidget);
+
+      await _menu(tester, 'restart');
+      await tester.tap(dialogButton('Restart'));
+      await tester.pumpAndSettle();
+
+      expect(find.byKey(const Key('set.4.row')), findsNothing);
+      expect(find.byKey(const Key('set.3.row')), findsOneWidget);
+    });
+
+    testWidgets('the row carrying the ✕ is no taller than the rest', (
+      tester,
+    ) async {
+      // Otherwise the table jumps vertically each time the ✕ moves up a
+      // row or goes once the added set is logged.
+      await _pumpLogging(tester, session: _session(sets: squatDone));
+      await tapAddSet(tester);
+      await tapAddSet(tester);
+
+      double height(int set) =>
+          tester.getSize(find.byKey(Key('set.$set.row'))).height;
+      expect(height(5), height(3));
+      expect(height(4), height(3));
+
+      await tester.tap(find.byTooltip('Remove set 5'));
+      await tester.pumpAndSettle();
+      expect(height(4), height(3));
+    });
+
+    testWidgets('a row added after a restart forgets what was typed', (
+      tester,
+    ) async {
+      // The restart clears the logged sets' fields; an added row that was
+      // never logged has to go the same way, or adding it again brings
+      // back numbers typed for a start the user threw away.
+      await _pumpLogging(tester, session: _session(sets: squatDone));
+      await tapAddSet(tester);
+      await tester.enterText(find.byKey(const Key('set.4.reps')), '99');
+      await tester.pumpAndSettle();
+
+      await _menu(tester, 'restart');
+      await tester.tap(dialogButton('Restart'));
+      await tester.pumpAndSettle();
+      await tapAddSet(tester);
+
+      final reps = tester.widget<TextField>(
+        find.descendant(
+          of: find.byKey(const Key('set.4.reps')),
+          matching: find.byType(TextField),
+          matchRoot: true,
+        ),
+      );
+      expect(reps.controller!.text, isNot('99'));
+    });
+
+    testWidgets('fits a 320 dp phone at large text', (tester) async {
+      _smallPhoneLargeText(tester);
+
+      await _pumpLogging(tester, session: _session(sets: squatDone));
+      _drainMetaRowOverflow(tester);
+      await tapAddSet(tester);
+      await tapAddSet(tester);
+
+      expect(find.byTooltip('Remove set 5'), findsOneWidget);
+      expect(tester.takeException(), isNull);
+    });
   });
 
   group('encouragement', () {

@@ -150,6 +150,10 @@ Future<ProviderContainer> _pump(
   required List<ExerciseSummary> picks,
   FakeSessionRepository? sessions,
   bool overLibrary = false,
+  // Mounts the whole picking flow under review, the way the "+" sheet opens
+  // it: a Home screen, then a stand-in library on the library's own route
+  // name, then review pushed from it.
+  bool fromHome = false,
   WorkoutPlan? plan,
 }) async {
   final container = ProviderContainer(
@@ -172,7 +176,32 @@ Future<ProviderContainer> _pump(
         theme: fsLightTheme(),
         // With [overLibrary], a stand-in for the library sits underneath, so
         // leaving the screen has somewhere to go, as it does in the app.
-        home: overLibrary
+        home: fromHome
+            ? Builder(
+                builder: (context) => Scaffold(
+                  body: TextButton(
+                    onPressed: () => Navigator.of(context).push(
+                      MaterialPageRoute<void>(
+                        settings: const RouteSettings(
+                          name: workoutLibraryRouteName,
+                        ),
+                        builder: (libraryContext) => Scaffold(
+                          body: TextButton(
+                            onPressed: () => Navigator.of(libraryContext).push(
+                              MaterialPageRoute<void>(
+                                builder: (_) => const WorkoutReviewScreen(),
+                              ),
+                            ),
+                            child: const Text('Library'),
+                          ),
+                        ),
+                      ),
+                    ),
+                    child: const Text('Home'),
+                  ),
+                ),
+              )
+            : overLibrary
             ? Builder(
                 builder: (context) => Scaffold(
                   body: TextButton(
@@ -190,6 +219,12 @@ Future<ProviderContainer> _pump(
     ),
   );
   await tester.pumpAndSettle();
+  if (fromHome) {
+    await tester.tap(find.text('Home'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Library'));
+    await tester.pumpAndSettle();
+  }
   if (overLibrary) {
     await tester.tap(find.text('Library'));
     await tester.pumpAndSettle();
@@ -390,6 +425,28 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.byType(SessionLoggerScreen), findsOneWidget);
+  });
+
+  testWidgets('closing the started workout returns to where it began', (
+    tester,
+  ) async {
+    // The logger used to replace review alone, leaving the library under it:
+    // finishing a workout landed on a library reading "0 added", the picks
+    // having become the workout. The whole picking flow goes now, so every
+    // way out of the logger -- Done, a tap outside the summary, the plan
+    // paths, Leave -- lands where the "+" sheet was opened.
+    await _pump(tester, picks: const [_squat], fromHome: true);
+
+    await tester.tap(_start());
+    await tester.pumpAndSettle();
+    expect(find.byType(SessionLoggerScreen), findsOneWidget);
+
+    tester.state<NavigatorState>(find.byType(Navigator)).pop();
+    await tester.pumpAndSettle();
+
+    expect(find.text('Home'), findsOneWidget);
+    expect(find.text('Library', skipOffstage: false), findsNothing);
+    expect(find.byType(WorkoutReviewScreen, skipOffstage: false), findsNothing);
   });
 
   testWidgets('a started workout leaves nothing drafted', (tester) async {

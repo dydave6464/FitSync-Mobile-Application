@@ -10,16 +10,16 @@ import '../../sessions/presentation/providers.dart'
 import '../../sessions/presentation/widgets/outcome_sheet.dart';
 import '../../sessions/presentation/workout_draft.dart';
 import '../../sessions/presentation/workout_review_screen.dart';
-import '../../sessions/presentation/workout_setup_screen.dart';
 import 'generator_screen.dart';
 
 /// The "+" chooser: how a workout starts.
 ///
 /// Two rows, as the design draws them, and both live: the generator
-/// replaces the plan, while "Log a workout" opens the setup screen the
-/// workout is described on before its exercises are picked. It was inert
-/// while the exercise library was a later slice; the library and the sessions
-/// endpoint that accepts a chosen list both exist now.
+/// replaces the plan, while "Log a workout" opens the exercise library to
+/// pick from. Nothing is asked first: a setup screen used to ask for a split
+/// before a single exercise was chosen, which made logging feel like
+/// planning. The split is asked at the end now, and only if the workout is
+/// made the user's plan.
 ///
 /// A completed session still awaiting its pain report is asked about first,
 /// and the start sheet follows however that sheet closes. The lookup is
@@ -126,7 +126,11 @@ class _StartWorkoutSheet extends ConsumerWidget {
     ref.read(workoutDraftProvider.notifier).replaceWith(exercises);
     Navigator.of(context).pop();
     Navigator.of(context).push(
-      MaterialPageRoute<void>(builder: (_) => const WorkoutReviewScreen()),
+      MaterialPageRoute<void>(
+        // Nothing underneath to pop back to for more picks, so review opens
+        // the library itself when asked for more.
+        builder: (_) => const WorkoutReviewScreen(libraryBelow: false),
+      ),
     );
   }
 
@@ -225,11 +229,7 @@ class _StartWorkoutSheet extends ConsumerWidget {
                 accent: false,
                 onTap: () {
                   Navigator.of(context).pop();
-                  Navigator.of(context).push(
-                    MaterialPageRoute<void>(
-                      builder: (_) => const WorkoutSetupScreen(),
-                    ),
-                  );
+                  Navigator.of(context).push(workoutLibraryRoute());
                 },
               ),
               if (last != null) ...[

@@ -6,7 +6,7 @@ import '../../../core/widgets/fs_kit.dart';
 import '../../exercises/domain/exercise.dart';
 import '../../exercises/presentation/equipment_icon.dart';
 import '../../exercises/presentation/exercise_list_screen.dart'
-    show describeError;
+    show ExerciseListScreen, describeError;
 import '../../exercises/presentation/providers.dart';
 import '../../plans/presentation/providers.dart' show activePlanProvider;
 import '../domain/active_session.dart';
@@ -14,6 +14,23 @@ import 'open_workout_summary.dart';
 import 'providers.dart';
 import 'session_logger_screen.dart';
 import 'workout_draft.dart';
+
+/// The name the library's route carries while a workout is being picked.
+///
+/// Starting a workout clears the picking flow off the stack -- this name is
+/// how [WorkoutReviewScreen] recognises the library among the routes it
+/// removes, so that finishing the workout returns to Home or Train, wherever
+/// the "+" sheet was opened, rather than to a library emptied of its picks.
+const workoutLibraryRouteName = 'workout-library';
+
+/// The library, opened to pick a workout's exercises.
+///
+/// Every way into the picking flow goes through this, so that the route
+/// always carries [workoutLibraryRouteName].
+Route<void> workoutLibraryRoute() => MaterialPageRoute<void>(
+  settings: const RouteSettings(name: workoutLibraryRouteName),
+  builder: (_) => const ExerciseListScreen(selecting: true),
+);
 
 /// What the user chose to do about a workout that was already open.
 enum _Blocked { open, replace }
@@ -32,7 +49,13 @@ enum _RowAction { moveUp, moveDown, remove }
 ///
 /// So this screen owns starting now, and the library's footer only leads here.
 class WorkoutReviewScreen extends ConsumerStatefulWidget {
-  const WorkoutReviewScreen({super.key});
+  const WorkoutReviewScreen({super.key, this.libraryBelow = true});
+
+  /// Whether the library is the route underneath, as it is when review is
+  /// reached from the library's footer. Repeating the last workout opens
+  /// review straight from the "+" sheet, with nothing to pop back to, so
+  /// "Add more exercises" opens the library in this screen's place instead.
+  final bool libraryBelow;
 
   @override
   ConsumerState<WorkoutReviewScreen> createState() =>
@@ -334,6 +357,21 @@ class _WorkoutReviewScreenState extends ConsumerState<WorkoutReviewScreen> {
     }
   }
 
+  /// Back to the library for more picks.
+  ///
+  /// Pops when the library is the route underneath: pushing a second copy
+  /// would leave two libraries and two ways back. A repeated workout has no
+  /// library below it, so the library takes this screen's place, and its
+  /// footer leads back to a fresh review of the same draft.
+  void _addMore() {
+    final navigator = Navigator.of(context);
+    if (widget.libraryBelow) {
+      navigator.pop();
+    } else {
+      navigator.pushReplacement(workoutLibraryRoute());
+    }
+  }
+
   Future<void> _createSession() async {
     final draft = ref.read(workoutDraftProvider);
     final messenger = ScaffoldMessenger.of(context);
@@ -348,12 +386,17 @@ class _WorkoutReviewScreenState extends ConsumerState<WorkoutReviewScreen> {
       // alone, so the user retries rather than choosing them all again.
       ref.read(workoutDraftProvider.notifier).clear();
       if (!mounted) return;
-      // Replaced, not pushed: this screen reviews a workout that has not
-      // started, so backing out of the logger onto it would offer to start a
-      // workout that already is. The library underneath is the honest
-      // destination -- it is where more exercises come from.
-      await navigator.pushReplacement(
+      // The whole picking flow goes, not just this screen. Backing out of
+      // the logger onto review would offer to start a workout that already
+      // is, and onto the library would land on "0 added" -- the picks were
+      // cleared above, and they have become the workout. So the logger
+      // replaces both, and finishing, leaving or discarding returns to
+      // wherever the "+" sheet was opened.
+      final own = ModalRoute.of(context);
+      await navigator.pushAndRemoveUntil(
         MaterialPageRoute<void>(builder: (_) => const SessionLoggerScreen()),
+        (route) =>
+            route != own && route.settings.name != workoutLibraryRouteName,
       );
     } catch (error) {
       messenger.showSnackBar(SnackBar(content: Text(describeError(error))));
@@ -385,7 +428,7 @@ class _WorkoutReviewScreenState extends ConsumerState<WorkoutReviewScreen> {
         ),
       ),
       body: draft.isEmpty
-          ? _EmptyReview(onAddMore: () => Navigator.of(context).pop())
+          ? _EmptyReview(onAddMore: _addMore)
           // One scrolling list, header and footer included, rather than a
           // fixed header above a list: at large text on a small phone the
           // summary and hint alone can outgrow the screen, and a fixed block
@@ -431,10 +474,7 @@ class _WorkoutReviewScreenState extends ConsumerState<WorkoutReviewScreen> {
                     key: const Key('review.addMore'),
                     icon: const Icon(Icons.add, size: 18),
                     label: const Text('Add more exercises'),
-                    // Pops rather than pushes: the library is already the
-                    // route underneath, and pushing a second copy would leave
-                    // two libraries and two ways back.
-                    onPressed: () => Navigator.of(context).pop(),
+                    onPressed: _addMore,
                   ),
                 ),
               ),
