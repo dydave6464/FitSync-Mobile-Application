@@ -553,7 +553,37 @@ function toHistoryRow(row) {
     // plan is active now: regenerating must not rewrite what you already did.
     // Null is what lets the client name a hand-picked session as its own.
     planName: row.plan_name ?? null,
+    muscleGroups: row.muscle_groups ?? [],
   };
+}
+
+/// Each hand-picked session's muscles, one per exercise in the order trained.
+///
+/// One entry per exercise, repeats kept: the client names the workout by the
+/// body areas it worked and weighs them by count, so a de-duplicated list
+/// would let one curl count as much as three chest presses.
+///
+/// A plan session gets none -- the client names it by its plan. Every
+/// exercise counts, live or not: this is what was trained, and demoting a
+/// movement since must not rename a workout already done.
+///
+/// One query for the whole page rather than one per row, and none at all for
+/// a page with nothing hand-picked on it.
+async function withMuscleGroups(pool, rows) {
+  const ids = rows.filter((r) => r.plan_id === null).map((r) => r.session_id);
+  const bySession = new Map(ids.map((id) => [id, []]));
+  if (ids.length > 0) {
+    const [found] = await pool.query(
+      `SELECT se.session_id, x.muscle_group
+         FROM session_exercises se
+         JOIN exercises x ON x.exercise_id = se.exercise_id
+        WHERE se.session_id IN (?)
+        ORDER BY se.session_id, se.order_no`,
+      [ids],
+    );
+    for (const f of found) bySession.get(f.session_id).push(f.muscle_group);
+  }
+  return rows.map((r) => ({ ...r, muscle_groups: bySession.get(r.session_id) ?? [] }));
 }
 
 /// Completed sessions, newest first.
@@ -571,7 +601,7 @@ async function listHistory(pool, userId, { page = 1, limit = 20 } = {}) {
   );
 
   const [rows] = await pool.query(
-    `SELECT s.session_id, s.session_date, s.duration_min, s.total_volume_kg,
+    `SELECT s.session_id, s.plan_id, s.session_date, s.duration_min, s.total_volume_kg,
             UNIX_TIMESTAMP(s.started_at) AS started_at_epoch,
             p.name AS plan_name,
             ${SET_COUNT} AS set_count,
@@ -584,7 +614,9 @@ async function listHistory(pool, userId, { page = 1, limit = 20 } = {}) {
     [userId, limit, offset],
   );
 
-  return { sessions: rows.map(toHistoryRow), total, page, limit };
+  return {
+    sessions: (await withMuscleGroups(pool, rows)).map(toHistoryRow), total, page, limit,
+  };
 }
 
 /// Completed sessions INSIDE [period]'s window, newest first.
@@ -609,7 +641,7 @@ async function listHistoryInWindow(pool, userId, period, { limit = 20 } = {}) {
   if (!days) return null;
 
   const [rows] = await pool.query(
-    `SELECT s.session_id, s.session_date, s.duration_min, s.total_volume_kg,
+    `SELECT s.session_id, s.plan_id, s.session_date, s.duration_min, s.total_volume_kg,
             UNIX_TIMESTAMP(s.started_at) AS started_at_epoch,
             p.name AS plan_name,
             ${SET_COUNT} AS set_count,
@@ -623,7 +655,7 @@ async function listHistoryInWindow(pool, userId, period, { limit = 20 } = {}) {
     [userId, days, limit],
   );
 
-  return rows.map(toHistoryRow);
+  return (await withMuscleGroups(pool, rows)).map(toHistoryRow);
 }
 
 /// What the last [period] added up to. Zeroes, never null, for an account
