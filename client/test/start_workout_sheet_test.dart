@@ -36,6 +36,8 @@ import 'package:fitsync/features/sessions/presentation/widgets/outcome_sheet.dar
 import 'package:fitsync/features/sessions/presentation/workout_draft.dart';
 import 'package:fitsync/features/sessions/presentation/workout_review_screen.dart';
 
+import 'helpers/no_recent_exercises.dart';
+
 /// The real face, not the test harness's. The default test font renders
 /// FsTag('Recommended') at 136dp against Space Grotesk's ~62dp, which is
 /// enough to invert a conclusion about whether this sheet fits.
@@ -138,6 +140,7 @@ Future<ProviderContainer> _open(
       }),
       injuryOptionsProvider.overrideWith((ref) async => const []),
       exerciseRepositoryProvider.overrideWithValue(_EmptyCatalogue()),
+      noRecentExercises,
       if (client != null)
         apiClientProvider.overrideWithValue(
           ApiClient(

@@ -1,7 +1,7 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../exercises/presentation/providers.dart'
-    show apiClientProvider, apiRetryPolicy;
+    show apiClientProvider, apiRetryPolicy, recentExercisesProvider;
 import '../../recovery/presentation/providers.dart'
     show recoveryOverviewProvider;
 import '../../routine/presentation/providers.dart' show routineTodayProvider;
@@ -147,6 +147,8 @@ class ActiveSessionController extends AsyncNotifier<ActiveSession?> {
     ref.invalidate(lastWorkoutProvider); // what the "+" sheet repeats
     ref.invalidate(streakProvider); // a finished workout is a streak day
     ref.invalidate(recoveryOverviewProvider); // 7-day load, last trained
+    // autoDispose, but Train's Exercises tab keeps it alive while mounted.
+    ref.invalidate(recentExercisesProvider); // the library's Recent strip
     return done;
   }
 

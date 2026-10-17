@@ -16,6 +16,8 @@ import 'package:fitsync/features/sessions/domain/active_session.dart';
 import 'package:fitsync/features/sessions/presentation/providers.dart';
 import 'package:fitsync/features/sessions/presentation/workout_review_screen.dart';
 
+import 'helpers/no_recent_exercises.dart';
+
 class FakeExerciseRepository implements ExerciseRepository {
   List<String>? asked;
 
@@ -130,6 +132,7 @@ Future<void> _pump(
         exerciseRepositoryProvider.overrideWithValue(
           exercises ?? FakeExerciseRepository(),
         ),
+        noRecentExercises,
         if (muscleGroups.isNotEmpty)
           catalogueConstraintProvider.overrideWith(
             () => _ConstrainedTo(muscleGroups),

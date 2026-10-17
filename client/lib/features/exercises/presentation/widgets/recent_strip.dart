@@ -66,21 +66,26 @@ class RecentStrip extends ConsumerWidget {
           padding: const EdgeInsets.symmetric(horizontal: 12),
           // A Row rather than a lazy list: ten cards at most, and a Row sizes
           // itself to its tallest card, so a name wrapping at large text grows
-          // the strip instead of being clipped by a fixed height.
-          child: Row(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              for (final exercise in recent)
-                Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 4),
-                  child: _RecentCard(
-                    exercise: exercise,
-                    baseUrl: baseUrl,
-                    added: isAdded?.call(exercise),
-                    onTap: () => onTap(exercise),
+          // the strip instead of being clipped by a fixed height. Stretched to
+          // that height, so a one-line name's card matches a two-line one's;
+          // IntrinsicHeight is what gives the stretch a height to reach, and
+          // costs little over ten cards.
+          child: IntrinsicHeight(
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                for (final exercise in recent)
+                  Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 4),
+                    child: _RecentCard(
+                      exercise: exercise,
+                      baseUrl: baseUrl,
+                      added: isAdded?.call(exercise),
+                      onTap: () => onTap(exercise),
+                    ),
                   ),
-                ),
-            ],
+              ],
+            ),
           ),
         ),
         const SizedBox(height: 8),

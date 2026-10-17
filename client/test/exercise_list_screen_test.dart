@@ -10,6 +10,8 @@ import 'package:fitsync/features/exercises/domain/exercise_filters.dart';
 import 'package:fitsync/features/exercises/presentation/exercise_list_screen.dart';
 import 'package:fitsync/features/exercises/presentation/providers.dart';
 
+import 'helpers/no_recent_exercises.dart';
+
 class FakeRepository implements ExerciseRepository {
   FakeRepository({
     this.failWith,
@@ -118,7 +120,10 @@ Future<void> search(WidgetTester tester, String term) async {
 }
 
 Widget harness(FakeRepository repo) => ProviderScope(
-  overrides: [exerciseRepositoryProvider.overrideWithValue(repo)],
+  overrides: [
+    exerciseRepositoryProvider.overrideWithValue(repo),
+    noRecentExercises,
+  ],
   child: const MaterialApp(home: ExerciseListScreen()),
 );
 
@@ -446,7 +451,10 @@ void main() {
     // or undo it.
     final repo = FakeRepository();
     final container = ProviderContainer(
-      overrides: [exerciseRepositoryProvider.overrideWithValue(repo)],
+      overrides: [
+        exerciseRepositoryProvider.overrideWithValue(repo),
+        noRecentExercises,
+      ],
     );
     addTearDown(container.dispose);
 
@@ -496,7 +504,10 @@ void main() {
   ) async {
     final repo = FakeRepository();
     final container = ProviderContainer(
-      overrides: [exerciseRepositoryProvider.overrideWithValue(repo)],
+      overrides: [
+        exerciseRepositoryProvider.overrideWithValue(repo),
+        noRecentExercises,
+      ],
     );
     addTearDown(container.dispose);
 
@@ -534,11 +545,18 @@ void main() {
     expect(find.textContaining('No exercises'), findsOneWidget);
   });
 
-  testWidgets('embedded drops the AppBar (Train already has a header)', (tester) async {
-    await tester.pumpWidget(ProviderScope(
-      overrides: [exerciseRepositoryProvider.overrideWithValue(FakeRepository())],
-      child: const MaterialApp(home: ExerciseListScreen(embedded: true)),
-    ));
+  testWidgets('embedded drops the AppBar (Train already has a header)', (
+    tester,
+  ) async {
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          exerciseRepositoryProvider.overrideWithValue(FakeRepository()),
+          noRecentExercises,
+        ],
+        child: const MaterialApp(home: ExerciseListScreen(embedded: true)),
+      ),
+    );
     await tester.pumpAndSettle();
     expect(find.byType(AppBar), findsNothing);
     expect(find.text('Sit-up 1'), findsOneWidget);

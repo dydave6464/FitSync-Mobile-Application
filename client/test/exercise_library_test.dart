@@ -341,6 +341,34 @@ void main() {
       );
     });
 
+    testWidgets('its cards are one height, short name or long', (tester) async {
+      // A one-line name beside a two-line one left the strip ragged, unlike
+      // the prototype's even cards.
+      const short = ExerciseSummary(
+        exerciseId: 9,
+        name: 'Plank',
+        muscleGroup: 'abs',
+        equipment: 'body weight',
+        thumbnailUrl: null,
+      );
+      const long = ExerciseSummary(
+        exerciseId: 10,
+        name: 'Dumbbell single-arm bent-over row',
+        muscleGroup: 'upper back',
+        equipment: 'dumbbell',
+        thumbnailUrl: null,
+      );
+      await _pump(
+        tester,
+        _container(recent: FakeRecentRepository(items: const [short, long])),
+      );
+
+      expect(
+        tester.getSize(_recentCard(9)).height,
+        tester.getSize(_recentCard(10)).height,
+      );
+    });
+
     testWidgets('an area hides it', (tester) async {
       await _pump(tester, _container());
       await _tapRegion(tester, 'chest');

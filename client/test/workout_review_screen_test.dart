@@ -24,6 +24,7 @@ import 'package:fitsync/features/sessions/presentation/workout_draft.dart';
 import 'package:fitsync/features/sessions/presentation/workout_review_screen.dart';
 
 import 'helpers/dialog_buttons.dart';
+import 'helpers/no_recent_exercises.dart';
 
 /// The real face, not the test harness's, whose every glyph is 1 em wide:
 /// whether a button label fits at large text is a question about the font
@@ -159,6 +160,7 @@ Future<ProviderContainer> _pump(
   final container = ProviderContainer(
     overrides: [
       exerciseRepositoryProvider.overrideWithValue(FakeExerciseRepository()),
+      noRecentExercises,
       sessionRepositoryProvider.overrideWithValue(
         sessions ?? FakeSessionRepository(),
       ),
