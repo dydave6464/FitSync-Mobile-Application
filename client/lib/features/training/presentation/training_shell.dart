@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
 
 import '../../../core/theme.dart';
-import '../../exercises/presentation/exercise_list_screen.dart';
 import '../../plans/presentation/plan_screen.dart';
 import '../../plans/presentation/widgets/regenerate_plan_button.dart';
 import '../../recovery/presentation/recovery_screen.dart';
@@ -15,17 +14,16 @@ import '../../sessions/presentation/progress_screen.dart';
 class TrainTabRequest {
   const TrainTabRequest(this.tab, this.serial);
 
-  /// One of `_tabs`' names: 'plan', 'progress', 'recovery' or 'exercises'.
+  /// One of `_tabs`' names: 'plan', 'progress' or 'recovery'.
   final String tab;
   final int serial;
 }
 
-/// Plan · Progress · Recovery · Exercises under one header.
+/// Plan · Progress · Recovery under one header, as the prototype draws it.
 ///
-/// Plan, Progress and Recovery are live: Progress reads finished sessions and
-/// what they added up to, and Recovery reads the daily check-in and the
-/// injury-risk estimate it produces. Exercises is the catalogue, built only
-/// once opened (see [_TrainingShellState._exercisesOpened]).
+/// Progress reads finished sessions and what they added up to, and Recovery
+/// reads the daily check-in and the injury-risk estimate it produces. The
+/// exercise library is not a tab: it is reached from + → Log a workout.
 class TrainingShell extends StatefulWidget {
   const TrainingShell({
     super.key,
@@ -53,10 +51,6 @@ class TrainingShell extends StatefulWidget {
 
 class _TrainingShellState extends State<TrainingShell> {
   int _index = 0;
-
-  /// The catalogue is built the first time its tab is opened, then kept,
-  /// so opening Train never fetches the whole exercise list.
-  bool _exercisesOpened = false;
 
   /// True for one frame each time the Train tab is opened.
   ///
@@ -94,7 +88,6 @@ class _TrainingShellState extends State<TrainingShell> {
     if (request == null) return;
     final i = _tabs.indexWhere((tab) => tab.$1 == request.tab);
     if (i >= 0) _index = i;
-    if (_tabs[_index].$1 == 'exercises') _exercisesOpened = true;
   }
 
   void _armIntro() {
@@ -114,7 +107,6 @@ class _TrainingShellState extends State<TrainingShell> {
     ('plan', 'Plan'),
     ('progress', 'Progress'),
     ('recovery', 'Recovery'),
-    ('exercises', 'Exercises'),
   ];
 
   @override
@@ -147,9 +139,9 @@ class _TrainingShellState extends State<TrainingShell> {
                     ),
                   ),
                   // Per tab rather than shared. This header sits above all
-                  // four tabs, so an action parked here unconditionally
+                  // three tabs, so an action parked here unconditionally
                   // would offer to regenerate a plan while the user is
-                  // looking at Progress, Recovery or Exercises. Keyed on the
+                  // looking at Progress or Recovery. Keyed on the
                   // tab's name, not its index, so reordering _tabs cannot
                   // move it.
                   if (_tabs[_index].$1 == 'plan')
@@ -166,10 +158,7 @@ class _TrainingShellState extends State<TrainingShell> {
                     GestureDetector(
                       key: Key('tab.${_tabs[i].$1}'),
                       behavior: HitTestBehavior.opaque,
-                      onTap: () => setState(() {
-                        _index = i;
-                        if (_tabs[i].$1 == 'exercises') _exercisesOpened = true;
-                      }),
+                      onTap: () => setState(() => _index = i),
                       child: Container(
                         margin: const EdgeInsets.only(right: 20),
                         padding: const EdgeInsets.only(bottom: 10),
@@ -204,9 +193,6 @@ class _TrainingShellState extends State<TrainingShell> {
                   PlanScreen(onGoToProfile: widget.onGoToProfile),
                   const ProgressScreen(),
                   const RecoveryScreen(),
-                  _exercisesOpened
-                      ? const ExerciseListScreen(embedded: true)
-                      : const SizedBox.shrink(),
                 ],
               ),
             ),

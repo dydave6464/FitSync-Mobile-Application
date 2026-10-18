@@ -391,10 +391,12 @@ void main() {
     await tester.tap(find.byKey(const Key('start.manual')));
     await tester.pumpAndSettle();
 
-    final library = tester.widget<ExerciseListScreen>(
-      find.byType(ExerciseListScreen),
+    expect(find.byType(ExerciseListScreen), findsOneWidget);
+    expect(
+      find.byKey(const Key('picker.review')),
+      findsOneWidget,
+      reason: 'it is there to pick from',
     );
-    expect(library.selecting, isTrue, reason: 'it is there to pick from');
     // Review's Start clears routes by this name, so finishing the workout
     // lands where the + sheet was opened rather than back on the library.
     expect(

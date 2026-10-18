@@ -19,18 +19,16 @@ class RecentStrip extends ConsumerWidget {
     super.key,
     required this.baseUrl,
     required this.onTap,
-    this.isAdded,
+    required this.isAdded,
   });
 
   final String baseUrl;
 
-  /// What a card does: pick the exercise when building a workout, open it
-  /// when browsing.
+  /// What a card does: pick the exercise into the workout, or take it out.
   final ValueChanged<ExerciseSummary> onTap;
 
-  /// Whether a card's exercise is already in the workout, or null when the
-  /// library is being browsed and there is no workout to be in.
-  final bool Function(ExerciseSummary exercise)? isAdded;
+  /// Whether a card's exercise is already in the workout.
+  final bool Function(ExerciseSummary exercise) isAdded;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -80,7 +78,7 @@ class RecentStrip extends ConsumerWidget {
                     child: _RecentCard(
                       exercise: exercise,
                       baseUrl: baseUrl,
-                      added: isAdded?.call(exercise),
+                      added: isAdded(exercise),
                       onTap: () => onTap(exercise),
                     ),
                   ),
@@ -105,8 +103,7 @@ class _RecentCard extends StatelessWidget {
   final ExerciseSummary exercise;
   final String baseUrl;
 
-  /// Null when browsing; see [RecentStrip.isAdded].
-  final bool? added;
+  final bool added;
   final VoidCallback onTap;
 
   static const _width = 112.0;
@@ -116,13 +113,11 @@ class _RecentCard extends StatelessWidget {
   Widget build(BuildContext context) {
     final t = context.fs;
     final radius = BorderRadius.circular(FsRadius.md);
-    final chosen = added ?? false;
-
     final label = [
       exercise.name,
       'recent',
       if (exercise.contraindicated) 'loads an injury you reported',
-      if (added != null) chosen ? 'added' : 'not added',
+      added ? 'added' : 'not added',
     ].join(', ');
 
     return Semantics(
@@ -143,10 +138,10 @@ class _RecentCard extends StatelessWidget {
             .scale(_width)
             .clamp(_width, _maxWidth),
         child: Material(
-          color: chosen ? t.accent.withValues(alpha: 0.10) : t.surface,
+          color: added ? t.accent.withValues(alpha: 0.10) : t.surface,
           shape: RoundedRectangleBorder(
             borderRadius: radius,
-            side: BorderSide(color: chosen ? t.accentLine : t.line),
+            side: BorderSide(color: added ? t.accentLine : t.line),
           ),
           child: InkWell(
             onTap: onTap,
@@ -164,12 +159,11 @@ class _RecentCard extends StatelessWidget {
                         thumbnailUrl: exercise.thumbnailUrl,
                         equipment: exercise.equipment,
                       ),
-                      if (added != null)
-                        Positioned(
-                          right: 0,
-                          top: 0,
-                          child: _Mark(selected: chosen),
-                        ),
+                      Positioned(
+                        right: 0,
+                        top: 0,
+                        child: _Mark(selected: added),
+                      ),
                     ],
                   ),
                   const SizedBox(height: 6),

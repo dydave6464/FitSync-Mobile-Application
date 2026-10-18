@@ -10,7 +10,6 @@ import 'package:fitsync/features/exercises/presentation/providers.dart'
     show exerciseDetailProvider, exerciseRepositoryProvider;
 import 'package:fitsync/features/plans/domain/workout_plan.dart';
 import 'package:fitsync/features/plans/presentation/providers.dart';
-import 'package:fitsync/features/plans/presentation/widgets/regenerate_plan_button.dart';
 import 'package:fitsync/features/profile/domain/body_weight.dart';
 import 'package:fitsync/features/profile/domain/profile.dart';
 import 'package:fitsync/features/profile/presentation/providers.dart'
@@ -608,35 +607,36 @@ void main() {
     });
   });
 
-  testWidgets(
-    'the Exercises tab is built only once visited, then shows the catalogue',
-    (tester) async {
-      await _pump(tester);
-      expect(
-        find.byType(ExerciseListScreen, skipOffstage: false),
-        findsNothing,
-        reason: 'opening Train must not fetch the whole catalogue',
-      );
-      await tester.tap(find.byKey(const Key('tab.exercises')));
-      await tester.pumpAndSettle();
-      expect(find.byType(ExerciseListScreen), findsOneWidget);
-      expect(
-        find.byType(RegeneratePlanButton),
-        findsNothing,
-        reason: 'regenerate belongs to Plan only',
-      );
-    },
-  );
+  testWidgets('Train offers Plan, Progress and Recovery, and no Exercises', (
+    tester,
+  ) async {
+    await _pump(tester);
+    for (final tab in ['plan', 'progress', 'recovery']) {
+      expect(find.byKey(Key('tab.$tab')), findsOneWidget);
+    }
+    // The library is reached from + → Log a workout; Train carries no copy.
+    expect(find.byKey(const Key('tab.exercises')), findsNothing);
+    expect(find.byType(ExerciseListScreen, skipOffstage: false), findsNothing);
+  });
 
-  testWidgets('the four tabs fit a 320 dp phone at large text', (tester) async {
+  testWidgets('a request for the old Exercises tab is ignored', (tester) async {
+    await _pump(tester, tabRequest: const TrainTabRequest('exercises', 1));
+    expect(tester.takeException(), isNull);
+    expect(find.byKey(const Key('plan.regenerate')), findsOneWidget);
+    expect(find.byType(ExerciseListScreen, skipOffstage: false), findsNothing);
+  });
+
+  testWidgets('the three tabs fit a 320 dp phone at large text', (
+    tester,
+  ) async {
     tester.view.physicalSize = const Size(320, 640);
     tester.view.devicePixelRatio = 1;
     addTearDown(tester.view.reset);
     await _pump(tester, textScale: 1.6);
     expect(tester.takeException(), isNull);
-    await tester.ensureVisible(find.byKey(const Key('tab.exercises')));
-    await tester.tap(find.byKey(const Key('tab.exercises')));
+    await tester.ensureVisible(find.byKey(const Key('tab.recovery')));
+    await tester.tap(find.byKey(const Key('tab.recovery')));
     await tester.pumpAndSettle();
-    expect(find.byType(ExerciseListScreen), findsOneWidget);
+    expect(find.byType(RecoveryScreen), findsOneWidget);
   });
 }

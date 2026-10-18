@@ -121,7 +121,6 @@ class FakeSessionRepository implements SessionRepository {
 
 Future<void> _pump(
   WidgetTester tester, {
-  bool selecting = true,
   FakeSessionRepository? sessions,
   FakeExerciseRepository? exercises,
   List<String> muscleGroups = const [],
@@ -145,7 +144,7 @@ Future<void> _pump(
       ],
       child: MaterialApp(
         theme: fsLightTheme(),
-        home: ExerciseListScreen(selecting: selecting),
+        home: const ExerciseListScreen(),
       ),
     ),
   );
@@ -165,15 +164,6 @@ class _ConstrainedTo extends CatalogueConstraintNotifier {
 Finder _review() => find.byKey(const Key('picker.review'));
 
 void main() {
-  testWidgets('browsing offers nothing to start', (tester) async {
-    // The Browse tab is the same screen. A footer there would offer to start
-    // a workout from a list nobody is picking from.
-    await _pump(tester, selecting: false);
-
-    expect(_review(), findsNothing);
-    expect(find.byIcon(Icons.chevron_right), findsWidgets);
-  });
-
   testWidgets(
     'picking offers a review button, inert until something is chosen',
     (tester) async {
@@ -289,10 +279,12 @@ void main() {
     expect(exercises.asked, ['pectorals', 'delts', 'triceps']);
   });
 
-  testWidgets('browsing asks for the whole catalogue', (tester) async {
+  testWidgets('with no day chosen it asks for the whole catalogue', (
+    tester,
+  ) async {
     final exercises = FakeExerciseRepository();
 
-    await _pump(tester, selecting: false, exercises: exercises);
+    await _pump(tester, exercises: exercises);
 
     expect(exercises.asked, isEmpty);
   });

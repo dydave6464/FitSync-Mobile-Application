@@ -523,7 +523,7 @@ void main() {
     await tester.pumpWidget(
       UncontrolledProviderScope(
         container: container,
-        child: const MaterialApp(home: ExerciseListScreen(selecting: true)),
+        child: const MaterialApp(home: ExerciseListScreen()),
       ),
     );
     await tester.pumpAndSettle();
@@ -543,22 +543,5 @@ void main() {
     await search(tester, 'zzzz');
 
     expect(find.textContaining('No exercises'), findsOneWidget);
-  });
-
-  testWidgets('embedded drops the AppBar (Train already has a header)', (
-    tester,
-  ) async {
-    await tester.pumpWidget(
-      ProviderScope(
-        overrides: [
-          exerciseRepositoryProvider.overrideWithValue(FakeRepository()),
-          noRecentExercises,
-        ],
-        child: const MaterialApp(home: ExerciseListScreen(embedded: true)),
-      ),
-    );
-    await tester.pumpAndSettle();
-    expect(find.byType(AppBar), findsNothing);
-    expect(find.text('Sit-up 1'), findsOneWidget);
   });
 }

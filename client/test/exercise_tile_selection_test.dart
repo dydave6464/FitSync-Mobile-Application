@@ -24,7 +24,7 @@ const _risky = ExerciseSummary(
 
 Future<void> _pump(
   WidgetTester tester, {
-  bool? selected,
+  bool selected = false,
   ExerciseSummary exercise = _exercise,
 }) => tester.pumpWidget(
   MaterialApp(
@@ -35,29 +35,16 @@ Future<void> _pump(
         baseUrl: 'http://test.local',
         onTap: () {},
         selected: selected,
+        onInfo: () {},
       ),
     ),
   ),
 );
 
 void main() {
-  testWidgets('browsing shows the chevron and no selection mark', (
-    tester,
-  ) async {
-    // selected: null is the Browse tab, where a tile opens a detail screen.
-    // A tick there would promise a basket that does not exist.
+  testWidgets('an exercise not chosen shows an empty mark', (tester) async {
     await _pump(tester);
 
-    expect(find.byIcon(Icons.chevron_right), findsOneWidget);
-    expect(find.byKey(const Key('tile.select.101')), findsNothing);
-  });
-
-  testWidgets('picking shows an empty mark instead of the chevron', (
-    tester,
-  ) async {
-    await _pump(tester, selected: false);
-
-    expect(find.byIcon(Icons.chevron_right), findsNothing);
     expect(find.byKey(const Key('tile.select.101')), findsOneWidget);
     expect(find.byIcon(Icons.check), findsNothing);
   });
@@ -83,13 +70,5 @@ void main() {
     await _pump(tester, selected: false);
 
     expect(find.byKey(const Key('tile.risk.101')), findsNothing);
-  });
-
-  testWidgets('the warning shows while browsing too', (tester) async {
-    // Browse and the picker are the same list; an injury does not stop
-    // mattering because the user is only looking.
-    await _pump(tester, exercise: _risky);
-
-    expect(find.byKey(const Key('tile.risk.202')), findsOneWidget);
   });
 }

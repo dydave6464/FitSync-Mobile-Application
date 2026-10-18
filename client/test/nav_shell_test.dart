@@ -13,7 +13,6 @@ import 'package:fitsync/features/exercises/data/exercise_repository.dart';
 import 'package:fitsync/features/exercises/domain/exercise_cues.dart';
 import 'package:fitsync/features/exercises/domain/exercise.dart';
 import 'package:fitsync/features/exercises/domain/exercise_filters.dart';
-import 'package:fitsync/features/exercises/presentation/exercise_list_screen.dart';
 import 'package:fitsync/features/exercises/presentation/providers.dart';
 import 'package:fitsync/features/home/presentation/day_rollover.dart';
 import 'package:fitsync/features/home/presentation/nav_shell.dart';
@@ -243,9 +242,7 @@ Future<void> _pumpShell(
         ),
       ),
       // Train tab (the Training shell, wrapping PlanScreen as its Plan
-      // tab body). No plan keeps it on the simple empty state, which is
-      // also what avoids a stray "Exercises" eyebrow label competing
-      // with the Browse tab's AppBar title below.
+      // tab body). No plan keeps it on the simple empty state.
       activePlanProvider.overrideWith((ref) async => plan),
       alternativesProvider.overrideWith(
         (ref, key) async => const [
@@ -267,7 +264,7 @@ Future<void> _pumpShell(
       ),
       // Nutrition tab.
       nutritionRepositoryProvider.overrideWithValue(FakeNutritionRepository()),
-      // Train's Exercises tab (ExerciseListScreen).
+      // The exercise library, opened from + → Log a workout.
       exerciseRepositoryProvider.overrideWithValue(FakeExerciseRepository()),
       noRecentExercises,
       // Profile tab (SettingsScreen).
@@ -286,29 +283,28 @@ Future<void> _pumpShell(
   ),
 );
 
-/// The vertical list inside [ExerciseListScreen] — as opposed to the
-/// FilterBar's horizontal chip strip, which is also a [Scrollable] and would
-/// otherwise make this finder ambiguous.
-final _catalogueScrollable = find.descendant(
-  of: find.byType(ExerciseListScreen),
-  matching: find.byWidgetPredicate(
-    (widget) =>
-        widget is Scrollable && widget.axisDirection == AxisDirection.down,
-  ),
-);
+/// The Profile tab's own vertical list, the outermost one in
+/// [SettingsScreen].
+final _profileScrollable = find
+    .descendant(
+      of: find.byType(SettingsScreen),
+      matching: find.byWidgetPredicate(
+        (widget) =>
+            widget is Scrollable && widget.axisDirection == AxisDirection.down,
+      ),
+    )
+    .first;
 
 void main() {
   testWidgets(
     'keeps a tab mounted across a switch away and back, so its scroll '
     'position survives the trip',
     (tester) async {
-      // The catalogue moved into Train's Exercises tab, so reaching it now
-      // takes two taps (nav.1, then the Exercises sub-tab) rather than one.
+      // Profile: a long list of its own. (This used Train's Exercises tab,
+      // which is gone.)
       await _pumpShell(tester);
 
-      await tester.tap(find.byKey(const Key('nav.1')));
-      await tester.pumpAndSettle();
-      await tester.tap(find.byKey(const Key('tab.exercises')));
+      await tester.tap(find.byKey(const Key('nav.3')));
       await tester.pumpAndSettle();
 
       // IndexedStack in this Flutter version builds every child immediately on
@@ -322,7 +318,7 @@ void main() {
       // position) survives being hidden and shown again. jumpTo (not a drag)
       // keeps this independent of gesture/drag physics.
       final position = tester
-          .state<ScrollableState>(_catalogueScrollable)
+          .state<ScrollableState>(_profileScrollable)
           .position;
       position.jumpTo(400);
       await tester.pump();
@@ -330,11 +326,11 @@ void main() {
 
       await tester.tap(find.byKey(const Key('nav.0')));
       await tester.pumpAndSettle();
-      await tester.tap(find.byKey(const Key('nav.1')));
+      await tester.tap(find.byKey(const Key('nav.3')));
       await tester.pumpAndSettle();
 
       final positionAfterReturn = tester
-          .state<ScrollableState>(_catalogueScrollable)
+          .state<ScrollableState>(_profileScrollable)
           .position;
       expect(
         positionAfterReturn.pixels,
