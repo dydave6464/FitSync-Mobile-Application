@@ -827,6 +827,105 @@ void main() {
     });
   });
 
+  group('on a 320 dp phone at large text', () {
+    /// The sheet through a real modal route, as the logger and the Plan tab
+    /// open it, on a 320 x 640 phone at twice the text size.
+    Future<void> open(WidgetTester tester) async {
+      tester.view.physicalSize = const Size(320, 640);
+      tester.view.devicePixelRatio = 1;
+      tester.platformDispatcher.textScaleFactorTestValue = 2.0;
+      addTearDown(tester.view.reset);
+      addTearDown(tester.platformDispatcher.clearTextScaleFactorTestValue);
+
+      await tester.pumpWidget(
+        ProviderScope(
+          overrides: [
+            alternativesProvider.overrideWith((ref, key) async => _many(3)),
+            exerciseDetailProvider.overrideWith((ref, id) async => _detail),
+          ],
+          child: MaterialApp(
+            home: Scaffold(
+              body: Builder(
+                builder: (context) => TextButton(
+                  onPressed: () => showModalBottomSheet<String>(
+                    context: context,
+                    isScrollControlled: true,
+                    builder: (_) => ExerciseSwapSheet(
+                      planExerciseId: 77,
+                      exerciseName: 'Barbell bench press',
+                      onGoToProfile: () {},
+                    ),
+                  ),
+                  child: const Text('open'),
+                ),
+              ),
+            ),
+          ),
+        ),
+      );
+      await tester.tap(find.text('open'));
+      await tester.pumpAndSettle();
+    }
+
+    Finder sheetScroll() => find
+        .descendant(
+          of: find.byType(ExerciseSwapSheet),
+          matching: find.byType(Scrollable),
+        )
+        .first;
+
+    // The heading, the search field and the equipment note were a fixed
+    // column around the list, which at 2x is taller than the sheet: the
+    // column overflowed by hundreds of pixels and the list had no room at
+    // all. The whole pane scrolls instead, and every part of it is reachable.
+    testWidgets('the list pane scrolls as one instead of overflowing', (
+      tester,
+    ) async {
+      await open(tester);
+
+      expect(tester.takeException(), isNull);
+      expect(find.text('Replace Barbell bench press'), findsOneWidget);
+
+      await tester.scrollUntilVisible(
+        find.byKey(const Key('swap.alt.3')),
+        100,
+        scrollable: sheetScroll(),
+      );
+      await tester.scrollUntilVisible(
+        find.byKey(const Key('swap.equipmentHint.link')),
+        100,
+        scrollable: sheetScroll(),
+      );
+      expect(tester.takeException(), isNull);
+
+      await tester.ensureVisible(find.byKey(const Key('swap.alt.3')));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const Key('swap.alt.3')));
+      await tester.pumpAndSettle();
+      expect(find.byKey(const Key('swap.preview')), findsOneWidget);
+    });
+
+    testWidgets('the preview fits, with a full-size way back', (tester) async {
+      await open(tester);
+      await tester.scrollUntilVisible(
+        find.byKey(const Key('swap.alt.1')),
+        100,
+        scrollable: sheetScroll(),
+      );
+      await tester.tap(find.byKey(const Key('swap.alt.1')));
+      await tester.pumpAndSettle();
+
+      expect(tester.takeException(), isNull);
+      final back = tester.getSize(find.byKey(const Key('swap.preview.back')));
+      expect(back.width, greaterThanOrEqualTo(48));
+      expect(back.height, greaterThanOrEqualTo(48));
+      expect(
+        find.byKey(const Key('swap.preview.confirm')).hitTestable(),
+        findsOneWidget,
+      );
+    });
+  });
+
   testWidgets('with no swap in flight a drag down still closes the sheet', (
     tester,
   ) async {

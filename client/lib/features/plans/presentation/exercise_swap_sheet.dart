@@ -59,6 +59,13 @@ class _ExerciseSwapSheetState extends ConsumerState<ExerciseSwapSheet> {
   /// looking like two different screens.
   static const _heightFraction = 0.52;
 
+  /// How tall the list pane has to be, at 1x text, for its heading, search
+  /// field and equipment note to stay put with the list scrolling between
+  /// them. Those fixed parts take a little over 200 dp at 1x, and this
+  /// leaves room for a few rows. They grow with the text, so the bar does
+  /// too -- see [_listPane].
+  static const _fixedPaneMinHeight = 360.0;
+
   /// Every animation in the catalogue store is 180x180.
   static const _demoSourcePx = 180.0;
 
@@ -205,7 +212,9 @@ class _ExerciseSwapSheetState extends ConsumerState<ExerciseSwapSheet> {
               key: const Key('swap.preview.back'),
               icon: const Icon(Icons.arrow_back, size: 20),
               padding: EdgeInsets.zero,
-              constraints: const BoxConstraints(minWidth: 36, minHeight: 36),
+              // A full target: the way back is the one control here that
+              // keeps the current exercise.
+              constraints: const BoxConstraints(minWidth: 48, minHeight: 48),
               onPressed: _busy
                   ? null
                   : () => setState(() => _previewing = null),
@@ -304,6 +313,141 @@ class _ExerciseSwapSheetState extends ConsumerState<ExerciseSwapSheet> {
     );
   }
 
+  /// The alternatives, between the heading and search field above them and
+  /// the equipment note below.
+  ///
+  /// Two layouts. Where there is room, the heading, the search field and the
+  /// note stay put and only the list scrolls -- the note in particular has to
+  /// stay on screen, see [_equipmentHint]. Where there is not -- large text,
+  /// a small phone, a phone on its side -- those fixed parts alone are taller
+  /// than the sheet: at 2x on a 320 dp phone the column overflowed by over
+  /// 500 px and left the list no room at all. Then the whole pane scrolls as
+  /// one, note included, at the end.
+  ///
+  /// Decided from the screen and the text size, never from the space left
+  /// over: the keyboard shrinks that, and a layout that flipped as it opened
+  /// would rebuild the search field and drop the keyboard it opened for.
+  Widget _listPane(
+    FsTokens t,
+    AsyncValue<List<ExerciseAlternative>> alternatives,
+  ) {
+    final screen = MediaQuery.sizeOf(context).height;
+    final paneHeight =
+        screen * _heightFraction -
+        32 -
+        MediaQuery.viewPaddingOf(context).bottom;
+    // A body-size factor rather than scaling the bar itself: a phone's
+    // nonlinear text scaling grows a 360 "font size" far less than text.
+    final textFactor = MediaQuery.textScalerOf(context).scale(14) / 14;
+    final roomy = paneHeight >= _fixedPaneMinHeight * textFactor;
+
+    final head = <Widget>[
+      Text(
+        'Replace ${widget.exerciseName}',
+        style: Theme.of(context).textTheme.titleLarge,
+      ),
+      const SizedBox(height: 2),
+      // Opened from inside a workout, a swap reads like a one-off for today.
+      // It is not: the plan row itself changes, for every later session too.
+      Text(
+        'Changes your plan from now on, not just today.',
+        style: TextStyle(fontSize: 12.5, color: t.text2),
+      ),
+      const SizedBox(height: 12),
+      TextField(
+        key: const Key('swap.search'),
+        controller: _controller,
+        onChanged: _onChanged,
+        decoration: const InputDecoration(
+          prefixIcon: Icon(Icons.search),
+          hintText: 'Search all exercises',
+        ),
+      ),
+      if (_error != null) ...[
+        const SizedBox(height: 12),
+        Text(
+          _error!,
+          style: TextStyle(color: Theme.of(context).colorScheme.error),
+        ),
+      ],
+      const SizedBox(height: 16),
+    ];
+    final foot = <Widget>[
+      Divider(color: t.line, height: 25),
+      _equipmentHint(t),
+    ];
+
+    Widget tile(ExerciseAlternative alt) => ListTile(
+      key: Key('swap.alt.${alt.exerciseId}'),
+      contentPadding: EdgeInsets.zero,
+      title: Text(alt.name),
+      subtitle: Text(alt.equipment ?? alt.muscleGroup),
+      trailing: Icon(Icons.chevron_right, size: 16, color: t.text3),
+      // Opens a look at it. The swap itself now waits for the confirm button
+      // on the preview: a tap here used to replace an exercise outright,
+      // before the user had seen what they were taking on.
+      onTap: _busy ? null : () => setState(() => _previewing = alt),
+    );
+
+    Widget body(Widget Function(List<ExerciseAlternative> rows) list) =>
+        alternatives.when(
+          loading: () => const Center(
+            child: Padding(
+              padding: EdgeInsets.all(24),
+              child: CircularProgressIndicator(),
+            ),
+          ),
+          error: (err, _) => Padding(
+            padding: const EdgeInsets.all(16),
+            child: Text(describeError(err)),
+          ),
+          data: (rows) => rows.isEmpty
+              ? Padding(
+                  padding: const EdgeInsets.symmetric(vertical: 24),
+                  child: Text(
+                    _query.isEmpty
+                        ? 'Nothing you can do with your equipment trains this muscle.'
+                        : 'Nothing you can do matches that search.',
+                    style: TextStyle(color: t.text2),
+                    textAlign: TextAlign.center,
+                  ),
+                )
+              : list(rows),
+        );
+
+    if (!roomy) {
+      return SingleChildScrollView(
+        key: const Key('swap.pane.scroll'),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            ...head,
+            body(
+              (rows) => Column(children: [for (final alt in rows) tile(alt)]),
+            ),
+            ...foot,
+          ],
+        ),
+      );
+    }
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        ...head,
+        Expanded(
+          child: body(
+            (rows) => ListView.builder(
+              shrinkWrap: true,
+              itemCount: rows.length,
+              itemBuilder: (_, i) => tile(rows[i]),
+            ),
+          ),
+        ),
+        ...foot,
+      ],
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final t = context.fs;
@@ -340,101 +484,7 @@ class _ExerciseSwapSheetState extends ConsumerState<ExerciseSwapSheet> {
           // is dismissed.
           child: previewing != null
               ? _preview(t, previewing)
-              : Column(
-                  crossAxisAlignment: CrossAxisAlignment.stretch,
-                  children: [
-                    Text(
-                      'Replace ${widget.exerciseName}',
-                      style: Theme.of(context).textTheme.titleLarge,
-                    ),
-                    const SizedBox(height: 2),
-                    // Opened from inside a workout, a swap reads like a
-                    // one-off for today. It is not: the plan row itself
-                    // changes, for every later session too.
-                    Text(
-                      'Changes your plan from now on, not just today.',
-                      style: TextStyle(fontSize: 12.5, color: t.text2),
-                    ),
-                    const SizedBox(height: 12),
-                    TextField(
-                      key: const Key('swap.search'),
-                      controller: _controller,
-                      onChanged: _onChanged,
-                      decoration: const InputDecoration(
-                        prefixIcon: Icon(Icons.search),
-                        hintText: 'Search all exercises',
-                      ),
-                    ),
-                    if (_error != null) ...[
-                      const SizedBox(height: 12),
-                      Text(
-                        _error!,
-                        style: TextStyle(
-                          color: Theme.of(context).colorScheme.error,
-                        ),
-                      ),
-                    ],
-                    const SizedBox(height: 16),
-                    Expanded(
-                      child: alternatives.when(
-                        loading: () => const Center(
-                          child: Padding(
-                            padding: EdgeInsets.all(24),
-                            child: CircularProgressIndicator(),
-                          ),
-                        ),
-                        error: (err, _) => Padding(
-                          padding: const EdgeInsets.all(16),
-                          child: Text(describeError(err)),
-                        ),
-                        data: (rows) => rows.isEmpty
-                            ? Padding(
-                                padding: const EdgeInsets.symmetric(
-                                  vertical: 24,
-                                ),
-                                child: Text(
-                                  _query.isEmpty
-                                      ? 'Nothing you can do with your equipment trains this muscle.'
-                                      : 'Nothing you can do matches that search.',
-                                  style: TextStyle(color: t.text2),
-                                  textAlign: TextAlign.center,
-                                ),
-                              )
-                            : ListView.builder(
-                                shrinkWrap: true,
-                                itemCount: rows.length,
-                                itemBuilder: (_, i) {
-                                  final alt = rows[i];
-                                  return ListTile(
-                                    key: Key('swap.alt.${alt.exerciseId}'),
-                                    contentPadding: EdgeInsets.zero,
-                                    title: Text(alt.name),
-                                    subtitle: Text(
-                                      alt.equipment ?? alt.muscleGroup,
-                                    ),
-                                    trailing: Icon(
-                                      Icons.chevron_right,
-                                      size: 16,
-                                      color: t.text3,
-                                    ),
-                                    // Opens a look at it. The swap itself now waits
-                                    // for the confirm button on the preview: a tap
-                                    // here used to replace an exercise outright,
-                                    // before the user had seen what they were
-                                    // taking on.
-                                    onTap: _busy
-                                        ? null
-                                        : () =>
-                                              setState(() => _previewing = alt),
-                                  );
-                                },
-                              ),
-                      ),
-                    ),
-                    Divider(color: t.line, height: 25),
-                    _equipmentHint(t),
-                  ],
-                ),
+              : _listPane(t, alternatives),
         ),
       ),
     );
