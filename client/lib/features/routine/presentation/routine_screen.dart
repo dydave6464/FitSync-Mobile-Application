@@ -114,12 +114,28 @@ class _Header extends StatelessWidget {
             color: t.accent,
             size: 62,
             stroke: 7,
-            child: Text(
-              '${day.done}/${day.total}',
-              style: TextStyle(
-                fontSize: 15,
-                fontWeight: FontWeight.w700,
-                color: t.text,
+            // In the clear middle, not the whole 62 dp box: inside the 7 dp
+            // stroke that is a circle 24 dp in radius, and 41 x 19 is a line
+            // that fits it with room to spare (20.5^2 + 9.5^2 < 24^2).
+            // Unboxed, "12/12" ran into the stroke from about 1.1x text. At
+            // normal text it keeps its 15 px; at large text it is held near
+            // that size by the box rather than growing past the stroke.
+            child: Padding(
+              padding: const EdgeInsets.symmetric(
+                horizontal: 10.5,
+                vertical: 21.5,
+              ),
+              child: FittedBox(
+                fit: BoxFit.scaleDown,
+                child: Text(
+                  '${day.done}/${day.total}',
+                  style: TextStyle(
+                    fontSize: 15,
+                    fontWeight: FontWeight.w700,
+                    height: 1.2,
+                    color: t.text,
+                  ),
+                ),
               ),
             ),
           ),

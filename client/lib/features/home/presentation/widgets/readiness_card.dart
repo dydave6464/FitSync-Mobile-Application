@@ -164,9 +164,13 @@ class _ReadinessRing extends StatelessWidget {
       size: 78,
       stroke: 9,
       // The ring is a fixed 78dp while system text can double, so the
-      // centre shrinks to fit inside the stroke rather than spill past it.
+      // centre shrinks to fit inside the stroke rather than spill past it --
+      // into the clear middle, a circle 30 dp in radius inside the 9 dp
+      // stroke. A 54 dp square's corners lay outside it, so "100" ran into
+      // the stroke from about 1.2x text, "READY" with it; 44 x 36 fits
+      // (22^2 + 18^2 < 30^2).
       child: Padding(
-        padding: const EdgeInsets.all(12),
+        padding: const EdgeInsets.symmetric(horizontal: 17, vertical: 21),
         // One phrase for a screen reader, not "82" then "READY".
         child: Semantics(
           label: readiness == null
@@ -179,8 +183,10 @@ class _ReadinessRing extends StatelessWidget {
     );
   }
 
+  // A set line height: the theme's 1.43 stacked the two lines taller than
+  // the box, shrinking them at normal text for no reason.
   Widget _centre(int? readiness, FsTokens t) => readiness == null
-      ? Text('–', style: TextStyle(fontSize: 20, color: t.text3))
+      ? Text('–', style: TextStyle(fontSize: 20, height: 1.2, color: t.text3))
       : Column(
           mainAxisSize: MainAxisSize.min,
           children: [
@@ -189,6 +195,7 @@ class _ReadinessRing extends StatelessWidget {
               style: TextStyle(
                 fontSize: 20,
                 fontWeight: FontWeight.w800,
+                height: 1.2,
                 color: t.text,
               ),
             ),
@@ -197,6 +204,7 @@ class _ReadinessRing extends StatelessWidget {
               style: TextStyle(
                 fontSize: 8.5,
                 letterSpacing: 0.7,
+                height: 1.2,
                 color: t.text3,
               ),
             ),
