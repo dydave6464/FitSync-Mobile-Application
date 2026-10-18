@@ -14,6 +14,7 @@ import 'package:fitsync/features/exercises/domain/exercise.dart';
 import 'package:fitsync/features/exercises/presentation/providers.dart'
     show exerciseDetailProvider;
 import 'package:fitsync/features/home/presentation/home_screen.dart';
+import 'package:fitsync/features/home/presentation/plan_ready.dart';
 import 'package:fitsync/features/home/presentation/widgets/greeting.dart';
 import 'package:fitsync/features/home/presentation/widgets/plan_card.dart';
 import 'package:fitsync/features/plans/domain/workout_plan.dart';
@@ -254,6 +255,13 @@ void _tallScreen(WidgetTester tester) {
   addTearDown(tester.view.reset);
 }
 
+/// Onboarding has just built the plan: what PlanReadyNotifier.announce
+/// leaves behind, without running onboarding to get there.
+class _JustOnboarded extends PlanReadyNotifier {
+  @override
+  bool build() => true;
+}
+
 Future<void> _pumpHome(
   WidgetTester tester, {
   VoidCallback? onGoToTrain,
@@ -284,6 +292,7 @@ Future<void> _pumpHome(
   bool streakFailsOnRefresh = false,
   Future<TrainingSummary>? summaryFuture,
   StepPermission? stepPermission,
+  bool planReady = false,
 }) async {
   var streakReads = 0;
   await tester.pumpWidget(
@@ -346,6 +355,7 @@ Future<void> _pumpHome(
           stepPermission ?? const NoStepPermission(),
         ),
         stepSourceProvider.overrideWithValue(const NoStepSource()),
+        if (planReady) planReadyProvider.overrideWith(_JustOnboarded.new),
       ],
       child: MaterialApp(
         home: HomeScreen(
@@ -641,6 +651,103 @@ void main() {
     await _pumpHome(tester, profile: _profile(mainGoal: null));
 
     expect(tester.takeException(), isNull);
+  });
+
+  group('your plan is ready', () {
+    testWidgets('Home opens on it, above everything, after onboarding', (
+      tester,
+    ) async {
+      _tallScreen(tester);
+      await _pumpHome(tester, planReady: true);
+
+      final card = find.byKey(const Key('home.planReady'));
+      expect(card, findsOneWidget);
+      // The plan it names is the one just built, not a placeholder.
+      expect(
+        find.descendant(of: card, matching: find.text('Upper Body · Push')),
+        findsOneWidget,
+      );
+      // The review's complaint was the plan buried under the check-in card.
+      expect(
+        tester.getTopLeft(card).dy,
+        lessThan(tester.getTopLeft(find.byKey(const Key('home.readiness'))).dy),
+      );
+    });
+
+    testWidgets('names the level from the profile', (tester) async {
+      _tallScreen(tester);
+      await _pumpHome(
+        tester,
+        planReady: true,
+        profile: _profile(fitnessLevel: 'intermediate'),
+      );
+
+      expect(
+        find.descendant(
+          of: find.byKey(const Key('home.planReady')),
+          matching: find.text('Intermediate'),
+        ),
+        findsOneWidget,
+      );
+    });
+
+    testWidgets('an ordinary visit to Home has no such card', (tester) async {
+      await _pumpHome(tester);
+
+      expect(find.byKey(const Key('home.planReady')), findsNothing);
+    });
+
+    testWidgets('with no plan to show, it says nothing', (tester) async {
+      await _pumpHome(tester, planReady: true, plan: null);
+
+      expect(find.byKey(const Key('home.planReady')), findsNothing);
+      expect(find.byKey(const Key('home.noPlan')), findsOneWidget);
+    });
+
+    testWidgets('See plan opens Train at Plan and puts the card away', (
+      tester,
+    ) async {
+      _tallScreen(tester);
+      var trains = 0;
+      await _pumpHome(tester, planReady: true, onGoToTrain: () => trains++);
+
+      await tester.tap(find.text('See plan'));
+      await tester.pumpAndSettle();
+
+      expect(trains, 1);
+      expect(find.byKey(const Key('home.planReady')), findsNothing);
+    });
+
+    testWidgets('the close button puts it away for good', (tester) async {
+      _tallScreen(tester);
+      await _pumpHome(tester, planReady: true);
+
+      await tester.tap(find.byKey(const Key('home.planReady.dismiss')));
+      await tester.pumpAndSettle();
+
+      expect(find.byKey(const Key('home.planReady')), findsNothing);
+      // Not just hidden on this build: the flag itself is down, so a later
+      // visit to Home does not bring it back.
+      final container = ProviderScope.containerOf(
+        tester.element(find.byType(HomeScreen)),
+      );
+      expect(container.read(planReadyProvider), isFalse);
+    });
+
+    testWidgets('the screen still fits a 320 dp phone at 2.0x text', (
+      tester,
+    ) async {
+      tester.view.physicalSize = const Size(320, 4000);
+      tester.view.devicePixelRatio = 1;
+      addTearDown(tester.view.reset);
+      tester.platformDispatcher.textScaleFactorTestValue = 2.0;
+      addTearDown(tester.platformDispatcher.clearTextScaleFactorTestValue);
+
+      await _pumpHome(tester, planReady: true);
+
+      expect(tester.takeException(), isNull);
+      expect(find.byKey(const Key('home.planReady')), findsOneWidget);
+    });
   });
 
   group('readiness and progress', () {

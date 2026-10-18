@@ -10,6 +10,7 @@ import 'package:fitsync/features/activity/presentation/providers.dart';
 import 'package:fitsync/features/auth/data/auth_repository.dart';
 import 'package:fitsync/features/auth/domain/auth_user.dart';
 import 'package:fitsync/features/auth/presentation/auth_controller.dart';
+import 'package:fitsync/features/home/presentation/plan_ready.dart';
 import 'package:fitsync/features/reminders/data/reminder_scheduler.dart';
 import 'package:fitsync/features/reminders/domain/reminders.dart';
 import 'package:fitsync/features/routine/data/routine_repository.dart';
@@ -533,6 +534,29 @@ void main() {
       sessions.outcomeLoads,
       2,
       reason: 'the pending outcome was not re-fetched',
+    );
+  });
+
+  test("signing out drops the previous account's plan-ready welcome", () async {
+    final tokens = TokenStore(backing: InMemorySecureStore());
+    await tokens.write('tok');
+    final container = _containerWith(
+      tokens,
+      FakeAuthRepository(
+        tokens,
+        onMe: () async => _user(onboardingCompleted: true),
+      ),
+    );
+
+    await container.read(authControllerProvider.future);
+    container.read(planReadyProvider.notifier).announce();
+
+    await container.read(authControllerProvider.notifier).signOut();
+
+    expect(
+      container.read(planReadyProvider),
+      isFalse,
+      reason: 'the next account would open Home on a plan it never built',
     );
   });
 

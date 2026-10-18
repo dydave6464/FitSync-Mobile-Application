@@ -12,6 +12,7 @@ import 'package:fitsync/features/auth/domain/auth_user.dart';
 import 'package:fitsync/features/auth/presentation/auth_controller.dart';
 import 'package:fitsync/features/health/domain/health_answers.dart';
 import 'package:fitsync/features/health/presentation/providers.dart';
+import 'package:fitsync/features/home/presentation/plan_ready.dart';
 import 'package:fitsync/features/onboarding/presentation/generating_view.dart';
 import 'package:fitsync/features/onboarding/presentation/onboarding_flow.dart';
 import 'package:fitsync/features/onboarding/presentation/onboarding_scaffold.dart';
@@ -981,6 +982,47 @@ void main() {
     expect(completed, [
       true,
     ], reason: 'the shell has to be told, or the user stays in onboarding');
+  });
+
+  testWidgets('a built plan has Home say so when it opens', (tester) async {
+    await _pumpFlow(tester, patches: []);
+
+    await _skip(tester);
+    await _skip(tester);
+    await _skip(tester);
+    await _skip(tester);
+    await _passHealthClear(tester);
+    await tester.tap(find.byKey(const Key('continue')));
+    await tester.pumpAndSettle();
+
+    final container = ProviderScope.containerOf(
+      tester.element(find.byType(OnboardingFlow)),
+    );
+    expect(container.read(planReadyProvider), isTrue);
+  });
+
+  testWidgets('a plan that failed to build is not announced', (tester) async {
+    await _pumpFlow(
+      tester,
+      patches: [],
+      onComplete: (attempt) async => throw const ApiException(
+        'PLAN_GENERATION_FAILED',
+        'Could not build a plan right now.',
+      ),
+    );
+
+    await _skip(tester);
+    await _skip(tester);
+    await _skip(tester);
+    await _skip(tester);
+    await _passHealthClear(tester);
+    await tester.tap(find.byKey(const Key('continue')));
+    await tester.pumpAndSettle();
+
+    final container = ProviderScope.containerOf(
+      tester.element(find.byType(OnboardingFlow)),
+    );
+    expect(container.read(planReadyProvider), isFalse);
   });
 
   testWidgets('a failed generation can be retried', (tester) async {
