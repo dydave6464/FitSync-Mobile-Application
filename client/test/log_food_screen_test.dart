@@ -200,6 +200,15 @@ void main() {
     expect(repo.queries, hasLength(1));
   });
 
+  testWidgets('a suggested food answers a tap 7 dp above the first row', (tester) async {
+    final repo = _SearchRepo();
+    await _pump(tester, repo);
+    final first = tester.getRect(find.widgetWithText(FsChip, 'Rice'));
+    await tester.tapAt(first.topCenter - const Offset(0, 7));
+    await tester.pumpAndSettle();
+    expect(repo.queries, ['Rice']);
+  });
+
   testWidgets('one letter just waits, with nothing to read', (tester) async {
     await _pump(tester, _SearchRepo());
     await tester.enterText(find.byKey(const Key('food.search')), 'a');

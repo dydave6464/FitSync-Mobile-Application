@@ -187,9 +187,11 @@ class _StartHint extends StatelessWidget {
         const SizedBox(height: 4),
         Text('Search by name, like adobo or rice',
             textAlign: TextAlign.center, style: TextStyle(color: t.text2)),
-        const SizedBox(height: 16),
+        // Half the 16 above the suggestions sits in their own padding, so a
+        // thumb landing just over the first row still finds a chip.
+        const SizedBox(height: 8),
         Padding(
-          padding: const EdgeInsets.only(bottom: 8),
+          padding: const EdgeInsets.symmetric(vertical: 8),
           child: FsTapRoom(
             child: Wrap(
               alignment: WrapAlignment.center,
