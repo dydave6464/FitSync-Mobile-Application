@@ -10,6 +10,7 @@ import 'package:fitsync/features/nutrition/domain/nutrition.dart';
 import 'package:fitsync/features/nutrition/presentation/log_food_screen.dart';
 import 'package:fitsync/features/nutrition/presentation/nutrition_screen.dart';
 import 'package:fitsync/features/nutrition/presentation/providers.dart';
+import 'package:fitsync/features/nutrition/presentation/widgets/log_food_sheet.dart';
 
 import 'nutrition_controller_test.dart' show FakeNutritionRepository;
 
@@ -310,4 +311,217 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
+  group('changing a logged food', () {
+    Finder sheet() => find.byType(LogFoodSheet);
+
+    Future<void> save(WidgetTester tester) async {
+      await tester.ensureVisible(find.byKey(const Key('logSheet.log')));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const Key('logSheet.log')));
+      await tester.pumpAndSettle();
+    }
+
+    testWidgets("tapping a row opens the sheet on the entry's meal and servings", (tester) async {
+      final adobo = FoodEntry(
+        id: 7, mealType: 'lunch', name: 'Chicken adobo', servingDesc: '1 serving', servings: 1.5,
+        kcal: 480, proteinG: 42, carbsG: 6, fatG: 31.5, source: 'local', foodId: 6,
+      );
+      await _pump(tester, today: _day('2026-10-14', lunch: [adobo]));
+      await tester.tap(find.byKey(const Key('entry.7')));
+      await tester.pumpAndSettle();
+      final open = tester.widget<LogFoodSheet>(sheet());
+      expect(open.mealType, 'lunch');
+      expect(open.servings, 1.5);
+      expect(open.food.kcal, 320, reason: 'per serving');
+      expect(find.text('Save changes'), findsOneWidget);
+    });
+
+    testWidgets('Snack and Save changes moves the food under Snack', (tester) async {
+      final repo = await _pump(tester, today: _day('2026-10-14', lunch: [_adobo()]));
+      await tester.tap(find.byKey(const Key('entry.7')));
+      await tester.pumpAndSettle();
+      await tester.tap(find.descendant(of: sheet(), matching: find.text('Snack')));
+      await tester.pump();
+      await save(tester);
+      expect(repo.calls, contains('update 7 snack x1.0'));
+      expect(find.text('SNACK'), findsOneWidget);
+      expect(find.text('Add lunch'), findsOneWidget, reason: 'lunch is empty now');
+    });
+
+    testWidgets('saving with nothing changed sends nothing', (tester) async {
+      final repo = await _pump(tester, today: _day('2026-10-14', lunch: [_adobo()]));
+      await tester.tap(find.byKey(const Key('entry.7')));
+      await tester.pumpAndSettle();
+      await save(tester);
+      expect(sheet(), findsNothing);
+      expect(repo.calls.where((c) => c.startsWith('update')), isEmpty);
+    });
+
+    testWidgets('a failed save says so and leaves the day as it was', (tester) async {
+      final repo = await _pump(tester, today: _day('2026-10-14', lunch: [_adobo()]));
+      await tester.tap(find.byKey(const Key('entry.7')));
+      await tester.pumpAndSettle();
+      await tester.tap(find.descendant(of: sheet(), matching: find.text('Snack')));
+      await tester.pump();
+      repo.failNext = true;
+      await save(tester);
+      expect(find.text("Couldn't save — try again."), findsOneWidget);
+      expect(find.text('LUNCH'), findsOneWidget);
+      expect(find.text('Add snack'), findsOneWidget);
+    });
+
+    testWidgets('the ✕ removes without opening the sheet', (tester) async {
+      await _pump(tester, today: _day('2026-10-14', lunch: [_adobo()]));
+      await tester.tap(find.byKey(const Key('entry.delete.7')));
+      await tester.pumpAndSettle();
+      expect(sheet(), findsNothing);
+      expect(find.text('Removed Chicken adobo'), findsOneWidget);
+    });
+
+    testWidgets('a food still saving does not open the sheet', (tester) async {
+      final repo = await _pump(tester, today: _day('2026-10-14'));
+      repo.hold = Completer<void>();
+      final container = ProviderScope.containerOf(tester.element(find.byType(NutritionScreen)));
+      final logging = container.read(nutritionDayProvider.notifier)
+          .log(const Food(source: 'local', id: 3, name: 'Rice', kcal: 205, proteinG: 4, carbsG: 45, fatG: 0),
+              mealType: 'dinner', servings: 1);
+      await tester.pump();
+      await tester.tap(find.text('Rice'));
+      await tester.pumpAndSettle();
+      expect(sheet(), findsNothing);
+      repo.hold!.complete();
+      await logging;
+      await tester.pumpAndSettle();
+    });
+
+    testWidgets('while a day loads, a row does not open the sheet', (tester) async {
+      final repo = _HeldRepo()..heldDate = '2026-10-13';
+      await _pump(tester, today: _day('2026-10-14', lunch: [_adobo()]), repo: repo);
+      await tester.tap(find.byKey(const Key('day.prev')));
+      await tester.pump();
+      await tester.tap(find.byKey(const Key('entry.7')));
+      await tester.pump(); // the progress bar never settles
+      await tester.pump(const Duration(milliseconds: 500));
+      expect(sheet(), findsNothing);
+      repo.gate.complete();
+      await tester.pumpAndSettle();
+    });
+
+    testWidgets('a row is one button with a Change hint, and the ✕ its own', (tester) async {
+      final semantics = tester.ensureSemantics();
+      await _pump(tester, today: _day('2026-10-14', lunch: [_adobo()]));
+      expect(
+        tester.getSemantics(find.byKey(const Key('entry.7'))),
+        matchesSemantics(
+          label: 'Chicken adobo\n1 serving\n1160 kcal',
+          onTapHint: 'Change',
+          isButton: true,
+          hasTapAction: true,
+          isEnabled: true,
+          hasEnabledState: true,
+          isFocusable: true,
+          hasFocusAction: true,
+        ),
+      );
+      expect(
+        tester.getSemantics(find.byKey(const Key('entry.delete.7'))),
+        matchesSemantics(
+          tooltip: 'Remove Chicken adobo',
+          isButton: true,
+          hasTapAction: true,
+          isEnabled: true,
+          hasEnabledState: true,
+          isFocusable: true,
+          hasFocusAction: true,
+        ),
+      );
+      semantics.dispose();
+    });
+
+    testWidgets('a row is at least 48 dp tall and fits a 320 dp phone at 2x text', (tester) async {
+      await _pump(tester,
+          today: _day('2026-10-14', lunch: [_adobo()]), size: const Size(320, 2400), textScale: 2);
+      expect(tester.takeException(), isNull);
+      expect(tester.getSize(find.byKey(const Key('entry.7'))).height, greaterThanOrEqualTo(48));
+    });
+  });
+
+  group('after logging', () {
+    Future<FakeNutritionRepository> logRiceToDinner(WidgetTester tester) async {
+      final repo = await _pump(tester, today: _day('2026-10-14'));
+      await tester.tap(find.byKey(const Key('meal.add.dinner')));
+      await tester.pumpAndSettle();
+      await tester.enterText(find.byKey(const Key('food.search')), 'rice');
+      await tester.pump(foodSearchDebounce);
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Rice'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const Key('logSheet.log')));
+      await tester.pumpAndSettle();
+      return repo;
+    }
+
+    testWidgets('Log food closes and says where the food went', (tester) async {
+      await logRiceToDinner(tester);
+      expect(find.byType(LogFoodScreen), findsNothing);
+      expect(find.text('Added Rice to dinner'), findsOneWidget);
+      expect(find.text('Change'), findsOneWidget);
+    });
+
+    testWidgets('Change opens the sheet on the saved food, and Snack moves it', (tester) async {
+      final repo = await logRiceToDinner(tester);
+      await tester.tap(find.text('Change'));
+      await tester.pumpAndSettle();
+      final open = tester.widget<LogFoodSheet>(find.byType(LogFoodSheet));
+      expect(open.mealType, 'dinner');
+      expect(find.text('Save changes'), findsOneWidget);
+      await tester.tap(find.descendant(of: find.byType(LogFoodSheet), matching: find.text('Snack')));
+      await tester.pump();
+      await tester.tap(find.byKey(const Key('logSheet.log')));
+      await tester.pumpAndSettle();
+      expect(repo.calls, contains('update 100 snack x1.0'));
+      expect(find.text('SNACK'), findsOneWidget);
+      expect(find.text('Add dinner'), findsOneWidget);
+    });
+
+    testWidgets('the Added message goes away on its own', (tester) async {
+      await logRiceToDinner(tester);
+      await tester.pump(const Duration(seconds: 10));
+      await tester.pumpAndSettle();
+      expect(find.text('Added Rice to dinner'), findsNothing);
+    });
+
+    testWidgets('the Added message stays up for screen-reader users', (tester) async {
+      tester.platformDispatcher.accessibilityFeaturesTestValue =
+          const FakeAccessibilityFeatures(accessibleNavigation: true);
+      addTearDown(tester.platformDispatcher.clearAccessibilityFeaturesTestValue);
+      await logRiceToDinner(tester);
+      await tester.pump(const Duration(seconds: 10));
+      await tester.pumpAndSettle();
+      expect(find.text('Added Rice to dinner'), findsOneWidget);
+    });
+
+    testWidgets('Add manually says the same, and its Change opens the sheet', (tester) async {
+      final repo = await _pump(tester, today: _day('2026-10-14'), size: const Size(400, 1400));
+      await tester.tap(find.byKey(const Key('meal.add.dinner')));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const Key('food.manual')));
+      await tester.pumpAndSettle();
+      await tester.enterText(find.byKey(const Key('manual.name')), 'Turon');
+      await tester.enterText(find.byKey(const Key('manual.carbs')), '34');
+      await tester.pump();
+      await tester.tap(find.byKey(const Key('manual.log')));
+      await tester.pumpAndSettle();
+      expect(find.byType(LogFoodScreen), findsNothing);
+      expect(find.text('Added Turon to dinner'), findsOneWidget);
+      await tester.tap(find.text('Change'));
+      await tester.pumpAndSettle();
+      expect(find.text('Save changes'), findsOneWidget);
+      await tester.tap(find.byKey(const Key('servings.plus')));
+      await tester.pump();
+      await tester.tap(find.byKey(const Key('logSheet.log')));
+      await tester.pumpAndSettle();
+      expect(repo.calls, contains('update 100 dinner x1.5'));
+    });
+  });
 }

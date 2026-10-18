@@ -3,7 +3,7 @@ import 'dart:ui' show PathMetric;
 import 'package:flutter/material.dart';
 
 import '../../../../core/theme.dart';
-import '../../../../core/widgets/fs_kit.dart' show FsCard, FsEyebrow;
+import '../../../../core/widgets/fs_kit.dart' show FsEyebrow;
 import '../../domain/nutrition.dart';
 
 /// One meal of the day: its foods under its name and subtotal, or, while it
@@ -15,6 +15,7 @@ class MealSection extends StatelessWidget {
     required this.entries,
     required this.onAdd,
     required this.onDelete,
+    required this.onChange,
     this.enabled = true,
     this.suggested = false,
   });
@@ -23,6 +24,9 @@ class MealSection extends StatelessWidget {
   final List<FoodEntry> entries;
   final VoidCallback onAdd;
   final ValueChanged<FoodEntry> onDelete;
+
+  /// A food's row was tapped, to change its meal, servings or numbers.
+  final ValueChanged<FoodEntry> onChange;
   final bool enabled;
 
   /// The meal the clock suggests, today only. It marks the empty row as the
@@ -60,34 +64,101 @@ class MealSection extends StatelessWidget {
             ],
           ),
           for (final e in entries)
-            FsCard(
-              small: true,
-              padding: const EdgeInsets.fromLTRB(14, 6, 4, 6),
-              child: Row(
-                children: [
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(e.name, style: const TextStyle(fontWeight: FontWeight.w600)),
-                        Text(
-                          [if (e.servingDesc != null) e.servingDesc!, if (e.servings != 1) '× ${formatServings(e.servings)}'].join(' '),
-                          style: TextStyle(fontSize: 12, color: t.text3),
-                        ),
-                      ],
+            _EntryRow(
+              entry: e,
+              // A pending entry has no server id yet to change or delete.
+              onChange: enabled && e.id > 0 ? () => onChange(e) : null,
+              onDelete: enabled && e.id > 0 ? () => onDelete(e) : null,
+              t: t,
+            ),
+        ],
+      ),
+    );
+  }
+}
+
+/// One logged food, drawn as a small card. All of it but the ✕ is one
+/// button that opens the food to change it; the ✕ stays its own button, so
+/// a tap meant to remove never opens the sheet.
+class _EntryRow extends StatelessWidget {
+  const _EntryRow({required this.entry, required this.onChange, required this.onDelete, required this.t});
+
+  final FoodEntry entry;
+  final VoidCallback? onChange;
+  final VoidCallback? onDelete;
+  final FsTokens t;
+
+  @override
+  Widget build(BuildContext context) {
+    final e = entry;
+    return Material(
+      color: t.surface,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(FsRadius.md),
+        side: BorderSide(color: t.line),
+      ),
+      // Keeps the press inside the card's rounded corners.
+      clipBehavior: Clip.antiAlias,
+      child: Row(
+        children: [
+          Expanded(
+            // One node: name, serving and kcal are read together, then what
+            // a tap does.
+            child: Semantics(
+              key: Key('entry.${e.id}'),
+              container: true,
+              button: true,
+              enabled: onChange != null,
+              onTap: onChange,
+              onTapHint: onChange == null ? null : 'Change',
+              child: InkWell(
+                onTap: onChange,
+                excludeFromSemantics: true,
+                child: Padding(
+                  padding: const EdgeInsets.fromLTRB(14, 6, 0, 6),
+                  child: ConstrainedBox(
+                    constraints: const BoxConstraints(minHeight: 48),
+                    child: LayoutBuilder(
+                      builder: (context, box) => Row(
+                        children: [
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(e.name, style: const TextStyle(fontWeight: FontWeight.w600)),
+                                Text(
+                                  [if (e.servingDesc != null) e.servingDesc!, if (e.servings != 1) '× ${formatServings(e.servings)}'].join(' '),
+                                  style: TextStyle(fontSize: 12, color: t.text3),
+                                ),
+                              ],
+                            ),
+                          ),
+                          const SizedBox(width: 8),
+                          // Its own width, up to a share of the row: at
+                          // large text on a narrow phone it wraps rather
+                          // than pushing the row past the edge.
+                          ConstrainedBox(
+                            constraints: BoxConstraints(maxWidth: box.maxWidth * 0.4),
+                            child: Text('${e.kcal} kcal',
+                                textAlign: TextAlign.end, style: const TextStyle(fontWeight: FontWeight.w600)),
+                          ),
+                        ],
+                      ),
                     ),
                   ),
-                  Text('${e.kcal} kcal', style: const TextStyle(fontWeight: FontWeight.w600)),
-                  IconButton(
-                    key: Key('entry.delete.${e.id}'),
-                    tooltip: 'Remove ${e.name}',
-                    // A pending entry has no server id yet to delete.
-                    onPressed: enabled && e.id > 0 ? () => onDelete(e) : null,
-                    icon: const Icon(Icons.close, size: 18),
-                  ),
-                ],
+                ),
               ),
             ),
+          ),
+          Padding(
+            padding: const EdgeInsets.only(right: 4),
+            child: IconButton(
+              key: Key('entry.delete.${e.id}'),
+              tooltip: 'Remove ${e.name}',
+              onPressed: onDelete,
+              icon: const Icon(Icons.close, size: 18),
+            ),
+          ),
         ],
       ),
     );

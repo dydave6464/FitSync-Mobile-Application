@@ -66,6 +66,48 @@ void main() {
     expect(entry.id, 9);
   });
 
+  test('updateEntry PATCHes meal and servings by id, with no food when the numbers stand', () async {
+    final repo = _repo(MockClient((r) async {
+      expect(r.method, 'PATCH');
+      expect(r.url.path, '/api/v1/nutrition/entries/9');
+      expect(jsonDecode(r.body), {'mealType': 'snack', 'servings': 2});
+      return _ok({'entry': {
+        'id': 9, 'mealType': 'snack', 'name': 'Mango Shake', 'servingDesc': '1 glass', 'servings': 2,
+        'kcal': 500, 'proteinG': 8, 'carbsG': 100, 'fatG': 7, 'source': 'fatsecret', 'foodId': 4, 'externalId': 'fs-1',
+      }});
+    }));
+    final entry = await repo.updateEntry(id: 9, mealType: 'snack', servings: 2);
+    expect(entry.id, 9);
+    expect(entry.mealType, 'snack');
+    expect(entry.kcal, 500);
+  });
+
+  test("updateEntry sends the user's own numbers as the manual food map", () async {
+    const manual = Food(
+      source: 'manual', name: 'Chicken adobo', servingDesc: '1 cup',
+      kcal: 224, proteinG: 26, carbsG: 3, fatG: 12, sugarG: 1, sodiumMg: 640,
+    );
+    final repo = _repo(MockClient((r) async {
+      expect(r.method, 'PATCH');
+      expect(r.url.path, '/api/v1/nutrition/entries/3');
+      expect(jsonDecode(r.body), {
+        'mealType': 'dinner', 'servings': 1.5,
+        'food': {
+          'source': 'manual', 'name': 'Chicken adobo', 'servingDesc': '1 cup',
+          'proteinG': 26, 'carbsG': 3, 'fatG': 12, 'sugarG': 1, 'sodiumMg': 640,
+        },
+      });
+      return _ok({'entry': {
+        'id': 3, 'mealType': 'dinner', 'name': 'Chicken adobo', 'servingDesc': '1 cup', 'servings': 1.5,
+        'kcal': 336, 'proteinG': 39, 'carbsG': 4.5, 'fatG': 18, 'sugarG': 1.5, 'sodiumMg': 960,
+        'source': 'manual', 'foodId': null, 'externalId': null,
+      }});
+    }));
+    final entry = await repo.updateEntry(id: 3, mealType: 'dinner', servings: 1.5, food: manual);
+    expect(entry.source, 'manual');
+    expect(entry.sodiumMg, 960);
+  });
+
   test('deleteEntry DELETEs by id', () async {
     final repo = _repo(MockClient((r) async {
       expect(r.method, 'DELETE');

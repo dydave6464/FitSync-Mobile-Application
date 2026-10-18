@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import 'package:fitsync/core/theme.dart';
+import 'package:fitsync/core/widgets/fs_kit.dart';
 import 'package:fitsync/features/nutrition/domain/nutrition.dart';
 import 'package:fitsync/features/nutrition/presentation/widgets/log_food_sheet.dart';
 
@@ -35,6 +36,34 @@ Future<LogChoice? Function()> _openForResult(WidgetTester tester, Food food) asy
   await tester.tap(find.text('open'));
   await tester.pumpAndSettle();
   return () => result;
+}
+
+/// Opens the sheet to change a logged food: [food] per serving, in
+/// [mealType], at [servings]. Returns a getter for its result, and whether
+/// it has closed.
+Future<({LogChoice? Function() result, bool Function() closed})> _openToChange(
+    WidgetTester tester, Food food, {String mealType = 'dinner', double servings = 1.5}) async {
+  LogChoice? result;
+  var closed = false;
+  await tester.pumpWidget(MaterialApp(home: Builder(builder: (context) => Scaffold(
+    body: TextButton(
+      onPressed: () async {
+        result = await showLogFoodSheet(context, food, mealType: mealType, servings: servings, changing: true);
+        closed = true;
+      },
+      child: const Text('open'),
+    ),
+  ))));
+  await tester.tap(find.text('open'));
+  await tester.pumpAndSettle();
+  return (result: () => result, closed: () => closed);
+}
+
+Future<void> _save(WidgetTester tester) async {
+  await tester.ensureVisible(find.byKey(const Key('logSheet.log')));
+  await tester.pumpAndSettle();
+  await tester.tap(find.byKey(const Key('logSheet.log')));
+  await tester.pumpAndSettle();
 }
 
 Future<void> _editNumbers(WidgetTester tester) async {
@@ -476,5 +505,67 @@ void main() {
     await tester.pumpAndSettle();
     await _editNumbers(tester);
     expect(tester.takeException(), isNull);
+  });
+
+  group('changing a logged food', () {
+    testWidgets("opens on the entry's meal and servings, with Save changes in place of Log", (tester) async {
+      await _openToChange(tester, _rice, mealType: 'dinner', servings: 1.5);
+      expect(find.text('1.5'), findsOneWidget);
+      expect(find.text('308 kcal'), findsOneWidget); // 205 x 1.5
+      final meals = tester.widget<FsSegmented>(find.byType(FsSegmented));
+      expect(meals.selected, 'dinner');
+      expect(find.text('Save changes'), findsOneWidget);
+      expect(find.text('Log'), findsNothing);
+    });
+
+    testWidgets('saving with nothing changed closes the sheet and returns nothing', (tester) async {
+      final sheet = await _openToChange(tester, _rice);
+      await _editNumbers(tester); // opened but left as they were
+      await _save(tester);
+      expect(sheet.closed(), isTrue);
+      expect(sheet.result(), isNull);
+      expect(find.text('Save changes'), findsNothing);
+    });
+
+    testWidgets('a new meal comes back in the choice, with the numbers left as they were', (tester) async {
+      final sheet = await _openToChange(tester, _rice, mealType: 'dinner', servings: 1.5);
+      await tester.tap(find.text('Snack'));
+      await tester.pump();
+      await _save(tester);
+      final choice = sheet.result()!;
+      expect(choice.mealType, 'snack');
+      expect(choice.servings, 1.5);
+      expect(choice.edited, isNull);
+    });
+
+    testWidgets('new servings come back in the choice', (tester) async {
+      final sheet = await _openToChange(tester, _rice, mealType: 'dinner', servings: 1.5);
+      await tester.tap(find.byKey(const Key('servings.plus')));
+      await tester.pump();
+      await _save(tester);
+      final choice = sheet.result()!;
+      expect(choice.mealType, 'dinner');
+      expect(choice.servings, 2);
+      expect(choice.edited, isNull);
+    });
+
+    testWidgets("new numbers come back as the user's own food, per serving", (tester) async {
+      final sheet = await _openToChange(tester, _rice);
+      await _editNumbers(tester);
+      await tester.enterText(find.descendant(of: find.byKey(const Key('logSheet.protein')), matching: find.byType(TextField)), '10');
+      await tester.pump();
+      await _save(tester);
+      final edited = sheet.result()!.edited!;
+      expect(edited.source, 'manual');
+      expect(edited.name, 'Steamed white rice');
+      expect(edited.proteinG, 10);
+      expect(edited.kcal, 222);
+    });
+
+    testWidgets('logging still reads Log', (tester) async {
+      await _open(tester, _rice);
+      expect(find.text('Log'), findsOneWidget);
+      expect(find.text('Save changes'), findsNothing);
+    });
   });
 }
