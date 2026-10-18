@@ -23,7 +23,8 @@ class BodyWeightReference {
   final String kind;
   final double weightKg;
 
-  String get label => kind == 'goal' ? 'goal' : 'start';
+  /// What the dashed line is called where it is drawn: "Goal 70 kg".
+  String get label => kind == 'goal' ? 'Goal' : 'Start';
 
   factory BodyWeightReference.fromJson(Map<String, dynamic> json) =>
       BodyWeightReference(

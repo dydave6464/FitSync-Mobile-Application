@@ -1,10 +1,14 @@
 import 'package:flutter/material.dart';
 
 import '../../../../core/theme.dart';
-import '../../../../core/widgets/fs_charts.dart' show FsLineChart, FsPoint;
+import '../../../../core/units.dart';
+import '../../../../core/widgets/fs_charts.dart' show FsBarChart;
 import '../../../../core/widgets/fs_kit.dart';
 import '../../../sessions/domain/session_history.dart';
 import '../../../sessions/domain/training_analytics.dart';
+import '../../../sessions/domain/volume_labels.dart' show volumeToday;
+import '../../../sessions/presentation/widgets/progress_cards.dart'
+    show volumeBars;
 
 /// Home's snapshot of training this month, opening the Progress tab.
 ///
@@ -20,16 +24,19 @@ class ProgressSnapshotCard extends StatelessWidget {
     required this.summary,
     required this.analytics,
     required this.onTap,
+    this.unit = WeightUnit.kg,
   });
 
   final TrainingSummary summary;
   final TrainingAnalytics analytics;
   final VoidCallback onTap;
 
+  /// Everything on [analytics] is kilograms; this is how the bars are drawn.
+  final WeightUnit unit;
+
   @override
   Widget build(BuildContext context) {
     final t = context.fs;
-    final buckets = analytics.volume;
     final change = analytics.change;
 
     return FsCard(
@@ -64,18 +71,15 @@ class ProgressSnapshotCard extends StatelessWidget {
               style: TextStyle(fontSize: 13, color: t.text2, height: 1.4),
             )
           else ...[
-            FsLineChart(
-              points: [
-                for (var i = 0; i < buckets.length; i++)
-                  FsPoint(
-                    x: i.toDouble(),
-                    y: buckets[i].volumeKg,
-                    label: buckets[i].label,
-                  ),
-              ],
-              // As on the Progress tab: an untrained stretch IS zero.
-              minYBand: 1,
+            // The Progress tab's bars in miniature, in the user's unit. No
+            // axis words and no touch: the whole card is the way into the
+            // full chart, and a tap here belongs to it.
+            FsBarChart(
+              label: 'Training volume this month',
+              bars: volumeBars(analytics, unit, volumeToday()),
               height: 52,
+              showLabels: false,
+              interactive: false,
             ),
             const SizedBox(height: 10),
             Row(

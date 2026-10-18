@@ -330,7 +330,12 @@ class _Progress extends ConsumerWidget {
     // design (it says less, so it can be shorter), only a placeholder
     // standing in for data about to replace it must match.
     if (s == null || a == null) return const SizedBox(height: 163);
-    return ProgressSnapshotCard(summary: s, analytics: a, onTap: onTap);
+    return ProgressSnapshotCard(
+      summary: s,
+      analytics: a,
+      onTap: onTap,
+      unit: ref.watch(weightUnitProvider),
+    );
   }
 }
 
