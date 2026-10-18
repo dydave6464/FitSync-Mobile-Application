@@ -16,11 +16,37 @@ InjuryRiskEstimate _estimate({
 );
 
 /// The reasons' words, in order, or null when there is no list.
-List<String>? _why(List<RiskDriver>? drivers, {String? source = 'model'}) =>
-    _estimate(
-      source: source,
-      drivers: drivers,
-    ).whyReasons?.map((r) => r.text).toList();
+List<String>? _why(
+  List<RiskDriver>? drivers, {
+  String? source = 'model',
+  MorningCheckin? today,
+}) => _estimate(
+  source: source,
+  drivers: drivers,
+).whyReasons(today: today)?.map((r) => r.text).toList();
+
+/// This morning's check-in, everyday answers unless told otherwise.
+MorningCheckin _checkin({
+  String sleepQuality = 'good',
+  String muscleSoreness = 'mild',
+  String energy = 'moderate',
+  String stress = 'low',
+}) => MorningCheckin(
+  checkinId: 1,
+  checkinDate: '2026-10-18',
+  sleepQuality: sleepQuality,
+  muscleSoreness: muscleSoreness,
+  energy: energy,
+  stress: stress,
+);
+
+/// A check-in whose answer to [key] is [value], everyday elsewhere.
+MorningCheckin _answering(String key, String value) => switch (key) {
+  'sleep' => _checkin(sleepQuality: value),
+  'soreness' => _checkin(muscleSoreness: value),
+  'energy' => _checkin(energy: value),
+  _ => _checkin(stress: value),
+};
 
 void main() {
   group('the line under the ring', () {
@@ -115,23 +141,48 @@ void main() {
       }
     });
 
-    test('check-in drivers read as recent, never as today', () {
-      // The worst answer over the last 3 days, so each says "lately" and
-      // none says "today".
+    // A driver is the worst answer over the estimate's last 3 days. On a
+    // first morning that is just this morning's, and "lately" claimed a
+    // pattern one check-in cannot show.
+    test("a check-in driver that is this morning's answer says today", () {
       for (final (key, value, words) in [
-        ('sleep', 'poor', 'Poor sleep lately'),
-        ('sleep', 'fair', 'Only fair sleep lately'),
-        ('soreness', 'moderate', 'Sore muscles lately'),
-        ('soreness', 'severe', 'Very sore muscles lately'),
-        ('energy', 'low', 'Low energy lately'),
-        ('energy', 'very_low', 'Very low energy lately'),
-        ('stress', 'moderate', 'Moderate stress lately'),
-        ('stress', 'high', 'High stress lately'),
+        ('sleep', 'poor', 'Poor sleep today'),
+        ('sleep', 'fair', 'Only fair sleep today'),
+        ('soreness', 'moderate', 'Sore muscles today'),
+        ('soreness', 'severe', 'Very sore muscles today'),
+        ('energy', 'low', 'Low energy today'),
+        ('energy', 'very_low', 'Very low energy today'),
+        ('stress', 'moderate', 'Moderate stress today'),
+        ('stress', 'high', 'High stress today'),
       ]) {
-        expect(_why([RiskDriver(key: key, value: value)]), [
+        expect(
+          _why([
+            RiskDriver(key: key, value: value),
+          ], today: _answering(key, value)),
+          [words],
+          reason: '$key $value',
+        );
+      }
+    });
+
+    test('one only an earlier morning gave says the last few days', () {
+      // This morning was better, so the worst answer was an earlier day's.
+      for (final (key, value, words) in [
+        ('sleep', 'poor', 'Poor sleep in the last few days'),
+        ('soreness', 'severe', 'Very sore muscles in the last few days'),
+        ('energy', 'very_low', 'Very low energy in the last few days'),
+        ('stress', 'high', 'High stress in the last few days'),
+      ]) {
+        expect(_why([RiskDriver(key: key, value: value)], today: _checkin()), [
           words,
         ], reason: '$key $value');
       }
+    });
+
+    test('without this morning to compare, it never claims today', () {
+      expect(_why([const RiskDriver(key: 'sleep', value: 'fair')]), [
+        'Only fair sleep in the last few days',
+      ]);
     });
 
     test('everyday answers have no words, since they are never drivers', () {
@@ -160,10 +211,10 @@ void main() {
             RiskDriver(key: 'soreness', value: 'moderate'),
             RiskDriver(key: 'injury_history', value: 3),
           ],
-        ).whyReasons!;
+        ).whyReasons()!;
         expect(reasons.map((r) => r.text), [
           'Training 60% above your usual week',
-          'Sore muscles lately',
+          'Sore muscles in the last few days',
           '3 past injuries',
         ]);
         // The key goes with the words, so the screen can give each its icon.
@@ -194,7 +245,7 @@ void main() {
           const RiskDriver(key: 'moon_phase', value: 'full'),
           const RiskDriver(key: 'sleep', value: 'poor'),
         ]),
-        ['Poor sleep lately'],
+        ['Poor sleep in the last few days'],
       );
       expect(
         _why([const RiskDriver(key: 'moon_phase', value: 'full')]),
@@ -203,7 +254,87 @@ void main() {
     });
   });
 
+  group('the heading over the reasons', () {
+    // "Why" under "Train as planned" read as if poor sleep were why all was
+    // well. The reasons are what pushed the score up, so the heading says
+    // so in the verdict's own terms.
+    test('a low estimate calls them worth watching', () {
+      expect(
+        _estimate(level: 'low').whyHeading(const [
+          RiskReason(key: 'sleep', text: 'Poor sleep today'),
+        ]),
+        'Worth watching',
+      );
+    });
+
+    test('a moderate or high one says they are raising it', () {
+      final reasons = [
+        const RiskReason(key: 'sleep', text: 'Poor sleep today'),
+      ];
+      expect(
+        _estimate(level: 'moderate').whyHeading(reasons),
+        "What's raising it",
+      );
+      expect(_estimate(level: 'high').whyHeading(reasons), "What's raising it");
+    });
+
+    // The model can lift a score with no one answer over the bar; "What's
+    // raising it: nothing stands out" would contradict itself.
+    test('with nothing standing out it is worth watching at any level', () {
+      for (final level in ['low', 'moderate', 'high']) {
+        expect(
+          _estimate(level: level).whyHeading(const []),
+          'Worth watching',
+          reason: level,
+        );
+      }
+    });
+  });
+
+  group('the few-check-ins note', () {
+    test('says how many check-ins there are while under three', () {
+      expect(
+        fewCheckinsNote(1),
+        'Based on 1 check-in. It gets more accurate as you check in each '
+        'morning.',
+      );
+      expect(
+        fewCheckinsNote(2),
+        'Based on 2 check-ins. It gets more accurate as you check in each '
+        'morning.',
+      );
+    });
+
+    test('is gone from the third, and when the count is unknown', () {
+      expect(fewCheckinsNote(3), isNull);
+      expect(fewCheckinsNote(7), isNull);
+      // An older server sends no count; nothing is guessed.
+      expect(fewCheckinsNote(null), isNull);
+      // No check-in means no estimate to qualify.
+      expect(fewCheckinsNote(0), isNull);
+    });
+  });
+
   group('parsing', () {
+    test("the overview reads the server's check-in count", () {
+      final o = RecoveryOverview.fromJson({
+        'todayCheckin': null,
+        'latestEstimate': null,
+        'checkinCount': 2,
+        'load': [],
+      });
+      expect(o.checkinCount, 2);
+      // An older server sends none; nothing is guessed.
+      expect(
+        RecoveryOverview.fromJson({
+          'todayCheckin': null,
+          'latestEstimate': null,
+          'load': [],
+        }).checkinCount,
+        isNull,
+      );
+    });
+
     test('an old row without the new fields still parses', () {
       final e = InjuryRiskEstimate.fromJson({
         'riskLevel': 'low',
@@ -213,7 +344,7 @@ void main() {
       expect(e.source, isNull);
       expect(e.loadPct, isNull);
       expect(e.drivers, isNull);
-      expect(e.whyReasons, isNull);
+      expect(e.whyReasons(), isNull);
     });
 
     test('a new row carries its source, load and drivers', () {
@@ -232,8 +363,8 @@ void main() {
       expect(e.source, 'model');
       expect(e.loadPct, 35.0);
       expect(e.drivers!.map((d) => d.key), ['sleep', 'load', 'injury_history']);
-      expect(e.whyReasons!.map((r) => r.text), [
-        'Poor sleep lately',
+      expect(e.whyReasons()!.map((r) => r.text), [
+        'Poor sleep in the last few days',
         'Training 35% above your usual week',
         '2 past injuries',
       ]);
@@ -252,7 +383,7 @@ void main() {
       });
       expect(e.source, isNull);
       expect(e.drivers, isEmpty);
-      expect(e.whyReasons, isNull);
+      expect(e.whyReasons(), isNull);
     });
 
     test('a new row with nothing standing out says so', () {
@@ -264,7 +395,7 @@ void main() {
         'loadPct': 0,
         'drivers': <Object>[],
       });
-      expect(e.whyReasons, isEmpty);
+      expect(e.whyReasons(), isEmpty);
     });
 
     test('malformed drivers are dropped, not thrown on', () {

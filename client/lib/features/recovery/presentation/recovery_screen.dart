@@ -80,6 +80,7 @@ class _RecoveryView extends StatelessWidget {
                 _EstimateCard(
                   estimate: estimate,
                   todayCheckin: overview.todayCheckin,
+                  checkinCount: overview.checkinCount,
                   t: t,
                 ),
               const SizedBox(height: 12),
@@ -172,11 +173,13 @@ class _EstimateCard extends StatelessWidget {
   const _EstimateCard({
     required this.estimate,
     required this.todayCheckin,
+    required this.checkinCount,
     required this.t,
   });
 
   final InjuryRiskEstimate estimate;
   final MorningCheckin? todayCheckin;
+  final int? checkinCount;
   final FsTokens t;
 
   @override
@@ -253,7 +256,8 @@ class _EstimateCard extends StatelessWidget {
         _AdviceBox(
           estimate: estimate,
           level: level,
-          checkedInToday: today != null,
+          todayCheckin: today,
+          checkinCount: checkinCount,
           t: t,
         ),
       ],
@@ -268,7 +272,8 @@ class _AdviceBox extends StatelessWidget {
   const _AdviceBox({
     required this.estimate,
     required this.level,
-    required this.checkedInToday,
+    required this.todayCheckin,
+    required this.checkinCount,
     required this.t,
   });
 
@@ -276,17 +281,23 @@ class _AdviceBox extends StatelessWidget {
 
   /// The level's colour, or null for an earlier day's estimate.
   final Color? level;
-  final bool checkedInToday;
+
+  /// This morning's check-in, which says whether each reason is today's.
+  final MorningCheckin? todayCheckin;
+  final int? checkinCount;
   final FsTokens t;
 
   @override
   Widget build(BuildContext context) {
     final level = this.level;
     final isToday = level != null;
+    final checkedInToday = todayCheckin != null;
     final edge = level?.withValues(alpha: 0.35) ?? t.line;
     // The reasons, like the advice, held for the day they were worked out,
-    // so an earlier day's box shows neither.
-    final reasons = isToday ? estimate.whyReasons : null;
+    // so an earlier day's box shows neither -- nor the note on how few
+    // check-ins they rest on.
+    final reasons = isToday ? estimate.whyReasons(today: todayCheckin) : null;
+    final note = isToday ? fewCheckinsNote(checkinCount) : null;
 
     return Container(
       key: const Key('recovery.box'),
@@ -375,7 +386,7 @@ class _AdviceBox extends StatelessWidget {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Text(
-                    'Why',
+                    estimate.whyHeading(reasons),
                     style: TextStyle(
                       fontSize: 12,
                       fontWeight: FontWeight.w600,
@@ -398,14 +409,30 @@ class _AdviceBox extends StatelessWidget {
               ),
             ),
           ],
+          // Under the reasons, as what qualifies them: one or two mornings
+          // are all this estimate has to go on, and checking in is what
+          // gives it more.
+          if (note != null) ...[
+            const SizedBox(height: 10),
+            // A node of its own, so it is heard here, after the reasons,
+            // rather than folded into the card's label ahead of the ring.
+            Semantics(
+              container: true,
+              child: Text(
+                note,
+                key: const Key('recovery.fewCheckins'),
+                style: TextStyle(fontSize: 12, color: t.text2, height: 1.4),
+              ),
+            ),
+          ],
         ],
       ),
     );
   }
 }
 
-/// One reason in the "Why" list, with an icon for the kind of input it came
-/// from.
+/// One reason in the list under the advice, with an icon for the kind of
+/// input it came from.
 class _ReasonRow extends StatelessWidget {
   const _ReasonRow(this.reason, {required this.t});
 

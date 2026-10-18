@@ -60,10 +60,12 @@ InjuryRiskEstimate _todays({
 RecoveryOverview _withToday(
   InjuryRiskEstimate estimate, {
   List<VolumeBucket> load = const [],
+  int? checkinCount,
 }) => RecoveryOverview(
   todayCheckin: _todayCheckin,
   latestEstimate: estimate,
   load: load,
+  checkinCount: checkinCount,
 );
 
 final _tokens = fsLightTheme().extension<FsTokens>()!;
@@ -405,14 +407,14 @@ void main() {
       expect(find.text("Check in for today's estimate"), findsOneWidget);
     });
 
-    testWidgets('the "Why" list names what raised it, a reason a line', (
+    testWidgets('the reasons name what raised it, a reason a line', (
       tester,
     ) async {
       await _pump(tester, _withToday(_todays()));
       final why = find.byKey(const Key('recovery.why'));
       final sleep = find.descendant(
         of: why,
-        matching: find.text('Poor sleep lately'),
+        matching: find.text('Poor sleep today'),
       );
       final load = find.descendant(
         of: why,
@@ -527,6 +529,108 @@ void main() {
       expect(find.textContaining('stands out'), findsNothing);
     });
 
+    // "Why" under "Train as planned" read as if poor sleep were why all was
+    // well; the heading now says what the list is in the verdict's terms.
+    testWidgets('a moderate estimate heads its reasons "What\'s raising it"', (
+      tester,
+    ) async {
+      await _pump(tester, _withToday(_todays()));
+      final why = find.byKey(const Key('recovery.why'));
+
+      expect(
+        find.descendant(of: why, matching: find.text("What's raising it")),
+        findsOneWidget,
+      );
+      expect(
+        find.descendant(of: why, matching: find.text('Why')),
+        findsNothing,
+      );
+    });
+
+    // The model can raise a score with no one answer over the bar. "What's
+    // raising it: nothing stands out" would contradict itself.
+    testWidgets('with nothing standing out, the heading does not say raising', (
+      tester,
+    ) async {
+      await _pump(tester, _withToday(_todays(drivers: const [])));
+      final why = find.byKey(const Key('recovery.why'));
+
+      expect(
+        find.descendant(of: why, matching: find.text('Worth watching')),
+        findsOneWidget,
+      );
+      expect(find.text("What's raising it"), findsNothing);
+    });
+
+    testWidgets('a low estimate heads them "Worth watching"', (tester) async {
+      await _pump(tester, _withToday(_todays(level: 'low', score: 30)));
+
+      expect(
+        find.descendant(
+          of: find.byKey(const Key('recovery.why')),
+          matching: find.text('Worth watching'),
+        ),
+        findsOneWidget,
+      );
+    });
+
+    // A first morning's estimate rests on one check-in; the box says so
+    // and what makes it better.
+    testWidgets('on a first morning the box says it rests on one check-in', (
+      tester,
+    ) async {
+      await _pump(tester, _withToday(_todays(), checkinCount: 1));
+
+      expect(
+        find.descendant(
+          of: find.byKey(const Key('recovery.box')),
+          matching: find.text(
+            'Based on 1 check-in. It gets more accurate as you check in '
+            'each morning.',
+          ),
+        ),
+        findsOneWidget,
+      );
+    });
+
+    // Read where it sits, after the reasons, rather than folded into the
+    // card's label ahead of the ring.
+    testWidgets('a screen reader hears the note as a line of its own', (
+      tester,
+    ) async {
+      final semantics = tester.ensureSemantics();
+      await _pump(tester, _withToday(_todays(), checkinCount: 1));
+
+      expect(
+        find.bySemanticsLabel(
+          'Based on 1 check-in. It gets more accurate as you check in each '
+          'morning.',
+        ),
+        findsOneWidget,
+      );
+      semantics.dispose();
+    });
+
+    testWidgets('the note is gone from the third check-in', (tester) async {
+      await _pump(tester, _withToday(_todays(), checkinCount: 3));
+
+      expect(find.textContaining('Based on'), findsNothing);
+    });
+
+    testWidgets("an earlier day's estimate carries no note", (tester) async {
+      await _pump(
+        tester,
+        const RecoveryOverview(
+          todayCheckin: null,
+          latestEstimate: _estimate,
+          load: [],
+          checkinCount: 1,
+        ),
+      );
+
+      expect(find.textContaining('Based on'), findsNothing);
+    });
+
     testWidgets('the ring and readiness are named for a screen reader', (
       tester,
     ) async {
@@ -543,7 +647,8 @@ void main() {
       expect(
         find.bySemanticsLabel(
           RegExp(
-            r'^Why\nPoor sleep lately\nTraining 35% above your usual week$',
+            r"^What's raising it\nPoor sleep today\n"
+            r'Training 35% above your usual week$',
           ),
         ),
         findsOneWidget,
@@ -760,6 +865,9 @@ void main() {
             for (var i = 0; i < 7; i++)
               VolumeBucket(label: '-${6 - i}d', volumeKg: 1000.0 * i),
           ],
+          // The note too, and today's soreness is mild, so the severe one
+          // takes the longest wording: "...in the last few days".
+          checkinCount: 1,
         ),
       );
       expect(tester.takeException(), isNull);
