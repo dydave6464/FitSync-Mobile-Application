@@ -117,9 +117,9 @@ class _HowToReadSheet extends StatelessWidget {
                     ),
                     _Paragraph(
                       'In your first week there is no usual week to compare '
-                      'with, so training load adds nothing. For the next few '
-                      'weeks your usual week is still being worked out, so '
-                      'training load can read higher than it really is.',
+                      'with, so training load adds nothing. After that, your '
+                      'usual week is the average of the weeks you have '
+                      'trained before this one, up to three.',
                       t: t,
                     ),
                     _Heading("How it's worked out", t: t),

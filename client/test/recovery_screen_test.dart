@@ -180,10 +180,9 @@ void main() {
       expect(find.text('Moderate'), findsOneWidget);
       // 100 - 42.5, rounded up.
       expect(find.text('Readiness 58'), findsOneWidget);
-      expect(
-        find.textContaining('the other way up: higher is better'),
-        findsOneWidget,
-      );
+      // The caption explaining Readiness was noise on the tab itself; the
+      // How-to-read sheet carries it.
+      expect(find.textContaining('the other way up'), findsNothing);
     },
   );
 
@@ -530,16 +529,20 @@ void main() {
         reason: 'the rules are introduced before the model',
       );
       expect(how, isNot(contains('gives the estimate')));
-      // The server compares against a usual week from week 2 on, and while
-      // that usual week is still short the load reads high, not zero.
+      // The usual week is averaged over the weeks a user has trained in, up
+      // to three, so a newcomer's early weeks no longer read high.
       expect(
         find.descendant(
           of: sheet,
           matching: find.textContaining(
-            'training load can read higher than it really is',
+            'the average of the weeks you have trained before this one',
           ),
         ),
         findsOneWidget,
+      );
+      expect(
+        find.textContaining('can read higher than it really is'),
+        findsNothing,
       );
       expect(find.textContaining('a few weeks of workouts'), findsNothing);
       expect(

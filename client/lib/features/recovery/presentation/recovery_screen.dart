@@ -339,11 +339,6 @@ class _FeedsScoreCard extends ConsumerWidget {
           detail: 'From your profile, and pain you report after a workout',
           t: t,
         ),
-        const SizedBox(height: 14),
-        Text(
-          'Readiness is the same estimate the other way up: higher is better.',
-          style: TextStyle(fontSize: 12, color: t.text2),
-        ),
       ],
     );
   }
