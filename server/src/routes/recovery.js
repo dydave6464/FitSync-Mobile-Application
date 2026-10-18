@@ -83,8 +83,9 @@ const MAX_LOAD_PCT = 999.99;
 function toLoadPct(value) {
   if (!Number.isFinite(value) || value < 0) return null;
   // Rounded through its decimal text rather than Math.round(value * 100),
-  // which misreads values such as 999.995 whose binary form sits just below
-  // the half; the driver sends MySQL that same text and it rounds it half up.
+  // which misreads values whose binary form sits just below the half (1.005
+  // becomes 1.00); the driver sends MySQL that same text and it rounds it
+  // half up.
   // Text already in exponent form is a value far below a cent (or far beyond
   // the column), where plain arithmetic gives the same answer.
   const text = String(value);
@@ -94,10 +95,11 @@ function toLoadPct(value) {
   return Number.isFinite(rounded) && rounded <= MAX_LOAD_PCT ? rounded : null;
 }
 
-/// The drivers worth storing: known keys with well-typed values, in the
-/// service's order, at most MAX_DRIVERS. Anything else is dropped one entry at
-/// a time rather than failing the estimate -- a driver is the explanation, and
-/// a bad one should cost its line on the tab, not the level above it. Absent
+/// The drivers worth storing: known keys whose values could have reached the
+/// 5-point driver bar, in the service's order, at most MAX_DRIVERS. Anything
+/// else is dropped one entry at a time rather than failing the estimate -- a
+/// driver is the explanation, and a bad one should cost its line on the tab,
+/// not the level above it. Absent
 /// altogether (a service from before drivers existed), or not a list, is null
 /// and stored as NULL, like an estimate from before migration 037.
 function toDrivers(raw) {

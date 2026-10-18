@@ -123,16 +123,19 @@ class _HowToReadSheet extends StatelessWidget {
                       t: t,
                     ),
                     _Heading("How it's worked out", t: t),
-                    // The rules come first because they decide the estimate
-                    // on most days today; the model is described as what it
-                    // is, trained on simulated data, never as the engine.
+                    // The rules come first because they set the level on
+                    // almost every day today (the model raised it on about
+                    // 0.07% of the cross-validated days); the model is
+                    // described as what it is, trained on simulated data,
+                    // never as the engine.
                     _Paragraph(
                       'A set of safety rules and a machine-learning model (a '
                       'random forest, built with scikit-learn) both score '
                       'your inputs, and the higher score counts, so the '
                       'estimate is never lower than the rules say. Today the '
-                      'rules decide on most days, and they score it alone '
-                      'when the model is unavailable.',
+                      'rules set the level on almost every day; the model '
+                      'can only raise it. The rules score it alone when the '
+                      'model is unavailable.',
                       t: t,
                     ),
                     _Paragraph(

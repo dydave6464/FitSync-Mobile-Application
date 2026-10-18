@@ -241,7 +241,8 @@ class RiskModel:
     """The loaded (or in-process trained) forest, or its absence.
 
     status is what /health reports: "loaded" from a file, "trained" in this
-    process because no file was there, "absent" when there is no usable model.
+    process because no file was there or the file was saved by another
+    scikit-learn (or records none), "absent" when there is no usable model.
     """
 
     def __init__(self, status: str, classifier: Optional[Any] = None,

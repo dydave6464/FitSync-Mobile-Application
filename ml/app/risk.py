@@ -57,7 +57,9 @@ MAX_DRIVERS = 3
 # Everyday answers (good sleep 2, mild soreness 4, moderate energy 2, low
 # stress 2) and a week under 10% above the usual stay below it, so an ordinary
 # day can honestly say nothing stands out. Every injury (5) and any pain
-# (mild 5) clears it. The server's driver validator applies the same bar.
+# (mild 5) clears it. The server's driver validator, which never sees the
+# window, applies a looser check: it drops any value that could never reach
+# the bar on its own.
 DRIVER_MIN_POINTS = 5.0
 
 MODERATE_AT = 40.0

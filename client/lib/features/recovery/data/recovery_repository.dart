@@ -19,12 +19,11 @@ class RecoveryRepository {
   ///
   /// Nothing is read back out. The `estimate` this POST returns is the
   /// server's checked copy of the ML service's answer (`toEstimate` in
-  /// server/src/routes/recovery.js), before it is stored, so its drivers can
-  /// differ from the ones GET later reads back, and it has no `checkinDate`,
-  /// so it cannot build an [InjuryRiskEstimate], which is dated. The dated
-  /// one comes from GET /api/v1/recovery, which joins the check-in that
-  /// produced it; callers invalidate the overview rather than using a return
-  /// value here, and the two shapes stay one shape each.
+  /// server/src/routes/recovery.js), the same list it stores, but it has no
+  /// `checkinDate`, so it cannot build an [InjuryRiskEstimate], which is
+  /// dated. The dated one comes from GET /api/v1/recovery, which joins the
+  /// check-in that produced it; callers invalidate the overview rather than
+  /// using a return value here, and the two shapes stay one shape each.
   Future<void> checkIn(Map<String, String> answers) async {
     await _api.postJson('/api/v1/recovery/checkin', answers);
   }

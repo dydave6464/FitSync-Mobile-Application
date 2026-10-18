@@ -68,7 +68,8 @@ class InjuryRiskEstimate {
   final double? loadPct;
 
   /// Up to three inputs that raised the estimate, most influential first.
-  /// Null when the row predates drivers; empty when nothing stood out.
+  /// Empty both when nothing stood out and when the row predates drivers
+  /// (the server sends [] for both); [source] is what tells them apart.
   final List<RiskDriver>? drivers;
 
   /// How far round the ring to draw: the 0-100 score itself, so a low 35

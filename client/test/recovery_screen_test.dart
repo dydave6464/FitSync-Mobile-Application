@@ -509,8 +509,8 @@ void main() {
         ),
         findsOneWidget,
       );
-      // Both score the inputs, the higher counts, and today the rules
-      // decide on most days. The rules come first: the model is not the
+      // Both score the inputs, the higher counts, and today the rules set
+      // the level on almost every day. The rules come first: the model is not the
       // main engine.
       final how = tester
           .widgetList<Text>(
@@ -519,9 +519,11 @@ void main() {
           .map((t) => t.data ?? '')
           .join(' ');
       expect(how, contains('the higher score counts'));
-      expect(how, contains('the rules decide on most days'));
+      expect(how, contains('the rules set the level on almost every day'));
+      expect(how, contains('the model can only raise it'));
       expect(how, contains('retrained on real check-in outcomes'));
       final worked = how.substring(how.indexOf("How it's worked out"));
+      expect(worked, contains('safety rules'));
       expect(
         worked.indexOf('safety rules'),
         lessThan(worked.indexOf('model')),

@@ -15,9 +15,10 @@
 -- rather than one recomputed later from a week that has since moved on.
 --
 -- drivers: up to three {key, value} pairs, most influential first. An empty
--- array means nothing stood out; NULL means the estimate predates this
--- migration (or came from a service that sent none), and every column here
--- is NULL for those rows.
+-- array means nothing stood out. NULL means the estimate predates this
+-- migration (every column here is NULL then) or came from a service that
+-- sent a source but no drivers; GET reads both as [] and `source` tells the
+-- two apart.
 ALTER TABLE injury_risk_estimates
   ADD COLUMN source ENUM('model','rules') NULL AFTER training_load_score,
   ADD COLUMN model_version VARCHAR(40) NULL AFTER source,
