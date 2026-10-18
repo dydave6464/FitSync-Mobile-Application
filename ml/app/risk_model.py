@@ -23,6 +23,7 @@ How its score is used:
 """
 import logging
 import math
+import os
 from functools import lru_cache
 from typing import Any, Dict, Optional, Sequence
 
@@ -215,6 +216,48 @@ class RiskModel:
         self.status = status
         self._classifier = classifier
         self.version = version if classifier is not None else None
+
+    @classmethod
+    def load(cls, settings) -> "RiskModel":
+        """The model file if it is there and sound, else one trained in-process.
+
+        A missing file is the normal state of a fresh checkout (models/*.joblib
+        is git-ignored), so the service trains the default model from the
+        seeded simulation -- about a second -- and keeps it in memory; it never
+        writes into its model directory itself. A file that is there but
+        unusable is a different story: someone put it there on purpose, so
+        quietly replacing it with the default would hide the problem. It is
+        logged and the rules serve alone.
+        """
+        path = os.path.join(settings.model_dir, MODEL_FILENAME)
+        if not os.path.isfile(path):
+            try:
+                return cls(status="trained", classifier=default_classifier(),
+                           version=MODEL_VERSION)
+            except Exception as err:
+                logger.error("could not train the injury-risk model in-process, "
+                             "serving rules: %s", err)
+                return cls(status="absent")
+        try:
+            import joblib
+
+            stored = joblib.load(path)
+            if not isinstance(stored, dict):
+                raise ValueError("not a model bundle (expected a dict)")
+            if list(stored.get("features") or []) != list(risk_data.FEATURES):
+                raise ValueError("trained on features {!r}, expected {!r}".format(
+                    stored.get("features"), list(risk_data.FEATURES)))
+            classifier = stored.get("model")
+            if not hasattr(classifier, "predict_proba"):
+                raise ValueError("bundle holds no classifier")
+            return cls(status="loaded", classifier=classifier,
+                       version=str(stored.get("version") or "unknown"))
+        except Exception as err:
+            # Corrupt, truncated, version-mismatched, or trained on other
+            # columns. None of those may fail a user's request.
+            logger.error("injury-risk model at %s is unusable, serving rules: %s",
+                         path, err)
+            return cls(status="absent")
 
     @property
     def usable(self) -> bool:
