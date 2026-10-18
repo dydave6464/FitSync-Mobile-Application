@@ -82,11 +82,16 @@ class _RecoveryView extends StatelessWidget {
                   todayCheckin: overview.todayCheckin,
                   t: t,
                 ),
-              const SizedBox(height: 14),
+              const SizedBox(height: 12),
               // The inputs are named on the next card down, so this line
-              // keeps only the warning.
+              // keeps only the warning. Centred under the box, as the ring
+              // above it is; under the empty state's line it starts where
+              // that line does.
               Text(
                 'An estimate, not a medical diagnosis.',
+                textAlign: estimate == null
+                    ? TextAlign.start
+                    : TextAlign.center,
                 style: TextStyle(fontSize: 12, color: t.text2, height: 1.4),
               ),
             ],
@@ -177,18 +182,16 @@ class _EstimateCard extends StatelessWidget {
     // other is an earlier day's: none checked in yet, or today's was saved
     // while the ML service was down.
     final isToday = today != null && estimate.checkinDate == today.checkinDate;
-    // An earlier day's ring is greyed, as Home's readiness ring is, so its
+    // The level's colour, for the ring and the box. Null for an earlier
+    // day's estimate, which is greyed, as Home's readiness ring is, so its
     // colour is not read as today's verdict.
-    final color = !isToday
-        ? t.text3
-        : switch (estimate.riskLevel) {
+    final level = isToday
+        ? switch (estimate.riskLevel) {
             'high' => t.red,
             'moderate' => t.amber,
             _ => t.accent,
-          };
-    // The reasons, like the advice, held for the day they were worked out,
-    // so an earlier day's greyed estimate shows neither.
-    final why = isToday ? estimate.whyLine : null;
+          }
+        : null;
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -202,7 +205,7 @@ class _EstimateCard extends StatelessWidget {
             excludeSemantics: true,
             child: FsRing(
               value: estimate.ringValue,
-              color: color,
+              color: level ?? t.text3,
               child: Padding(
                 padding: const EdgeInsets.all(14),
                 // The ring is a fixed size while system text can double, so
@@ -242,53 +245,202 @@ class _EstimateCard extends StatelessWidget {
             ),
           ),
         ],
-        const SizedBox(height: 10),
-        // The level's advice holds for the day it was worked out, so an
-        // earlier day's estimate says why there is none for today instead,
-        // in Home's words.
-        Text(
-          isToday
-              ? estimate.levelAdvice
-              : (today == null
-                    ? "Check in for today's estimate"
-                    : "Today's estimate is unavailable"),
-          key: const Key('recovery.advice'),
-          textAlign: TextAlign.center,
-          style: TextStyle(
-            fontSize: 14.5,
-            fontWeight: FontWeight.w700,
-            color: t.text,
-            height: 1.35,
-          ),
+        const SizedBox(height: 14),
+        _AdviceBox(
+          estimate: estimate,
+          level: level,
+          checkedInToday: today != null,
+          t: t,
         ),
-        if (!isToday) ...[
-          const SizedBox(height: 4),
-          Text(
-            'From ${formatShareExpiry(DateTime.parse(estimate.checkinDate))}',
-            textAlign: TextAlign.center,
-            style: TextStyle(fontSize: 12, color: t.text2),
+      ],
+    );
+  }
+}
+
+/// The level's advice and the reasons behind it, in one box tinted by the
+/// level, so what to do and why read as one thing. An earlier day's box is
+/// grey, as its ring is, and says why there is no advice for today instead.
+class _AdviceBox extends StatelessWidget {
+  const _AdviceBox({
+    required this.estimate,
+    required this.level,
+    required this.checkedInToday,
+    required this.t,
+  });
+
+  final InjuryRiskEstimate estimate;
+
+  /// The level's colour, or null for an earlier day's estimate.
+  final Color? level;
+  final bool checkedInToday;
+  final FsTokens t;
+
+  @override
+  Widget build(BuildContext context) {
+    final level = this.level;
+    final isToday = level != null;
+    final edge = level?.withValues(alpha: 0.35) ?? t.line;
+    // The reasons, like the advice, held for the day they were worked out,
+    // so an earlier day's box shows neither.
+    final reasons = isToday ? estimate.whyReasons : null;
+
+    return Container(
+      key: const Key('recovery.box'),
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: level?.withValues(alpha: 0.10) ?? t.surface2,
+        borderRadius: BorderRadius.circular(FsRadius.md),
+        border: Border.all(color: edge),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              // The words beside it say it all, so the icon is decoration.
+              Icon(
+                switch (isToday ? estimate.riskLevel : null) {
+                  'high' => Icons.self_improvement,
+                  'moderate' => Icons.directions_walk,
+                  'low' => Icons.check_circle_outline,
+                  _ => Icons.history,
+                },
+                size: 20,
+                color: level ?? t.text3,
+              ),
+              const SizedBox(width: 10),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    // The level's advice holds for the day it was worked
+                    // out, so an earlier day's estimate says why there is
+                    // none for today instead, in Home's words.
+                    Text(
+                      isToday
+                          ? estimate.levelAdvice
+                          : (checkedInToday
+                                ? "Today's estimate is unavailable"
+                                : "Check in for today's estimate"),
+                      key: const Key('recovery.advice'),
+                      style: TextStyle(
+                        fontSize: 14.5,
+                        fontWeight: FontWeight.w700,
+                        color: t.text,
+                        height: 1.35,
+                      ),
+                    ),
+                    if (!isToday) ...[
+                      const SizedBox(height: 4),
+                      Text(
+                        'From ${formatShareExpiry(DateTime.parse(estimate.checkinDate))}',
+                        style: TextStyle(fontSize: 12, color: t.text2),
+                      ),
+                      // Today's check-in is saved but its estimate never
+                      // came back: the same way forward as when there is no
+                      // older estimate to show.
+                      if (checkedInToday) ...[
+                        const SizedBox(height: 8),
+                        Text(
+                          'Tap Update below to try again.',
+                          key: const Key('recovery.retry'),
+                          style: TextStyle(
+                            fontSize: 13,
+                            color: t.text2,
+                            height: 1.4,
+                          ),
+                        ),
+                      ],
+                    ],
+                  ],
+                ),
+              ),
+            ],
           ),
-          // Today's check-in is saved but its estimate never came back: the
-          // same way forward as when there is no older estimate to show.
-          if (today != null) ...[
-            const SizedBox(height: 8),
-            Text(
-              'Tap Update below to try again.',
-              key: const Key('recovery.retry'),
-              textAlign: TextAlign.center,
-              style: TextStyle(fontSize: 13, color: t.text2, height: 1.4),
+          if (reasons != null) ...[
+            Padding(
+              padding: const EdgeInsets.symmetric(vertical: 12),
+              child: Divider(height: 1, thickness: 1, color: edge),
+            ),
+            // Heard as one list under its heading, not as loose lines.
+            MergeSemantics(
+              key: const Key('recovery.why'),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    'Why',
+                    style: TextStyle(
+                      fontSize: 12,
+                      fontWeight: FontWeight.w600,
+                      color: t.text2,
+                    ),
+                  ),
+                  const SizedBox(height: 6),
+                  if (reasons.isEmpty)
+                    Text(
+                      nothingStandsOut,
+                      style: TextStyle(
+                        fontSize: 13.5,
+                        color: t.text,
+                        height: 1.4,
+                      ),
+                    )
+                  else
+                    for (final r in reasons) _ReasonRow(r, t: t),
+                ],
+              ),
             ),
           ],
         ],
-        if (why != null) ...[
-          const SizedBox(height: 14),
-          Text(
-            why,
-            key: const Key('recovery.why'),
-            style: TextStyle(fontSize: 13.5, color: t.text, height: 1.4),
+      ),
+    );
+  }
+}
+
+/// One reason in the "Why" list, with an icon for the kind of input it came
+/// from.
+class _ReasonRow extends StatelessWidget {
+  const _ReasonRow(this.reason, {required this.t});
+
+  final RiskReason reason;
+  final FsTokens t;
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 3),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          // Decoration: the words say what the reason is.
+          Padding(
+            padding: const EdgeInsets.only(top: 1),
+            child: Icon(
+              switch (reason.key) {
+                'sleep' => Icons.bedtime_outlined,
+                'soreness' => Icons.fitness_center,
+                'energy' => Icons.battery_2_bar,
+                'stress' => Icons.psychology_outlined,
+                'load' => Icons.trending_up,
+                'injury_history' => Icons.personal_injury_outlined,
+                'recent_pain' => Icons.healing_outlined,
+                _ => Icons.circle_outlined,
+              },
+              size: 18,
+              color: t.text2,
+            ),
+          ),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Text(
+              reason.text,
+              style: TextStyle(fontSize: 13.5, color: t.text, height: 1.4),
+            ),
           ),
         ],
-      ],
+      ),
     );
   }
 }
@@ -308,36 +460,31 @@ class _FeedsScoreCard extends ConsumerWidget {
       children: [
         const FsEyebrow('What feeds this score'),
         const SizedBox(height: 14),
-        Row(
-          children: [
-            Expanded(
-              child: _Input(
-                title: 'Morning check-in',
-                detail:
-                    'Sleep, soreness, energy and stress over the last 3 days',
-                t: t,
-              ),
-            ),
-            const SizedBox(width: 12),
-            FsButton(
-              key: Key(hasToday ? 'recovery.update' : 'recovery.checkin'),
-              label: hasToday ? 'Update' : 'Check in',
-              small: true,
-              onPressed: () =>
-                  showCheckinSheet(context, existing: overview.todayCheckin),
-            ),
-          ],
-        ),
-        const SizedBox(height: 12),
         _Input(
-          title: 'Training load · 7 days',
-          detail: 'This week compared with your usual week',
+          icon: Icons.fact_check_outlined,
+          title: 'Morning check-in',
+          detail: 'Last 3 days',
+          trailing: FsButton(
+            key: Key(hasToday ? 'recovery.update' : 'recovery.checkin'),
+            label: hasToday ? 'Update' : 'Check in',
+            small: true,
+            onPressed: () =>
+                showCheckinSheet(context, existing: overview.todayCheckin),
+          ),
           t: t,
         ),
         const SizedBox(height: 12),
         _Input(
+          icon: Icons.bar_chart,
+          title: 'Training load',
+          detail: 'This week vs your usual',
+          t: t,
+        ),
+        const SizedBox(height: 12),
+        _Input(
+          icon: Icons.healing_outlined,
           title: 'Past injuries',
-          detail: 'From your profile, and pain you report after a workout',
+          detail: 'Profile and post-workout pain',
           t: t,
         ),
       ],
@@ -345,26 +492,88 @@ class _FeedsScoreCard extends ConsumerWidget {
   }
 }
 
-/// One input to the estimate: what it is, and what of it is read.
+/// One input to the estimate: an icon, what it is, and what of it is read,
+/// in a line each -- the ⓘ guide has the detail.
 class _Input extends StatelessWidget {
-  const _Input({required this.title, required this.detail, required this.t});
+  const _Input({
+    required this.icon,
+    required this.title,
+    required this.detail,
+    required this.t,
+    this.trailing,
+  });
 
+  final IconData icon;
   final String title;
   final String detail;
   final FsTokens t;
+  final Widget? trailing;
+
+  /// How wide the line must be to keep its button beside it: the icon, the
+  /// gaps and the button, plus room for the title's longest word. The button
+  /// and the words grow with the text size and the rest does not; measured
+  /// in the app's font, "Check in" is 86dp at 1x and 142dp at 2x, and
+  /// "Morning" 58dp and 114dp. Below it the button moves under the line, so
+  /// the title is never squeezed to a letter a row at large text.
+  static double _besideMinWidth(TextScaler scaler) =>
+      93 + 116 * scaler.scale(14) / 14;
 
   @override
   Widget build(BuildContext context) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
+    final line = Row(
       children: [
-        Text(title, style: TextStyle(fontSize: 13.5, color: t.text)),
-        const SizedBox(height: 2),
-        Text(
-          detail,
-          style: TextStyle(fontSize: 12, color: t.text2, height: 1.35),
+        FsIconTile(icon: icon),
+        const SizedBox(width: 12),
+        Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                title,
+                style: TextStyle(
+                  fontSize: 14,
+                  fontWeight: FontWeight.w600,
+                  color: t.text,
+                ),
+              ),
+              const SizedBox(height: 1),
+              Text(
+                detail,
+                style: TextStyle(fontSize: 12.5, color: t.text2, height: 1.35),
+              ),
+            ],
+          ),
         ),
       ],
+    );
+    final trailing = this.trailing;
+    if (trailing == null) return line;
+
+    return LayoutBuilder(
+      builder: (context, box) {
+        if (box.maxWidth < _besideMinWidth(MediaQuery.textScalerOf(context))) {
+          return Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              line,
+              const SizedBox(height: 10),
+              // Under the words, past the icon; a Row so the button keeps
+              // its own width rather than filling the line.
+              Padding(
+                padding: const EdgeInsets.only(left: 50),
+                child: Row(children: [trailing]),
+              ),
+            ],
+          );
+        }
+        return Row(
+          children: [
+            Expanded(child: line),
+            const SizedBox(width: 12),
+            trailing,
+          ],
+        );
+      },
     );
   }
 }

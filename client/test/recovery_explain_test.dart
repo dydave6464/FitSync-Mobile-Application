@@ -15,8 +15,12 @@ InjuryRiskEstimate _estimate({
   drivers: drivers,
 );
 
-String? _why(List<RiskDriver>? drivers, {String? source = 'model'}) =>
-    _estimate(source: source, drivers: drivers).whyLine;
+/// The reasons' words, in order, or null when there is no list.
+List<String>? _why(List<RiskDriver>? drivers, {String? source = 'model'}) =>
+    _estimate(
+      source: source,
+      drivers: drivers,
+    ).whyReasons?.map((r) => r.text).toList();
 
 void main() {
   group('the line under the ring', () {
@@ -53,90 +57,79 @@ void main() {
     });
   });
 
-  group('the "Why" line', () {
+  group('the "Why" reasons', () {
     test('a load under 1% still reads as above the usual week', () {
-      expect(
-        _why([const RiskDriver(key: 'load', value: 0.3)]),
-        'Why: this week is a little above your usual.',
-      );
-      expect(
-        _why([const RiskDriver(key: 'load', value: 0.7)]),
-        'Why: this week is 1% above your usual.',
-      );
+      expect(_why([const RiskDriver(key: 'load', value: 0.3)]), [
+        'Training a little above your usual week',
+      ]);
+      expect(_why([const RiskDriver(key: 'load', value: 0.7)]), [
+        'Training 1% above your usual week',
+      ]);
     });
 
     test('only a load at the server cap reads as a floor', () {
-      expect(
-        _why([const RiskDriver(key: 'load', value: 130)]),
-        'Why: this week is at least 130% above your usual.',
-      );
-      expect(
-        _why([const RiskDriver(key: 'load', value: 131)]),
-        'Why: this week is at least 130% above your usual.',
-      );
+      expect(_why([const RiskDriver(key: 'load', value: 130)]), [
+        'Training at least 130% above your usual week',
+      ]);
+      expect(_why([const RiskDriver(key: 'load', value: 131)]), [
+        'Training at least 130% above your usual week',
+      ]);
       // Under the cap is an exact reading, so it is never "at least 130%",
       // and never rounded up onto the cap's own figure either.
-      for (final under in [129.5, 129.6, 129.99]) {
-        expect(
-          _why([RiskDriver(key: 'load', value: under)]),
-          'Why: this week is 129% above your usual.',
-          reason: '$under',
-        );
+      for (final under in [129.4, 129.5, 129.6, 129.99]) {
+        expect(_why([RiskDriver(key: 'load', value: under)]), [
+          'Training 129% above your usual week',
+        ], reason: '$under');
       }
-      expect(
-        _why([const RiskDriver(key: 'load', value: 129.4)]),
-        'Why: this week is 129% above your usual.',
-      );
     });
 
-    test('the clauses outside the check-ins read as plain English', () {
-      expect(
-        _why([const RiskDriver(key: 'load', value: 35.0)]),
-        'Why: this week is 35% above your usual.',
-      );
-      expect(
-        _why([const RiskDriver(key: 'injury_history', value: 1)]),
-        'Why: you have a past injury.',
-      );
-      expect(
-        _why([const RiskDriver(key: 'injury_history', value: 2)]),
-        'Why: you have 2 past injuries.',
-      );
-      expect(
-        _why([const RiskDriver(key: 'recent_pain', value: 'moderate')]),
-        'Why: you reported pain after a recent workout.',
-      );
-      expect(
-        _why([const RiskDriver(key: 'recent_pain', value: 'mild')]),
-        'Why: you reported mild pain after a recent workout.',
-      );
-      expect(
-        _why([const RiskDriver(key: 'recent_pain', value: 'severe')]),
-        'Why: you reported severe pain after a recent workout.',
-      );
-      // A fractional load is rounded, never shown as "34.6%".
-      expect(
-        _why([const RiskDriver(key: 'load', value: 34.6)]),
-        'Why: this week is 35% above your usual.',
-      );
-    });
-
-    test('check-in drivers are worded as the recent check-ins, not today', () {
-      for (final (key, value, noun) in [
-        ('sleep', 'poor', 'poor sleep'),
-        ('sleep', 'fair', 'only fair sleep'),
-        ('soreness', 'moderate', 'sore muscles'),
-        ('soreness', 'severe', 'very sore muscles'),
-        ('energy', 'low', 'low energy'),
-        ('energy', 'very_low', 'very low energy'),
-        ('stress', 'moderate', 'moderate stress'),
-        ('stress', 'high', 'high stress'),
+    test('the reasons outside the check-ins read as plain English', () {
+      for (final (driver, words) in [
+        (
+          const RiskDriver(key: 'load', value: 35.0),
+          'Training 35% above your usual week',
+        ),
+        // A fractional load is rounded, never shown as "34.6%".
+        (
+          const RiskDriver(key: 'load', value: 34.6),
+          'Training 35% above your usual week',
+        ),
+        (const RiskDriver(key: 'injury_history', value: 1), 'A past injury'),
+        (const RiskDriver(key: 'injury_history', value: 2), '2 past injuries'),
+        (
+          const RiskDriver(key: 'recent_pain', value: 'mild'),
+          'Mild pain after a recent workout',
+        ),
+        (
+          const RiskDriver(key: 'recent_pain', value: 'moderate'),
+          'Pain after a recent workout',
+        ),
+        (
+          const RiskDriver(key: 'recent_pain', value: 'severe'),
+          'Severe pain after a recent workout',
+        ),
       ]) {
-        expect(
-          _why([RiskDriver(key: key, value: value)]),
-          'Why: recent check-ins show $noun.',
-          reason: '$key $value',
-        );
+        expect(_why([driver]), [
+          words,
+        ], reason: '${driver.key} ${driver.value}');
+      }
+    });
+
+    test('check-in drivers name the answer, never the day', () {
+      // The worst answer over the last 3 days, so nothing says "today".
+      for (final (key, value, words) in [
+        ('sleep', 'poor', 'Poor sleep'),
+        ('sleep', 'fair', 'Only fair sleep'),
+        ('soreness', 'moderate', 'Sore muscles'),
+        ('soreness', 'severe', 'Very sore muscles'),
+        ('energy', 'low', 'Low energy'),
+        ('energy', 'very_low', 'Very low energy'),
+        ('stress', 'moderate', 'Moderate stress'),
+        ('stress', 'high', 'High stress'),
+      ]) {
+        expect(_why([RiskDriver(key: key, value: value)]), [
+          words,
+        ], reason: '$key $value');
       }
     });
 
@@ -157,94 +150,36 @@ void main() {
       }
     });
 
-    test('check-in drivers share one "recent check-ins show" list', () {
-      expect(
-        _why([
-          const RiskDriver(key: 'sleep', value: 'poor'),
-          const RiskDriver(key: 'stress', value: 'high'),
-        ]),
-        'Why: recent check-ins show poor sleep and high stress.',
-      );
-      expect(
-        _why([
-          const RiskDriver(key: 'soreness', value: 'severe'),
-          const RiskDriver(key: 'sleep', value: 'fair'),
-          const RiskDriver(key: 'energy', value: 'very_low'),
-        ]),
-        'Why: recent check-ins show very sore muscles, only fair sleep and '
-        'very low energy.',
-      );
+    test(
+      'each driver is its own reason, in the order the server ranked them',
+      () {
+        final reasons = _estimate(
+          drivers: const [
+            RiskDriver(key: 'load', value: 60),
+            RiskDriver(key: 'soreness', value: 'moderate'),
+            RiskDriver(key: 'injury_history', value: 3),
+          ],
+        ).whyReasons!;
+        expect(reasons.map((r) => r.text), [
+          'Training 60% above your usual week',
+          'Sore muscles',
+          '3 past injuries',
+        ]);
+        // The key goes with the words, so the screen can give each its icon.
+        expect(reasons.map((r) => r.key), [
+          'load',
+          'soreness',
+          'injury_history',
+        ]);
+      },
+    );
+
+    test('an empty list with a source means nothing stands out', () {
+      expect(_why(const []), isEmpty);
+      expect(_why(const [], source: 'rules'), isEmpty);
     });
 
-    test('a comma sets the check-in list apart from the other clauses', () {
-      expect(
-        _why([
-          const RiskDriver(key: 'sleep', value: 'poor'),
-          const RiskDriver(key: 'stress', value: 'high'),
-          const RiskDriver(key: 'load', value: 35),
-        ]),
-        'Why: recent check-ins show poor sleep and high stress, and this '
-        'week is 35% above your usual.',
-      );
-      expect(
-        _why([
-          const RiskDriver(key: 'sleep', value: 'poor'),
-          const RiskDriver(key: 'load', value: 35),
-        ]),
-        'Why: recent check-ins show poor sleep, and this week is 35% above '
-        'your usual.',
-      );
-      // The list keeps the place of its most influential member.
-      expect(
-        _why([
-          const RiskDriver(key: 'load', value: 60),
-          const RiskDriver(key: 'soreness', value: 'moderate'),
-        ]),
-        'Why: this week is 60% above your usual, and recent check-ins show '
-        'sore muscles.',
-      );
-      expect(
-        _why([
-          const RiskDriver(key: 'recent_pain', value: 'severe'),
-          const RiskDriver(key: 'soreness', value: 'moderate'),
-          const RiskDriver(key: 'injury_history', value: 3),
-        ]),
-        'Why: you reported severe pain after a recent workout, recent '
-        'check-ins show sore muscles, and you have 3 past injuries.',
-      );
-    });
-
-    test('without check-in drivers the clauses join with "and"', () {
-      expect(
-        _why([
-          const RiskDriver(key: 'load', value: 35),
-          const RiskDriver(key: 'injury_history', value: 1),
-        ]),
-        'Why: this week is 35% above your usual and you have a past injury.',
-      );
-      expect(
-        _why([
-          const RiskDriver(key: 'recent_pain', value: 'moderate'),
-          const RiskDriver(key: 'load', value: 35),
-          const RiskDriver(key: 'injury_history', value: 2),
-        ]),
-        'Why: you reported pain after a recent workout, this week is 35% '
-        'above your usual and you have 2 past injuries.',
-      );
-    });
-
-    test('an empty list with a source says nothing stands out', () {
-      expect(
-        _why(const []),
-        'Nothing in your check-ins, training or history stands out.',
-      );
-      expect(
-        _why(const [], source: 'rules'),
-        'Nothing in your check-ins, training or history stands out.',
-      );
-    });
-
-    test('an estimate from before drivers existed has no line', () {
+    test('an estimate from before drivers existed has no reasons', () {
       expect(_why(null), isNull);
       // Older rows can come back with an empty list but no source: the
       // server fills [] for them, and "nothing stands out" would be a claim
@@ -258,7 +193,7 @@ void main() {
           const RiskDriver(key: 'moon_phase', value: 'full'),
           const RiskDriver(key: 'sleep', value: 'poor'),
         ]),
-        'Why: recent check-ins show poor sleep.',
+        ['Poor sleep'],
       );
       expect(
         _why([const RiskDriver(key: 'moon_phase', value: 'full')]),
@@ -277,7 +212,7 @@ void main() {
       expect(e.source, isNull);
       expect(e.loadPct, isNull);
       expect(e.drivers, isNull);
-      expect(e.whyLine, isNull);
+      expect(e.whyReasons, isNull);
     });
 
     test('a new row carries its source, load and drivers', () {
@@ -296,14 +231,14 @@ void main() {
       expect(e.source, 'model');
       expect(e.loadPct, 35.0);
       expect(e.drivers!.map((d) => d.key), ['sleep', 'load', 'injury_history']);
-      expect(
-        e.whyLine,
-        'Why: recent check-ins show poor sleep, this week is 35% above your '
-        'usual, and you have 2 past injuries.',
-      );
+      expect(e.whyReasons!.map((r) => r.text), [
+        'Poor sleep',
+        'Training 35% above your usual week',
+        '2 past injuries',
+      ]);
     });
 
-    test('an old row as GET returns it has no "Why" line', () {
+    test('an old row as GET returns it has no "Why" reasons', () {
       // GET /api/v1/recovery sends the new fields on every row: null source
       // and load, and an empty drivers list, for one saved before them.
       final e = InjuryRiskEstimate.fromJson({
@@ -316,7 +251,7 @@ void main() {
       });
       expect(e.source, isNull);
       expect(e.drivers, isEmpty);
-      expect(e.whyLine, isNull);
+      expect(e.whyReasons, isNull);
     });
 
     test('a new row with nothing standing out says so', () {
@@ -328,10 +263,7 @@ void main() {
         'loadPct': 0,
         'drivers': <Object>[],
       });
-      expect(
-        e.whyLine,
-        'Nothing in your check-ins, training or history stands out.',
-      );
+      expect(e.whyReasons, isEmpty);
     });
 
     test('malformed drivers are dropped, not thrown on', () {

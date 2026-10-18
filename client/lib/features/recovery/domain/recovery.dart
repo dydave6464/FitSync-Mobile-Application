@@ -43,6 +43,19 @@ class RiskDriver {
   final Object? value;
 }
 
+/// One reason in the "Why" list: the [key] of the driver it came from, so
+/// the screen can give it an icon, and its words.
+class RiskReason {
+  const RiskReason({required this.key, required this.text});
+
+  final String key;
+  final String text;
+}
+
+/// What the "Why" list says when an estimate found nothing standing out.
+const nothingStandsOut =
+    'Nothing in your check-ins, training or history stands out.';
+
 class InjuryRiskEstimate {
   const InjuryRiskEstimate({
     required this.riskLevel,
@@ -132,52 +145,24 @@ class InjuryRiskEstimate {
     _ => "You're primed to train",
   };
 
-  /// "Why: recent check-ins show poor sleep and high stress, and this week
-  /// is 35% above your usual." -- the estimate's [drivers] in plain English,
-  /// or null when there is nothing to say.
+  /// The estimate's [drivers] as the "Why" list under the advice, one short
+  /// reason each, most influential first: "Poor sleep", "Training 35% above
+  /// your usual week".
   ///
-  /// The check-in drivers are the worst answer over the last 3 days, not
-  /// this morning's, so they are gathered into one "recent check-ins show"
-  /// list, which keeps the place of its most influential member. When that
-  /// list sits beside other clauses, a comma sets it apart, so its own "and"
-  /// is not read as joining it to them.
-  ///
-  /// Null for a row that predates drivers. The server sends such rows with
-  /// an empty list, so a missing [source] is the tell: "nothing stands out"
-  /// would be a claim that estimate never made. A driver this build has no
-  /// words for is skipped rather than shown raw.
-  String? get whyLine {
+  /// Empty when the estimate found nothing standing out. Null when there is
+  /// nothing to say: a row that predates drivers -- the server sends it an
+  /// empty list too, so a missing [source] is the tell, and "nothing stands
+  /// out" would be a claim that estimate never made -- or one whose every
+  /// driver this build has no words for. Those are skipped, never shown raw.
+  List<RiskReason>? get whyReasons {
     final drivers = this.drivers;
     if (drivers == null || source == null) return null;
-    if (drivers.isEmpty) {
-      return 'Nothing in your check-ins, training or history stands out.';
-    }
-
-    final checkinNouns = <String>[];
-    final items = <String?>[];
-    int? checkinSlot;
-    for (final d in drivers) {
-      final noun = _checkinNoun(d);
-      if (noun != null) {
-        checkinNouns.add(noun);
-        if (checkinSlot == null) {
-          checkinSlot = items.length;
-          items.add(null);
-        }
-      } else if (_driverClause(d) case final clause?) {
-        items.add(clause);
-      }
-    }
-    if (checkinSlot != null) {
-      items[checkinSlot] = 'recent check-ins show ${_andList(checkinNouns)}';
-    }
-    final clauses = items.whereType<String>().toList();
-    if (clauses.isEmpty) return null;
-    final joined = checkinSlot != null && clauses.length > 1
-        ? '${clauses.sublist(0, clauses.length - 1).join(', ')}, '
-              'and ${clauses.last}'
-        : _andList(clauses);
-    return 'Why: $joined.';
+    if (drivers.isEmpty) return const [];
+    final reasons = [
+      for (final d in drivers)
+        if (_reasonText(d) case final text?) RiskReason(key: d.key, text: text),
+    ];
+    return reasons.isEmpty ? null : reasons;
   }
 
   factory InjuryRiskEstimate.fromJson(Map<String, dynamic> json) =>
@@ -209,30 +194,15 @@ List<RiskDriver>? _parseDrivers(Object? raw) {
 /// server/src/db/training-load.js).
 const _loadCap = 130;
 
-/// "a", "a and b", "a, b and c".
-String _andList(List<String> items) => items.length == 1
-    ? items.single
-    : '${items.sublist(0, items.length - 1).join(', ')} and ${items.last}';
-
-/// A check-in driver as a noun for "recent check-ins show …", or null for
-/// any other driver. Only the answers worth 5 rule points or more have
-/// words, since only those can be drivers; an everyday answer (good sleep,
-/// mild soreness) that somehow arrived is skipped rather than blamed.
-String? _checkinNoun(RiskDriver driver) => switch ((driver.key, driver.value)) {
-  ('sleep', 'poor') => 'poor sleep',
-  ('sleep', 'fair') => 'only fair sleep',
-  ('soreness', 'severe') => 'very sore muscles',
-  ('soreness', 'moderate') => 'sore muscles',
-  ('energy', 'very_low') => 'very low energy',
-  ('energy', 'low') => 'low energy',
-  ('stress', 'high') => 'high stress',
-  ('stress', 'moderate') => 'moderate stress',
-  _ => null,
-};
-
-/// A driver from outside the check-ins as a clause of the "Why" sentence,
-/// worded by its value where that changes the meaning.
-String? _driverClause(RiskDriver driver) {
+/// A driver as one reason in the "Why" list, worded by its value where
+/// that changes the meaning, or null for one this build has no words for.
+///
+/// The check-in drivers are the worst answer over the last 3 days, not this
+/// morning's, so their words name the answer and never the day. Only the
+/// answers worth 5 rule points or more have words, since only those can be
+/// drivers; an everyday answer (good sleep, mild soreness) that somehow
+/// arrived is skipped rather than blamed.
+String? _reasonText(RiskDriver driver) {
   final value = driver.value;
   switch (driver.key) {
     case 'load':
@@ -241,27 +211,37 @@ String? _driverClause(RiskDriver driver) {
       // for any bigger surge. The check is on the value as sent: 129.6 is
       // under the cap, so it is an exact reading, not "at least".
       if (value >= _loadCap) {
-        return 'this week is at least $_loadCap% above your usual';
+        return 'Training at least $_loadCap% above your usual week';
       }
       // Kept under the cap's own figure when rounding would reach it, so an
       // exact reading never shows the number that means "at least".
       final pct = value.round().clamp(0, _loadCap - 1);
-      // "0% above" would contradict the line it sits in.
-      if (pct < 1) return 'this week is a little above your usual';
-      return 'this week is $pct% above your usual';
+      // "0% above" would contradict the reason it is.
+      if (pct < 1) return 'Training a little above your usual week';
+      return 'Training $pct% above your usual week';
     case 'injury_history':
       if (value is! num || value < 1) return null;
       final n = value.round();
-      return n == 1 ? 'you have a past injury' : 'you have $n past injuries';
+      return n == 1 ? 'A past injury' : '$n past injuries';
     case 'recent_pain':
       return switch (value) {
-        'severe' => 'you reported severe pain after a recent workout',
-        'moderate' => 'you reported pain after a recent workout',
-        'mild' => 'you reported mild pain after a recent workout',
+        'severe' => 'Severe pain after a recent workout',
+        'moderate' => 'Pain after a recent workout',
+        'mild' => 'Mild pain after a recent workout',
         _ => null,
       };
   }
-  return null;
+  return switch ((driver.key, value)) {
+    ('sleep', 'poor') => 'Poor sleep',
+    ('sleep', 'fair') => 'Only fair sleep',
+    ('soreness', 'severe') => 'Very sore muscles',
+    ('soreness', 'moderate') => 'Sore muscles',
+    ('energy', 'very_low') => 'Very low energy',
+    ('energy', 'low') => 'Low energy',
+    ('stress', 'high') => 'High stress',
+    ('stress', 'moderate') => 'Moderate stress',
+    _ => null,
+  };
 }
 
 /// When one muscle group was last trained, from GET /recovery.

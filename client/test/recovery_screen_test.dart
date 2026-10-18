@@ -68,6 +68,15 @@ final _tokens = fsLightTheme().extension<FsTokens>()!;
 
 FsRing _ring(WidgetTester tester) => tester.widget<FsRing>(find.byType(FsRing));
 
+/// The edge of the box that holds the advice and the reasons.
+Color _boxEdge(WidgetTester tester) {
+  final box = tester.widget<Container>(find.byKey(const Key('recovery.box')));
+  return ((box.decoration! as BoxDecoration).border! as Border).top.color;
+}
+
+/// [c] without its alpha, to compare a tint with the colour it was made from.
+int _rgb(Color c) => c.toARGB32() & 0xFFFFFF;
+
 Future<void> _pump(
   WidgetTester tester,
   RecoveryOverview overview, {
@@ -300,7 +309,7 @@ void main() {
     // baseline; 14 days was the old check-in window and was never a
     // training-load figure -- least of all on the same screen as a card
     // titled "7-day training load".
-    expect(find.text('Training load · 7 days'), findsOneWidget);
+    expect(find.text('This week vs your usual'), findsOneWidget);
     expect(find.textContaining('14 days'), findsNothing);
   });
 
@@ -371,15 +380,54 @@ void main() {
       expect(find.text("Check in for today's estimate"), findsOneWidget);
     });
 
-    testWidgets('the "Why" line names what raised it', (tester) async {
+    testWidgets('the "Why" list names what raised it, a reason a line', (
+      tester,
+    ) async {
       await _pump(tester, _withToday(_todays()));
+      final why = find.byKey(const Key('recovery.why'));
+      final sleep = find.descendant(of: why, matching: find.text('Poor sleep'));
+      final load = find.descendant(
+        of: why,
+        matching: find.text('Training 35% above your usual week'),
+      );
+      expect(sleep, findsOneWidget);
+      expect(load, findsOneWidget);
+      // The server ranks the drivers; the list keeps its order.
+      expect(tester.getTopLeft(sleep).dy, lessThan(tester.getTopLeft(load).dy));
+      // The advice and its reasons are read together, in one box.
+      final box = find.byKey(const Key('recovery.box'));
+      expect(find.descendant(of: box, matching: why), findsOneWidget);
       expect(
-        find.text(
-          'Why: recent check-ins show poor sleep, and this week is 35% above '
-          'your usual.',
+        find.descendant(
+          of: box,
+          matching: find.byKey(const Key('recovery.advice')),
         ),
         findsOneWidget,
       );
+    });
+
+    testWidgets('the box takes the level colour, and grey for an older day', (
+      tester,
+    ) async {
+      await _pump(tester, _withToday(_todays(level: 'low', score: 20)));
+      expect(_rgb(_boxEdge(tester)), _rgb(_tokens.accent));
+
+      await _pump(tester, _withToday(_todays(level: 'moderate', score: 47)));
+      expect(_rgb(_boxEdge(tester)), _rgb(_tokens.amber));
+
+      await _pump(tester, _withToday(_todays(level: 'high', score: 80)));
+      expect(_rgb(_boxEdge(tester)), _rgb(_tokens.red));
+
+      // Like the ring, an earlier day's box is not read as today's verdict.
+      await _pump(
+        tester,
+        const RecoveryOverview(
+          todayCheckin: null,
+          latestEstimate: _estimate,
+          load: [],
+        ),
+      );
+      expect(_boxEdge(tester), _tokens.line);
     });
 
     testWidgets('an earlier day\'s estimate shows no "Why" line', (
@@ -406,7 +454,7 @@ void main() {
         );
         expect(_ring(tester).color, _tokens.text3);
         expect(find.byKey(const Key('recovery.why')), findsNothing);
-        expect(find.textContaining('recent check-ins'), findsNothing);
+        expect(find.text('Poor sleep'), findsNothing);
         expect(find.text('Train, but go a little easier.'), findsNothing);
       }
     });
@@ -455,6 +503,14 @@ void main() {
       expect(find.bySemanticsLabel('Readiness 53 out of 100'), findsOneWidget);
       // The ring's word is not read again on its own.
       expect(find.bySemanticsLabel('Moderate'), findsNothing);
+      // The reasons are heard as one list under their heading, not as
+      // loose lines.
+      expect(
+        find.bySemanticsLabel(
+          RegExp(r'^Why\nPoor sleep\nTraining 35% above your usual week$'),
+        ),
+        findsOneWidget,
+      );
       semantics.dispose();
     });
 
@@ -597,19 +653,17 @@ void main() {
   testWidgets('what feeds this score names the real inputs', (tester) async {
     await _pump(tester, _withToday(_todays()));
 
+    // One short line each: the ⓘ guide names the four check-in questions.
     expect(find.text('Morning check-in'), findsOneWidget);
-    expect(
-      find.text('Sleep, soreness, energy and stress over the last 3 days'),
-      findsOneWidget,
-    );
-    expect(
-      find.text('This week compared with your usual week'),
-      findsOneWidget,
-    );
+    expect(find.text('Last 3 days'), findsOneWidget);
+    expect(find.text('Training load'), findsOneWidget);
+    expect(find.text('This week vs your usual'), findsOneWidget);
     expect(find.text('Past injuries'), findsOneWidget);
+    expect(find.text('Profile and post-workout pain'), findsOneWidget);
+    // With room to spare, the button sits beside its line.
     expect(
-      find.text('From your profile, and pain you report after a workout'),
-      findsOneWidget,
+      tester.getTopLeft(find.byKey(const Key('recovery.update'))).dy,
+      lessThan(tester.getBottomLeft(find.text('Morning check-in')).dy),
     );
   });
 
@@ -675,6 +729,25 @@ void main() {
       await tester.scrollUntilVisible(find.byType(FsBarChart), 200);
       await tester.pumpAndSettle();
       expect(tester.takeException(), isNull);
+    });
+
+    testWidgets('the check-in button moves under its line, not over it', (
+      tester,
+    ) async {
+      await narrow(tester);
+      await _pump(tester, _withToday(_todays()));
+      final button = find.byKey(const Key('recovery.update'));
+      await tester.scrollUntilVisible(button, 200);
+      await tester.pumpAndSettle();
+      expect(tester.takeException(), isNull);
+      // Beside the line there is no room for both at this size: the line
+      // would be squeezed to a letter a row.
+      expect(
+        tester.getTopLeft(button).dy,
+        greaterThanOrEqualTo(
+          tester.getBottomLeft(find.text('Morning check-in')).dy,
+        ),
+      );
     });
 
     testWidgets('the guide does not overflow and scrolls to its end', (
