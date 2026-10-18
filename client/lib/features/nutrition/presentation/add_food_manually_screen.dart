@@ -8,9 +8,12 @@ import '../domain/nutrition.dart';
 import 'providers.dart';
 
 class AddFoodManuallyScreen extends ConsumerStatefulWidget {
-  const AddFoodManuallyScreen({super.key, required this.mealType});
+  const AddFoodManuallyScreen({super.key, required this.mealType, this.onLogged});
 
   final String mealType;
+
+  /// Called once the food is saved, with the day it went to.
+  final void Function(FoodEntry entry, String date)? onLogged;
 
   @override
   ConsumerState<AddFoodManuallyScreen> createState() => _AddFoodManuallyScreenState();
@@ -137,6 +140,8 @@ class _AddFoodManuallyScreenState extends ConsumerState<AddFoodManuallyScreen> {
             onPressed: !valid ? null : () async {
               final messenger = ScaffoldMessenger.of(context);
               final controller = ref.read(nutritionDayProvider.notifier);
+              final date = ref.read(nutritionDayProvider).value?.date;
+              final onLogged = widget.onLogged;
               final food = Food(
                 source: 'manual', name: name,
                 servingDesc: _serving.text.trim().isEmpty ? null : _serving.text.trim(),
@@ -144,11 +149,14 @@ class _AddFoodManuallyScreenState extends ConsumerState<AddFoodManuallyScreen> {
                 sugarG: sugar, sodiumMg: sodium,
               );
               Navigator.of(context).pop(true);
+              final FoodEntry saved;
               try {
-                await controller.log(food, mealType: _meal, servings: 1);
+                saved = await controller.log(food, mealType: _meal, servings: 1, date: date);
               } catch (_) {
                 messenger.showSnackBar(const SnackBar(content: Text("Couldn't save — try again.")));
+                return;
               }
+              onLogged?.call(saved, date!);
             },
           ),
         ],

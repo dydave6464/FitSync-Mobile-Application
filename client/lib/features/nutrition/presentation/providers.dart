@@ -60,8 +60,9 @@ class NutritionDayController extends AsyncNotifier<NutritionDay> {
   /// Saves to [date], or to the day on screen. The entry shows at once if
   /// that day is the one on screen. If the save fails, it comes back out and
   /// this rethrows, so the caller can say so. With no [date] and no day
-  /// loaded there is nowhere to save, which throws a [StateError].
-  Future<void> log(Food food, {required String mealType, required double servings, String? date}) async {
+  /// loaded there is nowhere to save, which throws a [StateError]. Returns
+  /// the saved entry, so the caller can offer to change it.
+  Future<FoodEntry> log(Food food, {required String mealType, required double servings, String? date}) async {
     final target = date ?? state.value?.date;
     if (target == null) throw StateError('No day is loaded to log to.');
     final pending = FoodEntry.pending(id: --_pendingIds, food: food, mealType: mealType, servings: servings);
@@ -75,6 +76,22 @@ class NutritionDayController extends AsyncNotifier<NutritionDay> {
     }
     // The real entry, so it can be deleted even if the refetch below fails.
     _onDay(target, (day) => day.without(pending.id).withEntry(saved));
+    ref.invalidate(recentFoodsProvider);
+    await _settle(target);
+    return saved;
+  }
+
+  /// Saves a new meal, servings or -- as [edited], per serving -- numbers
+  /// for [entry], on [date] (its own day) or the day on screen. Not
+  /// optimistic: the day changes only once the server agrees, so a failure
+  /// leaves it as it was and rethrows. (Named so because AsyncNotifier
+  /// already has an `update`.)
+  Future<void> change(FoodEntry entry, {required String mealType, required double servings, Food? edited, String? date}) async {
+    final target = date ?? state.value?.date;
+    if (target == null) throw StateError('No day is loaded to change.');
+    final saved = await _repo.updateEntry(id: entry.id, mealType: mealType, servings: servings, food: edited);
+    // Out and back in, so a new meal moves it.
+    _onDay(target, (day) => day.without(entry.id).withEntry(saved));
     ref.invalidate(recentFoodsProvider);
     await _settle(target);
   }

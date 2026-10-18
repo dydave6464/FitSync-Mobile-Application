@@ -53,6 +53,25 @@ class FakeNutritionRepository implements NutritionRepository {
     return saved;
   }
 
+  /// The last food passed to updateEntry: null when the numbers stood.
+  Food? lastUpdatedFood;
+
+  /// Like the server: the entry keeps its day and, without [food], its own
+  /// per-serving numbers; with [food] it becomes the user's own.
+  @override
+  Future<FoodEntry> updateEntry({required int id, required String mealType, required double servings, Food? food}) async {
+    calls.add('update $id $mealType x$servings${food == null ? '' : ' ${food.source}'}');
+    lastUpdatedFood = food;
+    if (hold != null) await hold!.future;
+    if (failNext) { failNext = false; throw const ApiException('NETWORK_ERROR', 'offline'); }
+    final date = days.keys.firstWhere((d) => days[d]!.entries.any((e) => e.id == id),
+        orElse: () => throw const ApiException('ENTRY_NOT_FOUND', 'No such entry.'));
+    final old = days[date]!.entries.firstWhere((e) => e.id == id);
+    final saved = FoodEntry.pending(id: id, food: food ?? old.asFood(), mealType: mealType, servings: servings);
+    days[date] = days[date]!.without(id).withEntry(saved);
+    return saved;
+  }
+
   @override
   Future<void> deleteEntry(int id) async {
     calls.add('delete $id');
@@ -229,6 +248,79 @@ void main() {
     await c.read(nutritionDayProvider.notifier).log(rice, mealType: 'lunch', servings: 1);
     expect(c.read(nutritionDayProvider).value!.meals['lunch']!.single.id, 100,
         reason: "the server's id, so its delete button works");
+  });
+
+  test('log returns the saved entry', () async {
+    final repo = FakeNutritionRepository();
+    final c = _container(repo);
+    await c.read(nutritionDayProvider.future);
+    final saved = await c.read(nutritionDayProvider.notifier).log(rice, mealType: 'dinner', servings: 2);
+    expect(saved.id, 100);
+    expect(saved.mealType, 'dinner');
+    expect(saved.servings, 2);
+  });
+
+  test('change moves an entry to another meal on its day, and refreshes recents', () async {
+    final repo = FakeNutritionRepository();
+    final c = _container(repo);
+    c.listen(recentFoodsProvider, (_, _) {});
+    await c.read(nutritionDayProvider.future);
+    final entry = await c.read(nutritionDayProvider.notifier).log(rice, mealType: 'dinner', servings: 1);
+    await c.read(recentFoodsProvider.future);
+    final before = repo.recentCalls;
+
+    await c.read(nutritionDayProvider.notifier).change(entry, mealType: 'snack', servings: 2);
+    expect(repo.calls, contains('update ${entry.id} snack x2.0'));
+    expect(repo.lastUpdatedFood, isNull);
+    final day = c.read(nutritionDayProvider).value!;
+    expect(day.meals['dinner'], isEmpty);
+    expect(day.meals['snack']!.single.id, entry.id);
+    expect(day.meals['snack']!.single.kcal, 410);
+    await c.read(recentFoodsProvider.future);
+    expect(repo.recentCalls, before + 1);
+  });
+
+  test("change sends the user's own numbers when given", () async {
+    final repo = FakeNutritionRepository();
+    final c = _container(repo);
+    await c.read(nutritionDayProvider.future);
+    final entry = await c.read(nutritionDayProvider.notifier).log(rice, mealType: 'lunch', servings: 1);
+    const mine = Food(source: 'manual', name: 'Rice', servingDesc: '1 cup', kcal: 220, proteinG: 5, carbsG: 50, fatG: 0);
+    await c.read(nutritionDayProvider.notifier).change(entry, mealType: 'lunch', servings: 1, edited: mine);
+    expect(repo.lastUpdatedFood, same(mine));
+    expect(c.read(nutritionDayProvider).value!.meals['lunch']!.single.source, 'manual');
+  });
+
+  test('a failed change rethrows and leaves the day as it was', () async {
+    final repo = FakeNutritionRepository();
+    final c = _container(repo);
+    await c.read(nutritionDayProvider.future);
+    final entry = await c.read(nutritionDayProvider.notifier).log(rice, mealType: 'dinner', servings: 1);
+    final before = c.read(nutritionDayProvider).value!;
+
+    repo.failNext = true;
+    await expectLater(
+      c.read(nutritionDayProvider.notifier).change(entry, mealType: 'snack', servings: 1),
+      throwsA(isA<ApiException>()),
+    );
+    expect(c.read(nutritionDayProvider).value, same(before));
+  });
+
+  test("a change finishing after a day switch leaves the new day's screen be", () async {
+    final repo = FakeNutritionRepository();
+    final c = _container(repo);
+    c.read(nutritionDateProvider.notifier).shift(-1);
+    await c.read(nutritionDayProvider.future);
+    final entry = await c.read(nutritionDayProvider.notifier).log(rice, mealType: 'dinner', servings: 1);
+
+    repo.hold = Completer<void>();
+    final updating = c.read(nutritionDayProvider.notifier).change(entry, mealType: 'snack', servings: 1, date: '2026-10-13');
+    c.read(nutritionDateProvider.notifier).shift(1);
+    expect((await c.read(nutritionDayProvider.future)).date, '2026-10-14');
+    repo.hold!.complete();
+    await updating;
+    expect(c.read(nutritionDayProvider).value!.entries, isEmpty);
+    expect(repo.dayOf('2026-10-13').meals['snack']!.single.id, entry.id);
   });
 
   test('a delete refreshes recents', () async {
