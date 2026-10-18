@@ -373,12 +373,13 @@ class _ExerciseLogPanelState extends State<ExerciseLogPanel> {
                   children: [
                     Padding(
                       key: const Key('logpanel.columns'),
-                      padding: const EdgeInsets.fromLTRB(4, 14, 4, 8),
+                      padding: const EdgeInsets.fromLTRB(4, 14, 4, 16),
                       // The unit switch is drawn about 19 dp tall in this
                       // row: the padding around it is the rest of its band,
-                      // 14 above and 8 below. Nothing else here takes taps.
+                      // 14 above and 16 below, 48 dp in all. Nothing else
+                      // here takes taps.
                       child: FsTapRoom(
-                        reach: 14,
+                        reach: 16,
                         child: Row(
                           children: [
                             SizedBox(

@@ -170,10 +170,8 @@ void main() {
 
   // The switch is drawn about 19 dp tall in a row no taller. The gap above
   // the header and the header's padding below it are the switch's to use;
-  // nothing else there takes taps.
-  testWidgets('the column header switch takes a tap above or below it', (
-    tester,
-  ) async {
+  // nothing else there takes taps, and together they make 48 dp.
+  testWidgets('the column header switch answers across 48 dp', (tester) async {
     final chosen = <WeightUnit>[];
     await tester.pumpWidget(
       _host(
@@ -189,9 +187,15 @@ void main() {
     );
 
     final lb = tester.getRect(find.byKey(const Key('unit.lb')));
-    await tester.tapAt(Offset(lb.center.dx, lb.top - 12));
-    await tester.tapAt(Offset(lb.center.dx, lb.bottom + 6));
-    expect(chosen, [WeightUnit.lb, WeightUnit.lb]);
+    final answered = <double>[];
+    for (var dy = -40.0; dy <= 40; dy += 0.5) {
+      final before = chosen.length;
+      await tester.tapAt(Offset(lb.center.dx, lb.center.dy + dy));
+      if (chosen.length > before) answered.add(dy);
+    }
+    expect(answered.last - answered.first, greaterThanOrEqualTo(48));
+    // One strip, no holes in it.
+    expect(answered.length, (answered.last - answered.first) / 0.5 + 1);
   });
 
   // One pound is 0.45359237 kg exactly, so 22.5 kg is 49.6039... lb, 25 kg is
