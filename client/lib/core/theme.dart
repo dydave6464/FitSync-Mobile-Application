@@ -60,7 +60,9 @@ class FsTokens extends ThemeExtension<FsTokens> {
     line2: Color(0x21FFFFFF), // rgba(255,255,255,0.13)
     text: Color(0xFFEEF2F5),
     text2: Color(0xFF97A3AD),
-    text3: Color(0xFF5D6873),
+    // Lifted from #5D6873 (3.2:1 on cards) to read at 4.5:1 or better on
+    // every surface, still dimmer than text2 (parked §32).
+    text3: Color(0xFF838E98),
     accent: Color(0xFF7DFF5C),
     accentDim: Color(0x247DFF5C), // rgba(125,255,92,0.14)
     accentLine: Color(0x577DFF5C), // rgba(125,255,92,0.34)
@@ -82,11 +84,15 @@ class FsTokens extends ThemeExtension<FsTokens> {
     line2: Color(0x26111C17), // rgba(17,28,23,0.15)
     text: Color(0xFF0F1613),
     text2: Color(0xFF55636B),
-    text3: Color(0xFF8B969C),
+    // Darkened from #8B969C (3.0:1 on white) to read at 4.5:1 or better on
+    // every surface, still lighter than text2 (parked §32).
+    text3: Color(0xFF616C73),
     accent: Color(0xFF0FB04A),
     accentDim: Color(0x210FB04A), // rgba(15,176,74,0.13)
     accentLine: Color(0x4D0FB04A), // rgba(15,176,74,0.30)
-    onAccent: Color(0xFFFFFFFF),
+    // Dark, as in the dark theme: white on this green was 2.87:1, and the
+    // brand green stays exactly as it is (parked §32).
+    onAccent: Color(0xFF06140A),
     amber: Color(0xFFC98A10),
     // Darker than the prototype's #E0533D, which was 3.8:1 on white: red
     // labels the destructive choices and errors, so it is read as text.
