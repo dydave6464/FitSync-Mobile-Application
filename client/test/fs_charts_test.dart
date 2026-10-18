@@ -181,6 +181,20 @@ void main() {
       }
     });
 
+    testWidgets('a chart squeezed narrower than its labels does not fail', (
+      tester,
+    ) async {
+      await _pump(
+        tester,
+        const SizedBox(
+          width: 30,
+          child: FsBarChart(label: 'Training volume', bars: _week),
+        ),
+      );
+
+      expect(tester.takeException(), isNull);
+    });
+
     testWidgets('fits a 320 dp phone at 2.0x text', (tester) async {
       tester.view.physicalSize = const Size(320, 640);
       tester.view.devicePixelRatio = 1;
@@ -295,6 +309,8 @@ void main() {
           tester,
           FsLineChart(label: 'Body weight', points: eight, minYBand: 4),
         );
+        // fl_chart pulls the edge dates inside on the frame after.
+        await tester.pump();
 
         final shown = [
           for (final p in eight)
@@ -349,6 +365,61 @@ void main() {
         }
       });
     }
+
+    testWidgets('a long series keeps its line, dotting only the newest', (
+      tester,
+    ) async {
+      // A year of weekly weigh-ins drew 52 ringed dots 7 px apart: a beaded
+      // chain with no line left to see.
+      final year = [
+        for (var i = 0; i < 52; i++)
+          FsPoint(x: i.toDouble(), y: 75 - i / 20, label: 'w$i'),
+      ];
+      tester.view.physicalSize = const Size(360, 700);
+      tester.view.devicePixelRatio = 1;
+      addTearDown(tester.view.reset);
+      await _pump(
+        tester,
+        FsLineChart(label: 'Body weight', points: year, minYBand: 4),
+      );
+
+      final bar = _lineData(tester).lineBarsData.single;
+      expect(bar.dotData.checkToShowDot(bar.spots.first, bar), isFalse);
+      expect(bar.dotData.checkToShowDot(bar.spots[25], bar), isFalse);
+      expect(bar.dotData.checkToShowDot(bar.spots.last, bar), isTrue);
+    });
+
+    testWidgets(
+      'at large text the goal label below the line clears the dates',
+      (tester) async {
+        // A fixed fifth of the range left 12 px for a label 31 px tall at 2x,
+        // so "Goal 70 kg" printed over the dates.
+        tester.platformDispatcher.textScaleFactorTestValue = 2.0;
+        addTearDown(tester.platformDispatcher.clearTextScaleFactorTestValue);
+        await _pump(
+          tester,
+          const FsLineChart(
+            label: 'Body weight',
+            points: [
+              FsPoint(x: 0, y: 74, label: 'a'),
+              FsPoint(x: 1, y: 73, label: 'b'),
+            ],
+            minYBand: 4,
+            referenceY: 70,
+            referenceLabel: 'Goal 70 kg',
+            height: 104,
+          ),
+        );
+
+        final data = _lineData(tester);
+        // The plot is the chart's height less the date row (11 px text at 2x,
+        // 1.4 line height, plus 6), and the label 22 px text at 2x plus its
+        // 3 px padding each side: at least 28 px below the line.
+        const plot = 104 - (22 * 1.4 + 6);
+        final below = (70 - data.minY) / (data.maxY - data.minY) * plot;
+        expect(below, greaterThanOrEqualTo(28));
+      },
+    );
 
     testWidgets('the goal label grows with the text size', (tester) async {
       // Painted on the canvas, it stayed 11 px at any setting.

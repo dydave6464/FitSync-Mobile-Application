@@ -127,7 +127,14 @@ class FsLineChart extends StatelessWidget {
   /// around its midpoint when the data is flatter than that, and always
   /// including [referenceY] so the dashed line cannot fall off the card --
   /// with room on its label's side for the label to sit inside the plot.
-  (double, double) get resolvedYRange {
+  (double, double) get resolvedYRange => _range(0.2);
+
+  /// [resolvedYRange], leaving [labelShare] of the plot's height clear on the
+  /// reference label's side of the line. The chart works the share out from
+  /// the label's real height at the user's text size: a fixed fifth of the
+  /// range left 12 px for a label 31 px tall at 2x, which then printed over
+  /// the dates.
+  (double, double) _range(double labelShare) {
     final values = [...points.map((p) => p.y), ?referenceY];
     if (values.isEmpty) return (0, minYBand);
 
@@ -147,12 +154,15 @@ class FsLineChart extends StatelessWidget {
     }
 
     if (referenceY != null && referenceLabel != null) {
-      // About one line of text on a chart this size.
-      final room = (hi - lo) * 0.2;
+      // Wanted: the gap between the line and the plot's edge is
+      // [labelShare] of the whole window, once the window has grown to make
+      // it. Solving gap / (rest + gap) = share for the gap gives this.
+      final share = labelShare.clamp(0.0, 0.6);
+      final ref = referenceY!;
       if (_labelBelow) {
-        lo = math.min(lo, referenceY! - room);
+        lo = math.min(lo, ref - share * (hi - ref) / (1 - share));
       } else {
-        hi = math.max(hi, referenceY! + room);
+        hi = math.max(hi, ref + share * (ref - lo) / (1 - share));
       }
     }
     return (lo, hi);
@@ -166,10 +176,29 @@ class FsLineChart extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final t = context.fs;
-    final (minY, maxY) = resolvedYRange;
     final series = color ?? t.accent;
     final newest = points.length - 1;
     final scaler = MediaQuery.textScalerOf(context);
+    final referenceStyle = _axisStyle(t)
+        .copyWith(fontSize: scaler.scale(11), fontWeight: FontWeight.w600);
+
+    // The label's real height, its padding and a little air, as a share of
+    // the plot (the chart less its row of dates).
+    var labelShare = 0.0;
+    if (referenceLabel != null) {
+      final painter = TextPainter(
+        text: TextSpan(
+          text: referenceLabel,
+          style: DefaultTextStyle.of(context).style.merge(referenceStyle),
+        ),
+        textDirection: TextDirection.ltr,
+        maxLines: 1,
+      )..layout();
+      final plot = height - _axisSpace(context);
+      labelShare = plot <= 0 ? 0.6 : (painter.height + 8) / plot;
+      painter.dispose();
+    }
+    final (minY, maxY) = _range(labelShare);
     // One reading has no span to plot across; centre it rather than leave
     // it on the card's left edge.
     final lone = points.length == 1;
@@ -276,10 +305,11 @@ class FsLineChart extends StatelessWidget {
                               padding: const EdgeInsets.symmetric(vertical: 3),
                               labelResolver: (_) => referenceLabel ?? '',
                               // Painted on the canvas, so scaled by hand to
-                              // the user's text size.
-                              style: _axisStyle(t).copyWith(
-                                fontSize: scaler.scale(11),
-                                fontWeight: FontWeight.w600,
+                              // the user's text size; backed in the card's
+                              // colour, so a segment of the line passing
+                              // through it cannot strike it out.
+                              style: referenceStyle.copyWith(
+                                backgroundColor: t.surface,
                               ),
                             ),
                           ),
@@ -294,7 +324,13 @@ class FsLineChart extends StatelessWidget {
                     // A dot per reading, each a real weigh-in; the newest
                     // larger, and ringed in the card's colour so it stays
                     // clear where it sits on the line.
+                    // A dot per reading while they stand apart; past that
+                    // (a year of weekly weigh-ins is 7 px a reading) only the
+                    // newest, or the dots bead into a chain that hides the
+                    // line they sit on.
                     dotData: FlDotData(
+                      checkToShowDot: (spot, bar) =>
+                          perPoint >= 14 || spot.x == points.last.x,
                       getDotPainter: (spot, percent, bar, index) =>
                           FlDotCirclePainter(
                             radius: index == newest ? 5 : 4,
@@ -395,7 +431,7 @@ class FsBarChart extends StatelessWidget {
             final stride = labelled == 0
                 ? 1
                 : math.max(1, (bars.length / labelled).round());
-            final room = slot * stride - 6;
+            final room = math.max(0.0, slot * stride - 6);
             final natural = MediaQuery.textScalerOf(context).scale(11);
             final widest = _widest(
               context,
@@ -405,6 +441,9 @@ class FsBarChart extends StatelessWidget {
             final fontSize = widest > room && widest > 0
                 ? natural * room / widest
                 : natural;
+            // Too narrow for any word at all: no labels rather than a
+            // negative width.
+            final labelsFit = room > 0 && fontSize >= 1;
 
             return BarChart(
               BarChartData(
@@ -428,7 +467,8 @@ class FsBarChart extends StatelessWidget {
                       reservedSize: _axisSpace(context),
                       getTitlesWidget: (value, meta) {
                         final i = value.toInt();
-                        if (i < 0 ||
+                        if (!labelsFit ||
+                            i < 0 ||
                             i >= bars.length ||
                             bars[i].label.isEmpty) {
                           return const SizedBox.shrink();
