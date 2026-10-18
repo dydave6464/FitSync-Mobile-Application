@@ -1069,10 +1069,15 @@ const double _minTapTarget = 48;
 /// in an [FsTapRoom], or gives each chip a sized box of its own, as the
 /// check-in and the library's muscle buttons do.
 ///
-/// The band is not harmless beside every neighbour: a parent hit-tests its
-/// last child first, so it takes over the edge of any earlier sibling it
-/// overlaps -- a tappable box directly above a chip loses its bottom few dp
-/// to the chip. Let it sit beside gaps, text or other chips only.
+/// Beside another chip in the same parent, the band gives way: a point on
+/// that chip's pill stays that chip's, and a gap between two chips splits
+/// at its middle, so neither row of a Wrap takes the other's edge. Any other
+/// tappable box is not so lucky: a parent hit-tests its last child first, so
+/// the band takes over the edge of an earlier sibling it overlaps -- a button
+/// directly above a chip loses its bottom few dp to the chip. Let it sit
+/// beside gaps, text or other chips only. The give-way works between direct
+/// siblings, so a chip wrapped in its own Padding or Tooltip is not seen by
+/// its neighbours.
 ///
 /// Given any of [button], [enabled] or [selected], it also carries the
 /// control's semantics, so a screen reader frames the band rather than the
@@ -1179,6 +1184,7 @@ class _RenderTapReach extends RenderProxyBox {
     if (super.hitTest(result, position: position)) return true;
     final control = child;
     if (control == null || !_reach.contains(position)) return false;
+    if (_neighbourOwns(position)) return false;
     final onto = Offset(
       position.dx.clamp(1.0, math.max(1.0, size.width - 1)),
       size.height / 2,
@@ -1190,6 +1196,55 @@ class _RenderTapReach extends RenderProxyBox {
     );
     if (hit) result.add(BoxHitTestEntry(this, position));
     return hit;
+  }
+
+  /// Whether a sibling band has the better claim on [position], a point in
+  /// this band but off this control. A sibling control drawn there keeps it,
+  /// and a gap shared with a sibling band splits at its middle. Without
+  /// this, the parent's last-child-first order hands the lower of two rows
+  /// of chips the whole gap and the bottom of the pill above it.
+  ///
+  /// Only sibling bands count. Text or a spacer beside the chip still lets
+  /// the band reach over it, which is the point of the band.
+  bool _neighbourOwns(Offset position) {
+    final data = parentData;
+    if (data is! ContainerBoxParentData<RenderBox>) return false;
+    final own = data.offset & size;
+    final point = position + data.offset;
+    final ownDistance = _distance(own, point);
+    bool owns(RenderBox sibling) {
+      if (sibling is! _RenderTapReach) return false;
+      final rect = (sibling.parentData! as BoxParentData).offset & sibling.size;
+      return _distance(rect, point) < ownDistance;
+    }
+
+    for (var s = data.previousSibling; s != null; s = _previous(s)) {
+      if (owns(s)) return true;
+    }
+    for (var s = data.nextSibling; s != null; s = _next(s)) {
+      if (owns(s)) return true;
+    }
+    return false;
+  }
+
+  static RenderBox? _previous(RenderBox box) =>
+      (box.parentData! as ContainerBoxParentData<RenderBox>).previousSibling;
+
+  static RenderBox? _next(RenderBox box) =>
+      (box.parentData! as ContainerBoxParentData<RenderBox>).nextSibling;
+
+  /// Squared distance from [point] to the nearest edge of [rect]; zero
+  /// inside it.
+  static double _distance(Rect rect, Offset point) {
+    final dx = math.max(
+      0.0,
+      math.max(rect.left - point.dx, point.dx - rect.right),
+    );
+    final dy = math.max(
+      0.0,
+      math.max(rect.top - point.dy, point.dy - rect.bottom),
+    );
+    return dx * dx + dy * dy;
   }
 
   bool get _describes =>
@@ -1223,12 +1278,17 @@ class _RenderTapReach extends RenderProxyBox {
 ///
 /// Like [_TapReach], the band sits on top of any earlier sibling it
 /// overlaps, since a parent asks its last child first. Put it beside a gap,
-/// a card's padding or plain text, not flush against another control.
+/// a card's padding or plain text, not flush against another control. It
+/// only ever hands a tap to its own child, and inside that the chips' bands
+/// share out the point among themselves.
+///
+/// The default [reach] suits normal chips. A row of small ones (26 dp) needs
+/// `reach: 11`, and 11 dp of the parent's room above and below, to reach 48.
 class FsTapRoom extends SingleChildRenderObjectWidget {
   const FsTapRoom({super.key, required Widget super.child, this.reach = 8});
 
   /// How far past the top and bottom edges a tap still counts. 8 dp takes a
-  /// 32 dp row of chips to 48.
+  /// 32 dp row of normal chips to 48; a 26 dp row of small chips needs 11.
   final double reach;
 
   @override

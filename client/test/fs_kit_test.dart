@@ -959,6 +959,54 @@ void main() {
       expect(taps, 2);
     });
 
+    // A parent asks its last child first, so in a Wrap the lower chip's
+    // band would win anywhere the two bands overlap, including the bottom
+    // of the chip drawn above it. A shared gap splits at its middle instead.
+    testWidgets('two rows of small chips each keep their own pill', (
+      tester,
+    ) async {
+      final picked = <String>[];
+      // The test font sets a chip taller than the app's own does; half-size
+      // text brings it to the app's 26 dp, where the bands overlap.
+      await tester.pumpWidget(
+        roomy(
+          MediaQuery.withClampedTextScaling(
+            maxScaleFactor: 0.5,
+            child: SizedBox(
+              width: 90,
+              child: Wrap(
+                spacing: 8,
+                runSpacing: 8,
+                children: [
+                  for (final name in ['Lose fat', 'Build muscle'])
+                    FsChip(
+                      label: name,
+                      selected: false,
+                      small: true,
+                      onTap: () => picked.add(name),
+                    ),
+                ],
+              ),
+            ),
+          ),
+        ),
+      );
+
+      final upper = tester.getRect(find.widgetWithText(FsChip, 'Lose fat'));
+      final lower = tester.getRect(find.widgetWithText(FsChip, 'Build muscle'));
+      expect(lower.top, greaterThan(upper.bottom), reason: 'two rows');
+      expect(
+        (48 - lower.height) / 2,
+        greaterThan(lower.top - upper.bottom),
+        reason: 'the case being guarded: the lower band reaches the upper pill',
+      );
+
+      await tester.tapAt(upper.bottomCenter - const Offset(0, 2));
+      await tester.tapAt(upper.bottomCenter + const Offset(0, 2));
+      await tester.tapAt(Offset(upper.center.dx, lower.top - 2));
+      expect(picked, ['Lose fat', 'Lose fat', 'Build muscle']);
+    });
+
     testWidgets('kg and lb in a row answer 7 dp above and below it', (
       tester,
     ) async {
