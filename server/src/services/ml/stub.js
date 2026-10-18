@@ -48,13 +48,25 @@ async function generatePlan(profile = {}) {
   };
 }
 
-async function estimateInjuryRisk() {
+async function estimateInjuryRisk(request = {}) {
   // C-6: accuracy is bounded by user input, so the stub reports the
   // conservative floor rather than inventing a risk signal -- and no score,
   // since it computed none. The app shows readiness as 100 minus the score,
   // so a stub 0 would read as "100 READY" for everyone, whatever they
   // answered; with null it shows the level and no number.
-  return { riskLevel: 'low', trainingLoadScore: null };
+  //
+  // No model stands behind it, so the source is 'rules' and there is no
+  // version; and since nothing was scored, nothing is named as a driver. The
+  // load is echoed because it is the one input the stub was actually handed.
+  const { load } = request ?? {};
+  return {
+    riskLevel: 'low',
+    trainingLoadScore: null,
+    source: 'rules',
+    modelVersion: null,
+    loadPct: Number.isFinite(load) ? load : null,
+    drivers: [],
+  };
 }
 
 module.exports = { generatePlan, estimateInjuryRisk };

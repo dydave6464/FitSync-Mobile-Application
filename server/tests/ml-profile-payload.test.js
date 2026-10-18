@@ -107,6 +107,24 @@ test('a missing or sparse risk request maps without throwing', () => {
   assert.deepEqual(toRiskPayload({ checkins: null, injuryHistory: null }), empty);
 });
 
+test('a risk request carries the worst recent pain when there is one', () => {
+  for (const pain of ['none', 'mild', 'moderate', 'severe']) {
+    assert.deepEqual(toRiskPayload({ checkins: [], load: 5, injuryHistory: [], recentPain: pain }), {
+      checkins: [], load: 5, injuryHistory: [], recentPain: pain,
+    });
+  }
+});
+
+test('no pain reports, or an unknown spelling, leaves recentPain out entirely', () => {
+  // Omitted rather than sent as null: the contract reads both as "no
+  // reports", and a body without the key is exactly the one an older ML
+  // service already accepts.
+  const old = { checkins: [], load: 0, injuryHistory: [] };
+  assert.deepEqual(toRiskPayload({ ...old, recentPain: null }), old);
+  assert.deepEqual(toRiskPayload({ ...old, recentPain: undefined }), old);
+  assert.deepEqual(toRiskPayload({ ...old, recentPain: 'agony' }), old);
+});
+
 test('the plan request carries the caution flag, never the health answers', () => {
   const payload = toPlanPayload(PROFILE);
   assert.equal(payload.healthCaution, true);

@@ -71,6 +71,23 @@ test('estimateInjuryRisk stays conservative with no data (FR-5.2, C-6)', async (
   assert.equal(result.riskLevel, 'low');
 });
 
+test('the stub says the rules answered, names no drivers and echoes the load', async () => {
+  const ml = createMlService({ mode: 'stub' });
+  const result = await ml.estimateInjuryRisk({
+    checkins: [], load: 35, injuryHistory: [{ injuryId: 3, regionGroup: 'knee' }], recentPain: 'mild',
+  });
+  assert.equal(result.source, 'rules');
+  assert.equal(result.modelVersion, null);
+  assert.deepEqual(result.drivers, []);
+  assert.equal(result.loadPct, 35);
+});
+
+test('the stub echoes no load when it was given none', async () => {
+  const ml = createMlService({ mode: 'stub' });
+  assert.equal((await ml.estimateInjuryRisk({ checkins: [] })).loadPct, null);
+  assert.equal((await ml.estimateInjuryRisk()).loadPct, null);
+});
+
 test('http mode without a service URL fails loudly at construction', () => {
   assert.throws(
     () => createMlService({ mode: 'http', serviceUrl: null }),
