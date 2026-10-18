@@ -313,6 +313,16 @@ ThemeData _build(FsTokens t, Brightness brightness) {
     snackBarTheme: SnackBarThemeData(
       backgroundColor: t.elev,
       contentTextStyle: TextStyle(fontFamily: _fontFamily, color: t.text),
+      // Left unset, Undo fell back to inversePrimary -- onAccent's near
+      // black, all but invisible on the dark theme's bar.
+      actionTextColor: t.accentText,
+    ),
+    // M3 writes today's date in primary, the brand green, which is 2.87:1
+    // as text on the light theme's dialog.
+    datePickerTheme: DatePickerThemeData(
+      todayForegroundColor: WidgetStateProperty.resolveWith(
+        (s) => s.contains(WidgetState.selected) ? t.onAccent : t.accentText,
+      ),
     ),
     switchTheme: SwitchThemeData(
       thumbColor: WidgetStateProperty.resolveWith(

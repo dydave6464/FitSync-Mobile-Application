@@ -87,6 +87,26 @@ void main() {
       }
     });
 
+    // Undo on a snack bar: unset, M3 drew it in inversePrimary, which is the
+    // near-black onAccent here -- 1.2:1 on the dark theme's bar.
+    test('a snack bar action reads at 4.5:1 in the $theme theme', () {
+      final data = theme == 'light' ? fsLightTheme() : fsDarkTheme();
+      final action = data.snackBarTheme.actionTextColor;
+      expect(action, t.accentText);
+      expect(
+        _contrast(action!, data.snackBarTheme.backgroundColor!),
+        greaterThanOrEqualTo(4.5),
+      );
+    });
+
+    test("the date picker writes today's date in the text green", () {
+      final data = theme == 'light' ? fsLightTheme() : fsDarkTheme();
+      final today = data.datePickerTheme.todayForegroundColor!;
+      expect(today.resolve({}), t.accentText);
+      // Picked, today sits on the green fill like any picked day.
+      expect(today.resolve({WidgetState.selected}), t.onAccent);
+    });
+
     test('a text button reads in the text green in the $theme theme', () {
       final data = theme == 'light' ? fsLightTheme() : fsDarkTheme();
       expect(
