@@ -55,8 +55,9 @@ final recentExercisesRepositoryProvider = Provider<RecentExercisesRepository>(
 /// The user's recently logged exercises, for the library's "Recent" strip.
 ///
 /// autoDispose so a library opened afresh asks again: a workout logged since
-/// the last visit is exactly what should appear here next time. Nothing else
-/// holds it, so closing the library lets it go.
+/// the last visit is exactly what should appear here next time. Finishing a
+/// workout also invalidates it, for the one time the library is still open
+/// underneath (see [ActiveSessionController.complete]).
 final recentExercisesProvider =
     FutureProvider.autoDispose<List<ExerciseSummary>>(
       (ref) => ref.watch(recentExercisesRepositoryProvider).recent(),
@@ -129,7 +130,7 @@ class ExerciseListState {
 }
 
 /// Muscle groups the whole catalogue view is confined to, set by the picker
-/// from the training day the user chose. Empty for a free choice.
+/// from the training day the user chose.
 class CatalogueConstraintNotifier extends Notifier<List<String>> {
   @override
   List<String> build() => const [];

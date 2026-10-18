@@ -102,7 +102,6 @@ class _RecentCard extends StatelessWidget {
 
   final ExerciseSummary exercise;
   final String baseUrl;
-
   final bool added;
   final VoidCallback onTap;
 

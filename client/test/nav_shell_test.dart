@@ -264,7 +264,8 @@ Future<void> _pumpShell(
       ),
       // Nutrition tab.
       nutritionRepositoryProvider.overrideWithValue(FakeNutritionRepository()),
-      // The exercise library, opened from + → Log a workout.
+      // The exercise library (+ → Log a workout); defensive, since no test
+      // here opens it.
       exerciseRepositoryProvider.overrideWithValue(FakeExerciseRepository()),
       noRecentExercises,
       // Profile tab (SettingsScreen).
@@ -283,8 +284,7 @@ Future<void> _pumpShell(
   ),
 );
 
-/// The Profile tab's own vertical list, the outermost one in
-/// [SettingsScreen].
+/// The Profile tab's vertical list, the one [SettingsScreen] scrolls by.
 final _profileScrollable = find
     .descendant(
       of: find.byType(SettingsScreen),
@@ -320,6 +320,9 @@ void main() {
       final position = tester
           .state<ScrollableState>(_profileScrollable)
           .position;
+      // Room to scroll at all, or a short list would fail this test below
+      // with a reason that blames IndexedStack.
+      expect(position.maxScrollExtent, greaterThan(400));
       position.jumpTo(400);
       await tester.pump();
       expect(position.pixels, 400, reason: 'the jump itself must have taken');

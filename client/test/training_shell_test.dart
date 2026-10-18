@@ -620,13 +620,20 @@ void main() {
   });
 
   testWidgets('a request for the old Exercises tab is ignored', (tester) async {
-    await _pump(tester, tabRequest: const TrainTabRequest('exercises', 1));
+    await _pump(tester, hosted: true);
+    final host = tester.state<_RequestHostState>(find.byType(_RequestHost));
+    host.send(const TrainTabRequest('progress', 1));
+    await tester.pumpAndSettle();
+
+    // Ignored, not a reset to the first tab: Progress stays.
+    host.send(const TrainTabRequest('exercises', 2));
+    await tester.pumpAndSettle();
     expect(tester.takeException(), isNull);
-    expect(find.byKey(const Key('plan.regenerate')), findsOneWidget);
+    expect(find.byType(ProgressScreen), findsOneWidget);
     expect(find.byType(ExerciseListScreen, skipOffstage: false), findsNothing);
   });
 
-  testWidgets('the three tabs fit a 320 dp phone at large text', (
+  testWidgets('every tab can be reached on a 320 dp phone at large text', (
     tester,
   ) async {
     tester.view.physicalSize = const Size(320, 640);
