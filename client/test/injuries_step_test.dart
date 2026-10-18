@@ -293,4 +293,19 @@ void main() {
     expect(tester.takeException(), isNull);
     expect(find.byKey(const Key('side.1.both')), findsOneWidget);
   });
+
+  // The side chips are small, about 26 dp, and the last line of their card:
+  // the card's padding below them is theirs to take.
+  testWidgets('a side chip takes a tap just below its pill', (tester) async {
+    final sink = await _pump(tester);
+    await _tapKey(tester, const Key('injury.1'));
+
+    final chip = find.byKey(const Key('side.1.left'));
+    await tester.ensureVisible(chip);
+    await tester.pumpAndSettle();
+    await tester.tapAt(tester.getRect(chip).bottomCenter.translate(0, 9));
+    await tester.pumpAndSettle();
+
+    expect(sink.last.single.side, 'left');
+  });
 }

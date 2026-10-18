@@ -449,4 +449,21 @@ void main() {
       },
     );
   }
+
+  // One row of chips is only as tall as a chip: the room around the row is
+  // what takes each one's band to 48 dp.
+  testWidgets('a condition chip takes a tap just above its pill', (
+    tester,
+  ) async {
+    final current = await _pumpLive(tester);
+    await tester.pumpAndSettle();
+
+    final chip = find.byKey(const Key('health.high_blood_pressure'));
+    await tester.ensureVisible(chip);
+    await tester.pumpAndSettle();
+    await tester.tapAt(tester.getRect(chip).topCenter.translate(0, -7));
+    await tester.pumpAndSettle();
+
+    expect(current().conditions, contains('high_blood_pressure'));
+  });
 }

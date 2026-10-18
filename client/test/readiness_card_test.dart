@@ -244,6 +244,43 @@ void main() {
     expect(find.text('Update'), findsNothing);
   });
 
+  // The small chip is drawn about 26 dp tall at the foot of the card, and the
+  // card's own padding is below it. A thumb landing just under the chip is
+  // aiming at the chip, not at "open Recovery".
+  for (final (name, estimate) in [
+    ('with no estimate', null),
+    ('with an estimate', _estimate('low')),
+  ]) {
+    testWidgets('$name, a tap just below the chip checks in', (tester) async {
+      final taps = <String>[];
+      // In a list, as on Home: the card hugs what it holds, so the chip is
+      // its last line with only the card's padding below.
+      await tester.pumpWidget(
+        MaterialApp(
+          theme: fsLightTheme(),
+          home: Scaffold(
+            body: ListView(
+              children: [
+                ReadinessCard(
+                  estimate: estimate,
+                  todayCheckin: null,
+                  onCheckIn: () => taps.add('checkin'),
+                  onTap: () => taps.add('card'),
+                ),
+              ],
+            ),
+          ),
+        ),
+      );
+      final chip = find.byKey(const Key('home.readiness.checkin'));
+
+      await tester.tapAt(tester.getRect(chip).bottomCenter.translate(0, 9));
+      await tester.pump();
+
+      expect(taps, ['checkin']);
+    });
+  }
+
   testWidgets('the chip checks in and the card opens Recovery', (tester) async {
     final r = await _pump(
       tester,

@@ -168,6 +168,32 @@ void main() {
     expect(chosen, WeightUnit.lb);
   });
 
+  // The switch is drawn about 19 dp tall in a row no taller. The gap above
+  // the header and the header's padding below it are the switch's to use;
+  // nothing else there takes taps.
+  testWidgets('the column header switch takes a tap above or below it', (
+    tester,
+  ) async {
+    final chosen = <WeightUnit>[];
+    await tester.pumpWidget(
+      _host(
+        ExerciseLogPanel(
+          exercise: _exercise,
+          session: _session(),
+          unit: WeightUnit.kg,
+          onUnitChanged: chosen.add,
+          drafts: _drafts(tester),
+          onUndoSet: (_) async {},
+        ),
+      ),
+    );
+
+    final lb = tester.getRect(find.byKey(const Key('unit.lb')));
+    await tester.tapAt(Offset(lb.center.dx, lb.top - 12));
+    await tester.tapAt(Offset(lb.center.dx, lb.bottom + 6));
+    expect(chosen, [WeightUnit.lb, WeightUnit.lb]);
+  });
+
   // One pound is 0.45359237 kg exactly, so 22.5 kg is 49.6039... lb, 25 kg is
   // 55.1155... lb and the 2.5 kg gain between them is 5.5115... lb. Derived by
   // hand: an expectation run through the same conversion the widget uses

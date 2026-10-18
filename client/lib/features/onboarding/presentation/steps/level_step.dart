@@ -243,14 +243,16 @@ class LevelStep extends ConsumerWidget {
             ),
           ],
         ),
-        const SizedBox(height: 12),
+        // 8 of the 12 moved into each state below: the chips' band reaches
+        // into the room above them only if that room is the rows' own.
+        const SizedBox(height: 4),
         equipment.when(
           loading: () => const Padding(
-            padding: EdgeInsets.symmetric(vertical: 24),
+            padding: EdgeInsets.fromLTRB(0, 32, 0, 24),
             child: Center(child: CircularProgressIndicator()),
           ),
           error: (error, _) => Padding(
-            padding: const EdgeInsets.symmetric(vertical: 16),
+            padding: const EdgeInsets.fromLTRB(0, 24, 0, 16),
             child: Column(
               children: [
                 Text(describeError(error), textAlign: TextAlign.center),
@@ -267,28 +269,41 @@ class LevelStep extends ConsumerWidget {
           // The server now returns the curated list in display order, and
           // this step renders it verbatim.
           data: (options) => options.isEmpty
-              ? Text(
-                  'No equipment options are available right now.',
-                  style: TextStyle(fontSize: 11, color: t.text3),
+              ? Padding(
+                  padding: const EdgeInsets.only(top: 8),
+                  child: Text(
+                    'No equipment options are available right now.',
+                    style: TextStyle(fontSize: 11, color: t.text3),
+                  ),
                 )
               : Column(
                   crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: [
-                    Wrap(
-                      spacing: 8,
-                      runSpacing: 8,
-                      children: [
-                        for (final option in options)
-                          FsChip(
-                            key: Key('equipment.${option.equipmentId}'),
-                            label: option.name,
-                            selected:
-                                !value.unfamiliar &&
-                                value.equipmentIds.contains(option.equipmentId),
-                            showCheck: true,
-                            onTap: () => _toggleEquipment(option.equipmentId),
-                          ),
-                      ],
+                    // The room around the rows takes the outer chips' bands to
+                    // 48 dp; the 8 above is this padding's.
+                    Padding(
+                      padding: const EdgeInsets.only(top: 8),
+                      child: FsTapRoom(
+                        child: Wrap(
+                          spacing: 8,
+                          runSpacing: 8,
+                          children: [
+                            for (final option in options)
+                              FsChip(
+                                key: Key('equipment.${option.equipmentId}'),
+                                label: option.name,
+                                selected:
+                                    !value.unfamiliar &&
+                                    value.equipmentIds.contains(
+                                      option.equipmentId,
+                                    ),
+                                showCheck: true,
+                                onTap: () =>
+                                    _toggleEquipment(option.equipmentId),
+                              ),
+                          ],
+                        ),
+                      ),
                     ),
                     const SizedBox(height: 12),
                     Builder(

@@ -166,6 +166,28 @@ void main() {
     expect(_submitEnabled(tester), isTrue);
   });
 
+  // One row of chips is only as tall as a chip, so without room around the
+  // row a chip answers its drawn ~32 dp pill and no more.
+  testWidgets('the chips take a tap just above or below their pill', (
+    tester,
+  ) async {
+    await _open(tester);
+
+    await tester.ensureVisible(_pain('mild'));
+    await tester.tapAt(
+      tester.getRect(_pain('mild')).topCenter.translate(0, -7),
+    );
+    await tester.pumpAndSettle();
+    expect(_region(13), findsOneWidget, reason: 'mild should be picked');
+
+    await tester.ensureVisible(_region(13));
+    await tester.tapAt(
+      tester.getRect(_region(13)).bottomCenter.translate(0, 7),
+    );
+    await tester.pumpAndSettle();
+    expect(_submitEnabled(tester), isTrue, reason: 'the region was picked');
+  });
+
   testWidgets('going back to no pain clears the region', (tester) async {
     await _open(tester);
     await _tap(tester, _pain('moderate'));

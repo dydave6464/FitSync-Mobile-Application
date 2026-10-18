@@ -293,4 +293,27 @@ void main() {
     );
     handle.dispose();
   });
+
+  // Small chips are drawn about 26 dp tall, so their band reaches 11 dp past
+  // the row on each side.
+  testWidgets('a main focus chip takes a tap just above its pill', (
+    tester,
+  ) async {
+    final current = await _pumpLive(
+      tester,
+      initial: const GoalAnswers(
+        goals: ['build_muscle', 'lose_weight'],
+        mainGoal: 'build_muscle',
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    final chip = find.byKey(const Key('focus.lose_weight'));
+    await tester.ensureVisible(chip);
+    await tester.pumpAndSettle();
+    await tester.tapAt(tester.getRect(chip).topCenter.translate(0, -9));
+    await tester.pumpAndSettle();
+
+    expect(current().mainGoal, 'lose_weight');
+  });
 }

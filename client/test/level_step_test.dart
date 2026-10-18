@@ -647,4 +647,20 @@ void main() {
     );
     handle.dispose();
   });
+
+  // One row of chips is only as tall as a chip: the room around the rows is
+  // what takes the outer chips' bands to 48 dp.
+  testWidgets('an equipment chip takes a tap just above its pill', (
+    tester,
+  ) async {
+    final current = await _pumpLive(tester);
+
+    final chip = find.byKey(const Key('equipment.1'));
+    await tester.ensureVisible(chip);
+    await tester.pumpAndSettle();
+    await tester.tapAt(tester.getRect(chip).topCenter.translate(0, -7));
+    await tester.pumpAndSettle();
+
+    expect(current().equipmentIds, contains(1));
+  });
 }

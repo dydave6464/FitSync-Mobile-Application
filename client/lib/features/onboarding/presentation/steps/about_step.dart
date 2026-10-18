@@ -378,21 +378,25 @@ class _AboutStepState extends State<AboutStep> {
         const SizedBox(height: 18),
         const FsEyebrow('Daily activity level'),
         const SizedBox(height: 10),
-        Wrap(
-          spacing: 9,
-          runSpacing: 9,
-          children: [
-            for (final option in _activityLevels)
-              FsChip(
-                key: Key('activity.${option.value}'),
-                label: option.label,
-                selected: _activityLevel == option.value,
-                onTap: () {
-                  setState(() => _activityLevel = option.value);
-                  _emit();
-                },
-              ),
-          ],
+        // A one-row Wrap is only as tall as a chip: the room around it is
+        // what takes each chip's band to 48 dp.
+        FsTapRoom(
+          child: Wrap(
+            spacing: 9,
+            runSpacing: 9,
+            children: [
+              for (final option in _activityLevels)
+                FsChip(
+                  key: Key('activity.${option.value}'),
+                  label: option.label,
+                  selected: _activityLevel == option.value,
+                  onTap: () {
+                    setState(() => _activityLevel = option.value);
+                    _emit();
+                  },
+                ),
+            ],
+          ),
         ),
         // Absent until every term of the equation is answered — the same rule
         // `estimateSessionKcal` follows for an unknown body weight. A card

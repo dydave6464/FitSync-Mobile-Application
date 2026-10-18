@@ -147,39 +147,45 @@ class _OutcomeSheetState extends ConsumerState<_OutcomeSheet> {
             const SizedBox(height: 16),
             Text('Any pain since?', style: label()),
             const SizedBox(height: 8),
-            Wrap(
-              spacing: 8,
-              runSpacing: 8,
-              children: [
-                for (final level in painLevels)
-                  FsChip(
-                    key: Key('outcome.pain.$level'),
-                    label: _displayLabel(level),
-                    selected: _painLevel == level,
-                    onTap: () => _pickPain(level),
-                  ),
-              ],
+            // A one-row Wrap is only as tall as a chip: the room around it is
+            // what takes each chip's band to 48 dp.
+            FsTapRoom(
+              child: Wrap(
+                spacing: 8,
+                runSpacing: 8,
+                children: [
+                  for (final level in painLevels)
+                    FsChip(
+                      key: Key('outcome.pain.$level'),
+                      label: _displayLabel(level),
+                      selected: _painLevel == level,
+                      onTap: () => _pickPain(level),
+                    ),
+                ],
+              ),
             ),
             if (_hasPain) ...[
               const SizedBox(height: 16),
               Text('Where?', style: label()),
               const SizedBox(height: 8),
               regions.when(
-                data: (options) => Wrap(
-                  spacing: 8,
-                  runSpacing: 8,
-                  children: [
-                    for (final option in options)
-                      FsChip(
-                        key: Key('outcome.region.${option.injuryId}'),
-                        label: option.name,
-                        selected: _injuryId == option.injuryId,
-                        onTap: () {
-                          if (_busy) return;
-                          setState(() => _injuryId = option.injuryId);
-                        },
-                      ),
-                  ],
+                data: (options) => FsTapRoom(
+                  child: Wrap(
+                    spacing: 8,
+                    runSpacing: 8,
+                    children: [
+                      for (final option in options)
+                        FsChip(
+                          key: Key('outcome.region.${option.injuryId}'),
+                          label: option.name,
+                          selected: _injuryId == option.injuryId,
+                          onTap: () {
+                            if (_busy) return;
+                            setState(() => _injuryId = option.injuryId);
+                          },
+                        ),
+                    ],
+                  ),
                 ),
                 loading: () => const Padding(
                   padding: EdgeInsets.symmetric(vertical: 8),

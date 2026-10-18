@@ -229,27 +229,33 @@ class _RegionCard extends StatelessWidget {
               padding: const EdgeInsets.fromLTRB(13, 0, 13, 13),
               // A Wrap, not a Row: at large text on a narrow phone the label
               // and three chips do not fit on one line.
-              child: Wrap(
-                spacing: 6,
-                runSpacing: 6,
-                crossAxisAlignment: WrapCrossAlignment.center,
-                children: [
-                  Padding(
-                    padding: const EdgeInsets.only(right: 4),
-                    child: Text(
-                      'Side',
-                      style: TextStyle(fontSize: 11, color: t.text3),
+              // Small chips, the card's last line: the 13 dp of padding below
+              // is the bottom of their band. Nothing is above them to reach
+              // into -- the region's own row is right there.
+              child: FsTapRoom(
+                reach: 11,
+                child: Wrap(
+                  spacing: 6,
+                  runSpacing: 6,
+                  crossAxisAlignment: WrapCrossAlignment.center,
+                  children: [
+                    Padding(
+                      padding: const EdgeInsets.only(right: 4),
+                      child: Text(
+                        'Side',
+                        style: TextStyle(fontSize: 11, color: t.text3),
+                      ),
                     ),
-                  ),
-                  for (final side in _sides)
-                    FsChip(
-                      key: Key('side.${option.injuryId}.${side.value}'),
-                      label: side.label,
-                      small: true,
-                      selected: selection!.side == side.value,
-                      onTap: () => onSide(side.value),
-                    ),
-                ],
+                    for (final side in _sides)
+                      FsChip(
+                        key: Key('side.${option.injuryId}.${side.value}'),
+                        label: side.label,
+                        small: true,
+                        selected: selection!.side == side.value,
+                        onTap: () => onSide(side.value),
+                      ),
+                  ],
+                ),
               ),
             ),
         ],

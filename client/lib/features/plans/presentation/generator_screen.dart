@@ -407,21 +407,29 @@ class _GeneratorScreenState extends ConsumerState<GeneratorScreen> {
         ),
         const SizedBox(height: 22),
         const FsEyebrow('Split style'),
-        const SizedBox(height: 10),
-        Wrap(
-          key: const Key('gen.splits'),
-          spacing: 8,
-          runSpacing: 8,
-          children: [
-            for (final s in splitStyles)
-              FsChip(
-                label: s.label,
-                selected: s.value == split,
-                onTap: () => setState(() => _splitStyle = s.value),
-              ),
-          ],
+        // 8 of the 10 above and of the 22 below moved into the padding: in a
+        // list each child is its own box, so the room a chip's band reaches
+        // into has to be inside the row's.
+        const SizedBox(height: 2),
+        Padding(
+          padding: const EdgeInsets.symmetric(vertical: 8),
+          child: FsTapRoom(
+            child: Wrap(
+              key: const Key('gen.splits'),
+              spacing: 8,
+              runSpacing: 8,
+              children: [
+                for (final s in splitStyles)
+                  FsChip(
+                    label: s.label,
+                    selected: s.value == split,
+                    onTap: () => setState(() => _splitStyle = s.value),
+                  ),
+              ],
+            ),
+          ),
         ),
-        const SizedBox(height: 22),
+        const SizedBox(height: 14),
         const FsEyebrow('Training days'),
         const SizedBox(height: 10),
         TrainingDaysRow(
@@ -635,46 +643,52 @@ class _DescribeCardState extends ConsumerState<_DescribeCard> {
     final parsed = _applied;
 
     return FsCard(
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          const FsEyebrow('Describe your week'),
-          const SizedBox(height: 8),
-          FsField(
-            key: const Key('gen.describe.field'),
-            controller: _controller,
-            hint: 'e.g. full body, 4 days a week, protecting my lower back',
-            maxLines: 3,
-            textCapitalization: TextCapitalization.sentences,
-          ),
-          const SizedBox(height: 10),
-          Wrap(
-            spacing: 8,
-            runSpacing: 8,
-            children: [
-              FsChip(
-                key: const Key('gen.describe.apply'),
-                label: 'Apply',
-                selected: true,
-                onTap: _apply,
+      // The chips can be the card's last line, and the room below them is
+      // then the card's padding, outside the Column.
+      child: FsTapRoom(
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const FsEyebrow('Describe your week'),
+            const SizedBox(height: 8),
+            FsField(
+              key: const Key('gen.describe.field'),
+              controller: _controller,
+              hint: 'e.g. full body, 4 days a week, protecting my lower back',
+              maxLines: 3,
+              textCapitalization: TextCapitalization.sentences,
+            ),
+            const SizedBox(height: 10),
+            FsTapRoom(
+              child: Wrap(
+                spacing: 8,
+                runSpacing: 8,
+                children: [
+                  FsChip(
+                    key: const Key('gen.describe.apply'),
+                    label: 'Apply',
+                    selected: true,
+                    onTap: _apply,
+                  ),
+                  FsChip(
+                    key: const Key('gen.describe.fromProfile'),
+                    label: 'From profile',
+                    selected: false,
+                    onTap: () => setState(() {
+                      _controller.text = widget.composed;
+                      _applied = null;
+                      _added.clear();
+                    }),
+                  ),
+                ],
               ),
-              FsChip(
-                key: const Key('gen.describe.fromProfile'),
-                label: 'From profile',
-                selected: false,
-                onTap: () => setState(() {
-                  _controller.text = widget.composed;
-                  _applied = null;
-                  _added.clear();
-                }),
-              ),
+            ),
+            if (parsed != null) ...[
+              const SizedBox(height: 12),
+              _result(t, parsed),
             ],
-          ),
-          if (parsed != null) ...[
-            const SizedBox(height: 12),
-            _result(t, parsed),
           ],
-        ],
+        ),
       ),
     );
   }

@@ -382,6 +382,20 @@ void main() {
       expect(find.textContaining('–'), findsNothing);
     });
   }
+  // One row of chips is only as tall as a chip: the room around the row is
+  // what takes each one's band to 48 dp.
+  testWidgets('an activity chip takes a tap just above its pill', (
+    tester,
+  ) async {
+    final emitted = await _pumpAndEdit(tester, (tester) async {
+      final chip = find.byKey(const Key('activity.sedentary'));
+      await tester.ensureVisible(chip);
+      await tester.pumpAndSettle();
+      await tester.tapAt(tester.getRect(chip).topCenter.translate(0, -7));
+    });
+
+    expect(emitted?.activityLevel, 'sedentary');
+  });
 }
 
 void _ignore(AboutAnswers _) {}

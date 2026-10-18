@@ -1,4 +1,6 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/rendering.dart'
+    show BoxHitTestEntry, BoxHitTestResult, RenderFittedBox;
 
 import '../../../../core/theme.dart';
 import '../../../../core/units.dart';
@@ -234,7 +236,9 @@ class _ExerciseLogPanelState extends State<ExerciseLogPanel> {
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Padding(
-                padding: const EdgeInsets.all(14),
+                // No bottom: those 14 dp are the column header's top padding
+                // now, where the unit switch's taps can reach into them.
+                padding: const EdgeInsets.fromLTRB(14, 14, 14, 0),
                 child: Row(
                   children: [
                     // The movement stays in view while logging: the tile plays
@@ -369,62 +373,67 @@ class _ExerciseLogPanelState extends State<ExerciseLogPanel> {
                   children: [
                     Padding(
                       key: const Key('logpanel.columns'),
-                      padding: const EdgeInsets.fromLTRB(4, 0, 4, 8),
-                      child: Row(
-                        children: [
-                          SizedBox(
-                            width: SetRow.numberWidth,
-                            // softWrap off to match .eyebrow's `white-space:
-                            // nowrap`: at 10.5px with the eyebrow's tracking,
-                            // "SET" otherwise wraps to two lines inside a
-                            // 28px column and shoves the table down a row.
-                            child: Text(
-                              'SET',
-                              softWrap: false,
-                              overflow: TextOverflow.visible,
-                              style: fsEyebrow(t),
-                            ),
-                          ),
-                          // The weight heading, which is also the unit
-                          // toggle. It goes with the column it names: this
-                          // row shares SetRow's column constants, so a
-                          // heading left standing over a column that is gone
-                          // takes width the rows below no longer give it, and
-                          // REPS slides off the field it labels.
-                          //
-                          // The toggle is not the only way to the unit --
-                          // Settings owns it, and every other weight on the
-                          // panel still reads in whatever it is set to.
-                          if (showWeight) ...[
-                            Expanded(
-                              child: Center(
-                                // At 320 dp with large text the toggle is a
-                                // couple of pixels wider than its column;
-                                // shrink it there rather than overflow.
-                                child: FittedBox(
-                                  fit: BoxFit.scaleDown,
-                                  child: FsUnitToggle(
-                                    value: widget.unit,
-                                    onChanged: widget.onUnitChanged,
-                                  ),
-                                ),
-                              ),
-                            ),
-                            const SizedBox(width: SetRow.columnGap),
-                          ],
-                          Expanded(
-                            child: Center(
+                      padding: const EdgeInsets.fromLTRB(4, 14, 4, 8),
+                      // The unit switch is drawn about 19 dp tall in this
+                      // row: the padding around it is the rest of its band,
+                      // 14 above and 8 below. Nothing else here takes taps.
+                      child: FsTapRoom(
+                        reach: 14,
+                        child: Row(
+                          children: [
+                            SizedBox(
+                              width: SetRow.numberWidth,
+                              // softWrap off to match .eyebrow's `white-space:
+                              // nowrap`: at 10.5px with the eyebrow's tracking,
+                              // "SET" otherwise wraps to two lines inside a
+                              // 28px column and shoves the table down a row.
                               child: Text(
-                                'REPS',
+                                'SET',
                                 softWrap: false,
                                 overflow: TextOverflow.visible,
                                 style: fsEyebrow(t),
                               ),
                             ),
-                          ),
-                          const SizedBox(width: SetRow.columnGap),
-                          SizedBox(width: trailingWidth),
-                        ],
+                            // The weight heading, which is also the unit
+                            // toggle. It goes with the column it names: this
+                            // row shares SetRow's column constants, so a
+                            // heading left standing over a column that is gone
+                            // takes width the rows below no longer give it, and
+                            // REPS slides off the field it labels.
+                            //
+                            // The toggle is not the only way to the unit --
+                            // Settings owns it, and every other weight on the
+                            // panel still reads in whatever it is set to.
+                            if (showWeight) ...[
+                              Expanded(
+                                child: Center(
+                                  // At 320 dp with large text the toggle is a
+                                  // couple of pixels wider than its column;
+                                  // shrink it there rather than overflow.
+                                  child: _ScaleDown(
+                                    child: FsUnitToggle(
+                                      value: widget.unit,
+                                      onChanged: widget.onUnitChanged,
+                                    ),
+                                  ),
+                                ),
+                              ),
+                              const SizedBox(width: SetRow.columnGap),
+                            ],
+                            Expanded(
+                              child: Center(
+                                child: Text(
+                                  'REPS',
+                                  softWrap: false,
+                                  overflow: TextOverflow.visible,
+                                  style: fsEyebrow(t),
+                                ),
+                              ),
+                            ),
+                            const SizedBox(width: SetRow.columnGap),
+                            SizedBox(width: trailingWidth),
+                          ],
+                        ),
                       ),
                     ),
                     for (var setNumber = 1; setNumber <= rows; setNumber++)
@@ -565,5 +574,31 @@ class _AddSet extends StatelessWidget {
         ),
       ),
     );
+  }
+}
+
+/// A [FittedBox] that scales down without trimming its child's taps to its
+/// own box. The unit switch's band reaches past the pill it draws, and a
+/// plain FittedBox -- needed only at 320 dp with large text -- answered
+/// inside the pill alone, whatever the room around it.
+class _ScaleDown extends FittedBox {
+  const _ScaleDown({required Widget super.child})
+    : super(fit: BoxFit.scaleDown);
+
+  @override
+  RenderFittedBox createRenderObject(BuildContext context) =>
+      _RenderScaleDown(textDirection: Directionality.maybeOf(context));
+}
+
+class _RenderScaleDown extends RenderFittedBox {
+  _RenderScaleDown({super.textDirection}) : super(fit: BoxFit.scaleDown);
+
+  @override
+  bool hitTest(BoxHitTestResult result, {required Offset position}) {
+    // Not the usual check against this box: the child's band lies outside
+    // it. The scale still applies, through hitTestChildren's transform.
+    if (!hitTestChildren(result, position: position)) return false;
+    result.add(BoxHitTestEntry(this, position));
+    return true;
   }
 }

@@ -50,26 +50,29 @@ class HealthStep extends StatelessWidget {
           style: theme.textTheme.titleMedium,
         ),
         const SizedBox(height: 10),
-        Wrap(
-          spacing: 8,
-          runSpacing: 8,
-          children: [
-            for (final c in healthConditions)
+        // The room around the rows takes the outer chips' bands to 48 dp.
+        FsTapRoom(
+          child: Wrap(
+            spacing: 8,
+            runSpacing: 8,
+            children: [
+              for (final c in healthConditions)
+                FsChip(
+                  key: Key('health.${c.value}'),
+                  label: c.label,
+                  selected: value.conditions.contains(c.value),
+                  showCheck: true,
+                  onTap: () => onChanged(value.toggle(c.value)),
+                ),
               FsChip(
-                key: Key('health.${c.value}'),
-                label: c.label,
-                selected: value.conditions.contains(c.value),
+                key: const Key('health.none'),
+                label: 'None of these',
+                selected: value.noneOfThese,
                 showCheck: true,
-                onTap: () => onChanged(value.toggle(c.value)),
+                onTap: () => onChanged(value.toggleNone()),
               ),
-            FsChip(
-              key: const Key('health.none'),
-              label: 'None of these',
-              selected: value.noneOfThese,
-              showCheck: true,
-              onTap: () => onChanged(value.toggleNone()),
-            ),
-          ],
+            ],
+          ),
         ),
         const SizedBox(height: 22),
         Text(
