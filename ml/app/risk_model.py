@@ -74,8 +74,7 @@ def features_for(payload: InjuryRiskRequest) -> np.ndarray:
     for (field, _), ordinal in zip(risk_data.CHECKIN_ORDERS, _ORDINALS):
         if checkins:
             recovery.append(sum(
-                ordinal.get(c.get(field), 0) if isinstance(c, dict) else 0
-                for c in checkins
+                ordinal.get(risk.answer_in(ordinal, c, field), 0) for c in checkins
             ) / len(checkins))
         else:
             recovery.append(0.0)

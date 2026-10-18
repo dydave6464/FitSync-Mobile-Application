@@ -61,14 +61,30 @@ SCORE_MIN = 0.0
 SCORE_MAX = 100.0
 
 
-def _recovery_penalty(checkin) -> float:
+def answer_in(table, checkin, field):
+    """The check-in's answer for `field` if it is one `table` knows, else None.
+
+    Check-ins arrive as plain dicts, so an answer can be a list or an object;
+    those are unhashable, and looking one up in a table would raise rather
+    than read as unknown.
+    """
     if not isinstance(checkin, dict):
-        return 0.0
+        return None
+    answer = checkin.get(field)
+    return answer if isinstance(answer, str) and answer in table else None
+
+
+def _points(table, checkin, field) -> float:
+    answer = answer_in(table, checkin, field)
+    return table[answer] if answer is not None else 0.0
+
+
+def _recovery_penalty(checkin) -> float:
     return (
-        SLEEP.get(checkin.get("sleepQuality"), 0.0)
-        + SORENESS.get(checkin.get("muscleSoreness"), 0.0)
-        + ENERGY.get(checkin.get("energy"), 0.0)
-        + STRESS.get(checkin.get("stress"), 0.0)
+        _points(SLEEP, checkin, "sleepQuality")
+        + _points(SORENESS, checkin, "muscleSoreness")
+        + _points(ENERGY, checkin, "energy")
+        + _points(STRESS, checkin, "stress")
     )
 
 
@@ -90,10 +106,7 @@ def level_for(score: float) -> str:
 
 def _worst_answer(checkins, field: str, table: Dict[str, float]) -> Optional[str]:
     """The answer in the window that scores the most points, if any is known."""
-    known = [
-        c.get(field) for c in checkins
-        if isinstance(c, dict) and c.get(field) in table
-    ]
+    known = [a for a in (answer_in(table, c, field) for c in checkins) if a is not None]
     return max(known, key=lambda answer: table[answer]) if known else None
 
 
@@ -113,8 +126,7 @@ def drivers(payload: InjuryRiskRequest) -> List[RiskDriver]:
     if payload.checkins:
         for key, field, table in CHECKIN_FIELDS:
             points = sum(
-                table.get(c.get(field), 0.0) if isinstance(c, dict) else 0.0
-                for c in payload.checkins
+                _points(table, c, field) for c in payload.checkins
             ) / len(payload.checkins)
             if points > 0:
                 candidates.append(

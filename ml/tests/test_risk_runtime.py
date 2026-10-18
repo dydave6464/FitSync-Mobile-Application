@@ -208,3 +208,17 @@ def test_a_non_finite_load_is_still_a_422(tmp_path, content):
         headers={"Content-Type": "application/json"},
     )
     assert response.status_code == 422
+
+
+def test_a_check_in_answer_that_is_not_a_string_is_ignored_not_a_500(tmp_path):
+    # checkins are plain dicts, so a list or object can arrive as an answer.
+    # It is unhashable, and looking it up in a scoring table used to raise.
+    response = client_for(tmp_path).post("/injury-risk", json={
+        "load": 20.0,
+        "checkins": [{"sleepQuality": ["poor"], "muscleSoreness": {"a": 1},
+                      "energy": "low", "stress": None}],
+    })
+    assert response.status_code == 200, response.text
+    body = response.json()
+    assert body["trainingLoadScore"] >= 17.0   # 10 load + 7 energy
+    assert [d["key"] for d in body["drivers"]] == ["load", "energy"]
