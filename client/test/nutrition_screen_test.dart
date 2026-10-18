@@ -109,6 +109,54 @@ void main() {
     expect(find.text('Chicken adobo'), findsOneWidget);
   });
 
+  testWidgets('the Undo message goes away on its own', (tester) async {
+    // A SnackBar with an action persists by default, which left "Removed …"
+    // over the meals for as long as the tab stayed open.
+    await _pump(tester, today: _day('2026-10-14', lunch: [_adobo()]));
+    await tester.tap(find.byKey(const Key('entry.delete.7')));
+    await tester.pumpAndSettle();
+    expect(find.text('Removed Chicken adobo'), findsOneWidget);
+
+    await tester.pump(const Duration(seconds: 10));
+    await tester.pumpAndSettle();
+    expect(find.text('Removed Chicken adobo'), findsNothing);
+  });
+
+  testWidgets('the Undo message stays up for screen-reader users', (tester) async {
+    // Reaching Undo with TalkBack takes longer than four seconds, so with a
+    // screen reader on it waits, as the workout review's Undo does.
+    tester.platformDispatcher.accessibilityFeaturesTestValue =
+        const FakeAccessibilityFeatures(accessibleNavigation: true);
+    addTearDown(tester.platformDispatcher.clearAccessibilityFeaturesTestValue);
+    await _pump(tester, today: _day('2026-10-14', lunch: [_adobo()]));
+    await tester.tap(find.byKey(const Key('entry.delete.7')));
+    await tester.pumpAndSettle();
+
+    await tester.pump(const Duration(seconds: 10));
+    await tester.pumpAndSettle();
+    expect(find.text('Removed Chicken adobo'), findsOneWidget);
+  });
+
+  testWidgets('a second removal replaces the first message rather than queueing', (tester) async {
+    // With a screen reader the message waits, so one queued behind it would
+    // never show, and its Undo would be out of reach.
+    tester.platformDispatcher.accessibilityFeaturesTestValue =
+        const FakeAccessibilityFeatures(accessibleNavigation: true);
+    addTearDown(tester.platformDispatcher.clearAccessibilityFeaturesTestValue);
+    const rice = FoodEntry(
+      id: 8, mealType: 'lunch', name: 'Garlic rice', servingDesc: '1 cup', servings: 1,
+      kcal: 240, proteinG: 4, carbsG: 50, fatG: 3, source: 'local', foodId: 9,
+    );
+    await _pump(tester, today: _day('2026-10-14', lunch: [_adobo(), rice]));
+    await tester.tap(find.byKey(const Key('entry.delete.7')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const Key('entry.delete.8')));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Removed Garlic rice'), findsOneWidget);
+    expect(find.text('Removed Chicken adobo'), findsNothing);
+  });
+
   testWidgets('Undo after switching days logs back to the day it was removed from', (tester) async {
     final repo = await _pump(tester, today: _day('2026-10-14', lunch: [_adobo()]));
     await tester.tap(find.byKey(const Key('entry.delete.7')));
