@@ -1031,6 +1031,54 @@ void main() {
       expect(picked, [WeightUnit.lb, WeightUnit.lb]);
     });
 
+    // In a stat card the switch sits 4 dp after the number, and a Row asks
+    // its last child first: a band grown evenly would take the field's
+    // right-hand end, so a tap meant for the number flipped the unit.
+    testWidgets(
+      "the unit switch in a stat card leaves the number's taps alone",
+      (tester) async {
+        final picked = <WeightUnit>[];
+        final controller = TextEditingController();
+        addTearDown(controller.dispose);
+        await tester.pumpWidget(
+          _host(
+            SizedBox(
+              width: 140,
+              child: FsStatField(
+                fieldKey: const Key('weightKg'),
+                label: 'Weight',
+                unit: 'lb',
+                controller: controller,
+                unitControl: FsUnitToggle(
+                  value: WeightUnit.lb,
+                  onChanged: picked.add,
+                ),
+              ),
+            ),
+          ),
+        );
+
+        final field = tester.getRect(find.byKey(const Key('weightKg')));
+        await tester.tapAt(field.centerRight - const Offset(5, 0));
+        await tester.pump();
+        expect(picked, isEmpty, reason: 'the tap was the number');
+        expect(
+          tester
+              .widget<EditableText>(find.byType(EditableText))
+              .focusNode
+              .hasFocus,
+          isTrue,
+        );
+
+        // The switch still takes a tap a little above the row, over the
+        // label.
+        final row = tester.getRect(find.byType(Row).first);
+        final kg = tester.getRect(find.byKey(const Key('unit.kg')));
+        await tester.tapAt(Offset(kg.center.dx, row.top - 6));
+        expect(picked, [WeightUnit.kg]);
+      },
+    );
+
     testWidgets('a screen reader hears which unit is in force', (tester) async {
       final handle = tester.ensureSemantics();
       await tester.pumpWidget(

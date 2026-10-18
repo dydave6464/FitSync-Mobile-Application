@@ -598,55 +598,88 @@ class FsStatField extends StatelessWidget {
         mainAxisSize: MainAxisSize.min,
         children: [
           FsEyebrow(label),
-          Row(
-            crossAxisAlignment: CrossAxisAlignment.baseline,
-            textBaseline: TextBaseline.alphabetic,
-            children: [
-              Expanded(
-                child: TextField(
-                  key: fieldKey,
-                  controller: controller,
-                  keyboardType: const TextInputType.numberWithOptions(
-                    decimal: true,
-                  ),
-                  inputFormatters: [
-                    TextInputFormatter.withFunction(
-                      (previous, next) =>
-                          _measurement.hasMatch(next.text) ? next : previous,
+          // The room above the row is the label's, which takes no taps, so
+          // a thumb landing just over the switch still finds it.
+          FsTapRoom(
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.baseline,
+              textBaseline: TextBaseline.alphabetic,
+              children: [
+                Expanded(
+                  child: TextField(
+                    key: fieldKey,
+                    controller: controller,
+                    keyboardType: const TextInputType.numberWithOptions(
+                      decimal: true,
                     ),
-                  ],
-                  style: TextStyle(
-                    fontFamily: fsMonoFamily,
-                    fontSize: 22,
-                    fontWeight: FontWeight.w600,
-                    letterSpacing: -0.22,
-                    color: accent ? t.accentText : t.text,
-                  ),
-                  cursorColor: t.accent,
-                  decoration: InputDecoration(
-                    isDense: true,
-                    border: InputBorder.none,
-                    enabledBorder: InputBorder.none,
-                    focusedBorder: InputBorder.none,
-                    contentPadding: EdgeInsets.zero,
-                    hintText: '--',
-                    hintStyle: TextStyle(
+                    inputFormatters: [
+                      TextInputFormatter.withFunction(
+                        (previous, next) =>
+                            _measurement.hasMatch(next.text) ? next : previous,
+                      ),
+                    ],
+                    style: TextStyle(
                       fontFamily: fsMonoFamily,
                       fontSize: 22,
                       fontWeight: FontWeight.w600,
-                      color: t.text3,
+                      letterSpacing: -0.22,
+                      color: accent ? t.accentText : t.text,
+                    ),
+                    cursorColor: t.accent,
+                    decoration: InputDecoration(
+                      isDense: true,
+                      border: InputBorder.none,
+                      enabledBorder: InputBorder.none,
+                      focusedBorder: InputBorder.none,
+                      contentPadding: EdgeInsets.zero,
+                      hintText: '--',
+                      hintStyle: TextStyle(
+                        fontFamily: fsMonoFamily,
+                        fontSize: 22,
+                        fontWeight: FontWeight.w600,
+                        color: t.text3,
+                      ),
                     ),
                   ),
                 ),
-              ),
-              const SizedBox(width: 4),
-              unitControl ??
+                const SizedBox(width: 4),
+                if (unitControl case final control?)
+                  _NoReachBack(child: control)
+                else
                   Text(unit, style: TextStyle(fontSize: 11, color: t.text3)),
-            ],
+              ],
+            ),
           ),
         ],
       ),
     );
+  }
+}
+
+/// Keeps [child]'s tap band from reaching back over the sibling before it.
+///
+/// A Row asks its last child first, so a control's band grown to the left
+/// would take the right-hand end of the field beside it: in a stat card a
+/// tap meant for the number would flip the unit. Above, below and past its
+/// far end the band answers as before.
+class _NoReachBack extends SingleChildRenderObjectWidget {
+  const _NoReachBack({required Widget super.child});
+
+  @override
+  RenderProxyBox createRenderObject(BuildContext context) =>
+      _RenderNoReachBack();
+}
+
+class _RenderNoReachBack extends RenderProxyBox {
+  @override
+  bool hitTest(BoxHitTestResult result, {required Offset position}) {
+    // Not the usual check against this box: the child's band lies outside
+    // it, and only the side facing the field is closed.
+    if (position.dx < 0 || !hitTestChildren(result, position: position)) {
+      return false;
+    }
+    result.add(BoxHitTestEntry(this, position));
+    return true;
   }
 }
 
