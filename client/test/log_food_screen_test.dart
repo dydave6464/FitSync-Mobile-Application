@@ -87,13 +87,16 @@ void main() {
     expect(repo.queries, ['a' * 60]);
   });
 
+  // The phone reached the server, so its connection is fine: the note says
+  // the gap is temporary and what to do, without blaming the connection.
   testWidgets('FatSecret down shows a quiet note', (tester) async {
     final repo = _SearchRepo()..unavailable = true;
     await _pump(tester, repo);
     await tester.enterText(find.byKey(const Key('food.search')), 'adobo');
     await tester.pump(const Duration(milliseconds: 300));
     await tester.pumpAndSettle();
-    expect(find.text("Some foods couldn't load. Check your connection."), findsOneWidget);
+    expect(find.text("Some foods couldn't load right now. Try again later."), findsOneWidget);
+    expect(find.textContaining('connection'), findsNothing);
     expect(find.text('Powered by fatsecret Platform API'), findsNothing);
   });
 

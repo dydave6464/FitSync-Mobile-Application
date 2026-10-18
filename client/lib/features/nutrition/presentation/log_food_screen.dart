@@ -180,7 +180,8 @@ class _LogFoodScreenState extends ConsumerState<LogFoodScreen> {
       data: (r) => _FoodList(
         foods: r.foods,
         onTap: _choose,
-        note: r.fatsecretUnavailable ? "Some foods couldn't load. Check your connection." : null,
+        // The phone reached the server, so its connection isn't the problem.
+        note: r.fatsecretUnavailable ? "Some foods couldn't load right now. Try again later." : null,
         empty: 'No foods match "$_query". Try another word, or add it manually.',
       ),
     );
