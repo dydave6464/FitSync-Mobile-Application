@@ -320,11 +320,12 @@ class _SignInScreenState extends ConsumerState<SignInScreen> {
                 ),
                 // Only in sign-in mode, matching the prototype: there is no
                 // password to reset for an account that does not exist yet.
-                if (!_registering) ...[
-                  const SizedBox(height: 10),
+                // The link's 48dp target brings its own space above the
+                // words, which is why there is no gap before it.
+                if (!_registering)
                   Align(
                     alignment: Alignment.centerRight,
-                    child: InkWell(
+                    child: _TextLink(
                       key: const Key('forgotPassword'),
                       onTap: _busy ? null : _openForgotPassword,
                       child: Text(
@@ -333,7 +334,6 @@ class _SignInScreenState extends ConsumerState<SignInScreen> {
                       ),
                     ),
                   ),
-                ],
                 if (_error != null) ...[
                   const SizedBox(height: 16),
                   // Inline rather than a SnackBar: a snack bar times out, and
@@ -380,9 +380,9 @@ class _SignInScreenState extends ConsumerState<SignInScreen> {
                   icon: const Icon(Icons.g_mobiledata),
                   onPressed: _busy ? null : _signInWithGoogle,
                 ),
-                const SizedBox(height: 24),
+                const SizedBox(height: 8),
                 Center(
-                  child: InkWell(
+                  child: _TextLink(
                     key: const Key('toggleMode'),
                     onTap: _busy
                         ? null
@@ -415,6 +415,31 @@ class _SignInScreenState extends ConsumerState<SignInScreen> {
               ],
             ),
           ),
+        ),
+      ),
+    );
+  }
+}
+
+/// A line of small text that acts as a button, inside a 48dp tap target.
+///
+/// The words stay as small as the design draws them; the target around them
+/// is what grows, so a thumb that lands just above or below still counts.
+class _TextLink extends StatelessWidget {
+  const _TextLink({super.key, required this.onTap, required this.child});
+
+  final VoidCallback? onTap;
+  final Widget child;
+
+  @override
+  Widget build(BuildContext context) {
+    return Semantics(
+      button: true,
+      child: InkWell(
+        onTap: onTap,
+        child: ConstrainedBox(
+          constraints: const BoxConstraints(minWidth: 48, minHeight: 48),
+          child: Align(widthFactor: 1, heightFactor: 1, child: child),
         ),
       ),
     );

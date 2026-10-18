@@ -261,4 +261,36 @@ void main() {
     expect(answers().goals, ['build_muscle', 'improve_endurance']);
     expect(answers().mainGoal, 'build_muscle');
   });
+
+  // The accent fill and the filled dot say which goals are ticked to anyone
+  // looking; a screen reader needs the same thing said out loud.
+  testWidgets('each goal card tells a screen reader whether it is ticked', (
+    tester,
+  ) async {
+    final handle = tester.ensureSemantics();
+    await _pumpLive(tester);
+
+    for (final value in _wireValues) {
+      expect(
+        tester.getSemantics(find.byKey(Key('goal.$value'))),
+        isSemantics(
+          isButton: true,
+          hasTapAction: true,
+          hasSelectedState: true,
+          isSelected: false,
+        ),
+      );
+    }
+
+    await _tap(tester, 'goal.build_muscle');
+    expect(
+      tester.getSemantics(find.byKey(const Key('goal.build_muscle'))),
+      isSemantics(isButton: true, hasSelectedState: true, isSelected: true),
+    );
+    expect(
+      tester.getSemantics(find.byKey(const Key('goal.lose_weight'))),
+      isSemantics(isButton: true, hasSelectedState: true, isSelected: false),
+    );
+    handle.dispose();
+  });
 }

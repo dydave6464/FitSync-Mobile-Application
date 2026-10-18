@@ -14,6 +14,7 @@ import 'package:fitsync/features/health/domain/health_answers.dart';
 import 'package:fitsync/features/health/presentation/providers.dart';
 import 'package:fitsync/features/onboarding/presentation/generating_view.dart';
 import 'package:fitsync/features/onboarding/presentation/onboarding_flow.dart';
+import 'package:fitsync/features/onboarding/presentation/onboarding_scaffold.dart';
 import 'package:fitsync/features/profile/data/profile_repository.dart';
 import 'package:fitsync/features/profile/domain/profile.dart';
 import 'package:fitsync/features/profile/presentation/providers.dart';
@@ -585,6 +586,41 @@ void main() {
     expect(find.text('STEP 5 / 6'), findsOneWidget);
     expect(find.text('Your health'), findsOneWidget);
     expect(find.byKey(const Key('skip')), findsNothing);
+  });
+
+  testWidgets('the health step says why Continue is greyed, right above it', (
+    tester,
+  ) async {
+    await _pumpFlow(tester, patches: []);
+    for (var i = 0; i < 4; i++) {
+      await _skip(tester);
+    }
+
+    final hint = find.byKey(const Key('hint'));
+    expect(
+      tester.widget<ContinueHint>(hint).message,
+      'Answer every question to continue',
+    );
+    final cont = tester.getRect(find.byKey(const Key('continue')));
+    expect(cont.top - tester.getRect(hint).bottom, inInclusiveRange(0, 24));
+
+    await _tapKey(tester, const Key('health.asthma'));
+    for (final q in healthQuestions) {
+      await _tapKey(tester, Key('health.${q.field}.no'));
+    }
+    expect(
+      tester.widget<ContinueHint>(hint).message,
+      'Tick both boxes to continue',
+    );
+
+    await _tapKey(tester, const Key('health.optOut'));
+    expect(hint, findsNothing, reason: 'Continue can be pressed now');
+  });
+
+  testWidgets('no other step shows the health hint', (tester) async {
+    await _pumpFlow(tester, patches: []);
+
+    expect(find.byKey(const Key('hint')), findsNothing);
   });
 
   testWidgets('Continue does nothing until the health step is answered', (

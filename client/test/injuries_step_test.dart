@@ -214,4 +214,83 @@ void main() {
     expect(find.textContaining('safer variations'), findsNothing);
     expect(find.textContaining('avoid risky'), findsNothing);
   });
+
+  testWidgets('a region tells a screen reader whether it is picked', (
+    tester,
+  ) async {
+    final handle = tester.ensureSemantics();
+    await _pump(tester);
+
+    final shoulder = find.byKey(const Key('injury.1'));
+    expect(
+      tester.getSemantics(shoulder),
+      isSemantics(
+        label: 'Shoulder',
+        isButton: true,
+        hasTapAction: true,
+        hasSelectedState: true,
+        isSelected: false,
+      ),
+    );
+
+    await _tapKey(tester, const Key('injury.1'));
+    expect(
+      tester.getSemantics(shoulder),
+      isSemantics(
+        label: 'Shoulder',
+        isButton: true,
+        hasSelectedState: true,
+        isSelected: true,
+      ),
+    );
+    handle.dispose();
+  });
+
+  // The tappable row was only as tall as its name, about 20dp, inside the
+  // card's padding. The row now reaches the card's edges.
+  testWidgets('a region takes a 48dp tap across its card', (tester) async {
+    final emitted = await _pump(tester);
+
+    final row = tester.getRect(find.byKey(const Key('injury.7')));
+    expect(row.height, greaterThanOrEqualTo(48));
+
+    // The card's own corner, outside the name, still picks the region.
+    await tester.tapAt(row.topLeft + const Offset(2, 2));
+    await tester.pumpAndSettle();
+    expect(emitted.last.single.injuryId, 7);
+  });
+
+  testWidgets('fits a 320dp phone at 2x text with a side picked', (
+    tester,
+  ) async {
+    tester.view.physicalSize = const Size(320, 1600);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.reset);
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          injuryOptionsProvider.overrideWith((ref) async => _options),
+        ],
+        child: MaterialApp(
+          home: MediaQuery.withClampedTextScaling(
+            minScaleFactor: 2,
+            maxScaleFactor: 2,
+            child: Scaffold(
+              body: SingleChildScrollView(
+                padding: const EdgeInsets.symmetric(horizontal: 20),
+                child: _Host(
+                  initial: const [SelectedInjury(injuryId: 1, side: 'left')],
+                  sink: [],
+                ),
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(tester.takeException(), isNull);
+    expect(find.byKey(const Key('side.1.both')), findsOneWidget);
+  });
 }

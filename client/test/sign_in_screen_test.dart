@@ -464,6 +464,53 @@ void main() {
     expect(find.byTooltip('Show password'), findsOneWidget);
   });
 
+  // Both links were only as tall as their small text, about 16dp.
+  testWidgets('the text links take a 48dp tap', (tester) async {
+    await _pump(tester, FakeAuthRepository());
+    await tester.pumpAndSettle();
+
+    for (final key in ['forgotPassword', 'toggleMode']) {
+      final link = tester.getRect(find.byKey(Key(key)));
+      expect(link.height, greaterThanOrEqualTo(48), reason: key);
+      expect(link.width, greaterThanOrEqualTo(48), reason: key);
+    }
+
+    // A tap near the link's top edge, above the words, still switches mode.
+    await tester.ensureVisible(find.byKey(const Key('toggleMode')));
+    await tester.pumpAndSettle();
+    final toggle = tester.getRect(find.byKey(const Key('toggleMode')));
+    await tester.tapAt(toggle.topCenter + const Offset(0, 2));
+    await tester.pumpAndSettle();
+    expect(find.text('Create account'), findsWidgets);
+    expect(find.byKey(const Key('forgotPassword')), findsNothing);
+  });
+
+  testWidgets('a screen reader hears each text link as a button', (
+    tester,
+  ) async {
+    final semantics = tester.ensureSemantics();
+    await _pump(tester, FakeAuthRepository());
+    await tester.pumpAndSettle();
+
+    expect(
+      tester.getSemantics(find.byKey(const Key('forgotPassword'))),
+      isSemantics(
+        label: 'Forgot password?',
+        isButton: true,
+        hasTapAction: true,
+      ),
+    );
+    expect(
+      tester.getSemantics(find.byKey(const Key('toggleMode'))),
+      isSemantics(
+        label: 'New here? Create account',
+        isButton: true,
+        hasTapAction: true,
+      ),
+    );
+    semantics.dispose();
+  });
+
   testWidgets('a screen reader reaches the eye as its own button', (
     tester,
   ) async {

@@ -450,6 +450,7 @@ class _OnboardingFlowState extends ConsumerState<OnboardingFlow> {
                 : null,
             onBack: _index == 0 ? null : _back,
             error: _error,
+            hint: onHealthStep ? HealthStep.blockerFor(_health) : null,
             // The only way out of step 1 short of finishing: someone signed in
             // with the wrong account should not have to onboard it first.
             onSignOut: _index == 0

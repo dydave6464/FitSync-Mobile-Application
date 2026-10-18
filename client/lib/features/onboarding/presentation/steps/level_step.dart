@@ -305,6 +305,7 @@ class LevelStep extends ConsumerWidget {
                           key: const Key('equipment.unfamiliar'),
                           small: true,
                           accent: value.unfamiliar,
+                          selected: value.unfamiliar,
                           onTap: () => onChanged(
                             value.copyWith(
                               equipmentIds: [id],
