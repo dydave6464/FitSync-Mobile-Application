@@ -56,20 +56,58 @@ def test_every_feature_stays_in_its_range(data):
     assert set(np.unique(column(data, "recent_pain"))) <= {0, 1, 2, 3}
 
 
+def everyday(data, name):
+    return column(data, name)[~data.coverage]
+
+
 def test_most_days_look_normal(data):
-    load = column(data, "load_pct")
+    # Checked on the everyday rows: the coverage rows are spread evenly across
+    # the feature space on purpose, and are not a picture of anyone's week.
+    load = everyday(data, "load_pct")
     # Most weeks are at or near the usual week, and a big surge is uncommon.
     assert np.median(load) == 0
     assert (load > 50).mean() < 0.12
     # Most users report no past injury and no recent pain.
-    assert (column(data, "injury_count") == 0).mean() > 0.55
-    assert (column(data, "recent_pain") == 0).mean() > 0.65
+    assert (everyday(data, "injury_count") == 0).mean() > 0.55
+    assert (everyday(data, "recent_pain") == 0).mean() > 0.65
     # A typical night is good or fair, not poor.
-    assert 0.6 < np.median(column(data, "sleep")) < 1.7
+    assert 0.6 < np.median(everyday(data, "sleep")) < 1.7
 
 
 def test_the_label_rate_is_in_a_plausible_band(data):
-    assert 0.05 < data.y.mean() < 0.25
+    assert 0.05 < data.y[~data.coverage].mean() < 0.25
+    # The coverage rows lean risky, so they raise the overall rate, but most
+    # rows are still everyday ones.
+    assert data.y.mean() < 0.35
+
+
+def test_a_fifth_of_rows_are_coverage_rows(data):
+    assert data.coverage.dtype == bool
+    assert 0.17 < data.coverage.mean() < 0.23
+
+
+def test_coverage_rows_reach_every_corner_of_the_feature_space(data):
+    # The forest cannot learn a region it never sees. Everyday rows almost
+    # never have three bad days on all four questions, or a big surge with
+    # three injuries; the coverage rows must.
+    rows = data.X[data.coverage]
+    recovery = rows[:, :4]
+    assert (recovery.min(axis=1) >= 2.5).sum() >= 50
+    assert (recovery.max(axis=1) <= 0.5).sum() >= 50
+    load = rows[:, risk_data.FEATURES.index("load_pct")]
+    assert (load > 120).sum() >= 50
+    for name in ("injury_count", "recent_pain"):
+        counts = np.bincount(rows[:, risk_data.FEATURES.index(name)].astype(int), minlength=4)
+        assert counts.min() > 0.15 * len(rows)
+
+
+def test_coverage_rows_use_the_same_probability_model(data):
+    # Only which days are drawn differs; the chance for a given day does not.
+    # Without noise the probability would be exactly expected_risk / 100, so
+    # the mean gap must be small on both kinds of row.
+    for mask in (data.coverage, ~data.coverage):
+        gap = data.probability[mask] - risk_data.expected_risk(data.X[mask]) / 100
+        assert abs(gap.mean()) < 0.03
 
 
 def test_the_probabilities_line_up_with_the_rules_scale(data):

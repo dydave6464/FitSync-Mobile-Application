@@ -20,6 +20,10 @@ model trained on this can honestly claim is that it reproduces those factors
 consistently; it is retrained on real check-in outcomes as they accumulate
 (see app/train_risk.py, --real).
 
+A fifth of the rows are "coverage" rows spread evenly over the feature space,
+so the forest sees the rare risky combinations everyday rows almost never
+produce. They share the same probability model; see COVERAGE_SHARE.
+
 Every feature is coded so that a higher value is riskier, which is what lets
 the model be constrained to be monotonic in each of them.
 """
@@ -30,7 +34,7 @@ import numpy as np
 # The default seed and size. Same seed, same rows: the committed
 # cross-validation report and the in-process model are reproducible from these.
 SEED = 20261018
-ROWS = 20000
+ROWS = 30000
 
 # Model inputs, in column order. The four check-in answers are ordinal
 # positions (0 = best, 3 = worst) averaged over the 3-day window, so a value is
@@ -81,18 +85,33 @@ LOAD_OVER_SHARE = 0.25          # the rest are surges
 LOAD_OVER_MEAN = 12.0           # exponential mean of a slightly-busier week
 LOAD_SURGE_RANGE = (30.0, LOAD_MAX)
 
+# Coverage rows. Realistic marginals make the risky combinations vanishingly
+# rare -- three worst days in a row on all four questions is about one in a
+# million -- and a forest cannot learn a region it never sees: it would read an
+# unseen corner as its nearest busy neighbour and badly underestimate it. So
+# this share of rows is drawn evenly across the whole feature space instead.
+# It changes WHICH days the forest sees, not the chance of injury it learns for
+# any given day: every row's label comes from the same probability model below.
+# These rows are marked (SimulatedData.coverage) so the everyday rows can still
+# be checked against what a gym user's week looks like.
+COVERAGE_SHARE = 0.2
+
 # --- The probability model ---------------------------------------------------
 # Expected risk, in points on the rules' 0-100 scale, is a sum of terms; the
 # chance of an injury within the week is that many percent, after noise.
 #
 # Background risk on a perfect day: training is never risk-free.
 BASELINE = 1.0
-# Load surge, the strongest factor (Tsilimigkras et al. 2024): 0.45 points per
-# percent above the usual week, so the biggest surge (130%) adds 58.5 -- more
-# than any other single factor can, yet short of the High threshold (70) on its
-# own. The rules use 0.5 per percent; slightly less here keeps "a big week
-# alone can't make it High" true of the model with room to spare.
-LOAD_PER_PCT = 0.45
+# Load surge, the strongest factor (Tsilimigkras et al. 2024): 0.4 points per
+# percent above the usual week, so the biggest surge (130%) adds 52 -- more
+# than any other single factor can, yet well short of the High threshold (70)
+# on its own. The rules use 0.5 per percent. Less here because the forest is
+# constrained to be monotonic, and where the data thins out at the top of the
+# load range that constraint lets a leaf's average (days with ordinary,
+# slightly-worse recovery) stand for a perfectly rested day, overestimating it
+# by up to about eight points. 0.4 keeps "a big week alone can't make it High"
+# true of the trained model with room to spare.
+LOAD_PER_PCT = 0.40
 # Prior injury (Xu et al. 2025): 6 points each, up to 18 for three.
 INJURY_PER = 6.0
 # Recent pain is current, so it weighs more than one old injury; severe pain
@@ -118,6 +137,7 @@ class SimulatedData:
     X: np.ndarray            # (rows, len(FEATURES)) floats
     y: np.ndarray            # (rows,) 0/1: injured within the week
     probability: np.ndarray  # (rows,) the chance each label was drawn with
+    coverage: np.ndarray     # (rows,) True for a coverage row, False for everyday
     answers: np.ndarray      # (rows, WINDOW_DAYS, 4) per-day ordinal answers
     seed: int
     rows: int
@@ -143,12 +163,24 @@ def expected_risk(X: np.ndarray) -> np.ndarray:
 
 def simulate(rows: int = ROWS, seed: int = SEED) -> SimulatedData:
     rng = np.random.default_rng(seed)
+    coverage = rng.random(rows) < COVERAGE_SHARE
 
+    # Everyday rows: each answer drawn independently per day from its
+    # distribution above.
     answers = np.stack(
         [rng.choice(4, size=(rows, WINDOW_DAYS), p=p)
          for p in (SLEEP_P, SORENESS_P, ENERGY_P, STRESS_P)],
         axis=2,
     )
+    # Coverage rows: one centre picked evenly from 0-3 for all four questions
+    # (a rough stretch is usually rough on every one of them, and drawing them
+    # separately left "bad on all four" as rare as in everyday rows), then each
+    # answer on each day within one step of it, so the 3-day means reach every
+    # value including the extremes.
+    centre = rng.integers(0, 4, size=(rows, 1, 1))
+    step = rng.choice((-1, 0, 0, 1), size=(rows, WINDOW_DAYS, 4))
+    spread = np.clip(centre + step, 0, 3)
+    answers = np.where(coverage[:, None, None], spread, answers)
     recovery = answers.mean(axis=1)
 
     kind = rng.choice(3, size=rows,
@@ -157,19 +189,22 @@ def simulate(rows: int = ROWS, seed: int = SEED) -> SimulatedData:
     over = rng.exponential(LOAD_OVER_MEAN, size=rows)
     surge = rng.uniform(*LOAD_SURGE_RANGE, size=rows)
     load = np.where(kind == 0, 0.0, np.where(kind == 1, over, surge))
+    load = np.where(coverage, rng.uniform(0.0, LOAD_MAX, size=rows), load)
     # Two decimals, as training-load.js reports it.
     load = np.round(np.clip(load, 0.0, LOAD_MAX), 2)
 
-    injuries = rng.choice(4, size=rows, p=INJURY_P)
-    pain = rng.choice(4, size=rows, p=PAIN_P)
+    injuries = np.where(coverage, rng.integers(0, 4, size=rows),
+                        rng.choice(4, size=rows, p=INJURY_P))
+    pain = np.where(coverage, rng.integers(0, 4, size=rows),
+                    rng.choice(4, size=rows, p=PAIN_P))
 
     X = np.column_stack([recovery, load, injuries, pain]).astype(float)
     noisy = expected_risk(X) + rng.normal(0.0, NOISE_SD, size=rows)
     probability = np.clip(noisy / 100.0, P_MIN, P_MAX)
     y = (rng.random(rows) < probability).astype(int)
 
-    return SimulatedData(X=X, y=y, probability=probability, answers=answers,
-                         seed=seed, rows=rows)
+    return SimulatedData(X=X, y=y, probability=probability, coverage=coverage,
+                         answers=answers, seed=seed, rows=rows)
 
 
 def request_for(data: SimulatedData, index: int) -> dict:
