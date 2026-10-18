@@ -90,15 +90,6 @@ class _ThemeToggleButton extends ConsumerWidget {
   }
 }
 
-/// The level as the level step words it. Capitalising the stored value read
-/// fine for beginner and intermediate and as "New" for New to training.
-String _levelLabel(String level) => switch (level) {
-  'new' => 'New to training',
-  'beginner' => 'Beginner',
-  'intermediate' => 'Intermediate',
-  _ => level,
-};
-
 class _SettingsList extends ConsumerWidget {
   const _SettingsList({required this.profile});
 
@@ -121,7 +112,8 @@ class _SettingsList extends ConsumerWidget {
     final theme = Theme.of(context);
 
     final subtitle = [
-      if (profile.fitnessLevel != null) _levelLabel(profile.fitnessLevel!),
+      if (profile.fitnessLevel != null)
+        fitnessLevelLabel(profile.fitnessLevel!),
       if (profile.city != null) profile.city!,
       if (profile.fitnessLevel == null && profile.city == null) profile.email,
     ].join(' · ');

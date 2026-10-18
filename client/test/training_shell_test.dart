@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import 'package:flutter/rendering.dart' show RenderParagraph;
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 
@@ -595,16 +596,69 @@ void main() {
     expect(find.byType(SessionLoggerScreen), findsOneWidget);
   });
 
-  testWidgets('the Plan tab offers a way to regenerate', (tester) async {
+  testWidgets('the Plan tab offers a way to make a new plan, in words', (
+    tester,
+  ) async {
+    final handle = tester.ensureSemantics();
     await _pump(tester);
 
-    expect(find.byKey(const Key('plan.regenerate')), findsOneWidget);
+    final button = find.byKey(const Key('plan.regenerate'));
+    expect(button, findsOneWidget);
+    // An icon alone left people guessing what it did (parked §9): the words
+    // are on the button itself, every time, with nothing to dismiss.
+    expect(
+      find.descendant(of: button, matching: find.text('New plan')),
+      findsOneWidget,
+    );
     // The icon the start-workout sheet already puts on its AI Workout
     // Generator row: both open the same screen, so they read as one thing.
-    expect(find.byIcon(Icons.auto_awesome), findsOneWidget);
-    // An icon says nothing on its own, so the tooltip carries the words --
-    // it is also what a screen reader announces.
-    expect(find.byTooltip('Regenerate plan'), findsOneWidget);
+    expect(
+      find.descendant(of: button, matching: find.byIcon(Icons.auto_awesome)),
+      findsOneWidget,
+    );
+    // A screen reader hears the same words a sighted user reads.
+    expect(
+      tester.getSemantics(button),
+      matchesSemantics(
+        label: 'New plan',
+        isButton: true,
+        hasTapAction: true,
+        isEnabled: true,
+        hasEnabledState: true,
+        isFocusable: true,
+        hasFocusAction: true,
+      ),
+    );
+    handle.dispose();
+  });
+
+  testWidgets('New plan takes a 48 dp tap', (tester) async {
+    await _pump(tester);
+
+    // Drawn as a slim pill, but the thumb gets the full target.
+    expect(
+      tester.getSize(find.byKey(const Key('plan.regenerate'))).height,
+      greaterThanOrEqualTo(48),
+    );
+  });
+
+  testWidgets('New plan stays whole on a 320 dp phone at 2.0x text', (
+    tester,
+  ) async {
+    tester.view.physicalSize = const Size(320, 640);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.reset);
+    await _pump(tester, textScale: 2.0);
+
+    expect(tester.takeException(), isNull);
+    // The title gives way first; the button's two words are what say what
+    // it does, so they are never cut.
+    final label = tester.renderObject<RenderParagraph>(find.text('New plan'));
+    expect(
+      label.size.width,
+      greaterThanOrEqualTo(label.getMaxIntrinsicWidth(double.infinity) - 0.01),
+      reason: 'the label was cut short',
+    );
   });
 
   testWidgets('the other tabs do not offer it', (tester) async {
@@ -639,9 +693,11 @@ void main() {
   /// _visited), so "the first time this State is built" is exactly "the first
   /// time the user switches to Train".
   group('the regenerate icon intro', () {
+    // The icon inside the button, not the button: the words stay still and
+    // readable from the first frame, and only the sparkle arrives.
     double scaleOf(WidgetTester tester) => tester
         .widget<ScaleTransition>(
-          find.ancestor(
+          find.descendant(
             of: find.byKey(const Key('plan.regenerate')),
             matching: find.byType(ScaleTransition),
           ),
@@ -699,18 +755,48 @@ void main() {
       expect(scaleOf(tester), 1.0);
     });
 
-    testWidgets("draws the icon in the theme's text green", (tester) async {
+    testWidgets('keeps the words on screen while the icon waits', (
+      tester,
+    ) async {
+      await _pump(tester, settle: false);
+
+      expect(scaleOf(tester), 0.0);
+      // The label is not part of the intro: it says what the button does
+      // whether or not the sparkle has arrived yet.
+      expect(find.text('New plan'), findsOneWidget);
+      final intro = find.descendant(
+        of: find.byKey(const Key('plan.regenerate')),
+        matching: find.byType(ScaleTransition),
+      );
+      expect(
+        find.descendant(of: intro, matching: find.text('New plan')),
+        findsNothing,
+        reason: 'the label must not shrink away with the icon',
+      );
+    });
+
+    testWidgets("writes the label in the app's typeface", (tester) async {
       await _pump(tester);
 
-      final button = find.byKey(const Key('plan.regenerate'));
-      final icon = tester.widget<Icon>(
-        find.descendant(of: button, matching: find.byType(Icon)),
-      );
+      final label = tester.renderObject<RenderParagraph>(find.text('New plan'));
 
-      // The prototype's green, taken from the theme rather than spelled as a
-      // literal, so it follows light and dark instead of fighting one. The
-      // shade read as a label, since the icon is the whole button.
-      expect(icon.color, tester.element(button).fs.accentText);
+      // A button's own text style replaces the theme's rather than adding
+      // to it, so a style that names only a size and weight drops the
+      // family, and the phone draws the label in its system font.
+      expect(label.text.style?.fontFamily, 'SpaceGrotesk');
+    });
+
+    testWidgets("writes the label in the theme's text green", (tester) async {
+      await _pump(tester);
+
+      final label = tester.renderObject<RenderParagraph>(find.text('New plan'));
+
+      // The deeper green made for words, from the theme so it follows light
+      // and dark: the brand green is under 3:1 as text on its own tint.
+      expect(
+        label.text.style?.color,
+        tester.element(find.text('New plan')).fs.accentText,
+      );
     });
 
     testWidgets('is skipped when the platform asks for less motion', (

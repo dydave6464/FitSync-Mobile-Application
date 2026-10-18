@@ -20,15 +20,15 @@ Future<void> openGenerator(BuildContext context) =>
     Navigator.of(context)
         .push(MaterialPageRoute<void>(builder: (_) => const GeneratorScreen()));
 
-/// The Plan tab's way back to the generator.
+/// The Plan tab's way back to the generator: a "New plan" pill.
+///
+/// Words beside the icon, always on screen. The icon alone, even with its
+/// arrival animation, left people guessing what it did (parked §9); a label
+/// says it with nothing to dismiss, and is what a screen reader reads too.
 ///
 /// Icons.auto_awesome is the icon the start-workout sheet already puts on its
 /// AI Workout Generator row. Both open the same screen, so wearing the same
 /// icon is what stops them reading as two different features.
-///
-/// The tooltip carries the words the icon cannot, and is what a screen reader
-/// announces -- an IconButton with no tooltip is unlabelled to anyone not
-/// looking at it.
 class RegeneratePlanButton extends StatefulWidget {
   const RegeneratePlanButton({super.key, this.playIntro = false});
 
@@ -59,9 +59,10 @@ class _RegeneratePlanButtonState extends State<RegeneratePlanButton>
   ///
   /// IndexedStack swaps tabs with no transition, so the header, the tab row
   /// and every card of the Plan tab land in the same frame. An intro playing
-  /// in that frame is motion among motion on a 24px icon in the corner, and
-  /// goes unnoticed -- which is exactly what happened. Waiting until the
-  /// screen is still is what makes the movement the only movement.
+  /// in that frame is motion among motion on a small sparkle in the corner,
+  /// and goes unnoticed -- which is exactly what happened to the bare icon
+  /// this pill replaced. Waiting until the screen is still is what makes the
+  /// movement the only movement.
   static const _settleDelay = Duration(milliseconds: 350);
 
   /// Starts at 1, its resting value. The intro rewinds it to 0 and plays
@@ -141,19 +142,42 @@ class _RegeneratePlanButtonState extends State<RegeneratePlanButton>
   }
 
   @override
-  Widget build(BuildContext context) => ScaleTransition(
-    scale: _scale,
-    child: RotationTransition(
-      turns: _turns,
-      child: IconButton(
-        key: const Key('plan.regenerate'),
-        // The prototype's green, read from the theme so it follows light and
-        // dark rather than picking a side. The text green: the icon is all
-        // there is of this button, so it has to stand out like a label.
-        icon: Icon(Icons.auto_awesome, color: context.fs.accentText),
-        tooltip: 'Regenerate plan',
-        onPressed: () => openGenerator(context),
+  Widget build(BuildContext context) {
+    final t = context.fs;
+
+    return TextButton.icon(
+      key: const Key('plan.regenerate'),
+      onPressed: () => openGenerator(context),
+      // The design's pill: the green's own tint and outline, the words in
+      // the text green, read from the theme so it follows light and dark.
+      style: TextButton.styleFrom(
+        backgroundColor: t.accentDim,
+        foregroundColor: t.accentText,
+        side: BorderSide(color: t.accentLine),
+        shape: const StadiumBorder(),
+        padding: const EdgeInsets.fromLTRB(11, 0, 14, 0),
+        // Drawn 36 dp tall to sit beside the title, and padded out to the
+        // 48 a thumb needs on every platform, not only where it is default.
+        minimumSize: const Size(0, 36),
+        tapTargetSize: MaterialTapTargetSize.padded,
+        // From the theme's button text, not a bare TextStyle: a button's
+        // style replaces the theme's outright, and one naming only a size
+        // and weight drops the app's typeface for the system font.
+        textStyle: Theme.of(context).textTheme.labelLarge
+            ?.copyWith(fontSize: 13.5, fontWeight: FontWeight.w700),
       ),
-    ),
-  );
+      // Only the sparkle arrives. The words are readable from the first
+      // frame: they are what says what the button does.
+      icon: ScaleTransition(
+        scale: _scale,
+        child: RotationTransition(
+          turns: _turns,
+          // Decoration beside its label, so the brand green, as drawn.
+          child: Icon(Icons.auto_awesome, size: 18, color: t.accent),
+        ),
+      ),
+      // One line, whole: the header's title gives way before these do.
+      label: const Text('New plan', maxLines: 1, softWrap: false),
+    );
+  }
 }
