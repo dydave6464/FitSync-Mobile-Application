@@ -659,6 +659,18 @@ void main() {
     expect(find.text('Health saved'), findsOneWidget);
   });
 
+  testWidgets('the Health editor says why Save is greyed, right above it', (
+    tester,
+  ) async {
+    await _pump(tester);
+    await _openRow(tester, const Key('edit.health'));
+
+    final hint = find.text('Answer every question to save');
+    expect(hint, findsOneWidget);
+    final save = tester.getRect(find.byKey(const Key('save')));
+    expect(save.top - tester.getRect(hint).bottom, inInclusiveRange(0, 24));
+  });
+
   testWidgets('there is no delete button without stored answers', (
     tester,
   ) async {

@@ -697,6 +697,7 @@ class _HealthEditorState extends ConsumerState<_HealthEditor> {
           title: 'Health',
           busy: _busy,
           onSave: _value.isValid ? _save : null,
+          hint: HealthStep.blockerFor(_value, allowOptOut: false),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             mainAxisSize: MainAxisSize.min,

@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
-import 'package:fitsync/core/theme.dart';
 import 'package:fitsync/features/health/domain/health_answers.dart';
 import 'package:fitsync/features/onboarding/presentation/steps/health_step.dart';
 
@@ -235,7 +234,10 @@ void main() {
     expect(find.byKey(const Key('health.optOut')), findsNothing);
   });
 
-  group('the hint above Continue', () {
+  // The hint used to be the last thing in the step's own content, which on a
+  // long step scrolled it out of sight of the button it explains. The step
+  // now only words it; the scaffold shows it beside Continue (or Save).
+  group('the hint for a greyed-out Continue', () {
     const unanswered = 'Answer every question to continue';
     const unticked = 'Tick both boxes to continue';
 
@@ -244,16 +246,15 @@ void main() {
     ) async {
       final read = await _pumpLive(tester);
       expect(read().isValid, isFalse);
-      expect(find.text(unanswered), findsOneWidget);
+      expect(HealthStep.blockerFor(read()), unanswered);
 
       // Every question answered but the checklist left blank.
       await _answerAllNo(tester);
-      expect(find.text(unanswered), findsOneWidget);
+      expect(HealthStep.blockerFor(read()), unanswered);
 
       await _tap(tester, 'health.none');
       expect(read().isValid, isTrue);
-      expect(find.text(unanswered), findsNothing);
-      expect(find.text(unticked), findsNothing);
+      expect(HealthStep.blockerFor(read()), isNull);
     });
 
     testWidgets('asks for the boxes once every question is answered', (
@@ -263,46 +264,124 @@ void main() {
 
       await _tap(tester, 'health.asthma');
       await _answerAllNo(tester);
-      expect(find.text(unanswered), findsNothing);
-      expect(find.text(unticked), findsOneWidget);
+      expect(HealthStep.blockerFor(read()), unticked);
 
       await _tap(tester, 'health.ack');
       await _tap(tester, 'health.consent');
       expect(read().isValid, isTrue);
-      expect(find.text(unticked), findsNothing);
+      expect(HealthStep.blockerFor(read()), isNull);
     });
 
     testWidgets('goes away when the answers are not saved', (tester) async {
-      await _pumpLive(tester);
+      final read = await _pumpLive(tester);
 
       await _tap(tester, 'health.asthma');
       await _answerAllNo(tester);
       await _tap(tester, 'health.optOut');
 
-      expect(find.text(unticked), findsNothing);
-      expect(find.text(unanswered), findsNothing);
+      expect(HealthStep.blockerFor(read()), isNull);
     });
 
-    testWidgets('says save, not continue, in Settings', (tester) async {
-      await _pumpLive(tester, allowOptOut: false);
-
-      expect(find.text('Answer every question to save'), findsOneWidget);
-      expect(find.text(unanswered), findsNothing);
-
-      await _tap(tester, 'health.asthma');
-      await _answerAllNo(tester);
-      expect(find.text('Tick both boxes to save'), findsOneWidget);
+    test('says save, not continue, in Settings', () {
+      expect(
+        HealthStep.blockerFor(const HealthAnswers(), allowOptOut: false),
+        'Answer every question to save',
+      );
+      expect(
+        HealthStep.blockerFor(
+          const HealthAnswers(
+            conditions: ['asthma'],
+            chestPain: false,
+            dizziness: false,
+            supervisedOnly: false,
+          ),
+          allowOptOut: false,
+        ),
+        'Tick both boxes to save',
+      );
     });
 
-    testWidgets('is readable text, not the faint tertiary grey', (
-      tester,
-    ) async {
+    testWidgets('is no longer drawn inside the step', (tester) async {
       await _pumpLive(tester);
 
-      final hint = tester.widget<Text>(find.text(unanswered));
-      final context = tester.element(find.text(unanswered));
-      expect(hint.style?.color, context.fs.text2);
+      expect(find.text(unanswered), findsNothing);
+      expect(find.byKey(const Key('health.hint')), findsNothing);
     });
+  });
+
+  // Yes and No are drawn as small pills; the band around each is what a
+  // thumb has to land in.
+  testWidgets('each Yes and No takes a 48dp tap', (tester) async {
+    final read = await _pumpLive(tester);
+
+    for (final q in healthQuestions) {
+      for (final answer in ['yes', 'no']) {
+        final band = tester.getRect(
+          find.byKey(Key('health.${q.field}.$answer.target')),
+        );
+        expect(band.width, greaterThanOrEqualTo(48));
+        expect(band.height, greaterThanOrEqualTo(48));
+      }
+    }
+
+    // A tap at the band's corner, outside the pill, still answers.
+    final band = tester.getRect(
+      find.byKey(const Key('health.dizziness.yes.target')),
+    );
+    await tester.tapAt(band.topLeft + const Offset(1, 1));
+    await tester.pumpAndSettle();
+    expect(read().dizziness, isTrue);
+  });
+
+  testWidgets('a screen reader still hears one Yes button per question', (
+    tester,
+  ) async {
+    final handle = tester.ensureSemantics();
+    await _pumpLive(tester, initial: const HealthAnswers(chestPain: true));
+
+    expect(
+      tester.getSemantics(find.byKey(const Key('health.chestPain.yes'))),
+      isSemantics(label: 'Yes', isButton: true, isSelected: true),
+    );
+    handle.dispose();
+  });
+
+  testWidgets('opting out takes back the gentler-plan promise', (tester) async {
+    await _pumpLive(tester);
+
+    await _tap(tester, 'health.asthma');
+    await _answerAllNo(tester);
+    await _tap(tester, 'health.optOut');
+
+    // Nothing is stored, so the plan is built as if the check never ran.
+    final notice = find.byKey(const Key('health.notice.condition'));
+    expect(notice, findsOneWidget, reason: 'the tips still help');
+    expect(
+      find.descendant(
+        of: notice,
+        matching: find.textContaining('keep your plan gentle'),
+      ),
+      findsNothing,
+    );
+    expect(
+      find.descendant(
+        of: notice,
+        matching: find.text(
+          "Your plan won't be made gentler, since these answers won't be "
+          'saved.',
+        ),
+      ),
+      findsOneWidget,
+    );
+
+    await _tap(tester, 'health.optOut');
+    expect(
+      find.text(
+        "We'll keep your plan gentle: 2 sets per exercise, shorter sessions.",
+      ),
+      findsOneWidget,
+      reason: 'saving the answers again brings the promise back',
+    );
   });
 
   testWidgets('opting out in onboarding promises no plan that is not there', (
@@ -367,7 +446,6 @@ void main() {
         // Proves the step really was laid out at the phone's width.
         expect(tester.getSize(find.byType(HealthStep)).width, screenWidth - 40);
         expect(tester.takeException(), isNull);
-        expect(find.text('Answer every question to continue'), findsOneWidget);
       },
     );
   }
