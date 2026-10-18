@@ -146,8 +146,8 @@ class InjuryRiskEstimate {
   };
 
   /// The estimate's [drivers] as the "Why" list under the advice, one short
-  /// reason each, most influential first: "Poor sleep", "Training 35% above
-  /// your usual week".
+  /// reason each, most influential first: "Poor sleep lately", "Training 35%
+  /// above your usual week".
   ///
   /// Empty when the estimate found nothing standing out. Null when there is
   /// nothing to say: a row that predates drivers -- the server sends it an
@@ -198,7 +198,9 @@ const _loadCap = 130;
 /// that changes the meaning, or null for one this build has no words for.
 ///
 /// The check-in drivers are the worst answer over the last 3 days, not this
-/// morning's, so their words name the answer and never the day. Only the
+/// morning's, so they read as "lately": after a poor night on Monday and a
+/// good one today, today's box must not seem to contradict this morning's
+/// answer. Only the
 /// answers worth 5 rule points or more have words, since only those can be
 /// drivers; an everyday answer (good sleep, mild soreness) that somehow
 /// arrived is skipped rather than blamed.
@@ -231,7 +233,7 @@ String? _reasonText(RiskDriver driver) {
         _ => null,
       };
   }
-  return switch ((driver.key, value)) {
+  final answer = switch ((driver.key, value)) {
     ('sleep', 'poor') => 'Poor sleep',
     ('sleep', 'fair') => 'Only fair sleep',
     ('soreness', 'severe') => 'Very sore muscles',
@@ -242,6 +244,7 @@ String? _reasonText(RiskDriver driver) {
     ('stress', 'moderate') => 'Moderate stress',
     _ => null,
   };
+  return answer == null ? null : '$answer lately';
 }
 
 /// When one muscle group was last trained, from GET /recovery.

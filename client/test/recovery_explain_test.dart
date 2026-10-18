@@ -115,17 +115,18 @@ void main() {
       }
     });
 
-    test('check-in drivers name the answer, never the day', () {
-      // The worst answer over the last 3 days, so nothing says "today".
+    test('check-in drivers read as recent, never as today', () {
+      // The worst answer over the last 3 days, so each says "lately" and
+      // none says "today".
       for (final (key, value, words) in [
-        ('sleep', 'poor', 'Poor sleep'),
-        ('sleep', 'fair', 'Only fair sleep'),
-        ('soreness', 'moderate', 'Sore muscles'),
-        ('soreness', 'severe', 'Very sore muscles'),
-        ('energy', 'low', 'Low energy'),
-        ('energy', 'very_low', 'Very low energy'),
-        ('stress', 'moderate', 'Moderate stress'),
-        ('stress', 'high', 'High stress'),
+        ('sleep', 'poor', 'Poor sleep lately'),
+        ('sleep', 'fair', 'Only fair sleep lately'),
+        ('soreness', 'moderate', 'Sore muscles lately'),
+        ('soreness', 'severe', 'Very sore muscles lately'),
+        ('energy', 'low', 'Low energy lately'),
+        ('energy', 'very_low', 'Very low energy lately'),
+        ('stress', 'moderate', 'Moderate stress lately'),
+        ('stress', 'high', 'High stress lately'),
       ]) {
         expect(_why([RiskDriver(key: key, value: value)]), [
           words,
@@ -162,7 +163,7 @@ void main() {
         ).whyReasons!;
         expect(reasons.map((r) => r.text), [
           'Training 60% above your usual week',
-          'Sore muscles',
+          'Sore muscles lately',
           '3 past injuries',
         ]);
         // The key goes with the words, so the screen can give each its icon.
@@ -193,7 +194,7 @@ void main() {
           const RiskDriver(key: 'moon_phase', value: 'full'),
           const RiskDriver(key: 'sleep', value: 'poor'),
         ]),
-        ['Poor sleep'],
+        ['Poor sleep lately'],
       );
       expect(
         _why([const RiskDriver(key: 'moon_phase', value: 'full')]),
@@ -232,7 +233,7 @@ void main() {
       expect(e.loadPct, 35.0);
       expect(e.drivers!.map((d) => d.key), ['sleep', 'load', 'injury_history']);
       expect(e.whyReasons!.map((r) => r.text), [
-        'Poor sleep',
+        'Poor sleep lately',
         'Training 35% above your usual week',
         '2 past injuries',
       ]);

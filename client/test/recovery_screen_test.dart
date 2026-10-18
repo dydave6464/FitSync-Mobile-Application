@@ -410,7 +410,10 @@ void main() {
     ) async {
       await _pump(tester, _withToday(_todays()));
       final why = find.byKey(const Key('recovery.why'));
-      final sleep = find.descendant(of: why, matching: find.text('Poor sleep'));
+      final sleep = find.descendant(
+        of: why,
+        matching: find.text('Poor sleep lately'),
+      );
       final load = find.descendant(
         of: why,
         matching: find.text('Training 35% above your usual week'),
@@ -486,7 +489,7 @@ void main() {
         );
         expect(_ring(tester).color, _tokens.text3);
         expect(find.byKey(const Key('recovery.why')), findsNothing);
-        expect(find.text('Poor sleep'), findsNothing);
+        expect(find.textContaining('Poor sleep'), findsNothing);
         expect(find.text('Train, but go a little easier.'), findsNothing);
       }
     });
@@ -539,7 +542,9 @@ void main() {
       // loose lines.
       expect(
         find.bySemanticsLabel(
-          RegExp(r'^Why\nPoor sleep\nTraining 35% above your usual week$'),
+          RegExp(
+            r'^Why\nPoor sleep lately\nTraining 35% above your usual week$',
+          ),
         ),
         findsOneWidget,
       );
