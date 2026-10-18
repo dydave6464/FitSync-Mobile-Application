@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
+import 'package:fitsync/core/theme.dart';
 import 'package:fitsync/core/widgets/fs_kit.dart';
 import 'package:fitsync/features/onboarding/presentation/edit_scaffold.dart';
 import 'package:fitsync/features/onboarding/presentation/onboarding_scaffold.dart';
@@ -172,6 +173,108 @@ void main() {
       expect(signedOut, 1);
     });
 
+    // The header's controls were 38dp squares, short of the 48dp a thumb
+    // needs. The hit area grows; what is drawn stays where it was.
+    testWidgets('Back and Skip take a 48dp tap, Back still drawn at 38dp', (
+      tester,
+    ) async {
+      var went = 0;
+      var skipped = 0;
+      await tester.pumpWidget(
+        MaterialApp(
+          home: OnboardingScaffold(
+            step: 2,
+            total: 4,
+            onContinue: () {},
+            onBack: () => went++,
+            onSkip: () => skipped++,
+            child: const Text('content'),
+          ),
+        ),
+      );
+
+      final back = tester.getRect(find.byKey(const Key('back')));
+      final skip = tester.getRect(find.byKey(const Key('skip')));
+      for (final target in [back, skip]) {
+        expect(target.width, greaterThanOrEqualTo(48));
+        expect(target.height, greaterThanOrEqualTo(48));
+      }
+
+      // The bordered square keeps its size and its 20dp inset from the edge.
+      final square = tester.getRect(
+        find.descendant(
+          of: find.byKey(const Key('back')),
+          matching: find.byType(Material),
+        ),
+      );
+      expect(square.size, const Size(38, 38));
+      expect(square.left, 20);
+
+      // A tap in the slack around the square still goes back.
+      await tester.tapAt(back.topLeft + const Offset(1, 1));
+      await tester.tapAt(skip.bottomRight - const Offset(1, 1));
+      expect(went, 1);
+      expect(skipped, 1);
+    });
+
+    testWidgets('shows the hint directly above Continue', (tester) async {
+      await tester.pumpWidget(
+        MaterialApp(
+          home: OnboardingScaffold(
+            step: 5,
+            total: 6,
+            onContinue: null,
+            hint: 'Answer every question to continue',
+            child: const SizedBox(height: 2000),
+          ),
+        ),
+      );
+
+      // Beside the greyed button it explains, however long the step is,
+      // rather than at the end of the content where it can be scrolled away.
+      final hint = tester.getRect(
+        find.text('Answer every question to continue'),
+      );
+      final cont = tester.getRect(find.byKey(const Key('continue')));
+      expect(hint.bottom, lessThanOrEqualTo(cont.top));
+      expect(cont.top - hint.bottom, lessThan(24));
+    });
+
+    testWidgets('the hint is readable text, not the faint tertiary grey', (
+      tester,
+    ) async {
+      await tester.pumpWidget(
+        MaterialApp(
+          home: OnboardingScaffold(
+            step: 5,
+            total: 6,
+            onContinue: null,
+            hint: 'Answer every question to continue',
+            child: const Text('content'),
+          ),
+        ),
+      );
+
+      final finder = find.text('Answer every question to continue');
+      final context = tester.element(finder);
+      expect(tester.widget<Text>(finder).style?.color, context.fs.text2);
+    });
+
+    testWidgets('shows no hint when none is given', (tester) async {
+      await tester.pumpWidget(
+        MaterialApp(
+          home: OnboardingScaffold(
+            step: 5,
+            total: 6,
+            onContinue: () {},
+            child: const Text('content'),
+          ),
+        ),
+      );
+
+      expect(find.byKey(const Key('hint')), findsNothing);
+    });
+
     testWidgets('fits a 320dp screen at 2x text with an error and Sign out', (
       tester,
     ) async {
@@ -189,6 +292,37 @@ void main() {
               onContinue: () {},
               onSkip: () {},
               onSignOut: () {},
+              error:
+                  "Couldn't reach FitSync. Check your connection and try "
+                  'again.',
+              child: const Text('content'),
+            ),
+          ),
+        ),
+      );
+
+      expect(tester.takeException(), isNull);
+    });
+
+    // The health step is the one that shows a hint: it has a back control
+    // and no Skip or Sign out, and a failed save can leave an error up too.
+    testWidgets('fits a 320dp screen at 2x text with an error and a hint', (
+      tester,
+    ) async {
+      tester.view.physicalSize = const Size(320, 640);
+      tester.view.devicePixelRatio = 1;
+      addTearDown(tester.view.reset);
+      await tester.pumpWidget(
+        MaterialApp(
+          home: MediaQuery.withClampedTextScaling(
+            minScaleFactor: 2,
+            maxScaleFactor: 2,
+            child: OnboardingScaffold(
+              step: 5,
+              total: 6,
+              onContinue: null,
+              onBack: () {},
+              hint: 'Answer every question to continue',
               error:
                   "Couldn't reach FitSync. Check your connection and try "
                   'again.',
@@ -222,6 +356,24 @@ void main() {
       await tester.pumpAndSettle();
 
       expect(saved, 1);
+    });
+
+    testWidgets('shows the hint directly above Save', (tester) async {
+      await tester.pumpWidget(
+        MaterialApp(
+          home: EditScaffold(
+            title: 'Health',
+            onSave: null,
+            hint: 'Answer every question to save',
+            child: const SizedBox(height: 2000),
+          ),
+        ),
+      );
+
+      final hint = tester.getRect(find.text('Answer every question to save'));
+      final save = tester.getRect(find.byKey(const Key('save')));
+      expect(hint.bottom, lessThanOrEqualTo(save.top));
+      expect(save.top - hint.bottom, lessThan(24));
     });
 
     testWidgets('shows no wizard chrome', (tester) async {

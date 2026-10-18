@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../../../core/theme.dart';
 import '../../../core/widgets/fs_kit.dart';
+import 'onboarding_scaffold.dart' show ContinueHint;
 
 /// Editor chrome around the same step widgets the wizard uses.
 ///
@@ -16,6 +17,7 @@ class EditScaffold extends StatelessWidget {
     required this.child,
     required this.onSave,
     this.busy = false,
+    this.hint,
   });
 
   final String title;
@@ -24,6 +26,10 @@ class EditScaffold extends StatelessWidget {
   /// Null disables Save: the answer on screen is not yet valid.
   final VoidCallback? onSave;
   final bool busy;
+
+  /// Why Save is greyed out, shown directly above it, as the wizard does
+  /// for Continue.
+  final String? hint;
 
   @override
   Widget build(BuildContext context) {
@@ -44,11 +50,20 @@ class EditScaffold extends StatelessWidget {
             ),
             Padding(
               padding: const EdgeInsets.fromLTRB(20, 0, 20, 16),
-              child: FsButton(
-                key: const Key('save'),
-                label: 'Save',
-                busy: busy,
-                onPressed: busy ? null : onSave,
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  if (hint != null) ...[
+                    ContinueHint(hint!),
+                    const SizedBox(height: 10),
+                  ],
+                  FsButton(
+                    key: const Key('save'),
+                    label: 'Save',
+                    busy: busy,
+                    onPressed: busy ? null : onSave,
+                  ),
+                ],
               ),
             ),
           ],
