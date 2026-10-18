@@ -734,6 +734,46 @@ void main() {
       expect(container.read(planReadyProvider), isFalse);
     });
 
+    testWidgets('Start workout on the plan card puts it away too', (
+      tester,
+    ) async {
+      _tallScreen(tester);
+      var trains = 0;
+      await _pumpHome(tester, planReady: true, onGoToTrain: () => trains++);
+
+      // The usual first move: straight to the plan card's own button. The
+      // plan has been found, so the welcome has done its job.
+      await tester.tap(find.text('Start workout'));
+      await tester.pumpAndSettle();
+
+      expect(trains, 1);
+      expect(find.byKey(const Key('home.planReady')), findsNothing);
+    });
+
+    testWidgets('a workout under way puts it away for good', (tester) async {
+      _tallScreen(tester);
+      final sessions = _FakeSessionRepository(_planSession());
+      await _pumpHome(tester, planReady: true, sessions: sessions);
+
+      // What is happening now outranks the welcome, as it outranks the plan.
+      expect(find.byKey(const Key('home.inProgress')), findsOneWidget);
+      expect(find.byKey(const Key('home.planReady')), findsNothing);
+
+      // And it does not come back once the workout is over.
+      await tester.tap(find.byKey(const Key('home.inProgress.discard')));
+      await tester.pumpAndSettle();
+      await tester.tap(
+        find.descendant(
+          of: find.byType(AlertDialog),
+          matching: find.text('Discard'),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      expect(find.byType(PlanCard), findsOneWidget);
+      expect(find.byKey(const Key('home.planReady')), findsNothing);
+    });
+
     testWidgets('the screen still fits a 320 dp phone at 2.0x text', (
       tester,
     ) async {
