@@ -143,4 +143,44 @@ void main() {
 
     expect(drafts.weight(1).text, '');
   });
+
+  // A reopened set is seeded from the record, and the record can be empty: a
+  // bodyweight set has no weight. The next build's prefill must not take
+  // that empty box for one nobody has filled yet.
+  test('a prefill leaves a field the record left empty alone', () {
+    final drafts = SetDrafts();
+    addTearDown(drafts.dispose);
+
+    drafts.seed(
+      setNumber: 1,
+      weightKg: null,
+      reps: 10,
+      unit: WeightUnit.kg,
+      authoritative: true,
+    );
+    drafts.seed(setNumber: 1, weightKg: 30, reps: 5, unit: WeightUnit.kg);
+
+    expect(drafts.weight(1).text, isEmpty);
+    expect(drafts.reps(1).text, '10');
+  });
+
+  // Released is a fresh row again -- a restart, or an added row taken off
+  // -- and a fresh row takes last session's numbers like any other.
+  test('a released set takes a prefill again', () {
+    final drafts = SetDrafts();
+    addTearDown(drafts.dispose);
+
+    drafts.seed(
+      setNumber: 1,
+      weightKg: null,
+      reps: 10,
+      unit: WeightUnit.kg,
+      authoritative: true,
+    );
+    drafts.release(1);
+    drafts.seed(setNumber: 1, weightKg: 30, reps: 5, unit: WeightUnit.kg);
+
+    expect(drafts.weight(1).text, '30');
+    expect(drafts.reps(1).text, '5');
+  });
 }

@@ -1850,6 +1850,39 @@ void main() {
     expect(find.text('Complete set 1'), findsOneWidget);
   });
 
+  // A set done without the belt is stored with no weight. Reopened, its
+  // empty box is the record too: last session's weight filling it would
+  // turn the bodyweight set into a weighted one on the next Complete set.
+  testWidgets('reopening a bodyweight set keeps its weight empty', (
+    tester,
+  ) async {
+    await _pumpLogging(
+      tester,
+      session: _session(
+        sets: const [LoggedSet(exerciseId: 101, setNumber: 1, reps: 10)],
+      ),
+      last: const {
+        101: LastPerformance(
+          exerciseId: 101,
+          sessionDate: '2026-09-01',
+          weightKg: 30,
+          reps: 5,
+        ),
+      },
+    );
+
+    await tester.tap(find.byKey(const Key('set.1.row')));
+    await tester.pumpAndSettle();
+
+    final weight = tester.widget<TextField>(
+      find.byKey(const Key('set.1.weight')),
+    );
+    final reps = tester.widget<TextField>(find.byKey(const Key('set.1.reps')));
+    expect(weight.enabled, isTrue);
+    expect(weight.controller!.text, isEmpty);
+    expect(reps.controller!.text, '10');
+  });
+
   testWidgets('a 409 on an undo closes the logger too', (tester) async {
     final controller = await _pumpLogging(
       tester,

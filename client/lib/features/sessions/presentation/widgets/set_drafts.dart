@@ -15,6 +15,13 @@ class SetDrafts {
   final Map<int, TextEditingController> _weight = {};
   final Map<int, TextEditingController> _reps = {};
 
+  /// The sets whose fields have been seeded from the record, since their
+  /// last [release]. A prefill no longer touches them: a set reopened from
+  /// the record keeps the record's empty boxes empty -- a bodyweight set has
+  /// no weight, and last session's would otherwise fill it on the next build
+  /// and be logged with it.
+  final Set<int> _fromRecord = {};
+
   TextEditingController weight(int setNumber) =>
       _weight.putIfAbsent(setNumber, TextEditingController.new);
 
@@ -45,6 +52,9 @@ class SetDrafts {
   /// that never happened. A null *prefill* is merely the absence of a
   /// suggestion and changes nothing.
   ///
+  /// Once a set has been seeded from the record, a prefill leaves it alone
+  /// until it is released -- see [_fromRecord].
+  ///
   /// Safe to call on every build either way: a field already reading what it
   /// is being seeded with is left alone, caret included.
   void seed({
@@ -54,6 +64,11 @@ class SetDrafts {
     required WeightUnit unit,
     bool authoritative = false,
   }) {
+    if (authoritative) {
+      _fromRecord.add(setNumber);
+    } else if (_fromRecord.contains(setNumber)) {
+      return;
+    }
     _seed(
       weight(setNumber),
       weightKg == null ? '' : formatWeight(weightKg, unit),
@@ -103,6 +118,7 @@ class SetDrafts {
   /// Empties one set's fields -- what un-ticking a stored set needs, so the
   /// row does not keep showing the set that was just undone.
   void release(int setNumber) {
+    _fromRecord.remove(setNumber);
     _weight[setNumber]?.clear();
     _reps[setNumber]?.clear();
   }
@@ -116,6 +132,7 @@ class SetDrafts {
     }
     _weight.clear();
     _reps.clear();
+    _fromRecord.clear();
   }
 
   /// Assigning `.text` alone drops the caret to offset 0, which puts it in
