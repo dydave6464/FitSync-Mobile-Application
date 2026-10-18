@@ -112,7 +112,7 @@ def default_classifier():
     return fit(data.X, data.y)
 
 
-def bundle(classifier, real_rows: int = 0) -> Dict[str, Any]:
+def bundle(classifier, real_rows: int = 0, seed: int = risk_data.SEED) -> Dict[str, Any]:
     import sklearn
 
     return {
@@ -120,15 +120,15 @@ def bundle(classifier, real_rows: int = 0) -> Dict[str, Any]:
         "version": MODEL_VERSION,
         "features": list(risk_data.FEATURES),
         "sklearnVersion": sklearn.__version__,
-        "simulationSeed": risk_data.SEED,
+        "simulationSeed": seed,
         "realRows": real_rows,
     }
 
 
-def save(classifier, path: str, real_rows: int = 0) -> None:
+def save(classifier, path: str, real_rows: int = 0, seed: int = risk_data.SEED) -> None:
     import joblib
 
-    joblib.dump(bundle(classifier, real_rows), path, compress=3)
+    joblib.dump(bundle(classifier, real_rows, seed), path, compress=3)
 
 
 def _summary(values: Sequence[float]) -> Dict[str, Any]:
