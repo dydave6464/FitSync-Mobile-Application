@@ -52,6 +52,7 @@ test('recovery routes', async (t) => {
     const res = await request(app).get('/api/v1/recovery').set(auth).expect(200);
     assert.equal(res.body.data.todayCheckin, null);
     assert.equal(res.body.data.latestEstimate, null);
+    assert.equal(res.body.data.checkinCount, 0);
     assert.equal(res.body.data.load.length, 7);
     // Six groups, none trained yet, in body order.
     assert.deepEqual(res.body.data.muscles.map((m) => [m.group, m.lastTrained, m.daysAgo]), [
@@ -203,6 +204,30 @@ test('the estimator only sees the last few days of check-ins', async (t) => {
   const { checkins } = ml.calls.at(-1);
   assert.equal(checkins.length, 1, 'last week must not dilute this morning');
   assert.equal(checkins[0].sleepQuality, 'poor');
+});
+
+test('the tab says how many check-ins the estimate rests on', async (t) => {
+  const pool = createPool(testDbConfig());
+  await dropAllTables(pool);
+  await migrate(testDbConfig());
+  const app = buildTestApp({ pool, ml: recordingMl() });
+  t.after(async () => { await dropAllTables(pool); await pool.end(); });
+
+  const { userId, auth } = await signIn(app, pool, 'count@example.com');
+  // Yesterday's is inside the estimator's window; five days ago is not.
+  for (const daysAgo of [1, 5]) {
+    await pool.query(
+      `INSERT INTO morning_checkins
+         (user_id, checkin_date, sleep_quality, muscle_soreness, energy, stress)
+       VALUES (?, DATE_SUB(CURDATE(), INTERVAL ? DAY), 'good', 'mild', 'moderate', 'low')`,
+      [userId, daysAgo],
+    );
+  }
+  await request(app).post('/api/v1/recovery/checkin').set(auth).send(ANSWERS).expect(201);
+
+  const res = await request(app).get('/api/v1/recovery').set(auth).expect(200);
+  // The same days the estimator was sent: today and yesterday.
+  assert.equal(res.body.data.checkinCount, 2);
 });
 
 /// Registers and logs in a user against [app]; answers their id and headers.

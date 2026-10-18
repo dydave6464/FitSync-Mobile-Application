@@ -176,17 +176,21 @@ module.exports = function buildRecoveryRouter(deps = {}) {
   router.get('/', auth, async (req, res, next) => {
     try {
       const { userId } = req.user;
-      const [checkin, estimate, load, muscles] = await Promise.all([
+      const [checkin, estimate, load, muscles, inWindow] = await Promise.all([
         todayCheckin(deps.pool, userId),
         latestEstimate(deps.pool, userId),
         readVolumeBuckets(deps.pool, userId, 'week'),
         readMuscleRecency(deps.pool, userId),
+        recentCheckins(deps.pool, userId, CHECKIN_WINDOW_DAYS),
       ]);
 
       res.json({
         data: {
           todayCheckin: checkin,
           latestEstimate: estimate,
+          // How many check-ins today's estimate rests on: the same window the
+          // estimator is sent, so the tab can say when that is very few.
+          checkinCount: inWindow.length,
           load: load || [],
           muscles,
         },
