@@ -323,6 +323,38 @@ void main() {
     expect(repo.dayOf('2026-10-13').meals['snack']!.single.id, entry.id);
   });
 
+  test('a change to the same meal keeps the food where it was in the list', () async {
+    final repo = FakeNutritionRepository();
+    final c = _container(repo);
+    await c.read(nutritionDayProvider.future);
+    final ctrl = c.read(nutritionDayProvider.notifier);
+    await ctrl.log(rice, mealType: 'lunch', servings: 1);
+    final middle = await ctrl.log(rice, mealType: 'lunch', servings: 1);
+    await ctrl.log(rice, mealType: 'lunch', servings: 1);
+    // The refresh after the save fails, so what shows is what change put there.
+    repo.failNextGet = true;
+    await ctrl.change(middle, mealType: 'lunch', servings: 2);
+    final lunch = c.read(nutritionDayProvider).value!.meals['lunch']!;
+    expect([for (final e in lunch) e.id], [100, 101, 102]);
+    expect(lunch[1].servings, 2);
+  });
+
+  test('a change finishing after its entry was removed does not bring it back', () async {
+    final repo = _SlowUpdateRepo();
+    final c = _container(repo);
+    await c.read(nutritionDayProvider.future);
+    final ctrl = c.read(nutritionDayProvider.notifier);
+    final entry = await ctrl.log(rice, mealType: 'dinner', servings: 1);
+
+    final updating = ctrl.change(entry, mealType: 'snack', servings: 2);
+    await ctrl.remove(entry);
+    expect(c.read(nutritionDayProvider).value!.entries, isEmpty);
+    repo.failNextGet = true;
+    repo.updateGate.complete();
+    await updating;
+    expect(c.read(nutritionDayProvider).value!.entries, isEmpty);
+  });
+
   test('a delete refreshes recents', () async {
     final repo = FakeNutritionRepository();
     final c = _container(repo);
@@ -336,4 +368,17 @@ void main() {
     await c.read(recentFoodsProvider.future);
     expect(repo.recentCalls, before + 1);
   });
+}
+
+/// Saves a change at once but answers only when [updateGate] completes, so a
+/// test can remove the entry while its change is still on the way back.
+class _SlowUpdateRepo extends FakeNutritionRepository {
+  final updateGate = Completer<void>();
+
+  @override
+  Future<FoodEntry> updateEntry({required int id, required String mealType, required double servings, Food? food}) async {
+    final saved = await super.updateEntry(id: id, mealType: mealType, servings: servings, food: food);
+    await updateGate.future;
+    return saved;
+  }
 }

@@ -90,8 +90,13 @@ class NutritionDayController extends AsyncNotifier<NutritionDay> {
     final target = date ?? state.value?.date;
     if (target == null) throw StateError('No day is loaded to change.');
     final saved = await _repo.updateEntry(id: entry.id, mealType: mealType, servings: servings, food: edited);
-    // Out and back in, so a new meal moves it.
-    _onDay(target, (day) => day.without(entry.id).withEntry(saved));
+    _onDay(target, (day) {
+      final shown = day.entries.where((e) => e.id == entry.id).firstOrNull;
+      // Removed while this was saving: it stays out.
+      if (shown == null) return day;
+      // The same meal keeps its place; a new one moves it, out and back in.
+      return saved.mealType == shown.mealType ? day.replacing(saved) : day.without(entry.id).withEntry(saved);
+    });
     ref.invalidate(recentFoodsProvider);
     await _settle(target);
   }
