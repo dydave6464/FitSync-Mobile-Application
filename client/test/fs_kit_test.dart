@@ -1144,15 +1144,15 @@ void main() {
       // Not centred on the pill, which sits on the number's baseline low in
       // the row: what matters is how tall a strip of taps finds it.
       final kg = tester.getRect(find.byKey(const Key('unit.kg')));
-      final answered = <int>[];
-      for (var dy = -40; dy <= 40; dy++) {
+      final answered = <double>[];
+      for (var dy = -40.0; dy <= 40; dy += 0.5) {
         final before = picked.length;
         await tester.tapAt(Offset(kg.center.dx, kg.center.dy + dy));
         if (picked.length > before) answered.add(dy);
       }
-      expect(answered.last - answered.first, greaterThanOrEqualTo(47));
+      expect(answered.last - answered.first, greaterThanOrEqualTo(48));
       // One strip, no holes in it.
-      expect(answered.length, answered.last - answered.first + 1);
+      expect(answered.length, (answered.last - answered.first) / 0.5 + 1);
     });
 
     // A tap inside the room's own box that nothing took was tested again at

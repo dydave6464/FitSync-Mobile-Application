@@ -605,8 +605,10 @@ class FsStatField extends StatelessWidget {
           children: [
             FsEyebrow(label),
             // The room above the row is the label's, which takes no taps, so
-            // a thumb landing just over the switch still finds it. 10 above
-            // and the card's 6 below take the ~32 dp row to 48.
+            // a thumb landing just over the switch still finds it. The
+            // switch answers the row's whole height, so with 10 above and
+            // the card's 6 below its band is the row plus 16 at any text
+            // size: 49 dp at normal text, where the row is about 33.
             FsTapRoom(
               reach: 10,
               child: Row(
@@ -686,11 +688,22 @@ class _RenderNoReachBack extends RenderProxyBox {
   bool hitTest(BoxHitTestResult result, {required Offset position}) {
     // Not the usual check against this box: the child's band lies outside
     // it, and only the side facing the field is closed.
-    if (position.dx < 0 || !hitTestChildren(result, position: position)) {
-      return false;
-    }
-    result.add(BoxHitTestEntry(this, position));
-    return true;
+    if (position.dx < 0) return false;
+    // The row's whole height beside the number is the switch's. It sits on
+    // the number's baseline, low in the row, so a band centred on it left
+    // the row's top unanswered once the text grew; folded onto its box, a
+    // tap anywhere in that height lands on the unit at that x.
+    final onto = Offset(
+      position.dx,
+      position.dy.clamp(0.5, math.max(0.5, size.height - 0.5)),
+    );
+    final hit = result.addWithRawTransform(
+      transform: MatrixUtils.forceToPoint(onto),
+      position: onto,
+      hitTest: (result, _) => hitTestChildren(result, position: onto),
+    );
+    if (hit) result.add(BoxHitTestEntry(this, position));
+    return hit;
   }
 }
 
