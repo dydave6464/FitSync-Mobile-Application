@@ -259,12 +259,35 @@ void main() {
     // well. The reasons are what pushed the score up, so the heading says
     // so in the verdict's own terms.
     test('a low estimate calls them worth watching', () {
-      expect(_estimate(level: 'low').whyHeading, 'Worth watching');
+      expect(
+        _estimate(level: 'low').whyHeading(const [
+          RiskReason(key: 'sleep', text: 'Poor sleep today'),
+        ]),
+        'Worth watching',
+      );
     });
 
     test('a moderate or high one says they are raising it', () {
-      expect(_estimate(level: 'moderate').whyHeading, "What's raising it");
-      expect(_estimate(level: 'high').whyHeading, "What's raising it");
+      final reasons = [
+        const RiskReason(key: 'sleep', text: 'Poor sleep today'),
+      ];
+      expect(
+        _estimate(level: 'moderate').whyHeading(reasons),
+        "What's raising it",
+      );
+      expect(_estimate(level: 'high').whyHeading(reasons), "What's raising it");
+    });
+
+    // The model can lift a score with no one answer over the bar; "What's
+    // raising it: nothing stands out" would contradict itself.
+    test('with nothing standing out it is worth watching at any level', () {
+      for (final level in ['low', 'moderate', 'high']) {
+        expect(
+          _estimate(level: level).whyHeading(const []),
+          'Worth watching',
+          reason: level,
+        );
+      }
     });
   });
 

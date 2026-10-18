@@ -593,6 +593,24 @@ void main() {
       );
     });
 
+    // Read where it sits, after the reasons, rather than folded into the
+    // card's label ahead of the ring.
+    testWidgets('a screen reader hears the note as a line of its own', (
+      tester,
+    ) async {
+      final semantics = tester.ensureSemantics();
+      await _pump(tester, _withToday(_todays(), checkinCount: 1));
+
+      expect(
+        find.bySemanticsLabel(
+          'Based on 1 check-in. It gets more accurate as you check in each '
+          'morning.',
+        ),
+        findsOneWidget,
+      );
+      semantics.dispose();
+    });
+
     testWidgets('the note is gone from the third check-in', (tester) async {
       await _pump(tester, _withToday(_todays(), checkinCount: 3));
 
@@ -847,6 +865,9 @@ void main() {
             for (var i = 0; i < 7; i++)
               VolumeBucket(label: '-${6 - i}d', volumeKg: 1000.0 * i),
           ],
+          // The note too, and today's soreness is mild, so the severe one
+          // takes the longest wording: "...in the last few days".
+          checkinCount: 1,
         ),
       );
       expect(tester.takeException(), isNull);

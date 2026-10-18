@@ -170,13 +170,15 @@ class InjuryRiskEstimate {
     return reasons.isEmpty ? null : reasons;
   }
 
-  /// The heading over [whyReasons], in the verdict's own terms. They are
-  /// what pushed the score up, so under a low verdict they are things to
-  /// watch; "Why" there read as if poor sleep were why all was well.
-  String get whyHeading => switch (riskLevel) {
-    'high' || 'moderate' => "What's raising it",
-    _ => 'Worth watching',
-  };
+  /// The heading over [reasons], in the verdict's own terms. They are what
+  /// pushed the score up, so under a low verdict they are things to watch;
+  /// "Why" there read as if poor sleep were why all was well. With nothing
+  /// standing out there is nothing raising it, whatever the level: the model
+  /// can lift a score with no one answer over the bar.
+  String whyHeading(List<RiskReason> reasons) =>
+      reasons.isNotEmpty && (riskLevel == 'high' || riskLevel == 'moderate')
+      ? "What's raising it"
+      : 'Worth watching';
 
   factory InjuryRiskEstimate.fromJson(Map<String, dynamic> json) =>
       InjuryRiskEstimate(
@@ -259,11 +261,13 @@ String? _reasonText(RiskDriver driver, MorningCheckin? today) {
     _ => null,
   };
   if (answer == null) return null;
+  // A key added to the words above but not here never claims today.
   final todays = switch (driver.key) {
     'sleep' => today?.sleepQuality,
     'soreness' => today?.muscleSoreness,
     'energy' => today?.energy,
-    _ => today?.stress,
+    'stress' => today?.stress,
+    _ => null,
   };
   return todays == value ? '$answer today' : '$answer in the last few days';
 }

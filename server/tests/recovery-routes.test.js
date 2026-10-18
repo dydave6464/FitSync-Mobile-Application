@@ -210,12 +210,13 @@ test('the tab says how many check-ins the estimate rests on', async (t) => {
   const pool = createPool(testDbConfig());
   await dropAllTables(pool);
   await migrate(testDbConfig());
-  const app = buildTestApp({ pool, ml: recordingMl() });
+  const ml = recordingMl();
+  const app = buildTestApp({ pool, ml });
   t.after(async () => { await dropAllTables(pool); await pool.end(); });
 
   const { userId, auth } = await signIn(app, pool, 'count@example.com');
-  // Yesterday's is inside the estimator's window; five days ago is not.
-  for (const daysAgo of [1, 5]) {
+  // Either side of the window's edge: two days ago is inside it, three is not.
+  for (const daysAgo of [2, 3]) {
     await pool.query(
       `INSERT INTO morning_checkins
          (user_id, checkin_date, sleep_quality, muscle_soreness, energy, stress)
@@ -226,8 +227,9 @@ test('the tab says how many check-ins the estimate rests on', async (t) => {
   await request(app).post('/api/v1/recovery/checkin').set(auth).send(ANSWERS).expect(201);
 
   const res = await request(app).get('/api/v1/recovery').set(auth).expect(200);
-  // The same days the estimator was sent: today and yesterday.
+  // Today and two days ago -- exactly the check-ins the estimator was sent.
   assert.equal(res.body.data.checkinCount, 2);
+  assert.equal(res.body.data.checkinCount, ml.calls.at(-1).checkins.length);
 });
 
 /// Registers and logs in a user against [app]; answers their id and headers.

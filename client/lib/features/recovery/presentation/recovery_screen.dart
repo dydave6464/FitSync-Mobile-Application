@@ -386,10 +386,7 @@ class _AdviceBox extends StatelessWidget {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Text(
-                    // With nothing standing out there is nothing raising it,
-                    // whatever the level: the model can lift a score with no
-                    // one answer over the bar.
-                    reasons.isEmpty ? 'Worth watching' : estimate.whyHeading,
+                    estimate.whyHeading(reasons),
                     style: TextStyle(
                       fontSize: 12,
                       fontWeight: FontWeight.w600,
@@ -417,10 +414,15 @@ class _AdviceBox extends StatelessWidget {
           // gives it more.
           if (note != null) ...[
             const SizedBox(height: 10),
-            Text(
-              note,
-              key: const Key('recovery.fewCheckins'),
-              style: TextStyle(fontSize: 12, color: t.text2, height: 1.4),
+            // A node of its own, so it is heard here, after the reasons,
+            // rather than folded into the card's label ahead of the ring.
+            Semantics(
+              container: true,
+              child: Text(
+                note,
+                key: const Key('recovery.fewCheckins'),
+                style: TextStyle(fontSize: 12, color: t.text2, height: 1.4),
+              ),
             ),
           ],
         ],
