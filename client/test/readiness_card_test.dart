@@ -72,7 +72,8 @@ void main() {
       // The manuscript's term stays on Home, beside the readiness it drives.
       expect(
         find.text(
-          "Injury risk: $level · from your training load & today's check-in",
+          'Injury risk: $level · from your check-ins, training load & past '
+          'injuries',
         ),
         findsOneWidget,
       );
@@ -133,6 +134,8 @@ void main() {
   for (final (name, estimate, checkin) in [
     ('an earlier day\'s score', _estimate('high', date: '2026-09-20'), null),
     ('an unscored estimate', _scored('moderate', null), _today),
+    // Today's carries the longest subtitle.
+    ('today\'s moderate score', _scored('moderate', 50), _today),
   ]) {
     testWidgets('$name fits a narrow phone at 2x text', (tester) async {
       tester.view.physicalSize = const Size(320, 1400);

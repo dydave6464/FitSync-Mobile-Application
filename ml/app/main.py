@@ -15,7 +15,7 @@ from app.catalogue import fetch_candidates
 from app.config import Settings
 from app.db import create_engine_from
 from app.ranker import Ranker
-from app.risk import estimate as estimate_injury_risk
+from app.risk_model import RiskModel, estimate as estimate_injury_risk
 from app.rules import parameters, selection
 from app.rules.splits import Split, label as split_label, resolve as resolve_split
 from app.schemas import (
@@ -98,6 +98,9 @@ def create_app(settings: Settings) -> FastAPI:
     app.state.settings = settings
     app.state.engine = None
     app.state.ranker = Ranker.load(settings)
+    # Loaded (or trained from the seeded simulation) once at startup. There is
+    # no auto-reload: a new model file is picked up only on restart.
+    app.state.risk_model = RiskModel.load(settings)
 
     def engine():
         # Built lazily so /health answers with MySQL down, and so a test that
@@ -109,7 +112,13 @@ def create_app(settings: Settings) -> FastAPI:
     @app.get("/health")
     def health():
         ranker = app.state.ranker
-        return {"status": "ok", "model": ranker.status, "mode": ranker.mode}
+        risk_model = app.state.risk_model
+        return {
+            "status": "ok",
+            "model": ranker.status,
+            "mode": ranker.mode,
+            "riskModel": {"status": risk_model.status, "version": risk_model.version},
+        }
 
     @app.post("/generate-plan", response_model=PlanResponse)
     def generate_plan(profile: ProfileRequest):
@@ -247,7 +256,9 @@ def create_app(settings: Settings) -> FastAPI:
 
     @app.post("/injury-risk", response_model=InjuryRiskResponse)
     def injury_risk(payload: InjuryRiskRequest):
-        return estimate_injury_risk(payload)
+        # max(model score, rules score); the rules alone when no model loaded
+        # or the model fails on this request. See app/risk_model.py.
+        return estimate_injury_risk(payload, app.state.risk_model)
 
     return app
 

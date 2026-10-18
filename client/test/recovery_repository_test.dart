@@ -105,6 +105,37 @@ void main() {
     expect(estimate.ringValue, lessThanOrEqualTo(1));
   });
 
+  test('a newer estimate brings its source, load and drivers', () async {
+    final repo = _repo(
+      MockClient(
+        (_) async => http.Response(
+          jsonEncode({
+            'data': {
+              'todayCheckin': null,
+              'latestEstimate': {
+                'riskLevel': 'moderate',
+                'trainingLoadScore': 47.25,
+                'checkinDate': '2026-10-18',
+                'source': 'rules',
+                'loadPct': 35.0,
+                'drivers': [
+                  {'key': 'load', 'value': 35.0},
+                ],
+              },
+              'load': [],
+            },
+          }),
+          200,
+        ),
+      ),
+    );
+
+    final estimate = (await repo.overview()).latestEstimate!;
+    expect(estimate.source, 'rules');
+    expect(estimate.loadPct, 35.0);
+    expect(estimate.drivers!.single.key, 'load');
+  });
+
   test('checking in posts all four answers verbatim', () async {
     Map<String, dynamic>? sent;
     final repo = _repo(

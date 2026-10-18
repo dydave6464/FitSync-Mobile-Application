@@ -147,7 +147,8 @@ class ActiveSessionController extends AsyncNotifier<ActiveSession?> {
     ref.invalidate(lastWorkoutProvider); // what the "+" sheet repeats
     ref.invalidate(streakProvider); // a finished workout is a streak day
     ref.invalidate(recoveryOverviewProvider); // 7-day load, last trained
-    // autoDispose, but Train's Exercises tab keeps it alive while mounted.
+    // autoDispose, but the library can still be open under the logger:
+    // Review's "Resume it", on a workout already open, pushes it on top.
     ref.invalidate(recentExercisesProvider); // the library's Recent strip
     return done;
   }

@@ -1,4 +1,5 @@
 'use strict';
+const { PAIN_LEVELS } = require('../../db/session-outcomes');
 
 /// What leaves Node for the Python ML service, built from an allowed list.
 ///
@@ -12,7 +13,8 @@
 /// groups); every chosen goal (to name the plan); the generator screen's split,
 /// days per week and session length; whether a stored health check asks for a
 /// gentler plan (healthCaution); and each check-in's four answers with the
-/// training-load index. Never sent: email, name, user id, city, date of birth,
+/// training-load index; for the risk estimate, the reported injuries and the
+/// worst recent pain level. Never sent: email, name, user id, city, date of birth,
 /// sex, height, weight, goal weight, activity level, account flags, catalogue
 /// names, injury side, the health check's conditions and answers, and
 /// check-in ids and dates -- no rule reads any of them.
@@ -55,10 +57,17 @@ function toPlanPayload(profile) {
 }
 
 /// The body of POST /injury-risk: each check-in's four answers, the
-/// training-load index, and injury history in the same shape as a plan's.
+/// training-load index, injury history in the same shape as a plan's, and the
+/// worst pain level reported over recent sessions.
+///
+/// recentPain is left out, not sent as null, when there were no reports: the
+/// service reads both as "no reports", and a body without the key is the one
+/// an ML service from before the field existed already accepts. An unknown
+/// spelling is dropped the same way rather than forwarded, since the
+/// service's rules would score it as no pain at all without saying so.
 function toRiskPayload(request) {
   const r = request ?? {};
-  return {
+  const payload = {
     checkins: list(r.checkins).map((c) => ({
       sleepQuality: c.sleepQuality,
       muscleSoreness: c.muscleSoreness,
@@ -68,6 +77,8 @@ function toRiskPayload(request) {
     load: r.load ?? 0,
     injuryHistory: list(r.injuryHistory).map(toInjuryRef),
   };
+  if (PAIN_LEVELS.includes(r.recentPain)) payload.recentPain = r.recentPain;
+  return payload;
 }
 
 module.exports = { toPlanPayload, toRiskPayload };

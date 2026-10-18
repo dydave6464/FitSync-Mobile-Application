@@ -12,25 +12,19 @@ class ExerciseTile extends StatelessWidget {
     required this.exercise,
     required this.baseUrl,
     required this.onTap,
-    this.selected,
-    this.onInfo,
+    required this.selected,
+    required this.onInfo,
   });
 
   final ExerciseSummary exercise;
   final String baseUrl;
   final VoidCallback onTap;
 
-  /// Whether this exercise is in the workout being put together, or null when
-  /// the list is being browsed rather than picked from.
-  ///
-  /// Nullable rather than defaulting to false: "not chosen" and "there is
-  /// nothing to choose for" look different, and a tick on Train's Exercises tab
-  /// would promise a basket that does not exist there.
-  final bool? selected;
+  /// Whether this exercise is in the workout being put together.
+  final bool selected;
 
-  /// Opens the exercise's demo, for a row whose tap already means "pick".
-  /// Null hides the button: when browsing, the row itself opens the demo.
-  final VoidCallback? onInfo;
+  /// Opens the exercise's demo: the row's own tap means "pick".
+  final VoidCallback onInfo;
 
   @override
   Widget build(BuildContext context) {
@@ -74,28 +68,22 @@ class ExerciseTile extends StatelessWidget {
           ),
         ],
       ),
-      trailing: selected == null
-          ? const Icon(Icons.chevron_right)
-          : Row(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                if (onInfo != null)
-                  IconButton(
-                    key: Key('tile.info.${exercise.exerciseId}'),
-                    tooltip: 'About ${exercise.name}',
-                    onPressed: onInfo,
-                    constraints: const BoxConstraints(
-                      minWidth: 48,
-                      minHeight: 48,
-                    ),
-                    icon: Icon(Icons.info_outline, color: context.fs.text2),
-                  ),
-                _SelectMark(
-                  key: Key('tile.select.${exercise.exerciseId}'),
-                  selected: selected!,
-                ),
-              ],
-            ),
+      trailing: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          IconButton(
+            key: Key('tile.info.${exercise.exerciseId}'),
+            tooltip: 'About ${exercise.name}',
+            onPressed: onInfo,
+            constraints: const BoxConstraints(minWidth: 48, minHeight: 48),
+            icon: Icon(Icons.info_outline, color: context.fs.text2),
+          ),
+          _SelectMark(
+            key: Key('tile.select.${exercise.exerciseId}'),
+            selected: selected,
+          ),
+        ],
+      ),
     );
   }
 }

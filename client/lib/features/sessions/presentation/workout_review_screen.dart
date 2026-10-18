@@ -29,7 +29,7 @@ const workoutLibraryRouteName = 'workout-library';
 /// always carries [workoutLibraryRouteName].
 Route<void> workoutLibraryRoute() => MaterialPageRoute<void>(
   settings: const RouteSettings(name: workoutLibraryRouteName),
-  builder: (_) => const ExerciseListScreen(selecting: true),
+  builder: (_) => const ExerciseListScreen(),
 );
 
 /// What the user chose to do about a workout that was already open.

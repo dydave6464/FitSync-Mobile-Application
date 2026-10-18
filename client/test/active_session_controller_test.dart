@@ -661,9 +661,10 @@ void main() {
       );
     });
 
-    // The library's Recent strip. Train's Exercises tab keeps it alive while
-    // mounted (the listen below stands in for that), so without this it
-    // would go on missing the exercises just trained.
+    // The library's Recent strip. The library can still be open under the
+    // logger -- Review's "Resume it" pushes the logger on top -- and keeps it
+    // alive (the listen below stands in for that), so without this it would
+    // go on missing the exercises just trained.
     test("the library's recent exercises", () async {
       final container = await completed();
       container.listen(recentExercisesProvider, (_, _) {});

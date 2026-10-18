@@ -3,8 +3,9 @@ from app.schemas import InjuryRiskRequest
 
 
 def test_no_data_reports_the_conservative_floor():
-    # Matches the stub exactly, so flipping ML_MODE changes nothing observable
-    # until the morning check-in route exists. Section 13.
+    # The rules-only estimate matches the stub exactly. That no longer holds
+    # for /injury-risk end to end: the model is in the loop there and scores a
+    # calm day a little above 0. Section 13.
     result = estimate(InjuryRiskRequest())
     assert result.riskLevel == "low"
     assert result.trainingLoadScore == 0.0

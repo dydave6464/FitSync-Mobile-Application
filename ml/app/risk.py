@@ -1,4 +1,4 @@
-"""Training-load and recovery -> a conservative injury-risk estimate.
+"""Training load, recovery and past injuries -> the rule-based injury-risk score.
 
 Called by the Node server's POST /api/v1/recovery/checkin, which computes the
 training-load index (see src/db/training-load.js) and sends a short window of
@@ -6,20 +6,61 @@ recent check-ins -- short deliberately, because the recovery penalty below is
 averaged across every check-in in it, so the width of that window is how much
 this morning's answers are worth.
 
-There is still no trained model behind this: it is the rule-based baseline,
-and the rows it now produces are what a model would eventually be trained on.
+These rules are the safety floor under the scikit-learn model in
+app/risk_model.py: the final score is max(model score, rules score), so a model
+can raise an estimate but never lower it below what these rules say. That model
+is trained on simulated data built from published injury risk factors (see
+app/risk_data.py), not on real user outcomes; it is retrained on real check-in
+outcomes as they accumulate. The rules also supply the response's drivers,
+because their points are explainable whichever side decided the score.
 
 This is guidance bounded by self-reported input, not a clinical assessment.
 """
 import math
+from typing import Dict, List, Optional
 
-from app.schemas import InjuryRiskRequest, InjuryRiskResponse
+from app.schemas import InjuryRiskRequest, InjuryRiskResponse, RiskDriver
 
 # Each scale runs worst -> best; the value is how much it adds to the score.
 SLEEP = {"poor": 15.0, "fair": 8.0, "good": 2.0, "excellent": 0.0}
 SORENESS = {"severe": 20.0, "moderate": 10.0, "mild": 4.0, "none": 0.0}
 ENERGY = {"very_low": 12.0, "low": 7.0, "moderate": 2.0, "high": 0.0}
 STRESS = {"high": 10.0, "moderate": 5.0, "low": 2.0, "very_low": 0.0}
+
+# Past injuries and recent pain, added to the formula above without changing
+# any of it: with no injuries and no pain the score is exactly what it was, so
+# the server's load calibration test stays valid. Prior injury is among the
+# strongest predictors in the literature the manuscript cites (Xu et al. 2025),
+# but a profile entry is old news, so each one counts for less than a single
+# bad night and two of them are the most it can add.
+INJURY_EACH = 5.0
+INJURY_CAP = 10.0
+# Pain reported after a session in the last 14 days is current, so severe pain
+# outweighs a full injury history.
+PAIN = {"severe": 20.0, "moderate": 10.0, "mild": 5.0, "none": 0.0}
+
+# Which check-in answer feeds which driver key, and the table that scores it.
+CHECKIN_FIELDS = (
+    ("sleep", "sleepQuality", SLEEP),
+    ("soreness", "muscleSoreness", SORENESS),
+    ("energy", "energy", ENERGY),
+    ("stress", "stress", STRESS),
+)
+
+# Ties between drivers break in this order, so the same inputs always produce
+# the same "Why this level" sentence.
+DRIVER_ORDER = (
+    "load", "injury_history", "recent_pain", "sleep", "soreness", "energy", "stress",
+)
+MAX_DRIVERS = 3
+# An input is named as a driver only when it added at least this many points.
+# Everyday answers (good sleep 2, mild soreness 4, moderate energy 2, low
+# stress 2) and a week under 10% above the usual stay below it, so an ordinary
+# day can honestly say nothing stands out. Every injury (5) and any pain
+# (mild 5) clears it. The server's driver validator, which never sees the
+# window, applies a looser check: it drops any value that could never reach
+# the bar on its own.
+DRIVER_MIN_POINTS = 5.0
 
 MODERATE_AT = 40.0
 HIGH_AT = 70.0
@@ -28,18 +69,104 @@ SCORE_MIN = 0.0
 SCORE_MAX = 100.0
 
 
-def _recovery_penalty(checkin) -> float:
+def answer_in(table, checkin, field):
+    """The check-in's answer for `field` if it is one `table` knows, else None.
+
+    Check-ins arrive as plain dicts, so an answer can be a list or an object;
+    those are unhashable, and looking one up in a table would raise rather
+    than read as unknown.
+    """
     if not isinstance(checkin, dict):
-        return 0.0
+        return None
+    answer = checkin.get(field)
+    return answer if isinstance(answer, str) and answer in table else None
+
+
+def _points(table, checkin, field) -> float:
+    answer = answer_in(table, checkin, field)
+    return table[answer] if answer is not None else 0.0
+
+
+def _recovery_penalty(checkin) -> float:
     return (
-        SLEEP.get(checkin.get("sleepQuality"), 0.0)
-        + SORENESS.get(checkin.get("muscleSoreness"), 0.0)
-        + ENERGY.get(checkin.get("energy"), 0.0)
-        + STRESS.get(checkin.get("stress"), 0.0)
+        _points(SLEEP, checkin, "sleepQuality")
+        + _points(SORENESS, checkin, "muscleSoreness")
+        + _points(ENERGY, checkin, "energy")
+        + _points(STRESS, checkin, "stress")
     )
 
 
-def estimate(payload: InjuryRiskRequest) -> InjuryRiskResponse:
+def load_points(payload: InjuryRiskRequest) -> float:
+    """The load term, shared by the score and the drivers.
+
+    Written exactly this way because server/tests/training-load.test.js reads
+    the divisor out of this file with a regex.
+    """
+    return max(payload.load, 0.0) / 2.0
+
+
+def injury_points(payload: InjuryRiskRequest) -> float:
+    return min(INJURY_EACH * len(payload.injuryHistory), INJURY_CAP)
+
+
+def pain_points(payload: InjuryRiskRequest) -> float:
+    return PAIN.get(payload.recentPain, 0.0)
+
+
+def level_for(score: float) -> str:
+    if score >= HIGH_AT:
+        return "high"
+    if score >= MODERATE_AT:
+        return "moderate"
+    return "low"
+
+
+def _worst_answer(checkins, field: str, table: Dict[str, float]) -> Optional[str]:
+    """The answer in the window that scores the most points, if any is known."""
+    known = [a for a in (answer_in(table, c, field) for c in checkins) if a is not None]
+    return max(known, key=lambda answer: table[answer]) if known else None
+
+
+def drivers(payload: InjuryRiskRequest) -> List[RiskDriver]:
+    """The inputs that raised the rules' score by DRIVER_MIN_POINTS or more.
+
+    Ranked by the rules' own points, most first, even when the model decided
+    the final score: the rules' points are the explanation that can be given
+    in a sentence, and an input that added little or nothing is never named.
+    The check-in points are averaged over the window, exactly as in the score,
+    and the bar applies to that average; the value reported is the worst
+    answer in the window, which is the one the user remembers. Since the worst
+    answer scores at least the average, a reported value always clears the
+    bar on its own too.
+    """
+    candidates = []
+    if load_points(payload) > 0:
+        candidates.append(
+            ("load", load_points(payload), round(max(payload.load, 0.0), 2))
+        )
+    if payload.checkins:
+        for key, field, table in CHECKIN_FIELDS:
+            points = sum(
+                _points(table, c, field) for c in payload.checkins
+            ) / len(payload.checkins)
+            if points > 0:
+                candidates.append(
+                    (key, points, _worst_answer(payload.checkins, field, table))
+                )
+    if injury_points(payload) > 0:
+        candidates.append(
+            ("injury_history", injury_points(payload), len(payload.injuryHistory))
+        )
+    if pain_points(payload) > 0:
+        candidates.append(("recent_pain", pain_points(payload), payload.recentPain))
+
+    candidates = [c for c in candidates if c[1] >= DRIVER_MIN_POINTS]
+    candidates.sort(key=lambda c: (-c[1], DRIVER_ORDER.index(c[0])))
+    return [RiskDriver(key=key, value=value)
+            for key, _, value in candidates[:MAX_DRIVERS]]
+
+
+def rules_score(payload: InjuryRiskRequest) -> float:
     if not math.isfinite(payload.load):
         # Checked on the raw load, not the derived score: max(-inf, 0.0) is a
         # well-defined comparison that legitimately evaluates to 0.0, so -inf
@@ -51,20 +178,25 @@ def estimate(payload: InjuryRiskRequest) -> InjuryRiskResponse:
         # schema rejects these, and this guards a caller that bypasses it.
         raise ValueError("training load must be a finite number")
 
-    score = max(payload.load, 0.0) / 2.0
+    score = load_points(payload)
     if payload.checkins:
         penalties = [_recovery_penalty(c) for c in payload.checkins]
         score += sum(penalties) / len(penalties)
+    score += injury_points(payload) + pain_points(payload)
 
     # training_load_score is DECIMAL(5,2): outside [0, 100] MySQL would reject
     # or truncate it, and more than two decimals would round silently.
-    score = round(min(max(score, SCORE_MIN), SCORE_MAX), 2)
+    return round(min(max(score, SCORE_MIN), SCORE_MAX), 2)
 
-    if score >= HIGH_AT:
-        level = "high"
-    elif score >= MODERATE_AT:
-        level = "moderate"
-    else:
-        level = "low"
 
-    return InjuryRiskResponse(riskLevel=level, trainingLoadScore=score)
+def estimate(payload: InjuryRiskRequest) -> InjuryRiskResponse:
+    """The rules alone: the floor, and the whole answer when no model loads."""
+    score = rules_score(payload)
+    return InjuryRiskResponse(
+        riskLevel=level_for(score),
+        trainingLoadScore=score,
+        source="rules",
+        modelVersion=None,
+        loadPct=round(max(payload.load, 0.0), 2),
+        drivers=drivers(payload),
+    )

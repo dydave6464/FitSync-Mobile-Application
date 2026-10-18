@@ -17,24 +17,10 @@ import 'widgets/search_field.dart';
 String describeError(Object error) =>
     error is ApiException ? error.message : 'Something went wrong.';
 
+/// The exercise library, opened from + → Log a workout: a tap picks a row
+/// into the workout, and each row's ⓘ opens its demo.
 class ExerciseListScreen extends ConsumerStatefulWidget {
-  const ExerciseListScreen({
-    super.key,
-    this.selecting = false,
-    this.embedded = false,
-  });
-
-  /// Whether rows are being picked for a workout rather than browsed.
-  ///
-  /// Train's Exercises tab and the manual-logging picker are the same list
-  /// over the same catalogue, filters and pagination; only what a tap means
-  /// differs. A second screen would have to copy all of that to change one
-  /// gesture.
-  final bool selecting;
-
-  /// Hosted inside Train's tab body, under Train's own header: no AppBar,
-  /// or the screen would carry two titles.
-  final bool embedded;
+  const ExerciseListScreen({super.key});
 
   @override
   ConsumerState<ExerciseListScreen> createState() => _ExerciseListScreenState();
@@ -47,17 +33,6 @@ class _ExerciseListScreenState extends ConsumerState<ExerciseListScreen> {
   void initState() {
     super.initState();
     _controller.addListener(_onScroll);
-    // Train's Exercises tab stays mounted once opened and keeps listening to
-    // the recent list, so autoDispose alone never lets it go. A picker is
-    // opened to log a workout, and one logged since the tab first asked is
-    // exactly what its strip should show, so it asks again on every open.
-    // After the first frame, because initState runs while the route is being
-    // built, and invalidating then would rebuild the tab mid-build.
-    if (widget.selecting) {
-      WidgetsBinding.instance.addPostFrameCallback((_) {
-        if (mounted) ref.invalidate(recentExercisesProvider);
-      });
-    }
   }
 
   @override
@@ -98,9 +73,7 @@ class _ExerciseListScreenState extends ConsumerState<ExerciseListScreen> {
   Widget build(BuildContext context) {
     final listing = ref.watch(exerciseListProvider);
     final baseUrl = ref.watch(exerciseRepositoryProvider).baseUrl;
-    final draft = widget.selecting
-        ? ref.watch(workoutDraftProvider)
-        : const <ExerciseSummary>[];
+    final draft = ref.watch(workoutDraftProvider);
     final filters = ref.watch(selectedFiltersProvider);
 
     // Recent work is a shortcut for the unfiltered library only. Under a
@@ -116,10 +89,8 @@ class _ExerciseListScreenState extends ConsumerState<ExerciseListScreen> {
     final recent = showRecent
         ? RecentStrip(
             baseUrl: baseUrl,
-            onTap: widget.selecting ? _toggle : _open,
-            isAdded: widget.selecting
-                ? (exercise) => draft.holds(exercise.exerciseId)
-                : null,
+            onTap: _toggle,
+            isAdded: (exercise) => draft.holds(exercise.exerciseId),
           )
         : null;
 
@@ -133,31 +104,26 @@ class _ExerciseListScreenState extends ConsumerState<ExerciseListScreen> {
     });
 
     return Scaffold(
-      appBar: widget.embedded
-          ? null
-          : AppBar(
-              title: Text(widget.selecting ? 'Exercise library' : 'Exercises'),
-              actions: [
-                if (widget.selecting)
-                  Padding(
-                    padding: const EdgeInsets.only(right: 16),
-                    child: Center(child: FsTag('${draft.length} added')),
-                  ),
-              ],
-            ),
-      bottomNavigationBar: !widget.selecting
-          ? null
-          : SafeArea(
-              minimum: const EdgeInsets.fromLTRB(20, 0, 20, 16),
-              child: FsButton(
-                key: const Key('picker.review'),
-                label: draft.length == 1
-                    ? 'Review · 1 exercise'
-                    : 'Review · ${draft.length} exercises',
-                // A workout of no exercises is not a workout.
-                onPressed: draft.isEmpty ? null : _review,
-              ),
-            ),
+      appBar: AppBar(
+        title: const Text('Exercise library'),
+        actions: [
+          Padding(
+            padding: const EdgeInsets.only(right: 16),
+            child: Center(child: FsTag('${draft.length} added')),
+          ),
+        ],
+      ),
+      bottomNavigationBar: SafeArea(
+        minimum: const EdgeInsets.fromLTRB(20, 0, 20, 16),
+        child: FsButton(
+          key: const Key('picker.review'),
+          label: draft.length == 1
+              ? 'Review · 1 exercise'
+              : 'Review · ${draft.length} exercises',
+          // A workout of no exercises is not a workout.
+          onPressed: draft.isEmpty ? null : _review,
+        ),
+      ),
       body: Column(
         children: [
           // Above the equipment button, because it is the wider net: the
@@ -213,16 +179,12 @@ class _ExerciseListScreenState extends ConsumerState<ExerciseListScreen> {
                     return ExerciseTile(
                       exercise: exercise,
                       baseUrl: baseUrl,
-                      selected: widget.selecting
-                          ? draft.holds(exercise.exerciseId)
-                          : null,
-                      onTap: widget.selecting
-                          ? () => _toggle(exercise)
-                          : () => _open(exercise),
+                      selected: draft.holds(exercise.exerciseId),
+                      onTap: () => _toggle(exercise),
                       // Picking took the row's tap, so the demo needs a
                       // button of its own: choosing an exercise is easier
                       // once you have seen what it is.
-                      onInfo: widget.selecting ? () => _open(exercise) : null,
+                      onInfo: () => _open(exercise),
                     );
                   },
                 );

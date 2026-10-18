@@ -1,5 +1,15 @@
 'use strict';
 const { formatDate } = require('./sessions');
+const { PAIN_LEVELS } = require('./session-outcomes');
+
+/// How far back a pain report still counts toward today's estimate: the last
+/// 14 days, today included, by the date of the session it was reported about.
+///
+/// Wider than OUTCOME_WINDOW_DAYS (7), which only decides which session the
+/// app asks about. A strained knee two weeks ago is still worth training
+/// around; much beyond that, an injury the user still has belongs in their
+/// profile's reported injuries, which the estimate reads separately.
+const RECENT_PAIN_DAYS = 14;
 
 /// The allowed values per field, in worst-to-best order.
 ///
@@ -72,20 +82,78 @@ async function recentCheckins(pool, userId, days = 14) {
   return rows.map(toCheckin);
 }
 
+/// The user's reported injuries, in the {injuryId, regionGroup} shape the
+/// plan payload sends -- the same rows getProfile reads, without the rest of
+/// the profile the estimate has no use for.
+async function reportedInjuries(pool, userId) {
+  const [rows] = await pool.query(
+    `SELECT i.injury_id, i.region_group
+       FROM user_injuries ui
+       JOIN injuries i ON i.injury_id = ui.injury_id
+      WHERE ui.user_id = ? ORDER BY i.injury_id`,
+    [userId],
+  );
+  return rows.map((r) => ({ injuryId: r.injury_id, regionGroup: r.region_group }));
+}
+
+/// The worst pain level reported about any session dated in the last
+/// RECENT_PAIN_DAYS days, or null when there are no reports at all.
+///
+/// 'none' is a real answer and comes back as 'none': session_outcomes keeps
+/// "nothing hurt" and "never answered" apart (migration 021), and so does
+/// this. Sessions dated after today are excluded so a clock or data error
+/// cannot widen the window forward.
+async function worstRecentPain(pool, userId, days = RECENT_PAIN_DAYS) {
+  const [[row]] = await pool.query(
+    `SELECT o.pain_level
+       FROM session_outcomes o
+       JOIN workout_sessions s ON s.session_id = o.session_id
+      WHERE o.user_id = ? AND s.user_id = ?
+        AND s.session_date > DATE_SUB(CURDATE(), INTERVAL ? DAY)
+        AND s.session_date <= CURDATE()
+      ORDER BY FIELD(o.pain_level, ?) DESC
+      LIMIT 1`,
+    [userId, userId, days, PAIN_LEVELS],
+  );
+  return row ? row.pain_level : null;
+}
+
 /// Append-only: an updated check-in writes another estimate rather than
 /// editing the last, so the history stays a record of what was estimated when.
-async function saveEstimate(pool, { userId, checkinId, riskLevel, trainingLoadScore }) {
+///
+/// source, modelVersion, loadPct and drivers are optional so a caller with
+/// only a level and score still writes a valid row; anything left out is
+/// stored as NULL, which reads back exactly like an estimate from before 037.
+async function saveEstimate(pool, {
+  userId, checkinId, riskLevel, trainingLoadScore,
+  source = null, modelVersion = null, loadPct = null, drivers = null,
+}) {
   await pool.query(
     `INSERT INTO injury_risk_estimates
-       (user_id, checkin_id, risk_level, training_load_score)
-     VALUES (?, ?, ?, ?)`,
-    [userId, checkinId, riskLevel, trainingLoadScore],
+       (user_id, checkin_id, risk_level, training_load_score,
+        source, model_version, load_pct, drivers)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+    [
+      userId, checkinId, riskLevel, trainingLoadScore,
+      source, modelVersion, loadPct,
+      drivers === null ? null : JSON.stringify(drivers),
+    ],
   );
+}
+
+/// The drivers column as a list. mysql2 hands a JSON column back already
+/// parsed, but a string is parsed here too in case a driver or server
+/// returns the raw text; NULL (an estimate from before 037) reads as [].
+function toDrivers(value) {
+  if (value === null || value === undefined) return [];
+  const parsed = typeof value === 'string' ? JSON.parse(value) : value;
+  return Array.isArray(parsed) ? parsed : [];
 }
 
 async function latestEstimate(pool, userId) {
   const [[row]] = await pool.query(
-    `SELECT e.risk_level, e.training_load_score, c.checkin_date
+    `SELECT e.risk_level, e.training_load_score, e.source, e.load_pct, e.drivers,
+            c.checkin_date
        FROM injury_risk_estimates e
        JOIN morning_checkins c ON c.checkin_id = e.checkin_id
       WHERE e.user_id = ?
@@ -101,6 +169,9 @@ async function latestEstimate(pool, userId) {
       ? null
       : Number(row.training_load_score),
     checkinDate: formatDate(row.checkin_date),
+    source: row.source ?? null,
+    loadPct: row.load_pct === null ? null : Number(row.load_pct),
+    drivers: toDrivers(row.drivers),
   };
 }
 
@@ -110,5 +181,8 @@ module.exports = {
   recentCheckins,
   saveEstimate,
   latestEstimate,
+  reportedInjuries,
+  worstRecentPain,
   CHECKIN_SCALES,
+  RECENT_PAIN_DAYS,
 };

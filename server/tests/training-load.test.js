@@ -143,6 +143,35 @@ test('training load index', async (t) => {
     assert.equal(await readTrainingLoad(pool, userId), 50);
   });
 
+  // The usual week is averaged over the weeks a user has actually trained in,
+  // not always three. Dividing a newcomer's one week of history by three made
+  // their usual week a third of its size, so an ordinary second week read as
+  // a spike and the estimate went moderate for simply being new.
+  await t.test('a second-week user is measured against their one week', async () => {
+    const userId = await freshUser(pool, 'load-week2@example.com');
+    await logSession(pool, userId, 9, 500);  // their very first workout
+    await logSession(pool, userId, 1, 500);  // the same again this week
+    assert.equal(await readTrainingLoad(pool, userId), 0);
+  });
+
+  await t.test('a third-week user is measured against their two weeks', async () => {
+    const userId = await freshUser(pool, 'load-week3@example.com');
+    await logSession(pool, userId, 16, 600); // first workout, two weeks back
+    await logSession(pool, userId, 9, 600);
+    await logSession(pool, userId, 2, 900);  // 150% of their 600 a week
+    assert.equal(await readTrainingLoad(pool, userId), 50);
+  });
+
+  await t.test('a returning user still counts the weeks they missed', async () => {
+    // Trained long ago, stopped, then came back: the empty weeks are real
+    // history, and coming back hard after a break is the spike to flag.
+    const userId = await freshUser(pool, 'load-return@example.com');
+    await logSession(pool, userId, 60, 1000);
+    await logSession(pool, userId, 8, 1000);
+    await logSession(pool, userId, 1, 1000); // 1000 against 333 a week
+    assert.equal(await readTrainingLoad(pool, userId), 130);
+  });
+
   await t.test('an enormous spike is clamped', async () => {
     const userId = await freshUser(pool, 'load-spike@example.com');
     await logSession(pool, userId, 22, 100);   // a quiet baseline week

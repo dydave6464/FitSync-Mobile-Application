@@ -146,7 +146,6 @@ ProviderContainer _container({
 Future<void> _pump(
   WidgetTester tester,
   ProviderContainer container, {
-  bool selecting = false,
   bool settle = true,
 }) async {
   await tester.pumpWidget(
@@ -154,7 +153,7 @@ Future<void> _pump(
       container: container,
       child: MaterialApp(
         theme: fsLightTheme(),
-        home: ExerciseListScreen(selecting: selecting),
+        home: const ExerciseListScreen(),
       ),
     ),
   );
@@ -246,10 +245,10 @@ void main() {
       expect(exercises.lastSearch, 'press');
     });
 
-    testWidgets('the chosen area carries from the tab into the picker', (
+    testWidgets('the chosen area carries over to the next opening', (
       tester,
     ) async {
-      // One set of filters for the catalogue, wherever it is opened from.
+      // One set of filters for the catalogue, however often it is opened.
       final exercises = FakeExerciseRepository();
       final container = _container(exercises: exercises);
       await _pump(tester, container);
@@ -265,7 +264,7 @@ void main() {
         ),
       );
       await tester.pumpAndSettle();
-      await _pump(tester, container, selecting: true);
+      await _pump(tester, container);
 
       expect(_isSelected(tester, _region('arms')), isTrue);
       expect(exercises.lastMuscleGroups, MuscleRegion.arms.muscleGroups);
@@ -328,30 +327,28 @@ void main() {
     (const Size(393, 852), 1.0),
     (const Size(320, 640), 2.0),
   ]) {
-    for (final selecting in [false, true]) {
-      testWidgets(
-        'every muscle button is on screen at ${size.width.toInt()} dp and '
-        '$scale× text${selecting ? ', picking' : ''}',
-        (tester) async {
-          tester.view.physicalSize = size;
-          tester.view.devicePixelRatio = 1.0;
-          tester.platformDispatcher.textScaleFactorTestValue = scale;
-          addTearDown(tester.view.reset);
-          addTearDown(tester.platformDispatcher.clearTextScaleFactorTestValue);
-          await _pump(tester, _container(), selecting: selecting);
+    testWidgets(
+      'every muscle button is on screen at ${size.width.toInt()} dp and '
+      '$scale× text',
+      (tester) async {
+        tester.view.physicalSize = size;
+        tester.view.devicePixelRatio = 1.0;
+        tester.platformDispatcher.textScaleFactorTestValue = scale;
+        addTearDown(tester.view.reset);
+        addTearDown(tester.platformDispatcher.clearTextScaleFactorTestValue);
+        await _pump(tester, _container());
 
-          expect(tester.takeException(), isNull);
-          for (final name in [
-            'all',
-            for (final region in MuscleRegion.values) region.name,
-          ]) {
-            final chip = tester.getRect(_region(name));
-            expect(chip.left, greaterThanOrEqualTo(0), reason: name);
-            expect(chip.right, lessThanOrEqualTo(size.width), reason: name);
-          }
-        },
-      );
-    }
+        expect(tester.takeException(), isNull);
+        for (final name in [
+          'all',
+          for (final region in MuscleRegion.values) region.name,
+        ]) {
+          final chip = tester.getRect(_region(name));
+          expect(chip.left, greaterThanOrEqualTo(0), reason: name);
+          expect(chip.right, lessThanOrEqualTo(size.width), reason: name);
+        }
+      },
+    );
   }
 
   group('recent strip', () {
@@ -464,7 +461,7 @@ void main() {
 
     testWidgets('picking: a card toggles it into the workout', (tester) async {
       final container = _container();
-      await _pump(tester, container, selecting: true);
+      await _pump(tester, container);
 
       await tester.tap(_recentCard(7));
       await tester.pumpAndSettle();
@@ -492,7 +489,7 @@ void main() {
       (tester) async {
         final container = _container();
         container.read(workoutDraftProvider.notifier).toggle(_bench);
-        await _pump(tester, container, selecting: true);
+        await _pump(tester, container);
 
         expect(
           find.descendant(
@@ -504,27 +501,10 @@ void main() {
       },
     );
 
-    testWidgets('browsing: a card opens the exercise', (tester) async {
-      final container = _container();
-      await _pump(tester, container);
-
-      expect(tester.getSemantics(_recentCard(7)).label, 'Bench press, recent');
-      await tester.tap(_recentCard(7));
-      await tester.pumpAndSettle();
-
-      expect(
-        tester
-            .widget<ExerciseDetailScreen>(find.byType(ExerciseDetailScreen))
-            .exerciseId,
-        7,
-      );
-      expect(container.read(workoutDraftProvider), isEmpty);
-    });
-
     testWidgets('picking: a screen reader can toggle a card', (tester) async {
       final handle = tester.ensureSemantics();
       final container = _container();
-      await _pump(tester, container, selecting: true);
+      await _pump(tester, container);
 
       final node = tester.getSemantics(_recentCard(7));
       expect(node.getSemanticsData().hasAction(SemanticsAction.tap), isTrue);
@@ -537,55 +517,43 @@ void main() {
       handle.dispose();
     });
 
-    testWidgets('browsing: a screen reader can open a card', (tester) async {
-      final handle = tester.ensureSemantics();
-      await _pump(tester, _container());
-
-      tester.semantics.tap(find.semantics.byLabel('Bench press, recent'));
-      await tester.pumpAndSettle();
-
-      expect(
-        tester
-            .widget<ExerciseDetailScreen>(find.byType(ExerciseDetailScreen))
-            .exerciseId,
-        7,
+    testWidgets('each opening asks once, and sees what was logged since', (
+      tester,
+    ) async {
+      final recent = FakeRecentRepository(items: const [_bench]);
+      final container = _container(recent: recent);
+      final navigator = GlobalKey<NavigatorState>();
+      await tester.pumpWidget(
+        UncontrolledProviderScope(
+          container: container,
+          child: MaterialApp(
+            navigatorKey: navigator,
+            theme: fsLightTheme(),
+            home: const Scaffold(body: Text('home')),
+          ),
+        ),
       );
-      handle.dispose();
-    });
-
-    testWidgets(
-      'the picker asks again even while the Exercises tab holds the list',
-      (tester) async {
-        final recent = FakeRecentRepository(items: const [_bench]);
-        final container = _container(recent: recent);
-        final navigator = GlobalKey<NavigatorState>();
-        await tester.pumpWidget(
-          UncontrolledProviderScope(
-            container: container,
-            child: MaterialApp(
-              navigatorKey: navigator,
-              theme: fsLightTheme(),
-              home: const ExerciseListScreen(embedded: true),
-            ),
-          ),
-        );
-        await tester.pumpAndSettle();
-        expect(recent.calls, 1);
-        expect(_recentCard(8), findsNothing);
-
-        // A workout logged since: the deadlift is now the latest.
-        recent.items = const [_deadlift, _bench];
+      Future<void> open() async {
         navigator.currentState!.push(
-          MaterialPageRoute<void>(
-            builder: (_) => const ExerciseListScreen(selecting: true),
-          ),
+          MaterialPageRoute<void>(builder: (_) => const ExerciseListScreen()),
         );
         await tester.pumpAndSettle();
+      }
 
-        expect(recent.calls, 2);
-        expect(_recentCard(8), findsOneWidget);
-      },
-    );
+      await open();
+      // One request, not a second one straight after it.
+      expect(recent.calls, 1);
+      expect(_recentCard(8), findsNothing);
+
+      navigator.currentState!.pop();
+      await tester.pumpAndSettle();
+      // A workout logged since: the deadlift is now the latest.
+      recent.items = const [_deadlift, _bench];
+      await open();
+
+      expect(recent.calls, 2);
+      expect(_recentCard(8), findsOneWidget);
+    });
 
     testWidgets('cards widen with large text', (tester) async {
       tester.view.physicalSize = const Size(320, 640);
@@ -626,7 +594,7 @@ void main() {
       tester,
     ) async {
       final container = _container();
-      await _pump(tester, container, selecting: true);
+      await _pump(tester, container);
 
       final info = find.byKey(const Key('tile.info.202'));
       expect(info, findsOneWidget);
@@ -650,7 +618,7 @@ void main() {
       tester,
     ) async {
       final container = _container();
-      await _pump(tester, container, selecting: true);
+      await _pump(tester, container);
 
       await tester.tap(find.text('Cable fly'));
       await tester.pumpAndSettle();
@@ -658,57 +626,40 @@ void main() {
       expect(container.read(workoutDraftProvider).exerciseIds, [202]);
       expect(find.byType(ExerciseDetailScreen), findsNothing);
     });
-
-    testWidgets('browsing has none: the row already opens the demo', (
-      tester,
-    ) async {
-      await _pump(tester, _container());
-      expect(find.byKey(const Key('tile.info.202')), findsNothing);
-      expect(find.byKey(const Key('tile.info.101')), findsNothing);
-    });
   });
 
-  group('a small screen with large text', () {
-    for (final selecting in [false, true]) {
-      testWidgets(
-        '320 dp at 2x text does not overflow (${selecting ? 'picking' : 'browsing'})',
-        (tester) async {
-          tester.view.physicalSize = const Size(320, 640);
-          tester.view.devicePixelRatio = 1;
-          addTearDown(tester.view.reset);
+  testWidgets('320 dp at 2x text does not overflow', (tester) async {
+    tester.view.physicalSize = const Size(320, 640);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.reset);
 
-          final container = _container();
-          await tester.pumpWidget(
-            UncontrolledProviderScope(
-              container: container,
-              child: MaterialApp(
-                theme: fsLightTheme(),
-                home: MediaQuery(
-                  data: const MediaQueryData(
-                    size: Size(320, 640),
-                    textScaler: TextScaler.linear(2),
-                  ),
-                  child: ExerciseListScreen(selecting: selecting),
-                ),
-              ),
+    final container = _container();
+    await tester.pumpWidget(
+      UncontrolledProviderScope(
+        container: container,
+        child: MaterialApp(
+          theme: fsLightTheme(),
+          home: const MediaQuery(
+            data: MediaQueryData(
+              size: Size(320, 640),
+              textScaler: TextScaler.linear(2),
             ),
-          );
-          await tester.pumpAndSettle();
+            child: ExerciseListScreen(),
+          ),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
 
-          expect(tester.takeException(), isNull);
-          expect(_recentStrip(), findsOneWidget);
+    expect(tester.takeException(), isNull);
+    expect(_recentStrip(), findsOneWidget);
 
-          // Picking something too, so the added state is laid out as well.
-          if (selecting) {
-            await tester.tap(_recentCard(7));
-            await tester.pumpAndSettle();
-            expect(tester.takeException(), isNull);
-          }
+    // Picking something too, so the added state is laid out as well.
+    await tester.tap(_recentCard(7));
+    await tester.pumpAndSettle();
+    expect(tester.takeException(), isNull);
 
-          await _tapRegion(tester, 'cardio');
-          expect(tester.takeException(), isNull);
-        },
-      );
-    }
+    await _tapRegion(tester, 'cardio');
+    expect(tester.takeException(), isNull);
   });
 }
