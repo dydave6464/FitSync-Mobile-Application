@@ -59,9 +59,10 @@ class _RegeneratePlanButtonState extends State<RegeneratePlanButton>
   ///
   /// IndexedStack swaps tabs with no transition, so the header, the tab row
   /// and every card of the Plan tab land in the same frame. An intro playing
-  /// in that frame is motion among motion on a 24px icon in the corner, and
-  /// goes unnoticed -- which is exactly what happened. Waiting until the
-  /// screen is still is what makes the movement the only movement.
+  /// in that frame is motion among motion on a small sparkle in the corner,
+  /// and goes unnoticed -- which is exactly what happened to the bare icon
+  /// this pill replaced. Waiting until the screen is still is what makes the
+  /// movement the only movement.
   static const _settleDelay = Duration(milliseconds: 350);
 
   /// Starts at 1, its resting value. The intro rewinds it to 0 and plays

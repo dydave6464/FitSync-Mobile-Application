@@ -1,9 +1,17 @@
+import 'dart:math';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import 'package:fitsync/core/theme.dart';
 import 'package:fitsync/features/home/presentation/widgets/plan_ready_card.dart';
 import 'package:fitsync/features/plans/domain/workout_plan.dart';
+
+double _contrast(Color a, Color b) {
+  final la = a.computeLuminance();
+  final lb = b.computeLuminance();
+  return (max(la, lb) + 0.05) / (min(la, lb) + 0.05);
+}
 
 const _plan = WorkoutPlan(
   planId: 1,
@@ -141,9 +149,7 @@ void main() {
     handle.dispose();
   });
 
-  testWidgets('the heading reads in the text green, which passes 4.5:1', (
-    tester,
-  ) async {
+  testWidgets('the heading reads in the text green', (tester) async {
     await _pump(tester);
 
     final heading = tester.widget<Text>(find.text('YOUR PLAN IS READY'));
@@ -152,6 +158,19 @@ void main() {
       tester.element(find.text('YOUR PLAN IS READY')).fs.accentText,
     );
   });
+
+  // The card is drawn on the accent card's gradient, whose top corner is the
+  // green at 16% over the page -- a deeper tint than the 13% accentDim the
+  // theme's own contrast test measures, so it is measured here.
+  for (final (name, t) in [
+    ('light', FsTokens.light),
+    ('dark', FsTokens.dark),
+  ]) {
+    test('the green words read at 4.5:1 on the card in the $name theme', () {
+      final corner = Color.alphaBlend(t.accent.withValues(alpha: 0.16), t.bg);
+      expect(_contrast(t.accentText, corner), greaterThanOrEqualTo(4.5));
+    });
+  }
 
   testWidgets('fits a 320 dp phone at 2.0x text in both themes', (
     tester,
@@ -165,7 +184,6 @@ void main() {
     for (final theme in [fsLightTheme(), fsDarkTheme()]) {
       await _pump(tester, theme: theme);
       expect(tester.takeException(), isNull);
-      // Still whole: the button is the one thing on the card to act on.
       expect(find.text('See plan'), findsOneWidget);
     }
   });

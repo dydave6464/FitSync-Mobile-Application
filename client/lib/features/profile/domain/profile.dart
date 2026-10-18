@@ -78,7 +78,7 @@ class SelectedInjury {
 
 /// A `fitness_level` as the level step words it. Capitalising the stored
 /// value read fine for beginner and intermediate and as "New" for New to
-/// training. Shared by every screen that names the level, so they agree.
+/// training. Shared by every screen that names a stored level, so they agree.
 String fitnessLevelLabel(String level) => switch (level) {
   'new' => 'New to training',
   'beginner' => 'Beginner',

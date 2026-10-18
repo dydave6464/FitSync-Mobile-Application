@@ -4,14 +4,13 @@ import '../../../../core/theme.dart';
 import '../../../../core/widgets/fs_kit.dart';
 import '../../../plans/domain/workout_plan.dart';
 import '../../../profile/domain/profile.dart' show fitnessLevelLabel;
-import '../plan_ready.dart' show planReadyProvider;
 
 /// Home's welcome for a plan onboarding has just built.
 ///
 /// Without it the new plan was buried under the check-in card, and nothing on
 /// the first screen said the wait had produced anything (UX review row 6). It
 /// says so once, at the top, with the plan's shape and the one way in to it;
-/// whether it shows at all is [planReadyProvider]'s to decide, not this
+/// whether it shows at all is `planReadyProvider`'s to decide, not this
 /// card's.
 class PlanReadyCard extends StatelessWidget {
   const PlanReadyCard({
