@@ -1,10 +1,12 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/rendering.dart' show RenderParagraph;
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import 'package:fitsync/core/theme.dart';
 import 'package:fitsync/core/units.dart';
 import 'package:fitsync/core/widgets/fs_charts.dart' show FsRing, FsBarChart;
+import 'package:fitsync/core/widgets/fs_kit.dart' show FsCard;
 import 'package:fitsync/features/profile/presentation/providers.dart'
     show weightUnitProvider;
 import 'package:fitsync/features/recovery/domain/recovery.dart';
@@ -76,6 +78,26 @@ Color _boxEdge(WidgetTester tester) {
 
 /// [c] without its alpha, to compare a tint with the colour it was made from.
 int _rgb(Color c) => c.toARGB32() & 0xFFFFFF;
+
+/// The gaps between [text]'s drawn words and its card's edges, left and
+/// right: where the words land, whatever box the Text widget was given.
+(double, double) _gapsInCard(WidgetTester tester, Finder text) {
+  final paragraph = tester.renderObject<RenderParagraph>(text);
+  final words = paragraph
+      .getBoxesForSelection(
+        TextSelection(
+          baseOffset: 0,
+          extentOffset: paragraph.text.toPlainText().length,
+        ),
+      )
+      .first;
+  final left = paragraph.localToGlobal(Offset(words.left, 0)).dx;
+  final right = paragraph.localToGlobal(Offset(words.right, 0)).dx;
+  final card = tester.getRect(
+    find.ancestor(of: text, matching: find.byType(FsCard)),
+  );
+  return (left - card.left, card.right - right);
+}
 
 Future<void> _pump(
   WidgetTester tester,
@@ -322,6 +344,9 @@ void main() {
     const disclaimer = 'An estimate, not a medical diagnosis.';
     await _pump(tester, _withToday(_todays()));
     expect(find.text(disclaimer), findsOneWidget);
+    // Centred under the box, as the ring above it is.
+    final (left, right) = _gapsInCard(tester, find.text(disclaimer));
+    expect(left, closeTo(right, 1));
 
     await _pump(
       tester,
@@ -418,6 +443,13 @@ void main() {
       await _pump(tester, _withToday(_todays(level: 'high', score: 80)));
       expect(_rgb(_boxEdge(tester)), _rgb(_tokens.red));
 
+      // A level this build has no name for reads as low, as its words do,
+      // and is still today's: it never takes the earlier day's look.
+      await _pump(tester, _withToday(_todays(level: 'extreme', score: 20)));
+      expect(_rgb(_boxEdge(tester)), _rgb(_tokens.accent));
+      expect(find.byIcon(Icons.history_outlined), findsNothing);
+      expect(find.byIcon(Icons.check_circle_outline), findsOneWidget);
+
       // Like the ring, an earlier day's box is not read as today's verdict.
       await _pump(
         tester,
@@ -430,7 +462,7 @@ void main() {
       expect(_boxEdge(tester), _tokens.line);
     });
 
-    testWidgets('an earlier day\'s estimate shows no "Why" line', (
+    testWidgets('an earlier day\'s estimate shows no "Why" list', (
       tester,
     ) async {
       // Like the advice line, the reasons held for the day they were worked
@@ -467,7 +499,7 @@ void main() {
       );
     });
 
-    testWidgets('an estimate from before drivers has no "Why" line', (
+    testWidgets('an estimate from before drivers has no "Why" list', (
       tester,
     ) async {
       await _pump(tester, _withToday(_todays(source: null, drivers: null)));

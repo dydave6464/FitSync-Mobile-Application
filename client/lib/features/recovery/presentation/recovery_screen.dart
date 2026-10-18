@@ -86,13 +86,17 @@ class _RecoveryView extends StatelessWidget {
               // The inputs are named on the next card down, so this line
               // keeps only the warning. Centred under the box, as the ring
               // above it is; under the empty state's line it starts where
-              // that line does.
-              Text(
-                'An estimate, not a medical diagnosis.',
-                textAlign: estimate == null
-                    ? TextAlign.start
-                    : TextAlign.center,
-                style: TextStyle(fontSize: 12, color: t.text2, height: 1.4),
+              // that line does. Card-wide, since this column would otherwise
+              // shrink it to its words and leave nothing to centre in.
+              SizedBox(
+                width: double.infinity,
+                child: Text(
+                  'An estimate, not a medical diagnosis.',
+                  textAlign: estimate == null
+                      ? TextAlign.start
+                      : TextAlign.center,
+                  style: TextStyle(fontSize: 12, color: t.text2, height: 1.4),
+                ),
               ),
             ],
           ),
@@ -300,12 +304,13 @@ class _AdviceBox extends StatelessWidget {
             children: [
               // The words beside it say it all, so the icon is decoration.
               Icon(
-                switch (isToday ? estimate.riskLevel : null) {
-                  'high' => Icons.self_improvement,
-                  'moderate' => Icons.directions_walk,
-                  'low' => Icons.check_circle_outline,
-                  _ => Icons.history,
-                },
+                !isToday
+                    ? Icons.history_outlined
+                    : switch (estimate.riskLevel) {
+                        'high' => Icons.self_improvement_outlined,
+                        'moderate' => Icons.directions_walk_outlined,
+                        _ => Icons.check_circle_outline,
+                      },
                 size: 20,
                 color: level ?? t.text3,
               ),
@@ -420,10 +425,10 @@ class _ReasonRow extends StatelessWidget {
             child: Icon(
               switch (reason.key) {
                 'sleep' => Icons.bedtime_outlined,
-                'soreness' => Icons.fitness_center,
-                'energy' => Icons.battery_2_bar,
+                'soreness' => Icons.fitness_center_outlined,
+                'energy' => Icons.battery_2_bar_outlined,
                 'stress' => Icons.psychology_outlined,
-                'load' => Icons.trending_up,
+                'load' => Icons.trending_up_outlined,
                 'injury_history' => Icons.personal_injury_outlined,
                 'recent_pain' => Icons.healing_outlined,
                 _ => Icons.circle_outlined,
@@ -475,14 +480,14 @@ class _FeedsScoreCard extends ConsumerWidget {
         ),
         const SizedBox(height: 12),
         _Input(
-          icon: Icons.bar_chart,
+          icon: Icons.bar_chart_outlined,
           title: 'Training load',
           detail: 'This week vs your usual',
           t: t,
         ),
         const SizedBox(height: 12),
         _Input(
-          icon: Icons.healing_outlined,
+          icon: Icons.personal_injury_outlined,
           title: 'Past injuries',
           detail: 'Profile and post-workout pain',
           t: t,
@@ -557,12 +562,10 @@ class _Input extends StatelessWidget {
             children: [
               line,
               const SizedBox(height: 10),
-              // Under the words, past the icon; a Row so the button keeps
-              // its own width rather than filling the line.
-              Padding(
-                padding: const EdgeInsets.only(left: 50),
-                child: Row(children: [trailing]),
-              ),
+              // A Row so the button keeps its own width rather than filling
+              // the line. Not indented to the words: at the largest iOS text
+              // "Check in" needs nearly the card's whole width.
+              Row(children: [trailing]),
             ],
           );
         }
