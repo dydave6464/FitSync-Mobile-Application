@@ -1133,6 +1133,26 @@ void main() {
       );
     });
 
+    // Drawn as an 11 px caption, but tapped like any other control.
+    testWidgets('the add-weight control is a full 48 dp target', (
+      tester,
+    ) async {
+      await tester.pumpWidget(
+        _host(
+          ExerciseLogPanel(
+            exercise: _bodyweight,
+            session: _session(),
+            drafts: _drafts(tester),
+            onUndoSet: (_) async {},
+          ),
+        ),
+      );
+
+      final size = tester.getSize(find.byKey(const Key('logpanel.addweight')));
+      expect(size.width, greaterThanOrEqualTo(48));
+      expect(size.height, greaterThanOrEqualTo(48));
+    });
+
     // A dip belt is the exception, not the rule, so the field is asked for
     // rather than offered -- and asked for once on the exercise, because
     // nobody belts up for set 2 alone.

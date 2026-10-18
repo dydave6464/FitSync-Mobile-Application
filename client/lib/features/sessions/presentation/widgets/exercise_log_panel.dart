@@ -328,18 +328,31 @@ class _ExerciseLogPanelState extends State<ExerciseLogPanel> {
                               key: const Key('logpanel.addweight'),
                               onTap: () => setState(() => _weightAdded = true),
                               borderRadius: BorderRadius.circular(FsRadius.sm),
-                              child: Padding(
-                                padding: const EdgeInsets.symmetric(
-                                  horizontal: 4,
-                                  vertical: 5,
+                              // A caption to look at, a 48 dp target to tap:
+                              // the box grows around the text, which keeps
+                              // its size and its place at the left.
+                              child: ConstrainedBox(
+                                constraints: const BoxConstraints(
+                                  minWidth: 48,
+                                  minHeight: 48,
                                 ),
-                                child: Text(
-                                  '+ weight',
-                                  style: TextStyle(
-                                    fontFamily: fsMonoFamily,
-                                    fontSize: 11,
-                                    fontWeight: FontWeight.w600,
-                                    color: t.accent,
+                                child: Padding(
+                                  padding: const EdgeInsets.symmetric(
+                                    horizontal: 4,
+                                  ),
+                                  child: Align(
+                                    alignment: AlignmentDirectional.centerStart,
+                                    widthFactor: 1,
+                                    heightFactor: 1,
+                                    child: Text(
+                                      '+ weight',
+                                      style: TextStyle(
+                                        fontFamily: fsMonoFamily,
+                                        fontSize: 11,
+                                        fontWeight: FontWeight.w600,
+                                        color: t.accent,
+                                      ),
+                                    ),
                                   ),
                                 ),
                               ),

@@ -1517,52 +1517,74 @@ class _SessionLoggerScreenState extends ConsumerState<SessionLoggerScreen>
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Row(
-                    children: [
-                      Flexible(
-                        child: InkWell(
-                          key: const Key('logger.position'),
-                          onTap: () => _jumpTo(exercises, session, index),
-                          child: Row(
-                            mainAxisSize: MainAxisSize.min,
-                            children: [
-                              Flexible(
-                                child: Text(
-                                  '${_positionLabel(index, exercises.length)}'
-                                  // Named the way Home and History name it.
-                                  // Not the active plan's name: a workout
-                                  // the user picked themselves is not a day
-                                  // of the AI plan they may be replacing.
-                                  ' · ${openWorkoutTitle(session, plan)}',
-                                  maxLines: 1,
-                                  overflow: TextOverflow.ellipsis,
-                                  style: TextStyle(
-                                    fontSize: 11,
+                  LayoutBuilder(
+                    builder: (context, constraints) => Row(
+                      children: [
+                        Flexible(
+                          child: InkWell(
+                            key: const Key('logger.position'),
+                            onTap: () => _jumpTo(exercises, session, index),
+                            // The caption stays an 11 px line; the target
+                            // around it is a full 48 dp. It takes the gap
+                            // that used to sit under the row, so the bar
+                            // below moves less than the target grew.
+                            child: ConstrainedBox(
+                              constraints: const BoxConstraints(
+                                minWidth: 48,
+                                minHeight: 48,
+                              ),
+                              child: Row(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  Flexible(
+                                    child: Text(
+                                      '${_positionLabel(index, exercises.length)}'
+                                      // Named the way Home and History name
+                                      // it. Not the active plan's name: a
+                                      // workout the user picked themselves
+                                      // is not a day of the AI plan they may
+                                      // be replacing.
+                                      ' · ${openWorkoutTitle(session, plan)}',
+                                      maxLines: 1,
+                                      overflow: TextOverflow.ellipsis,
+                                      style: TextStyle(
+                                        fontSize: 11,
+                                        color: t.text2,
+                                      ),
+                                    ),
+                                  ),
+                                  Icon(
+                                    Icons.arrow_drop_down,
+                                    size: 16,
                                     color: t.text2,
                                   ),
-                                ),
+                                ],
                               ),
-                              Icon(
-                                Icons.arrow_drop_down,
-                                size: 16,
-                                color: t.text2,
-                              ),
-                            ],
+                            ),
                           ),
                         ),
-                      ),
-                      const SizedBox(width: 10),
-                      Text(
-                        '${_elapsedMinutes(session.startedAt)} min elapsed',
-                        style: TextStyle(
-                          fontFamily: fsMonoFamily,
-                          fontSize: 11,
-                          color: t.text3,
+                        const SizedBox(width: 10),
+                        // Capped, so at large text on a small phone it
+                        // wraps onto a second line of its own instead of
+                        // pushing the row past the edge. Well under the cap
+                        // at ordinary sizes, where it sits on one line and
+                        // the position caption keeps the rest of the row.
+                        ConstrainedBox(
+                          constraints: BoxConstraints(
+                            maxWidth: constraints.maxWidth * 0.45,
+                          ),
+                          child: Text(
+                            '${_elapsedMinutes(session.startedAt)} min elapsed',
+                            style: TextStyle(
+                              fontFamily: fsMonoFamily,
+                              fontSize: 11,
+                              color: t.text3,
+                            ),
+                          ),
                         ),
-                      ),
-                    ],
+                      ],
+                    ),
                   ),
-                  const SizedBox(height: 12),
                   // The mockup carries no set count in the meta row -- the bar
                   // is the whole story there. Kept as a semantic label, since
                   // a bar is the one thing a screen reader cannot read.

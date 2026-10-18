@@ -721,16 +721,6 @@ void _smallPhoneLargeText(WidgetTester tester) {
   addTearDown(tester.platformDispatcher.clearTextScaleFactorTestValue);
 }
 
-/// Takes the one overflow the logger reports before anything is tapped on a
-/// small phone at large text: the meta row's "12 min elapsed", in a monospace
-/// font that the test font draws a full em wide per glyph. A phone's monospace
-/// is narrower and fits. Flutter reports an overflow once per row, so taking
-/// it here leaves later checks to see only what the tapped flow adds.
-void _drainMetaRowOverflow(WidgetTester tester) {
-  final error = tester.takeException();
-  if (error != null) expect('$error', contains('RenderFlex overflowed'));
-}
-
 /// Finish from the menu on a workout with sets still unlogged, which asks
 /// first now (see the "finishing with sets left" group), answered Finish.
 /// For the tests about what finishing does: they log a set or two, not the
@@ -753,6 +743,33 @@ Future<void> _makeItMyPlan(WidgetTester tester) async {
 }
 
 void main() {
+  group('the meta row', () {
+    // The test font draws every glyph a full em wide, so "12 min elapsed" at
+    // 2x is wider than a 320 dp phone on its own. The row has to make room
+    // for it rather than push past the edge.
+    testWidgets('fits a 320 dp phone at large text', (tester) async {
+      _smallPhoneLargeText(tester);
+
+      await _pump(tester);
+      expect(tester.takeException(), isNull);
+      expect(find.textContaining('min elapsed'), findsOneWidget);
+
+      await tester.tap(find.byKey(const Key('logger.primary')));
+      await tester.pumpAndSettle();
+      expect(tester.takeException(), isNull);
+    });
+
+    // The way to the jump sheet is an 11 px caption; the target around it
+    // is a thumb's width all the same.
+    testWidgets('its position caption is a full 48 dp target', (tester) async {
+      await _pump(tester);
+
+      final size = tester.getSize(find.byKey(const Key('logger.position')));
+      expect(size.width, greaterThanOrEqualTo(48));
+      expect(size.height, greaterThanOrEqualTo(48));
+    });
+  });
+
   // The mockup's screen 3. It is a stage of this screen, not a route, so the
   // session and the rest timer survive moving between the two.
   testWidgets('an exercise opens on its demo before its set table', (
@@ -2063,7 +2080,6 @@ void main() {
       _smallPhoneLargeText(tester);
 
       await _pumpLogging(tester, session: squatSet1());
-      _drainMetaRowOverflow(tester);
       await tester.tap(find.byKey(const Key('set.1.row')));
       await tester.pumpAndSettle();
 
@@ -2126,7 +2142,6 @@ void main() {
     ) async {
       _smallPhoneLargeText(tester);
       await _pump(tester);
-      _drainMetaRowOverflow(tester);
 
       await _menu(tester, 'leave');
 
@@ -2436,7 +2451,6 @@ void main() {
     ) async {
       _smallPhoneLargeText(tester);
       await _pump(tester, plan: null, session: fiveExercises());
-      _drainMetaRowOverflow(tester);
 
       await _menu(tester, 'finish');
 
@@ -3219,7 +3233,6 @@ void main() {
       _smallPhoneLargeText(tester);
 
       await _pumpLogging(tester, session: _session(sets: squatDone));
-      _drainMetaRowOverflow(tester);
       await tapAddSet(tester);
       await tapAddSet(tester);
 
