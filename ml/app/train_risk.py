@@ -23,9 +23,16 @@ yet. The CSV has a header row and these columns, in any order:
     recent_pain                      worst pain in the last 14 days, 0-3
                                      (none, mild, moderate, severe)
     injured                          1 if injured within the week, else 0
+    user_id                          optional; who the row belongs to
 
 Real rows are always scored in cross-validation, and they are kept apart from
-the simulation in the report's row counts.
+the simulation in the report's row counts. Give user_id whenever it is known:
+one user's rows are overlapping 3-day windows of the same weeks, and with it
+cross-validation keeps each user's rows in one fold (StratifiedGroupKFold)
+instead of letting the same week sit on both sides of a split. A model trained
+with real rows is versioned "risk-rf-sim+real-N", so stored estimates say so.
+Commit a report with real rows only on purpose: the test that checks the
+committed report against the defaults skips it, so nothing then checks it.
 """
 import argparse
 import csv
@@ -40,6 +47,7 @@ from app import risk_data, risk_model
 
 DEFAULT_REPORT = os.path.join("reports", "injury_risk_cv.json")
 LABEL = "injured"
+USER = "user_id"
 
 # Allowed range per CSV column. injury_count has no upper bound here because
 # the service caps it at 3 (risk_model.features_for) and so does this loader.
@@ -64,16 +72,22 @@ STATEMENT = (
 )
 
 
-def load_real(path: str) -> Tuple[np.ndarray, np.ndarray]:
-    """Real labelled rows from a CSV, validated, in FEATURES order."""
+def load_real(path: str) -> Tuple[np.ndarray, np.ndarray, Optional[np.ndarray]]:
+    """Real labelled rows from a CSV, validated, in FEATURES order.
+
+    Returns X, y and each row's user_id, or None when the CSV has no user_id
+    column.
+    """
     with open(path, newline="") as handle:
         reader = csv.DictReader(handle)
         missing = [c for c in list(risk_data.FEATURES) + [LABEL]
                    if c not in (reader.fieldnames or [])]
         if missing:
             raise SystemExit("{}: missing column(s): {}".format(path, ", ".join(missing)))
+        has_user = USER in (reader.fieldnames or [])
         X: List[List[float]] = []
         y: List[int] = []
+        users: List[str] = []
         for line, row in enumerate(reader, start=2):
             values = []
             for name in risk_data.FEATURES:
@@ -92,33 +106,139 @@ def load_real(path: str) -> Tuple[np.ndarray, np.ndarray]:
             if row[LABEL] not in ("0", "1"):
                 raise SystemExit("{} line {}: {} must be 0 or 1, got {!r}".format(
                     path, line, LABEL, row[LABEL]))
+            if has_user:
+                user = (row[USER] or "").strip()
+                if not user:
+                    raise SystemExit("{} line {}: {} is empty".format(path, line, USER))
+                users.append(user)
             X.append(values)
             y.append(int(row[LABEL]))
     if not X:
         raise SystemExit("{}: no rows".format(path))
-    return np.array(X, dtype=float), np.array(y, dtype=int)
+    groups = np.array(users, dtype=str) if has_user else None
+    return np.array(X, dtype=float), np.array(y, dtype=int), groups
+
+
+# Every comparison ends on what the model does and does not add, worded to
+# claim no more than the probes below show.
+_COMPARISON_TAIL = (
+    "The model claims no more accuracy than the rules today. Its simulation's "
+    "coefficients are judgement calls informed by the cited studies, not sizes "
+    "measured in them, and the monotonic forest learns that simulation only "
+    "coarsely: it barely separates moderate from severe recent pain or two from "
+    "three past injuries, and it underestimates rare combinations, which the "
+    "rules floor covers. What it adds today is a trained, retrainable path for "
+    "when real outcomes exist."
+)
 
 
 def _comparison(cv: dict) -> str:
     if "rulesRocAuc" not in cv:
-        return "No rules scores were available to compare against."
-    return (
-        "On the same held-out simulated days the rules alone score ROC AUC "
-        "{:.3f} against the model's {:.3f}, and the model raises the rules' "
-        "level on {:.1%} of them. The model claims no more accuracy than the "
-        "rules today; what it adds is past injuries and recent pain weighed as "
-        "the cited literature weighs them, and a path to learn from real "
-        "outcomes once they exist."
-    ).format(cv["rulesRocAuc"]["mean"], cv["rocAuc"]["mean"],
-             cv["shareRaisedByModel"]["mean"])
+        return "No rules scores were available to compare against. " + _COMPARISON_TAIL
+    if "rocAucWhereRulesKnown" in cv:
+        # Real rows keep no raw answers, so the rules cannot be scored on them:
+        # compare on the simulated rows both were scored on, and give the
+        # model's figure over every row separately.
+        head = (
+            "On the held-out simulated days, the only rows the rules can be "
+            "scored on (real rows keep no raw answers), the rules alone score "
+            "ROC AUC {:.3f} against the model's {:.3f}; over every held-out row, "
+            "real ones included, the model scores {:.3f}. The model raises the "
+            "rules' level on {:.1%} of the simulated days. "
+        ).format(cv["rulesRocAuc"]["mean"], cv["rocAucWhereRulesKnown"]["mean"],
+                 cv["rocAuc"]["mean"], cv["shareRaisedByModel"]["mean"])
+    else:
+        head = (
+            "On the same held-out simulated days the rules alone score ROC AUC "
+            "{:.3f} against the model's {:.3f}, and the model raises the rules' "
+            "level on {:.1%} of them. "
+        ).format(cv["rulesRocAuc"]["mean"], cv["rocAuc"]["mean"],
+                 cv["shareRaisedByModel"]["mean"])
+    return head + _COMPARISON_TAIL
 
 
-def build_report(cv: dict, simulated_rows: int, seed: int, real_rows: int) -> dict:
+LIMITATIONS = [
+    "The simulation's coefficients are judgement calls informed by the cited "
+    "studies, not sizes measured in them: they encode each factor's direction "
+    "and rough order, nothing more.",
+    "The monotonic forest learns that simulation only coarsely. It barely "
+    "separates moderate from severe recent pain or two from three past "
+    "injuries, where the simulation adds 10 and 6 points (see probes).",
+    "On days with a single risk factor, such as one past injury or moderate "
+    "pain alone, it scores well above the simulation's own expected risk (see "
+    "probes). So most of the days where the model beats the rules are "
+    "overshoots of its own simulation, not risk the simulation supports.",
+    "It underestimates rare combinations of risk factors by a wide margin, "
+    "because few training days reach them. The rules floor covers those days: "
+    "the final score is never below the rules' score.",
+    "A calm day (every answer at its best, no extra load, no injuries, no "
+    "pain) scores a little above 0, not 0 (see probes), because the "
+    "simulation keeps every day's chance of injury at least 1% and so lifts "
+    "the low end. Readiness on such a day reads a little under 100, and the "
+    "deciding side can switch between model and rules on near-identical calm "
+    "days.",
+]
+
+_BEST = {"sleepQuality": "excellent", "muscleSoreness": "none",
+         "energy": "high", "stress": "very_low"}
+_EVERYDAY = {"sleepQuality": "good", "muscleSoreness": "mild",
+             "energy": "moderate", "stress": "low"}
+_WORST = {"sleepQuality": "poor", "muscleSoreness": "severe",
+          "energy": "very_low", "stress": "high"}
+
+
+def _probe(checkin: dict, load: float = 0.0, injuries: int = 0,
+           pain: str = "none") -> dict:
+    return {"checkins": [dict(checkin)] * risk_data.WINDOW_DAYS, "load": load,
+            "injuryHistory": [{"injuryId": i + 1} for i in range(injuries)],
+            "recentPain": pain}
+
+
+# Named days the report scores three ways -- model, simulation, rules -- so
+# the limitations above can be checked against numbers, not taken on trust.
+PROBES = [
+    ("a calm day", _probe(_BEST)),
+    ("one past injury alone", _probe(_BEST, injuries=1)),
+    ("two past injuries alone", _probe(_BEST, injuries=2)),
+    ("three past injuries alone", _probe(_BEST, injuries=3)),
+    ("mild recent pain alone", _probe(_BEST, pain="mild")),
+    ("moderate recent pain alone", _probe(_BEST, pain="moderate")),
+    ("severe recent pain alone", _probe(_BEST, pain="severe")),
+    ("everyday answers and moderate pain", _probe(_EVERYDAY, pain="moderate")),
+    ("everyday answers and severe pain", _probe(_EVERYDAY, pain="severe")),
+    ("the biggest week alone", _probe(_BEST, load=risk_data.LOAD_MAX)),
+    ("the worst answers, three injuries and severe pain",
+     _probe(_WORST, injuries=3, pain="severe")),
+]
+
+
+def probes(classifier) -> List[dict]:
+    """PROBES scored by `classifier` through the service's own path."""
+    from app import risk
+    from app.schemas import InjuryRiskRequest
+
+    model = risk_model.RiskModel(status="trained", classifier=classifier)
+    scored = []
+    for day, body in PROBES:
+        payload = InjuryRiskRequest.model_validate(body)
+        model_score = model.score(payload)
+        rules = risk.rules_score(payload)
+        simulation = float(risk_data.expected_risk(risk_model.features_for(payload))[0])
+        scored.append({"day": day, "model": model_score,
+                       "simulation": round(simulation, 2), "rules": rules,
+                       "final": max(model_score, rules)})
+    return scored
+
+
+def build_report(cv: dict, simulated_rows: int, seed: int, real_rows: int,
+                 probed: Optional[List[dict]] = None,
+                 real_users: Optional[int] = None) -> dict:
     import sklearn
 
     return {
-        "modelVersion": risk_model.MODEL_VERSION,
+        "modelVersion": risk_model.version_for(real_rows),
         "statement": STATEMENT,
+        "limitations": list(LIMITATIONS),
         "data": {
             "kind": "simulated+real" if real_rows else "simulated",
             "seed": seed,
@@ -126,6 +246,7 @@ def build_report(cv: dict, simulated_rows: int, seed: int, real_rows: int) -> di
             "coverageRows": "about {:.0%} of the simulated rows; trained on, "
                             "not scored".format(risk_data.COVERAGE_SHARE),
             "realRows": real_rows,
+            "realUsers": real_users,
         },
         "features": list(risk_data.FEATURES),
         "simulation": {
@@ -154,6 +275,7 @@ def build_report(cv: dict, simulated_rows: int, seed: int, real_rows: int) -> di
         },
         "crossValidation": cv,
         "comparisonWithRules": _comparison(cv),
+        "probes": probed or [],
         "sklearnVersion": sklearn.__version__,
     }
 
@@ -173,8 +295,9 @@ def main(argv: Optional[List[str]] = None) -> int:
     args = parser.parse_args(argv)
 
     # Everything that can be refused is checked before anything is written.
-    real_X, real_y = (load_real(args.real) if args.real
-                      else (np.empty((0, len(risk_data.FEATURES))), np.empty(0, dtype=int)))
+    real_X, real_y, real_users = (
+        load_real(args.real) if args.real
+        else (np.empty((0, len(risk_data.FEATURES))), np.empty(0, dtype=int), None))
 
     data = risk_data.simulate(rows=args.rows, seed=args.seed)
     X = np.vstack([data.X, real_X])
@@ -182,15 +305,25 @@ def main(argv: Optional[List[str]] = None) -> int:
     rules = np.concatenate([risk_data.rules_scores(data), np.full(len(real_y), np.nan)])
     evaluate = np.concatenate([~data.coverage, np.ones(len(real_y), dtype=bool)])
 
+    # Grouped only when real rows say whose they are; each simulated row is a
+    # group of its own, since simulated days are drawn independently.
+    groups = None
+    if real_users is not None:
+        groups = np.concatenate([
+            np.array(["sim-{}".format(i) for i in range(len(data.y))]),
+            np.char.add("real-", real_users),
+        ])
     cv = risk_model.cross_validate(X, y, rules_scores=rules, evaluate=evaluate,
-                                   seed=args.seed)
+                                   seed=args.seed, groups=groups)
     classifier = risk_model.fit(X, y, args.seed)
 
     os.makedirs(args.model_dir, exist_ok=True)
     model_path = os.path.join(args.model_dir, risk_model.MODEL_FILENAME)
     risk_model.save(classifier, model_path, real_rows=len(real_y), seed=args.seed)
 
-    report = build_report(cv, args.rows, args.seed, len(real_y))
+    report = build_report(
+        cv, args.rows, args.seed, len(real_y), probed=probes(classifier),
+        real_users=None if real_users is None else len(set(real_users.tolist())))
     report_dir = os.path.dirname(args.report)
     if report_dir:
         os.makedirs(report_dir, exist_ok=True)

@@ -38,6 +38,15 @@ MODEL_FILENAME = "injury_risk.joblib"
 # trained on.
 MODEL_VERSION = "risk-rf-sim-1"
 
+
+def version_for(real_rows: int) -> str:
+    """MODEL_VERSION, marked "sim+real" when real rows were mixed in.
+
+    So a stored estimate says whether real outcomes shaped the model that made
+    it. Fits the server's model_version VARCHAR(40).
+    """
+    return MODEL_VERSION.replace("-sim-", "-sim+real-") if real_rows else MODEL_VERSION
+
 # Small on purpose: trains in a few seconds at startup and saves well under
 # 2 MB. min_samples_leaf keeps each leaf's probability an average over enough
 # days to be stable rather than a memorised handful.
@@ -116,7 +125,7 @@ def bundle(classifier, real_rows: int = 0, seed: int = risk_data.SEED) -> Dict[s
 
     return {
         "model": classifier,
-        "version": MODEL_VERSION,
+        "version": version_for(real_rows),
         "features": list(risk_data.FEATURES),
         "sklearnVersion": sklearn.__version__,
         "simulationSeed": seed,
@@ -139,10 +148,30 @@ def _summary(values: Sequence[float]) -> Dict[str, Any]:
     }
 
 
+def folds(y: np.ndarray, groups: Optional[np.ndarray] = None,
+          k: int = CV_FOLDS, seed: int = risk_data.SEED):
+    """(train, test) index pairs: stratified, and grouped when groups are given.
+
+    Real rows from one user are overlapping 3-day windows of the same weeks;
+    split freely, the same week would sit on both sides of a fold and flatter
+    the metrics. With groups (a user id per real row, a unique id per simulated
+    row) StratifiedGroupKFold keeps each user's rows in one fold.
+    """
+    from sklearn.model_selection import StratifiedGroupKFold, StratifiedKFold
+
+    placeholder = np.zeros((len(y), 1))
+    if groups is None:
+        return StratifiedKFold(n_splits=k, shuffle=True,
+                               random_state=seed).split(placeholder, y)
+    return StratifiedGroupKFold(n_splits=k, shuffle=True,
+                                random_state=seed).split(placeholder, y, groups)
+
+
 def cross_validate(X: np.ndarray, y: np.ndarray,
                    rules_scores: Optional[np.ndarray] = None,
                    evaluate: Optional[np.ndarray] = None,
-                   k: int = CV_FOLDS, seed: int = risk_data.SEED) -> Dict[str, Any]:
+                   k: int = CV_FOLDS, seed: int = risk_data.SEED,
+                   groups: Optional[np.ndarray] = None) -> Dict[str, Any]:
     """Stratified k-fold cross-validation of the forest.
 
     Each fold trains on every training row, coverage rows included, but is
@@ -155,17 +184,18 @@ def cross_validate(X: np.ndarray, y: np.ndarray,
     CSV rows, whose raw answers are not kept), how often the model's own level
     matches the rules' level, how often the final max(model, rules) level is
     above the rules' level, and the rules' own ROC AUC on the same rows for
-    comparison. On simulated data these say how well the model learned the
-    simulation, not how it would do on real injuries.
+    comparison. When the rules' score is missing for some rows (real ones),
+    the model's ROC AUC is also given on just the rows the rules were scored
+    on, so the two are compared on the same days. On simulated data these say
+    how well the model learned the simulation, not how it would do on real
+    injuries.
     """
     from sklearn.metrics import brier_score_loss, roc_auc_score
-    from sklearn.model_selection import StratifiedKFold
 
     if evaluate is None:
         evaluate = np.ones(len(y), dtype=bool)
-    folds = StratifiedKFold(n_splits=k, shuffle=True, random_state=seed)
-    auc, brier, agree, raised, rules_auc = [], [], [], [], []
-    for train, test in folds.split(X, y):
+    auc, brier, agree, raised, rules_auc, model_auc_known = [], [], [], [], [], []
+    for train, test in folds(y, groups, k, seed):
         test = test[evaluate[test]]
         probability = fit(X[train], y[train], seed).predict_proba(X[test])[:, 1]
         auc.append(roc_auc_score(y[test], probability))
@@ -184,9 +214,11 @@ def cross_validate(X: np.ndarray, y: np.ndarray,
         raised.append(np.mean([f != r for f, r in zip(final_levels, rules_levels)]))
         if len(set(y[test][known])) == 2:
             rules_auc.append(roc_auc_score(y[test][known], rules))
+            if not known.all():
+                model_auc_known.append(roc_auc_score(y[test][known], probability[known]))
 
     result = {
-        "method": "StratifiedKFold",
+        "method": "StratifiedKFold" if groups is None else "StratifiedGroupKFold",
         "k": k,
         "shuffleSeed": seed,
         "rows": int(len(y)),
@@ -200,6 +232,8 @@ def cross_validate(X: np.ndarray, y: np.ndarray,
         result["shareRaisedByModel"] = _summary(raised)
     if rules_auc:
         result["rulesRocAuc"] = _summary(rules_auc)
+    if model_auc_known:
+        result["rocAucWhereRulesKnown"] = _summary(model_auc_known)
     return result
 
 

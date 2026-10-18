@@ -1,12 +1,20 @@
 {
   "modelVersion": "risk-rf-sim-1",
   "statement": "This model is trained on simulated data built from published injury risk factors (Tsilimigkras et al. 2024; Xu et al. 2025), not on real user outcomes, and it is retrained on real check-in outcomes as they accumulate. The cross-validation metrics measure how well it learned that simulation; they say nothing about accuracy on real injuries, and the model is not clinically validated. The rule-based score stays as a safety floor: the final score is never lower than the rules' score.",
+  "limitations": [
+    "The simulation's coefficients are judgement calls informed by the cited studies, not sizes measured in them: they encode each factor's direction and rough order, nothing more.",
+    "The monotonic forest learns that simulation only coarsely. It barely separates moderate from severe recent pain or two from three past injuries, where the simulation adds 10 and 6 points (see probes).",
+    "On days with a single risk factor, such as one past injury or moderate pain alone, it scores well above the simulation's own expected risk (see probes). So most of the days where the model beats the rules are overshoots of its own simulation, not risk the simulation supports.",
+    "It underestimates rare combinations of risk factors by a wide margin, because few training days reach them. The rules floor covers those days: the final score is never below the rules' score.",
+    "A calm day (every answer at its best, no extra load, no injuries, no pain) scores a little above 0, not 0 (see probes), because the simulation keeps every day's chance of injury at least 1% and so lifts the low end. Readiness on such a day reads a little under 100, and the deciding side can switch between model and rules on near-identical calm days."
+  ],
   "data": {
     "kind": "simulated",
     "seed": 20261018,
     "simulatedRows": 30000,
     "coverageRows": "about 20% of the simulated rows; trained on, not scored",
-    "realRows": 0
+    "realRows": 0,
+    "realUsers": null
   },
   "features": [
     "sleep",
@@ -124,6 +132,85 @@
       ]
     }
   },
-  "comparisonWithRules": "On the same held-out simulated days the rules alone score ROC AUC 0.698 against the model's 0.694, and the model raises the rules' level on 0.1% of them. The model claims no more accuracy than the rules today; what it adds is past injuries and recent pain weighed as the cited literature weighs them, and a path to learn from real outcomes once they exist.",
+  "comparisonWithRules": "On the same held-out simulated days the rules alone score ROC AUC 0.698 against the model's 0.694, and the model raises the rules' level on 0.1% of them. The model claims no more accuracy than the rules today. Its simulation's coefficients are judgement calls informed by the cited studies, not sizes measured in them, and the monotonic forest learns that simulation only coarsely: it barely separates moderate from severe recent pain or two from three past injuries, and it underestimates rare combinations, which the rules floor covers. What it adds today is a trained, retrainable path for when real outcomes exist.",
+  "probes": [
+    {
+      "day": "a calm day",
+      "model": 2.23,
+      "simulation": 1.0,
+      "rules": 0.0,
+      "final": 2.23
+    },
+    {
+      "day": "one past injury alone",
+      "model": 13.89,
+      "simulation": 7.0,
+      "rules": 5.0,
+      "final": 13.89
+    },
+    {
+      "day": "two past injuries alone",
+      "model": 20.19,
+      "simulation": 13.0,
+      "rules": 10.0,
+      "final": 20.19
+    },
+    {
+      "day": "three past injuries alone",
+      "model": 20.76,
+      "simulation": 19.0,
+      "rules": 10.0,
+      "final": 20.76
+    },
+    {
+      "day": "mild recent pain alone",
+      "model": 10.28,
+      "simulation": 7.0,
+      "rules": 5.0,
+      "final": 10.28
+    },
+    {
+      "day": "moderate recent pain alone",
+      "model": 21.92,
+      "simulation": 13.0,
+      "rules": 10.0,
+      "final": 21.92
+    },
+    {
+      "day": "severe recent pain alone",
+      "model": 21.92,
+      "simulation": 23.0,
+      "rules": 20.0,
+      "final": 21.92
+    },
+    {
+      "day": "everyday answers and moderate pain",
+      "model": 27.73,
+      "simulation": 17.7,
+      "rules": 20.0,
+      "final": 27.73
+    },
+    {
+      "day": "everyday answers and severe pain",
+      "model": 27.73,
+      "simulation": 27.7,
+      "rules": 30.0,
+      "final": 30.0
+    },
+    {
+      "day": "the biggest week alone",
+      "model": 58.42,
+      "simulation": 53.0,
+      "rules": 65.0,
+      "final": 65.0
+    },
+    {
+      "day": "the worst answers, three injuries and severe pain",
+      "model": 36.9,
+      "simulation": 83.3,
+      "rules": 87.0,
+      "final": 87.0
+    }
+  ],
   "sklearnVersion": "1.6.1"
 }

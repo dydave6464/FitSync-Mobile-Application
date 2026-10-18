@@ -278,3 +278,22 @@ def test_a_non_finite_load_is_still_refused(model):
         risk_model.estimate(InjuryRiskRequest.model_construct(
             checkins=[], load=float("nan"), injuryHistory=[], recentPain=None,
         ), model)
+
+
+def test_grouped_folds_keep_every_group_in_one_test_fold():
+    rng = np.random.default_rng(1)
+    y = rng.integers(0, 2, size=400)
+    groups = np.repeat(np.arange(80), 5)
+    seen = {}
+    for fold, (_, test) in enumerate(risk_model.folds(y, groups, k=5, seed=3)):
+        for group in set(groups[test]):
+            assert seen.setdefault(group, fold) == fold
+    assert len(seen) == 80
+
+
+def test_without_groups_the_folds_are_plain_stratified():
+    y = np.array([0, 1] * 50)
+    tests = [test for _, test in risk_model.folds(y, None, k=5, seed=3)]
+    assert sorted(np.concatenate(tests).tolist()) == list(range(100))
+    for test in tests:
+        assert y[test].mean() == 0.5

@@ -88,6 +88,22 @@ as the model does. It claims no more accuracy than the rules today, and it is
 not clinically validated. It is retrained on real check-in outcomes as they
 accumulate.
 
+**Limitations.** The model claims no more accuracy than the rules today. Its
+simulation's coefficients are judgement calls informed by the cited studies,
+not sizes measured in them, and the monotonic forest learns that simulation
+only coarsely: it barely separates moderate from severe recent pain or two
+from three past injuries, and it underestimates rare combinations, which the
+rules floor covers. On days with a single risk factor (one past injury, or
+moderate pain alone) it scores well above the simulation's own expected risk,
+so most of the days where it beats the rules are overshoots of its simulation
+rather than risk the simulation supports. A calm day (every answer at its
+best, no extra load, no injuries, no pain) scores a little above 0, so
+Readiness there reads a little under 100 (98 today), and the deciding side
+can switch between model and rules on near-identical calm days. The report's
+`probes` show the model, the simulation and the rules side by side on these
+days, and its `limitations` list says the same. What the model adds today is
+a trained, retrainable path for when real outcomes exist.
+
 ### Retrain
 
 ```bash
@@ -107,9 +123,12 @@ the model once at startup.
 When real labelled outcomes exist, mix them in with `--real real.csv`. The CSV
 has a header and the columns `sleep, soreness, energy, stress` (each the 3-day
 mean of the answer's position on its scale, 0 = best to 3 = worst),
-`load_pct` (0-130), `injury_count`, `recent_pain` (0-3) and `injured` (0 or 1);
-the full description is at the top of `app/train_risk.py`. Nothing in the
-server exports these rows yet.
+`load_pct` (0-130), `injury_count`, `recent_pain` (0-3) and `injured` (0 or 1),
+plus an optional `user_id`; the full description is at the top of
+`app/train_risk.py`. Give `user_id` whenever it is known: one user's rows are
+overlapping windows of the same weeks, and with it cross-validation keeps each
+user in one fold (`StratifiedGroupKFold`). A model trained with real rows is
+versioned `risk-rf-sim+real-N`. Nothing in the server exports these rows yet.
 
 ## Test
 
