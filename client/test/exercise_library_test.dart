@@ -351,6 +351,145 @@ void main() {
     );
   }
 
+  group('recent fits the screen', () {
+    // Reported on a phone: the fourth card hung off the right-hand edge and a
+    // swipe from it was the phone's own Back gesture. As the muscle buttons
+    // did, the cards now fit the width: one row, the rest a tap away.
+    final five = <ExerciseSummary>[
+      for (var i = 0; i < 5; i++)
+        ExerciseSummary(
+          exerciseId: 100 + i,
+          name: 'Recent exercise $i',
+          muscleGroup: 'pectorals',
+          equipment: 'dumbbell',
+          thumbnailUrl: null,
+        ),
+    ];
+    final more = find.byKey(const Key('library.recent.more'));
+
+    Future<void> phone(
+      WidgetTester tester, {
+      Size size = const Size(390, 844),
+      double text = 1,
+    }) async {
+      tester.view.physicalSize = size;
+      tester.view.devicePixelRatio = 1;
+      addTearDown(tester.view.reset);
+      tester.platformDispatcher.textScaleFactorTestValue = text;
+      addTearDown(tester.platformDispatcher.clearTextScaleFactorTestValue);
+      await _pump(
+        tester,
+        _container(recent: FakeRecentRepository(items: five)),
+      );
+    }
+
+    void allOnScreen(WidgetTester tester, double width) {
+      for (var id = 100; id < 105; id++) {
+        final card = _recentCard(id);
+        if (card.evaluate().isEmpty) continue;
+        final rect = tester.getRect(card);
+        expect(rect.left, greaterThanOrEqualTo(0), reason: '$id');
+        expect(rect.right, lessThanOrEqualTo(width), reason: '$id');
+      }
+      expect(
+        find.descendant(
+          of: _recentStrip(),
+          matching: find.byWidgetPredicate(
+            (w) => w is Scrollable && w.axisDirection == AxisDirection.right,
+          ),
+        ),
+        findsNothing,
+        reason: 'nothing to swipe sideways',
+      );
+    }
+
+    testWidgets('a phone shows the latest three, none past the edge', (
+      tester,
+    ) async {
+      await phone(tester);
+      for (final id in [100, 101, 102]) {
+        expect(_recentCard(id), findsOneWidget, reason: '$id');
+      }
+      expect(_recentCard(103), findsNothing);
+      expect(_recentCard(104), findsNothing);
+      // Latest first, left to right.
+      expect(
+        tester.getTopLeft(_recentCard(100)).dx,
+        lessThan(tester.getTopLeft(_recentCard(101)).dx),
+      );
+      allOnScreen(tester, 390);
+    });
+
+    testWidgets('Show all opens the rest in rows, Show less folds them', (
+      tester,
+    ) async {
+      await phone(tester);
+      expect(
+        find.descendant(of: more, matching: find.text('Show all 5')),
+        findsOneWidget,
+      );
+
+      await tester.tap(more);
+      await tester.pumpAndSettle();
+      for (var id = 100; id < 105; id++) {
+        expect(_recentCard(id), findsOneWidget, reason: '$id');
+      }
+      // The fourth starts a second row under the first.
+      expect(
+        tester.getTopLeft(_recentCard(103)).dy,
+        greaterThan(tester.getBottomLeft(_recentCard(100)).dy),
+      );
+      allOnScreen(tester, 390);
+      expect(
+        find.descendant(of: more, matching: find.text('Show less')),
+        findsOneWidget,
+      );
+
+      await tester.tap(more);
+      await tester.pumpAndSettle();
+      expect(_recentCard(103), findsNothing);
+    });
+
+    testWidgets('no button when every recent one fits', (tester) async {
+      await _pump(tester, _container());
+      expect(_recentCard(7), findsOneWidget);
+      expect(_recentCard(8), findsOneWidget);
+      expect(more, findsNothing);
+    });
+
+    testWidgets('at large text fewer fit a row, still none past the edge', (
+      tester,
+    ) async {
+      await phone(tester, size: const Size(320, 640), text: 2);
+      expect(tester.takeException(), isNull);
+      expect(_recentCard(100), findsOneWidget);
+      expect(_recentCard(102), findsNothing);
+      expect(more, findsOneWidget);
+      allOnScreen(tester, 320);
+    });
+
+    testWidgets('the button is a full-size target, and says what it shows', (
+      tester,
+    ) async {
+      final semantics = tester.ensureSemantics();
+      await phone(tester);
+      final size = tester.getSize(more);
+      expect(size.height, greaterThanOrEqualTo(48));
+      expect(size.width, greaterThanOrEqualTo(48));
+      expect(
+        find.bySemanticsLabel('Show all 5 recent exercises'),
+        findsOneWidget,
+      );
+      // At the far right, on the title's line, where a "see all" is looked for.
+      expect(tester.getTopRight(more).dx, closeTo(390 - 4, 1));
+      expect(
+        tester.getCenter(more).dy,
+        closeTo(tester.getCenter(find.text('Recent')).dy, 4),
+      );
+      semantics.dispose();
+    });
+  });
+
   group('recent strip', () {
     testWidgets('shows the recent exercises when nothing is filtered', (
       tester,
@@ -576,7 +715,8 @@ void main() {
       );
       await tester.pumpAndSettle();
 
-      expect(tester.getSize(_recentCard(8)).width, greaterThan(112));
+      // One card a row at this size: the first, as wide as the row.
+      expect(tester.getSize(_recentCard(7)).width, greaterThan(112));
     });
 
     testWidgets('every card is a full-size tap target', (tester) async {
