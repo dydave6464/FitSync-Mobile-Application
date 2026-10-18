@@ -251,28 +251,38 @@ class RiskModel:
         self.version = version if classifier is not None else None
 
     @classmethod
+    def trained_in_process(cls) -> "RiskModel":
+        """The default forest from the seeded simulation, or rules on failure."""
+        try:
+            return cls(status="trained", classifier=default_classifier(),
+                       version=MODEL_VERSION)
+        except Exception as err:
+            logger.error("could not train the injury-risk model in-process, "
+                         "serving rules: %s", err)
+            return cls(status="absent")
+
+    @classmethod
     def load(cls, settings) -> "RiskModel":
         """The model file if it is there and sound, else one trained in-process.
 
         A missing file is the normal state of a fresh checkout (models/*.joblib
         is git-ignored), so the service trains the default model from the
         seeded simulation -- about a second -- and keeps it in memory; it never
-        writes into its model directory itself. A file that is there but
-        unusable is a different story: someone put it there on purpose, so
-        quietly replacing it with the default would hide the problem. It is
-        logged and the rules serve alone.
+        writes into its model directory itself. A file saved by another
+        scikit-learn (or one that records no version) is treated the same way:
+        a forest unpickled across versions can load without error and still
+        predict wrongly, so it is not used, and the reason is logged; the file
+        itself is left alone. A file that is there but otherwise unusable is a
+        different story: someone put it there on purpose, so quietly replacing
+        it with the default would hide the problem. It is logged and the rules
+        serve alone.
         """
         path = os.path.join(settings.model_dir, MODEL_FILENAME)
         if not os.path.isfile(path):
-            try:
-                return cls(status="trained", classifier=default_classifier(),
-                           version=MODEL_VERSION)
-            except Exception as err:
-                logger.error("could not train the injury-risk model in-process, "
-                             "serving rules: %s", err)
-                return cls(status="absent")
+            return cls.trained_in_process()
         try:
             import joblib
+            import sklearn
 
             stored = joblib.load(path)
             if not isinstance(stored, dict):
@@ -283,11 +293,21 @@ class RiskModel:
             classifier = stored.get("model")
             if not hasattr(classifier, "predict_proba"):
                 raise ValueError("bundle holds no classifier")
+            saved_with = stored.get("sklearnVersion")
+            if saved_with != sklearn.__version__:
+                logger.warning(
+                    "injury-risk model at %s was saved with scikit-learn %s but "
+                    "%s is installed; not using it, training the default model "
+                    "from the seeded simulation in-process instead (real rows it "
+                    "was trained on, if any, are not in it). Re-run "
+                    "app.train_risk to replace the file.",
+                    path, saved_with or "(not recorded)", sklearn.__version__)
+                return cls.trained_in_process()
             return cls(status="loaded", classifier=classifier,
                        version=str(stored.get("version") or "unknown"))
         except Exception as err:
-            # Corrupt, truncated, version-mismatched, or trained on other
-            # columns. None of those may fail a user's request.
+            # Corrupt, truncated, unreadable by this scikit-learn, or trained
+            # on other columns. None of those may fail a user's request.
             logger.error("injury-risk model at %s is unusable, serving rules: %s",
                          path, err)
             return cls(status="absent")

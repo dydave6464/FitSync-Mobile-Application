@@ -88,6 +88,113 @@ def test_nothing_standing_out_gives_an_empty_driver_list():
     assert result.drivers == []
 
 
+# An ordinary day: everyday answers and a slightly bigger week than usual. Each
+# adds a few points to the score, but none reaches the 5-point driver bar, so
+# the app can say "Nothing ... stands out" (spec amendment, item 1).
+ORDINARY_DAY = {"sleepQuality": "good", "muscleSoreness": "mild",
+                "energy": "moderate", "stress": "low"}
+
+
+def test_an_ordinary_day_has_no_drivers():
+    result = estimate(InjuryRiskRequest(load=8.0, checkins=[ORDINARY_DAY] * 3))
+    assert result.trainingLoadScore > 0     # it did raise the score a little
+    assert result.drivers == []
+
+
+@pytest.mark.parametrize("field,answer,key", [
+    ("sleepQuality", "fair", "sleep"),
+    ("sleepQuality", "poor", "sleep"),
+    ("muscleSoreness", "moderate", "soreness"),
+    ("muscleSoreness", "severe", "soreness"),
+    ("energy", "low", "energy"),
+    ("energy", "very_low", "energy"),
+    ("stress", "moderate", "stress"),
+    ("stress", "high", "stress"),
+])
+def test_a_check_in_answer_worth_5_points_or_more_is_a_driver(field, answer, key):
+    result = estimate(InjuryRiskRequest(checkins=[dict(GOOD_DAY, **{field: answer})]))
+    assert [d.model_dump() for d in result.drivers] == [{"key": key, "value": answer}]
+
+
+@pytest.mark.parametrize("field,answer", [
+    ("sleepQuality", "good"),
+    ("muscleSoreness", "mild"),
+    ("energy", "moderate"),
+    ("stress", "low"),
+])
+def test_an_everyday_check_in_answer_is_never_a_driver(field, answer):
+    result = estimate(InjuryRiskRequest(checkins=[dict(GOOD_DAY, **{field: answer})]))
+    assert result.drivers == []
+
+
+def test_load_is_a_driver_from_10_percent_above_the_usual_week():
+    assert estimate(InjuryRiskRequest(load=9.99)).drivers == []
+    assert [d.model_dump() for d in estimate(InjuryRiskRequest(load=10.0)).drivers] == [
+        {"key": "load", "value": 10.0},
+    ]
+
+
+def test_one_past_injury_or_mild_pain_is_a_driver():
+    assert [d.model_dump() for d in estimate(
+        InjuryRiskRequest(injuryHistory=injuries(1))).drivers] == [
+        {"key": "injury_history", "value": 1},
+    ]
+    assert [d.model_dump() for d in estimate(
+        InjuryRiskRequest(recentPain="mild")).drivers] == [
+        {"key": "recent_pain", "value": "mild"},
+    ]
+
+
+def test_the_check_in_bar_applies_to_the_points_averaged_over_the_window():
+    # The bar is on the points the answer actually added to the score, which
+    # are averaged over the window exactly as the score averages them. One
+    # fair night between two excellent ones adds 8 / 3 = 2.67 points: not a
+    # driver. Three fair nights add 8: a driver, named by the worst answer.
+    one_fair = [dict(GOOD_DAY, sleepQuality="fair"), GOOD_DAY, GOOD_DAY]
+    assert estimate(InjuryRiskRequest(checkins=one_fair)).drivers == []
+    all_fair = [dict(GOOD_DAY, sleepQuality="fair")] * 3
+    assert [d.model_dump() for d in estimate(
+        InjuryRiskRequest(checkins=all_fair)).drivers] == [
+        {"key": "sleep", "value": "fair"},
+    ]
+
+
+# What the server's driver validator accepts (spec amendment, item 1). Every
+# driver the rules emit must pass it, or the server would drop it.
+DRIVER_VALUES = {
+    "sleep": {"poor", "fair"},
+    "soreness": {"moderate", "severe"},
+    "energy": {"very_low", "low"},
+    "stress": {"moderate", "high"},
+    "recent_pain": {"mild", "moderate", "severe"},
+}
+
+
+def test_every_driver_could_have_been_a_driver_under_the_amended_bar():
+    import random
+
+    from app import risk
+
+    rng = random.Random(20261018)
+    tables = [(f, list(t)) for _, f, t in risk.CHECKIN_FIELDS]
+    for _ in range(2000):
+        checkins = [{f: rng.choice(answers) for f, answers in tables}
+                    for _ in range(rng.randint(0, 3))]
+        payload = InjuryRiskRequest(
+            checkins=checkins,
+            load=rng.uniform(0.0, 40.0),
+            injuryHistory=injuries(rng.randint(0, 3)),
+            recentPain=rng.choice([None, "none", "mild", "moderate", "severe"]),
+        )
+        for driver in risk.drivers(payload):
+            if driver.key == "load":
+                assert driver.value >= 10.0
+            elif driver.key == "injury_history":
+                assert driver.value >= 1
+            else:
+                assert driver.value in DRIVER_VALUES[driver.key], driver
+
+
 def test_drivers_are_the_top_three_positive_contributors_most_first():
     result = estimate(InjuryRiskRequest(
         load=35.0,                                  # 17.5 points

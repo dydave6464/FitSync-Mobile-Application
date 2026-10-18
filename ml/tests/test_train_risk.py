@@ -186,6 +186,30 @@ def test_a_model_trained_with_real_rows_is_versioned_apart(tmp_path):
     assert len(loaded.version) <= 40
 
 
+def summary_line(capsys):
+    return next(line for line in capsys.readouterr().out.splitlines()
+                if line.startswith("held-out"))
+
+
+def test_the_summary_line_says_what_was_scored(tmp_path, capsys):
+    report = run(tmp_path)
+    out = summary_line(capsys)
+    assert "({} simulated rows scored)".format(
+        report["crossValidation"]["evaluatedRows"]) in out
+    assert "real" not in out
+
+    real = tmp_path / "real.csv"
+    write_real(real, [[1, 1, 1, 1, 20.5, 0, 0, 0], [3, 2.6667, 2, 3, 110, 2, 3, 1]] * 30)
+    report = run(tmp_path, "--real", str(real))
+    out = summary_line(capsys)
+    # With real rows mixed in, the held-out rows are not all simulated, so the
+    # line must not say they are.
+    simulated = report["crossValidation"]["evaluatedRows"] - 60
+    assert "simulated data)" not in out
+    assert "{} rows scored: {} simulated, 60 real".format(
+        simulated + 60, simulated) in out
+
+
 def test_a_simulated_only_model_keeps_the_plain_version(tmp_path):
     assert run(tmp_path)["modelVersion"] == risk_model.MODEL_VERSION
 

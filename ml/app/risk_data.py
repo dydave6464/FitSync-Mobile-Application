@@ -15,10 +15,12 @@ Nothing here is observed. The marginal distributions are judgement calls about
 what a gym user's week looks like, and the coefficients encode the direction
 and rough ordering of the published factors, not their measured sizes. The
 label's absolute rate is set so that 100 x probability lines up with the rules'
-0-100 score (app/risk.py) -- it is not an epidemiological injury rate. What a
-model trained on this can honestly claim is that it reproduces those factors
-consistently; it is retrained on real check-in outcomes as they accumulate
-(see app/train_risk.py, --real).
+0-100 score (app/risk.py) -- it is not an epidemiological injury rate. A
+model trained on this learns these assumptions, not real injuries, and only
+coarsely: the committed report (reports/injury_risk_cv.json, its
+"limitations" and "probes") shows where it departs from this simulation's own
+expected risk, and it claims no more accuracy than the rules. It is retrained
+on real check-in outcomes as they accumulate (see app/train_risk.py, --real).
 
 A fifth of the rows are "coverage" rows spread evenly over the feature space,
 so the forest sees the rare risky combinations everyday rows almost never

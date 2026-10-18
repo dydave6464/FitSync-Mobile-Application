@@ -53,6 +53,12 @@ DRIVER_ORDER = (
     "load", "injury_history", "recent_pain", "sleep", "soreness", "energy", "stress",
 )
 MAX_DRIVERS = 3
+# An input is named as a driver only when it added at least this many points.
+# Everyday answers (good sleep 2, mild soreness 4, moderate energy 2, low
+# stress 2) and a week under 10% above the usual stay below it, so an ordinary
+# day can honestly say nothing stands out. Every injury (5) and any pain
+# (mild 5) clears it. The server's driver validator applies the same bar.
+DRIVER_MIN_POINTS = 5.0
 
 MODERATE_AT = 40.0
 HIGH_AT = 70.0
@@ -120,13 +126,16 @@ def _worst_answer(checkins, field: str, table: Dict[str, float]) -> Optional[str
 
 
 def drivers(payload: InjuryRiskRequest) -> List[RiskDriver]:
-    """The inputs that raised the rules' score, most points first.
+    """The inputs that raised the rules' score by DRIVER_MIN_POINTS or more.
 
-    Ranked by the rules' own points even when the model decided the final
-    score: the rules' points are the explanation that can be given in a
-    sentence, and an input that added nothing is never named. The check-in
-    points are averaged over the window, exactly as in the score, but the value
-    reported is the worst answer, which is the one the user remembers.
+    Ranked by the rules' own points, most first, even when the model decided
+    the final score: the rules' points are the explanation that can be given
+    in a sentence, and an input that added little or nothing is never named.
+    The check-in points are averaged over the window, exactly as in the score,
+    and the bar applies to that average; the value reported is the worst
+    answer in the window, which is the one the user remembers. Since the worst
+    answer scores at least the average, a reported value always clears the
+    bar on its own too.
     """
     candidates = []
     if load_points(payload) > 0:
@@ -149,6 +158,7 @@ def drivers(payload: InjuryRiskRequest) -> List[RiskDriver]:
     if pain_points(payload) > 0:
         candidates.append(("recent_pain", pain_points(payload), payload.recentPain))
 
+    candidates = [c for c in candidates if c[1] >= DRIVER_MIN_POINTS]
     candidates.sort(key=lambda c: (-c[1], DRIVER_ORDER.index(c[0])))
     return [RiskDriver(key=key, value=value)
             for key, _, value in candidates[:MAX_DRIVERS]]

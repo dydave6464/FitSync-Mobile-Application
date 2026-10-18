@@ -332,8 +332,16 @@ def main(argv: Optional[List[str]] = None) -> int:
         handle.write("\n")
 
     print("wrote {} and {}".format(model_path, args.report))
-    print("held-out ROC AUC {:.3f}, Brier {:.3f} ({} rows scored; simulated data)".format(
-        cv["rocAuc"]["mean"], cv["brier"]["mean"], cv["evaluatedRows"]))
+    # Says what the held-out rows actually were: with --real they are a mix.
+    scored_real = len(real_y)
+    scored_simulated = cv["evaluatedRows"] - scored_real
+    if scored_real:
+        scored = "{} rows scored: {} simulated, {} real".format(
+            cv["evaluatedRows"], scored_simulated, scored_real)
+    else:
+        scored = "{} simulated rows scored".format(scored_simulated)
+    print("held-out ROC AUC {:.3f}, Brier {:.3f} ({})".format(
+        cv["rocAuc"]["mean"], cv["brier"]["mean"], scored))
     print("restart the ML service to pick up the new model")
     return 0
 

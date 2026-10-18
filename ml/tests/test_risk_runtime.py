@@ -84,6 +84,61 @@ def test_a_failure_while_training_in_process_falls_back_to_rules(tmp_path, monke
     assert not loaded.usable
 
 
+def stale_bundle(model_dir, sklearn_version):
+    """A sound model file that records another scikit-learn (None: none at all)."""
+    bundle = risk_model.bundle(risk_model.default_classifier())
+    if sklearn_version is None:
+        del bundle["sklearnVersion"]
+    else:
+        bundle["sklearnVersion"] = sklearn_version
+    joblib.dump(bundle, str(model_file(model_dir)))
+    return model_file(model_dir).read_bytes()
+
+
+def test_a_file_from_another_scikit_learn_is_retrained_in_process(tmp_path, caplog):
+    # A forest pickled by another scikit-learn may unpickle without error and
+    # still predict wrongly, so the file is not used: the service trains the
+    # default model from the seeded simulation instead, and says why.
+    import sklearn
+
+    before = stale_bundle(tmp_path, "0.24.2")
+    with caplog.at_level("WARNING", logger="app.risk_model"):
+        loaded = risk_model.RiskModel.load(settings_for(tmp_path))
+    assert loaded.status == "trained"
+    assert loaded.usable
+    assert loaded.version == risk_model.MODEL_VERSION
+    assert "0.24.2" in caplog.text and sklearn.__version__ in caplog.text
+    # The stale file is left exactly as it was, for whoever put it there.
+    assert model_file(tmp_path).read_bytes() == before
+
+
+def test_a_file_that_records_no_scikit_learn_version_is_retrained(tmp_path, caplog):
+    stale_bundle(tmp_path, None)
+    with caplog.at_level("WARNING", logger="app.risk_model"):
+        loaded = risk_model.RiskModel.load(settings_for(tmp_path))
+    assert loaded.status == "trained"
+    assert "scikit-learn" in caplog.text
+
+
+def test_a_stale_file_whose_retraining_fails_falls_back_to_rules(tmp_path, monkeypatch):
+    stale_bundle(tmp_path, "0.24.2")
+
+    def broken():
+        raise RuntimeError("no scikit-learn here")
+
+    monkeypatch.setattr(risk_model, "default_classifier", broken)
+    loaded = risk_model.RiskModel.load(settings_for(tmp_path))
+    assert loaded.status == "absent"
+    assert not loaded.usable
+
+
+def test_health_reports_a_stale_file_as_trained(tmp_path):
+    stale_bundle(tmp_path, "0.24.2")
+    body = client_for(tmp_path).get("/health").json()
+    assert body["riskModel"] == {"status": "trained",
+                                 "version": risk_model.MODEL_VERSION}
+
+
 # --- /health ----------------------------------------------------------------
 
 
@@ -163,6 +218,18 @@ def test_a_calm_day_has_no_drivers(tmp_path):
     }).json()
     assert body["drivers"] == []
     assert body["riskLevel"] == "low"
+
+
+def test_an_ordinary_day_has_no_drivers(tmp_path):
+    # Everyday answers and a slightly bigger week: each adds a few points, but
+    # none reaches the 5-point driver bar, so the app says nothing stands out.
+    body = client_for(tmp_path).post("/injury-risk", json={
+        "checkins": [{"sleepQuality": "good", "muscleSoreness": "mild",
+                      "energy": "moderate", "stress": "low"}] * 3,
+        "load": 8.0,
+    }).json()
+    assert body["source"] in ("model", "rules")
+    assert body["drivers"] == []
 
 
 def test_a_corrupt_model_serves_the_rules_with_source_rules(tmp_path):

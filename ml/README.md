@@ -48,20 +48,26 @@ curl localhost:8000/health
 ```
 
 `model` and `mode` are the plan ranker's. `riskModel.status` is `loaded` when
-`models/injury_risk.joblib` was read, `trained` when there was no file and the
-service trained the default model in memory at startup (about a second), and
-`absent` when a file is there but unusable -- the rules then serve alone.
+`models/injury_risk.joblib` was read, `trained` when the service trained the
+default model in memory at startup (about a second) because there was no file,
+or because the file was saved by a different scikit-learn than the one
+installed (the log says so, and the file is left alone; retrain to replace
+it), and `absent` when a file is there but otherwise unusable -- the rules
+then serve alone.
 
 ## Injury-risk estimate
 
 `POST /injury-risk` takes the last 3 days of check-ins, the training-load index
 (percent above the user's usual week, 0-130), the user's reported injuries and
-the worst pain they reported after a session in the last 14 days. Every field
-but the check-ins and load is optional, so an old request still works. It
-returns a 0-100 score (higher is riskier), the level (low below 40, moderate
-from 40, high from 70), which side decided it, the model version, the load
-index, and up to three drivers: the inputs that raised the estimate, most
-first.
+the worst pain they reported after a session in the last 14 days. All four
+fields are optional (`checkins` defaults to `[]`, `load` to `0.0`, and no
+injuries or pain count as none), so an old request still works. It returns a
+0-100 score (higher is riskier), the level (low below 40, moderate from 40,
+high from 70), which side decided it, the model version, the load index, and
+up to three drivers: the inputs that raised the rules' score by 5 points or
+more, most first. Everyday answers (good sleep, mild soreness, moderate
+energy, low stress) and a week less than 10% above the usual never reach that
+bar, so an ordinary day returns no drivers.
 
 **Two scores, the larger wins.**
 
