@@ -421,3 +421,196 @@ test('a malformed ML answer keeps the check-in and stores no estimate', async (t
   const [[{ n }]] = await pool.query('SELECT COUNT(*) AS n FROM morning_checkins');
   assert.equal(n, 1, 'the check-in is kept');
 });
+
+test('only inputs that could reach the 5-point driver bar are kept', async (t) => {
+  const pool = createPool(testDbConfig());
+  await dropAllTables(pool);
+  await migrate(testDbConfig());
+  let answer;
+  const app = buildTestApp({
+    pool,
+    ml: { async estimateInjuryRisk() { return answer; } },
+  });
+  t.after(async () => { await dropAllTables(pool); await pool.end(); });
+  const { auth } = await signIn(app, pool, 'bar@example.com');
+
+  async function storedDrivers(drivers) {
+    answer = { riskLevel: 'moderate', trainingLoadScore: 45, source: 'rules', drivers };
+    await request(app).post('/api/v1/recovery/checkin')
+      .set(auth).send(ANSWERS).expect(201);
+    return (await request(app).get('/api/v1/recovery').set(auth).expect(200))
+      .body.data.latestEstimate.drivers;
+  }
+
+  await t.test('everyday answers and small loads are dropped', async () => {
+    const drivers = await storedDrivers([
+      { key: 'load', value: 9.99 },
+      { key: 'load', value: 0 },
+      { key: 'load', value: -20 },
+      { key: 'sleep', value: 'good' },
+      { key: 'sleep', value: 'excellent' },
+      { key: 'soreness', value: 'none' },
+      { key: 'soreness', value: 'mild' },
+      { key: 'energy', value: 'moderate' },
+      { key: 'energy', value: 'high' },
+      { key: 'stress', value: 'low' },
+      { key: 'stress', value: 'very_low' },
+      { key: 'injury_history', value: 0 },
+      { key: 'recent_pain', value: 'none' },
+    ]);
+    assert.deepEqual(drivers, []);
+  });
+
+  await t.test('each input at the bar is kept, in the service\'s order', async () => {
+    const atBar = [
+      [{ key: 'load', value: 10 }, { key: 'injury_history', value: 1 }, { key: 'recent_pain', value: 'mild' }],
+      [{ key: 'sleep', value: 'fair' }, { key: 'soreness', value: 'moderate' }, { key: 'energy', value: 'low' }],
+      [{ key: 'stress', value: 'moderate' }, { key: 'sleep', value: 'poor' }, { key: 'energy', value: 'very_low' }],
+    ];
+    for (const drivers of atBar) {
+      assert.deepEqual(await storedDrivers(drivers), drivers);
+    }
+  });
+
+  await t.test('a dropped everyday answer does not use up one of the three places', async () => {
+    const drivers = await storedDrivers([
+      { key: 'sleep', value: 'good' },
+      { key: 'stress', value: 'high' },
+      { key: 'load', value: 3 },
+      { key: 'soreness', value: 'severe' },
+      { key: 'recent_pain', value: 'moderate' },
+    ]);
+    assert.deepEqual(drivers, [
+      { key: 'stress', value: 'high' },
+      { key: 'soreness', value: 'severe' },
+      { key: 'recent_pain', value: 'moderate' },
+    ]);
+  });
+});
+
+test('the check-in answer and the tab agree on drivers for the same row', async (t) => {
+  const pool = createPool(testDbConfig());
+  await dropAllTables(pool);
+  await migrate(testDbConfig());
+  let answer;
+  const app = buildTestApp({
+    pool,
+    ml: { async estimateInjuryRisk() { return answer; } },
+  });
+  t.after(async () => { await dropAllTables(pool); await pool.end(); });
+  const { auth } = await signIn(app, pool, 'agree@example.com');
+
+  const cases = [
+    ['a source with no drivers field', { riskLevel: 'low', trainingLoadScore: 10, source: 'rules' }, 'rules'],
+    ['a source with drivers that are not a list', { riskLevel: 'low', trainingLoadScore: 10, source: 'model', drivers: 'sleep' }, 'model'],
+    ['a source with an empty list', { riskLevel: 'low', trainingLoadScore: 10, source: 'rules', drivers: [] }, 'rules'],
+    ['no source and no drivers (an old service)', { riskLevel: 'low', trainingLoadScore: 10 }, null],
+  ];
+  for (const [name, value, source] of cases) {
+    await t.test(name, async () => {
+      answer = value;
+      const post = (await request(app).post('/api/v1/recovery/checkin')
+        .set(auth).send(ANSWERS).expect(201)).body.data.estimate;
+      const got = (await request(app).get('/api/v1/recovery').set(auth).expect(200))
+        .body.data.latestEstimate;
+      assert.equal(post.source, source);
+      assert.equal(got.source, source);
+      assert.deepEqual(post.drivers, []);
+      assert.deepEqual(got.drivers, []);
+    });
+  }
+});
+
+test('a refused ML answer is logged by its key fields, without personal data', async (t) => {
+  const { Writable } = require('node:stream');
+  const { createLogger } = require('../src/lib/logger');
+  let output = '';
+  const destination = new Writable({
+    write(chunk, _encoding, callback) { output += chunk.toString(); callback(); },
+  });
+  // production env avoids the pino-pretty worker thread, which would bypass
+  // this synchronous capture stream.
+  const logger = createLogger({ level: 'warn', env: 'production', destination });
+  const lines = () => output.split('\n').filter(Boolean).map((l) => JSON.parse(l));
+
+  const pool = createPool(testDbConfig());
+  await dropAllTables(pool);
+  await migrate(testDbConfig());
+  let answer;
+  const app = buildTestApp({
+    pool,
+    logger,
+    ml: { async estimateInjuryRisk() { return answer; } },
+  });
+  t.after(async () => { await dropAllTables(pool); await pool.end(); });
+  const { auth } = await signIn(app, pool, 'refused-log@example.com');
+
+  await t.test('an object answer logs its level, score, source, load and driver keys', async () => {
+    output = '';
+    answer = {
+      riskLevel: 'extreme',
+      trainingLoadScore: 250,
+      source: 'model',
+      loadPct: 35,
+      drivers: [{ key: 'sleep', value: 'poor' }, { key: 'recent_pain', value: 'severe' }],
+    };
+    await request(app).post('/api/v1/recovery/checkin')
+      .set(auth).send(ANSWERS).expect(201);
+    const line = lines().find((l) => /malformed/.test(l.msg));
+    assert.ok(line, 'expected a warning for the refused answer');
+    assert.deepEqual(line.mlAnswer, {
+      riskLevel: 'extreme',
+      trainingLoadScore: 250,
+      source: 'model',
+      loadPct: 35,
+      driverKeys: ['sleep', 'recent_pain'],
+    });
+    const raw = JSON.stringify(line);
+    assert.ok(!raw.includes('refused-log@example.com'), 'no email in the log');
+    assert.ok(!raw.includes('"poor"'), 'no driver values (health answers) in the log');
+    assert.ok(!raw.includes('"severe"'), 'no driver values (health answers) in the log');
+  });
+
+  await t.test('a non-object answer logs only its type', async () => {
+    output = '';
+    answer = 'high';
+    await request(app).post('/api/v1/recovery/checkin')
+      .set(auth).send(ANSWERS).expect(201);
+    const line = lines().find((l) => /malformed/.test(l.msg));
+    assert.ok(line);
+    assert.deepEqual(line.mlAnswer, { type: 'string' });
+  });
+});
+
+test('a load the DECIMAL(5,2) column would round to 1000.00 is never stored', async (t) => {
+  const pool = createPool(testDbConfig());
+  await dropAllTables(pool);
+  await migrate(testDbConfig());
+  let answer;
+  const app = buildTestApp({
+    pool,
+    ml: { async estimateInjuryRisk() { return answer; } },
+  });
+  t.after(async () => { await dropAllTables(pool); await pool.end(); });
+  const { auth } = await signIn(app, pool, 'boundary@example.com');
+
+  const cases = [
+    [999.99, 999.99],
+    [999.994, 999.99],
+    [999.995, null],
+    [999.999, null],
+    [1000, null],
+  ];
+  for (const [sent, stored] of cases) {
+    await t.test(`${sent} is stored as ${stored}`, async () => {
+      answer = { riskLevel: 'high', trainingLoadScore: 90, source: 'rules', loadPct: sent, drivers: [] };
+      const post = await request(app).post('/api/v1/recovery/checkin')
+        .set(auth).send(ANSWERS).expect(201);
+      assert.equal(post.body.data.estimate.loadPct, stored);
+      const est = (await request(app).get('/api/v1/recovery').set(auth).expect(200))
+        .body.data.latestEstimate;
+      assert.equal(est.riskLevel, 'high');
+      assert.equal(est.loadPct, stored);
+    });
+  }
+});

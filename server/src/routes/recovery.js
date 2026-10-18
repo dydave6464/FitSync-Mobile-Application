@@ -51,18 +51,48 @@ const SOURCES = ['model', 'rules'];
 /// this holds a service that sends more to the same promise.
 const MAX_DRIVERS = 3;
 
-/// Each driver key the ML contract defines, and the values it may carry.
-/// Answers are checked against the very scales the check-in was validated
-/// with, so a driver can only ever quote something the user could have said.
+/// Each driver key the ML contract defines, and the values that could have
+/// been one. Each answer list is a subset of the scale the check-in was
+/// validated with, so a driver can only ever quote something the user could
+/// have said.
+///
+/// The contract's bar is 5 rule points or more (the amendment of 2026-10-18),
+/// and these are the values that reach it: a load of 10% or more, a poor or
+/// fair night, moderate or severe soreness, low or very low energy, moderate
+/// or high stress, any reported injury, and any recent pain. Everyday answers
+/// never are, so a service that slips one through cannot make an ordinary
+/// morning read as a reason; the tab says "Nothing ... stands out" instead.
 const DRIVER_VALUES = Object.freeze({
-  load: (v) => Number.isFinite(v),
-  sleep: (v) => CHECKIN_SCALES.sleepQuality.includes(v),
-  soreness: (v) => CHECKIN_SCALES.muscleSoreness.includes(v),
-  energy: (v) => CHECKIN_SCALES.energy.includes(v),
-  stress: (v) => CHECKIN_SCALES.stress.includes(v),
-  injury_history: (v) => Number.isInteger(v) && v >= 0,
-  recent_pain: (v) => PAIN_LEVELS.includes(v),
+  load: (v) => Number.isFinite(v) && v >= 10,
+  sleep: (v) => ['poor', 'fair'].includes(v),
+  soreness: (v) => ['moderate', 'severe'].includes(v),
+  energy: (v) => ['very_low', 'low'].includes(v),
+  stress: (v) => ['moderate', 'high'].includes(v),
+  injury_history: (v) => Number.isInteger(v) && v >= 1,
+  recent_pain: (v) => PAIN_LEVELS.includes(v) && v !== 'none',
 });
+
+/// The largest load_pct the DECIMAL(5,2) column holds. MySQL rounds to two
+/// places before it range-checks, so 999.995 becomes 1000.00 and fails the
+/// INSERT, and with it the check-in. The value is rounded here first and the
+/// rounded value is what is checked, stored and returned.
+const MAX_LOAD_PCT = 999.99;
+
+/// loadPct rounded as the column will hold it, or null when the column
+/// cannot hold it.
+function toLoadPct(value) {
+  if (!Number.isFinite(value) || value < 0) return null;
+  // Rounded through its decimal text rather than Math.round(value * 100),
+  // which misreads values such as 999.995 whose binary form sits just below
+  // the half; the driver sends MySQL that same text and it rounds it half up.
+  // Text already in exponent form is a value far below a cent (or far beyond
+  // the column), where plain arithmetic gives the same answer.
+  const text = String(value);
+  const rounded = text.includes('e')
+    ? Math.round(value * 100) / 100
+    : Number(`${Math.round(Number(`${text}e2`))}e-2`);
+  return Number.isFinite(rounded) && rounded <= MAX_LOAD_PCT ? rounded : null;
+}
 
 /// The drivers worth storing: known keys with well-typed values, in the
 /// service's order, at most MAX_DRIVERS. Anything else is dropped one entry at
@@ -99,9 +129,7 @@ function toEstimate(raw) {
 
   // load_pct is DECIMAL(5,2): anything outside it would fail the INSERT and,
   // with it, the request.
-  const loadPct = Number.isFinite(raw.loadPct) && raw.loadPct >= 0 && raw.loadPct < 1000
-    ? raw.loadPct
-    : null;
+  const loadPct = toLoadPct(raw.loadPct);
   const modelVersion = typeof raw.modelVersion === 'string'
     && raw.modelVersion.length > 0 && raw.modelVersion.length <= 40
     ? raw.modelVersion
@@ -114,6 +142,28 @@ function toEstimate(raw) {
     modelVersion,
     loadPct,
     drivers: toDrivers(raw.drivers),
+  };
+}
+
+/// What a refused answer looked like, for the log: its key fields and the
+/// driver keys, never the driver values, which quote the user's own answers.
+/// Strings are clipped so a broken service cannot flood the log.
+function summarizeAnswer(raw) {
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) {
+    return { type: Array.isArray(raw) ? 'array' : raw === null ? 'null' : typeof raw };
+  }
+  const clip = (v) => (typeof v === 'string' ? v.slice(0, 40) : v);
+  const scalar = (v) => (v === null || ['string', 'number', 'boolean'].includes(typeof v)
+    ? clip(v)
+    : typeof v);
+  return {
+    riskLevel: scalar(raw.riskLevel ?? null),
+    trainingLoadScore: scalar(raw.trainingLoadScore ?? null),
+    source: scalar(raw.source ?? null),
+    loadPct: scalar(raw.loadPct ?? null),
+    driverKeys: Array.isArray(raw.drivers)
+      ? raw.drivers.slice(0, 10).map((d) => (d && typeof d === 'object' ? scalar(d.key ?? null) : typeof d))
+      : scalar(raw.drivers ?? null),
   };
 }
 
@@ -170,7 +220,10 @@ module.exports = function buildRecoveryRouter(deps = {}) {
         });
         estimate = toEstimate(raw);
         if (!estimate) {
-          req.log?.warn('injury-risk estimate malformed; check-in saved without one');
+          req.log?.warn(
+            { mlAnswer: summarizeAnswer(raw) },
+            'injury-risk estimate malformed; check-in saved without one',
+          );
         }
       } catch (err) {
         req.log?.warn({ err }, 'injury-risk estimate failed; check-in saved without one');
@@ -182,7 +235,16 @@ module.exports = function buildRecoveryRouter(deps = {}) {
         });
       }
 
-      res.status(201).json({ data: { checkin, estimate } });
+      // drivers is stored as NULL for an answer without a list, which GET then
+      // reads as []. The response says [] too, so the screen that just checked
+      // in and the tab it opens next describe the same row the same way; the
+      // client tells "predates drivers" apart by source, not by drivers.
+      res.status(201).json({
+        data: {
+          checkin,
+          estimate: estimate && { ...estimate, drivers: estimate.drivers ?? [] },
+        },
+      });
     } catch (err) { next(err); }
   });
 
