@@ -6,6 +6,7 @@ import '../../../../core/widgets/fs_charts.dart' show FsBarChart;
 import '../../../../core/widgets/fs_kit.dart';
 import '../../../sessions/domain/session_history.dart';
 import '../../../sessions/domain/training_analytics.dart';
+import '../../../sessions/domain/volume_labels.dart' show volumeToday;
 import '../../../sessions/presentation/widgets/progress_cards.dart'
     show volumeBars;
 
@@ -75,7 +76,7 @@ class ProgressSnapshotCard extends StatelessWidget {
             // full chart, and a tap here belongs to it.
             FsBarChart(
               label: 'Training volume this month',
-              bars: volumeBars(analytics, unit, DateTime.now()),
+              bars: volumeBars(analytics, unit, volumeToday()),
               height: 52,
               showLabels: false,
               interactive: false,

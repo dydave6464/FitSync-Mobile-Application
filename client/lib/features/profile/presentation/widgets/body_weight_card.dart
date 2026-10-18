@@ -32,6 +32,18 @@ class BodyWeightCard extends StatelessWidget {
 
   VoidCallback get _add => onAdd ?? () {};
 
+  /// One weigh-in as the chart draws it: "Sep 20" under its dot, and
+  /// "Sep 20 · 72.5 kg" when it is touched.
+  static FsPoint _point(int index, BodyWeightPoint point, WeightUnit unit) {
+    final day = shortDate(DateTime.parse(point.loggedOn));
+    return FsPoint(
+      x: index.toDouble(),
+      y: convertFromKg(point.weightKg, unit),
+      label: day,
+      tooltip: '$day · ${formatWeightWithUnit(point.weightKg, unit)}',
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final t = context.fs;
@@ -79,19 +91,12 @@ class BodyWeightCard extends StatelessWidget {
           ),
           const SizedBox(height: 8),
           FsLineChart(
+            label: 'Body weight',
             // `FsPoint.x` must be a sequential index — the chart's axis-label
             // interval and label lookup both index this list by `x.round()`,
             // so anything else (a date, a day offset) silently mislabels.
             points: [
-              for (var i = 0; i < points.length; i++)
-                FsPoint(
-                  x: i.toDouble(),
-                  y: convertFromKg(points[i].weightKg, unit),
-                  label: shortDate(DateTime.parse(points[i].loggedOn)),
-                  tooltip:
-                      '${shortDate(DateTime.parse(points[i].loggedOn))} · '
-                      '${formatWeightWithUnit(points[i].weightKg, unit)}',
-                ),
+              for (final (i, point) in points.indexed) _point(i, point, unit),
             ],
             referenceY: reference == null
                 ? null
@@ -101,7 +106,7 @@ class BodyWeightCard extends StatelessWidget {
             // it is what makes a lone weigh-in read as a chart.
             referenceLabel: reference == null
                 ? null
-                : '${reference.kind == 'goal' ? 'Goal' : 'Start'} '
+                : '${reference.label} '
                       '${formatWeightWithUnit(reference.weightKg, unit)}',
             color: t.blue,
             // The band is meant as "a few hundred grams of daily noise" --
@@ -113,15 +118,19 @@ class BodyWeightCard extends StatelessWidget {
             height: 104,
           ),
           const SizedBox(height: 8),
+          // The caption takes what the chip leaves and wraps there; as two
+          // fixed widths in one row they overflowed it at large text.
           Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
-              Text(
-                series.widened
-                    ? 'all entries — fewer than two in this period'
-                    : 'Logged weekly',
-                style: TextStyle(fontSize: 11, color: t.text3),
+              Expanded(
+                child: Text(
+                  series.widened
+                      ? 'all entries — fewer than two in this period'
+                      : 'Logged weekly',
+                  style: TextStyle(fontSize: 11, color: t.text3),
+                ),
               ),
+              const SizedBox(width: 12),
               FsChip(label: 'Add entry', selected: false, onTap: _add),
             ],
           ),

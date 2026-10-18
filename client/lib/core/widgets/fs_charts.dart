@@ -51,6 +51,29 @@ class FsPoint {
   final String? tooltip;
 }
 
+/// [text] as a screen reader should say it: "·" and "–" are read out as
+/// symbols by some, so they become a comma and "to".
+String _spoken(String text) =>
+    text.replaceAll(' · ', ', ').replaceAll(' – ', ' to ');
+
+/// How wide the widest of [labels] is in [style] at the user's text size.
+double _widest(BuildContext context, Iterable<String> labels, TextStyle style) {
+  final base = DefaultTextStyle.of(context).style.merge(style);
+  final scaler = MediaQuery.textScalerOf(context);
+  var widest = 0.0;
+  for (final label in labels) {
+    final painter = TextPainter(
+      text: TextSpan(text: label, style: base),
+      textDirection: TextDirection.ltr,
+      textScaler: scaler,
+      maxLines: 1,
+    )..layout();
+    widest = math.max(widest, painter.width);
+    painter.dispose();
+  }
+  return widest;
+}
+
 /// A series of readings over time, such as body weight.
 ///
 /// Drawn as what it is: straight segments between real readings, a dot on
@@ -60,6 +83,7 @@ class FsPoint {
 class FsLineChart extends StatelessWidget {
   const FsLineChart({
     super.key,
+    required this.label,
     required this.points,
     required this.minYBand,
     this.referenceY,
@@ -67,6 +91,9 @@ class FsLineChart extends StatelessWidget {
     this.color,
     this.height = 84,
   });
+
+  /// What the chart measures, the start of what a screen reader hears.
+  final String label;
 
   final List<FsPoint> points;
 
@@ -89,9 +116,17 @@ class FsLineChart extends StatelessWidget {
 
   final double height;
 
+  /// Whether the reference line's words go under it rather than over it:
+  /// always on the side away from the newest point, which sits at the same
+  /// right-hand end. Pinned above, they ran into the newest dot just as the
+  /// user closed in on the goal.
+  bool get _labelBelow =>
+      points.isNotEmpty && referenceY != null && points.last.y >= referenceY!;
+
   /// The y window actually drawn: the data's range, widened to [minYBand]
   /// around its midpoint when the data is flatter than that, and always
-  /// including [referenceY] so the dashed line cannot fall off the card.
+  /// including [referenceY] so the dashed line cannot fall off the card --
+  /// with room on its label's side for the label to sit inside the plot.
   (double, double) get resolvedYRange {
     final values = [...points.map((p) => p.y), ?referenceY];
     if (values.isEmpty) return (0, minYBand);
@@ -110,12 +145,18 @@ class FsLineChart extends StatelessWidget {
       lo -= pad;
       hi += pad;
     }
+
+    if (referenceY != null && referenceLabel != null) {
+      // About one line of text on a chart this size.
+      final room = (hi - lo) * 0.2;
+      if (_labelBelow) {
+        lo = math.min(lo, referenceY! - room);
+      } else {
+        hi = math.max(hi, referenceY! + room);
+      }
+    }
     return (lo, hi);
   }
-
-  /// Label every point while there are few, then thin out, so forty dates do
-  /// not collide into a grey smear.
-  double get _labelInterval => (points.length / 6).ceilToDouble().clamp(1, 60);
 
   String _tooltipFor(int index) {
     final point = points[index];
@@ -128,103 +169,146 @@ class FsLineChart extends StatelessWidget {
     final (minY, maxY) = resolvedYRange;
     final series = color ?? t.accent;
     final newest = points.length - 1;
+    final scaler = MediaQuery.textScalerOf(context);
+    // One reading has no span to plot across; centre it rather than leave
+    // it on the card's left edge.
+    final lone = points.length == 1;
 
-    return SizedBox(
-      height: height,
-      child: LineChart(
-        LineChartData(
-          minY: minY,
-          maxY: maxY,
-          minX: points.isEmpty ? 0 : points.first.x,
-          maxX: points.isEmpty ? 1 : points.last.x,
-          gridData: const FlGridData(show: false),
-          borderData: FlBorderData(show: false),
-          titlesData: FlTitlesData(
-            leftTitles: const AxisTitles(),
-            topTitles: const AxisTitles(),
-            rightTitles: const AxisTitles(),
-            bottomTitles: AxisTitles(
-              sideTitles: SideTitles(
-                showTitles: true,
-                interval: _labelInterval,
-                reservedSize: _axisSpace(context),
-                getTitlesWidget: (value, meta) {
-                  final i = value.round();
-                  if (i < 0 || i >= points.length) {
-                    return const SizedBox.shrink();
-                  }
-                  // Kept inside the card: the first and last dates used to
-                  // hang past its edges.
-                  return SideTitleWidget(
-                    meta: meta,
-                    fitInside: SideTitleFitInsideData.fromTitleMeta(
-                      meta,
-                      distanceFromEdge: 0,
+    final spoken = [
+      for (var i = 0; i < points.length; i++) _spoken(_tooltipFor(i)),
+    ].join('; ');
+
+    return Semantics(
+      container: true,
+      excludeSemantics: true,
+      label: ['$label: $spoken', ?referenceLabel].join('. '),
+      child: SizedBox(
+        height: height,
+        child: LayoutBuilder(
+          builder: (context, constraints) {
+            // Every k-th date, counting back from the newest so it is always
+            // named, with k wide enough that no two dates touch -- the
+            // newest and oldest are pulled in from the edges by half their
+            // width, hence the 1.5. fl_chart's own interval also labelled
+            // the last point beside the one it chose: "Sep 12Sep 19".
+            final perPoint =
+                constraints.maxWidth / math.max(points.length - 1, 1);
+            final every = math.max(
+              1,
+              ((_widest(context, points.map((p) => p.label), _axisStyle(t)) *
+                              1.5 +
+                          8) /
+                      perPoint)
+                  .ceil(),
+            );
+
+            return LineChart(
+              LineChartData(
+                minY: minY,
+                maxY: maxY,
+                minX: points.isEmpty ? 0 : points.first.x - (lone ? 1 : 0),
+                maxX: points.isEmpty ? 1 : points.last.x + (lone ? 1 : 0),
+                gridData: const FlGridData(show: false),
+                borderData: FlBorderData(show: false),
+                titlesData: FlTitlesData(
+                  leftTitles: const AxisTitles(),
+                  topTitles: const AxisTitles(),
+                  rightTitles: const AxisTitles(),
+                  bottomTitles: AxisTitles(
+                    sideTitles: SideTitles(
+                      showTitles: true,
+                      // Every point is offered; the filter below picks which
+                      // are named.
+                      interval: 1,
+                      reservedSize: _axisSpace(context),
+                      getTitlesWidget: (value, meta) {
+                        final i = value.round();
+                        if (i < 0 ||
+                            i >= points.length ||
+                            (newest - i) % every != 0) {
+                          return const SizedBox.shrink();
+                        }
+                        // Kept inside the card: the first and last dates
+                        // used to hang past its edges.
+                        return SideTitleWidget(
+                          meta: meta,
+                          fitInside: SideTitleFitInsideData.fromTitleMeta(
+                            meta,
+                            distanceFromEdge: 0,
+                          ),
+                          child: Text(points[i].label, style: _axisStyle(t)),
+                        );
+                      },
                     ),
-                    child: Text(points[i].label, style: _axisStyle(t)),
-                  );
-                },
-              ),
-            ),
-          ),
-          lineTouchData: LineTouchData(
-            touchTooltipData: LineTouchTooltipData(
-              getTooltipColor: (_) => t.text,
-              tooltipBorderRadius: BorderRadius.circular(8),
-              fitInsideHorizontally: true,
-              fitInsideVertically: true,
-              getTooltipItems: (spots) => [
-                for (final spot in spots)
-                  LineTooltipItem(
-                    _tooltipFor(spot.spotIndex),
-                    _tooltipStyle(t),
                   ),
-              ],
-            ),
-          ),
-          extraLinesData: referenceY == null
-              ? const ExtraLinesData()
-              : ExtraLinesData(
-                  horizontalLines: [
-                    HorizontalLine(
-                      y: referenceY!,
-                      // text2, not the caption grey: in dark mode the line
-                      // and its words all but vanished.
-                      color: t.text2,
-                      strokeWidth: 1,
-                      dashArray: const [4, 4],
-                      label: HorizontalLineLabel(
-                        show: referenceLabel != null,
-                        alignment: Alignment.topRight,
-                        padding: const EdgeInsets.only(bottom: 3),
-                        labelResolver: (_) => referenceLabel ?? '',
-                        style: _axisStyle(t)
-                            .copyWith(fontWeight: FontWeight.w600),
-                      ),
-                    ),
-                  ],
                 ),
-          lineBarsData: [
-            LineChartBarData(
-              spots: [for (final p in points) FlSpot(p.x, p.y)],
-              color: series,
-              barWidth: 2,
-              isStrokeCapRound: true,
-              // A dot per reading, each a real weigh-in; the newest larger,
-              // and ringed in the card's colour so it stays clear where it
-              // sits on the line.
-              dotData: FlDotData(
-                getDotPainter: (spot, percent, bar, index) =>
-                    FlDotCirclePainter(
-                      radius: index == newest ? 5 : 4,
-                      color: series,
-                      strokeWidth: 2,
-                      strokeColor: t.surface,
+                lineTouchData: LineTouchData(
+                  touchTooltipData: LineTouchTooltipData(
+                    getTooltipColor: (_) => t.text,
+                    tooltipBorderRadius: BorderRadius.circular(8),
+                    fitInsideHorizontally: true,
+                    fitInsideVertically: true,
+                    getTooltipItems: (spots) => [
+                      for (final spot in spots)
+                        LineTooltipItem(
+                          _tooltipFor(spot.spotIndex),
+                          _tooltipStyle(t),
+                        ),
+                    ],
+                  ),
+                ),
+                extraLinesData: referenceY == null
+                    ? const ExtraLinesData()
+                    : ExtraLinesData(
+                        horizontalLines: [
+                          HorizontalLine(
+                            y: referenceY!,
+                            // text2, not the caption grey: in dark mode the
+                            // line and its words all but vanished.
+                            color: t.text2,
+                            strokeWidth: 1,
+                            dashArray: const [4, 4],
+                            label: HorizontalLineLabel(
+                              show: referenceLabel != null,
+                              alignment: _labelBelow
+                                  ? Alignment.bottomRight
+                                  : Alignment.topRight,
+                              padding: const EdgeInsets.symmetric(vertical: 3),
+                              labelResolver: (_) => referenceLabel ?? '',
+                              // Painted on the canvas, so scaled by hand to
+                              // the user's text size.
+                              style: _axisStyle(t).copyWith(
+                                fontSize: scaler.scale(11),
+                                fontWeight: FontWeight.w600,
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                lineBarsData: [
+                  LineChartBarData(
+                    spots: [for (final p in points) FlSpot(p.x, p.y)],
+                    color: series,
+                    barWidth: 2,
+                    isStrokeCapRound: true,
+                    // A dot per reading, each a real weigh-in; the newest
+                    // larger, and ringed in the card's colour so it stays
+                    // clear where it sits on the line.
+                    dotData: FlDotData(
+                      getDotPainter: (spot, percent, bar, index) =>
+                          FlDotCirclePainter(
+                            radius: index == newest ? 5 : 4,
+                            color: series,
+                            strokeWidth: 2,
+                            strokeColor: t.surface,
+                          ),
                     ),
+                    belowBarData: BarAreaData(show: false),
+                  ),
+                ],
               ),
-              belowBarData: BarAreaData(show: false),
-            ),
-          ],
+            );
+          },
         ),
       ),
     );
@@ -287,23 +371,45 @@ class FsBarChart extends StatelessWidget {
   Widget build(BuildContext context) {
     final t = context.fs;
     final top = bars.fold<double>(0, (most, bar) => math.max(most, bar.value));
+    final maxY = top <= 0 ? 1.0 : top * 1.1; // all zeros keeps a valid scale
 
     // Every bar's words, in order: the chart's figures are painted on a
     // canvas a screen reader cannot see into.
     return Semantics(
       container: true,
       excludeSemantics: true,
-      label: '$label: ${bars.map((b) => b.tooltip).join('; ')}',
+      label: '$label: ${bars.map((b) => _spoken(b.tooltip)).join('; ')}',
       child: SizedBox(
         height: height,
         child: LayoutBuilder(
           builder: (context, constraints) {
             final slot = constraints.maxWidth / math.max(bars.length, 1);
+            final rod = math.min(24.0, slot * 0.6);
+
+            // One size for every label, the largest that lets the widest fit
+            // its room. Each used to shrink alone to its own slot, so at
+            // large text "Wed" came out smaller than "Thu" and the words ran
+            // together. Room spans the empty slots between labelled bars,
+            // which a year's every-other month name has.
+            final labelled = bars.where((b) => b.label.isNotEmpty).length;
+            final stride = labelled == 0
+                ? 1
+                : math.max(1, (bars.length / labelled).round());
+            final room = slot * stride - 6;
+            final natural = MediaQuery.textScalerOf(context).scale(11);
+            final widest = _widest(
+              context,
+              bars.map((b) => b.label),
+              _axisStyle(t),
+            );
+            final fontSize = widest > room && widest > 0
+                ? natural * room / widest
+                : natural;
+
             return BarChart(
               BarChartData(
                 minY: 0,
-                // An untrained window is all zeros; 1 keeps the scale valid.
-                maxY: top <= 0 ? 1 : top * 1.1,
+                maxY: maxY,
                 alignment: BarChartAlignment.spaceAround,
                 gridData: const FlGridData(show: false),
                 // The one line a bar chart needs: the zero the bars stand on,
@@ -327,16 +433,19 @@ class FsBarChart extends StatelessWidget {
                             bars[i].label.isEmpty) {
                           return const SizedBox.shrink();
                         }
-                        // Shrunk to its own slot at large text sizes rather
-                        // than running into its neighbours.
                         return SideTitleWidget(
                           meta: meta,
                           space: 4,
                           child: SizedBox(
-                            width: slot,
-                            child: FittedBox(
-                              fit: BoxFit.scaleDown,
-                              child: Text(bars[i].label, style: _axisStyle(t)),
+                            width: room,
+                            child: Text(
+                              bars[i].label,
+                              textAlign: TextAlign.center,
+                              maxLines: 1,
+                              softWrap: false,
+                              // Already sized for the user's text setting.
+                              textScaler: TextScaler.noScaling,
+                              style: _axisStyle(t).copyWith(fontSize: fontSize),
                             ),
                           ),
                         );
@@ -346,6 +455,13 @@ class FsBarChart extends StatelessWidget {
                 ),
                 barTouchData: BarTouchData(
                   enabled: interactive,
+                  // The whole column answers a touch, not just the bar: a
+                  // light week's bar is the one people check, and it was a
+                  // sliver to aim at.
+                  allowTouchBarBackDraw: true,
+                  touchExtraThreshold: EdgeInsets.symmetric(
+                    horizontal: math.max(0, (slot - rod) / 2),
+                  ),
                   touchTooltipData: BarTouchTooltipData(
                     getTooltipColor: (_) => t.text,
                     tooltipBorderRadius: BorderRadius.circular(8),
@@ -367,11 +483,14 @@ class FsBarChart extends StatelessWidget {
                           toY: bars[i].value,
                           // Thin, never filling its slot: the space between
                           // bars is what keeps them separate.
-                          width: math.min(24, slot * 0.6),
+                          width: rod,
                           color: color ?? t.accent,
                           borderRadius: const BorderRadius.vertical(
                             top: Radius.circular(4),
                           ),
+                          // Invisible, but full height: what the touch above
+                          // is measured against.
+                          backDrawRodData: BackgroundBarChartRodData(toY: maxY),
                         ),
                       ],
                     ),

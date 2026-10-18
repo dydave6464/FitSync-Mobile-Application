@@ -112,7 +112,10 @@ void main() {
       expect(item!.text, 'Thu, Oct 15 · 3,100 kg');
     });
 
-    testWidgets('a screen reader hears every bar', (tester) async {
+    testWidgets('a screen reader hears every bar, in words it can say', (
+      tester,
+    ) async {
+      // "·" and "–" are read aloud by some screen readers as symbols.
       final handle = tester.ensureSemantics();
       await _pump(
         tester,
@@ -121,11 +124,61 @@ void main() {
 
       expect(
         find.bySemanticsLabel(
-          RegExp(r'^Training volume: Mon, Oct 12 · 0 kg; Tue, Oct 13'),
+          RegExp(
+            r'^Training volume: Mon, Oct 12, 0 kg; Tue, Oct 13, 2,400 kg;',
+          ),
         ),
         findsOneWidget,
       );
       handle.dispose();
+    });
+
+    testWidgets('large text keeps every bar label apart, all one size', (
+      tester,
+    ) async {
+      // Each label used to shrink on its own to its slot: "MonTueWed", with
+      // "Wed" smaller than "Thu".
+      tester.view.physicalSize = const Size(320, 640);
+      tester.view.devicePixelRatio = 1;
+      tester.platformDispatcher.textScaleFactorTestValue = 2.0;
+      addTearDown(tester.view.reset);
+      addTearDown(tester.platformDispatcher.clearTextScaleFactorTestValue);
+      await _pump(
+        tester,
+        const FsBarChart(label: 'Training volume', bars: _week),
+      );
+
+      final days = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
+      final rects = [for (final d in days) tester.getRect(find.text(d))];
+      for (var i = 1; i < rects.length; i++) {
+        expect(
+          rects[i].left - rects[i - 1].right,
+          greaterThanOrEqualTo(2),
+          reason: '${days[i - 1]} and ${days[i]} run together',
+        );
+      }
+      final sizes = {
+        for (final d in days) tester.widget<Text>(find.text(d)).style!.fontSize,
+      };
+      expect(sizes, hasLength(1), reason: 'one size for every label');
+    });
+
+    testWidgets('a short bar can be touched anywhere in its column', (
+      tester,
+    ) async {
+      // A light week is the one people check, and its bar was a sliver to
+      // aim at.
+      await _pump(
+        tester,
+        const FsBarChart(label: 'Training volume', bars: _week),
+      );
+
+      final data = _barData(tester);
+      expect(data.barTouchData.allowTouchBarBackDraw, isTrue);
+      for (final group in data.barGroups) {
+        expect(group.barRods.single.backDrawRodData.toY, data.maxY);
+        expect(group.barRods.single.backDrawRodData.show, isFalse);
+      }
     });
 
     testWidgets('fits a 320 dp phone at 2.0x text', (tester) async {
@@ -164,6 +217,7 @@ void main() {
     Future<void> pumpWeights(WidgetTester tester) => _pump(
       tester,
       FsLineChart(
+        label: 'Body weight',
         points: weighIns,
         minYBand: 4,
         referenceY: 70,
@@ -225,6 +279,121 @@ void main() {
       expect(style.fontSize, greaterThanOrEqualTo(11));
       expect(style.color, FsTokens.light.text2);
     });
+
+    testWidgets('dates never print on top of each other', (tester) async {
+      // fl_chart always labelled the last point too, beside the one the
+      // interval chose, so eight weekly entries printed "Sep 12Sep 19".
+      final eight = [
+        for (var i = 0; i < 8; i++)
+          FsPoint(x: i.toDouble(), y: 70 + i / 10, label: 'Sep ${i + 1}0'),
+      ];
+      for (final (width, scale) in [(393.0, 1.0), (320.0, 2.0)]) {
+        tester.view.physicalSize = Size(width, 700);
+        tester.view.devicePixelRatio = 1;
+        tester.platformDispatcher.textScaleFactorTestValue = scale;
+        await _pump(
+          tester,
+          FsLineChart(label: 'Body weight', points: eight, minYBand: 4),
+        );
+
+        final shown = [
+          for (final p in eight)
+            if (find.text(p.label).evaluate().isNotEmpty)
+              tester.getRect(find.text(p.label)),
+        ]..sort((a, b) => a.left.compareTo(b.left));
+        expect(find.text('Sep 80'), findsOneWidget, reason: 'the newest');
+        for (var i = 1; i < shown.length; i++) {
+          expect(
+            shown[i].left - shown[i - 1].right,
+            greaterThanOrEqualTo(4),
+            reason: 'at ${width.toInt()} dp, ${scale}x',
+          );
+        }
+      }
+      addTearDown(tester.view.reset);
+      addTearDown(tester.platformDispatcher.clearTextScaleFactorTestValue);
+    });
+
+    for (final (case_, newest, side) in [
+      ('above', 70.4, Alignment.bottomRight),
+      ('below', 69.6, Alignment.topRight),
+    ]) {
+      testWidgets('the goal label sits away from a newest point just $case_', (
+        tester,
+      ) async {
+        // Pinned above the line, it ran into the newest dot just as the
+        // user closed in on the goal: "Goal 70 k●".
+        await _pump(
+          tester,
+          FsLineChart(
+            label: 'Body weight',
+            points: [
+              const FsPoint(x: 0, y: 72, label: 'a'),
+              FsPoint(x: 1, y: newest, label: 'b'),
+            ],
+            minYBand: 4,
+            referenceY: 70,
+            referenceLabel: 'Goal 70 kg',
+          ),
+        );
+
+        final data = _lineData(tester);
+        final line = data.extraLinesData.horizontalLines.single;
+        expect(line.label.alignment, side);
+        // And there is room for it on that side, inside the plot.
+        final room = (data.maxY - data.minY) * 0.15;
+        if (side == Alignment.bottomRight) {
+          expect(data.minY, lessThanOrEqualTo(70 - room));
+        } else {
+          expect(data.maxY, greaterThanOrEqualTo(70 + room));
+        }
+      });
+    }
+
+    testWidgets('the goal label grows with the text size', (tester) async {
+      // Painted on the canvas, it stayed 11 px at any setting.
+      tester.platformDispatcher.textScaleFactorTestValue = 2.0;
+      addTearDown(tester.platformDispatcher.clearTextScaleFactorTestValue);
+      await pumpWeights(tester);
+
+      final line = _lineData(tester).extraLinesData.horizontalLines.single;
+      expect(line.label.style!.fontSize, 22);
+    });
+
+    testWidgets('a screen reader hears every reading and the goal', (
+      tester,
+    ) async {
+      // The goal used to live only on the canvas, where nothing reads it.
+      final handle = tester.ensureSemantics();
+      await pumpWeights(tester);
+
+      expect(
+        find.bySemanticsLabel(
+          'Body weight: Sep 20, 74.2 kg; Sep 27, 73.6 kg; Oct 4, 72.5 kg. '
+          'Goal 70 kg',
+        ),
+        findsOneWidget,
+      );
+      handle.dispose();
+    });
+
+    testWidgets('a lone weigh-in sits in the middle, not on the edge', (
+      tester,
+    ) async {
+      await _pump(
+        tester,
+        const FsLineChart(
+          label: 'Body weight',
+          points: [FsPoint(x: 0, y: 71.4, label: 'Sep 16')],
+          minYBand: 4,
+        ),
+      );
+
+      final data = _lineData(tester);
+      expect(data.minX, lessThan(0));
+      expect(data.maxX, greaterThan(0));
+      expect(data.maxX, -data.minX);
+    });
   });
 
   testWidgets('a 200 g change does not fill the card', (tester) async {
@@ -237,7 +406,9 @@ void main() {
     ];
     await tester.pumpWidget(
       MaterialApp(
-        home: Scaffold(body: FsLineChart(points: points, minYBand: 4.0)),
+        home: Scaffold(
+          body: FsLineChart(label: 'Weight', points: points, minYBand: 4.0),
+        ),
       ),
     );
 
@@ -253,7 +424,9 @@ void main() {
     ];
     await tester.pumpWidget(
       MaterialApp(
-        home: Scaffold(body: FsLineChart(points: points, minYBand: 4.0)),
+        home: Scaffold(
+          body: FsLineChart(label: 'Weight', points: points, minYBand: 4.0),
+        ),
       ),
     );
 
@@ -269,6 +442,7 @@ void main() {
       MaterialApp(
         home: Scaffold(
           body: FsLineChart(
+            label: 'Weight',
             points: [FsPoint(x: 0, y: 71.4, label: 'today')],
             referenceY: 68,
             referenceLabel: 'goal',

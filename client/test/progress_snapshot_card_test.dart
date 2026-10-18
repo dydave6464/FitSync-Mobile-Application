@@ -83,6 +83,16 @@ void main() {
     expect(chart.showLabels, isFalse);
   });
 
+  testWidgets('a tap on the bars still opens Progress', (tester) async {
+    // The chart claims no touches here: the whole card is the way in.
+    final taps = await _pump(tester);
+
+    await tester.tap(find.byType(FsBarChart));
+    await tester.pumpAndSettle();
+
+    expect(taps, ['card']);
+  });
+
   testWidgets('no earlier window to compare shows a dash, not 0%', (
     tester,
   ) async {

@@ -149,6 +149,40 @@ void main() {
     expect(chart.color, FsTokens.light.blue);
   });
 
+  testWidgets('fits a 320 dp phone at 2.0x text, footer included', (
+    tester,
+  ) async {
+    // The footer's caption and Add entry chip shared one unbending row and
+    // overflowed it by 57 px.
+    tester.view.physicalSize = const Size(320, 900);
+    tester.view.devicePixelRatio = 1;
+    tester.platformDispatcher.textScaleFactorTestValue = 2.0;
+    addTearDown(tester.view.reset);
+    addTearDown(tester.platformDispatcher.clearTextScaleFactorTestValue);
+
+    await tester.pumpWidget(
+      MaterialApp(
+        theme: fsLightTheme(),
+        home: Scaffold(
+          body: SingleChildScrollView(
+            child: BodyWeightCard(
+              series: series(
+                [('2026-09-16', 71.4), ('2026-09-23', 70.9)],
+                reference: const BodyWeightReference(
+                  kind: 'goal',
+                  weightKg: 68,
+                ),
+                widened: true,
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+
+    expect(tester.takeException(), isNull);
+  });
+
   testWidgets('a widened series says so', (tester) async {
     await tester.pumpWidget(
       MaterialApp(

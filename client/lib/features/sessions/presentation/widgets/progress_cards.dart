@@ -103,8 +103,8 @@ class VolumeTrendCard extends StatelessWidget {
   /// Everything on [analytics] is kilograms; this is how it is read out.
   final WeightUnit unit;
 
-  /// The day the server's buckets end on, which names them. Null is now; a
-  /// test pins it.
+  /// The day the server's buckets end on, which names them. Null is today in
+  /// Manila, as the server counts it; a test pins it.
   final DateTime? today;
 
   @override
@@ -167,7 +167,7 @@ class VolumeTrendCard extends StatelessWidget {
           const SizedBox(height: 12),
           FsBarChart(
             label: 'Training volume',
-            bars: volumeBars(analytics, unit, today ?? DateTime.now()),
+            bars: volumeBars(analytics, unit, today ?? volumeToday()),
           ),
         ],
       ),
