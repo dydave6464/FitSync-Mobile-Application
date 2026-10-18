@@ -23,12 +23,15 @@ import 'package:fitsync/features/profile/presentation/providers.dart'
 import 'package:fitsync/features/recovery/domain/recovery.dart';
 import 'package:fitsync/features/recovery/presentation/providers.dart'
     show recoveryOverviewProvider;
+import 'package:fitsync/features/sessions/data/session_repository.dart';
 import 'package:fitsync/features/sessions/domain/active_session.dart';
 import 'package:fitsync/features/sessions/domain/session_history.dart';
 import 'package:fitsync/features/sessions/domain/session_outcome.dart';
 import 'package:fitsync/features/sessions/domain/training_analytics.dart';
 import 'package:fitsync/features/sessions/presentation/providers.dart';
 import 'package:fitsync/features/sessions/presentation/session_logger_screen.dart';
+import 'package:fitsync/features/sessions/presentation/widgets/outcome_sheet.dart'
+    show outcomeNotSavedMessage;
 import 'package:fitsync/features/plans/presentation/generator_screen.dart';
 import 'package:fitsync/features/recovery/presentation/recovery_screen.dart';
 import 'package:fitsync/features/sessions/presentation/progress_screen.dart';
@@ -206,6 +209,20 @@ Future<void> _pump(
   }
 }
 
+/// Refuses every pain answer, as a server that is down would.
+class _OutcomeFailsRepo implements SessionRepository {
+  @override
+  Future<void> recordOutcome(
+    int sessionId, {
+    required String painLevel,
+    int? injuryId,
+  }) async => throw const ApiException('INTERNAL', 'x');
+
+  @override
+  dynamic noSuchMethod(Invocation i) =>
+      throw UnimplementedError('${i.memberName} is not used here');
+}
+
 class _StubController extends ActiveSessionController {
   _StubController(this.initial);
   final ActiveSession? initial;
@@ -253,11 +270,16 @@ Future<void> _pumpWithController(
   // A finished workout still waiting for its pain report. Null is nothing
   // waiting, so Start asks nothing.
   PendingOutcome? pending,
+  // Stands in for the server when the pain answer is sent. Left out, the
+  // tests that answer nothing never reach it.
+  SessionRepository? sessions,
 }) async {
   await tester.pumpWidget(
     ProviderScope(
       overrides: [
         activePlanProvider.overrideWith((ref) async => _plan),
+        if (sessions != null)
+          sessionRepositoryProvider.overrideWithValue(sessions),
         activeSessionProvider.overrideWith(controller),
         pendingOutcomeProvider.overrideWith((ref) async => pending),
         injuryOptionsProvider.overrideWith((ref) async => const []),
@@ -497,6 +519,31 @@ void main() {
 
       expect(controller.startCalls, 1);
       expect(find.byType(SessionLoggerScreen), findsOneWidget);
+    });
+
+    // The workout starts anyway; the message is the only sign the answer
+    // was lost, and it has to outlive the push onto the logger.
+    testWidgets('an answer that fails to save says so and still starts', (
+      tester,
+    ) async {
+      final controller = _RecordingController();
+      await _pumpWithController(
+        tester,
+        () => controller,
+        pending: pending,
+        sessions: _OutcomeFailsRepo(),
+      );
+
+      await tester.tap(find.byKey(const Key('session.start')));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const Key('outcome.pain.none')));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const Key('outcome.submit')));
+      await tester.pumpAndSettle();
+
+      expect(controller.startCalls, 1);
+      expect(find.byType(SessionLoggerScreen), findsOneWidget);
+      expect(find.text(outcomeNotSavedMessage), findsOneWidget);
     });
 
     // A workout under way is not a new one, so there is nothing to ask
