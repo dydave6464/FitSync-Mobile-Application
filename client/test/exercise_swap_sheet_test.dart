@@ -926,6 +926,57 @@ void main() {
     });
   });
 
+  // The scroll-everything layout is for text too large for the pinned one,
+  // not for small phones: at 1x the heading, search field and equipment note
+  // fit on any portrait phone 640 dp tall, and the note has to stay in view
+  // under a full list -- see the equipment note in the sheet.
+  for (final phone in const [Size(360, 640), Size(375, 667)]) {
+    testWidgets(
+      'on a ${phone.width.toInt()} x ${phone.height.toInt()} phone at 1x the '
+      'equipment note stays pinned under a full list',
+      (tester) async {
+        tester.view.physicalSize = phone;
+        tester.view.devicePixelRatio = 1;
+        addTearDown(tester.view.reset);
+
+        await tester.pumpWidget(
+          ProviderScope(
+            overrides: [
+              alternativesProvider.overrideWith((ref, key) async => _many(12)),
+            ],
+            child: MaterialApp(
+              home: Scaffold(
+                body: Builder(
+                  builder: (context) => TextButton(
+                    onPressed: () => showModalBottomSheet<String>(
+                      context: context,
+                      isScrollControlled: true,
+                      builder: (_) => ExerciseSwapSheet(
+                        planExerciseId: 77,
+                        exerciseName: 'Cable Fly',
+                        onGoToProfile: () {},
+                      ),
+                    ),
+                    child: const Text('open'),
+                  ),
+                ),
+              ),
+            ),
+          ),
+        );
+        await tester.tap(find.text('open'));
+        await tester.pumpAndSettle();
+
+        expect(tester.takeException(), isNull);
+        expect(find.byKey(const Key('swap.pane.scroll')), findsNothing);
+        expect(
+          find.byKey(const Key('swap.equipmentHint.link')).hitTestable(),
+          findsOneWidget,
+        );
+      },
+    );
+  }
+
   testWidgets('with no swap in flight a drag down still closes the sheet', (
     tester,
   ) async {

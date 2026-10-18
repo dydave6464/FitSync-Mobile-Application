@@ -62,9 +62,11 @@ class _ExerciseSwapSheetState extends ConsumerState<ExerciseSwapSheet> {
   /// How tall the list pane has to be, at 1x text, for its heading, search
   /// field and equipment note to stay put with the list scrolling between
   /// them. Those fixed parts take a little over 200 dp at 1x, and this
-  /// leaves room for a few rows. They grow with the text, so the bar does
-  /// too -- see [_listPane].
-  static const _fixedPaneMinHeight = 360.0;
+  /// leaves room for about one 72 dp row -- enough that every portrait phone
+  /// 640 dp tall keeps them pinned at 1x, the note included. They grow with
+  /// the text, so the bar does too, and large text still gets the one
+  /// scrolling pane -- see [_listPane].
+  static const _fixedPaneMinHeight = 290.0;
 
   /// Every animation in the catalogue store is 180x180.
   static const _demoSourcePx = 180.0;
