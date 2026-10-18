@@ -144,3 +144,25 @@ def test_every_driver_key_is_one_the_contract_names():
         "load", "sleep", "soreness", "energy", "stress",
         "injury_history", "recent_pain",
     }
+
+
+def test_drivers_rank_load_by_the_same_points_the_score_adds(monkeypatch):
+    # One load term for both, so changing its divisor can never leave the
+    # drivers ranking load against points the score no longer adds.
+    from app import risk
+
+    monkeypatch.setattr(risk, "load_points", lambda payload: 30.0)
+    payload = InjuryRiskRequest(load=1.0, checkins=[dict(GOOD_DAY, sleepQuality="poor")])
+    assert risk.rules_score(payload) == 45.0
+    assert [d.key for d in risk.drivers(payload)] == ["load", "sleep"]
+
+
+def test_the_load_term_is_written_as_the_server_calibration_test_reads_it():
+    # server/tests/training-load.test.js reads the divisor out of risk.py with
+    # this regex; it must still find the term after the refactor.
+    import re
+    from pathlib import Path
+
+    source = (Path(__file__).resolve().parents[1] / "app" / "risk.py").read_text()
+    match = re.search(r"max\(payload\.load,\s*0\.0\)\s*/\s*([0-9.]+)", source)
+    assert match and float(match.group(1)) == 2.0

@@ -88,6 +88,15 @@ def _recovery_penalty(checkin) -> float:
     )
 
 
+def load_points(payload: InjuryRiskRequest) -> float:
+    """The load term, shared by the score and the drivers.
+
+    Written exactly this way because server/tests/training-load.test.js reads
+    the divisor out of this file with a regex.
+    """
+    return max(payload.load, 0.0) / 2.0
+
+
 def injury_points(payload: InjuryRiskRequest) -> float:
     return min(INJURY_EACH * len(payload.injuryHistory), INJURY_CAP)
 
@@ -120,9 +129,10 @@ def drivers(payload: InjuryRiskRequest) -> List[RiskDriver]:
     reported is the worst answer, which is the one the user remembers.
     """
     candidates = []
-    load = max(payload.load, 0.0)
-    if load / 2.0 > 0:
-        candidates.append(("load", load / 2.0, round(load, 2)))
+    if load_points(payload) > 0:
+        candidates.append(
+            ("load", load_points(payload), round(max(payload.load, 0.0), 2))
+        )
     if payload.checkins:
         for key, field, table in CHECKIN_FIELDS:
             points = sum(
@@ -156,7 +166,7 @@ def rules_score(payload: InjuryRiskRequest) -> float:
         # schema rejects these, and this guards a caller that bypasses it.
         raise ValueError("training load must be a finite number")
 
-    score = max(payload.load, 0.0) / 2.0
+    score = load_points(payload)
     if payload.checkins:
         penalties = [_recovery_penalty(c) for c in payload.checkins]
         score += sum(penalties) / len(penalties)
