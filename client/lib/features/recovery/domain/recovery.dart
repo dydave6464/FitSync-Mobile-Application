@@ -30,11 +30,27 @@ class MorningCheckin {
   );
 }
 
+/// One input that raised an estimate, from the ML service's `drivers`.
+///
+/// [value] is whatever the contract sends for that [key]: a number for
+/// `load` (percent above the usual week) and `injury_history` (a count), and
+/// the 3-day worst answer as a string for the check-in questions and
+/// `recent_pain`.
+class RiskDriver {
+  const RiskDriver({required this.key, required this.value});
+
+  final String key;
+  final Object? value;
+}
+
 class InjuryRiskEstimate {
   const InjuryRiskEstimate({
     required this.riskLevel,
     required this.trainingLoadScore,
     required this.checkinDate,
+    this.source,
+    this.loadPct,
+    this.drivers,
   });
 
   /// 'low', 'moderate' or 'high'.
@@ -42,22 +58,46 @@ class InjuryRiskEstimate {
   final double? trainingLoadScore;
   final String checkinDate;
 
-  /// How far round the ring to draw.
+  /// 'model' when the scikit-learn model's score decided the estimate,
+  /// 'rules' when the rules' safety floor did or no model was loaded. Null on
+  /// a row saved before the service reported it.
+  final String? source;
+
+  /// The training-load index the estimate was worked out from: percent above
+  /// the usual week. Null on older rows.
+  final double? loadPct;
+
+  /// Up to three inputs that raised the estimate, most influential first.
+  /// Null when the row predates drivers; empty when nothing stood out.
+  final List<RiskDriver>? drivers;
+
+  /// How far round the ring to draw: the 0-100 score itself, so a low 35
+  /// sits visibly nearer moderate than a low 5 does.
   ///
-  /// Keyed off the level rather than the raw score: the score is a 0-100
-  /// internal figure whose thresholds live in risk.py, and drawing it directly
-  /// would put the arc and the word it sits under out of step the day those
-  /// thresholds move.
-  double get ringValue => switch (riskLevel) {
-    'high' => 0.9,
-    'moderate' => 0.55,
-    _ => 0.2,
-  };
+  /// An estimate saved without a score falls back to a fixed share for its
+  /// level, so the ring still agrees with the word under it.
+  double get ringValue {
+    final score = trainingLoadScore;
+    if (score != null) return (score / 100).clamp(0.0, 1.0);
+    return switch (riskLevel) {
+      'high' => 0.9,
+      'moderate' => 0.55,
+      _ => 0.2,
+    };
+  }
 
   String get label => switch (riskLevel) {
     'high' => 'High',
     'moderate' => 'Moderate',
     _ => 'Low',
+  };
+
+  /// What the level means for today's training, as the line under the ring
+  /// says it. Guidance, as the estimate is.
+  String get levelAdvice => switch (riskLevel) {
+    'high' => 'Consider a lighter day: mobility or rest.',
+    'moderate' => 'Train, but go a little easier.',
+    _ => 'Train as planned.',
   };
 
   /// The same score the other way up: 100 minus the 0-100 risk score, so
@@ -76,8 +116,8 @@ class InjuryRiskEstimate {
     return (100 - score).ceil().clamp(0, 100);
   }
 
-  /// The readiness card's tag, by level rather than by number -- the same
-  /// reason [ringValue] is.
+  /// The readiness card's tag, by level rather than by number, so the words
+  /// never second-guess the level the ML service chose.
   String get recoveryLabel => switch (riskLevel) {
     'high' => 'Recovery low',
     'moderate' => 'Recovery fair',
@@ -91,12 +131,104 @@ class InjuryRiskEstimate {
     _ => "You're primed to train",
   };
 
+  /// "Why: you slept poorly and this week is 35% above your usual." -- the
+  /// estimate's [drivers] in plain English, or null when there is nothing to
+  /// say.
+  ///
+  /// Null for a row that predates drivers. The server fills such rows with an
+  /// empty list, so a missing [source] is the tell as much as a missing list:
+  /// "nothing stands out" would be a claim that estimate never made. A
+  /// driver this build has no words for is skipped rather than shown raw.
+  String? get whyLine {
+    final drivers = this.drivers;
+    if (drivers == null || source == null) return null;
+    if (drivers.isEmpty) {
+      return 'Nothing in your check-ins, training or history stands out.';
+    }
+    final phrases = [for (final d in drivers) ?_driverPhrase(d)];
+    if (phrases.isEmpty) return null;
+    final joined = phrases.length == 1
+        ? phrases.single
+        : '${phrases.sublist(0, phrases.length - 1).join(', ')} '
+              'and ${phrases.last}';
+    return 'Why: $joined.';
+  }
+
   factory InjuryRiskEstimate.fromJson(Map<String, dynamic> json) =>
       InjuryRiskEstimate(
         riskLevel: json['riskLevel'] as String,
         trainingLoadScore: (json['trainingLoadScore'] as num?)?.toDouble(),
         checkinDate: json['checkinDate'] as String,
+        source: json['source'] is String ? json['source'] as String : null,
+        loadPct: json['loadPct'] is num
+            ? (json['loadPct'] as num).toDouble()
+            : null,
+        drivers: _parseDrivers(json['drivers']),
       );
+}
+
+/// Older rows have no `drivers` at all, so anything that is not a list reads
+/// as absent, and an entry without a string key is dropped rather than
+/// failing the whole Recovery tab over one bad row.
+List<RiskDriver>? _parseDrivers(Object? raw) {
+  if (raw is! List) return null;
+  return [
+    for (final entry in raw)
+      if (entry is Map && entry['key'] is String)
+        RiskDriver(key: entry['key'] as String, value: entry['value']),
+  ];
+}
+
+/// One driver as a clause of the "Why" sentence, worded by its value where
+/// that changes the meaning -- a little sore is not very sore. Every value
+/// the rules give points to has words, since only those can be drivers.
+String? _driverPhrase(RiskDriver driver) {
+  final value = driver.value;
+  switch (driver.key) {
+    case 'load':
+      if (value is! num) return null;
+      return 'this week is ${value.round()}% above your usual';
+    case 'injury_history':
+      if (value is! num || value < 1) return null;
+      final n = value.round();
+      return n == 1 ? 'you have a past injury' : 'you have $n past injuries';
+    case 'sleep':
+      return switch (value) {
+        'poor' => 'you slept poorly',
+        'fair' => 'you slept fairly',
+        'good' => 'your sleep was good but not excellent',
+        _ => null,
+      };
+    case 'soreness':
+      return switch (value) {
+        'severe' => 'your muscles are very sore',
+        'moderate' => 'your muscles are sore',
+        'mild' => 'your muscles are a little sore',
+        _ => null,
+      };
+    case 'energy':
+      return switch (value) {
+        'very_low' => 'your energy is very low',
+        'low' => 'your energy is low',
+        'moderate' => 'your energy is only moderate',
+        _ => null,
+      };
+    case 'stress':
+      return switch (value) {
+        'high' => 'your stress is high',
+        'moderate' => 'your stress is moderate',
+        'low' => 'you have a little stress',
+        _ => null,
+      };
+    case 'recent_pain':
+      return switch (value) {
+        'severe' => 'you reported severe pain after a recent workout',
+        'moderate' => 'you reported pain after a recent workout',
+        'mild' => 'you reported mild pain after a recent workout',
+        _ => null,
+      };
+  }
+  return null;
 }
 
 /// When one muscle group was last trained, from GET /recovery.

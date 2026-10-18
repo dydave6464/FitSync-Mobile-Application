@@ -18,9 +18,9 @@ class RecoveryRepository {
   /// Answers go up exactly as given. See MorningCheckin's class comment.
   ///
   /// Nothing is read back out. The `estimate` this POST returns is the ML
-  /// service's own body -- `riskLevel` and `trainingLoadScore`, and nothing
-  /// else (ml/app/schemas.py, InjuryRiskResponse) -- so it cannot build an
-  /// [InjuryRiskEstimate], which is dated. The dated one comes from
+  /// service's own body (ml/app/schemas.py, InjuryRiskResponse), which has no
+  /// `checkinDate`, so it cannot build an [InjuryRiskEstimate], which is
+  /// dated. The dated one comes from
   /// GET /api/v1/recovery, which joins the check-in that produced it; callers
   /// invalidate the overview rather than using a return value here, and the
   /// two shapes stay one shape each.

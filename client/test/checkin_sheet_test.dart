@@ -5,6 +5,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import 'package:fitsync/core/theme.dart';
+import 'package:fitsync/core/widgets/fs_kit.dart';
 import 'package:fitsync/features/recovery/data/recovery_repository.dart';
 import 'package:fitsync/features/recovery/domain/recovery.dart';
 import 'package:fitsync/features/recovery/presentation/providers.dart';
@@ -53,7 +54,11 @@ class _SlowFakeRepo implements RecoveryRepository {
       throw UnimplementedError('${i.memberName} is not used here');
 }
 
-Future<_FakeRepo> _open(WidgetTester tester, {Object? error}) async {
+Future<_FakeRepo> _open(
+  WidgetTester tester, {
+  Object? error,
+  MorningCheckin? existing,
+}) async {
   final repo = _FakeRepo()..error = error;
   await tester.pumpWidget(
     ProviderScope(
@@ -63,7 +68,7 @@ Future<_FakeRepo> _open(WidgetTester tester, {Object? error}) async {
         home: Builder(
           builder: (context) => Scaffold(
             body: TextButton(
-              onPressed: () => showCheckinSheet(context),
+              onPressed: () => showCheckinSheet(context, existing: existing),
               child: const Text('open'),
             ),
           ),
@@ -74,6 +79,43 @@ Future<_FakeRepo> _open(WidgetTester tester, {Object? error}) async {
   await tester.tap(find.text('open'));
   await tester.pumpAndSettle();
   return repo;
+}
+
+/// Answers all four questions, so Save is enabled.
+Future<void> _answerAll(WidgetTester tester) async {
+  for (final key in const [
+    'checkin.sleepQuality.poor',
+    'checkin.muscleSoreness.severe',
+    'checkin.energy.low',
+    'checkin.stress.high',
+  ]) {
+    await tester.ensureVisible(find.byKey(Key(key)));
+    await tester.tap(find.byKey(Key(key)));
+    await tester.pump();
+  }
+}
+
+bool _saveEnabled(WidgetTester tester) {
+  final button = tester.widget<FsButton>(find.byKey(const Key('checkin.save')));
+  return button.onPressed != null;
+}
+
+/// The chip labels of one question's row, left to right then top to bottom.
+List<String> _rowLabels(WidgetTester tester, String field) {
+  final chips = find.byWidgetPredicate(
+    (w) =>
+        w is FsChip &&
+        (w.key as ValueKey<String>?)?.value.startsWith('checkin.$field.') ==
+            true,
+  );
+  final found = tester.widgetList<FsChip>(chips).toList();
+  final positions =
+      [for (final c in found) (c.label, tester.getTopLeft(find.byWidget(c)))]
+        ..sort((a, b) {
+          final dy = a.$2.dy.compareTo(b.$2.dy);
+          return dy != 0 ? dy : a.$2.dx.compareTo(b.$2.dx);
+        });
+  return [for (final p in positions) p.$1];
 }
 
 void main() {
@@ -89,15 +131,15 @@ void main() {
   testWidgets('it posts the values the server stores', (tester) async {
     final repo = await _open(tester);
 
-    await tester.tap(find.byKey(const Key('checkin.sleepQuality.poor')));
-    await tester.tap(find.byKey(const Key('checkin.muscleSoreness.severe')));
-    await tester.pump();
+    await _answerAll(tester);
     await tester.tap(find.byKey(const Key('checkin.save')));
     await tester.pumpAndSettle();
 
     // Column spellings, untouched.
     expect(repo.sent!['sleepQuality'], 'poor');
     expect(repo.sent!['muscleSoreness'], 'severe');
+    expect(repo.sent!['energy'], 'low');
+    expect(repo.sent!['stress'], 'high');
   });
 
   testWidgets('a failed save says so and does not claim it saved', (
@@ -105,6 +147,7 @@ void main() {
   ) async {
     await _open(tester, error: Exception('offline'));
 
+    await _answerAll(tester);
     await tester.tap(find.byKey(const Key('checkin.save')));
     await tester.pumpAndSettle();
 
@@ -147,6 +190,7 @@ void main() {
       await tester.tap(find.text('open'));
       await tester.pumpAndSettle();
 
+      await _answerAll(tester);
       await tester.tap(find.byKey(const Key('checkin.save')));
       // Reach the in-flight await inside checkIn without resolving it.
       await tester.pump();
@@ -171,4 +215,119 @@ void main() {
       expect(repo.overviewCalls, 2);
     },
   );
+
+  testWidgets('a new check-in starts with nothing chosen and Save disabled', (
+    tester,
+  ) async {
+    final repo = await _open(tester);
+
+    final chips = tester.widgetList<FsChip>(find.byType(FsChip));
+    expect(chips, isNotEmpty);
+    expect(chips.where((c) => c.selected), isEmpty);
+    expect(_saveEnabled(tester), isFalse);
+    // Says why Save is waiting, rather than leaving a dead button.
+    expect(find.text('Answer all four to save.'), findsOneWidget);
+
+    // Three of four is still not enough.
+    for (final key in const [
+      'checkin.sleepQuality.good',
+      'checkin.muscleSoreness.none',
+      'checkin.energy.high',
+    ]) {
+      await tester.tap(find.byKey(Key(key)));
+      await tester.pump();
+    }
+    expect(_saveEnabled(tester), isFalse);
+    await tester.ensureVisible(find.byKey(const Key('checkin.save')));
+    await tester.tap(find.byKey(const Key('checkin.save')));
+    await tester.pump();
+    expect(repo.sent, isNull);
+
+    await tester.tap(find.byKey(const Key('checkin.stress.very_low')));
+    await tester.pump();
+    expect(_saveEnabled(tester), isTrue);
+    expect(find.text('Answer all four to save.'), findsNothing);
+  });
+
+  testWidgets('Update opens on what was answered, ready to save', (
+    tester,
+  ) async {
+    await _open(
+      tester,
+      existing: const MorningCheckin(
+        checkinId: 1,
+        checkinDate: '2026-10-18',
+        sleepQuality: 'fair',
+        muscleSoreness: 'mild',
+        energy: 'very_low',
+        stress: 'moderate',
+      ),
+    );
+
+    bool selected(String key) =>
+        tester.widget<FsChip>(find.byKey(Key(key))).selected;
+    expect(selected('checkin.sleepQuality.fair'), isTrue);
+    expect(selected('checkin.muscleSoreness.mild'), isTrue);
+    expect(selected('checkin.energy.very_low'), isTrue);
+    expect(selected('checkin.stress.moderate'), isTrue);
+    expect(_saveEnabled(tester), isTrue);
+  });
+
+  testWidgets('every scale runs the same way, worst to best', (tester) async {
+    await _open(tester);
+
+    expect(_rowLabels(tester, 'sleepQuality'), [
+      'Poor',
+      'Fair',
+      'Good',
+      'Excellent',
+    ]);
+    expect(_rowLabels(tester, 'muscleSoreness'), [
+      'Severe',
+      'Moderate',
+      'Mild',
+      'None',
+    ]);
+    expect(_rowLabels(tester, 'energy'), [
+      'Very low',
+      'Low',
+      'Moderate',
+      'High',
+    ]);
+    expect(_rowLabels(tester, 'stress'), [
+      'High',
+      'Moderate',
+      'Low',
+      'Very low',
+    ]);
+  });
+
+  testWidgets('it says why it asks', (tester) async {
+    await _open(tester);
+
+    expect(
+      find.text(
+        "Four quick questions. Your answers feed today's injury-risk estimate.",
+      ),
+      findsOneWidget,
+    );
+  });
+
+  testWidgets('fits a 320 dp phone at 2x text, Save reachable', (tester) async {
+    tester.view.physicalSize = const Size(320, 640);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.reset);
+    tester.platformDispatcher.textScaleFactorTestValue = 2;
+    addTearDown(tester.platformDispatcher.clearTextScaleFactorTestValue);
+
+    final repo = await _open(tester);
+    expect(tester.takeException(), isNull);
+
+    await _answerAll(tester);
+    await tester.ensureVisible(find.byKey(const Key('checkin.save')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const Key('checkin.save')));
+    await tester.pumpAndSettle();
+    expect(repo.sent, isNotNull);
+  });
 }

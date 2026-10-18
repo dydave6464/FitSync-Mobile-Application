@@ -11,8 +11,10 @@ import '../../../exercises/presentation/exercise_list_screen.dart'
 import '../../domain/recovery.dart';
 import '../providers.dart';
 
-/// One question's ENUM column, its on-screen label and its options in the
-/// order the design shows them.
+/// One question's ENUM column, its on-screen label and its options, every
+/// scale worst first. They used to run in mixed directions -- sleep from poor
+/// up, soreness from none up -- so the same spot on two rows meant opposite
+/// things, and a tap by habit gave the wrong answer.
 ///
 /// [values] are the server's own spellings -- ml/app/risk.py looks each one
 /// up with a defaulting get, so anything sent that is not exactly one of
@@ -28,7 +30,7 @@ const _questions = <({String field, String label, List<String> values})>[
   (
     field: 'muscleSoreness',
     label: 'Soreness',
-    values: ['none', 'mild', 'moderate', 'severe'],
+    values: ['severe', 'moderate', 'mild', 'none'],
   ),
   (
     field: 'energy',
@@ -38,18 +40,9 @@ const _questions = <({String field, String label, List<String> values})>[
   (
     field: 'stress',
     label: 'Stress',
-    values: ['very_low', 'low', 'moderate', 'high'],
+    values: ['high', 'moderate', 'low', 'very_low'],
   ),
 ];
-
-/// The neutral-ish default for each scale, used when there is no [MorningCheckin]
-/// to seed from yet.
-const _defaults = <String, String>{
-  'sleepQuality': 'good',
-  'muscleSoreness': 'none',
-  'energy': 'moderate',
-  'stress': 'low',
-};
 
 /// `very_low` -> `Very low`. Only the leading character is cased; the raw
 /// value underneath is untouched and is what actually gets posted.
@@ -61,7 +54,9 @@ String _displayLabel(String value) {
 /// The morning check-in sheet: four questions, four chip rows, one save.
 ///
 /// Pass [existing] when the user already answered today and is revisiting --
-/// Update then opens on what was actually answered rather than the defaults.
+/// Update then opens on what was actually answered. A new check-in opens with
+/// nothing chosen: pre-selected answers were saved by anyone who tapped Save
+/// straight away, and fed the estimate a morning nobody described.
 Future<void> showCheckinSheet(
   BuildContext context, {
   MorningCheckin? existing,
@@ -92,12 +87,17 @@ class _CheckinSheet extends ConsumerStatefulWidget {
 
 class _CheckinSheetState extends ConsumerState<_CheckinSheet> {
   late final Map<String, String> _answers = {
-    'sleepQuality': widget.existing?.sleepQuality ?? _defaults['sleepQuality']!,
-    'muscleSoreness':
-        widget.existing?.muscleSoreness ?? _defaults['muscleSoreness']!,
-    'energy': widget.existing?.energy ?? _defaults['energy']!,
-    'stress': widget.existing?.stress ?? _defaults['stress']!,
+    if (widget.existing case final existing?) ...{
+      'sleepQuality': existing.sleepQuality,
+      'muscleSoreness': existing.muscleSoreness,
+      'energy': existing.energy,
+      'stress': existing.stress,
+    },
   };
+
+  /// Save waits for all four: a partial check-in has nothing honest to put
+  /// in the missing columns.
+  bool get _complete => _questions.every((q) => _answers.containsKey(q.field));
 
   bool _busy = false;
   String? _failure;
@@ -137,8 +137,10 @@ class _CheckinSheetState extends ConsumerState<_CheckinSheet> {
   Widget build(BuildContext context) {
     final t = context.fs;
 
+    // Scrolls, so at large text on a small phone Save is still reachable
+    // rather than pushed off the bottom of the sheet.
     return SafeArea(
-      child: Padding(
+      child: SingleChildScrollView(
         padding: EdgeInsets.fromLTRB(
           18,
           10,
@@ -156,6 +158,12 @@ class _CheckinSheetState extends ConsumerState<_CheckinSheet> {
                 fontWeight: FontWeight.w700,
                 color: t.text,
               ),
+            ),
+            const SizedBox(height: 6),
+            Text(
+              "Four quick questions. Your answers feed today's injury-risk "
+              'estimate.',
+              style: TextStyle(fontSize: 13, color: t.text2, height: 1.4),
             ),
             const SizedBox(height: 16),
             for (final q in _questions) ...[
@@ -194,8 +202,18 @@ class _CheckinSheetState extends ConsumerState<_CheckinSheet> {
               key: const Key('checkin.save'),
               label: 'Save',
               busy: _busy,
-              onPressed: _busy ? null : _save,
+              onPressed: _busy || !_complete ? null : _save,
             ),
+            if (!_complete) ...[
+              const SizedBox(height: 8),
+              Center(
+                child: Text(
+                  'Answer all four to save.',
+                  textAlign: TextAlign.center,
+                  style: TextStyle(fontSize: 12, color: t.text2),
+                ),
+              ),
+            ],
           ],
         ),
       ),
