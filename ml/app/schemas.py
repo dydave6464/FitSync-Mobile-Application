@@ -11,7 +11,7 @@ See the design, section 4.
 trainingLocation arrives and orders the candidates (catalogue.LOCATION_FIRST).
 """
 import math
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Union
 
 from pydantic import BaseModel, Field, field_validator
 
@@ -91,7 +91,15 @@ class InjuryRiskRequest(BaseModel):
     # clamp. NaN defeats min/max entirely -- every comparison with it is False --
     # and would otherwise produce a NaN score that crashes JSON serialisation.
     load: float = Field(0.0, allow_inf_nan=False)
+    # The user's reported injuries from their profile, in the same InjuryRef
+    # shape the plan payload uses. Only the count is read: the estimate asks
+    # whether someone has been hurt before, not where. Kept as plain dicts so a
+    # half-filled entry never costs the user an estimate.
     injuryHistory: List[Dict[str, Any]] = Field(default_factory=list)
+    # The worst pain reported in session_outcomes over the last 14 days
+    # (none|mild|moderate|severe). Null or absent means no reports, and an
+    # unrecognised value is read the same way, like an unknown check-in answer.
+    recentPain: Optional[str] = None
 
     @field_validator("load", mode="before")
     @classmethod
@@ -108,9 +116,30 @@ class InjuryRiskRequest(BaseModel):
         return v
 
 
+class RiskDriver(BaseModel):
+    """One input that raised the estimate, for the app's "Why this level".
+
+    `value` keeps its wire type: a percentage for load, a count for
+    injury_history, and the worst answer as a string for the rest. int comes
+    first in the Union so pydantic's smart mode leaves a count as an int.
+    """
+    key: str
+    value: Union[int, float, str]
+
+
 class InjuryRiskResponse(BaseModel):
     riskLevel: str
+    # The final 0-100 score, higher is riskier: max(model score, rules score).
     trainingLoadScore: float
+    # "model" when the model's score decided it, "rules" when the rules' did or
+    # no model is loaded.
+    source: str = "rules"
+    # Null when no model is loaded (or it failed on this request).
+    modelVersion: Optional[str] = None
+    # The training-load index as received: percent above the usual week.
+    loadPct: Optional[float] = None
+    # Up to three, most influential first; empty when nothing stood out.
+    drivers: List[RiskDriver] = Field(default_factory=list)
 
 
 # Worded as the app's goal screen words them, so a plan reads the way the
