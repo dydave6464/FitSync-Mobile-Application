@@ -341,7 +341,7 @@ class _Row extends StatelessWidget {
           ),
           child: Row(
             children: [
-              Icon(icon, size: 20, color: dimmed ? t.text3 : t.accent),
+              Icon(icon, size: 20, color: dimmed ? t.text3 : t.accentText),
               const SizedBox(width: 13),
               Expanded(
                 child: Column(

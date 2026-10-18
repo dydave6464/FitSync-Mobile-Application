@@ -350,7 +350,7 @@ class _ExerciseLogPanelState extends State<ExerciseLogPanel> {
                                         fontFamily: fsMonoFamily,
                                         fontSize: 11,
                                         fontWeight: FontWeight.w600,
-                                        color: t.accent,
+                                        color: t.accentText,
                                       ),
                                     ),
                                   ),
@@ -501,7 +501,7 @@ class _ExerciseLogPanelState extends State<ExerciseLogPanel> {
             ),
             child: Row(
               children: [
-                Icon(Icons.arrow_upward, size: 16, color: t.accent),
+                Icon(Icons.arrow_upward, size: 16, color: t.accentText),
                 const SizedBox(width: 10),
                 Expanded(
                   child: Text(
@@ -559,7 +559,7 @@ class _AddSet extends StatelessWidget {
         // control without the card's heading in view.
         label: Text('Add set', semanticsLabel: 'Add a set to $exerciseName'),
         style: TextButton.styleFrom(
-          foregroundColor: t.accent,
+          foregroundColor: t.accentText,
           minimumSize: const Size(48, 48),
           textStyle: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600),
         ),

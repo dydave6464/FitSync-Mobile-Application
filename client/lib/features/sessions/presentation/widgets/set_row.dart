@@ -312,7 +312,7 @@ class SetRow extends StatelessWidget {
   /// The mockup's two states: an accent check once the set is stored, and an
   /// empty ring before that.
   Widget _mark(FsTokens t, bool done) {
-    if (done) return Icon(Icons.check, size: 16, color: t.accent);
+    if (done) return Icon(Icons.check, size: 16, color: t.accentText);
     return Container(
       width: 16,
       height: 16,

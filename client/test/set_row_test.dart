@@ -82,6 +82,29 @@ void main() {
   });
   // The whole logged row is a button that reopens the set; a screen reader
   // has to say so, or the tap that undoes a set is a surprise.
+  // The tick is what says the set is stored, so it is read like a word: the
+  // brand green is 2.9:1 on white, under the 3:1 a meaningful icon needs.
+  testWidgets("a logged set's tick is drawn in the text green", (tester) async {
+    await tester.pumpWidget(
+      _host(
+        SetRow(
+          setNumber: 2,
+          logged: const LoggedSet(
+            exerciseId: 1,
+            setNumber: 2,
+            weightKg: 20,
+            reps: 8,
+          ),
+          drafts: _drafts(tester),
+          onReopen: () {},
+        ),
+      ),
+    );
+
+    final tick = find.byIcon(Icons.check);
+    expect(tester.widget<Icon>(tick).color, tester.element(tick).fs.accentText);
+  });
+
   testWidgets('a logged row tells a screen reader it reopens the set', (
     tester,
   ) async {

@@ -173,7 +173,7 @@ class _ExerciseSwapSheetState extends ConsumerState<ExerciseSwapSheet> {
           const TextSpan(text: "Don't see your equipment? "),
           TextSpan(
             text: 'Update it in Profile \u2192 Equipment & location.',
-            style: TextStyle(color: linked ? t.accent : t.text3),
+            style: TextStyle(color: linked ? t.accentText : t.text3),
           ),
         ],
       ),

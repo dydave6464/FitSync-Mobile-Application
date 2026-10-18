@@ -148,7 +148,7 @@ class LevelStep extends ConsumerWidget {
                 contentPadding: const EdgeInsets.symmetric(horizontal: 20),
                 title: Text(location.label),
                 trailing: location.value == value.trainingLocation
-                    ? Icon(Icons.check, size: 18, color: sheet.fs.accent)
+                    ? Icon(Icons.check, size: 18, color: sheet.fs.accentText)
                     : null,
                 onTap: () => Navigator.of(sheet).pop(location.value),
               ),

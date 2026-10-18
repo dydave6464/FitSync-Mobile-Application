@@ -1312,6 +1312,21 @@ void main() {
       ),
     );
 
+    // Its own foreground colour overrides the theme's text green for text
+    // buttons, so it has to name the text green itself.
+    testWidgets('Add set reads in the text green', (tester) async {
+      await tester.pumpWidget(panel(tester, setCount: 3));
+
+      final label = find.descendant(
+        of: find.byKey(const Key('logpanel.addSet')),
+        matching: find.byType(RichText),
+      );
+      expect(
+        tester.widget<RichText>(label.first).text.style?.color,
+        tester.element(label.first).fs.accentText,
+      );
+    });
+
     testWidgets('draws as many rows as it is told, the target unchanged', (
       tester,
     ) async {
