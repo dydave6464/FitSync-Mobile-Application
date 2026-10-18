@@ -302,7 +302,7 @@ void main() {
       }
     });
 
-    testWidgets('a far-right area chosen elsewhere is scrolled into view', (
+    testWidgets('a last-in-line area chosen elsewhere shows on screen', (
       tester,
     ) async {
       tester.view.physicalSize = const Size(320, 640);
@@ -320,6 +320,39 @@ void main() {
       expect(rect.right, lessThanOrEqualTo(320));
     });
   });
+
+  // Reported on a phone: the row ended with Core flush against the right-hand
+  // edge, so nothing said Cardio was there to swipe to. Every button shows
+  // without scrolling, wrapping onto another line when it must.
+  for (final (size, scale) in [
+    (const Size(393, 852), 1.0),
+    (const Size(320, 640), 2.0),
+  ]) {
+    for (final selecting in [false, true]) {
+      testWidgets(
+        'every muscle button is on screen at ${size.width.toInt()} dp and '
+        '$scale× text${selecting ? ', picking' : ''}',
+        (tester) async {
+          tester.view.physicalSize = size;
+          tester.view.devicePixelRatio = 1.0;
+          tester.platformDispatcher.textScaleFactorTestValue = scale;
+          addTearDown(tester.view.reset);
+          addTearDown(tester.platformDispatcher.clearTextScaleFactorTestValue);
+          await _pump(tester, _container(), selecting: selecting);
+
+          expect(tester.takeException(), isNull);
+          for (final name in [
+            'all',
+            for (final region in MuscleRegion.values) region.name,
+          ]) {
+            final chip = tester.getRect(_region(name));
+            expect(chip.left, greaterThanOrEqualTo(0), reason: name);
+            expect(chip.right, lessThanOrEqualTo(size.width), reason: name);
+          }
+        },
+      );
+    }
+  }
 
   group('recent strip', () {
     testWidgets('shows the recent exercises when nothing is filtered', (
