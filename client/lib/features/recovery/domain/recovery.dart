@@ -43,8 +43,8 @@ class RiskDriver {
   final Object? value;
 }
 
-/// One reason in the "Why" list: the [key] of the driver it came from, so
-/// the screen can give it an icon, and its words.
+/// One reason in the list under the advice: the [key] of the driver it came
+/// from, so the screen can give it an icon, and its words.
 class RiskReason {
   const RiskReason({required this.key, required this.text});
 
@@ -52,7 +52,7 @@ class RiskReason {
   final String text;
 }
 
-/// What the "Why" list says when an estimate found nothing standing out.
+/// What the reasons list says when an estimate found nothing standing out.
 const nothingStandsOut =
     'Nothing in your check-ins, training or history stands out.';
 
@@ -145,25 +145,38 @@ class InjuryRiskEstimate {
     _ => "You're primed to train",
   };
 
-  /// The estimate's [drivers] as the "Why" list under the advice, one short
-  /// reason each, most influential first: "Poor sleep lately", "Training 35%
-  /// above your usual week".
+  /// The estimate's [drivers] as the list under the advice, one short reason
+  /// each, most influential first: "Poor sleep today", "Training 35% above
+  /// your usual week".
+  ///
+  /// [today] is this morning's check-in, which decides whether a check-in
+  /// reason happened today or only on an earlier morning; without it, none
+  /// claims today.
   ///
   /// Empty when the estimate found nothing standing out. Null when there is
   /// nothing to say: a row that predates drivers -- the server sends it an
   /// empty list too, so a missing [source] is the tell, and "nothing stands
   /// out" would be a claim that estimate never made -- or one whose every
   /// driver this build has no words for. Those are skipped, never shown raw.
-  List<RiskReason>? get whyReasons {
+  List<RiskReason>? whyReasons({MorningCheckin? today}) {
     final drivers = this.drivers;
     if (drivers == null || source == null) return null;
     if (drivers.isEmpty) return const [];
     final reasons = [
       for (final d in drivers)
-        if (_reasonText(d) case final text?) RiskReason(key: d.key, text: text),
+        if (_reasonText(d, today) case final text?)
+          RiskReason(key: d.key, text: text),
     ];
     return reasons.isEmpty ? null : reasons;
   }
+
+  /// The heading over [whyReasons], in the verdict's own terms. They are
+  /// what pushed the score up, so under a low verdict they are things to
+  /// watch; "Why" there read as if poor sleep were why all was well.
+  String get whyHeading => switch (riskLevel) {
+    'high' || 'moderate' => "What's raising it",
+    _ => 'Worth watching',
+  };
 
   factory InjuryRiskEstimate.fromJson(Map<String, dynamic> json) =>
       InjuryRiskEstimate(
@@ -194,17 +207,18 @@ List<RiskDriver>? _parseDrivers(Object? raw) {
 /// server/src/db/training-load.js).
 const _loadCap = 130;
 
-/// A driver as one reason in the "Why" list, worded by its value where
-/// that changes the meaning, or null for one this build has no words for.
+/// A driver as one reason in the list, worded by its value where that
+/// changes the meaning, or null for one this build has no words for.
 ///
-/// The check-in drivers are the worst answer over the last 3 days, not this
-/// morning's, so they read as "lately": after a poor night on Monday and a
-/// good one today, today's box must not seem to contradict this morning's
-/// answer. Only the
+/// The check-in drivers are the worst answer over the last 3 days, so each
+/// says when: "today" when it is this morning's answer, "in the last few
+/// days" when only an earlier morning gave it -- after a poor night on Monday
+/// and a good one today, today's box must not seem to contradict this
+/// morning's answer, and a first morning must not claim a pattern. Only the
 /// answers worth 5 rule points or more have words, since only those can be
 /// drivers; an everyday answer (good sleep, mild soreness) that somehow
 /// arrived is skipped rather than blamed.
-String? _reasonText(RiskDriver driver) {
+String? _reasonText(RiskDriver driver, MorningCheckin? today) {
   final value = driver.value;
   switch (driver.key) {
     case 'load':
@@ -244,7 +258,25 @@ String? _reasonText(RiskDriver driver) {
     ('stress', 'moderate') => 'Moderate stress',
     _ => null,
   };
-  return answer == null ? null : '$answer lately';
+  if (answer == null) return null;
+  final todays = switch (driver.key) {
+    'sleep' => today?.sleepQuality,
+    'soreness' => today?.muscleSoreness,
+    'energy' => today?.energy,
+    _ => today?.stress,
+  };
+  return todays == value ? '$answer today' : '$answer in the last few days';
+}
+
+/// The line under the reasons while today's estimate rests on fewer than
+/// three check-ins -- [count] is GET /recovery's `checkinCount`, the
+/// estimator's own window. Null from the third on, and for a count the
+/// server did not send: nothing is guessed.
+String? fewCheckinsNote(int? count) {
+  if (count == null || count < 1 || count >= 3) return null;
+  final checkins = count == 1 ? '1 check-in' : '$count check-ins';
+  return 'Based on $checkins. It gets more accurate as you check in each '
+      'morning.';
 }
 
 /// When one muscle group was last trained, from GET /recovery.
@@ -290,11 +322,16 @@ class RecoveryOverview {
     required this.latestEstimate,
     required this.load,
     this.muscles = const [],
+    this.checkinCount,
   });
 
   final MorningCheckin? todayCheckin;
   final InjuryRiskEstimate? latestEstimate;
   final List<VolumeBucket> load;
+
+  /// How many check-ins today's estimate rests on, over the estimator's own
+  /// window. Null from a server that predates it.
+  final int? checkinCount;
 
   /// Longest rested first, as the server orders them.
   final List<MuscleRecency> muscles;
@@ -311,6 +348,9 @@ class RecoveryOverview {
             : InjuryRiskEstimate.fromJson(
                 json['latestEstimate'] as Map<String, dynamic>,
               ),
+        checkinCount: json['checkinCount'] is int
+            ? json['checkinCount'] as int
+            : null,
         load: [
           for (final b in (json['load'] as List<dynamic>? ?? const []))
             VolumeBucket.fromJson(b as Map<String, dynamic>),
