@@ -16,6 +16,7 @@ import '../../exercises/presentation/exercise_list_screen.dart'
 import '../../plans/domain/workout_plan.dart';
 import '../../plans/presentation/add_to_plan_sheet.dart';
 import '../../plans/presentation/exercise_swap_sheet.dart';
+import '../../plans/presentation/make_plan_sheet.dart';
 import '../../plans/presentation/providers.dart';
 import '../../profile/presentation/providers.dart';
 import '../data/rest_alerts.dart';
@@ -23,6 +24,7 @@ import '../domain/active_session.dart';
 import '../domain/encouragement.dart';
 import '../domain/rest_period.dart';
 import 'in_session_exercise_screen.dart';
+import 'open_workout_summary.dart';
 import 'providers.dart';
 import 'widgets/encouragement_card.dart';
 import 'widgets/exercise_demo_stage.dart';
@@ -32,7 +34,6 @@ import 'widgets/logger_action.dart';
 import 'widgets/rest_sheet.dart';
 import 'widgets/rest_timer.dart';
 import 'widgets/set_drafts.dart';
-import 'workout_draft.dart' show chosenSplitStyleProvider;
 
 /// The active workout, one exercise at a time: its set table, Continue to
 /// the next, and the jump sheet for anything out of order.
@@ -323,6 +324,50 @@ class _SessionLoggerScreenState extends ConsumerState<SessionLoggerScreen>
     _draftsFor = key;
   }
 
+  /// How many rows each exercise's set table has, for the exercises whose
+  /// count the user has changed with "+ Add set" or a row's ✕. Keyed like
+  /// the drafts, by position and exercise, so a switch starts the new
+  /// exercise on its own target.
+  ///
+  /// Kept on the screen only: nothing on the server records rows that were
+  /// never logged, so a resumed workout shows its target, or as many rows as
+  /// were logged if that is more -- see [_rowsFor].
+  final Map<(int, int), int> _rowCounts = {};
+
+  /// The rows [exercise] shows at [index]: the target, or the count the user
+  /// set, or the highest set logged against it, whichever is most. The last
+  /// is what keeps an extra set logged before a resume on screen.
+  int _rowsFor(int index, PlanExercise exercise, ActiveSession session) {
+    var rows = _rowCounts[(index, exercise.exerciseId)] ?? exercise.targetSets;
+    for (final set in session.sets) {
+      if (set.exerciseId == exercise.exerciseId && set.setNumber > rows) {
+        rows = set.setNumber;
+      }
+    }
+    return rows;
+  }
+
+  /// [exercise] with its rows as its target, for everything that walks its
+  /// sets: the next set to do, the finish question, the progress bar, the
+  /// jump sheet and the encouragement all count added rows like any other.
+  /// Only the prescription on screen keeps the plan's own number.
+  static PlanExercise _withRows(PlanExercise exercise, int rows) =>
+      rows == exercise.targetSets
+      ? exercise
+      : PlanExercise(
+          planExerciseId: exercise.planExerciseId,
+          exerciseId: exercise.exerciseId,
+          name: exercise.name,
+          muscleGroup: exercise.muscleGroup,
+          orderNo: exercise.orderNo,
+          targetSets: rows,
+          targetReps: exercise.targetReps,
+          thumbnailUrl: exercise.thumbnailUrl,
+          equipment: exercise.equipment,
+          dayNo: exercise.dayNo,
+          coaching: exercise.coaching,
+        );
+
   @override
   void dispose() {
     _drafts.dispose();
@@ -531,8 +576,20 @@ class _SessionLoggerScreenState extends ConsumerState<SessionLoggerScreen>
   ///
   /// Undo rather than a question first: reopening is frequent and costs
   /// nothing once Undo can put the set back.
-  Future<void> _reopenSet(PlanExercise exercise, int setNumber) async {
+  ///
+  /// [rows] is the table's row count as drawn. It is pinned before the
+  /// delete: a row past the target that is only on screen because it was
+  /// logged would otherwise vanish the moment it is reopened.
+  Future<void> _reopenSet(
+    int index,
+    PlanExercise exercise,
+    int rows,
+    int setNumber,
+  ) async {
     final messenger = ScaffoldMessenger.of(context);
+    if (rows > exercise.targetSets) {
+      _rowCounts[(index, exercise.exerciseId)] = rows;
+    }
     // Read before the delete, which is what takes it out of the session.
     final stored = ref
         .read(activeSessionProvider)
@@ -879,15 +936,21 @@ class _SessionLoggerScreenState extends ConsumerState<SessionLoggerScreen>
   ///
   /// [dialogContext] is popped first, with `true` -- see [_showSummary] --
   /// so the summary does not sit over a snack bar the user cannot read, and
-  /// so that dialog's own pop does not race the add-to-plan sheet below.
-  /// This method closes the screen itself once there is nothing left for the
-  /// user to interact with: immediately when there is no day to choose, or
-  /// once the sheet (or the replace-my-plan question) resolves when there is.
+  /// so that dialog's own pop does not race the sheet below. This method
+  /// closes the screen itself once there is nothing left for the user to
+  /// interact with: once the sheet it asks on resolves, however it resolves.
+  ///
+  /// Which sheet depends on the plan already active. A plan of the user's own
+  /// has days to choose between, and the workout is added among them. Any
+  /// other -- a generated plan, or none -- is replaced by a plan made from
+  /// this workout, and [showMakePlanSheet] asks for the split that names it
+  /// and, when a plan is about to go, confirms it by name.
+  ///
   /// That pop, and the rest of this method, still has to survive a disposed
-  /// State: `showAddToPlanSheet` keeps the screen alive for as long as it is
-  /// open, but the write it leads to does not wait for it, and neither did
-  /// the version of this method before the sheet existed. The messenger and
-  /// the container are both captured before any await, but for different
+  /// State: the sheet keeps the screen alive for as long as it is open, but
+  /// the write it leads to does not wait for it, and neither did the version
+  /// of this method before the sheets existed. The messenger and the
+  /// container are both captured before any await, but for different
   /// reasons: `planFromSession` can easily still be in flight after the
   /// screen (and this State with it) is gone, and `ref.invalidate` would
   /// throw against a disposed State -- the container outlives the widget, so
@@ -904,25 +967,37 @@ class _SessionLoggerScreenState extends ConsumerState<SessionLoggerScreen>
     final container = ProviderScope.containerOf(context, listen: false);
     Navigator.of(dialogContext).pop(true);
 
-    final active = ref.read(activePlanProvider).value;
-    // Only an existing custom plan has days to choose between. A first
-    // workout, or one landing on top of a generated plan, creates the plan --
-    // there is nothing to place it among yet.
+    // Which sheet, and whether it warns, rests on knowing the current plan.
+    // Still loading is worth waiting for; a load that failed is not known to
+    // be "no plan", and the server replaces whatever is there regardless, so
+    // the sheet then warns without a name rather than offering a harmless-
+    // looking primary button.
+    final planState = ref.read(activePlanProvider);
+    WorkoutPlan? active = planState.value;
+    var planKnown = planState.hasValue;
+    if (!planKnown) {
+      try {
+        active = await ref.read(activePlanProvider.future);
+        planKnown = true;
+      } catch (_) {
+        // Left unknown; see above.
+      }
+    }
     int? dayNo;
+    String? splitStyle;
     var cancelled = false;
+    if (!mounted) return;
     if (active != null && active.isCustom) {
-      if (!mounted) return;
       final choice = await showAddToPlanSheet(context, active);
       cancelled = choice.cancelled;
       dayNo = choice.dayNo;
-    } else if (active != null) {
-      // A generated plan is about to be deactivated and replaced by a
-      // one-day plan built from this workout, and plan history is out of
-      // scope -- nothing brings it back. The generator already asks before
-      // replacing a plan the user built; this is the same question in the
-      // direction that used to be silent.
-      if (!mounted) return;
-      cancelled = !await _confirmReplacing(active);
+    } else {
+      splitStyle = await showMakePlanSheet(
+        context,
+        replacing: active,
+        planUnknown: !planKnown,
+      );
+      cancelled = splitStyle == null;
     }
     // Either way the session is finished, so the logger leaves: _showSummary
     // handed its own pop to this method the moment the offer was tapped, and
@@ -936,7 +1011,7 @@ class _SessionLoggerScreenState extends ConsumerState<SessionLoggerScreen>
           .read(planRepositoryProvider)
           .planFromSession(
             sessionId: done.sessionId,
-            splitStyle: ref.read(chosenSplitStyleProvider),
+            splitStyle: splitStyle,
             dayNo: dayNo,
           );
       // The Plan tab and Home both read this, and neither was watching while
@@ -953,38 +1028,6 @@ class _SessionLoggerScreenState extends ConsumerState<SessionLoggerScreen>
       messenger.showSnackBar(SnackBar(content: Text(describeError(error))));
     }
   }
-
-  /// Asks before a plan the user did not build is replaced by one made from
-  /// this workout. Names the plan, because "your plan" is not enough to
-  /// decide by.
-  Future<bool> _confirmReplacing(WorkoutPlan plan) async =>
-      await showDialog<bool>(
-        context: context,
-        builder: (dialogContext) => AlertDialog(
-          key: const Key('summary.replacePlan'),
-          title: const Text('Replace your current plan?'),
-          content: Text(
-            'This workout becomes a plan of your own, and "${plan.name}" '
-            'goes. You cannot get it back.',
-          ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.of(dialogContext).pop(false),
-              child: const Text('Keep it'),
-            ),
-            TextButton(
-              style: TextButton.styleFrom(
-                foregroundColor: dialogContext.fs.red,
-              ),
-              onPressed: () => Navigator.of(dialogContext).pop(true),
-              child: const Text('Replace it'),
-            ),
-          ],
-        ),
-        // A barrier dismiss is not an answer, and the destructive reading of
-        // silence is the wrong one here.
-      ) ??
-      false;
 
   Future<void> _discard() async {
     final confirmed = await showDialog<bool>(
@@ -1040,7 +1083,11 @@ class _SessionLoggerScreenState extends ConsumerState<SessionLoggerScreen>
   /// if the connection drops partway, the sets already cleared stay cleared
   /// and the message says the restart did not finish, rather than pretending
   /// either everything or nothing happened.
+  ///
+  /// A fresh start goes back to the plan's own rows too: any added with
+  /// "+ Add set" are dropped once every logged set is cleared.
   Future<void> _restartExercise(
+    int index,
     PlanExercise exercise,
     ActiveSession session,
   ) async {
@@ -1098,6 +1145,16 @@ class _SessionLoggerScreenState extends ConsumerState<SessionLoggerScreen>
       // Re-seeded from last session on the next build, the way a fresh
       // table is -- see SetDrafts.release.
       drafts.release(setNumber);
+    }
+    if (mounted) {
+      // Added rows that were never logged go too, typing and all, so one
+      // added again starts from last session's numbers like any other row
+      // rather than from what was typed before the restart.
+      final rows = _rowCounts[(index, exercise.exerciseId)] ?? 0;
+      for (var n = exercise.targetSets + 1; n <= rows; n++) {
+        drafts.release(n);
+      }
+      setState(() => _rowCounts.remove((index, exercise.exerciseId)));
     }
   }
 
@@ -1305,9 +1362,16 @@ class _SessionLoggerScreenState extends ConsumerState<SessionLoggerScreen>
     // The session's own list wins: a manual session must not fall through to
     // whatever plan the user happens to have and log against someone else's
     // day.
-    final exercises = carried.isNotEmpty
+    final planned = carried.isNotEmpty
         ? carried
         : (plan?.exercisesForDay(session.planDayNo) ?? const <PlanExercise>[]);
+    // Each exercise as many sets long as its table is -- see [_withRows].
+    // [planned] keeps the plan's own targets, for what the screen shows of
+    // the prescription.
+    final exercises = [
+      for (final (i, exercise) in planned.indexed)
+        _withRows(exercise, _rowsFor(i, exercise, session)),
+    ];
     _exercisesOnScreen = exercises;
     if (exercises.isEmpty) {
       // Not a spinner: the plan and the session are both loaded, so there is
@@ -1369,7 +1433,12 @@ class _SessionLoggerScreenState extends ConsumerState<SessionLoggerScreen>
       _drafts.convert(_unitOnScreen!, unit);
     }
     _unitOnScreen = unit;
+    // Two views of the exercise on screen: [exercise] is as many sets long
+    // as its table, [planExercise] as the plan wrote it -- the one whose
+    // prescription is shown, and the one a switch or a restart acts on.
     final exercise = exercises[index];
+    final planExercise = planned[index];
+    final rowKey = (index, exercise.exerciseId);
     // The rest alert speaks of the exercise on screen, whichever one the rest
     // was started from. A plain assignment, like [_lastSeenSession]: nothing
     // drawn depends on it.
@@ -1387,7 +1456,7 @@ class _SessionLoggerScreenState extends ConsumerState<SessionLoggerScreen>
         : _SwitchState(
             _hasLoggedSets(exercise, session)
                 ? null
-                : () => _switchExercise(exercise),
+                : () => _switchExercise(planExercise),
           );
     final encouragement = encouragementFor(
       exercises: exercises,
@@ -1437,7 +1506,7 @@ class _SessionLoggerScreenState extends ConsumerState<SessionLoggerScreen>
           onRestart:
               _stage == _LoggerStage.logging &&
                   _hasLoggedSets(exercise, session)
-              ? () => _restartExercise(exercise, session)
+              ? () => _restartExercise(index, planExercise, session)
               : null,
           switchState: switchState,
         ),
@@ -1460,22 +1529,23 @@ class _SessionLoggerScreenState extends ConsumerState<SessionLoggerScreen>
                               Flexible(
                                 child: Text(
                                   '${_positionLabel(index, exercises.length)}'
-                                  // A session started from a chosen list has
-                                  // no plan to name, and trailing off after
-                                  // the separator reads as a rendering fault.
-                                  ' · ${plan?.name ?? 'Manual workout'}',
+                                  // Named the way Home and History name it.
+                                  // Not the active plan's name: a workout
+                                  // the user picked themselves is not a day
+                                  // of the AI plan they may be replacing.
+                                  ' · ${openWorkoutTitle(session, plan)}',
                                   maxLines: 1,
                                   overflow: TextOverflow.ellipsis,
                                   style: TextStyle(
                                     fontSize: 11,
-                                    color: t.text3,
+                                    color: t.text2,
                                   ),
                                 ),
                               ),
                               Icon(
                                 Icons.arrow_drop_down,
                                 size: 16,
-                                color: t.text3,
+                                color: t.text2,
                               ),
                             ],
                           ),
@@ -1516,7 +1586,7 @@ class _SessionLoggerScreenState extends ConsumerState<SessionLoggerScreen>
               child: _stage == _LoggerStage.demo
                   ? ExerciseDemoStage(
                       key: const Key('logger.demo'),
-                      exercise: exercise,
+                      exercise: planExercise,
                       positionLabel: _positionLabel(index, exercises.length),
                       onSwitch: switchState?.onSwitch,
                     )
@@ -1526,7 +1596,8 @@ class _SessionLoggerScreenState extends ConsumerState<SessionLoggerScreen>
                         crossAxisAlignment: CrossAxisAlignment.stretch,
                         children: [
                           ExerciseLogPanel(
-                            exercise: exercise,
+                            exercise: planExercise,
+                            setCount: exercise.targetSets,
                             session: session,
                             // The same value the footer button names below.
                             activeSetNumber: _activeSetNumber(
@@ -1552,12 +1623,31 @@ class _SessionLoggerScreenState extends ConsumerState<SessionLoggerScreen>
                                 )
                                 .value
                                 ?.animationUrl,
-                            onUndoSet: (setNumber) =>
-                                _reopenSet(exercise, setNumber),
+                            onUndoSet: (setNumber) => _reopenSet(
+                              index,
+                              planExercise,
+                              exercise.targetSets,
+                              setNumber,
+                            ),
+                            onAddSet: () => setState(() {
+                              final rows = exercise.targetSets;
+                              if (rows < maxSetsPerExercise) {
+                                _rowCounts[rowKey] = rows + 1;
+                              }
+                            }),
+                            // The panel only offers this on the last row,
+                            // added and unlogged. What was typed into it goes
+                            // with it, so a row added again starts from last
+                            // session's numbers like any other, not from
+                            // what was typed.
+                            onRemoveSet: (setNumber) => setState(() {
+                              _rowCounts[rowKey] = setNumber - 1;
+                              _drafts.release(setNumber);
+                            }),
                             onOpenDemo: () => Navigator.of(context).push(
                               MaterialPageRoute<void>(
                                 builder: (_) => InSessionExerciseScreen(
-                                  exercise: exercise,
+                                  exercise: planExercise,
                                   position: index + 1,
                                   total: exercises.length,
                                 ),

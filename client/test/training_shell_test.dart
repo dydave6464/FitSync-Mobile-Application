@@ -28,6 +28,8 @@ import 'package:fitsync/features/recovery/presentation/recovery_screen.dart';
 import 'package:fitsync/features/sessions/presentation/progress_screen.dart';
 import 'package:fitsync/features/training/presentation/training_shell.dart';
 
+import 'helpers/no_recent_exercises.dart';
+
 import 'nav_shell_test.dart' show FakeExerciseRepository;
 
 /// A quiet, zero-everything analytics reading. What every Progress-tab
@@ -119,6 +121,7 @@ Future<void> _pump(
     ProviderScope(
       overrides: [
         exerciseRepositoryProvider.overrideWithValue(FakeExerciseRepository()),
+        noRecentExercises,
         activePlanProvider.overrideWith((ref) async => _plan),
         activeSessionProvider.overrideWith(() => _StubController(session)),
         completedDaysProvider.overrideWith((ref) async => const <String>{}),

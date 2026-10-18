@@ -1,3 +1,4 @@
+import '../../exercises/domain/muscle_regions.dart';
 import '../../plans/domain/workout_plan.dart';
 import '../domain/active_session.dart';
 
@@ -5,12 +6,17 @@ import '../domain/active_session.dart';
 /// question the review screen asks when one is in the way. One wording, so
 /// the two never describe the same workout differently.
 ///
+/// A hand-picked one is named by the areas it works, as History names it
+/// once it is finished; "Your own workout" only when there is nothing to
+/// name it by.
+///
 /// `planId`, not "has its own exercises": the server sends an empty
 /// `exercises` list for plan-backed sessions by design, so an empty list
 /// cannot tell a plan session from a manual one whose rows failed to load.
 String openWorkoutTitle(ActiveSession session, WorkoutPlan? plan) =>
     session.planId == null
-    ? 'Your own workout'
+    ? manualWorkoutName(session.exercises.map((e) => e.muscleGroup)) ??
+          'Your own workout'
     : plan?.name ?? "Today's workout";
 
 /// "2 exercises · 4 sets logged", or what is true instead.

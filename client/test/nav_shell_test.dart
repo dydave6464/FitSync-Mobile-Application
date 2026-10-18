@@ -50,6 +50,7 @@ import 'package:fitsync/features/streaks/presentation/providers.dart'
 import 'package:fitsync/features/training/presentation/training_shell.dart';
 
 import 'helpers/in_memory_secure_store.dart';
+import 'helpers/no_recent_exercises.dart';
 import 'nutrition_controller_test.dart' show FakeNutritionRepository;
 
 /// Enough rows that the catalogue's list is taller than the test viewport,
@@ -268,6 +269,7 @@ Future<void> _pumpShell(
       nutritionRepositoryProvider.overrideWithValue(FakeNutritionRepository()),
       // Train's Exercises tab (ExerciseListScreen).
       exerciseRepositoryProvider.overrideWithValue(FakeExerciseRepository()),
+      noRecentExercises,
       // Profile tab (SettingsScreen).
       profileProvider.overrideWith(StubProfileNotifier.new),
       equipmentOptionsProvider.overrideWith((ref) async => const []),

@@ -13,6 +13,7 @@ class ExerciseTile extends StatelessWidget {
     required this.baseUrl,
     required this.onTap,
     this.selected,
+    this.onInfo,
   });
 
   final ExerciseSummary exercise;
@@ -26,6 +27,10 @@ class ExerciseTile extends StatelessWidget {
   /// nothing to choose for" look different, and a tick on Train's Exercises tab
   /// would promise a basket that does not exist there.
   final bool? selected;
+
+  /// Opens the exercise's demo, for a row whose tap already means "pick".
+  /// Null hides the button: when browsing, the row itself opens the demo.
+  final VoidCallback? onInfo;
 
   @override
   Widget build(BuildContext context) {
@@ -71,9 +76,25 @@ class ExerciseTile extends StatelessWidget {
       ),
       trailing: selected == null
           ? const Icon(Icons.chevron_right)
-          : _SelectMark(
-              key: Key('tile.select.${exercise.exerciseId}'),
-              selected: selected!,
+          : Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                if (onInfo != null)
+                  IconButton(
+                    key: Key('tile.info.${exercise.exerciseId}'),
+                    tooltip: 'About ${exercise.name}',
+                    onPressed: onInfo,
+                    constraints: const BoxConstraints(
+                      minWidth: 48,
+                      minHeight: 48,
+                    ),
+                    icon: Icon(Icons.info_outline, color: context.fs.text2),
+                  ),
+                _SelectMark(
+                  key: Key('tile.select.${exercise.exerciseId}'),
+                  selected: selected!,
+                ),
+              ],
             ),
     );
   }

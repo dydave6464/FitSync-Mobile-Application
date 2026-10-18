@@ -1,4 +1,12 @@
 import '../../exercises/domain/exercise.dart';
+import '../../exercises/domain/muscle_regions.dart';
+
+/// What a session is called: its plan's name, or for one picked by hand, the
+/// areas it worked ("Chest & Back workout"). "Your own workout" only when
+/// there is nothing to name it by -- a column of identical titles tells the
+/// user nothing.
+String _titleFor(String? planName, Iterable<String> muscleGroups) =>
+    planName ?? manualWorkoutName(muscleGroups) ?? 'Your own workout';
 
 /// One finished workout, as the Progress tab lists it.
 ///
@@ -17,6 +25,7 @@ class SessionHistoryEntry {
     this.durationMin,
     this.totalVolumeKg,
     this.planName,
+    this.muscleGroups = const [],
   });
 
   final int sessionId;
@@ -40,9 +49,14 @@ class SessionHistoryEntry {
   /// The plan this session ran under, or null when it was picked by hand.
   final String? planName;
 
+  /// The muscle groups of a hand-picked session's exercises, which the
+  /// server sends so it can be named. Empty for a plan session, and from a
+  /// server too old to send them.
+  final List<String> muscleGroups;
+
   /// What to call it. A hand-picked session has no plan to borrow a name
   /// from, and "Session 32" tells the user nothing they wanted to know.
-  String get title => planName ?? 'Your own workout';
+  String get title => _titleFor(planName, muscleGroups);
 
   factory SessionHistoryEntry.fromJson(Map<String, dynamic> json) =>
       SessionHistoryEntry(
@@ -59,6 +73,9 @@ class SessionHistoryEntry {
         // Same reasoning as LoggedSet.weightKg.
         totalVolumeKg: (json['totalVolumeKg'] as num?)?.toDouble(),
         planName: json['planName'] as String?,
+        muscleGroups: (json['muscleGroups'] as List<dynamic>? ?? const [])
+            .cast<String>()
+            .toList(growable: false),
       );
 }
 
@@ -112,7 +129,7 @@ class LastWorkout {
   final String? planName;
 
   /// What to call it, the same way [SessionHistoryEntry] does.
-  String get title => planName ?? 'Your own workout';
+  String get title => _titleFor(planName, exercises.map((e) => e.muscleGroup));
 
   /// "2 exercises", for the sheet's subtitle.
   String get describeCount =>

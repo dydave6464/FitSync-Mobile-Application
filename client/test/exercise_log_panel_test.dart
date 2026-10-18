@@ -103,9 +103,7 @@ void main() {
     expect(find.text('Knee · AI coached'), findsOneWidget);
   });
 
-  testWidgets('an uncoached exercise shows no AI-coaching tag', (
-    tester,
-  ) async {
+  testWidgets('an uncoached exercise shows no AI-coaching tag', (tester) async {
     await tester.pumpWidget(
       _host(
         ExerciseLogPanel(
@@ -199,7 +197,10 @@ void main() {
       ),
     );
 
-    expect(find.text('Target: 3 sets × 8-12 reps · last 49.6 lb'), findsOneWidget);
+    expect(
+      find.text('Target: 3 sets × 8-12 reps · last 49.6 lb'),
+      findsOneWidget,
+    );
     expect(
       find.text('+5.5 lb vs last session — nice progressive overload.'),
       findsOneWidget,
@@ -409,7 +410,10 @@ void main() {
       ),
     );
 
-    expect(find.text('Target: 3 sets × 8-12 reps · last 22.5 kg'), findsOneWidget);
+    expect(
+      find.text('Target: 3 sets × 8-12 reps · last 22.5 kg'),
+      findsOneWidget,
+    );
     final field = tester.widget<TextField>(
       find.byKey(const Key('set.1.weight')),
     );
@@ -1268,5 +1272,93 @@ void main() {
 
     expect(find.byKey(const Key('logpanel.addweight')), findsNothing);
     expect(find.byKey(const Key('set.1.weight')), findsOneWidget);
+  });
+
+  group('added rows', () {
+    Widget panel(
+      WidgetTester tester, {
+      int setCount = 5,
+      List<LoggedSet> sets = const [],
+      ValueChanged<int>? onRemoveSet,
+    }) => _host(
+      ExerciseLogPanel(
+        exercise: _exercise,
+        setCount: setCount,
+        session: _session(sets: sets),
+        drafts: _drafts(tester),
+        onUndoSet: (_) async {},
+        onAddSet: () {},
+        onRemoveSet: onRemoveSet ?? (_) {},
+      ),
+    );
+
+    testWidgets('draws as many rows as it is told, the target unchanged', (
+      tester,
+    ) async {
+      await tester.pumpWidget(panel(tester));
+
+      expect(find.byKey(const Key('set.5.row')), findsOneWidget);
+      expect(find.text('Target: 3 sets × 8-12 reps'), findsOneWidget);
+    });
+
+    testWidgets('the ✕ is on the last row and removes that row', (
+      tester,
+    ) async {
+      final removed = <int>[];
+      await tester.pumpWidget(panel(tester, onRemoveSet: removed.add));
+
+      expect(find.byKey(const Key('set.5.remove')), findsOneWidget);
+      expect(find.byKey(const Key('set.4.remove')), findsNothing);
+
+      await tester.tap(find.byKey(const Key('set.5.remove')));
+      expect(removed, [5]);
+    });
+
+    testWidgets('a logged last row has no ✕', (tester) async {
+      await tester.pumpWidget(
+        panel(
+          tester,
+          setCount: 4,
+          sets: const [
+            LoggedSet(exerciseId: 101, setNumber: 4, weightKg: 20, reps: 8),
+          ],
+        ),
+      );
+
+      expect(find.byKey(const Key('set.4.remove')), findsNothing);
+    });
+
+    testWidgets('the headings stay over their fields', (tester) async {
+      // The mark column widens for the ✕, header and rows together.
+      await tester.pumpWidget(panel(tester));
+
+      final header = find.byKey(const Key('logpanel.columns'));
+      expect(
+        tester
+            .getCenter(find.descendant(of: header, matching: find.text('REPS')))
+            .dx,
+        closeTo(tester.getCenter(find.byKey(const Key('set.1.reps'))).dx, 1),
+      );
+      expect(
+        tester.getCenter(find.byKey(const Key('set.1.reps'))).dx,
+        closeTo(tester.getCenter(find.byKey(const Key('set.5.reps'))).dx, 1),
+      );
+    });
+
+    testWidgets('a panel with no way to add shows no Add set', (tester) async {
+      await tester.pumpWidget(
+        _host(
+          ExerciseLogPanel(
+            exercise: _exercise,
+            session: _session(),
+            drafts: _drafts(tester),
+            onUndoSet: (_) async {},
+          ),
+        ),
+      );
+
+      expect(find.byKey(const Key('logpanel.addSet')), findsNothing);
+      expect(find.byKey(const Key('set.3.remove')), findsNothing);
+    });
   });
 }

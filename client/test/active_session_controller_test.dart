@@ -10,7 +10,7 @@ import 'package:fitsync/core/api_client.dart';
 import 'package:fitsync/core/api_exception.dart';
 import 'package:fitsync/core/token_store.dart';
 import 'package:fitsync/features/exercises/presentation/providers.dart'
-    show apiClientProvider;
+    show apiClientProvider, recentExercisesProvider;
 import 'package:fitsync/features/routine/presentation/providers.dart'
     show routineTodayProvider;
 import 'package:fitsync/features/sessions/presentation/providers.dart';
@@ -548,6 +548,27 @@ void main() {
             200,
           );
         }
+        if (path == '/api/v1/exercises/recent') {
+          return http.Response(
+            jsonEncode({
+              'data': {
+                'exercises': first
+                    ? []
+                    : [
+                        {
+                          'exerciseId': 101,
+                          'name': 'Goblet squat',
+                          'muscleGroup': 'quads',
+                          'equipment': 'dumbbell',
+                          'thumbnailUrl': null,
+                          'contraindicated': false,
+                        },
+                      ],
+              },
+            }),
+            200,
+          );
+        }
         return http.Response(
           jsonEncode({
             'data': {'session': _session},
@@ -637,6 +658,23 @@ void main() {
             .adherence
             .done,
         1,
+      );
+    });
+
+    // The library's Recent strip. Train's Exercises tab keeps it alive while
+    // mounted (the listen below stands in for that), so without this it
+    // would go on missing the exercises just trained.
+    test("the library's recent exercises", () async {
+      final container = await completed();
+      container.listen(recentExercisesProvider, (_, _) {});
+      expect(await container.read(recentExercisesProvider.future), isEmpty);
+
+      await container.read(activeSessionProvider.notifier).complete(40);
+
+      expect(
+        (await container.read(recentExercisesProvider.future))
+            .map((e) => e.exerciseId),
+        [101],
       );
     });
 
