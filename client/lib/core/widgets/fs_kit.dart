@@ -593,10 +593,11 @@ class FsStatField extends StatelessWidget {
         borderRadius: BorderRadius.circular(FsRadius.sm),
         border: Border.all(color: accent ? t.accentLine : t.line),
       ),
-      // The card's 14 dp of padding past the switch is the rest of lb's band;
-      // it lies outside the Column, so the room is taken here.
+      // The card's 14 dp of padding past the switch is the rest of lb's band,
+      // and its padding below is the bottom of both units' bands; both lie
+      // outside the Column, so the room is taken here.
       child: FsTapRoom(
-        reach: 0,
+        reach: 6,
         endReach: 14,
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
@@ -604,8 +605,10 @@ class FsStatField extends StatelessWidget {
           children: [
             FsEyebrow(label),
             // The room above the row is the label's, which takes no taps, so
-            // a thumb landing just over the switch still finds it.
+            // a thumb landing just over the switch still finds it. 10 above
+            // and the card's 6 below take the ~32 dp row to 48.
             FsTapRoom(
+              reach: 10,
               child: Row(
                 crossAxisAlignment: CrossAxisAlignment.baseline,
                 textBaseline: TextBaseline.alphabetic,
@@ -1378,6 +1381,10 @@ class _RenderTapRoom extends RenderProxyBox {
   @override
   bool hitTest(BoxHitTestResult result, {required Offset position}) {
     if (super.hitTest(result, position: position)) return true;
+    // Inside the box, the child has already been asked and said no. Asking
+    // again at the same point adds any see-through listener on the way a
+    // second time, which the pointer router refuses.
+    if (size.contains(position)) return false;
     final row = child;
     final rtl = textDirection == TextDirection.rtl;
     final left = rtl ? -endReach : 0.0;

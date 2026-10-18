@@ -1114,6 +1114,75 @@ void main() {
       expect(picked, [WeightUnit.lb]);
     });
 
+    // The switch is drawn about 19 dp tall in a row the number sets. The
+    // label above takes no taps and the card leaves a little padding below,
+    // and both are the switch's to use: 48 dp from top to bottom.
+    testWidgets('the unit switch in a stat card answers across 48 dp', (
+      tester,
+    ) async {
+      final picked = <WeightUnit>[];
+      final controller = TextEditingController();
+      addTearDown(controller.dispose);
+      await tester.pumpWidget(
+        _host(
+          SizedBox(
+            width: 140,
+            child: FsStatField(
+              fieldKey: const Key('weightKg'),
+              label: 'Weight',
+              unit: 'lb',
+              controller: controller,
+              unitControl: FsUnitToggle(
+                value: WeightUnit.lb,
+                onChanged: picked.add,
+              ),
+            ),
+          ),
+        ),
+      );
+
+      // Not centred on the pill, which sits on the number's baseline low in
+      // the row: what matters is how tall a strip of taps finds it.
+      final kg = tester.getRect(find.byKey(const Key('unit.kg')));
+      final answered = <int>[];
+      for (var dy = -40; dy <= 40; dy++) {
+        final before = picked.length;
+        await tester.tapAt(Offset(kg.center.dx, kg.center.dy + dy));
+        if (picked.length > before) answered.add(dy);
+      }
+      expect(answered.last - answered.first, greaterThanOrEqualTo(47));
+      // One strip, no holes in it.
+      expect(answered.length, answered.last - answered.first + 1);
+    });
+
+    // A tap inside the room's own box that nothing took was tested again at
+    // the same point, so a see-through listener on the way was added to the
+    // hit path twice and the pointer router refused the second.
+    testWidgets('FsTapRoom tests a point inside its own box only once', (
+      tester,
+    ) async {
+      var taps = 0;
+      await tester.pumpWidget(
+        roomy(
+          FsTapRoom(
+            child: Row(
+              children: [
+                GestureDetector(
+                  behavior: HitTestBehavior.translucent,
+                  onTap: () => taps++,
+                  child: const SizedBox(width: 60, height: 32),
+                ),
+              ],
+            ),
+          ),
+        ),
+      );
+
+      await tester.tap(find.byType(GestureDetector).last);
+      expect(tester.takeException(), isNull);
+      expect(taps, 1);
+    });
+
     testWidgets('FsTapRoom reaches past its far end only as far as told', (
       tester,
     ) async {
