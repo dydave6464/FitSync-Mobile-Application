@@ -279,9 +279,10 @@ class LevelStep extends ConsumerWidget {
               : Column(
                   crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: [
-                    // The room around the rows takes the outer chips' bands to
-                    // 48 dp; the 8 above and below is this padding's, taken
-                    // out of the gaps on either side.
+                    // The 8 above and below is this padding's, taken out of
+                    // the gaps on either side, so the top and bottom rows get
+                    // their full 8 dp on the outer side: 44 dp for a 32 dp
+                    // chip, whose inner side shares the 8 dp gap between rows.
                     Padding(
                       padding: const EdgeInsets.symmetric(vertical: 8),
                       child: FsTapRoom(

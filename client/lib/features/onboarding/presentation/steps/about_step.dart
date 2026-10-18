@@ -378,10 +378,11 @@ class _AboutStepState extends State<AboutStep> {
         const SizedBox(height: 18),
         const FsEyebrow('Daily activity level'),
         const SizedBox(height: 2),
-        // A one-row Wrap is only as tall as a chip: the room around it is
-        // what takes each chip's band to 48 dp. That room is this padding's,
-        // 8 of the 10 above and 8 below, since the chips are the step's last
-        // line until the card appears.
+        // A Wrap is only as tall as its rows, so the room around it is this
+        // padding's: 8 of the 10 above and 8 below, since the chips are the
+        // step's last line until the card appears. The top and bottom rows get
+        // their full 8 dp on the outer side: 48 dp on one row, 44 where the
+        // chips wrap and the inner side shares the gap between rows.
         Padding(
           padding: const EdgeInsets.symmetric(vertical: 8),
           child: FsTapRoom(
