@@ -329,6 +329,12 @@ Future<void> _pickFromMenu(WidgetTester tester, int id, String item) async {
   await tester.pumpAndSettle();
 }
 
+/// Removes a row with its one-tap ✕.
+Future<void> _removeRow(WidgetTester tester, int id) async {
+  await tester.tap(find.byKey(Key('review.remove.$id')));
+  await tester.pumpAndSettle();
+}
+
 /// Whether a row's ⋮ menu item can be chosen, read off the open menu.
 bool _menuItemEnabled(WidgetTester tester, String item, int id) => tester
     .widget<PopupMenuItem<Object?>>(find.byKey(Key('review.$item.$id')))
@@ -372,7 +378,7 @@ void main() {
   testWidgets('removing a row drops it from the workout', (tester) async {
     final container = await _pump(tester, picks: const [_squat, _fly]);
 
-    await _pickFromMenu(tester, 101, 'remove');
+    await _removeRow(tester, 101);
 
     expect(find.text('Goblet squat'), findsNothing);
     expect(container.read(workoutDraftProvider).exerciseIds, [202]);
@@ -835,13 +841,36 @@ void main() {
   testWidgets('an emptied workout cannot be started', (tester) async {
     await _pump(tester, picks: const [_squat]);
 
-    await _pickFromMenu(tester, 101, 'remove');
+    await _removeRow(tester, 101);
 
     expect(
       tester.widget<FsButton>(_start()).onPressed,
       isNull,
       reason: 'a workout of no exercises is not a workout',
     );
+  });
+
+  group('removing in one tap', () {
+    testWidgets('each row has a named ✕ with a 48 dp target', (tester) async {
+      final semantics = tester.ensureSemantics();
+      await _pump(tester, picks: const [_squat, _fly]);
+
+      expect(find.byTooltip('Remove Goblet squat'), findsOneWidget);
+      final size = tester.getSize(find.byKey(const Key('review.remove.101')));
+      expect(size.width, greaterThanOrEqualTo(48));
+      expect(size.height, greaterThanOrEqualTo(48));
+      semantics.dispose();
+    });
+
+    testWidgets('the ⋮ menu keeps only Move up and Move down', (tester) async {
+      await _pump(tester, picks: const [_squat, _fly]);
+
+      await tester.tap(_more(101));
+      await tester.pumpAndSettle();
+      expect(find.byKey(const Key('review.moveUp.101')), findsOneWidget);
+      expect(find.byKey(const Key('review.moveDown.101')), findsOneWidget);
+      expect(find.text('Remove'), findsNothing);
+    });
   });
 
   group('reordering without dragging', () {
@@ -926,7 +955,7 @@ void main() {
     testWidgets('removing says what went and offers Undo', (tester) async {
       await _pump(tester, picks: const [_squat, _fly, _press]);
 
-      await _pickFromMenu(tester, 202, 'remove');
+      await _removeRow(tester, 202);
 
       expect(find.text('Removed Cable fly'), findsOneWidget);
       expect(find.widgetWithText(SnackBarAction, 'Undo'), findsOneWidget);
@@ -938,7 +967,7 @@ void main() {
         picks: const [_squat, _fly, _press],
       );
 
-      await _pickFromMenu(tester, 202, 'remove');
+      await _removeRow(tester, 202);
       expect(container.read(workoutDraftProvider).exerciseIds, [101, 303]);
 
       await tester.tap(find.text('Undo'));
@@ -953,7 +982,7 @@ void main() {
     ) async {
       final container = await _pump(tester, picks: const [_squat]);
 
-      await _pickFromMenu(tester, 101, 'remove');
+      await _removeRow(tester, 101);
       expect(find.text('Nothing in this workout yet.'), findsOneWidget);
 
       await tester.tap(find.text('Undo'));
@@ -968,7 +997,7 @@ void main() {
       // message pinned over the Start button for as long as the screen stays.
       await _pump(tester, picks: const [_squat, _fly]);
 
-      await _pickFromMenu(tester, 101, 'remove');
+      await _removeRow(tester, 101);
       await tester.pump(const Duration(seconds: 10));
       await tester.pumpAndSettle();
 
@@ -987,7 +1016,7 @@ void main() {
       );
       await _pump(tester, picks: const [_squat, _fly]);
 
-      await _pickFromMenu(tester, 101, 'remove');
+      await _removeRow(tester, 101);
       await tester.pump(const Duration(seconds: 10));
       await tester.pumpAndSettle();
 
@@ -1001,7 +1030,7 @@ void main() {
       // left showing over the library.
       await _pump(tester, picks: const [_squat, _fly], overLibrary: true);
 
-      await _pickFromMenu(tester, 101, 'remove');
+      await _removeRow(tester, 101);
       expect(find.text('Removed Goblet squat'), findsOneWidget);
 
       await tester.tap(find.byKey(const Key('review.addMore')));
@@ -1027,7 +1056,7 @@ void main() {
         screenReaderOn(tester);
         await _pump(tester, picks: const [_squat, _fly], overLibrary: true);
 
-        await _pickFromMenu(tester, 101, 'remove');
+        await _removeRow(tester, 101);
         expect(find.text('Removed Goblet squat'), findsOneWidget);
 
         await tester.tap(find.byKey(const Key('review.addMore')));
@@ -1044,7 +1073,7 @@ void main() {
         screenReaderOn(tester);
         await _pump(tester, picks: const [_squat, _fly], overLibrary: true);
 
-        await _pickFromMenu(tester, 101, 'remove');
+        await _removeRow(tester, 101);
         expect(find.text('Removed Goblet squat'), findsOneWidget);
 
         await tester.tap(_start());
@@ -1125,11 +1154,12 @@ void main() {
     await _pump(tester, picks: const [_squat, _fly, _press]);
     expect(tester.takeException(), isNull);
 
-    await tester.tap(_more(202));
-    await tester.pumpAndSettle();
-    expect(tester.takeException(), isNull);
+    // The ✕ and the ⋮ share the row with the name and still fit.
+    final remove = find.byKey(const Key('review.remove.202'));
+    expect(tester.getRect(remove).right, lessThanOrEqualTo(320));
+    expect(tester.getRect(_more(202)).right, lessThanOrEqualTo(320));
 
-    await tester.tap(find.byKey(const Key('review.remove.202')));
+    await tester.tap(remove);
     await tester.pumpAndSettle();
     expect(tester.takeException(), isNull);
     expect(find.text('Removed Cable fly'), findsOneWidget);
