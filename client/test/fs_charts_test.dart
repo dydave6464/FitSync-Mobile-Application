@@ -209,6 +209,95 @@ void main() {
 
       expect(tester.takeException(), isNull);
     });
+
+    group('a tapped bar keeps its tooltip', () {
+      // fl_chart's own touch shows a tooltip only while the finger is down,
+      // so a quick tap flashed it and took it away before it could be read.
+
+      /// Where bar [i] of the week stands, in the middle of its column.
+      Offset barAt(WidgetTester tester, int i) {
+        final chart = tester.getRect(find.byType(BarChart));
+        return Offset(
+          chart.left + (i + 0.5) * chart.width / _week.length,
+          chart.top + 30,
+        );
+      }
+
+      List<int> showing(WidgetTester tester) => [
+        for (final (i, group) in _barData(tester).barGroups.indexed)
+          if (group.showingTooltipIndicators.isNotEmpty) i,
+      ];
+
+      testWidgets('after the finger lifts, until something else is tapped', (
+        tester,
+      ) async {
+        await _pump(
+          tester,
+          const FsBarChart(label: 'Training volume', bars: _week),
+        );
+        expect(_barData(tester).barTouchData.handleBuiltInTouches, isFalse);
+
+        await tester.tapAt(barAt(tester, 3));
+        await tester.pump(const Duration(seconds: 5));
+        expect(showing(tester), [3]);
+        expect(_barData(tester).barGroups[3].showingTooltipIndicators, [0]);
+
+        // Another bar moves it.
+        await tester.tapAt(barAt(tester, 1));
+        await tester.pump();
+        expect(showing(tester), [1]);
+
+        // A tap anywhere off the chart puts it away.
+        await tester.tapAt(const Offset(5, 5));
+        await tester.pump();
+        expect(showing(tester), isEmpty);
+      });
+
+      testWidgets('a preview that hands its taps to its card shows none', (
+        tester,
+      ) async {
+        await _pump(
+          tester,
+          const FsBarChart(
+            label: 'Training volume',
+            bars: _week,
+            interactive: false,
+          ),
+        );
+
+        await tester.tapAt(barAt(tester, 3));
+        await tester.pump();
+        expect(showing(tester), isEmpty);
+      });
+
+      testWidgets('new numbers put an old tooltip away', (tester) async {
+        // A tooltip left over a bar that now means another week would
+        // misreport it.
+        await _pump(
+          tester,
+          const FsBarChart(label: 'Training volume', bars: _week),
+        );
+        await tester.tapAt(barAt(tester, 3));
+        await tester.pump();
+        expect(showing(tester), [3]);
+
+        await _pump(
+          tester,
+          FsBarChart(
+            label: 'Training volume',
+            bars: [
+              for (final bar in _week)
+                FsChartBar(
+                  value: bar.value,
+                  label: bar.label,
+                  tooltip: 'Last week: ${bar.tooltip}',
+                ),
+            ],
+          ),
+        );
+        expect(showing(tester), isEmpty);
+      });
+    });
   });
 
   group('FsLineChart', () {
@@ -282,6 +371,30 @@ void main() {
         LineBarSpot(bar, 0, bar.spots[1]),
       ]);
       expect(items.single!.text, 'Sep 27 · 73.6 kg');
+    });
+
+    testWidgets('a tapped point keeps its tooltip until the next tap', (
+      tester,
+    ) async {
+      // fl_chart's own touch shows it only while the finger is down.
+      await pumpWeights(tester);
+      expect(_lineData(tester).lineTouchData.handleBuiltInTouches, isFalse);
+
+      List<int> showing() => [
+        for (final tip in _lineData(tester).showingTooltipIndicators)
+          for (final spot in tip.showingSpots) spot.spotIndex,
+      ];
+
+      // The middle weigh-in sits halfway across: x runs 0 to 2.
+      final chart = tester.getRect(find.byType(LineChart));
+      await tester.tapAt(Offset(chart.center.dx, chart.top + 20));
+      await tester.pump(const Duration(seconds: 5));
+      expect(showing(), [1]);
+      expect(_lineData(tester).lineBarsData.single.showingIndicators, [1]);
+
+      await tester.tapAt(const Offset(5, 5));
+      await tester.pump();
+      expect(showing(), isEmpty);
     });
 
     testWidgets('the axis labels are readable, not the faint caption grey', (

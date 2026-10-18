@@ -74,13 +74,41 @@ double _widest(BuildContext context, Iterable<String> labels, TextStyle style) {
   return widest;
 }
 
+/// Which bar or point a chart's tooltip is showing for, kept between taps.
+///
+/// fl_chart's own handling shows a tooltip only while the finger is down, so
+/// a quick tap flashed it and took it away before it could be read. Held here
+/// instead, it stays up until the next tap: on another bar, which moves it;
+/// on the chart's empty space, or anywhere off the chart, which puts it away.
+/// A drag still moves it along as the finger goes.
+mixin _KeepsTooltip<T extends StatefulWidget> on State<T> {
+  int? _touched;
+
+  /// [index] is the bar or point [event] landed on, or null for none.
+  void _onTouch(FlTouchEvent event, int? index) {
+    if (index != null) {
+      if (index != _touched) setState(() => _touched = index);
+    } else if (event is FlTapUpEvent) {
+      _clear();
+    }
+  }
+
+  void _clear() {
+    if (_touched != null) setState(() => _touched = null);
+  }
+
+  /// Puts the tooltip away on a tap anywhere outside [chart].
+  Widget _dismissedOutside(Widget chart) =>
+      TapRegion(onTapOutside: (_) => _clear(), child: chart);
+}
+
 /// A series of readings over time, such as body weight.
 ///
 /// Drawn as what it is: straight segments between real readings, a dot on
 /// each one (the newest a little larger), and nothing shaded underneath. A
 /// curve invented weights between weigh-ins, and a fill under body weight
 /// read as an amount piling up, which it is not.
-class FsLineChart extends StatelessWidget {
+class FsLineChart extends StatefulWidget {
   const FsLineChart({
     super.key,
     required this.label,
@@ -174,7 +202,14 @@ class FsLineChart extends StatelessWidget {
   }
 
   @override
-  Widget build(BuildContext context) {
+  State<FsLineChart> createState() => _FsLineChartState();
+
+  /// The chart, with [touched]'s tooltip up when it is not null.
+  Widget _build(
+    BuildContext context, {
+    required int? touched,
+    required void Function(FlTouchEvent, int?) onTouch,
+  }) {
     final t = context.fs;
     final series = color ?? t.accent;
     final newest = points.length - 1;
@@ -231,6 +266,35 @@ class FsLineChart extends StatelessWidget {
                   .ceil(),
             );
 
+            final line = LineChartBarData(
+              spots: [for (final p in points) FlSpot(p.x, p.y)],
+              color: series,
+              barWidth: 2,
+              isStrokeCapRound: true,
+              // The touched reading's guide line and ring, as fl_chart draws
+              // them while a finger is down.
+              showingIndicators: [?touched],
+              // A dot per reading, each a real weigh-in; the newest
+              // larger, and ringed in the card's colour so it stays
+              // clear where it sits on the line.
+              // A dot per reading while they stand apart; past that
+              // (a year of weekly weigh-ins is 7 px a reading) only the
+              // newest, or the dots bead into a chain that hides the
+              // line they sit on.
+              dotData: FlDotData(
+                checkToShowDot: (spot, bar) =>
+                    perPoint >= 14 || spot.x == points.last.x,
+                getDotPainter: (spot, percent, bar, index) =>
+                    FlDotCirclePainter(
+                      radius: index == newest ? 5 : 4,
+                      color: series,
+                      strokeWidth: 2,
+                      strokeColor: t.surface,
+                    ),
+              ),
+              belowBarData: BarAreaData(show: false),
+            );
+
             return LineChart(
               LineChartData(
                 minY: minY,
@@ -272,6 +336,11 @@ class FsLineChart extends StatelessWidget {
                   ),
                 ),
                 lineTouchData: LineTouchData(
+                  handleBuiltInTouches: false,
+                  touchCallback: (event, response) => onTouch(
+                    event,
+                    response?.lineBarSpots?.firstOrNull?.spotIndex,
+                  ),
                   touchTooltipData: LineTouchTooltipData(
                     getTooltipColor: (_) => t.text,
                     tooltipBorderRadius: BorderRadius.circular(8),
@@ -315,32 +384,12 @@ class FsLineChart extends StatelessWidget {
                           ),
                         ],
                       ),
-                lineBarsData: [
-                  LineChartBarData(
-                    spots: [for (final p in points) FlSpot(p.x, p.y)],
-                    color: series,
-                    barWidth: 2,
-                    isStrokeCapRound: true,
-                    // A dot per reading, each a real weigh-in; the newest
-                    // larger, and ringed in the card's colour so it stays
-                    // clear where it sits on the line.
-                    // A dot per reading while they stand apart; past that
-                    // (a year of weekly weigh-ins is 7 px a reading) only the
-                    // newest, or the dots bead into a chain that hides the
-                    // line they sit on.
-                    dotData: FlDotData(
-                      checkToShowDot: (spot, bar) =>
-                          perPoint >= 14 || spot.x == points.last.x,
-                      getDotPainter: (spot, percent, bar, index) =>
-                          FlDotCirclePainter(
-                            radius: index == newest ? 5 : 4,
-                            color: series,
-                            strokeWidth: 2,
-                            strokeColor: t.surface,
-                          ),
-                    ),
-                    belowBarData: BarAreaData(show: false),
-                  ),
+                lineBarsData: [line],
+                showingTooltipIndicators: [
+                  if (touched != null)
+                    ShowingTooltipIndicators([
+                      LineBarSpot(line, 0, line.spots[touched]),
+                    ]),
                 ],
               ),
             );
@@ -349,6 +398,32 @@ class FsLineChart extends StatelessWidget {
       ),
     );
   }
+}
+
+class _FsLineChartState extends State<FsLineChart>
+    with _KeepsTooltip<FsLineChart> {
+  @override
+  void didUpdateWidget(FsLineChart old) {
+    super.didUpdateWidget(old);
+    // Gone, or a different reading in its place: the tooltip would misreport.
+    final touched = _touched;
+    if (touched != null &&
+        (touched >= widget.points.length ||
+            widget._tooltipFor(touched) != old._tooltipFor(touched))) {
+      _touched = null;
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) => _dismissedOutside(
+    widget._build(
+      context,
+      touched: _touched != null && _touched! < widget.points.length
+          ? _touched
+          : null,
+      onTouch: _onTouch,
+    ),
+  );
 }
 
 /// One bar of an [FsBarChart].
@@ -376,7 +451,7 @@ class FsChartBar {
 /// and rest days drew it as a wave, inventing work on the rest days. Every bar
 /// grows from zero, so the lightest week reads as light rather than as
 /// nothing, which is what a window cut to the data's own range drew.
-class FsBarChart extends StatelessWidget {
+class FsBarChart extends StatefulWidget {
   const FsBarChart({
     super.key,
     required this.label,
@@ -404,7 +479,14 @@ class FsBarChart extends StatelessWidget {
   final bool interactive;
 
   @override
-  Widget build(BuildContext context) {
+  State<FsBarChart> createState() => _FsBarChartState();
+
+  /// The chart, with bar [touched]'s tooltip up when it is not null.
+  Widget _build(
+    BuildContext context, {
+    required int? touched,
+    required void Function(FlTouchEvent, int?) onTouch,
+  }) {
     final t = context.fs;
     final top = bars.fold<double>(0, (most, bar) => math.max(most, bar.value));
     final maxY = top <= 0 ? 1.0 : top * 1.1; // all zeros keeps a valid scale
@@ -495,6 +577,9 @@ class FsBarChart extends StatelessWidget {
                 ),
                 barTouchData: BarTouchData(
                   enabled: interactive,
+                  handleBuiltInTouches: false,
+                  touchCallback: (event, response) =>
+                      onTouch(event, response?.spot?.touchedBarGroupIndex),
                   // The whole column answers a touch, not just the bar: a
                   // light week's bar is the one people check, and it was a
                   // sliver to aim at.
@@ -518,6 +603,7 @@ class FsBarChart extends StatelessWidget {
                   for (var i = 0; i < bars.length; i++)
                     BarChartGroupData(
                       x: i,
+                      showingTooltipIndicators: [if (i == touched) 0],
                       barRods: [
                         BarChartRodData(
                           toY: bars[i].value,
@@ -542,6 +628,33 @@ class FsBarChart extends StatelessWidget {
       ),
     );
   }
+}
+
+class _FsBarChartState extends State<FsBarChart>
+    with _KeepsTooltip<FsBarChart> {
+  @override
+  void didUpdateWidget(FsBarChart old) {
+    super.didUpdateWidget(old);
+    // Gone, or another stretch of time in its place: the tooltip would
+    // misreport it.
+    final touched = _touched;
+    if (touched != null &&
+        (touched >= widget.bars.length ||
+            widget.bars[touched].tooltip != old.bars[touched].tooltip)) {
+      _touched = null;
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) => _dismissedOutside(
+    widget._build(
+      context,
+      touched: _touched != null && _touched! < widget.bars.length
+          ? _touched
+          : null,
+      onTouch: _onTouch,
+    ),
+  );
 }
 
 /// One labelled bar, scaled against the largest value in its group rather
