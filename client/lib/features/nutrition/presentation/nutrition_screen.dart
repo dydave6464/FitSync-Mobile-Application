@@ -5,6 +5,7 @@ import '../../../core/manila_day.dart';
 import '../../../core/theme.dart';
 import '../../exercises/presentation/exercise_list_screen.dart' show describeError;
 import '../domain/nutrition.dart';
+import 'error_snack_bar.dart';
 import 'log_food_screen.dart';
 import 'providers.dart';
 import 'widgets/fatsecret_attribution.dart';
@@ -48,7 +49,7 @@ class NutritionScreen extends ConsumerWidget {
       await ref.read(nutritionDayProvider.notifier)
           .change(entry, mealType: choice.mealType, servings: choice.servings, edited: choice.edited, date: date);
     } catch (_) {
-      messenger.showSnackBar(const SnackBar(content: Text("Couldn't save — try again.")));
+      showErrorSnackBar(messenger, "Couldn't save — try again.");
     }
   }
 
@@ -66,7 +67,15 @@ class NutritionScreen extends ConsumerWidget {
       action: SnackBarAction(
         label: 'Change',
         onPressed: () {
-          if (context.mounted) _change(context, ref, entry, date);
+          if (!context.mounted) return;
+          // The entry as it is now: with a screen reader this stays up, and
+          // the food may have been changed from its row or removed since.
+          // On another day there is nothing newer to go by.
+          final shown = ref.read(nutritionDayProvider).value;
+          final current = shown?.date == date
+              ? shown!.entries.where((e) => e.id == entry.id).firstOrNull
+              : entry;
+          if (current != null) _change(context, ref, current, date);
         },
       ),
     ));
@@ -83,7 +92,7 @@ class NutritionScreen extends ConsumerWidget {
     try {
       await controller.remove(entry);
     } catch (_) {
-      messenger.showSnackBar(const SnackBar(content: Text("Couldn't remove — try again.")));
+      showErrorSnackBar(messenger, "Couldn't remove — try again.");
       return;
     }
     // Replacing, not queueing behind, an earlier removal's message: with a
@@ -103,7 +112,7 @@ class NutritionScreen extends ConsumerWidget {
           try {
             await controller.log(entry.asFood(), mealType: entry.mealType, servings: entry.servings, date: date);
           } catch (_) {
-            messenger.showSnackBar(const SnackBar(content: Text("Couldn't save — try again.")));
+            showErrorSnackBar(messenger, "Couldn't save — try again.");
           }
         },
       ),

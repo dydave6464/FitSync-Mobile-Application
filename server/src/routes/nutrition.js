@@ -210,7 +210,8 @@ module.exports = function buildNutritionRouter(deps) {
           ...scaled(manual, servings),
         };
       } else if (servings === stored.servings) {
-        // Untouched, so a divide-then-multiply can't drift what was logged.
+        // Untouched: a guard, so a later change that rounds per serving
+        // can't alter what was logged.
         food = stored;
       } else {
         // From the entry's own numbers, never the foods row: a later
@@ -226,7 +227,10 @@ module.exports = function buildNutritionRouter(deps) {
       }
 
       await updateEntry(pool, req.user.userId, id, { ...food, mealType: b.mealType, servings });
-      res.json({ data: { entry: await getEntry(pool, req.user.userId, id) } });
+      // Deleted between the read above and the write: nothing to answer with.
+      const entry = await getEntry(pool, req.user.userId, id);
+      if (!entry) throw AppError.notFound('ENTRY_NOT_FOUND', 'No such entry.');
+      res.json({ data: { entry } });
     } catch (err) { next(err); }
   });
 

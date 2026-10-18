@@ -9,6 +9,7 @@ import '../../../core/widgets/fs_kit.dart';
 import '../../exercises/presentation/exercise_list_screen.dart' show describeError;
 import '../domain/nutrition.dart';
 import 'add_food_manually_screen.dart';
+import 'error_snack_bar.dart';
 import 'providers.dart';
 import 'widgets/fatsecret_attribution.dart';
 import 'widgets/log_food_sheet.dart';
@@ -99,7 +100,7 @@ class _LogFoodScreenState extends ConsumerState<LogFoodScreen> {
       // itself is never changed.
       saved = await controller.log(choice.edited ?? food, mealType: choice.mealType, servings: choice.servings, date: date);
     } catch (_) {
-      messenger.showSnackBar(const SnackBar(content: Text("Couldn't save — try again.")));
+      showErrorSnackBar(messenger, "Couldn't save — try again.");
       return;
     }
     onLogged?.call(saved, date!);

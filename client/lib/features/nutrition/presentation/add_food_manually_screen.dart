@@ -5,6 +5,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../core/theme.dart';
 import '../../../core/widgets/fs_kit.dart';
 import '../domain/nutrition.dart';
+import 'error_snack_bar.dart';
 import 'providers.dart';
 
 class AddFoodManuallyScreen extends ConsumerStatefulWidget {
@@ -153,7 +154,7 @@ class _AddFoodManuallyScreenState extends ConsumerState<AddFoodManuallyScreen> {
               try {
                 saved = await controller.log(food, mealType: _meal, servings: 1, date: date);
               } catch (_) {
-                messenger.showSnackBar(const SnackBar(content: Text("Couldn't save — try again.")));
+                showErrorSnackBar(messenger, "Couldn't save — try again.");
                 return;
               }
               onLogged?.call(saved, date!);

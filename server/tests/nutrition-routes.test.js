@@ -59,6 +59,7 @@ test('nutrition endpoints', async (t) => {
     const auth = { Authorization: `Bearer ${login.body.data.token}` };
     return {
       userId: res.body.data.user.userId,
+      auth,
       day: (date) => request(app).get('/api/v1/nutrition/day').query(date ? { date } : {}).set(auth),
       log: (body) => request(app).post('/api/v1/nutrition/entries').set(auth).send(body),
       del: (id) => request(app).delete(`/api/v1/nutrition/entries/${id}`).set(auth),
@@ -344,8 +345,9 @@ test('nutrition endpoints', async (t) => {
   await t.test('edit with the same servings leaves the stored numbers exactly as they were', async () => {
     const u = await freshUser();
     const { entry } = (await u.log({ mealType: 'lunch', servings: 1, food: MANUAL }).expect(201)).body.data;
-    // Values a divide-by-3-then-multiply would drift: 100 / 3 -> 33 -> 99,
-    // 7 / 3 -> 2.33 -> 6.99, 10 / 3 -> 3.3 -> 9.9.
+    // Unrounded, divide-then-multiply gives these back at the stored
+    // precision. This guards against a change that rounds the per-serving
+    // value first: 100 / 3 -> 33 -> 99, 7 / 3 -> 2.33 -> 6.99, 10 / 3 -> 3.3 -> 9.9.
     await pool.query(
       `UPDATE meal_logs SET servings = 3, calories = 100, protein_g = 7, carbs_g = 7, fat_g = 7,
                             fiber_g = 7, sugar_g = 7, sodium_mg = 10 WHERE meal_log_id = ?`, [entry.id],
@@ -429,6 +431,32 @@ test('nutrition endpoints', async (t) => {
     assert.equal((await other.edit(entry.id, body).expect(404)).body.error.code, 'ENTRY_NOT_FOUND');
     const { day } = (await owner.day().expect(200)).body.data;
     assert.deepEqual(day.meals.lunch, [entry], 'untouched by the refused edits');
+  });
+
+  await t.test('edit of an entry deleted mid-save is a 404, never a 200 with no entry', async () => {
+    const u = await freshUser();
+    const { entry } = (await u.log({ mealType: 'lunch', servings: 1, food: { source: 'local', id: ADOBO } }).expect(201)).body.data;
+    // The same database, but the row goes -- as a delete from another
+    // device would take it -- between the edit's read and its write.
+    const racing = new Proxy(pool, {
+      get(target, prop) {
+        if (prop === 'query') {
+          return async (sql, params) => {
+            if (/^\s*UPDATE meal_logs SET/.test(sql)) {
+              await target.query('DELETE FROM meal_logs WHERE meal_log_id = ?', [entry.id]);
+            }
+            return target.query(sql, params);
+          };
+        }
+        const v = target[prop];
+        return typeof v === 'function' ? v.bind(target) : v;
+      },
+    });
+    const res = await request(buildTestApp({ pool: racing, fatsecret }))
+      .patch(`/api/v1/nutrition/entries/${entry.id}`).set(u.auth)
+      .send({ mealType: 'snack', servings: 2 }).expect(404);
+    assert.equal(res.body.error.code, 'ENTRY_NOT_FOUND');
+    assert.equal(res.body.error.message, 'No such entry.');
   });
 
   await t.test('edit validation', async () => {
