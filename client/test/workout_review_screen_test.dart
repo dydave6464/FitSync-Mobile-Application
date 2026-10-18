@@ -787,6 +787,52 @@ void main() {
       }
     }
 
+    // A small phone on its side at ordinary text: there is room for all three
+    // choices, and Cancel sat just past the edge of their scroll view, so
+    // backing out took a scroll nobody would guess was needed.
+    for (final (name, sets) in [
+      ('nothing logged', const <LoggedSet>[]),
+      ('sets logged', _twoLoggedSets),
+    ]) {
+      testWidgets(
+        'at 568×320 and 1× text, $name, every choice shows without a scroll',
+        (tester) async {
+          tester.view.physicalSize = const Size(568, 320);
+          tester.view.devicePixelRatio = 1.0;
+          addTearDown(tester.view.reset);
+
+          await _blockedBy(tester, _openWorkout(sets: sets));
+
+          expect(tester.takeException(), isNull);
+          final choices = tester.getRect(
+            find
+                .descendant(
+                  of: find.byType(AlertDialog),
+                  matching: find.byType(SingleChildScrollView),
+                )
+                .last,
+          );
+          for (final choice in _choices) {
+            final rect = tester.getRect(find.byKey(Key('blocked.$choice')));
+            expect(rect.top, greaterThanOrEqualTo(choices.top), reason: choice);
+            expect(
+              rect.bottom,
+              lessThanOrEqualTo(choices.bottom),
+              reason: choice,
+            );
+          }
+          // And the question still has room to be read above them.
+          final question = find
+              .descendant(
+                of: find.byType(AlertDialog),
+                matching: find.byType(SingleChildScrollView),
+              )
+              .first;
+          expect(tester.getSize(question).height, greaterThanOrEqualTo(48));
+        },
+      );
+    }
+
     // iOS's accessibility sizes go past Android's 2.0× (AX3 ≈ 2.35×, AX5 ≈
     // 3.12×), on short screens: landscape, and a 4-inch phone. There the
     // choices alone are taller than the dialog, so they may scroll -- but
