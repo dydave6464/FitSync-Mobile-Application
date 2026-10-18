@@ -204,3 +204,220 @@ test('the estimator only sees the last few days of check-ins', async (t) => {
   assert.equal(checkins.length, 1, 'last week must not dilute this morning');
   assert.equal(checkins[0].sleepQuality, 'poor');
 });
+
+/// Registers and logs in a user against [app]; answers their id and headers.
+async function signIn(app, pool, email) {
+  const reg = await request(app).post('/api/v1/auth/register')
+    .send({ email, password: 's3cret-pass', fullName: 'U' })
+    .expect(201);
+  const { userId } = reg.body.data.user;
+  await markEmailVerified(pool, userId);
+  const login = await request(app).post('/api/v1/auth/login')
+    .send({ email, password: 's3cret-pass' }).expect(200);
+  return { userId, auth: { Authorization: `Bearer ${login.body.data.token}` } };
+}
+
+async function region(pool, name, group) {
+  const [res] = await pool.query(
+    'INSERT INTO injuries (name, is_lateral, region_group) VALUES (?, 0, ?)',
+    [name, group],
+  );
+  return res.insertId;
+}
+
+async function painReport(pool, userId, daysAgo, painLevel, injuryId) {
+  const [s] = await pool.query(
+    `INSERT INTO workout_sessions (user_id, status, session_date)
+     VALUES (?, 'completed', DATE_SUB(CURDATE(), INTERVAL ? DAY))`,
+    [userId, daysAgo],
+  );
+  await pool.query(
+    `INSERT INTO session_outcomes (user_id, session_id, pain_level, injury_id)
+     VALUES (?, ?, ?, ?)`,
+    [userId, s.insertId, painLevel, painLevel === 'none' ? null : injuryId],
+  );
+}
+
+test('the estimator is sent the user\'s injuries and worst recent pain', async (t) => {
+  const pool = createPool(testDbConfig());
+  await dropAllTables(pool);
+  await migrate(testDbConfig());
+  const ml = recordingMl();
+  const app = buildTestApp({ pool, ml });
+  t.after(async () => { await dropAllTables(pool); await pool.end(); });
+
+  const knee = await region(pool, 'Knee (route test)', 'lower_body');
+  const shoulder = await region(pool, 'Shoulder (route test)', 'upper_body');
+  const me = await signIn(app, pool, 'hist@example.com');
+  const other = await signIn(app, pool, 'hist-other@example.com');
+
+  await t.test('no injuries and no reports send an empty history and no recentPain', async () => {
+    await request(app).post('/api/v1/recovery/checkin')
+      .set(me.auth).send(ANSWERS).expect(201);
+    const payload = ml.calls.at(-1);
+    assert.deepEqual(payload.injuryHistory, []);
+    assert.equal(payload.recentPain ?? null, null);
+  });
+
+  await t.test('the profile injuries go as plan refs, and the worst pain inside 14 days', async () => {
+    await pool.query(
+      "INSERT INTO user_injuries (user_id, injury_id, side) VALUES (?, ?, 'left')",
+      [me.userId, knee],
+    );
+    // Someone else's injury and their severe pain must never ride along.
+    await pool.query(
+      'INSERT INTO user_injuries (user_id, injury_id) VALUES (?, ?)', [other.userId, shoulder],
+    );
+    await painReport(pool, other.userId, 1, 'severe', shoulder);
+    // Inside: day 13. Outside: day 14, which would otherwise win.
+    await painReport(pool, me.userId, 13, 'mild', knee);
+    await painReport(pool, me.userId, 14, 'severe', knee);
+
+    await request(app).post('/api/v1/recovery/checkin')
+      .set(me.auth).send(ANSWERS).expect(201);
+    const payload = ml.calls.at(-1);
+    assert.deepEqual(payload.injuryHistory, [{ injuryId: knee, regionGroup: 'lower_body' }]);
+    assert.equal(payload.recentPain, 'mild');
+  });
+});
+
+test('what drove the estimate is stored and served back', async (t) => {
+  const pool = createPool(testDbConfig());
+  await dropAllTables(pool);
+  await migrate(testDbConfig());
+  let answer;
+  const app = buildTestApp({
+    pool,
+    ml: { async estimateInjuryRisk() { return answer; } },
+  });
+  t.after(async () => { await dropAllTables(pool); await pool.end(); });
+  const { auth } = await signIn(app, pool, 'drove@example.com');
+
+  await t.test('source, load and drivers come back on the tab', async () => {
+    answer = {
+      riskLevel: 'moderate',
+      trainingLoadScore: 47.25,
+      source: 'model',
+      modelVersion: 'risk-rf-sim-1',
+      loadPct: 35,
+      drivers: [
+        { key: 'sleep', value: 'poor' },
+        { key: 'load', value: 35 },
+        { key: 'injury_history', value: 2 },
+      ],
+    };
+    const post = await request(app).post('/api/v1/recovery/checkin')
+      .set(auth).send(ANSWERS).expect(201);
+    assert.equal(post.body.data.estimate.source, 'model');
+    assert.deepEqual(post.body.data.estimate.drivers, answer.drivers);
+
+    const res = await request(app).get('/api/v1/recovery').set(auth).expect(200);
+    const est = res.body.data.latestEstimate;
+    assert.equal(est.riskLevel, 'moderate');
+    assert.equal(est.trainingLoadScore, 47.25);
+    assert.equal(est.source, 'model');
+    assert.equal(est.loadPct, 35);
+    assert.deepEqual(est.drivers, answer.drivers);
+
+    const [[row]] = await pool.query(
+      'SELECT model_version FROM injury_risk_estimates ORDER BY estimate_id DESC LIMIT 1',
+    );
+    assert.equal(row.model_version, 'risk-rf-sim-1');
+  });
+
+  await t.test('unknown keys and mistyped values are dropped, and at most three are kept', async () => {
+    answer = {
+      riskLevel: 'high',
+      trainingLoadScore: 72,
+      source: 'rules',
+      modelVersion: null,
+      loadPct: 120,
+      drivers: [
+        { key: 'horoscope', value: 'bad' },
+        { key: 'load', value: 'lots' },
+        { key: 'sleep', value: 'dreadful' },
+        { key: 'injury_history', value: 1.5 },
+        'not an object',
+        null,
+        { key: 'recent_pain', value: 'severe' },
+        { key: 'load', value: 120 },
+        { key: 'soreness', value: 'severe' },
+        { key: 'stress', value: 'high' },
+      ],
+    };
+    await request(app).post('/api/v1/recovery/checkin')
+      .set(auth).send(ANSWERS).expect(201);
+    const res = await request(app).get('/api/v1/recovery').set(auth).expect(200);
+    assert.deepEqual(res.body.data.latestEstimate.drivers, [
+      { key: 'recent_pain', value: 'severe' },
+      { key: 'load', value: 120 },
+      { key: 'soreness', value: 'severe' },
+    ]);
+    assert.equal(res.body.data.latestEstimate.source, 'rules');
+  });
+
+  await t.test('an unknown source or an out-of-range load is stored as null, not refused', async () => {
+    answer = {
+      riskLevel: 'low', trainingLoadScore: 12, source: 'oracle', loadPct: 5000, drivers: [],
+    };
+    await request(app).post('/api/v1/recovery/checkin')
+      .set(auth).send(ANSWERS).expect(201);
+    const est = (await request(app).get('/api/v1/recovery').set(auth).expect(200))
+      .body.data.latestEstimate;
+    assert.equal(est.riskLevel, 'low');
+    assert.equal(est.source, null);
+    assert.equal(est.loadPct, null);
+    assert.deepEqual(est.drivers, []);
+  });
+
+  await t.test('an answer from a service that predates drivers stores them as null', async () => {
+    answer = { riskLevel: 'low', trainingLoadScore: 8 };
+    await request(app).post('/api/v1/recovery/checkin')
+      .set(auth).send(ANSWERS).expect(201);
+    const [[row]] = await pool.query(
+      `SELECT source, model_version, load_pct, drivers
+         FROM injury_risk_estimates ORDER BY estimate_id DESC LIMIT 1`,
+    );
+    assert.deepEqual(
+      [row.source, row.model_version, row.load_pct, row.drivers],
+      [null, null, null, null],
+    );
+  });
+});
+
+test('a malformed ML answer keeps the check-in and stores no estimate', async (t) => {
+  const pool = createPool(testDbConfig());
+  await dropAllTables(pool);
+  await migrate(testDbConfig());
+  let answer;
+  const app = buildTestApp({
+    pool,
+    ml: { async estimateInjuryRisk() { return answer; } },
+  });
+  t.after(async () => { await dropAllTables(pool); await pool.end(); });
+  const { auth } = await signIn(app, pool, 'malformed@example.com');
+
+  const cases = [
+    ['a bare string', 'high'],
+    ['an array', []],
+    ['an unknown level', { riskLevel: 'extreme', trainingLoadScore: 50 }],
+    ['no level', { trainingLoadScore: 50 }],
+    ['a score that is not a number', { riskLevel: 'low', trainingLoadScore: 'abc' }],
+    ['a score above 100', { riskLevel: 'high', trainingLoadScore: 250 }],
+    ['a negative score', { riskLevel: 'low', trainingLoadScore: -1 }],
+  ];
+  for (const [name, value] of cases) {
+    await t.test(name, async () => {
+      answer = value;
+      const post = await request(app).post('/api/v1/recovery/checkin')
+        .set(auth).send(ANSWERS).expect(201);
+      assert.equal(post.body.data.estimate, null);
+      assert.equal(post.body.data.checkin.sleepQuality, ANSWERS.sleepQuality);
+      const [[{ e }]] = await pool.query('SELECT COUNT(*) AS e FROM injury_risk_estimates');
+      assert.equal(e, 0);
+    });
+  }
+
+  const [[{ n }]] = await pool.query('SELECT COUNT(*) AS n FROM morning_checkins');
+  assert.equal(n, 1, 'the check-in is kept');
+});
