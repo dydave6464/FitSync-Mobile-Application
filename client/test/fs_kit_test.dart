@@ -930,6 +930,59 @@ void main() {
       expect(picked, [WeightUnit.kg, WeightUnit.kg]);
     });
 
+    // A one-row Wrap, or a Row, is exactly as tall as its chips, and a chip
+    // can only answer a tap that reaches it through that box. FsTapRoom is
+    // what lets a row take the taps just outside it.
+    testWidgets('a chip in a one-row Wrap answers 7 dp off its pill', (
+      tester,
+    ) async {
+      var taps = 0;
+      await tester.pumpWidget(
+        roomy(
+          FsTapRoom(
+            child: Wrap(
+              children: [
+                FsChip(label: 'Bench', selected: false, onTap: () => taps++),
+              ],
+            ),
+          ),
+        ),
+      );
+
+      final pill = tester.getRect(find.byType(FsChip));
+      await tester.tapAt(pill.topCenter - const Offset(0, 7));
+      await tester.tapAt(pill.bottomCenter + const Offset(0, 7));
+      expect(taps, 2);
+
+      // Its reach is a band, not the rest of the column.
+      await tester.tapAt(pill.topCenter - const Offset(0, 14));
+      expect(taps, 2);
+    });
+
+    testWidgets('kg and lb in a row answer 7 dp above and below it', (
+      tester,
+    ) async {
+      final picked = <WeightUnit>[];
+      await tester.pumpWidget(
+        roomy(
+          FsTapRoom(
+            child: Row(
+              children: [
+                const Expanded(child: Text('Weight unit')),
+                FsUnitToggle(value: WeightUnit.kg, onChanged: picked.add),
+              ],
+            ),
+          ),
+        ),
+      );
+
+      final row = tester.getRect(find.byType(Row).first);
+      final lb = tester.getRect(find.byKey(const Key('unit.lb')));
+      await tester.tapAt(Offset(lb.center.dx, row.top - 7));
+      await tester.tapAt(Offset(lb.center.dx, row.bottom + 7));
+      expect(picked, [WeightUnit.lb, WeightUnit.lb]);
+    });
+
     testWidgets('a screen reader hears which unit is in force', (tester) async {
       final handle = tester.ensureSemantics();
       await tester.pumpWidget(

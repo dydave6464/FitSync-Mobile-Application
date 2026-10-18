@@ -292,6 +292,29 @@ void main() {
     ]);
   });
 
+  // The switch is drawn a few pixels tall in a 32 dp row; a thumb gets the
+  // full 48 dp, centred on it, without the row being drawn any taller.
+  testWidgets('kg / lb answers a thumb 22 dp above or below its middle', (
+    tester,
+  ) async {
+    final patches = <Map<String, dynamic>>[];
+    await _pump(tester, patches: patches);
+    await tester.scrollUntilVisible(find.byKey(const Key('unit.lb')), 200);
+    await tester.pumpAndSettle();
+
+    // The fake does not apply the patch, so kg stays in force and lb stays
+    // the one that takes a tap.
+    final lb = tester.getCenter(find.byKey(const Key('unit.lb')));
+    await tester.tapAt(lb - const Offset(0, 22));
+    await tester.pumpAndSettle();
+    await tester.tapAt(lb + const Offset(0, 22));
+    await tester.pumpAndSettle();
+    expect(patches, [
+      {'weightUnit': 'lb'},
+      {'weightUnit': 'lb'},
+    ]);
+  });
+
   testWidgets('offers no language row', (tester) async {
     await _pump(tester, patches: []);
 

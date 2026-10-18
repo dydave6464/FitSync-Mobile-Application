@@ -6,6 +6,7 @@ import 'package:fitsync/core/api_exception.dart';
 import 'package:fitsync/core/theme.dart';
 import 'package:fitsync/core/units.dart';
 import 'package:fitsync/core/widgets/fs_charts.dart';
+import 'package:fitsync/core/widgets/fs_kit.dart';
 import 'package:fitsync/features/profile/domain/body_weight.dart';
 import 'package:fitsync/features/profile/domain/profile.dart';
 import 'package:fitsync/features/profile/presentation/providers.dart'
@@ -140,6 +141,7 @@ Future<FakeSessionRepository> _pump(
   FakeSessionRepository? repo,
   WeightUnit? unit,
   BodyWeightSeries bodyWeight = _emptyBodyWeight,
+  Future<BodyWeightSeries> Function()? loadBodyWeight,
 }) async {
   final fake = repo ?? FakeSessionRepository();
   await tester.pumpWidget(
@@ -149,7 +151,9 @@ Future<FakeSessionRepository> _pump(
         // The body-weight card is a separate feature's provider; none of these
         // tests are about it, so it is stubbed quiet rather than left to reach
         // a real ApiClient.
-        bodyWeightProvider.overrideWith((ref, period) async => bodyWeight),
+        bodyWeightProvider.overrideWith(
+          (ref, period) => loadBodyWeight?.call() ?? Future.value(bodyWeight),
+        ),
         profileProvider.overrideWith(_StubProfileNotifier.new),
         // Only the unit tests pin it; everyone else reads the stub profile's
         // default, kilograms, exactly as a real account without a choice does.
@@ -278,6 +282,31 @@ void main() {
       findsNothing,
       reason: 'a failure is not the same as having trained nothing',
     );
+  });
+
+  // The card's Retry is its last line, drawn about 30 dp tall; the card's
+  // padding beneath it is where the rest of a thumb's target goes.
+  testWidgets("a card's Retry answers a tap 7 dp off its pill", (tester) async {
+    var loads = 0;
+    await _pump(
+      tester,
+      loadBodyWeight: () async {
+        loads++;
+        throw const ApiException('NETWORK_ERROR', 'Could not reach it.');
+      },
+    );
+    await tester.scrollUntilVisible(find.text('Retry'), 200);
+    await tester.pumpAndSettle();
+    final before = loads;
+
+    final pill = tester.getRect(
+      find.ancestor(of: find.text('Retry'), matching: find.byType(FsChip)),
+    );
+    await tester.tapAt(pill.bottomCenter + const Offset(0, 7));
+    await tester.pumpAndSettle();
+    await tester.tapAt(pill.topCenter - const Offset(0, 7));
+    await tester.pumpAndSettle();
+    expect(loads, before + 2);
   });
 
   testWidgets('a session that logged no weight does not read as zero', (

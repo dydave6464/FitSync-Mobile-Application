@@ -340,22 +340,26 @@ class _SettingsRow extends StatelessWidget {
         decoration: BoxDecoration(
           border: last ? null : Border(bottom: BorderSide(color: t.line)),
         ),
-        child: Row(
-          children: [
-            FsIconTile(icon: icon, size: 32, color: iconColor),
-            const SizedBox(width: 13),
-            Expanded(
-              child: Text(
-                label,
-                style: TextStyle(
-                  fontSize: 12.5,
-                  fontWeight: FontWeight.w500,
-                  color: t.text,
+        // The row's 12 dp padding is where a trailing switch, drawn a few
+        // pixels tall, gets the rest of its 48 dp.
+        child: FsTapRoom(
+          child: Row(
+            children: [
+              FsIconTile(icon: icon, size: 32, color: iconColor),
+              const SizedBox(width: 13),
+              Expanded(
+                child: Text(
+                  label,
+                  style: TextStyle(
+                    fontSize: 12.5,
+                    fontWeight: FontWeight.w500,
+                    color: t.text,
+                  ),
                 ),
               ),
-            ),
-            trailing ?? Icon(Icons.chevron_right, size: 16, color: t.text3),
-          ],
+              trailing ?? Icon(Icons.chevron_right, size: 16, color: t.text3),
+            ],
+          ),
         ),
       ),
     );

@@ -192,13 +192,17 @@ class _CardError extends StatelessWidget {
     final t = context.fs;
 
     return FsCard(
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text(message, style: TextStyle(fontSize: 12, color: t.text3)),
-          const SizedBox(height: 8),
-          FsChip(label: 'Retry', selected: false, onTap: onRetry),
-        ],
+      // Retry is the last line, so the card's padding under it, not the
+      // column, is where the rest of its 48 dp has to come from.
+      child: FsTapRoom(
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(message, style: TextStyle(fontSize: 12, color: t.text3)),
+            const SizedBox(height: 8),
+            FsChip(label: 'Retry', selected: false, onTap: onRetry),
+          ],
+        ),
       ),
     );
   }

@@ -284,7 +284,9 @@ class FsChip extends StatelessWidget {
   Widget build(BuildContext context) {
     final t = context.fs;
 
-    // Drawn about 30 dp tall; answers a thumb across 48.
+    // Drawn about 30 dp tall; answers a thumb across 48 wherever its parent
+    // has that room. A one-row Wrap or Row is only as tall as the chip, so a
+    // row of them sits in an [FsTapRoom] for the band to reach past it.
     return _TapReach(
       button: true,
       enabled: onTap != null,
@@ -1062,9 +1064,15 @@ const double _minTapTarget = 48;
 ///
 /// The band reaches only as far as the parent's own box: a tap outside that
 /// never gets here. Between the rows of a Wrap and beside a neighbour it is
-/// the full 48 dp; at a Wrap's outer edge the Wrap cuts it off. A row that
-/// needs the full target at its edge too still gives each chip a sized band
-/// of its own, as the check-in and the library's muscle buttons do.
+/// the full 48 dp; at a Wrap's or Row's outer edge the parent cuts it off,
+/// which in a single row is the whole band above and below. Such a row goes
+/// in an [FsTapRoom], or gives each chip a sized box of its own, as the
+/// check-in and the library's muscle buttons do.
+///
+/// The band is not harmless beside every neighbour: a parent hit-tests its
+/// last child first, so it takes over the edge of any earlier sibling it
+/// overlaps -- a tappable box directly above a chip loses its bottom few dp
+/// to the chip. Let it sit beside gaps, text or other chips only.
 ///
 /// Given any of [button], [enabled] or [selected], it also carries the
 /// control's semantics, so a screen reader frames the band rather than the
@@ -1198,5 +1206,67 @@ class _RenderTapReach extends RenderProxyBox {
     if (_button != null) config.isButton = _button!;
     if (_enabled != null) config.isEnabled = _enabled;
     if (_selected != null) config.isSelected = _selected!;
+  }
+}
+
+/// Lets a row of small controls -- a one-row Wrap of chips, a settings row
+/// with a kg/lb switch -- take taps up to [reach] above and below its own
+/// box, and hands each one on as if it had landed on the row's nearest edge.
+///
+/// A chip's own band stops at its parent's box, and a one-row Wrap or a Row
+/// is exactly as tall as its chips, so on its own a chip there answers only
+/// its drawn pill. Wrapped in this, a tap just above or below the row lands
+/// on the chip in line with it, and that chip's band takes it from there.
+/// Nothing is laid out or drawn larger: the room comes from whatever padding
+/// or gap the parent already has around the row, so the parent must have
+/// that room -- a tap outside the parent's box never reaches here.
+///
+/// Like [_TapReach], the band sits on top of any earlier sibling it
+/// overlaps, since a parent asks its last child first. Put it beside a gap,
+/// a card's padding or plain text, not flush against another control.
+class FsTapRoom extends SingleChildRenderObjectWidget {
+  const FsTapRoom({super.key, required Widget super.child, this.reach = 8});
+
+  /// How far past the top and bottom edges a tap still counts. 8 dp takes a
+  /// 32 dp row of chips to 48.
+  final double reach;
+
+  @override
+  _RenderTapRoom createRenderObject(BuildContext context) =>
+      _RenderTapRoom(reach);
+
+  @override
+  void updateRenderObject(BuildContext context, _RenderTapRoom renderObject) {
+    renderObject.reach = reach;
+  }
+}
+
+class _RenderTapRoom extends RenderProxyBox {
+  _RenderTapRoom(this.reach);
+
+  double reach;
+
+  @override
+  bool hitTest(BoxHitTestResult result, {required Offset position}) {
+    if (super.hitTest(result, position: position)) return true;
+    final row = child;
+    if (row == null ||
+        position.dx < 0 ||
+        position.dx > size.width ||
+        position.dy < -reach ||
+        position.dy > size.height + reach) {
+      return false;
+    }
+    final onto = Offset(
+      position.dx,
+      position.dy.clamp(0.5, math.max(0.5, size.height - 0.5)),
+    );
+    final hit = result.addWithRawTransform(
+      transform: MatrixUtils.forceToPoint(onto),
+      position: onto,
+      hitTest: (result, _) => row.hitTest(result, position: onto),
+    );
+    if (hit) result.add(BoxHitTestEntry(this, position));
+    return hit;
   }
 }

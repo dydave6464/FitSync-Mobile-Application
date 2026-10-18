@@ -179,20 +179,27 @@ class _StartHint extends StatelessWidget {
   Widget build(BuildContext context) {
     final t = context.fs;
     return ListView(
-      padding: const EdgeInsets.fromLTRB(20, 24, 20, 24),
+      // 8 of the 24 at the foot moves into the list itself, as room under
+      // the last row of suggestions for a thumb to land in.
+      padding: const EdgeInsets.fromLTRB(20, 24, 20, 16),
       children: [
         Text('What did you eat?', textAlign: TextAlign.center, style: Theme.of(context).textTheme.titleMedium),
         const SizedBox(height: 4),
         Text('Search by name, like adobo or rice',
             textAlign: TextAlign.center, style: TextStyle(color: t.text2)),
         const SizedBox(height: 16),
-        Wrap(
-          alignment: WrapAlignment.center,
-          spacing: 8,
-          runSpacing: 8,
-          children: [
-            for (final name in _suggestions) FsChip(label: name, selected: false, onTap: () => onPick(name)),
-          ],
+        Padding(
+          padding: const EdgeInsets.only(bottom: 8),
+          child: FsTapRoom(
+            child: Wrap(
+              alignment: WrapAlignment.center,
+              spacing: 8,
+              runSpacing: 8,
+              children: [
+                for (final name in _suggestions) FsChip(label: name, selected: false, onTap: () => onPick(name)),
+              ],
+            ),
+          ),
         ),
       ],
     );
