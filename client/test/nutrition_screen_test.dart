@@ -501,6 +501,61 @@ void main() {
       expect(find.text('Added Rice to dinner'), findsOneWidget);
     });
 
+    group('with a screen reader, so "Added …" stays up', () {
+      void screenReader(WidgetTester tester) {
+        tester.platformDispatcher.accessibilityFeaturesTestValue =
+            const FakeAccessibilityFeatures(accessibleNavigation: true);
+        addTearDown(tester.platformDispatcher.clearAccessibilityFeaturesTestValue);
+      }
+
+      testWidgets('Change opens the entry as it is now, after a change from its row', (tester) async {
+        screenReader(tester);
+        await logRiceToDinner(tester);
+        await tester.tap(find.byKey(const Key('entry.100')));
+        await tester.pumpAndSettle();
+        await tester.tap(find.descendant(of: find.byType(LogFoodSheet), matching: find.text('Snack')));
+        await tester.tap(find.byKey(const Key('servings.plus')));
+        await tester.tap(find.byKey(const Key('servings.plus')));
+        await tester.pump();
+        await tester.tap(find.byKey(const Key('logSheet.log')));
+        await tester.pumpAndSettle();
+        expect(find.text('Added Rice to dinner'), findsOneWidget);
+
+        await tester.tap(find.text('Change'));
+        await tester.pumpAndSettle();
+        final open = tester.widget<LogFoodSheet>(find.byType(LogFoodSheet));
+        expect(open.mealType, 'snack');
+        expect(open.servings, 2);
+      });
+
+      testWidgets('Change opens nothing once the entry is removed', (tester) async {
+        screenReader(tester);
+        await logRiceToDinner(tester);
+        final container = ProviderScope.containerOf(tester.element(find.byType(NutritionScreen)));
+        final entry = container.read(nutritionDayProvider).value!.meals['dinner']!.single;
+        await container.read(nutritionDayProvider.notifier).remove(entry);
+        await tester.pumpAndSettle();
+        expect(find.text('Added Rice to dinner'), findsOneWidget);
+
+        await tester.tap(find.text('Change'));
+        await tester.pumpAndSettle();
+        expect(find.byType(LogFoodSheet), findsNothing);
+      });
+
+      testWidgets('a failed change shows its error rather than queueing behind "Added …"', (tester) async {
+        screenReader(tester);
+        final repo = await logRiceToDinner(tester);
+        await tester.tap(find.byKey(const Key('entry.100')));
+        await tester.pumpAndSettle();
+        await tester.tap(find.descendant(of: find.byType(LogFoodSheet), matching: find.text('Snack')));
+        await tester.pump();
+        repo.failNext = true;
+        await tester.tap(find.byKey(const Key('logSheet.log')));
+        await tester.pumpAndSettle();
+        expect(find.text("Couldn't save — try again."), findsOneWidget);
+      });
+    });
+
     testWidgets('Add manually says the same, and its Change opens the sheet', (tester) async {
       final repo = await _pump(tester, today: _day('2026-10-14'), size: const Size(400, 1400));
       await tester.tap(find.byKey(const Key('meal.add.dinner')));
