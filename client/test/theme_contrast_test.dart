@@ -99,13 +99,16 @@ void main() {
       );
     });
 
-    test("the date picker writes today's date in the text green", () {
-      final data = theme == 'light' ? fsLightTheme() : fsDarkTheme();
-      final today = data.datePickerTheme.todayForegroundColor!;
-      expect(today.resolve({}), t.accentText);
-      // Picked, today sits on the green fill like any picked day.
-      expect(today.resolve({WidgetState.selected}), t.onAccent);
-    });
+    test(
+      "the date picker writes today's date in the text green in the $theme theme",
+      () {
+        final data = theme == 'light' ? fsLightTheme() : fsDarkTheme();
+        final today = data.datePickerTheme.todayForegroundColor!;
+        expect(today.resolve({}), t.accentText);
+        // Picked, today sits on the green fill like any picked day.
+        expect(today.resolve({WidgetState.selected}), t.onAccent);
+      },
+    );
 
     test('a text button reads in the text green in the $theme theme', () {
       final data = theme == 'light' ? fsLightTheme() : fsDarkTheme();
