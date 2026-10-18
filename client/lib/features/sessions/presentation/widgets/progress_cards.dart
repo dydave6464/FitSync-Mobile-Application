@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../../../../core/numbers.dart';
 import '../../../../core/theme.dart';
 import '../../../../core/units.dart';
 import '../../../../core/widgets/fs_kit.dart';
@@ -7,7 +8,6 @@ import '../../../pro/presentation/pro_screen.dart';
 import '../../../../core/widgets/fs_charts.dart';
 import '../../domain/training_analytics.dart';
 import '../../domain/volume_labels.dart';
-import '../progress_screen.dart' show groupThousands;
 
 /// The hero. Adherence leads because it is the one number a beginner can act
 /// on, and the only one that means anything in week one -- every trend on this
