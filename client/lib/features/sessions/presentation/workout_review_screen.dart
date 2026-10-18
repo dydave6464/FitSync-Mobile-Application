@@ -1,3 +1,5 @@
+import 'dart:math' as math;
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
@@ -34,6 +36,10 @@ Route<void> workoutLibraryRoute() => MaterialPageRoute<void>(
 
 /// What the user chose to do about a workout that was already open.
 enum _Blocked { open, replace }
+
+/// How tall the open-workout question's three choices stand at ordinary text:
+/// three full-size FsButtons, 52 dp each, and the two 8 dp gaps between.
+const _blockedChoicesHeight = 3 * 52.0 + 2 * 8.0;
 
 /// What a review row's ⋮ menu offers. Remove is the row's own ✕.
 enum _RowAction { moveUp, moveDown }
@@ -254,9 +260,17 @@ class _WorkoutReviewScreenState extends ConsumerState<WorkoutReviewScreen> {
             // largest text in landscape the wrapped choices alone are taller
             // than the dialog, and uncapped they would squeeze the question
             // above them down to nothing.
+            //
+            // Never below what the choices take at ordinary text, though. On
+            // a small phone on its side half the screen is 12 dp short of
+            // that, and Cancel sat just past the edge, behind a scroll
+            // nothing hinted at. The question keeps a scroll of its own.
             ConstrainedBox(
               constraints: BoxConstraints(
-                maxHeight: MediaQuery.sizeOf(dialogContext).height / 2,
+                maxHeight: math.max(
+                  MediaQuery.sizeOf(dialogContext).height / 2,
+                  _blockedChoicesHeight,
+                ),
               ),
               child: SingleChildScrollView(
                 // Not the route's primary scroller: the question's scroll

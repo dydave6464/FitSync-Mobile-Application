@@ -41,7 +41,7 @@ Future<void> showStartWorkoutSheet(BuildContext context) async {
   _startSheetInFlight = true;
   final PendingOutcome? pending;
   try {
-    pending = await _pendingOutcome(context);
+    pending = await lookUpPendingOutcome(context);
   } finally {
     _startSheetInFlight = false;
   }
@@ -87,7 +87,10 @@ const _pendingLookupLimit = Duration(seconds: 3);
 ///
 /// With nothing settled -- no lookup yet, one in flight, or one that failed
 /// -- the tap waits, capped at [_pendingLookupLimit], as it always did.
-Future<PendingOutcome?> _pendingOutcome(BuildContext context) async {
+///
+/// Public for the other way a workout starts, the Plan tab's Start, which
+/// asks the same question before it starts one.
+Future<PendingOutcome?> lookUpPendingOutcome(BuildContext context) async {
   final container = ProviderScope.containerOf(context, listen: false);
   final known = container.read(pendingOutcomeProvider);
   if (known is AsyncData<PendingOutcome?>) {

@@ -319,6 +319,22 @@ const _customPlan = WorkoutPlan(
   ],
 );
 
+/// A [RecordingPlanRepository] that can swap more than once: each swap lands
+/// the plan [plans] holds for the exercise chosen, so a test can switch an
+/// exercise away and back.
+class _SwapBackRepository extends RecordingPlanRepository {
+  _SwapBackRepository({required this.plans, super.alternativeRows})
+    : super(active: _plan);
+
+  final Map<int, WorkoutPlan> plans;
+
+  @override
+  Future<WorkoutPlan> swap(int planExerciseId, int exerciseId) async {
+    swaps.add((planExerciseId, exerciseId));
+    return active = plans[exerciseId]!;
+  }
+}
+
 /// Records what the summary dialog asked the plan API to do.
 class RecordingPlanRepository implements PlanRepository {
   RecordingPlanRepository({
@@ -721,16 +737,6 @@ void _smallPhoneLargeText(WidgetTester tester) {
   addTearDown(tester.platformDispatcher.clearTextScaleFactorTestValue);
 }
 
-/// Takes the one overflow the logger reports before anything is tapped on a
-/// small phone at large text: the meta row's "12 min elapsed", in a monospace
-/// font that the test font draws a full em wide per glyph. A phone's monospace
-/// is narrower and fits. Flutter reports an overflow once per row, so taking
-/// it here leaves later checks to see only what the tapped flow adds.
-void _drainMetaRowOverflow(WidgetTester tester) {
-  final error = tester.takeException();
-  if (error != null) expect('$error', contains('RenderFlex overflowed'));
-}
-
 /// Finish from the menu on a workout with sets still unlogged, which asks
 /// first now (see the "finishing with sets left" group), answered Finish.
 /// For the tests about what finishing does: they log a set or two, not the
@@ -753,6 +759,33 @@ Future<void> _makeItMyPlan(WidgetTester tester) async {
 }
 
 void main() {
+  group('the meta row', () {
+    // The test font draws every glyph a full em wide, so "12 min elapsed" at
+    // 2x is wider than a 320 dp phone on its own. The row has to make room
+    // for it rather than push past the edge.
+    testWidgets('fits a 320 dp phone at large text', (tester) async {
+      _smallPhoneLargeText(tester);
+
+      await _pump(tester);
+      expect(tester.takeException(), isNull);
+      expect(find.textContaining('min elapsed'), findsOneWidget);
+
+      await tester.tap(find.byKey(const Key('logger.primary')));
+      await tester.pumpAndSettle();
+      expect(tester.takeException(), isNull);
+    });
+
+    // The way to the jump sheet is an 11 px caption; the target around it
+    // is a thumb's width all the same.
+    testWidgets('its position caption is a full 48 dp target', (tester) async {
+      await _pump(tester);
+
+      final size = tester.getSize(find.byKey(const Key('logger.position')));
+      expect(size.width, greaterThanOrEqualTo(48));
+      expect(size.height, greaterThanOrEqualTo(48));
+    });
+  });
+
   // The mockup's screen 3. It is a stage of this screen, not a route, so the
   // session and the rest timer survive moving between the two.
   testWidgets('an exercise opens on its demo before its set table', (
@@ -1850,6 +1883,39 @@ void main() {
     expect(find.text('Complete set 1'), findsOneWidget);
   });
 
+  // A set done without the belt is stored with no weight. Reopened, its
+  // empty box is the record too: last session's weight filling it would
+  // turn the bodyweight set into a weighted one on the next Complete set.
+  testWidgets('reopening a bodyweight set keeps its weight empty', (
+    tester,
+  ) async {
+    await _pumpLogging(
+      tester,
+      session: _session(
+        sets: const [LoggedSet(exerciseId: 101, setNumber: 1, reps: 10)],
+      ),
+      last: const {
+        101: LastPerformance(
+          exerciseId: 101,
+          sessionDate: '2026-09-01',
+          weightKg: 30,
+          reps: 5,
+        ),
+      },
+    );
+
+    await tester.tap(find.byKey(const Key('set.1.row')));
+    await tester.pumpAndSettle();
+
+    final weight = tester.widget<TextField>(
+      find.byKey(const Key('set.1.weight')),
+    );
+    final reps = tester.widget<TextField>(find.byKey(const Key('set.1.reps')));
+    expect(weight.enabled, isTrue);
+    expect(weight.controller!.text, isEmpty);
+    expect(reps.controller!.text, '10');
+  });
+
   testWidgets('a 409 on an undo closes the logger too', (tester) async {
     final controller = await _pumpLogging(
       tester,
@@ -2030,7 +2096,6 @@ void main() {
       _smallPhoneLargeText(tester);
 
       await _pumpLogging(tester, session: squatSet1());
-      _drainMetaRowOverflow(tester);
       await tester.tap(find.byKey(const Key('set.1.row')));
       await tester.pumpAndSettle();
 
@@ -2093,7 +2158,6 @@ void main() {
     ) async {
       _smallPhoneLargeText(tester);
       await _pump(tester);
-      _drainMetaRowOverflow(tester);
 
       await _menu(tester, 'leave');
 
@@ -2403,7 +2467,6 @@ void main() {
     ) async {
       _smallPhoneLargeText(tester);
       await _pump(tester, plan: null, session: fiveExercises());
-      _drainMetaRowOverflow(tester);
 
       await _menu(tester, 'finish');
 
@@ -3186,7 +3249,6 @@ void main() {
       _smallPhoneLargeText(tester);
 
       await _pumpLogging(tester, session: _session(sets: squatDone));
-      _drainMetaRowOverflow(tester);
       await tapAddSet(tester);
       await tapAddSet(tester);
 
@@ -4212,6 +4274,49 @@ void main() {
         }
       },
     );
+
+    // Switching is the way back from a switch -- there is no Undo -- so the
+    // exercise can return to its slot. It returns as it is in the plan: a
+    // row added before it was switched away went with the switch.
+    testWidgets('a set added before a switch does not come back with it', (
+      tester,
+    ) async {
+      const gobletSquat = ExerciseAlternative(
+        exerciseId: 101,
+        name: 'Goblet squat',
+        muscleGroup: 'quadriceps',
+      );
+      final plans = _SwapBackRepository(
+        plans: {201: swappedPlan(601, boxSquat), 101: _plan},
+        alternativeRows: const [boxSquat, gobletSquat],
+      );
+      // Tall enough for the sheet to show both alternatives without a scroll.
+      tester.view.physicalSize = const Size(800, 1200);
+      tester.view.devicePixelRatio = 1;
+      addTearDown(tester.view.reset);
+      await _pump(tester, plans: plans);
+      await tester.tap(find.byKey(const Key('logger.primary')));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const Key('logpanel.addSet')));
+      await tester.pumpAndSettle();
+      expect(find.byKey(const Key('set.4.row')), findsOneWidget);
+
+      await _menu(tester, 'switch.menu');
+      await choose(tester, boxSquat);
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const Key('logger.primary')));
+      await tester.pumpAndSettle();
+      expect(find.byKey(const Key('set.4.row')), findsNothing);
+      await _menu(tester, 'switch.menu');
+      await choose(tester, gobletSquat);
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const Key('logger.primary')));
+      await tester.pumpAndSettle();
+
+      expect(plans.swaps, [(601, 201), (601, 101)]);
+      expect(find.byKey(const Key('set.3.row')), findsOneWidget);
+      expect(find.byKey(const Key('set.4.row')), findsNothing);
+    });
 
     testWidgets('a running rest carries on through a switch', (tester) async {
       final plans = RecordingPlanRepository(

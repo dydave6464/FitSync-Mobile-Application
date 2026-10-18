@@ -73,10 +73,11 @@ class SessionCard extends StatelessWidget {
             key: const Key('session.start'),
             label: hasActiveSession ? 'Resume session' : 'Start session',
             small: true,
-            // Null while the request is in flight: tapping twice would be
-            // harmless server-side (POST /sessions is idempotent) but would
-            // push the logger twice.
-            onPressed: starting ? null : onStart,
+            // A spinner while the request is in flight, which also takes the
+            // tap: tapping twice would be harmless server-side (POST
+            // /sessions is idempotent) but would push the logger twice.
+            busy: starting,
+            onPressed: onStart,
           ),
         ],
       ),
