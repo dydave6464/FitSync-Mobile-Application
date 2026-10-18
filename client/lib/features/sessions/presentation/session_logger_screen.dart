@@ -691,8 +691,10 @@ class _SessionLoggerScreenState extends ConsumerState<SessionLoggerScreen>
   /// Marks the footer, so a SnackBar can be lifted clear of it.
   final _footerKey = GlobalKey();
 
-  /// How tall the footer is now, safe area included. Measured rather than
-  /// fixed: the button grows with large text.
+  /// How tall the footer is now, above the safe area. Measured rather than
+  /// fixed: the button grows with large text. The home-bar inset is left
+  /// out because the Scaffold already lifts a floating SnackBar over it;
+  /// counted here too, the message hung a whole inset higher than meant.
   double _footerHeight() {
     final box = _footerKey.currentContext?.findRenderObject() as RenderBox?;
     return box != null && box.hasSize ? box.size.height : 0;
@@ -1698,9 +1700,9 @@ class _SessionLoggerScreenState extends ConsumerState<SessionLoggerScreen>
                     ),
             ),
             SafeArea(
-              key: _footerKey,
               top: false,
               child: Padding(
+                key: _footerKey,
                 padding: const EdgeInsets.fromLTRB(20, 0, 20, 16),
                 child: _stage == _LoggerStage.demo
                     ? FsButton(

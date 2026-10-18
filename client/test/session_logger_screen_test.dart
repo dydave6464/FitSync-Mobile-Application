@@ -758,6 +758,26 @@ Future<void> _makeItMyPlan(WidgetTester tester) async {
   await tester.pumpAndSettle();
 }
 
+/// A 34 dp home-indicator inset at the bottom, as on a phone with no home
+/// button.
+void _homeBar(WidgetTester tester) {
+  final inset = 34 * tester.view.devicePixelRatio;
+  tester.view.padding = FakeViewPadding(bottom: inset);
+  tester.view.viewPadding = FakeViewPadding(bottom: inset);
+  addTearDown(tester.view.reset);
+}
+
+/// From the bottom of the showing message's bar to the top of the footer's
+/// button. The SnackBar widget's own box also spans its see-through margin,
+/// so the bar is its Material.
+double _gapAboveFooter(WidgetTester tester) {
+  final bar = find
+      .descendant(of: find.byType(SnackBar), matching: find.byType(Material))
+      .first;
+  return tester.getRect(find.byKey(const Key('logger.primary'))).top -
+      tester.getRect(bar).bottom;
+}
+
 void main() {
   group('the meta row', () {
     // The test font draws every glyph a full em wide, so "12 min elapsed" at
@@ -2015,6 +2035,21 @@ void main() {
             .overlaps(tester.getRect(find.byKey(const Key('logger.primary')))),
         isFalse,
       );
+    });
+
+    // A phone with a home bar: the Scaffold already keeps a floating
+    // message above the bar, so the lift past the footer must not count the
+    // bar a second time and leave the message hanging mid-screen.
+    testWidgets('the message sits just above the footer over a home bar', (
+      tester,
+    ) async {
+      _homeBar(tester);
+      await _pumpLogging(tester, session: squatSet1());
+
+      await tester.tap(find.byKey(const Key('set.1.row')));
+      await tester.pumpAndSettle();
+
+      expect(_gapAboveFooter(tester), closeTo(8, 0.5));
     });
 
     // Undo puts back what was there; it is not a new set, so no rest.
@@ -4425,6 +4460,21 @@ void main() {
       // Stayed put: the old exercise's table, not a demo of either.
       expect(find.byKey(const Key('logger.demo')), findsNothing);
       expect(find.byKey(const Key('set.1.weight')), findsOneWidget);
+    });
+
+    testWidgets('"Swapped to" sits just above Start logging over a home bar', (
+      tester,
+    ) async {
+      _homeBar(tester);
+      await _pump(tester, plans: squatPlans());
+
+      await tester.tap(find.byKey(const Key('logger.switch')));
+      await tester.pumpAndSettle();
+      await choose(tester, boxSquat);
+      await tester.pumpAndSettle();
+
+      expect(find.text('Swapped to Box squat'), findsOneWidget);
+      expect(_gapAboveFooter(tester), closeTo(8, 0.5));
     });
 
     testWidgets('"Swapped to" floats clear of Start logging', (tester) async {
