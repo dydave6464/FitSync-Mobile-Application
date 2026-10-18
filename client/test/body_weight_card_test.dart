@@ -131,6 +131,30 @@ void main() {
     expect(chart.points.last.tooltip, 'Sep 23 · 70.9 kg');
   });
 
+  testWidgets('weigh-ins sit apart by the days between them', (tester) async {
+    // Spaced by order, a three-week gap looked like any other week, so a
+    // missed stretch of weigh-ins was hidden.
+    await tester.pumpWidget(
+      MaterialApp(
+        theme: fsLightTheme(),
+        home: Scaffold(
+          body: BodyWeightCard(
+            series: series([
+              ('2026-09-01', 72.0),
+              ('2026-09-08', 71.6),
+              ('2026-09-29', 70.8),
+              // Across the change of month and of clocks in many places.
+              ('2026-11-02', 70.1),
+            ]),
+          ),
+        ),
+      ),
+    );
+
+    final chart = tester.widget<FsLineChart>(find.byType(FsLineChart));
+    expect(chart.points.map((p) => p.x), [0, 7, 28, 62]);
+  });
+
   // Body weight is the one chart here that is not about training output, and
   // the prototype colours it apart from the accent for exactly that reason.
   testWidgets('the body-weight chart reads in blue, not the accent', (

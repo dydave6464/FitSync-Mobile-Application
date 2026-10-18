@@ -443,6 +443,63 @@ void main() {
       addTearDown(tester.platformDispatcher.clearTextScaleFactorTestValue);
     });
 
+    testWidgets('readings stand apart by their x, so gaps show', (
+      tester,
+    ) async {
+      // Days since the first weigh-in: two weeks, then four with none.
+      final gappy = [
+        const FsPoint(x: 0, y: 72, label: 'Sep 1'),
+        const FsPoint(x: 14, y: 71.6, label: 'Sep 15'),
+        const FsPoint(x: 42, y: 70.8, label: 'Oct 13'),
+      ];
+      tester.view.physicalSize = const Size(393, 700);
+      tester.view.devicePixelRatio = 1;
+      addTearDown(tester.view.reset);
+      await _pump(
+        tester,
+        FsLineChart(label: 'Body weight', points: gappy, minYBand: 4),
+      );
+      await tester.pump();
+
+      final data = _lineData(tester);
+      expect(data.lineBarsData.single.spots.map((s) => s.x), [0, 14, 42]);
+      expect((data.minX, data.maxX), (0, 42));
+      // Every date still printed under its own reading, none in the gap.
+      for (final p in gappy) {
+        expect(find.text(p.label), findsOneWidget, reason: p.label);
+      }
+      // And each under its own dot: two weeks in is a third of the way,
+      // where by order it was half.
+      final chart = tester.getRect(find.byType(LineChart));
+      expect(
+        tester.getCenter(find.text('Sep 15')).dx,
+        closeTo(chart.left + chart.width * 14 / 42, 1),
+      );
+    });
+
+    testWidgets('dates crowded together drop out, never the newest', (
+      tester,
+    ) async {
+      // Two weigh-ins a day apart cannot both be named at this width.
+      final crowded = [
+        const FsPoint(x: 0, y: 72, label: 'Sep 1'),
+        const FsPoint(x: 27, y: 71, label: 'Sep 28'),
+        const FsPoint(x: 28, y: 70.8, label: 'Sep 29'),
+      ];
+      tester.view.physicalSize = const Size(393, 700);
+      tester.view.devicePixelRatio = 1;
+      addTearDown(tester.view.reset);
+      await _pump(
+        tester,
+        FsLineChart(label: 'Body weight', points: crowded, minYBand: 4),
+      );
+      await tester.pump();
+
+      expect(find.text('Sep 29'), findsOneWidget);
+      expect(find.text('Sep 28'), findsNothing);
+      expect(find.text('Sep 1'), findsOneWidget);
+    });
+
     for (final (case_, newest, side) in [
       ('above', 70.4, Alignment.bottomRight),
       ('below', 69.6, Alignment.topRight),

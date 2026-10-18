@@ -32,12 +32,20 @@ class BodyWeightCard extends StatelessWidget {
 
   VoidCallback get _add => onAdd ?? () {};
 
-  /// One weigh-in as the chart draws it: "Sep 20" under its dot, and
+  /// [loggedOn] as a count of days, for spacing weigh-ins by their dates.
+  /// Read as UTC midnight: a local one is 23 hours from the next across a
+  /// change of clocks, which would count as no day at all.
+  static int _dayNumber(String loggedOn) =>
+      DateTime.parse('${loggedOn}T00:00:00Z').millisecondsSinceEpoch ~/
+      Duration.millisecondsPerDay;
+
+  /// One weigh-in as the chart draws it: placed by the days since [first],
+  /// the first weigh-in's day number, with "Sep 20" under its dot and
   /// "Sep 20 · 72.5 kg" when it is touched.
-  static FsPoint _point(int index, BodyWeightPoint point, WeightUnit unit) {
+  static FsPoint _point(BodyWeightPoint point, int first, WeightUnit unit) {
     final day = shortDate(DateTime.parse(point.loggedOn));
     return FsPoint(
-      x: index.toDouble(),
+      x: (_dayNumber(point.loggedOn) - first).toDouble(),
       y: convertFromKg(point.weightKg, unit),
       label: day,
       tooltip: '$day · ${formatWeightWithUnit(point.weightKg, unit)}',
@@ -74,6 +82,7 @@ class BodyWeightCard extends StatelessWidget {
     // card.
     final unit = this.unit ?? WeightUnit.fromApi(series.unit);
     final latest = points.last.weightKg;
+    final firstDay = _dayNumber(points.first.loggedOn);
     final reference = series.reference;
 
     return FsCard(
@@ -92,12 +101,9 @@ class BodyWeightCard extends StatelessWidget {
           const SizedBox(height: 8),
           FsLineChart(
             label: 'Body weight',
-            // `FsPoint.x` must be a sequential index — the chart's axis-label
-            // interval and label lookup both index this list by `x.round()`,
-            // so anything else (a date, a day offset) silently mislabels.
-            points: [
-              for (final (i, point) in points.indexed) _point(i, point, unit),
-            ],
+            // Spaced by date, not by order: a three-week gap between
+            // weigh-ins reads as one, rather than as one more week.
+            points: [for (final point in points) _point(point, firstDay, unit)],
             referenceY: reference == null
                 ? null
                 : convertFromKg(reference.weightKg, unit),

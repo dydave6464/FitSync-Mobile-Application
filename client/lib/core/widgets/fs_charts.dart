@@ -40,6 +40,9 @@ class FsPoint {
     this.tooltip,
   });
 
+  /// Where the point sits across the chart, in whole steps that rise from
+  /// one point to the next: days since the first weigh-in, say. The chart
+  /// spaces points by it, so a gap between readings shows as one.
   final double x;
   final double y;
 
@@ -250,21 +253,34 @@ class FsLineChart extends StatefulWidget {
         height: height,
         child: LayoutBuilder(
           builder: (context, constraints) {
-            // Every k-th date, counting back from the newest so it is always
-            // named, with k wide enough that no two dates touch -- the
-            // newest and oldest are pulled in from the edges by half their
-            // width, hence the 1.5. fl_chart's own interval also labelled
-            // the last point beside the one it chose: "Sep 12Sep 19".
+            final minX = points.isEmpty ? 0.0 : points.first.x - (lone ? 1 : 0);
+            final maxX = points.isEmpty ? 1.0 : points.last.x + (lone ? 1 : 0);
+            // The average room a reading has, which decides the dots below.
             final perPoint =
                 constraints.maxWidth / math.max(points.length - 1, 1);
-            final every = math.max(
-              1,
-              ((_widest(context, points.map((p) => p.label), _axisStyle(t)) *
-                              1.5 +
-                          8) /
-                      perPoint)
-                  .ceil(),
-            );
+
+            // The readings named under the axis, by x: the newest always,
+            // then, counting back, each far enough from the last one named
+            // that no two dates touch -- the newest and oldest are pulled in
+            // from the edges by half their width, hence the 1.5. Measured in
+            // pixels rather than counted in readings, because readings sit by
+            // their x: a week of daily weigh-ins crowds together, and a gap
+            // of a month has room to spare. fl_chart's own interval also
+            // labelled the last point beside the one it chose: "Sep 12Sep 19".
+            final perX = constraints.maxWidth / math.max(maxX - minX, 1);
+            final room =
+                _widest(context, points.map((p) => p.label), _axisStyle(t)) *
+                    1.5 +
+                8;
+            final named = <int, int>{};
+            double? lastNamed;
+            for (var i = points.length - 1; i >= 0; i--) {
+              final x = points[i].x;
+              if (lastNamed == null || (lastNamed - x) * perX >= room) {
+                named[x.round()] = i;
+                lastNamed = x;
+              }
+            }
 
             final line = LineChartBarData(
               spots: [for (final p in points) FlSpot(p.x, p.y)],
@@ -299,8 +315,8 @@ class FsLineChart extends StatefulWidget {
               LineChartData(
                 minY: minY,
                 maxY: maxY,
-                minX: points.isEmpty ? 0 : points.first.x - (lone ? 1 : 0),
-                maxX: points.isEmpty ? 1 : points.last.x + (lone ? 1 : 0),
+                minX: minX,
+                maxX: maxX,
                 gridData: const FlGridData(show: false),
                 borderData: FlBorderData(show: false),
                 titlesData: FlTitlesData(
@@ -310,17 +326,13 @@ class FsLineChart extends StatefulWidget {
                   bottomTitles: AxisTitles(
                     sideTitles: SideTitles(
                       showTitles: true,
-                      // Every point is offered; the filter below picks which
-                      // are named.
+                      // Every whole step is offered; only the readings picked
+                      // above are named, each under its own dot.
                       interval: 1,
                       reservedSize: _axisSpace(context),
                       getTitlesWidget: (value, meta) {
-                        final i = value.round();
-                        if (i < 0 ||
-                            i >= points.length ||
-                            (newest - i) % every != 0) {
-                          return const SizedBox.shrink();
-                        }
+                        final i = named[value.round()];
+                        if (i == null) return const SizedBox.shrink();
                         // Kept inside the card: the first and last dates
                         // used to hang past its edges.
                         return SideTitleWidget(
