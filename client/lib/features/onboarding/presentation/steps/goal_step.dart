@@ -124,6 +124,7 @@ class GoalStep extends StatelessWidget {
             key: Key('goal.${goal.value}'),
             small: true,
             accent: value.goals.contains(goal.value),
+            selected: value.goals.contains(goal.value),
             onTap: () => _toggle(goal.value),
             child: Row(
               children: [

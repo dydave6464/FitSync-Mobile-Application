@@ -627,4 +627,24 @@ void main() {
       );
     });
   });
+
+  testWidgets('"not familiar" tells a screen reader whether it is chosen', (
+    tester,
+  ) async {
+    final handle = tester.ensureSemantics();
+    await _pumpLive(tester);
+
+    final card = find.byKey(const Key('equipment.unfamiliar'));
+    expect(
+      tester.getSemantics(card),
+      isSemantics(isButton: true, hasSelectedState: true, isSelected: false),
+    );
+
+    await _tapKey(tester, const Key('equipment.unfamiliar'));
+    expect(
+      tester.getSemantics(card),
+      isSemantics(isButton: true, hasSelectedState: true, isSelected: true),
+    );
+    handle.dispose();
+  });
 }
