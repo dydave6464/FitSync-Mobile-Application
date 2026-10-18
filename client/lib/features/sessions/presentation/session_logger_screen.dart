@@ -530,10 +530,15 @@ class _SessionLoggerScreenState extends ConsumerState<SessionLoggerScreen>
   /// already gave [_syncDrafts] a new key in the build that drew it. The rest
   /// is not touched; see [_moveTo].
   ///
+  /// The rows added to [exercise] at [index] go with it. The new exercise
+  /// starts on its own target either way -- the count is keyed by exercise --
+  /// but switching back is how a switch is undone, and the old exercise
+  /// would otherwise come back with rows it was given before it left.
+  ///
   /// No Undo on the SnackBar. Every swap is recorded server-side as "rejected
   /// this, chose that" for the recommender, so swapping straight back would
   /// record a rejection the user never meant; Switch again is the way back.
-  Future<void> _switchExercise(PlanExercise exercise) async {
+  Future<void> _switchExercise(int index, PlanExercise exercise) async {
     final messenger = ScaffoldMessenger.of(context);
     final swappedTo = await showModalBottomSheet<String>(
       context: context,
@@ -553,7 +558,10 @@ class _SessionLoggerScreenState extends ConsumerState<SessionLoggerScreen>
       return;
     }
     if (!mounted) return;
-    setState(() => _moveTo(stage: _LoggerStage.demo));
+    setState(() {
+      _rowCounts.remove((index, exercise.exerciseId));
+      _moveTo(stage: _LoggerStage.demo);
+    });
     messenger.showSnackBar(
       SnackBar(
         // Floating, and lifted past the footer: Start logging is the next
@@ -1456,7 +1464,7 @@ class _SessionLoggerScreenState extends ConsumerState<SessionLoggerScreen>
         : _SwitchState(
             _hasLoggedSets(exercise, session)
                 ? null
-                : () => _switchExercise(planExercise),
+                : () => _switchExercise(index, planExercise),
           );
     final encouragement = encouragementFor(
       exercises: exercises,

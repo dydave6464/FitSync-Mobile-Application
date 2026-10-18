@@ -319,6 +319,22 @@ const _customPlan = WorkoutPlan(
   ],
 );
 
+/// A [RecordingPlanRepository] that can swap more than once: each swap lands
+/// the plan [plans] holds for the exercise chosen, so a test can switch an
+/// exercise away and back.
+class _SwapBackRepository extends RecordingPlanRepository {
+  _SwapBackRepository({required this.plans, super.alternativeRows})
+    : super(active: _plan);
+
+  final Map<int, WorkoutPlan> plans;
+
+  @override
+  Future<WorkoutPlan> swap(int planExerciseId, int exerciseId) async {
+    swaps.add((planExerciseId, exerciseId));
+    return active = plans[exerciseId]!;
+  }
+}
+
 /// Records what the summary dialog asked the plan API to do.
 class RecordingPlanRepository implements PlanRepository {
   RecordingPlanRepository({
@@ -4258,6 +4274,49 @@ void main() {
         }
       },
     );
+
+    // Switching is the way back from a switch -- there is no Undo -- so the
+    // exercise can return to its slot. It returns as it is in the plan: a
+    // row added before it was switched away went with the switch.
+    testWidgets('a set added before a switch does not come back with it', (
+      tester,
+    ) async {
+      const gobletSquat = ExerciseAlternative(
+        exerciseId: 101,
+        name: 'Goblet squat',
+        muscleGroup: 'quadriceps',
+      );
+      final plans = _SwapBackRepository(
+        plans: {201: swappedPlan(601, boxSquat), 101: _plan},
+        alternativeRows: const [boxSquat, gobletSquat],
+      );
+      // Tall enough for the sheet to show both alternatives without a scroll.
+      tester.view.physicalSize = const Size(800, 1200);
+      tester.view.devicePixelRatio = 1;
+      addTearDown(tester.view.reset);
+      await _pump(tester, plans: plans);
+      await tester.tap(find.byKey(const Key('logger.primary')));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const Key('logpanel.addSet')));
+      await tester.pumpAndSettle();
+      expect(find.byKey(const Key('set.4.row')), findsOneWidget);
+
+      await _menu(tester, 'switch.menu');
+      await choose(tester, boxSquat);
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const Key('logger.primary')));
+      await tester.pumpAndSettle();
+      expect(find.byKey(const Key('set.4.row')), findsNothing);
+      await _menu(tester, 'switch.menu');
+      await choose(tester, gobletSquat);
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const Key('logger.primary')));
+      await tester.pumpAndSettle();
+
+      expect(plans.swaps, [(601, 201), (601, 101)]);
+      expect(find.byKey(const Key('set.3.row')), findsOneWidget);
+      expect(find.byKey(const Key('set.4.row')), findsNothing);
+    });
 
     testWidgets('a running rest carries on through a switch', (tester) async {
       final plans = RecordingPlanRepository(
