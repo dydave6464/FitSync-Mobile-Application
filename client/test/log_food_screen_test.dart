@@ -137,13 +137,46 @@ void main() {
   });
 
   // Ink paints on the nearest Material behind it: on the screen's, it drew
-  // a square halo behind the pill and hid the focus colour. The pill is its
-  // own rounded Material, so a press and a focus fill the pill itself.
-  testWidgets("the meal choice's press and focus fill the pill", (tester) async {
+  // a square halo behind the pill and hid the focus colour. Pressed, the
+  // highlight is painted on the pill, clipped to its rounded edge: the middle
+  // is covered and the box's corners are not.
+  testWidgets("the meal choice's press fills the pill, inside its rounded edge", (tester) async {
     await _pump(tester, _SearchRepo());
     final ink = find.descendant(of: find.byKey(const Key('log.meal')), matching: find.byType(InkWell));
-    final material = tester.widget<Material>(find.ancestor(of: ink, matching: find.byType(Material)).first);
-    expect(material.shape, isA<StadiumBorder>());
+    final pill = tester.getRect(ink);
+    final gesture = await tester.startGesture(pill.center);
+    await tester.pump(const Duration(milliseconds: 200));
+    final controller = Material.of(tester.element(ink)) as RenderBox;
+    expect(controller.size, pill.size, reason: "the pill's own Material");
+    final local = pill.size.center(Offset.zero);
+    expect(
+      controller,
+      paints
+        ..clipPath(
+          pathMatcher: isPathThat(
+            includes: [local],
+            excludes: [const Offset(1, 1), Offset(pill.width - 1, pill.height - 1)],
+          ),
+        ),
+    );
+    await gesture.up();
+    await tester.pumpAndSettle();
+  });
+
+  // The 48 dp row is the target, not just the drawn pill: a tap above or
+  // below the pill's rounded ends, inside the row, opens the meals too.
+  testWidgets('a tap in the row by either end of the pill opens the meals', (tester) async {
+    await _pump(tester, _SearchRepo());
+    final row = tester.getRect(find.byKey(const Key('log.meal')));
+    final pill = tester.getRect(find.descendant(of: find.byKey(const Key('log.meal')), matching: find.byType(InkWell)));
+    for (final point in [Offset(pill.left + 2, row.top + 0.5), Offset(pill.right - 2, row.bottom - 0.5)]) {
+      await tester.tapAt(point);
+      await tester.pumpAndSettle();
+      expect(find.byKey(const Key('log.meal.dinner')), findsOneWidget, reason: 'tap at $point');
+      await tester.tapAt(const Offset(5, 5)); // outside the menu: closes it
+      await tester.pumpAndSettle();
+      expect(find.byKey(const Key('log.meal.dinner')), findsNothing, reason: 'the menu closed');
+    }
   });
 
   Future<void> pickMeal(WidgetTester tester, String meal) async {

@@ -195,19 +195,20 @@ class _LogFoodScreenState extends ConsumerState<LogFoodScreen> {
 
 /// The meal the food goes into, as one pill that opens the four meals.
 ///
-/// Built as the kit's chips are: the pill is its own Material, so the ink
-/// and the focus colour fill it inside its rounded edge rather than drawing
-/// a square behind it, and the row around it is 48 dp, a tap just above or
-/// below the pill still opening it.
+/// The pill is its own Material, so the ink and the focus colour fill it
+/// inside its rounded edge rather than drawing a square behind it. The
+/// whole 48 dp row around it opens the meals -- by the pill's rounded ends
+/// too, where moving a tap onto the pill's edge would land outside its
+/// shape -- while only a tap on the pill draws a press.
 class _MealPicker extends StatelessWidget {
   const _MealPicker({required this.meal, required this.onPicked});
 
   final String meal;
   final ValueChanged<String> onPicked;
 
-  Future<void> _open(BuildContext pill) async {
-    final box = pill.findRenderObject()! as RenderBox;
-    final overlay = Navigator.of(pill).overlay!.context.findRenderObject()! as RenderBox;
+  Future<void> _open(BuildContext row) async {
+    final box = row.findRenderObject()! as RenderBox;
+    final overlay = Navigator.of(row).overlay!.context.findRenderObject()! as RenderBox;
     final position = RelativeRect.fromRect(
       Rect.fromPoints(
         box.localToGlobal(Offset.zero, ancestor: overlay),
@@ -216,7 +217,7 @@ class _MealPicker extends StatelessWidget {
       Offset.zero & overlay.size,
     );
     final picked = await showMenu<String>(
-      context: pill,
+      context: row,
       position: position,
       initialValue: meal,
       items: [
@@ -235,15 +236,18 @@ class _MealPicker extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final t = context.fs;
-    return ConstrainedBox(
-      key: const Key('log.meal'),
-      constraints: const BoxConstraints(minHeight: 48),
-      child: Center(
-        widthFactor: 1,
-        child: FsTapRoom(
-          reach: 9,
-          child: Builder(
-            builder: (pill) => Semantics(
+    return Builder(
+      builder: (row) => GestureDetector(
+        key: const Key('log.meal'),
+        behavior: HitTestBehavior.opaque,
+        // The pill's InkWell is what a screen reader presses.
+        excludeFromSemantics: true,
+        onTap: () => _open(row),
+        child: ConstrainedBox(
+          constraints: const BoxConstraints(minHeight: 48),
+          child: Center(
+            widthFactor: 1,
+            child: Semantics(
               button: true,
               child: Tooltip(
                 message: 'Change meal',
@@ -252,7 +256,7 @@ class _MealPicker extends StatelessWidget {
                   shape: StadiumBorder(side: BorderSide(color: t.line2)),
                   child: InkWell(
                     customBorder: const StadiumBorder(),
-                    onTap: () => _open(pill),
+                    onTap: () => _open(row),
                     child: Padding(
                       padding: const EdgeInsets.fromLTRB(14, 6, 8, 6),
                       child: Row(
