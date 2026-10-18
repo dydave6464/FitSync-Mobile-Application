@@ -43,6 +43,14 @@ class _StubActivity extends ActivityController {
   Future<void> sync() async {}
 }
 
+/// Activity that cannot be read.
+class _FailingActivity extends ActivityController {
+  @override
+  Future<ActivityState> build() async => throw StateError('offline');
+  @override
+  Future<void> sync() async {}
+}
+
 ActivityWeek _week({List<String> missing = const [], int? usual}) =>
     ActivityWeek(
       days: [
@@ -64,19 +72,22 @@ Future<void> _pump(
   _Permission permission, {
   ActivityWeek? week,
   int steps = 6420,
+  bool fail = false,
 }) async {
   await tester.pumpWidget(
     ProviderScope(
       overrides: [
         stepPermissionProvider.overrideWithValue(permission),
         activityProvider.overrideWith(
-          () => _StubActivity(
-            ActivityState(
-              today: DaySteps(steps: steps),
-              week: week ?? _week(),
-              offline: false,
-            ),
-          ),
+          () => fail
+              ? _FailingActivity()
+              : _StubActivity(
+                  ActivityState(
+                    today: DaySteps(steps: steps),
+                    week: week ?? _week(),
+                    offline: false,
+                  ),
+                ),
         ),
         liveStepsProvider.overrideWith((ref) => const Stream<int>.empty()),
       ],
@@ -328,6 +339,57 @@ void main() {
         week: _week(usual: 5000),
       );
       expect(fill(tester), 1.0);
+    });
+
+    testWidgets('steps that fail to load offer a retry with the same icon', (
+      tester,
+    ) async {
+      await _pump(tester, _Permission(StepAccess.granted), fail: true);
+      final retry = find.byKey(const Key('home.activity.retry'));
+      expect(retry, findsOneWidget);
+      expect(
+        find.descendant(
+          of: retry,
+          matching: find.byIcon(FontAwesomeIcons.personWalking.data),
+        ),
+        findsOneWidget,
+      );
+    });
+
+    testWidgets('a usual of nothing draws no bar', (tester) async {
+      await _pump(
+        tester,
+        _Permission(StepAccess.granted),
+        week: _week(usual: 0),
+      );
+      expect(find.byKey(const Key('home.activity.usual')), findsNothing);
+    });
+
+    testWidgets('the zero tiles before counting draw no bar', (tester) async {
+      await _pump(
+        tester,
+        _Permission(StepAccess.notAsked),
+        week: _week(usual: 8000),
+      );
+      expect(find.byKey(const Key('home.activity.usual')), findsNothing);
+    });
+
+    // Home sits below these tiles now: the bar arriving, or never coming,
+    // must not move what is under them.
+    testWidgets('the steps tile is one height, bar or no bar', (tester) async {
+      Future<double> height(_Permission permission, ActivityWeek week) async {
+        await _pump(tester, permission, week: week);
+        return tester
+            .getSize(find.byKey(const Key('home.activity.steps')))
+            .height;
+      }
+
+      final withBar = await height(
+        _Permission(StepAccess.granted),
+        _week(usual: 8000),
+      );
+      expect(await height(_Permission(StepAccess.granted), _week()), withBar);
+      expect(await height(_Permission(StepAccess.notAsked), _week()), withBar);
     });
 
     testWidgets('no usual yet, no bar', (tester) async {

@@ -56,7 +56,9 @@ class PlanCard extends StatelessWidget {
     ];
 
     // Which day of the rotation, by its name where it has one. A one-day plan
-    // has no rotation to place it in, so it keeps the split's name.
+    // has no rotation to place it in, so it keeps the split's name. The
+    // server calls days past a split's own names "Day N", which is no name:
+    // "Day 4 of 4 · Day 4" would only say the number twice.
     final rotation = plan.days.length;
     final day = dayNo ?? 1;
     final dayName = plan.days
@@ -67,7 +69,12 @@ class PlanCard extends StatelessWidget {
     final eyebrow = rotation > 1
         ? [
             'Day $day of $rotation',
-            if (dayName != null && dayName.isNotEmpty) dayName else split,
+            if (dayName != null &&
+                dayName.isNotEmpty &&
+                !RegExp(r'^Day \d+$').hasMatch(dayName))
+              dayName
+            else
+              split,
           ].where((part) => part.isNotEmpty).join(' · ')
         : split;
     // Three at most: a full-body day's every area is not a focus.
@@ -132,16 +139,26 @@ class PlanCard extends StatelessWidget {
                         mainAxisAlignment: MainAxisAlignment.end,
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          FsEyebrow(eyebrow),
+                          // Two lines at most: today's day is worth reading
+                          // whole, and the band grows to hold it.
+                          FsEyebrow(eyebrow, maxLines: 2),
                           if (areas.isNotEmpty) ...[
                             const SizedBox(height: 8),
-                            Wrap(
-                              spacing: 6,
-                              runSpacing: 6,
-                              children: [
-                                for (final area in areas)
-                                  _FocusChip(area, t: t),
-                              ],
+                            // One phrase for a screen reader: "Back" alone
+                            // could be taken for a way back.
+                            Semantics(
+                              container: true,
+                              label:
+                                  "Today's focus: ${_andList([for (final area in areas) area.label])}",
+                              excludeSemantics: true,
+                              child: Wrap(
+                                spacing: 6,
+                                runSpacing: 6,
+                                children: [
+                                  for (final area in areas)
+                                    _FocusChip(area, t: t),
+                                ],
+                              ),
                             ),
                           ],
                         ],
@@ -227,3 +244,8 @@ class _FocusChip extends StatelessWidget {
     );
   }
 }
+
+/// "a", "a and b", "a, b and c".
+String _andList(List<String> items) => items.length == 1
+    ? items.single
+    : '${items.sublist(0, items.length - 1).join(', ')} and ${items.last}';

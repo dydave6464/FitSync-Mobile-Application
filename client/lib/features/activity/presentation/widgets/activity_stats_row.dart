@@ -14,9 +14,13 @@ import '../providers.dart';
 /// tiles show zeros and a tap on any of them is the way in: the activation
 /// screen, or -- once refused -- the OS prompt again and then Settings.
 class ActivityStatsRow extends ConsumerWidget {
-  const ActivityStatsRow({super.key, this.onGoToProfile});
+  const ActivityStatsRow({super.key, this.onGoToProfile, this.bottomGap = 0});
 
   final VoidCallback? onGoToProfile;
+
+  /// Space below the row, kept by the row itself so that when it shows
+  /// nothing (step access cannot be read) it leaves no gap either.
+  final double bottomGap;
 
   void _open(BuildContext context, Widget screen) =>
       Navigator.of(context)
@@ -24,35 +28,44 @@ class ActivityStatsRow extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    return ref
-        .watch(stepAccessProvider)
-        .when(
-          loading: () => const _Tiles.zero(onTap: null),
-          error: (_, _) => const SizedBox.shrink(),
-          data: (access) => switch (access) {
-            StepAccess.notAsked => _Tiles.zero(
-              hint: 'Tap to start counting your steps',
-              onTap: () => _open(
-                context,
-                ActivationScreen(onGoToProfile: onGoToProfile),
-              ),
-            ),
-            StepAccess.refused => _Tiles.zero(
-              hint: 'Step counting is off — tap to allow',
-              onTap: () async {
-                // Ask again first: after a reinstall the OS may still be able to.
-                final controller = ref.read(stepAccessProvider.notifier);
-                if (await controller.request() != StepAccess.granted) {
-                  await controller.openSettings();
-                }
-              },
-            ),
-            StepAccess.granted => _Stats(
-              onOpen: () =>
-                  _open(context, ActivityScreen(onGoToProfile: onGoToProfile)),
-            ),
+    final access = ref.watch(stepAccessProvider);
+    if (access.hasError) return const SizedBox.shrink();
+    return Padding(
+      padding: EdgeInsets.only(bottom: bottomGap),
+      child: _content(context, ref, access),
+    );
+  }
+
+  Widget _content(
+    BuildContext context,
+    WidgetRef ref,
+    AsyncValue<StepAccess> access,
+  ) {
+    return access.when(
+      loading: () => const _Tiles.zero(onTap: null),
+      error: (_, _) => const SizedBox.shrink(),
+      data: (access) => switch (access) {
+        StepAccess.notAsked => _Tiles.zero(
+          hint: 'Tap to start counting your steps',
+          onTap: () =>
+              _open(context, ActivationScreen(onGoToProfile: onGoToProfile)),
+        ),
+        StepAccess.refused => _Tiles.zero(
+          hint: 'Step counting is off — tap to allow',
+          onTap: () async {
+            // Ask again first: after a reinstall the OS may still be able to.
+            final controller = ref.read(stepAccessProvider.notifier);
+            if (await controller.request() != StepAccess.granted) {
+              await controller.openSettings();
+            }
           },
-        );
+        ),
+        StepAccess.granted => _Stats(
+          onOpen: () =>
+              _open(context, ActivityScreen(onGoToProfile: onGoToProfile)),
+        ),
+      },
+    );
   }
 }
 
@@ -140,13 +153,15 @@ class _Tiles extends StatelessWidget {
                 value: steps,
                 label: 'steps',
                 onTap: onTap,
+                // The bar's room is kept with or without a usual, so its
+                // arriving never moves the cards below the row.
                 footer: switch (usual) {
                   final usual? when usual > 0 => _UsualBar(
                     today: todaySteps,
                     usual: usual,
                     color: t.blue,
                   ),
-                  _ => null,
+                  _ => const SizedBox(height: _UsualBar.height),
                 },
               ),
               const SizedBox(width: 10),
@@ -213,16 +228,7 @@ class _StatTile extends StatelessWidget {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Container(
-              width: 30,
-              height: 30,
-              alignment: Alignment.center,
-              decoration: BoxDecoration(
-                color: color.withValues(alpha: 0.13),
-                borderRadius: BorderRadius.circular(10),
-              ),
-              child: FaIcon(icon, size: 14, color: color),
-            ),
+            _Badge(icon, color: color),
             const SizedBox(height: 8),
             // Shrunk to fit rather than wrapped: a third of a small phone at
             // large text broke "6,420" into "6," "42" "0".
@@ -239,6 +245,27 @@ class _StatTile extends StatelessWidget {
   }
 }
 
+/// A kind's icon in a small badge tinted with its colour.
+class _Badge extends StatelessWidget {
+  const _Badge(this.icon, {required this.color, this.size = 30});
+
+  final FaIconData icon;
+  final Color color;
+  final double size;
+
+  @override
+  Widget build(BuildContext context) => Container(
+    width: size,
+    height: size,
+    alignment: Alignment.center,
+    decoration: BoxDecoration(
+      color: color.withValues(alpha: 0.13),
+      borderRadius: BorderRadius.circular(size / 3),
+    ),
+    child: FaIcon(icon, size: size * 0.47, color: color),
+  );
+}
+
 /// Today's steps as a share of the usual day: a thin bar, full once the
 /// usual is reached, and the share in words for a screen reader.
 class _UsualBar extends StatelessWidget {
@@ -252,6 +279,8 @@ class _UsualBar extends StatelessWidget {
   final int usual;
   final Color color;
 
+  static const height = 4.0;
+
   @override
   Widget build(BuildContext context) {
     final t = context.fs;
@@ -262,7 +291,7 @@ class _UsualBar extends StatelessWidget {
       child: ClipRRect(
         borderRadius: BorderRadius.circular(FsRadius.pill),
         child: Container(
-          height: 4,
+          height: height,
           color: t.surface2,
           alignment: Alignment.centerLeft,
           child: FractionallySizedBox(
@@ -296,7 +325,7 @@ class _WideTile extends StatelessWidget {
       onTap: onTap,
       child: Row(
         children: [
-          const FsIconTile(icon: Icons.directions_walk),
+          _Badge(FontAwesomeIcons.personWalking, color: t.blue, size: 38),
           const SizedBox(width: 12),
           Expanded(
             child: Column(

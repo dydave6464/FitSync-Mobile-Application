@@ -67,9 +67,13 @@ class ProgressSnapshotCard extends StatelessWidget {
                 Row(
                   mainAxisSize: MainAxisSize.min,
                   children: [
-                    Text(
-                      'Past month',
-                      style: TextStyle(fontSize: 11.5, color: t.text3),
+                    // Free to wrap: on its own line at large text it can
+                    // still be wider than a small phone's card.
+                    Flexible(
+                      child: Text(
+                        'Past month',
+                        style: TextStyle(fontSize: 11.5, color: t.text3),
+                      ),
                     ),
                     Icon(Icons.chevron_right, size: 16, color: t.text3),
                   ],

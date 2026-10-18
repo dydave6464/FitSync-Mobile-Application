@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -211,6 +213,16 @@ ActiveSession _manualSession({List<LoggedSet> sets = const []}) =>
       ],
     );
 
+/// Step access that cannot be read at all, so the steps row shows nothing.
+class _BrokenPermission implements StepPermission {
+  @override
+  Future<StepAccess> status() async => throw StateError('no sensor');
+  @override
+  Future<StepAccess> request() async => throw StateError('no sensor');
+  @override
+  Future<void> openSettings() async {}
+}
+
 /// A fixed answer instead of a repository round trip — same shape as
 /// FakeProfileNotifier in onboarding_flow_test.dart.
 class _StubProfileNotifier extends ProfileNotifier {
@@ -270,6 +282,8 @@ Future<void> _pumpHome(
   // after that -- a refresh gone wrong, as opposed to streakError's failure
   // from the very start.
   bool streakFailsOnRefresh = false,
+  Future<TrainingSummary>? summaryFuture,
+  StepPermission? stepPermission,
 }) async {
   var streakReads = 0;
   await tester.pumpWidget(
@@ -307,7 +321,7 @@ Future<void> _pumpHome(
         }),
         homeSummaryProvider.overrideWith((ref) async {
           if (progressError != null) throw progressError;
-          return summary;
+          return summaryFuture ?? summary;
         }),
         trainingAnalyticsProvider.overrideWith((ref, period) async {
           if (analyticsError != null) throw analyticsError;
@@ -328,7 +342,9 @@ Future<void> _pumpHome(
         reminderPromptStoreProvider.overrideWithValue(
           inMemoryReminderPromptStore(),
         ),
-        stepPermissionProvider.overrideWithValue(const NoStepPermission()),
+        stepPermissionProvider.overrideWithValue(
+          stepPermission ?? const NoStepPermission(),
+        ),
         stepSourceProvider.overrideWithValue(const NoStepSource()),
       ],
       child: MaterialApp(
@@ -614,7 +630,8 @@ void main() {
     // screen gets its own guard rather than trusting each widget's
     // isolated test to cover the composition. mainGoal: null also mounts
     // the nudge, so all three stacked sections are exercised together.
-    tester.view.physicalSize = const Size(320, 1400);
+    // Tall enough that the list builds every card, not just the first few.
+    tester.view.physicalSize = const Size(320, 4000);
     tester.view.devicePixelRatio = 1;
     addTearDown(tester.view.resetPhysicalSize);
     addTearDown(tester.view.resetDevicePixelRatio);
@@ -654,6 +671,36 @@ void main() {
       final steps = find.byKey(const Key('home.activity.steps'));
       expect(top(find.byType(PlanCard)), lessThan(top(steps)));
       expect(top(steps), lessThan(top(find.byKey(const Key('home.progress')))));
+    });
+
+    testWidgets('the progress placeholder is as tall as the card it holds', (
+      tester,
+    ) async {
+      // Home must not jump when progress lands below the cards above it.
+      _tallScreen(tester);
+      final summary = Completer<TrainingSummary>();
+      await _pumpHome(tester, summaryFuture: summary.future);
+      final placeholder = tester.getSize(
+        find.byKey(const Key('home.progress.placeholder')),
+      );
+
+      summary.complete(_defaultSummary);
+      await tester.pumpAndSettle();
+      final card = tester.getSize(find.byKey(const Key('home.progress')));
+      expect(placeholder.height, closeTo(card.height, 1));
+    });
+
+    testWidgets('steps that cannot be read leave one gap, not two', (
+      tester,
+    ) async {
+      _tallScreen(tester);
+      await _pumpHome(tester, stepPermission: _BrokenPermission());
+      expect(find.byKey(const Key('home.activity.steps')), findsNothing);
+      final planBottom = tester.getBottomLeft(find.byType(PlanCard)).dy;
+      final progressTop = tester
+          .getTopLeft(find.byKey(const Key('home.progress')))
+          .dy;
+      expect(progressTop - planBottom, closeTo(14, 0.5));
     });
 
     testWidgets('a readiness that fails to load simply is not there', (
@@ -940,7 +987,7 @@ void main() {
     );
   });
 
-  testWidgets('Home offers step counting under the routine', (tester) async {
+  testWidgets("Home offers step counting under today's plan", (tester) async {
     await _pumpHome(tester);
     await tester.scrollUntilVisible(
       find.text('Tap to start counting your steps'),
