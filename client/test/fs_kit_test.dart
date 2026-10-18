@@ -4,6 +4,7 @@ import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import 'package:fitsync/core/theme.dart';
+import 'package:fitsync/core/units.dart';
 import 'package:fitsync/core/widgets/fs_kit.dart';
 
 Widget _host(Widget child) => MaterialApp(
@@ -810,6 +811,137 @@ void main() {
           hasEnabledState: true,
           isEnabled: false,
         ),
+      );
+      handle.dispose();
+    });
+  });
+
+  // A thumb needs 48 dp; the chips and the kg/lb switch are drawn smaller
+  // than that, and every row of them is laid out around the drawn size. So
+  // the target grows and the drawing does not.
+  group('tap targets', () {
+    /// [child] with room all round, as a chip in a column of content has,
+    /// so a tap just off it lands inside the column.
+    Widget roomy(Widget child) => _host(
+      SizedBox(
+        width: 300,
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const SizedBox(height: 40),
+            child,
+            const SizedBox(height: 40),
+          ],
+        ),
+      ),
+    );
+
+    testWidgets('a chip answers a tap just off its pill', (tester) async {
+      var taps = 0;
+      await tester.pumpWidget(
+        roomy(FsChip(label: 'Bench', selected: false, onTap: () => taps++)),
+      );
+
+      final pill = tester.getRect(find.byType(FsChip));
+      final slack = (48 - pill.height) / 2;
+      await tester.tapAt(pill.topCenter - Offset(0, slack - 1));
+      await tester.tapAt(pill.bottomCenter + Offset(0, slack - 1));
+      expect(taps, 2);
+
+      // Past the 48 dp band is past the chip.
+      await tester.tapAt(pill.topCenter - Offset(0, slack + 2));
+      expect(taps, 2);
+    });
+
+    testWidgets('a short chip is a full 48 dp wide to a thumb', (tester) async {
+      var taps = 0;
+      await tester.pumpWidget(
+        roomy(
+          FsChip(
+            label: 'No',
+            selected: false,
+            small: true,
+            onTap: () => taps++,
+          ),
+        ),
+      );
+
+      final pill = tester.getRect(find.byType(FsChip));
+      expect(pill.width, lessThan(48), reason: 'the case being guarded');
+      await tester.tapAt(
+        pill.centerLeft - Offset((48 - pill.width) / 2 - 1, 0),
+      );
+      expect(taps, 1);
+    });
+
+    testWidgets('a chip is drawn and laid out at the same size as before', (
+      tester,
+    ) async {
+      await tester.pumpWidget(
+        _host(const FsChip(label: 'Bench', selected: false, onTap: _noop)),
+      );
+
+      // About 30 dp: the band is not layout, or every Wrap of chips would
+      // spread apart.
+      expect(tester.getSize(find.byType(FsChip)).height, lessThan(40));
+    });
+
+    testWidgets('a screen reader frames the chip at 48 dp too', (tester) async {
+      final handle = tester.ensureSemantics();
+      await tester.pumpWidget(
+        _host(
+          const FsChip(label: 'No', selected: false, small: true, onTap: _noop),
+        ),
+      );
+
+      final rect = tester.getSemantics(find.byType(FsChip)).rect;
+      expect(rect.height, greaterThanOrEqualTo(48));
+      expect(rect.width, greaterThanOrEqualTo(48));
+      handle.dispose();
+    });
+
+    testWidgets('kg and lb each answer a tap off their letters', (
+      tester,
+    ) async {
+      final picked = <WeightUnit>[];
+      await tester.pumpWidget(
+        roomy(FsUnitToggle(value: WeightUnit.kg, onChanged: picked.add)),
+      );
+
+      final lb = tester.getRect(find.byKey(const Key('unit.lb')));
+      expect(lb.height, lessThan(48), reason: 'the case being guarded');
+      await tester.tapAt(lb.topCenter - Offset(0, (48 - lb.height) / 2 - 1));
+      // Out past the end of the word, away from kg.
+      await tester.tapAt(lb.centerRight + const Offset(10, 0));
+      expect(picked, [WeightUnit.lb, WeightUnit.lb]);
+    });
+
+    testWidgets("a tap on kg's own letters never reaches lb", (tester) async {
+      final picked = <WeightUnit>[];
+      await tester.pumpWidget(
+        roomy(FsUnitToggle(value: WeightUnit.lb, onChanged: picked.add)),
+      );
+
+      // Each unit's band grows away from the other, so the two never
+      // overlap: the right-hand edge of KG is still KG.
+      final kg = tester.getRect(find.byKey(const Key('unit.kg')));
+      await tester.tapAt(kg.centerRight - const Offset(1, 0));
+      await tester.tapAt(kg.centerLeft - const Offset(10, 0));
+      expect(picked, [WeightUnit.kg, WeightUnit.kg]);
+    });
+
+    testWidgets('a screen reader hears which unit is in force', (tester) async {
+      final handle = tester.ensureSemantics();
+      await tester.pumpWidget(
+        _host(FsUnitToggle(value: WeightUnit.kg, onChanged: (_) {})),
+      );
+
+      final kg = tester.getSemantics(find.byKey(const Key('unit.kg')));
+      expect(kg, isSemantics(label: 'KG', isSelected: true));
+      expect(kg.rect.height, greaterThanOrEqualTo(48));
+      expect(
+        tester.getSemantics(find.byKey(const Key('unit.lb'))),
+        isSemantics(label: 'LB', isSelected: false, isButton: true),
       );
       handle.dispose();
     });
