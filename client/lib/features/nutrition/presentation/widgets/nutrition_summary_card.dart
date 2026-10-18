@@ -25,14 +25,34 @@ class NutritionSummaryCard extends StatelessWidget {
       stroke: 9,
       color: t.accent,
       value: target == null || target.kcal == 0 ? 0 : eaten.kcal / target.kcal,
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          FittedBox(child: Text(groupThousands(eaten.kcal.toDouble()),
-              style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w700))),
-          FittedBox(child: Text(target == null ? 'kcal' : '/ ${groupThousands(target.kcal.toDouble())} kcal',
-              style: TextStyle(fontSize: 9, color: t.text3))),
-        ],
+      // The words go in the clear middle, not the whole 76 dp box: inside
+      // the 9 dp stroke that is a circle 29 dp in radius, and a 46 x 34 box
+      // is the widest that fits it for two lines (23^2 + 17^2 < 29^2). Laid
+      // out against the full box, "/ 2,050 kcal" ran into the stroke. Each
+      // line shrinks only as far as it must: at normal text a three-digit
+      // total keeps its 18 px, four digits ease to about 16.5-17.5 px, and
+      // the label lands near the prototype's 8 px.
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 15, vertical: 21),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            // Each line capped in height as well as width, 2:1 as the
+            // sizes are: a fresh day's "0" fits the width at any text size
+            // and pressed down on the box instead. A set line height, too:
+            // the theme's 1.43 stacked them taller than the prototype does.
+            ConstrainedBox(
+              constraints: const BoxConstraints(maxHeight: 22.5),
+              child: FittedBox(child: Text(groupThousands(eaten.kcal.toDouble()),
+                  style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w700, height: 1.2))),
+            ),
+            ConstrainedBox(
+              constraints: const BoxConstraints(maxHeight: 11.5),
+              child: FittedBox(child: Text(target == null ? 'kcal' : '/ ${groupThousands(target.kcal.toDouble())} kcal',
+                  style: TextStyle(fontSize: 9, color: t.text3, height: 1.2))),
+            ),
+          ],
+        ),
       ),
     );
 
