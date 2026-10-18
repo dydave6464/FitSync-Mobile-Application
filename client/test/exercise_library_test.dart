@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import 'package:flutter/rendering.dart' show RenderParagraph;
 import 'package:flutter/semantics.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -87,6 +88,32 @@ class FakeExerciseRepository implements ExerciseRepository {
   @override
   dynamic noSuchMethod(Invocation invocation) =>
       throw UnimplementedError('${invocation.memberName} is not used here');
+}
+
+/// A catalogue long enough to scroll the Recent cards well out of view.
+class _LongCatalogue extends FakeExerciseRepository {
+  @override
+  Future<ExercisePage> list({
+    List<String> muscleGroups = const [],
+    String? equipment,
+    String? search,
+    int page = 1,
+    int limit = 20,
+  }) async => ExercisePage(
+    items: [
+      for (var i = 0; i < 40; i++)
+        ExerciseSummary(
+          exerciseId: 1000 + i,
+          name: 'Catalogue exercise $i',
+          muscleGroup: 'pectorals',
+          equipment: 'dumbbell',
+          thumbnailUrl: null,
+        ),
+    ],
+    page: 1,
+    limit: 40,
+    total: 40,
+  );
 }
 
 /// Answers the recent call with [items], [error], or never, as told.
@@ -355,8 +382,8 @@ void main() {
     // Reported on a phone: the fourth card hung off the right-hand edge and a
     // swipe from it was the phone's own Back gesture. As the muscle buttons
     // did, the cards now fit the width: one row, the rest a tap away.
-    final five = <ExerciseSummary>[
-      for (var i = 0; i < 5; i++)
+    List<ExerciseSummary> recentOf(int count) => [
+      for (var i = 0; i < count; i++)
         ExerciseSummary(
           exerciseId: 100 + i,
           name: 'Recent exercise $i',
@@ -365,12 +392,16 @@ void main() {
           thumbnailUrl: null,
         ),
     ];
+    final five = recentOf(5);
     final more = find.byKey(const Key('library.recent.more'));
 
     Future<void> phone(
       WidgetTester tester, {
       Size size = const Size(390, 844),
       double text = 1,
+      FakeRecentRepository? recent,
+      FakeExerciseRepository? exercises,
+      ProviderContainer? container,
     }) async {
       tester.view.physicalSize = size;
       tester.view.devicePixelRatio = 1;
@@ -379,7 +410,11 @@ void main() {
       addTearDown(tester.platformDispatcher.clearTextScaleFactorTestValue);
       await _pump(
         tester,
-        _container(recent: FakeRecentRepository(items: five)),
+        container ??
+            _container(
+              recent: recent ?? FakeRecentRepository(items: five),
+              exercises: exercises,
+            ),
       );
     }
 
@@ -434,6 +469,11 @@ void main() {
       for (var id = 100; id < 105; id++) {
         expect(_recentCard(id), findsOneWidget, reason: '$id');
       }
+      // A short last row keeps the columns of the rows above.
+      expect(
+        tester.getSize(_recentCard(103)).width,
+        tester.getSize(_recentCard(100)).width,
+      );
       // The fourth starts a second row under the first.
       expect(
         tester.getTopLeft(_recentCard(103)).dy,
@@ -463,9 +503,108 @@ void main() {
       await phone(tester, size: const Size(320, 640), text: 2);
       expect(tester.takeException(), isNull);
       expect(_recentCard(100), findsOneWidget);
+      // One a row: names this size need a card's whole width.
+      expect(_recentCard(101), findsNothing);
       expect(_recentCard(102), findsNothing);
       expect(more, findsOneWidget);
       allOnScreen(tester, 320);
+    });
+
+    testWidgets('Show all stays open after scrolling away and back', (
+      tester,
+    ) async {
+      await phone(
+        tester,
+        recent: FakeRecentRepository(items: recentOf(10)),
+        exercises: _LongCatalogue(),
+      );
+      await tester.tap(more);
+      await tester.pumpAndSettle();
+      expect(_recentCard(109), findsOneWidget);
+
+      final list = find.byWidgetPredicate(
+        (w) => w is Scrollable && w.axisDirection == AxisDirection.down,
+      );
+      await tester.drag(list.last, const Offset(0, -2500));
+      await tester.pumpAndSettle();
+      await tester.drag(list.last, const Offset(0, 2500));
+      await tester.pumpAndSettle();
+
+      expect(_recentCard(109), findsOneWidget);
+      expect(
+        find.descendant(of: more, matching: find.text('Show less')),
+        findsOneWidget,
+      );
+    });
+
+    testWidgets('a list that stops overflowing forgets it was opened', (
+      tester,
+    ) async {
+      final recent = FakeRecentRepository(items: five);
+      final container = _container(recent: recent);
+      await phone(tester, container: container);
+      await tester.tap(more);
+      await tester.pumpAndSettle();
+
+      recent.items = recentOf(2);
+      container.invalidate(recentExercisesProvider);
+      await tester.pumpAndSettle();
+      expect(more, findsNothing);
+
+      recent.items = five;
+      container.invalidate(recentExercisesProvider);
+      await tester.pumpAndSettle();
+      expect(
+        find.descendant(of: more, matching: find.text('Show all 5')),
+        findsOneWidget,
+      );
+      expect(_recentCard(103), findsNothing);
+    });
+
+    testWidgets('the button says whether the list is open, in its own words', (
+      tester,
+    ) async {
+      final semantics = tester.ensureSemantics();
+      await phone(tester);
+      expect(
+        tester.getSemantics(more),
+        containsSemantics(hasExpandedState: true, isExpanded: false),
+      );
+      await tester.tap(more);
+      await tester.pumpAndSettle();
+      expect(
+        tester.getSemantics(more),
+        containsSemantics(hasExpandedState: true, isExpanded: true),
+      );
+      // What a voice user says, "Show less", is in what it is called.
+      expect(find.bySemanticsLabel(RegExp('^Show less')), findsOneWidget);
+      semantics.dispose();
+    });
+
+    testWidgets('a common 360 dp Android shows the latest three', (
+      tester,
+    ) async {
+      await phone(tester, size: const Size(360, 780));
+      for (final id in [100, 101, 102]) {
+        expect(_recentCard(id), findsOneWidget, reason: '$id');
+      }
+      allOnScreen(tester, 360);
+    });
+
+    testWidgets('a wide screen keeps the cards their size', (tester) async {
+      await phone(tester, size: const Size(844, 600));
+      expect(tester.getSize(_recentCard(100)).width, lessThanOrEqualTo(176));
+    });
+
+    testWidgets('the title is never cut at the largest text', (tester) async {
+      await phone(tester, size: const Size(600, 900), text: 4);
+      final title = tester.renderObject<RenderParagraph>(find.text('Recent'));
+      expect(
+        title.size.height,
+        greaterThanOrEqualTo(
+          title.getMaxIntrinsicHeight(double.infinity) - 0.5,
+        ),
+      );
     });
 
     testWidgets('the button is a full-size target, and says what it shows', (
@@ -694,29 +833,37 @@ void main() {
       expect(_recentCard(8), findsOneWidget);
     });
 
-    testWidgets('cards widen with large text', (tester) async {
-      tester.view.physicalSize = const Size(320, 640);
-      tester.view.devicePixelRatio = 1;
-      addTearDown(tester.view.reset);
-      await tester.pumpWidget(
-        UncontrolledProviderScope(
-          container: _container(),
-          child: MaterialApp(
-            theme: fsLightTheme(),
-            home: const MediaQuery(
-              data: MediaQueryData(
-                size: Size(320, 640),
-                textScaler: TextScaler.linear(2),
+    testWidgets('large text gives fewer, wider cards', (tester) async {
+      final container = _container();
+      Future<void> at(double text) async {
+        tester.view.physicalSize = const Size(320, 640);
+        tester.view.devicePixelRatio = 1;
+        addTearDown(tester.view.reset);
+        await tester.pumpWidget(
+          UncontrolledProviderScope(
+            container: container,
+            child: MaterialApp(
+              theme: fsLightTheme(),
+              home: MediaQuery(
+                data: MediaQueryData(
+                  size: const Size(320, 640),
+                  textScaler: TextScaler.linear(text),
+                ),
+                child: const ExerciseListScreen(),
               ),
-              child: ExerciseListScreen(),
             ),
           ),
-        ),
-      );
-      await tester.pumpAndSettle();
+        );
+        await tester.pumpAndSettle();
+      }
 
-      // One card a row at this size: the first, as wide as the row.
-      expect(tester.getSize(_recentCard(7)).width, greaterThan(112));
+      await at(1);
+      final normal = tester.getSize(_recentCard(7)).width;
+      expect(_recentCard(8), findsOneWidget, reason: 'two side by side');
+
+      await at(2);
+      expect(_recentCard(8), findsNothing, reason: 'one a row');
+      expect(tester.getSize(_recentCard(7)).width, greaterThan(normal));
     });
 
     testWidgets('every card is a full-size tap target', (tester) async {
