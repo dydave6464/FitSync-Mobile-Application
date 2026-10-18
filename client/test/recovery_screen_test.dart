@@ -144,8 +144,25 @@ void main() {
 
       expect(find.text('Today\'s estimate is unavailable'), findsOneWidget);
       expect(find.textContaining('September 18'), findsOneWidget);
+      // The same way forward as with no older estimate at all.
+      expect(find.text('Tap Update below to try again.'), findsOneWidget);
+      expect(find.byKey(const Key('recovery.update')), findsOneWidget);
     },
   );
+
+  testWidgets('an older estimate with no check-in today offers no retry', (
+    tester,
+  ) async {
+    await _pump(
+      tester,
+      const RecoveryOverview(
+        todayCheckin: null,
+        latestEstimate: _estimate,
+        load: [],
+      ),
+    );
+    expect(find.textContaining('try again'), findsNothing);
+  });
 
   testWidgets(
     'keeps the injury-risk estimate as its headline, readiness beside it',
@@ -360,10 +377,40 @@ void main() {
       await _pump(tester, _withToday(_todays()));
       expect(
         find.text(
-          'Why: you slept poorly and this week is 35% above your usual.',
+          'Why: recent check-ins show poor sleep, and this week is 35% above '
+          'your usual.',
         ),
         findsOneWidget,
       );
+    });
+
+    testWidgets('an earlier day\'s estimate shows no "Why" line', (
+      tester,
+    ) async {
+      // Like the advice line, the reasons held for the day they were worked
+      // out, so a greyed estimate shows neither -- whether or not today's
+      // check-in is in.
+      final earlier = InjuryRiskEstimate(
+        riskLevel: 'moderate',
+        trainingLoadScore: 47.25,
+        checkinDate: '2026-09-18',
+        source: 'model',
+        drivers: const [RiskDriver(key: 'sleep', value: 'poor')],
+      );
+      for (final checkin in [null, _checkin]) {
+        await _pump(
+          tester,
+          RecoveryOverview(
+            todayCheckin: checkin,
+            latestEstimate: earlier,
+            load: const [],
+          ),
+        );
+        expect(_ring(tester).color, _tokens.text3);
+        expect(find.byKey(const Key('recovery.why')), findsNothing);
+        expect(find.textContaining('recent check-ins'), findsNothing);
+        expect(find.text('Train, but go a little easier.'), findsNothing);
+      }
     });
 
     testWidgets('with no drivers it says nothing stands out', (tester) async {
@@ -380,6 +427,37 @@ void main() {
       await _pump(tester, _withToday(_todays(source: null, drivers: null)));
       expect(find.byKey(const Key('recovery.why')), findsNothing);
       expect(find.textContaining('stands out'), findsNothing);
+
+      // As GET actually sends such a row: no source, but an empty list.
+      await _pump(
+        tester,
+        _withToday(
+          InjuryRiskEstimate.fromJson({
+            'riskLevel': 'moderate',
+            'trainingLoadScore': 47.25,
+            'checkinDate': '2026-10-18',
+            'source': null,
+            'loadPct': null,
+            'drivers': <Object>[],
+          }),
+        ),
+      );
+      expect(find.byKey(const Key('recovery.why')), findsNothing);
+      expect(find.textContaining('stands out'), findsNothing);
+    });
+
+    testWidgets('the ring and readiness are named for a screen reader', (
+      tester,
+    ) async {
+      final semantics = tester.ensureSemantics();
+      await _pump(tester, _withToday(_todays(level: 'moderate', score: 47.25)));
+
+      expect(find.bySemanticsLabel('Injury risk: Moderate'), findsOneWidget);
+      // Home reads readiness out of 100; Recovery says it the same way.
+      expect(find.bySemanticsLabel('Readiness 53 out of 100'), findsOneWidget);
+      // The ring's word is not read again on its own.
+      expect(find.bySemanticsLabel('Moderate'), findsNothing);
+      semantics.dispose();
     });
 
     testWidgets('the ⓘ control is named, big enough and opens the guide', (
@@ -431,6 +509,25 @@ void main() {
         ),
         findsOneWidget,
       );
+      // Both score the inputs, the higher counts, and today the rules
+      // decide on most days. The rules come first: the model is not the
+      // main engine.
+      final how = tester
+          .widgetList<Text>(
+            find.descendant(of: sheet, matching: find.byType(Text)),
+          )
+          .map((t) => t.data ?? '')
+          .join(' ');
+      expect(how, contains('the higher score counts'));
+      expect(how, contains('the rules decide on most days'));
+      expect(how, contains('retrained on real check-in outcomes'));
+      final worked = how.substring(how.indexOf("How it's worked out"));
+      expect(
+        worked.indexOf('safety rules'),
+        lessThan(worked.indexOf('model')),
+        reason: 'the rules are introduced before the model',
+      );
+      expect(how, isNot(contains('gives the estimate')));
       // The server compares against a usual week from week 2 on, and while
       // that usual week is still short the load reads high, not zero.
       expect(

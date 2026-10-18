@@ -302,6 +302,68 @@ void main() {
     ]);
   });
 
+  testWidgets('every answer has a full-size tap band', (tester) async {
+    final repo = await _open(tester);
+
+    final targets = find.byWidgetPredicate((w) {
+      final key = w.key;
+      return key is ValueKey<String> &&
+          key.value.startsWith('checkin.') &&
+          key.value.endsWith('.target');
+    });
+    expect(targets, findsNWidgets(16));
+    for (final target in targets.evaluate()) {
+      final size = (target.renderObject! as RenderBox).size;
+      expect(size.height, greaterThanOrEqualTo(48));
+      expect(size.width, greaterThanOrEqualTo(48));
+    }
+
+    // A tap in the band but outside the pill still answers.
+    final band = find.byKey(const Key('checkin.sleepQuality.poor.target'));
+    final chip = find.byKey(const Key('checkin.sleepQuality.poor'));
+    expect(
+      tester.getSize(band).height,
+      greaterThan(tester.getSize(chip).height),
+    );
+    await tester.tapAt(tester.getTopLeft(band) + const Offset(24, 2));
+    await tester.pump();
+    expect(tester.widget<FsChip>(chip).selected, isTrue);
+    expect(repo.sent, isNull);
+  });
+
+  testWidgets('each answer is named with its question for a screen reader', (
+    tester,
+  ) async {
+    final semantics = tester.ensureSemantics();
+    await _open(tester);
+
+    expect(find.bySemanticsLabel('Sleep: Poor'), findsOneWidget);
+    expect(find.bySemanticsLabel('Soreness: Very sore'), findsNothing);
+    expect(find.bySemanticsLabel('Soreness: Severe'), findsOneWidget);
+    expect(find.bySemanticsLabel('Energy: Very low'), findsOneWidget);
+    expect(find.bySemanticsLabel('Stress: Moderate'), findsOneWidget);
+    // Not the bare answer, which "Moderate" alone would leave ambiguous.
+    expect(find.bySemanticsLabel('Moderate'), findsNothing);
+
+    expect(
+      tester.getSemantics(find.bySemanticsLabel('Sleep: Poor')),
+      isSemantics(
+        label: 'Sleep: Poor',
+        isButton: true,
+        isSelected: false,
+        hasTapAction: true,
+      ),
+    );
+
+    await tester.tap(find.byKey(const Key('checkin.sleepQuality.poor')));
+    await tester.pump();
+    expect(
+      tester.getSemantics(find.bySemanticsLabel('Sleep: Poor')),
+      isSemantics(label: 'Sleep: Poor', isButton: true, isSelected: true),
+    );
+    semantics.dispose();
+  });
+
   testWidgets('it says why it asks', (tester) async {
     await _open(tester);
 

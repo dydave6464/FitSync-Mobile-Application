@@ -175,24 +175,35 @@ class _CheckinSheetState extends ConsumerState<_CheckinSheet> {
                   color: t.text,
                 ),
               ),
-              const SizedBox(height: 8),
+              // Small gaps around the row: each band is a full 48 dp tall,
+              // so the pills already sit apart by the band's own slack, and
+              // there is no run spacing for the same reason.
+              const SizedBox(height: 2),
               Wrap(
                 spacing: 8,
-                runSpacing: 8,
                 children: [
                   for (final value in q.values)
-                    FsChip(
-                      key: Key('checkin.${q.field}.$value'),
-                      label: _displayLabel(value),
+                    _AnswerTarget(
+                      key: Key('checkin.${q.field}.$value.target'),
+                      label: '${q.label}: ${_displayLabel(value)}',
                       selected: _answers[q.field] == value,
                       onTap: () {
                         if (_busy) return;
                         setState(() => _answers[q.field] = value);
                       },
+                      child: FsChip(
+                        key: Key('checkin.${q.field}.$value'),
+                        label: _displayLabel(value),
+                        selected: _answers[q.field] == value,
+                        onTap: () {
+                          if (_busy) return;
+                          setState(() => _answers[q.field] = value);
+                        },
+                      ),
                     ),
                 ],
               ),
-              const SizedBox(height: 16),
+              const SizedBox(height: 8),
             ],
             if (_failure != null) ...[
               Text(_failure!, style: TextStyle(fontSize: 12, color: t.red)),
@@ -215,6 +226,55 @@ class _CheckinSheetState extends ConsumerState<_CheckinSheet> {
               ),
             ],
           ],
+        ),
+      ),
+    );
+  }
+}
+
+/// One answer's tap band: the pill as drawn, inside a full-size target.
+///
+/// FsChip is drawn about 30 dp tall, short of the 48 dp a thumb needs, and
+/// fs_kit's other chip rows rely on that size, so the band is added here
+/// rather than there. A tap on the pill itself still reaches its own ink;
+/// one in the slack around it answers the same way.
+///
+/// A screen reader hears the question with the answer -- "Sleep: Poor" --
+/// rather than a bare "Moderate" that three of the four rows share.
+class _AnswerTarget extends StatelessWidget {
+  const _AnswerTarget({
+    super.key,
+    required this.label,
+    required this.selected,
+    required this.onTap,
+    required this.child,
+  });
+
+  static const _minTarget = 48.0;
+
+  final String label;
+  final bool selected;
+  final VoidCallback onTap;
+  final Widget child;
+
+  @override
+  Widget build(BuildContext context) {
+    return Semantics(
+      container: true,
+      button: true,
+      selected: selected,
+      label: label,
+      onTap: onTap,
+      excludeSemantics: true,
+      child: GestureDetector(
+        behavior: HitTestBehavior.opaque,
+        onTap: onTap,
+        child: ConstrainedBox(
+          constraints: const BoxConstraints(
+            minWidth: _minTarget,
+            minHeight: _minTarget,
+          ),
+          child: Align(widthFactor: 1, heightFactor: 1, child: child),
         ),
       ),
     );

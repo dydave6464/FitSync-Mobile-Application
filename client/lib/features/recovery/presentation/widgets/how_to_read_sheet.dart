@@ -123,19 +123,24 @@ class _HowToReadSheet extends StatelessWidget {
                       t: t,
                     ),
                     _Heading("How it's worked out", t: t),
+                    // The rules come first because they decide the estimate
+                    // on most days today; the model is described as what it
+                    // is, trained on simulated data, never as the engine.
                     _Paragraph(
-                      'A machine-learning model (a random forest, built with '
-                      'scikit-learn) gives the estimate. It was trained on '
-                      'simulated data built from published injury risk '
-                      'factors, not on real FitSync check-ins, so it is not '
-                      'yet more accurate than simple rules.',
+                      'A set of safety rules and a machine-learning model (a '
+                      'random forest, built with scikit-learn) both score '
+                      'your inputs, and the higher score counts, so the '
+                      'estimate is never lower than the rules say. Today the '
+                      'rules decide on most days, and they score it alone '
+                      'when the model is unavailable.',
                       t: t,
                     ),
                     _Paragraph(
-                      'Those rules act as a safety floor: the estimate is '
-                      'never lower than they say, and they give it alone when '
-                      'the model is unavailable. The model will be retrained '
-                      'on real check-in outcomes as they come in.',
+                      'The model was trained on simulated data built from '
+                      'published injury risk factors, not on real FitSync '
+                      'check-ins, so it is not yet more accurate than the '
+                      'rules. It will be retrained on real check-in outcomes '
+                      'as they come in.',
                       t: t,
                     ),
                     _Heading('What it is not', t: t),

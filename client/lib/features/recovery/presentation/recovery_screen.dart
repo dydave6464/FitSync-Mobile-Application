@@ -185,27 +185,36 @@ class _EstimateCard extends StatelessWidget {
             'moderate' => t.amber,
             _ => t.accent,
           };
-    final why = estimate.whyLine;
+    // The reasons, like the advice, held for the day they were worked out,
+    // so an earlier day's greyed estimate shows neither.
+    final why = isToday ? estimate.whyLine : null;
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
         Center(
-          child: FsRing(
-            value: estimate.ringValue,
-            color: color,
-            child: Padding(
-              padding: const EdgeInsets.all(14),
-              // The ring is a fixed size while system text can double, so
-              // the word shrinks to fit inside the stroke.
-              child: FittedBox(
-                fit: BoxFit.scaleDown,
-                child: Text(
-                  estimate.label,
-                  style: TextStyle(
-                    fontSize: 17,
-                    fontWeight: FontWeight.w700,
-                    color: t.text,
+          // One phrase for a screen reader, which would otherwise hear the
+          // bare word in the ring with nothing to say what it measures.
+          child: Semantics(
+            container: true,
+            label: 'Injury risk: ${estimate.label}',
+            excludeSemantics: true,
+            child: FsRing(
+              value: estimate.ringValue,
+              color: color,
+              child: Padding(
+                padding: const EdgeInsets.all(14),
+                // The ring is a fixed size while system text can double, so
+                // the word shrinks to fit inside the stroke.
+                child: FittedBox(
+                  fit: BoxFit.scaleDown,
+                  child: Text(
+                    estimate.label,
+                    style: TextStyle(
+                      fontSize: 17,
+                      fontWeight: FontWeight.w700,
+                      color: t.text,
+                    ),
                   ),
                 ),
               ),
@@ -213,16 +222,22 @@ class _EstimateCard extends StatelessWidget {
           ),
         ),
         // The same score the other way up -- what Home's readiness ring
-        // shows -- so the two screens can be read against each other.
+        // shows -- so the two screens can be read against each other, and
+        // heard the same way too.
         if (estimate.readiness case final readiness?) ...[
           const SizedBox(height: 10),
-          Text(
-            'Readiness $readiness',
-            textAlign: TextAlign.center,
-            style: TextStyle(
-              fontSize: 13,
-              fontWeight: FontWeight.w600,
-              color: t.text2,
+          Semantics(
+            container: true,
+            label: 'Readiness $readiness out of 100',
+            excludeSemantics: true,
+            child: Text(
+              'Readiness $readiness',
+              textAlign: TextAlign.center,
+              style: TextStyle(
+                fontSize: 13,
+                fontWeight: FontWeight.w600,
+                color: t.text2,
+              ),
             ),
           ),
         ],
@@ -252,6 +267,17 @@ class _EstimateCard extends StatelessWidget {
             textAlign: TextAlign.center,
             style: TextStyle(fontSize: 12, color: t.text2),
           ),
+          // Today's check-in is saved but its estimate never came back: the
+          // same way forward as when there is no older estimate to show.
+          if (today != null) ...[
+            const SizedBox(height: 8),
+            Text(
+              'Tap Update below to try again.',
+              key: const Key('recovery.retry'),
+              textAlign: TextAlign.center,
+              style: TextStyle(fontSize: 13, color: t.text2, height: 1.4),
+            ),
+          ],
         ],
         if (why != null) ...[
           const SizedBox(height: 14),

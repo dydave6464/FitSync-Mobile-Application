@@ -131,26 +131,51 @@ class InjuryRiskEstimate {
     _ => "You're primed to train",
   };
 
-  /// "Why: you slept poorly and this week is 35% above your usual." -- the
-  /// estimate's [drivers] in plain English, or null when there is nothing to
-  /// say.
+  /// "Why: recent check-ins show poor sleep and high stress, and this week
+  /// is 35% above your usual." -- the estimate's [drivers] in plain English,
+  /// or null when there is nothing to say.
   ///
-  /// Null for a row that predates drivers. The server fills such rows with an
-  /// empty list, so a missing [source] is the tell as much as a missing list:
-  /// "nothing stands out" would be a claim that estimate never made. A
-  /// driver this build has no words for is skipped rather than shown raw.
+  /// The check-in drivers are the worst answer over the last 3 days, not
+  /// this morning's, so they are gathered into one "recent check-ins show"
+  /// list, which keeps the place of its most influential member. When that
+  /// list sits beside other clauses, a comma sets it apart, so its own "and"
+  /// is not read as joining it to them.
+  ///
+  /// Null for a row that predates drivers. The server sends such rows with
+  /// an empty list, so a missing [source] is the tell: "nothing stands out"
+  /// would be a claim that estimate never made. A driver this build has no
+  /// words for is skipped rather than shown raw.
   String? get whyLine {
     final drivers = this.drivers;
     if (drivers == null || source == null) return null;
     if (drivers.isEmpty) {
       return 'Nothing in your check-ins, training or history stands out.';
     }
-    final phrases = [for (final d in drivers) ?_driverPhrase(d)];
-    if (phrases.isEmpty) return null;
-    final joined = phrases.length == 1
-        ? phrases.single
-        : '${phrases.sublist(0, phrases.length - 1).join(', ')} '
-              'and ${phrases.last}';
+
+    final checkinNouns = <String>[];
+    final items = <String?>[];
+    int? checkinSlot;
+    for (final d in drivers) {
+      final noun = _checkinNoun(d);
+      if (noun != null) {
+        checkinNouns.add(noun);
+        if (checkinSlot == null) {
+          checkinSlot = items.length;
+          items.add(null);
+        }
+      } else if (_driverClause(d) case final clause?) {
+        items.add(clause);
+      }
+    }
+    if (checkinSlot != null) {
+      items[checkinSlot] = 'recent check-ins show ${_andList(checkinNouns)}';
+    }
+    final clauses = items.whereType<String>().toList();
+    if (clauses.isEmpty) return null;
+    final joined = checkinSlot != null && clauses.length > 1
+        ? '${clauses.sublist(0, clauses.length - 1).join(', ')}, '
+              'and ${clauses.last}'
+        : _andList(clauses);
     return 'Why: $joined.';
   }
 
@@ -183,56 +208,50 @@ List<RiskDriver>? _parseDrivers(Object? raw) {
 /// server/src/db/training-load.js).
 const _loadCap = 130;
 
-/// One driver as a clause of the "Why" sentence, worded by its value where
-/// that changes the meaning -- a little sore is not very sore. Every value
-/// the rules give points to has words, since only those can be drivers.
-String? _driverPhrase(RiskDriver driver) {
+/// "a", "a and b", "a, b and c".
+String _andList(List<String> items) => items.length == 1
+    ? items.single
+    : '${items.sublist(0, items.length - 1).join(', ')} and ${items.last}';
+
+/// A check-in driver as a noun for "recent check-ins show …", or null for
+/// any other driver. Only the answers worth 5 rule points or more have
+/// words, since only those can be drivers; an everyday answer (good sleep,
+/// mild soreness) that somehow arrived is skipped rather than blamed.
+String? _checkinNoun(RiskDriver driver) => switch ((driver.key, driver.value)) {
+  ('sleep', 'poor') => 'poor sleep',
+  ('sleep', 'fair') => 'only fair sleep',
+  ('soreness', 'severe') => 'very sore muscles',
+  ('soreness', 'moderate') => 'sore muscles',
+  ('energy', 'very_low') => 'very low energy',
+  ('energy', 'low') => 'low energy',
+  ('stress', 'high') => 'high stress',
+  ('stress', 'moderate') => 'moderate stress',
+  _ => null,
+};
+
+/// A driver from outside the check-ins as a clause of the "Why" sentence,
+/// worded by its value where that changes the meaning.
+String? _driverClause(RiskDriver driver) {
   final value = driver.value;
   switch (driver.key) {
     case 'load':
       if (value is! num) return null;
-      final pct = value.round();
-      // Any load above zero earns points, so a sliver still counts -- but
-      // "0% above" would contradict the line it sits in.
-      if (pct < 1) return 'this week is a little above your usual';
       // The server caps the index here, so a reading at the cap may stand
-      // for any bigger surge.
-      if (pct >= _loadCap) {
+      // for any bigger surge. The check is on the value as sent: 129.6 is
+      // under the cap, so it is an exact reading, not "at least".
+      if (value >= _loadCap) {
         return 'this week is at least $_loadCap% above your usual';
       }
+      // Kept under the cap's own figure when rounding would reach it, so an
+      // exact reading never shows the number that means "at least".
+      final pct = value.round().clamp(0, _loadCap - 1);
+      // "0% above" would contradict the line it sits in.
+      if (pct < 1) return 'this week is a little above your usual';
       return 'this week is $pct% above your usual';
     case 'injury_history':
       if (value is! num || value < 1) return null;
       final n = value.round();
       return n == 1 ? 'you have a past injury' : 'you have $n past injuries';
-    case 'sleep':
-      return switch (value) {
-        'poor' => 'you slept poorly',
-        'fair' => 'you slept fairly',
-        'good' => 'your sleep was good but not excellent',
-        _ => null,
-      };
-    case 'soreness':
-      return switch (value) {
-        'severe' => 'your muscles are very sore',
-        'moderate' => 'your muscles are sore',
-        'mild' => 'your muscles are a little sore',
-        _ => null,
-      };
-    case 'energy':
-      return switch (value) {
-        'very_low' => 'your energy is very low',
-        'low' => 'your energy is low',
-        'moderate' => 'your energy is only moderate',
-        _ => null,
-      };
-    case 'stress':
-      return switch (value) {
-        'high' => 'your stress is high',
-        'moderate' => 'your stress is moderate',
-        'low' => 'you have a little stress',
-        _ => null,
-      };
     case 'recent_pain':
       return switch (value) {
         'severe' => 'you reported severe pain after a recent workout',
