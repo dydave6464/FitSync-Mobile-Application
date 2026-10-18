@@ -198,6 +198,31 @@ void main() {
     expect(answered.length, (answered.last - answered.first) / 0.5 + 1);
   });
 
+  // Past the ends of the pill, inside the weight column: the switch's band
+  // is wider than the letters, and the box that scales it down at large
+  // text must not trim it back to them.
+  testWidgets('the column header switch takes a tap just past lb', (
+    tester,
+  ) async {
+    final chosen = <WeightUnit>[];
+    await tester.pumpWidget(
+      _host(
+        ExerciseLogPanel(
+          exercise: _exercise,
+          session: _session(),
+          unit: WeightUnit.kg,
+          onUnitChanged: chosen.add,
+          drafts: _drafts(tester),
+          onUndoSet: (_) async {},
+        ),
+      ),
+    );
+
+    final lb = tester.getRect(find.byKey(const Key('unit.lb')));
+    await tester.tapAt(lb.centerRight + const Offset(6, 0));
+    expect(chosen, [WeightUnit.lb]);
+  });
+
   // One pound is 0.45359237 kg exactly, so 22.5 kg is 49.6039... lb, 25 kg is
   // 55.1155... lb and the 2.5 kg gain between them is 5.5115... lb. Derived by
   // hand: an expectation run through the same conversion the widget uses

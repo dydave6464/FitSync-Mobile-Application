@@ -377,25 +377,30 @@ class _AboutStepState extends State<AboutStep> {
         ),
         const SizedBox(height: 18),
         const FsEyebrow('Daily activity level'),
-        const SizedBox(height: 10),
+        const SizedBox(height: 2),
         // A one-row Wrap is only as tall as a chip: the room around it is
-        // what takes each chip's band to 48 dp.
-        FsTapRoom(
-          child: Wrap(
-            spacing: 9,
-            runSpacing: 9,
-            children: [
-              for (final option in _activityLevels)
-                FsChip(
-                  key: Key('activity.${option.value}'),
-                  label: option.label,
-                  selected: _activityLevel == option.value,
-                  onTap: () {
-                    setState(() => _activityLevel = option.value);
-                    _emit();
-                  },
-                ),
-            ],
+        // what takes each chip's band to 48 dp. That room is this padding's,
+        // 8 of the 10 above and 8 below, since the chips are the step's last
+        // line until the card appears.
+        Padding(
+          padding: const EdgeInsets.symmetric(vertical: 8),
+          child: FsTapRoom(
+            child: Wrap(
+              spacing: 9,
+              runSpacing: 9,
+              children: [
+                for (final option in _activityLevels)
+                  FsChip(
+                    key: Key('activity.${option.value}'),
+                    label: option.label,
+                    selected: _activityLevel == option.value,
+                    onTap: () {
+                      setState(() => _activityLevel = option.value);
+                      _emit();
+                    },
+                  ),
+              ],
+            ),
           ),
         ),
         // Absent until every term of the equation is answered — the same rule
@@ -403,7 +408,8 @@ class _AboutStepState extends State<AboutStep> {
         // that filled its gaps with population averages would show a
         // confident target belonging to nobody.
         if (targets != null) ...[
-          const SizedBox(height: 18),
+          // 18 with the chips' padding above.
+          const SizedBox(height: 10),
           FsCard(
             key: const Key('dailyTargets'),
             small: true,

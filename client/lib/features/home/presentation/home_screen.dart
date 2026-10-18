@@ -71,7 +71,9 @@ class HomeScreen extends ConsumerWidget {
     final session = ref.watch(activeSessionProvider).value;
     // Only once there is a plan to name: announcing a plan that has not
     // loaded, or failed to, would be a welcome to nothing. Not over a
-    // workout in progress either, which outranks it as it outranks the plan.
+    // workout in progress either, which outranks it as it outranks the plan:
+    // the listener below puts it away for good once a session arrives, and
+    // this keeps it off the frame in between.
     final readyPlan = ref.watch(planReadyProvider) && session == null
         ? plan.value
         : null;

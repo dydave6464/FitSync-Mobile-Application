@@ -280,9 +280,10 @@ class LevelStep extends ConsumerWidget {
                   crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: [
                     // The room around the rows takes the outer chips' bands to
-                    // 48 dp; the 8 above is this padding's.
+                    // 48 dp; the 8 above and below is this padding's, taken
+                    // out of the gaps on either side.
                     Padding(
-                      padding: const EdgeInsets.only(top: 8),
+                      padding: const EdgeInsets.symmetric(vertical: 8),
                       child: FsTapRoom(
                         child: Wrap(
                           spacing: 8,
@@ -305,7 +306,7 @@ class LevelStep extends ConsumerWidget {
                         ),
                       ),
                     ),
-                    const SizedBox(height: 12),
+                    const SizedBox(height: 4),
                     Builder(
                       builder: (context) {
                         EquipmentOption? bodyweight;

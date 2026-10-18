@@ -643,8 +643,9 @@ class _DescribeCardState extends ConsumerState<_DescribeCard> {
     final parsed = _applied;
 
     return FsCard(
-      // The chips can be the card's last line, and the room below them is
-      // then the card's padding, outside the Column.
+      // The card's padding below its last line, outside the Column, is that
+      // line's room: the chips', or an offer's small Add button once a
+      // parsed sentence ends the card.
       child: FsTapRoom(
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,

@@ -156,8 +156,9 @@ class GoalStep extends StatelessWidget {
           const SizedBox(height: 14),
           const FsEyebrow('Main focus'),
           const SizedBox(height: 10),
-          // Small chips are about 26 dp, so their band reaches 11 past the
-          // row each way to make 48.
+          // Small chips are about 26 dp: their band reaches 11 above the
+          // row and into the 8 dp gap below it, where the text that follows
+          // takes over -- about 45 dp in all.
           FsTapRoom(
             reach: 11,
             child: Wrap(

@@ -579,9 +579,13 @@ class _AddSet extends StatelessWidget {
 }
 
 /// A [FittedBox] that scales down without trimming its child's taps to its
-/// own box. The unit switch's band reaches past the pill it draws, and a
-/// plain FittedBox -- needed only at 320 dp with large text -- answered
-/// inside the pill alone, whatever the room around it.
+/// own box. The unit switch's band is wider than the letters it draws, and a
+/// plain FittedBox answered inside the drawn pill alone, so a tap just past
+/// "lb" or before "kg" in the weight column missed.
+///
+/// Its height comes from the header's padding and tap room, not from here.
+/// Once it actually scales -- only at 320 dp with very large text -- the
+/// [Center] above it is no taller than the scaled pill and keeps taps to it.
 class _ScaleDown extends FittedBox {
   const _ScaleDown({required Widget super.child})
     : super(fit: BoxFit.scaleDown);
