@@ -43,6 +43,20 @@ MuscleRegion? regionOf(String muscleGroup) {
   return null;
 }
 
+/// The areas [muscleGroups] work, the busiest first; a tie keeps the areas'
+/// usual order. A muscle group this does not know is left out.
+List<MuscleRegion> regionsByCount(Iterable<String> muscleGroups) {
+  final counts = <MuscleRegion, int>{};
+  for (final muscle in muscleGroups) {
+    final region = regionOf(muscle);
+    if (region != null) counts[region] = (counts[region] ?? 0) + 1;
+  }
+  return counts.keys.toList()..sort((a, b) {
+    final byCount = counts[b]!.compareTo(counts[a]!);
+    return byCount != 0 ? byCount : a.index.compareTo(b.index);
+  });
+}
+
 /// What to call a hand-picked workout, from its exercises' muscle groups.
 ///
 /// One or two areas are named, the busier first: "Chest & Arms workout".
@@ -52,18 +66,8 @@ MuscleRegion? regionOf(String muscleGroup) {
 /// Null when nothing in [muscleGroups] is an area this knows, for the caller
 /// to fall back on its own wording.
 String? manualWorkoutName(Iterable<String> muscleGroups) {
-  final counts = <MuscleRegion, int>{};
-  for (final muscle in muscleGroups) {
-    final region = regionOf(muscle);
-    if (region != null) counts[region] = (counts[region] ?? 0) + 1;
-  }
-  if (counts.isEmpty) return null;
-
-  final regions = counts.keys.toList()
-    ..sort((a, b) {
-      final byCount = counts[b]!.compareTo(counts[a]!);
-      return byCount != 0 ? byCount : a.index.compareTo(b.index);
-    });
+  final regions = regionsByCount(muscleGroups);
+  if (regions.isEmpty) return null;
 
   return switch (regions) {
     [final only] => '${only.label} workout',

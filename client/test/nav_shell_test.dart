@@ -15,6 +15,7 @@ import 'package:fitsync/features/exercises/domain/exercise.dart';
 import 'package:fitsync/features/exercises/domain/exercise_filters.dart';
 import 'package:fitsync/features/exercises/presentation/providers.dart';
 import 'package:fitsync/features/home/presentation/day_rollover.dart';
+import 'package:fitsync/features/home/presentation/home_screen.dart';
 import 'package:fitsync/features/home/presentation/nav_shell.dart';
 import 'package:fitsync/features/nutrition/presentation/nutrition_screen.dart';
 import 'package:fitsync/features/nutrition/presentation/providers.dart'
@@ -631,7 +632,21 @@ void main() {
     await _pumpShell(tester);
     await tester.pumpAndSettle();
 
-    await tester.ensureVisible(find.byKey(const Key('home.progress')));
+    // Below today's steps now, so scrolled to rather than already built.
+    await tester.scrollUntilVisible(
+      find.byKey(const Key('home.progress')),
+      200,
+      scrollable: find
+          .descendant(
+            of: find.byType(HomeScreen),
+            matching: find.byWidgetPredicate(
+              (widget) =>
+                  widget is Scrollable &&
+                  widget.axisDirection == AxisDirection.down,
+            ),
+          )
+          .first,
+    );
     await tester.tap(find.byKey(const Key('home.progress')));
     await tester.pumpAndSettle();
 

@@ -233,6 +233,15 @@ class _StubRoutine extends RoutineController {
   }
 }
 
+/// A screen tall enough for Home's list to build every card at once: the
+/// progress card sits below today's steps, past the default 600-pixel test
+/// screen, and a ListView builds nothing it has not reached.
+void _tallScreen(WidgetTester tester) {
+  tester.view.physicalSize = const Size(800, 3000);
+  tester.view.devicePixelRatio = 1;
+  addTearDown(tester.view.reset);
+}
+
 Future<void> _pumpHome(
   WidgetTester tester, {
   VoidCallback? onGoToTrain,
@@ -621,6 +630,7 @@ void main() {
     testWidgets('Home reads top to bottom as the prototype does', (
       tester,
     ) async {
+      _tallScreen(tester);
       await _pumpHome(tester);
 
       double top(Key key) => tester.getTopLeft(find.byKey(key)).dy;
@@ -632,6 +642,18 @@ void main() {
         tester.getTopLeft(find.byType(PlanCard)).dy,
         lessThan(top(const Key('home.progress'))),
       );
+    });
+
+    testWidgets("today's steps sit under today's plan, above progress", (
+      tester,
+    ) async {
+      _tallScreen(tester);
+      await _pumpHome(tester);
+
+      double top(Finder f) => tester.getTopLeft(f).dy;
+      final steps = find.byKey(const Key('home.activity.steps'));
+      expect(top(find.byType(PlanCard)), lessThan(top(steps)));
+      expect(top(steps), lessThan(top(find.byKey(const Key('home.progress')))));
     });
 
     testWidgets('a readiness that fails to load simply is not there', (
@@ -646,6 +668,7 @@ void main() {
     });
 
     testWidgets('progress that fails to load offers a retry', (tester) async {
+      _tallScreen(tester);
       await _pumpHome(
         tester,
         progressError: const ApiException('INTERNAL', 'x'),
@@ -657,6 +680,7 @@ void main() {
     testWidgets('the analytics half failing alone still shows the same error', (
       tester,
     ) async {
+      _tallScreen(tester);
       // Either provider failing is one error line -- half a card would
       // only raise the question of where the other half went.
       await _pumpHome(
@@ -670,6 +694,7 @@ void main() {
     testWidgets('retrying after progress loads successfully shows the card', (
       tester,
     ) async {
+      _tallScreen(tester);
       var fail = true;
       await tester.pumpWidget(
         ProviderScope(
@@ -726,6 +751,7 @@ void main() {
     });
 
     testWidgets('the cards open Progress and Recovery', (tester) async {
+      _tallScreen(tester);
       final taps = <String>[];
       await _pumpHome(
         tester,

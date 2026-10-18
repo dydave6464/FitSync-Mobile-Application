@@ -660,6 +660,24 @@ class FsEyebrow extends StatelessWidget {
   );
 }
 
+/// One line of [text] that shrinks to fit rather than wraps: a figure or a
+/// one-word label in a narrow tile, which at large text would otherwise break
+/// mid-word ("6," "42" "0"). Never soft-wrapped, so the height it reports is
+/// one line's, and a row sizing tiles to the tallest is not misled.
+class FsOneLine extends StatelessWidget {
+  const FsOneLine(this.text, {super.key, required this.style});
+
+  final String text;
+  final TextStyle style;
+
+  @override
+  Widget build(BuildContext context) => FittedBox(
+    fit: BoxFit.scaleDown,
+    alignment: Alignment.centerLeft,
+    child: Text(text, style: style, maxLines: 1, softWrap: false),
+  );
+}
+
 /// `.tag` — the small count pill the design puts opposite a section eyebrow.
 class FsTag extends StatelessWidget {
   const FsTag(this.text, {super.key});

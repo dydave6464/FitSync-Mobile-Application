@@ -43,6 +43,25 @@ void main() {
     }
   });
 
+  group('regionsByCount', () {
+    for (final (muscles, want) in [
+      // The area with more exercises leads.
+      (
+        <String>['biceps', 'lats', 'lats'],
+        [MuscleRegion.back, MuscleRegion.arms],
+      ),
+      // A tie keeps the areas in their usual order: chest before back.
+      (<String>['lats', 'pectorals'], [MuscleRegion.chest, MuscleRegion.back]),
+      // Unknown values are left out, not guessed at.
+      (<String>['quads', 'neck'], [MuscleRegion.legs]),
+      (<String>['neck'], <MuscleRegion>[]),
+    ]) {
+      test('$muscles ranks as $want', () {
+        expect(regionsByCount(muscles), want);
+      });
+    }
+  });
+
   group('manualWorkoutName', () {
     for (final (muscles, want) in [
       (<String>['pectorals'], 'Chest workout'),

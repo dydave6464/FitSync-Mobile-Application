@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:font_awesome_flutter/font_awesome_flutter.dart';
 
 import '../../../../core/theme.dart';
 import '../../../../core/widgets/fs_kit.dart';
@@ -17,35 +18,41 @@ class ActivityStatsRow extends ConsumerWidget {
 
   final VoidCallback? onGoToProfile;
 
-  void _open(BuildContext context, Widget screen) => Navigator.of(
-    context,
-  ).push(MaterialPageRoute<void>(builder: (_) => screen));
+  void _open(BuildContext context, Widget screen) =>
+      Navigator.of(context)
+          .push(MaterialPageRoute<void>(builder: (_) => screen));
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    return ref.watch(stepAccessProvider).when(
-      loading: () => const _Tiles.zero(onTap: null),
-      error: (_, _) => const SizedBox.shrink(),
-      data: (access) => switch (access) {
-        StepAccess.notAsked => _Tiles.zero(
-          hint: 'Tap to start counting your steps',
-          onTap: () => _open(context, ActivationScreen(onGoToProfile: onGoToProfile)),
-        ),
-        StepAccess.refused => _Tiles.zero(
-          hint: 'Step counting is off — tap to allow',
-          onTap: () async {
-            // Ask again first: after a reinstall the OS may still be able to.
-            final controller = ref.read(stepAccessProvider.notifier);
-            if (await controller.request() != StepAccess.granted) {
-              await controller.openSettings();
-            }
+    return ref
+        .watch(stepAccessProvider)
+        .when(
+          loading: () => const _Tiles.zero(onTap: null),
+          error: (_, _) => const SizedBox.shrink(),
+          data: (access) => switch (access) {
+            StepAccess.notAsked => _Tiles.zero(
+              hint: 'Tap to start counting your steps',
+              onTap: () => _open(
+                context,
+                ActivationScreen(onGoToProfile: onGoToProfile),
+              ),
+            ),
+            StepAccess.refused => _Tiles.zero(
+              hint: 'Step counting is off — tap to allow',
+              onTap: () async {
+                // Ask again first: after a reinstall the OS may still be able to.
+                final controller = ref.read(stepAccessProvider.notifier);
+                if (await controller.request() != StepAccess.granted) {
+                  await controller.openSettings();
+                }
+              },
+            ),
+            StepAccess.granted => _Stats(
+              onOpen: () =>
+                  _open(context, ActivityScreen(onGoToProfile: onGoToProfile)),
+            ),
           },
-        ),
-        StepAccess.granted => _Stats(
-          onOpen: () => _open(context, ActivityScreen(onGoToProfile: onGoToProfile)),
-        ),
-      },
-    );
+        );
   }
 }
 
@@ -56,27 +63,32 @@ class _Stats extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    return ref.watch(activityProvider).when(
-      loading: () => const _Tiles.zero(onTap: null),
-      error: (_, _) => _WideTile(
-        key: const Key('home.activity.retry'),
-        title: "Couldn't load your steps",
-        subtitle: 'Tap to try again',
-        onTap: () => ref.invalidate(activityProvider),
-      ),
-      data: (state) {
-        final week = state.week;
-        final today = week?.today;
-        final noKm = week == null || week.missingHeight;
-        final noKcal = week == null || week.missingHeight || week.missingWeight;
-        return _Tiles(
-          steps: formatSteps(state.today.steps),
-          kcal: noKcal ? '—' : '${today!.caloriesBurned ?? 0}',
-          km: noKm ? '—' : (today!.distanceKm ?? 0).toStringAsFixed(1),
-          onTap: onOpen,
+    return ref
+        .watch(activityProvider)
+        .when(
+          loading: () => const _Tiles.zero(onTap: null),
+          error: (_, _) => _WideTile(
+            key: const Key('home.activity.retry'),
+            title: "Couldn't load your steps",
+            subtitle: 'Tap to try again',
+            onTap: () => ref.invalidate(activityProvider),
+          ),
+          data: (state) {
+            final week = state.week;
+            final today = week?.today;
+            final noKm = week == null || week.missingHeight;
+            final noKcal =
+                week == null || week.missingHeight || week.missingWeight;
+            return _Tiles(
+              steps: formatSteps(state.today.steps),
+              kcal: noKcal ? '—' : '${today!.caloriesBurned ?? 0}',
+              km: noKm ? '—' : (today!.distanceKm ?? 0).toStringAsFixed(1),
+              todaySteps: state.today.steps,
+              usual: week?.usual,
+              onTap: onOpen,
+            );
+          },
         );
-      },
-    );
   }
 }
 
@@ -86,6 +98,8 @@ class _Tiles extends StatelessWidget {
     required this.steps,
     required this.kcal,
     required this.km,
+    required this.todaySteps,
+    required this.usual,
     required this.onTap,
   }) : hint = null;
 
@@ -94,11 +108,17 @@ class _Tiles extends StatelessWidget {
   const _Tiles.zero({required this.onTap, this.hint})
     : steps = '0',
       kcal = '0',
-      km = '0.0';
+      km = '0.0',
+      todaySteps = 0,
+      usual = null;
 
   final String steps;
   final String kcal;
   final String km;
+  final int todaySteps;
+
+  /// The user's usual day, or null until there is one to measure against.
+  final int? usual;
   final VoidCallback? onTap;
   final String? hint;
 
@@ -108,32 +128,47 @@ class _Tiles extends StatelessWidget {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        Row(
-          children: [
-            _StatTile(
-              key: const Key('home.activity.steps'),
-              icon: Icons.directions_walk,
-              value: steps,
-              label: 'steps',
-              onTap: onTap,
-            ),
-            const SizedBox(width: 10),
-            _StatTile(
-              key: const Key('home.activity.kcal'),
-              icon: Icons.local_fire_department_outlined,
-              value: kcal,
-              label: 'kcal',
-              onTap: onTap,
-            ),
-            const SizedBox(width: 10),
-            _StatTile(
-              key: const Key('home.activity.km'),
-              icon: Icons.place_outlined,
-              value: km,
-              label: 'km',
-              onTap: onTap,
-            ),
-          ],
+        // One height for all three, though only steps carries the bar.
+        IntrinsicHeight(
+          child: Row(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              _StatTile(
+                key: const Key('home.activity.steps'),
+                icon: FontAwesomeIcons.personWalking,
+                color: t.blue,
+                value: steps,
+                label: 'steps',
+                onTap: onTap,
+                footer: switch (usual) {
+                  final usual? when usual > 0 => _UsualBar(
+                    today: todaySteps,
+                    usual: usual,
+                    color: t.blue,
+                  ),
+                  _ => null,
+                },
+              ),
+              const SizedBox(width: 10),
+              _StatTile(
+                key: const Key('home.activity.kcal'),
+                icon: FontAwesomeIcons.fire,
+                color: t.amber,
+                value: kcal,
+                label: 'kcal',
+                onTap: onTap,
+              ),
+              const SizedBox(width: 10),
+              _StatTile(
+                key: const Key('home.activity.km'),
+                icon: FontAwesomeIcons.locationDot,
+                color: t.violet,
+                value: km,
+                label: 'km',
+                onTap: onTap,
+              ),
+            ],
+          ),
         ),
         if (hint != null) ...[
           const SizedBox(height: 8),
@@ -148,19 +183,25 @@ class _Tiles extends StatelessWidget {
   }
 }
 
+/// One of the three: its kind in a small badge of its own colour, so the
+/// tiles tell apart at a glance, and the word under the number says it too.
 class _StatTile extends StatelessWidget {
   const _StatTile({
     super.key,
     required this.icon,
+    required this.color,
     required this.value,
     required this.label,
     required this.onTap,
+    this.footer,
   });
 
-  final IconData icon;
+  final FaIconData icon;
+  final Color color;
   final String value;
   final String label;
   final VoidCallback? onTap;
+  final Widget? footer;
 
   @override
   Widget build(BuildContext context) {
@@ -172,11 +213,64 @@ class _StatTile extends StatelessWidget {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Icon(icon, size: 17, color: t.blue),
-            const SizedBox(height: 6),
-            Text(value, style: fsNum(t, size: 17)),
-            Text(label, style: TextStyle(fontSize: 10, color: t.text3)),
+            Container(
+              width: 30,
+              height: 30,
+              alignment: Alignment.center,
+              decoration: BoxDecoration(
+                color: color.withValues(alpha: 0.13),
+                borderRadius: BorderRadius.circular(10),
+              ),
+              child: FaIcon(icon, size: 14, color: color),
+            ),
+            const SizedBox(height: 8),
+            // Shrunk to fit rather than wrapped: a third of a small phone at
+            // large text broke "6,420" into "6," "42" "0".
+            FsOneLine(value, style: fsNum(t, size: 17)),
+            FsOneLine(label, style: TextStyle(fontSize: 12, color: t.text3)),
+            if (footer case final footer?) ...[
+              const SizedBox(height: 8),
+              footer,
+            ],
           ],
+        ),
+      ),
+    );
+  }
+}
+
+/// Today's steps as a share of the usual day: a thin bar, full once the
+/// usual is reached, and the share in words for a screen reader.
+class _UsualBar extends StatelessWidget {
+  const _UsualBar({
+    required this.today,
+    required this.usual,
+    required this.color,
+  });
+
+  final int today;
+  final int usual;
+  final Color color;
+
+  @override
+  Widget build(BuildContext context) {
+    final t = context.fs;
+    final share = today / usual;
+    return Semantics(
+      label:
+          '${(share * 100).round()}% of your usual ${formatSteps(usual)} steps',
+      child: ClipRRect(
+        borderRadius: BorderRadius.circular(FsRadius.pill),
+        child: Container(
+          height: 4,
+          color: t.surface2,
+          alignment: Alignment.centerLeft,
+          child: FractionallySizedBox(
+            key: const Key('home.activity.usual'),
+            widthFactor: share.clamp(0.0, 1.0),
+            heightFactor: 1,
+            child: ColoredBox(color: color),
+          ),
         ),
       ),
     );
@@ -208,7 +302,14 @@ class _WideTile extends StatelessWidget {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(title, style: TextStyle(fontSize: 14, fontWeight: FontWeight.w700, color: t.text)),
+                Text(
+                  title,
+                  style: TextStyle(
+                    fontSize: 14,
+                    fontWeight: FontWeight.w700,
+                    color: t.text,
+                  ),
+                ),
                 const SizedBox(height: 2),
                 Text(subtitle, style: TextStyle(fontSize: 12, color: t.text2)),
               ],

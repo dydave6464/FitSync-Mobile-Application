@@ -50,6 +50,7 @@ dependencies:
   # app pins 36 (android/app/build.gradle.kts). 6.3.14 is the newest version
   # with a literal, lower compileSdk (34).
   url_launcher_android: 6.3.14
+  font_awesome_flutter: ^11.0.0
 
 dev_dependencies:
   flutter_test:

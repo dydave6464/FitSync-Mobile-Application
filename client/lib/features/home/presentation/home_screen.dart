@@ -116,11 +116,13 @@ class HomeScreen extends ConsumerWidget {
                         ),
                 ),
               const SizedBox(height: 14),
+              // Today's numbers, next to today's plan rather than at the
+              // foot of the page.
+              ActivityStatsRow(onGoToProfile: onGoToProfile),
+              const SizedBox(height: 14),
               _Progress(onTap: () => onGoToProgress?.call()),
               const SizedBox(height: 14),
               _Routine(onGoToTrain: onGoToTrain),
-              const SizedBox(height: 14),
-              ActivityStatsRow(onGoToProfile: onGoToProfile),
             ],
           ),
         ),
