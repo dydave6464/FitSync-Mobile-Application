@@ -84,11 +84,22 @@ double _widest(BuildContext context, Iterable<String> labels, TextStyle style) {
 /// instead, it stays up until the next tap: on another bar, which moves it;
 /// on the chart's empty space, or anywhere off the chart, which puts it away.
 /// A drag still moves it along as the finger goes.
+///
+/// Only a touch that turns out to be the chart's counts: a tap that lifts, a
+/// long press, or a drag the chart won. A finger landing is not enough. The
+/// Progress tab is a scrolling list of charts, so a scroll often starts on
+/// one; kept from the moment it landed, its tooltip outlived the scroll.
 mixin _KeepsTooltip<T extends StatefulWidget> on State<T> {
   int? _touched;
 
   /// [index] is the bar or point [event] landed on, or null for none.
   void _onTouch(FlTouchEvent event, int? index) {
+    final chartsOwn =
+        event is FlTapUpEvent ||
+        event is FlLongPressStart ||
+        event is FlLongPressMoveUpdate ||
+        event is FlPanUpdateEvent;
+    if (!chartsOwn) return;
     if (index != null) {
       if (index != _touched) setState(() => _touched = index);
     } else if (event is FlTapUpEvent) {
@@ -255,10 +266,6 @@ class FsLineChart extends StatefulWidget {
           builder: (context, constraints) {
             final minX = points.isEmpty ? 0.0 : points.first.x - (lone ? 1 : 0);
             final maxX = points.isEmpty ? 1.0 : points.last.x + (lone ? 1 : 0);
-            // The average room a reading has, which decides the dots below.
-            final perPoint =
-                constraints.maxWidth / math.max(points.length - 1, 1);
-
             // The readings named under the axis, by x: the newest always,
             // then, counting back, each far enough from the last one named
             // that no two dates touch -- the newest and oldest are pulled in
@@ -268,6 +275,17 @@ class FsLineChart extends StatefulWidget {
             // of a month has room to spare. fl_chart's own interval also
             // labelled the last point beside the one it chose: "Sep 12Sep 19".
             final perX = constraints.maxWidth / math.max(maxX - minX, 1);
+            // The tightest room between two neighbouring readings, which
+            // decides the dots below. Not the average: spaced by date, a
+            // week of daily weigh-ins after a long gap sits a pixel or two
+            // apart while the average still looks roomy.
+            var tightest = double.infinity;
+            for (var i = 1; i < points.length; i++) {
+              tightest = math.min(
+                tightest,
+                (points[i].x - points[i - 1].x) * perX,
+              );
+            }
             final room =
                 _widest(context, points.map((p) => p.label), _axisStyle(t)) *
                     1.5 +
@@ -293,13 +311,13 @@ class FsLineChart extends StatefulWidget {
               // A dot per reading, each a real weigh-in; the newest
               // larger, and ringed in the card's colour so it stays
               // clear where it sits on the line.
-              // A dot per reading while they stand apart; past that
+              // A dot per reading while every two stand apart; past that
               // (a year of weekly weigh-ins is 7 px a reading) only the
               // newest, or the dots bead into a chain that hides the
               // line they sit on.
               dotData: FlDotData(
                 checkToShowDot: (spot, bar) =>
-                    perPoint >= 14 || spot.x == points.last.x,
+                    tightest >= 14 || spot.x == points.last.x,
                 getDotPainter: (spot, percent, bar, index) =>
                     FlDotCirclePainter(
                       radius: index == newest ? 5 : 4,

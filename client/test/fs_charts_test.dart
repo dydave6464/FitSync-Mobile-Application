@@ -559,6 +559,30 @@ void main() {
       expect(bar.dotData.checkToShowDot(bar.spots.last, bar), isTrue);
     });
 
+    testWidgets('daily weigh-ins after a long gap are not dotted either', (
+      tester,
+    ) async {
+      // Spaced by date, a week of daily readings two months after the first
+      // sits a few pixels apart, though the average room per reading is
+      // plenty. It is the tightest gap that beads the dots into a chain.
+      final points = [
+        const FsPoint(x: 0, y: 75, label: 'Jul 1'),
+        for (var day = 60; day <= 66; day++)
+          FsPoint(x: day.toDouble(), y: 74 - (day - 60) / 10, label: 'd$day'),
+      ];
+      tester.view.physicalSize = const Size(360, 700);
+      tester.view.devicePixelRatio = 1;
+      addTearDown(tester.view.reset);
+      await _pump(
+        tester,
+        FsLineChart(label: 'Body weight', points: points, minYBand: 4),
+      );
+
+      final bar = _lineData(tester).lineBarsData.single;
+      expect(bar.dotData.checkToShowDot(bar.spots[3], bar), isFalse);
+      expect(bar.dotData.checkToShowDot(bar.spots.last, bar), isTrue);
+    });
+
     testWidgets(
       'at large text the goal label below the line clears the dates',
       (tester) async {
@@ -694,5 +718,81 @@ void main() {
     );
     expect(find.byType(FsLineChart), findsOneWidget);
     expect(tester.takeException(), isNull);
+  });
+  // The Progress tab is a scrolling list of chart cards, so a scroll often
+  // starts with the finger on a chart. That touch is the list's, not the
+  // chart's, and must leave no tooltip behind once the list has moved.
+  group('a scroll that starts on a chart', () {
+    Future<void> pumpList(WidgetTester tester) => tester.pumpWidget(
+      MaterialApp(
+        theme: fsLightTheme(),
+        home: Scaffold(
+          body: ListView(
+            padding: const EdgeInsets.all(20),
+            children: [
+              const FsBarChart(label: 'Training volume', bars: _week),
+              const SizedBox(height: 40),
+              FsLineChart(
+                label: 'Body weight',
+                points: const [
+                  FsPoint(x: 0, y: 72, label: 'Sep 13'),
+                  FsPoint(x: 1, y: 71.5, label: 'Sep 20'),
+                  FsPoint(x: 2, y: 71, label: 'Sep 27'),
+                ],
+                minYBand: 4,
+              ),
+              const SizedBox(height: 1200),
+            ],
+          ),
+        ),
+      ),
+    );
+
+    Offset barAt(WidgetTester tester, int i) {
+      final chart = tester.getRect(find.byType(BarChart));
+      return Offset(
+        chart.left + (i + 0.5) * chart.width / _week.length,
+        chart.top + 30,
+      );
+    }
+
+    bool barShowing(WidgetTester tester) =>
+        _barData(tester).barGroups
+            .any((group) => group.showingTooltipIndicators.isNotEmpty);
+
+    bool pointShowing(WidgetTester tester) =>
+        _lineData(tester).showingTooltipIndicators.isNotEmpty;
+
+    testWidgets('leaves no tooltip on a bar', (tester) async {
+      await pumpList(tester);
+      await tester.dragFrom(barAt(tester, 3), const Offset(0, -150));
+      await tester.pumpAndSettle();
+      expect(barShowing(tester), isFalse);
+    });
+
+    testWidgets('leaves no tooltip on a point', (tester) async {
+      await pumpList(tester);
+      final chart = tester.getRect(find.byType(LineChart));
+      await tester.dragFrom(
+        Offset(chart.center.dx, chart.top + 20),
+        const Offset(0, -150),
+      );
+      await tester.pumpAndSettle();
+      expect(pointShowing(tester), isFalse);
+    });
+
+    testWidgets('while a quick tap in the same list still keeps one', (
+      tester,
+    ) async {
+      await pumpList(tester);
+      await tester.tapAt(barAt(tester, 3));
+      await tester.pumpAndSettle();
+      expect(barShowing(tester), isTrue);
+
+      final chart = tester.getRect(find.byType(LineChart));
+      await tester.tapAt(Offset(chart.center.dx, chart.top + 20));
+      await tester.pumpAndSettle();
+      expect(pointShowing(tester), isTrue);
+    });
   });
 }
