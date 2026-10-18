@@ -33,6 +33,12 @@ class _LogFoodScreenState extends ConsumerState<LogFoodScreen> {
   String _query = '';
   String _tab = 'all';
 
+  /// The meal the food goes into: the one this was opened for -- the time
+  /// of day's, or the meal whose row was tapped -- shown at the top and
+  /// changeable before anything is searched. It used to be fixed in the
+  /// title and changeable only in the last step.
+  late String _meal = widget.mealType;
+
   @override
   void dispose() {
     _debounce?.cancel();
@@ -77,7 +83,7 @@ class _LogFoodScreenState extends ConsumerState<LogFoodScreen> {
       }
       if (!mounted) return;
     }
-    final choice = await showLogFoodSheet(context, food, mealType: widget.mealType);
+    final choice = await showLogFoodSheet(context, food, mealType: _meal);
     if (choice == null || !mounted) return;
     final messenger = ScaffoldMessenger.of(context);
     final controller = ref.read(nutritionDayProvider.notifier);
@@ -93,7 +99,7 @@ class _LogFoodScreenState extends ConsumerState<LogFoodScreen> {
 
   Future<void> _manual() async {
     final logged = await Navigator.of(context).push<bool>(MaterialPageRoute(
-      builder: (_) => AddFoodManuallyScreen(mealType: widget.mealType),
+      builder: (_) => AddFoodManuallyScreen(mealType: _meal),
     ));
     if (logged == true && mounted) Navigator.of(context).pop();
   }
@@ -103,7 +109,7 @@ class _LogFoodScreenState extends ConsumerState<LogFoodScreen> {
     final t = context.fs;
     return Scaffold(
       backgroundColor: t.bg,
-      appBar: AppBar(title: Text('Log ${mealLabel(widget.mealType).toLowerCase()}')),
+      appBar: AppBar(title: const Text('Log food')),
       bottomNavigationBar: SafeArea(
         minimum: const EdgeInsets.fromLTRB(20, 0, 20, 16),
         child: FsButton(
@@ -115,6 +121,20 @@ class _LogFoodScreenState extends ConsumerState<LogFoodScreen> {
       ),
       body: Column(
         children: [
+          // Where the food goes, on one labelled line: four meal pills here
+          // looked just like the All / Recents filter below, and on a small
+          // phone at large text they wrapped to 82 dp and pushed the foods
+          // off the screen. Changing it is rare -- it arrives pre-picked.
+          Padding(
+            padding: const EdgeInsets.fromLTRB(20, 4, 20, 0),
+            child: Row(
+              children: [
+                const FsEyebrow('Adding to'),
+                const SizedBox(width: 10),
+                Flexible(child: _MealPicker(meal: _meal, onPicked: (m) => setState(() => _meal = m))),
+              ],
+            ),
+          ),
           Padding(
             padding: const EdgeInsets.fromLTRB(20, 8, 20, 8),
             child: FsField(
@@ -164,6 +184,63 @@ class _LogFoodScreenState extends ConsumerState<LogFoodScreen> {
     error: (e, _) => _Hint(describeError(e)),
     data: (foods) => _FoodList(foods: foods, onTap: _choose, empty: 'Foods you log show up here.'),
   );
+}
+
+/// The meal the food goes into, as one pill that opens the four meals.
+class _MealPicker extends StatelessWidget {
+  const _MealPicker({required this.meal, required this.onPicked});
+
+  final String meal;
+  final ValueChanged<String> onPicked;
+
+  @override
+  Widget build(BuildContext context) {
+    final t = context.fs;
+    return PopupMenuButton<String>(
+      key: const Key('log.meal'),
+      tooltip: 'Change meal',
+      initialValue: meal,
+      onSelected: onPicked,
+      itemBuilder: (_) => [
+        for (final m in mealTypes)
+          CheckedPopupMenuItem<String>(
+            key: Key('log.meal.$m'),
+            value: m,
+            checked: m == meal,
+            child: Text(mealLabel(m)),
+          ),
+      ],
+      child: ConstrainedBox(
+        constraints: const BoxConstraints(minHeight: 48),
+        child: Center(
+          widthFactor: 1,
+          child: Container(
+            padding: const EdgeInsets.fromLTRB(14, 6, 8, 6),
+            decoration: BoxDecoration(
+              color: t.surface,
+              borderRadius: BorderRadius.circular(FsRadius.pill),
+              border: Border.all(color: t.line2),
+            ),
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Flexible(
+                  child: Text(
+                    mealLabel(meal),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(fontSize: 14, fontWeight: FontWeight.w700, color: t.text),
+                  ),
+                ),
+                const SizedBox(width: 2),
+                Icon(Icons.expand_more, size: 20, color: t.text2),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
 }
 
 /// Shown before anything is typed: a prompt and a few foods to tap, rather

@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 
+import 'package:fitsync/core/theme.dart';
 import 'package:fitsync/features/nutrition/domain/nutrition.dart';
 import 'package:fitsync/features/nutrition/presentation/log_food_screen.dart';
 import 'package:fitsync/features/nutrition/presentation/nutrition_screen.dart';
@@ -64,26 +65,76 @@ void main() {
     expect(find.text('/ 2,150 kcal'), findsOneWidget);
     expect(find.text('78 / 95 g'), findsOneWidget);
     expect(find.text('Chicken adobo'), findsOneWidget);
-    for (final m in ['BREAKFAST', 'LUNCH', 'DINNER', 'SNACK']) {
-      expect(find.text(m), findsOneWidget);
+    // A meal with food is headed with its name and subtotal; one without is
+    // a single row to add to it.
+    expect(find.text('LUNCH'), findsOneWidget);
+    // The subtotal and its one food, which here are the same number.
+    expect(find.text('1160 kcal'), findsNWidgets(2));
+    for (final m in ['breakfast', 'dinner', 'snack']) {
+      expect(find.text('Add $m'), findsOneWidget, reason: m);
     }
     expect(find.text('Today'), findsOneWidget);
   });
 
-  testWidgets('the Log button offers the meal for the time of day', (tester) async {
-    await _pump(tester, today: _day('2026-10-14')); // 19:00 Manila
-    expect(find.text('Log dinner'), findsOneWidget);
-    await tester.tap(find.byKey(const Key('nutrition.log')));
-    await tester.pumpAndSettle();
-    expect(find.byType(LogFoodScreen), findsOneWidget);
-    expect(find.text('Log dinner'), findsOneWidget); // Log food's title
+  // Four rows of "0 kcal +" said nothing; an empty meal now says what to do.
+  testWidgets('an empty meal is one Add row, with no zero subtotal', (tester) async {
+    await _pump(tester, today: _day('2026-10-14'));
+    for (final m in ['breakfast', 'lunch', 'dinner', 'snack']) {
+      expect(find.text('Add $m'), findsOneWidget, reason: m);
+    }
+    expect(find.text('0 kcal'), findsNothing);
+    // One way to add, by meal: no second button repeating one of them.
+    expect(find.byKey(const Key('nutrition.log')), findsNothing);
   });
 
-  testWidgets("each meal's + opens Log food for that meal", (tester) async {
+  // The clock's guess is a hint on the row, not a decision in a label.
+  testWidgets('the meal the clock suggests is the highlighted row', (tester) async {
+    final semantics = tester.ensureSemantics();
+    await _pump(tester, today: _day('2026-10-14')); // 19:00 Manila: dinner
+    Color colourOf(String text) => tester.widget<Text>(find.text(text)).style!.color!;
+    final fs = tester.element(find.text('Add dinner')).fs;
+    expect(colourOf('Add dinner'), fs.accentText);
+    for (final m in ['breakfast', 'lunch', 'snack']) {
+      expect(colourOf('Add $m'), fs.text2, reason: m);
+    }
+    // Not by colour alone: a screen reader hears it too.
+    expect(
+      tester.getSemantics(find.byKey(const Key('meal.add.dinner'))),
+      matchesSemantics(
+        label: 'Add dinner',
+        hint: 'Suggested for now',
+        isButton: true,
+        hasTapAction: true,
+        isEnabled: true,
+        hasEnabledState: true,
+        isFocusable: true,
+        hasFocusAction: true,
+      ),
+    );
+    semantics.dispose();
+  });
+
+  testWidgets('on another day no meal is suggested', (tester) async {
+    await _pump(tester, today: _day('2026-10-14'));
+    await tester.tap(find.byKey(const Key('day.prev')));
+    await tester.pumpAndSettle();
+    final fs = tester.element(find.text('Add dinner')).fs;
+    expect(tester.widget<Text>(find.text('Add dinner')).style!.color, fs.text2);
+  });
+
+  testWidgets('an Add row opens Log food with that meal picked', (tester) async {
     await _pump(tester, today: _day('2026-10-14'));
     await tester.tap(find.byKey(const Key('meal.add.breakfast')));
     await tester.pumpAndSettle();
-    expect(find.text('Log breakfast'), findsOneWidget);
+    expect(tester.widget<LogFoodScreen>(find.byType(LogFoodScreen)).mealType, 'breakfast');
+  });
+
+  testWidgets("a meal with food keeps its + for adding more", (tester) async {
+    await _pump(tester, today: _day('2026-10-14', lunch: [_adobo()]));
+    expect(find.text('Add lunch'), findsNothing);
+    await tester.tap(find.byKey(const Key('meal.add.lunch')));
+    await tester.pumpAndSettle();
+    expect(tester.widget<LogFoodScreen>(find.byType(LogFoodScreen)).mealType, 'lunch');
   });
 
   testWidgets('day switch: back a day, and never past today', (tester) async {
@@ -185,6 +236,16 @@ void main() {
     await _pump(tester, today: _day('2026-10-14', lunch: [_adobo(source: 'fatsecret')]));
     await tester.scrollUntilVisible(find.text('Powered by fatsecret Platform API'), 200);
     expect(find.text('Powered by fatsecret Platform API'), findsOneWidget);
+  });
+
+  // Tall enough that the list builds every meal row, empty ones included.
+  testWidgets('the Add rows fit a 320 dp phone at 2x text', (tester) async {
+    await _pump(tester, today: _day('2026-10-14'), size: const Size(320, 2400), textScale: 2);
+    expect(tester.takeException(), isNull);
+    for (final m in ['breakfast', 'lunch', 'dinner', 'snack']) {
+      expect(find.text('Add $m'), findsOneWidget, reason: m);
+      expect(tester.getSize(find.byKey(Key('meal.add.$m'))).height, greaterThanOrEqualTo(48));
+    }
   });
 
   testWidgets('fits a 320 dp phone at large text without overflow', (tester) async {

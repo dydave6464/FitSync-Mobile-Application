@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:ui' show SemanticsAction;
 
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -6,6 +7,7 @@ import 'package:flutter_test/flutter_test.dart';
 
 import 'package:fitsync/core/widgets/fs_kit.dart';
 import 'package:fitsync/features/nutrition/domain/nutrition.dart';
+import 'package:fitsync/features/nutrition/presentation/add_food_manually_screen.dart';
 import 'package:fitsync/features/nutrition/presentation/log_food_screen.dart';
 import 'package:fitsync/features/nutrition/presentation/providers.dart';
 
@@ -63,7 +65,7 @@ void main() {
   testWidgets('waits for typing to pause, then shows results with labels', (tester) async {
     final repo = _SearchRepo();
     await _pump(tester, repo);
-    expect(find.text('Log lunch'), findsOneWidget);
+    expect(find.text('Log food'), findsOneWidget);
     await tester.enterText(find.byKey(const Key('food.search')), 'ad');
     await tester.pump(const Duration(milliseconds: 100));
     await tester.enterText(find.byKey(const Key('food.search')), 'adobo');
@@ -100,6 +102,71 @@ void main() {
     await tester.tap(find.text('Recents'));
     await tester.pumpAndSettle();
     expect(find.text('Turon'), findsOneWidget);
+  });
+
+  // The meal is shown, and can be changed, before anything is searched --
+  // it used to be fixed in the title and changeable only in the last step.
+  testWidgets('the meal it opened for is shown at the top, before searching', (tester) async {
+    await _pump(tester, _SearchRepo());
+    final picker = find.byKey(const Key('log.meal'));
+    expect(find.descendant(of: picker, matching: find.text('Lunch')), findsOneWidget);
+    expect(tester.getSize(picker).height, greaterThanOrEqualTo(48));
+  });
+
+  // Two identical pill rows -- the meal and the All / Recents filter -- read
+  // as one kind of thing; the meal is a labelled one-line choice instead.
+  testWidgets('the meal choice is labelled as where the food goes', (tester) async {
+    await _pump(tester, _SearchRepo());
+    final label = tester.getRect(find.text('ADDING TO'));
+    final picker = tester.getRect(find.byKey(const Key('log.meal')));
+    expect(label.right, lessThanOrEqualTo(picker.left), reason: 'the label leads the choice');
+    expect(label.center.dy, closeTo(picker.center.dy, 4), reason: 'on one line');
+  });
+
+  testWidgets('a screen reader can hear and press the meal choice', (tester) async {
+    final semantics = tester.ensureSemantics();
+    await _pump(tester, _SearchRepo());
+    final node = tester.getSemantics(find.byKey(const Key('log.meal')));
+    expect(node.label, contains('Lunch'));
+    expect(node.tooltip, 'Change meal');
+    expect(node.getSemanticsData().hasAction(SemanticsAction.tap), isTrue);
+    semantics.dispose();
+  });
+
+  Future<void> pickMeal(WidgetTester tester, String meal) async {
+    await tester.tap(find.byKey(const Key('log.meal')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(Key('log.meal.$meal')));
+    await tester.pumpAndSettle();
+  }
+
+  testWidgets('a meal picked at the top is where the food goes', (tester) async {
+    final repo = _SearchRepo();
+    await _pump(tester, repo);
+    await pickMeal(tester, 'dinner');
+    expect(
+      find.descendant(of: find.byKey(const Key('log.meal')), matching: find.text('Dinner')),
+      findsOneWidget,
+    );
+    await tester.enterText(find.byKey(const Key('food.search')), 'adobo');
+    await tester.pump(const Duration(milliseconds: 300));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Chicken adobo'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const Key('logSheet.log')));
+    await tester.pumpAndSettle();
+    expect(repo.calls, contains('log 2026-10-14 dinner Chicken adobo x1.0'));
+  });
+
+  testWidgets('Add manually starts from the meal picked at the top', (tester) async {
+    await _pump(tester, _SearchRepo());
+    await pickMeal(tester, 'snack');
+    await tester.tap(find.byKey(const Key('food.manual')));
+    await tester.pumpAndSettle();
+    expect(
+      tester.widget<AddFoodManuallyScreen>(find.byType(AddFoodManuallyScreen)).mealType,
+      'snack',
+    );
   });
 
   testWidgets('choosing a food logs it and returns to Nutrition', (tester) async {

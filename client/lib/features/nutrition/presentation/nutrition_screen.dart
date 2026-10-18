@@ -3,7 +3,6 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../core/manila_day.dart';
 import '../../../core/theme.dart';
-import '../../../core/widgets/fs_kit.dart' show FsButton;
 import '../../exercises/presentation/exercise_list_screen.dart' show describeError;
 import '../domain/nutrition.dart';
 import 'log_food_screen.dart';
@@ -115,20 +114,17 @@ class NutritionScreen extends ConsumerWidget {
         const SizedBox(height: 8),
         NutritionSummaryCard(day: day, onGoToProfile: onGoToProfile),
         const SizedBox(height: 16),
+        // One way to add, by meal. The clock's guess marks the likely
+        // meal's row, today only: on another day the time says nothing.
         for (final m in mealTypes)
           MealSection(
             mealType: m,
             entries: day.meals[m]!,
             enabled: !busy,
+            suggested: day.date == today && m == suggested,
             onAdd: () => _openLog(context, m),
             onDelete: (e) => _delete(context, ref, e),
           ),
-        FsButton(
-          key: const Key('nutrition.log'),
-          label: 'Log ${mealLabel(suggested).toLowerCase()}',
-          icon: const Icon(Icons.add),
-          onPressed: busy ? null : () => _openLog(context, suggested),
-        ),
         if (day.hasFatsecret) const FatsecretAttribution(),
       ],
     );
