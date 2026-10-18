@@ -7,7 +7,8 @@ String mealLabel(String mealType) => switch (mealType) {
   _ => 'Snack',
 };
 
-/// The meal a "Log …" button offers at [instant], by the Manila clock:
+/// The meal the Nutrition tab suggests at [instant] -- the Add row it
+/// highlights -- by the Manila clock:
 /// 21:00–04:59 snack (a late-night meal is a snack), 05:00–09:59 breakfast,
 /// 10:00–14:59 lunch, 15:00–20:59 dinner.
 String mealForTime(DateTime instant) {

@@ -33,10 +33,9 @@ class _LogFoodScreenState extends ConsumerState<LogFoodScreen> {
   String _query = '';
   String _tab = 'all';
 
-  /// The meal the food goes into: the one this was opened for -- the time
-  /// of day's, or the meal whose row was tapped -- shown at the top and
-  /// changeable before anything is searched. It used to be fixed in the
-  /// title and changeable only in the last step.
+  /// The meal the food goes into: the one whose Add row or + was tapped,
+  /// shown at the top and changeable before anything is searched. It used
+  /// to be fixed in the title and changeable only in the last step.
   late String _meal = widget.mealType;
 
   @override
@@ -124,15 +123,23 @@ class _LogFoodScreenState extends ConsumerState<LogFoodScreen> {
           // Where the food goes, on one labelled line: four meal pills here
           // looked just like the All / Recents filter below, and on a small
           // phone at large text they wrapped to 82 dp and pushed the foods
-          // off the screen. Changing it is rare -- it arrives pre-picked.
+          // off the screen. Changing it is rare -- it arrives pre-picked. A
+          // Wrap, so at very large text the pill drops under its label
+          // rather than cutting "Breakfast" short; heard as one button.
           Padding(
             padding: const EdgeInsets.fromLTRB(20, 4, 20, 0),
-            child: Row(
-              children: [
-                const FsEyebrow('Adding to'),
-                const SizedBox(width: 10),
-                Flexible(child: _MealPicker(meal: _meal, onPicked: (m) => setState(() => _meal = m))),
-              ],
+            child: Align(
+              alignment: Alignment.centerLeft,
+              child: MergeSemantics(
+                child: Wrap(
+                  crossAxisAlignment: WrapCrossAlignment.center,
+                  spacing: 10,
+                  children: [
+                    const FsEyebrow('Adding to'),
+                    _MealPicker(meal: _meal, onPicked: (m) => setState(() => _meal = m)),
+                  ],
+                ),
+              ),
             ),
           ),
           Padding(
@@ -187,21 +194,32 @@ class _LogFoodScreenState extends ConsumerState<LogFoodScreen> {
 }
 
 /// The meal the food goes into, as one pill that opens the four meals.
+///
+/// Built as the kit's chips are: the pill is its own Material, so the ink
+/// and the focus colour fill it inside its rounded edge rather than drawing
+/// a square behind it, and the row around it is 48 dp, a tap just above or
+/// below the pill still opening it.
 class _MealPicker extends StatelessWidget {
   const _MealPicker({required this.meal, required this.onPicked});
 
   final String meal;
   final ValueChanged<String> onPicked;
 
-  @override
-  Widget build(BuildContext context) {
-    final t = context.fs;
-    return PopupMenuButton<String>(
-      key: const Key('log.meal'),
-      tooltip: 'Change meal',
+  Future<void> _open(BuildContext pill) async {
+    final box = pill.findRenderObject()! as RenderBox;
+    final overlay = Navigator.of(pill).overlay!.context.findRenderObject()! as RenderBox;
+    final position = RelativeRect.fromRect(
+      Rect.fromPoints(
+        box.localToGlobal(Offset.zero, ancestor: overlay),
+        box.localToGlobal(box.size.bottomRight(Offset.zero), ancestor: overlay),
+      ),
+      Offset.zero & overlay.size,
+    );
+    final picked = await showMenu<String>(
+      context: pill,
+      position: position,
       initialValue: meal,
-      onSelected: onPicked,
-      itemBuilder: (_) => [
+      items: [
         for (final m in mealTypes)
           CheckedPopupMenuItem<String>(
             key: Key('log.meal.$m'),
@@ -210,31 +228,52 @@ class _MealPicker extends StatelessWidget {
             child: Text(mealLabel(m)),
           ),
       ],
-      child: ConstrainedBox(
-        constraints: const BoxConstraints(minHeight: 48),
-        child: Center(
-          widthFactor: 1,
-          child: Container(
-            padding: const EdgeInsets.fromLTRB(14, 6, 8, 6),
-            decoration: BoxDecoration(
-              color: t.surface,
-              borderRadius: BorderRadius.circular(FsRadius.pill),
-              border: Border.all(color: t.line2),
-            ),
-            child: Row(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Flexible(
-                  child: Text(
-                    mealLabel(meal),
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: TextStyle(fontSize: 14, fontWeight: FontWeight.w700, color: t.text),
+    );
+    if (picked != null) onPicked(picked);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final t = context.fs;
+    return ConstrainedBox(
+      key: const Key('log.meal'),
+      constraints: const BoxConstraints(minHeight: 48),
+      child: Center(
+        widthFactor: 1,
+        child: FsTapRoom(
+          reach: 9,
+          child: Builder(
+            builder: (pill) => Semantics(
+              button: true,
+              child: Tooltip(
+                message: 'Change meal',
+                child: Material(
+                  color: t.surface,
+                  shape: StadiumBorder(side: BorderSide(color: t.line2)),
+                  child: InkWell(
+                    customBorder: const StadiumBorder(),
+                    onTap: () => _open(pill),
+                    child: Padding(
+                      padding: const EdgeInsets.fromLTRB(14, 6, 8, 6),
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          // Never cut: the line wraps the pill under its
+                          // label first.
+                          Flexible(
+                            child: Text(
+                              mealLabel(meal),
+                              style: TextStyle(fontSize: 14, fontWeight: FontWeight.w700, color: t.text),
+                            ),
+                          ),
+                          const SizedBox(width: 2),
+                          Icon(Icons.expand_more, size: 20, color: t.text2),
+                        ],
+                      ),
+                    ),
                   ),
                 ),
-                const SizedBox(width: 2),
-                Icon(Icons.expand_more, size: 20, color: t.text2),
-              ],
+              ),
             ),
           ),
         ),

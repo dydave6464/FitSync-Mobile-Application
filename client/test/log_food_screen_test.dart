@@ -127,10 +127,23 @@ void main() {
     final semantics = tester.ensureSemantics();
     await _pump(tester, _SearchRepo());
     final node = tester.getSemantics(find.byKey(const Key('log.meal')));
+    // Heard as one thing: what it is for, the meal, and that it is a button.
+    expect(node.label, contains('ADDING TO'));
     expect(node.label, contains('Lunch'));
     expect(node.tooltip, 'Change meal');
+    expect(node.flagsCollection.isButton, isTrue);
     expect(node.getSemanticsData().hasAction(SemanticsAction.tap), isTrue);
     semantics.dispose();
+  });
+
+  // Ink paints on the nearest Material behind it: on the screen's, it drew
+  // a square halo behind the pill and hid the focus colour. The pill is its
+  // own rounded Material, so a press and a focus fill the pill itself.
+  testWidgets("the meal choice's press and focus fill the pill", (tester) async {
+    await _pump(tester, _SearchRepo());
+    final ink = find.descendant(of: find.byKey(const Key('log.meal')), matching: find.byType(InkWell));
+    final material = tester.widget<Material>(find.ancestor(of: ink, matching: find.byType(Material)).first);
+    expect(material.shape, isA<StadiumBorder>());
   });
 
   Future<void> pickMeal(WidgetTester tester, String meal) async {

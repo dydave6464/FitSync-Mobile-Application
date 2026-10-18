@@ -1,3 +1,6 @@
+import 'dart:async';
+import 'dart:ui' show SemanticsAction;
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -27,21 +30,35 @@ FoodEntry _adobo({int id = 7, String source = 'local'}) => FoodEntry(
   externalId: source == 'fatsecret' ? 'fs-1' : null,
 );
 
+/// Holds one date's load until the test says, so the screen can be caught
+/// busy -- the previous day shown, the next one on its way.
+class _HeldRepo extends FakeNutritionRepository {
+  String? heldDate;
+  final gate = Completer<void>();
+
+  @override
+  Future<NutritionDay> getDay(String? date) async {
+    if (date != null && date == heldDate) await gate.future;
+    return super.getDay(date);
+  }
+}
+
 Future<FakeNutritionRepository> _pump(
   WidgetTester tester, {
   required NutritionDay today,
+  FakeNutritionRepository? repo,
   DateTime? now,
   Size size = const Size(390, 844),
   double textScale = 1,
   VoidCallback? onGoToProfile,
 }) async {
-  final repo = FakeNutritionRepository()..days[today.date] = today;
+  final repo0 = (repo ?? FakeNutritionRepository())..days[today.date] = today;
   tester.view.physicalSize = size;
   tester.view.devicePixelRatio = 1;
   addTearDown(tester.view.reset);
   await tester.pumpWidget(ProviderScope(
     overrides: [
-      nutritionRepositoryProvider.overrideWithValue(repo),
+      nutritionRepositoryProvider.overrideWithValue(repo0),
       nutritionClockProvider.overrideWithValue(() => now ?? DateTime.utc(2026, 10, 14, 11)), // 19:00 Manila
     ],
     child: MaterialApp(
@@ -55,7 +72,7 @@ Future<FakeNutritionRepository> _pump(
     ),
   ));
   await tester.pumpAndSettle();
-  return repo;
+  return repo0;
 }
 
 void main() {
@@ -112,6 +129,45 @@ void main() {
       ),
     );
     semantics.dispose();
+  });
+
+  // Solid against dashed is the suggested row's cue beside its colour, so
+  // its outline is drawn in the strong text green, not the faint tint.
+  testWidgets("the suggested row's outline is the text green", (tester) async {
+    await _pump(tester, today: _day('2026-10-14'));
+    final row = find.byKey(const Key('meal.add.dinner'));
+    final material = tester.widget<Material>(find.ancestor(of: row, matching: find.byType(Material)).first);
+    final side = (material.shape! as RoundedRectangleBorder).side;
+    expect(side.color, tester.element(row).fs.accentText);
+  });
+
+  // Disabled while the next day loads, and it shows: the green suggestion
+  // dims with the rest instead of inviting a tap that does nothing.
+  testWidgets('while a day loads, the Add rows are off and look it', (tester) async {
+    final semantics = tester.ensureSemantics();
+    final repo = _HeldRepo()..heldDate = '2026-10-13';
+    await _pump(tester, today: _day('2026-10-14'), repo: repo);
+    await tester.tap(find.byKey(const Key('day.prev')));
+    await tester.pump();
+
+    final fs = tester.element(find.text('Add dinner')).fs;
+    expect(tester.widget<Text>(find.text('Add dinner')).style!.color, fs.text3);
+    final node = tester.getSemantics(find.byKey(const Key('meal.add.dinner')));
+    expect(node.getSemanticsData().hasAction(SemanticsAction.tap), isFalse);
+    await tester.tap(find.byKey(const Key('meal.add.dinner')));
+    await tester.pump();
+    expect(find.byType(LogFoodScreen), findsNothing);
+
+    repo.gate.complete();
+    await tester.pumpAndSettle();
+    semantics.dispose();
+  });
+
+  // One verb for one action: an empty meal says "Add lunch", so its + once
+  // it has food says the same, not "Log lunch".
+  testWidgets("a meal's + is named as adding to it", (tester) async {
+    await _pump(tester, today: _day('2026-10-14', lunch: [_adobo()]));
+    expect(find.byTooltip('Add to lunch'), findsOneWidget);
   });
 
   testWidgets('on another day no meal is suggested', (tester) async {

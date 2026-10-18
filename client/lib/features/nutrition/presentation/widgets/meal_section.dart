@@ -52,7 +52,8 @@ class MealSection extends StatelessWidget {
               Text('$subtotal kcal', style: TextStyle(fontSize: 12, color: t.text3)),
               IconButton(
                 key: Key('meal.add.$mealType'),
-                tooltip: 'Log ${mealLabel(mealType).toLowerCase()}',
+                // The same verb as the row it replaces once the meal has food.
+                tooltip: 'Add to ${mealLabel(mealType).toLowerCase()}',
                 onPressed: enabled ? onAdd : null,
                 icon: const Icon(Icons.add),
               ),
@@ -113,7 +114,11 @@ class _AddRow extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final words = 'Add ${mealLabel(mealType).toLowerCase()}';
-    final colour = suggested ? t.accentText : t.text2;
+    // Off while the day loads, and it shows: dimmed, and no green invitation
+    // to a tap that would do nothing.
+    final live = onAdd != null;
+    final highlighted = suggested && live;
+    final colour = !live ? t.text3 : (highlighted ? t.accentText : t.text2);
     final radius = BorderRadius.circular(FsRadius.md);
 
     return Padding(
@@ -123,19 +128,21 @@ class _AddRow extends StatelessWidget {
       child: Semantics(
         container: true,
         button: true,
-        enabled: onAdd != null,
-        hint: suggested ? 'Suggested for now' : null,
+        enabled: live,
+        hint: highlighted ? 'Suggested for now' : null,
         child: CustomPaint(
           // Dashed for an empty slot; the suggested one is a solid outline.
-          painter: suggested
+          painter: highlighted
               ? null
               : _DashedBorder(colour: t.line2, radius: FsRadius.md),
           child: Material(
-            color: suggested ? t.accentDim : Colors.transparent,
+            color: highlighted ? t.accentDim : Colors.transparent,
+            // The text green, not the faint tint: solid against dashed has
+            // to read beside colour for someone who cannot tell the greens.
             shape: RoundedRectangleBorder(
               borderRadius: radius,
-              side: suggested
-                  ? BorderSide(color: t.accentLine, width: 1.5)
+              side: highlighted
+                  ? BorderSide(color: t.accentText, width: 1.5)
                   : BorderSide.none,
             ),
             child: InkWell(
@@ -156,7 +163,7 @@ class _AddRow extends StatelessWidget {
                           words,
                           style: TextStyle(
                             fontSize: 14,
-                            fontWeight: suggested ? FontWeight.w700 : FontWeight.w600,
+                            fontWeight: highlighted ? FontWeight.w700 : FontWeight.w600,
                             color: colour,
                           ),
                         ),
