@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -13,12 +15,17 @@ import 'package:fitsync/features/plans/presentation/providers.dart';
 import 'package:fitsync/features/profile/domain/body_weight.dart';
 import 'package:fitsync/features/profile/domain/profile.dart';
 import 'package:fitsync/features/profile/presentation/providers.dart'
-    show bodyWeightProvider, profileProvider, ProfileNotifier;
+    show
+        bodyWeightProvider,
+        injuryOptionsProvider,
+        profileProvider,
+        ProfileNotifier;
 import 'package:fitsync/features/recovery/domain/recovery.dart';
 import 'package:fitsync/features/recovery/presentation/providers.dart'
     show recoveryOverviewProvider;
 import 'package:fitsync/features/sessions/domain/active_session.dart';
 import 'package:fitsync/features/sessions/domain/session_history.dart';
+import 'package:fitsync/features/sessions/domain/session_outcome.dart';
 import 'package:fitsync/features/sessions/domain/training_analytics.dart';
 import 'package:fitsync/features/sessions/presentation/providers.dart';
 import 'package:fitsync/features/sessions/presentation/session_logger_screen.dart';
@@ -211,17 +218,24 @@ class _StubController extends ActiveSessionController {
 /// throws it instead of succeeding — the way a deleted plan would surface as
 /// an `ApiException` from the server.
 class _RecordingController extends ActiveSessionController {
-  _RecordingController({this.startError});
+  _RecordingController({this.startError, this.startGate, this.initial});
 
   final Object? startError;
   int startCalls = 0;
 
+  /// When set, [start] holds here, as a slow POST /sessions would.
+  final Completer<void>? startGate;
+
+  /// A session already in progress, for the Resume tests.
+  final ActiveSession? initial;
+
   @override
-  Future<ActiveSession?> build() async => null;
+  Future<ActiveSession?> build() async => initial;
 
   @override
   Future<void> start({List<int>? exerciseIds}) async {
     startCalls++;
+    await startGate?.future;
     if (startError != null) throw startError!;
     state = const AsyncValue.data(
       ActiveSession(
@@ -235,13 +249,18 @@ class _RecordingController extends ActiveSessionController {
 
 Future<void> _pumpWithController(
   WidgetTester tester,
-  ActiveSessionController Function() controller,
-) async {
+  ActiveSessionController Function() controller, {
+  // A finished workout still waiting for its pain report. Null is nothing
+  // waiting, so Start asks nothing.
+  PendingOutcome? pending,
+}) async {
   await tester.pumpWidget(
     ProviderScope(
       overrides: [
         activePlanProvider.overrideWith((ref) async => _plan),
         activeSessionProvider.overrideWith(controller),
+        pendingOutcomeProvider.overrideWith((ref) async => pending),
+        injuryOptionsProvider.overrideWith((ref) async => const []),
         completedDaysProvider.overrideWith((ref) async => const <String>{}),
         // The Progress tab is built eagerly with the rest of the shell. Stubbed
         // at the provider rather than the repository: this file is about the
@@ -448,6 +467,86 @@ void main() {
       expect(tester.takeException(), isNull);
     },
   );
+
+  group('the pain question', () {
+    const pending = PendingOutcome(
+      sessionId: 31,
+      sessionDate: '2026-09-21',
+      planName: null,
+    );
+    const question = 'How did your last workout leave you?';
+
+    // The "+" button asks about the last workout before a new one starts;
+    // Start on the Plan tab is the other way in, and skipped the question.
+    testWidgets('Start asks about the last workout before starting', (
+      tester,
+    ) async {
+      final controller = _RecordingController();
+      await _pumpWithController(tester, () => controller, pending: pending);
+
+      await tester.tap(find.byKey(const Key('session.start')));
+      await tester.pumpAndSettle();
+
+      expect(find.text(question), findsOneWidget);
+      expect(controller.startCalls, 0);
+
+      // However it closes, the workout still starts: the label is never a
+      // gate in front of training.
+      await tester.tap(find.byKey(const Key('outcome.skip')));
+      await tester.pumpAndSettle();
+
+      expect(controller.startCalls, 1);
+      expect(find.byType(SessionLoggerScreen), findsOneWidget);
+    });
+
+    // A workout under way is not a new one, so there is nothing to ask
+    // before going back to it.
+    testWidgets('Resume does not ask', (tester) async {
+      final controller = _RecordingController(
+        initial: const ActiveSession(
+          sessionId: 7,
+          status: 'in_progress',
+          sessionDate: '2026-09-08',
+        ),
+      );
+      await _pumpWithController(tester, () => controller, pending: pending);
+
+      await tester.tap(find.byKey(const Key('session.start')));
+      await tester.pumpAndSettle();
+
+      expect(find.text(question), findsNothing);
+      expect(find.byType(SessionLoggerScreen), findsOneWidget);
+    });
+  });
+
+  // While the session is being created the button says so, and a second
+  // tap in that wait does nothing.
+  testWidgets('Start shows progress while starting and takes one tap', (
+    tester,
+  ) async {
+    final gate = Completer<void>();
+    final controller = _RecordingController(startGate: gate);
+    await _pumpWithController(tester, () => controller);
+
+    final start = find.byKey(const Key('session.start'));
+    await tester.tap(start);
+    await tester.pump();
+
+    expect(
+      find.descendant(
+        of: start,
+        matching: find.byType(CircularProgressIndicator),
+      ),
+      findsOneWidget,
+    );
+    await tester.tap(start, warnIfMissed: false);
+    await tester.pump();
+
+    gate.complete();
+    await tester.pumpAndSettle();
+    expect(controller.startCalls, 1);
+    expect(find.byType(SessionLoggerScreen), findsOneWidget);
+  });
 
   testWidgets('the Plan tab offers a way to regenerate', (tester) async {
     await _pump(tester);

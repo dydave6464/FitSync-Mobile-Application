@@ -11,9 +11,12 @@ import '../../exercises/presentation/exercise_list_screen.dart'
 import '../../profile/presentation/providers.dart';
 import '../../sessions/presentation/providers.dart';
 import '../../sessions/presentation/session_logger_screen.dart';
+import '../../sessions/presentation/widgets/outcome_sheet.dart'
+    show outcomeNotSavedMessage, showOutcomeSheet;
 import '../domain/workout_plan.dart';
 import 'exercise_swap_sheet.dart';
 import 'providers.dart';
+import 'start_workout_sheet.dart' show lookUpPendingOutcome;
 import 'widgets/regenerate_plan_button.dart';
 import 'widgets/session_card.dart';
 import 'widgets/week_strip.dart';
@@ -114,17 +117,45 @@ class _PlanViewState extends ConsumerState<_PlanView> {
   /// state anything else needs to read.
   bool _starting = false;
 
+  /// True while the pain question is up, part-way through a start. The
+  /// button is not drawn busy then: the wait is the user's answer, not the
+  /// network, and a spinner under the sheet would only keep animating.
+  bool _asking = false;
+
   /// Starts a session (skipped when one is already in progress) and opens
   /// the logger on it. A session that fails to start must not leave the
   /// button stuck disabled -- `_starting` always clears in the `finally`,
   /// whether the attempt succeeded, failed, or the logger was already
   /// pushed.
+  ///
+  /// A new start asks about the last workout's pain first, as the "+"
+  /// button does: skipping it here meant anyone who trains from this tab
+  /// was never asked. A resume does not -- the workout under way is not a
+  /// new one. The button stays busy through the question, so a second tap
+  /// cannot ask it twice.
   Future<void> _startOrResume() async {
+    if (_starting) return;
     final controller = ref.read(activeSessionProvider.notifier);
     final messenger = ScaffoldMessenger.of(context);
     setState(() => _starting = true);
     try {
       if (ref.read(activeSessionProvider).value == null) {
+        final pending = await lookUpPendingOutcome(context);
+        if (!mounted) return;
+        if (pending != null) {
+          setState(() => _asking = true);
+          final notSaved = await showOutcomeSheet(context, pending);
+          if (!mounted) return;
+          setState(() => _asking = false);
+          // However the question closed, the workout still starts; an
+          // answer that did not save says so on the app's messenger, which
+          // follows onto the logger where it is seen.
+          if (notSaved) {
+            messenger.showSnackBar(
+              const SnackBar(content: Text(outcomeNotSavedMessage)),
+            );
+          }
+        }
         await controller.start();
       }
       if (!mounted) return;
@@ -136,7 +167,12 @@ class _PlanViewState extends ConsumerState<_PlanView> {
     } catch (error) {
       messenger.showSnackBar(SnackBar(content: Text(describeError(error))));
     } finally {
-      if (mounted) setState(() => _starting = false);
+      if (mounted) {
+        setState(() {
+          _starting = false;
+          _asking = false;
+        });
+      }
     }
   }
 
@@ -183,7 +219,7 @@ class _PlanViewState extends ConsumerState<_PlanView> {
           plan: plan,
           dayNo: todayDayNo,
           hasActiveSession: ref.watch(activeSessionProvider).value != null,
-          starting: _starting,
+          starting: _starting && !_asking,
           onStart: _startOrResume,
         ),
         const SizedBox(height: 22),
