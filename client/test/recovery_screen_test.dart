@@ -431,6 +431,18 @@ void main() {
         ),
         findsOneWidget,
       );
+      // The server compares against a usual week from week 2 on, and while
+      // that usual week is still short the load reads high, not zero.
+      expect(
+        find.descendant(
+          of: sheet,
+          matching: find.textContaining(
+            'training load can read higher than it really is',
+          ),
+        ),
+        findsOneWidget,
+      );
+      expect(find.textContaining('a few weeks of workouts'), findsNothing);
       expect(
         find.descendant(
           of: sheet,

@@ -54,6 +54,32 @@ void main() {
   });
 
   group('the "Why" line', () {
+    test('a load under 1% still reads as above the usual week', () {
+      expect(
+        _why([const RiskDriver(key: 'load', value: 0.3)]),
+        'Why: this week is a little above your usual.',
+      );
+      expect(
+        _why([const RiskDriver(key: 'load', value: 0.7)]),
+        'Why: this week is 1% above your usual.',
+      );
+    });
+
+    test('a load at the server cap reads as a floor, not an exact figure', () {
+      expect(
+        _why([const RiskDriver(key: 'load', value: 130)]),
+        'Why: this week is at least 130% above your usual.',
+      );
+      expect(
+        _why([const RiskDriver(key: 'load', value: 129.6)]),
+        'Why: this week is at least 130% above your usual.',
+      );
+      expect(
+        _why([const RiskDriver(key: 'load', value: 129.4)]),
+        'Why: this week is 129% above your usual.',
+      );
+    });
+
     test('each driver reads as plain English', () {
       expect(
         _why([const RiskDriver(key: 'load', value: 35.0)]),

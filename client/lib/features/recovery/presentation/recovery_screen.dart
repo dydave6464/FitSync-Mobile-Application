@@ -21,9 +21,9 @@ import 'widgets/checkin_sheet.dart';
 import 'widgets/how_to_read_sheet.dart';
 
 /// The Recovery tab's body: the injury-risk ring with what it means and why,
-/// what feeds it, and the 7-day training load beneath. Mirrors the loading spinner and
-/// describeError + Retry treatment `PlanScreen` uses for its own top-level
-/// provider, rather than inventing a third failure style.
+/// what feeds it, and the 7-day training load beneath. Mirrors the loading
+/// spinner and describeError + Retry treatment `PlanScreen` uses for its own
+/// top-level provider, rather than inventing a third failure style.
 class RecoveryScreen extends ConsumerWidget {
   const RecoveryScreen({super.key});
 

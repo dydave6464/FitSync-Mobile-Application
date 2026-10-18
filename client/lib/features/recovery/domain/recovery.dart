@@ -179,6 +179,10 @@ List<RiskDriver>? _parseDrivers(Object? raw) {
   ];
 }
 
+/// The highest load index the server reports (`MAX_LOAD` in
+/// server/src/db/training-load.js).
+const _loadCap = 130;
+
 /// One driver as a clause of the "Why" sentence, worded by its value where
 /// that changes the meaning -- a little sore is not very sore. Every value
 /// the rules give points to has words, since only those can be drivers.
@@ -187,7 +191,16 @@ String? _driverPhrase(RiskDriver driver) {
   switch (driver.key) {
     case 'load':
       if (value is! num) return null;
-      return 'this week is ${value.round()}% above your usual';
+      final pct = value.round();
+      // Any load above zero earns points, so a sliver still counts -- but
+      // "0% above" would contradict the line it sits in.
+      if (pct < 1) return 'this week is a little above your usual';
+      // The server caps the index here, so a reading at the cap may stand
+      // for any bigger surge.
+      if (pct >= _loadCap) {
+        return 'this week is at least $_loadCap% above your usual';
+      }
+      return 'this week is $pct% above your usual';
     case 'injury_history':
       if (value is! num || value < 1) return null;
       final n = value.round();
