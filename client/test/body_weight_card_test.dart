@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:fitsync/core/theme.dart';
 import 'package:fitsync/core/widgets/fs_charts.dart';
+import 'package:fitsync/core/widgets/fs_kit.dart';
 import 'package:fitsync/features/profile/domain/body_weight.dart';
 import 'package:fitsync/features/profile/presentation/widgets/body_weight_card.dart';
 
@@ -131,6 +132,30 @@ void main() {
     expect(chart.points.last.tooltip, 'Sep 23 · 70.9 kg');
   });
 
+  testWidgets('weigh-ins sit apart by the days between them', (tester) async {
+    // Spaced by order, a three-week gap looked like any other week, so a
+    // missed stretch of weigh-ins was hidden.
+    await tester.pumpWidget(
+      MaterialApp(
+        theme: fsLightTheme(),
+        home: Scaffold(
+          body: BodyWeightCard(
+            series: series([
+              ('2026-09-01', 72.0),
+              ('2026-09-08', 71.6),
+              ('2026-09-29', 70.8),
+              // Across the change of month and of clocks in many places.
+              ('2026-11-02', 70.1),
+            ]),
+          ),
+        ),
+      ),
+    );
+
+    final chart = tester.widget<FsLineChart>(find.byType(FsLineChart));
+    expect(chart.points.map((p) => p.x), [0, 7, 28, 62]);
+  });
+
   // Body weight is the one chart here that is not about training output, and
   // the prototype colours it apart from the accent for exactly that reason.
   testWidgets('the body-weight chart reads in blue, not the accent', (
@@ -182,6 +207,36 @@ void main() {
 
     expect(tester.takeException(), isNull);
   });
+
+  // Add entry is drawn about 30 dp tall at the foot of the card; the card's
+  // padding under it is where the rest of a 48 dp target goes.
+  for (final (name, raw) in [
+    ('with no entries yet', <(String, double)>[]),
+    ('under the chart', [('2026-09-16', 71.4)]),
+  ]) {
+    testWidgets('Add entry answers a tap 7 dp off its pill, $name', (
+      tester,
+    ) async {
+      var adds = 0;
+      await tester.pumpWidget(
+        MaterialApp(
+          theme: fsLightTheme(),
+          home: Scaffold(
+            body: ListView(
+              children: [
+                BodyWeightCard(series: series(raw), onAdd: () => adds++),
+              ],
+            ),
+          ),
+        ),
+      );
+
+      final pill = tester.getRect(find.byType(FsChip));
+      await tester.tapAt(pill.topCenter - const Offset(0, 7));
+      await tester.tapAt(pill.bottomCenter + const Offset(0, 7));
+      expect(adds, 2);
+    });
+  }
 
   testWidgets('a widened series says so', (tester) async {
     await tester.pumpWidget(

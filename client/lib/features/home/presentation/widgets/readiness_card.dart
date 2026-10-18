@@ -57,71 +57,82 @@ class ReadinessCard extends StatelessWidget {
       key: const Key('home.readiness'),
       accent: true,
       onTap: onTap,
-      child: estimate == null
-          ? Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                const FsEyebrow('Readiness'),
-                const SizedBox(height: 8),
-                Text(
-                  'Check in this morning to get your first score.',
-                  style: TextStyle(
-                    fontSize: 15,
-                    fontWeight: FontWeight.w700,
-                    color: t.text,
+      // The small chip is the card's last line, and the card's padding below
+      // it is the bottom of its band: a thumb landing just under "Check in"
+      // means the chip, not the card's own "open Recovery".
+      child: FsTapRoom(
+        reach: 11,
+        child: estimate == null
+            ? Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const FsEyebrow('Readiness'),
+                  const SizedBox(height: 8),
+                  Text(
+                    'Check in this morning to get your first score.',
+                    style: TextStyle(
+                      fontSize: 15,
+                      fontWeight: FontWeight.w700,
+                      color: t.text,
+                    ),
                   ),
-                ),
-                const SizedBox(height: 12),
-                chip,
-              ],
-            )
-          : Row(
-              children: [
-                _ReadinessRing(estimate: estimate, isToday: isToday),
-                const SizedBox(width: 16),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      FsTag(estimate.recoveryLabel),
-                      const SizedBox(height: 8),
-                      Text(
-                        !isToday
-                            ? (today == null
-                                  ? "Check in for today's estimate"
-                                  : "Today's estimate is unavailable")
-                            : estimate.readinessHeadline,
-                        style: TextStyle(
-                          fontSize: 15,
-                          fontWeight: FontWeight.w700,
-                          color: t.text,
-                        ),
+                  const SizedBox(height: 12),
+                  chip,
+                ],
+              )
+            : Row(
+                children: [
+                  _ReadinessRing(estimate: estimate, isToday: isToday),
+                  const SizedBox(width: 16),
+                  Expanded(
+                    // Centred beside a taller ring, the column ends above the
+                    // row's foot; this takes the band down to it.
+                    child: FsTapRoom(
+                      reach: 11,
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          FsTag(estimate.recoveryLabel),
+                          const SizedBox(height: 8),
+                          Text(
+                            !isToday
+                                ? (today == null
+                                      ? "Check in for today's estimate"
+                                      : "Today's estimate is unavailable")
+                                : estimate.readinessHeadline,
+                            style: TextStyle(
+                              fontSize: 15,
+                              fontWeight: FontWeight.w700,
+                              color: t.text,
+                            ),
+                          ),
+                          const SizedBox(height: 4),
+                          Text(
+                            isToday
+                                ? 'Injury risk: ${estimate.label.toLowerCase()} · '
+                                      'from your check-ins, training load & past '
+                                      'injuries'
+                                : 'Injury risk: ${estimate.label.toLowerCase()}',
+                            style: TextStyle(fontSize: 11.5, color: t.text2),
+                          ),
+                          // Recovery's rule: an estimate from today's check-in
+                          // is already dated by "today"; any other says its day.
+                          if (!isToday) ...[
+                            const SizedBox(height: 2),
+                            Text(
+                              'From ${formatShareExpiry(DateTime.parse(estimate.checkinDate))}',
+                              style: TextStyle(fontSize: 11.5, color: t.text3),
+                            ),
+                          ],
+                          const SizedBox(height: 10),
+                          chip,
+                        ],
                       ),
-                      const SizedBox(height: 4),
-                      Text(
-                        isToday
-                            ? 'Injury risk: ${estimate.label.toLowerCase()} · '
-                                  'from your check-ins, training load & past '
-                                  'injuries'
-                            : 'Injury risk: ${estimate.label.toLowerCase()}',
-                        style: TextStyle(fontSize: 11.5, color: t.text2),
-                      ),
-                      // Recovery's rule: an estimate from today's check-in
-                      // is already dated by "today"; any other says its day.
-                      if (!isToday) ...[
-                        const SizedBox(height: 2),
-                        Text(
-                          'From ${formatShareExpiry(DateTime.parse(estimate.checkinDate))}',
-                          style: TextStyle(fontSize: 11.5, color: t.text3),
-                        ),
-                      ],
-                      const SizedBox(height: 10),
-                      chip,
-                    ],
+                    ),
                   ),
-                ),
-              ],
-            ),
+                ],
+              ),
+      ),
     );
   }
 }

@@ -382,6 +382,40 @@ void main() {
       expect(find.textContaining('–'), findsNothing);
     });
   }
+  // One row of chips is only as tall as a chip: the room around the row is
+  // what takes each one's band to 48 dp.
+  testWidgets('an activity chip takes a tap just above its pill', (
+    tester,
+  ) async {
+    final emitted = await _pumpAndEdit(tester, (tester) async {
+      final chip = find.byKey(const Key('activity.sedentary'));
+      await tester.ensureVisible(chip);
+      await tester.pumpAndSettle();
+      await tester.tapAt(tester.getRect(chip).topCenter.translate(0, -7));
+    });
+
+    expect(emitted?.activityLevel, 'sedentary');
+  });
+
+  // Until the daily-targets card appears, the chips are the step's last
+  // line; the bottom row still gets the room under it.
+  testWidgets('a bottom-row activity chip takes a tap just below its pill', (
+    tester,
+  ) async {
+    final emitted = await _pumpAndEdit(tester, (tester) async {
+      final keys = [for (final v in _activityValues) Key('activity.$v')];
+      double bottomOf(Key k) => tester.getRect(find.byKey(k)).bottom;
+      final lowest = keys.map(bottomOf).reduce((a, b) => a > b ? a : b);
+      final key = keys.lastWhere((k) => bottomOf(k) == lowest);
+      await tester.ensureVisible(find.byKey(key));
+      await tester.pumpAndSettle();
+      await tester.tapAt(
+        tester.getRect(find.byKey(key)).bottomCenter.translate(0, 7),
+      );
+    });
+
+    expect(emitted?.activityLevel, _activityValues.last);
+  });
 }
 
 void _ignore(AboutAnswers _) {}

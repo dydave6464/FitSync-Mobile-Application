@@ -1,4 +1,7 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
+import 'package:flutter/rendering.dart' show RenderParagraph;
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 
@@ -13,15 +16,23 @@ import 'package:fitsync/features/plans/presentation/providers.dart';
 import 'package:fitsync/features/profile/domain/body_weight.dart';
 import 'package:fitsync/features/profile/domain/profile.dart';
 import 'package:fitsync/features/profile/presentation/providers.dart'
-    show bodyWeightProvider, profileProvider, ProfileNotifier;
+    show
+        bodyWeightProvider,
+        injuryOptionsProvider,
+        profileProvider,
+        ProfileNotifier;
 import 'package:fitsync/features/recovery/domain/recovery.dart';
 import 'package:fitsync/features/recovery/presentation/providers.dart'
     show recoveryOverviewProvider;
+import 'package:fitsync/features/sessions/data/session_repository.dart';
 import 'package:fitsync/features/sessions/domain/active_session.dart';
 import 'package:fitsync/features/sessions/domain/session_history.dart';
+import 'package:fitsync/features/sessions/domain/session_outcome.dart';
 import 'package:fitsync/features/sessions/domain/training_analytics.dart';
 import 'package:fitsync/features/sessions/presentation/providers.dart';
 import 'package:fitsync/features/sessions/presentation/session_logger_screen.dart';
+import 'package:fitsync/features/sessions/presentation/widgets/outcome_sheet.dart'
+    show outcomeNotSavedMessage;
 import 'package:fitsync/features/plans/presentation/generator_screen.dart';
 import 'package:fitsync/features/recovery/presentation/recovery_screen.dart';
 import 'package:fitsync/features/sessions/presentation/progress_screen.dart';
@@ -199,6 +210,20 @@ Future<void> _pump(
   }
 }
 
+/// Refuses every pain answer, as a server that is down would.
+class _OutcomeFailsRepo implements SessionRepository {
+  @override
+  Future<void> recordOutcome(
+    int sessionId, {
+    required String painLevel,
+    int? injuryId,
+  }) async => throw const ApiException('INTERNAL', 'x');
+
+  @override
+  dynamic noSuchMethod(Invocation i) =>
+      throw UnimplementedError('${i.memberName} is not used here');
+}
+
 class _StubController extends ActiveSessionController {
   _StubController(this.initial);
   final ActiveSession? initial;
@@ -211,17 +236,24 @@ class _StubController extends ActiveSessionController {
 /// throws it instead of succeeding — the way a deleted plan would surface as
 /// an `ApiException` from the server.
 class _RecordingController extends ActiveSessionController {
-  _RecordingController({this.startError});
+  _RecordingController({this.startError, this.startGate, this.initial});
 
   final Object? startError;
   int startCalls = 0;
 
+  /// When set, [start] holds here, as a slow POST /sessions would.
+  final Completer<void>? startGate;
+
+  /// A session already in progress, for the Resume tests.
+  final ActiveSession? initial;
+
   @override
-  Future<ActiveSession?> build() async => null;
+  Future<ActiveSession?> build() async => initial;
 
   @override
   Future<void> start({List<int>? exerciseIds}) async {
     startCalls++;
+    await startGate?.future;
     if (startError != null) throw startError!;
     state = const AsyncValue.data(
       ActiveSession(
@@ -235,13 +267,23 @@ class _RecordingController extends ActiveSessionController {
 
 Future<void> _pumpWithController(
   WidgetTester tester,
-  ActiveSessionController Function() controller,
-) async {
+  ActiveSessionController Function() controller, {
+  // A finished workout still waiting for its pain report. Null is nothing
+  // waiting, so Start asks nothing.
+  PendingOutcome? pending,
+  // Stands in for the server when the pain answer is sent. Left out, the
+  // tests that answer nothing never reach it.
+  SessionRepository? sessions,
+}) async {
   await tester.pumpWidget(
     ProviderScope(
       overrides: [
         activePlanProvider.overrideWith((ref) async => _plan),
+        if (sessions != null)
+          sessionRepositoryProvider.overrideWithValue(sessions),
         activeSessionProvider.overrideWith(controller),
+        pendingOutcomeProvider.overrideWith((ref) async => pending),
+        injuryOptionsProvider.overrideWith((ref) async => const []),
         completedDaysProvider.overrideWith((ref) async => const <String>{}),
         // The Progress tab is built eagerly with the rest of the shell. Stubbed
         // at the provider rather than the repository: this file is about the
@@ -449,16 +491,174 @@ void main() {
     },
   );
 
-  testWidgets('the Plan tab offers a way to regenerate', (tester) async {
+  group('the pain question', () {
+    const pending = PendingOutcome(
+      sessionId: 31,
+      sessionDate: '2026-09-21',
+      planName: null,
+    );
+    const question = 'How did your last workout leave you?';
+
+    // The "+" button asks about the last workout before a new one starts;
+    // Start on the Plan tab is the other way in, and skipped the question.
+    testWidgets('Start asks about the last workout before starting', (
+      tester,
+    ) async {
+      final controller = _RecordingController();
+      await _pumpWithController(tester, () => controller, pending: pending);
+
+      await tester.tap(find.byKey(const Key('session.start')));
+      await tester.pumpAndSettle();
+
+      expect(find.text(question), findsOneWidget);
+      expect(controller.startCalls, 0);
+
+      // However it closes, the workout still starts: the label is never a
+      // gate in front of training.
+      await tester.tap(find.byKey(const Key('outcome.skip')));
+      await tester.pumpAndSettle();
+
+      expect(controller.startCalls, 1);
+      expect(find.byType(SessionLoggerScreen), findsOneWidget);
+    });
+
+    // The workout starts anyway; the message is the only sign the answer
+    // was lost, and it has to outlive the push onto the logger.
+    testWidgets('an answer that fails to save says so and still starts', (
+      tester,
+    ) async {
+      final controller = _RecordingController();
+      await _pumpWithController(
+        tester,
+        () => controller,
+        pending: pending,
+        sessions: _OutcomeFailsRepo(),
+      );
+
+      await tester.tap(find.byKey(const Key('session.start')));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const Key('outcome.pain.none')));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const Key('outcome.submit')));
+      await tester.pumpAndSettle();
+
+      expect(controller.startCalls, 1);
+      expect(find.byType(SessionLoggerScreen), findsOneWidget);
+      expect(find.text(outcomeNotSavedMessage), findsOneWidget);
+    });
+
+    // A workout under way is not a new one, so there is nothing to ask
+    // before going back to it.
+    testWidgets('Resume does not ask', (tester) async {
+      final controller = _RecordingController(
+        initial: const ActiveSession(
+          sessionId: 7,
+          status: 'in_progress',
+          sessionDate: '2026-09-08',
+        ),
+      );
+      await _pumpWithController(tester, () => controller, pending: pending);
+
+      await tester.tap(find.byKey(const Key('session.start')));
+      await tester.pumpAndSettle();
+
+      expect(find.text(question), findsNothing);
+      expect(find.byType(SessionLoggerScreen), findsOneWidget);
+    });
+  });
+
+  // While the session is being created the button says so, and a second
+  // tap in that wait does nothing.
+  testWidgets('Start shows progress while starting and takes one tap', (
+    tester,
+  ) async {
+    final gate = Completer<void>();
+    final controller = _RecordingController(startGate: gate);
+    await _pumpWithController(tester, () => controller);
+
+    final start = find.byKey(const Key('session.start'));
+    await tester.tap(start);
+    await tester.pump();
+
+    expect(
+      find.descendant(
+        of: start,
+        matching: find.byType(CircularProgressIndicator),
+      ),
+      findsOneWidget,
+    );
+    await tester.tap(start, warnIfMissed: false);
+    await tester.pump();
+
+    gate.complete();
+    await tester.pumpAndSettle();
+    expect(controller.startCalls, 1);
+    expect(find.byType(SessionLoggerScreen), findsOneWidget);
+  });
+
+  testWidgets('the Plan tab offers a way to make a new plan, in words', (
+    tester,
+  ) async {
+    final handle = tester.ensureSemantics();
     await _pump(tester);
 
-    expect(find.byKey(const Key('plan.regenerate')), findsOneWidget);
+    final button = find.byKey(const Key('plan.regenerate'));
+    expect(button, findsOneWidget);
+    // An icon alone left people guessing what it did (parked §9): the words
+    // are on the button itself, every time, with nothing to dismiss.
+    expect(
+      find.descendant(of: button, matching: find.text('New plan')),
+      findsOneWidget,
+    );
     // The icon the start-workout sheet already puts on its AI Workout
     // Generator row: both open the same screen, so they read as one thing.
-    expect(find.byIcon(Icons.auto_awesome), findsOneWidget);
-    // An icon says nothing on its own, so the tooltip carries the words --
-    // it is also what a screen reader announces.
-    expect(find.byTooltip('Regenerate plan'), findsOneWidget);
+    expect(
+      find.descendant(of: button, matching: find.byIcon(Icons.auto_awesome)),
+      findsOneWidget,
+    );
+    // A screen reader hears the same words a sighted user reads.
+    expect(
+      tester.getSemantics(button),
+      matchesSemantics(
+        label: 'New plan',
+        isButton: true,
+        hasTapAction: true,
+        isEnabled: true,
+        hasEnabledState: true,
+        isFocusable: true,
+        hasFocusAction: true,
+      ),
+    );
+    handle.dispose();
+  });
+
+  testWidgets('New plan takes a 48 dp tap', (tester) async {
+    await _pump(tester);
+
+    // Drawn as a slim pill, but the thumb gets the full target.
+    expect(
+      tester.getSize(find.byKey(const Key('plan.regenerate'))).height,
+      greaterThanOrEqualTo(48),
+    );
+  });
+
+  testWidgets('New plan stays whole on a 320 dp phone at 2.0x text', (
+    tester,
+  ) async {
+    tester.view.physicalSize = const Size(320, 640);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.reset);
+    await _pump(tester, textScale: 2.0);
+
+    expect(tester.takeException(), isNull);
+    // The title gives way first; the button's two words are what say what
+    // it does, so they are never cut.
+    final label = tester.renderObject<RenderParagraph>(find.text('New plan'));
+    expect(
+      label.size.width,
+      greaterThanOrEqualTo(label.getMaxIntrinsicWidth(double.infinity) - 0.01),
+      reason: 'the label was cut short',
+    );
   });
 
   testWidgets('the other tabs do not offer it', (tester) async {
@@ -493,9 +693,11 @@ void main() {
   /// _visited), so "the first time this State is built" is exactly "the first
   /// time the user switches to Train".
   group('the regenerate icon intro', () {
+    // The icon inside the button, not the button: the words stay still and
+    // readable from the first frame, and only the sparkle arrives.
     double scaleOf(WidgetTester tester) => tester
         .widget<ScaleTransition>(
-          find.ancestor(
+          find.descendant(
             of: find.byKey(const Key('plan.regenerate')),
             matching: find.byType(ScaleTransition),
           ),
@@ -553,17 +755,48 @@ void main() {
       expect(scaleOf(tester), 1.0);
     });
 
-    testWidgets('draws the icon in the theme accent', (tester) async {
+    testWidgets('keeps the words on screen while the icon waits', (
+      tester,
+    ) async {
+      await _pump(tester, settle: false);
+
+      expect(scaleOf(tester), 0.0);
+      // The label is not part of the intro: it says what the button does
+      // whether or not the sparkle has arrived yet.
+      expect(find.text('New plan'), findsOneWidget);
+      final intro = find.descendant(
+        of: find.byKey(const Key('plan.regenerate')),
+        matching: find.byType(ScaleTransition),
+      );
+      expect(
+        find.descendant(of: intro, matching: find.text('New plan')),
+        findsNothing,
+        reason: 'the label must not shrink away with the icon',
+      );
+    });
+
+    testWidgets("writes the label in the app's typeface", (tester) async {
       await _pump(tester);
 
-      final button = find.byKey(const Key('plan.regenerate'));
-      final icon = tester.widget<Icon>(
-        find.descendant(of: button, matching: find.byType(Icon)),
-      );
+      final label = tester.renderObject<RenderParagraph>(find.text('New plan'));
 
-      // The prototype's green, taken from the theme rather than spelled as a
-      // literal, so it follows light and dark instead of fighting one.
-      expect(icon.color, tester.element(button).fs.accent);
+      // A button's own text style replaces the theme's rather than adding
+      // to it, so a style that names only a size and weight drops the
+      // family, and the phone draws the label in its system font.
+      expect(label.text.style?.fontFamily, 'SpaceGrotesk');
+    });
+
+    testWidgets("writes the label in the theme's text green", (tester) async {
+      await _pump(tester);
+
+      final label = tester.renderObject<RenderParagraph>(find.text('New plan'));
+
+      // The deeper green made for words, from the theme so it follows light
+      // and dark: the brand green is under 3:1 as text on its own tint.
+      expect(
+        label.text.style?.color,
+        tester.element(find.text('New plan')).fs.accentText,
+      );
     });
 
     testWidgets('is skipped when the platform asks for less motion', (

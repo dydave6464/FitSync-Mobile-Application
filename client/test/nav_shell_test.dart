@@ -520,7 +520,7 @@ void main() {
 
     final scale = tester
         .widget<ScaleTransition>(
-          find.ancestor(
+          find.descendant(
             of: find.byKey(const Key('plan.regenerate')),
             matching: find.byType(ScaleTransition),
           ),
@@ -545,7 +545,7 @@ void main() {
       await tester.pump(const Duration(milliseconds: 400));
       final value = tester
           .widget<ScaleTransition>(
-            find.ancestor(
+            find.descendant(
               of: find.byKey(const Key('plan.regenerate')),
               matching: find.byType(ScaleTransition),
             ),
@@ -586,7 +586,7 @@ void main() {
 
     final scale = tester
         .widget<ScaleTransition>(
-          find.ancestor(
+          find.descendant(
             of: find.byKey(const Key('plan.regenerate')),
             matching: find.byType(ScaleTransition),
           ),
@@ -614,7 +614,7 @@ void main() {
 
     final scale = tester
         .widget<ScaleTransition>(
-          find.ancestor(
+          find.descendant(
             of: find.byKey(const Key('plan.regenerate')),
             matching: find.byType(ScaleTransition),
           ),

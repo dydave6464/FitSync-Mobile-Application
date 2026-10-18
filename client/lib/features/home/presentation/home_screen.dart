@@ -25,9 +25,11 @@ import '../../plans/domain/workout_plan.dart';
 import '../../streaks/presentation/providers.dart' show streakProvider;
 import '../../streaks/presentation/streaks_screen.dart';
 import '../../activity/presentation/widgets/activity_stats_row.dart';
+import 'plan_ready.dart';
 import 'widgets/active_workout_card.dart';
 import 'widgets/greeting.dart';
 import 'widgets/plan_card.dart';
+import 'widgets/plan_ready_card.dart';
 import 'widgets/profile_nudge.dart';
 import 'widgets/progress_snapshot_card.dart';
 import 'widgets/readiness_card.dart';
@@ -67,6 +69,20 @@ class HomeScreen extends ConsumerWidget {
     // What is happening NOW outranks what was planned. A session left open is
     // otherwise invisible here, and Home is where a user looks first.
     final session = ref.watch(activeSessionProvider).value;
+    // Only once there is a plan to name: announcing a plan that has not
+    // loaded, or failed to, would be a welcome to nothing. Not over a
+    // workout in progress either, which outranks it as it outranks the plan:
+    // the listener below puts it away for good once a session arrives, and
+    // this keeps it off the frame in between.
+    final readyPlan = ref.watch(planReadyProvider) && session == null
+        ? plan.value
+        : null;
+    // A workout started from anywhere -- Train, the + button -- means the
+    // plan has been found, so the welcome is put away for good, not just
+    // hidden until the workout ends.
+    ref.listen(activeSessionProvider, (_, next) {
+      if (next.value != null) ref.read(planReadyProvider.notifier).dismiss();
+    });
 
     return Scaffold(
       backgroundColor: context.fs.bg,
@@ -83,6 +99,21 @@ class HomeScreen extends ConsumerWidget {
               Greeting(profile: p, now: DateTime.now()),
               const ReminderPromptCard(),
               const SizedBox(height: 20),
+              // First of the cards, above the check-in that used to bury the
+              // new plan. Either button puts it away for good.
+              if (readyPlan != null) ...[
+                PlanReadyCard(
+                  plan: readyPlan,
+                  fitnessLevel: p.fitnessLevel,
+                  onSeePlan: () {
+                    ref.read(planReadyProvider.notifier).dismiss();
+                    onGoToTrain?.call();
+                  },
+                  onDismiss: () =>
+                      ref.read(planReadyProvider.notifier).dismiss(),
+                ),
+                const SizedBox(height: 14),
+              ],
               // The nudge renders nothing when the profile is complete, so
               // its spacing is conditional too — otherwise a complete profile
               // leaves a gap where the card would have been.
@@ -112,7 +143,12 @@ class HomeScreen extends ConsumerWidget {
                           plan: workoutPlan,
                           weightKg: p.weightKg,
                           dayNo: workoutPlan.todayDayNo(completedDays.length),
-                          onStart: () => onGoToTrain?.call(),
+                          // The way to the plan the welcome points at, so
+                          // taking it puts the welcome away as See plan does.
+                          onStart: () {
+                            ref.read(planReadyProvider.notifier).dismiss();
+                            onGoToTrain?.call();
+                          },
                         ),
                 ),
               const SizedBox(height: 14),

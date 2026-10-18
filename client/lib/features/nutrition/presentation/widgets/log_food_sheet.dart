@@ -1,9 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
+import '../../../../core/numbers.dart';
 import '../../../../core/theme.dart';
 import '../../../../core/widgets/fs_kit.dart';
-import '../../../sessions/presentation/progress_screen.dart' show groupThousands;
 import '../../domain/nutrition.dart';
 import 'fatsecret_attribution.dart';
 

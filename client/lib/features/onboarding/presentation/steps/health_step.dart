@@ -50,26 +50,29 @@ class HealthStep extends StatelessWidget {
           style: theme.textTheme.titleMedium,
         ),
         const SizedBox(height: 10),
-        Wrap(
-          spacing: 8,
-          runSpacing: 8,
-          children: [
-            for (final c in healthConditions)
+        // The room around the rows takes the outer chips' bands to 48 dp.
+        FsTapRoom(
+          child: Wrap(
+            spacing: 8,
+            runSpacing: 8,
+            children: [
+              for (final c in healthConditions)
+                FsChip(
+                  key: Key('health.${c.value}'),
+                  label: c.label,
+                  selected: value.conditions.contains(c.value),
+                  showCheck: true,
+                  onTap: () => onChanged(value.toggle(c.value)),
+                ),
               FsChip(
-                key: Key('health.${c.value}'),
-                label: c.label,
-                selected: value.conditions.contains(c.value),
+                key: const Key('health.none'),
+                label: 'None of these',
+                selected: value.noneOfThese,
                 showCheck: true,
-                onTap: () => onChanged(value.toggle(c.value)),
+                onTap: () => onChanged(value.toggleNone()),
               ),
-            FsChip(
-              key: const Key('health.none'),
-              label: 'None of these',
-              selected: value.noneOfThese,
-              showCheck: true,
-              onTap: () => onChanged(value.toggleNone()),
-            ),
-          ],
+            ],
+          ),
         ),
         const SizedBox(height: 22),
         Text(
@@ -82,21 +85,20 @@ class HealthStep extends StatelessWidget {
           const SizedBox(height: 8),
           Row(
             children: [
-              FsChip(
-                key: Key('health.${q.field}.yes'),
-                label: 'Yes',
-                selected: value.valueOf(q.field) == true,
-                small: true,
-                onTap: () => onChanged(value.answer(q.field, true)),
-              ),
-              const SizedBox(width: 8),
-              FsChip(
-                key: Key('health.${q.field}.no'),
-                label: 'No',
-                selected: value.valueOf(q.field) == false,
-                small: true,
-                onTap: () => onChanged(value.answer(q.field, false)),
-              ),
+              for (final (answer, label) in [(true, 'Yes'), (false, 'No')]) ...[
+                if (!answer) const SizedBox(width: 8),
+                _AnswerBand(
+                  key: Key('health.${q.field}.${answer ? 'yes' : 'no'}.target'),
+                  onTap: () => onChanged(value.answer(q.field, answer)),
+                  child: FsChip(
+                    key: Key('health.${q.field}.${answer ? 'yes' : 'no'}'),
+                    label: label,
+                    selected: value.valueOf(q.field) == answer,
+                    small: true,
+                    onTap: () => onChanged(value.answer(q.field, answer)),
+                  ),
+                ),
+              ],
             ],
           ),
         ],
@@ -106,7 +108,7 @@ class HealthStep extends StatelessWidget {
         ],
         if (ticked.isNotEmpty) ...[
           const SizedBox(height: 20),
-          _ConditionCard(ticked: ticked),
+          _ConditionCard(ticked: ticked, optedOut: value.optedOut),
         ],
         if (value.isPositive || value.optedOut) ...[
           const SizedBox(height: 12),
@@ -155,30 +157,57 @@ class HealthStep extends StatelessWidget {
               ),
             ),
         ],
-        // The last thing in the step, so it sits just above the button it
-        // explains: a disabled Continue (or Save) with no reason given reads
-        // as a broken button.
-        if (_blocker case final blocker?) ...[
-          const SizedBox(height: 16),
-          Text(
-            blocker,
-            key: const Key('health.hint'),
-            textAlign: TextAlign.center,
-            style: TextStyle(fontSize: 12.5, color: t.text2, height: 1.5),
-          ),
-        ],
       ],
     );
   }
 
-  /// Why the button below cannot be pressed yet, or null when it can. The
-  /// verb follows the button: Continue in onboarding, Save in Settings.
-  String? get _blocker {
+  /// Why Continue (or Save) cannot be pressed yet, or null when it can: a
+  /// greyed-out button with no reason given reads as a broken one. The verb
+  /// follows the button, as [allowOptOut] tells onboarding from Settings.
+  ///
+  /// Worded here but shown by the scaffold, beside the button: as the last
+  /// thing in this long step it could be scrolled out of sight of it.
+  static String? blockerFor(HealthAnswers value, {bool allowOptOut = true}) {
     if (value.isValid) return null;
     final verb = allowOptOut ? 'continue' : 'save';
     return value.isComplete
         ? 'Tick both boxes to $verb'
         : 'Answer every question to $verb';
+  }
+}
+
+/// One Yes or No: the small pill as drawn, inside a 48dp tap target.
+///
+/// A tap on the pill reaches its own ink; one in the slack around it gives
+/// the same answer. The pill keeps its own semantics, so a screen reader
+/// still hears one button, not two.
+class _AnswerBand extends StatelessWidget {
+  const _AnswerBand({super.key, required this.onTap, required this.child});
+
+  static const _minTarget = 48.0;
+
+  final VoidCallback onTap;
+  final Widget child;
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      behavior: HitTestBehavior.opaque,
+      excludeFromSemantics: true,
+      onTap: onTap,
+      child: ConstrainedBox(
+        constraints: const BoxConstraints(
+          minWidth: _minTarget,
+          minHeight: _minTarget,
+        ),
+        child: Align(
+          alignment: Alignment.centerLeft,
+          widthFactor: 1,
+          heightFactor: 1,
+          child: child,
+        ),
+      ),
+    );
   }
 }
 
@@ -222,9 +251,13 @@ class _WarningCard extends StatelessWidget {
 
 /// Shown when any condition is ticked: one line and one tip per condition.
 class _ConditionCard extends StatelessWidget {
-  const _ConditionCard({required this.ticked});
+  const _ConditionCard({required this.ticked, required this.optedOut});
 
   final List<HealthCondition> ticked;
+
+  /// "Don't save my answers": nothing reaches the server, so the plan is
+  /// built as if the check never ran, and promising a gentler one is wrong.
+  final bool optedOut;
 
   @override
   Widget build(BuildContext context) {
@@ -255,7 +288,11 @@ class _ConditionCard extends StatelessWidget {
           ],
           const SizedBox(height: 10),
           Text(
-            "We'll keep your plan gentle: 2 sets per exercise, shorter sessions.",
+            optedOut
+                ? "Your plan won't be made gentler, since these answers "
+                      "won't be saved."
+                : "We'll keep your plan gentle: 2 sets per exercise, "
+                      'shorter sessions.',
             style: body,
           ),
           const SizedBox(height: 10),

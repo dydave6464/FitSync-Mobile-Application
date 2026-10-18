@@ -113,6 +113,21 @@ void main() {
     handle.dispose();
   });
 
+  // Its own foreground colour overrides the theme's text green for text
+  // buttons, so it has to name the text green itself.
+  testWidgets('reads in the text green', (tester) async {
+    await _pump(tester, onSwitch: () {});
+
+    final label = find.descendant(
+      of: find.byKey(const Key('logger.switch')),
+      matching: find.byType(RichText),
+    );
+    expect(
+      tester.widget<RichText>(label.first).text.style?.color,
+      tester.element(label.first).fs.accentText,
+    );
+  });
+
   testWidgets('fits a 320 dp phone at large text', (tester) async {
     tester.view.physicalSize = const Size(320, 640);
     tester.view.devicePixelRatio = 1;

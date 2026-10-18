@@ -330,6 +330,34 @@ void main() {
     expect(_chipOn(tester, 'Push / Pull / Legs'), isFalse);
   });
 
+  // One row of chips is only as tall as a chip, and this one sits straight
+  // in the list: the room around it has to be the row's own.
+  testWidgets('a split chip takes a tap just above or below its pill', (
+    tester,
+  ) async {
+    await _pump(tester, plan: _pplPlan);
+    final chips = find.descendant(
+      of: find.byKey(const Key('gen.splits')),
+      matching: find.byType(FsChip),
+    );
+    await tester.ensureVisible(chips.first);
+    await tester.pumpAndSettle();
+    // The rows wrap, and a gap between two rows is split between them, so
+    // "above" is tried on the top row and "below" on the bottom one.
+    final all = List.generate(chips.evaluate().length, chips.at);
+    final top = all.first;
+    final bottom = all.last;
+    String label(Finder chip) => tester.widget<FsChip>(chip).label;
+
+    await tester.tapAt(tester.getRect(top).topCenter.translate(0, -7));
+    await tester.pump();
+    expect(_chipOn(tester, label(top)), isTrue);
+
+    await tester.tapAt(tester.getRect(bottom).bottomCenter.translate(0, 7));
+    await tester.pump();
+    expect(_chipOn(tester, label(bottom)), isTrue);
+  });
+
   testWidgets(
     'with no plan the derived session length still reaches the payload',
     (tester) async {
@@ -1121,6 +1149,18 @@ void main() {
 
       await write(tester, 'nonsense');
       await tester.tap(find.byKey(const Key('gen.describe.fromProfile')));
+      await tester.pumpAndSettle();
+
+      expect(fieldText(tester), contains('push / pull / legs'));
+    });
+
+    // The last line of the card: below it is the card's own padding.
+    testWidgets('From profile takes a tap just below its pill', (tester) async {
+      await _pump(tester, plan: _pplPlan, goal: 'build_muscle');
+
+      await write(tester, 'nonsense');
+      final chip = find.byKey(const Key('gen.describe.fromProfile'));
+      await tester.tapAt(tester.getRect(chip).bottomCenter.translate(0, 7));
       await tester.pumpAndSettle();
 
       expect(fieldText(tester), contains('push / pull / legs'));

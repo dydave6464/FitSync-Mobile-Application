@@ -4,6 +4,7 @@ import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import 'package:fitsync/core/theme.dart';
+import 'package:fitsync/core/units.dart';
 import 'package:fitsync/core/widgets/fs_kit.dart';
 
 Widget _host(Widget child) => MaterialApp(
@@ -183,6 +184,30 @@ void main() {
       1,
       0,
     ], reason: 'the bar reports each tap with its correct index');
+  });
+
+  testWidgets('the current tab reads in the text green', (tester) async {
+    // A 10 px label in the brand green was 2.87:1 on the light bar.
+    await tester.pumpWidget(
+      _host(
+        FsNav(
+          currentIndex: 0,
+          onSelect: (_) {},
+          items: const [
+            FsNavItem(icon: Icons.home_outlined, label: 'Home'),
+            FsNavItem(icon: Icons.fitness_center_outlined, label: 'Train'),
+          ],
+        ),
+      ),
+    );
+
+    final t = FsTokens.light;
+    expect(tester.widget<Text>(find.text('Home')).style?.color, t.accentText);
+    expect(
+      tester.widget<Icon>(find.byIcon(Icons.home_outlined)).color,
+      t.accentText,
+    );
+    expect(tester.widget<Text>(find.text('Train')).style?.color, t.text3);
   });
 
   testWidgets('FsNav does not overflow on narrow screens at 2.0x text scale', (
@@ -786,6 +811,467 @@ void main() {
           hasEnabledState: true,
           isEnabled: false,
         ),
+      );
+      handle.dispose();
+    });
+  });
+
+  // A thumb needs 48 dp; the chips and the kg/lb switch are drawn smaller
+  // than that, and every row of them is laid out around the drawn size. So
+  // the target grows and the drawing does not.
+  group('tap targets', () {
+    /// [child] with room all round, as a chip in a column of content has,
+    /// so a tap just off it lands inside the column.
+    Widget roomy(Widget child) => _host(
+      SizedBox(
+        width: 300,
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const SizedBox(height: 40),
+            child,
+            const SizedBox(height: 40),
+          ],
+        ),
+      ),
+    );
+
+    testWidgets('a chip answers a tap just off its pill', (tester) async {
+      var taps = 0;
+      await tester.pumpWidget(
+        roomy(FsChip(label: 'Bench', selected: false, onTap: () => taps++)),
+      );
+
+      final pill = tester.getRect(find.byType(FsChip));
+      final slack = (48 - pill.height) / 2;
+      await tester.tapAt(pill.topCenter - Offset(0, slack - 1));
+      await tester.tapAt(pill.bottomCenter + Offset(0, slack - 1));
+      expect(taps, 2);
+
+      // Past the 48 dp band is past the chip.
+      await tester.tapAt(pill.topCenter - Offset(0, slack + 2));
+      expect(taps, 2);
+    });
+
+    testWidgets('a short chip is a full 48 dp wide to a thumb', (tester) async {
+      var taps = 0;
+      await tester.pumpWidget(
+        roomy(
+          FsChip(
+            label: 'No',
+            selected: false,
+            small: true,
+            onTap: () => taps++,
+          ),
+        ),
+      );
+
+      final pill = tester.getRect(find.byType(FsChip));
+      expect(pill.width, lessThan(48), reason: 'the case being guarded');
+      await tester.tapAt(
+        pill.centerLeft - Offset((48 - pill.width) / 2 - 1, 0),
+      );
+      expect(taps, 1);
+    });
+
+    testWidgets('a chip is drawn and laid out at the same size as before', (
+      tester,
+    ) async {
+      await tester.pumpWidget(
+        _host(const FsChip(label: 'Bench', selected: false, onTap: _noop)),
+      );
+
+      // About 30 dp: the band is not layout, or every Wrap of chips would
+      // spread apart.
+      expect(tester.getSize(find.byType(FsChip)).height, lessThan(40));
+    });
+
+    testWidgets('a screen reader frames the chip at 48 dp too', (tester) async {
+      final handle = tester.ensureSemantics();
+      await tester.pumpWidget(
+        _host(
+          const FsChip(label: 'No', selected: false, small: true, onTap: _noop),
+        ),
+      );
+
+      final rect = tester.getSemantics(find.byType(FsChip)).rect;
+      expect(rect.height, greaterThanOrEqualTo(48));
+      expect(rect.width, greaterThanOrEqualTo(48));
+      handle.dispose();
+    });
+
+    testWidgets('kg and lb each answer a tap off their letters', (
+      tester,
+    ) async {
+      final picked = <WeightUnit>[];
+      await tester.pumpWidget(
+        roomy(FsUnitToggle(value: WeightUnit.kg, onChanged: picked.add)),
+      );
+
+      final lb = tester.getRect(find.byKey(const Key('unit.lb')));
+      expect(lb.height, lessThan(48), reason: 'the case being guarded');
+      await tester.tapAt(lb.topCenter - Offset(0, (48 - lb.height) / 2 - 1));
+      // Out past the end of the word, away from kg.
+      await tester.tapAt(lb.centerRight + const Offset(10, 0));
+      expect(picked, [WeightUnit.lb, WeightUnit.lb]);
+    });
+
+    testWidgets("a tap on kg's own letters never reaches lb", (tester) async {
+      final picked = <WeightUnit>[];
+      await tester.pumpWidget(
+        roomy(FsUnitToggle(value: WeightUnit.lb, onChanged: picked.add)),
+      );
+
+      // Each unit's band grows away from the other, so the two never
+      // overlap: the right-hand edge of KG is still KG.
+      final kg = tester.getRect(find.byKey(const Key('unit.kg')));
+      await tester.tapAt(kg.centerRight - const Offset(1, 0));
+      await tester.tapAt(kg.centerLeft - const Offset(10, 0));
+      expect(picked, [WeightUnit.kg, WeightUnit.kg]);
+    });
+
+    // A one-row Wrap, or a Row, is exactly as tall as its chips, and a chip
+    // can only answer a tap that reaches it through that box. FsTapRoom is
+    // what lets a row take the taps just outside it.
+    testWidgets('a chip in a one-row Wrap answers 7 dp off its pill', (
+      tester,
+    ) async {
+      var taps = 0;
+      await tester.pumpWidget(
+        roomy(
+          FsTapRoom(
+            child: Wrap(
+              children: [
+                FsChip(label: 'Bench', selected: false, onTap: () => taps++),
+              ],
+            ),
+          ),
+        ),
+      );
+
+      final pill = tester.getRect(find.byType(FsChip));
+      await tester.tapAt(pill.topCenter - const Offset(0, 7));
+      await tester.tapAt(pill.bottomCenter + const Offset(0, 7));
+      expect(taps, 2);
+
+      // Its reach is a band, not the rest of the column.
+      await tester.tapAt(pill.topCenter - const Offset(0, 14));
+      expect(taps, 2);
+    });
+
+    // A parent asks its last child first, so in a Wrap the lower chip's
+    // band would win anywhere the two bands overlap, including the bottom
+    // of the chip drawn above it. A shared gap splits at its middle instead.
+    testWidgets('two rows of small chips each keep their own pill', (
+      tester,
+    ) async {
+      final picked = <String>[];
+      // The test font sets a chip taller than the app's own does; half-size
+      // text brings it to the app's 26 dp, where the bands overlap.
+      await tester.pumpWidget(
+        roomy(
+          MediaQuery.withClampedTextScaling(
+            maxScaleFactor: 0.5,
+            child: SizedBox(
+              width: 90,
+              child: Wrap(
+                spacing: 8,
+                runSpacing: 8,
+                children: [
+                  for (final name in ['Lose fat', 'Build muscle'])
+                    FsChip(
+                      label: name,
+                      selected: false,
+                      small: true,
+                      onTap: () => picked.add(name),
+                    ),
+                ],
+              ),
+            ),
+          ),
+        ),
+      );
+
+      final upper = tester.getRect(find.widgetWithText(FsChip, 'Lose fat'));
+      final lower = tester.getRect(find.widgetWithText(FsChip, 'Build muscle'));
+      expect(lower.top, greaterThan(upper.bottom), reason: 'two rows');
+      expect(
+        (48 - lower.height) / 2,
+        greaterThan(lower.top - upper.bottom),
+        reason: 'the case being guarded: the lower band reaches the upper pill',
+      );
+
+      await tester.tapAt(upper.bottomCenter - const Offset(0, 2));
+      await tester.tapAt(upper.bottomCenter + const Offset(0, 2));
+      await tester.tapAt(Offset(upper.center.dx, lower.top - 2));
+      expect(picked, ['Lose fat', 'Lose fat', 'Build muscle']);
+    });
+
+    testWidgets('kg and lb in a row answer 7 dp above and below it', (
+      tester,
+    ) async {
+      final picked = <WeightUnit>[];
+      await tester.pumpWidget(
+        roomy(
+          FsTapRoom(
+            child: Row(
+              children: [
+                const Expanded(child: Text('Weight unit')),
+                FsUnitToggle(value: WeightUnit.kg, onChanged: picked.add),
+              ],
+            ),
+          ),
+        ),
+      );
+
+      final row = tester.getRect(find.byType(Row).first);
+      final lb = tester.getRect(find.byKey(const Key('unit.lb')));
+      await tester.tapAt(Offset(lb.center.dx, row.top - 7));
+      await tester.tapAt(Offset(lb.center.dx, row.bottom + 7));
+      expect(picked, [WeightUnit.lb, WeightUnit.lb]);
+    });
+
+    // In a stat card the switch sits 4 dp after the number, and a Row asks
+    // its last child first: a band grown evenly would take the field's
+    // right-hand end, so a tap meant for the number flipped the unit.
+    testWidgets(
+      "the unit switch in a stat card leaves the number's taps alone",
+      (tester) async {
+        final picked = <WeightUnit>[];
+        final controller = TextEditingController();
+        addTearDown(controller.dispose);
+        await tester.pumpWidget(
+          _host(
+            SizedBox(
+              width: 140,
+              child: FsStatField(
+                fieldKey: const Key('weightKg'),
+                label: 'Weight',
+                unit: 'lb',
+                controller: controller,
+                unitControl: FsUnitToggle(
+                  value: WeightUnit.lb,
+                  onChanged: picked.add,
+                ),
+              ),
+            ),
+          ),
+        );
+
+        final field = tester.getRect(find.byKey(const Key('weightKg')));
+        await tester.tapAt(field.centerRight - const Offset(5, 0));
+        await tester.pump();
+        expect(picked, isEmpty, reason: 'the tap was the number');
+        expect(
+          tester
+              .widget<EditableText>(find.byType(EditableText))
+              .focusNode
+              .hasFocus,
+          isTrue,
+        );
+
+        // The switch still takes a tap a little above the row, over the
+        // label.
+        final row = tester.getRect(find.byType(Row).first);
+        final kg = tester.getRect(find.byKey(const Key('unit.kg')));
+        await tester.tapAt(Offset(kg.center.dx, row.top - 6));
+        expect(picked, [WeightUnit.kg]);
+      },
+    );
+
+    // lb is the row's last child, so the half of its band past the letters
+    // lies outside the Row; the room for it is the card's own padding.
+    testWidgets('lb in a stat card takes a tap in the padding past it', (
+      tester,
+    ) async {
+      final picked = <WeightUnit>[];
+      final controller = TextEditingController();
+      addTearDown(controller.dispose);
+      await tester.pumpWidget(
+        _host(
+          SizedBox(
+            width: 140,
+            child: FsStatField(
+              fieldKey: const Key('weightKg'),
+              label: 'Weight',
+              unit: 'kg',
+              controller: controller,
+              unitControl: FsUnitToggle(
+                value: WeightUnit.kg,
+                onChanged: picked.add,
+              ),
+            ),
+          ),
+        ),
+      );
+
+      final lb = tester.getRect(find.byKey(const Key('unit.lb')));
+      await tester.tapAt(lb.centerRight + const Offset(8, 0));
+      expect(picked, [WeightUnit.lb]);
+
+      // The card's edge is still the end of it.
+      await tester.tapAt(lb.centerRight + const Offset(20, 0));
+      expect(picked, [WeightUnit.lb]);
+    });
+
+    // The switch is drawn about 19 dp tall in a row the number sets. The
+    // label above takes no taps and the card leaves a little padding below,
+    // and both are the switch's to use: 48 dp from top to bottom.
+    testWidgets('the unit switch in a stat card answers across 48 dp', (
+      tester,
+    ) async {
+      final picked = <WeightUnit>[];
+      final controller = TextEditingController();
+      addTearDown(controller.dispose);
+      await tester.pumpWidget(
+        _host(
+          SizedBox(
+            width: 140,
+            child: FsStatField(
+              fieldKey: const Key('weightKg'),
+              label: 'Weight',
+              unit: 'lb',
+              controller: controller,
+              unitControl: FsUnitToggle(
+                value: WeightUnit.lb,
+                onChanged: picked.add,
+              ),
+            ),
+          ),
+        ),
+      );
+
+      // Not centred on the pill, which sits on the number's baseline low in
+      // the row: what matters is how tall a strip of taps finds it.
+      final kg = tester.getRect(find.byKey(const Key('unit.kg')));
+      final answered = <double>[];
+      for (var dy = -40.0; dy <= 40; dy += 0.5) {
+        final before = picked.length;
+        await tester.tapAt(Offset(kg.center.dx, kg.center.dy + dy));
+        if (picked.length > before) answered.add(dy);
+      }
+      expect(answered.last - answered.first, greaterThanOrEqualTo(48));
+      // One strip, no holes in it.
+      expect(answered.length, (answered.last - answered.first) / 0.5 + 1);
+    });
+
+    // A tap inside the room's own box that nothing took was tested again at
+    // the same point, so a see-through listener on the way was added to the
+    // hit path twice and the pointer router refused the second.
+    testWidgets('FsTapRoom tests a point inside its own box only once', (
+      tester,
+    ) async {
+      var taps = 0;
+      await tester.pumpWidget(
+        roomy(
+          FsTapRoom(
+            child: Row(
+              children: [
+                GestureDetector(
+                  behavior: HitTestBehavior.translucent,
+                  onTap: () => taps++,
+                  child: const SizedBox(width: 60, height: 32),
+                ),
+              ],
+            ),
+          ),
+        ),
+      );
+
+      await tester.tap(find.byType(GestureDetector).last);
+      expect(tester.takeException(), isNull);
+      expect(taps, 1);
+    });
+
+    testWidgets('FsTapRoom reaches past its far end only as far as told', (
+      tester,
+    ) async {
+      var taps = 0;
+      await tester.pumpWidget(
+        roomy(
+          // The room past the row is this padding's, as in a card.
+          Padding(
+            padding: const EdgeInsets.only(right: 24),
+            child: FsTapRoom(
+              reach: 0,
+              endReach: 16,
+              child: Row(
+                children: [
+                  const Expanded(child: SizedBox(height: 20)),
+                  GestureDetector(
+                    behavior: HitTestBehavior.opaque,
+                    onTap: () => taps++,
+                    child: const SizedBox(width: 20, height: 20),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ),
+      );
+
+      final row = tester.getRect(find.byType(Row));
+      await tester.tapAt(row.centerRight + const Offset(15, 0));
+      expect(taps, 1);
+      await tester.tapAt(row.centerRight + const Offset(18, 0));
+      expect(taps, 1);
+    });
+
+    // The neighbour that wins a point must also reach it: an upper chip
+    // nearer by box, but whose band ends short, left the tap with nobody.
+    testWidgets('a tap in a gap no upper band reaches goes to the chip below', (
+      tester,
+    ) async {
+      final picked = <String>[];
+      await tester.pumpWidget(
+        roomy(
+          SizedBox(
+            width: 260,
+            child: Wrap(
+              spacing: 8,
+              runSpacing: 8,
+              children: [
+                for (final name in ['Squat', 'Bench', 'Romanian deadlift'])
+                  FsChip(
+                    label: name,
+                    selected: false,
+                    onTap: () => picked.add(name),
+                  ),
+              ],
+            ),
+          ),
+        ),
+      );
+
+      final left = tester.getRect(find.widgetWithText(FsChip, 'Squat'));
+      final right = tester.getRect(find.widgetWithText(FsChip, 'Bench'));
+      final lower = tester.getRect(
+        find.widgetWithText(FsChip, 'Romanian deadlift'),
+      );
+      expect(right.top, left.top, reason: 'Squat and Bench share a row');
+      expect(lower.top, greaterThan(left.bottom), reason: 'two rows');
+      expect(lower.height, lessThan(40), reason: 'one line, with a band');
+      expect(left.width, greaterThan(48), reason: 'no band past its ends');
+      final gapX = (left.right + right.left) / 2;
+      expect(lower.left, lessThan(gapX), reason: 'the lower chip spans it');
+
+      // In the gap between the upper chips, just below them.
+      await tester.tapAt(Offset(gapX, left.bottom + 1));
+      expect(picked, ['Romanian deadlift']);
+    });
+
+    testWidgets('a screen reader hears which unit is in force', (tester) async {
+      final handle = tester.ensureSemantics();
+      await tester.pumpWidget(
+        _host(FsUnitToggle(value: WeightUnit.kg, onChanged: (_) {})),
+      );
+
+      final kg = tester.getSemantics(find.byKey(const Key('unit.kg')));
+      expect(kg, isSemantics(label: 'KG', isSelected: true));
+      expect(kg.rect.height, greaterThanOrEqualTo(48));
+      expect(
+        tester.getSemantics(find.byKey(const Key('unit.lb'))),
+        isSemantics(label: 'LB', isSelected: false, isButton: true),
       );
       handle.dispose();
     });

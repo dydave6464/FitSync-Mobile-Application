@@ -1,3 +1,5 @@
+import 'dart:math' as math;
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
@@ -35,8 +37,12 @@ Route<void> workoutLibraryRoute() => MaterialPageRoute<void>(
 /// What the user chose to do about a workout that was already open.
 enum _Blocked { open, replace }
 
-/// What a review row's ⋮ menu offers.
-enum _RowAction { moveUp, moveDown, remove }
+/// How tall the open-workout question's three choices stand at ordinary text:
+/// three full-size FsButtons, 52 dp each, and the two 8 dp gaps between.
+const _blockedChoicesHeight = 3 * 52.0 + 2 * 8.0;
+
+/// What a review row's ⋮ menu offers. Remove is the row's own ✕.
+enum _RowAction { moveUp, moveDown }
 
 /// The last look at a manual workout before it becomes a session.
 ///
@@ -254,9 +260,17 @@ class _WorkoutReviewScreenState extends ConsumerState<WorkoutReviewScreen> {
             // largest text in landscape the wrapped choices alone are taller
             // than the dialog, and uncapped they would squeeze the question
             // above them down to nothing.
+            //
+            // Never below what the choices take at ordinary text, though. On
+            // a small phone on its side half the screen is 12 dp short of
+            // that, and Cancel sat just past the edge, behind a scroll
+            // nothing hinted at. The question keeps a scroll of its own.
             ConstrainedBox(
               constraints: BoxConstraints(
-                maxHeight: MediaQuery.sizeOf(dialogContext).height / 2,
+                maxHeight: math.max(
+                  MediaQuery.sizeOf(dialogContext).height / 2,
+                  _blockedChoicesHeight,
+                ),
               ),
               child: SingleChildScrollView(
                 // Not the route's primary scroller: the question's scroll
@@ -352,8 +366,6 @@ class _WorkoutReviewScreenState extends ConsumerState<WorkoutReviewScreen> {
         draft.reorder(index, index - 1);
       case _RowAction.moveDown:
         draft.reorder(index, index + 1);
-      case _RowAction.remove:
-        _remove(exercise, index);
     }
   }
 
@@ -495,6 +507,7 @@ class _WorkoutReviewScreenState extends ConsumerState<WorkoutReviewScreen> {
                   isLast: index == draft.length - 1,
                   baseUrl: baseUrl,
                   onAction: (action) => _onRowAction(action, exercise, index),
+                  onRemove: () => _remove(exercise, index),
                 );
               },
             ),
@@ -561,6 +574,7 @@ class _ReviewRow extends StatelessWidget {
     required this.isLast,
     required this.baseUrl,
     required this.onAction,
+    required this.onRemove,
   });
 
   final ExerciseSummary exercise;
@@ -577,6 +591,9 @@ class _ReviewRow extends StatelessWidget {
 
   final String baseUrl;
   final ValueChanged<_RowAction> onAction;
+
+  /// Takes the row out at once; the "Removed … · Undo" message is the undo.
+  final VoidCallback onRemove;
 
   @override
   Widget build(BuildContext context) {
@@ -656,32 +673,39 @@ class _ReviewRow extends StatelessWidget {
         overflow: TextOverflow.ellipsis,
         style: TextStyle(fontSize: 12, color: t.text2),
       ),
-      // One ⋮ rather than a ✕ beside new arrow buttons: three icon buttons
-      // would leave a 320 dp screen at large text almost no room for the
-      // name, and dragging stays the quick way to move. Remove joins the
-      // menu because its Undo makes the extra tap the only cost.
-      trailing: PopupMenuButton<_RowAction>(
-        key: Key('review.more.${exercise.exerciseId}'),
-        icon: const Icon(Icons.more_vert),
-        tooltip: 'More options for ${exercise.name}',
-        onSelected: onAction,
-        itemBuilder: (context) => [
-          PopupMenuItem(
-            key: Key('review.moveUp.${exercise.exerciseId}'),
-            value: _RowAction.moveUp,
-            enabled: index > 0,
-            child: const Text('Move up'),
-          ),
-          PopupMenuItem(
-            key: Key('review.moveDown.${exercise.exerciseId}'),
-            value: _RowAction.moveDown,
-            enabled: !isLast,
-            child: const Text('Move down'),
-          ),
-          PopupMenuItem(
+      // A one-tap ✕ to remove, as before, with the Undo message as its
+      // safety net; and one ⋮ for Move up / Move down, the button way to
+      // reorder for anyone who cannot drag. Two buttons rather than four
+      // keep a 320 dp screen at large text room for the name.
+      trailing: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          IconButton(
             key: Key('review.remove.${exercise.exerciseId}'),
-            value: _RowAction.remove,
-            child: const Text('Remove'),
+            tooltip: 'Remove ${exercise.name}',
+            constraints: const BoxConstraints(minWidth: 48, minHeight: 48),
+            icon: const Icon(Icons.close),
+            onPressed: onRemove,
+          ),
+          PopupMenuButton<_RowAction>(
+            key: Key('review.more.${exercise.exerciseId}'),
+            icon: const Icon(Icons.more_vert),
+            tooltip: 'More options for ${exercise.name}',
+            onSelected: onAction,
+            itemBuilder: (context) => [
+              PopupMenuItem(
+                key: Key('review.moveUp.${exercise.exerciseId}'),
+                value: _RowAction.moveUp,
+                enabled: index > 0,
+                child: const Text('Move up'),
+              ),
+              PopupMenuItem(
+                key: Key('review.moveDown.${exercise.exerciseId}'),
+                value: _RowAction.moveDown,
+                enabled: !isLast,
+                child: const Text('Move down'),
+              ),
+            ],
           ),
         ],
       ),

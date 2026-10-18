@@ -1,4 +1,6 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/rendering.dart'
+    show BoxHitTestEntry, BoxHitTestResult, RenderFittedBox;
 
 import '../../../../core/theme.dart';
 import '../../../../core/units.dart';
@@ -234,7 +236,9 @@ class _ExerciseLogPanelState extends State<ExerciseLogPanel> {
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Padding(
-                padding: const EdgeInsets.all(14),
+                // No bottom: those 14 dp are the column header's top padding
+                // now, where the unit switch's taps can reach into them.
+                padding: const EdgeInsets.fromLTRB(14, 14, 14, 0),
                 child: Row(
                   children: [
                     // The movement stays in view while logging: the tile plays
@@ -328,18 +332,31 @@ class _ExerciseLogPanelState extends State<ExerciseLogPanel> {
                               key: const Key('logpanel.addweight'),
                               onTap: () => setState(() => _weightAdded = true),
                               borderRadius: BorderRadius.circular(FsRadius.sm),
-                              child: Padding(
-                                padding: const EdgeInsets.symmetric(
-                                  horizontal: 4,
-                                  vertical: 5,
+                              // A caption to look at, a 48 dp target to tap:
+                              // the box grows around the text, which keeps
+                              // its size and its place at the left.
+                              child: ConstrainedBox(
+                                constraints: const BoxConstraints(
+                                  minWidth: 48,
+                                  minHeight: 48,
                                 ),
-                                child: Text(
-                                  '+ weight',
-                                  style: TextStyle(
-                                    fontFamily: fsMonoFamily,
-                                    fontSize: 11,
-                                    fontWeight: FontWeight.w600,
-                                    color: t.accent,
+                                child: Padding(
+                                  padding: const EdgeInsets.symmetric(
+                                    horizontal: 4,
+                                  ),
+                                  child: Align(
+                                    alignment: AlignmentDirectional.centerStart,
+                                    widthFactor: 1,
+                                    heightFactor: 1,
+                                    child: Text(
+                                      '+ weight',
+                                      style: TextStyle(
+                                        fontFamily: fsMonoFamily,
+                                        fontSize: 11,
+                                        fontWeight: FontWeight.w600,
+                                        color: t.accentText,
+                                      ),
+                                    ),
                                   ),
                                 ),
                               ),
@@ -356,62 +373,68 @@ class _ExerciseLogPanelState extends State<ExerciseLogPanel> {
                   children: [
                     Padding(
                       key: const Key('logpanel.columns'),
-                      padding: const EdgeInsets.fromLTRB(4, 0, 4, 8),
-                      child: Row(
-                        children: [
-                          SizedBox(
-                            width: SetRow.numberWidth,
-                            // softWrap off to match .eyebrow's `white-space:
-                            // nowrap`: at 10.5px with the eyebrow's tracking,
-                            // "SET" otherwise wraps to two lines inside a
-                            // 28px column and shoves the table down a row.
-                            child: Text(
-                              'SET',
-                              softWrap: false,
-                              overflow: TextOverflow.visible,
-                              style: fsEyebrow(t),
-                            ),
-                          ),
-                          // The weight heading, which is also the unit
-                          // toggle. It goes with the column it names: this
-                          // row shares SetRow's column constants, so a
-                          // heading left standing over a column that is gone
-                          // takes width the rows below no longer give it, and
-                          // REPS slides off the field it labels.
-                          //
-                          // The toggle is not the only way to the unit --
-                          // Settings owns it, and every other weight on the
-                          // panel still reads in whatever it is set to.
-                          if (showWeight) ...[
-                            Expanded(
-                              child: Center(
-                                // At 320 dp with large text the toggle is a
-                                // couple of pixels wider than its column;
-                                // shrink it there rather than overflow.
-                                child: FittedBox(
-                                  fit: BoxFit.scaleDown,
-                                  child: FsUnitToggle(
-                                    value: widget.unit,
-                                    onChanged: widget.onUnitChanged,
-                                  ),
-                                ),
-                              ),
-                            ),
-                            const SizedBox(width: SetRow.columnGap),
-                          ],
-                          Expanded(
-                            child: Center(
+                      padding: const EdgeInsets.fromLTRB(4, 14, 4, 16),
+                      // The unit switch is drawn about 19 dp tall in this
+                      // row: the padding around it is the rest of its band,
+                      // 14 above and 16 below, 48 dp in all. Nothing else
+                      // here takes taps.
+                      child: FsTapRoom(
+                        reach: 16,
+                        child: Row(
+                          children: [
+                            SizedBox(
+                              width: SetRow.numberWidth,
+                              // softWrap off to match .eyebrow's `white-space:
+                              // nowrap`: at 10.5px with the eyebrow's tracking,
+                              // "SET" otherwise wraps to two lines inside a
+                              // 28px column and shoves the table down a row.
                               child: Text(
-                                'REPS',
+                                'SET',
                                 softWrap: false,
                                 overflow: TextOverflow.visible,
                                 style: fsEyebrow(t),
                               ),
                             ),
-                          ),
-                          const SizedBox(width: SetRow.columnGap),
-                          SizedBox(width: trailingWidth),
-                        ],
+                            // The weight heading, which is also the unit
+                            // toggle. It goes with the column it names: this
+                            // row shares SetRow's column constants, so a
+                            // heading left standing over a column that is gone
+                            // takes width the rows below no longer give it, and
+                            // REPS slides off the field it labels.
+                            //
+                            // The toggle is not the only way to the unit --
+                            // Settings owns it, and every other weight on the
+                            // panel still reads in whatever it is set to.
+                            if (showWeight) ...[
+                              Expanded(
+                                child: Center(
+                                  // At 320 dp with large text the toggle is a
+                                  // couple of pixels wider than its column;
+                                  // shrink it there rather than overflow.
+                                  child: _ScaleDown(
+                                    child: FsUnitToggle(
+                                      value: widget.unit,
+                                      onChanged: widget.onUnitChanged,
+                                    ),
+                                  ),
+                                ),
+                              ),
+                              const SizedBox(width: SetRow.columnGap),
+                            ],
+                            Expanded(
+                              child: Center(
+                                child: Text(
+                                  'REPS',
+                                  softWrap: false,
+                                  overflow: TextOverflow.visible,
+                                  style: fsEyebrow(t),
+                                ),
+                              ),
+                            ),
+                            const SizedBox(width: SetRow.columnGap),
+                            SizedBox(width: trailingWidth),
+                          ],
+                        ),
                       ),
                     ),
                     for (var setNumber = 1; setNumber <= rows; setNumber++)
@@ -488,7 +511,7 @@ class _ExerciseLogPanelState extends State<ExerciseLogPanel> {
             ),
             child: Row(
               children: [
-                Icon(Icons.arrow_upward, size: 16, color: t.accent),
+                Icon(Icons.arrow_upward, size: 16, color: t.accentText),
                 const SizedBox(width: 10),
                 Expanded(
                   child: Text(
@@ -546,11 +569,41 @@ class _AddSet extends StatelessWidget {
         // control without the card's heading in view.
         label: Text('Add set', semanticsLabel: 'Add a set to $exerciseName'),
         style: TextButton.styleFrom(
-          foregroundColor: t.accent,
+          foregroundColor: t.accentText,
           minimumSize: const Size(48, 48),
           textStyle: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600),
         ),
       ),
     );
+  }
+}
+
+/// A [FittedBox] that scales down without trimming its child's taps to its
+/// own box. The unit switch's band is wider than the letters it draws, and a
+/// plain FittedBox answered inside the drawn pill alone, so a tap just past
+/// "lb" or before "kg" in the weight column missed.
+///
+/// Its height comes from the header's padding and tap room, not from here.
+/// Once it actually scales -- only at 320 dp with very large text -- the
+/// [Center] above it is no taller than the scaled pill and keeps taps to it.
+class _ScaleDown extends FittedBox {
+  const _ScaleDown({required Widget super.child})
+    : super(fit: BoxFit.scaleDown);
+
+  @override
+  RenderFittedBox createRenderObject(BuildContext context) =>
+      _RenderScaleDown(textDirection: Directionality.maybeOf(context));
+}
+
+class _RenderScaleDown extends RenderFittedBox {
+  _RenderScaleDown({super.textDirection}) : super(fit: BoxFit.scaleDown);
+
+  @override
+  bool hitTest(BoxHitTestResult result, {required Offset position}) {
+    // Not the usual check against this box: the child's band lies outside
+    // it. The scale still applies, through hitTestChildren's transform.
+    if (!hitTestChildren(result, position: position)) return false;
+    result.add(BoxHitTestEntry(this, position));
+    return true;
   }
 }

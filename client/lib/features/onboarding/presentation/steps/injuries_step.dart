@@ -183,45 +183,81 @@ class _RegionCard extends StatelessWidget {
     final theme = Theme.of(context);
     final selected = selection != null;
 
+    // The card's padding moves inside the tappable row, so the row reaches
+    // the card's edges and is at least 48dp tall, rather than only as tall as
+    // the region's name.
     return FsCard(
       small: true,
       accent: selected,
+      padding: EdgeInsets.zero,
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
-          InkWell(
-            key: Key('injury.${option.injuryId}'),
-            onTap: onToggle,
-            child: Row(
-              children: [
-                Expanded(
-                  child: Text(option.name, style: theme.textTheme.titleMedium),
+          // Its own node, so a screen reader hears "Shoulder, selected" on
+          // the thing it can tap, not on a card around it.
+          Semantics(
+            container: true,
+            button: true,
+            selected: selected,
+            child: InkWell(
+              key: Key('injury.${option.injuryId}'),
+              onTap: onToggle,
+              borderRadius: BorderRadius.circular(FsRadius.md),
+              child: ConstrainedBox(
+                constraints: const BoxConstraints(minHeight: 48),
+                child: Padding(
+                  padding: const EdgeInsets.all(13),
+                  child: Row(
+                    children: [
+                      Expanded(
+                        child: Text(
+                          option.name,
+                          style: theme.textTheme.titleMedium,
+                        ),
+                      ),
+                      FsRadioDot(selected: selected),
+                    ],
+                  ),
                 ),
-                FsRadioDot(selected: selected),
-              ],
+              ),
             ),
           ),
           // Only a selected, lateral region gets a side. The server rejects a
           // side on anything else.
-          if (selected && option.isLateral) ...[
-            const SizedBox(height: 12),
-            Row(
-              children: [
-                Text('Side', style: TextStyle(fontSize: 11, color: t.text3)),
-                const SizedBox(width: 10),
-                for (final side in _sides) ...[
-                  FsChip(
-                    key: Key('side.${option.injuryId}.${side.value}'),
-                    label: side.label,
-                    small: true,
-                    selected: selection!.side == side.value,
-                    onTap: () => onSide(side.value),
-                  ),
-                  const SizedBox(width: 6),
-                ],
-              ],
+          if (selected && option.isLateral)
+            Padding(
+              padding: const EdgeInsets.fromLTRB(13, 0, 13, 13),
+              // A Wrap, not a Row: at large text on a narrow phone the label
+              // and three chips do not fit on one line.
+              // Small chips, the card's last line: the 13 dp of padding below
+              // is the bottom of their band. Nothing is above them to reach
+              // into -- the region's own row is right there.
+              child: FsTapRoom(
+                reach: 11,
+                child: Wrap(
+                  spacing: 6,
+                  runSpacing: 6,
+                  crossAxisAlignment: WrapCrossAlignment.center,
+                  children: [
+                    Padding(
+                      padding: const EdgeInsets.only(right: 4),
+                      child: Text(
+                        'Side',
+                        style: TextStyle(fontSize: 11, color: t.text3),
+                      ),
+                    ),
+                    for (final side in _sides)
+                      FsChip(
+                        key: Key('side.${option.injuryId}.${side.value}'),
+                        label: side.label,
+                        small: true,
+                        selected: selection!.side == side.value,
+                        onTap: () => onSide(side.value),
+                      ),
+                  ],
+                ),
+              ),
             ),
-          ],
         ],
       ),
     );

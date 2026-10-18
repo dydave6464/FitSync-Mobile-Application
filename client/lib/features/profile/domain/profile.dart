@@ -76,6 +76,16 @@ class SelectedInjury {
       SelectedInjury(injuryId: injuryId, side: value);
 }
 
+/// A `fitness_level` as the level step words it. Capitalising the stored
+/// value read fine for beginner and intermediate and as "New" for New to
+/// training. Shared by every screen that names a stored level, so they agree.
+String fitnessLevelLabel(String level) => switch (level) {
+  'new' => 'New to training',
+  'beginner' => 'Beginner',
+  'intermediate' => 'Intermediate',
+  _ => level,
+};
+
 class Profile {
   const Profile({
     required this.userId,

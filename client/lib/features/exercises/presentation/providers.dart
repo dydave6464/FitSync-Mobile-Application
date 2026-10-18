@@ -129,30 +129,10 @@ class ExerciseListState {
   );
 }
 
-/// Muscle groups the whole catalogue view is confined to, set by the picker
-/// from the training day the user chose.
-class CatalogueConstraintNotifier extends Notifier<List<String>> {
-  @override
-  List<String> build() => const [];
-
-  void set(List<String> groups) => state = groups;
-}
-
-final catalogueConstraintProvider =
-    NotifierProvider<CatalogueConstraintNotifier, List<String>>(
-      CatalogueConstraintNotifier.new,
-    );
-
-/// What to actually ask the catalogue for.
-///
-/// A muscle button picks one body area, itself several groups; the training
-/// day constrains the whole list to several more. Resolved here into a single
-/// request rather than sent as two parameters the server would AND together:
-/// the button is a refinement WITHIN the day, so a chosen button simply wins.
-List<String> resolveMuscleGroups(
-  MuscleRegion? region,
-  List<String> constraint,
-) => region != null ? region.muscleGroups : constraint;
+/// What to actually ask the catalogue for: a muscle button picks one body
+/// area, itself several groups, and "All" (null) asks for none.
+List<String> resolveMuscleGroups(MuscleRegion? region) =>
+    region?.muscleGroups ?? const [];
 
 class ExerciseListNotifier extends AsyncNotifier<ExerciseListState> {
   @override
@@ -161,11 +141,10 @@ class ExerciseListNotifier extends AsyncNotifier<ExerciseListState> {
     // from scratch — which is exactly the "reset to page 1" behaviour we want,
     // with no manual reset logic to forget.
     final filters = ref.watch(selectedFiltersProvider);
-    final constraint = ref.watch(catalogueConstraintProvider);
     final repo = ref.watch(exerciseRepositoryProvider);
 
     final result = await repo.list(
-      muscleGroups: resolveMuscleGroups(filters.region, constraint),
+      muscleGroups: resolveMuscleGroups(filters.region),
       equipment: filters.equipment,
       search: filters.search,
       page: 1,
@@ -186,12 +165,11 @@ class ExerciseListNotifier extends AsyncNotifier<ExerciseListState> {
     state = AsyncData(current.copyWith(loadingMore: true));
 
     final filters = ref.read(selectedFiltersProvider);
-    final constraint = ref.read(catalogueConstraintProvider);
     final repo = ref.read(exerciseRepositoryProvider);
 
     try {
       final next = await repo.list(
-        muscleGroups: resolveMuscleGroups(filters.region, constraint),
+        muscleGroups: resolveMuscleGroups(filters.region),
         equipment: filters.equipment,
         search: filters.search,
         page: current.page + 1,

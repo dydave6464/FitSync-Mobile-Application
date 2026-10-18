@@ -1,9 +1,9 @@
 import 'package:flutter/material.dart';
 
+import '../../../../core/numbers.dart';
 import '../../../../core/theme.dart';
 import '../../../../core/widgets/fs_charts.dart' show FsRing;
 import '../../../../core/widgets/fs_kit.dart' show FsCard;
-import '../../../sessions/presentation/progress_screen.dart' show groupThousands;
 import '../../domain/nutrition.dart';
 
 /// The prototype's top card: a calorie ring, and Protein / Carbs / Fat / Fiber bars.

@@ -288,7 +288,7 @@ class WeekStrip extends StatelessWidget {
                 style: TextStyle(
                   fontSize: 12,
                   fontWeight: FontWeight.w700,
-                  color: t.accent,
+                  color: t.accentText,
                 ),
               ),
             ],

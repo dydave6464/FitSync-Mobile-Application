@@ -627,4 +627,63 @@ void main() {
       );
     });
   });
+
+  testWidgets('"not familiar" tells a screen reader whether it is chosen', (
+    tester,
+  ) async {
+    final handle = tester.ensureSemantics();
+    await _pumpLive(tester);
+
+    final card = find.byKey(const Key('equipment.unfamiliar'));
+    expect(
+      tester.getSemantics(card),
+      isSemantics(isButton: true, hasSelectedState: true, isSelected: false),
+    );
+
+    await _tapKey(tester, const Key('equipment.unfamiliar'));
+    expect(
+      tester.getSemantics(card),
+      isSemantics(isButton: true, hasSelectedState: true, isSelected: true),
+    );
+    handle.dispose();
+  });
+
+  // One row of chips is only as tall as a chip: the room around the rows is
+  // what takes the outer chips' bands to 48 dp.
+  testWidgets('an equipment chip takes a tap just above its pill', (
+    tester,
+  ) async {
+    final current = await _pumpLive(tester);
+
+    final chip = find.byKey(const Key('equipment.1'));
+    await tester.ensureVisible(chip);
+    await tester.pumpAndSettle();
+    await tester.tapAt(tester.getRect(chip).topCenter.translate(0, -7));
+    await tester.pumpAndSettle();
+
+    expect(current().equipmentIds, contains(1));
+  });
+
+  // The rows' last line is the bottom of the band too: the gap under it,
+  // before the "not familiar" card, is the bottom row's to use.
+  testWidgets('a bottom-row equipment chip takes a tap just below its pill', (
+    tester,
+  ) async {
+    final current = await _pumpLive(tester);
+
+    // Whichever chips wrapped to the last row at this width; not Bodyweight,
+    // which answers for "not familiar" too.
+    final ids = [for (var id = 1; id <= 7; id++) id];
+    double bottomOf(int id) =>
+        tester.getRect(find.byKey(Key('equipment.$id'))).bottom;
+    final lowest = ids.map(bottomOf).reduce((a, b) => a > b ? a : b);
+    final id = ids.firstWhere((id) => bottomOf(id) == lowest);
+    final chip = find.byKey(Key('equipment.$id'));
+    await tester.ensureVisible(chip);
+    await tester.pumpAndSettle();
+    await tester.tapAt(tester.getRect(chip).bottomCenter.translate(0, 7));
+    await tester.pumpAndSettle();
+
+    expect(current().equipmentIds, contains(id));
+  });
 }

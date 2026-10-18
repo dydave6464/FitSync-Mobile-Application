@@ -51,7 +51,7 @@ Future<AddToPlanChoice> showAddToPlanSheet(
             const SizedBox(height: 8),
             ListTile(
               key: const Key('addToPlan.newDay'),
-              leading: Icon(Icons.add, size: 20, color: t.accent),
+              leading: Icon(Icons.add, size: 20, color: t.accentText),
               title: const Text('As a new day'),
               subtitle: Text(
                 'Day ${dayNumbers.length + 1} of your plan',

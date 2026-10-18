@@ -271,7 +271,7 @@ class _GoalCard extends StatelessWidget {
                     style: TextStyle(
                       fontSize: 11.5,
                       fontWeight: FontWeight.w600,
-                      color: t.accent,
+                      color: t.accentText,
                     ),
                   )
                 else
@@ -302,7 +302,7 @@ class _GoalCard extends StatelessWidget {
           ),
           if (goal.reached) ...[
             const SizedBox(width: 12),
-            Icon(Icons.check_circle, size: 20, color: t.accent),
+            Icon(Icons.check_circle, size: 20, color: t.accentText),
           ],
         ],
       ),

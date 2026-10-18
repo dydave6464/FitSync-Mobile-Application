@@ -90,15 +90,6 @@ class _ThemeToggleButton extends ConsumerWidget {
   }
 }
 
-/// The level as the level step words it. Capitalising the stored value read
-/// fine for beginner and intermediate and as "New" for New to training.
-String _levelLabel(String level) => switch (level) {
-  'new' => 'New to training',
-  'beginner' => 'Beginner',
-  'intermediate' => 'Intermediate',
-  _ => level,
-};
-
 class _SettingsList extends ConsumerWidget {
   const _SettingsList({required this.profile});
 
@@ -121,7 +112,8 @@ class _SettingsList extends ConsumerWidget {
     final theme = Theme.of(context);
 
     final subtitle = [
-      if (profile.fitnessLevel != null) _levelLabel(profile.fitnessLevel!),
+      if (profile.fitnessLevel != null)
+        fitnessLevelLabel(profile.fitnessLevel!),
       if (profile.city != null) profile.city!,
       if (profile.fitnessLevel == null && profile.city == null) profile.email,
     ].join(' · ');
@@ -176,7 +168,11 @@ class _SettingsList extends ConsumerWidget {
           onTap: () => openProScreen(context),
           child: Row(
             children: [
-              Icon(Icons.workspace_premium_outlined, size: 22, color: t.accent),
+              Icon(
+                Icons.workspace_premium_outlined,
+                size: 22,
+                color: t.accentText,
+              ),
               const SizedBox(width: 13),
               Expanded(
                 child: Column(
@@ -198,7 +194,7 @@ class _SettingsList extends ConsumerWidget {
                   ],
                 ),
               ),
-              Icon(Icons.chevron_right, size: 17, color: t.accent),
+              Icon(Icons.chevron_right, size: 17, color: t.accentText),
             ],
           ),
         ),
@@ -267,26 +263,32 @@ class _SettingsList extends ConsumerWidget {
         const SizedBox(height: 10),
         FsCard(
           padding: const EdgeInsets.symmetric(horizontal: 16),
-          child: Column(
-            children: [
-              _SettingsRow(
-                icon: Icons.monitor_weight_outlined,
-                label: 'Weight unit',
-                trailing: FsUnitToggle(
-                  value: profile.weightUnit,
-                  onChanged: (unit) => ref.read(profileProvider.notifier).patch(
-                    {'weightUnit': unit.api},
+          // The card's 16 dp past the kg/lb switch is the rest of lb's band.
+          // It lies outside the rows, so the room is taken around them.
+          child: FsTapRoom(
+            reach: 0,
+            endReach: 16,
+            child: Column(
+              children: [
+                _SettingsRow(
+                  icon: Icons.monitor_weight_outlined,
+                  label: 'Weight unit',
+                  trailing: FsUnitToggle(
+                    value: profile.weightUnit,
+                    onChanged: (unit) => ref
+                        .read(profileProvider.notifier)
+                        .patch({'weightUnit': unit.api}),
                   ),
                 ),
-              ),
-              _SettingsRow(
-                rowKey: const Key('notifications'),
-                icon: Icons.notifications_outlined,
-                label: 'Notifications & reminders',
-                onTap: () => _open(context, const RemindersScreen()),
-                last: true,
-              ),
-            ],
+                _SettingsRow(
+                  rowKey: const Key('notifications'),
+                  icon: Icons.notifications_outlined,
+                  label: 'Notifications & reminders',
+                  onTap: () => _open(context, const RemindersScreen()),
+                  last: true,
+                ),
+              ],
+            ),
           ),
         ),
         const SizedBox(height: 22),
@@ -336,22 +338,26 @@ class _SettingsRow extends StatelessWidget {
         decoration: BoxDecoration(
           border: last ? null : Border(bottom: BorderSide(color: t.line)),
         ),
-        child: Row(
-          children: [
-            FsIconTile(icon: icon, size: 32, color: iconColor),
-            const SizedBox(width: 13),
-            Expanded(
-              child: Text(
-                label,
-                style: TextStyle(
-                  fontSize: 12.5,
-                  fontWeight: FontWeight.w500,
-                  color: t.text,
+        // The row's 12 dp padding is where a trailing switch, drawn a few
+        // pixels tall, gets the rest of its 48 dp.
+        child: FsTapRoom(
+          child: Row(
+            children: [
+              FsIconTile(icon: icon, size: 32, color: iconColor),
+              const SizedBox(width: 13),
+              Expanded(
+                child: Text(
+                  label,
+                  style: TextStyle(
+                    fontSize: 12.5,
+                    fontWeight: FontWeight.w500,
+                    color: t.text,
+                  ),
                 ),
               ),
-            ),
-            trailing ?? Icon(Icons.chevron_right, size: 16, color: t.text3),
-          ],
+              trailing ?? Icon(Icons.chevron_right, size: 16, color: t.text3),
+            ],
+          ),
         ),
       ),
     );
@@ -697,6 +703,7 @@ class _HealthEditorState extends ConsumerState<_HealthEditor> {
           title: 'Health',
           busy: _busy,
           onSave: _value.isValid ? _save : null,
+          hint: HealthStep.blockerFor(_value, allowOptOut: false),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             mainAxisSize: MainAxisSize.min,

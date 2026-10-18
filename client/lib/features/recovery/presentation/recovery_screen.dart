@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../../core/numbers.dart';
 import '../../../core/theme.dart';
 import '../../../core/units.dart';
 import '../../../core/widgets/fs_charts.dart'
@@ -12,7 +13,6 @@ import '../../profile/presentation/providers.dart' show weightUnitProvider;
 import '../../sessions/domain/training_analytics.dart' show VolumeBucket;
 import '../../sessions/domain/volume_labels.dart'
     show volumeBucketName, volumeToday;
-import '../../sessions/presentation/progress_screen.dart' show groupThousands;
 import '../../sessions/presentation/widgets/share_report_sheet.dart'
     show formatShareExpiry;
 import '../domain/recovery.dart';

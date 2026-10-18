@@ -292,6 +292,45 @@ void main() {
     ]);
   });
 
+  // The switch is drawn a few pixels tall in a 32 dp row; a thumb gets the
+  // full 48 dp, centred on it, without the row being drawn any taller.
+  testWidgets('kg / lb answers a thumb 22 dp above or below its middle', (
+    tester,
+  ) async {
+    final patches = <Map<String, dynamic>>[];
+    await _pump(tester, patches: patches);
+    await tester.scrollUntilVisible(find.byKey(const Key('unit.lb')), 200);
+    await tester.pumpAndSettle();
+
+    // The fake does not apply the patch, so kg stays in force and lb stays
+    // the one that takes a tap.
+    final lb = tester.getCenter(find.byKey(const Key('unit.lb')));
+    await tester.tapAt(lb - const Offset(0, 22));
+    await tester.pumpAndSettle();
+    await tester.tapAt(lb + const Offset(0, 22));
+    await tester.pumpAndSettle();
+    expect(patches, [
+      {'weightUnit': 'lb'},
+      {'weightUnit': 'lb'},
+    ]);
+  });
+
+  // lb ends the row, so the half of its band past the letters lies in the
+  // card's 16 dp padding, outside the row itself.
+  testWidgets('lb answers a thumb 8 dp past its letters', (tester) async {
+    final patches = <Map<String, dynamic>>[];
+    await _pump(tester, patches: patches);
+    await tester.scrollUntilVisible(find.byKey(const Key('unit.lb')), 200);
+    await tester.pumpAndSettle();
+
+    final lb = tester.getRect(find.byKey(const Key('unit.lb')));
+    await tester.tapAt(lb.centerRight + const Offset(8, 0));
+    await tester.pumpAndSettle();
+    expect(patches, [
+      {'weightUnit': 'lb'},
+    ]);
+  });
+
   testWidgets('offers no language row', (tester) async {
     await _pump(tester, patches: []);
 
@@ -657,6 +696,18 @@ void main() {
     expect(health.writes.single.conditions, isEmpty);
     expect(find.byType(HealthStep), findsNothing, reason: 'closed');
     expect(find.text('Health saved'), findsOneWidget);
+  });
+
+  testWidgets('the Health editor says why Save is greyed, right above it', (
+    tester,
+  ) async {
+    await _pump(tester);
+    await _openRow(tester, const Key('edit.health'));
+
+    final hint = find.text('Answer every question to save');
+    expect(hint, findsOneWidget);
+    final save = tester.getRect(find.byKey(const Key('save')));
+    expect(save.top - tester.getRect(hint).bottom, inInclusiveRange(0, 24));
   });
 
   testWidgets('there is no delete button without stored answers', (

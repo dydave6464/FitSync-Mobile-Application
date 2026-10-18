@@ -10,6 +10,7 @@ import '../../exercises/presentation/exercise_list_screen.dart'
     show describeError;
 import '../../health/domain/health_answers.dart';
 import '../../health/presentation/providers.dart';
+import '../../home/presentation/plan_ready.dart';
 import '../../profile/domain/profile.dart';
 import '../../profile/presentation/providers.dart';
 import '../../reminders/data/reminder_prompt_store.dart';
@@ -209,6 +210,11 @@ class _OnboardingFlowState extends ConsumerState<OnboardingFlow> {
       // _save's catch, the user stays on this step, and Try again is a
       // genuine retry rather than a resubmission.
       await notifier.completeOnboarding();
+      // Home opens next, and says the plan is ready rather than leaving it
+      // under the check-in card. Only after the call: a failed build stays
+      // here to be retried and has nothing to announce. Guarded like the
+      // hand-off below: ref is gone once this screen is.
+      if (mounted) ref.read(planReadyProvider.notifier).announce();
       // The last row describes this call; it may tick now, and the hold below
       // is what gives the user time to see it do so.
       if (mounted) setState(() => _planReady = true);
@@ -450,6 +456,7 @@ class _OnboardingFlowState extends ConsumerState<OnboardingFlow> {
                 : null,
             onBack: _index == 0 ? null : _back,
             error: _error,
+            hint: onHealthStep ? HealthStep.blockerFor(_health) : null,
             // The only way out of step 1 short of finishing: someone signed in
             // with the wrong account should not have to onboard it first.
             onSignOut: _index == 0

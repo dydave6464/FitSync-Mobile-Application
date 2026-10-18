@@ -27,7 +27,7 @@ class EncouragementCard extends StatelessWidget {
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Icon(Icons.emoji_events_outlined, size: 16, color: t.accent),
+          Icon(Icons.emoji_events_outlined, size: 16, color: t.accentText),
           const SizedBox(width: 10),
           Expanded(
             child: Column(

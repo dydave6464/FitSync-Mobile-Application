@@ -124,6 +124,7 @@ class GoalStep extends StatelessWidget {
             key: Key('goal.${goal.value}'),
             small: true,
             accent: value.goals.contains(goal.value),
+            selected: value.goals.contains(goal.value),
             onTap: () => _toggle(goal.value),
             child: Row(
               children: [
@@ -155,22 +156,28 @@ class GoalStep extends StatelessWidget {
           const SizedBox(height: 14),
           const FsEyebrow('Main focus'),
           const SizedBox(height: 10),
-          Wrap(
-            spacing: 8,
-            runSpacing: 8,
-            children: [
-              for (final goal in _goals)
-                if (value.goals.contains(goal.value))
-                  FsChip(
-                    key: Key('focus.${goal.value}'),
-                    label: goal.label,
-                    selected: value.mainGoal == goal.value,
-                    small: true,
-                    onTap: () => onChanged(
-                      GoalAnswers(goals: value.goals, mainGoal: goal.value),
+          // Small chips are about 26 dp: their band reaches 11 above the
+          // row and into the 8 dp gap below it, where the text that follows
+          // takes over -- about 45 dp in all.
+          FsTapRoom(
+            reach: 11,
+            child: Wrap(
+              spacing: 8,
+              runSpacing: 8,
+              children: [
+                for (final goal in _goals)
+                  if (value.goals.contains(goal.value))
+                    FsChip(
+                      key: Key('focus.${goal.value}'),
+                      label: goal.label,
+                      selected: value.mainGoal == goal.value,
+                      small: true,
+                      onTap: () => onChanged(
+                        GoalAnswers(goals: value.goals, mainGoal: goal.value),
+                      ),
                     ),
-                  ),
-            ],
+              ],
+            ),
           ),
           const SizedBox(height: 8),
           Text(

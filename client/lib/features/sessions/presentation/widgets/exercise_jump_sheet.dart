@@ -138,7 +138,7 @@ class ExerciseJumpSheet extends StatelessWidget {
                 style: TextStyle(
                   fontFamily: fsMonoFamily,
                   fontSize: 12,
-                  color: current ? t.accent : t.text3,
+                  color: current ? t.accentText : t.text3,
                 ),
               ),
             ),
@@ -170,13 +170,13 @@ class ExerciseJumpSheet extends StatelessWidget {
               style: TextStyle(
                 fontFamily: fsMonoFamily,
                 fontSize: 12,
-                color: complete ? t.accent : t.text3,
+                color: complete ? t.accentText : t.text3,
               ),
             ),
             SizedBox(
               width: 26,
               child: complete
-                  ? Icon(Icons.check, size: 15, color: t.accent)
+                  ? Icon(Icons.check, size: 15, color: t.accentText)
                   : null,
             ),
           ],

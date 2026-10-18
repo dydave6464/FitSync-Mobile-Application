@@ -112,7 +112,7 @@ class ExerciseDemoStage extends ConsumerWidget {
                   key: const Key('logger.switch'),
                   onPressed: onSwitch,
                   style: TextButton.styleFrom(
-                    foregroundColor: t.accent,
+                    foregroundColor: t.accentText,
                     minimumSize: const Size(48, 48),
                     padding: const EdgeInsets.symmetric(horizontal: 4),
                     textStyle: const TextStyle(

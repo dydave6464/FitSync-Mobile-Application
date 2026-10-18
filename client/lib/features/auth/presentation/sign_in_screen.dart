@@ -29,6 +29,10 @@ class SignInScreen extends ConsumerStatefulWidget {
 /// Which field a validation message belongs under.
 enum _Field { fullName, email, password }
 
+/// The shortest password the server accepts on register and on reset
+/// (`MIN_PASSWORD_LENGTH` in its auth routes).
+const _minPasswordLength = 8;
+
 class _SignInScreenState extends ConsumerState<SignInScreen> {
   final _email = TextEditingController();
   final _password = TextEditingController();
@@ -70,6 +74,15 @@ class _SignInScreenState extends ConsumerState<SignInScreen> {
     }
     if (_password.text.isEmpty) {
       return (field: _Field.password, message: 'Enter your password.');
+    }
+    // On sign up the server turns a short one down, but only after a round
+    // trip and in a message about the whole form. Never on sign in: an
+    // account made before the rule must still get in.
+    if (_registering && _password.text.length < _minPasswordLength) {
+      return (
+        field: _Field.password,
+        message: 'Use at least $_minPasswordLength characters.',
+      );
     }
     if (_registering && _fullName.text.trim().isEmpty) {
       return (field: _Field.fullName, message: 'Enter your name.');
@@ -273,7 +286,9 @@ class _SignInScreenState extends ConsumerState<SignInScreen> {
                         // The same minimum the server enforces on register
                         // and on reset, stated before the user picks one
                         // rather than after the server turns it down.
-                        helper: _registering ? 'At least 8 characters' : null,
+                        helper: _registering
+                            ? 'At least $_minPasswordLength characters'
+                            : null,
                         error: _errorFor(_Field.password),
                         field: FsField(
                           fieldKey: const Key('password'),
@@ -320,11 +335,12 @@ class _SignInScreenState extends ConsumerState<SignInScreen> {
                 ),
                 // Only in sign-in mode, matching the prototype: there is no
                 // password to reset for an account that does not exist yet.
-                if (!_registering) ...[
-                  const SizedBox(height: 10),
+                // The link's 48dp target brings its own space above the
+                // words, which is why there is no gap before it.
+                if (!_registering)
                   Align(
                     alignment: Alignment.centerRight,
-                    child: InkWell(
+                    child: _TextLink(
                       key: const Key('forgotPassword'),
                       onTap: _busy ? null : _openForgotPassword,
                       child: Text(
@@ -333,7 +349,6 @@ class _SignInScreenState extends ConsumerState<SignInScreen> {
                       ),
                     ),
                   ),
-                ],
                 if (_error != null) ...[
                   const SizedBox(height: 16),
                   // Inline rather than a SnackBar: a snack bar times out, and
@@ -380,9 +395,9 @@ class _SignInScreenState extends ConsumerState<SignInScreen> {
                   icon: const Icon(Icons.g_mobiledata),
                   onPressed: _busy ? null : _signInWithGoogle,
                 ),
-                const SizedBox(height: 24),
+                const SizedBox(height: 8),
                 Center(
-                  child: InkWell(
+                  child: _TextLink(
                     key: const Key('toggleMode'),
                     onTap: _busy
                         ? null
@@ -403,7 +418,7 @@ class _SignInScreenState extends ConsumerState<SignInScreen> {
                           TextSpan(
                             text: _registering ? 'Sign in' : 'Create account',
                             style: TextStyle(
-                              color: t.accent,
+                              color: t.accentText,
                               fontWeight: FontWeight.w600,
                             ),
                           ),
@@ -415,6 +430,31 @@ class _SignInScreenState extends ConsumerState<SignInScreen> {
               ],
             ),
           ),
+        ),
+      ),
+    );
+  }
+}
+
+/// A line of small text that acts as a button, inside a 48dp tap target.
+///
+/// The words stay as small as the design draws them; the target around them
+/// is what grows, so a thumb that lands just above or below still counts.
+class _TextLink extends StatelessWidget {
+  const _TextLink({super.key, required this.onTap, required this.child});
+
+  final VoidCallback? onTap;
+  final Widget child;
+
+  @override
+  Widget build(BuildContext context) {
+    return Semantics(
+      button: true,
+      child: InkWell(
+        onTap: onTap,
+        child: ConstrainedBox(
+          constraints: const BoxConstraints(minWidth: 48, minHeight: 48),
+          child: Align(widthFactor: 1, heightFactor: 1, child: child),
         ),
       ),
     );

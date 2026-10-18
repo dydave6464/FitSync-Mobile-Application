@@ -123,7 +123,6 @@ Future<void> _pump(
   WidgetTester tester, {
   FakeSessionRepository? sessions,
   FakeExerciseRepository? exercises,
-  List<String> muscleGroups = const [],
 }) async {
   await tester.pumpWidget(
     ProviderScope(
@@ -132,10 +131,6 @@ Future<void> _pump(
           exercises ?? FakeExerciseRepository(),
         ),
         noRecentExercises,
-        if (muscleGroups.isNotEmpty)
-          catalogueConstraintProvider.overrideWith(
-            () => _ConstrainedTo(muscleGroups),
-          ),
         sessionRepositoryProvider.overrideWithValue(
           sessions ?? FakeSessionRepository(),
         ),
@@ -149,16 +144,6 @@ Future<void> _pump(
     ),
   );
   await tester.pumpAndSettle();
-}
-
-/// The catalogue narrowed to a training day, as the setup screen leaves it.
-class _ConstrainedTo extends CatalogueConstraintNotifier {
-  _ConstrainedTo(this.groups);
-
-  final List<String> groups;
-
-  @override
-  List<String> build() => groups;
 }
 
 Finder _review() => find.byKey(const Key('picker.review'));
@@ -263,23 +248,7 @@ void main() {
     );
   });
 
-  testWidgets("the training day's groups are what the catalogue is asked for", (
-    tester,
-  ) async {
-    // The day chosen on the setup screen has to reach the request, or the
-    // library shows all 1,203 exercises under a heading that says Push.
-    final exercises = FakeExerciseRepository();
-
-    await _pump(
-      tester,
-      exercises: exercises,
-      muscleGroups: const ['pectorals', 'delts', 'triceps'],
-    );
-
-    expect(exercises.asked, ['pectorals', 'delts', 'triceps']);
-  });
-
-  testWidgets('with no day chosen it asks for the whole catalogue', (
+  testWidgets('with no area chosen it asks for the whole catalogue', (
     tester,
   ) async {
     final exercises = FakeExerciseRepository();

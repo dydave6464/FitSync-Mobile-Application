@@ -236,12 +236,12 @@ class _OptionRow extends StatelessWidget {
 
     return ListTile(
       onTap: onTap,
-      leading: Icon(icon, size: 20, color: selected ? t.accent : t.text2),
+      leading: Icon(icon, size: 20, color: selected ? t.accentText : t.text2),
       title: Text(
         label,
         style: TextStyle(
           fontSize: 14,
-          color: selected ? t.accent : t.text,
+          color: selected ? t.accentText : t.text,
           fontWeight: selected ? FontWeight.w600 : FontWeight.w400,
         ),
       ),
@@ -252,7 +252,7 @@ class _OptionRow extends StatelessWidget {
             Text('$count', style: TextStyle(fontSize: 12, color: t.text3)),
           if (selected) ...[
             const SizedBox(width: 8),
-            Icon(Icons.check, size: 18, color: t.accent),
+            Icon(Icons.check, size: 18, color: t.accentText),
           ],
         ],
       ),

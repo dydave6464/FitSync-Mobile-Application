@@ -168,6 +168,61 @@ void main() {
     expect(chosen, WeightUnit.lb);
   });
 
+  // The switch is drawn about 19 dp tall in a row no taller. The gap above
+  // the header and the header's padding below it are the switch's to use;
+  // nothing else there takes taps, and together they make 48 dp.
+  testWidgets('the column header switch answers across 48 dp', (tester) async {
+    final chosen = <WeightUnit>[];
+    await tester.pumpWidget(
+      _host(
+        ExerciseLogPanel(
+          exercise: _exercise,
+          session: _session(),
+          unit: WeightUnit.kg,
+          onUnitChanged: chosen.add,
+          drafts: _drafts(tester),
+          onUndoSet: (_) async {},
+        ),
+      ),
+    );
+
+    final lb = tester.getRect(find.byKey(const Key('unit.lb')));
+    final answered = <double>[];
+    for (var dy = -40.0; dy <= 40; dy += 0.5) {
+      final before = chosen.length;
+      await tester.tapAt(Offset(lb.center.dx, lb.center.dy + dy));
+      if (chosen.length > before) answered.add(dy);
+    }
+    expect(answered.last - answered.first, greaterThanOrEqualTo(48));
+    // One strip, no holes in it.
+    expect(answered.length, (answered.last - answered.first) / 0.5 + 1);
+  });
+
+  // Past the ends of the pill, inside the weight column: the switch's band
+  // is wider than the letters, and the box that scales it down at large
+  // text must not trim it back to them.
+  testWidgets('the column header switch takes a tap just past lb', (
+    tester,
+  ) async {
+    final chosen = <WeightUnit>[];
+    await tester.pumpWidget(
+      _host(
+        ExerciseLogPanel(
+          exercise: _exercise,
+          session: _session(),
+          unit: WeightUnit.kg,
+          onUnitChanged: chosen.add,
+          drafts: _drafts(tester),
+          onUndoSet: (_) async {},
+        ),
+      ),
+    );
+
+    final lb = tester.getRect(find.byKey(const Key('unit.lb')));
+    await tester.tapAt(lb.centerRight + const Offset(6, 0));
+    expect(chosen, [WeightUnit.lb]);
+  });
+
   // One pound is 0.45359237 kg exactly, so 22.5 kg is 49.6039... lb, 25 kg is
   // 55.1155... lb and the 2.5 kg gain between them is 5.5115... lb. Derived by
   // hand: an expectation run through the same conversion the widget uses
@@ -1133,6 +1188,26 @@ void main() {
       );
     });
 
+    // Drawn as an 11 px caption, but tapped like any other control.
+    testWidgets('the add-weight control is a full 48 dp target', (
+      tester,
+    ) async {
+      await tester.pumpWidget(
+        _host(
+          ExerciseLogPanel(
+            exercise: _bodyweight,
+            session: _session(),
+            drafts: _drafts(tester),
+            onUndoSet: (_) async {},
+          ),
+        ),
+      );
+
+      final size = tester.getSize(find.byKey(const Key('logpanel.addweight')));
+      expect(size.width, greaterThanOrEqualTo(48));
+      expect(size.height, greaterThanOrEqualTo(48));
+    });
+
     // A dip belt is the exception, not the rule, so the field is asked for
     // rather than offered -- and asked for once on the exercise, because
     // nobody belts up for set 2 alone.
@@ -1291,6 +1366,21 @@ void main() {
         onRemoveSet: onRemoveSet ?? (_) {},
       ),
     );
+
+    // Its own foreground colour overrides the theme's text green for text
+    // buttons, so it has to name the text green itself.
+    testWidgets('Add set reads in the text green', (tester) async {
+      await tester.pumpWidget(panel(tester, setCount: 3));
+
+      final label = find.descendant(
+        of: find.byKey(const Key('logpanel.addSet')),
+        matching: find.byType(RichText),
+      );
+      expect(
+        tester.widget<RichText>(label.first).text.style?.color,
+        tester.element(label.first).fs.accentText,
+      );
+    });
 
     testWidgets('draws as many rows as it is told, the target unchanged', (
       tester,

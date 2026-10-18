@@ -12,8 +12,10 @@ import 'package:fitsync/features/auth/domain/auth_user.dart';
 import 'package:fitsync/features/auth/presentation/auth_controller.dart';
 import 'package:fitsync/features/health/domain/health_answers.dart';
 import 'package:fitsync/features/health/presentation/providers.dart';
+import 'package:fitsync/features/home/presentation/plan_ready.dart';
 import 'package:fitsync/features/onboarding/presentation/generating_view.dart';
 import 'package:fitsync/features/onboarding/presentation/onboarding_flow.dart';
+import 'package:fitsync/features/onboarding/presentation/onboarding_scaffold.dart';
 import 'package:fitsync/features/profile/data/profile_repository.dart';
 import 'package:fitsync/features/profile/domain/profile.dart';
 import 'package:fitsync/features/profile/presentation/providers.dart';
@@ -587,6 +589,41 @@ void main() {
     expect(find.byKey(const Key('skip')), findsNothing);
   });
 
+  testWidgets('the health step says why Continue is greyed, right above it', (
+    tester,
+  ) async {
+    await _pumpFlow(tester, patches: []);
+    for (var i = 0; i < 4; i++) {
+      await _skip(tester);
+    }
+
+    final hint = find.byKey(const Key('hint'));
+    expect(
+      tester.widget<ContinueHint>(hint).message,
+      'Answer every question to continue',
+    );
+    final cont = tester.getRect(find.byKey(const Key('continue')));
+    expect(cont.top - tester.getRect(hint).bottom, inInclusiveRange(0, 24));
+
+    await _tapKey(tester, const Key('health.asthma'));
+    for (final q in healthQuestions) {
+      await _tapKey(tester, Key('health.${q.field}.no'));
+    }
+    expect(
+      tester.widget<ContinueHint>(hint).message,
+      'Tick both boxes to continue',
+    );
+
+    await _tapKey(tester, const Key('health.optOut'));
+    expect(hint, findsNothing, reason: 'Continue can be pressed now');
+  });
+
+  testWidgets('no other step shows the health hint', (tester) async {
+    await _pumpFlow(tester, patches: []);
+
+    expect(find.byKey(const Key('hint')), findsNothing);
+  });
+
   testWidgets('Continue does nothing until the health step is answered', (
     tester,
   ) async {
@@ -945,6 +982,47 @@ void main() {
     expect(completed, [
       true,
     ], reason: 'the shell has to be told, or the user stays in onboarding');
+  });
+
+  testWidgets('a built plan has Home say so when it opens', (tester) async {
+    await _pumpFlow(tester, patches: []);
+
+    await _skip(tester);
+    await _skip(tester);
+    await _skip(tester);
+    await _skip(tester);
+    await _passHealthClear(tester);
+    await tester.tap(find.byKey(const Key('continue')));
+    await tester.pumpAndSettle();
+
+    final container = ProviderScope.containerOf(
+      tester.element(find.byType(OnboardingFlow)),
+    );
+    expect(container.read(planReadyProvider), isTrue);
+  });
+
+  testWidgets('a plan that failed to build is not announced', (tester) async {
+    await _pumpFlow(
+      tester,
+      patches: [],
+      onComplete: (attempt) async => throw const ApiException(
+        'PLAN_GENERATION_FAILED',
+        'Could not build a plan right now.',
+      ),
+    );
+
+    await _skip(tester);
+    await _skip(tester);
+    await _skip(tester);
+    await _skip(tester);
+    await _passHealthClear(tester);
+    await tester.tap(find.byKey(const Key('continue')));
+    await tester.pumpAndSettle();
+
+    final container = ProviderScope.containerOf(
+      tester.element(find.byType(OnboardingFlow)),
+    );
+    expect(container.read(planReadyProvider), isFalse);
   });
 
   testWidgets('a failed generation can be retried', (tester) async {

@@ -464,6 +464,53 @@ void main() {
     expect(find.byTooltip('Show password'), findsOneWidget);
   });
 
+  // Both links were only as tall as their small text, about 16dp.
+  testWidgets('the text links take a 48dp tap', (tester) async {
+    await _pump(tester, FakeAuthRepository());
+    await tester.pumpAndSettle();
+
+    for (final key in ['forgotPassword', 'toggleMode']) {
+      final link = tester.getRect(find.byKey(Key(key)));
+      expect(link.height, greaterThanOrEqualTo(48), reason: key);
+      expect(link.width, greaterThanOrEqualTo(48), reason: key);
+    }
+
+    // A tap near the link's top edge, above the words, still switches mode.
+    await tester.ensureVisible(find.byKey(const Key('toggleMode')));
+    await tester.pumpAndSettle();
+    final toggle = tester.getRect(find.byKey(const Key('toggleMode')));
+    await tester.tapAt(toggle.topCenter + const Offset(0, 2));
+    await tester.pumpAndSettle();
+    expect(find.text('Create account'), findsWidgets);
+    expect(find.byKey(const Key('forgotPassword')), findsNothing);
+  });
+
+  testWidgets('a screen reader hears each text link as a button', (
+    tester,
+  ) async {
+    final semantics = tester.ensureSemantics();
+    await _pump(tester, FakeAuthRepository());
+    await tester.pumpAndSettle();
+
+    expect(
+      tester.getSemantics(find.byKey(const Key('forgotPassword'))),
+      isSemantics(
+        label: 'Forgot password?',
+        isButton: true,
+        hasTapAction: true,
+      ),
+    );
+    expect(
+      tester.getSemantics(find.byKey(const Key('toggleMode'))),
+      isSemantics(
+        label: 'New here? Create account',
+        isButton: true,
+        hasTapAction: true,
+      ),
+    );
+    semantics.dispose();
+  });
+
   testWidgets('a screen reader reaches the eye as its own button', (
     tester,
   ) async {
@@ -540,6 +587,59 @@ void main() {
       greaterThanOrEqualTo(password.bottom),
     );
     expect(tester.getRect(pwMessage).bottom, lessThan(submit.top));
+  });
+
+  testWidgets(
+    'a short password is flagged on sign up before anything is sent',
+    (tester) async {
+      // The server refuses fewer than 8 characters; saying so under the field
+      // beats a round trip and a message about the whole form.
+      final repo = FakeAuthRepository(onRegister: () async {});
+      await _pump(tester, repo);
+      await tester.pumpAndSettle();
+      await _toRegister(tester);
+
+      await tester.enterText(
+        find.byKey(const Key('fullName')),
+        'Juan Dela Cruz',
+      );
+      await _fillAndSubmit(tester, password: 'short12');
+      await tester.pumpAndSettle();
+
+      final message = find.text('Use at least 8 characters.');
+      expect(message, findsOneWidget);
+      expect(repo.registerCalls, 0, reason: 'checked before anything is sent');
+      final password = tester.getRect(find.byKey(const Key('password')));
+      final submit = tester.getRect(find.byKey(const Key('submit')));
+      expect(
+        tester.getRect(message).top,
+        greaterThanOrEqualTo(password.bottom),
+      );
+      expect(tester.getRect(message).bottom, lessThan(submit.top));
+
+      // Eight is enough.
+      await tester.enterText(find.byKey(const Key('password')), 'short123');
+      await tester.pump();
+      expect(message, findsNothing, reason: 'editing the field clears it');
+      await _tapKey(tester, 'submit');
+      await tester.pumpAndSettle();
+      expect(repo.registerCalls, 1);
+    },
+  );
+
+  testWidgets('signing in never applies the sign-up length rule', (
+    tester,
+  ) async {
+    // An account made before the rule must still be able to sign in.
+    final repo = FakeAuthRepository(onLogin: () async => _user());
+    await _pump(tester, repo);
+    await tester.pumpAndSettle();
+
+    await _fillAndSubmit(tester, password: 'short');
+    await tester.pumpAndSettle();
+
+    expect(find.text('Use at least 8 characters.'), findsNothing);
+    expect(repo.loginCalls, 1);
   });
 
   testWidgets('a bad email is flagged under the email field', (tester) async {
