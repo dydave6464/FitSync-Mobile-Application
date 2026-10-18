@@ -62,6 +62,7 @@ test('nutrition endpoints', async (t) => {
       day: (date) => request(app).get('/api/v1/nutrition/day').query(date ? { date } : {}).set(auth),
       log: (body) => request(app).post('/api/v1/nutrition/entries').set(auth).send(body),
       del: (id) => request(app).delete(`/api/v1/nutrition/entries/${id}`).set(auth),
+      edit: (id, body) => request(app).patch(`/api/v1/nutrition/entries/${id}`).set(auth).send(body),
       patch: (body) => request(app).patch('/api/v1/profile').set(auth).send(body),
     };
   };
@@ -70,6 +71,7 @@ test('nutrition endpoints', async (t) => {
     await request(app).get('/api/v1/nutrition/day').expect(401);
     await request(app).post('/api/v1/nutrition/entries').send({}).expect(401);
     await request(app).delete('/api/v1/nutrition/entries/1').expect(401);
+    await request(app).patch('/api/v1/nutrition/entries/1').send({ mealType: 'lunch', servings: 1 }).expect(401);
   });
 
   await t.test('an empty day for a new account: no target, fields named', async () => {
@@ -284,5 +286,173 @@ test('nutrition endpoints', async (t) => {
     await pool.query("UPDATE foods SET serving_desc = 'relabelled' WHERE food_id IN (?, ?)", [soup.insertId, fs.foodId]);
     const { day } = (await u.day().expect(200)).body.data;
     assert.deepEqual(day.meals.dinner.map((e) => e.servingDesc), ['1 bowl', '1 glass']);
+  });
+
+  // The numbers an entry stores, read straight from meal_logs.
+  const storedNumbers = async (id) => {
+    const [[r]] = await pool.query(
+      `SELECT servings, calories, protein_g, carbs_g, fat_g, fiber_g, sugar_g, sodium_mg
+         FROM meal_logs WHERE meal_log_id = ?`, [id],
+    );
+    return r;
+  };
+  const numbersOf = (e) => ({
+    kcal: e.kcal, proteinG: e.proteinG, carbsG: e.carbsG, fatG: e.fatG,
+    fiberG: e.fiberG, sugarG: e.sugarG, sodiumMg: e.sodiumMg,
+  });
+  const MANUAL = {
+    source: 'manual', name: 'Pandesal', servingDesc: '1 roll', proteinG: 10.25, carbsG: 3.33, fatG: 1.11,
+    fiberG: 2, sugarG: 1, sodiumMg: 12.3,
+  };
+
+  await t.test('edit moves an entry to another meal, totals unchanged', async () => {
+    const u = await freshUser();
+    const { entry } = (await u.log({ mealType: 'lunch', servings: 1, food: { source: 'local', id: ADOBO } }).expect(201)).body.data;
+    const before = (await u.day().expect(200)).body.data.day.totals;
+    const res = await u.edit(entry.id, { mealType: 'snack', servings: 1 }).expect(200);
+    assert.deepEqual(res.body.data.entry, { ...entry, mealType: 'snack' });
+    const { day } = (await u.day().expect(200)).body.data;
+    assert.equal(day.meals.lunch.length, 0);
+    assert.deepEqual(day.meals.snack.map((e) => e.id), [entry.id]);
+    assert.deepEqual(day.totals, before);
+  });
+
+  await t.test('edit rescales by servings from the stored numbers, rounded like POST', async () => {
+    const u = await freshUser();
+    const { entry } = (await u.log({ mealType: 'breakfast', servings: 1, food: MANUAL }).expect(201)).body.data;
+    assert.equal(entry.kcal, 64); // 41 + 13.32 + 9.99
+
+    const doubled = (await u.edit(entry.id, { mealType: 'breakfast', servings: 2 }).expect(200)).body.data.entry;
+    assert.equal(doubled.servings, 2);
+    assert.deepEqual(numbersOf(doubled), {
+      kcal: 128, proteinG: 20.5, carbsG: 6.66, fatG: 2.22, fiberG: 4, sugarG: 2, sodiumMg: 24.6,
+    });
+    const halved = (await u.edit(entry.id, { mealType: 'breakfast', servings: 1 }).expect(200)).body.data.entry;
+    assert.deepEqual(numbersOf(halved), numbersOf(entry));
+
+    const rounded = (await u.edit(entry.id, { mealType: 'breakfast', servings: 1.5 }).expect(200)).body.data.entry;
+    assert.deepEqual(numbersOf(rounded), {
+      kcal: 96, proteinG: 15.38, carbsG: 5, fatG: 1.67, fiberG: 3, sugarG: 1.5, sodiumMg: 18.5,
+    });
+    const posted = (await u.log({ mealType: 'breakfast', servings: 1.5, food: MANUAL }).expect(201)).body.data.entry;
+    assert.deepEqual(numbersOf(rounded), numbersOf(posted));
+    assert.equal(rounded.name, 'Pandesal');
+    assert.equal(rounded.servingDesc, '1 roll');
+    assert.equal(rounded.source, 'manual');
+  });
+
+  await t.test('edit with the same servings leaves the stored numbers exactly as they were', async () => {
+    const u = await freshUser();
+    const { entry } = (await u.log({ mealType: 'lunch', servings: 1, food: MANUAL }).expect(201)).body.data;
+    // Values a divide-by-3-then-multiply would drift: 100 / 3 -> 33 -> 99,
+    // 7 / 3 -> 2.33 -> 6.99, 10 / 3 -> 3.3 -> 9.9.
+    await pool.query(
+      `UPDATE meal_logs SET servings = 3, calories = 100, protein_g = 7, carbs_g = 7, fat_g = 7,
+                            fiber_g = 7, sugar_g = 7, sodium_mg = 10 WHERE meal_log_id = ?`, [entry.id],
+    );
+    const before = await storedNumbers(entry.id);
+    const edited = (await u.edit(entry.id, { mealType: 'dinner', servings: 3 }).expect(200)).body.data.entry;
+    assert.equal(edited.mealType, 'dinner');
+    assert.deepEqual(await storedNumbers(entry.id), before);
+    assert.deepEqual(numbersOf(edited), {
+      kcal: 100, proteinG: 7, carbsG: 7, fatG: 7, fiberG: 7, sugarG: 7, sodiumMg: 10,
+    });
+  });
+
+  await t.test("edit rescales a catalogue food from the entry, not the food's current row", async () => {
+    const u = await freshUser();
+    const [bibingka] = await pool.query(
+      `INSERT INTO foods (name, category, serving_desc, calories, protein_g, carbs_g, fat_g)
+       VALUES ('Bibingka', 'filipino', '1 piece', 200, 5, 30, 6)`,
+    );
+    const { entry } = (await u.log({
+      mealType: 'breakfast', servings: 1, food: { source: 'local', id: bibingka.insertId },
+    }).expect(201)).body.data;
+    // A later correction to the food list must not rewrite what was logged.
+    await pool.query(
+      'UPDATE foods SET calories = 999, protein_g = 99, carbs_g = 99, fat_g = 99 WHERE food_id = ?', [bibingka.insertId],
+    );
+    const edited = (await u.edit(entry.id, { mealType: 'breakfast', servings: 2 }).expect(200)).body.data.entry;
+    assert.deepEqual(numbersOf(edited), {
+      kcal: 400, proteinG: 10, carbsG: 60, fatG: 12, fiberG: null, sugarG: null, sodiumMg: null,
+    });
+    assert.equal(edited.source, 'local');
+    assert.equal(edited.foodId, bibingka.insertId);
+    assert.equal(edited.servingDesc, '1 piece');
+  });
+
+  await t.test("edit with the user's own numbers makes the entry manual and leaves the food alone", async () => {
+    const u = await freshUser();
+    const [[foodBefore]] = await pool.query('SELECT * FROM foods WHERE food_id = ?', [ADOBO]);
+    const { entry } = (await u.log({ mealType: 'lunch', servings: 1, food: { source: 'local', id: ADOBO } }).expect(201)).body.data;
+    const edited = (await u.edit(entry.id, {
+      mealType: 'dinner', servings: 1.5,
+      food: {
+        source: 'manual', name: '  Homemade adobo ', servingDesc: '1 cup',
+        proteinG: 26, carbsG: 3, fatG: 12.3, fiberG: null, sugarG: 1, sodiumMg: 640,
+      },
+    }).expect(200)).body.data.entry;
+    assert.deepEqual({ ...edited, id: undefined }, {
+      id: undefined, mealType: 'dinner', name: 'Homemade adobo', servingDesc: '1 cup', servings: 1.5,
+      kcal: 341, // round(104 + 12 + 110.7) = 227 per serving, x 1.5 = 340.5 -> 341
+      proteinG: 39, carbsG: 4.5, fatG: 18.45, fiberG: null, sugarG: 1.5, sodiumMg: 960,
+      source: 'manual', foodId: null, externalId: null,
+    });
+    const [[row]] = await pool.query('SELECT logged_via, food_id, custom_name FROM meal_logs WHERE meal_log_id = ?', [entry.id]);
+    assert.deepEqual({ ...row }, { logged_via: 'manual', food_id: null, custom_name: 'Homemade adobo' });
+    const [[foodAfter]] = await pool.query('SELECT * FROM foods WHERE food_id = ?', [ADOBO]);
+    assert.deepEqual(foodAfter, foodBefore);
+  });
+
+  await t.test('edit keeps unknown fiber, sugar and sodium unknown on a rescale', async () => {
+    const u = await freshUser();
+    const { entry } = (await u.log({
+      mealType: 'snack', servings: 1, food: { source: 'manual', name: 'Unlisted', proteinG: 2, carbsG: 34, fatG: 6 },
+    }).expect(201)).body.data;
+    const edited = (await u.edit(entry.id, { mealType: 'snack', servings: 2.5 }).expect(200)).body.data.entry;
+    assert.equal(edited.kcal, 495);
+    assert.equal(edited.fiberG, null);
+    assert.equal(edited.sugarG, null);
+    assert.equal(edited.sodiumMg, null);
+  });
+
+  await t.test('edit only finds your own entry', async () => {
+    const owner = await freshUser();
+    const other = await freshUser();
+    const { entry } = (await owner.log({ mealType: 'lunch', servings: 1, food: { source: 'local', id: ADOBO } }).expect(201)).body.data;
+    const body = { mealType: 'snack', servings: 2 };
+    for (const id of [entry.id + 100000, 'abc', 0, -1]) {
+      const res = await owner.edit(id, body).expect(404);
+      assert.deepEqual(res.body.error.code, 'ENTRY_NOT_FOUND', String(id));
+      assert.equal(res.body.error.message, 'No such entry.');
+    }
+    assert.equal((await other.edit(entry.id, body).expect(404)).body.error.code, 'ENTRY_NOT_FOUND');
+    const { day } = (await owner.day().expect(200)).body.data;
+    assert.deepEqual(day.meals.lunch, [entry], 'untouched by the refused edits');
+  });
+
+  await t.test('edit validation', async () => {
+    const u = await freshUser();
+    const { entry } = (await u.log({ mealType: 'lunch', servings: 1, food: { source: 'local', id: ADOBO } }).expect(201)).body.data;
+    const ok = { mealType: 'lunch', servings: 1 };
+    const bad = async (body, field) => {
+      const res = await u.edit(entry.id, body).expect(400);
+      assert.equal(res.body.error.code, 'INVALID_NUTRITION_FIELD', JSON.stringify(res.body));
+      assert.deepEqual(res.body.error.details, [{ field }]);
+    };
+    await bad({ ...ok, mealType: 'brunch' }, 'mealType');
+    await bad({ servings: 1 }, 'mealType');
+    await bad({ ...ok, servings: 0.25 }, 'servings');
+    await bad({ ...ok, servings: 21 }, 'servings');
+    await bad({ mealType: 'lunch' }, 'servings');
+    await bad({ mealType: 'brunch', servings: 0.25 }, 'mealType');
+    await bad({ ...ok, servings: 0.25, food: 'x' }, 'servings');
+    await bad({ ...ok, food: { source: 'local', id: ADOBO } }, 'food');
+    await bad({ ...ok, food: 'adobo' }, 'food');
+    await bad({ ...ok, food: null }, 'food');
+    await bad({ ...ok, food: { source: 'manual', name: 'Water', proteinG: 0, carbsG: 0, fatG: 0 } }, 'food');
+    await bad({ ...ok, food: { source: 'manual', name: 'X' } }, 'proteinG');
+    const { day } = (await u.day().expect(200)).body.data;
+    assert.deepEqual(day.meals.lunch, [entry], 'untouched by the refused edits');
   });
 });
