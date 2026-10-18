@@ -108,6 +108,37 @@ void main() {
     handle.dispose();
   });
 
+  // "+ Add set" widens the table's mark column for a 48 dp ✕. The rows must
+  // not grow with it: a table that jumps 10 dp per row as a set is added
+  // moves every field from under the thumb about to tap it.
+  testWidgets('a row is as tall with the remove column as without it', (
+    tester,
+  ) async {
+    Future<double> rowHeight({required bool removable}) async {
+      await tester.pumpWidget(
+        _host(
+          SetRow(
+            setNumber: 4,
+            logged: null,
+            drafts: _drafts(tester),
+            trailingWidth: removable ? SetRow.removeWidth : SetRow.tickWidth,
+            onRemove: removable ? () {} : null,
+          ),
+        ),
+      );
+      return tester.getSize(find.byKey(const Key('set.4.row'))).height;
+    }
+
+    final plain = await rowHeight(removable: false);
+    final withRemove = await rowHeight(removable: true);
+
+    expect(withRemove, plain);
+    // Still a full target, inside the row rather than stretching it.
+    final remove = tester.getSize(find.byKey(const Key('set.4.remove')));
+    expect(remove.width, greaterThanOrEqualTo(48));
+    expect(remove.height, greaterThanOrEqualTo(48));
+  });
+
   testWidgets('an unlogged row offers nothing to reopen', (tester) async {
     final handle = tester.ensureSemantics();
     await tester.pumpWidget(

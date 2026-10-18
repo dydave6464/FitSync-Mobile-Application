@@ -150,7 +150,10 @@ class SetRow extends StatelessWidget {
         // control used most. An unlogged row has nothing to reopen.
         onTap: reopens ? onReopen : null,
         child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 5),
+          // Horizontal only. The rows' breathing room is on the fields, so
+          // the 48 dp mark column below sits inside a row's height instead
+          // of adding to it.
+          padding: const EdgeInsets.symmetric(horizontal: 4),
           child: Row(
             children: [
               SizedBox(
@@ -169,30 +172,32 @@ class SetRow extends StatelessWidget {
                 Expanded(
                   // Named for screen readers: the hint is only the unit, and it
                   // goes once a number is typed.
-                  child: Semantics(
-                    label: 'Weight',
-                    child: TextField(
-                      key: Key('set.$setNumber.weight'),
-                      controller: drafts.weight(setNumber),
-                      enabled: editable,
-                      onTapOutside: _letGo,
-                      textAlign: TextAlign.center,
-                      keyboardType: const TextInputType.numberWithOptions(
-                        decimal: true,
-                      ),
-                      inputFormatters: [
-                        // Three digits and two decimals: weight_kg is DECIMAL(6,2)
-                        // and the server rejects anything above 999.99 anyway.
-                        FilteringTextInputFormatter.allow(
-                          RegExp(r'^\d{0,3}\.?\d{0,2}'),
+                  child: _FieldGap(
+                    child: Semantics(
+                      label: 'Weight',
+                      child: TextField(
+                        key: Key('set.$setNumber.weight'),
+                        controller: drafts.weight(setNumber),
+                        enabled: editable,
+                        onTapOutside: _letGo,
+                        textAlign: TextAlign.center,
+                        keyboardType: const TextInputType.numberWithOptions(
+                          decimal: true,
                         ),
-                      ],
-                      decoration: decoration(unit.api),
-                      style: TextStyle(
-                        fontFamily: fsMonoFamily,
-                        fontSize: 14,
-                        fontWeight: FontWeight.w600,
-                        color: t.text,
+                        inputFormatters: [
+                          // Three digits and two decimals: weight_kg is DECIMAL(6,2)
+                          // and the server rejects anything above 999.99 anyway.
+                          FilteringTextInputFormatter.allow(
+                            RegExp(r'^\d{0,3}\.?\d{0,2}'),
+                          ),
+                        ],
+                        decoration: decoration(unit.api),
+                        style: TextStyle(
+                          fontFamily: fsMonoFamily,
+                          fontSize: 14,
+                          fontWeight: FontWeight.w600,
+                          color: t.text,
+                        ),
                       ),
                     ),
                   ),
@@ -200,24 +205,26 @@ class SetRow extends StatelessWidget {
                 const SizedBox(width: SetRow.columnGap),
               ],
               Expanded(
-                child: Semantics(
-                  label: 'Reps',
-                  child: TextField(
-                    key: Key('set.$setNumber.reps'),
-                    controller: drafts.reps(setNumber),
-                    enabled: editable,
-                    onTapOutside: _letGo,
-                    textAlign: TextAlign.center,
-                    keyboardType: TextInputType.number,
-                    inputFormatters: [
-                      FilteringTextInputFormatter.allow(RegExp(r'^\d{0,3}')),
-                    ],
-                    decoration: decoration(repsHint),
-                    style: TextStyle(
-                      fontFamily: fsMonoFamily,
-                      fontSize: 14,
-                      fontWeight: FontWeight.w600,
-                      color: t.text,
+                child: _FieldGap(
+                  child: Semantics(
+                    label: 'Reps',
+                    child: TextField(
+                      key: Key('set.$setNumber.reps'),
+                      controller: drafts.reps(setNumber),
+                      enabled: editable,
+                      onTapOutside: _letGo,
+                      textAlign: TextAlign.center,
+                      keyboardType: TextInputType.number,
+                      inputFormatters: [
+                        FilteringTextInputFormatter.allow(RegExp(r'^\d{0,3}')),
+                      ],
+                      decoration: decoration(repsHint),
+                      style: TextStyle(
+                        fontFamily: fsMonoFamily,
+                        fontSize: 14,
+                        fontWeight: FontWeight.w600,
+                        color: t.text,
+                      ),
                     ),
                   ),
                 ),
@@ -240,11 +247,11 @@ class SetRow extends StatelessWidget {
                         ),
                         icon: Icon(Icons.close, size: 18, color: t.text2),
                       )
-                    // As tall as the ✕ while the table is wide enough for
-                    // one, so every row keeps one height and the table does
-                    // not jump as the ✕ moves up a row or goes.
+                    // As tall as the ✕ always, which fits inside a row, so
+                    // every row keeps one height whether or not the table
+                    // has room for a ✕ and whichever row carries it.
                     : SizedBox(
-                        height: trailingWidth == SetRow.removeWidth ? 48 : 38,
+                        height: 48,
                         child: Center(child: _mark(t, done)),
                       ),
               ),
@@ -268,4 +275,16 @@ class SetRow extends StatelessWidget {
       ),
     );
   }
+}
+
+/// The space above and below a set's fields: what separates one row's boxes
+/// from the next.
+class _FieldGap extends StatelessWidget {
+  const _FieldGap({required this.child});
+
+  final Widget child;
+
+  @override
+  Widget build(BuildContext context) =>
+      Padding(padding: const EdgeInsets.symmetric(vertical: 5), child: child);
 }
