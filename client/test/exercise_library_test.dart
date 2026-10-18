@@ -568,13 +568,13 @@ void main() {
       await phone(tester);
       expect(
         tester.getSemantics(more),
-        containsSemantics(hasExpandedState: true, isExpanded: false),
+        isSemantics(hasExpandedState: true, isExpanded: false),
       );
       await tester.tap(more);
       await tester.pumpAndSettle();
       expect(
         tester.getSemantics(more),
-        containsSemantics(hasExpandedState: true, isExpanded: true),
+        isSemantics(hasExpandedState: true, isExpanded: true),
       );
       // What a voice user says, "Show less", is in what it is called.
       expect(find.bySemanticsLabel(RegExp('^Show less')), findsOneWidget);
