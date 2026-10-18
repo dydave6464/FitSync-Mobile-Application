@@ -346,7 +346,7 @@ class _RemindersTag extends StatelessWidget {
                         ? Icons.notifications_outlined
                         : Icons.notifications_off_outlined,
                     size: 13,
-                    color: on ? t.accent : t.text3,
+                    color: on ? t.accentText : t.text3,
                   ),
                   const SizedBox(width: 5),
                   Text(
@@ -446,7 +446,9 @@ class _ItemRow extends StatelessWidget {
               Icon(
                 Icons.check_circle,
                 size: 18,
-                color: color,
+                // The bar beside the words is a fill; the tick is read, so a
+                // workout's is the text green.
+                color: item.isWorkout ? t.accentText : t.blue,
                 semanticLabel: 'Done',
               ),
           ],

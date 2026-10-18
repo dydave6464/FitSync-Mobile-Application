@@ -119,7 +119,7 @@ class ProgressSnapshotCard extends StatelessWidget {
                   value: change.hasChange ? change.label : '—',
                   label: 'volume',
                   divided: true,
-                  color: (change.changePct ?? 0) > 0 ? t.accent : null,
+                  color: (change.changePct ?? 0) > 0 ? t.accentText : null,
                 ),
               ],
             ),

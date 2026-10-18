@@ -83,7 +83,11 @@ class _ActivationScreenState extends ConsumerState<ActivationScreen> {
                 child: Row(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Icon(Icons.check_circle_outline, size: 20, color: t.accent),
+                    Icon(
+                      Icons.check_circle_outline,
+                      size: 20,
+                      color: t.accentText,
+                    ),
                     const SizedBox(width: 10),
                     Expanded(
                       child: Text(

@@ -53,7 +53,7 @@ class ProfileNudge extends StatelessWidget {
               ],
             ),
           ),
-          Icon(Icons.chevron_right, size: 16, color: t.accent),
+          Icon(Icons.chevron_right, size: 16, color: t.accentText),
         ],
       ),
     );

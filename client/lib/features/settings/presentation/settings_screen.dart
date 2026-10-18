@@ -176,7 +176,11 @@ class _SettingsList extends ConsumerWidget {
           onTap: () => openProScreen(context),
           child: Row(
             children: [
-              Icon(Icons.workspace_premium_outlined, size: 22, color: t.accent),
+              Icon(
+                Icons.workspace_premium_outlined,
+                size: 22,
+                color: t.accentText,
+              ),
               const SizedBox(width: 13),
               Expanded(
                 child: Column(
@@ -198,7 +202,7 @@ class _SettingsList extends ConsumerWidget {
                   ],
                 ),
               ),
-              Icon(Icons.chevron_right, size: 17, color: t.accent),
+              Icon(Icons.chevron_right, size: 17, color: t.accentText),
             ],
           ),
         ),

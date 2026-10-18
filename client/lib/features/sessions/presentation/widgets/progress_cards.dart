@@ -322,7 +322,7 @@ class ShareWithCoachCard extends StatelessWidget {
       onTap: onTap,
       child: Row(
         children: [
-          Icon(Icons.ios_share, size: 19, color: t.accent),
+          Icon(Icons.ios_share, size: 19, color: t.accentText),
           const SizedBox(width: 12),
           Expanded(
             child: Column(

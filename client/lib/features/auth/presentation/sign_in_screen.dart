@@ -403,7 +403,7 @@ class _SignInScreenState extends ConsumerState<SignInScreen> {
                           TextSpan(
                             text: _registering ? 'Sign in' : 'Create account',
                             style: TextStyle(
-                              color: t.accent,
+                              color: t.accentText,
                               fontWeight: FontWeight.w600,
                             ),
                           ),

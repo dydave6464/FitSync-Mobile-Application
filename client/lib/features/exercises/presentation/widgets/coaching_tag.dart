@@ -24,7 +24,7 @@ class CoachingTag extends StatelessWidget {
       child: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
-          Icon(Icons.auto_awesome, size: 11, color: t.accent),
+          Icon(Icons.auto_awesome, size: 11, color: t.accentText),
           const SizedBox(width: 4),
           Flexible(
             child: Text(
@@ -34,7 +34,7 @@ class CoachingTag extends StatelessWidget {
               style: TextStyle(
                 fontSize: 10.5,
                 fontWeight: FontWeight.w600,
-                color: t.accent,
+                color: t.accentText,
               ),
             ),
           ),

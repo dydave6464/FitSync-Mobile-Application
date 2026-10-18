@@ -185,6 +185,30 @@ void main() {
     ], reason: 'the bar reports each tap with its correct index');
   });
 
+  testWidgets('the current tab reads in the text green', (tester) async {
+    // A 10 px label in the brand green was 2.87:1 on the light bar.
+    await tester.pumpWidget(
+      _host(
+        FsNav(
+          currentIndex: 0,
+          onSelect: (_) {},
+          items: const [
+            FsNavItem(icon: Icons.home_outlined, label: 'Home'),
+            FsNavItem(icon: Icons.fitness_center_outlined, label: 'Train'),
+          ],
+        ),
+      ),
+    );
+
+    final t = FsTokens.light;
+    expect(tester.widget<Text>(find.text('Home')).style?.color, t.accentText);
+    expect(
+      tester.widget<Icon>(find.byIcon(Icons.home_outlined)).color,
+      t.accentText,
+    );
+    expect(tester.widget<Text>(find.text('Train')).style?.color, t.text3);
+  });
+
   testWidgets('FsNav does not overflow on narrow screens at 2.0x text scale', (
     tester,
   ) async {

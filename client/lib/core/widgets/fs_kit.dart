@@ -615,7 +615,7 @@ class FsStatField extends StatelessWidget {
                     fontSize: 22,
                     fontWeight: FontWeight.w600,
                     letterSpacing: -0.22,
-                    color: accent ? t.accent : t.text,
+                    color: accent ? t.accentText : t.text,
                   ),
                   cursorColor: t.accent,
                   decoration: InputDecoration(
@@ -788,7 +788,7 @@ class FsNav extends StatelessWidget {
                       Icon(
                         item.icon,
                         size: _tabIconSize,
-                        color: index == currentIndex ? t.accent : t.text3,
+                        color: index == currentIndex ? t.accentText : t.text3,
                       ),
                       const SizedBox(height: _tabGap),
                       Text(
@@ -798,7 +798,7 @@ class FsNav extends StatelessWidget {
                         style: TextStyle(
                           fontSize: 10,
                           fontWeight: FontWeight.w600,
-                          color: index == currentIndex ? t.accent : t.text3,
+                          color: index == currentIndex ? t.accentText : t.text3,
                         ),
                       ),
                     ],
@@ -1013,7 +1013,7 @@ class FsUnitToggle extends StatelessWidget {
               child: Text(
                 unit.api.toUpperCase(),
                 style: fsEyebrow(t)
-                    .copyWith(color: unit == value ? t.accent : t.text3),
+                    .copyWith(color: unit == value ? t.accentText : t.text3),
               ),
             ),
           ),
