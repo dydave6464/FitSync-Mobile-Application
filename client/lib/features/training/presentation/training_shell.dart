@@ -127,7 +127,7 @@ class _TrainingShellState extends State<TrainingShell> {
                 children: [
                   // Expanded rather than a Spacer after a bare Text: at a
                   // narrow width and large text, "Training" alongside the
-                  // regenerate icon no longer fits its intrinsic width, and a
+                  // New plan button no longer fits its intrinsic width, and a
                   // Spacer only pads slack space -- it does nothing once
                   // there is none. Ellipsis lets the title give way instead
                   // of overflowing the header.
