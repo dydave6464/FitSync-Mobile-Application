@@ -105,19 +105,31 @@ class SetRow extends StatelessWidget {
     // fields from what was actually stored. See SetDrafts.seed.
     final editable = !done;
 
+    // text2, not text3: the reps hint is the target range, which is data
+    // the user reads, and text3 fails contrast on these fills.
+    final hintStyle = TextStyle(
+      fontFamily: fsMonoFamily,
+      fontSize: 13,
+      color: t.text2,
+    );
+
     InputDecoration decoration(String hint) => InputDecoration(
-      hintText: hint,
+      // Shrunk to fit rather than cut short: hintText ellipsizes, and at
+      // large text on a small phone "15-20" read "15…", losing the number
+      // that says when to stop. Full width so it centres as typed text does.
+      // Styled here as well: a hint widget is not given hintStyle.
+      hint: SizedBox(
+        width: double.infinity,
+        child: FittedBox(
+          fit: BoxFit.scaleDown,
+          child: Text(hint, style: hintStyle),
+        ),
+      ),
       isDense: true,
       filled: true,
       fillColor: active ? t.accentDim : t.surface2,
       contentPadding: const EdgeInsets.symmetric(vertical: 9),
-      // text2, not text3: the reps hint is the target range, which is data
-      // the user reads, and text3 fails contrast on these fills.
-      hintStyle: TextStyle(
-        fontFamily: fsMonoFamily,
-        fontSize: 13,
-        color: t.text2,
-      ),
+      hintStyle: hintStyle,
       border: OutlineInputBorder(
         borderRadius: BorderRadius.circular(SetRow.cellRadius),
         borderSide: BorderSide.none,

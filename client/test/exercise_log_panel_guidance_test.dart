@@ -2,6 +2,7 @@
 // exercise_log_panel_test.dart is the extraction's safety net and stays
 // unmodified.
 import 'package:flutter/material.dart';
+import 'package:flutter/rendering.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import 'package:fitsync/core/theme.dart';
@@ -48,8 +49,13 @@ Future<void> _pump(WidgetTester tester, {PlanExercise? exercise}) async {
   );
 }
 
-String? _hintOf(WidgetTester tester, String key) =>
-    tester.widget<TextField>(find.byKey(Key(key))).decoration?.hintText;
+/// What an empty box shows. A widget rather than hintText -- it shrinks to
+/// fit at large text -- so this reads the text drawn inside the field.
+String? _hintOf(WidgetTester tester, String key) => tester
+    .widget<Text>(
+      find.descendant(of: find.byKey(Key(key)), matching: find.byType(Text)),
+    )
+    .data;
 
 void main() {
   testWidgets('the empty reps box shows the target range', (tester) async {
@@ -63,11 +69,18 @@ void main() {
   testWidgets('the reps hint is readable grey', (tester) async {
     await _pump(tester);
 
-    final style = tester
-        .widget<TextField>(find.byKey(const Key('set.1.reps')))
-        .decoration
-        ?.hintStyle;
-    expect(style?.color, FsTokens.light.text2);
+    // What is drawn, not just what the decoration asks for: the hint is a
+    // widget of its own now, and hintStyle does not reach one.
+    final drawn = tester
+        .renderObject<RenderParagraph>(
+          find.descendant(
+            of: find.byKey(const Key('set.1.reps')),
+            matching: find.text('8-12'),
+          ),
+        )
+        .text
+        .style;
+    expect(drawn?.color, FsTokens.light.text2);
   });
 
   // With the hint now a number, a screen reader still has to hear which box
@@ -108,6 +121,35 @@ void main() {
 
     await _pump(tester);
 
+    expect(tester.takeException(), isNull);
+  });
+
+  // The range is the number to aim for, so an ellipsis cutting "15-20" to
+  // "15…" loses the half that says when to stop. At 2x on a 320 dp phone it
+  // shrinks to fit the box instead.
+  testWidgets('a long range shows whole in the reps box at 2x text', (
+    tester,
+  ) async {
+    tester.view.physicalSize = const Size(320, 900);
+    tester.view.devicePixelRatio = 1;
+    tester.platformDispatcher.textScaleFactorTestValue = 2.0;
+    addTearDown(tester.view.reset);
+    addTearDown(tester.platformDispatcher.clearTextScaleFactorTestValue);
+
+    await _pump(tester, exercise: _exercise(reps: '15-20'));
+
+    final hint = find.descendant(
+      of: find.byKey(const Key('set.1.reps')),
+      matching: find.text('15-20'),
+    );
+    final paragraph = tester.renderObject<RenderParagraph>(hint);
+    expect(paragraph.didExceedMaxLines, isFalse);
+    final box = tester.getRect(find.byKey(const Key('set.1.reps')));
+    final drawn = tester.getRect(hint);
+    expect(drawn.left, greaterThanOrEqualTo(box.left));
+    expect(drawn.right, lessThanOrEqualTo(box.right));
+    // Still centred in its box, as the typed number is.
+    expect(drawn.center.dx, moreOrLessEquals(box.center.dx, epsilon: 1));
     expect(tester.takeException(), isNull);
   });
 }
