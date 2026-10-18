@@ -42,11 +42,10 @@ void main() {
     expect(chart.points.length, 1);
   });
 
-  // The chart draws no y-axis, so the dashed line's value can only be read
-  // off a label -- and the prototype puts that in the card header, opposite
-  // the headline, rather than inside the plot. Labelling the line itself
-  // leaves the number floating over the data it is not part of.
-  testWidgets('the goal reads in the card header, not on the chart', (
+  // The dashed line used to be named only in the header, opposite the
+  // headline; on the phone nothing said what the dashed line was. It names
+  // itself where it is drawn now, and the header no longer repeats it.
+  testWidgets('the goal line is labelled on the chart, not in the header', (
     tester,
   ) async {
     await tester.pumpWidget(
@@ -63,13 +62,15 @@ void main() {
       ),
     );
 
-    expect(find.text('goal 75 kg'), findsOneWidget);
     final chart = tester.widget<FsLineChart>(find.byType(FsLineChart));
-    expect(chart.referenceLabel, isNull, reason: 'the header carries it now');
-    expect(chart.referenceY, 75, reason: 'the line itself stays');
+    expect(chart.referenceY, 75);
+    expect(chart.referenceLabel, 'Goal 75 kg');
+    expect(find.text('goal 75 kg'), findsNothing);
   });
 
-  testWidgets('a starting-weight reference reads the same way', (tester) async {
+  testWidgets('a starting-weight line is labelled the same way', (
+    tester,
+  ) async {
     await tester.pumpWidget(
       MaterialApp(
         theme: fsLightTheme(),
@@ -84,12 +85,13 @@ void main() {
       ),
     );
 
-    expect(find.text('start 80 kg'), findsOneWidget);
+    final chart = tester.widget<FsLineChart>(find.byType(FsLineChart));
+    expect(chart.referenceLabel, 'Start 80 kg');
   });
 
   // 68 kg is 149.914... lb, derived by hand rather than through the same
   // conversion the card uses.
-  testWidgets('the header goal converts for an lb user', (tester) async {
+  testWidgets('the goal line\'s label converts for an lb user', (tester) async {
     await tester.pumpWidget(
       MaterialApp(
         theme: fsLightTheme(),
@@ -105,7 +107,28 @@ void main() {
       ),
     );
 
-    expect(find.text('goal 149.9 lb'), findsOneWidget);
+    final chart = tester.widget<FsLineChart>(find.byType(FsLineChart));
+    expect(chart.referenceLabel, 'Goal 149.9 lb');
+  });
+
+  testWidgets('dates read as words, and each point says what it was', (
+    tester,
+  ) async {
+    // "09-16" was the raw ISO date with its year cut off.
+    await tester.pumpWidget(
+      MaterialApp(
+        theme: fsLightTheme(),
+        home: Scaffold(
+          body: BodyWeightCard(
+            series: series([('2026-09-16', 71.4), ('2026-09-23', 70.9)]),
+          ),
+        ),
+      ),
+    );
+
+    final chart = tester.widget<FsLineChart>(find.byType(FsLineChart));
+    expect(chart.points.map((p) => p.label), ['Sep 16', 'Sep 23']);
+    expect(chart.points.last.tooltip, 'Sep 23 · 70.9 kg');
   });
 
   // Body weight is the one chart here that is not about training output, and

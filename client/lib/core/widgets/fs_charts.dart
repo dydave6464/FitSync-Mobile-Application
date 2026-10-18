@@ -1,3 +1,5 @@
+import 'dart:math' as math;
+
 import 'package:fl_chart/fl_chart.dart';
 import 'package:flutter/material.dart';
 
@@ -5,9 +7,9 @@ import '../theme.dart';
 
 /// The ONLY file in the app that imports `fl_chart`.
 ///
-/// Every screen speaks [FsPoint] and these two widgets instead, so swapping or
-/// dropping the package later touches one file rather than every card that
-/// draws something.
+/// Every screen speaks [FsPoint], [FsChartBar] and these widgets instead, so
+/// swapping or dropping the package later touches one file rather than every
+/// card that draws something.
 
 /// How narrow a y-axis window may get before it starts exaggerating noise.
 /// Body weight moves by a few hundred grams a day for reasons that have
@@ -17,16 +19,44 @@ const kBodyWeightBandKg = 4.0;
 /// Wider, because a one-rep max that moved 2 kg genuinely did not move much.
 const kStrengthBandKg = 10.0;
 
+/// The axis words under every chart: readable grey at a readable size, not
+/// the faint caption colour at 9 px they started as.
+TextStyle _axisStyle(FsTokens t) => TextStyle(fontSize: 11, color: t.text2);
+
+/// How tall the strip of axis words is, grown with the user's text size so a
+/// larger setting does not crop them.
+double _axisSpace(BuildContext context) =>
+    MediaQuery.textScalerOf(context).scale(11) * 1.4 + 6;
+
+/// The dark chip a touched point or bar reads out in.
+TextStyle _tooltipStyle(FsTokens t) =>
+    TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: t.bg);
+
 class FsPoint {
-  const FsPoint({required this.x, required this.y, required this.label});
+  const FsPoint({
+    required this.x,
+    required this.y,
+    required this.label,
+    this.tooltip,
+  });
 
   final double x;
   final double y;
 
   /// What the x-axis prints under this point — a date, or a set number.
   final String label;
+
+  /// What touching the point reads out, e.g. "Sep 27 · 73.6 kg". Null falls
+  /// back to the label and the bare value.
+  final String? tooltip;
 }
 
+/// A series of readings over time, such as body weight.
+///
+/// Drawn as what it is: straight segments between real readings, a dot on
+/// each one (the newest a little larger), and nothing shaded underneath. A
+/// curve invented weights between weigh-ins, and a fill under body weight
+/// read as an amount piling up, which it is not.
 class FsLineChart extends StatelessWidget {
   const FsLineChart({
     super.key,
@@ -46,6 +76,9 @@ class FsLineChart extends StatelessWidget {
   /// A dashed horizontal line behind the series — a goal or starting weight.
   /// It is also what makes a one-point card read as a chart.
   final double? referenceY;
+
+  /// What the dashed line is, written at its right-hand end ("Goal 70 kg").
+  /// Without it nothing on the chart said what the dashed line meant.
   final String? referenceLabel;
 
   /// The series' own colour. Null is the accent, which is what a chart of
@@ -84,10 +117,17 @@ class FsLineChart extends StatelessWidget {
   /// not collide into a grey smear.
   double get _labelInterval => (points.length / 6).ceilToDouble().clamp(1, 60);
 
+  String _tooltipFor(int index) {
+    final point = points[index];
+    return point.tooltip ?? '${point.label} · ${point.y.toStringAsFixed(1)}';
+  }
+
   @override
   Widget build(BuildContext context) {
     final t = context.fs;
     final (minY, maxY) = resolvedYRange;
+    final series = color ?? t.accent;
+    final newest = points.length - 1;
 
     return SizedBox(
       height: height,
@@ -107,17 +147,39 @@ class FsLineChart extends StatelessWidget {
               sideTitles: SideTitles(
                 showTitles: true,
                 interval: _labelInterval,
+                reservedSize: _axisSpace(context),
                 getTitlesWidget: (value, meta) {
                   final i = value.round();
                   if (i < 0 || i >= points.length) {
                     return const SizedBox.shrink();
                   }
-                  return Text(
-                    points[i].label,
-                    style: TextStyle(fontSize: 9, color: t.text3),
+                  // Kept inside the card: the first and last dates used to
+                  // hang past its edges.
+                  return SideTitleWidget(
+                    meta: meta,
+                    fitInside: SideTitleFitInsideData.fromTitleMeta(
+                      meta,
+                      distanceFromEdge: 0,
+                    ),
+                    child: Text(points[i].label, style: _axisStyle(t)),
                   );
                 },
               ),
+            ),
+          ),
+          lineTouchData: LineTouchData(
+            touchTooltipData: LineTouchTooltipData(
+              getTooltipColor: (_) => t.text,
+              tooltipBorderRadius: BorderRadius.circular(8),
+              fitInsideHorizontally: true,
+              fitInsideVertically: true,
+              getTooltipItems: (spots) => [
+                for (final spot in spots)
+                  LineTooltipItem(
+                    _tooltipFor(spot.spotIndex),
+                    _tooltipStyle(t),
+                  ),
+              ],
             ),
           ),
           extraLinesData: referenceY == null
@@ -126,13 +188,18 @@ class FsLineChart extends StatelessWidget {
                   horizontalLines: [
                     HorizontalLine(
                       y: referenceY!,
-                      color: t.text3,
+                      // text2, not the caption grey: in dark mode the line
+                      // and its words all but vanished.
+                      color: t.text2,
                       strokeWidth: 1,
                       dashArray: const [4, 4],
                       label: HorizontalLineLabel(
                         show: referenceLabel != null,
-                        labelResolver: (_) => referenceLabel!,
-                        style: TextStyle(fontSize: 9, color: t.text3),
+                        alignment: Alignment.topRight,
+                        padding: const EdgeInsets.only(bottom: 3),
+                        labelResolver: (_) => referenceLabel ?? '',
+                        style: _axisStyle(t)
+                            .copyWith(fontWeight: FontWeight.w600),
                       ),
                     ),
                   ],
@@ -140,18 +207,178 @@ class FsLineChart extends StatelessWidget {
           lineBarsData: [
             LineChartBarData(
               spots: [for (final p in points) FlSpot(p.x, p.y)],
-              isCurved: true,
-              curveSmoothness: 0.2,
-              color: color ?? t.accent,
+              color: series,
               barWidth: 2,
-              // A single point has no line to draw, so show the dot itself.
-              dotData: FlDotData(show: points.length == 1),
-              belowBarData: BarAreaData(
-                show: true,
-                color: (color ?? t.accent).withValues(alpha: 0.12),
+              isStrokeCapRound: true,
+              // A dot per reading, each a real weigh-in; the newest larger,
+              // and ringed in the card's colour so it stays clear where it
+              // sits on the line.
+              dotData: FlDotData(
+                getDotPainter: (spot, percent, bar, index) =>
+                    FlDotCirclePainter(
+                      radius: index == newest ? 5 : 4,
+                      color: series,
+                      strokeWidth: 2,
+                      strokeColor: t.surface,
+                    ),
               ),
+              belowBarData: BarAreaData(show: false),
             ),
           ],
+        ),
+      ),
+    );
+  }
+}
+
+/// One bar of an [FsBarChart].
+class FsChartBar {
+  const FsChartBar({
+    required this.value,
+    required this.label,
+    required this.tooltip,
+  });
+
+  final double value;
+
+  /// The word under the bar. Empty leaves this bar unlabelled.
+  final String label;
+
+  /// What touching the bar, or a screen reader, reads out, e.g.
+  /// "Tue, Oct 13 · 2,400 kg".
+  final String tooltip;
+}
+
+/// Amounts per day, week or month, such as training volume.
+///
+/// Bars rather than a line, because each is a total for its own stretch of
+/// time and nothing lies between them: a smooth line over a week of training
+/// and rest days drew it as a wave, inventing work on the rest days. Every bar
+/// grows from zero, so the lightest week reads as light rather than as
+/// nothing, which is what a window cut to the data's own range drew.
+class FsBarChart extends StatelessWidget {
+  const FsBarChart({
+    super.key,
+    required this.label,
+    required this.bars,
+    this.color,
+    this.height = 120,
+    this.showLabels = true,
+    this.interactive = true,
+  });
+
+  /// What the chart measures, the start of what a screen reader hears.
+  final String label;
+
+  final List<FsChartBar> bars;
+
+  /// Null is the accent: training output.
+  final Color? color;
+
+  final double height;
+
+  /// False for a small preview whose card opens the full chart elsewhere.
+  final bool showLabels;
+
+  /// False where a tap belongs to the card around the chart.
+  final bool interactive;
+
+  @override
+  Widget build(BuildContext context) {
+    final t = context.fs;
+    final top = bars.fold<double>(0, (most, bar) => math.max(most, bar.value));
+
+    // Every bar's words, in order: the chart's figures are painted on a
+    // canvas a screen reader cannot see into.
+    return Semantics(
+      container: true,
+      excludeSemantics: true,
+      label: '$label: ${bars.map((b) => b.tooltip).join('; ')}',
+      child: SizedBox(
+        height: height,
+        child: LayoutBuilder(
+          builder: (context, constraints) {
+            final slot = constraints.maxWidth / math.max(bars.length, 1);
+            return BarChart(
+              BarChartData(
+                minY: 0,
+                // An untrained window is all zeros; 1 keeps the scale valid.
+                maxY: top <= 0 ? 1 : top * 1.1,
+                alignment: BarChartAlignment.spaceAround,
+                gridData: const FlGridData(show: false),
+                // The one line a bar chart needs: the zero the bars stand on,
+                // which is also all a rest day shows.
+                borderData: FlBorderData(
+                  show: true,
+                  border: Border(bottom: BorderSide(color: t.line2)),
+                ),
+                titlesData: FlTitlesData(
+                  leftTitles: const AxisTitles(),
+                  topTitles: const AxisTitles(),
+                  rightTitles: const AxisTitles(),
+                  bottomTitles: AxisTitles(
+                    sideTitles: SideTitles(
+                      showTitles: showLabels,
+                      reservedSize: _axisSpace(context),
+                      getTitlesWidget: (value, meta) {
+                        final i = value.toInt();
+                        if (i < 0 ||
+                            i >= bars.length ||
+                            bars[i].label.isEmpty) {
+                          return const SizedBox.shrink();
+                        }
+                        // Shrunk to its own slot at large text sizes rather
+                        // than running into its neighbours.
+                        return SideTitleWidget(
+                          meta: meta,
+                          space: 4,
+                          child: SizedBox(
+                            width: slot,
+                            child: FittedBox(
+                              fit: BoxFit.scaleDown,
+                              child: Text(bars[i].label, style: _axisStyle(t)),
+                            ),
+                          ),
+                        );
+                      },
+                    ),
+                  ),
+                ),
+                barTouchData: BarTouchData(
+                  enabled: interactive,
+                  touchTooltipData: BarTouchTooltipData(
+                    getTooltipColor: (_) => t.text,
+                    tooltipBorderRadius: BorderRadius.circular(8),
+                    fitInsideHorizontally: true,
+                    fitInsideVertically: true,
+                    getTooltipItem: (group, groupIndex, rod, rodIndex) =>
+                        BarTooltipItem(
+                          bars[groupIndex].tooltip,
+                          _tooltipStyle(t),
+                        ),
+                  ),
+                ),
+                barGroups: [
+                  for (var i = 0; i < bars.length; i++)
+                    BarChartGroupData(
+                      x: i,
+                      barRods: [
+                        BarChartRodData(
+                          toY: bars[i].value,
+                          // Thin, never filling its slot: the space between
+                          // bars is what keeps them separate.
+                          width: math.min(24, slot * 0.6),
+                          color: color ?? t.accent,
+                          borderRadius: const BorderRadius.vertical(
+                            top: Radius.circular(4),
+                          ),
+                        ),
+                      ],
+                    ),
+                ],
+              ),
+            );
+          },
         ),
       ),
     );

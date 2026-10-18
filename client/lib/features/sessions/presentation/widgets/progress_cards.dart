@@ -6,6 +6,8 @@ import '../../../../core/widgets/fs_kit.dart';
 import '../../../pro/presentation/pro_screen.dart';
 import '../../../../core/widgets/fs_charts.dart';
 import '../../domain/training_analytics.dart';
+import '../../domain/volume_labels.dart';
+import '../progress_screen.dart' show groupThousands;
 
 /// The hero. Adherence leads because it is the one number a beginner can act
 /// on, and the only one that means anything in week one -- every trend on this
@@ -93,6 +95,7 @@ class VolumeTrendCard extends StatelessWidget {
     super.key,
     required this.analytics,
     this.unit = WeightUnit.kg,
+    this.today,
   });
 
   final TrainingAnalytics analytics;
@@ -100,10 +103,13 @@ class VolumeTrendCard extends StatelessWidget {
   /// Everything on [analytics] is kilograms; this is how it is read out.
   final WeightUnit unit;
 
+  /// The day the server's buckets end on, which names them. Null is now; a
+  /// test pins it.
+  final DateTime? today;
+
   @override
   Widget build(BuildContext context) {
     final t = context.fs;
-    final buckets = analytics.volume;
 
     return FsCard(
       child: Column(
@@ -158,27 +164,54 @@ class VolumeTrendCard extends StatelessWidget {
               ),
             ],
           ),
-          const SizedBox(height: 8),
-          FsLineChart(
-            points: [
-              for (var i = 0; i < buckets.length; i++)
-                FsPoint(
-                  x: i.toDouble(),
-                  // Converted like the headline: fl_chart's touch tooltip
-                  // reads this value out, so kilograms here would hand a
-                  // pound user a bare kilo figure.
-                  y: convertFromKg(buckets[i].volumeKg, unit),
-                  label: buckets[i].label,
-                ),
-            ],
-            // Volume starts at zero and belongs there: an untrained week IS
-            // zero, so there is no noise to floor out.
-            minYBand: 1,
+          const SizedBox(height: 12),
+          FsBarChart(
+            label: 'Training volume',
+            bars: volumeBars(analytics, unit, today ?? DateTime.now()),
           ),
         ],
       ),
     );
   }
+}
+
+/// A bar per bucket of [analytics]' volume, named and read out in words.
+///
+/// Converted like the headline: the bars' heights and what touching one reads
+/// out are in [unit], never a bare kilogram figure for a pound user. Shared
+/// with Home's progress card, so the two draw the same shape.
+List<FsChartBar> volumeBars(
+  TrainingAnalytics analytics,
+  WeightUnit unit,
+  DateTime today,
+) {
+  final buckets = analytics.volume;
+  return [
+    for (var i = 0; i < buckets.length; i++)
+      _volumeBar(analytics.period, buckets, i, unit, today),
+  ];
+}
+
+FsChartBar _volumeBar(
+  String period,
+  List<VolumeBucket> buckets,
+  int index,
+  WeightUnit unit,
+  DateTime today,
+) {
+  final value = convertFromKg(buckets[index].volumeKg, unit);
+  final name = volumeBucketName(
+    period: period,
+    index: index,
+    count: buckets.length,
+    fallback: buckets[index].label,
+    today: today,
+  );
+  return FsChartBar(
+    value: value,
+    label: name.axis,
+    tooltip: '${name.full} · ${groupThousands(value)} ${unit.api}',
+  );
 }
 
 /// Kilograms lifted per muscle group, as bars scaled against the biggest.

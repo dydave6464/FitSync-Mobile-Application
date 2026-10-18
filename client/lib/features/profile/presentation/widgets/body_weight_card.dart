@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../../../../core/dates.dart';
 import '../../../../core/theme.dart';
 import '../../../../core/units.dart';
 import '../../../../core/widgets/fs_charts.dart';
@@ -67,38 +68,14 @@ class BodyWeightCard extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          // Headline and goal on one line, as the prototype lays them out: the
-          // goal is what the headline is measured against, so it is read beside
-          // it rather than hunted for on the chart. The chart draws no y-axis,
-          // so a label on the dashed line was the only other place it could
-          // live -- floating over data it is not part of.
-          Row(
-            crossAxisAlignment: CrossAxisAlignment.end,
-            children: [
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    const FsEyebrow('Body weight'),
-                    const SizedBox(height: 6),
-                    Text(
-                      formatWeightWithUnit(latest, unit),
-                      style: Theme.of(context).textTheme.headlineSmall,
-                    ),
-                  ],
-                ),
-              ),
-              if (reference != null)
-                Text(
-                  '${reference.label} '
-                  '${formatWeightWithUnit(reference.weightKg, unit)}',
-                  style: TextStyle(
-                    fontFamily: fsMonoFamily,
-                    fontSize: 11,
-                    color: t.text3,
-                  ),
-                ),
-            ],
+          // The headline alone. The goal used to sit opposite it, the only
+          // place the dashed line was named; it is named on the line itself
+          // now, where it is drawn.
+          const FsEyebrow('Body weight'),
+          const SizedBox(height: 6),
+          Text(
+            formatWeightWithUnit(latest, unit),
+            style: Theme.of(context).textTheme.headlineSmall,
           ),
           const SizedBox(height: 8),
           FsLineChart(
@@ -110,22 +87,30 @@ class BodyWeightCard extends StatelessWidget {
                 FsPoint(
                   x: i.toDouble(),
                   y: convertFromKg(points[i].weightKg, unit),
-                  label: points[i].loggedOn.substring(5),
+                  label: shortDate(DateTime.parse(points[i].loggedOn)),
+                  tooltip:
+                      '${shortDate(DateTime.parse(points[i].loggedOn))} · '
+                      '${formatWeightWithUnit(points[i].weightKg, unit)}',
                 ),
             ],
             referenceY: reference == null
                 ? null
                 : convertFromKg(reference.weightKg, unit),
-            // Unlabelled: the header above says which line this is and what it
-            // sits at. The line itself stays because it is what makes a
-            // one-entry card read as a chart rather than a lone dot.
+            // Named where it is drawn: "Goal 70 kg". Unlabelled, nothing said
+            // what the dashed line was. It stays even for one entry, because
+            // it is what makes a lone weigh-in read as a chart.
+            referenceLabel: reference == null
+                ? null
+                : '${reference.kind == 'goal' ? 'Goal' : 'Start'} '
+                      '${formatWeightWithUnit(reference.weightKg, unit)}',
             color: t.blue,
             // The band is meant as "a few hundred grams of daily noise" --
             // converting it alongside the data keeps it that same width in
             // whichever unit is on screen, rather than staying a literal 4,
             // which would mean something far narrower in pounds.
             minYBand: convertFromKg(kBodyWeightBandKg, unit),
-            height: 70,
+            // Room for a dot on every weigh-in and the dates under them.
+            height: 104,
           ),
           const SizedBox(height: 8),
           Row(

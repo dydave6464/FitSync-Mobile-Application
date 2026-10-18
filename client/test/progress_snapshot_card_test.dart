@@ -2,7 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import 'package:fitsync/core/theme.dart';
-import 'package:fitsync/core/widgets/fs_charts.dart' show FsLineChart;
+import 'package:fitsync/core/units.dart';
+import 'package:fitsync/core/widgets/fs_charts.dart' show FsBarChart;
 import 'package:fitsync/features/home/presentation/widgets/progress_snapshot_card.dart';
 import 'package:fitsync/features/sessions/domain/session_history.dart';
 import 'package:fitsync/features/sessions/domain/training_analytics.dart';
@@ -34,6 +35,7 @@ Future<List<String>> _pump(
     newPrCount: 3,
   ),
   TrainingAnalytics? analytics,
+  WeightUnit unit = WeightUnit.kg,
 }) async {
   final taps = <String>[];
   await tester.pumpWidget(
@@ -43,6 +45,7 @@ Future<List<String>> _pump(
         body: ProgressSnapshotCard(
           summary: summary,
           analytics: analytics ?? _analytics(),
+          unit: unit,
           onTap: () => taps.add('card'),
         ),
       ),
@@ -63,7 +66,21 @@ void main() {
     expect(_textOf(tester, 'home.progress.sessions'), '5');
     expect(_textOf(tester, 'home.progress.prs'), '3');
     expect(_textOf(tester, 'home.progress.change'), '+12%');
-    expect(find.byType(FsLineChart), findsOneWidget);
+    expect(find.byType(FsBarChart), findsOneWidget);
+  });
+
+  // Home's own copy of the volume shape: bars, like the Progress tab's, in
+  // the user's unit. It plotted kilograms for a pound user before. A preview
+  // the whole card opens from, so it carries no axis words of its own.
+  // 2100 kg is 4629.7... lb, derived by hand.
+  testWidgets('the volume shape is bars in the user\'s unit, unlabelled', (
+    tester,
+  ) async {
+    await _pump(tester, unit: WeightUnit.lb);
+
+    final chart = tester.widget<FsBarChart>(find.byType(FsBarChart));
+    expect(chart.bars.last.value, closeTo(4629.7, 0.1));
+    expect(chart.showLabels, isFalse);
   });
 
   testWidgets('no earlier window to compare shows a dash, not 0%', (

@@ -455,13 +455,13 @@ void main() {
         unit: WeightUnit.lb,
       );
 
-      final chart = tester.widget<FsLineChart>(
+      final chart = tester.widget<FsBarChart>(
         find.descendant(
           of: find.byType(VolumeTrendCard),
-          matching: find.byType(FsLineChart),
+          matching: find.byType(FsBarChart),
         ),
       );
-      expect(chart.points.last.y, closeTo(2204.62, 0.01));
+      expect(chart.bars.last.value, closeTo(2204.62, 0.01));
       expect(find.text('lb lifted'), findsOneWidget);
     });
 

@@ -103,6 +103,68 @@ void main() {
         findsOneWidget,
       );
     });
+
+    // A Sunday; the week's bars run Monday to today.
+    final sunday = DateTime(2026, 10, 18);
+    const aWeek = TrainingAnalytics(
+      period: 'week',
+      volume: [
+        VolumeBucket(label: '-6d', volumeKg: 0),
+        VolumeBucket(label: '-5d', volumeKg: 2400),
+        VolumeBucket(label: '-4d', volumeKg: 0),
+        VolumeBucket(label: '-3d', volumeKg: 3100),
+        VolumeBucket(label: '-2d', volumeKg: 0),
+        VolumeBucket(label: '-1d', volumeKg: 2800),
+        VolumeBucket(label: 'today', volumeKg: 0),
+      ],
+      change: VolumeChange(totalKg: 8300, previousKg: 0, changePct: null),
+      adherence: Adherence(done: 3, target: 3, weeks: 1),
+      muscles: [],
+    );
+
+    testWidgets('the shape is a bar per day, named by the day', (tester) async {
+      // "-6d" is how the server counts back; nobody reads days that way.
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(
+            body: VolumeTrendCard(analytics: aWeek, today: sunday),
+          ),
+        ),
+      );
+
+      final chart = tester.widget<FsBarChart>(find.byType(FsBarChart));
+      expect(chart.bars.map((b) => b.label), [
+        'Mon',
+        'Tue',
+        'Wed',
+        'Thu',
+        'Fri',
+        'Sat',
+        'Sun',
+      ]);
+      expect(chart.bars.map((b) => b.value), [0, 2400, 0, 3100, 0, 2800, 0]);
+      expect(chart.bars[1].tooltip, 'Tue, Oct 13 · 2,400 kg');
+      expect(chart.bars.last.tooltip, 'Today · 0 kg');
+    });
+
+    // 2400 kg is 5291.1... lb, derived by hand.
+    testWidgets('the bars and their words follow the unit', (tester) async {
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(
+            body: VolumeTrendCard(
+              analytics: aWeek,
+              unit: WeightUnit.lb,
+              today: sunday,
+            ),
+          ),
+        ),
+      );
+
+      final chart = tester.widget<FsBarChart>(find.byType(FsBarChart));
+      expect(chart.bars[1].value, closeTo(5291.1, 0.1));
+      expect(chart.bars[1].tooltip, 'Tue, Oct 13 · 5,291 lb');
+    });
   });
 
   group('the sessions and sets pair', () {
