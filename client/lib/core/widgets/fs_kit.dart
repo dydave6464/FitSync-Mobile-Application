@@ -1,4 +1,7 @@
+import 'dart:math' as math;
+
 import 'package:flutter/material.dart';
+import 'package:flutter/rendering.dart';
 import 'package:flutter/services.dart';
 
 import '../theme.dart';
@@ -281,8 +284,10 @@ class FsChip extends StatelessWidget {
   Widget build(BuildContext context) {
     final t = context.fs;
 
-    return Semantics(
-      container: true,
+    // Drawn about 30 dp tall; answers a thumb across 48 wherever its parent
+    // has that room. A one-row Wrap or Row is only as tall as the chip, so a
+    // row of them sits in an [FsTapRoom] for the band to reach past it.
+    return _TapReach(
       button: true,
       enabled: onTap != null,
       selected: selected,
@@ -588,60 +593,117 @@ class FsStatField extends StatelessWidget {
         borderRadius: BorderRadius.circular(FsRadius.sm),
         border: Border.all(color: accent ? t.accentLine : t.line),
       ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          FsEyebrow(label),
-          Row(
-            crossAxisAlignment: CrossAxisAlignment.baseline,
-            textBaseline: TextBaseline.alphabetic,
-            children: [
-              Expanded(
-                child: TextField(
-                  key: fieldKey,
-                  controller: controller,
-                  keyboardType: const TextInputType.numberWithOptions(
-                    decimal: true,
-                  ),
-                  inputFormatters: [
-                    TextInputFormatter.withFunction(
-                      (previous, next) =>
-                          _measurement.hasMatch(next.text) ? next : previous,
+      // The card's 14 dp of padding past the switch is the rest of lb's band,
+      // and its padding below is the bottom of both units' bands; both lie
+      // outside the Column, so the room is taken here.
+      child: FsTapRoom(
+        reach: 6,
+        endReach: 14,
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            FsEyebrow(label),
+            // The room above the row is the label's, which takes no taps, so
+            // a thumb landing just over the switch still finds it. The
+            // switch answers the row's whole height, so with 10 above and
+            // the card's 6 below its band is the row plus 16 at any text
+            // size: 49 dp at normal text, where the row is about 33.
+            FsTapRoom(
+              reach: 10,
+              child: Row(
+                crossAxisAlignment: CrossAxisAlignment.baseline,
+                textBaseline: TextBaseline.alphabetic,
+                children: [
+                  Expanded(
+                    child: TextField(
+                      key: fieldKey,
+                      controller: controller,
+                      keyboardType: const TextInputType.numberWithOptions(
+                        decimal: true,
+                      ),
+                      inputFormatters: [
+                        TextInputFormatter.withFunction(
+                          (previous, next) => _measurement.hasMatch(next.text)
+                              ? next
+                              : previous,
+                        ),
+                      ],
+                      style: TextStyle(
+                        fontFamily: fsMonoFamily,
+                        fontSize: 22,
+                        fontWeight: FontWeight.w600,
+                        letterSpacing: -0.22,
+                        color: accent ? t.accentText : t.text,
+                      ),
+                      cursorColor: t.accent,
+                      decoration: InputDecoration(
+                        isDense: true,
+                        border: InputBorder.none,
+                        enabledBorder: InputBorder.none,
+                        focusedBorder: InputBorder.none,
+                        contentPadding: EdgeInsets.zero,
+                        hintText: '--',
+                        hintStyle: TextStyle(
+                          fontFamily: fsMonoFamily,
+                          fontSize: 22,
+                          fontWeight: FontWeight.w600,
+                          color: t.text3,
+                        ),
+                      ),
                     ),
-                  ],
-                  style: TextStyle(
-                    fontFamily: fsMonoFamily,
-                    fontSize: 22,
-                    fontWeight: FontWeight.w600,
-                    letterSpacing: -0.22,
-                    color: accent ? t.accent : t.text,
                   ),
-                  cursorColor: t.accent,
-                  decoration: InputDecoration(
-                    isDense: true,
-                    border: InputBorder.none,
-                    enabledBorder: InputBorder.none,
-                    focusedBorder: InputBorder.none,
-                    contentPadding: EdgeInsets.zero,
-                    hintText: '--',
-                    hintStyle: TextStyle(
-                      fontFamily: fsMonoFamily,
-                      fontSize: 22,
-                      fontWeight: FontWeight.w600,
-                      color: t.text3,
-                    ),
-                  ),
-                ),
+                  const SizedBox(width: 4),
+                  if (unitControl case final control?)
+                    _NoReachBack(child: control)
+                  else
+                    Text(unit, style: TextStyle(fontSize: 11, color: t.text3)),
+                ],
               ),
-              const SizedBox(width: 4),
-              unitControl ??
-                  Text(unit, style: TextStyle(fontSize: 11, color: t.text3)),
-            ],
-          ),
-        ],
+            ),
+          ],
+        ),
       ),
     );
+  }
+}
+
+/// Keeps [child]'s tap band from reaching back over the sibling before it.
+///
+/// A Row asks its last child first, so a control's band grown to the left
+/// would take the right-hand end of the field beside it: in a stat card a
+/// tap meant for the number would flip the unit. Above, below and past its
+/// far end the band answers as before. The cost is that the near unit, kg,
+/// falls short of 48 dp wide: the number sits right beside it.
+class _NoReachBack extends SingleChildRenderObjectWidget {
+  const _NoReachBack({required Widget super.child});
+
+  @override
+  RenderProxyBox createRenderObject(BuildContext context) =>
+      _RenderNoReachBack();
+}
+
+class _RenderNoReachBack extends RenderProxyBox {
+  @override
+  bool hitTest(BoxHitTestResult result, {required Offset position}) {
+    // Not the usual check against this box: the child's band lies outside
+    // it, and only the side facing the field is closed.
+    if (position.dx < 0) return false;
+    // The row's whole height beside the number is the switch's. It sits on
+    // the number's baseline, low in the row, so a band centred on it left
+    // the row's top unanswered once the text grew; folded onto its box, a
+    // tap anywhere in that height lands on the unit at that x.
+    final onto = Offset(
+      position.dx,
+      position.dy.clamp(0.5, math.max(0.5, size.height - 0.5)),
+    );
+    final hit = result.addWithRawTransform(
+      transform: MatrixUtils.forceToPoint(onto),
+      position: onto,
+      hitTest: (result, _) => hitTestChildren(result, position: onto),
+    );
+    if (hit) result.add(BoxHitTestEntry(this, position));
+    return hit;
   }
 }
 
@@ -788,7 +850,7 @@ class FsNav extends StatelessWidget {
                       Icon(
                         item.icon,
                         size: _tabIconSize,
-                        color: index == currentIndex ? t.accent : t.text3,
+                        color: index == currentIndex ? t.accentText : t.text3,
                       ),
                       const SizedBox(height: _tabGap),
                       Text(
@@ -798,7 +860,7 @@ class FsNav extends StatelessWidget {
                         style: TextStyle(
                           fontSize: 10,
                           fontWeight: FontWeight.w600,
-                          color: index == currentIndex ? t.accent : t.text3,
+                          color: index == currentIndex ? t.accentText : t.text3,
                         ),
                       ),
                     ],
@@ -994,31 +1056,369 @@ class FsUnitToggle extends StatelessWidget {
   Widget build(BuildContext context) {
     final t = context.fs;
 
-    return Row(
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        for (final unit in WeightUnit.values) ...[
-          if (unit != WeightUnit.values.first)
-            Text('/', style: fsEyebrow(t).copyWith(letterSpacing: 0)),
-          InkWell(
-            key: Key('unit.${unit.api}'),
-            // The unit already in force is not a destination, so it takes no
-            // tap -- and reads as the label it also is.
-            onTap: onChanged == null || unit == value
-                ? null
-                : () => onChanged!(unit),
-            borderRadius: BorderRadius.circular(FsRadius.sm),
-            child: Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 2),
-              child: Text(
-                unit.api.toUpperCase(),
-                style: fsEyebrow(t)
-                    .copyWith(color: unit == value ? t.accent : t.text3),
+    // The band for taps is the whole switch's, 48 dp tall: one around each
+    // unit alone could not reach past this row's own few pixels of height.
+    // A tap above or below a unit is that unit; one off either end is the
+    // unit at that end, as far as the parent has room for it. At the end of
+    // a row that room is the parent's own, so the row goes in an [FsTapRoom]
+    // with an endReach. Wide enough for two 48 dp targets and the slash
+    // between them, with room for the slash to grow at large text.
+    return _TapReach(
+      minSize: const Size(2 * _minTapTarget + 16, _minTapTarget),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          for (final unit in WeightUnit.values) ...[
+            if (unit != WeightUnit.values.first)
+              Text('/', style: fsEyebrow(t).copyWith(letterSpacing: 0)),
+            _TapReach(
+              // What a screen reader frames: each unit at full size, grown
+              // outward, away from the other, so the two never overlap.
+              anchor: unit == WeightUnit.values.first
+                  ? Alignment.centerRight
+                  : unit == WeightUnit.values.last
+                  ? Alignment.centerLeft
+                  : Alignment.center,
+              button: onChanged == null || unit == value ? null : true,
+              selected: unit == value,
+              child: InkWell(
+                key: Key('unit.${unit.api}'),
+                // The unit already in force is not a destination, so it takes
+                // no tap -- and reads as the label it also is.
+                onTap: onChanged == null || unit == value
+                    ? null
+                    : () => onChanged!(unit),
+                borderRadius: BorderRadius.circular(FsRadius.sm),
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 4,
+                    vertical: 2,
+                  ),
+                  child: Text(
+                    unit.api.toUpperCase(),
+                    style: fsEyebrow(
+                      t,
+                    ).copyWith(color: unit == value ? t.accentText : t.text3),
+                  ),
+                ),
               ),
             ),
-          ),
+          ],
         ],
-      ],
+      ),
     );
+  }
+}
+
+/// The smallest target a thumb should be asked to hit.
+const double _minTapTarget = 48;
+
+/// Lets [child] answer taps in a band around itself, 48 dp on each short
+/// axis unless told otherwise, without taking up that room. The control is
+/// drawn and laid out exactly as before, so a Wrap of chips keeps its
+/// spacing, and a thumb that lands just off the pill still counts. A tap in
+/// the band is moved onto the control's middle line, inside its ends, where
+/// any rounded shape it is drawn in still holds it -- as Material moves one
+/// on its own padded targets.
+///
+/// The band reaches only as far as the parent's own box: a tap outside that
+/// never gets here. It is the full 48 dp only where no other chip's band
+/// overlaps it; a gap shared with another chip is split at its middle, as
+/// below. At a Wrap's or Row's outer edge the parent cuts it off,
+/// which in a single row is the whole band above and below. Such a row goes
+/// in an [FsTapRoom], or gives each chip a sized box of its own, as the
+/// check-in and the library's muscle buttons do.
+///
+/// Beside another chip in the same parent, the band gives way: a point on
+/// that chip's pill stays that chip's, and a gap between two chips splits
+/// at its middle, so neither row of a Wrap takes the other's edge. Any other
+/// tappable box is not so lucky: a parent hit-tests its last child first, so
+/// the band takes over the edge of an earlier sibling it overlaps -- a button
+/// directly above a chip loses its bottom few dp to the chip. Let it sit
+/// beside gaps, text or other chips only. The give-way works between direct
+/// siblings, so a chip wrapped in its own Padding or Tooltip is not seen by
+/// its neighbours.
+///
+/// Given any of [button], [enabled] or [selected], it also carries the
+/// control's semantics, so a screen reader frames the band rather than the
+/// pill: a node's rect is its owner's.
+class _TapReach extends SingleChildRenderObjectWidget {
+  const _TapReach({
+    required Widget super.child,
+    this.minSize = const Size.square(_minTapTarget),
+    this.anchor = Alignment.center,
+    this.button,
+    this.enabled,
+    this.selected,
+  });
+
+  /// The band's size, where the control is smaller.
+  final Size minSize;
+
+  /// Where the control sits in its band. Centred grows the band evenly; at
+  /// an edge, it grows only away from that edge.
+  final Alignment anchor;
+
+  final bool? button;
+  final bool? enabled;
+  final bool? selected;
+
+  @override
+  _RenderTapReach createRenderObject(BuildContext context) => _RenderTapReach(
+    minSize: minSize,
+    anchor: anchor,
+    button: button,
+    enabled: enabled,
+    selected: selected,
+  );
+
+  @override
+  void updateRenderObject(BuildContext context, _RenderTapReach renderObject) {
+    renderObject
+      ..minSize = minSize
+      ..anchor = anchor
+      ..button = button
+      ..enabled = enabled
+      ..selected = selected;
+  }
+}
+
+class _RenderTapReach extends RenderProxyBox {
+  _RenderTapReach({
+    required this._minSize,
+    required this._anchor,
+    this._button,
+    this._enabled,
+    this._selected,
+  });
+
+  Size _minSize;
+  set minSize(Size value) {
+    if (value == _minSize) return;
+    _minSize = value;
+    markNeedsSemanticsUpdate();
+  }
+
+  Alignment _anchor;
+  set anchor(Alignment value) {
+    if (value == _anchor) return;
+    _anchor = value;
+    markNeedsSemanticsUpdate();
+  }
+
+  bool? _button;
+  set button(bool? value) {
+    if (value == _button) return;
+    _button = value;
+    markNeedsSemanticsUpdate();
+  }
+
+  bool? _enabled;
+  set enabled(bool? value) {
+    if (value == _enabled) return;
+    _enabled = value;
+    markNeedsSemanticsUpdate();
+  }
+
+  bool? _selected;
+  set selected(bool? value) {
+    if (value == _selected) return;
+    _selected = value;
+    markNeedsSemanticsUpdate();
+  }
+
+  /// The control's box, grown to [minSize] on each short axis.
+  Rect get _reach {
+    final extraWidth = math.max(0.0, _minSize.width - size.width);
+    final extraHeight = math.max(0.0, _minSize.height - size.height);
+    return Rect.fromLTWH(
+      -extraWidth * (1 + _anchor.x) / 2,
+      -extraHeight * (1 + _anchor.y) / 2,
+      size.width + extraWidth,
+      size.height + extraHeight,
+    );
+  }
+
+  @override
+  bool hitTest(BoxHitTestResult result, {required Offset position}) {
+    if (super.hitTest(result, position: position)) return true;
+    final control = child;
+    if (control == null || !_reach.contains(position)) return false;
+    if (_neighbourOwns(position)) return false;
+    final onto = Offset(
+      position.dx.clamp(1.0, math.max(1.0, size.width - 1)),
+      size.height / 2,
+    );
+    final hit = result.addWithRawTransform(
+      transform: MatrixUtils.forceToPoint(onto),
+      position: onto,
+      hitTest: (result, _) => control.hitTest(result, position: onto),
+    );
+    if (hit) result.add(BoxHitTestEntry(this, position));
+    return hit;
+  }
+
+  /// Whether a sibling band has the better claim on [position], a point in
+  /// this band but off this control. A sibling control drawn there keeps it,
+  /// and a gap shared with a sibling band splits at its middle. Without
+  /// this, the parent's last-child-first order hands the lower of two rows
+  /// of chips the whole gap and the bottom of the pill above it.
+  ///
+  /// Only sibling bands count. Text or a spacer beside the chip still lets
+  /// the band reach over it, which is the point of the band.
+  bool _neighbourOwns(Offset position) {
+    final data = parentData;
+    if (data is! ContainerBoxParentData<RenderBox>) return false;
+    final own = data.offset & size;
+    final point = position + data.offset;
+    final ownDistance = _distance(own, point);
+    bool owns(RenderBox sibling) {
+      if (sibling is! _RenderTapReach) return false;
+      // Nearer by box is not enough: a sibling whose band stops short of the
+      // point would take it from this one and then not answer it.
+      final o = (sibling.parentData! as BoxParentData).offset;
+      return sibling._reach.shift(o).contains(point) &&
+          _distance(o & sibling.size, point) < ownDistance;
+    }
+
+    for (var s = data.previousSibling; s != null; s = _previous(s)) {
+      if (owns(s)) return true;
+    }
+    for (var s = data.nextSibling; s != null; s = _next(s)) {
+      if (owns(s)) return true;
+    }
+    return false;
+  }
+
+  static RenderBox? _previous(RenderBox box) =>
+      (box.parentData! as ContainerBoxParentData<RenderBox>).previousSibling;
+
+  static RenderBox? _next(RenderBox box) =>
+      (box.parentData! as ContainerBoxParentData<RenderBox>).nextSibling;
+
+  /// Squared distance from [point] to the nearest edge of [rect]; zero
+  /// inside it.
+  static double _distance(Rect rect, Offset point) {
+    final dx = math.max(
+      0.0,
+      math.max(rect.left - point.dx, point.dx - rect.right),
+    );
+    final dy = math.max(
+      0.0,
+      math.max(rect.top - point.dy, point.dy - rect.bottom),
+    );
+    return dx * dx + dy * dy;
+  }
+
+  bool get _describes =>
+      _button != null || _enabled != null || _selected != null;
+
+  @override
+  Rect get semanticBounds => _describes ? _reach : super.semanticBounds;
+
+  @override
+  void describeSemanticsConfiguration(SemanticsConfiguration config) {
+    super.describeSemanticsConfiguration(config);
+    if (!_describes) return;
+    config.isSemanticBoundary = true;
+    if (_button != null) config.isButton = _button!;
+    if (_enabled != null) config.isEnabled = _enabled;
+    if (_selected != null) config.isSelected = _selected!;
+  }
+}
+
+/// Lets a row of small controls -- a one-row Wrap of chips, a settings row
+/// with a kg/lb switch -- take taps up to [reach] above and below its own
+/// box, and hands each one on as if it had landed on the row's nearest edge.
+///
+/// A chip's own band stops at its parent's box, and a one-row Wrap or a Row
+/// is exactly as tall as its chips, so on its own a chip there answers only
+/// its drawn pill. Wrapped in this, a tap just above or below the row lands
+/// on the chip in line with it, and that chip's band takes it from there.
+/// Nothing is laid out or drawn larger: the room comes from whatever padding
+/// or gap the parent already has around the row, so the parent must have
+/// that room -- a tap outside the parent's box never reaches here.
+///
+/// Like [_TapReach], the band sits on top of any earlier sibling it
+/// overlaps, since a parent asks its last child first. Put it beside a gap,
+/// a card's padding or plain text, not flush against another control. It
+/// only ever hands a tap to its own child, and inside that the chips' bands
+/// share out the point among themselves.
+///
+/// The default [reach] suits normal chips. A row of small ones (26 dp) needs
+/// `reach: 11`, and 11 dp of the parent's room above and below, to reach 48.
+///
+/// [endReach] does the same past the row's far end, for a control that ends
+/// it: a tap there lands on the row's last few pixels. The ancestor that
+/// holds the room must pass the tap down, so this goes around the box the
+/// padding is inside, not around a row the padding sits outside.
+class FsTapRoom extends SingleChildRenderObjectWidget {
+  const FsTapRoom({
+    super.key,
+    required Widget super.child,
+    this.reach = 8,
+    this.endReach = 0,
+  });
+
+  /// How far past the top and bottom edges a tap still counts. 8 dp takes a
+  /// 32 dp row of normal chips to 48; a 26 dp row of small chips needs 11.
+  final double reach;
+
+  /// How far past the trailing edge a tap still counts: the padding a card
+  /// leaves after its last control.
+  final double endReach;
+
+  @override
+  RenderProxyBox createRenderObject(BuildContext context) => _RenderTapRoom(
+    reach,
+    endReach,
+    Directionality.maybeOf(context) ?? TextDirection.ltr,
+  );
+
+  @override
+  void updateRenderObject(BuildContext context, RenderProxyBox renderObject) {
+    (renderObject as _RenderTapRoom)
+      ..reach = reach
+      ..endReach = endReach
+      ..textDirection = Directionality.maybeOf(context) ?? TextDirection.ltr;
+  }
+}
+
+class _RenderTapRoom extends RenderProxyBox {
+  _RenderTapRoom(this.reach, this.endReach, this.textDirection);
+
+  double reach;
+  double endReach;
+  TextDirection textDirection;
+
+  @override
+  bool hitTest(BoxHitTestResult result, {required Offset position}) {
+    if (super.hitTest(result, position: position)) return true;
+    // Inside the box, the child has already been asked and said no. Asking
+    // again at the same point adds any see-through listener on the way a
+    // second time, which the pointer router refuses.
+    if (size.contains(position)) return false;
+    final row = child;
+    final rtl = textDirection == TextDirection.rtl;
+    final left = rtl ? -endReach : 0.0;
+    final right = size.width + (rtl ? 0 : endReach);
+    if (row == null ||
+        position.dx < left ||
+        position.dx > right ||
+        position.dy < -reach ||
+        position.dy > size.height + reach) {
+      return false;
+    }
+    final onto = Offset(
+      position.dx.clamp(0.5, math.max(0.5, size.width - 0.5)),
+      position.dy.clamp(0.5, math.max(0.5, size.height - 0.5)),
+    );
+    final hit = result.addWithRawTransform(
+      transform: MatrixUtils.forceToPoint(onto),
+      position: onto,
+      hitTest: (result, _) => row.hitTest(result, position: onto),
+    );
+    if (hit) result.add(BoxHitTestEntry(this, position));
+    return hit;
   }
 }

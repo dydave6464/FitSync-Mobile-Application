@@ -113,7 +113,7 @@ class _Header extends StatelessWidget {
     final t = context.fs;
     return Row(
       children: [
-        Icon(Icons.auto_awesome, size: 16, color: t.accent),
+        Icon(Icons.auto_awesome, size: 16, color: t.accentText),
         const SizedBox(width: 8),
         Expanded(
           child: Text(
@@ -322,7 +322,7 @@ class _CueCard extends StatelessWidget {
                 fontFamily: fsMonoFamily,
                 fontSize: 13,
                 fontWeight: FontWeight.w700,
-                color: t.accent,
+                color: t.accentText,
               ),
             ),
             const SizedBox(width: 11),

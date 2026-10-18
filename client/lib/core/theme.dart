@@ -18,6 +18,7 @@ class FsTokens extends ThemeExtension<FsTokens> {
     required this.text2,
     required this.text3,
     required this.accent,
+    required this.accentText,
     required this.accentDim,
     required this.accentLine,
     required this.onAccent,
@@ -42,6 +43,12 @@ class FsTokens extends ThemeExtension<FsTokens> {
 
   // accent + functional
   final Color accent;
+
+  /// The accent where it is read rather than seen: link and text-button
+  /// labels, green figures, the current tab, icons that carry meaning. Fills,
+  /// rings and bars keep [accent]. The two differ only in the light theme,
+  /// where the brand green on white is 2.87:1 and reads as faint text.
+  final Color accentText;
   final Color accentDim;
   final Color accentLine;
   final Color onAccent;
@@ -64,6 +71,8 @@ class FsTokens extends ThemeExtension<FsTokens> {
     // every surface, still dimmer than text2 (parked §32).
     text3: Color(0xFF838E98),
     accent: Color(0xFF7DFF5C),
+    // The lime already reads at well over 4.5:1 on every dark surface.
+    accentText: Color(0xFF7DFF5C),
     accentDim: Color(0x247DFF5C), // rgba(125,255,92,0.14)
     accentLine: Color(0x577DFF5C), // rgba(125,255,92,0.34)
     onAccent: Color(0xFF06140A),
@@ -88,6 +97,10 @@ class FsTokens extends ThemeExtension<FsTokens> {
     // every surface, still lighter than text2 (parked §32).
     text3: Color(0xFF616C73),
     accent: Color(0xFF0FB04A),
+    // A deeper shade of the same green for words: 4.5:1 or better on every
+    // surface and on the green's own tint (accentDim), which the brand green
+    // is not. Still plainly the accent beside a filled button (parked §32).
+    accentText: Color(0xFF087530),
     accentDim: Color(0x210FB04A), // rgba(15,176,74,0.13)
     accentLine: Color(0x4D0FB04A), // rgba(15,176,74,0.30)
     // Dark, as in the dark theme: white on this green was 2.87:1, and the
@@ -113,6 +126,7 @@ class FsTokens extends ThemeExtension<FsTokens> {
     Color? text2,
     Color? text3,
     Color? accent,
+    Color? accentText,
     Color? accentDim,
     Color? accentLine,
     Color? onAccent,
@@ -131,6 +145,7 @@ class FsTokens extends ThemeExtension<FsTokens> {
     text2: text2 ?? this.text2,
     text3: text3 ?? this.text3,
     accent: accent ?? this.accent,
+    accentText: accentText ?? this.accentText,
     accentDim: accentDim ?? this.accentDim,
     accentLine: accentLine ?? this.accentLine,
     onAccent: onAccent ?? this.onAccent,
@@ -154,6 +169,7 @@ class FsTokens extends ThemeExtension<FsTokens> {
       text2: Color.lerp(text2, other.text2, t)!,
       text3: Color.lerp(text3, other.text3, t)!,
       accent: Color.lerp(accent, other.accent, t)!,
+      accentText: Color.lerp(accentText, other.accentText, t)!,
       accentDim: Color.lerp(accentDim, other.accentDim, t)!,
       accentLine: Color.lerp(accentLine, other.accentLine, t)!,
       onAccent: Color.lerp(onAccent, other.onAccent, t)!,
@@ -289,9 +305,24 @@ ThemeData _build(FsTokens t, Brightness brightness) {
       color: t.accent,
       linearTrackColor: t.surface2,
     ),
+    // "Show all", "Past month", dialog answers: words in green, so the text
+    // green rather than the colour scheme's primary, which is the brand fill.
+    textButtonTheme: TextButtonThemeData(
+      style: TextButton.styleFrom(foregroundColor: t.accentText),
+    ),
     snackBarTheme: SnackBarThemeData(
       backgroundColor: t.elev,
       contentTextStyle: TextStyle(fontFamily: _fontFamily, color: t.text),
+      // Left unset, Undo fell back to inversePrimary -- onAccent's near
+      // black, all but invisible on the dark theme's bar.
+      actionTextColor: t.accentText,
+    ),
+    // M3 writes today's date in primary, the brand green, which is 2.87:1
+    // as text on the light theme's dialog.
+    datePickerTheme: DatePickerThemeData(
+      todayForegroundColor: WidgetStateProperty.resolveWith(
+        (s) => s.contains(WidgetState.selected) ? t.onAccent : t.accentText,
+      ),
     ),
     switchTheme: SwitchThemeData(
       thumbColor: WidgetStateProperty.resolveWith(

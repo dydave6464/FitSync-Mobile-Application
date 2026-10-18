@@ -11,7 +11,7 @@ class ExerciseRepository {
   String get baseUrl => _api.baseUrl;
 
   /// [muscleGroups] is sent as a repeated `muscleGroup` key, which the
-  /// endpoint reads as "any of these" -- a training day is a set of groups,
+  /// endpoint reads as "any of these" -- a body area is a set of groups,
   /// not one. Empty means no filter, the same thing an absent key means.
   /// [search] matches anywhere in an exercise's name, case-insensitively, and
   /// narrows whatever the other filters already selected rather than

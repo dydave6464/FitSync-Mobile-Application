@@ -74,6 +74,21 @@ void main() {
     expect(find.byType(FsBarChart), findsOneWidget);
   });
 
+  testWidgets('a rise in volume reads in the text green, not the fill', (
+    tester,
+  ) async {
+    // The brand green on white is 2.87:1, too faint for a figure.
+    await _pump(tester);
+
+    final change = tester.widget<Text>(
+      find.descendant(
+        of: find.byKey(const Key('home.progress.change')),
+        matching: find.byType(Text),
+      ),
+    );
+    expect(change.style?.color, FsTokens.light.accentText);
+  });
+
   // Home's own copy of the volume shape: bars, like the Progress tab's, in
   // the user's unit. It plotted kilograms for a pound user before.
   // 2100 kg is 4629.7... lb, derived by hand.

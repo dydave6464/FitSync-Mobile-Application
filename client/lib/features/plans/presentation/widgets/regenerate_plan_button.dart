@@ -148,8 +148,9 @@ class _RegeneratePlanButtonState extends State<RegeneratePlanButton>
       child: IconButton(
         key: const Key('plan.regenerate'),
         // The prototype's green, read from the theme so it follows light and
-        // dark rather than picking a side.
-        icon: Icon(Icons.auto_awesome, color: context.fs.accent),
+        // dark rather than picking a side. The text green: the icon is all
+        // there is of this button, so it has to stand out like a label.
+        icon: Icon(Icons.auto_awesome, color: context.fs.accentText),
         tooltip: 'Regenerate plan',
         onPressed: () => openGenerator(context),
       ),

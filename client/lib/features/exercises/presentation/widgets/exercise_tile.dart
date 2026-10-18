@@ -28,8 +28,16 @@ class ExerciseTile extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final t = context.fs;
+
     return ListTile(
       onTap: onTap,
+      // Says "selected" to a screen reader, as the Recent cards do; the tick
+      // alone was drawn, not said. ListTile would also recolour a selected
+      // row's words and icons, but the tick is what shows a pick here, so
+      // the icons and the line under the name keep their own colours.
+      selected: selected,
+      iconColor: WidgetStateColor.resolveWith((_) => t.text2),
       leading: SizedBox(
         width: 56,
         height: 56,
@@ -51,7 +59,7 @@ class ExerciseTile extends StatelessWidget {
               Icons.shield_outlined,
               key: Key('tile.risk.${exercise.exerciseId}'),
               size: 14,
-              color: context.fs.red,
+              color: t.red,
             ),
             const SizedBox(width: 5),
           ],
@@ -64,6 +72,7 @@ class ExerciseTile extends StatelessWidget {
               ].join(' · '),
               maxLines: 1,
               overflow: TextOverflow.ellipsis,
+              style: TextStyle(color: t.text3),
             ),
           ),
         ],
@@ -76,7 +85,7 @@ class ExerciseTile extends StatelessWidget {
             tooltip: 'About ${exercise.name}',
             onPressed: onInfo,
             constraints: const BoxConstraints(minWidth: 48, minHeight: 48),
-            icon: Icon(Icons.info_outline, color: context.fs.text2),
+            icon: Icon(Icons.info_outline, color: t.text2),
           ),
           _SelectMark(
             key: Key('tile.select.${exercise.exerciseId}'),

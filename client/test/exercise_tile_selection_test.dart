@@ -56,6 +56,53 @@ void main() {
     expect(find.byIcon(Icons.check), findsOneWidget);
   });
 
+  testWidgets('a screen reader hears whether the row is picked', (
+    tester,
+  ) async {
+    // The tick is drawn, not said: the Recent cards above already say it.
+    final handle = tester.ensureSemantics();
+    await _pump(tester, selected: true);
+    expect(
+      tester.getSemantics(find.byType(ListTile)),
+      isSemantics(isSelected: true, isButton: true),
+    );
+
+    await _pump(tester);
+    expect(
+      tester.getSemantics(find.byType(ListTile)),
+      isSemantics(isSelected: false, isButton: true),
+    );
+    handle.dispose();
+  });
+
+  testWidgets('a picked row is drawn as it always was', (tester) async {
+    // ListTile recolours a selected row's words and icons; the tick is what
+    // shows a pick here, so the rest of the row stays as it is.
+    Future<(Color?, Color?, Color?)> colours({required bool selected}) async {
+      await _pump(tester, selected: selected);
+      final title = tester.widget<RichText>(
+        find.descendant(
+          of: find.text('Incline DB Press'),
+          matching: find.byType(RichText),
+        ),
+      );
+      final subtitle = tester.widget<RichText>(
+        find.descendant(
+          of: find.textContaining('pectorals'),
+          matching: find.byType(RichText),
+        ),
+      );
+      final thumb = IconTheme.of(
+        tester.element(find.byIcon(Icons.fitness_center).first),
+      );
+      return (title.text.style?.color, subtitle.text.style?.color, thumb.color);
+    }
+
+    final plain = await colours(selected: false);
+    final picked = await colours(selected: true);
+    expect(picked, plain);
+  });
+
   testWidgets('an exercise that loads a reported injury is marked', (
     tester,
   ) async {

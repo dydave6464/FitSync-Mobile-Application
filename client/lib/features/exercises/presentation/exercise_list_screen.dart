@@ -79,8 +79,7 @@ class _ExerciseListScreenState extends ConsumerState<ExerciseListScreen> {
     // Recent work is a shortcut for the unfiltered library only. Under a
     // search, an area or a piece of gear, the user has asked a question, and
     // a strip that ignored it would sit on top of the answer.
-    final showRecent =
-        filters.isEmpty && ref.watch(catalogueConstraintProvider).isEmpty;
+    final showRecent = filters.isEmpty;
     // Held for as long as the library is open, not just while the strip is
     // built: it is the list's first row, and scrolling it out of view would
     // otherwise drop the answer and refetch it -- the strip blinking out and

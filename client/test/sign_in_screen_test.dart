@@ -589,6 +589,59 @@ void main() {
     expect(tester.getRect(pwMessage).bottom, lessThan(submit.top));
   });
 
+  testWidgets(
+    'a short password is flagged on sign up before anything is sent',
+    (tester) async {
+      // The server refuses fewer than 8 characters; saying so under the field
+      // beats a round trip and a message about the whole form.
+      final repo = FakeAuthRepository(onRegister: () async {});
+      await _pump(tester, repo);
+      await tester.pumpAndSettle();
+      await _toRegister(tester);
+
+      await tester.enterText(
+        find.byKey(const Key('fullName')),
+        'Juan Dela Cruz',
+      );
+      await _fillAndSubmit(tester, password: 'short12');
+      await tester.pumpAndSettle();
+
+      final message = find.text('Use at least 8 characters.');
+      expect(message, findsOneWidget);
+      expect(repo.registerCalls, 0, reason: 'checked before anything is sent');
+      final password = tester.getRect(find.byKey(const Key('password')));
+      final submit = tester.getRect(find.byKey(const Key('submit')));
+      expect(
+        tester.getRect(message).top,
+        greaterThanOrEqualTo(password.bottom),
+      );
+      expect(tester.getRect(message).bottom, lessThan(submit.top));
+
+      // Eight is enough.
+      await tester.enterText(find.byKey(const Key('password')), 'short123');
+      await tester.pump();
+      expect(message, findsNothing, reason: 'editing the field clears it');
+      await _tapKey(tester, 'submit');
+      await tester.pumpAndSettle();
+      expect(repo.registerCalls, 1);
+    },
+  );
+
+  testWidgets('signing in never applies the sign-up length rule', (
+    tester,
+  ) async {
+    // An account made before the rule must still be able to sign in.
+    final repo = FakeAuthRepository(onLogin: () async => _user());
+    await _pump(tester, repo);
+    await tester.pumpAndSettle();
+
+    await _fillAndSubmit(tester, password: 'short');
+    await tester.pumpAndSettle();
+
+    expect(find.text('Use at least 8 characters.'), findsNothing);
+    expect(repo.loginCalls, 1);
+  });
+
   testWidgets('a bad email is flagged under the email field', (tester) async {
     await _pump(tester, FakeAuthRepository());
     await tester.pumpAndSettle();

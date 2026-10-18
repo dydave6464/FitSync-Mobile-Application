@@ -38,14 +38,24 @@ class NutritionScreen extends ConsumerWidget {
     // The entry's own day: the arrows still work while the snackbar shows,
     // and Undo must not log it into whichever day is on screen by then.
     final date = ref.read(nutritionDayProvider).value?.date;
+    // Read before the await, while the context is certainly still here.
+    final screenReader = MediaQuery.accessibleNavigationOf(context);
     try {
       await controller.remove(entry);
     } catch (_) {
       messenger.showSnackBar(const SnackBar(content: Text("Couldn't remove — try again.")));
       return;
     }
+    // Replacing, not queueing behind, an earlier removal's message: with a
+    // screen reader that one never times out, so this one would never show.
+    messenger.hideCurrentSnackBar();
     messenger.showSnackBar(SnackBar(
       duration: const Duration(seconds: 4),
+      // An action makes a SnackBar stay up until dismissed by default, which
+      // left this one over the meals for as long as the tab was open. A
+      // screen reader is the exception: reaching Undo by swiping takes longer
+      // than four seconds, so for them it waits.
+      persist: screenReader,
       content: Text('Removed ${entry.name}'),
       action: SnackBarAction(
         label: 'Undo',

@@ -28,7 +28,7 @@ class AiCueList extends StatelessWidget {
         Row(
           children: [
             if (cues.isAi) ...[
-              Icon(Icons.auto_awesome, size: 16, color: t.accent),
+              Icon(Icons.auto_awesome, size: 16, color: t.accentText),
               const SizedBox(width: 8),
             ],
             Expanded(
@@ -59,7 +59,7 @@ class AiCueList extends StatelessWidget {
                       fontFamily: fsMonoFamily,
                       fontSize: 13,
                       fontWeight: FontWeight.w700,
-                      color: t.accent,
+                      color: t.accentText,
                     ),
                   ),
                   const SizedBox(width: 11),

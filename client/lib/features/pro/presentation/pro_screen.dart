@@ -245,7 +245,7 @@ class _FeatureRow extends StatelessWidget {
           Icon(
             available ? Icons.check_circle : Icons.remove_circle_outline,
             size: 17,
-            color: available ? t.accent : t.text3,
+            color: available ? t.accentText : t.text3,
           ),
           const SizedBox(width: 11),
           Expanded(

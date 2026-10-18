@@ -166,7 +166,7 @@ void main() {
     test('a region asks for exactly its own muscle groups', () {
       for (final region in MuscleRegion.values) {
         expect(
-          resolveMuscleGroups(region, const []),
+          resolveMuscleGroups(region),
           region.muscleGroups,
           reason: region.label,
         );
@@ -174,20 +174,7 @@ void main() {
     });
 
     test('All asks for no muscle group at all', () {
-      expect(resolveMuscleGroups(null, const []), isEmpty);
-    });
-
-    test('a region refines a training day by winning over it', () {
-      // The day still narrows the list when no button is chosen; a chosen
-      // button is the narrower question and is asked instead.
-      expect(resolveMuscleGroups(null, const ['delts', 'triceps']), [
-        'delts',
-        'triceps',
-      ]);
-      expect(
-        resolveMuscleGroups(MuscleRegion.chest, const ['delts', 'triceps']),
-        MuscleRegion.chest.muscleGroups,
-      );
+      expect(resolveMuscleGroups(null), isEmpty);
     });
 
     test('clearing the filters takes the region off and keeps the term', () {
