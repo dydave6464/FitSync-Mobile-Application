@@ -29,6 +29,10 @@ class SignInScreen extends ConsumerStatefulWidget {
 /// Which field a validation message belongs under.
 enum _Field { fullName, email, password }
 
+/// The shortest password the server accepts on register and on reset
+/// (`MIN_PASSWORD_LENGTH` in its auth routes).
+const _minPasswordLength = 8;
+
 class _SignInScreenState extends ConsumerState<SignInScreen> {
   final _email = TextEditingController();
   final _password = TextEditingController();
@@ -70,6 +74,15 @@ class _SignInScreenState extends ConsumerState<SignInScreen> {
     }
     if (_password.text.isEmpty) {
       return (field: _Field.password, message: 'Enter your password.');
+    }
+    // On sign up the server turns a short one down, but only after a round
+    // trip and in a message about the whole form. Never on sign in: an
+    // account made before the rule must still get in.
+    if (_registering && _password.text.length < _minPasswordLength) {
+      return (
+        field: _Field.password,
+        message: 'Use at least $_minPasswordLength characters.',
+      );
     }
     if (_registering && _fullName.text.trim().isEmpty) {
       return (field: _Field.fullName, message: 'Enter your name.');
@@ -273,7 +286,9 @@ class _SignInScreenState extends ConsumerState<SignInScreen> {
                         // The same minimum the server enforces on register
                         // and on reset, stated before the user picks one
                         // rather than after the server turns it down.
-                        helper: _registering ? 'At least 8 characters' : null,
+                        helper: _registering
+                            ? 'At least $_minPasswordLength characters'
+                            : null,
                         error: _errorFor(_Field.password),
                         field: FsField(
                           fieldKey: const Key('password'),
