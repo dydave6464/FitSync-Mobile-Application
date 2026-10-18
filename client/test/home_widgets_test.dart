@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/rendering.dart' show RenderParagraph;
 import 'package:flutter_test/flutter_test.dart';
+import 'package:font_awesome_flutter/font_awesome_flutter.dart';
 
 import 'package:fitsync/core/theme.dart';
 import 'package:fitsync/core/widgets/fs_kit.dart';
@@ -620,5 +622,302 @@ void main() {
     );
 
     expect(find.textContaining('2 exercises'), findsOneWidget);
+  });
+
+  group("today's focus", () {
+    /// A Pull day of two back exercises and one arm exercise, between a Push
+    /// and a Legs day.
+    WorkoutPlan pull({
+      List<String> muscles = const ['lats', 'biceps', 'lats'],
+      List<PlanDay> days = const [
+        PlanDay(dayNo: 1, name: 'Push'),
+        PlanDay(dayNo: 2, name: 'Pull'),
+        PlanDay(dayNo: 3, name: 'Legs'),
+      ],
+      String splitStyle = 'push_pull_legs',
+    }) => WorkoutPlan(
+      planId: 3,
+      name: 'My Push / Pull / Legs',
+      splitStyle: splitStyle,
+      daysPerWeek: 3,
+      sessionLengthMin: 20,
+      weekNo: 1,
+      days: days,
+      exercises: [
+        for (final (i, muscle) in muscles.indexed)
+          PlanExercise(
+            planExerciseId: 900 + i,
+            exerciseId: 300 + i,
+            name: 'Exercise $i',
+            muscleGroup: muscle,
+            orderNo: i + 1,
+            targetSets: 3,
+            targetReps: '8-12',
+            dayNo: 2,
+          ),
+      ],
+    );
+
+    testWidgets('the band says which day of the rotation today is', (
+      tester,
+    ) async {
+      await tester.pumpWidget(
+        _host(PlanCard(plan: pull(), weightKg: 70, dayNo: 2, onStart: () {})),
+      );
+      expect(find.text('DAY 2 OF 3 · PULL'), findsOneWidget);
+    });
+
+    testWidgets('a day the server only numbered reads as the split', (
+      tester,
+    ) async {
+      // Days past a split's own names come back as "Day N"; "DAY 4 OF 4 ·
+      // DAY 4" would say the number twice.
+      await tester.pumpWidget(
+        _host(
+          PlanCard(
+            plan: pull(
+              days: const [
+                PlanDay(dayNo: 1, name: 'Push'),
+                PlanDay(dayNo: 2, name: 'Pull'),
+                PlanDay(dayNo: 3, name: 'Legs'),
+                PlanDay(dayNo: 4, name: 'Day 4'),
+              ],
+            ),
+            weightKg: 70,
+            dayNo: 4,
+            onStart: () {},
+          ),
+        ),
+      );
+      expect(find.text('DAY 4 OF 4 · PUSH PULL LEGS'), findsOneWidget);
+    });
+
+    testWidgets('an unnamed day reads as the split', (tester) async {
+      await tester.pumpWidget(
+        _host(
+          PlanCard(
+            plan: pull(
+              days: const [
+                PlanDay(dayNo: 1, name: ''),
+                PlanDay(dayNo: 2, name: ''),
+              ],
+            ),
+            weightKg: 70,
+            dayNo: 2,
+            onStart: () {},
+          ),
+        ),
+      );
+      expect(find.text('DAY 2 OF 2 · PUSH PULL LEGS'), findsOneWidget);
+    });
+
+    testWidgets('the focus is read as one phrase', (tester) async {
+      final semantics = tester.ensureSemantics();
+      await tester.pumpWidget(
+        _host(PlanCard(plan: pull(), weightKg: 70, dayNo: 2, onStart: () {})),
+      );
+      // "Back" alone could be taken for a way back.
+      expect(
+        find.bySemanticsLabel("Today's focus: Back and Arms"),
+        findsOneWidget,
+      );
+      semantics.dispose();
+    });
+
+    testWidgets('at large text the band line wraps rather than cuts off', (
+      tester,
+    ) async {
+      await tester.pumpWidget(
+        _host(
+          MediaQuery(
+            data: const MediaQueryData(
+              size: Size(320, 800),
+              textScaler: TextScaler.linear(2.0),
+            ),
+            // Scrollable, as Home is: at 2x the card outgrows the screen.
+            child: SingleChildScrollView(
+              child: SizedBox(
+                width: 280,
+                child: PlanCard(
+                  plan: pull(
+                    splitStyle: 'upper_lower',
+                    days: const [
+                      PlanDay(dayNo: 1, name: 'Upper'),
+                      PlanDay(dayNo: 2, name: 'Lower'),
+                    ],
+                  ),
+                  weightKg: 70,
+                  dayNo: 1,
+                  onStart: () {},
+                ),
+              ),
+            ),
+          ),
+        ),
+      );
+      expect(tester.takeException(), isNull);
+      final line = tester.renderObject<RenderParagraph>(
+        find.text('DAY 1 OF 2 · UPPER'),
+      );
+      expect(line.didExceedMaxLines, isFalse);
+    });
+
+    testWidgets('a one-day plan keeps the split and counts no days', (
+      tester,
+    ) async {
+      await tester.pumpWidget(
+        _host(
+          PlanCard(
+            plan: _plan(sessionLengthMin: 45, equipment: const ['Barbell']),
+            weightKg: 70,
+            onStart: () {},
+          ),
+        ),
+      );
+      expect(find.text('UPPER LOWER'), findsOneWidget);
+      expect(find.textContaining('DAY 1 OF'), findsNothing);
+    });
+
+    testWidgets('it names the areas today works, busiest first', (
+      tester,
+    ) async {
+      await tester.pumpWidget(
+        _host(PlanCard(plan: pull(), weightKg: 70, dayNo: 2, onStart: () {})),
+      );
+      final back = find.byKey(const Key('plan.focus.back'));
+      final arms = find.byKey(const Key('plan.focus.arms'));
+      expect(
+        find.descendant(of: back, matching: find.text('Back')),
+        findsOneWidget,
+      );
+      expect(
+        find.descendant(of: arms, matching: find.text('Arms')),
+        findsOneWidget,
+      );
+      expect(tester.getTopLeft(back).dx, lessThan(tester.getTopLeft(arms).dx));
+    });
+
+    testWidgets('a full-body day shows its three busiest areas only', (
+      tester,
+    ) async {
+      await tester.pumpWidget(
+        _host(
+          PlanCard(
+            plan: pull(
+              muscles: const [
+                'quads',
+                'quads',
+                'quads',
+                'lats',
+                'lats',
+                'pectorals',
+                'abs',
+                'biceps',
+              ],
+            ),
+            weightKg: 70,
+            dayNo: 2,
+            onStart: () {},
+          ),
+        ),
+      );
+      for (final shown in ['legs', 'back', 'chest']) {
+        expect(
+          find.byKey(Key('plan.focus.$shown')),
+          findsOneWidget,
+          reason: shown,
+        );
+      }
+      for (final hidden in ['core', 'arms']) {
+        expect(
+          find.byKey(Key('plan.focus.$hidden')),
+          findsNothing,
+          reason: hidden,
+        );
+      }
+    });
+
+    testWidgets('the info line carries an icon for each figure', (
+      tester,
+    ) async {
+      await tester.pumpWidget(
+        _host(PlanCard(plan: pull(), weightKg: 70, dayNo: 2, onStart: () {})),
+      );
+      // In the info line itself, not just the faded one on the band.
+      final infoLine = find.ancestor(
+        of: find.text('3 exercises'),
+        matching: find.byType(Wrap),
+      );
+      expect(
+        find.descendant(
+          of: infoLine,
+          matching: find.byIcon(FontAwesomeIcons.dumbbell.data),
+        ),
+        findsOneWidget,
+      );
+      expect(find.byIcon(FontAwesomeIcons.solidClock.data), findsOneWidget);
+      expect(find.byIcon(FontAwesomeIcons.fire.data), findsOneWidget);
+      expect(find.text('3 exercises'), findsOneWidget);
+      expect(find.text('~20 min'), findsOneWidget);
+    });
+
+    testWidgets('the faded dumbbell steps aside for large text', (
+      tester,
+    ) async {
+      final watermark = find.byKey(const Key('plan.watermark'));
+      await tester.pumpWidget(
+        _host(PlanCard(plan: pull(), weightKg: 70, dayNo: 2, onStart: () {})),
+      );
+      expect(watermark, findsOneWidget);
+
+      // At large text the chips fill the band, and it would sit behind them.
+      await tester.pumpWidget(
+        _host(
+          MediaQuery(
+            data: const MediaQueryData(textScaler: TextScaler.linear(2.0)),
+            child: PlanCard(
+              plan: pull(),
+              weightKg: 70,
+              dayNo: 2,
+              onStart: () {},
+            ),
+          ),
+        ),
+      );
+      expect(watermark, findsNothing);
+    });
+
+    testWidgets('a busy band fits a narrow phone at 2x text', (tester) async {
+      await tester.pumpWidget(
+        _host(
+          MediaQuery(
+            data: const MediaQueryData(
+              size: Size(320, 800),
+              textScaler: TextScaler.linear(2.0),
+            ),
+            child: SingleChildScrollView(
+              child: SizedBox(
+                width: 320,
+                child: PlanCard(
+                  plan: pull(
+                    muscles: const [
+                      'quads',
+                      'lats',
+                      'pectorals',
+                      'delts',
+                      'abs',
+                    ],
+                  ),
+                  weightKg: 70,
+                  dayNo: 2,
+                  onStart: () {},
+                ),
+              ),
+            ),
+          ),
+        ),
+      );
+      expect(tester.takeException(), isNull);
+    });
   });
 }

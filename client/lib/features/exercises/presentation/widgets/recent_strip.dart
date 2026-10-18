@@ -6,15 +6,19 @@ import '../../domain/exercise.dart';
 import '../exercise_thumb.dart';
 import '../providers.dart';
 
-/// The exercises the user logged lately, as a row of small cards above the
-/// catalogue.
+/// The exercises the user logged lately, as cards above the catalogue: as
+/// many as fit one row, the rest a tap away under "Show all".
 ///
 /// A shortcut, not content: most workouts repeat most of the last one, and
 /// finding Bench press again should not mean searching 1,300 rows for it. So
 /// it shows nothing at all until it has something to offer -- no spinner
 /// while it loads, no error when it fails, no "nothing yet" for a new user.
 /// The catalogue below is the real answer in every one of those cases.
-class RecentStrip extends ConsumerWidget {
+///
+/// It never scrolls sideways. It did, and on a phone the card cut off at the
+/// right-hand edge read as broken, and a swipe from it was the phone's own
+/// Back gesture -- the same lesson the muscle buttons taught, which wrap.
+class RecentStrip extends ConsumerStatefulWidget {
   const RecentStrip({
     super.key,
     required this.baseUrl,
@@ -31,62 +35,179 @@ class RecentStrip extends ConsumerWidget {
   final bool Function(ExerciseSummary exercise) isAdded;
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  ConsumerState<RecentStrip> createState() => _RecentStripState();
+}
+
+class _RecentStripState extends ConsumerState<RecentStrip>
+    with AutomaticKeepAliveClientMixin {
+  bool _expanded = false;
+
+  static const _side = 16.0;
+  static const _gap = 8.0;
+
+  /// Three at most, and never wider than [_RecentCard.mostWidth] each: a
+  /// row of the latest three is most of what a repeat workout needs, and a
+  /// wide screen gets the same cards rather than stretched ones.
+  static const _mostPerRow = 3;
+
+  /// Kept while opened: the strip is the catalogue's first row, and scrolled
+  /// out of view it would otherwise be rebuilt folded on the way back.
+  @override
+  bool get wantKeepAlive => _expanded;
+
+  void _toggle() {
+    setState(() => _expanded = !_expanded);
+    updateKeepAlive();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    super.build(context);
     final recent = switch (ref.watch(recentExercisesProvider)) {
       AsyncData(:final value) => value,
       _ => const <ExerciseSummary>[],
     };
     if (recent.isEmpty) return const SizedBox.shrink();
 
+    return LayoutBuilder(
+      builder: (context, box) {
+        // As many cards as fit at their least width, which grows with the
+        // text, so large text gets fewer and wider cards rather than names
+        // squeezed into a sliver.
+        final least = MediaQuery.textScalerOf(context)
+            .scale(_RecentCard.leastWidth)
+            .clamp(_RecentCard.leastWidth, _RecentCard.mostWidth);
+        final room = box.maxWidth - 2 * _side;
+        final perRow = ((room + _gap) / (least + _gap)).floor().clamp(
+          1,
+          _mostPerRow,
+        );
+        final hidden = recent.length > perRow;
+        // Opened is forgotten once there is nothing left to fold, so a list
+        // that grows again later starts folded, as its button then says.
+        if (!hidden) _expanded = false;
+        final shown = _expanded ? recent : recent.take(perRow).toList();
+
+        // No wider than its cards at their most: a wide screen gets the same
+        // cards, at the start, rather than stretched ones.
+        return Align(
+          alignment: Alignment.centerLeft,
+          child: ConstrainedBox(
+            constraints: BoxConstraints(
+              maxWidth:
+                  2 * _side +
+                  perRow * _RecentCard.mostWidth +
+                  (perRow - 1) * _gap,
+            ),
+            child: _strip(context, recent, shown, perRow, hidden),
+          ),
+        );
+      },
+    );
+  }
+
+  Widget _strip(
+    BuildContext context,
+    List<ExerciseSummary> recent,
+    List<ExerciseSummary> shown,
+    int perRow,
+    bool hidden,
+  ) {
     return Column(
       key: const Key('library.recent'),
-      crossAxisAlignment: CrossAxisAlignment.start,
+      crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
         Padding(
-          padding: const EdgeInsets.fromLTRB(16, 4, 16, 8),
-          // Meaningful text, so text2 rather than the eyebrow's text3, and a
-          // header for screen readers moving by heading.
-          child: Semantics(
-            header: true,
-            child: Text(
-              'Recent',
-              style: TextStyle(
-                fontSize: 13,
-                fontWeight: FontWeight.w600,
-                color: context.fs.text2,
-              ),
-            ),
-          ),
-        ),
-        SingleChildScrollView(
-          scrollDirection: Axis.horizontal,
-          primary: false,
-          padding: const EdgeInsets.symmetric(horizontal: 12),
-          // A Row rather than a lazy list: ten cards at most, and a Row sizes
-          // itself to its tallest card, so a name wrapping at large text grows
-          // the strip instead of being clipped by a fixed height. Stretched to
-          // that height, so a one-line name's card matches a two-line one's;
-          // IntrinsicHeight is what gives the stretch a height to reach, and
-          // costs little over ten cards.
-          child: IntrinsicHeight(
-            child: Row(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
+          padding: const EdgeInsets.fromLTRB(_side, 0, 4, 0),
+          // A Wrap the card's width: the title and the button share a
+          // line, the button at its far right, and only when they cannot
+          // does the button move under the title -- never squeezed into
+          // half the row with its words broken over two lines.
+          child: SizedBox(
+            width: double.infinity,
+            child: Wrap(
+              alignment: WrapAlignment.spaceBetween,
+              crossAxisAlignment: WrapCrossAlignment.center,
               children: [
-                for (final exercise in recent)
-                  Padding(
-                    padding: const EdgeInsets.symmetric(horizontal: 4),
-                    child: _RecentCard(
-                      exercise: exercise,
-                      baseUrl: baseUrl,
-                      added: isAdded(exercise),
-                      onTap: () => onTap(exercise),
+                // At least a button's height either way, so the cards do
+                // not move when a list grows past one row -- and free to
+                // grow past it, so the largest text is never cut.
+                ConstrainedBox(
+                  constraints: const BoxConstraints(minHeight: 48),
+                  child: Align(
+                    alignment: Alignment.centerLeft,
+                    widthFactor: 1,
+                    // Meaningful text, so text2 rather than the
+                    // eyebrow's text3, and a header for screen readers
+                    // moving by heading.
+                    child: Semantics(
+                      header: true,
+                      child: Text(
+                        'Recent',
+                        style: TextStyle(
+                          fontSize: 13,
+                          fontWeight: FontWeight.w600,
+                          color: context.fs.text2,
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+                if (hidden)
+                  // One node: the button, and whether it has the list
+                  // open. Its name starts with the words on it, which is
+                  // what a voice user says to press it.
+                  MergeSemantics(
+                    child: Semantics(
+                      expanded: _expanded,
+                      child: TextButton(
+                        key: const Key('library.recent.more'),
+                        style: TextButton.styleFrom(
+                          minimumSize: const Size(48, 48),
+                        ),
+                        onPressed: _toggle,
+                        child: Text(
+                          _expanded ? 'Show less' : 'Show all ${recent.length}',
+                          semanticsLabel: _expanded
+                              ? 'Show less, recent exercises'
+                              : 'Show all ${recent.length} recent exercises',
+                        ),
+                      ),
                     ),
                   ),
               ],
             ),
           ),
         ),
-        const SizedBox(height: 8),
+        for (var start = 0; start < shown.length; start += perRow)
+          Padding(
+            padding: const EdgeInsets.fromLTRB(_side, 0, _side, _gap),
+            // Stretched to the row's tallest card, so a one-line name's
+            // card matches a two-line one's; IntrinsicHeight is what
+            // gives the stretch a height to reach.
+            child: IntrinsicHeight(
+              child: Row(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  for (var cell = 0; cell < perRow; cell++) ...[
+                    if (cell > 0) const SizedBox(width: _gap),
+                    Expanded(
+                      child: start + cell < shown.length
+                          ? _RecentCard(
+                              exercise: shown[start + cell],
+                              baseUrl: widget.baseUrl,
+                              added: widget.isAdded(shown[start + cell]),
+                              onTap: () => widget.onTap(shown[start + cell]),
+                            )
+                          // An empty cell keeps a short last row's cards
+                          // the width of the rows above.
+                          : const SizedBox.shrink(),
+                    ),
+                  ],
+                ],
+              ),
+            ),
+          ),
       ],
     );
   }
@@ -105,8 +226,10 @@ class _RecentCard extends StatelessWidget {
   final bool added;
   final VoidCallback onTap;
 
-  static const _width = 112.0;
-  static const _maxWidth = 176.0;
+  /// The narrowest a card is drawn, and how wide that grows at large text:
+  /// enough for a long name in two lines.
+  static const leastWidth = 104.0;
+  static const mostWidth = 176.0;
 
   @override
   Widget build(BuildContext context) {
@@ -130,12 +253,9 @@ class _RecentCard extends StatelessWidget {
       // announce a button that does nothing.
       onTap: onTap,
       excludeSemantics: true,
+      // As wide as its cell in the row; the row works out how many fit.
       child: SizedBox(
-        // Wider with larger text, up to a limit, so a long name still fits
-        // in its two lines; the strip scrolls sideways to make room.
-        width: MediaQuery.textScalerOf(context)
-            .scale(_width)
-            .clamp(_width, _maxWidth),
+        width: double.infinity,
         child: Material(
           color: added ? t.accent.withValues(alpha: 0.10) : t.surface,
           shape: RoundedRectangleBorder(

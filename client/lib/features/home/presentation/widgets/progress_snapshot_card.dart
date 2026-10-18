@@ -45,10 +45,18 @@ class ProgressSnapshotCard extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Row(
-            children: [
-              Expanded(
-                child: Text(
+          // A Wrap, not a Row: at large text on a small phone the title kept
+          // so little room beside "Past month" that it broke mid-word, and
+          // now "Past month" moves under it instead. Card-wide, or the Wrap
+          // would hug its words and leave no space to put between them.
+          SizedBox(
+            width: double.infinity,
+            child: Wrap(
+              alignment: WrapAlignment.spaceBetween,
+              crossAxisAlignment: WrapCrossAlignment.center,
+              runSpacing: 2,
+              children: [
+                Text(
                   'Your progress',
                   style: TextStyle(
                     fontSize: 15,
@@ -56,13 +64,22 @@ class ProgressSnapshotCard extends StatelessWidget {
                     color: t.text,
                   ),
                 ),
-              ),
-              Text(
-                'Past month',
-                style: TextStyle(fontSize: 11.5, color: t.text3),
-              ),
-              Icon(Icons.chevron_right, size: 16, color: t.text3),
-            ],
+                Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    // Free to wrap: on its own line at large text it can
+                    // still be wider than a small phone's card.
+                    Flexible(
+                      child: Text(
+                        'Past month',
+                        style: TextStyle(fontSize: 11.5, color: t.text3),
+                      ),
+                    ),
+                    Icon(Icons.chevron_right, size: 16, color: t.text3),
+                  ],
+                ),
+              ],
+            ),
           ),
           const SizedBox(height: 8),
           if (analytics.adherence.done == 0)
@@ -71,14 +88,14 @@ class ProgressSnapshotCard extends StatelessWidget {
               style: TextStyle(fontSize: 13, color: t.text2, height: 1.4),
             )
           else ...[
-            // The Progress tab's bars in miniature, in the user's unit. No
-            // axis words and no touch: the whole card is the way into the
-            // full chart, and a tap here belongs to it.
+            // The Progress tab's bars in miniature, in the user's unit, each
+            // named by the date its span ends so "which week?" has an
+            // answer. No touch: the whole card is the way into the full
+            // chart, and a tap here belongs to it.
             FsBarChart(
               label: 'Training volume this month',
               bars: volumeBars(analytics, unit, volumeToday()),
-              height: 52,
-              showLabels: false,
+              height: 72,
               interactive: false,
             ),
             const SizedBox(height: 10),
@@ -142,7 +159,8 @@ class _Stat extends StatelessWidget {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Text(
+            // Shrunk to fit a third of the card, never broken mid-word.
+            FsOneLine(
               value,
               key: Key(valueKey),
               style: TextStyle(
@@ -152,7 +170,7 @@ class _Stat extends StatelessWidget {
               ),
             ),
             const SizedBox(height: 2),
-            Text(label, style: TextStyle(fontSize: 10, color: t.text3)),
+            FsOneLine(label, style: TextStyle(fontSize: 12, color: t.text3)),
           ],
         ),
       ),

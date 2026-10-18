@@ -116,11 +116,13 @@ class HomeScreen extends ConsumerWidget {
                         ),
                 ),
               const SizedBox(height: 14),
+              // Today's numbers, next to today's plan rather than at the
+              // foot of the page. The row keeps its own gap below, so when
+              // it shows nothing it leaves none.
+              ActivityStatsRow(onGoToProfile: onGoToProfile, bottomGap: 14),
               _Progress(onTap: () => onGoToProgress?.call()),
               const SizedBox(height: 14),
               _Routine(onGoToTrain: onGoToTrain),
-              const SizedBox(height: 14),
-              ActivityStatsRow(onGoToProfile: onGoToProfile),
             ],
           ),
         ),
@@ -329,7 +331,10 @@ class _Progress extends ConsumerWidget {
     // not guessed. A loading or empty state is free to differ from that by
     // design (it says less, so it can be shorter), only a placeholder
     // standing in for data about to replace it must match.
-    if (s == null || a == null) return const SizedBox(height: 163);
+    // 186 since the bars gained their dates and the labels grew to 12.
+    if (s == null || a == null) {
+      return const SizedBox(key: Key('home.progress.placeholder'), height: 186);
+    }
     return ProgressSnapshotCard(
       summary: s,
       analytics: a,

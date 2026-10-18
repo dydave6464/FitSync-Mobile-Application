@@ -647,16 +647,39 @@ class FsStatField extends StatelessWidget {
 
 /// `.eyebrow` — the mono, uppercase, wide-tracked section label.
 class FsEyebrow extends StatelessWidget {
-  const FsEyebrow(this.text, {super.key});
+  const FsEyebrow(this.text, {super.key, this.maxLines = 1});
 
   final String text;
+
+  /// One line by default, as the design draws it; more where the line says
+  /// something a reader needs and there is room to grow.
+  final int maxLines;
 
   @override
   Widget build(BuildContext context) => Text(
     text.toUpperCase(),
-    maxLines: 1,
+    maxLines: maxLines,
     overflow: TextOverflow.ellipsis,
     style: fsEyebrow(context.fs),
+  );
+}
+
+/// One line of [text] that shrinks to fit rather than wraps: a figure or a
+/// one-word label in a narrow tile, which at large text would otherwise break
+/// mid-word ("6," "42" "0"). Never soft-wrapped, so the height it reports to
+/// a row sizing tiles to the tallest is one line's -- the line's full size,
+/// though, not its shrunk one, so a shrunk tile keeps a little space below.
+class FsOneLine extends StatelessWidget {
+  const FsOneLine(this.text, {super.key, required this.style});
+
+  final String text;
+  final TextStyle style;
+
+  @override
+  Widget build(BuildContext context) => FittedBox(
+    fit: BoxFit.scaleDown,
+    alignment: Alignment.centerLeft,
+    child: Text(text, style: style, maxLines: 1, softWrap: false),
   );
 }
 
