@@ -1232,12 +1232,12 @@ class FsTapRoom extends SingleChildRenderObjectWidget {
   final double reach;
 
   @override
-  _RenderTapRoom createRenderObject(BuildContext context) =>
+  RenderProxyBox createRenderObject(BuildContext context) =>
       _RenderTapRoom(reach);
 
   @override
-  void updateRenderObject(BuildContext context, _RenderTapRoom renderObject) {
-    renderObject.reach = reach;
+  void updateRenderObject(BuildContext context, RenderProxyBox renderObject) {
+    (renderObject as _RenderTapRoom).reach = reach;
   }
 }
 
