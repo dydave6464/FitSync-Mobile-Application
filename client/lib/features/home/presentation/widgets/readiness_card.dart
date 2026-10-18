@@ -101,7 +101,8 @@ class ReadinessCard extends StatelessWidget {
                       Text(
                         isToday
                             ? 'Injury risk: ${estimate.label.toLowerCase()} · '
-                                  "from your training load & today's check-in"
+                                  'from your check-ins, training load & past '
+                                  'injuries'
                             : 'Injury risk: ${estimate.label.toLowerCase()}',
                         style: TextStyle(fontSize: 11.5, color: t.text2),
                       ),

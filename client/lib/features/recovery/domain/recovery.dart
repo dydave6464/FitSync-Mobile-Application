@@ -30,11 +30,27 @@ class MorningCheckin {
   );
 }
 
+/// One input that raised an estimate, from the ML service's `drivers`.
+///
+/// [value] is whatever the contract sends for that [key]: a number for
+/// `load` (percent above the usual week) and `injury_history` (a count), and
+/// the 3-day worst answer as a string for the check-in questions and
+/// `recent_pain`.
+class RiskDriver {
+  const RiskDriver({required this.key, required this.value});
+
+  final String key;
+  final Object? value;
+}
+
 class InjuryRiskEstimate {
   const InjuryRiskEstimate({
     required this.riskLevel,
     required this.trainingLoadScore,
     required this.checkinDate,
+    this.source,
+    this.loadPct,
+    this.drivers,
   });
 
   /// 'low', 'moderate' or 'high'.
@@ -42,22 +58,46 @@ class InjuryRiskEstimate {
   final double? trainingLoadScore;
   final String checkinDate;
 
-  /// How far round the ring to draw.
+  /// 'model' when the scikit-learn model's score decided the estimate,
+  /// 'rules' when the rules' safety floor did or no model was loaded. Null on
+  /// a row saved before the service reported it.
+  final String? source;
+
+  /// The training-load index the estimate was worked out from: percent above
+  /// the usual week. Null on older rows.
+  final double? loadPct;
+
+  /// Up to three inputs that raised the estimate, most influential first.
+  /// Null when the row predates drivers; empty when nothing stood out.
+  final List<RiskDriver>? drivers;
+
+  /// How far round the ring to draw: the 0-100 score itself, so a low 35
+  /// sits visibly nearer moderate than a low 5 does.
   ///
-  /// Keyed off the level rather than the raw score: the score is a 0-100
-  /// internal figure whose thresholds live in risk.py, and drawing it directly
-  /// would put the arc and the word it sits under out of step the day those
-  /// thresholds move.
-  double get ringValue => switch (riskLevel) {
-    'high' => 0.9,
-    'moderate' => 0.55,
-    _ => 0.2,
-  };
+  /// An estimate saved without a score falls back to a fixed share for its
+  /// level, so the ring still agrees with the word under it.
+  double get ringValue {
+    final score = trainingLoadScore;
+    if (score != null) return (score / 100).clamp(0.0, 1.0);
+    return switch (riskLevel) {
+      'high' => 0.9,
+      'moderate' => 0.55,
+      _ => 0.2,
+    };
+  }
 
   String get label => switch (riskLevel) {
     'high' => 'High',
     'moderate' => 'Moderate',
     _ => 'Low',
+  };
+
+  /// What the level means for today's training, as the line under the ring
+  /// says it. Guidance, as the estimate is.
+  String get levelAdvice => switch (riskLevel) {
+    'high' => 'Consider a lighter day: mobility or rest.',
+    'moderate' => 'Train, but go a little easier.',
+    _ => 'Train as planned.',
   };
 
   /// The same score the other way up: 100 minus the 0-100 risk score, so
@@ -76,8 +116,8 @@ class InjuryRiskEstimate {
     return (100 - score).ceil().clamp(0, 100);
   }
 
-  /// The readiness card's tag, by level rather than by number -- the same
-  /// reason [ringValue] is.
+  /// The readiness card's tag, by level rather than by number, so the words
+  /// never second-guess the level the ML service chose.
   String get recoveryLabel => switch (riskLevel) {
     'high' => 'Recovery low',
     'moderate' => 'Recovery fair',
@@ -91,12 +131,136 @@ class InjuryRiskEstimate {
     _ => "You're primed to train",
   };
 
+  /// "Why: recent check-ins show poor sleep and high stress, and this week
+  /// is 35% above your usual." -- the estimate's [drivers] in plain English,
+  /// or null when there is nothing to say.
+  ///
+  /// The check-in drivers are the worst answer over the last 3 days, not
+  /// this morning's, so they are gathered into one "recent check-ins show"
+  /// list, which keeps the place of its most influential member. When that
+  /// list sits beside other clauses, a comma sets it apart, so its own "and"
+  /// is not read as joining it to them.
+  ///
+  /// Null for a row that predates drivers. The server sends such rows with
+  /// an empty list, so a missing [source] is the tell: "nothing stands out"
+  /// would be a claim that estimate never made. A driver this build has no
+  /// words for is skipped rather than shown raw.
+  String? get whyLine {
+    final drivers = this.drivers;
+    if (drivers == null || source == null) return null;
+    if (drivers.isEmpty) {
+      return 'Nothing in your check-ins, training or history stands out.';
+    }
+
+    final checkinNouns = <String>[];
+    final items = <String?>[];
+    int? checkinSlot;
+    for (final d in drivers) {
+      final noun = _checkinNoun(d);
+      if (noun != null) {
+        checkinNouns.add(noun);
+        if (checkinSlot == null) {
+          checkinSlot = items.length;
+          items.add(null);
+        }
+      } else if (_driverClause(d) case final clause?) {
+        items.add(clause);
+      }
+    }
+    if (checkinSlot != null) {
+      items[checkinSlot] = 'recent check-ins show ${_andList(checkinNouns)}';
+    }
+    final clauses = items.whereType<String>().toList();
+    if (clauses.isEmpty) return null;
+    final joined = checkinSlot != null && clauses.length > 1
+        ? '${clauses.sublist(0, clauses.length - 1).join(', ')}, '
+              'and ${clauses.last}'
+        : _andList(clauses);
+    return 'Why: $joined.';
+  }
+
   factory InjuryRiskEstimate.fromJson(Map<String, dynamic> json) =>
       InjuryRiskEstimate(
         riskLevel: json['riskLevel'] as String,
         trainingLoadScore: (json['trainingLoadScore'] as num?)?.toDouble(),
         checkinDate: json['checkinDate'] as String,
+        source: json['source'] is String ? json['source'] as String : null,
+        loadPct: json['loadPct'] is num
+            ? (json['loadPct'] as num).toDouble()
+            : null,
+        drivers: _parseDrivers(json['drivers']),
       );
+}
+
+/// Older rows have no `drivers` at all, so anything that is not a list reads
+/// as absent, and an entry without a string key is dropped rather than
+/// failing the whole Recovery tab over one bad row.
+List<RiskDriver>? _parseDrivers(Object? raw) {
+  if (raw is! List) return null;
+  return [
+    for (final entry in raw)
+      if (entry is Map && entry['key'] is String)
+        RiskDriver(key: entry['key'] as String, value: entry['value']),
+  ];
+}
+
+/// The highest load index the server reports (`MAX_LOAD` in
+/// server/src/db/training-load.js).
+const _loadCap = 130;
+
+/// "a", "a and b", "a, b and c".
+String _andList(List<String> items) => items.length == 1
+    ? items.single
+    : '${items.sublist(0, items.length - 1).join(', ')} and ${items.last}';
+
+/// A check-in driver as a noun for "recent check-ins show …", or null for
+/// any other driver. Only the answers worth 5 rule points or more have
+/// words, since only those can be drivers; an everyday answer (good sleep,
+/// mild soreness) that somehow arrived is skipped rather than blamed.
+String? _checkinNoun(RiskDriver driver) => switch ((driver.key, driver.value)) {
+  ('sleep', 'poor') => 'poor sleep',
+  ('sleep', 'fair') => 'only fair sleep',
+  ('soreness', 'severe') => 'very sore muscles',
+  ('soreness', 'moderate') => 'sore muscles',
+  ('energy', 'very_low') => 'very low energy',
+  ('energy', 'low') => 'low energy',
+  ('stress', 'high') => 'high stress',
+  ('stress', 'moderate') => 'moderate stress',
+  _ => null,
+};
+
+/// A driver from outside the check-ins as a clause of the "Why" sentence,
+/// worded by its value where that changes the meaning.
+String? _driverClause(RiskDriver driver) {
+  final value = driver.value;
+  switch (driver.key) {
+    case 'load':
+      if (value is! num) return null;
+      // The server caps the index here, so a reading at the cap may stand
+      // for any bigger surge. The check is on the value as sent: 129.6 is
+      // under the cap, so it is an exact reading, not "at least".
+      if (value >= _loadCap) {
+        return 'this week is at least $_loadCap% above your usual';
+      }
+      // Kept under the cap's own figure when rounding would reach it, so an
+      // exact reading never shows the number that means "at least".
+      final pct = value.round().clamp(0, _loadCap - 1);
+      // "0% above" would contradict the line it sits in.
+      if (pct < 1) return 'this week is a little above your usual';
+      return 'this week is $pct% above your usual';
+    case 'injury_history':
+      if (value is! num || value < 1) return null;
+      final n = value.round();
+      return n == 1 ? 'you have a past injury' : 'you have $n past injuries';
+    case 'recent_pain':
+      return switch (value) {
+        'severe' => 'you reported severe pain after a recent workout',
+        'moderate' => 'you reported pain after a recent workout',
+        'mild' => 'you reported mild pain after a recent workout',
+        _ => null,
+      };
+  }
+  return null;
 }
 
 /// When one muscle group was last trained, from GET /recovery.
