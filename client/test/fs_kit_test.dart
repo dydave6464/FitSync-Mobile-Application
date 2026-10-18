@@ -1079,6 +1079,118 @@ void main() {
       },
     );
 
+    // lb is the row's last child, so the half of its band past the letters
+    // lies outside the Row; the room for it is the card's own padding.
+    testWidgets('lb in a stat card takes a tap in the padding past it', (
+      tester,
+    ) async {
+      final picked = <WeightUnit>[];
+      final controller = TextEditingController();
+      addTearDown(controller.dispose);
+      await tester.pumpWidget(
+        _host(
+          SizedBox(
+            width: 140,
+            child: FsStatField(
+              fieldKey: const Key('weightKg'),
+              label: 'Weight',
+              unit: 'kg',
+              controller: controller,
+              unitControl: FsUnitToggle(
+                value: WeightUnit.kg,
+                onChanged: picked.add,
+              ),
+            ),
+          ),
+        ),
+      );
+
+      final lb = tester.getRect(find.byKey(const Key('unit.lb')));
+      await tester.tapAt(lb.centerRight + const Offset(8, 0));
+      expect(picked, [WeightUnit.lb]);
+
+      // The card's edge is still the end of it.
+      await tester.tapAt(lb.centerRight + const Offset(20, 0));
+      expect(picked, [WeightUnit.lb]);
+    });
+
+    testWidgets('FsTapRoom reaches past its far end only as far as told', (
+      tester,
+    ) async {
+      var taps = 0;
+      await tester.pumpWidget(
+        roomy(
+          // The room past the row is this padding's, as in a card.
+          Padding(
+            padding: const EdgeInsets.only(right: 24),
+            child: FsTapRoom(
+              reach: 0,
+              endReach: 16,
+              child: Row(
+                children: [
+                  const Expanded(child: SizedBox(height: 20)),
+                  GestureDetector(
+                    behavior: HitTestBehavior.opaque,
+                    onTap: () => taps++,
+                    child: const SizedBox(width: 20, height: 20),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ),
+      );
+
+      final row = tester.getRect(find.byType(Row));
+      await tester.tapAt(row.centerRight + const Offset(15, 0));
+      expect(taps, 1);
+      await tester.tapAt(row.centerRight + const Offset(18, 0));
+      expect(taps, 1);
+    });
+
+    // The neighbour that wins a point must also reach it: an upper chip
+    // nearer by box, but whose band ends short, left the tap with nobody.
+    testWidgets('a tap in a gap no upper band reaches goes to the chip below', (
+      tester,
+    ) async {
+      final picked = <String>[];
+      await tester.pumpWidget(
+        roomy(
+          SizedBox(
+            width: 260,
+            child: Wrap(
+              spacing: 8,
+              runSpacing: 8,
+              children: [
+                for (final name in ['Squat', 'Bench', 'Romanian deadlift'])
+                  FsChip(
+                    label: name,
+                    selected: false,
+                    onTap: () => picked.add(name),
+                  ),
+              ],
+            ),
+          ),
+        ),
+      );
+
+      final left = tester.getRect(find.widgetWithText(FsChip, 'Squat'));
+      final right = tester.getRect(find.widgetWithText(FsChip, 'Bench'));
+      final lower = tester.getRect(
+        find.widgetWithText(FsChip, 'Romanian deadlift'),
+      );
+      expect(right.top, left.top, reason: 'Squat and Bench share a row');
+      expect(lower.top, greaterThan(left.bottom), reason: 'two rows');
+      expect(lower.height, lessThan(40), reason: 'one line, with a band');
+      expect(left.width, greaterThan(48), reason: 'no band past its ends');
+      final gapX = (left.right + right.left) / 2;
+      expect(lower.left, lessThan(gapX), reason: 'the lower chip spans it');
+
+      // In the gap between the upper chips, just below them.
+      await tester.tapAt(Offset(gapX, left.bottom + 1));
+      expect(picked, ['Romanian deadlift']);
+    });
+
     testWidgets('a screen reader hears which unit is in force', (tester) async {
       final handle = tester.ensureSemantics();
       await tester.pumpWidget(

@@ -315,6 +315,22 @@ void main() {
     ]);
   });
 
+  // lb ends the row, so the half of its band past the letters lies in the
+  // card's 16 dp padding, outside the row itself.
+  testWidgets('lb answers a thumb 8 dp past its letters', (tester) async {
+    final patches = <Map<String, dynamic>>[];
+    await _pump(tester, patches: patches);
+    await tester.scrollUntilVisible(find.byKey(const Key('unit.lb')), 200);
+    await tester.pumpAndSettle();
+
+    final lb = tester.getRect(find.byKey(const Key('unit.lb')));
+    await tester.tapAt(lb.centerRight + const Offset(8, 0));
+    await tester.pumpAndSettle();
+    expect(patches, [
+      {'weightUnit': 'lb'},
+    ]);
+  });
+
   testWidgets('offers no language row', (tester) async {
     await _pump(tester, patches: []);
 

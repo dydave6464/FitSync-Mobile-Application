@@ -593,64 +593,71 @@ class FsStatField extends StatelessWidget {
         borderRadius: BorderRadius.circular(FsRadius.sm),
         border: Border.all(color: accent ? t.accentLine : t.line),
       ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          FsEyebrow(label),
-          // The room above the row is the label's, which takes no taps, so
-          // a thumb landing just over the switch still finds it.
-          FsTapRoom(
-            child: Row(
-              crossAxisAlignment: CrossAxisAlignment.baseline,
-              textBaseline: TextBaseline.alphabetic,
-              children: [
-                Expanded(
-                  child: TextField(
-                    key: fieldKey,
-                    controller: controller,
-                    keyboardType: const TextInputType.numberWithOptions(
-                      decimal: true,
-                    ),
-                    inputFormatters: [
-                      TextInputFormatter.withFunction(
-                        (previous, next) =>
-                            _measurement.hasMatch(next.text) ? next : previous,
+      // The card's 14 dp of padding past the switch is the rest of lb's band;
+      // it lies outside the Column, so the room is taken here.
+      child: FsTapRoom(
+        reach: 0,
+        endReach: 14,
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            FsEyebrow(label),
+            // The room above the row is the label's, which takes no taps, so
+            // a thumb landing just over the switch still finds it.
+            FsTapRoom(
+              child: Row(
+                crossAxisAlignment: CrossAxisAlignment.baseline,
+                textBaseline: TextBaseline.alphabetic,
+                children: [
+                  Expanded(
+                    child: TextField(
+                      key: fieldKey,
+                      controller: controller,
+                      keyboardType: const TextInputType.numberWithOptions(
+                        decimal: true,
                       ),
-                    ],
-                    style: TextStyle(
-                      fontFamily: fsMonoFamily,
-                      fontSize: 22,
-                      fontWeight: FontWeight.w600,
-                      letterSpacing: -0.22,
-                      color: accent ? t.accentText : t.text,
-                    ),
-                    cursorColor: t.accent,
-                    decoration: InputDecoration(
-                      isDense: true,
-                      border: InputBorder.none,
-                      enabledBorder: InputBorder.none,
-                      focusedBorder: InputBorder.none,
-                      contentPadding: EdgeInsets.zero,
-                      hintText: '--',
-                      hintStyle: TextStyle(
+                      inputFormatters: [
+                        TextInputFormatter.withFunction(
+                          (previous, next) => _measurement.hasMatch(next.text)
+                              ? next
+                              : previous,
+                        ),
+                      ],
+                      style: TextStyle(
                         fontFamily: fsMonoFamily,
                         fontSize: 22,
                         fontWeight: FontWeight.w600,
-                        color: t.text3,
+                        letterSpacing: -0.22,
+                        color: accent ? t.accentText : t.text,
+                      ),
+                      cursorColor: t.accent,
+                      decoration: InputDecoration(
+                        isDense: true,
+                        border: InputBorder.none,
+                        enabledBorder: InputBorder.none,
+                        focusedBorder: InputBorder.none,
+                        contentPadding: EdgeInsets.zero,
+                        hintText: '--',
+                        hintStyle: TextStyle(
+                          fontFamily: fsMonoFamily,
+                          fontSize: 22,
+                          fontWeight: FontWeight.w600,
+                          color: t.text3,
+                        ),
                       ),
                     ),
                   ),
-                ),
-                const SizedBox(width: 4),
-                if (unitControl case final control?)
-                  _NoReachBack(child: control)
-                else
-                  Text(unit, style: TextStyle(fontSize: 11, color: t.text3)),
-              ],
+                  const SizedBox(width: 4),
+                  if (unitControl case final control?)
+                    _NoReachBack(child: control)
+                  else
+                    Text(unit, style: TextStyle(fontSize: 11, color: t.text3)),
+                ],
+              ),
             ),
-          ),
-        ],
+          ],
+        ),
       ),
     );
   }
@@ -661,7 +668,8 @@ class FsStatField extends StatelessWidget {
 /// A Row asks its last child first, so a control's band grown to the left
 /// would take the right-hand end of the field beside it: in a stat card a
 /// tap meant for the number would flip the unit. Above, below and past its
-/// far end the band answers as before.
+/// far end the band answers as before. The cost is that the near unit, kg,
+/// falls short of 48 dp wide: the number sits right beside it.
 class _NoReachBack extends SingleChildRenderObjectWidget {
   const _NoReachBack({required Widget super.child});
 
@@ -1035,7 +1043,9 @@ class FsUnitToggle extends StatelessWidget {
     // The band for taps is the whole switch's, 48 dp tall: one around each
     // unit alone could not reach past this row's own few pixels of height.
     // A tap above or below a unit is that unit; one off either end is the
-    // unit at that end. Wide enough for two 48 dp targets and the slash
+    // unit at that end, as far as the parent has room for it. At the end of
+    // a row that room is the parent's own, so the row goes in an [FsTapRoom]
+    // with an endReach. Wide enough for two 48 dp targets and the slash
     // between them, with room for the slash to grow at large text.
     return _TapReach(
       minSize: const Size(2 * _minTapTarget + 16, _minTapTarget),
@@ -1096,8 +1106,9 @@ const double _minTapTarget = 48;
 /// on its own padded targets.
 ///
 /// The band reaches only as far as the parent's own box: a tap outside that
-/// never gets here. Between the rows of a Wrap and beside a neighbour it is
-/// the full 48 dp; at a Wrap's or Row's outer edge the parent cuts it off,
+/// never gets here. It is the full 48 dp only where no other chip's band
+/// overlaps it; a gap shared with another chip is split at its middle, as
+/// below. At a Wrap's or Row's outer edge the parent cuts it off,
 /// which in a single row is the whole band above and below. Such a row goes
 /// in an [FsTapRoom], or gives each chip a sized box of its own, as the
 /// check-in and the library's muscle buttons do.
@@ -1247,8 +1258,11 @@ class _RenderTapReach extends RenderProxyBox {
     final ownDistance = _distance(own, point);
     bool owns(RenderBox sibling) {
       if (sibling is! _RenderTapReach) return false;
-      final rect = (sibling.parentData! as BoxParentData).offset & sibling.size;
-      return _distance(rect, point) < ownDistance;
+      // Nearer by box is not enough: a sibling whose band stops short of the
+      // point would take it from this one and then not answer it.
+      final o = (sibling.parentData! as BoxParentData).offset;
+      return sibling._reach.shift(o).contains(point) &&
+          _distance(o & sibling.size, point) < ownDistance;
     }
 
     for (var s = data.previousSibling; s != null; s = _previous(s)) {
@@ -1317,41 +1331,66 @@ class _RenderTapReach extends RenderProxyBox {
 ///
 /// The default [reach] suits normal chips. A row of small ones (26 dp) needs
 /// `reach: 11`, and 11 dp of the parent's room above and below, to reach 48.
+///
+/// [endReach] does the same past the row's far end, for a control that ends
+/// it: a tap there lands on the row's last few pixels. The ancestor that
+/// holds the room must pass the tap down, so this goes around the box the
+/// padding is inside, not around a row the padding sits outside.
 class FsTapRoom extends SingleChildRenderObjectWidget {
-  const FsTapRoom({super.key, required Widget super.child, this.reach = 8});
+  const FsTapRoom({
+    super.key,
+    required Widget super.child,
+    this.reach = 8,
+    this.endReach = 0,
+  });
 
   /// How far past the top and bottom edges a tap still counts. 8 dp takes a
   /// 32 dp row of normal chips to 48; a 26 dp row of small chips needs 11.
   final double reach;
 
+  /// How far past the trailing edge a tap still counts: the padding a card
+  /// leaves after its last control.
+  final double endReach;
+
   @override
-  RenderProxyBox createRenderObject(BuildContext context) =>
-      _RenderTapRoom(reach);
+  RenderProxyBox createRenderObject(BuildContext context) => _RenderTapRoom(
+    reach,
+    endReach,
+    Directionality.maybeOf(context) ?? TextDirection.ltr,
+  );
 
   @override
   void updateRenderObject(BuildContext context, RenderProxyBox renderObject) {
-    (renderObject as _RenderTapRoom).reach = reach;
+    (renderObject as _RenderTapRoom)
+      ..reach = reach
+      ..endReach = endReach
+      ..textDirection = Directionality.maybeOf(context) ?? TextDirection.ltr;
   }
 }
 
 class _RenderTapRoom extends RenderProxyBox {
-  _RenderTapRoom(this.reach);
+  _RenderTapRoom(this.reach, this.endReach, this.textDirection);
 
   double reach;
+  double endReach;
+  TextDirection textDirection;
 
   @override
   bool hitTest(BoxHitTestResult result, {required Offset position}) {
     if (super.hitTest(result, position: position)) return true;
     final row = child;
+    final rtl = textDirection == TextDirection.rtl;
+    final left = rtl ? -endReach : 0.0;
+    final right = size.width + (rtl ? 0 : endReach);
     if (row == null ||
-        position.dx < 0 ||
-        position.dx > size.width ||
+        position.dx < left ||
+        position.dx > right ||
         position.dy < -reach ||
         position.dy > size.height + reach) {
       return false;
     }
     final onto = Offset(
-      position.dx,
+      position.dx.clamp(0.5, math.max(0.5, size.width - 0.5)),
       position.dy.clamp(0.5, math.max(0.5, size.height - 0.5)),
     );
     final hit = result.addWithRawTransform(

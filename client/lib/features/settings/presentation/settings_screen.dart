@@ -271,26 +271,32 @@ class _SettingsList extends ConsumerWidget {
         const SizedBox(height: 10),
         FsCard(
           padding: const EdgeInsets.symmetric(horizontal: 16),
-          child: Column(
-            children: [
-              _SettingsRow(
-                icon: Icons.monitor_weight_outlined,
-                label: 'Weight unit',
-                trailing: FsUnitToggle(
-                  value: profile.weightUnit,
-                  onChanged: (unit) => ref.read(profileProvider.notifier).patch(
-                    {'weightUnit': unit.api},
+          // The card's 16 dp past the kg/lb switch is the rest of lb's band.
+          // It lies outside the rows, so the room is taken around them.
+          child: FsTapRoom(
+            reach: 0,
+            endReach: 16,
+            child: Column(
+              children: [
+                _SettingsRow(
+                  icon: Icons.monitor_weight_outlined,
+                  label: 'Weight unit',
+                  trailing: FsUnitToggle(
+                    value: profile.weightUnit,
+                    onChanged: (unit) => ref
+                        .read(profileProvider.notifier)
+                        .patch({'weightUnit': unit.api}),
                   ),
                 ),
-              ),
-              _SettingsRow(
-                rowKey: const Key('notifications'),
-                icon: Icons.notifications_outlined,
-                label: 'Notifications & reminders',
-                onTap: () => _open(context, const RemindersScreen()),
-                last: true,
-              ),
-            ],
+                _SettingsRow(
+                  rowKey: const Key('notifications'),
+                  icon: Icons.notifications_outlined,
+                  label: 'Notifications & reminders',
+                  onTap: () => _open(context, const RemindersScreen()),
+                  last: true,
+                ),
+              ],
+            ),
           ),
         ),
         const SizedBox(height: 22),
