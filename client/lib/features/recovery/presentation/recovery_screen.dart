@@ -83,9 +83,10 @@ class _RecoveryView extends StatelessWidget {
                   t: t,
                 ),
               const SizedBox(height: 14),
+              // The inputs are named on the next card down, so this line
+              // keeps only the warning.
               Text(
-                'An estimate from your check-ins, training load and past '
-                'injuries — not a medical diagnosis.',
+                'An estimate, not a medical diagnosis.',
                 style: TextStyle(fontSize: 12, color: t.text2, height: 1.4),
               ),
             ],

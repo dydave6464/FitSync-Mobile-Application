@@ -5,12 +5,11 @@ import '../../../../core/widgets/fs_kit.dart';
 import '../../domain/recovery.dart';
 
 /// "How to read this": what the injury-risk estimate is, what each level
-/// means, what moves it, how it is worked out, and what it is not.
+/// means, what moves it, and what it is not.
 ///
 /// Written for the capstone teacher's request for an interpretation of the
-/// estimate, and honest about the model: it was trained on simulated data
-/// built from published risk factors, not on real outcomes, so the sheet
-/// claims no more for it than that.
+/// estimate. How the score is computed (the rules, and the model trained on
+/// simulated data) is left out: a user acts on the level, not the mechanism.
 Future<void> showHowToReadSheet(BuildContext context) {
   return showModalBottomSheet<void>(
     context: context,
@@ -120,30 +119,6 @@ class _HowToReadSheet extends StatelessWidget {
                       'with, so training load adds nothing. After that, your '
                       'usual week is the average of the weeks you have '
                       'trained before this one, up to three.',
-                      t: t,
-                    ),
-                    _Heading("How it's worked out", t: t),
-                    // The rules come first because they set the level on
-                    // almost every day today (the model raised it on about
-                    // 0.07% of the cross-validated days); the model is
-                    // described as what it is, trained on simulated data,
-                    // never as the engine.
-                    _Paragraph(
-                      'A set of safety rules and a machine-learning model (a '
-                      'random forest, built with scikit-learn) both score '
-                      'your inputs, and the higher score counts, so the '
-                      'estimate is never lower than the rules say. Today the '
-                      'rules set the level on almost every day; the model '
-                      'can only raise it. The rules score it alone when the '
-                      'model is unavailable.',
-                      t: t,
-                    ),
-                    _Paragraph(
-                      'The model was trained on simulated data built from '
-                      'published injury risk factors, not on real FitSync '
-                      'check-ins, so it is not yet more accurate than the '
-                      'rules. It will be retrained on real check-in outcomes '
-                      'as they come in.',
                       t: t,
                     ),
                     _Heading('What it is not', t: t),

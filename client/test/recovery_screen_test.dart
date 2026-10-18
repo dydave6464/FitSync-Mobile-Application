@@ -308,10 +308,9 @@ void main() {
     tester,
   ) async {
     // Removed on 2026-09-24, and brought back as one line on 2026-10-18 when
-    // the card began to explain the estimate.
-    const disclaimer =
-        'An estimate from your check-ins, training load and past injuries '
-        '— not a medical diagnosis.';
+    // the card began to explain the estimate. It no longer lists the inputs:
+    // "What feeds this score", the next card down, names them.
+    const disclaimer = 'An estimate, not a medical diagnosis.';
     await _pump(tester, _withToday(_todays()));
     expect(find.text(disclaimer), findsOneWidget);
 
@@ -501,34 +500,19 @@ void main() {
           matching: find.byType(Scrollable),
         ),
       );
-      expect(
-        find.descendant(
-          of: sheet,
-          matching: find.textContaining('simulated data'),
-        ),
-        findsOneWidget,
-      );
-      // Both score the inputs, the higher counts, and today the rules set
-      // the level on almost every day. The rules come first: the model is not the
-      // main engine.
+      // How the score is computed -- the rules, the model and its simulated
+      // training data -- was removed on 2026-10-18: a user reads the levels
+      // and what moves them, not the mechanism.
       final how = tester
           .widgetList<Text>(
             find.descendant(of: sheet, matching: find.byType(Text)),
           )
           .map((t) => t.data ?? '')
           .join(' ');
-      expect(how, contains('the higher score counts'));
-      expect(how, contains('the rules set the level on almost every day'));
-      expect(how, contains('the model can only raise it'));
-      expect(how, contains('retrained on real check-in outcomes'));
-      final worked = how.substring(how.indexOf("How it's worked out"));
-      expect(worked, contains('safety rules'));
-      expect(
-        worked.indexOf('safety rules'),
-        lessThan(worked.indexOf('model')),
-        reason: 'the rules are introduced before the model',
-      );
-      expect(how, isNot(contains('gives the estimate')));
+      expect(how, isNot(contains("How it's worked out")));
+      expect(how, isNot(contains('safety rules')));
+      expect(how, isNot(contains('random forest')));
+      expect(how, isNot(contains('simulated data')));
       // The usual week is averaged over the weeks a user has trained in, up
       // to three, so a newcomer's early weeks no longer read high.
       expect(
