@@ -10,6 +10,17 @@ import '../../../exercises/presentation/exercise_list_screen.dart'
     show describeError;
 import '../../domain/recovery.dart';
 import '../providers.dart';
+import '../../../../core/api_exception.dart';
+import '../../../../core/manila_day.dart';
+import '../../../nutrition/presentation/error_snack_bar.dart'
+    show showErrorSnackBar;
+import '../../../plans/presentation/start_workout_sheet.dart'
+    show lookUpPendingOutcome;
+import '../../../profile/presentation/providers.dart'
+    show injuryOptionsProvider;
+import '../../../sessions/domain/session_outcome.dart';
+import '../../../sessions/presentation/providers.dart'
+    show pendingOutcomeProvider, sessionRepositoryProvider;
 
 /// One question's ENUM column, its on-screen label and its options, every
 /// scale worst first. They used to run in mixed directions -- sleep from poor
@@ -51,7 +62,37 @@ String _displayLabel(String value) {
   return spaced[0].toUpperCase() + spaced.substring(1);
 }
 
-/// The morning check-in sheet: four questions, four chip rows, one save.
+/// Shown once the sheet has closed, when the check-in saved but the pain
+/// answer did not. The workout stays pending, so the question comes back.
+const painNotSavedMessage =
+    "Couldn't save the pain answer. We'll ask again next time.";
+
+const _weekdays = [
+  'Monday',
+  'Tuesday',
+  'Wednesday',
+  'Thursday',
+  'Friday',
+  'Saturday',
+  'Sunday',
+];
+
+/// The pain row's heading for a workout on [sessionDate], seen on [today],
+/// both `YYYY-MM-DD` in Manila. The server only asks about a workout 1-7 days
+/// back, so a weekday name is never ambiguous -- except exactly a week ago,
+/// which shares today's name, so it says "last". Parsed as UTC dates so a
+/// daylight-saving change in the phone's own zone cannot shift a day.
+String painRowHeading(String sessionDate, String today) {
+  DateTime day(String ymd) => DateTime.parse('${ymd}T00:00:00Z');
+  final session = day(sessionDate);
+  final daysAgo = day(today).difference(session).inDays;
+  if (daysAgo == 1) return "After yesterday's workout";
+  final name = _weekdays[session.weekday - 1];
+  return daysAgo == 7 ? "After last $name's workout" : "After $name's workout";
+}
+
+/// The morning check-in sheet: four questions, four chip rows, one save --
+/// plus an optional pain question when a workout is waiting for one.
 ///
 /// Pass [existing] when the user already answered today and is revisiting --
 /// Update then opens on what was actually answered. A new check-in opens with
@@ -99,31 +140,122 @@ class _CheckinSheetState extends ConsumerState<_CheckinSheet> {
   /// in the missing columns.
   bool get _complete => _questions.every((q) => _answers.containsKey(q.field));
 
+  /// The workout the pain row asks about, once [lookUpPendingOutcome] has
+  /// answered; null hides the row. Held here rather than watched: the save
+  /// refreshes pendingOutcomeProvider, and the row must not vanish under the
+  /// user mid-save or after a failed check-in.
+  PendingOutcome? _pending;
+
+  /// Optional, and nothing starts selected -- outcome_sheet.dart's reason: a
+  /// default "none" would record "nothing hurt" for anyone tapping through.
+  String? _painLevel;
+  int? _injuryId;
+
+  /// Set once this sheet has stored the pain answer, so a retry after a
+  /// failed check-in does not post it a second time.
+  bool _painSaved = false;
+
+  bool get _hasPain => _painLevel != null && _painLevel != 'none';
+
+  /// The pain row never blocks Save on its own -- only a pain level still
+  /// waiting for its region does.
+  bool get _painReady => !_hasPain || _injuryId != null;
+
+  @override
+  void initState() {
+    super.initState();
+    // After the first frame: the lookup may refresh pendingOutcomeProvider,
+    // and a provider may not be modified while the tree is building.
+    WidgetsBinding.instance.addPostFrameCallback((_) async {
+      if (!mounted) return;
+      final pending = await lookUpPendingOutcome(context);
+      if (mounted && pending != null) setState(() => _pending = pending);
+    });
+  }
+
+  void _pickPain(String level) {
+    if (_busy || _painSaved) return;
+    setState(() {
+      if (_painLevel == level) {
+        // Tapping the chosen answer again takes the optional question back.
+        _painLevel = null;
+        _injuryId = null;
+      } else {
+        _painLevel = level;
+        // A region belongs to pain; keeping it through "none" would let a
+        // later severity tap resubmit a region nobody re-confirmed.
+        if (level == 'none') _injuryId = null;
+      }
+    });
+  }
+
+  void _pickRegion(int injuryId) {
+    if (_busy || _painSaved) return;
+    setState(() => _injuryId = injuryId);
+  }
+
+  /// Posts the pain answer when one was given and this sheet has not stored
+  /// it yet. Answers whether it failed. A 409 is not a failure: an earlier
+  /// tap, or the start-workout sheet, already stored an answer for this
+  /// workout.
+  Future<bool> _savePain(ProviderContainer container) async {
+    final pending = _pending;
+    final level = _painLevel;
+    if (pending == null || level == null || _painSaved) return false;
+    try {
+      await container
+          .read(sessionRepositoryProvider)
+          .recordOutcome(
+            pending.sessionId,
+            painLevel: level,
+            injuryId: _hasPain ? _injuryId : null,
+          );
+    } on ApiException catch (error) {
+      if (error.code != 'OUTCOME_EXISTS') return true;
+    } catch (_) {
+      return true;
+    }
+    _painSaved = true;
+    // The start-workout sheet answers from this provider's settled value, so
+    // a stored answer must replace it or that sheet asks about this workout
+    // again.
+    container.refresh(pendingOutcomeProvider);
+    return false;
+  }
+
   bool _busy = false;
   String? _failure;
 
   Future<void> _save() async {
     if (_busy) return;
-    // Captured before the await for the same reason as generator_screen's
+    // Captured before the awaits for the same reason as generator_screen's
     // _generate and session_logger_screen's _addToPlan: nothing sets
     // isDismissible: false or blocks the back gesture here, so the sheet can
-    // be swiped away while checkIn is still in flight. ref.invalidate would
-    // throw against a disposed State -- the container outlives the widget,
-    // so the refresh still lands even when the sheet is already gone, which
-    // is what should happen: the check-in really did save.
+    // be swiped away while a request is still in flight. ref would throw
+    // against a disposed State -- the container outlives the widget, so the
+    // refresh still lands even when the sheet is already gone, which is what
+    // should happen: the check-in really did save. The messenger is the
+    // screen's underneath, which is where a message must show once the sheet
+    // has closed.
     final container = ProviderScope.containerOf(context, listen: false);
+    final messenger = ScaffoldMessenger.maybeOf(context);
     setState(() {
       _busy = true;
       _failure = null;
     });
 
+    // First, so the estimate the check-in triggers already counts this pain.
+    final painNotSaved = await _savePain(container);
+
     try {
       // Sent exactly as stored in _answers -- see the class comment on
       // _questions for why nothing here may reshape these strings.
-      await ref.read(recoveryRepositoryProvider).checkIn(_answers);
+      await container.read(recoveryRepositoryProvider).checkIn(_answers);
       container.invalidate(recoveryOverviewProvider);
-      if (!mounted) return;
-      Navigator.of(context).pop();
+      if (mounted) Navigator.of(context).pop();
+      if (painNotSaved && messenger != null) {
+        showErrorSnackBar(messenger, painNotSavedMessage);
+      }
     } catch (error) {
       if (!mounted) return;
       setState(() {
@@ -161,8 +293,11 @@ class _CheckinSheetState extends ConsumerState<_CheckinSheet> {
             ),
             const SizedBox(height: 6),
             Text(
-              "Four quick questions. Your answers feed today's injury-risk "
-              'estimate.',
+              _pending == null
+                  ? "Four quick questions. Your answers feed today's "
+                        'injury-risk estimate.'
+                  : 'Four quick questions, plus one about your last workout. '
+                        "Your answers feed today's injury-risk estimate.",
               style: TextStyle(fontSize: 13, color: t.text2, height: 1.4),
             ),
             const SizedBox(height: 16),
@@ -205,6 +340,7 @@ class _CheckinSheetState extends ConsumerState<_CheckinSheet> {
               ),
               const SizedBox(height: 8),
             ],
+            if (_pending case final pending?) ..._painRow(pending, t),
             if (_failure != null) ...[
               Text(_failure!, style: TextStyle(fontSize: 12, color: t.red)),
               const SizedBox(height: 12),
@@ -213,13 +349,18 @@ class _CheckinSheetState extends ConsumerState<_CheckinSheet> {
               key: const Key('checkin.save'),
               label: 'Save',
               busy: _busy,
-              onPressed: _busy || !_complete ? null : _save,
+              onPressed: _busy || !_complete || !_painReady ? null : _save,
             ),
-            if (!_complete) ...[
+            if (!_complete || !_painReady) ...[
               const SizedBox(height: 8),
               Center(
                 child: Text(
-                  'Answer all four to save.',
+                  !_complete
+                      ? 'Answer all four to save.'
+                      : 'Pick where it hurts, or tap '
+                            '${_displayLabel(_painLevel!)} again to skip this '
+                            'question.',
+                  key: const Key('checkin.hint'),
                   textAlign: TextAlign.center,
                   style: TextStyle(fontSize: 12, color: t.text2),
                 ),
@@ -229,6 +370,120 @@ class _CheckinSheetState extends ConsumerState<_CheckinSheet> {
         ),
       ),
     );
+  }
+
+  /// The optional pain question: a heading naming the workout's day, the
+  /// four levels, and -- once there is pain -- where.
+  List<Widget> _painRow(PendingOutcome pending, FsTokens t) {
+    final label = TextStyle(
+      fontSize: 13.5,
+      fontWeight: FontWeight.w600,
+      color: t.text,
+    );
+    return [
+      const SizedBox(height: 4),
+      Divider(color: t.line2, height: 1),
+      const SizedBox(height: 14),
+      Text.rich(
+        key: const Key('checkin.painHeading'),
+        TextSpan(
+          children: [
+            TextSpan(
+              text: painRowHeading(
+                pending.sessionDate,
+                manilaDayOf(DateTime.now()),
+              ),
+              style: TextStyle(
+                fontSize: 12,
+                fontWeight: FontWeight.w600,
+                color: t.text2,
+              ),
+            ),
+            TextSpan(
+              text: ' · optional',
+              style: TextStyle(fontSize: 12, color: t.text3),
+            ),
+          ],
+        ),
+      ),
+      const SizedBox(height: 8),
+      Text('Any pain since?', style: label),
+      const SizedBox(height: 2),
+      Wrap(
+        spacing: 8,
+        children: [
+          for (final level in painLevels)
+            _AnswerTarget(
+              key: Key('checkin.pain.$level.target'),
+              label: 'Any pain since: ${_displayLabel(level)}',
+              selected: _painLevel == level,
+              onTap: () => _pickPain(level),
+              child: FsChip(
+                key: Key('checkin.pain.$level'),
+                label: _displayLabel(level),
+                selected: _painLevel == level,
+                onTap: () => _pickPain(level),
+              ),
+            ),
+        ],
+      ),
+      if (_hasPain) ...[
+        const SizedBox(height: 8),
+        Text('Where?', style: label),
+        const SizedBox(height: 2),
+        ref
+            .watch(injuryOptionsProvider)
+            .when(
+              data: (options) => Wrap(
+                spacing: 8,
+                children: [
+                  for (final option in options)
+                    _AnswerTarget(
+                      key: Key('checkin.region.${option.injuryId}.target'),
+                      label: 'Where: ${option.name}',
+                      selected: _injuryId == option.injuryId,
+                      onTap: () => _pickRegion(option.injuryId),
+                      child: FsChip(
+                        key: Key('checkin.region.${option.injuryId}'),
+                        label: option.name,
+                        selected: _injuryId == option.injuryId,
+                        onTap: () => _pickRegion(option.injuryId),
+                      ),
+                    ),
+                ],
+              ),
+              loading: () => const Padding(
+                padding: EdgeInsets.symmetric(vertical: 8),
+                child: SizedBox(
+                  width: 18,
+                  height: 18,
+                  child: CircularProgressIndicator(strokeWidth: 2),
+                ),
+              ),
+              // The provider is not autoDispose, so without a retry the
+              // error would stay cached until the app restarts. Tapping the
+              // pain level again still frees Save meanwhile.
+              error: (_, _) => Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    "Couldn't load body regions.",
+                    style: TextStyle(fontSize: 12, color: t.red),
+                  ),
+                  const SizedBox(height: 4),
+                  FsButton(
+                    key: const Key('checkin.regions.retry'),
+                    label: 'Retry',
+                    small: true,
+                    kind: FsButtonKind.secondary,
+                    onPressed: () => ref.invalidate(injuryOptionsProvider),
+                  ),
+                ],
+              ),
+            ),
+      ],
+      const SizedBox(height: 8),
+    ];
   }
 }
 
