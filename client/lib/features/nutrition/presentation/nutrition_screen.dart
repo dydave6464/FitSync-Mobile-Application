@@ -5,9 +5,11 @@ import '../../../core/manila_day.dart';
 import '../../../core/theme.dart';
 import '../../exercises/presentation/exercise_list_screen.dart' show describeError;
 import '../domain/nutrition.dart';
+import 'error_snack_bar.dart';
 import 'log_food_screen.dart';
 import 'providers.dart';
 import 'widgets/fatsecret_attribution.dart';
+import 'widgets/log_food_sheet.dart';
 import 'widgets/meal_section.dart';
 import 'widgets/nutrition_summary_card.dart';
 
@@ -27,9 +29,57 @@ class NutritionScreen extends ConsumerWidget {
 
   final VoidCallback? onGoToProfile;
 
-  void _openLog(BuildContext context, String mealType) => Navigator.of(context).push(
-    MaterialPageRoute<void>(builder: (_) => LogFoodScreen(mealType: mealType)),
+  void _openLog(BuildContext context, WidgetRef ref, String mealType) => Navigator.of(context).push(
+    MaterialPageRoute<void>(builder: (_) => LogFoodScreen(
+      mealType: mealType,
+      onLogged: (entry, date) => _offerChange(context, ref, entry, date),
+    )),
   );
+
+  /// The one way a logged food is changed, from its row or from "Added …
+  /// · Change". [context] is this screen's: still mounted and under the
+  /// app's Navigator after Log food has closed. [date] is the entry's own
+  /// day, which may no longer be the one on screen.
+  Future<void> _change(BuildContext context, WidgetRef ref, FoodEntry entry, String? date) async {
+    final choice = await showLogFoodSheet(context, entry.asFood(),
+        mealType: entry.mealType, servings: entry.servings, changing: true);
+    if (choice == null || !context.mounted) return;
+    final messenger = ScaffoldMessenger.of(context);
+    try {
+      await ref.read(nutritionDayProvider.notifier)
+          .change(entry, mealType: choice.mealType, servings: choice.servings, edited: choice.edited, date: date);
+    } catch (_) {
+      showErrorSnackBar(messenger, "Couldn't save — try again.");
+    }
+  }
+
+  /// Says where a just-logged food went, with a way to change it: the meal
+  /// is picked before the food, and is easy to get wrong.
+  void _offerChange(BuildContext context, WidgetRef ref, FoodEntry entry, String date) {
+    if (!context.mounted) return;
+    final messenger = ScaffoldMessenger.of(context);
+    // As with "Removed …": replace, not queue, and wait for a screen reader.
+    messenger.hideCurrentSnackBar();
+    messenger.showSnackBar(SnackBar(
+      duration: const Duration(seconds: 4),
+      persist: MediaQuery.accessibleNavigationOf(context),
+      content: Text('Added ${entry.name} to ${mealLabel(entry.mealType).toLowerCase()}'),
+      action: SnackBarAction(
+        label: 'Change',
+        onPressed: () {
+          if (!context.mounted) return;
+          // The entry as it is now: with a screen reader this stays up, and
+          // the food may have been changed from its row or removed since.
+          // On another day there is nothing newer to go by.
+          final shown = ref.read(nutritionDayProvider).value;
+          final current = shown?.date == date
+              ? shown!.entries.where((e) => e.id == entry.id).firstOrNull
+              : entry;
+          if (current != null) _change(context, ref, current, date);
+        },
+      ),
+    ));
+  }
 
   Future<void> _delete(BuildContext context, WidgetRef ref, FoodEntry entry) async {
     final messenger = ScaffoldMessenger.of(context);
@@ -42,7 +92,7 @@ class NutritionScreen extends ConsumerWidget {
     try {
       await controller.remove(entry);
     } catch (_) {
-      messenger.showSnackBar(const SnackBar(content: Text("Couldn't remove — try again.")));
+      showErrorSnackBar(messenger, "Couldn't remove — try again.");
       return;
     }
     // Replacing, not queueing behind, an earlier removal's message: with a
@@ -58,9 +108,13 @@ class NutritionScreen extends ConsumerWidget {
       content: Text('Removed ${entry.name}'),
       action: SnackBarAction(
         label: 'Undo',
-        onPressed: () => controller
-            .log(entry.asFood(), mealType: entry.mealType, servings: entry.servings, date: date)
-            .catchError((_) => messenger.showSnackBar(const SnackBar(content: Text("Couldn't save — try again.")))),
+        onPressed: () async {
+          try {
+            await controller.log(entry.asFood(), mealType: entry.mealType, servings: entry.servings, date: date);
+          } catch (_) {
+            showErrorSnackBar(messenger, "Couldn't save — try again.");
+          }
+        },
       ),
     ));
   }
@@ -122,8 +176,9 @@ class NutritionScreen extends ConsumerWidget {
             entries: day.meals[m]!,
             enabled: !busy,
             suggested: day.date == today && m == suggested,
-            onAdd: () => _openLog(context, m),
+            onAdd: () => _openLog(context, ref, m),
             onDelete: (e) => _delete(context, ref, e),
+            onChange: (e) => _change(context, ref, e, day.date),
           ),
         if (day.hasFatsecret) const FatsecretAttribution(),
       ],

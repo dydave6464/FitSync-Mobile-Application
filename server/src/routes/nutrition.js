@@ -6,7 +6,7 @@ const { manilaDay } = require('../lib/manila-day');
 const { dailyTarget } = require('../lib/nutrition-target');
 const { findFood, upsertFatsecretFood } = require('../db/foods');
 const {
-  MEALS, insertEntry, getEntry, deleteEntry, listDayEntries, targetProfile,
+  MEALS, insertEntry, getEntry, getStoredEntry, updateEntry, deleteEntry, listDayEntries, targetProfile,
 } = require('../db/nutrition');
 
 const MAX_SERVINGS = 20;
@@ -79,6 +79,20 @@ function checkManual(food) {
   const sugarG = optional(food, 'sugarG', MAX_GRAMS, round2);
   const sodiumMg = optional(food, 'sodiumMg', MAX_SODIUM_MG, round1);
   return { name, servingDesc, kcal, fiberG, sugarG, sodiumMg, ...grams };
+}
+
+/// Per-serving numbers [base] times [servings], rounded the one way every
+/// stored entry is: kcal whole, grams to 2 places, sodium to 1; null stays null.
+function scaled(base, servings) {
+  return {
+    kcal: Math.round(base.kcal * servings),
+    proteinG: round2(base.proteinG * servings),
+    carbsG: round2(base.carbsG * servings),
+    fatG: round2(base.fatG * servings),
+    fiberG: base.fiberG == null ? null : round2(base.fiberG * servings),
+    sugarG: base.sugarG == null ? null : round2(base.sugarG * servings),
+    sodiumMg: base.sodiumMg == null ? null : round1(base.sodiumMg * servings),
+  };
 }
 
 function totalsOf(entries) {
@@ -163,16 +177,60 @@ module.exports = function buildNutritionRouter(deps) {
       const id = await insertEntry(pool, req.user.userId, {
         date, mealType: b.mealType, servings,
         foodId: base.foodId, customName: base.customName, servingDesc: base.servingDesc,
-        kcal: Math.round(base.kcal * servings),
-        proteinG: round2(base.proteinG * servings),
-        carbsG: round2(base.carbsG * servings),
-        fatG: round2(base.fatG * servings),
-        fiberG: base.fiberG == null ? null : round2(base.fiberG * servings),
-        sugarG: base.sugarG == null ? null : round2(base.sugarG * servings),
-        sodiumMg: base.sodiumMg == null ? null : round1(base.sodiumMg * servings),
+        ...scaled(base, servings),
         loggedVia,
       });
       res.status(201).json({ data: { entry: await getEntry(pool, req.user.userId, id) } });
+    } catch (err) { next(err); }
+  });
+
+  router.patch('/entries/:id', auth, async (req, res, next) => {
+    try {
+      const b = req.body || {};
+      if (!MEALS.includes(b.mealType)) throw invalid('mealType', `mealType must be one of: ${MEALS.join(', ')}.`);
+      const servings = checkServings(b.servings);
+      let manual = null;
+      if (b.food !== undefined) {
+        // Only the user's own numbers: swapping in another catalogue or
+        // FatSecret food is a delete and a fresh log, not an edit.
+        if (b.food === null || typeof b.food !== 'object' || b.food.source !== 'manual') {
+          throw invalid('food', "food.source must be 'manual'.");
+        }
+        manual = checkManual(b.food);
+      }
+
+      const id = Number(req.params.id);
+      const stored = Number.isInteger(id) && id > 0 ? await getStoredEntry(pool, req.user.userId, id) : null;
+      if (!stored) throw AppError.notFound('ENTRY_NOT_FOUND', 'No such entry.');
+
+      let food; // { foodId, customName, servingDesc, loggedVia } and the multiplied numbers
+      if (manual) {
+        food = {
+          foodId: null, customName: manual.name, servingDesc: manual.servingDesc, loggedVia: 'manual',
+          ...scaled(manual, servings),
+        };
+      } else if (servings === stored.servings) {
+        // Untouched: a guard, so a later change that rounds per serving
+        // can't alter what was logged.
+        food = stored;
+      } else {
+        // From the entry's own numbers, never the foods row: a later
+        // correction to the food list must not rewrite history.
+        const n = stored.servings;
+        const perServing = {
+          kcal: stored.kcal / n, proteinG: stored.proteinG / n, carbsG: stored.carbsG / n, fatG: stored.fatG / n,
+          fiberG: stored.fiberG == null ? null : stored.fiberG / n,
+          sugarG: stored.sugarG == null ? null : stored.sugarG / n,
+          sodiumMg: stored.sodiumMg == null ? null : stored.sodiumMg / n,
+        };
+        food = { ...stored, ...scaled(perServing, servings) };
+      }
+
+      await updateEntry(pool, req.user.userId, id, { ...food, mealType: b.mealType, servings });
+      // Deleted between the read above and the write: nothing to answer with.
+      const entry = await getEntry(pool, req.user.userId, id);
+      if (!entry) throw AppError.notFound('ENTRY_NOT_FOUND', 'No such entry.');
+      res.json({ data: { entry } });
     } catch (err) { next(err); }
   });
 

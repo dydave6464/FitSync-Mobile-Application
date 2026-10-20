@@ -18,20 +18,28 @@ class LogChoice {
   final Food? edited;
 }
 
-Future<LogChoice?> showLogFoodSheet(BuildContext context, Food food, {required String mealType}) =>
+/// With [changing], the sheet edits a logged food: it opens on the entry's
+/// meal and [servings], its button says "Save changes", and saving with
+/// nothing changed returns null, as closing does.
+Future<LogChoice?> showLogFoodSheet(BuildContext context, Food food,
+        {required String mealType, double servings = 1, bool changing = false}) =>
     showModalBottomSheet<LogChoice>(
       context: context,
       isScrollControlled: true,
-      builder: (_) => LogFoodSheet(food: food, mealType: mealType),
+      builder: (_) => LogFoodSheet(food: food, mealType: mealType, servings: servings, changing: changing),
     );
 
 String _g(double v) => v == v.roundToDouble() ? v.toStringAsFixed(0) : v.toStringAsFixed(1);
 
 class LogFoodSheet extends StatefulWidget {
-  const LogFoodSheet({super.key, required this.food, required this.mealType});
+  const LogFoodSheet({super.key, required this.food, required this.mealType, this.servings = 1, this.changing = false});
 
   final Food food;
   final String mealType;
+  final double servings;
+
+  /// Editing a logged food rather than logging a new one.
+  final bool changing;
 
   @override
   State<LogFoodSheet> createState() => _LogFoodSheetState();
@@ -39,7 +47,7 @@ class LogFoodSheet extends StatefulWidget {
 
 class _LogFoodSheetState extends State<LogFoodSheet> {
   late String _meal = widget.mealType;
-  double _servings = 1;
+  late double _servings = widget.servings;
 
   /// "Edit numbers" is hidden until asked for: most people log a food as
   /// listed, and four boxes on every log would be noise.
@@ -214,9 +222,12 @@ class _LogFoodSheetState extends State<LogFoodSheet> {
             const SizedBox(height: 16),
             FsButton(
               key: const Key('logSheet.log'),
-              label: 'Log',
+              label: widget.changing ? 'Save changes' : 'Log',
               onPressed: !canLog
                   ? null
+                  // Nothing to save: close as if dismissed, so no request goes.
+                  : widget.changing && !changed && _meal == widget.mealType && _servings == widget.servings
+                  ? () => Navigator.of(context).pop()
                   : () => Navigator.of(context).pop(LogChoice(
                         mealType: _meal,
                         servings: _servings,

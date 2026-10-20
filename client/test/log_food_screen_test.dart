@@ -367,6 +367,28 @@ void main() {
     expect(find.byKey(const Key('logSheet.log')), findsNothing);
   });
 
+  // With a screen reader, "Added … · Change" stays up until dismissed, and
+  // the messenger is the app's, so it is still up here; queued behind it,
+  // the error would never show.
+  testWidgets('the load error shows over a message that stays up for a screen reader', (tester) async {
+    tester.platformDispatcher.accessibilityFeaturesTestValue =
+        const FakeAccessibilityFeatures(accessibleNavigation: true);
+    addTearDown(tester.platformDispatcher.clearAccessibilityFeaturesTestValue);
+    final repo = _SearchRepo()..failFatsecret = true;
+    await _pump(tester, repo);
+    tester.state<ScaffoldMessengerState>(find.byType(ScaffoldMessenger)).showSnackBar(SnackBar(
+      persist: true,
+      content: const Text('Added Rice to dinner'),
+      action: SnackBarAction(label: 'Change', onPressed: () {}),
+    ));
+    await tester.pumpAndSettle();
+    await searchAdobo(tester);
+    await tester.tap(find.text('Adobo Flakes'));
+    await tester.pumpAndSettle();
+    expect(find.text("Couldn't load this food. Try again."), findsOneWidget);
+    expect(find.text('Added Rice to dinner'), findsNothing);
+  });
+
   testWidgets('loading a FatSecret food shows a bar without moving the list', (tester) async {
     final repo = _GatedRepo();
     await _pump(tester, repo);

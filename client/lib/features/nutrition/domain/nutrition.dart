@@ -331,6 +331,11 @@ class NutritionDay {
   NutritionDay without(int entryId) => _withMeals({
     for (final m in mealTypes) m: [for (final e in meals[m]!) if (e.id != entryId) e],
   });
+
+  /// [entry] in place of the one with its id, where that one stood.
+  NutritionDay replacing(FoodEntry entry) => _withMeals({
+    for (final m in mealTypes) m: [for (final e in meals[m]!) e.id == entry.id ? entry : e],
+  });
 }
 
 class FoodSearchResult {

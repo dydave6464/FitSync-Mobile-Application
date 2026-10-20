@@ -30,6 +30,22 @@ class NutritionRepository {
     return FoodEntry.fromJson(data['entry'] as Map<String, dynamic>);
   }
 
+  /// Moves or resizes an entry on its own day. [food] goes only when the
+  /// user changed the numbers: then the entry becomes their own (manual).
+  Future<FoodEntry> updateEntry({
+    required int id,
+    required String mealType,
+    required double servings,
+    Food? food,
+  }) async {
+    final data = await _api.patchJson('/api/v1/nutrition/entries/$id', {
+      'mealType': mealType,
+      'servings': servings,
+      if (food != null) 'food': food.toRef(),
+    });
+    return FoodEntry.fromJson(data['entry'] as Map<String, dynamic>);
+  }
+
   Future<void> deleteEntry(int id) async {
     await _api.deleteJson('/api/v1/nutrition/entries/$id');
   }

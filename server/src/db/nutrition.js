@@ -57,6 +57,38 @@ async function getEntry(pool, userId, id) {
   return rows.length ? asEntry(rows[0]) : null;
 }
 
+/// The entry exactly as stored (numbers already multiplied by its servings),
+/// for an edit to rescale from. Null when it is missing or not this user's.
+async function getStoredEntry(pool, userId, id) {
+  const [rows] = await pool.query(
+    `SELECT food_id, custom_name, serving_desc, logged_via, servings,
+            calories, protein_g, carbs_g, fat_g, fiber_g, sugar_g, sodium_mg
+       FROM meal_logs WHERE user_id = ? AND meal_log_id = ?`,
+    [userId, id],
+  );
+  if (!rows.length) return null;
+  const r = rows[0];
+  const num = (n) => (n == null ? null : Number(n));
+  return {
+    foodId: r.food_id, customName: r.custom_name, servingDesc: r.serving_desc, loggedVia: r.logged_via,
+    servings: Number(r.servings), kcal: r.calories,
+    proteinG: num(r.protein_g), carbsG: num(r.carbs_g), fatG: num(r.fat_g),
+    fiberG: num(r.fiber_g), sugarG: num(r.sugar_g), sodiumMg: num(r.sodium_mg),
+  };
+}
+
+/// [e]: insertEntry's fields minus date -- an entry never changes day.
+async function updateEntry(pool, userId, id, e) {
+  await pool.query(
+    `UPDATE meal_logs SET food_id = ?, custom_name = ?, serving_desc = ?, meal_type = ?, servings = ?,
+                          calories = ?, protein_g = ?, carbs_g = ?, fat_g = ?, fiber_g = ?, sugar_g = ?,
+                          sodium_mg = ?, logged_via = ?
+      WHERE user_id = ? AND meal_log_id = ?`,
+    [e.foodId, e.customName, e.servingDesc, e.mealType, e.servings,
+      e.kcal, e.proteinG, e.carbsG, e.fatG, e.fiberG, e.sugarG, e.sodiumMg, e.loggedVia, userId, id],
+  );
+}
+
 async function deleteEntry(pool, userId, id) {
   const [res] = await pool.query('DELETE FROM meal_logs WHERE user_id = ? AND meal_log_id = ?', [userId, id]);
   return res.affectedRows === 1;
@@ -137,5 +169,5 @@ async function listRecentFoods(pool, userId, limit = 20) {
 }
 
 module.exports = {
-  MEALS, insertEntry, getEntry, deleteEntry, listDayEntries, targetProfile, listRecentFoods,
+  MEALS, insertEntry, getEntry, getStoredEntry, updateEntry, deleteEntry, listDayEntries, targetProfile, listRecentFoods,
 };
