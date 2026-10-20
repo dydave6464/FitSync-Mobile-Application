@@ -8,6 +8,8 @@ const { listRecentFoods } = require('../db/nutrition');
 const MIN_Q = 2;
 const MAX_Q = 60;
 const LIMIT = 20;
+// FitSync's own foods per search; FatSecret's stay at LIMIT.
+const OWN_LIMIT = 30;
 const MAX_EXTERNAL_ID = 64;
 // The whole FatSecret search (token + request) gets this long before the
 // response goes out with FitSync's own foods alone.
@@ -17,7 +19,7 @@ function own(f) {
   return {
     id: f.foodId, source: 'local', externalId: null, name: f.name, servingDesc: f.servingDesc,
     kcal: f.kcal, proteinG: f.proteinG, carbsG: f.carbsG, fatG: f.fatG, fiberG: f.fiberG ?? null,
-    sugarG: f.sugarG ?? null, sodiumMg: f.sodiumMg ?? null,
+    sugarG: f.sugarG ?? null, sodiumMg: f.sodiumMg ?? null, group: f.group ?? null,
   };
 }
 
@@ -25,7 +27,7 @@ function fromFatsecret(f) {
   return {
     id: null, source: 'fatsecret', externalId: f.externalId, name: f.name, servingDesc: f.servingDesc,
     kcal: f.kcal, proteinG: f.proteinG, carbsG: f.carbsG, fatG: f.fatG, fiberG: f.fiberG ?? null,
-    sugarG: f.sugarG ?? null, sodiumMg: f.sodiumMg ?? null,
+    sugarG: f.sugarG ?? null, sodiumMg: f.sodiumMg ?? null, group: null,
   };
 }
 
@@ -69,7 +71,7 @@ module.exports = function buildFoodsRouter(deps) {
         throw AppError.badRequest('INVALID_FOOD_QUERY', `q must be ${MIN_Q} to ${MAX_Q} characters.`);
       }
       const [mine, theirs] = await Promise.all([
-        searchOwnFoods(deps.pool, q, LIMIT), searchFatsecret(deps.fatsecret, q, deps.logger),
+        searchOwnFoods(deps.pool, q, OWN_LIMIT), searchFatsecret(deps.fatsecret, q, deps.logger),
       ]);
       res.json({
         data: {
