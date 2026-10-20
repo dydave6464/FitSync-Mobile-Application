@@ -168,8 +168,26 @@ class _CheckinSheetState extends ConsumerState<_CheckinSheet> {
     // and a provider may not be modified while the tree is building.
     WidgetsBinding.instance.addPostFrameCallback((_) async {
       if (!mounted) return;
-      final pending = await lookUpPendingOutcome(context);
-      if (mounted && pending != null) setState(() => _pending = pending);
+      // Captured before the awaits: the sheet can be swiped away meanwhile.
+      final container = ProviderScope.containerOf(context, listen: false);
+      var pending = await lookUpPendingOutcome(context);
+      if (pending == null) {
+        // The cached answer can be stale: after DayRollover invalidates the
+        // provider the next read is yesterday's settled null, still
+        // refreshing, so the first check-in of the morning would miss the
+        // workout that just became askable. Wait for the fresh lookup too;
+        // a failure or a slow answer just leaves the row hidden.
+        try {
+          pending = await container
+              .read(pendingOutcomeProvider.future)
+              .timeout(const Duration(seconds: 3));
+        } catch (_) {
+          pending = null;
+        }
+      }
+      if (mounted && !_busy && _pending == null && pending != null) {
+        setState(() => _pending = pending);
+      }
     });
   }
 
@@ -215,7 +233,11 @@ class _CheckinSheetState extends ConsumerState<_CheckinSheet> {
     } catch (_) {
       return true;
     }
-    _painSaved = true;
+    if (mounted) {
+      setState(() => _painSaved = true);
+    } else {
+      _painSaved = true;
+    }
     // The start-workout sheet answers from this provider's settled value, so
     // a stored answer must replace it or that sheet asks about this workout
     // again.
@@ -407,6 +429,24 @@ class _CheckinSheetState extends ConsumerState<_CheckinSheet> {
         ),
       ),
       const SizedBox(height: 8),
+      // Once stored, the answer cannot change from here, so the chips go
+      // rather than sit there looking tappable while ignoring taps.
+      if (_painSaved) ...[
+        Text(
+          'Pain answer saved.',
+          style: TextStyle(fontSize: 13, color: t.text2),
+        ),
+        const SizedBox(height: 8),
+      ] else
+        ..._painQuestion(label),
+    ];
+  }
+
+  /// The pain row's question itself: the four levels and -- once there is
+  /// pain -- where.
+  List<Widget> _painQuestion(TextStyle label) {
+    final t = context.fs;
+    return [
       Text('Any pain since?', style: label),
       const SizedBox(height: 2),
       Wrap(
@@ -474,7 +514,6 @@ class _CheckinSheetState extends ConsumerState<_CheckinSheet> {
                   FsButton(
                     key: const Key('checkin.regions.retry'),
                     label: 'Retry',
-                    small: true,
                     kind: FsButtonKind.secondary,
                     onPressed: () => ref.invalidate(injuryOptionsProvider),
                   ),

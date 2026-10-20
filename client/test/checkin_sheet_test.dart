@@ -126,6 +126,8 @@ Future<_FakeRepo> _open(
   List<String>? log,
   VoidCallback? onPendingLookup,
   int regionsFailures = 0,
+  Future<PendingOutcome?> Function()? pendingLookup,
+  Future<void> Function(ProviderContainer container)? beforeOpen,
 }) async {
   final repo = _FakeRepo(log)..error = error;
   var regionsCalls = 0;
@@ -138,6 +140,7 @@ Future<_FakeRepo> _open(
         ),
         pendingOutcomeProvider.overrideWith((ref) async {
           onPendingLookup?.call();
+          if (pendingLookup != null) return pendingLookup();
           return pending;
         }),
         injuryOptionsProvider.overrideWith((ref) async {
@@ -160,6 +163,12 @@ Future<_FakeRepo> _open(
       ),
     ),
   );
+  if (beforeOpen != null) {
+    await beforeOpen(
+      ProviderScope.containerOf(tester.element(find.text('open'))),
+    );
+    await tester.pump();
+  }
   await tester.tap(find.text('open'));
   await tester.pumpAndSettle();
   return repo;
@@ -519,6 +528,61 @@ void main() {
       );
     });
 
+    testWidgets('no pain row while the lookup is still loading', (
+      tester,
+    ) async {
+      final never = Completer<PendingOutcome?>();
+      final repo = await _open(tester, pendingLookup: () => never.future);
+
+      expect(find.text('Any pain since?'), findsNothing);
+      expect(
+        find.text(
+          "Four quick questions. Your answers feed today's injury-risk "
+          'estimate.',
+        ),
+        findsOneWidget,
+      );
+      // Lets the lookup's time limits run out, so no timer outlives the test.
+      await tester.pump(const Duration(seconds: 7));
+      expect(find.text('Any pain since?'), findsNothing);
+
+      await _answerAll(tester);
+      await _tapKey(tester, 'checkin.save');
+      expect(repo.sent, isNotNull);
+    });
+
+    testWidgets('no pain row when the lookup fails', (tester) async {
+      final repo = await _open(
+        tester,
+        pendingLookup: () async => throw Exception('offline'),
+      );
+
+      expect(find.text('Any pain since?'), findsNothing);
+      await _answerAll(tester);
+      await _tapKey(tester, 'checkin.save');
+      expect(repo.sent, isNotNull);
+    });
+
+    testWidgets('a workout that became askable overnight gets its row', (
+      tester,
+    ) async {
+      PendingOutcome? answer;
+      await _open(
+        tester,
+        pendingLookup: () async => answer,
+        beforeOpen: (container) async {
+          // Yesterday's settled answer: nothing to ask about.
+          expect(await container.read(pendingOutcomeProvider.future), isNull);
+          // Past midnight the workout is askable, and DayRollover
+          // invalidates the cached answer.
+          answer = _pending;
+          container.invalidate(pendingOutcomeProvider);
+        },
+      );
+
+      expect(find.text('Any pain since?'), findsOneWidget);
+    });
+
     testWidgets('a pending workout adds an optional row with nothing chosen', (
       tester,
     ) async {
@@ -638,7 +702,15 @@ void main() {
       final log = <String>[];
       final sessions = _FakeSessions(log)
         ..error = const ApiException('OUTCOME_EXISTS', 'x');
-      await _open(tester, pending: _pending, sessions: sessions, log: log);
+      var lookups = 0;
+      await _open(
+        tester,
+        pending: _pending,
+        sessions: sessions,
+        log: log,
+        onPendingLookup: () => lookups++,
+      );
+      expect(lookups, 1);
 
       await _answerAll(tester);
       await _tapKey(tester, 'checkin.pain.none');
@@ -647,6 +719,7 @@ void main() {
       expect(log, ['outcome', 'checkin']);
       expect(find.text('Morning check-in'), findsNothing);
       expect(find.text(painNotSavedMessage), findsNothing);
+      expect(lookups, 2, reason: 'a 409 counts as saved and refreshes');
     });
 
     testWidgets('a failed pain answer still saves the check-in, then says so', (
@@ -684,6 +757,12 @@ void main() {
       expect(log, ['outcome', 'checkin']);
       expect(find.text('Morning check-in'), findsOneWidget);
 
+      // The stored answer cannot change from here, so no dead chips stay.
+      expect(find.text("After Monday's workout · optional"), findsOneWidget);
+      expect(find.text('Pain answer saved.'), findsOneWidget);
+      expect(find.text('Any pain since?'), findsNothing);
+      expect(find.byKey(const Key('checkin.pain.none')), findsNothing);
+
       repo.error = null;
       await _tapKey(tester, 'checkin.save');
 
@@ -698,6 +777,10 @@ void main() {
 
       await _tapKey(tester, 'checkin.pain.mild');
       expect(find.text("Couldn't load body regions."), findsOneWidget);
+      expect(
+        tester.getSize(find.byKey(const Key('checkin.regions.retry'))).height,
+        greaterThanOrEqualTo(48),
+      );
 
       await _tapKey(tester, 'checkin.regions.retry');
       expect(find.byKey(const Key('checkin.region.13')), findsOneWidget);
