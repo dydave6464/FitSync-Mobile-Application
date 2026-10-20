@@ -15,6 +15,8 @@ import '../../profile/domain/profile.dart';
 import '../../profile/presentation/providers.dart';
 import '../../reminders/data/reminder_prompt_store.dart';
 import '../../reminders/data/reminder_scheduler.dart';
+import '../../reminders/presentation/providers.dart'
+    show reminderRepositoryProvider, reminderSettingsProvider;
 import 'generating_view.dart';
 import 'onboarding_scaffold.dart';
 import 'steps/about_step.dart';
@@ -51,6 +53,15 @@ class _OnboardingFlowState extends ConsumerState<OnboardingFlow> {
   /// step's Continue into "Try again": the reminder question was answered on
   /// the way in, so the build is the only thing left to repeat.
   bool _buildFailed = false;
+
+  /// The last step's two switches. Both start on; either can be switched off
+  /// there, or later in Settings.
+  bool _remindHabits = true;
+  bool _remindCheckin = true;
+
+  /// With both off there is nothing to remind about, so the last step's
+  /// Continue neither asks for permission nor saves anything.
+  bool get _anyReminder => _remindHabits || _remindCheckin;
 
   /// Whether the profile and injury writes have landed. Drives the first tick
   /// on the generating screen, which is why it is a separate flag from [_busy]
@@ -319,15 +330,38 @@ class _OnboardingFlowState extends ConsumerState<OnboardingFlow> {
 
   /// The last step's Continue: unlike every earlier step, this one has
   /// something to do before `_continue()` -- show the system permission
-  /// prompt. `_continue()` still runs afterwards either way, since declining
-  /// is not the same as Not now; only the button pressed decides that.
+  /// prompt, then save the step's two switches. `_continue()` still runs
+  /// afterwards either way, since declining is not the same as Not now; only
+  /// the button pressed decides that.
   Future<void> _turnOnReminders() async {
     await ref.read(reminderSchedulerProvider).requestPermission();
     // The system prompt this just awaited can outlive the flow -- the app
     // backgrounding, or the shell tearing this screen down -- so nothing
     // below may touch ref once it is gone.
     if (!mounted) return;
+    _saveReminderChoices();
     await _continue();
+  }
+
+  /// Saves the last step's switches. Fired and forgotten, like the reminder
+  /// prompt flag in _save: a slow or failing write must never hold up the
+  /// plan the user is here for. One that never lands leaves the server's
+  /// defaults, which Settings shows truthfully.
+  void _saveReminderChoices() {
+    final container = ProviderScope.containerOf(context, listen: false);
+    unawaited(
+      ref
+          .read(reminderRepositoryProvider)
+          .patch({
+            'habitsEnabled': _remindHabits,
+            'checkinEnabled': _remindCheckin,
+          })
+          // Anything already holding the settings reads them afresh.
+          .then<void>((_) => container.invalidate(reminderSettingsProvider))
+          .catchError((Object error) {
+            debugPrint('Reminder choices not saved: $error');
+          }),
+    );
   }
 
   void _advance() => setState(() {
@@ -369,7 +403,12 @@ class _OnboardingFlowState extends ConsumerState<OnboardingFlow> {
       value: _health,
       onChanged: (value) => setState(() => _health = value),
     ),
-    _ => const RemindersStep(),
+    _ => RemindersStep(
+      habits: _remindHabits,
+      checkin: _remindCheckin,
+      onHabitsChanged: (value) => setState(() => _remindHabits = value),
+      onCheckinChanged: (value) => setState(() => _remindCheckin = value),
+    ),
   };
 
   @override
@@ -435,11 +474,15 @@ class _OnboardingFlowState extends ConsumerState<OnboardingFlow> {
             busy: _busy,
             continueLabel: retrying
                 ? 'Try again'
-                : (onLastStep ? 'Turn on reminders' : 'Continue'),
+                : (onLastStep && _anyReminder
+                      ? 'Turn on reminders'
+                      : 'Continue'),
             // The health step has no Skip, so Continue waits for a valid answer.
             onContinue: onHealthStep && !_health.isValid
                 ? null
-                : (onLastStep && !retrying ? _turnOnReminders : _continue),
+                : (onLastStep && !retrying && _anyReminder
+                      ? _turnOnReminders
+                      : _continue),
             // The last step has no header Skip -- "Not now" is its own button
             // under Continue instead (see secondaryLabel below). The health
             // step also has no Skip: there is no innocuous answer to advance
