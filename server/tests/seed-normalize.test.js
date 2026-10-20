@@ -123,6 +123,24 @@ test('an upstream name that does not say what the exercise is gets corrected', (
   );
 });
 
+test('five garbled or labelled upstream names are corrected', () => {
+  const { NAME_OVERRIDES, correctName } = require('../src/db/seeds/normalize');
+
+  // '(female)' names the model in the animation, not the exercise; the sled
+  // names carry a garbled degree sign upstream ("45в°").
+  const renames = [
+    ['2327', 'dumbbell reverse grip row (female)', 'dumbbell reverse grip row'],
+    ['0738', 'sled 45в° calf press', 'sled 45° calf press'],
+    ['0739', 'sled 45в° leg press', 'sled 45° leg press'],
+    ['1464', 'sled 45в° leg press (back pov)', 'sled 45° leg press (back pov)'],
+    ['0740', 'sled 45в° leg wide press', 'sled 45° leg wide press'],
+  ];
+  for (const [sourceId, upstream, fixed] of renames) {
+    assert.equal(NAME_OVERRIDES.get(sourceId), fixed, sourceId);
+    assert.equal(correctName({ source_id: sourceId, name: upstream }), fixed, sourceId);
+  }
+});
+
 test('an exercise with no name override keeps its upstream name', () => {
   const { correctName } = require('../src/db/seeds/normalize');
   assert.equal(correctName({ source_id: '2368', name: 'split squats' }), 'split squats');

@@ -27,9 +27,11 @@ function dayNamesFor(splitStyle) {
   return (SPLIT_DAY_NAMES[splitStyle] || SPLIT_DAY_NAMES.full_body).slice();
 }
 
-// The ML service names exercises; plan_exercises needs ids, and the column is
-// NOT NULL with a foreign key. Everything here exists to bridge that gap
-// safely — see the spec, section 6.
+// The ML service sends the exerciseId of the row it chose, and that id is
+// preferred. Names are the fallback: the stub generator and an older ML
+// service send names only, and plan_exercises needs ids (NOT NULL, with a
+// foreign key). resolveExerciseIds bridges that gap safely — see the spec,
+// section 6, and the exercise-curation design, part 3.
 async function resolveExerciseIds(pool, names) {
   const map = new Map();
   if (names.length === 0) return map;
@@ -61,9 +63,30 @@ async function resolveExerciseIds(pool, names) {
   return map;
 }
 
+// The ids among [exercises] that name a live exercise. An id that does not
+// (an old catalogue, a row since taken down) is ignored here, and its
+// exercise falls back to its name.
+async function liveExerciseIds(pool, exercises) {
+  const ids = exercises
+    .map((e) => e.exerciseId)
+    .filter((id) => Number.isInteger(id) && id > 0);
+  if (ids.length === 0) return new Set();
+  const [rows] = await pool.query(
+    "SELECT exercise_id FROM exercises WHERE status = 'live' AND exercise_id IN (?)",
+    [ids],
+  );
+  return new Set(rows.map((r) => r.exercise_id));
+}
+
 async function savePlan(pool, userId, plan) {
-  const names = plan.exercises.map((e) => e.name);
+  const live = await liveExerciseIds(pool, plan.exercises);
+  const byId = (ex) => (live.has(ex.exerciseId) ? ex.exerciseId : undefined);
+
+  // By id first: a duplicate name would otherwise save the lowest same-name
+  // row rather than the one the generator chose.
+  const names = plan.exercises.filter((ex) => byId(ex) === undefined).map((ex) => ex.name);
   const resolved = await resolveExerciseIds(pool, names);
+  const idFor = (ex) => byId(ex) ?? resolved.get(ex.name);
 
   const unresolved = names.filter((n) => !resolved.has(n));
   if (unresolved.length > 0) {
@@ -97,7 +120,7 @@ async function savePlan(pool, userId, plan) {
          VALUES (?, ?, ?, ?, ?, ?)`,
         // A generator that sends no dayNo is a one-day plan, which is what
         // every plan was before migration 013.
-        [result.insertId, resolved.get(ex.name), ex.dayNo || 1, ex.orderNo, ex.targetSets, ex.targetReps],
+        [result.insertId, idFor(ex), ex.dayNo || 1, ex.orderNo, ex.targetSets, ex.targetReps],
       );
     }
     await conn.commit();

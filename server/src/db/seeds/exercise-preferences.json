@@ -1,0 +1,8192 @@
+[
+ {
+  "sourceId": "0001",
+  "exerciseId": 1,
+  "name": "3/4 sit-up",
+  "priority": "search_only",
+  "beginnerFriendly": false
+ },
+ {
+  "sourceId": "0002",
+  "exerciseId": 2,
+  "name": "45° side bend",
+  "priority": "search_only",
+  "beginnerFriendly": false
+ },
+ {
+  "sourceId": "0003",
+  "exerciseId": 3,
+  "name": "air bike",
+  "priority": "alternative",
+  "beginnerFriendly": true
+ },
+ {
+  "sourceId": "0006",
+  "exerciseId": 5,
+  "name": "alternate heel touchers",
+  "priority": "alternative",
+  "beginnerFriendly": true
+ },
+ {
+  "sourceId": "0007",
+  "exerciseId": 6,
+  "name": "alternate lateral pulldown",
+  "priority": "search_only",
+  "beginnerFriendly": false
+ },
+ {
+  "sourceId": "3293",
+  "exerciseId": 8,
+  "name": "archer pull up",
+  "priority": "search_only",
+  "beginnerFriendly": false
+ },
+ {
+  "sourceId": "3294",
+  "exerciseId": 9,
+  "name": "archer push up",
+  "priority": "alternative",
+  "beginnerFriendly": false
+ },
+ {
+  "sourceId": "2355",
+  "exerciseId": 10,
+  "name": "arm slingers hanging bent knee legs",
+  "priority": "search_only",
+  "beginnerFriendly": false
+ },
+ {
+  "sourceId": "2333",
+  "exerciseId": 11,
+  "name": "arm slingers hanging straight legs",
+  "priority": "search_only",
+  "beginnerFriendly": false
+ },
+ {
+  "sourceId": "3204",
+  "exerciseId": 13,
+  "name": "arms overhead full sit-up (male)",
+  "priority": "search_only",
+  "beginnerFriendly": false
+ },
+ {
+  "sourceId": "0009",
+  "exerciseId": 14,
+  "name": "assisted chest dip (kneeling)",
+  "priority": "alternative",
+  "beginnerFriendly": true
+ },
+ {
+  "sourceId": "0014",
+  "exerciseId": 22,
+  "name": "assisted motion russian twist",
+  "priority": "search_only",
+  "beginnerFriendly": false
+ },
+ {
+  "sourceId": "0015",
+  "exerciseId": 23,
+  "name": "assisted parallel close grip pull-up",
+  "priority": "alternative",
+  "beginnerFriendly": true
+ },
+ {
+  "sourceId": "0017",
+  "exerciseId": 27,
+  "name": "assisted pull-up",
+  "priority": "first",
+  "beginnerFriendly": true
+ },
+ {
+  "sourceId": "1431",
+  "exerciseId": 31,
+  "name": "assisted standing chin-up",
+  "priority": "search_only",
+  "beginnerFriendly": false
+ },
+ {
+  "sourceId": "1432",
+  "exerciseId": 32,
+  "name": "assisted standing pull-up",
+  "priority": "alternative",
+  "beginnerFriendly": true
+ },
+ {
+  "sourceId": "0019",
+  "exerciseId": 34,
+  "name": "assisted triceps dip (kneeling)",
+  "priority": "alternative",
+  "beginnerFriendly": true
+ },
+ {
+  "sourceId": "2364",
+  "exerciseId": 35,
+  "name": "assisted wide-grip chest dip (kneeling)",
+  "priority": "search_only",
+  "beginnerFriendly": false
+ },
+ {
+  "sourceId": "3672",
+  "exerciseId": 37,
+  "name": "back and forth step",
+  "priority": "first",
+  "beginnerFriendly": true
+ },
+ {
+  "sourceId": "1314",
+  "exerciseId": 38,
+  "name": "back extension on exercise ball",
+  "priority": "alternative",
+  "beginnerFriendly": true
+ },
+ {
+  "sourceId": "1473",
+  "exerciseId": 41,
+  "name": "backward jump",
+  "priority": "never",
+  "beginnerFriendly": false
+ },
+ {
+  "sourceId": "0968",
+  "exerciseId": 43,
+  "name": "band alternating biceps curl",
+  "priority": "first",
+  "beginnerFriendly": true
+ },
+ {
+  "sourceId": "0969",
+  "exerciseId": 44,
+  "name": "band alternating v-up",
+  "priority": "search_only",
+  "beginnerFriendly": false
+ },
+ {
+  "sourceId": "0970",
+  "exerciseId": 45,
+  "name": "band assisted pull-up",
+  "priority": "alternative",
+  "beginnerFriendly": false
+ },
+ {
+  "sourceId": "0971",
+  "exerciseId": 46,
+  "name": "band assisted wheel rollerout",
+  "priority": "search_only",
+  "beginnerFriendly": false
+ },
+ {
+  "sourceId": "1254",
+  "exerciseId": 47,
+  "name": "band bench press",
+  "priority": "first",
+  "beginnerFriendly": true
+ },
+ {
+  "sourceId": "0980",
+  "exerciseId": 48,
+  "name": "band bent-over hip extension",
+  "priority": "search_only",
+  "beginnerFriendly": false
+ },
+ {
+  "sourceId": "0972",
+  "exerciseId": 49,
+  "name": "band bicycle crunch",
+  "priority": "alternative",
+  "beginnerFriendly": false
+ },
+ {
+  "sourceId": "0974",
+  "exerciseId": 50,
+  "name": "band close-grip pulldown",
+  "priority": "first",
+  "beginnerFriendly": true
+ },
+ {
+  "sourceId": "0975",
+  "exerciseId": 51,
+  "name": "band close-grip push-up",
+  "priority": "search_only",
+  "beginnerFriendly": false
+ },
+ {
+  "sourceId": "0976",
+  "exerciseId": 52,
+  "name": "band concentration curl",
+  "priority": "search_only",
+  "beginnerFriendly": false
+ },
+ {
+  "sourceId": "3117",
+  "exerciseId": 53,
+  "name": "band fixed back close grip pulldown",
+  "priority": "alternative",
+  "beginnerFriendly": true
+ },
+ {
+  "sourceId": "3116",
+  "exerciseId": 54,
+  "name": "band fixed back underhand pulldown",
+  "priority": "alternative",
+  "beginnerFriendly": true
+ },
+ {
+  "sourceId": "0977",
+  "exerciseId": 55,
+  "name": "band front lateral raise",
+  "priority": "alternative",
+  "beginnerFriendly": true
+ },
+ {
+  "sourceId": "0978",
+  "exerciseId": 56,
+  "name": "band front raise",
+  "priority": "alternative",
+  "beginnerFriendly": true
+ },
+ {
+  "sourceId": "1408",
+  "exerciseId": 57,
+  "name": "band hip lift",
+  "priority": "alternative",
+  "beginnerFriendly": true
+ },
+ {
+  "sourceId": "0979",
+  "exerciseId": 58,
+  "name": "band horizontal pallof press",
+  "priority": "first",
+  "beginnerFriendly": true
+ },
+ {
+  "sourceId": "0981",
+  "exerciseId": 59,
+  "name": "band jack knife sit-up",
+  "priority": "search_only",
+  "beginnerFriendly": false
+ },
+ {
+  "sourceId": "0983",
+  "exerciseId": 60,
+  "name": "band kneeling one arm pulldown",
+  "priority": "first",
+  "beginnerFriendly": true
+ },
+ {
+  "sourceId": "0985",
+  "exerciseId": 61,
+  "name": "band kneeling twisting crunch",
+  "priority": "alternative",
+  "beginnerFriendly": false
+ },
+ {
+  "sourceId": "0984",
+  "exerciseId": 62,
+  "name": "band lying hip internal rotation",
+  "priority": "search_only",
+  "beginnerFriendly": false
+ },
+ {
+  "sourceId": "1002",
+  "exerciseId": 63,
+  "name": "band lying straight leg raise",
+  "priority": "search_only",
+  "beginnerFriendly": false
+ },
+ {
+  "sourceId": "0986",
+  "exerciseId": 64,
+  "name": "band one arm overhead biceps curl",
+  "priority": "search_only",
+  "beginnerFriendly": false
+ },
+ {
+  "sourceId": "0987",
+  "exerciseId": 65,
+  "name": "band one arm single leg split squat",
+  "priority": "alternative",
+  "beginnerFriendly": false
+ },
+ {
+  "sourceId": "0988",
+  "exerciseId": 66,
+  "name": "band one arm standing low row",
+  "priority": "alternative",
+  "beginnerFriendly": true
+ },
+ {
+  "sourceId": "0989",
+  "exerciseId": 67,
+  "name": "band one arm twisting chest press",
+  "priority": "search_only",
+  "beginnerFriendly": false
+ },
+ {
+  "sourceId": "0990",
+  "exerciseId": 68,
+  "name": "band one arm twisting seated row",
+  "priority": "search_only",
+  "beginnerFriendly": false
+ },
+ {
+  "sourceId": "0991",
+  "exerciseId": 69,
+  "name": "band pull through",
+  "priority": "alternative",
+  "beginnerFriendly": false
+ },
+ {
+  "sourceId": "0992",
+  "exerciseId": 70,
+  "name": "band push sit-up",
+  "priority": "search_only",
+  "beginnerFriendly": false
+ },
+ {
+  "sourceId": "0993",
+  "exerciseId": 71,
+  "name": "band reverse fly",
+  "priority": "alternative",
+  "beginnerFriendly": true
+ },
+ {
+  "sourceId": "0994",
+  "exerciseId": 72,
+  "name": "band reverse wrist curl",
+  "priority": "search_only",
+  "beginnerFriendly": true
+ },
+ {
+  "sourceId": "0996",
+  "exerciseId": 73,
+  "name": "band seated hip internal rotation",
+  "priority": "search_only",
+  "beginnerFriendly": false
+ },
+ {
+  "sourceId": "1011",
+  "exerciseId": 74,
+  "name": "band seated twist",
+  "priority": "search_only",
+  "beginnerFriendly": false
+ },
+ {
+  "sourceId": "0997",
+  "exerciseId": 75,
+  "name": "band shoulder press",
+  "priority": "first",
+  "beginnerFriendly": true
+ },
+ {
+  "sourceId": "1018",
+  "exerciseId": 76,
+  "name": "band shrug",
+  "priority": "first",
+  "beginnerFriendly": true
+ },
+ {
+  "sourceId": "0998",
+  "exerciseId": 77,
+  "name": "band side triceps extension",
+  "priority": "first",
+  "beginnerFriendly": true
+ },
+ {
+  "sourceId": "0999",
+  "exerciseId": 78,
+  "name": "band single leg calf raise",
+  "priority": "alternative",
+  "beginnerFriendly": false
+ },
+ {
+  "sourceId": "1000",
+  "exerciseId": 79,
+  "name": "band single leg reverse calf raise",
+  "priority": "search_only",
+  "beginnerFriendly": false
+ },
+ {
+  "sourceId": "1001",
+  "exerciseId": 80,
+  "name": "band single leg split squat",
+  "priority": "alternative",
+  "beginnerFriendly": false
+ },
+ {
+  "sourceId": "1004",
+  "exerciseId": 81,
+  "name": "band squat",
+  "priority": "first",
+  "beginnerFriendly": true
+ },
+ {
+  "sourceId": "1003",
+  "exerciseId": 82,
+  "name": "band squat row",
+  "priority": "search_only",
+  "beginnerFriendly": false
+ },
+ {
+  "sourceId": "1005",
+  "exerciseId": 83,
+  "name": "band standing crunch",
+  "priority": "first",
+  "beginnerFriendly": true
+ },
+ {
+  "sourceId": "1022",
+  "exerciseId": 84,
+  "name": "band standing rear delt row",
+  "priority": "search_only",
+  "beginnerFriendly": false
+ },
+ {
+  "sourceId": "1007",
+  "exerciseId": 85,
+  "name": "band standing twisting crunch",
+  "priority": "search_only",
+  "beginnerFriendly": false
+ },
+ {
+  "sourceId": "1008",
+  "exerciseId": 86,
+  "name": "band step-up",
+  "priority": "alternative",
+  "beginnerFriendly": true
+ },
+ {
+  "sourceId": "1009",
+  "exerciseId": 87,
+  "name": "band stiff leg deadlift",
+  "priority": "alternative",
+  "beginnerFriendly": false
+ },
+ {
+  "sourceId": "1023",
+  "exerciseId": 88,
+  "name": "band straight back stiff leg deadlift",
+  "priority": "search_only",
+  "beginnerFriendly": false
+ },
+ {
+  "sourceId": "1010",
+  "exerciseId": 89,
+  "name": "band straight leg deadlift",
+  "priority": "first",
+  "beginnerFriendly": true
+ },
+ {
+  "sourceId": "1012",
+  "exerciseId": 90,
+  "name": "band twisting overhead press",
+  "priority": "search_only",
+  "beginnerFriendly": false
+ },
+ {
+  "sourceId": "1369",
+  "exerciseId": 91,
+  "name": "band two legs calf raise - (band under both legs) v. 2",
+  "priority": "first",
+  "beginnerFriendly": true
+ },
+ {
+  "sourceId": "1013",
+  "exerciseId": 92,
+  "name": "band underhand pulldown",
+  "priority": "first",
+  "beginnerFriendly": true
+ },
+ {
+  "sourceId": "1014",
+  "exerciseId": 93,
+  "name": "band v-up",
+  "priority": "search_only",
+  "beginnerFriendly": false
+ },
+ {
+  "sourceId": "1015",
+  "exerciseId": 94,
+  "name": "band vertical pallof press",
+  "priority": "alternative",
+  "beginnerFriendly": true
+ },
+ {
+  "sourceId": "1016",
+  "exerciseId": 95,
+  "name": "band wrist curl",
+  "priority": "first",
+  "beginnerFriendly": true
+ },
+ {
+  "sourceId": "1017",
+  "exerciseId": 96,
+  "name": "band y-raise",
+  "priority": "alternative",
+  "beginnerFriendly": true
+ },
+ {
+  "sourceId": "0023",
+  "exerciseId": 97,
+  "name": "barbell alternate biceps curl",
+  "priority": "search_only",
+  "beginnerFriendly": false
+ },
+ {
+  "sourceId": "0024",
+  "exerciseId": 98,
+  "name": "barbell bench front squat",
+  "priority": "search_only",
+  "beginnerFriendly": false
+ },
+ {
+  "sourceId": "0025",
+  "exerciseId": 99,
+  "name": "barbell bench press",
+  "priority": "alternative",
+  "beginnerFriendly": false
+ },
+ {
+  "sourceId": "0026",
+  "exerciseId": 100,
+  "name": "barbell bench squat",
+  "priority": "search_only",
+  "beginnerFriendly": false
+ },
+ {
+  "sourceId": "1316",
+  "exerciseId": 101,
+  "name": "barbell bent arm pullover",
+  "priority": "search_only",
+  "beginnerFriendly": false
+ },
+ {
+  "sourceId": "0027",
+  "exerciseId": 102,
+  "name": "barbell bent over row",
+  "priority": "search_only",
+  "beginnerFriendly": false
+ },
+ {
+  "sourceId": "2407",
+  "exerciseId": 103,
+  "name": "barbell biceps curl (with arm blaster)",
+  "priority": "search_only",
+  "beginnerFriendly": false
+ },
+ {
+  "sourceId": "0028",
+  "exerciseId": 104,
+  "name": "barbell clean and press",
+  "priority": "never",
+  "beginnerFriendly": false
+ },
+ {
+  "sourceId": "0029",
+  "exerciseId": 105,
+  "name": "barbell clean-grip front squat",
+  "priority": "never",
+  "beginnerFriendly": false
+ },
+ {
+  "sourceId": "0030",
+  "exerciseId": 106,
+  "name": "barbell close-grip bench press",
+  "priority": "search_only",
+  "beginnerFriendly": false
+ },
+ {
+  "sourceId": "0031",
+  "exerciseId": 107,
+  "name": "barbell curl",
+  "priority": "search_only",
+  "beginnerFriendly": false
+ },
+ {
+  "sourceId": "0032",
+  "exerciseId": 108,
+  "name": "barbell deadlift",
+  "priority": "search_only",
+  "beginnerFriendly": false
+ },
+ {
+  "sourceId": "0033",
+  "exerciseId": 109,
+  "name": "barbell decline bench press",
+  "priority": "search_only",
+  "beginnerFriendly": false
+ },
+ {
+  "sourceId": "0034",
+  "exerciseId": 110,
+  "name": "barbell decline bent arm pullover",
+  "priority": "search_only",
+  "beginnerFriendly": false
+ },
+ {
+  "sourceId": "0035",
+  "exerciseId": 111,
+  "name": "barbell decline close grip to skull press",
+  "priority": "search_only",
+  "beginnerFriendly": false
+ },
+ {
+  "sourceId": "1255",
+  "exerciseId": 112,
+  "name": "barbell decline pullover",
+  "priority": "search_only",
+  "beginnerFriendly": false
+ },
+ {
+  "sourceId": "0036",
+  "exerciseId": 113,
+  "name": "barbell decline wide-grip press",
+  "priority": "search_only",
+  "beginnerFriendly": false
+ },
+ {
+  "sourceId": "0037",
+  "exerciseId": 114,
+  "name": "barbell decline wide-grip pullover",
+  "priority": "search_only",
+  "beginnerFriendly": false
+ },
+ {
+  "sourceId": "0038",
+  "exerciseId": 115,
+  "name": "barbell drag curl",
+  "priority": "search_only",
+  "beginnerFriendly": false
+ },
+ {
+  "sourceId": "1370",
+  "exerciseId": 116,
+  "name": "barbell floor calf raise",
+  "priority": "search_only",
+  "beginnerFriendly": false
+ },
+ {
+  "sourceId": "0039",
+  "exerciseId": 117,
+  "name": "barbell front chest squat",
+  "priority": "search_only",
+  "beginnerFriendly": false
+ },
+ {
+  "sourceId": "0041",
+  "exerciseId": 118,
+  "name": "barbell front raise",
+  "priority": "search_only",
+  "beginnerFriendly": false
+ },
+ {
+  "sourceId": "0040",
+  "exerciseId": 119,
+  "name": "barbell front raise and pullover",
+  "priority": "search_only",
+  "beginnerFriendly": false
+ },
+ {
+  "sourceId": "0042",
+  "exerciseId": 120,
+  "name": "barbell front squat",
+  "priority": "search_only",
+  "beginnerFriendly": false
+ },
+ {
+  "sourceId": "0043",
+  "exerciseId": 121,
+  "name": "barbell full squat",
+  "priority": "search_only",
+  "beginnerFriendly": false
+ },
+ {
+  "sourceId": "1461",
+  "exerciseId": 122,
+  "name": "barbell full squat (back pov)",
+  "priority": "search_only",
+  "beginnerFriendly": false
+ },
+ {
+  "sourceId": "1462",
+  "exerciseId": 123,
+  "name": "barbell full squat (side pov)",
+  "priority": "search_only",
+  "beginnerFriendly": false
+ },
+ {
+  "sourceId": "1545",
+  "exerciseId": 124,
+  "name": "barbell full zercher squat",
+  "priority": "never",
+  "beginnerFriendly": false
+ },
+ {
+  "sourceId": "1409",
+  "exerciseId": 125,
+  "name": "barbell glute bridge",
+  "priority": "search_only",
+  "beginnerFriendly": false
+ },
+ {
+  "sourceId": "3562",
+  "exerciseId": 126,
+  "name": "barbell glute bridge two legs on bench (male)",
+  "priority": "search_only",
+  "beginnerFriendly": false
+ },
+ {
+  "sourceId": "0044",
+  "exerciseId": 127,
+  "name": "barbell good morning",
+  "priority": "search_only",
+  "beginnerFriendly": false
+ },
+ {
+  "sourceId": "0045",
+  "exerciseId": 128,
+  "name": "barbell guillotine bench press",
+  "priority": "never",
+  "beginnerFriendly": false
+ },
+ {
+  "sourceId": "0046",
+  "exerciseId": 129,
+  "name": "barbell hack squat",
+  "priority": "search_only",
+  "beginnerFriendly": false
+ },
+ {
+  "sourceId": "1436",
+  "exerciseId": 130,
+  "name": "barbell high bar squat",
+  "priority": "search_only",
+  "beginnerFriendly": false
+ },
+ {
+  "sourceId": "0047",
+  "exerciseId": 131,
+  "name": "barbell incline bench press",
+  "priority": "search_only",
+  "beginnerFriendly": false
+ },
+ {
+  "sourceId": "1719",
+  "exerciseId": 132,
+  "name": "barbell incline close grip bench press",
+  "priority": "search_only",
+  "beginnerFriendly": false
+ },
+ {
+  "sourceId": "0048",
+  "exerciseId": 133,
+  "name": "barbell incline reverse-grip press",
+  "priority": "search_only",
+  "beginnerFriendly": false
+ },
+ {
+  "sourceId": "0049",
+  "exerciseId": 134,
+  "name": "barbell incline row",
+  "priority": "search_only",
+  "beginnerFriendly": false
+ },
+ {
+  "sourceId": "0050",
+  "exerciseId": 135,
+  "name": "barbell incline shoulder raise",
+  "priority": "search_only",
+  "beginnerFriendly": false
+ },
+ {
+  "sourceId": "0051",
+  "exerciseId": 136,
+  "name": "barbell jefferson squat",
+  "priority": "never",
+  "beginnerFriendly": false
+ },
+ {
+  "sourceId": "0052",
+  "exerciseId": 137,
+  "name": "barbell jm bench press",
+  "priority": "search_only",
+  "beginnerFriendly": false
+ },
+ {
+  "sourceId": "0053",
+  "exerciseId": 138,
+  "name": "barbell jump squat",
+  "priority": "never",
+  "beginnerFriendly": false
+ },
+ {
+  "sourceId": "1410",
+  "exerciseId": 139,
+  "name": "barbell lateral lunge",
+  "priority": "search_only",
+  "beginnerFriendly": false
+ },
+ {
+  "sourceId": "1435",
+  "exerciseId": 140,
+  "name": "barbell low bar squat",
+  "priority": "search_only",
+  "beginnerFriendly": false
+ },
+ {
+  "sourceId": "0054",
+  "exerciseId": 141,
+  "name": "barbell lunge",
+  "priority": "search_only",
+  "beginnerFriendly": false
+ },
+ {
+  "sourceId": "1720",
+  "exerciseId": 142,
+  "name": "barbell lying back of the head tricep extension",
+  "priority": "search_only",
+  "beginnerFriendly": false
+ },
+ {
+  "sourceId": "0055",
+  "exerciseId": 143,
+  "name": "barbell lying close-grip press",
+  "priority": "search_only",
+  "beginnerFriendly": false
+ },
+ {
+  "sourceId": "0056",
+  "exerciseId": 144,
+  "name": "barbell lying close-grip triceps extension",
+  "priority": "search_only",
+  "beginnerFriendly": false
+ },
+ {
+  "sourceId": "0057",
+  "exerciseId": 145,
+  "name": "barbell lying extension",
+  "priority": "search_only",
+  "beginnerFriendly": false
+ },
+ {
+  "sourceId": "0058",
+  "exerciseId": 146,
+  "name": "barbell lying lifting (on hip)",
+  "priority": "search_only",
+  "beginnerFriendly": false
+ },
+ {
+  "sourceId": "0059",
+  "exerciseId": 147,
+  "name": "barbell lying preacher curl",
+  "priority": "search_only",
+  "beginnerFriendly": false
+ },
+ {
+  "sourceId": "0061",
+  "exerciseId": 148,
+  "name": "barbell lying triceps extension",
+  "priority": "search_only",
+  "beginnerFriendly": false
+ },
+ {
+  "sourceId": "0060",
+  "exerciseId": 149,
+  "name": "barbell lying triceps extension skull crusher",
+  "priority": "search_only",
+  "beginnerFriendly": false
+ },
+ {
+  "sourceId": "0063",
+  "exerciseId": 150,
+  "name": "barbell narrow stance squat",
+  "priority": "search_only",
+  "beginnerFriendly": false
+ },
+ {
+  "sourceId": "0064",
+  "exerciseId": 151,
+  "name": "barbell one arm bent over row",
+  "priority": "search_only",
+  "beginnerFriendly": false
+ },
+ {
+  "sourceId": "0065",
+  "exerciseId": 152,
+  "name": "barbell one arm floor press",
+  "priority": "search_only",
+  "beginnerFriendly": false
+ },
+ {
+  "sourceId": "0066",
+  "exerciseId": 153,
+  "name": "barbell one arm side deadlift",
+  "priority": "search_only",
+  "beginnerFriendly": false
+ },
+ {
+  "sourceId": "0067",
+  "exerciseId": 154,
+  "name": "barbell one arm snatch",
+  "priority": "never",
+  "beginnerFriendly": false
+ },
+ {
+  "sourceId": "0068",
+  "exerciseId": 155,
+  "name": "barbell one leg squat",
+  "priority": "never",
+  "beginnerFriendly": false
+ },
+ {
+  "sourceId": "0069",
+  "exerciseId": 156,
+  "name": "barbell overhead squat",
+  "priority": "never",
+  "beginnerFriendly": false
+ },
+ {
+  "sourceId": "1411",
+  "exerciseId": 157,
+  "name": "barbell palms down wrist curl over a bench",
+  "priority": "search_only",
+  "beginnerFriendly": false
+ },
+ {
+  "sourceId": "1412",
+  "exerciseId": 158,
+  "name": "barbell palms up wrist curl over a bench",
+  "priority": "search_only",
+  "beginnerFriendly": false
+ },
+ {
+  "sourceId": "3017",
+  "exerciseId": 159,
+  "name": "barbell pendlay row",
+  "priority": "search_only",
+  "beginnerFriendly": false
+ },
+ {
+  "sourceId": "1751",
+  "exerciseId": 160,
+  "name": "barbell pin presses",
+  "priority": "search_only",
+  "beginnerFriendly": false
+ },
+ {
+  "sourceId": "0070",
+  "exerciseId": 161,
+  "name": "barbell preacher curl",
+  "priority": "search_only",
+  "beginnerFriendly": false
+ },
+ {
+  "sourceId": "0071",
+  "exerciseId": 162,
+  "name": "barbell press sit-up",
+  "priority": "search_only",
+  "beginnerFriendly": false
+ },
+ {
+  "sourceId": "0072",
+  "exerciseId": 163,
+  "name": "barbell prone incline curl",
+  "priority": "search_only",
+  "beginnerFriendly": false
+ },
+ {
+  "sourceId": "0073",
+  "exerciseId": 164,
+  "name": "barbell pullover",
+  "priority": "search_only",
+  "beginnerFriendly": false
+ },
+ {
+  "sourceId": "0022",
+  "exerciseId": 165,
+  "name": "barbell pullover to press",
+  "priority": "search_only",
+  "beginnerFriendly": false
+ },
+ {
+  "sourceId": "0074",
+  "exerciseId": 166,
+  "name": "barbell rack pull",
+  "priority": "search_only",
+  "beginnerFriendly": false
+ },
+ {
+  "sourceId": "0075",
+  "exerciseId": 167,
+  "name": "barbell rear delt raise",
+  "priority": "search_only",
+  "beginnerFriendly": false
+ },
+ {
+  "sourceId": "0076",
+  "exerciseId": 168,
+  "name": "barbell rear delt row",
+  "priority": "search_only",
+  "beginnerFriendly": false
+ },
+ {
+  "sourceId": "0078",
+  "exerciseId": 169,
+  "name": "barbell rear lunge",
+  "priority": "search_only",
+  "beginnerFriendly": false
+ },
+ {
+  "sourceId": "0077",
+  "exerciseId": 170,
+  "name": "barbell rear lunge v. 2",
+  "priority": "search_only",
+  "beginnerFriendly": false
+ },
+ {
+  "sourceId": "0079",
+  "exerciseId": 171,
+  "name": "barbell revers wrist curl v. 2",
+  "priority": "search_only",
+  "beginnerFriendly": false
+ },
+ {
+  "sourceId": "2187",
+  "exerciseId": 172,
+  "name": "barbell reverse close-grip bench press",
+  "priority": "search_only",
+  "beginnerFriendly": false
+ },
+ {
+  "sourceId": "0080",
+  "exerciseId": 173,
+  "name": "barbell reverse curl",
+  "priority": "search_only",
+  "beginnerFriendly": false
+ },
+ {
+  "sourceId": "0118",
+  "exerciseId": 174,
+  "name": "barbell reverse grip bent over row",
+  "priority": "search_only",
+  "beginnerFriendly": false
+ },
+ {
+  "sourceId": "1256",
+  "exerciseId": 175,
+  "name": "barbell reverse grip decline bench press",
+  "priority": "search_only",
+  "beginnerFriendly": false
+ },
+ {
+  "sourceId": "1257",
+  "exerciseId": 176,
+  "name": "barbell reverse grip incline bench press",
+  "priority": "search_only",
+  "beginnerFriendly": false
+ },
+ {
+  "sourceId": "1317",
+  "exerciseId": 177,
+  "name": "barbell reverse grip incline bench row",
+  "priority": "search_only",
+  "beginnerFriendly": false
+ },
+ {
+  "sourceId": "1721",
+  "exerciseId": 178,
+  "name": "barbell reverse grip skullcrusher",
+  "priority": "search_only",
+  "beginnerFriendly": false
+ },
+ {
+  "sourceId": "0081",
+  "exerciseId": 179,
+  "name": "barbell reverse preacher curl",
+  "priority": "search_only",
+  "beginnerFriendly": false
+ },
+ {
+  "sourceId": "0082",
+  "exerciseId": 180,
+  "name": "barbell reverse wrist curl",
+  "priority": "search_only",
+  "beginnerFriendly": false
+ },
+ {
+  "sourceId": "0084",
+  "exerciseId": 181,
+  "name": "barbell rollerout",
+  "priority": "search_only",
+  "beginnerFriendly": false
+ },
+ {
+  "sourceId": "0083",
+  "exerciseId": 182,
+  "name": "barbell rollerout from bench",
+  "priority": "search_only",
+  "beginnerFriendly": false
+ },
+ {
+  "sourceId": "0085",
+  "exerciseId": 183,
+  "name": "barbell romanian deadlift",
+  "priority": "search_only",
+  "beginnerFriendly": false
+ },
+ {
+  "sourceId": "0086",
+  "exerciseId": 184,
+  "name": "barbell seated behind head military press",
+  "priority": "never",
+  "beginnerFriendly": false
+ },
+ {
+  "sourceId": "0087",
+  "exerciseId": 185,
+  "name": "barbell seated bradford rocky press",
+  "priority": "search_only",
+  "beginnerFriendly": false
+ },
+ {
+  "sourceId": "0088",
+  "exerciseId": 186,
+  "name": "barbell seated calf raise",
+  "priority": "search_only",
+  "beginnerFriendly": false
+ },
+ {
+  "sourceId": "1371",
+  "exerciseId": 187,
+  "name": "barbell seated calf raise",
+  "priority": "search_only",
+  "beginnerFriendly": false
+ },
+ {
+  "sourceId": "1718",
+  "exerciseId": 188,
+  "name": "barbell seated close grip behind neck triceps extension",
+  "priority": "search_only",
+  "beginnerFriendly": false
+ },
+ {
+  "sourceId": "0089",
+  "exerciseId": 189,
+  "name": "barbell seated close-grip concentration curl",
+  "priority": "search_only",
+  "beginnerFriendly": false
+ },
+ {
+  "sourceId": "0090",
+  "exerciseId": 190,
+  "name": "barbell seated good morning",
+  "priority": "search_only",
+  "beginnerFriendly": false
+ },
+ {
+  "sourceId": "0091",
+  "exerciseId": 191,
+  "name": "barbell seated overhead press",
+  "priority": "search_only",
+  "beginnerFriendly": false
+ },
+ {
+  "sourceId": "0092",
+  "exerciseId": 192,
+  "name": "barbell seated overhead triceps extension",
+  "priority": "search_only",
+  "beginnerFriendly": false
+ },
+ {
+  "sourceId": "0094",
+  "exerciseId": 193,
+  "name": "barbell seated twist",
+  "priority": "search_only",
+  "beginnerFriendly": false
+ },
+ {
+  "sourceId": "0095",
+  "exerciseId": 194,
+  "name": "barbell shrug",
+  "priority": "search_only",
+  "beginnerFriendly": false
+ },
+ {
+  "sourceId": "0096",
+  "exerciseId": 195,
+  "name": "barbell side bent v. 2",
+  "priority": "search_only",
+  "beginnerFriendly": false
+ },
+ {
+  "sourceId": "0098",
+  "exerciseId": 196,
+  "name": "barbell side split squat",
+  "priority": "search_only",
+  "beginnerFriendly": false
+ },
+ {
+  "sourceId": "0097",
+  "exerciseId": 197,
+  "name": "barbell side split squat v. 2",
+  "priority": "search_only",
+  "beginnerFriendly": false
+ },
+ {
+  "sourceId": "1756",
+  "exerciseId": 198,
+  "name": "barbell single leg deadlift",
+  "priority": "search_only",
+  "beginnerFriendly": false
+ },
+ {
+  "sourceId": "0099",
+  "exerciseId": 199,
+  "name": "barbell single leg split squat",
+  "priority": "search_only",
+  "beginnerFriendly": false
+ },
+ {
+  "sourceId": "2799",
+  "exerciseId": 200,
+  "name": "barbell sitted alternate leg raise",
+  "priority": "search_only",
+  "beginnerFriendly": false
+ },
+ {
+  "sourceId": "2800",
+  "exerciseId": 201,
+  "name": "barbell sitted alternate leg raise (female)",
+  "priority": "search_only",
+  "beginnerFriendly": false
+ },
+ {
+  "sourceId": "0100",
+  "exerciseId": 202,
+  "name": "barbell skier",
+  "priority": "search_only",
+  "beginnerFriendly": false
+ },
+ {
+  "sourceId": "0101",
+  "exerciseId": 203,
+  "name": "barbell speed squat",
+  "priority": "search_only",
+  "beginnerFriendly": false
+ },
+ {
+  "sourceId": "2810",
+  "exerciseId": 204,
+  "name": "barbell split squat v. 2",
+  "priority": "search_only",
+  "beginnerFriendly": false
+ },
+ {
+  "sourceId": "0102",
+  "exerciseId": 205,
+  "name": "barbell squat (on knees)",
+  "priority": "never",
+  "beginnerFriendly": false
+ },
+ {
+  "sourceId": "2798",
+  "exerciseId": 206,
+  "name": "barbell squat jump step rear lunge",
+  "priority": "never",
+  "beginnerFriendly": false
+ },
+ {
+  "sourceId": "0103",
+  "exerciseId": 207,
+  "name": "barbell standing ab rollerout",
+  "priority": "search_only",
+  "beginnerFriendly": false
+ },
+ {
+  "sourceId": "0104",
+  "exerciseId": 208,
+  "name": "barbell standing back wrist curl",
+  "priority": "search_only",
+  "beginnerFriendly": false
+ },
+ {
+  "sourceId": "0105",
+  "exerciseId": 209,
+  "name": "barbell standing bradford press",
+  "priority": "search_only",
+  "beginnerFriendly": false
+ },
+ {
+  "sourceId": "1372",
+  "exerciseId": 210,
+  "name": "barbell standing calf raise",
+  "priority": "search_only",
+  "beginnerFriendly": false
+ },
+ {
+  "sourceId": "0106",
+  "exerciseId": 211,
+  "name": "barbell standing close grip curl",
+  "priority": "search_only",
+  "beginnerFriendly": false
+ },
+ {
+  "sourceId": "1456",
+  "exerciseId": 212,
+  "name": "barbell standing close grip military press",
+  "priority": "search_only",
+  "beginnerFriendly": false
+ },
+ {
+  "sourceId": "2414",
+  "exerciseId": 213,
+  "name": "barbell standing concentration curl",
+  "priority": "search_only",
+  "beginnerFriendly": false
+ },
+ {
+  "sourceId": "0107",
+  "exerciseId": 214,
+  "name": "barbell standing front raise over head",
+  "priority": "search_only",
+  "beginnerFriendly": false
+ },
+ {
+  "sourceId": "0108",
+  "exerciseId": 215,
+  "name": "barbell standing leg calf raise",
+  "priority": "search_only",
+  "beginnerFriendly": false
+ },
+ {
+  "sourceId": "0109",
+  "exerciseId": 216,
+  "name": "barbell standing overhead triceps extension",
+  "priority": "search_only",
+  "beginnerFriendly": false
+ },
+ {
+  "sourceId": "0110",
+  "exerciseId": 217,
+  "name": "barbell standing reverse grip curl",
+  "priority": "search_only",
+  "beginnerFriendly": false
+ },
+ {
+  "sourceId": "0111",
+  "exerciseId": 218,
+  "name": "barbell standing rocking leg calf raise",
+  "priority": "search_only",
+  "beginnerFriendly": false
+ },
+ {
+  "sourceId": "0112",
+  "exerciseId": 219,
+  "name": "barbell standing twist",
+  "priority": "search_only",
+  "beginnerFriendly": false
+ },
+ {
+  "sourceId": "1629",
+  "exerciseId": 220,
+  "name": "barbell standing wide grip biceps curl",
+  "priority": "search_only",
+  "beginnerFriendly": false
+ },
+ {
+  "sourceId": "1457",
+  "exerciseId": 221,
+  "name": "barbell standing wide military press",
+  "priority": "search_only",
+  "beginnerFriendly": false
+ },
+ {
+  "sourceId": "0113",
+  "exerciseId": 222,
+  "name": "barbell standing wide-grip curl",
+  "priority": "search_only",
+  "beginnerFriendly": false
+ },
+ {
+  "sourceId": "0114",
+  "exerciseId": 223,
+  "name": "barbell step-up",
+  "priority": "search_only",
+  "beginnerFriendly": false
+ },
+ {
+  "sourceId": "0115",
+  "exerciseId": 224,
+  "name": "barbell stiff leg good morning",
+  "priority": "search_only",
+  "beginnerFriendly": false
+ },
+ {
+  "sourceId": "0116",
+  "exerciseId": 225,
+  "name": "barbell straight leg deadlift",
+  "priority": "search_only",
+  "beginnerFriendly": false
+ },
+ {
+  "sourceId": "0117",
+  "exerciseId": 226,
+  "name": "barbell sumo deadlift",
+  "priority": "search_only",
+  "beginnerFriendly": false
+ },
+ {
+  "sourceId": "3305",
+  "exerciseId": 227,
+  "name": "barbell thruster",
+  "priority": "search_only",
+  "beginnerFriendly": false
+ },
+ {
+  "sourceId": "0120",
+  "exerciseId": 228,
+  "name": "barbell upright row",
+  "priority": "search_only",
+  "beginnerFriendly": false
+ },
+ {
+  "sourceId": "0119",
+  "exerciseId": 229,
+  "name": "barbell upright row v. 2",
+  "priority": "search_only",
+  "beginnerFriendly": false
+ },
+ {
+  "sourceId": "0121",
+  "exerciseId": 230,
+  "name": "barbell upright row v. 3",
+  "priority": "search_only",
+  "beginnerFriendly": false
+ },
+ {
+  "sourceId": "0122",
+  "exerciseId": 231,
+  "name": "barbell wide bench press",
+  "priority": "search_only",
+  "beginnerFriendly": false
+ },
+ {
+  "sourceId": "1258",
+  "exerciseId": 232,
+  "name": "barbell wide reverse grip bench press",
+  "priority": "search_only",
+  "beginnerFriendly": false
+ },
+ {
+  "sourceId": "0124",
+  "exerciseId": 233,
+  "name": "barbell wide squat",
+  "priority": "search_only",
+  "beginnerFriendly": false
+ },
+ {
+  "sourceId": "0123",
+  "exerciseId": 234,
+  "name": "barbell wide-grip upright row",
+  "priority": "search_only",
+  "beginnerFriendly": false
+ },
+ {
+  "sourceId": "0126",
+  "exerciseId": 235,
+  "name": "barbell wrist curl",
+  "priority": "search_only",
+  "beginnerFriendly": false
+ },
+ {
+  "sourceId": "0125",
+  "exerciseId": 236,
+  "name": "barbell wrist curl v. 2",
+  "priority": "search_only",
+  "beginnerFriendly": false
+ },
+ {
+  "sourceId": "0127",
+  "exerciseId": 237,
+  "name": "barbell zercher squat",
+  "priority": "never",
+  "beginnerFriendly": false
+ },
+ {
+  "sourceId": "0129",
+  "exerciseId": 242,
+  "name": "bench dip (knees bent)",
+  "priority": "first",
+  "beginnerFriendly": true
+ },
+ {
+  "sourceId": "1399",
+  "exerciseId": 243,
+  "name": "bench dip on floor",
+  "priority": "search_only",
+  "beginnerFriendly": false
+ },
+ {
+  "sourceId": "0130",
+  "exerciseId": 244,
+  "name": "bench hip extension",
+  "priority": "alternative",
+  "beginnerFriendly": true
+ },
+ {
+  "sourceId": "3019",
+  "exerciseId": 245,
+  "name": "bench pull-ups",
+  "priority": "search_only",
+  "beginnerFriendly": false
+ },
+ {
+  "sourceId": "3639",
+  "exerciseId": 246,
+  "name": "bent knee lying twist (male)",
+  "priority": "search_only",
+  "beginnerFriendly": false
+ },
+ {
+  "sourceId": "1770",
+  "exerciseId": 247,
+  "name": "biceps leg concentration curl",
+  "priority": "search_only",
+  "beginnerFriendly": false
+ },
+ {
+  "sourceId": "0139",
+  "exerciseId": 248,
+  "name": "biceps narrow pull-ups",
+  "priority": "search_only",
+  "beginnerFriendly": false
+ },
+ {
+  "sourceId": "0140",
+  "exerciseId": 249,
+  "name": "biceps pull-up",
+  "priority": "search_only",
+  "beginnerFriendly": false
+ },
+ {
+  "sourceId": "0137",
+  "exerciseId": 250,
+  "name": "body-up",
+  "priority": "search_only",
+  "beginnerFriendly": false
+ },
+ {
+  "sourceId": "3543",
+  "exerciseId": 251,
+  "name": "bodyweight drop jump squat",
+  "priority": "search_only",
+  "beginnerFriendly": false
+ },
+ {
+  "sourceId": "3544",
+  "exerciseId": 252,
+  "name": "bodyweight incline side plank",
+  "priority": "first",
+  "beginnerFriendly": true
+ },
+ {
+  "sourceId": "1771",
+  "exerciseId": 253,
+  "name": "bodyweight kneeling triceps extension",
+  "priority": "alternative",
+  "beginnerFriendly": true
+ },
+ {
+  "sourceId": "1769",
+  "exerciseId": 254,
+  "name": "bodyweight side lying biceps curl",
+  "priority": "search_only",
+  "beginnerFriendly": false
+ },
+ {
+  "sourceId": "3168",
+  "exerciseId": 255,
+  "name": "bodyweight squatting row",
+  "priority": "search_only",
+  "beginnerFriendly": false
+ },
+ {
+  "sourceId": "3167",
+  "exerciseId": 256,
+  "name": "bodyweight squatting row (with towel)",
+  "priority": "search_only",
+  "beginnerFriendly": false
+ },
+ {
+  "sourceId": "1373",
+  "exerciseId": 257,
+  "name": "bodyweight standing calf raise",
+  "priority": "first",
+  "beginnerFriendly": true
+ },
+ {
+  "sourceId": "3156",
+  "exerciseId": 258,
+  "name": "bodyweight standing close-grip one arm row",
+  "priority": "search_only",
+  "beginnerFriendly": false
+ },
+ {
+  "sourceId": "3158",
+  "exerciseId": 259,
+  "name": "bodyweight standing close-grip row",
+  "priority": "first",
+  "beginnerFriendly": true
+ },
+ {
+  "sourceId": "3162",
+  "exerciseId": 260,
+  "name": "bodyweight standing one arm row",
+  "priority": "search_only",
+  "beginnerFriendly": false
+ },
+ {
+  "sourceId": "3161",
+  "exerciseId": 261,
+  "name": "bodyweight standing one arm row (with towel)",
+  "priority": "search_only",
+  "beginnerFriendly": false
+ },
+ {
+  "sourceId": "3166",
+  "exerciseId": 262,
+  "name": "bodyweight standing row",
+  "priority": "first",
+  "beginnerFriendly": true
+ },
+ {
+  "sourceId": "3165",
+  "exerciseId": 263,
+  "name": "bodyweight standing row (with towel)",
+  "priority": "alternative",
+  "beginnerFriendly": true
+ },
+ {
+  "sourceId": "0138",
+  "exerciseId": 264,
+  "name": "bottoms-up",
+  "priority": "search_only",
+  "beginnerFriendly": false
+ },
+ {
+  "sourceId": "1374",
+  "exerciseId": 265,
+  "name": "box jump down with one leg stabilization",
+  "priority": "search_only",
+  "beginnerFriendly": false
+ },
+ {
+  "sourceId": "2466",
+  "exerciseId": 266,
+  "name": "bridge - mountain climber (cross body)",
+  "priority": "alternative",
+  "beginnerFriendly": false
+ },
+ {
+  "sourceId": "0870",
+  "exerciseId": 268,
+  "name": "butt-ups",
+  "priority": "search_only",
+  "beginnerFriendly": false
+ },
+ {
+  "sourceId": "0148",
+  "exerciseId": 270,
+  "name": "cable alternate shoulder press",
+  "priority": "search_only",
+  "beginnerFriendly": false
+ },
+ {
+  "sourceId": "0149",
+  "exerciseId": 271,
+  "name": "cable alternate triceps extension",
+  "priority": "search_only",
+  "beginnerFriendly": false
+ },
+ {
+  "sourceId": "3235",
+  "exerciseId": 272,
+  "name": "cable assisted inverse leg curl",
+  "priority": "search_only",
+  "beginnerFriendly": false
+ },
+ {
+  "sourceId": "0150",
+  "exerciseId": 273,
+  "name": "cable bar lateral pulldown",
+  "priority": "first",
+  "beginnerFriendly": true
+ },
+ {
+  "sourceId": "0151",
+  "exerciseId": 274,
+  "name": "cable bench press",
+  "priority": "search_only",
+  "beginnerFriendly": false
+ },
+ {
+  "sourceId": "1630",
+  "exerciseId": 275,
+  "name": "cable close grip curl",
+  "priority": "alternative",
+  "beginnerFriendly": true
+ },
+ {
+  "sourceId": "1631",
+  "exerciseId": 276,
+  "name": "cable concentration curl",
+  "priority": "search_only",
+  "beginnerFriendly": false
+ },
+ {
+  "sourceId": "0152",
+  "exerciseId": 277,
+  "name": "cable concentration extension (on knee)",
+  "priority": "search_only",
+  "beginnerFriendly": false
+ },
+ {
+  "sourceId": "0153",
+  "exerciseId": 278,
+  "name": "cable cross-over lateral pulldown",
+  "priority": "search_only",
+  "beginnerFriendly": false
+ },
+ {
+  "sourceId": "0154",
+  "exerciseId": 279,
+  "name": "cable cross-over revers fly",
+  "priority": "alternative",
+  "beginnerFriendly": false
+ },
+ {
+  "sourceId": "0155",
+  "exerciseId": 280,
+  "name": "cable cross-over variation",
+  "priority": "search_only",
+  "beginnerFriendly": false
+ },
+ {
+  "sourceId": "0868",
+  "exerciseId": 281,
+  "name": "cable curl",
+  "priority": "first",
+  "beginnerFriendly": true
+ },
+ {
+  "sourceId": "0157",
+  "exerciseId": 282,
+  "name": "cable deadlift",
+  "priority": "search_only",
+  "beginnerFriendly": false
+ },
+ {
+  "sourceId": "0158",
+  "exerciseId": 283,
+  "name": "cable decline fly",
+  "priority": "search_only",
+  "beginnerFriendly": false
+ },
+ {
+  "sourceId": "1260",
+  "exerciseId": 284,
+  "name": "cable decline one arm press",
+  "priority": "search_only",
+  "beginnerFriendly": false
+ },
+ {
+  "sourceId": "1261",
+  "exerciseId": 285,
+  "name": "cable decline press",
+  "priority": "search_only",
+  "beginnerFriendly": false
+ },
+ {
+  "sourceId": "0159",
+  "exerciseId": 286,
+  "name": "cable decline seated wide-grip row",
+  "priority": "search_only",
+  "beginnerFriendly": false
+ },
+ {
+  "sourceId": "1632",
+  "exerciseId": 287,
+  "name": "cable drag curl",
+  "priority": "search_only",
+  "beginnerFriendly": false
+ },
+ {
+  "sourceId": "0160",
+  "exerciseId": 288,
+  "name": "cable floor seated wide-grip row",
+  "priority": "search_only",
+  "beginnerFriendly": false
+ },
+ {
+  "sourceId": "0161",
+  "exerciseId": 289,
+  "name": "cable forward raise",
+  "priority": "search_only",
+  "beginnerFriendly": false
+ },
+ {
+  "sourceId": "0162",
+  "exerciseId": 290,
+  "name": "cable front raise",
+  "priority": "alternative",
+  "beginnerFriendly": false
+ },
+ {
+  "sourceId": "0164",
+  "exerciseId": 291,
+  "name": "cable front shoulder raise",
+  "priority": "alternative",
+  "beginnerFriendly": true
+ },
+ {
+  "sourceId": "0165",
+  "exerciseId": 292,
+  "name": "cable hammer curl (with rope)",
+  "priority": "first",
+  "beginnerFriendly": true
+ },
+ {
+  "sourceId": "1722",
+  "exerciseId": 293,
+  "name": "cable high pulley overhead tricep extension",
+  "priority": "search_only",
+  "beginnerFriendly": false
+ },
+ {
+  "sourceId": "0167",
+  "exerciseId": 294,
+  "name": "cable high row (kneeling)",
+  "priority": "search_only",
+  "beginnerFriendly": false
+ },
+ {
+  "sourceId": "0168",
+  "exerciseId": 295,
+  "name": "cable hip adduction",
+  "priority": "alternative",
+  "beginnerFriendly": true
+ },
+ {
+  "sourceId": "0169",
+  "exerciseId": 296,
+  "name": "cable incline bench press",
+  "priority": "search_only",
+  "beginnerFriendly": false
+ },
+ {
+  "sourceId": "1318",
+  "exerciseId": 297,
+  "name": "cable incline bench row",
+  "priority": "search_only",
+  "beginnerFriendly": false
+ },
+ {
+  "sourceId": "0171",
+  "exerciseId": 298,
+  "name": "cable incline fly",
+  "priority": "alternative",
+  "beginnerFriendly": false
+ },
+ {
+  "sourceId": "0170",
+  "exerciseId": 299,
+  "name": "cable incline fly (on stability ball)",
+  "priority": "search_only",
+  "beginnerFriendly": false
+ },
+ {
+  "sourceId": "0172",
+  "exerciseId": 300,
+  "name": "cable incline pushdown",
+  "priority": "search_only",
+  "beginnerFriendly": false
+ },
+ {
+  "sourceId": "0173",
+  "exerciseId": 301,
+  "name": "cable incline triceps extension",
+  "priority": "search_only",
+  "beginnerFriendly": false
+ },
+ {
+  "sourceId": "0174",
+  "exerciseId": 302,
+  "name": "cable judo flip",
+  "priority": "search_only",
+  "beginnerFriendly": false
+ },
+ {
+  "sourceId": "0860",
+  "exerciseId": 303,
+  "name": "cable kickback",
+  "priority": "alternative",
+  "beginnerFriendly": false
+ },
+ {
+  "sourceId": "0175",
+  "exerciseId": 304,
+  "name": "cable kneeling crunch",
+  "priority": "first",
+  "beginnerFriendly": true
+ },
+ {
+  "sourceId": "3697",
+  "exerciseId": 305,
+  "name": "cable kneeling rear delt row (with rope) (male)",
+  "priority": "search_only",
+  "beginnerFriendly": false
+ },
+ {
+  "sourceId": "0176",
+  "exerciseId": 306,
+  "name": "cable kneeling triceps extension",
+  "priority": "search_only",
+  "beginnerFriendly": false
+ },
+ {
+  "sourceId": "2330",
+  "exerciseId": 307,
+  "name": "cable lat pulldown full range of motion",
+  "priority": "first",
+  "beginnerFriendly": true
+ },
+ {
+  "sourceId": "0177",
+  "exerciseId": 308,
+  "name": "cable lateral pulldown (with rope attachment)",
+  "priority": "search_only",
+  "beginnerFriendly": false
+ },
+ {
+  "sourceId": "2616",
+  "exerciseId": 309,
+  "name": "cable lateral pulldown with v-bar",
+  "priority": "alternative",
+  "beginnerFriendly": true
+ },
+ {
+  "sourceId": "0178",
+  "exerciseId": 310,
+  "name": "cable lateral raise",
+  "priority": "first",
+  "beginnerFriendly": true
+ },
+ {
+  "sourceId": "0179",
+  "exerciseId": 311,
+  "name": "cable low fly",
+  "priority": "alternative",
+  "beginnerFriendly": false
+ },
+ {
+  "sourceId": "0180",
+  "exerciseId": 312,
+  "name": "cable low seated row",
+  "priority": "search_only",
+  "beginnerFriendly": false
+ },
+ {
+  "sourceId": "1634",
+  "exerciseId": 313,
+  "name": "cable lying bicep curl",
+  "priority": "search_only",
+  "beginnerFriendly": false
+ },
+ {
+  "sourceId": "0182",
+  "exerciseId": 314,
+  "name": "cable lying close-grip curl",
+  "priority": "search_only",
+  "beginnerFriendly": false
+ },
+ {
+  "sourceId": "0184",
+  "exerciseId": 315,
+  "name": "cable lying extension pullover (with rope attachment)",
+  "priority": "search_only",
+  "beginnerFriendly": false
+ },
+ {
+  "sourceId": "0185",
+  "exerciseId": 316,
+  "name": "cable lying fly",
+  "priority": "search_only",
+  "beginnerFriendly": false
+ },
+ {
+  "sourceId": "0186",
+  "exerciseId": 317,
+  "name": "cable lying triceps extension v. 2",
+  "priority": "search_only",
+  "beginnerFriendly": false
+ },
+ {
+  "sourceId": "0188",
+  "exerciseId": 318,
+  "name": "cable middle fly",
+  "priority": "alternative",
+  "beginnerFriendly": true
+ },
+ {
+  "sourceId": "0189",
+  "exerciseId": 319,
+  "name": "cable one arm bent over row",
+  "priority": "search_only",
+  "beginnerFriendly": false
+ },
+ {
+  "sourceId": "0190",
+  "exerciseId": 320,
+  "name": "cable one arm curl",
+  "priority": "alternative",
+  "beginnerFriendly": false
+ },
+ {
+  "sourceId": "1262",
+  "exerciseId": 321,
+  "name": "cable one arm decline chest fly",
+  "priority": "search_only",
+  "beginnerFriendly": false
+ },
+ {
+  "sourceId": "1263",
+  "exerciseId": 322,
+  "name": "cable one arm fly on exercise ball",
+  "priority": "search_only",
+  "beginnerFriendly": false
+ },
+ {
+  "sourceId": "1264",
+  "exerciseId": 323,
+  "name": "cable one arm incline fly on exercise ball",
+  "priority": "search_only",
+  "beginnerFriendly": false
+ },
+ {
+  "sourceId": "1265",
+  "exerciseId": 324,
+  "name": "cable one arm incline press",
+  "priority": "search_only",
+  "beginnerFriendly": false
+ },
+ {
+  "sourceId": "1266",
+  "exerciseId": 325,
+  "name": "cable one arm incline press on exercise ball",
+  "priority": "search_only",
+  "beginnerFriendly": false
+ },
+ {
+  "sourceId": "0191",
+  "exerciseId": 326,
+  "name": "cable one arm lateral bent-over",
+  "priority": "search_only",
+  "beginnerFriendly": false
+ },
+ {
+  "sourceId": "0192",
+  "exerciseId": 327,
+  "name": "cable one arm lateral raise",
+  "priority": "search_only",
+  "beginnerFriendly": false
+ },
+ {
+  "sourceId": "1633",
+  "exerciseId": 328,
+  "name": "cable one arm preacher curl",
+  "priority": "search_only",
+  "beginnerFriendly": false
+ },
+ {
+  "sourceId": "1267",
+  "exerciseId": 329,
+  "name": "cable one arm press on exercise ball",
+  "priority": "search_only",
+  "beginnerFriendly": false
+ },
+ {
+  "sourceId": "3563",
+  "exerciseId": 330,
+  "name": "cable one arm pulldown",
+  "priority": "search_only",
+  "beginnerFriendly": false
+ },
+ {
+  "sourceId": "1635",
+  "exerciseId": 331,
+  "name": "cable one arm reverse preacher curl",
+  "priority": "search_only",
+  "beginnerFriendly": false
+ },
+ {
+  "sourceId": "0193",
+  "exerciseId": 332,
+  "name": "cable one arm straight back high row (kneeling)",
+  "priority": "search_only",
+  "beginnerFriendly": false
+ },
+ {
+  "sourceId": "1723",
+  "exerciseId": 333,
+  "name": "cable one arm tricep pushdown",
+  "priority": "alternative",
+  "beginnerFriendly": false
+ },
+ {
+  "sourceId": "1636",
+  "exerciseId": 334,
+  "name": "cable overhead curl",
+  "priority": "search_only",
+  "beginnerFriendly": false
+ },
+ {
+  "sourceId": "1637",
+  "exerciseId": 335,
+  "name": "cable overhead curl on exercise ball",
+  "priority": "search_only",
+  "beginnerFriendly": false
+ },
+ {
+  "sourceId": "0194",
+  "exerciseId": 336,
+  "name": "cable overhead triceps extension (rope attachment)",
+  "priority": "alternative",
+  "beginnerFriendly": true
+ },
+ {
+  "sourceId": "1319",
+  "exerciseId": 337,
+  "name": "cable palm rotational row",
+  "priority": "search_only",
+  "beginnerFriendly": false
+ },
+ {
+  "sourceId": "0195",
+  "exerciseId": 338,
+  "name": "cable preacher curl",
+  "priority": "alternative",
+  "beginnerFriendly": true
+ },
+ {
+  "sourceId": "1268",
+  "exerciseId": 339,
+  "name": "cable press on exercise ball",
+  "priority": "search_only",
+  "beginnerFriendly": false
+ },
+ {
+  "sourceId": "0196",
+  "exerciseId": 340,
+  "name": "cable pull through (with rope)",
+  "priority": "alternative",
+  "beginnerFriendly": true
+ },
+ {
+  "sourceId": "0198",
+  "exerciseId": 341,
+  "name": "cable pulldown",
+  "priority": "search_only",
+  "beginnerFriendly": false
+ },
+ {
+  "sourceId": "0197",
+  "exerciseId": 342,
+  "name": "cable pulldown (pro lat bar)",
+  "priority": "search_only",
+  "beginnerFriendly": false
+ },
+ {
+  "sourceId": "1638",
+  "exerciseId": 343,
+  "name": "cable pulldown bicep curl",
+  "priority": "search_only",
+  "beginnerFriendly": false
+ },
+ {
+  "sourceId": "0201",
+  "exerciseId": 344,
+  "name": "cable pushdown",
+  "priority": "first",
+  "beginnerFriendly": true
+ },
+ {
+  "sourceId": "0199",
+  "exerciseId": 345,
+  "name": "cable pushdown (straight arm) v. 2",
+  "priority": "search_only",
+  "beginnerFriendly": false
+ },
+ {
+  "sourceId": "0200",
+  "exerciseId": 346,
+  "name": "cable pushdown (with rope attachment)",
+  "priority": "first",
+  "beginnerFriendly": true
+ },
+ {
+  "sourceId": "0202",
+  "exerciseId": 347,
+  "name": "cable rear delt row (stirrups)",
+  "priority": "search_only",
+  "beginnerFriendly": false
+ },
+ {
+  "sourceId": "0203",
+  "exerciseId": 348,
+  "name": "cable rear delt row (with rope)",
+  "priority": "alternative",
+  "beginnerFriendly": true
+ },
+ {
+  "sourceId": "0204",
+  "exerciseId": 349,
+  "name": "cable rear drive",
+  "priority": "search_only",
+  "beginnerFriendly": false
+ },
+ {
+  "sourceId": "0205",
+  "exerciseId": 350,
+  "name": "cable rear pulldown",
+  "priority": "never",
+  "beginnerFriendly": false
+ },
+ {
+  "sourceId": "0873",
+  "exerciseId": 351,
+  "name": "cable reverse crunch",
+  "priority": "search_only",
+  "beginnerFriendly": false
+ },
+ {
+  "sourceId": "0206",
+  "exerciseId": 352,
+  "name": "cable reverse curl",
+  "priority": "alternative",
+  "beginnerFriendly": false
+ },
+ {
+  "sourceId": "2406",
+  "exerciseId": 353,
+  "name": "cable reverse grip triceps pushdown (sz-bar) (with arm blaster)",
+  "priority": "search_only",
+  "beginnerFriendly": false
+ },
+ {
+  "sourceId": "1413",
+  "exerciseId": 354,
+  "name": "cable reverse one arm curl",
+  "priority": "search_only",
+  "beginnerFriendly": false
+ },
+ {
+  "sourceId": "0209",
+  "exerciseId": 355,
+  "name": "cable reverse preacher curl",
+  "priority": "search_only",
+  "beginnerFriendly": false
+ },
+ {
+  "sourceId": "0210",
+  "exerciseId": 356,
+  "name": "cable reverse wrist curl",
+  "priority": "alternative",
+  "beginnerFriendly": false
+ },
+ {
+  "sourceId": "0207",
+  "exerciseId": 357,
+  "name": "cable reverse-grip pushdown",
+  "priority": "search_only",
+  "beginnerFriendly": false
+ },
+ {
+  "sourceId": "0208",
+  "exerciseId": 358,
+  "name": "cable reverse-grip straight back seated high row",
+  "priority": "search_only",
+  "beginnerFriendly": false
+ },
+ {
+  "sourceId": "1320",
+  "exerciseId": 359,
+  "name": "cable rope crossover seated row",
+  "priority": "search_only",
+  "beginnerFriendly": false
+ },
+ {
+  "sourceId": "1321",
+  "exerciseId": 360,
+  "name": "cable rope elevated seated row",
+  "priority": "search_only",
+  "beginnerFriendly": false
+ },
+ {
+  "sourceId": "1322",
+  "exerciseId": 361,
+  "name": "cable rope extension incline bench row",
+  "priority": "search_only",
+  "beginnerFriendly": false
+ },
+ {
+  "sourceId": "1639",
+  "exerciseId": 362,
+  "name": "cable rope hammer preacher curl",
+  "priority": "search_only",
+  "beginnerFriendly": false
+ },
+ {
+  "sourceId": "1724",
+  "exerciseId": 363,
+  "name": "cable rope high pulley overhead tricep extension",
+  "priority": "search_only",
+  "beginnerFriendly": false
+ },
+ {
+  "sourceId": "1725",
+  "exerciseId": 364,
+  "name": "cable rope incline tricep extension",
+  "priority": "alternative",
+  "beginnerFriendly": false
+ },
+ {
+  "sourceId": "1726",
+  "exerciseId": 365,
+  "name": "cable rope lying on floor tricep extension",
+  "priority": "search_only",
+  "beginnerFriendly": false
+ },
+ {
+  "sourceId": "1640",
+  "exerciseId": 366,
+  "name": "cable rope one arm hammer preacher curl",
+  "priority": "search_only",
+  "beginnerFriendly": false
+ },
+ {
+  "sourceId": "1323",
+  "exerciseId": 367,
+  "name": "cable rope seated row",
+  "priority": "alternative",
+  "beginnerFriendly": false
+ },
+ {
+  "sourceId": "0211",
+  "exerciseId": 368,
+  "name": "cable russian twists (on stability ball)",
+  "priority": "search_only",
+  "beginnerFriendly": false
+ },
+ {
+  "sourceId": "2144",
+  "exerciseId": 369,
+  "name": "cable seated chest press",
+  "priority": "first",
+  "beginnerFriendly": true
+ },
+ {
+  "sourceId": "0212",
+  "exerciseId": 370,
+  "name": "cable seated crunch",
+  "priority": "search_only",
+  "beginnerFriendly": false
+ },
+ {
+  "sourceId": "1641",
+  "exerciseId": 371,
+  "name": "cable seated curl",
+  "priority": "search_only",
+  "beginnerFriendly": false
+ },
+ {
+  "sourceId": "0213",
+  "exerciseId": 372,
+  "name": "cable seated high row (v-bar)",
+  "priority": "alternative",
+  "beginnerFriendly": false
+ },
+ {
+  "sourceId": "0214",
+  "exerciseId": 373,
+  "name": "cable seated one arm alternate row",
+  "priority": "search_only",
+  "beginnerFriendly": false
+ },
+ {
+  "sourceId": "1642",
+  "exerciseId": 374,
+  "name": "cable seated one arm concentration curl",
+  "priority": "search_only",
+  "beginnerFriendly": false
+ },
+ {
+  "sourceId": "1643",
+  "exerciseId": 375,
+  "name": "cable seated overhead curl",
+  "priority": "search_only",
+  "beginnerFriendly": false
+ },
+ {
+  "sourceId": "0215",
+  "exerciseId": 376,
+  "name": "cable seated rear lateral raise",
+  "priority": "search_only",
+  "beginnerFriendly": false
+ },
+ {
+  "sourceId": "0861",
+  "exerciseId": 377,
+  "name": "cable seated row",
+  "priority": "first",
+  "beginnerFriendly": true
+ },
+ {
+  "sourceId": "0216",
+  "exerciseId": 378,
+  "name": "cable seated shoulder internal rotation",
+  "priority": "search_only",
+  "beginnerFriendly": false
+ },
+ {
+  "sourceId": "2399",
+  "exerciseId": 379,
+  "name": "cable seated twist",
+  "priority": "search_only",
+  "beginnerFriendly": false
+ },
+ {
+  "sourceId": "0218",
+  "exerciseId": 380,
+  "name": "cable seated wide-grip row",
+  "priority": "first",
+  "beginnerFriendly": true
+ },
+ {
+  "sourceId": "0219",
+  "exerciseId": 381,
+  "name": "cable shoulder press",
+  "priority": "search_only",
+  "beginnerFriendly": false
+ },
+ {
+  "sourceId": "0220",
+  "exerciseId": 382,
+  "name": "cable shrug",
+  "priority": "first",
+  "beginnerFriendly": true
+ },
+ {
+  "sourceId": "0222",
+  "exerciseId": 383,
+  "name": "cable side bend",
+  "priority": "alternative",
+  "beginnerFriendly": false
+ },
+ {
+  "sourceId": "0221",
+  "exerciseId": 384,
+  "name": "cable side bend crunch (bosu ball)",
+  "priority": "search_only",
+  "beginnerFriendly": false
+ },
+ {
+  "sourceId": "0223",
+  "exerciseId": 385,
+  "name": "cable side crunch",
+  "priority": "alternative",
+  "beginnerFriendly": false
+ },
+ {
+  "sourceId": "1717",
+  "exerciseId": 386,
+  "name": "cable squat row (with rope attachment)",
+  "priority": "search_only",
+  "beginnerFriendly": false
+ },
+ {
+  "sourceId": "1644",
+  "exerciseId": 387,
+  "name": "cable squatting curl",
+  "priority": "search_only",
+  "beginnerFriendly": false
+ },
+ {
+  "sourceId": "0224",
+  "exerciseId": 388,
+  "name": "cable standing back wrist curl",
+  "priority": "alternative",
+  "beginnerFriendly": false
+ },
+ {
+  "sourceId": "1375",
+  "exerciseId": 389,
+  "name": "cable standing calf raise",
+  "priority": "search_only",
+  "beginnerFriendly": false
+ },
+ {
+  "sourceId": "0225",
+  "exerciseId": 390,
+  "name": "cable standing cross-over high reverse fly",
+  "priority": "search_only",
+  "beginnerFriendly": false
+ },
+ {
+  "sourceId": "0226",
+  "exerciseId": 391,
+  "name": "cable standing crunch",
+  "priority": "alternative",
+  "beginnerFriendly": true
+ },
+ {
+  "sourceId": "0874",
+  "exerciseId": 392,
+  "name": "cable standing crunch (with rope attachment)",
+  "priority": "alternative",
+  "beginnerFriendly": true
+ },
+ {
+  "sourceId": "0227",
+  "exerciseId": 393,
+  "name": "cable standing fly",
+  "priority": "first",
+  "beginnerFriendly": true
+ },
+ {
+  "sourceId": "0228",
+  "exerciseId": 394,
+  "name": "cable standing hip extension",
+  "priority": "alternative",
+  "beginnerFriendly": true
+ },
+ {
+  "sourceId": "0229",
+  "exerciseId": 395,
+  "name": "cable standing inner curl",
+  "priority": "search_only",
+  "beginnerFriendly": false
+ },
+ {
+  "sourceId": "0230",
+  "exerciseId": 396,
+  "name": "cable standing lift",
+  "priority": "alternative",
+  "beginnerFriendly": false
+ },
+ {
+  "sourceId": "0231",
+  "exerciseId": 397,
+  "name": "cable standing one arm triceps extension",
+  "priority": "search_only",
+  "beginnerFriendly": false
+ },
+ {
+  "sourceId": "1376",
+  "exerciseId": 398,
+  "name": "cable standing one leg calf raise",
+  "priority": "search_only",
+  "beginnerFriendly": false
+ },
+ {
+  "sourceId": "0232",
+  "exerciseId": 399,
+  "name": "cable standing pulldown (with rope)",
+  "priority": "search_only",
+  "beginnerFriendly": false
+ },
+ {
+  "sourceId": "0233",
+  "exerciseId": 400,
+  "name": "cable standing rear delt row (with rope)",
+  "priority": "search_only",
+  "beginnerFriendly": false
+ },
+ {
+  "sourceId": "1727",
+  "exerciseId": 401,
+  "name": "cable standing reverse grip one arm overhead tricep extension",
+  "priority": "search_only",
+  "beginnerFriendly": false
+ },
+ {
+  "sourceId": "0234",
+  "exerciseId": 402,
+  "name": "cable standing row (v-bar)",
+  "priority": "alternative",
+  "beginnerFriendly": false
+ },
+ {
+  "sourceId": "0235",
+  "exerciseId": 403,
+  "name": "cable standing shoulder external rotation",
+  "priority": "alternative",
+  "beginnerFriendly": false
+ },
+ {
+  "sourceId": "0236",
+  "exerciseId": 404,
+  "name": "cable standing twist row (v-bar)",
+  "priority": "search_only",
+  "beginnerFriendly": false
+ },
+ {
+  "sourceId": "1269",
+  "exerciseId": 405,
+  "name": "cable standing up straight crossovers",
+  "priority": "search_only",
+  "beginnerFriendly": false
+ },
+ {
+  "sourceId": "0238",
+  "exerciseId": 406,
+  "name": "cable straight arm pulldown",
+  "priority": "alternative",
+  "beginnerFriendly": false
+ },
+ {
+  "sourceId": "0237",
+  "exerciseId": 407,
+  "name": "cable straight arm pulldown (with rope)",
+  "priority": "search_only",
+  "beginnerFriendly": false
+ },
+ {
+  "sourceId": "0239",
+  "exerciseId": 408,
+  "name": "cable straight back seated row",
+  "priority": "alternative",
+  "beginnerFriendly": true
+ },
+ {
+  "sourceId": "0240",
+  "exerciseId": 409,
+  "name": "cable supine reverse fly",
+  "priority": "search_only",
+  "beginnerFriendly": false
+ },
+ {
+  "sourceId": "2464",
+  "exerciseId": 410,
+  "name": "cable thibaudeau kayak row",
+  "priority": "search_only",
+  "beginnerFriendly": false
+ },
+ {
+  "sourceId": "0241",
+  "exerciseId": 411,
+  "name": "cable triceps pushdown (v-bar)",
+  "priority": "first",
+  "beginnerFriendly": true
+ },
+ {
+  "sourceId": "2405",
+  "exerciseId": 412,
+  "name": "cable triceps pushdown (v-bar) (with arm blaster)",
+  "priority": "search_only",
+  "beginnerFriendly": false
+ },
+ {
+  "sourceId": "0242",
+  "exerciseId": 413,
+  "name": "cable tuck reverse crunch",
+  "priority": "search_only",
+  "beginnerFriendly": false
+ },
+ {
+  "sourceId": "0243",
+  "exerciseId": 414,
+  "name": "cable twist",
+  "priority": "alternative",
+  "beginnerFriendly": false
+ },
+ {
+  "sourceId": "0862",
+  "exerciseId": 415,
+  "name": "cable twist (up-down)",
+  "priority": "search_only",
+  "beginnerFriendly": false
+ },
+ {
+  "sourceId": "0244",
+  "exerciseId": 416,
+  "name": "cable twisting pull",
+  "priority": "search_only",
+  "beginnerFriendly": false
+ },
+ {
+  "sourceId": "1645",
+  "exerciseId": 417,
+  "name": "cable two arm curl on incline bench",
+  "priority": "search_only",
+  "beginnerFriendly": false
+ },
+ {
+  "sourceId": "1728",
+  "exerciseId": 418,
+  "name": "cable two arm tricep kickback",
+  "priority": "search_only",
+  "beginnerFriendly": false
+ },
+ {
+  "sourceId": "0245",
+  "exerciseId": 419,
+  "name": "cable underhand pulldown",
+  "priority": "alternative",
+  "beginnerFriendly": true
+ },
+ {
+  "sourceId": "1270",
+  "exerciseId": 420,
+  "name": "cable upper chest crossovers",
+  "priority": "search_only",
+  "beginnerFriendly": false
+ },
+ {
+  "sourceId": "1324",
+  "exerciseId": 421,
+  "name": "cable upper row",
+  "priority": "search_only",
+  "beginnerFriendly": false
+ },
+ {
+  "sourceId": "0246",
+  "exerciseId": 422,
+  "name": "cable upright row",
+  "priority": "search_only",
+  "beginnerFriendly": false
+ },
+ {
+  "sourceId": "1325",
+  "exerciseId": 423,
+  "name": "cable wide grip rear pulldown behind neck",
+  "priority": "never",
+  "beginnerFriendly": false
+ },
+ {
+  "sourceId": "0247",
+  "exerciseId": 424,
+  "name": "cable wrist curl",
+  "priority": "first",
+  "beginnerFriendly": true
+ },
+ {
+  "sourceId": "0248",
+  "exerciseId": 428,
+  "name": "cambered bar lying row",
+  "priority": "search_only",
+  "beginnerFriendly": false
+ },
+ {
+  "sourceId": "2963",
+  "exerciseId": 429,
+  "name": "captains chair straight leg raise",
+  "priority": "search_only",
+  "beginnerFriendly": false
+ },
+ {
+  "sourceId": "0251",
+  "exerciseId": 432,
+  "name": "chest dip",
+  "priority": "search_only",
+  "beginnerFriendly": false
+ },
+ {
+  "sourceId": "1430",
+  "exerciseId": 433,
+  "name": "chest dip (on dip-pull-up cage)",
+  "priority": "search_only",
+  "beginnerFriendly": false
+ },
+ {
+  "sourceId": "2462",
+  "exerciseId": 434,
+  "name": "chest dip on straight bar",
+  "priority": "search_only",
+  "beginnerFriendly": false
+ },
+ {
+  "sourceId": "3216",
+  "exerciseId": 436,
+  "name": "chest tap push-up (male)",
+  "priority": "search_only",
+  "beginnerFriendly": false
+ },
+ {
+  "sourceId": "1326",
+  "exerciseId": 437,
+  "name": "chin-up",
+  "priority": "alternative",
+  "beginnerFriendly": false
+ },
+ {
+  "sourceId": "0253",
+  "exerciseId": 438,
+  "name": "chin-ups (narrow parallel grip)",
+  "priority": "search_only",
+  "beginnerFriendly": false
+ },
+ {
+  "sourceId": "1273",
+  "exerciseId": 440,
+  "name": "clap push up",
+  "priority": "never",
+  "beginnerFriendly": false
+ },
+ {
+  "sourceId": "0258",
+  "exerciseId": 441,
+  "name": "clock push-up",
+  "priority": "search_only",
+  "beginnerFriendly": false
+ },
+ {
+  "sourceId": "1327",
+  "exerciseId": 442,
+  "name": "close grip chin-up",
+  "priority": "search_only",
+  "beginnerFriendly": false
+ },
+ {
+  "sourceId": "0259",
+  "exerciseId": 443,
+  "name": "close-grip push-up",
+  "priority": "first",
+  "beginnerFriendly": false
+ },
+ {
+  "sourceId": "2398",
+  "exerciseId": 444,
+  "name": "close-grip push-up (on knees)",
+  "priority": "first",
+  "beginnerFriendly": true
+ },
+ {
+  "sourceId": "0260",
+  "exerciseId": 445,
+  "name": "cocoons",
+  "priority": "search_only",
+  "beginnerFriendly": false
+ },
+ {
+  "sourceId": "0262",
+  "exerciseId": 447,
+  "name": "cross body crunch",
+  "priority": "search_only",
+  "beginnerFriendly": false
+ },
+ {
+  "sourceId": "0267",
+  "exerciseId": 448,
+  "name": "crunch (hands overhead)",
+  "priority": "search_only",
+  "beginnerFriendly": false
+ },
+ {
+  "sourceId": "0271",
+  "exerciseId": 449,
+  "name": "crunch (on stability ball)",
+  "priority": "alternative",
+  "beginnerFriendly": true
+ },
+ {
+  "sourceId": "0272",
+  "exerciseId": 450,
+  "name": "crunch (on stability ball, arms straight)",
+  "priority": "alternative",
+  "beginnerFriendly": false
+ },
+ {
+  "sourceId": "0274",
+  "exerciseId": 451,
+  "name": "crunch floor",
+  "priority": "first",
+  "beginnerFriendly": true
+ },
+ {
+  "sourceId": "3016",
+  "exerciseId": 452,
+  "name": "curl-up",
+  "priority": "first",
+  "beginnerFriendly": true
+ },
+ {
+  "sourceId": "3769",
+  "exerciseId": 453,
+  "name": "curtsey squat",
+  "priority": "search_only",
+  "beginnerFriendly": false
+ },
+ {
+  "sourceId": "2331",
+  "exerciseId": 454,
+  "name": "cycle cross trainer",
+  "priority": "alternative",
+  "beginnerFriendly": false
+ },
+ {
+  "sourceId": "0276",
+  "exerciseId": 455,
+  "name": "dead bug",
+  "priority": "first",
+  "beginnerFriendly": true
+ },
+ {
+  "sourceId": "0277",
+  "exerciseId": 456,
+  "name": "decline crunch",
+  "priority": "search_only",
+  "beginnerFriendly": false
+ },
+ {
+  "sourceId": "0279",
+  "exerciseId": 457,
+  "name": "decline push-up",
+  "priority": "alternative",
+  "beginnerFriendly": false
+ },
+ {
+  "sourceId": "0282",
+  "exerciseId": 458,
+  "name": "decline sit-up",
+  "priority": "search_only",
+  "beginnerFriendly": false
+ },
+ {
+  "sourceId": "1274",
+  "exerciseId": 459,
+  "name": "deep push up",
+  "priority": "search_only",
+  "beginnerFriendly": false
+ },
+ {
+  "sourceId": "0283",
+  "exerciseId": 460,
+  "name": "diamond push-up",
+  "priority": "alternative",
+  "beginnerFriendly": false
+ },
+ {
+  "sourceId": "0284",
+  "exerciseId": 461,
+  "name": "donkey calf raise",
+  "priority": "alternative",
+  "beginnerFriendly": false
+ },
+ {
+  "sourceId": "1275",
+  "exerciseId": 462,
+  "name": "drop push up",
+  "priority": "never",
+  "beginnerFriendly": false
+ },
+ {
+  "sourceId": "0285",
+  "exerciseId": 463,
+  "name": "dumbbell alternate biceps curl",
+  "priority": "first",
+  "beginnerFriendly": true
+ },
+ {
+  "sourceId": "2403",
+  "exerciseId": 464,
+  "name": "dumbbell alternate biceps curl (with arm blaster)",
+  "priority": "search_only",
+  "beginnerFriendly": false
+ },
+ {
+  "sourceId": "1646",
+  "exerciseId": 465,
+  "name": "dumbbell alternate hammer preacher curl",
+  "priority": "search_only",
+  "beginnerFriendly": false
+ },
+ {
+  "sourceId": "1647",
+  "exerciseId": 466,
+  "name": "dumbbell alternate preacher curl",
+  "priority": "search_only",
+  "beginnerFriendly": false
+ },
+ {
+  "sourceId": "1648",
+  "exerciseId": 467,
+  "name": "dumbbell alternate seated hammer curl",
+  "priority": "alternative",
+  "beginnerFriendly": true
+ },
+ {
+  "sourceId": "0286",
+  "exerciseId": 468,
+  "name": "dumbbell alternate side press",
+  "priority": "search_only",
+  "beginnerFriendly": false
+ },
+ {
+  "sourceId": "1649",
+  "exerciseId": 469,
+  "name": "dumbbell alternating bicep curl with leg raised on exercise ball",
+  "priority": "search_only",
+  "beginnerFriendly": false
+ },
+ {
+  "sourceId": "1650",
+  "exerciseId": 470,
+  "name": "dumbbell alternating seated bicep curl on exercise ball",
+  "priority": "search_only",
+  "beginnerFriendly": false
+ },
+ {
+  "sourceId": "2137",
+  "exerciseId": 471,
+  "name": "dumbbell arnold press",
+  "priority": "alternative",
+  "beginnerFriendly": false
+ },
+ {
+  "sourceId": "0287",
+  "exerciseId": 472,
+  "name": "dumbbell arnold press v. 2",
+  "priority": "search_only",
+  "beginnerFriendly": false
+ },
+ {
+  "sourceId": "0288",
+  "exerciseId": 473,
+  "name": "dumbbell around pullover",
+  "priority": "search_only",
+  "beginnerFriendly": false
+ },
+ {
+  "sourceId": "0289",
+  "exerciseId": 474,
+  "name": "dumbbell bench press",
+  "priority": "first",
+  "beginnerFriendly": true
+ },
+ {
+  "sourceId": "0290",
+  "exerciseId": 475,
+  "name": "dumbbell bench seated press",
+  "priority": "search_only",
+  "beginnerFriendly": false
+ },
+ {
+  "sourceId": "0291",
+  "exerciseId": 476,
+  "name": "dumbbell bench squat",
+  "priority": "first",
+  "beginnerFriendly": true
+ },
+ {
+  "sourceId": "0293",
+  "exerciseId": 477,
+  "name": "dumbbell bent over row",
+  "priority": "first",
+  "beginnerFriendly": true
+ },
+ {
+  "sourceId": "1651",
+  "exerciseId": 478,
+  "name": "dumbbell bicep curl lunge with bowling motion",
+  "priority": "search_only",
+  "beginnerFriendly": false
+ },
+ {
+  "sourceId": "1652",
+  "exerciseId": 479,
+  "name": "dumbbell bicep curl on exercise ball with leg raised",
+  "priority": "search_only",
+  "beginnerFriendly": false
+ },
+ {
+  "sourceId": "1653",
+  "exerciseId": 480,
+  "name": "dumbbell bicep curl with stork stance",
+  "priority": "search_only",
+  "beginnerFriendly": false
+ },
+ {
+  "sourceId": "0294",
+  "exerciseId": 481,
+  "name": "dumbbell biceps curl",
+  "priority": "first",
+  "beginnerFriendly": true
+ },
+ {
+  "sourceId": "2401",
+  "exerciseId": 482,
+  "name": "dumbbell biceps curl (with arm blaster)",
+  "priority": "search_only",
+  "beginnerFriendly": false
+ },
+ {
+  "sourceId": "1654",
+  "exerciseId": 483,
+  "name": "dumbbell biceps curl reverse",
+  "priority": "search_only",
+  "beginnerFriendly": false
+ },
+ {
+  "sourceId": "1655",
+  "exerciseId": 484,
+  "name": "dumbbell biceps curl squat",
+  "priority": "search_only",
+  "beginnerFriendly": false
+ },
+ {
+  "sourceId": "1656",
+  "exerciseId": 485,
+  "name": "dumbbell biceps curl v sit on bosu ball",
+  "priority": "search_only",
+  "beginnerFriendly": false
+ },
+ {
+  "sourceId": "0295",
+  "exerciseId": 487,
+  "name": "dumbbell clean",
+  "priority": "never",
+  "beginnerFriendly": false
+ },
+ {
+  "sourceId": "1731",
+  "exerciseId": 488,
+  "name": "dumbbell close grip press",
+  "priority": "alternative",
+  "beginnerFriendly": false
+ },
+ {
+  "sourceId": "0296",
+  "exerciseId": 489,
+  "name": "dumbbell close-grip press",
+  "priority": "search_only",
+  "beginnerFriendly": false
+ },
+ {
+  "sourceId": "0297",
+  "exerciseId": 490,
+  "name": "dumbbell concentration curl",
+  "priority": "alternative",
+  "beginnerFriendly": true
+ },
+ {
+  "sourceId": "3635",
+  "exerciseId": 491,
+  "name": "dumbbell contralateral forward lunge",
+  "priority": "search_only",
+  "beginnerFriendly": false
+ },
+ {
+  "sourceId": "0298",
+  "exerciseId": 492,
+  "name": "dumbbell cross body hammer curl",
+  "priority": "search_only",
+  "beginnerFriendly": false
+ },
+ {
+  "sourceId": "1657",
+  "exerciseId": 493,
+  "name": "dumbbell cross body hammer curl v. 2",
+  "priority": "search_only",
+  "beginnerFriendly": false
+ },
+ {
+  "sourceId": "0299",
+  "exerciseId": 494,
+  "name": "dumbbell cuban press",
+  "priority": "search_only",
+  "beginnerFriendly": false
+ },
+ {
+  "sourceId": "2136",
+  "exerciseId": 495,
+  "name": "dumbbell cuban press v. 2",
+  "priority": "search_only",
+  "beginnerFriendly": false
+ },
+ {
+  "sourceId": "0300",
+  "exerciseId": 496,
+  "name": "dumbbell deadlift",
+  "priority": "alternative",
+  "beginnerFriendly": false
+ },
+ {
+  "sourceId": "0301",
+  "exerciseId": 497,
+  "name": "dumbbell decline bench press",
+  "priority": "search_only",
+  "beginnerFriendly": false
+ },
+ {
+  "sourceId": "0302",
+  "exerciseId": 498,
+  "name": "dumbbell decline fly",
+  "priority": "search_only",
+  "beginnerFriendly": false
+ },
+ {
+  "sourceId": "0303",
+  "exerciseId": 499,
+  "name": "dumbbell decline hammer press",
+  "priority": "search_only",
+  "beginnerFriendly": false
+ },
+ {
+  "sourceId": "1276",
+  "exerciseId": 500,
+  "name": "dumbbell decline one arm fly",
+  "priority": "search_only",
+  "beginnerFriendly": false
+ },
+ {
+  "sourceId": "1617",
+  "exerciseId": 501,
+  "name": "dumbbell decline one arm hammer press",
+  "priority": "search_only",
+  "beginnerFriendly": false
+ },
+ {
+  "sourceId": "0305",
+  "exerciseId": 502,
+  "name": "dumbbell decline shrug",
+  "priority": "search_only",
+  "beginnerFriendly": false
+ },
+ {
+  "sourceId": "0304",
+  "exerciseId": 503,
+  "name": "dumbbell decline shrug v. 2",
+  "priority": "search_only",
+  "beginnerFriendly": false
+ },
+ {
+  "sourceId": "0306",
+  "exerciseId": 504,
+  "name": "dumbbell decline triceps extension",
+  "priority": "search_only",
+  "beginnerFriendly": false
+ },
+ {
+  "sourceId": "0307",
+  "exerciseId": 505,
+  "name": "dumbbell decline twist fly",
+  "priority": "search_only",
+  "beginnerFriendly": false
+ },
+ {
+  "sourceId": "1437",
+  "exerciseId": 506,
+  "name": "dumbbell finger curls",
+  "priority": "search_only",
+  "beginnerFriendly": false
+ },
+ {
+  "sourceId": "0308",
+  "exerciseId": 507,
+  "name": "dumbbell fly",
+  "priority": "first",
+  "beginnerFriendly": true
+ },
+ {
+  "sourceId": "1277",
+  "exerciseId": 508,
+  "name": "dumbbell fly on exercise ball",
+  "priority": "search_only",
+  "beginnerFriendly": false
+ },
+ {
+  "sourceId": "1732",
+  "exerciseId": 509,
+  "name": "dumbbell forward lunge triceps extension",
+  "priority": "search_only",
+  "beginnerFriendly": false
+ },
+ {
+  "sourceId": "0310",
+  "exerciseId": 510,
+  "name": "dumbbell front raise",
+  "priority": "alternative",
+  "beginnerFriendly": true
+ },
+ {
+  "sourceId": "0309",
+  "exerciseId": 511,
+  "name": "dumbbell front raise v. 2",
+  "priority": "search_only",
+  "beginnerFriendly": false
+ },
+ {
+  "sourceId": "0311",
+  "exerciseId": 512,
+  "name": "dumbbell full can lateral raise",
+  "priority": "search_only",
+  "beginnerFriendly": false
+ },
+ {
+  "sourceId": "1760",
+  "exerciseId": 513,
+  "name": "dumbbell goblet squat",
+  "priority": "first",
+  "beginnerFriendly": true
+ },
+ {
+  "sourceId": "0313",
+  "exerciseId": 514,
+  "name": "dumbbell hammer curl",
+  "priority": "first",
+  "beginnerFriendly": true
+ },
+ {
+  "sourceId": "1659",
+  "exerciseId": 515,
+  "name": "dumbbell hammer curl on exercise ball",
+  "priority": "search_only",
+  "beginnerFriendly": false
+ },
+ {
+  "sourceId": "0312",
+  "exerciseId": 516,
+  "name": "dumbbell hammer curl v. 2",
+  "priority": "search_only",
+  "beginnerFriendly": false
+ },
+ {
+  "sourceId": "2402",
+  "exerciseId": 517,
+  "name": "dumbbell hammer curls (with arm blaster)",
+  "priority": "search_only",
+  "beginnerFriendly": false
+ },
+ {
+  "sourceId": "1664",
+  "exerciseId": 518,
+  "name": "dumbbell high curl",
+  "priority": "search_only",
+  "beginnerFriendly": false
+ },
+ {
+  "sourceId": "3545",
+  "exerciseId": 519,
+  "name": "dumbbell incline alternate press",
+  "priority": "search_only",
+  "beginnerFriendly": false
+ },
+ {
+  "sourceId": "0314",
+  "exerciseId": 520,
+  "name": "dumbbell incline bench press",
+  "priority": "first",
+  "beginnerFriendly": true
+ },
+ {
+  "sourceId": "0315",
+  "exerciseId": 521,
+  "name": "dumbbell incline biceps curl",
+  "priority": "alternative",
+  "beginnerFriendly": false
+ },
+ {
+  "sourceId": "0316",
+  "exerciseId": 522,
+  "name": "dumbbell incline breeding",
+  "priority": "never",
+  "beginnerFriendly": false
+ },
+ {
+  "sourceId": "0318",
+  "exerciseId": 523,
+  "name": "dumbbell incline curl",
+  "priority": "search_only",
+  "beginnerFriendly": false
+ },
+ {
+  "sourceId": "0317",
+  "exerciseId": 524,
+  "name": "dumbbell incline curl v. 2",
+  "priority": "search_only",
+  "beginnerFriendly": false
+ },
+ {
+  "sourceId": "0319",
+  "exerciseId": 525,
+  "name": "dumbbell incline fly",
+  "priority": "alternative",
+  "beginnerFriendly": true
+ },
+ {
+  "sourceId": "1278",
+  "exerciseId": 526,
+  "name": "dumbbell incline fly on exercise ball",
+  "priority": "search_only",
+  "beginnerFriendly": false
+ },
+ {
+  "sourceId": "0320",
+  "exerciseId": 527,
+  "name": "dumbbell incline hammer curl",
+  "priority": "search_only",
+  "beginnerFriendly": false
+ },
+ {
+  "sourceId": "0321",
+  "exerciseId": 528,
+  "name": "dumbbell incline hammer press",
+  "priority": "search_only",
+  "beginnerFriendly": false
+ },
+ {
+  "sourceId": "1618",
+  "exerciseId": 529,
+  "name": "dumbbell incline hammer press on exercise ball",
+  "priority": "search_only",
+  "beginnerFriendly": false
+ },
+ {
+  "sourceId": "0322",
+  "exerciseId": 530,
+  "name": "dumbbell incline inner biceps curl",
+  "priority": "search_only",
+  "beginnerFriendly": false
+ },
+ {
+  "sourceId": "1279",
+  "exerciseId": 531,
+  "name": "dumbbell incline one arm fly",
+  "priority": "search_only",
+  "beginnerFriendly": false
+ },
+ {
+  "sourceId": "1280",
+  "exerciseId": 532,
+  "name": "dumbbell incline one arm fly on exercise ball",
+  "priority": "search_only",
+  "beginnerFriendly": false
+ },
+ {
+  "sourceId": "1619",
+  "exerciseId": 533,
+  "name": "dumbbell incline one arm hammer press",
+  "priority": "search_only",
+  "beginnerFriendly": false
+ },
+ {
+  "sourceId": "1620",
+  "exerciseId": 534,
+  "name": "dumbbell incline one arm hammer press on exercise ball",
+  "priority": "search_only",
+  "beginnerFriendly": false
+ },
+ {
+  "sourceId": "0323",
+  "exerciseId": 535,
+  "name": "dumbbell incline one arm lateral raise",
+  "priority": "search_only",
+  "beginnerFriendly": false
+ },
+ {
+  "sourceId": "1281",
+  "exerciseId": 536,
+  "name": "dumbbell incline one arm press",
+  "priority": "search_only",
+  "beginnerFriendly": false
+ },
+ {
+  "sourceId": "1282",
+  "exerciseId": 537,
+  "name": "dumbbell incline one arm press on exercise ball",
+  "priority": "search_only",
+  "beginnerFriendly": false
+ },
+ {
+  "sourceId": "0324",
+  "exerciseId": 538,
+  "name": "dumbbell incline palm-in press",
+  "priority": "alternative",
+  "beginnerFriendly": false
+ },
+ {
+  "sourceId": "1283",
+  "exerciseId": 539,
+  "name": "dumbbell incline press on exercise ball",
+  "priority": "search_only",
+  "beginnerFriendly": false
+ },
+ {
+  "sourceId": "0325",
+  "exerciseId": 540,
+  "name": "dumbbell incline raise",
+  "priority": "alternative",
+  "beginnerFriendly": true
+ },
+ {
+  "sourceId": "0326",
+  "exerciseId": 541,
+  "name": "dumbbell incline rear lateral raise",
+  "priority": "search_only",
+  "beginnerFriendly": false
+ },
+ {
+  "sourceId": "0327",
+  "exerciseId": 542,
+  "name": "dumbbell incline row",
+  "priority": "first",
+  "beginnerFriendly": true
+ },
+ {
+  "sourceId": "0328",
+  "exerciseId": 543,
+  "name": "dumbbell incline shoulder raise",
+  "priority": "alternative",
+  "beginnerFriendly": false
+ },
+ {
+  "sourceId": "0329",
+  "exerciseId": 544,
+  "name": "dumbbell incline shrug",
+  "priority": "alternative",
+  "beginnerFriendly": true
+ },
+ {
+  "sourceId": "3542",
+  "exerciseId": 545,
+  "name": "dumbbell incline t-raise",
+  "priority": "search_only",
+  "beginnerFriendly": false
+ },
+ {
+  "sourceId": "0330",
+  "exerciseId": 546,
+  "name": "dumbbell incline triceps extension",
+  "priority": "search_only",
+  "beginnerFriendly": false
+ },
+ {
+  "sourceId": "0331",
+  "exerciseId": 547,
+  "name": "dumbbell incline twisted flyes",
+  "priority": "search_only",
+  "beginnerFriendly": false
+ },
+ {
+  "sourceId": "1733",
+  "exerciseId": 548,
+  "name": "dumbbell incline two arm extension",
+  "priority": "search_only",
+  "beginnerFriendly": false
+ },
+ {
+  "sourceId": "3541",
+  "exerciseId": 549,
+  "name": "dumbbell incline y-raise",
+  "priority": "search_only",
+  "beginnerFriendly": false
+ },
+ {
+  "sourceId": "0332",
+  "exerciseId": 550,
+  "name": "dumbbell iron cross",
+  "priority": "search_only",
+  "beginnerFriendly": false
+ },
+ {
+  "sourceId": "0333",
+  "exerciseId": 551,
+  "name": "dumbbell kickback",
+  "priority": "first",
+  "beginnerFriendly": true
+ },
+ {
+  "sourceId": "1734",
+  "exerciseId": 552,
+  "name": "dumbbell kickbacks on exercise ball",
+  "priority": "search_only",
+  "beginnerFriendly": false
+ },
+ {
+  "sourceId": "1660",
+  "exerciseId": 553,
+  "name": "dumbbell kneeling bicep curl exercise ball",
+  "priority": "search_only",
+  "beginnerFriendly": false
+ },
+ {
+  "sourceId": "0334",
+  "exerciseId": 554,
+  "name": "dumbbell lateral raise",
+  "priority": "first",
+  "beginnerFriendly": true
+ },
+ {
+  "sourceId": "0335",
+  "exerciseId": 555,
+  "name": "dumbbell lateral to front raise",
+  "priority": "search_only",
+  "beginnerFriendly": false
+ },
+ {
+  "sourceId": "0336",
+  "exerciseId": 556,
+  "name": "dumbbell lunge",
+  "priority": "alternative",
+  "beginnerFriendly": false
+ },
+ {
+  "sourceId": "1658",
+  "exerciseId": 557,
+  "name": "dumbbell lunge with bicep curl",
+  "priority": "search_only",
+  "beginnerFriendly": false
+ },
+ {
+  "sourceId": "0337",
+  "exerciseId": 558,
+  "name": "dumbbell lying extension (across face)",
+  "priority": "search_only",
+  "beginnerFriendly": false
+ },
+ {
+  "sourceId": "1729",
+  "exerciseId": 559,
+  "name": "dumbbell lying alternate extension",
+  "priority": "search_only",
+  "beginnerFriendly": false
+ },
+ {
+  "sourceId": "0338",
+  "exerciseId": 560,
+  "name": "dumbbell lying elbow press",
+  "priority": "search_only",
+  "beginnerFriendly": false
+ },
+ {
+  "sourceId": "0863",
+  "exerciseId": 561,
+  "name": "dumbbell lying external shoulder rotation",
+  "priority": "search_only",
+  "beginnerFriendly": false
+ },
+ {
+  "sourceId": "0339",
+  "exerciseId": 562,
+  "name": "dumbbell lying femoral",
+  "priority": "alternative",
+  "beginnerFriendly": false
+ },
+ {
+  "sourceId": "0340",
+  "exerciseId": 563,
+  "name": "dumbbell lying hammer press",
+  "priority": "alternative",
+  "beginnerFriendly": true
+ },
+ {
+  "sourceId": "2470",
+  "exerciseId": 564,
+  "name": "dumbbell lying on floor rear delt raise",
+  "priority": "search_only",
+  "beginnerFriendly": false
+ },
+ {
+  "sourceId": "0341",
+  "exerciseId": 565,
+  "name": "dumbbell lying one arm deltoid rear",
+  "priority": "search_only",
+  "beginnerFriendly": false
+ },
+ {
+  "sourceId": "0343",
+  "exerciseId": 566,
+  "name": "dumbbell lying one arm press",
+  "priority": "search_only",
+  "beginnerFriendly": false
+ },
+ {
+  "sourceId": "0342",
+  "exerciseId": 567,
+  "name": "dumbbell lying one arm press v. 2",
+  "priority": "search_only",
+  "beginnerFriendly": false
+ },
+ {
+  "sourceId": "0344",
+  "exerciseId": 568,
+  "name": "dumbbell lying one arm pronated triceps extension",
+  "priority": "search_only",
+  "beginnerFriendly": false
+ },
+ {
+  "sourceId": "0345",
+  "exerciseId": 569,
+  "name": "dumbbell lying one arm rear lateral raise",
+  "priority": "search_only",
+  "beginnerFriendly": false
+ },
+ {
+  "sourceId": "0346",
+  "exerciseId": 570,
+  "name": "dumbbell lying one arm supinated triceps extension",
+  "priority": "search_only",
+  "beginnerFriendly": false
+ },
+ {
+  "sourceId": "0347",
+  "exerciseId": 571,
+  "name": "dumbbell lying pronation",
+  "priority": "search_only",
+  "beginnerFriendly": false
+ },
+ {
+  "sourceId": "2705",
+  "exerciseId": 572,
+  "name": "dumbbell lying pronation on floor",
+  "priority": "search_only",
+  "beginnerFriendly": false
+ },
+ {
+  "sourceId": "1284",
+  "exerciseId": 573,
+  "name": "dumbbell lying pullover on exercise ball",
+  "priority": "search_only",
+  "beginnerFriendly": false
+ },
+ {
+  "sourceId": "1328",
+  "exerciseId": 574,
+  "name": "dumbbell lying rear delt row",
+  "priority": "search_only",
+  "beginnerFriendly": false
+ },
+ {
+  "sourceId": "0348",
+  "exerciseId": 575,
+  "name": "dumbbell lying rear lateral raise",
+  "priority": "search_only",
+  "beginnerFriendly": false
+ },
+ {
+  "sourceId": "1735",
+  "exerciseId": 576,
+  "name": "dumbbell lying single extension",
+  "priority": "search_only",
+  "beginnerFriendly": false
+ },
+ {
+  "sourceId": "0349",
+  "exerciseId": 577,
+  "name": "dumbbell lying supination",
+  "priority": "search_only",
+  "beginnerFriendly": false
+ },
+ {
+  "sourceId": "2706",
+  "exerciseId": 578,
+  "name": "dumbbell lying supination on floor",
+  "priority": "search_only",
+  "beginnerFriendly": false
+ },
+ {
+  "sourceId": "1661",
+  "exerciseId": 579,
+  "name": "dumbbell lying supine biceps curl",
+  "priority": "search_only",
+  "beginnerFriendly": false
+ },
+ {
+  "sourceId": "0350",
+  "exerciseId": 580,
+  "name": "dumbbell lying supine curl",
+  "priority": "search_only",
+  "beginnerFriendly": false
+ },
+ {
+  "sourceId": "0351",
+  "exerciseId": 581,
+  "name": "dumbbell lying triceps extension",
+  "priority": "first",
+  "beginnerFriendly": true
+ },
+ {
+  "sourceId": "1662",
+  "exerciseId": 582,
+  "name": "dumbbell lying wide curl",
+  "priority": "search_only",
+  "beginnerFriendly": false
+ },
+ {
+  "sourceId": "0352",
+  "exerciseId": 583,
+  "name": "dumbbell neutral grip bench press",
+  "priority": "alternative",
+  "beginnerFriendly": true
+ },
+ {
+  "sourceId": "1285",
+  "exerciseId": 584,
+  "name": "dumbbell one arm bench fly",
+  "priority": "search_only",
+  "beginnerFriendly": false
+ },
+ {
+  "sourceId": "0292",
+  "exerciseId": 585,
+  "name": "dumbbell one arm bent-over row",
+  "priority": "first",
+  "beginnerFriendly": true
+ },
+ {
+  "sourceId": "1286",
+  "exerciseId": 586,
+  "name": "dumbbell one arm chest fly on exercise ball",
+  "priority": "search_only",
+  "beginnerFriendly": false
+ },
+ {
+  "sourceId": "0353",
+  "exerciseId": 587,
+  "name": "dumbbell one arm concentration curl (on stability ball)",
+  "priority": "search_only",
+  "beginnerFriendly": false
+ },
+ {
+  "sourceId": "1287",
+  "exerciseId": 588,
+  "name": "dumbbell one arm decline chest press",
+  "priority": "search_only",
+  "beginnerFriendly": false
+ },
+ {
+  "sourceId": "1288",
+  "exerciseId": 589,
+  "name": "dumbbell one arm fly on exercise ball",
+  "priority": "search_only",
+  "beginnerFriendly": false
+ },
+ {
+  "sourceId": "1736",
+  "exerciseId": 590,
+  "name": "dumbbell one arm french press on exercise ball",
+  "priority": "search_only",
+  "beginnerFriendly": false
+ },
+ {
+  "sourceId": "1663",
+  "exerciseId": 591,
+  "name": "dumbbell one arm hammer preacher curl",
+  "priority": "search_only",
+  "beginnerFriendly": false
+ },
+ {
+  "sourceId": "1621",
+  "exerciseId": 592,
+  "name": "dumbbell one arm hammer press on exercise ball",
+  "priority": "search_only",
+  "beginnerFriendly": false
+ },
+ {
+  "sourceId": "1289",
+  "exerciseId": 593,
+  "name": "dumbbell one arm incline chest press",
+  "priority": "search_only",
+  "beginnerFriendly": false
+ },
+ {
+  "sourceId": "0354",
+  "exerciseId": 594,
+  "name": "dumbbell one arm kickback",
+  "priority": "alternative",
+  "beginnerFriendly": true
+ },
+ {
+  "sourceId": "0355",
+  "exerciseId": 595,
+  "name": "dumbbell one arm lateral raise",
+  "priority": "search_only",
+  "beginnerFriendly": false
+ },
+ {
+  "sourceId": "0356",
+  "exerciseId": 596,
+  "name": "dumbbell one arm lateral raise with support",
+  "priority": "alternative",
+  "beginnerFriendly": true
+ },
+ {
+  "sourceId": "1290",
+  "exerciseId": 597,
+  "name": "dumbbell one arm press on exercise ball",
+  "priority": "search_only",
+  "beginnerFriendly": false
+ },
+ {
+  "sourceId": "1665",
+  "exerciseId": 598,
+  "name": "dumbbell one arm prone curl",
+  "priority": "search_only",
+  "beginnerFriendly": false
+ },
+ {
+  "sourceId": "1666",
+  "exerciseId": 599,
+  "name": "dumbbell one arm prone hammer curl",
+  "priority": "search_only",
+  "beginnerFriendly": false
+ },
+ {
+  "sourceId": "1291",
+  "exerciseId": 600,
+  "name": "dumbbell one arm pullover on exercise ball",
+  "priority": "search_only",
+  "beginnerFriendly": false
+ },
+ {
+  "sourceId": "0358",
+  "exerciseId": 601,
+  "name": "dumbbell one arm reverse wrist curl",
+  "priority": "search_only",
+  "beginnerFriendly": false
+ },
+ {
+  "sourceId": "0359",
+  "exerciseId": 602,
+  "name": "dumbbell one arm reverse fly (with support)",
+  "priority": "search_only",
+  "beginnerFriendly": false
+ },
+ {
+  "sourceId": "1622",
+  "exerciseId": 603,
+  "name": "dumbbell one arm reverse grip press",
+  "priority": "search_only",
+  "beginnerFriendly": false
+ },
+ {
+  "sourceId": "1414",
+  "exerciseId": 604,
+  "name": "dumbbell one arm reverse preacher curl",
+  "priority": "search_only",
+  "beginnerFriendly": false
+ },
+ {
+  "sourceId": "1667",
+  "exerciseId": 605,
+  "name": "dumbbell one arm reverse spider curl",
+  "priority": "search_only",
+  "beginnerFriendly": false
+ },
+ {
+  "sourceId": "1668",
+  "exerciseId": 606,
+  "name": "dumbbell one arm seated bicep curl on exercise ball",
+  "priority": "search_only",
+  "beginnerFriendly": false
+ },
+ {
+  "sourceId": "1669",
+  "exerciseId": 607,
+  "name": "dumbbell one arm seated hammer curl",
+  "priority": "search_only",
+  "beginnerFriendly": false
+ },
+ {
+  "sourceId": "1415",
+  "exerciseId": 608,
+  "name": "dumbbell one arm seated neutral wrist curl",
+  "priority": "search_only",
+  "beginnerFriendly": false
+ },
+ {
+  "sourceId": "0361",
+  "exerciseId": 609,
+  "name": "dumbbell one arm shoulder press",
+  "priority": "search_only",
+  "beginnerFriendly": false
+ },
+ {
+  "sourceId": "0360",
+  "exerciseId": 610,
+  "name": "dumbbell one arm shoulder press v. 2",
+  "priority": "search_only",
+  "beginnerFriendly": false
+ },
+ {
+  "sourceId": "3888",
+  "exerciseId": 611,
+  "name": "dumbbell one arm snatch",
+  "priority": "never",
+  "beginnerFriendly": false
+ },
+ {
+  "sourceId": "1670",
+  "exerciseId": 612,
+  "name": "dumbbell one arm standing curl",
+  "priority": "search_only",
+  "beginnerFriendly": false
+ },
+ {
+  "sourceId": "1671",
+  "exerciseId": 613,
+  "name": "dumbbell one arm standing hammer curl",
+  "priority": "search_only",
+  "beginnerFriendly": false
+ },
+ {
+  "sourceId": "0362",
+  "exerciseId": 614,
+  "name": "dumbbell one arm triceps extension (on bench)",
+  "priority": "search_only",
+  "beginnerFriendly": false
+ },
+ {
+  "sourceId": "0363",
+  "exerciseId": 615,
+  "name": "dumbbell one arm upright row",
+  "priority": "search_only",
+  "beginnerFriendly": false
+ },
+ {
+  "sourceId": "0364",
+  "exerciseId": 616,
+  "name": "dumbbell one arm wrist curl",
+  "priority": "alternative",
+  "beginnerFriendly": false
+ },
+ {
+  "sourceId": "1672",
+  "exerciseId": 617,
+  "name": "dumbbell one arm zottman preacher curl",
+  "priority": "search_only",
+  "beginnerFriendly": false
+ },
+ {
+  "sourceId": "1292",
+  "exerciseId": 618,
+  "name": "dumbbell one leg fly on exercise ball",
+  "priority": "search_only",
+  "beginnerFriendly": false
+ },
+ {
+  "sourceId": "0365",
+  "exerciseId": 619,
+  "name": "dumbbell over bench neutral wrist curl",
+  "priority": "search_only",
+  "beginnerFriendly": false
+ },
+ {
+  "sourceId": "0366",
+  "exerciseId": 620,
+  "name": "dumbbell over bench one arm neutral wrist curl",
+  "priority": "search_only",
+  "beginnerFriendly": false
+ },
+ {
+  "sourceId": "1441",
+  "exerciseId": 621,
+  "name": "dumbbell over bench one arm reverse wrist curl",
+  "priority": "search_only",
+  "beginnerFriendly": false
+ },
+ {
+  "sourceId": "0367",
+  "exerciseId": 622,
+  "name": "dumbbell over bench one arm wrist curl",
+  "priority": "search_only",
+  "beginnerFriendly": false
+ },
+ {
+  "sourceId": "0368",
+  "exerciseId": 623,
+  "name": "dumbbell over bench revers wrist curl",
+  "priority": "alternative",
+  "beginnerFriendly": true
+ },
+ {
+  "sourceId": "0369",
+  "exerciseId": 624,
+  "name": "dumbbell over bench wrist curl",
+  "priority": "first",
+  "beginnerFriendly": true
+ },
+ {
+  "sourceId": "1329",
+  "exerciseId": 625,
+  "name": "dumbbell palm rotational bent over row",
+  "priority": "search_only",
+  "beginnerFriendly": false
+ },
+ {
+  "sourceId": "1623",
+  "exerciseId": 626,
+  "name": "dumbbell palms in incline bench press",
+  "priority": "search_only",
+  "beginnerFriendly": false
+ },
+ {
+  "sourceId": "0370",
+  "exerciseId": 627,
+  "name": "dumbbell peacher hammer curl",
+  "priority": "search_only",
+  "beginnerFriendly": false
+ },
+ {
+  "sourceId": "0371",
+  "exerciseId": 628,
+  "name": "dumbbell plyo squat",
+  "priority": "search_only",
+  "beginnerFriendly": false
+ },
+ {
+  "sourceId": "0372",
+  "exerciseId": 629,
+  "name": "dumbbell preacher curl",
+  "priority": "alternative",
+  "beginnerFriendly": false
+ },
+ {
+  "sourceId": "1673",
+  "exerciseId": 630,
+  "name": "dumbbell preacher curl over exercise ball",
+  "priority": "search_only",
+  "beginnerFriendly": false
+ },
+ {
+  "sourceId": "1293",
+  "exerciseId": 631,
+  "name": "dumbbell press on exercise ball",
+  "priority": "search_only",
+  "beginnerFriendly": false
+ },
+ {
+  "sourceId": "0373",
+  "exerciseId": 632,
+  "name": "dumbbell pronate-grip triceps extension",
+  "priority": "search_only",
+  "beginnerFriendly": false
+ },
+ {
+  "sourceId": "0374",
+  "exerciseId": 633,
+  "name": "dumbbell prone incline curl",
+  "priority": "search_only",
+  "beginnerFriendly": false
+ },
+ {
+  "sourceId": "1674",
+  "exerciseId": 634,
+  "name": "dumbbell prone incline hammer curl",
+  "priority": "search_only",
+  "beginnerFriendly": false
+ },
+ {
+  "sourceId": "0375",
+  "exerciseId": 635,
+  "name": "dumbbell pullover",
+  "priority": "alternative",
+  "beginnerFriendly": false
+ },
+ {
+  "sourceId": "1294",
+  "exerciseId": 636,
+  "name": "dumbbell pullover hip extension on exercise ball",
+  "priority": "search_only",
+  "beginnerFriendly": false
+ },
+ {
+  "sourceId": "1295",
+  "exerciseId": 637,
+  "name": "dumbbell pullover on exercise ball",
+  "priority": "search_only",
+  "beginnerFriendly": false
+ },
+ {
+  "sourceId": "1700",
+  "exerciseId": 638,
+  "name": "dumbbell push press",
+  "priority": "search_only",
+  "beginnerFriendly": false
+ },
+ {
+  "sourceId": "0376",
+  "exerciseId": 639,
+  "name": "dumbbell raise",
+  "priority": "search_only",
+  "beginnerFriendly": false
+ },
+ {
+  "sourceId": "2292",
+  "exerciseId": 640,
+  "name": "dumbbell rear delt raise",
+  "priority": "search_only",
+  "beginnerFriendly": false
+ },
+ {
+  "sourceId": "0377",
+  "exerciseId": 641,
+  "name": "dumbbell rear delt row_shoulder",
+  "priority": "search_only",
+  "beginnerFriendly": false
+ },
+ {
+  "sourceId": "0378",
+  "exerciseId": 642,
+  "name": "dumbbell rear fly",
+  "priority": "first",
+  "beginnerFriendly": true
+ },
+ {
+  "sourceId": "0380",
+  "exerciseId": 643,
+  "name": "dumbbell rear lateral raise",
+  "priority": "alternative",
+  "beginnerFriendly": true
+ },
+ {
+  "sourceId": "0379",
+  "exerciseId": 644,
+  "name": "dumbbell rear lateral raise (support head)",
+  "priority": "search_only",
+  "beginnerFriendly": false
+ },
+ {
+  "sourceId": "0381",
+  "exerciseId": 645,
+  "name": "dumbbell rear lunge",
+  "priority": "alternative",
+  "beginnerFriendly": true
+ },
+ {
+  "sourceId": "0382",
+  "exerciseId": 646,
+  "name": "dumbbell revers grip biceps curl",
+  "priority": "search_only",
+  "beginnerFriendly": false
+ },
+ {
+  "sourceId": "1624",
+  "exerciseId": 647,
+  "name": "dumbbell reverse bench press",
+  "priority": "search_only",
+  "beginnerFriendly": false
+ },
+ {
+  "sourceId": "0383",
+  "exerciseId": 648,
+  "name": "dumbbell reverse fly",
+  "priority": "search_only",
+  "beginnerFriendly": false
+ },
+ {
+  "sourceId": "1330",
+  "exerciseId": 649,
+  "name": "dumbbell reverse grip incline bench one arm row",
+  "priority": "search_only",
+  "beginnerFriendly": false
+ },
+ {
+  "sourceId": "1331",
+  "exerciseId": 650,
+  "name": "dumbbell reverse grip incline bench two arm row",
+  "priority": "search_only",
+  "beginnerFriendly": false
+ },
+ {
+  "sourceId": "2327",
+  "exerciseId": 651,
+  "name": "dumbbell reverse grip row (female)",
+  "priority": "alternative",
+  "beginnerFriendly": true
+ },
+ {
+  "sourceId": "0384",
+  "exerciseId": 652,
+  "name": "dumbbell reverse preacher curl",
+  "priority": "search_only",
+  "beginnerFriendly": false
+ },
+ {
+  "sourceId": "1675",
+  "exerciseId": 653,
+  "name": "dumbbell reverse spider curl",
+  "priority": "search_only",
+  "beginnerFriendly": false
+ },
+ {
+  "sourceId": "0385",
+  "exerciseId": 654,
+  "name": "dumbbell reverse wrist curl",
+  "priority": "first",
+  "beginnerFriendly": true
+ },
+ {
+  "sourceId": "1459",
+  "exerciseId": 655,
+  "name": "dumbbell romanian deadlift",
+  "priority": "first",
+  "beginnerFriendly": true
+ },
+ {
+  "sourceId": "0386",
+  "exerciseId": 656,
+  "name": "dumbbell rotation reverse fly",
+  "priority": "search_only",
+  "beginnerFriendly": false
+ },
+ {
+  "sourceId": "2397",
+  "exerciseId": 657,
+  "name": "dumbbell scott press",
+  "priority": "search_only",
+  "beginnerFriendly": false
+ },
+ {
+  "sourceId": "0387",
+  "exerciseId": 658,
+  "name": "dumbbell seated alternate front raise",
+  "priority": "search_only",
+  "beginnerFriendly": false
+ },
+ {
+  "sourceId": "1676",
+  "exerciseId": 659,
+  "name": "dumbbell seated alternate hammer curl on exercise ball",
+  "priority": "search_only",
+  "beginnerFriendly": false
+ },
+ {
+  "sourceId": "0388",
+  "exerciseId": 660,
+  "name": "dumbbell seated alternate press",
+  "priority": "search_only",
+  "beginnerFriendly": false
+ },
+ {
+  "sourceId": "3546",
+  "exerciseId": 661,
+  "name": "dumbbell seated alternate shoulder",
+  "priority": "search_only",
+  "beginnerFriendly": false
+ },
+ {
+  "sourceId": "0389",
+  "exerciseId": 662,
+  "name": "dumbbell seated bench extension",
+  "priority": "search_only",
+  "beginnerFriendly": false
+ },
+ {
+  "sourceId": "2317",
+  "exerciseId": 663,
+  "name": "dumbbell seated bent arm lateral raise",
+  "priority": "search_only",
+  "beginnerFriendly": false
+ },
+ {
+  "sourceId": "1730",
+  "exerciseId": 664,
+  "name": "dumbbell seated bent over alternate kickback",
+  "priority": "search_only",
+  "beginnerFriendly": false
+ },
+ {
+  "sourceId": "1737",
+  "exerciseId": 665,
+  "name": "dumbbell seated bent over triceps extension",
+  "priority": "search_only",
+  "beginnerFriendly": false
+ },
+ {
+  "sourceId": "1677",
+  "exerciseId": 666,
+  "name": "dumbbell seated bicep curl",
+  "priority": "alternative",
+  "beginnerFriendly": true
+ },
+ {
+  "sourceId": "0390",
+  "exerciseId": 667,
+  "name": "dumbbell seated biceps curl (on stability ball)",
+  "priority": "search_only",
+  "beginnerFriendly": false
+ },
+ {
+  "sourceId": "3547",
+  "exerciseId": 668,
+  "name": "dumbbell seated biceps curl to shoulder press",
+  "priority": "search_only",
+  "beginnerFriendly": false
+ },
+ {
+  "sourceId": "1379",
+  "exerciseId": 669,
+  "name": "dumbbell seated calf raise",
+  "priority": "first",
+  "beginnerFriendly": true
+ },
+ {
+  "sourceId": "0391",
+  "exerciseId": 670,
+  "name": "dumbbell seated curl",
+  "priority": "first",
+  "beginnerFriendly": true
+ },
+ {
+  "sourceId": "0392",
+  "exerciseId": 671,
+  "name": "dumbbell seated front raise",
+  "priority": "search_only",
+  "beginnerFriendly": false
+ },
+ {
+  "sourceId": "1678",
+  "exerciseId": 672,
+  "name": "dumbbell seated hammer curl",
+  "priority": "alternative",
+  "beginnerFriendly": true
+ },
+ {
+  "sourceId": "0393",
+  "exerciseId": 673,
+  "name": "dumbbell seated inner biceps curl",
+  "priority": "search_only",
+  "beginnerFriendly": false
+ },
+ {
+  "sourceId": "0394",
+  "exerciseId": 674,
+  "name": "dumbbell seated kickback",
+  "priority": "search_only",
+  "beginnerFriendly": false
+ },
+ {
+  "sourceId": "0396",
+  "exerciseId": 675,
+  "name": "dumbbell seated lateral raise",
+  "priority": "alternative",
+  "beginnerFriendly": true
+ },
+ {
+  "sourceId": "0395",
+  "exerciseId": 676,
+  "name": "dumbbell seated lateral raise v. 2",
+  "priority": "search_only",
+  "beginnerFriendly": false
+ },
+ {
+  "sourceId": "0397",
+  "exerciseId": 677,
+  "name": "dumbbell seated neutral wrist curl",
+  "priority": "search_only",
+  "beginnerFriendly": false
+ },
+ {
+  "sourceId": "1679",
+  "exerciseId": 678,
+  "name": "dumbbell seated one arm bicep curl on exercise ball with leg raised",
+  "priority": "search_only",
+  "beginnerFriendly": false
+ },
+ {
+  "sourceId": "0398",
+  "exerciseId": 679,
+  "name": "dumbbell seated one arm kickback",
+  "priority": "search_only",
+  "beginnerFriendly": false
+ },
+ {
+  "sourceId": "0399",
+  "exerciseId": 680,
+  "name": "dumbbell seated one arm rotate",
+  "priority": "search_only",
+  "beginnerFriendly": false
+ },
+ {
+  "sourceId": "0400",
+  "exerciseId": 681,
+  "name": "dumbbell seated one leg calf raise",
+  "priority": "search_only",
+  "beginnerFriendly": false
+ },
+ {
+  "sourceId": "1380",
+  "exerciseId": 682,
+  "name": "dumbbell seated one leg calf raise - hammer grip",
+  "priority": "search_only",
+  "beginnerFriendly": false
+ },
+ {
+  "sourceId": "1381",
+  "exerciseId": 683,
+  "name": "dumbbell seated one leg calf raise - palm up",
+  "priority": "search_only",
+  "beginnerFriendly": false
+ },
+ {
+  "sourceId": "0401",
+  "exerciseId": 684,
+  "name": "dumbbell seated palms up wrist curl",
+  "priority": "search_only",
+  "beginnerFriendly": false
+ },
+ {
+  "sourceId": "0402",
+  "exerciseId": 685,
+  "name": "dumbbell seated preacher curl",
+  "priority": "search_only",
+  "beginnerFriendly": false
+ },
+ {
+  "sourceId": "0403",
+  "exerciseId": 686,
+  "name": "dumbbell seated revers grip concentration curl",
+  "priority": "search_only",
+  "beginnerFriendly": false
+ },
+ {
+  "sourceId": "1738",
+  "exerciseId": 687,
+  "name": "dumbbell seated reverse grip one arm overhead tricep extension",
+  "priority": "search_only",
+  "beginnerFriendly": false
+ },
+ {
+  "sourceId": "0405",
+  "exerciseId": 688,
+  "name": "dumbbell seated shoulder press",
+  "priority": "first",
+  "beginnerFriendly": true
+ },
+ {
+  "sourceId": "0404",
+  "exerciseId": 689,
+  "name": "dumbbell seated shoulder press (parallel grip)",
+  "priority": "alternative",
+  "beginnerFriendly": true
+ },
+ {
+  "sourceId": "2188",
+  "exerciseId": 690,
+  "name": "dumbbell seated triceps extension",
+  "priority": "first",
+  "beginnerFriendly": true
+ },
+ {
+  "sourceId": "0406",
+  "exerciseId": 691,
+  "name": "dumbbell shrug",
+  "priority": "first",
+  "beginnerFriendly": true
+ },
+ {
+  "sourceId": "0407",
+  "exerciseId": 692,
+  "name": "dumbbell side bend",
+  "priority": "alternative",
+  "beginnerFriendly": true
+ },
+ {
+  "sourceId": "0408",
+  "exerciseId": 693,
+  "name": "dumbbell side lying one hand raise",
+  "priority": "search_only",
+  "beginnerFriendly": false
+ },
+ {
+  "sourceId": "3664",
+  "exerciseId": 694,
+  "name": "dumbbell side plank with rear fly",
+  "priority": "search_only",
+  "beginnerFriendly": false
+ },
+ {
+  "sourceId": "3548",
+  "exerciseId": 695,
+  "name": "dumbbell single arm overhead carry",
+  "priority": "search_only",
+  "beginnerFriendly": false
+ },
+ {
+  "sourceId": "0409",
+  "exerciseId": 696,
+  "name": "dumbbell single leg calf raise",
+  "priority": "alternative",
+  "beginnerFriendly": false
+ },
+ {
+  "sourceId": "1757",
+  "exerciseId": 697,
+  "name": "dumbbell single leg deadlift",
+  "priority": "search_only",
+  "beginnerFriendly": false
+ },
+ {
+  "sourceId": "2805",
+  "exerciseId": 698,
+  "name": "dumbbell single leg deadlift with stepbox support",
+  "priority": "search_only",
+  "beginnerFriendly": false
+ },
+ {
+  "sourceId": "0410",
+  "exerciseId": 699,
+  "name": "dumbbell single leg split squat",
+  "priority": "alternative",
+  "beginnerFriendly": false
+ },
+ {
+  "sourceId": "0411",
+  "exerciseId": 700,
+  "name": "dumbbell single leg squat",
+  "priority": "search_only",
+  "beginnerFriendly": false
+ },
+ {
+  "sourceId": "0413",
+  "exerciseId": 701,
+  "name": "dumbbell squat",
+  "priority": "first",
+  "beginnerFriendly": true
+ },
+ {
+  "sourceId": "3560",
+  "exerciseId": 702,
+  "name": "dumbbell standing alternate hammer curl and press",
+  "priority": "search_only",
+  "beginnerFriendly": false
+ },
+ {
+  "sourceId": "0414",
+  "exerciseId": 703,
+  "name": "dumbbell standing alternate overhead press",
+  "priority": "search_only",
+  "beginnerFriendly": false
+ },
+ {
+  "sourceId": "0415",
+  "exerciseId": 704,
+  "name": "dumbbell standing alternate raise",
+  "priority": "search_only",
+  "beginnerFriendly": false
+ },
+ {
+  "sourceId": "1739",
+  "exerciseId": 705,
+  "name": "dumbbell standing alternating tricep kickback",
+  "priority": "search_only",
+  "beginnerFriendly": false
+ },
+ {
+  "sourceId": "2143",
+  "exerciseId": 706,
+  "name": "dumbbell standing around world",
+  "priority": "search_only",
+  "beginnerFriendly": false
+ },
+ {
+  "sourceId": "1740",
+  "exerciseId": 707,
+  "name": "dumbbell standing bent over one arm triceps extension",
+  "priority": "search_only",
+  "beginnerFriendly": false
+ },
+ {
+  "sourceId": "1741",
+  "exerciseId": 708,
+  "name": "dumbbell standing bent over two arm triceps extension",
+  "priority": "search_only",
+  "beginnerFriendly": false
+ },
+ {
+  "sourceId": "0416",
+  "exerciseId": 709,
+  "name": "dumbbell standing biceps curl",
+  "priority": "alternative",
+  "beginnerFriendly": true
+ },
+ {
+  "sourceId": "0417",
+  "exerciseId": 710,
+  "name": "dumbbell standing calf raise",
+  "priority": "first",
+  "beginnerFriendly": true
+ },
+ {
+  "sourceId": "0418",
+  "exerciseId": 711,
+  "name": "dumbbell standing concentration curl",
+  "priority": "search_only",
+  "beginnerFriendly": false
+ },
+ {
+  "sourceId": "0419",
+  "exerciseId": 712,
+  "name": "dumbbell standing front raise above head",
+  "priority": "search_only",
+  "beginnerFriendly": false
+ },
+ {
+  "sourceId": "2321",
+  "exerciseId": 713,
+  "name": "dumbbell standing inner biceps curl v. 2",
+  "priority": "search_only",
+  "beginnerFriendly": false
+ },
+ {
+  "sourceId": "0420",
+  "exerciseId": 714,
+  "name": "dumbbell standing kickback",
+  "priority": "search_only",
+  "beginnerFriendly": false
+ },
+ {
+  "sourceId": "0421",
+  "exerciseId": 715,
+  "name": "dumbbell standing one arm concentration curl",
+  "priority": "search_only",
+  "beginnerFriendly": false
+ },
+ {
+  "sourceId": "0422",
+  "exerciseId": 716,
+  "name": "dumbbell standing one arm curl (over incline bench)",
+  "priority": "search_only",
+  "beginnerFriendly": false
+ },
+ {
+  "sourceId": "1680",
+  "exerciseId": 717,
+  "name": "dumbbell standing one arm curl over incline bench",
+  "priority": "search_only",
+  "beginnerFriendly": false
+ },
+ {
+  "sourceId": "0423",
+  "exerciseId": 718,
+  "name": "dumbbell standing one arm extension",
+  "priority": "alternative",
+  "beginnerFriendly": false
+ },
+ {
+  "sourceId": "0424",
+  "exerciseId": 719,
+  "name": "dumbbell standing one arm palm in press",
+  "priority": "search_only",
+  "beginnerFriendly": false
+ },
+ {
+  "sourceId": "0425",
+  "exerciseId": 720,
+  "name": "dumbbell standing one arm reverse curl",
+  "priority": "search_only",
+  "beginnerFriendly": false
+ },
+ {
+  "sourceId": "0426",
+  "exerciseId": 721,
+  "name": "dumbbell standing overhead press",
+  "priority": "alternative",
+  "beginnerFriendly": false
+ },
+ {
+  "sourceId": "0427",
+  "exerciseId": 722,
+  "name": "dumbbell standing palms in press",
+  "priority": "search_only",
+  "beginnerFriendly": false
+ },
+ {
+  "sourceId": "0428",
+  "exerciseId": 723,
+  "name": "dumbbell standing preacher curl",
+  "priority": "search_only",
+  "beginnerFriendly": false
+ },
+ {
+  "sourceId": "0429",
+  "exerciseId": 724,
+  "name": "dumbbell standing reverse curl",
+  "priority": "search_only",
+  "beginnerFriendly": false
+ },
+ {
+  "sourceId": "0430",
+  "exerciseId": 725,
+  "name": "dumbbell standing triceps extension",
+  "priority": "alternative",
+  "beginnerFriendly": true
+ },
+ {
+  "sourceId": "2293",
+  "exerciseId": 726,
+  "name": "dumbbell standing zottman preacher curl",
+  "priority": "search_only",
+  "beginnerFriendly": false
+ },
+ {
+  "sourceId": "1684",
+  "exerciseId": 727,
+  "name": "dumbbell step up single leg balance with bicep curl",
+  "priority": "search_only",
+  "beginnerFriendly": false
+ },
+ {
+  "sourceId": "0431",
+  "exerciseId": 728,
+  "name": "dumbbell step-up",
+  "priority": "alternative",
+  "beginnerFriendly": true
+ },
+ {
+  "sourceId": "2796",
+  "exerciseId": 729,
+  "name": "dumbbell step-up lunge",
+  "priority": "alternative",
+  "beginnerFriendly": false
+ },
+ {
+  "sourceId": "2812",
+  "exerciseId": 730,
+  "name": "dumbbell step-up split squat",
+  "priority": "alternative",
+  "beginnerFriendly": false
+ },
+ {
+  "sourceId": "0432",
+  "exerciseId": 731,
+  "name": "dumbbell stiff leg deadlift",
+  "priority": "search_only",
+  "beginnerFriendly": false
+ },
+ {
+  "sourceId": "0433",
+  "exerciseId": 732,
+  "name": "dumbbell straight arm pullover",
+  "priority": "search_only",
+  "beginnerFriendly": false
+ },
+ {
+  "sourceId": "0434",
+  "exerciseId": 733,
+  "name": "dumbbell straight leg deadlift",
+  "priority": "search_only",
+  "beginnerFriendly": false
+ },
+ {
+  "sourceId": "2808",
+  "exerciseId": 734,
+  "name": "dumbbell sumo pull through",
+  "priority": "search_only",
+  "beginnerFriendly": false
+ },
+ {
+  "sourceId": "2803",
+  "exerciseId": 735,
+  "name": "dumbbell supported squat",
+  "priority": "first",
+  "beginnerFriendly": true
+ },
+ {
+  "sourceId": "0436",
+  "exerciseId": 736,
+  "name": "dumbbell tate press",
+  "priority": "search_only",
+  "beginnerFriendly": false
+ },
+ {
+  "sourceId": "1742",
+  "exerciseId": 737,
+  "name": "dumbbell tricep kickback with stork stance",
+  "priority": "search_only",
+  "beginnerFriendly": false
+ },
+ {
+  "sourceId": "1743",
+  "exerciseId": 738,
+  "name": "dumbbell twisting bench press",
+  "priority": "search_only",
+  "beginnerFriendly": false
+ },
+ {
+  "sourceId": "0437",
+  "exerciseId": 739,
+  "name": "dumbbell upright row",
+  "priority": "search_only",
+  "beginnerFriendly": false
+ },
+ {
+  "sourceId": "1765",
+  "exerciseId": 740,
+  "name": "dumbbell upright row (back pov)",
+  "priority": "search_only",
+  "beginnerFriendly": false
+ },
+ {
+  "sourceId": "0864",
+  "exerciseId": 741,
+  "name": "dumbbell upright shoulder external rotation",
+  "priority": "search_only",
+  "beginnerFriendly": false
+ },
+ {
+  "sourceId": "5201",
+  "exerciseId": 742,
+  "name": "dumbbell waiter biceps curl",
+  "priority": "search_only",
+  "beginnerFriendly": false
+ },
+ {
+  "sourceId": "0438",
+  "exerciseId": 743,
+  "name": "dumbbell w-press",
+  "priority": "search_only",
+  "beginnerFriendly": false
+ },
+ {
+  "sourceId": "0439",
+  "exerciseId": 744,
+  "name": "dumbbell zottman curl",
+  "priority": "alternative",
+  "beginnerFriendly": false
+ },
+ {
+  "sourceId": "2294",
+  "exerciseId": 745,
+  "name": "dumbbell zottman preacher curl",
+  "priority": "search_only",
+  "beginnerFriendly": false
+ },
+ {
+  "sourceId": "2189",
+  "exerciseId": 746,
+  "name": "dumbbells seated triceps extension",
+  "priority": "alternative",
+  "beginnerFriendly": false
+ },
+ {
+  "sourceId": "3287",
+  "exerciseId": 748,
+  "name": "elbow dips",
+  "priority": "search_only",
+  "beginnerFriendly": false
+ },
+ {
+  "sourceId": "1772",
+  "exerciseId": 749,
+  "name": "elbow lift - reverse push-up",
+  "priority": "alternative",
+  "beginnerFriendly": true
+ },
+ {
+  "sourceId": "0443",
+  "exerciseId": 750,
+  "name": "elbow-to-knee",
+  "priority": "alternative",
+  "beginnerFriendly": false
+ },
+ {
+  "sourceId": "3292",
+  "exerciseId": 751,
+  "name": "elevator",
+  "priority": "search_only",
+  "beginnerFriendly": false
+ },
+ {
+  "sourceId": "1332",
+  "exerciseId": 752,
+  "name": "exercise ball alternating arm ups",
+  "priority": "search_only",
+  "beginnerFriendly": false
+ },
+ {
+  "sourceId": "1333",
+  "exerciseId": 753,
+  "name": "exercise ball back extension with arms extended",
+  "priority": "alternative",
+  "beginnerFriendly": false
+ },
+ {
+  "sourceId": "1334",
+  "exerciseId": 754,
+  "name": "exercise ball back extension with hands behind head",
+  "priority": "alternative",
+  "beginnerFriendly": false
+ },
+ {
+  "sourceId": "1335",
+  "exerciseId": 755,
+  "name": "exercise ball back extension with knees off ground",
+  "priority": "search_only",
+  "beginnerFriendly": false
+ },
+ {
+  "sourceId": "1336",
+  "exerciseId": 756,
+  "name": "exercise ball back extension with rotation",
+  "priority": "search_only",
+  "beginnerFriendly": false
+ },
+ {
+  "sourceId": "1744",
+  "exerciseId": 757,
+  "name": "exercise ball dip",
+  "priority": "search_only",
+  "beginnerFriendly": false
+ },
+ {
+  "sourceId": "1338",
+  "exerciseId": 759,
+  "name": "exercise ball hug",
+  "priority": "search_only",
+  "beginnerFriendly": false
+ },
+ {
+  "sourceId": "1382",
+  "exerciseId": 763,
+  "name": "exercise ball on the wall calf raise",
+  "priority": "search_only",
+  "beginnerFriendly": false
+ },
+ {
+  "sourceId": "3241",
+  "exerciseId": 764,
+  "name": "exercise ball on the wall calf raise (tennis ball between ankles)",
+  "priority": "search_only",
+  "beginnerFriendly": false
+ },
+ {
+  "sourceId": "3240",
+  "exerciseId": 765,
+  "name": "exercise ball on the wall calf raise (tennis ball between knees)",
+  "priority": "search_only",
+  "beginnerFriendly": false
+ },
+ {
+  "sourceId": "1416",
+  "exerciseId": 766,
+  "name": "exercise ball one leg prone lower body rotation",
+  "priority": "search_only",
+  "beginnerFriendly": false
+ },
+ {
+  "sourceId": "1417",
+  "exerciseId": 767,
+  "name": "exercise ball one legged diagonal kick hamstring curl",
+  "priority": "search_only",
+  "beginnerFriendly": false
+ },
+ {
+  "sourceId": "1296",
+  "exerciseId": 768,
+  "name": "exercise ball pike push up",
+  "priority": "search_only",
+  "beginnerFriendly": false
+ },
+ {
+  "sourceId": "1343",
+  "exerciseId": 769,
+  "name": "exercise ball prone leg raise",
+  "priority": "alternative",
+  "beginnerFriendly": false
+ },
+ {
+  "sourceId": "1746",
+  "exerciseId": 772,
+  "name": "exercise ball supine triceps extension",
+  "priority": "search_only",
+  "beginnerFriendly": false
+ },
+ {
+  "sourceId": "1747",
+  "exerciseId": 773,
+  "name": "ez bar french press on exercise ball",
+  "priority": "search_only",
+  "beginnerFriendly": false
+ },
+ {
+  "sourceId": "3010",
+  "exerciseId": 774,
+  "name": "ez bar lying bent arms pullover",
+  "priority": "search_only",
+  "beginnerFriendly": false
+ },
+ {
+  "sourceId": "1748",
+  "exerciseId": 775,
+  "name": "ez bar lying close grip triceps extension behind head",
+  "priority": "search_only",
+  "beginnerFriendly": false
+ },
+ {
+  "sourceId": "1344",
+  "exerciseId": 776,
+  "name": "ez bar reverse grip bent over row",
+  "priority": "search_only",
+  "beginnerFriendly": false
+ },
+ {
+  "sourceId": "1682",
+  "exerciseId": 777,
+  "name": "ez bar seated close grip concentration curl",
+  "priority": "search_only",
+  "beginnerFriendly": false
+ },
+ {
+  "sourceId": "1749",
+  "exerciseId": 778,
+  "name": "ez bar standing french press",
+  "priority": "search_only",
+  "beginnerFriendly": false
+ },
+ {
+  "sourceId": "0445",
+  "exerciseId": 779,
+  "name": "ez barbell anti gravity press",
+  "priority": "search_only",
+  "beginnerFriendly": false
+ },
+ {
+  "sourceId": "1627",
+  "exerciseId": 780,
+  "name": "ez barbell close grip preacher curl",
+  "priority": "search_only",
+  "beginnerFriendly": false
+ },
+ {
+  "sourceId": "0446",
+  "exerciseId": 781,
+  "name": "ez barbell close-grip curl",
+  "priority": "search_only",
+  "beginnerFriendly": false
+ },
+ {
+  "sourceId": "0447",
+  "exerciseId": 782,
+  "name": "ez barbell curl",
+  "priority": "search_only",
+  "beginnerFriendly": false
+ },
+ {
+  "sourceId": "0448",
+  "exerciseId": 783,
+  "name": "ez barbell decline close grip face press",
+  "priority": "search_only",
+  "beginnerFriendly": false
+ },
+ {
+  "sourceId": "2186",
+  "exerciseId": 784,
+  "name": "ez barbell decline triceps extension",
+  "priority": "search_only",
+  "beginnerFriendly": false
+ },
+ {
+  "sourceId": "0449",
+  "exerciseId": 785,
+  "name": "ez barbell incline triceps extension",
+  "priority": "search_only",
+  "beginnerFriendly": false
+ },
+ {
+  "sourceId": "0450",
+  "exerciseId": 786,
+  "name": "ez barbell jm bench press",
+  "priority": "search_only",
+  "beginnerFriendly": false
+ },
+ {
+  "sourceId": "0451",
+  "exerciseId": 787,
+  "name": "ez barbell reverse grip curl",
+  "priority": "search_only",
+  "beginnerFriendly": false
+ },
+ {
+  "sourceId": "0452",
+  "exerciseId": 788,
+  "name": "ez barbell reverse grip preacher curl",
+  "priority": "search_only",
+  "beginnerFriendly": false
+ },
+ {
+  "sourceId": "1458",
+  "exerciseId": 789,
+  "name": "ez barbell seated curls",
+  "priority": "search_only",
+  "beginnerFriendly": false
+ },
+ {
+  "sourceId": "0453",
+  "exerciseId": 790,
+  "name": "ez barbell seated triceps extension",
+  "priority": "search_only",
+  "beginnerFriendly": false
+ },
+ {
+  "sourceId": "0454",
+  "exerciseId": 791,
+  "name": "ez barbell spider curl",
+  "priority": "search_only",
+  "beginnerFriendly": false
+ },
+ {
+  "sourceId": "1628",
+  "exerciseId": 792,
+  "name": "ez barbell spider curl",
+  "priority": "search_only",
+  "beginnerFriendly": false
+ },
+ {
+  "sourceId": "2404",
+  "exerciseId": 793,
+  "name": "ez-bar biceps curl (with arm blaster)",
+  "priority": "search_only",
+  "beginnerFriendly": false
+ },
+ {
+  "sourceId": "2432",
+  "exerciseId": 794,
+  "name": "ez-bar close-grip bench press",
+  "priority": "search_only",
+  "beginnerFriendly": false
+ },
+ {
+  "sourceId": "2741",
+  "exerciseId": 795,
+  "name": "ez-barbell standing wide grip biceps curl",
+  "priority": "search_only",
+  "beginnerFriendly": false
+ },
+ {
+  "sourceId": "2133",
+  "exerciseId": 796,
+  "name": "farmers walk",
+  "priority": "alternative",
+  "beginnerFriendly": true
+ },
+ {
+  "sourceId": "0455",
+  "exerciseId": 797,
+  "name": "finger curls",
+  "priority": "search_only",
+  "beginnerFriendly": false
+ },
+ {
+  "sourceId": "3303",
+  "exerciseId": 798,
+  "name": "flag",
+  "priority": "never",
+  "beginnerFriendly": false
+ },
+ {
+  "sourceId": "0456",
+  "exerciseId": 799,
+  "name": "flexion leg sit up (bent knee)",
+  "priority": "search_only",
+  "beginnerFriendly": false
+ },
+ {
+  "sourceId": "0457",
+  "exerciseId": 800,
+  "name": "flexion leg sit up (straight arm)",
+  "priority": "search_only",
+  "beginnerFriendly": false
+ },
+ {
+  "sourceId": "0458",
+  "exerciseId": 801,
+  "name": "floor fly (with barbell)",
+  "priority": "never",
+  "beginnerFriendly": false
+ },
+ {
+  "sourceId": "0459",
+  "exerciseId": 802,
+  "name": "flutter kicks",
+  "priority": "search_only",
+  "beginnerFriendly": false
+ },
+ {
+  "sourceId": "1472",
+  "exerciseId": 803,
+  "name": "forward jump",
+  "priority": "never",
+  "beginnerFriendly": false
+ },
+ {
+  "sourceId": "3470",
+  "exerciseId": 804,
+  "name": "forward lunge (male)",
+  "priority": "alternative",
+  "beginnerFriendly": true
+ },
+ {
+  "sourceId": "3194",
+  "exerciseId": 805,
+  "name": "frankenstein squat",
+  "priority": "never",
+  "beginnerFriendly": false
+ },
+ {
+  "sourceId": "2429",
+  "exerciseId": 806,
+  "name": "frog crunch",
+  "priority": "alternative",
+  "beginnerFriendly": false
+ },
+ {
+  "sourceId": "3301",
+  "exerciseId": 807,
+  "name": "frog planche",
+  "priority": "never",
+  "beginnerFriendly": false
+ },
+ {
+  "sourceId": "0464",
+  "exerciseId": 810,
+  "name": "front plank with twist",
+  "priority": "search_only",
+  "beginnerFriendly": false
+ },
+ {
+  "sourceId": "3315",
+  "exerciseId": 811,
+  "name": "full maltese",
+  "priority": "never",
+  "beginnerFriendly": false
+ },
+ {
+  "sourceId": "3299",
+  "exerciseId": 812,
+  "name": "full planche",
+  "priority": "never",
+  "beginnerFriendly": false
+ },
+ {
+  "sourceId": "3327",
+  "exerciseId": 813,
+  "name": "full planche push-up",
+  "priority": "never",
+  "beginnerFriendly": false
+ },
+ {
+  "sourceId": "0466",
+  "exerciseId": 814,
+  "name": "gironda sternum chin",
+  "priority": "search_only",
+  "beginnerFriendly": false
+ },
+ {
+  "sourceId": "3561",
+  "exerciseId": 815,
+  "name": "glute bridge march",
+  "priority": "alternative",
+  "beginnerFriendly": true
+ },
+ {
+  "sourceId": "3523",
+  "exerciseId": 816,
+  "name": "glute bridge two legs on bench (male)",
+  "priority": "alternative",
+  "beginnerFriendly": true
+ },
+ {
+  "sourceId": "3193",
+  "exerciseId": 817,
+  "name": "glute-ham raise",
+  "priority": "search_only",
+  "beginnerFriendly": false
+ },
+ {
+  "sourceId": "0467",
+  "exerciseId": 818,
+  "name": "gorilla chin",
+  "priority": "never",
+  "beginnerFriendly": false
+ },
+ {
+  "sourceId": "0469",
+  "exerciseId": 819,
+  "name": "groin crunch",
+  "priority": "search_only",
+  "beginnerFriendly": false
+ },
+ {
+  "sourceId": "3202",
+  "exerciseId": 823,
+  "name": "half sit-up (male)",
+  "priority": "search_only",
+  "beginnerFriendly": false
+ },
+ {
+  "sourceId": "3302",
+  "exerciseId": 828,
+  "name": "handstand",
+  "priority": "never",
+  "beginnerFriendly": false
+ },
+ {
+  "sourceId": "0471",
+  "exerciseId": 829,
+  "name": "handstand push-up",
+  "priority": "never",
+  "beginnerFriendly": false
+ },
+ {
+  "sourceId": "1764",
+  "exerciseId": 830,
+  "name": "hanging leg hip raise",
+  "priority": "search_only",
+  "beginnerFriendly": false
+ },
+ {
+  "sourceId": "0472",
+  "exerciseId": 831,
+  "name": "hanging leg raise",
+  "priority": "search_only",
+  "beginnerFriendly": false
+ },
+ {
+  "sourceId": "1761",
+  "exerciseId": 832,
+  "name": "hanging oblique knee raise",
+  "priority": "search_only",
+  "beginnerFriendly": false
+ },
+ {
+  "sourceId": "0473",
+  "exerciseId": 833,
+  "name": "hanging pike",
+  "priority": "search_only",
+  "beginnerFriendly": false
+ },
+ {
+  "sourceId": "0474",
+  "exerciseId": 834,
+  "name": "hanging straight leg hip raise",
+  "priority": "search_only",
+  "beginnerFriendly": false
+ },
+ {
+  "sourceId": "0475",
+  "exerciseId": 835,
+  "name": "hanging straight leg raise",
+  "priority": "search_only",
+  "beginnerFriendly": false
+ },
+ {
+  "sourceId": "0476",
+  "exerciseId": 836,
+  "name": "hanging straight twisting leg hip raise",
+  "priority": "search_only",
+  "beginnerFriendly": false
+ },
+ {
+  "sourceId": "3636",
+  "exerciseId": 837,
+  "name": "high knee against wall",
+  "priority": "alternative",
+  "beginnerFriendly": false
+ },
+ {
+  "sourceId": "0484",
+  "exerciseId": 838,
+  "name": "hip raise (bent knee)",
+  "priority": "alternative",
+  "beginnerFriendly": true
+ },
+ {
+  "sourceId": "1418",
+  "exerciseId": 839,
+  "name": "hug keens to chest",
+  "priority": "search_only",
+  "beginnerFriendly": false
+ },
+ {
+  "sourceId": "3234",
+  "exerciseId": 840,
+  "name": "hyght dumbbell fly",
+  "priority": "search_only",
+  "beginnerFriendly": false
+ },
+ {
+  "sourceId": "0489",
+  "exerciseId": 841,
+  "name": "hyperextension",
+  "priority": "first",
+  "beginnerFriendly": true
+ },
+ {
+  "sourceId": "0488",
+  "exerciseId": 842,
+  "name": "hyperextension (on bench)",
+  "priority": "alternative",
+  "beginnerFriendly": false
+ },
+ {
+  "sourceId": "3289",
+  "exerciseId": 843,
+  "name": "impossible dips",
+  "priority": "never",
+  "beginnerFriendly": false
+ },
+ {
+  "sourceId": "1471",
+  "exerciseId": 844,
+  "name": "inchworm",
+  "priority": "search_only",
+  "beginnerFriendly": false
+ },
+ {
+  "sourceId": "3698",
+  "exerciseId": 845,
+  "name": "inchworm v. 2",
+  "priority": "search_only",
+  "beginnerFriendly": false
+ },
+ {
+  "sourceId": "0490",
+  "exerciseId": 846,
+  "name": "incline close-grip push-up",
+  "priority": "first",
+  "beginnerFriendly": true
+ },
+ {
+  "sourceId": "0491",
+  "exerciseId": 847,
+  "name": "incline leg hip raise (leg straight)",
+  "priority": "search_only",
+  "beginnerFriendly": false
+ },
+ {
+  "sourceId": "0492",
+  "exerciseId": 848,
+  "name": "incline push up depth jump",
+  "priority": "never",
+  "beginnerFriendly": false
+ },
+ {
+  "sourceId": "0493",
+  "exerciseId": 849,
+  "name": "incline push-up",
+  "priority": "first",
+  "beginnerFriendly": true
+ },
+ {
+  "sourceId": "3785",
+  "exerciseId": 850,
+  "name": "incline push-up (on box)",
+  "priority": "alternative",
+  "beginnerFriendly": true
+ },
+ {
+  "sourceId": "0494",
+  "exerciseId": 851,
+  "name": "incline reverse grip push-up",
+  "priority": "search_only",
+  "beginnerFriendly": false
+ },
+ {
+  "sourceId": "3011",
+  "exerciseId": 852,
+  "name": "incline scapula push up",
+  "priority": "first",
+  "beginnerFriendly": true
+ },
+ {
+  "sourceId": "0495",
+  "exerciseId": 853,
+  "name": "incline twisting sit-up",
+  "priority": "search_only",
+  "beginnerFriendly": false
+ },
+ {
+  "sourceId": "0496",
+  "exerciseId": 855,
+  "name": "inverse leg curl (bench support)",
+  "priority": "search_only",
+  "beginnerFriendly": false
+ },
+ {
+  "sourceId": "2400",
+  "exerciseId": 856,
+  "name": "inverse leg curl (on pull-up cable machine)",
+  "priority": "search_only",
+  "beginnerFriendly": false
+ },
+ {
+  "sourceId": "0499",
+  "exerciseId": 857,
+  "name": "inverted row",
+  "priority": "alternative",
+  "beginnerFriendly": false
+ },
+ {
+  "sourceId": "2300",
+  "exerciseId": 858,
+  "name": "inverted row bent knees",
+  "priority": "first",
+  "beginnerFriendly": true
+ },
+ {
+  "sourceId": "2298",
+  "exerciseId": 859,
+  "name": "inverted row on bench",
+  "priority": "search_only",
+  "beginnerFriendly": false
+ },
+ {
+  "sourceId": "0497",
+  "exerciseId": 860,
+  "name": "inverted row v. 2",
+  "priority": "search_only",
+  "beginnerFriendly": false
+ },
+ {
+  "sourceId": "0498",
+  "exerciseId": 861,
+  "name": "inverted row with straps",
+  "priority": "search_only",
+  "beginnerFriendly": false
+ },
+ {
+  "sourceId": "1297",
+  "exerciseId": 863,
+  "name": "isometric chest squeeze",
+  "priority": "alternative",
+  "beginnerFriendly": true
+ },
+ {
+  "sourceId": "0500",
+  "exerciseId": 864,
+  "name": "isometric wipers",
+  "priority": "search_only",
+  "beginnerFriendly": false
+ },
+ {
+  "sourceId": "0501",
+  "exerciseId": 865,
+  "name": "jack burpee",
+  "priority": "never",
+  "beginnerFriendly": false
+ },
+ {
+  "sourceId": "3224",
+  "exerciseId": 866,
+  "name": "jack jump (male)",
+  "priority": "alternative",
+  "beginnerFriendly": false
+ },
+ {
+  "sourceId": "0507",
+  "exerciseId": 867,
+  "name": "jackknife sit-up",
+  "priority": "search_only",
+  "beginnerFriendly": false
+ },
+ {
+  "sourceId": "0508",
+  "exerciseId": 868,
+  "name": "janda sit-up",
+  "priority": "search_only",
+  "beginnerFriendly": false
+ },
+ {
+  "sourceId": "2612",
+  "exerciseId": 869,
+  "name": "jump rope",
+  "priority": "alternative",
+  "beginnerFriendly": false
+ },
+ {
+  "sourceId": "0514",
+  "exerciseId": 870,
+  "name": "jump squat",
+  "priority": "search_only",
+  "beginnerFriendly": false
+ },
+ {
+  "sourceId": "0513",
+  "exerciseId": 871,
+  "name": "jump squat v. 2",
+  "priority": "search_only",
+  "beginnerFriendly": false
+ },
+ {
+  "sourceId": "0517",
+  "exerciseId": 872,
+  "name": "kettlebell advanced windmill",
+  "priority": "search_only",
+  "beginnerFriendly": false
+ },
+ {
+  "sourceId": "0518",
+  "exerciseId": 873,
+  "name": "kettlebell alternating hang clean",
+  "priority": "never",
+  "beginnerFriendly": false
+ },
+ {
+  "sourceId": "0520",
+  "exerciseId": 874,
+  "name": "kettlebell alternating press",
+  "priority": "search_only",
+  "beginnerFriendly": false
+ },
+ {
+  "sourceId": "0519",
+  "exerciseId": 875,
+  "name": "kettlebell alternating press on floor",
+  "priority": "alternative",
+  "beginnerFriendly": false
+ },
+ {
+  "sourceId": "0521",
+  "exerciseId": 876,
+  "name": "kettlebell alternating renegade row",
+  "priority": "search_only",
+  "beginnerFriendly": false
+ },
+ {
+  "sourceId": "0522",
+  "exerciseId": 877,
+  "name": "kettlebell alternating row",
+  "priority": "alternative",
+  "beginnerFriendly": false
+ },
+ {
+  "sourceId": "0523",
+  "exerciseId": 878,
+  "name": "kettlebell arnold press",
+  "priority": "search_only",
+  "beginnerFriendly": false
+ },
+ {
+  "sourceId": "0524",
+  "exerciseId": 879,
+  "name": "kettlebell bent press",
+  "priority": "never",
+  "beginnerFriendly": false
+ },
+ {
+  "sourceId": "0525",
+  "exerciseId": 880,
+  "name": "kettlebell bottoms up clean from the hang position",
+  "priority": "search_only",
+  "beginnerFriendly": false
+ },
+ {
+  "sourceId": "0526",
+  "exerciseId": 881,
+  "name": "kettlebell double alternating hang clean",
+  "priority": "search_only",
+  "beginnerFriendly": false
+ },
+ {
+  "sourceId": "0527",
+  "exerciseId": 882,
+  "name": "kettlebell double jerk",
+  "priority": "never",
+  "beginnerFriendly": false
+ },
+ {
+  "sourceId": "0528",
+  "exerciseId": 883,
+  "name": "kettlebell double push press",
+  "priority": "search_only",
+  "beginnerFriendly": false
+ },
+ {
+  "sourceId": "0529",
+  "exerciseId": 884,
+  "name": "kettlebell double snatch",
+  "priority": "never",
+  "beginnerFriendly": false
+ },
+ {
+  "sourceId": "0530",
+  "exerciseId": 885,
+  "name": "kettlebell double windmill",
+  "priority": "search_only",
+  "beginnerFriendly": false
+ },
+ {
+  "sourceId": "0531",
+  "exerciseId": 886,
+  "name": "kettlebell extended range one arm press on floor",
+  "priority": "search_only",
+  "beginnerFriendly": false
+ },
+ {
+  "sourceId": "0532",
+  "exerciseId": 887,
+  "name": "kettlebell figure 8",
+  "priority": "search_only",
+  "beginnerFriendly": false
+ },
+ {
+  "sourceId": "0533",
+  "exerciseId": 888,
+  "name": "kettlebell front squat",
+  "priority": "alternative",
+  "beginnerFriendly": false
+ },
+ {
+  "sourceId": "0534",
+  "exerciseId": 889,
+  "name": "kettlebell goblet squat",
+  "priority": "first",
+  "beginnerFriendly": true
+ },
+ {
+  "sourceId": "0535",
+  "exerciseId": 890,
+  "name": "kettlebell hang clean",
+  "priority": "never",
+  "beginnerFriendly": false
+ },
+ {
+  "sourceId": "0536",
+  "exerciseId": 891,
+  "name": "kettlebell lunge pass through",
+  "priority": "search_only",
+  "beginnerFriendly": false
+ },
+ {
+  "sourceId": "0537",
+  "exerciseId": 892,
+  "name": "kettlebell one arm clean and jerk",
+  "priority": "never",
+  "beginnerFriendly": false
+ },
+ {
+  "sourceId": "1298",
+  "exerciseId": 893,
+  "name": "kettlebell one arm floor press",
+  "priority": "alternative",
+  "beginnerFriendly": true
+ },
+ {
+  "sourceId": "0538",
+  "exerciseId": 894,
+  "name": "kettlebell one arm jerk",
+  "priority": "never",
+  "beginnerFriendly": false
+ },
+ {
+  "sourceId": "0539",
+  "exerciseId": 895,
+  "name": "kettlebell one arm military press to the side",
+  "priority": "search_only",
+  "beginnerFriendly": false
+ },
+ {
+  "sourceId": "0540",
+  "exerciseId": 896,
+  "name": "kettlebell one arm push press",
+  "priority": "search_only",
+  "beginnerFriendly": false
+ },
+ {
+  "sourceId": "0541",
+  "exerciseId": 897,
+  "name": "kettlebell one arm row",
+  "priority": "alternative",
+  "beginnerFriendly": true
+ },
+ {
+  "sourceId": "0542",
+  "exerciseId": 898,
+  "name": "kettlebell one arm snatch",
+  "priority": "never",
+  "beginnerFriendly": false
+ },
+ {
+  "sourceId": "0543",
+  "exerciseId": 899,
+  "name": "kettlebell pirate supper legs",
+  "priority": "search_only",
+  "beginnerFriendly": false
+ },
+ {
+  "sourceId": "0544",
+  "exerciseId": 900,
+  "name": "kettlebell pistol squat",
+  "priority": "never",
+  "beginnerFriendly": false
+ },
+ {
+  "sourceId": "0545",
+  "exerciseId": 901,
+  "name": "kettlebell plyo push-up",
+  "priority": "never",
+  "beginnerFriendly": false
+ },
+ {
+  "sourceId": "0546",
+  "exerciseId": 902,
+  "name": "kettlebell seated press",
+  "priority": "search_only",
+  "beginnerFriendly": false
+ },
+ {
+  "sourceId": "1438",
+  "exerciseId": 903,
+  "name": "kettlebell seated two arm military press",
+  "priority": "search_only",
+  "beginnerFriendly": false
+ },
+ {
+  "sourceId": "0547",
+  "exerciseId": 904,
+  "name": "kettlebell seesaw press",
+  "priority": "search_only",
+  "beginnerFriendly": false
+ },
+ {
+  "sourceId": "0548",
+  "exerciseId": 905,
+  "name": "kettlebell sumo high pull",
+  "priority": "search_only",
+  "beginnerFriendly": false
+ },
+ {
+  "sourceId": "0549",
+  "exerciseId": 906,
+  "name": "kettlebell swing",
+  "priority": "search_only",
+  "beginnerFriendly": false
+ },
+ {
+  "sourceId": "0550",
+  "exerciseId": 907,
+  "name": "kettlebell thruster",
+  "priority": "search_only",
+  "beginnerFriendly": false
+ },
+ {
+  "sourceId": "0551",
+  "exerciseId": 908,
+  "name": "kettlebell turkish get up (squat style)",
+  "priority": "search_only",
+  "beginnerFriendly": false
+ },
+ {
+  "sourceId": "0552",
+  "exerciseId": 909,
+  "name": "kettlebell two arm clean",
+  "priority": "search_only",
+  "beginnerFriendly": false
+ },
+ {
+  "sourceId": "0553",
+  "exerciseId": 910,
+  "name": "kettlebell two arm military press",
+  "priority": "search_only",
+  "beginnerFriendly": false
+ },
+ {
+  "sourceId": "1345",
+  "exerciseId": 911,
+  "name": "kettlebell two arm row",
+  "priority": "search_only",
+  "beginnerFriendly": false
+ },
+ {
+  "sourceId": "0554",
+  "exerciseId": 912,
+  "name": "kettlebell windmill",
+  "priority": "search_only",
+  "beginnerFriendly": false
+ },
+ {
+  "sourceId": "0555",
+  "exerciseId": 913,
+  "name": "kick out sit",
+  "priority": "search_only",
+  "beginnerFriendly": false
+ },
+ {
+  "sourceId": "0558",
+  "exerciseId": 914,
+  "name": "kipping muscle up",
+  "priority": "never",
+  "beginnerFriendly": false
+ },
+ {
+  "sourceId": "3640",
+  "exerciseId": 915,
+  "name": "knee touch crunch",
+  "priority": "alternative",
+  "beginnerFriendly": true
+ },
+ {
+  "sourceId": "1420",
+  "exerciseId": 916,
+  "name": "kneeling jump squat",
+  "priority": "never",
+  "beginnerFriendly": false
+ },
+ {
+  "sourceId": "3239",
+  "exerciseId": 918,
+  "name": "kneeling plank tap shoulder (male)",
+  "priority": "alternative",
+  "beginnerFriendly": true
+ },
+ {
+  "sourceId": "3211",
+  "exerciseId": 919,
+  "name": "kneeling push-up (male)",
+  "priority": "first",
+  "beginnerFriendly": true
+ },
+ {
+  "sourceId": "3288",
+  "exerciseId": 920,
+  "name": "korean dips",
+  "priority": "never",
+  "beginnerFriendly": false
+ },
+ {
+  "sourceId": "3418",
+  "exerciseId": 921,
+  "name": "l-pull-up",
+  "priority": "search_only",
+  "beginnerFriendly": false
+ },
+ {
+  "sourceId": "3419",
+  "exerciseId": 922,
+  "name": "l-sit on floor",
+  "priority": "search_only",
+  "beginnerFriendly": false
+ },
+ {
+  "sourceId": "0562",
+  "exerciseId": 923,
+  "name": "landmine 180",
+  "priority": "search_only",
+  "beginnerFriendly": false
+ },
+ {
+  "sourceId": "3237",
+  "exerciseId": 924,
+  "name": "landmine lateral raise",
+  "priority": "search_only",
+  "beginnerFriendly": false
+ },
+ {
+  "sourceId": "3300",
+  "exerciseId": 925,
+  "name": "lean planche",
+  "priority": "never",
+  "beginnerFriendly": false
+ },
+ {
+  "sourceId": "0570",
+  "exerciseId": 927,
+  "name": "leg pull in flat bench",
+  "priority": "search_only",
+  "beginnerFriendly": false
+ },
+ {
+  "sourceId": "2287",
+  "exerciseId": 929,
+  "name": "lever alternate leg press",
+  "priority": "first",
+  "beginnerFriendly": true
+ },
+ {
+  "sourceId": "0571",
+  "exerciseId": 930,
+  "name": "lever alternating narrow grip seated row",
+  "priority": "alternative",
+  "beginnerFriendly": false
+ },
+ {
+  "sourceId": "0572",
+  "exerciseId": 931,
+  "name": "lever assisted chin-up",
+  "priority": "alternative",
+  "beginnerFriendly": true
+ },
+ {
+  "sourceId": "0573",
+  "exerciseId": 932,
+  "name": "lever back extension",
+  "priority": "first",
+  "beginnerFriendly": true
+ },
+ {
+  "sourceId": "0574",
+  "exerciseId": 933,
+  "name": "lever bent over row",
+  "priority": "search_only",
+  "beginnerFriendly": false
+ },
+ {
+  "sourceId": "3200",
+  "exerciseId": 934,
+  "name": "lever bent-over row with v-bar",
+  "priority": "search_only",
+  "beginnerFriendly": false
+ },
+ {
+  "sourceId": "0575",
+  "exerciseId": 935,
+  "name": "lever bicep curl",
+  "priority": "first",
+  "beginnerFriendly": true
+ },
+ {
+  "sourceId": "2289",
+  "exerciseId": 936,
+  "name": "lever calf press",
+  "priority": "first",
+  "beginnerFriendly": true
+ },
+ {
+  "sourceId": "0577",
+  "exerciseId": 937,
+  "name": "lever chest press",
+  "priority": "first",
+  "beginnerFriendly": true
+ },
+ {
+  "sourceId": "0576",
+  "exerciseId": 938,
+  "name": "lever chest press",
+  "priority": "search_only",
+  "beginnerFriendly": true
+ },
+ {
+  "sourceId": "0578",
+  "exerciseId": 939,
+  "name": "lever deadlift",
+  "priority": "search_only",
+  "beginnerFriendly": false
+ },
+ {
+  "sourceId": "1300",
+  "exerciseId": 940,
+  "name": "lever decline chest press",
+  "priority": "search_only",
+  "beginnerFriendly": false
+ },
+ {
+  "sourceId": "1253",
+  "exerciseId": 941,
+  "name": "lever donkey calf raise",
+  "priority": "alternative",
+  "beginnerFriendly": false
+ },
+ {
+  "sourceId": "0579",
+  "exerciseId": 942,
+  "name": "lever front pulldown",
+  "priority": "first",
+  "beginnerFriendly": true
+ },
+ {
+  "sourceId": "0580",
+  "exerciseId": 943,
+  "name": "lever gripless shrug",
+  "priority": "search_only",
+  "beginnerFriendly": false
+ },
+ {
+  "sourceId": "1439",
+  "exerciseId": 944,
+  "name": "lever gripless shrug v. 2",
+  "priority": "search_only",
+  "beginnerFriendly": false
+ },
+ {
+  "sourceId": "2288",
+  "exerciseId": 945,
+  "name": "lever gripper hands",
+  "priority": "search_only",
+  "beginnerFriendly": false
+ },
+ {
+  "sourceId": "1615",
+  "exerciseId": 946,
+  "name": "lever hammer grip preacher curl",
+  "priority": "search_only",
+  "beginnerFriendly": false
+ },
+ {
+  "sourceId": "0581",
+  "exerciseId": 947,
+  "name": "lever high row",
+  "priority": "first",
+  "beginnerFriendly": true
+ },
+ {
+  "sourceId": "2286",
+  "exerciseId": 948,
+  "name": "lever hip extension v. 2",
+  "priority": "alternative",
+  "beginnerFriendly": true
+ },
+ {
+  "sourceId": "2611",
+  "exerciseId": 949,
+  "name": "lever horizontal one leg press",
+  "priority": "alternative",
+  "beginnerFriendly": true
+ },
+ {
+  "sourceId": "1299",
+  "exerciseId": 950,
+  "name": "lever incline chest press",
+  "priority": "first",
+  "beginnerFriendly": true
+ },
+ {
+  "sourceId": "1479",
+  "exerciseId": 951,
+  "name": "lever incline chest press v. 2",
+  "priority": "search_only",
+  "beginnerFriendly": false
+ },
+ {
+  "sourceId": "0582",
+  "exerciseId": 952,
+  "name": "lever kneeling leg curl",
+  "priority": "alternative",
+  "beginnerFriendly": true
+ },
+ {
+  "sourceId": "0583",
+  "exerciseId": 953,
+  "name": "lever kneeling twist",
+  "priority": "search_only",
+  "beginnerFriendly": false
+ },
+ {
+  "sourceId": "0584",
+  "exerciseId": 954,
+  "name": "lever lateral raise",
+  "priority": "first",
+  "beginnerFriendly": true
+ },
+ {
+  "sourceId": "0585",
+  "exerciseId": 955,
+  "name": "lever leg extension",
+  "priority": "first",
+  "beginnerFriendly": true
+ },
+ {
+  "sourceId": "0586",
+  "exerciseId": 956,
+  "name": "lever lying leg curl",
+  "priority": "first",
+  "beginnerFriendly": true
+ },
+ {
+  "sourceId": "3195",
+  "exerciseId": 957,
+  "name": "lever lying two-one leg curl",
+  "priority": "alternative",
+  "beginnerFriendly": true
+ },
+ {
+  "sourceId": "0587",
+  "exerciseId": 958,
+  "name": "lever military press",
+  "priority": "search_only",
+  "beginnerFriendly": false
+ },
+ {
+  "sourceId": "0588",
+  "exerciseId": 959,
+  "name": "lever narrow grip seated row",
+  "priority": "alternative",
+  "beginnerFriendly": true
+ },
+ {
+  "sourceId": "0589",
+  "exerciseId": 960,
+  "name": "lever one arm bent over row",
+  "priority": "search_only",
+  "beginnerFriendly": false
+ },
+ {
+  "sourceId": "1356",
+  "exerciseId": 961,
+  "name": "lever one arm lateral high row",
+  "priority": "search_only",
+  "beginnerFriendly": false
+ },
+ {
+  "sourceId": "1347",
+  "exerciseId": 962,
+  "name": "lever one arm lateral wide pulldown",
+  "priority": "search_only",
+  "beginnerFriendly": false
+ },
+ {
+  "sourceId": "0590",
+  "exerciseId": 963,
+  "name": "lever one arm shoulder press",
+  "priority": "search_only",
+  "beginnerFriendly": false
+ },
+ {
+  "sourceId": "0591",
+  "exerciseId": 964,
+  "name": "lever overhand triceps dip",
+  "priority": "search_only",
+  "beginnerFriendly": false
+ },
+ {
+  "sourceId": "0592",
+  "exerciseId": 965,
+  "name": "lever preacher curl",
+  "priority": "first",
+  "beginnerFriendly": true
+ },
+ {
+  "sourceId": "1614",
+  "exerciseId": 966,
+  "name": "lever preacher curl v. 2",
+  "priority": "search_only",
+  "beginnerFriendly": false
+ },
+ {
+  "sourceId": "2285",
+  "exerciseId": 967,
+  "name": "lever pullover",
+  "priority": "search_only",
+  "beginnerFriendly": false
+ },
+ {
+  "sourceId": "2736",
+  "exerciseId": 968,
+  "name": "lever reverse grip lateral pulldown",
+  "priority": "alternative",
+  "beginnerFriendly": false
+ },
+ {
+  "sourceId": "1616",
+  "exerciseId": 969,
+  "name": "lever reverse grip preacher curl",
+  "priority": "search_only",
+  "beginnerFriendly": false
+ },
+ {
+  "sourceId": "1348",
+  "exerciseId": 970,
+  "name": "lever reverse grip vertical row",
+  "priority": "search_only",
+  "beginnerFriendly": false
+ },
+ {
+  "sourceId": "0593",
+  "exerciseId": 971,
+  "name": "lever reverse hyperextension",
+  "priority": "search_only",
+  "beginnerFriendly": false
+ },
+ {
+  "sourceId": "1349",
+  "exerciseId": 972,
+  "name": "lever reverse t-bar row",
+  "priority": "search_only",
+  "beginnerFriendly": false
+ },
+ {
+  "sourceId": "2315",
+  "exerciseId": 973,
+  "name": "lever rotary calf",
+  "priority": "search_only",
+  "beginnerFriendly": false
+ },
+ {
+  "sourceId": "2335",
+  "exerciseId": 974,
+  "name": "lever seated calf press",
+  "priority": "alternative",
+  "beginnerFriendly": true
+ },
+ {
+  "sourceId": "0594",
+  "exerciseId": 975,
+  "name": "lever seated calf raise",
+  "priority": "first",
+  "beginnerFriendly": true
+ },
+ {
+  "sourceId": "1452",
+  "exerciseId": 976,
+  "name": "lever seated crunch",
+  "priority": "first",
+  "beginnerFriendly": true
+ },
+ {
+  "sourceId": "0595",
+  "exerciseId": 977,
+  "name": "lever seated crunch (chest pad)",
+  "priority": "search_only",
+  "beginnerFriendly": true
+ },
+ {
+  "sourceId": "3760",
+  "exerciseId": 978,
+  "name": "lever seated crunch v. 2",
+  "priority": "search_only",
+  "beginnerFriendly": false
+ },
+ {
+  "sourceId": "1451",
+  "exerciseId": 979,
+  "name": "lever seated dip",
+  "priority": "first",
+  "beginnerFriendly": true
+ },
+ {
+  "sourceId": "0596",
+  "exerciseId": 980,
+  "name": "lever seated fly",
+  "priority": "first",
+  "beginnerFriendly": true
+ },
+ {
+  "sourceId": "3759",
+  "exerciseId": 981,
+  "name": "lever seated good morning",
+  "priority": "search_only",
+  "beginnerFriendly": false
+ },
+ {
+  "sourceId": "0597",
+  "exerciseId": 982,
+  "name": "lever seated hip abduction",
+  "priority": "first",
+  "beginnerFriendly": true
+ },
+ {
+  "sourceId": "0598",
+  "exerciseId": 983,
+  "name": "lever seated hip adduction",
+  "priority": "first",
+  "beginnerFriendly": true
+ },
+ {
+  "sourceId": "0599",
+  "exerciseId": 984,
+  "name": "lever seated leg curl",
+  "priority": "first",
+  "beginnerFriendly": true
+ },
+ {
+  "sourceId": "0600",
+  "exerciseId": 985,
+  "name": "lever seated leg raise crunch",
+  "priority": "search_only",
+  "beginnerFriendly": false
+ },
+ {
+  "sourceId": "0602",
+  "exerciseId": 986,
+  "name": "lever seated reverse fly",
+  "priority": "first",
+  "beginnerFriendly": true
+ },
+ {
+  "sourceId": "0601",
+  "exerciseId": 987,
+  "name": "lever seated reverse fly (parallel grip)",
+  "priority": "alternative",
+  "beginnerFriendly": true
+ },
+ {
+  "sourceId": "1350",
+  "exerciseId": 988,
+  "name": "lever seated row",
+  "priority": "first",
+  "beginnerFriendly": true
+ },
+ {
+  "sourceId": "1385",
+  "exerciseId": 989,
+  "name": "lever seated squat calf raise on leg press machine",
+  "priority": "search_only",
+  "beginnerFriendly": false
+ },
+ {
+  "sourceId": "0603",
+  "exerciseId": 990,
+  "name": "lever shoulder press",
+  "priority": "first",
+  "beginnerFriendly": true
+ },
+ {
+  "sourceId": "0869",
+  "exerciseId": 991,
+  "name": "lever shoulder press v. 2",
+  "priority": "search_only",
+  "beginnerFriendly": false
+ },
+ {
+  "sourceId": "2318",
+  "exerciseId": 992,
+  "name": "lever shoulder press v. 3",
+  "priority": "search_only",
+  "beginnerFriendly": false
+ },
+ {
+  "sourceId": "0604",
+  "exerciseId": 993,
+  "name": "lever shrug",
+  "priority": "first",
+  "beginnerFriendly": true
+ },
+ {
+  "sourceId": "0605",
+  "exerciseId": 994,
+  "name": "lever standing calf raise",
+  "priority": "first",
+  "beginnerFriendly": true
+ },
+ {
+  "sourceId": "3758",
+  "exerciseId": 995,
+  "name": "lever standing chest press",
+  "priority": "alternative",
+  "beginnerFriendly": false
+ },
+ {
+  "sourceId": "0606",
+  "exerciseId": 996,
+  "name": "lever t bar row",
+  "priority": "search_only",
+  "beginnerFriendly": false
+ },
+ {
+  "sourceId": "1351",
+  "exerciseId": 997,
+  "name": "lever t-bar reverse grip row",
+  "priority": "search_only",
+  "beginnerFriendly": false
+ },
+ {
+  "sourceId": "0607",
+  "exerciseId": 998,
+  "name": "lever triceps extension",
+  "priority": "first",
+  "beginnerFriendly": true
+ },
+ {
+  "sourceId": "1313",
+  "exerciseId": 999,
+  "name": "lever unilateral row",
+  "priority": "alternative",
+  "beginnerFriendly": true
+ },
+ {
+  "sourceId": "3013",
+  "exerciseId": 1001,
+  "name": "low glute bridge on floor",
+  "priority": "first",
+  "beginnerFriendly": true
+ },
+ {
+  "sourceId": "1352",
+  "exerciseId": 1002,
+  "name": "lower back curl",
+  "priority": "alternative",
+  "beginnerFriendly": false
+ },
+ {
+  "sourceId": "3582",
+  "exerciseId": 1003,
+  "name": "lunge with jump",
+  "priority": "search_only",
+  "beginnerFriendly": false
+ },
+ {
+  "sourceId": "1688",
+  "exerciseId": 1004,
+  "name": "lunge with twist",
+  "priority": "search_only",
+  "beginnerFriendly": false
+ },
+ {
+  "sourceId": "2312",
+  "exerciseId": 1006,
+  "name": "lying elbow to knee",
+  "priority": "alternative",
+  "beginnerFriendly": true
+ },
+ {
+  "sourceId": "0620",
+  "exerciseId": 1007,
+  "name": "lying leg raise flat bench",
+  "priority": "alternative",
+  "beginnerFriendly": false
+ },
+ {
+  "sourceId": "0865",
+  "exerciseId": 1008,
+  "name": "lying leg-hip raise",
+  "priority": "search_only",
+  "beginnerFriendly": false
+ },
+ {
+  "sourceId": "1301",
+  "exerciseId": 1009,
+  "name": "machine inner chest press",
+  "priority": "search_only",
+  "beginnerFriendly": false
+ },
+ {
+  "sourceId": "0624",
+  "exerciseId": 1010,
+  "name": "march sit (wall)",
+  "priority": "alternative",
+  "beginnerFriendly": true
+ },
+ {
+  "sourceId": "1353",
+  "exerciseId": 1011,
+  "name": "medicine ball catch and overhead throw",
+  "priority": "search_only",
+  "beginnerFriendly": false
+ },
+ {
+  "sourceId": "1302",
+  "exerciseId": 1012,
+  "name": "medicine ball chest pass",
+  "priority": "search_only",
+  "beginnerFriendly": false
+ },
+ {
+  "sourceId": "1303",
+  "exerciseId": 1013,
+  "name": "medicine ball chest push from 3 point stance",
+  "priority": "search_only",
+  "beginnerFriendly": false
+ },
+ {
+  "sourceId": "1304",
+  "exerciseId": 1014,
+  "name": "medicine ball chest push multiple response",
+  "priority": "search_only",
+  "beginnerFriendly": false
+ },
+ {
+  "sourceId": "1305",
+  "exerciseId": 1015,
+  "name": "medicine ball chest push single response",
+  "priority": "search_only",
+  "beginnerFriendly": false
+ },
+ {
+  "sourceId": "1312",
+  "exerciseId": 1016,
+  "name": "medicine ball chest push with run release",
+  "priority": "search_only",
+  "beginnerFriendly": false
+ },
+ {
+  "sourceId": "1701",
+  "exerciseId": 1017,
+  "name": "medicine ball close grip push up",
+  "priority": "search_only",
+  "beginnerFriendly": false
+ },
+ {
+  "sourceId": "1354",
+  "exerciseId": 1018,
+  "name": "medicine ball overhead slam",
+  "priority": "search_only",
+  "beginnerFriendly": false
+ },
+ {
+  "sourceId": "1750",
+  "exerciseId": 1019,
+  "name": "medicine ball supine chest throw",
+  "priority": "search_only",
+  "beginnerFriendly": false
+ },
+ {
+  "sourceId": "0627",
+  "exerciseId": 1020,
+  "name": "mixed grip chin-up",
+  "priority": "search_only",
+  "beginnerFriendly": false
+ },
+ {
+  "sourceId": "3217",
+  "exerciseId": 1021,
+  "name": "modified hindu push-up (male)",
+  "priority": "search_only",
+  "beginnerFriendly": false
+ },
+ {
+  "sourceId": "1421",
+  "exerciseId": 1022,
+  "name": "modified push up to lower arms",
+  "priority": "search_only",
+  "beginnerFriendly": false
+ },
+ {
+  "sourceId": "0628",
+  "exerciseId": 1023,
+  "name": "monster walk",
+  "priority": "alternative",
+  "beginnerFriendly": false
+ },
+ {
+  "sourceId": "0630",
+  "exerciseId": 1024,
+  "name": "mountain climber",
+  "priority": "alternative",
+  "beginnerFriendly": false
+ },
+ {
+  "sourceId": "0631",
+  "exerciseId": 1025,
+  "name": "muscle up",
+  "priority": "never",
+  "beginnerFriendly": false
+ },
+ {
+  "sourceId": "1401",
+  "exerciseId": 1026,
+  "name": "muscle-up (on vertical bar)",
+  "priority": "never",
+  "beginnerFriendly": false
+ },
+ {
+  "sourceId": "2328",
+  "exerciseId": 1027,
+  "name": "narrow push-up on exercise ball",
+  "priority": "search_only",
+  "beginnerFriendly": false
+ },
+ {
+  "sourceId": "0634",
+  "exerciseId": 1029,
+  "name": "negative crunch",
+  "priority": "search_only",
+  "beginnerFriendly": false
+ },
+ {
+  "sourceId": "1495",
+  "exerciseId": 1030,
+  "name": "oblique crunch v. 2",
+  "priority": "search_only",
+  "beginnerFriendly": false
+ },
+ {
+  "sourceId": "0635",
+  "exerciseId": 1031,
+  "name": "oblique crunches floor",
+  "priority": "search_only",
+  "beginnerFriendly": false
+ },
+ {
+  "sourceId": "0636",
+  "exerciseId": 1032,
+  "name": "olympic barbell hammer curl",
+  "priority": "search_only",
+  "beginnerFriendly": false
+ },
+ {
+  "sourceId": "0637",
+  "exerciseId": 1033,
+  "name": "olympic barbell triceps extension",
+  "priority": "search_only",
+  "beginnerFriendly": false
+ },
+ {
+  "sourceId": "1355",
+  "exerciseId": 1034,
+  "name": "one arm against wall",
+  "priority": "search_only",
+  "beginnerFriendly": false
+ },
+ {
+  "sourceId": "0638",
+  "exerciseId": 1035,
+  "name": "one arm chin-up",
+  "priority": "never",
+  "beginnerFriendly": false
+ },
+ {
+  "sourceId": "0639",
+  "exerciseId": 1036,
+  "name": "one arm dip",
+  "priority": "never",
+  "beginnerFriendly": false
+ },
+ {
+  "sourceId": "0640",
+  "exerciseId": 1037,
+  "name": "one arm slam (with medicine ball)",
+  "priority": "search_only",
+  "beginnerFriendly": false
+ },
+ {
+  "sourceId": "1773",
+  "exerciseId": 1038,
+  "name": "one arm towel row",
+  "priority": "alternative",
+  "beginnerFriendly": false
+ },
+ {
+  "sourceId": "1386",
+  "exerciseId": 1039,
+  "name": "one leg donkey calf raise",
+  "priority": "alternative",
+  "beginnerFriendly": false
+ },
+ {
+  "sourceId": "1387",
+  "exerciseId": 1040,
+  "name": "one leg floor calf raise",
+  "priority": "alternative",
+  "beginnerFriendly": false
+ },
+ {
+  "sourceId": "1476",
+  "exerciseId": 1041,
+  "name": "one leg squat",
+  "priority": "search_only",
+  "beginnerFriendly": false
+ },
+ {
+  "sourceId": "0642",
+  "exerciseId": 1043,
+  "name": "outside leg kick push-up",
+  "priority": "search_only",
+  "beginnerFriendly": false
+ },
+ {
+  "sourceId": "3147",
+  "exerciseId": 1045,
+  "name": "pelvic tilt",
+  "priority": "first",
+  "beginnerFriendly": true
+ },
+ {
+  "sourceId": "1422",
+  "exerciseId": 1046,
+  "name": "pelvic tilt into bridge",
+  "priority": "first",
+  "beginnerFriendly": true
+ },
+ {
+  "sourceId": "3662",
+  "exerciseId": 1048,
+  "name": "pike-to-cobra push-up",
+  "priority": "search_only",
+  "beginnerFriendly": false
+ },
+ {
+  "sourceId": "1306",
+  "exerciseId": 1049,
+  "name": "plyo push up",
+  "priority": "never",
+  "beginnerFriendly": false
+ },
+ {
+  "sourceId": "1687",
+  "exerciseId": 1050,
+  "name": "posterior step to overhead reach",
+  "priority": "search_only",
+  "beginnerFriendly": false
+ },
+ {
+  "sourceId": "3119",
+  "exerciseId": 1052,
+  "name": "potty squat",
+  "priority": "search_only",
+  "beginnerFriendly": false
+ },
+ {
+  "sourceId": "3132",
+  "exerciseId": 1053,
+  "name": "potty squat with support",
+  "priority": "first",
+  "beginnerFriendly": true
+ },
+ {
+  "sourceId": "0648",
+  "exerciseId": 1054,
+  "name": "power clean",
+  "priority": "never",
+  "beginnerFriendly": false
+ },
+ {
+  "sourceId": "3665",
+  "exerciseId": 1055,
+  "name": "power point plank",
+  "priority": "search_only",
+  "beginnerFriendly": false
+ },
+ {
+  "sourceId": "3203",
+  "exerciseId": 1056,
+  "name": "prisoner half sit-up (male)",
+  "priority": "search_only",
+  "beginnerFriendly": false
+ },
+ {
+  "sourceId": "1707",
+  "exerciseId": 1057,
+  "name": "prone twist on stability ball",
+  "priority": "search_only",
+  "beginnerFriendly": false
+ },
+ {
+  "sourceId": "0651",
+  "exerciseId": 1058,
+  "name": "pull up (neutral grip)",
+  "priority": "alternative",
+  "beginnerFriendly": false
+ },
+ {
+  "sourceId": "0650",
+  "exerciseId": 1059,
+  "name": "pull-in (on stability ball)",
+  "priority": "search_only",
+  "beginnerFriendly": false
+ },
+ {
+  "sourceId": "0652",
+  "exerciseId": 1060,
+  "name": "pull-up",
+  "priority": "alternative",
+  "beginnerFriendly": false
+ },
+ {
+  "sourceId": "1689",
+  "exerciseId": 1061,
+  "name": "push and pull bodyweight",
+  "priority": "search_only",
+  "beginnerFriendly": false
+ },
+ {
+  "sourceId": "0662",
+  "exerciseId": 1064,
+  "name": "push-up",
+  "priority": "first",
+  "beginnerFriendly": true
+ },
+ {
+  "sourceId": "0655",
+  "exerciseId": 1066,
+  "name": "push-up (on stability ball)",
+  "priority": "alternative",
+  "beginnerFriendly": false
+ },
+ {
+  "sourceId": "0656",
+  "exerciseId": 1067,
+  "name": "push-up (on stability ball)",
+  "priority": "search_only",
+  "beginnerFriendly": false
+ },
+ {
+  "sourceId": "0659",
+  "exerciseId": 1068,
+  "name": "push-up (wall)",
+  "priority": "alternative",
+  "beginnerFriendly": true
+ },
+ {
+  "sourceId": "0658",
+  "exerciseId": 1069,
+  "name": "push-up (wall) v. 2",
+  "priority": "search_only",
+  "beginnerFriendly": true
+ },
+ {
+  "sourceId": "0660",
+  "exerciseId": 1070,
+  "name": "push-up close-grip off dumbbell",
+  "priority": "search_only",
+  "beginnerFriendly": false
+ },
+ {
+  "sourceId": "0661",
+  "exerciseId": 1071,
+  "name": "push-up inside leg kick",
+  "priority": "search_only",
+  "beginnerFriendly": false
+ },
+ {
+  "sourceId": "0663",
+  "exerciseId": 1072,
+  "name": "push-up medicine ball",
+  "priority": "search_only",
+  "beginnerFriendly": false
+ },
+ {
+  "sourceId": "1467",
+  "exerciseId": 1073,
+  "name": "push-up on lower arms",
+  "priority": "search_only",
+  "beginnerFriendly": false
+ },
+ {
+  "sourceId": "3145",
+  "exerciseId": 1074,
+  "name": "push-up plus",
+  "priority": "alternative",
+  "beginnerFriendly": false
+ },
+ {
+  "sourceId": "0664",
+  "exerciseId": 1075,
+  "name": "push-up to side plank",
+  "priority": "search_only",
+  "beginnerFriendly": false
+ },
+ {
+  "sourceId": "3533",
+  "exerciseId": 1076,
+  "name": "bulgarian split squat",
+  "priority": "alternative",
+  "beginnerFriendly": false
+ },
+ {
+  "sourceId": "3201",
+  "exerciseId": 1077,
+  "name": "quarter sit-up",
+  "priority": "alternative",
+  "beginnerFriendly": true
+ },
+ {
+  "sourceId": "3552",
+  "exerciseId": 1078,
+  "name": "quick feet v. 2",
+  "priority": "never",
+  "beginnerFriendly": false
+ },
+ {
+  "sourceId": "0666",
+  "exerciseId": 1079,
+  "name": "raise single arm push-up",
+  "priority": "never",
+  "beginnerFriendly": false
+ },
+ {
+  "sourceId": "0668",
+  "exerciseId": 1080,
+  "name": "rear decline bridge",
+  "priority": "search_only",
+  "beginnerFriendly": false
+ },
+ {
+  "sourceId": "0670",
+  "exerciseId": 1082,
+  "name": "rear pull-up",
+  "priority": "search_only",
+  "beginnerFriendly": false
+ },
+ {
+  "sourceId": "3236",
+  "exerciseId": 1084,
+  "name": "resistance band hip thrusts on knees (female)",
+  "priority": "alternative",
+  "beginnerFriendly": true
+ },
+ {
+  "sourceId": "3007",
+  "exerciseId": 1085,
+  "name": "resistance band leg extension",
+  "priority": "first",
+  "beginnerFriendly": true
+ },
+ {
+  "sourceId": "3123",
+  "exerciseId": 1086,
+  "name": "resistance band seated biceps curl",
+  "priority": "alternative",
+  "beginnerFriendly": true
+ },
+ {
+  "sourceId": "3124",
+  "exerciseId": 1087,
+  "name": "resistance band seated chest press",
+  "priority": "first",
+  "beginnerFriendly": true
+ },
+ {
+  "sourceId": "3006",
+  "exerciseId": 1088,
+  "name": "resistance band seated hip abduction",
+  "priority": "first",
+  "beginnerFriendly": true
+ },
+ {
+  "sourceId": "3122",
+  "exerciseId": 1089,
+  "name": "resistance band seated shoulder press",
+  "priority": "first",
+  "beginnerFriendly": true
+ },
+ {
+  "sourceId": "3144",
+  "exerciseId": 1090,
+  "name": "resistance band seated straight back row",
+  "priority": "first",
+  "beginnerFriendly": true
+ },
+ {
+  "sourceId": "0872",
+  "exerciseId": 1091,
+  "name": "reverse crunch",
+  "priority": "first",
+  "beginnerFriendly": true
+ },
+ {
+  "sourceId": "0672",
+  "exerciseId": 1092,
+  "name": "reverse dip",
+  "priority": "search_only",
+  "beginnerFriendly": false
+ },
+ {
+  "sourceId": "0673",
+  "exerciseId": 1093,
+  "name": "reverse grip machine lat pulldown",
+  "priority": "alternative",
+  "beginnerFriendly": false
+ },
+ {
+  "sourceId": "0674",
+  "exerciseId": 1094,
+  "name": "reverse grip pull-up",
+  "priority": "search_only",
+  "beginnerFriendly": false
+ },
+ {
+  "sourceId": "0675",
+  "exerciseId": 1095,
+  "name": "reverse hyper extension (on stability ball)",
+  "priority": "search_only",
+  "beginnerFriendly": false
+ },
+ {
+  "sourceId": "1423",
+  "exerciseId": 1096,
+  "name": "reverse hyper on flat bench",
+  "priority": "alternative",
+  "beginnerFriendly": false
+ },
+ {
+  "sourceId": "3663",
+  "exerciseId": 1097,
+  "name": "reverse plank with leg lift",
+  "priority": "search_only",
+  "beginnerFriendly": false
+ },
+ {
+  "sourceId": "0677",
+  "exerciseId": 1098,
+  "name": "ring dips",
+  "priority": "search_only",
+  "beginnerFriendly": false
+ },
+ {
+  "sourceId": "0678",
+  "exerciseId": 1100,
+  "name": "rocky pull-up pulldown",
+  "priority": "search_only",
+  "beginnerFriendly": false
+ },
+ {
+  "sourceId": "0685",
+  "exerciseId": 1110,
+  "name": "run",
+  "priority": "alternative",
+  "beginnerFriendly": false
+ },
+ {
+  "sourceId": "0687",
+  "exerciseId": 1113,
+  "name": "russian twist",
+  "priority": "alternative",
+  "beginnerFriendly": false
+ },
+ {
+  "sourceId": "3012",
+  "exerciseId": 1114,
+  "name": "scapula dips",
+  "priority": "search_only",
+  "beginnerFriendly": false
+ },
+ {
+  "sourceId": "3021",
+  "exerciseId": 1115,
+  "name": "scapula push-up",
+  "priority": "alternative",
+  "beginnerFriendly": true
+ },
+ {
+  "sourceId": "0688",
+  "exerciseId": 1116,
+  "name": "scapular pull-up",
+  "priority": "alternative",
+  "beginnerFriendly": false
+ },
+ {
+  "sourceId": "0689",
+  "exerciseId": 1120,
+  "name": "seated leg raise",
+  "priority": "alternative",
+  "beginnerFriendly": false
+ },
+ {
+  "sourceId": "0691",
+  "exerciseId": 1123,
+  "name": "seated side crunch (wall)",
+  "priority": "search_only",
+  "beginnerFriendly": false
+ },
+ {
+  "sourceId": "0697",
+  "exerciseId": 1125,
+  "name": "self assisted inverse leg curl",
+  "priority": "search_only",
+  "beginnerFriendly": false
+ },
+ {
+  "sourceId": "1766",
+  "exerciseId": 1126,
+  "name": "self assisted inverse leg curl",
+  "priority": "alternative",
+  "beginnerFriendly": false
+ },
+ {
+  "sourceId": "0696",
+  "exerciseId": 1127,
+  "name": "self assisted inverse leg curl (on floor)",
+  "priority": "search_only",
+  "beginnerFriendly": false
+ },
+ {
+  "sourceId": "1763",
+  "exerciseId": 1130,
+  "name": "shoulder grip pull-up",
+  "priority": "search_only",
+  "beginnerFriendly": false
+ },
+ {
+  "sourceId": "3699",
+  "exerciseId": 1131,
+  "name": "shoulder tap",
+  "priority": "alternative",
+  "beginnerFriendly": false
+ },
+ {
+  "sourceId": "0699",
+  "exerciseId": 1132,
+  "name": "shoulder tap push-up",
+  "priority": "search_only",
+  "beginnerFriendly": false
+ },
+ {
+  "sourceId": "1774",
+  "exerciseId": 1133,
+  "name": "side bridge hip abduction",
+  "priority": "search_only",
+  "beginnerFriendly": false
+ },
+ {
+  "sourceId": "0705",
+  "exerciseId": 1134,
+  "name": "side bridge v. 2",
+  "priority": "alternative",
+  "beginnerFriendly": false
+ },
+ {
+  "sourceId": "0709",
+  "exerciseId": 1135,
+  "name": "side hip (on parallel bars)",
+  "priority": "search_only",
+  "beginnerFriendly": false
+ },
+ {
+  "sourceId": "0710",
+  "exerciseId": 1136,
+  "name": "side hip abduction",
+  "priority": "first",
+  "beginnerFriendly": true
+ },
+ {
+  "sourceId": "3667",
+  "exerciseId": 1138,
+  "name": "side lying hip adduction (male)",
+  "priority": "first",
+  "beginnerFriendly": true
+ },
+ {
+  "sourceId": "1775",
+  "exerciseId": 1139,
+  "name": "side plank hip adduction",
+  "priority": "search_only",
+  "beginnerFriendly": false
+ },
+ {
+  "sourceId": "0717",
+  "exerciseId": 1141,
+  "name": "side push-up",
+  "priority": "search_only",
+  "beginnerFriendly": false
+ },
+ {
+  "sourceId": "0720",
+  "exerciseId": 1143,
+  "name": "side-to-side chin",
+  "priority": "search_only",
+  "beginnerFriendly": false
+ },
+ {
+  "sourceId": "0725",
+  "exerciseId": 1145,
+  "name": "single arm push-up",
+  "priority": "never",
+  "beginnerFriendly": false
+ },
+ {
+  "sourceId": "3645",
+  "exerciseId": 1146,
+  "name": "single leg bridge with outstretched leg",
+  "priority": "search_only",
+  "beginnerFriendly": false
+ },
+ {
+  "sourceId": "0727",
+  "exerciseId": 1147,
+  "name": "single leg calf raise (on a dumbbell)",
+  "priority": "search_only",
+  "beginnerFriendly": false
+ },
+ {
+  "sourceId": "0730",
+  "exerciseId": 1148,
+  "name": "single leg platform slide",
+  "priority": "alternative",
+  "beginnerFriendly": false
+ },
+ {
+  "sourceId": "1759",
+  "exerciseId": 1149,
+  "name": "single leg squat (pistol) male",
+  "priority": "search_only",
+  "beginnerFriendly": false
+ },
+ {
+  "sourceId": "1489",
+  "exerciseId": 1150,
+  "name": "sissy squat",
+  "priority": "search_only",
+  "beginnerFriendly": false
+ },
+ {
+  "sourceId": "0735",
+  "exerciseId": 1151,
+  "name": "sit-up v. 2",
+  "priority": "search_only",
+  "beginnerFriendly": false
+ },
+ {
+  "sourceId": "3679",
+  "exerciseId": 1152,
+  "name": "sit-up with arms on chest",
+  "priority": "search_only",
+  "beginnerFriendly": false
+ },
+ {
+  "sourceId": "3304",
+  "exerciseId": 1156,
+  "name": "skin the cat",
+  "priority": "never",
+  "beginnerFriendly": false
+ },
+ {
+  "sourceId": "0739",
+  "exerciseId": 1159,
+  "name": "sled 45в° leg press",
+  "priority": "first",
+  "beginnerFriendly": true
+ },
+ {
+  "sourceId": "1463",
+  "exerciseId": 1161,
+  "name": "sled 45° leg press (side pov)",
+  "priority": "first",
+  "beginnerFriendly": true
+ },
+ {
+  "sourceId": "1391",
+  "exerciseId": 1163,
+  "name": "sled calf press on leg press",
+  "priority": "alternative",
+  "beginnerFriendly": false
+ },
+ {
+  "sourceId": "0743",
+  "exerciseId": 1166,
+  "name": "sled hack squat",
+  "priority": "alternative",
+  "beginnerFriendly": false
+ },
+ {
+  "sourceId": "0746",
+  "exerciseId": 1171,
+  "name": "smith back shrug",
+  "priority": "search_only",
+  "beginnerFriendly": false
+ },
+ {
+  "sourceId": "0747",
+  "exerciseId": 1172,
+  "name": "smith behind neck press",
+  "priority": "never",
+  "beginnerFriendly": false
+ },
+ {
+  "sourceId": "0748",
+  "exerciseId": 1173,
+  "name": "smith bench press",
+  "priority": "alternative",
+  "beginnerFriendly": true
+ },
+ {
+  "sourceId": "0749",
+  "exerciseId": 1174,
+  "name": "smith bent knee good morning",
+  "priority": "search_only",
+  "beginnerFriendly": false
+ },
+ {
+  "sourceId": "1359",
+  "exerciseId": 1175,
+  "name": "smith bent over row",
+  "priority": "search_only",
+  "beginnerFriendly": false
+ },
+ {
+  "sourceId": "0750",
+  "exerciseId": 1176,
+  "name": "smith chair squat",
+  "priority": "alternative",
+  "beginnerFriendly": true
+ },
+ {
+  "sourceId": "0751",
+  "exerciseId": 1177,
+  "name": "smith close-grip bench press",
+  "priority": "search_only",
+  "beginnerFriendly": false
+ },
+ {
+  "sourceId": "0752",
+  "exerciseId": 1178,
+  "name": "smith deadlift",
+  "priority": "search_only",
+  "beginnerFriendly": false
+ },
+ {
+  "sourceId": "0753",
+  "exerciseId": 1179,
+  "name": "smith decline bench press",
+  "priority": "search_only",
+  "beginnerFriendly": false
+ },
+ {
+  "sourceId": "0754",
+  "exerciseId": 1180,
+  "name": "smith decline reverse-grip press",
+  "priority": "search_only",
+  "beginnerFriendly": false
+ },
+ {
+  "sourceId": "1433",
+  "exerciseId": 1181,
+  "name": "smith front squat (clean grip)",
+  "priority": "search_only",
+  "beginnerFriendly": false
+ },
+ {
+  "sourceId": "3281",
+  "exerciseId": 1182,
+  "name": "smith full squat",
+  "priority": "search_only",
+  "beginnerFriendly": false
+ },
+ {
+  "sourceId": "0755",
+  "exerciseId": 1183,
+  "name": "smith hack squat",
+  "priority": "alternative",
+  "beginnerFriendly": false
+ },
+ {
+  "sourceId": "0756",
+  "exerciseId": 1184,
+  "name": "smith hip raise",
+  "priority": "search_only",
+  "beginnerFriendly": false
+ },
+ {
+  "sourceId": "0757",
+  "exerciseId": 1185,
+  "name": "smith incline bench press",
+  "priority": "alternative",
+  "beginnerFriendly": false
+ },
+ {
+  "sourceId": "0758",
+  "exerciseId": 1186,
+  "name": "smith incline reverse-grip press",
+  "priority": "search_only",
+  "beginnerFriendly": false
+ },
+ {
+  "sourceId": "0759",
+  "exerciseId": 1187,
+  "name": "smith incline shoulder raises",
+  "priority": "search_only",
+  "beginnerFriendly": false
+ },
+ {
+  "sourceId": "0760",
+  "exerciseId": 1188,
+  "name": "smith leg press",
+  "priority": "first",
+  "beginnerFriendly": true
+ },
+ {
+  "sourceId": "1434",
+  "exerciseId": 1189,
+  "name": "smith low bar squat",
+  "priority": "search_only",
+  "beginnerFriendly": false
+ },
+ {
+  "sourceId": "1683",
+  "exerciseId": 1190,
+  "name": "smith machine bicep curl",
+  "priority": "search_only",
+  "beginnerFriendly": false
+ },
+ {
+  "sourceId": "1625",
+  "exerciseId": 1191,
+  "name": "smith machine decline close grip bench press",
+  "priority": "search_only",
+  "beginnerFriendly": false
+ },
+ {
+  "sourceId": "1752",
+  "exerciseId": 1192,
+  "name": "smith machine incline tricep extension",
+  "priority": "search_only",
+  "beginnerFriendly": false
+ },
+ {
+  "sourceId": "1626",
+  "exerciseId": 1193,
+  "name": "smith machine reverse decline close grip bench press",
+  "priority": "search_only",
+  "beginnerFriendly": false
+ },
+ {
+  "sourceId": "0761",
+  "exerciseId": 1194,
+  "name": "smith narrow row",
+  "priority": "search_only",
+  "beginnerFriendly": false
+ },
+ {
+  "sourceId": "1360",
+  "exerciseId": 1195,
+  "name": "smith one arm row",
+  "priority": "search_only",
+  "beginnerFriendly": false
+ },
+ {
+  "sourceId": "1393",
+  "exerciseId": 1196,
+  "name": "smith one leg floor calf raise",
+  "priority": "search_only",
+  "beginnerFriendly": false
+ },
+ {
+  "sourceId": "0762",
+  "exerciseId": 1197,
+  "name": "smith rear delt row",
+  "priority": "search_only",
+  "beginnerFriendly": false
+ },
+ {
+  "sourceId": "0763",
+  "exerciseId": 1198,
+  "name": "smith reverse calf raises",
+  "priority": "search_only",
+  "beginnerFriendly": false
+ },
+ {
+  "sourceId": "1394",
+  "exerciseId": 1199,
+  "name": "smith reverse calf raises",
+  "priority": "search_only",
+  "beginnerFriendly": false
+ },
+ {
+  "sourceId": "1361",
+  "exerciseId": 1200,
+  "name": "smith reverse grip bent over row",
+  "priority": "search_only",
+  "beginnerFriendly": false
+ },
+ {
+  "sourceId": "0764",
+  "exerciseId": 1201,
+  "name": "smith reverse-grip press",
+  "priority": "search_only",
+  "beginnerFriendly": false
+ },
+ {
+  "sourceId": "1395",
+  "exerciseId": 1202,
+  "name": "smith seated one leg calf raise",
+  "priority": "search_only",
+  "beginnerFriendly": false
+ },
+ {
+  "sourceId": "0765",
+  "exerciseId": 1203,
+  "name": "smith seated shoulder press",
+  "priority": "alternative",
+  "beginnerFriendly": true
+ },
+ {
+  "sourceId": "1426",
+  "exerciseId": 1204,
+  "name": "smith seated wrist curl",
+  "priority": "search_only",
+  "beginnerFriendly": false
+ },
+ {
+  "sourceId": "0766",
+  "exerciseId": 1205,
+  "name": "smith shoulder press",
+  "priority": "alternative",
+  "beginnerFriendly": false
+ },
+ {
+  "sourceId": "0767",
+  "exerciseId": 1206,
+  "name": "smith shrug",
+  "priority": "alternative",
+  "beginnerFriendly": false
+ },
+ {
+  "sourceId": "0768",
+  "exerciseId": 1207,
+  "name": "smith single leg split squat",
+  "priority": "alternative",
+  "beginnerFriendly": false
+ },
+ {
+  "sourceId": "0769",
+  "exerciseId": 1208,
+  "name": "smith sprint lunge",
+  "priority": "search_only",
+  "beginnerFriendly": false
+ },
+ {
+  "sourceId": "0770",
+  "exerciseId": 1209,
+  "name": "smith squat",
+  "priority": "alternative",
+  "beginnerFriendly": false
+ },
+ {
+  "sourceId": "0771",
+  "exerciseId": 1210,
+  "name": "smith standing back wrist curl",
+  "priority": "search_only",
+  "beginnerFriendly": false
+ },
+ {
+  "sourceId": "0772",
+  "exerciseId": 1211,
+  "name": "smith standing behind head military press",
+  "priority": "never",
+  "beginnerFriendly": false
+ },
+ {
+  "sourceId": "0773",
+  "exerciseId": 1212,
+  "name": "smith standing leg calf raise",
+  "priority": "search_only",
+  "beginnerFriendly": false
+ },
+ {
+  "sourceId": "0774",
+  "exerciseId": 1213,
+  "name": "smith standing military press",
+  "priority": "search_only",
+  "beginnerFriendly": false
+ },
+ {
+  "sourceId": "3142",
+  "exerciseId": 1214,
+  "name": "smith sumo squat",
+  "priority": "search_only",
+  "beginnerFriendly": false
+ },
+ {
+  "sourceId": "1396",
+  "exerciseId": 1215,
+  "name": "smith toe raise",
+  "priority": "search_only",
+  "beginnerFriendly": false
+ },
+ {
+  "sourceId": "0775",
+  "exerciseId": 1216,
+  "name": "smith upright row",
+  "priority": "search_only",
+  "beginnerFriendly": false
+ },
+ {
+  "sourceId": "1308",
+  "exerciseId": 1217,
+  "name": "smith wide grip bench press",
+  "priority": "search_only",
+  "beginnerFriendly": false
+ },
+ {
+  "sourceId": "1309",
+  "exerciseId": 1218,
+  "name": "smith wide grip decline bench press",
+  "priority": "search_only",
+  "beginnerFriendly": false
+ },
+ {
+  "sourceId": "0776",
+  "exerciseId": 1219,
+  "name": "snatch pull",
+  "priority": "never",
+  "beginnerFriendly": false
+ },
+ {
+  "sourceId": "0777",
+  "exerciseId": 1220,
+  "name": "spell caster",
+  "priority": "search_only",
+  "beginnerFriendly": false
+ },
+ {
+  "sourceId": "1362",
+  "exerciseId": 1221,
+  "name": "sphinx",
+  "priority": "alternative",
+  "beginnerFriendly": true
+ },
+ {
+  "sourceId": "0778",
+  "exerciseId": 1222,
+  "name": "spider crawl push up",
+  "priority": "search_only",
+  "beginnerFriendly": false
+ },
+ {
+  "sourceId": "2329",
+  "exerciseId": 1224,
+  "name": "spine twist",
+  "priority": "search_only",
+  "beginnerFriendly": false
+ },
+ {
+  "sourceId": "2368",
+  "exerciseId": 1225,
+  "name": "split squats",
+  "priority": "first",
+  "beginnerFriendly": true
+ },
+ {
+  "sourceId": "0786",
+  "exerciseId": 1226,
+  "name": "squat jerk",
+  "priority": "never",
+  "beginnerFriendly": false
+ },
+ {
+  "sourceId": "1705",
+  "exerciseId": 1227,
+  "name": "squat on bosu ball",
+  "priority": "never",
+  "beginnerFriendly": false
+ },
+ {
+  "sourceId": "1685",
+  "exerciseId": 1228,
+  "name": "squat to overhead reach",
+  "priority": "alternative",
+  "beginnerFriendly": true
+ },
+ {
+  "sourceId": "1686",
+  "exerciseId": 1229,
+  "name": "squat to overhead reach with twist",
+  "priority": "search_only",
+  "beginnerFriendly": false
+ },
+ {
+  "sourceId": "2297",
+  "exerciseId": 1230,
+  "name": "stability ball crunch (full range hands behind head)",
+  "priority": "search_only",
+  "beginnerFriendly": false
+ },
+ {
+  "sourceId": "3291",
+  "exerciseId": 1231,
+  "name": "stalder press",
+  "priority": "never",
+  "beginnerFriendly": false
+ },
+ {
+  "sourceId": "3669",
+  "exerciseId": 1232,
+  "name": "standing archer",
+  "priority": "search_only",
+  "beginnerFriendly": false
+ },
+ {
+  "sourceId": "0788",
+  "exerciseId": 1233,
+  "name": "standing behind neck press",
+  "priority": "never",
+  "beginnerFriendly": false
+ },
+ {
+  "sourceId": "1490",
+  "exerciseId": 1234,
+  "name": "standing calf raise (on a staircase)",
+  "priority": "first",
+  "beginnerFriendly": true
+ },
+ {
+  "sourceId": "1397",
+  "exerciseId": 1235,
+  "name": "standing calves",
+  "priority": "alternative",
+  "beginnerFriendly": true
+ },
+ {
+  "sourceId": "1364",
+  "exerciseId": 1239,
+  "name": "standing pelvic tilt",
+  "priority": "first",
+  "beginnerFriendly": true
+ },
+ {
+  "sourceId": "0795",
+  "exerciseId": 1240,
+  "name": "standing single leg curl",
+  "priority": "first",
+  "beginnerFriendly": true
+ },
+ {
+  "sourceId": "0798",
+  "exerciseId": 1244,
+  "name": "stationary bike walk",
+  "priority": "first",
+  "beginnerFriendly": true
+ },
+ {
+  "sourceId": "3314",
+  "exerciseId": 1245,
+  "name": "straddle maltese",
+  "priority": "never",
+  "beginnerFriendly": false
+ },
+ {
+  "sourceId": "3298",
+  "exerciseId": 1246,
+  "name": "straddle planche",
+  "priority": "never",
+  "beginnerFriendly": false
+ },
+ {
+  "sourceId": "1427",
+  "exerciseId": 1247,
+  "name": "straight leg outer hip abductor",
+  "priority": "alternative",
+  "beginnerFriendly": true
+ },
+ {
+  "sourceId": "0803",
+  "exerciseId": 1248,
+  "name": "superman push-up",
+  "priority": "never",
+  "beginnerFriendly": false
+ },
+ {
+  "sourceId": "0805",
+  "exerciseId": 1249,
+  "name": "suspended abdominal fallout",
+  "priority": "search_only",
+  "beginnerFriendly": false
+ },
+ {
+  "sourceId": "0806",
+  "exerciseId": 1250,
+  "name": "suspended push-up",
+  "priority": "search_only",
+  "beginnerFriendly": false
+ },
+ {
+  "sourceId": "0807",
+  "exerciseId": 1251,
+  "name": "suspended reverse crunch",
+  "priority": "search_only",
+  "beginnerFriendly": false
+ },
+ {
+  "sourceId": "0808",
+  "exerciseId": 1252,
+  "name": "suspended row",
+  "priority": "search_only",
+  "beginnerFriendly": false
+ },
+ {
+  "sourceId": "0809",
+  "exerciseId": 1253,
+  "name": "suspended split squat",
+  "priority": "search_only",
+  "beginnerFriendly": false
+ },
+ {
+  "sourceId": "3433",
+  "exerciseId": 1254,
+  "name": "swimmer kicks v. 2 (male)",
+  "priority": "search_only",
+  "beginnerFriendly": false
+ },
+ {
+  "sourceId": "1753",
+  "exerciseId": 1256,
+  "name": "three bench dip",
+  "priority": "search_only",
+  "beginnerFriendly": false
+ },
+ {
+  "sourceId": "2459",
+  "exerciseId": 1257,
+  "name": "tire flip",
+  "priority": "never",
+  "beginnerFriendly": false
+ },
+ {
+  "sourceId": "0811",
+  "exerciseId": 1258,
+  "name": "trap bar deadlift",
+  "priority": "search_only",
+  "beginnerFriendly": false
+ },
+ {
+  "sourceId": "0814",
+  "exerciseId": 1259,
+  "name": "triceps dip",
+  "priority": "alternative",
+  "beginnerFriendly": false
+ },
+ {
+  "sourceId": "0812",
+  "exerciseId": 1260,
+  "name": "triceps dip (bench leg)",
+  "priority": "search_only",
+  "beginnerFriendly": false
+ },
+ {
+  "sourceId": "0813",
+  "exerciseId": 1261,
+  "name": "triceps dip (between benches)",
+  "priority": "search_only",
+  "beginnerFriendly": false
+ },
+ {
+  "sourceId": "0815",
+  "exerciseId": 1262,
+  "name": "triceps dips floor",
+  "priority": "alternative",
+  "beginnerFriendly": true
+ },
+ {
+  "sourceId": "0816",
+  "exerciseId": 1263,
+  "name": "triceps press",
+  "priority": "alternative",
+  "beginnerFriendly": false
+ },
+ {
+  "sourceId": "0871",
+  "exerciseId": 1265,
+  "name": "tuck crunch",
+  "priority": "alternative",
+  "beginnerFriendly": false
+ },
+ {
+  "sourceId": "0818",
+  "exerciseId": 1266,
+  "name": "twin handle parallel grip lat pulldown",
+  "priority": "first",
+  "beginnerFriendly": true
+ },
+ {
+  "sourceId": "1466",
+  "exerciseId": 1267,
+  "name": "twist hip lift",
+  "priority": "search_only",
+  "beginnerFriendly": false
+ },
+ {
+  "sourceId": "2802",
+  "exerciseId": 1268,
+  "name": "twisted leg raise",
+  "priority": "search_only",
+  "beginnerFriendly": false
+ },
+ {
+  "sourceId": "2801",
+  "exerciseId": 1269,
+  "name": "twisted leg raise (female)",
+  "priority": "search_only",
+  "beginnerFriendly": false
+ },
+ {
+  "sourceId": "1366",
+  "exerciseId": 1272,
+  "name": "upward facing dog",
+  "priority": "alternative",
+  "beginnerFriendly": false
+ },
+ {
+  "sourceId": "3420",
+  "exerciseId": 1273,
+  "name": "v-sit on floor",
+  "priority": "search_only",
+  "beginnerFriendly": false
+ },
+ {
+  "sourceId": "0826",
+  "exerciseId": 1274,
+  "name": "vertical leg raise (on parallel bars)",
+  "priority": "search_only",
+  "beginnerFriendly": false
+ },
+ {
+  "sourceId": "2141",
+  "exerciseId": 1275,
+  "name": "walk elliptical cross trainer",
+  "priority": "first",
+  "beginnerFriendly": true
+ },
+ {
+  "sourceId": "1460",
+  "exerciseId": 1277,
+  "name": "walking lunge",
+  "priority": "alternative",
+  "beginnerFriendly": false
+ },
+ {
+  "sourceId": "3666",
+  "exerciseId": 1278,
+  "name": "walking on incline treadmill",
+  "priority": "first",
+  "beginnerFriendly": true
+ },
+ {
+  "sourceId": "2311",
+  "exerciseId": 1279,
+  "name": "walking on stepmill",
+  "priority": "alternative",
+  "beginnerFriendly": false
+ },
+ {
+  "sourceId": "3286",
+  "exerciseId": 1293,
+  "name": "weighted muscle up",
+  "priority": "never",
+  "beginnerFriendly": false
+ },
+ {
+  "sourceId": "3312",
+  "exerciseId": 1294,
+  "name": "weighted muscle up (on bar)",
+  "priority": "never",
+  "beginnerFriendly": false
+ },
+ {
+  "sourceId": "3290",
+  "exerciseId": 1295,
+  "name": "weighted one hand pull up",
+  "priority": "never",
+  "beginnerFriendly": false
+ },
+ {
+  "sourceId": "0847",
+  "exerciseId": 1302,
+  "name": "weighted seated bicep curl (on stability ball)",
+  "priority": "search_only",
+  "beginnerFriendly": false
+ },
+ {
+  "sourceId": "1429",
+  "exerciseId": 1317,
+  "name": "wide grip pull-up",
+  "priority": "alternative",
+  "beginnerFriendly": false
+ },
+ {
+  "sourceId": "1367",
+  "exerciseId": 1318,
+  "name": "wide grip rear pull-up",
+  "priority": "never",
+  "beginnerFriendly": false
+ },
+ {
+  "sourceId": "1311",
+  "exerciseId": 1319,
+  "name": "wide hand push up",
+  "priority": "alternative",
+  "beginnerFriendly": false
+ },
+ {
+  "sourceId": "2363",
+  "exerciseId": 1320,
+  "name": "wide-grip chest dip on high parallel bars",
+  "priority": "search_only",
+  "beginnerFriendly": false
+ },
+ {
+  "sourceId": "0858",
+  "exerciseId": 1321,
+  "name": "wind sprints",
+  "priority": "search_only",
+  "beginnerFriendly": false
+ }
+]

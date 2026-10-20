@@ -1,12 +1,15 @@
 'use strict';
 const AppError = require('../lib/app-error');
+const { hasHealthCaution, isBeginnerPlan } = require('./profile');
 
 // Candidate rules mirror ml/app/catalogue.py. An alternative the generator
 // would never have been allowed to pick is not a legitimate substitute, so the
 // filters are deliberately the same ones: owned equipment (walking
 // parent_equipment_id), no contraindication for a reported injury, and
-// strength only. Equipment is reported in the *curated* vocabulary, matching
-// src/db/plans.js -- never the raw tag src/db/exercises.js returns.
+// strength only -- plus the team's curated marks (exercise_preferences): a
+// `never` exercise is never offered. Equipment is reported in the *curated*
+// vocabulary, matching src/db/plans.js -- never the raw tag
+// src/db/exercises.js returns.
 
 const BODY_WEIGHT = 'body weight';
 
@@ -46,6 +49,15 @@ async function loadSwapContext(pool, userId, planExerciseId) {
   const [inPlan] = await pool.query(
     'SELECT exercise_id FROM plan_exercises WHERE plan_id = ?', [row.plan_id],
   );
+  // Beginner mode from the stored level and health check, the same two facts
+  // the generator is sent.
+  const [[user]] = await pool.query(
+    'SELECT fitness_level FROM users WHERE user_id = ?', [userId],
+  );
+  const beginner = isBeginnerPlan({
+    fitnessLevel: user.fitness_level,
+    healthCaution: await hasHealthCaution(pool, userId),
+  });
 
   return {
     userId,
@@ -57,9 +69,12 @@ async function loadSwapContext(pool, userId, planExerciseId) {
     selectedIds,
     injuryIds: injuries.map((r) => r.injury_id),
     inPlanIds: inPlan.map((r) => r.exercise_id),
+    beginner,
   };
 }
 
+// Callers join exercise_preferences as `pref` (LEFT JOIN: most exercises
+// carry no mark).
 function safetyClauses(ctx, params, eligibleIds) {
   let sql = `
      WHERE x.status = 'live'
@@ -69,7 +84,8 @@ function safetyClauses(ctx, params, eligibleIds) {
              SELECT 1 FROM exercise_equipment_requirements r
               WHERE r.exercise_id = x.exercise_id AND r.equipment_id NOT IN (?)
            )
-       AND x.exercise_id NOT IN (?)`;
+       AND x.exercise_id NOT IN (?)
+       AND COALESCE(pref.priority, 'unmarked') <> 'never'`;
   // Requirements stay against ownedIds: classifyRequirements only ever emits
   // 'bench' and 'pull-up bar', never body weight, so this list is already
   // effectively the user's own selection -- narrowing it would change nothing
@@ -124,7 +140,8 @@ async function queryAlternatives(pool, ctx, eligibleIds, { q, limit, bodyweightO
       FROM exercises x
       LEFT JOIN equipment eq ON eq.equipment_id = x.equipment_id
       LEFT JOIN equipment parent ON parent.equipment_id = eq.parent_equipment_id
-      LEFT JOIN exercise_categories cat ON cat.exercise_id = x.exercise_id`;
+      LEFT JOIN exercise_categories cat ON cat.exercise_id = x.exercise_id
+      LEFT JOIN exercise_preferences pref ON pref.exercise_id = x.exercise_id`;
 
   sql += safetyClauses(ctx, params, eligibleIds);
 
@@ -145,12 +162,20 @@ async function queryAlternatives(pool, ctx, eligibleIds, { q, limit, bodyweightO
     params.push(BODY_WEIGHT);
   }
 
-  // Equipment the user actually selected outranks the body-weight fallback,
-  // mirroring _PREFER_SELECTED: without it body weight's low ids dominate and
-  // a dumbbell owner is offered push-ups. A curated preference tier, when it
-  // exists, becomes the first key here and demotes these two.
+  // The team's marks come first: in beginner mode beginner-friendly
+  // exercises lead, then priority -- first, alternative, unmarked,
+  // search_only (never is already filtered out). Equipment the user actually
+  // selected then outranks the body-weight fallback, mirroring _SELECTED_TIER
+  // in ml/app/catalogue.py: without it body weight's low ids dominate and a
+  // dumbbell owner is offered push-ups. exercise_id breaks the last tie.
+  //
+  // ctx.beginner is a boolean computed here on the server, never user text,
+  // so interpolating one of two fixed fragments is safe.
   sql += `
-     ORDER BY CASE WHEN COALESCE(eq.parent_equipment_id, eq.equipment_id) IN (?)
+     ORDER BY ${ctx.beginner ? 'COALESCE(pref.beginner_friendly, 0) DESC,' : ''}
+              CASE pref.priority WHEN 'first' THEN 0 WHEN 'alternative' THEN 1
+                                 WHEN 'search_only' THEN 3 ELSE 2 END,
+              CASE WHEN COALESCE(eq.parent_equipment_id, eq.equipment_id) IN (?)
                    THEN 0 ELSE 1 END,
               x.exercise_id ASC
      LIMIT ?`;
@@ -174,7 +199,8 @@ async function isAllowedTarget(pool, ctx, exerciseId) {
     SELECT x.exercise_id
       FROM exercises x
       LEFT JOIN equipment eq ON eq.equipment_id = x.equipment_id
-      LEFT JOIN exercise_categories cat ON cat.exercise_id = x.exercise_id`;
+      LEFT JOIN exercise_categories cat ON cat.exercise_id = x.exercise_id
+      LEFT JOIN exercise_preferences pref ON pref.exercise_id = x.exercise_id`;
   // Permissive on purpose: the list is strict, but a target that a slightly
   // stale sheet still offers -- or one the fallback legitimately produced --
   // must not be refused for equipment reasons it cannot see.

@@ -57,8 +57,15 @@ function correctEquipment(record) {
 //
 // '3533' quads -- named after its target muscle; the animation is a
 // rear-foot-elevated split squat with the back foot on a bench.
+// '2327' -- "(female)" names the model in the animation, not the exercise.
+// '0738' '0739' '1464' '0740' -- upstream's "45в°" is a garbled degree sign.
 const NAME_OVERRIDES = new Map([
   ['3533', 'bulgarian split squat'],
+  ['2327', 'dumbbell reverse grip row'],
+  ['0738', 'sled 45° calf press'],
+  ['0739', 'sled 45° leg press'],
+  ['1464', 'sled 45° leg press (back pov)'],
+  ['0740', 'sled 45° leg wide press'],
 ]);
 
 function correctName(record) {
