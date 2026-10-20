@@ -425,6 +425,38 @@ def test_a_day_the_users_equipment_fills_holds_no_body_weight(
     ], push
 
 
+def test_a_top_up_only_fills_the_missing_slots(client, catalogue, add_exercise):
+    """Body weight fills the gap; it never displaces the user's own rows.
+
+    Push for a dumbbell owner, one row short: the fly, three delts, the
+    kickback. Re-selecting the day from dumbbells plus body weight let the
+    round-robin take two push-ups and drop the rear fly. Every dumbbell row
+    must stay, with exactly one body-weight row for the one missing slot, and
+    the arm still last.
+    """
+    for name in ("fixture dumbbell shoulder press", "fixture dumbbell lateral raise",
+                 "fixture dumbbell rear fly"):
+        add_exercise(name, "delts", "dumbbell")
+    add_exercise("fixture dumbbell kickback", "triceps", "dumbbell")
+    add_exercise("fixture knee push-up", "pectorals", "body weight")
+    eq = catalogue["equipment"]
+    plan = post_plan(
+        client,
+        mainGoal="build_muscle",
+        equipment=[{"equipmentId": eq["dumbbell"], "name": "Dumbbells"}],
+        overrides={"splitStyle": "push_pull_legs"},
+    )
+    push = [e["name"] for e in plan["exercises"] if e["dayNo"] == 1]
+    assert push == [
+        "fixture dumbbell fly",
+        "fixture dumbbell shoulder press",
+        "fixture dumbbell lateral raise",
+        "fixture dumbbell rear fly",
+        "fixture push-up",
+        "fixture dumbbell kickback",
+    ], push
+
+
 @pytest.mark.parametrize("equipment", [
     pytest.param([], id="nothing selected"),
     pytest.param(["body weight"], id="body weight selected"),

@@ -222,8 +222,8 @@ def create_app(settings: Settings) -> FastAPI:
         # One session per rotation day, each from that day's muscle pool. The
         # pools within a rotation are disjoint (see app/rules/splits), so an
         # exercise cannot land on two days and no de-duplication is needed.
-        # select() itself is untouched: its priority walk and arm reservation
-        # are exactly what each day needs, and a group with nothing in it is
+        # select()'s choices are unchanged: its priority walk and arm
+        # reservation are exactly what each day needs, and a group with nothing in it is
         # already skipped rather than padded -- which is what lets a Legs day
         # tolerate having no arms to reserve.
         exercises: List[PlanExercise] = []
@@ -234,20 +234,20 @@ def create_app(settings: Settings) -> FastAPI:
             ]
 
         for day_index, day in enumerate(split.days, start=1):
-            pool = in_day(day, ranked)
-            chosen = selection.select(pool, params.exercise_count)
             # The body-weight top-up, only for a day the user's own equipment
-            # leaves short of its target. A day that fills from `pool` is
-            # left exactly as it was: appending body weight to every day would
-            # let the round-robin's second pass take a push-up over a dumbbell
-            # owner's third delts exercise. The top-up rows come after the
-            # pool, so within a group their own equipment is still taken
-            # first, and they are only from groups the pool already has --
-            # select() gains depth, never a new group.
-            if len(chosen) < params.exercise_count:
-                extra = in_day(day, ranked_top_up)
-                if extra:
-                    chosen = selection.select(pool + extra, params.exercise_count)
+            # leaves short of its target. A day that fills from the pool is
+            # left exactly as select() makes it: appending body weight to
+            # every day would let the round-robin's second pass take a
+            # push-up over a dumbbell owner's third delts exercise. On a short
+            # day every row the pool gave is kept, and body weight fills only
+            # the missing slots -- re-selecting from pool + top-up would let a
+            # second push-up push a dumbbell row out. The top-up rows are only
+            # from groups the pool already has, so a day gains depth, never a
+            # new group.
+            chosen = selection.select_with_top_up(
+                in_day(day, ranked), in_day(day, ranked_top_up),
+                params.exercise_count,
+            )
             if not chosen:
                 logger.warning(
                     "split %s day %d (%s) came back empty -- no eligible "
