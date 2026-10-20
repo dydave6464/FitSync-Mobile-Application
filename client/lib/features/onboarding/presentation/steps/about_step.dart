@@ -106,10 +106,18 @@ class AboutStep extends StatefulWidget {
     required this.onChanged,
     this.unit = WeightUnit.kg,
     this.onUnitChanged,
+    required this.goals,
   });
 
   final AboutAnswers value;
   final ValueChanged<AboutAnswers> onChanged;
+
+  /// The goals step 1 collected, or the saved ones in Settings. Goal weight
+  /// only draws the target line on the weight chart, so it is asked outright
+  /// only when losing weight is one of them; for anyone else it is one
+  /// optional tap away. Required, so no screen showing this step can forget
+  /// to pass them.
+  final List<String> goals;
 
   /// The unit the two weight cards display and read. [AboutAnswers] stays in
   /// kilograms whatever this is -- the estimate below the cards and the plan
@@ -131,6 +139,15 @@ class _AboutStepState extends State<AboutStep> {
   String? _sex;
   String? _dateOfBirth;
   String? _activityLevel;
+
+  /// Once shown, goal weight stays shown: a number already given is never
+  /// tucked away behind the button again.
+  late bool _showGoalWeight =
+      widget.goals.contains('lose_weight') || widget.value.goalWeightKg != null;
+
+  /// Moves the cursor into goal weight when the user asks for it. A field
+  /// shown outright never grabs the keyboard.
+  final _goalWeightFocus = FocusNode();
 
   @override
   void initState() {
@@ -173,6 +190,7 @@ class _AboutStepState extends State<AboutStep> {
     _height.dispose();
     _weight.dispose();
     _goalWeight.dispose();
+    _goalWeightFocus.dispose();
     super.dispose();
   }
 
@@ -257,6 +275,7 @@ class _AboutStepState extends State<AboutStep> {
     String unit, {
     bool accent = false,
     Widget? unitControl,
+    FocusNode? focusNode,
   }) => FsStatField(
     fieldKey: key,
     label: label,
@@ -264,6 +283,7 @@ class _AboutStepState extends State<AboutStep> {
     controller: controller,
     accent: accent,
     unitControl: unitControl,
+    focusNode: focusNode,
   );
 
   @override
@@ -368,13 +388,40 @@ class _AboutStepState extends State<AboutStep> {
           },
         ),
         const SizedBox(height: 10),
-        _statField(
-          const Key('goalWeightKg'),
-          _goalWeight,
-          'Goal weight',
-          widget.unit.api,
-          accent: true,
-        ),
+        if (_showGoalWeight) ...[
+          _statField(
+            const Key('goalWeightKg'),
+            _goalWeight,
+            'Goal weight',
+            widget.unit.api,
+            // The design's accent belongs to a goal the number serves.
+            accent: widget.goals.contains('lose_weight'),
+            focusNode: _goalWeightFocus,
+          ),
+          const SizedBox(height: 6),
+          Text(
+            'Optional. Shows as your target line on the weight chart.',
+            style: TextStyle(fontSize: 12, color: t.text2, height: 1.4),
+          ),
+        ] else
+          Align(
+            alignment: AlignmentDirectional.centerStart,
+            child: TextButton.icon(
+              key: const Key('goalWeight.add'),
+              style: TextButton.styleFrom(minimumSize: const Size(48, 48)),
+              onPressed: () {
+                setState(() => _showGoalWeight = true);
+                // The field exists from the next frame. Focus it then, which
+                // also takes the cursor from the weight just typed: a tap
+                // outside a field does not unfocus it on a phone.
+                WidgetsBinding.instance.addPostFrameCallback((_) {
+                  if (mounted) _goalWeightFocus.requestFocus();
+                });
+              },
+              icon: const Icon(Icons.add, size: 18),
+              label: const Text('Add a goal weight (optional)'),
+            ),
+          ),
         const SizedBox(height: 18),
         const FsEyebrow('Daily activity level'),
         const SizedBox(height: 2),

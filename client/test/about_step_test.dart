@@ -1,7 +1,9 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/rendering.dart' show RenderParagraph;
 import 'package:flutter_test/flutter_test.dart';
 
 import 'package:fitsync/core/units.dart';
+import 'package:fitsync/core/widgets/fs_kit.dart' show FsStatField;
 import 'package:fitsync/features/onboarding/presentation/steps/about_step.dart';
 
 import 'helpers/onboarding_screen.dart';
@@ -40,6 +42,7 @@ Future<AboutAnswers?> _pumpAndEdit(
   Future<void> Function(WidgetTester) interact, {
   AboutAnswers value = const AboutAnswers(),
   WeightUnit unit = WeightUnit.kg,
+  List<String> goals = const [],
 }) async {
   AboutAnswers? emitted;
   await tester.pumpWidget(
@@ -49,6 +52,7 @@ Future<AboutAnswers?> _pumpAndEdit(
           child: AboutStep(
             value: value,
             unit: unit,
+            goals: goals,
             onChanged: (v) => emitted = v,
           ),
         ),
@@ -108,7 +112,198 @@ void main() {
     expect(find.byKey(const Key('dateOfBirth')), findsOneWidget);
     expect(find.byKey(const Key('heightCm')), findsOneWidget);
     expect(find.byKey(const Key('weightKg')), findsOneWidget);
-    expect(find.byKey(const Key('goalWeightKg')), findsOneWidget);
+  });
+
+  // Goal weight only draws the target line on the weight chart, so it is
+  // asked outright only when losing weight is one of the goals.
+  group('goal weight', () {
+    const helper = 'Optional. Shows as your target line on the weight chart.';
+    bool accentOf(WidgetTester tester) => tester
+        .widget<FsStatField>(
+          find.ancestor(
+            of: find.byKey(const Key('goalWeightKg')),
+            matching: find.byType(FsStatField),
+          ),
+        )
+        .accent;
+
+    testWidgets('is asked outright when losing weight is a goal', (
+      tester,
+    ) async {
+      await _pumpAndEdit(
+        tester,
+        (_) async {},
+        goals: const ['build_muscle', 'lose_weight'],
+      );
+
+      expect(find.byKey(const Key('goalWeightKg')), findsOneWidget);
+      expect(find.text(helper), findsOneWidget);
+      expect(find.byKey(const Key('goalWeight.add')), findsNothing);
+      expect(
+        accentOf(tester),
+        isTrue,
+        reason: 'the accent belongs to a weight-loss goal',
+      );
+    });
+
+    testWidgets('is one tap away, and optional, for other goals', (
+      tester,
+    ) async {
+      final emitted = await _pumpAndEdit(tester, (t) async {
+        expect(find.byKey(const Key('goalWeightKg')), findsNothing);
+        expect(find.text('Add a goal weight (optional)'), findsOneWidget);
+        await _tapKey(t, const Key('goalWeight.add'));
+        await t.pumpAndSettle();
+        expect(find.byKey(const Key('goalWeight.add')), findsNothing);
+        expect(find.text(helper), findsOneWidget);
+        await t.enterText(
+          find.descendant(
+            of: find.byKey(const Key('goalWeightKg')),
+            matching: find.byType(EditableText),
+          ),
+          '80',
+        );
+      }, goals: const ['build_muscle']);
+
+      expect(emitted?.goalWeightKg, 80);
+    });
+
+    testWidgets(
+      'a goal weight already given stays in view whatever the goals',
+      (tester) async {
+        await _pumpAndEdit(
+          tester,
+          (_) async {},
+          goals: const ['build_muscle'],
+          value: const AboutAnswers(goalWeightKg: 68),
+        );
+
+        expect(find.byKey(const Key('goalWeightKg')), findsOneWidget);
+        expect(find.byKey(const Key('goalWeight.add')), findsNothing);
+        expect(
+          accentOf(tester),
+          isFalse,
+          reason: 'no accent without a weight-loss goal',
+        );
+      },
+    );
+
+    testWidgets('the add button wraps, uncut, on a 320 dp phone at 2x text', (
+      tester,
+    ) async {
+      tester.view.physicalSize = const Size(320, 900);
+      tester.view.devicePixelRatio = 1;
+      addTearDown(tester.view.reset);
+      await tester.pumpWidget(
+        MaterialApp(
+          home: MediaQuery(
+            data: const MediaQueryData(
+              size: Size(320, 900),
+              textScaler: TextScaler.linear(2),
+            ),
+            child: Scaffold(
+              body: SingleChildScrollView(
+                padding: const EdgeInsets.symmetric(horizontal: 16),
+                child: AboutStep(
+                  value: const AboutAnswers(),
+                  goals: const ['build_muscle'],
+                  onChanged: (_) {},
+                ),
+              ),
+            ),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      expect(tester.takeException(), isNull);
+      final label = tester.renderObject<RenderParagraph>(
+        find.text('Add a goal weight (optional)'),
+      );
+      // Not cut to one line (a maxLines: 1 label fails here)...
+      expect(label.didExceedMaxLines, isFalse);
+      // ...and it really wraps: the words are wider than the room they get.
+      expect(
+        label.getMaxIntrinsicWidth(double.infinity),
+        greaterThan(label.size.width),
+      );
+      expect(label.size.width, lessThanOrEqualTo(320 - 32));
+    });
+
+    testWidgets('tapping Add goes straight to typing the goal weight', (
+      tester,
+    ) async {
+      await _pumpAndEdit(tester, (t) async {
+        await _tapKey(t, const Key('goalWeight.add'));
+        await t.pumpAndSettle();
+      }, goals: const ['build_muscle']);
+
+      final field = tester.widget<EditableText>(
+        find.descendant(
+          of: find.byKey(const Key('goalWeightKg')),
+          matching: find.byType(EditableText),
+        ),
+      );
+      expect(field.focusNode.hasFocus, isTrue);
+    });
+
+    // The usual path: the weight was just typed, so that field still has
+    // focus when Add is tapped (a tap outside a field does not unfocus it).
+    testWidgets(
+      'tapping Add right after typing the weight moves the cursor to goal weight',
+      (tester) async {
+        EditableText editable(WidgetTester t, String key) =>
+            t.widget<EditableText>(
+              find.descendant(
+                of: find.byKey(Key(key)),
+                matching: find.byType(EditableText),
+              ),
+            );
+        await _pumpAndEdit(tester, (t) async {
+          await t.enterText(
+            find.descendant(
+              of: find.byKey(const Key('weightKg')),
+              matching: find.byType(EditableText),
+            ),
+            '72',
+          );
+          await t.pumpAndSettle();
+          expect(editable(t, 'weightKg').focusNode.hasFocus, isTrue);
+          await _tapKey(t, const Key('goalWeight.add'));
+          await t.pumpAndSettle();
+        }, goals: const ['build_muscle']);
+
+        expect(editable(tester, 'goalWeightKg').focusNode.hasFocus, isTrue);
+        expect(editable(tester, 'weightKg').focusNode.hasFocus, isFalse);
+      },
+    );
+
+    testWidgets('a goal weight asked outright does not grab the keyboard', (
+      tester,
+    ) async {
+      await _pumpAndEdit(tester, (_) async {}, goals: const ['lose_weight']);
+
+      final field = tester.widget<EditableText>(
+        find.descendant(
+          of: find.byKey(const Key('goalWeightKg')),
+          matching: find.byType(EditableText),
+        ),
+      );
+      expect(field.focusNode.hasFocus, isFalse);
+    });
+
+    testWidgets('the add button is a full 48 dp target', (tester) async {
+      await _pumpAndEdit(
+        tester,
+        (_) async {},
+        goals: const ['general_fitness'],
+      );
+
+      expect(
+        tester.getSize(find.byKey(const Key('goalWeight.add'))).height,
+        greaterThanOrEqualTo(48),
+      );
+    });
   });
 
   testWidgets(
@@ -250,7 +445,11 @@ void main() {
       MaterialApp(
         home: Scaffold(
           body: SingleChildScrollView(
-            child: AboutStep(value: const AboutAnswers(), onChanged: (_) {}),
+            child: AboutStep(
+              value: const AboutAnswers(),
+              goals: const [],
+              onChanged: (_) {},
+            ),
           ),
         ),
       ),
@@ -271,7 +470,12 @@ void main() {
         (tester) async {
           await pumpOnPhone(
             tester,
-            AboutStep(value: _complete, unit: unit, onChanged: _ignore),
+            AboutStep(
+              value: _complete,
+              unit: unit,
+              goals: const [],
+              onChanged: _ignore,
+            ),
             screenWidth: screenWidth,
           );
 
@@ -292,7 +496,7 @@ void main() {
   ) async {
     await pumpOnPhone(
       tester,
-      const AboutStep(value: _complete, onChanged: _ignore),
+      const AboutStep(value: _complete, goals: [], onChanged: _ignore),
       screenWidth: 360,
       textScale: 1.0,
     );
@@ -308,7 +512,7 @@ void main() {
   ) async {
     await pumpOnPhone(
       tester,
-      const AboutStep(value: _complete, onChanged: _ignore),
+      const AboutStep(value: _complete, goals: [], onChanged: _ignore),
       screenWidth: 360,
     );
 

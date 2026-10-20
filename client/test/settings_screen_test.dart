@@ -365,6 +365,30 @@ void main() {
     }
   });
 
+  // Settings > Body metrics is the same step as onboarding's "A bit about
+  // you", so goal weight follows the saved goals there too.
+  for (final (goals, asked) in [
+    (['build_muscle'], false),
+    (['lose_weight'], true),
+  ]) {
+    testWidgets(
+      'Body metrics ${asked ? 'asks' : 'offers'} goal weight for ${goals.join(' + ')}',
+      (tester) async {
+        await _pump(tester, patches: [], goals: goals);
+        await _openRow(tester, const Key('edit.about'));
+
+        expect(
+          find.byKey(const Key('goalWeightKg')),
+          asked ? findsOneWidget : findsNothing,
+        );
+        expect(
+          find.byKey(const Key('goalWeight.add')),
+          asked ? findsNothing : findsOneWidget,
+        );
+      },
+    );
+  }
+
   testWidgets('a profile seeded with goals but no focus does not crash Save', (
     tester,
   ) async {
