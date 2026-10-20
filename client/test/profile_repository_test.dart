@@ -433,6 +433,41 @@ void main() {
       expect(series.unit, 'kg');
     });
 
+    test('reads the first weigh-in and the count', () async {
+      final (repo, _) = _repoReturning({
+        'data': {
+          'widened': false,
+          'points': [
+            {'loggedOn': '2026-09-16', 'weightKg': 71.4},
+          ],
+          'reference': {'kind': 'goal', 'weightKg': 68.0},
+          'start': {'loggedOn': '2026-08-01', 'weightKg': 74.2},
+          'entries': 9,
+          'unit': 'kg',
+        },
+      });
+
+      final series = await repo.bodyWeight('week');
+      expect(series.start?.loggedOn, '2026-08-01');
+      expect(series.start?.weightKg, 74.2);
+      expect(series.entries, 9);
+    });
+
+    test('an older server without start or entries reads as none', () async {
+      final (repo, _) = _repoReturning({
+        'data': {
+          'widened': false,
+          'points': [],
+          'reference': null,
+          'unit': 'kg',
+        },
+      });
+
+      final series = await repo.bodyWeight('week');
+      expect(series.start, isNull);
+      expect(series.entries, 0);
+    });
+
     test('asks for the period it was given', () async {
       final (repo, captured) = _repoReturning({
         'data': {

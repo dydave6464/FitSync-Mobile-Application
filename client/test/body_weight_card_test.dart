@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:fitsync/core/theme.dart';
+import 'package:fitsync/core/units.dart';
 import 'package:fitsync/core/widgets/fs_charts.dart';
 import 'package:fitsync/core/widgets/fs_kit.dart';
 import 'package:fitsync/features/profile/domain/body_weight.dart';
@@ -11,11 +12,29 @@ BodyWeightSeries series(
   BodyWeightReference? reference,
   bool widened = false,
   String unit = 'kg',
+  BodyWeightPoint? start,
+  int? entries,
 }) => BodyWeightSeries(
   widened: widened,
   points: [for (final (d, w) in raw) BodyWeightPoint(loggedOn: d, weightKg: w)],
   reference: reference,
   unit: unit,
+  start: start,
+  entries: entries ?? raw.length,
+);
+
+Future<void> pumpCard(
+  WidgetTester tester,
+  BodyWeightSeries s, {
+  String period = 'week',
+  WeightUnit? unit,
+}) => tester.pumpWidget(
+  MaterialApp(
+    theme: fsLightTheme(),
+    home: Scaffold(
+      body: BodyWeightCard(series: s, unit: unit, period: period),
+    ),
+  ),
 );
 
 void main() {
@@ -78,7 +97,7 @@ void main() {
         home: Scaffold(
           body: BodyWeightCard(
             series: series(
-              [('2026-09-18', 71.5)],
+              [('2026-09-10', 80), ('2026-09-18', 71.5)],
               reference: const BodyWeightReference(kind: 'start', weightKg: 80),
             ),
           ),
@@ -165,7 +184,9 @@ void main() {
       MaterialApp(
         theme: fsLightTheme(),
         home: Scaffold(
-          body: BodyWeightCard(series: series([('2026-09-18', 71.5)])),
+          body: BodyWeightCard(
+            series: series([('2026-09-17', 71.8), ('2026-09-18', 71.5)]),
+          ),
         ),
       ),
     );
@@ -315,4 +336,223 @@ void main() {
     );
     expect(find.text('Add entry'), findsOneWidget);
   });
+
+  // Day one: a lone dot on a "Start" line that sits on the dot says nothing.
+  // The weight and what happens next say more (a goal line still shows).
+  group('the first weigh-in', () {
+    testWidgets('without a goal: the weight and a nudge, no chart', (
+      tester,
+    ) async {
+      await pumpCard(
+        tester,
+        series([
+          ('2026-10-20', 72.5),
+        ], reference: const BodyWeightReference(kind: 'start', weightKg: 72.5)),
+      );
+
+      expect(find.text('72.5 kg'), findsOneWidget);
+      expect(
+        find.text('Weigh in again tomorrow to see your change.'),
+        findsOneWidget,
+      );
+      expect(find.byType(FsLineChart), findsNothing);
+    });
+
+    testWidgets('with a goal: the goal line still shows, and the nudge', (
+      tester,
+    ) async {
+      await pumpCard(
+        tester,
+        series([
+          ('2026-10-20', 72.5),
+        ], reference: const BodyWeightReference(kind: 'goal', weightKg: 68)),
+      );
+
+      expect(
+        tester.widget<FsLineChart>(find.byType(FsLineChart)).referenceY,
+        68,
+      );
+      expect(
+        find.text('Weigh in again tomorrow to see your change.'),
+        findsOneWidget,
+      );
+    });
+  });
+
+  group('the change since the last weigh-in', () {
+    testWidgets('down since yesterday', (tester) async {
+      await pumpCard(
+        tester,
+        series([('2026-10-19', 72.9), ('2026-10-20', 72.5)]),
+      );
+
+      expect(find.text('0.4 kg since yesterday'), findsOneWidget);
+      expect(find.byIcon(Icons.arrow_downward), findsOneWidget);
+      expect(
+        find.bySemanticsLabel(RegExp('Down 0.4 kg since yesterday')),
+        findsOneWidget,
+      );
+      expect(
+        find.text('Weigh in again tomorrow to see your change.'),
+        findsNothing,
+      );
+    });
+
+    testWidgets('up, after a gap, names the day', (tester) async {
+      await pumpCard(
+        tester,
+        series([('2026-10-14', 72.0), ('2026-10-20', 72.3)]),
+      );
+
+      expect(find.text('0.3 kg since Oct 14'), findsOneWidget);
+      expect(find.byIcon(Icons.arrow_upward), findsOneWidget);
+    });
+
+    testWidgets('no change says so', (tester) async {
+      await pumpCard(
+        tester,
+        series([('2026-10-19', 72.5), ('2026-10-20', 72.5)]),
+      );
+
+      expect(find.text('No change since yesterday'), findsOneWidget);
+      expect(find.byIcon(Icons.arrow_downward), findsNothing);
+      expect(find.byIcon(Icons.arrow_upward), findsNothing);
+    });
+
+    testWidgets('converts for an lb user', (tester) async {
+      // 0.5 kg is 1.1023 lb, worked out by hand.
+      await pumpCard(
+        tester,
+        series([('2026-10-19', 73.0), ('2026-10-20', 72.5)], unit: 'lb'),
+        unit: WeightUnit.lb,
+      );
+
+      expect(find.text('1.1 lb since yesterday'), findsOneWidget);
+    });
+
+    testWidgets('neutral ink: whether down is good depends on the goal', (
+      tester,
+    ) async {
+      await pumpCard(
+        tester,
+        series([('2026-10-19', 72.9), ('2026-10-20', 72.5)]),
+      );
+
+      final text = tester.widget<Text>(find.text('0.4 kg since yesterday'));
+      final context = tester.element(find.text('0.4 kg since yesterday'));
+      expect(text.style?.color, context.fs.text2);
+    });
+  });
+
+  group('since you started', () {
+    const start = BodyWeightPoint(loggedOn: '2026-09-01', weightKg: 74.0);
+
+    testWidgets('from the fourth weigh-in', (tester) async {
+      await pumpCard(
+        tester,
+        series(
+          [('2026-10-18', 73.1), ('2026-10-19', 72.9), ('2026-10-20', 72.8)],
+          start: start,
+          entries: 4,
+        ),
+      );
+
+      expect(find.text('1.2 kg since you started'), findsOneWidget);
+    });
+
+    testWidgets('not before', (tester) async {
+      await pumpCard(
+        tester,
+        series(
+          [('2026-10-19', 72.9), ('2026-10-20', 72.8)],
+          start: start,
+          entries: 3,
+        ),
+      );
+
+      expect(find.textContaining('since you started'), findsNothing);
+    });
+  });
+
+  testWidgets(
+    'tapping the change explains daily ups and downs, and tapping again hides it',
+    (tester) async {
+      await pumpCard(
+        tester,
+        series([('2026-10-19', 72.9), ('2026-10-20', 72.5)]),
+      );
+      const note =
+          'Day-to-day changes of up to about 1 kg are normal (water and food), so the trend over weeks says more than one day.';
+      expect(find.text(note), findsNothing);
+
+      await tester.tap(find.byKey(const Key('bodyWeight.change')));
+      await tester.pumpAndSettle();
+      expect(find.text(note), findsOneWidget);
+      expect(
+        tester.getSize(find.byKey(const Key('bodyWeight.change'))).height,
+        greaterThanOrEqualTo(48),
+      );
+
+      await tester.tap(find.byKey(const Key('bodyWeight.change')));
+      await tester.pumpAndSettle();
+      expect(find.text(note), findsNothing);
+    },
+  );
+
+  group('the caption names what the chart shows', () {
+    for (final (period, caption) in [
+      ('week', 'Last 7 days'),
+      ('month', 'Last 30 days'),
+      ('year', 'Last 12 months'),
+    ]) {
+      testWidgets('$period: $caption', (tester) async {
+        await pumpCard(
+          tester,
+          series([('2026-10-19', 72.9), ('2026-10-20', 72.5)]),
+          period: period,
+        );
+
+        expect(find.text(caption), findsOneWidget);
+        expect(find.text('Logged weekly'), findsNothing);
+      });
+    }
+  });
+
+  testWidgets(
+    'change, since-start and the note fit a 320 dp phone at 2x text',
+    (tester) async {
+      tester.view.physicalSize = const Size(320, 900);
+      tester.view.devicePixelRatio = 1;
+      addTearDown(tester.view.reset);
+      await tester.pumpWidget(
+        MaterialApp(
+          theme: fsLightTheme(),
+          home: MediaQuery(
+            data: const MediaQueryData(
+              size: Size(320, 900),
+              textScaler: TextScaler.linear(2),
+            ),
+            child: Scaffold(
+              body: SingleChildScrollView(
+                child: BodyWeightCard(
+                  series: series(
+                    [('2026-10-14', 73.1), ('2026-10-20', 72.5)],
+                    start: const BodyWeightPoint(
+                      loggedOn: '2026-09-01',
+                      weightKg: 74.0,
+                    ),
+                    entries: 6,
+                  ),
+                ),
+              ),
+            ),
+          ),
+        ),
+      );
+      await tester.tap(find.byKey(const Key('bodyWeight.change')));
+      await tester.pumpAndSettle();
+
+      expect(tester.takeException(), isNull);
+    },
+  );
 }
