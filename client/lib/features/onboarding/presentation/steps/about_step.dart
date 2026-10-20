@@ -106,10 +106,16 @@ class AboutStep extends StatefulWidget {
     required this.onChanged,
     this.unit = WeightUnit.kg,
     this.onUnitChanged,
+    this.goals = const [],
   });
 
   final AboutAnswers value;
   final ValueChanged<AboutAnswers> onChanged;
+
+  /// The goals step 1 collected. Goal weight only draws the target line on
+  /// the weight chart, so it is asked outright only when losing weight is one
+  /// of them; for anyone else it is one optional tap away.
+  final List<String> goals;
 
   /// The unit the two weight cards display and read. [AboutAnswers] stays in
   /// kilograms whatever this is -- the estimate below the cards and the plan
@@ -131,6 +137,11 @@ class _AboutStepState extends State<AboutStep> {
   String? _sex;
   String? _dateOfBirth;
   String? _activityLevel;
+
+  /// Once shown, goal weight stays shown: a number already given is never
+  /// tucked away behind the button again.
+  late bool _showGoalWeight =
+      widget.goals.contains('lose_weight') || widget.value.goalWeightKg != null;
 
   @override
   void initState() {
@@ -368,13 +379,31 @@ class _AboutStepState extends State<AboutStep> {
           },
         ),
         const SizedBox(height: 10),
-        _statField(
-          const Key('goalWeightKg'),
-          _goalWeight,
-          'Goal weight',
-          widget.unit.api,
-          accent: true,
-        ),
+        if (_showGoalWeight) ...[
+          _statField(
+            const Key('goalWeightKg'),
+            _goalWeight,
+            'Goal weight',
+            widget.unit.api,
+            // The design's accent belongs to a goal the number serves.
+            accent: widget.goals.contains('lose_weight'),
+          ),
+          const SizedBox(height: 6),
+          Text(
+            'Optional. Shows as your target line on the weight chart.',
+            style: TextStyle(fontSize: 12, color: t.text2, height: 1.4),
+          ),
+        ] else
+          Align(
+            alignment: Alignment.centerLeft,
+            child: TextButton.icon(
+              key: const Key('goalWeight.add'),
+              style: TextButton.styleFrom(minimumSize: const Size(48, 48)),
+              onPressed: () => setState(() => _showGoalWeight = true),
+              icon: const Icon(Icons.add, size: 18),
+              label: const Text('Add a goal weight (optional)'),
+            ),
+          ),
         const SizedBox(height: 18),
         const FsEyebrow('Daily activity level'),
         const SizedBox(height: 2),

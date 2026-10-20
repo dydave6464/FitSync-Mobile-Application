@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/rendering.dart' show RenderParagraph;
 import 'package:flutter_test/flutter_test.dart';
 
 import 'package:fitsync/core/units.dart';
@@ -40,6 +41,7 @@ Future<AboutAnswers?> _pumpAndEdit(
   Future<void> Function(WidgetTester) interact, {
   AboutAnswers value = const AboutAnswers(),
   WeightUnit unit = WeightUnit.kg,
+  List<String> goals = const [],
 }) async {
   AboutAnswers? emitted;
   await tester.pumpWidget(
@@ -49,6 +51,7 @@ Future<AboutAnswers?> _pumpAndEdit(
           child: AboutStep(
             value: value,
             unit: unit,
+            goals: goals,
             onChanged: (v) => emitted = v,
           ),
         ),
@@ -108,7 +111,80 @@ void main() {
     expect(find.byKey(const Key('dateOfBirth')), findsOneWidget);
     expect(find.byKey(const Key('heightCm')), findsOneWidget);
     expect(find.byKey(const Key('weightKg')), findsOneWidget);
-    expect(find.byKey(const Key('goalWeightKg')), findsOneWidget);
+  });
+
+  // Goal weight only draws the target line on the weight chart, so it is
+  // asked outright only when losing weight is one of the goals.
+  group('goal weight', () {
+    const helper = 'Optional. Shows as your target line on the weight chart.';
+
+    testWidgets('is asked outright when losing weight is a goal', (tester) async {
+      await _pumpAndEdit(tester, (_) async {}, goals: const ['build_muscle', 'lose_weight']);
+
+      expect(find.byKey(const Key('goalWeightKg')), findsOneWidget);
+      expect(find.text(helper), findsOneWidget);
+      expect(find.byKey(const Key('goalWeight.add')), findsNothing);
+    });
+
+    testWidgets('is one tap away, and optional, for other goals', (tester) async {
+      final emitted = await _pumpAndEdit(tester, (t) async {
+        expect(find.byKey(const Key('goalWeightKg')), findsNothing);
+        expect(find.text('Add a goal weight (optional)'), findsOneWidget);
+        await _tapKey(t, const Key('goalWeight.add'));
+        await t.pumpAndSettle();
+        expect(find.byKey(const Key('goalWeight.add')), findsNothing);
+        expect(find.text(helper), findsOneWidget);
+        await t.enterText(
+          find.descendant(of: find.byKey(const Key('goalWeightKg')), matching: find.byType(EditableText)),
+          '80',
+        );
+      }, goals: const ['build_muscle']);
+
+      expect(emitted?.goalWeightKg, 80);
+    });
+
+    testWidgets('a goal weight already given stays in view whatever the goals', (tester) async {
+      await _pumpAndEdit(
+        tester,
+        (_) async {},
+        goals: const ['build_muscle'],
+        value: const AboutAnswers(goalWeightKg: 68),
+      );
+
+      expect(find.byKey(const Key('goalWeightKg')), findsOneWidget);
+      expect(find.byKey(const Key('goalWeight.add')), findsNothing);
+    });
+
+    testWidgets('the add button wraps, uncut, on a 320 dp phone at 2x text', (tester) async {
+      tester.view.physicalSize = const Size(320, 900);
+      tester.view.devicePixelRatio = 1;
+      addTearDown(tester.view.reset);
+      await tester.pumpWidget(
+        MaterialApp(
+          home: MediaQuery(
+            data: const MediaQueryData(size: Size(320, 900), textScaler: TextScaler.linear(2)),
+            child: Scaffold(
+              body: SingleChildScrollView(
+                padding: const EdgeInsets.symmetric(horizontal: 16),
+                child: AboutStep(value: const AboutAnswers(), goals: const ['build_muscle'], onChanged: (_) {}),
+              ),
+            ),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      expect(tester.takeException(), isNull);
+      final label = tester.renderObject<RenderParagraph>(find.text('Add a goal weight (optional)'));
+      expect(label.didExceedMaxLines, isFalse);
+      expect(label.size.width, lessThanOrEqualTo(320 - 32));
+    });
+
+    testWidgets('the add button is a full 48 dp target', (tester) async {
+      await _pumpAndEdit(tester, (_) async {}, goals: const ['general_fitness']);
+
+      expect(tester.getSize(find.byKey(const Key('goalWeight.add'))).height, greaterThanOrEqualTo(48));
+    });
   });
 
   testWidgets(

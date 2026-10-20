@@ -316,6 +316,28 @@ void main() {
     expect(find.byKey(const Key('goal.lose_weight')), findsOneWidget);
   });
 
+  // Step 2 asks for goal weight outright only when step 1's goals include
+  // losing weight; building muscle gets it as an optional button.
+  for (final (goals, asked) in [
+    (['build_muscle'], false),
+    (['build_muscle', 'lose_weight'], true),
+  ]) {
+    testWidgets('step 2 ${asked ? 'asks' : 'offers'} goal weight after ${goals.join(' + ')}', (tester) async {
+      await _pumpFlow(tester, patches: [], goalWrites: []);
+
+      for (final goal in goals) {
+        await tester.tap(find.byKey(Key('goal.$goal')));
+        await tester.pumpAndSettle();
+      }
+      await tester.tap(find.byKey(const Key('continue')));
+      await tester.pumpAndSettle();
+
+      expect(find.text('STEP 2 / 6'), findsOneWidget);
+      expect(find.byKey(const Key('goalWeightKg')), asked ? findsOneWidget : findsNothing);
+      expect(find.byKey(const Key('goalWeight.add')), asked ? findsNothing : findsOneWidget);
+    });
+  }
+
   testWidgets('Continue saves the goals and advances', (tester) async {
     final patches = <Map<String, dynamic>>[];
     final goalWrites = <({List<String> goals, String mainGoal})>[];
