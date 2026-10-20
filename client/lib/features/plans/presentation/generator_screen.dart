@@ -733,7 +733,7 @@ class _DescribeCardState extends ConsumerState<_DescribeCard> {
                   child: Text(
                     // Names the consequence, not the database state. Whether a
                     // row exists in the profile is not what the user is
-                    // deciding; whether their plan stops loading the region
+                    // deciding; whether their plan works around the region
                     // is, and only the profile drives that -- /regenerate
                     // reads injuries server-side and never from this screen.
                     '${injuryLabel(offer.option, offer.injury)} '

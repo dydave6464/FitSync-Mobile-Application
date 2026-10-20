@@ -341,7 +341,8 @@ def test_body_weight_still_fills_a_group_the_user_cannot_train(client, catalogue
     )
     names = [e["name"] for e in plan["exercises"]]
 
-    # The test above covers the strict half: no push-up for a dumbbell owner.
+    # test_a_day_the_users_equipment_fills_holds_no_body_weight covers the
+    # strict half: no push-up for a dumbbell owner whose dumbbells fill a day.
     # This is the other half, and the reason the rule has a fallback at all.
     assert any(n in ("fixture squat", "fixture quad stretch") for n in names), (
         f"quads has no dumbbell option at all and must not be dropped: {names}"

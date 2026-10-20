@@ -1395,9 +1395,9 @@ void main() {
   });
 
   testWidgets('the screen does not state a session length', (tester) async {
-    // The service derives length from goal and fitness level; this screen
-    // cannot change it and showing it only invited the question. Nor is it
-    // sent: the generator works it out afresh for each new plan.
+    // The service derives length from goal, fitness level and health check;
+    // this screen cannot change it and showing it only invited the question.
+    // Nor is it sent: the generator works it out afresh for each new plan.
     await _pump(tester, plan: _pplPlan);
 
     expect(find.byKey(const Key('gen.length.value')), findsNothing);

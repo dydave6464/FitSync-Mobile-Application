@@ -32,8 +32,8 @@ String injuryLabel(InjuryOption option, SelectedInjury selected) {
 /// Reported as a topic rather than a phrase so the domain says WHAT was
 /// mentioned and the widget decides how to word it.
 enum WeekTopic {
-  /// Derived by the service from goal and fitness level, and shown here only
-  /// as a readout.
+  /// Derived by the service from goal, fitness level and health check, and
+  /// shown here only as a readout.
   sessionLength,
 
   /// A profile field. The generator reads it server-side; this screen cannot
