@@ -683,7 +683,7 @@ void main() {
     'shows a loading indicator while the plan is loading, not the defaults',
     (tester) async {
       // AsyncValue.value reads null for both "loading" and "no plan", so
-      // flattening the two would render full_body/3/45 under "Generating
+      // flattening the two would render full_body/3 under "Generating
       // replaces your current plan" while the real plan is still in flight.
       await tester.pumpWidget(
         ProviderScope(
@@ -710,7 +710,7 @@ void main() {
     tester,
   ) async {
     // Same flattening risk as loading: a failed fetch must not quietly
-    // present full_body/3/45 as if it described a real plan, because
+    // present full_body/3 as if it described a real plan, because
     // generating from there really does replace whatever plan the user has.
     var calls = 0;
     await tester.pumpWidget(
@@ -1186,16 +1186,36 @@ void main() {
       tester,
     ) async {
       // "Not in your injuries yet" states a fact about a database. What the
-      // user is deciding is whether their plan avoids the movement, and the
-      // offer should say so -- 608 exercises are contraindicated for the
-      // lower back alone, and none of them are skipped until this is tapped.
+      // user is deciding is whether their plan works around the region, and
+      // the offer should say so in the words the screen uses once it does
+      // ("Working around"): an injury leaves some exercises out and coaches
+      // the rest, and none of that happens until this is tapped.
       await _pump(tester, plan: _pplPlan, injuryOptions: const [knee, back]);
 
       await write(tester, 'protect my right knee');
       await apply(tester);
 
       expect(
-        find.textContaining('skip the exercises that load it'),
+        find.textContaining('every plan from now on will work around it.'),
+        findsOneWidget,
+      );
+    });
+
+    testWidgets('a typed session length is told what decides it', (
+      tester,
+    ) async {
+      // The generator derives the length from goal, fitness level and the
+      // health check; naming only the first two left the third unexplained.
+      await _pump(tester, plan: _pplPlan, injuryOptions: const [knee, back]);
+
+      await write(tester, 'about 50 min a session');
+      await apply(tester);
+
+      expect(
+        find.textContaining(
+          'Session length follows your goal, fitness level and health '
+          'check, so it is not set here.',
+        ),
         findsOneWidget,
       );
     });
@@ -1375,9 +1395,9 @@ void main() {
   });
 
   testWidgets('the screen does not state a session length', (tester) async {
-    // The service derives length from goal and fitness level; this screen
-    // cannot change it and showing it only invited the question. Nor is it
-    // sent: the generator works it out afresh for each new plan.
+    // The service derives length from goal, fitness level and health check;
+    // this screen cannot change it and showing it only invited the question.
+    // Nor is it sent: the generator works it out afresh for each new plan.
     await _pump(tester, plan: _pplPlan);
 
     expect(find.byKey(const Key('gen.length.value')), findsNothing);

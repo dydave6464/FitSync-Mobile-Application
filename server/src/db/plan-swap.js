@@ -119,24 +119,55 @@ function safetyClauses(ctx, params, eligibleIds) {
 /// So: ask for the user's own equipment first, and fall back to the union only
 /// when that returns nothing. The fallback is what keeps a lats row from being
 /// a dead end.
+///
+/// A beginner falls back too when their own equipment returns nothing
+/// beginner-friendly: a strict list of rows the team ruled out for beginners
+/// would hide the beginner-friendly body-weight ones. The union's ORDER puts
+/// beginner-friendly first, and still lists their own equipment after it.
+/// When the union has nothing beginner-friendly either, the beginner keeps
+/// their own (strict) list.
 async function listAlternatives(pool, ctx, { q = null, limit = 20, bodyweightOnly = false } = {}) {
   // bodyweightOnly asks for the opposite of strictness, so it skips the strict
   // pass entirely. Nothing in the app sends it any more; the parameter and its
   // test remain because the endpoint's contract is public.
+  let strict = [];
   if (!bodyweightOnly && ctx.selectedIds.length > 0) {
-    const strict = await queryAlternatives(
+    strict = await queryAlternatives(
       pool, ctx, ctx.selectedIds, { q, limit, bodyweightOnly },
     );
-    if (strict.length > 0) return strict;
+    const usable = ctx.beginner ? strict.some((r) => r.beginner_friendly) : strict.length > 0;
+    if (usable) return strict.map(toAlternative);
   }
-  return queryAlternatives(pool, ctx, ctx.ownedIds, { q, limit, bodyweightOnly });
+  const rows = await queryAlternatives(pool, ctx, ctx.ownedIds, { q, limit, bodyweightOnly });
+  // A beginner's fallback is only worth taking when it reaches a
+  // beginner-friendly row. If the wider list has none either, it would just
+  // put unfriendly body-weight rows above the user's own equipment, so keep
+  // their own list. (The beginner ORDER puts friendly rows first, so the
+  // limit cannot hide one.)
+  if (ctx.beginner && strict.length > 0 && !rows.some((r) => r.beginner_friendly)) {
+    return strict.map(toAlternative);
+  }
+  return rows.map(toAlternative);
+}
+
+// beginner_friendly is selected only to choose between the lists above; it is
+// not part of what the endpoint returns.
+function toAlternative(r) {
+  return {
+    exerciseId: r.exercise_id,
+    name: r.name,
+    muscleGroup: r.muscle_group,
+    equipment: r.equipment,
+    thumbnailUrl: r.thumbnail_url,
+  };
 }
 
 async function queryAlternatives(pool, ctx, eligibleIds, { q, limit, bodyweightOnly }) {
   const params = [];
   let sql = `
     SELECT x.exercise_id, x.name, x.muscle_group, x.thumbnail_url,
-           COALESCE(parent.display_name, eq.display_name, eq.name) AS equipment
+           COALESCE(parent.display_name, eq.display_name, eq.name) AS equipment,
+           COALESCE(pref.beginner_friendly, 0) AS beginner_friendly
       FROM exercises x
       LEFT JOIN equipment eq ON eq.equipment_id = x.equipment_id
       LEFT JOIN equipment parent ON parent.equipment_id = eq.parent_equipment_id
@@ -182,13 +213,7 @@ async function queryAlternatives(pool, ctx, eligibleIds, { q, limit, bodyweightO
   params.push(ctx.selectedIds.length > 0 ? ctx.selectedIds : [0], limit);
 
   const [rows] = await pool.query(sql, params);
-  return rows.map((r) => ({
-    exerciseId: r.exercise_id,
-    name: r.name,
-    muscleGroup: r.muscle_group,
-    equipment: r.equipment,
-    thumbnailUrl: r.thumbnail_url,
-  }));
+  return rows;
 }
 
 // Re-derived server-side rather than trusting the sheet: a stale client could

@@ -4,7 +4,9 @@ const assert = require('node:assert/strict');
 const { migrate } = require('../src/db/migrate');
 const { createPool } = require('../src/db/pool');
 const { testDbConfig, dropAllTables } = require('./helpers/test-db');
-const { seedExercisePreferences, PREFERENCES } = require('../src/db/seed-exercise-preferences');
+const {
+  seedExercisePreferences, PREFERENCES, nothingMatched,
+} = require('../src/db/seed-exercise-preferences');
 
 test('the preference list is well formed', () => {
   assert.equal(PREFERENCES.length, 1170);
@@ -14,6 +16,16 @@ test('the preference list is well formed', () => {
     assert.equal(typeof p.beginnerFriendly, 'boolean');
   }
   assert.equal(PREFERENCES.filter((p) => p.beginnerFriendly).length, 219);
+});
+
+test('a run that matched nothing in the catalogue is reported as a failure', () => {
+  // Run before `npm run seed`, every sourceId is unknown and nothing is
+  // written -- and every beginner plan is then refused.
+  const message = nothingMatched({ skippedUnknown: 1170, total: 1170 });
+  assert.match(message, /none of the 1170 exercise preferences matched the catalogue/i);
+  assert.match(message, /npm run seed/);
+  assert.equal(nothingMatched({ skippedUnknown: 1169, total: 1170 }), null);
+  assert.equal(nothingMatched({ skippedUnknown: 0, total: 0 }), null);
 });
 
 test('exercise preference seed', async (t) => {

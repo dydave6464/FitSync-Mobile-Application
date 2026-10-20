@@ -92,6 +92,7 @@ npm run seed:equipment   # equipment list
 npm run seed:injuries    # injury regions
 npm run seed:safety      # which exercises suit which injuries/equipment
 npm run seed:categories  # exercise categories
+npm run seed:preferences # the team's exercise picks; beginners get no plan without it
 npm run seed:foods       # 64 starter foods for the Nutrition tab
 npm run seed:demo        # optional: two ready-made demo accounts (see below)
 ```

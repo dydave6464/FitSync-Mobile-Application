@@ -63,7 +63,12 @@ def _plan_name(profile: ProfileRequest, split: Split) -> str:
 
 def _candidates(engine, owned, selected, injury_ids, excluded, training_location=None,
                 beginner_only=False):
-    """Candidates with body weight confined to groups the user cannot train.
+    """The primary candidates, and the body-weight rows held back to top up.
+
+    Returns `(primary, top_up)`. `primary` has body weight confined to groups
+    the user cannot train; `top_up` is the body weight it held back from the
+    groups their own equipment does cover, used only to fill a day that
+    `primary` leaves short (see generate_plan).
 
     `owned` is what is ELIGIBLE and already includes the implicit body weight;
     `selected` is only what the user ticked. Preferring `selected` inside a
@@ -81,20 +86,29 @@ def _candidates(engine, owned, selected, injury_ids, excluded, training_location
     `beginner_only` reaches both queries, so the body-weight fill is
     beginner-friendly too: a group with no beginner-friendly exercise is left
     out rather than filled with one the team ruled out for a beginner.
+
+    The top-up comes from the same `everything` query, so the marks, the
+    beginner rule and the injuries all apply to it as well. With nothing
+    selected, body weight is already the whole pool and there is nothing to
+    top up with.
     """
     everything = fetch_candidates(
         engine, owned, injury_ids, excluded, selected, training_location,
         beginner_only,
     )
     if not selected:
-        return everything
+        return everything, []
 
     strict = fetch_candidates(
         engine, selected, injury_ids, excluded, selected, training_location,
         beginner_only,
     )
     covered = {c.muscle_group for c in strict}
-    return strict + [c for c in everything if c.muscle_group not in covered]
+    strict_ids = {c.exercise_id for c in strict}
+    primary = strict + [c for c in everything if c.muscle_group not in covered]
+    top_up = [c for c in everything
+              if c.muscle_group in covered and c.exercise_id not in strict_ids]
+    return primary, top_up
 
 
 def create_app(settings: Settings) -> FastAPI:
@@ -178,27 +192,62 @@ def create_app(settings: Settings) -> FastAPI:
         # anyone a health check asked to take it gently, is offered only the
         # exercises the team marked beginner-friendly.
         beginner_only = parameters.is_beginner_plan(profile.model_dump())
-        candidates = _candidates(
+        if beginner_only and not _preferences_loaded(engine()):
+            # Only rows marked beginner-friendly pass for a beginner, so an
+            # empty table empties every day -- and the refusal below would
+            # then blame the user's injuries and equipment for a setup step.
+            # Say which step instead.
+            logger.error(
+                "generate-plan called for a beginner but exercise_preferences "
+                "has no rows -- has seed:preferences run?"
+            )
+            raise HTTPException(
+                status_code=503,
+                detail=(
+                    "Exercise preferences are not loaded: run "
+                    "`npm run seed:preferences` in server/ before generating "
+                    "plans for beginners."
+                ),
+            )
+        candidates, top_up = _candidates(
             engine(), owned, selected, injury_ids, [], profile.trainingLocation,
             beginner_only,
         )
 
+        # Ranked apart, so a model reordering one list can never move a
+        # body-weight top-up ahead of the user's own equipment.
         ranked = app.state.ranker.rank(candidates)
+        ranked_top_up = app.state.ranker.rank(top_up) if top_up else []
 
         # One session per rotation day, each from that day's muscle pool. The
         # pools within a rotation are disjoint (see app/rules/splits), so an
         # exercise cannot land on two days and no de-duplication is needed.
-        # select() itself is untouched: its priority walk and arm reservation
-        # are exactly what each day needs, and a group with nothing in it is
+        # select()'s choices are unchanged: its priority walk and arm
+        # reservation are exactly what each day needs, and a group with nothing in it is
         # already skipped rather than padded -- which is what lets a Legs day
         # tolerate having no arms to reserve.
         exercises: List[PlanExercise] = []
         unfillable: List[str] = []
-        for day_index, day in enumerate(split.days, start=1):
-            pool = ranked if not day.muscle_groups else [
-                c for c in ranked if c.muscle_group in day.muscle_groups
+        def in_day(day, candidates_list):
+            return candidates_list if not day.muscle_groups else [
+                c for c in candidates_list if c.muscle_group in day.muscle_groups
             ]
-            chosen = selection.select(pool, params.exercise_count)
+
+        for day_index, day in enumerate(split.days, start=1):
+            # The body-weight top-up, only for a day the user's own equipment
+            # leaves short of its target. A day that fills from the pool is
+            # left exactly as select() makes it: appending body weight to
+            # every day would let the round-robin's second pass take a
+            # push-up over a dumbbell owner's third delts exercise. On a short
+            # day every row the pool gave is kept, and body weight fills only
+            # the missing slots -- re-selecting from pool + top-up would let a
+            # second push-up push a dumbbell row out. The top-up rows are only
+            # from groups the pool already has, so a day gains depth, never a
+            # new group.
+            chosen = selection.select_with_top_up(
+                in_day(day, ranked), in_day(day, ranked_top_up),
+                params.exercise_count,
+            )
             if not chosen:
                 logger.warning(
                     "split %s day %d (%s) came back empty -- no eligible "
@@ -243,21 +292,32 @@ def create_app(settings: Settings) -> FastAPI:
             # what makes it actionable -- "nothing suitable" leaves a user with
             # no move, while "nothing for the Push day of this split" tells
             # them to choose a split their injuries leave room for.
+            #
+            # For a beginner the cause may be the beginner-friendly rule
+            # rather than the injuries or the equipment, so the detail says
+            # the rule was on -- Node words its message from that clause.
             logger.error(
-                "%s could not be filled (owned=%s, injuries=%s, split=%s) -- "
-                "is the catalogue seeded?",
+                "%s could not be filled (owned=%s, injuries=%s, split=%s, "
+                "beginner_only=%s) -- is the catalogue seeded?",
                 ", ".join(unfillable),
                 owned,
                 [i.injuryId for i in profile.injuries],
                 params.split_style,
+                beginner_only,
+            )
+            beginner_clause = (
+                " Only exercises marked beginner-friendly were considered "
+                "(fitness level or health check)."
+                if beginner_only else ""
             )
             raise HTTPException(
                 status_code=503,
                 detail=(
-                    "No exercises could be selected for {} of the {} split. "
+                    "No exercises could be selected for {} of the {} split.{} "
                     "If the catalogue is seeded, the reported injuries and "
                     "available equipment leave nothing suitable for it."
-                ).format(" and ".join(unfillable), params.split_style),
+                ).format(" and ".join(unfillable), params.split_style,
+                         beginner_clause),
             )
 
         return PlanResponse(
@@ -290,6 +350,21 @@ def _safety_data_loaded(engine_obj) -> bool:
     with engine_obj.connect() as conn:
         row = conn.execute(
             text("SELECT 1 FROM exercise_contraindications LIMIT 1")
+        ).fetchone()
+    return row is not None
+
+
+def _preferences_loaded(engine_obj) -> bool:
+    """Whether `exercise_preferences` has been seeded at all.
+
+    The same one-row existence check as _safety_data_loaded: a beginner plan
+    needs beginner-friendly marks, and an empty table has none to offer.
+    """
+    from sqlalchemy import text
+
+    with engine_obj.connect() as conn:
+        row = conn.execute(
+            text("SELECT 1 FROM exercise_preferences LIMIT 1")
         ).fetchone()
     return row is not None
 

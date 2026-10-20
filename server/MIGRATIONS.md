@@ -267,7 +267,9 @@ FLUSH PRIVILEGES;
 
 Migration 010 adds a fifth reference table. Migration 039 adds a sixth
 reference table (`exercise_preferences`, the team's curated marks). The
-service still reads no user row.
+service still reads no user row. `npm run seed:preferences` must run before
+beginners can get plans: until that table has rows, the service refuses every
+beginner plan with a 503 that names the step.
 
 The grant is deliberately not `GRANT SELECT ON fitsync.*`. If the service ever
 needs another table, adding a line here should be a decision someone makes,

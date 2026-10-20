@@ -209,6 +209,43 @@ def test_an_injured_profile_refuses_when_safety_data_is_missing(client, catalogu
                 )
 
 
+def test_a_beginner_plan_refuses_when_preferences_are_missing(client, catalogue, engine):
+    # A beginner is offered only exercises marked beginner-friendly, so an
+    # empty exercise_preferences table (seed:preferences never run) would
+    # empty every day and blame the user's injuries and equipment. Say what
+    # is actually wrong instead. The fixture's own marks are deleted (and only
+    # those); the catalogue fixture's cleanup has nothing left to remove.
+    from sqlalchemy import bindparam, text
+
+    eq = catalogue["equipment"]
+    with engine.begin() as conn:
+        conn.execute(
+            text(
+                "DELETE FROM exercise_preferences WHERE exercise_id IN :ids"
+            ).bindparams(bindparam("ids", expanding=True)),
+            {"ids": tuple(catalogue["exercises"].values())},
+        )
+
+    body_weight = [{"equipmentId": eq["body weight"], "name": "Bodyweight"}]
+    response = client.post("/generate-plan", json={
+        "mainGoal": "build_muscle",
+        "fitnessLevel": "beginner",
+        "equipment": body_weight,
+    })
+    assert response.status_code == 503, response.text
+    assert "seed:preferences" in response.json()["detail"]
+
+    # An intermediate without a health caution is not limited to marked
+    # exercises, so unmarked ones still make a plan.
+    plan = post_plan(
+        client,
+        mainGoal="build_muscle",
+        fitnessLevel="intermediate",
+        equipment=body_weight,
+    )
+    assert plan["exercises"]
+
+
 def test_a_models_ordering_reaches_the_response(client, catalogue):
     # Without this, the ranker could narrow but never reorder, and the model slot
     # would be documented as doing something it provably could not do.
@@ -269,12 +306,13 @@ def test_a_plan_uses_the_equipment_the_user_selected(client, catalogue):
     # so it wins the bucket on id order alone; the dumbbell fly wins only if the
     # user's selection is what decides.
     assert "fixture dumbbell fly" in names, names
-    # Both are pectorals. Ranking the fly above the push-up was the old rule
-    # and was not enough: the round-robin reaches depth 2 in this short
-    # fixture and took the push-up as a second pectorals exercise anyway. A
-    # group the user's own equipment can train no longer offers body weight at
-    # all.
-    assert "fixture push-up" not in names, names
+    # Both are pectorals. This fixture cannot fill a six-exercise day from
+    # dumbbells (five rows in all), so the push-up may come back as the
+    # body-weight top-up -- but only after the fly, never in its place. That a
+    # day the dumbbells CAN fill gets no push-up at all is pinned by
+    # test_a_day_the_users_equipment_fills_holds_no_body_weight below.
+    if "fixture push-up" in names:
+        assert names.index("fixture dumbbell fly") < names.index("fixture push-up"), names
 
 
 def test_selecting_nothing_still_produces_a_body_weight_plan(client, catalogue):
@@ -303,11 +341,142 @@ def test_body_weight_still_fills_a_group_the_user_cannot_train(client, catalogue
     )
     names = [e["name"] for e in plan["exercises"]]
 
-    # The test above covers the strict half: no push-up for a dumbbell owner.
+    # test_a_day_the_users_equipment_fills_holds_no_body_weight covers the
+    # strict half: no push-up for a dumbbell owner whose dumbbells fill a day.
     # This is the other half, and the reason the rule has a fallback at all.
     assert any(n in ("fixture squat", "fixture quad stretch") for n in names), (
         f"quads has no dumbbell option at all and must not be dropped: {names}"
     )
+
+
+@pytest.mark.parametrize("level", ["beginner", "intermediate"])
+def test_a_short_day_is_topped_up_with_body_weight_that_follows_the_marks(
+    client, catalogue, add_exercise, level
+):
+    """The user's own equipment first; body weight fills what it leaves short.
+
+    A dumbbell owner's dumbbells cover pectorals with one row here, so an
+    eight-exercise day comes back short. Body-weight pectorals rows fill the
+    gap -- after the fly, and only the ones the team's marks allow: never a
+    search_only or never row, and for a beginner only beginner-friendly ones.
+    """
+    add_exercise("fixture knee push-up", "pectorals", "body weight")
+    add_exercise("fixture diamond push-up", "pectorals", "body weight",
+                 beginner_friendly=False)
+    add_exercise("fixture clap push-up", "pectorals", "body weight",
+                 priority="search_only")
+    add_exercise("fixture archer push-up", "pectorals", "body weight",
+                 priority="never")
+    eq = catalogue["equipment"]
+    plan = post_plan(
+        client,
+        mainGoal="build_muscle",
+        fitnessLevel=level,
+        equipment=[{"equipmentId": eq["dumbbell"], "name": "Dumbbells"}],
+        overrides={"sessionLengthMin": 60},
+    )
+    names = [e["name"] for e in plan["exercises"]]
+
+    topped_up = {"fixture push-up", "fixture knee push-up"}
+    if level == "intermediate":
+        topped_up.add("fixture diamond push-up")
+    body_weight_pectorals = {
+        n for n in names
+        if n in ("fixture push-up", "fixture knee push-up",
+                 "fixture diamond push-up", "fixture clap push-up",
+                 "fixture archer push-up")
+    }
+    assert body_weight_pectorals == topped_up, names
+    # Within the group the user's own equipment is still taken first.
+    assert all(names.index("fixture dumbbell fly") < names.index(n)
+               for n in topped_up), names
+
+
+def test_a_day_the_users_equipment_fills_holds_no_body_weight(
+    client, catalogue, add_exercise
+):
+    """A day the dumbbells can fill is exactly what it was before the top-up.
+
+    Push for a dumbbell owner: one pectorals row, four delts, one triceps --
+    six, a full beginner day. Were body weight merely appended to every day's
+    pool, the round-robin would reach pectorals a second time and take the
+    push-up over the third delts row: the "dumbbell owner gets push-ups"
+    plan, back again.
+    """
+    for name in ("fixture dumbbell shoulder press", "fixture dumbbell lateral raise",
+                 "fixture dumbbell front raise", "fixture dumbbell rear fly"):
+        add_exercise(name, "delts", "dumbbell")
+    add_exercise("fixture dumbbell kickback", "triceps", "dumbbell")
+    add_exercise("fixture pike push-up", "delts", "body weight")
+    eq = catalogue["equipment"]
+    plan = post_plan(
+        client,
+        mainGoal="build_muscle",
+        equipment=[{"equipmentId": eq["dumbbell"], "name": "Dumbbells"}],
+        overrides={"splitStyle": "push_pull_legs"},
+    )
+    push = [e["name"] for e in plan["exercises"] if e["dayNo"] == 1]
+    assert push == [
+        "fixture dumbbell fly",
+        "fixture dumbbell shoulder press",
+        "fixture dumbbell lateral raise",
+        "fixture dumbbell front raise",
+        "fixture dumbbell rear fly",
+        "fixture dumbbell kickback",
+    ], push
+
+
+def test_a_top_up_only_fills_the_missing_slots(client, catalogue, add_exercise):
+    """Body weight fills the gap; it never displaces the user's own rows.
+
+    Push for a dumbbell owner, one row short: the fly, three delts, the
+    kickback. Re-selecting the day from dumbbells plus body weight let the
+    round-robin take two push-ups and drop the rear fly. Every dumbbell row
+    must stay, with exactly one body-weight row for the one missing slot, and
+    the arm still last.
+    """
+    for name in ("fixture dumbbell shoulder press", "fixture dumbbell lateral raise",
+                 "fixture dumbbell rear fly"):
+        add_exercise(name, "delts", "dumbbell")
+    add_exercise("fixture dumbbell kickback", "triceps", "dumbbell")
+    add_exercise("fixture knee push-up", "pectorals", "body weight")
+    eq = catalogue["equipment"]
+    plan = post_plan(
+        client,
+        mainGoal="build_muscle",
+        equipment=[{"equipmentId": eq["dumbbell"], "name": "Dumbbells"}],
+        overrides={"splitStyle": "push_pull_legs"},
+    )
+    push = [e["name"] for e in plan["exercises"] if e["dayNo"] == 1]
+    assert push == [
+        "fixture dumbbell fly",
+        "fixture dumbbell shoulder press",
+        "fixture dumbbell lateral raise",
+        "fixture dumbbell rear fly",
+        "fixture push-up",
+        "fixture dumbbell kickback",
+    ], push
+
+
+@pytest.mark.parametrize("equipment", [
+    pytest.param([], id="nothing selected"),
+    pytest.param(["body weight"], id="body weight selected"),
+])
+def test_a_body_weight_only_plan_is_unchanged_by_the_top_up(
+    client, catalogue, add_exercise, equipment
+):
+    # Body weight is already the whole pool here: nothing to top up with.
+    add_exercise("fixture knee push-up", "pectorals", "body weight")
+    eq = catalogue["equipment"]
+    plan = post_plan(
+        client,
+        mainGoal="build_muscle",
+        equipment=[{"equipmentId": eq[n], "name": n} for n in equipment],
+    )
+    assert [e["name"] for e in plan["exercises"]] == [
+        "fixture squat", "fixture push-up", "fixture glute bridge",
+        "fixture inverted row", "fixture knee push-up",
+    ]
 
 
 def test_a_plan_with_no_overrides_is_one_day(client):
@@ -437,6 +606,37 @@ def test_a_split_whose_day_cannot_be_filled_is_refused(client, catalogue):
     assert "day 3" in detail, detail
 
 
+@pytest.mark.parametrize("level,beginner", [
+    ("beginner", True),
+    ("intermediate", False),
+])
+def test_an_unfillable_day_says_whether_only_beginner_friendly_was_considered(
+    client, catalogue, caplog, level, beginner
+):
+    # For a beginner the empty day may be the beginner-friendly rule, not the
+    # injuries or the equipment, so the refusal says the rule was on. The
+    # "day N (Name)" text stays: Node finds the day by it.
+    eq, inj = catalogue["equipment"], catalogue["injuries"]
+    response = client.post("/generate-plan", json={
+        "mainGoal": "lose_weight",
+        "fitnessLevel": level,
+        "equipment": [{"equipmentId": eq["dumbbell"], "name": "dumbbell"}],
+        "injuries": [
+            {"injuryId": inj["Knee"], "regionGroup": "lower_body"},
+            {"injuryId": inj["Lower back"], "regionGroup": "back_core"},
+        ],
+        "overrides": {"splitStyle": "push_pull_legs"},
+    })
+
+    assert response.status_code == 503, response.text
+    detail = response.json()["detail"]
+    assert "day 3 (Legs)" in detail, detail
+    clause = ("Only exercises marked beginner-friendly were considered "
+              "(fitness level or health check).")
+    assert (clause in detail) is beginner, detail
+    assert "beginner_only={}".format(beginner) in caplog.text, caplog.text
+
+
 STRENGTH_SPLITS = ("full_body", "upper_lower", "push_pull_legs")
 EVERYTHING = ("dumbbell", "machines", "bench", "pull-up bar")
 
@@ -530,8 +730,8 @@ def test_training_location_reaches_the_candidate_order(settings, engine, catalog
 
     eq = catalogue["equipment"]
     owned = [eq["body weight"], eq["dumbbell"], eq["machines"]]
-    gym = _candidates(engine, owned, owned, [], [], "commercial_gym")
-    home = _candidates(engine, owned, owned, [], [], "home_gym")
+    gym, _ = _candidates(engine, owned, owned, [], [], "commercial_gym")
+    home, _ = _candidates(engine, owned, owned, [], [], "home_gym")
     assert gym[0].name == "fixture cable row"
     assert home[-1].name == "fixture cable row"
 
@@ -623,6 +823,10 @@ def test_a_beginner_plan_holds_only_beginner_friendly_exercises(
     # row, is not beginner-friendly. The group is left out, never filled with
     # something the team said a beginner should not start on.
     mark("fixture inverted row", "alternative", beginner_friendly=False)
+    # The same rule on the user's OWN equipment: the dumbbell fly is in the
+    # strict (selected-equipment) query, not the body-weight fill, so this is
+    # what fails if that query stops passing the beginner filter.
+    mark("fixture dumbbell fly", "alternative", beginner_friendly=False)
     eq = catalogue["equipment"]
     plan = post_plan(
         client,
@@ -633,6 +837,10 @@ def test_a_beginner_plan_holds_only_beginner_friendly_exercises(
     names = [e["name"] for e in plan["exercises"]]
     assert names, "the rest of the plan must still be there"
     assert "fixture inverted row" not in names, names
+    assert "fixture dumbbell fly" not in names, names
+    not_friendly = {"fixture inverted row", "fixture dumbbell fly"}
+    friendly = set(catalogue["exercises"]) - not_friendly
+    assert set(names) <= friendly, names
 
 
 def test_an_intermediate_still_gets_exercises_that_are_not_beginner_friendly(

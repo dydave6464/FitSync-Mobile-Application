@@ -16,11 +16,14 @@ function unfillableDayError(detail) {
   const suggestion = days.length === 1 && days[0] === 'Full body'
     ? 'Try adding equipment.'
     : 'Try Full body, or add equipment.';
-  return new AppError(
-    422,
-    'UNFILLABLE_PLAN_DAY',
-    `Nothing suitable for the ${which} with your injuries and equipment. ${suggestion}`,
-  );
+  // main.py adds this clause when only beginner-friendly exercises were
+  // considered (fitness level or health check). Then the rule may be the
+  // reason, not the injuries, and blaming them would send the user after
+  // the wrong fix.
+  const message = /Only exercises marked beginner-friendly were considered/.test(String(detail))
+    ? `Nothing beginner-friendly for the ${which} with your equipment yet. ${suggestion}`
+    : `Nothing suitable for the ${which} with your injuries and equipment. ${suggestion}`;
+  return new AppError(422, 'UNFILLABLE_PLAN_DAY', message);
 }
 
 function create(baseUrl) {

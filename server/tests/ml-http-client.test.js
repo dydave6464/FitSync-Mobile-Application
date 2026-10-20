@@ -161,6 +161,66 @@ test('Full body as the only unfillable day gets its own suggestion', () =>
     },
   ));
 
+const BEGINNER_CLAUSE = ' Only exercises marked beginner-friendly were considered (fitness level or health check).';
+const DETAIL_BEGINNER = 'No exercises could be selected for day 2 (Pull) of the push_pull_legs split.'
+  + `${BEGINNER_CLAUSE} If the catalogue is seeded, the reported injuries and available equipment leave nothing suitable for it.`;
+const DETAIL_BEGINNER_FULL_BODY = 'No exercises could be selected for day 1 (Full body) of the full_body split.'
+  + `${BEGINNER_CLAUSE} If the catalogue is seeded, the reported injuries and available equipment leave nothing suitable for it.`;
+
+test('a beginner day that cannot be filled says nothing beginner-friendly was found', () =>
+  withFakeFetch(
+    async () => ({ ok: false, status: 503, json: async () => ({ detail: DETAIL_BEGINNER }) }),
+    async () => {
+      const ml = httpClient.create('http://localhost:8000');
+      await assert.rejects(() => ml.generatePlan({}), (err) => {
+        assert.equal(err.status, 422);
+        assert.equal(err.code, 'UNFILLABLE_PLAN_DAY');
+        assert.equal(
+          err.message,
+          'Nothing beginner-friendly for the Pull day with your equipment yet. '
+            + 'Try Full body, or add equipment.',
+        );
+        return true;
+      });
+    },
+  ));
+
+test('a beginner Full body day keeps its own suggestion', () =>
+  withFakeFetch(
+    async () => ({ ok: false, status: 503, json: async () => ({ detail: DETAIL_BEGINNER_FULL_BODY }) }),
+    async () => {
+      const ml = httpClient.create('http://localhost:8000');
+      await assert.rejects(() => ml.generatePlan({}), (err) => {
+        assert.equal(
+          err.message,
+          'Nothing beginner-friendly for the Full body day with your equipment yet. '
+            + 'Try adding equipment.',
+        );
+        return true;
+      });
+    },
+  ));
+
+test('unseeded preferences stay an internal error', () =>
+  withFakeFetch(
+    async () => ({
+      ok: false,
+      status: 503,
+      json: async () => ({
+        detail: 'Exercise preferences are not loaded: run `npm run seed:preferences` in server/ '
+          + 'before generating plans for beginners.',
+      }),
+    }),
+    async () => {
+      const ml = httpClient.create('http://localhost:8000');
+      await assert.rejects(() => ml.generatePlan({}), (err) => {
+        assert.equal(err.code, undefined);
+        assert.match(err.message, /responded 503/);
+        return true;
+      });
+    },
+  ));
+
 test('any other 503 stays an internal error', () =>
   withFakeFetch(
     async () => ({ ok: false, status: 503, json: async () => ({ detail: 'model loading' }) }),

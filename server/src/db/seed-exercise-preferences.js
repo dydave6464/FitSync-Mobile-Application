@@ -58,4 +58,14 @@ async function seedExercisePreferences(dbConfig) {
   }
 }
 
-module.exports = { seedExercisePreferences, PREFERENCES };
+// A run where no sourceId matched wrote nothing: most likely the catalogue
+// is not seeded yet (`npm run seed` comes first). Every beginner plan needs
+// these marks, so that must not pass as a quiet success. Null when fine.
+function nothingMatched(summary) {
+  if (summary.total === 0 || summary.skippedUnknown !== summary.total) return null;
+  return `None of the ${summary.total} exercise preferences matched the catalogue, `
+    + 'so nothing was written. Run `npm run seed` first, then '
+    + '`npm run seed:preferences` again.';
+}
+
+module.exports = { seedExercisePreferences, PREFERENCES, nothingMatched };

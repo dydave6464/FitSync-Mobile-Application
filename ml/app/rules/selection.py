@@ -65,6 +65,43 @@ def _rank(muscle_group: str) -> int:
 
 
 def select(candidates: Sequence[Candidate], count: int) -> List[Candidate]:
+    walk, reserved = _select_parts(candidates, count)
+    # Arms last: compounds while fresh, isolation after. The slot is reserved,
+    # not promoted.
+    return walk + reserved
+
+
+def select_with_top_up(candidates: Sequence[Candidate],
+                       top_up: Sequence[Candidate],
+                       count: int) -> List[Candidate]:
+    """select(), then body weight for the slots the user's equipment leaves.
+
+    Every row select(candidates, count) returns is kept. Only when it comes
+    back short are the missing slots filled, by the same priority walk over
+    the top-up rows not already chosen. Re-selecting from candidates + top_up
+    instead would redo the round-robin and let a second body-weight row in a
+    high-priority group push one of the user's own rows out of a lower one.
+
+    Order: the user's walk rows, the top-up's walk rows, then the user's
+    reserved arms and the top-up's reserved arms -- the shape select() gives
+    a day, with the top-up inserted before the reserved arm rows.
+
+    A day the candidates fill, or one with no top-up rows, is exactly
+    select(candidates, count).
+    """
+    walk, reserved = _select_parts(candidates, count)
+    gap = count - len(walk) - len(reserved)
+    if gap <= 0:
+        return walk + reserved
+    taken = {x.exercise_id for x in walk + reserved}
+    extra_walk, extra_reserved = _select_parts(
+        [x for x in top_up if x.exercise_id not in taken], gap)
+    return walk + extra_walk + reserved + extra_reserved
+
+
+def _select_parts(candidates: Sequence[Candidate],
+                  count: int) -> Tuple[List[Candidate], List[Candidate]]:
+    """select()'s two halves: the priority walk, and the reserved arms."""
     # The caller's order is the ranker's preference when a model is loaded. With
     # no model it is fetch_candidates' order -- the team's priority, then the
     # equipment and location tiers, then exercise_id -- so determinism is
@@ -107,6 +144,4 @@ def select(candidates: Sequence[Candidate], count: int) -> List[Candidate]:
             break
         depth += 1
 
-    # Arms last: compounds while fresh, isolation after. The slot is reserved,
-    # not promoted.
-    return chosen + reserved
+    return chosen, reserved
