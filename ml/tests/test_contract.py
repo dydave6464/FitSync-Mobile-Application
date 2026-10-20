@@ -209,6 +209,43 @@ def test_an_injured_profile_refuses_when_safety_data_is_missing(client, catalogu
                 )
 
 
+def test_a_beginner_plan_refuses_when_preferences_are_missing(client, catalogue, engine):
+    # A beginner is offered only exercises marked beginner-friendly, so an
+    # empty exercise_preferences table (seed:preferences never run) would
+    # empty every day and blame the user's injuries and equipment. Say what
+    # is actually wrong instead. The fixture's own marks are deleted (and only
+    # those); the catalogue fixture's cleanup has nothing left to remove.
+    from sqlalchemy import bindparam, text
+
+    eq = catalogue["equipment"]
+    with engine.begin() as conn:
+        conn.execute(
+            text(
+                "DELETE FROM exercise_preferences WHERE exercise_id IN :ids"
+            ).bindparams(bindparam("ids", expanding=True)),
+            {"ids": tuple(catalogue["exercises"].values())},
+        )
+
+    body_weight = [{"equipmentId": eq["body weight"], "name": "Bodyweight"}]
+    response = client.post("/generate-plan", json={
+        "mainGoal": "build_muscle",
+        "fitnessLevel": "beginner",
+        "equipment": body_weight,
+    })
+    assert response.status_code == 503, response.text
+    assert "seed:preferences" in response.json()["detail"]
+
+    # An intermediate without a health caution is not limited to marked
+    # exercises, so unmarked ones still make a plan.
+    plan = post_plan(
+        client,
+        mainGoal="build_muscle",
+        fitnessLevel="intermediate",
+        equipment=body_weight,
+    )
+    assert plan["exercises"]
+
+
 def test_a_models_ordering_reaches_the_response(client, catalogue):
     # Without this, the ranker could narrow but never reorder, and the model slot
     # would be documented as doing something it provably could not do.
@@ -534,6 +571,37 @@ def test_a_split_whose_day_cannot_be_filled_is_refused(client, catalogue):
     detail = response.json()["detail"]
     assert "Legs" in detail, detail
     assert "day 3" in detail, detail
+
+
+@pytest.mark.parametrize("level,beginner", [
+    ("beginner", True),
+    ("intermediate", False),
+])
+def test_an_unfillable_day_says_whether_only_beginner_friendly_was_considered(
+    client, catalogue, caplog, level, beginner
+):
+    # For a beginner the empty day may be the beginner-friendly rule, not the
+    # injuries or the equipment, so the refusal says the rule was on. The
+    # "day N (Name)" text stays: Node finds the day by it.
+    eq, inj = catalogue["equipment"], catalogue["injuries"]
+    response = client.post("/generate-plan", json={
+        "mainGoal": "lose_weight",
+        "fitnessLevel": level,
+        "equipment": [{"equipmentId": eq["dumbbell"], "name": "dumbbell"}],
+        "injuries": [
+            {"injuryId": inj["Knee"], "regionGroup": "lower_body"},
+            {"injuryId": inj["Lower back"], "regionGroup": "back_core"},
+        ],
+        "overrides": {"splitStyle": "push_pull_legs"},
+    })
+
+    assert response.status_code == 503, response.text
+    detail = response.json()["detail"]
+    assert "day 3 (Legs)" in detail, detail
+    clause = ("Only exercises marked beginner-friendly were considered "
+              "(fitness level or health check).")
+    assert (clause in detail) is beginner, detail
+    assert "beginner_only={}".format(beginner) in caplog.text, caplog.text
 
 
 STRENGTH_SPLITS = ("full_body", "upper_lower", "push_pull_legs")

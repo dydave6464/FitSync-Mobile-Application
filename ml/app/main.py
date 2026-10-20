@@ -192,6 +192,23 @@ def create_app(settings: Settings) -> FastAPI:
         # anyone a health check asked to take it gently, is offered only the
         # exercises the team marked beginner-friendly.
         beginner_only = parameters.is_beginner_plan(profile.model_dump())
+        if beginner_only and not _preferences_loaded(engine()):
+            # Only rows marked beginner-friendly pass for a beginner, so an
+            # empty table empties every day -- and the refusal below would
+            # then blame the user's injuries and equipment for a setup step.
+            # Say which step instead.
+            logger.error(
+                "generate-plan called for a beginner but exercise_preferences "
+                "has no rows -- has seed:preferences run?"
+            )
+            raise HTTPException(
+                status_code=503,
+                detail=(
+                    "Exercise preferences are not loaded: run "
+                    "`npm run seed:preferences` in server/ before generating "
+                    "plans for beginners."
+                ),
+            )
         candidates, top_up = _candidates(
             engine(), owned, selected, injury_ids, [], profile.trainingLocation,
             beginner_only,
@@ -275,21 +292,32 @@ def create_app(settings: Settings) -> FastAPI:
             # what makes it actionable -- "nothing suitable" leaves a user with
             # no move, while "nothing for the Push day of this split" tells
             # them to choose a split their injuries leave room for.
+            #
+            # For a beginner the cause may be the beginner-friendly rule
+            # rather than the injuries or the equipment, so the detail says
+            # the rule was on -- Node words its message from that clause.
             logger.error(
-                "%s could not be filled (owned=%s, injuries=%s, split=%s) -- "
-                "is the catalogue seeded?",
+                "%s could not be filled (owned=%s, injuries=%s, split=%s, "
+                "beginner_only=%s) -- is the catalogue seeded?",
                 ", ".join(unfillable),
                 owned,
                 [i.injuryId for i in profile.injuries],
                 params.split_style,
+                beginner_only,
+            )
+            beginner_clause = (
+                " Only exercises marked beginner-friendly were considered "
+                "(fitness level or health check)."
+                if beginner_only else ""
             )
             raise HTTPException(
                 status_code=503,
                 detail=(
-                    "No exercises could be selected for {} of the {} split. "
+                    "No exercises could be selected for {} of the {} split.{} "
                     "If the catalogue is seeded, the reported injuries and "
                     "available equipment leave nothing suitable for it."
-                ).format(" and ".join(unfillable), params.split_style),
+                ).format(" and ".join(unfillable), params.split_style,
+                         beginner_clause),
             )
 
         return PlanResponse(
@@ -322,6 +350,21 @@ def _safety_data_loaded(engine_obj) -> bool:
     with engine_obj.connect() as conn:
         row = conn.execute(
             text("SELECT 1 FROM exercise_contraindications LIMIT 1")
+        ).fetchone()
+    return row is not None
+
+
+def _preferences_loaded(engine_obj) -> bool:
+    """Whether `exercise_preferences` has been seeded at all.
+
+    The same one-row existence check as _safety_data_loaded: a beginner plan
+    needs beginner-friendly marks, and an empty table has none to offer.
+    """
+    from sqlalchemy import text
+
+    with engine_obj.connect() as conn:
+        row = conn.execute(
+            text("SELECT 1 FROM exercise_preferences LIMIT 1")
         ).fetchone()
     return row is not None
 
