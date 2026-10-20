@@ -122,7 +122,8 @@ class ProgressScreen extends ConsumerWidget {
           data: (data) => BodyWeightCard(
             series: data,
             unit: unit,
-            onAdd: () => showLogBodyWeightSheet(context, period: period),
+            period: period,
+            onAdd: () => showLogBodyWeightSheet(context),
           ),
         ),
         const SizedBox(height: 12),

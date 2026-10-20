@@ -44,6 +44,15 @@ test('body weight routes', async (t) => {
     }
   });
 
+  // `start` and `entries` let the card say "since you started" even when a
+  // goal weight, not the start, is the dashed reference line.
+  await t.test('before any weigh-in there is no start and no entries', async () => {
+    const get = await request(app).get('/api/v1/profile/body-weight?period=week')
+      .set(auth).expect(200);
+    assert.equal(get.body.data.start, null);
+    assert.equal(get.body.data.entries, 0);
+  });
+
   await t.test('posting an entry returns it', async () => {
     const post = await request(app).post('/api/v1/profile/body-weight')
       .set(auth).send({ weightKg: 71.4 }).expect(201);
@@ -65,6 +74,14 @@ test('body weight routes', async (t) => {
     assert.deepEqual(get.body.data.reference, { kind: 'start', weightKg: 71.4 });
   });
 
+  await t.test('the first weigh-in is the start, and it is counted', async () => {
+    const get = await request(app).get('/api/v1/profile/body-weight?period=week')
+      .set(auth).expect(200);
+    assert.equal(get.body.data.entries, 1);
+    assert.equal(get.body.data.start.weightKg, 71.4);
+    assert.equal(get.body.data.start.loggedOn, get.body.data.points[0].loggedOn);
+  });
+
   await t.test('a nonsense weight is a 400, not a stored row', async () => {
     await request(app).post('/api/v1/profile/body-weight')
       .set(auth).send({ weightKg: 714 }).expect(400);
@@ -75,5 +92,21 @@ test('body weight routes', async (t) => {
   await t.test('a missing weight is a 400', async () => {
     await request(app).post('/api/v1/profile/body-weight')
       .set(auth).send({}).expect(400);
+  });
+
+  // Last: it adds back-dated weigh-ins and a goal, which the tests above
+  // must not see.
+  await t.test('the start is the earliest weigh-in, even outside the period and with a goal set', async () => {
+    await request(app).post('/api/v1/profile/body-weight')
+      .set(auth).send({ weightKg: 74.2, loggedOn: '2026-01-05' }).expect(201);
+    await request(app).post('/api/v1/profile/body-weight')
+      .set(auth).send({ weightKg: 73.0, loggedOn: '2026-02-05' }).expect(201);
+    await request(app).patch('/api/v1/profile').set(auth).send({ goalWeightKg: 68 }).expect(200);
+
+    const get = await request(app).get('/api/v1/profile/body-weight?period=week')
+      .set(auth).expect(200);
+    assert.deepEqual(get.body.data.start, { loggedOn: '2026-01-05', weightKg: 74.2 });
+    assert.equal(get.body.data.entries, 3);
+    assert.deepEqual(get.body.data.reference, { kind: 'goal', weightKg: 68 });
   });
 });

@@ -39,6 +39,8 @@ class BodyWeightSeries {
     required this.points,
     required this.reference,
     required this.unit,
+    this.start,
+    this.entries = 0,
   });
 
   /// True when the chosen period held fewer than two entries and the server
@@ -50,6 +52,12 @@ class BodyWeightSeries {
 
   /// `'kg'` or `'lb'` — display only. Everything above is kilograms.
   final String unit;
+
+  /// The first weigh-in ever, whatever the period, and how many there are:
+  /// what "since you started" is measured from, and when it is worth saying.
+  /// Null and 0 from a server that predates them.
+  final BodyWeightPoint? start;
+  final int entries;
 
   factory BodyWeightSeries.fromJson(Map<String, dynamic> json) =>
       BodyWeightSeries(
@@ -64,5 +72,9 @@ class BodyWeightSeries {
                 json['reference'] as Map<String, dynamic>,
               ),
         unit: json['unit'] as String? ?? 'kg',
+        start: json['start'] == null
+            ? null
+            : BodyWeightPoint.fromJson(json['start'] as Map<String, dynamic>),
+        entries: (json['entries'] as num?)?.toInt() ?? 0,
       );
 }

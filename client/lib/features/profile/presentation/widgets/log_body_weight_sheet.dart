@@ -19,13 +19,8 @@ const _minKg = 20.0;
 const _maxKg = 500.0;
 
 /// The Progress tab's "Add entry" sheet: one weight field, one save button.
-///
-/// [period] is which of [bodyWeightProvider]'s family entries to refetch on
-/// success -- the window the card on screen is already showing.
-Future<void> showLogBodyWeightSheet(
-  BuildContext context, {
-  required String period,
-}) {
+/// A save refreshes every period of [bodyWeightProvider].
+Future<void> showLogBodyWeightSheet(BuildContext context) {
   return showModalBottomSheet<void>(
     context: context,
     backgroundColor: Colors.transparent,
@@ -33,14 +28,12 @@ Future<void> showLogBodyWeightSheet(
     // 9/16 cap, so a wide accessibility text scale cannot push the field or
     // the save button past the bottom edge.
     isScrollControlled: true,
-    builder: (_) => _LogBodyWeightSheet(period: period),
+    builder: (_) => const _LogBodyWeightSheet(),
   );
 }
 
 class _LogBodyWeightSheet extends ConsumerStatefulWidget {
-  const _LogBodyWeightSheet({required this.period});
-
-  final String period;
+  const _LogBodyWeightSheet();
 
   @override
   ConsumerState<_LogBodyWeightSheet> createState() =>
@@ -94,9 +87,10 @@ class _LogBodyWeightSheetState extends ConsumerState<_LogBodyWeightSheet> {
     }
 
     if (!mounted) return;
-    // The point was just written; the card's own family entry is the one
-    // that needs the new point, not every period at once.
-    ref.invalidate(bodyWeightProvider(widget.period));
+    // Every period holds the new point -- a week's weigh-in is in the month
+    // and the year too -- and the family is kept alive, so refreshing only
+    // the one on screen left the others showing the old weight and change.
+    ref.invalidate(bodyWeightProvider);
     // The server's writeEntry also overwrites users.weight_kg when this is
     // the newest entry, so Profile and Settings -- both backed by
     // profileProvider, an AsyncNotifier that never refetches on its own --

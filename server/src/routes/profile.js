@@ -278,13 +278,14 @@ module.exports = function buildProfileRouter(deps) {
   router.get('/profile/body-weight', auth, async (req, res, next) => {
     try {
       const period = req.query.period || 'week';
-      // Three independent round trips -- none reads another's result -- so
+      // Four independent round trips -- none reads another's result -- so
       // they run concurrently. `series` is checked for null (the
-      // unknown-period signal) only after all three have settled.
-      const [series, [[user]], reference] = await Promise.all([
+      // unknown-period signal) only after all four have settled.
+      const [series, [[user]], reference, start] = await Promise.all([
         bodyWeight.readSeries(deps.pool, req.user.userId, period),
         deps.pool.query('SELECT weight_unit FROM users WHERE user_id = ?', [req.user.userId]),
         bodyWeight.readReference(deps.pool, req.user.userId),
+        bodyWeight.readStart(deps.pool, req.user.userId),
       ]);
       if (series === null) {
         throw AppError.badRequest(
@@ -297,6 +298,7 @@ module.exports = function buildProfileRouter(deps) {
         data: {
           ...series,
           reference,
+          ...start,
           unit: user.weight_unit,
         },
       });

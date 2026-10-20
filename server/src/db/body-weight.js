@@ -90,6 +90,26 @@ async function readReference(pool, userId) {
   return { kind: 'start', weightKg: toNumber(first.weight_kg) };
 }
 
+/// The first weigh-in ever and how many there are, whatever the period.
+///
+/// The card's "since you started" needs the start weight even when a goal
+/// weight, not the start, is the dashed reference line, and only offers it
+/// once there are enough weigh-ins for it to mean something.
+async function readStart(pool, userId) {
+  const [[row]] = await pool.query(
+    `SELECT (SELECT COUNT(*) FROM body_weight_logs WHERE user_id = ?) AS entries,
+            weight_kg, log_date
+       FROM body_weight_logs
+      WHERE user_id = ? ORDER BY log_date ASC LIMIT 1`,
+    [userId, userId],
+  );
+  if (!row) return { start: null, entries: 0 };
+  return {
+    start: { loggedOn: formatDate(row.log_date), weightKg: toNumber(row.weight_kg) },
+    entries: Number(row.entries),
+  };
+}
+
 /// Records a weigh-in and, when it is the newest one, syncs it to the profile.
 ///
 /// One write updates both, so `users.weight_kg` and this table can never
@@ -160,4 +180,4 @@ async function writeEntry(pool, userId, { weightKg, loggedOn = null }) {
   return toPoint(row);
 }
 
-module.exports = { readSeries, readReference, writeEntry, MIN_KG, MAX_KG, MAX_POINTS };
+module.exports = { readSeries, readReference, readStart, writeEntry, MIN_KG, MAX_KG, MAX_POINTS };

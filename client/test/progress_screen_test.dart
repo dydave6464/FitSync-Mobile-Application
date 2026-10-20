@@ -245,6 +245,24 @@ void main() {
     expect(repo.periodsAsked.last, 'month');
   });
 
+  // The card names the period it shows ("Last 30 days"), so it has to be
+  // told which one the segment picked.
+  testWidgets('the body-weight card is told the window', (tester) async {
+    await _pump(tester, repo: FakeSessionRepository());
+    expect(
+      tester.widget<BodyWeightCard>(find.byType(BodyWeightCard)).period,
+      'week',
+    );
+
+    await tester.tap(find.text('Month'));
+    await tester.pumpAndSettle();
+
+    expect(
+      tester.widget<BodyWeightCard>(find.byType(BodyWeightCard)).period,
+      'month',
+    );
+  });
+
   testWidgets('nothing trained yet says so plainly', (tester) async {
     // The placeholder this screen replaces said volume "appears here once you
     // have logged a few workouts" -- so a user who HAD logged one went
