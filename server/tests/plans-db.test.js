@@ -255,4 +255,88 @@ test('plan persistence', async (t) => {
     assert.equal(plan.exercises[0].dayNo, 1);
     assert.deepEqual(plan.days, [{ dayNo: 1, name: 'Full body' }]);
   });
+
+  // The generator now names the row it chose. "Shared Name" is two live rows
+  // (dumbbell and barbell biceps), so a name lookup can only ever reach the
+  // lower id -- the higher one is reachable only by exerciseId.
+  await t.test('an exercise sent with exerciseId is saved as that id, not the lowest same-name row', async () => {
+    await reset();
+    const [dupRows] = await pool.query(
+      "SELECT exercise_id FROM exercises WHERE status='live' AND name = 'Shared Name' ORDER BY exercise_id",
+    );
+    assert.ok(dupRows.length >= 2, 'fixture must contain a duplicate live name to exercise this');
+    const higher = dupRows[dupRows.length - 1].exercise_id;
+
+    await savePlan(pool, userId, {
+      name: 'By id', splitStyle: 'full_body', daysPerWeek: 3, sessionLengthMin: 45, weekNo: 1,
+      exercises: [{
+        exerciseId: higher, name: 'Shared Name', orderNo: 1, targetSets: 3, targetReps: '8-12',
+      }],
+    });
+
+    const plan = await getActivePlan(pool, userId);
+    assert.equal(plan.exercises[0].exerciseId, higher,
+      'the row the generator chose is the row that is saved');
+  });
+
+  await t.test('an exercise without exerciseId still resolves by name to the lowest live id', async () => {
+    await reset();
+    const [dupRows] = await pool.query(
+      "SELECT exercise_id FROM exercises WHERE status='live' AND name = 'Shared Name' ORDER BY exercise_id",
+    );
+
+    await savePlan(pool, userId, {
+      name: 'By name', splitStyle: 'full_body', daysPerWeek: 3, sessionLengthMin: 45, weekNo: 1,
+      exercises: [{ name: 'Shared Name', orderNo: 1, targetSets: 3, targetReps: '8-12' }],
+    });
+
+    const plan = await getActivePlan(pool, userId);
+    assert.equal(plan.exercises[0].exerciseId, dupRows[0].exercise_id,
+      'the stub and older generators send names only; that path must keep working');
+  });
+
+  await t.test('an exerciseId that is not a live exercise falls back to the name', async () => {
+    await reset();
+    const [[live]] = await pool.query(
+      "SELECT exercise_id, name FROM exercises WHERE status='live' ORDER BY exercise_id LIMIT 1",
+    );
+    const [[other]] = await pool.query(
+      "SELECT exercise_id FROM exercises WHERE status='live' AND exercise_id <> ? LIMIT 1",
+      [live.exercise_id],
+    );
+    // A row that exists but is not live: the id alone would satisfy the
+    // foreign key, so only the status check keeps it out of a plan.
+    await pool.query("UPDATE exercises SET status = 'pending' WHERE exercise_id = ?",
+      [other.exercise_id]);
+    try {
+      await savePlan(pool, userId, {
+        name: 'Fallback', splitStyle: 'full_body', daysPerWeek: 3, sessionLengthMin: 45, weekNo: 1,
+        exercises: [
+          { exerciseId: 2147483000, name: live.name, orderNo: 1, targetSets: 3, targetReps: '8-12' },
+          { exerciseId: other.exercise_id, name: live.name, orderNo: 2, targetSets: 3, targetReps: '8-12' },
+        ],
+      });
+    } finally {
+      await pool.query("UPDATE exercises SET status = 'live' WHERE exercise_id = ?",
+        [other.exercise_id]);
+    }
+
+    const plan = await getActivePlan(pool, userId);
+    assert.deepEqual(plan.exercises.map((e) => e.exerciseId), [live.exercise_id, live.exercise_id],
+      'an unknown or non-live id is ignored and the name decides');
+  });
+
+  await t.test('an exerciseId that is not live and a name that is unknown is still a 502', async () => {
+    await reset();
+    await assert.rejects(() => savePlan(pool, userId, {
+      name: 'Broken', splitStyle: 'full_body', daysPerWeek: 3, sessionLengthMin: 45, weekNo: 1,
+      exercises: [{
+        exerciseId: 2147483000, name: 'Definitely Not An Exercise',
+        orderNo: 1, targetSets: 3, targetReps: '8-12',
+      }],
+    }), (err) => err.status === 502 && err.code === 'PLAN_GENERATION_FAILED');
+
+    const [plans] = await pool.query('SELECT COUNT(*) AS n FROM workout_plans');
+    assert.equal(plans[0].n, 0);
+  });
 });

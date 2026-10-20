@@ -1,6 +1,6 @@
 """The candidate query: which live exercises may this user be offered?
 
-Three filters, all of which must pass:
+Four filters, all of which must pass:
 
   equipment -- the exercise's own implement is owned, AND every extra
                requirement (bench, pull-up bar, machines) is owned too
@@ -10,6 +10,14 @@ Three filters, all of which must pass:
                drill or a skill hold. An exercise with no category row counts
                as strength: a missing row must never silently remove an
                exercise. See the design, section 7.
+  curation  -- the team has not marked the exercise 'search_only' or 'never'
+               (exercise_preferences). An unmarked exercise passes. For a
+               beginner plan, only rows the team marked beginner-friendly
+               pass: an unmarked one does not.
+
+Rows that pass are ordered by the team's priority first ('first', then
+'alternative', then unmarked), then by the user's selected equipment, their
+training location, and exercise_id.
 
 The equipment tree is why the primary check walks parent_equipment_id:
 `user_equipment` holds curated rows ('machines'), while `exercises` points at
@@ -35,8 +43,10 @@ SELECT x.exercise_id, x.name, x.muscle_group
   JOIN equipment eq ON eq.equipment_id = x.equipment_id
   LEFT JOIN equipment peq ON peq.equipment_id = eq.parent_equipment_id
   LEFT JOIN exercise_categories cat ON cat.exercise_id = x.exercise_id
+  LEFT JOIN exercise_preferences pref ON pref.exercise_id = x.exercise_id
  WHERE x.status = 'live'
    AND COALESCE(cat.category, 'strength') = 'strength'
+   AND COALESCE(pref.priority, 'unmarked') NOT IN ('search_only', 'never')
    AND COALESCE(eq.parent_equipment_id, eq.equipment_id) IN :owned
    AND NOT EXISTS (
          SELECT 1 FROM exercise_equipment_requirements r
@@ -56,6 +66,25 @@ _INJURY = """
 _MUSCLE = """
    AND x.muscle_group NOT IN :excluded_muscle_groups
 """
+
+# The curated marks ARE a WHERE, deliberately, unlike the selected-equipment
+# and location tiers below: 'search_only' and 'never' (in _BASE) and, for a
+# beginner, anything not marked beginner-friendly can never be offered. A
+# muscle group left with nothing is skipped by select() rather than filled
+# with an exercise the team ruled out.
+_BEGINNER = """
+   AND pref.beginner_friendly = 1
+"""
+
+# The team's curated marks come first: first choices, then alternatives,
+# then anything not yet marked. The equipment and location tiers below then
+# order rows of equal priority, and exercise_id keeps it deterministic.
+_PRIORITY_TIER = """
+            CASE pref.priority
+              WHEN 'first' THEN 0
+              WHEN 'alternative' THEN 1
+              ELSE 2
+            END"""
 
 # Body weight is unioned into `owned` unconditionally (see main.py), so
 # body-weight exercises are eligible for every user -- and they cluster at low
@@ -114,6 +143,7 @@ def fetch_candidates(
     excluded_muscle_groups: Sequence[str],
     selected_equipment_ids: Sequence[int] = (),
     training_location: Optional[str] = None,
+    beginner_only: bool = False,
 ) -> List[Candidate]:
     # An empty ownership list means the user owns nothing, not that no filter
     # applies. Returning [] is the safe reading; the caller substitutes body
@@ -130,8 +160,10 @@ def fetch_candidates(
     if excluded_muscle_groups:
         sql += _MUSCLE
         params["excluded_muscle_groups"] = tuple(excluded_muscle_groups)
+    if beginner_only:
+        sql += _BEGINNER
 
-    order = []
+    order = [_PRIORITY_TIER]
     if selected_equipment_ids:
         order.append(_SELECTED_TIER)
         params["selected"] = tuple(selected_equipment_ids)

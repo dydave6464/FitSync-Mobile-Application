@@ -239,6 +239,20 @@ void main() {
     expect(plan.days.map((d) => d.name).toList(), ['Push', 'Pull', 'Legs']);
   });
 
+  test('regenerate without a length leaves the generator to derive it', () async {
+    final seen = <http.Request>[];
+    final repo = _repoCapturing({
+      'data': {'plan': _customPlanJson},
+    }, seen);
+
+    await repo.regenerate(splitStyle: 'full_body', daysPerWeek: 3);
+
+    expect(jsonDecode(seen.single.body), {
+      'splitStyle': 'full_body',
+      'daysPerWeek': 3,
+    });
+  });
+
   test('a plan says whether its user built it', () async {
     final plan = WorkoutPlan.fromJson(const {
       'planId': 1,

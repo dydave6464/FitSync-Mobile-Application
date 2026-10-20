@@ -99,7 +99,7 @@ class FlowRepository implements PlanRepository {
   Future<WorkoutPlan> regenerate({
     required String splitStyle,
     required int daysPerWeek,
-    required int sessionLengthMin,
+    int? sessionLengthMin,
     bool replaceCustomPlan = false,
   }) async {
     onRegenerate();

@@ -32,6 +32,7 @@ REQUIRED_TABLES = (
     "exercise_equipment_requirements",
     "exercise_contraindications",
     "exercise_categories",
+    "exercise_preferences",
 )
 
 
@@ -144,6 +145,14 @@ def catalogue(engine):
         ("fixture quad stretch", "stretch"),
     ]
 
+    # Every fixture exercise starts marked the same way: an alternative, and
+    # beginner-friendly. That keeps the tests that are not about the team's
+    # marks seeing exactly the old order and eligibility -- one shared
+    # priority orders nothing, and a beginner (the default for a profile with
+    # no level) would otherwise be offered nothing at all. Tests about the
+    # marks change them through the `mark` fixture below.
+    default_priority, default_beginner_friendly = "alternative", True
+
     ids = {"equipment": {}, "exercises": {}, "injuries": {}}
     # Equipment names are globally unique (uq_equipment_name), and the test
     # database may already hold real ones if someone seeded it. Reuse a row that
@@ -182,6 +191,15 @@ def catalogue(engine):
                 {"n": name, "mg": mg, "bp": bp, "eq": ids["equipment"][tag]},
             )
             ids["exercises"][name] = res.lastrowid
+            conn.execute(
+                text(
+                    "INSERT INTO exercise_preferences "
+                    "(exercise_id, priority, beginner_friendly) "
+                    "VALUES (:x, :p, :b)"
+                ),
+                {"x": res.lastrowid, "p": default_priority,
+                 "b": default_beginner_friendly},
+            )
         for region in ("Knee", "Lower back"):
             res = conn.execute(
                 text(
@@ -221,6 +239,10 @@ def catalogue(engine):
     with engine.begin() as conn:
         for exercise_id in ids["exercises"].values():
             conn.execute(
+                text("DELETE FROM exercise_preferences WHERE exercise_id = :id"),
+                {"id": exercise_id},
+            )
+            conn.execute(
                 text("DELETE FROM exercises WHERE exercise_id = :id"),
                 {"id": exercise_id},
             )
@@ -233,3 +255,65 @@ def catalogue(engine):
                 text("DELETE FROM equipment WHERE equipment_id = :id"),
                 {"id": ids["equipment"][name]},
             )
+
+
+@pytest.fixture
+def mark(engine, catalogue):
+    """Re-mark one of the catalogue fixture's exercises, by name.
+
+    `priority` is 'first', 'alternative', 'search_only' or 'never'; None
+    removes the row, leaving the exercise unmarked. The catalogue fixture's
+    cleanup removes whatever this leaves behind.
+    """
+    def mark(name, priority, beginner_friendly=False):
+        exercise_id = catalogue["exercises"][name]
+        with engine.begin() as conn:
+            conn.execute(
+                text("DELETE FROM exercise_preferences WHERE exercise_id = :x"),
+                {"x": exercise_id},
+            )
+            if priority is not None:
+                conn.execute(
+                    text(
+                        "INSERT INTO exercise_preferences "
+                        "(exercise_id, priority, beginner_friendly) "
+                        "VALUES (:x, :p, :b)"
+                    ),
+                    {"x": exercise_id, "p": priority, "b": beginner_friendly},
+                )
+
+    return mark
+
+
+@pytest.fixture
+def add_exercise(engine, catalogue):
+    """Plant one more live strength exercise in the catalogue fixture.
+
+    Registered in catalogue["exercises"], so the catalogue fixture's cleanup
+    removes it (and its mark) with the rest, and `mark` can re-mark it by
+    name. `priority` None leaves it unmarked.
+    """
+    def add_exercise(name, muscle_group, equipment, priority="alternative",
+                     beginner_friendly=True):
+        with engine.begin() as conn:
+            res = conn.execute(
+                text(
+                    "INSERT INTO exercises (name, muscle_group, body_part, "
+                    "equipment_id, status) VALUES (:n, :mg, 'fixture', :eq, 'live')"
+                ),
+                {"n": name, "mg": muscle_group,
+                 "eq": catalogue["equipment"][equipment]},
+            )
+            catalogue["exercises"][name] = res.lastrowid
+            if priority is not None:
+                conn.execute(
+                    text(
+                        "INSERT INTO exercise_preferences "
+                        "(exercise_id, priority, beginner_friendly) "
+                        "VALUES (:x, :p, :b)"
+                    ),
+                    {"x": res.lastrowid, "p": priority, "b": beginner_friendly},
+                )
+        return catalogue["exercises"][name]
+
+    return add_exercise

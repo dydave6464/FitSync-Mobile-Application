@@ -261,11 +261,15 @@ GRANT SELECT ON fitsync.equipment TO 'fitsync_ml'@'%';
 GRANT SELECT ON fitsync.exercise_equipment_requirements TO 'fitsync_ml'@'%';
 GRANT SELECT ON fitsync.exercise_contraindications TO 'fitsync_ml'@'%';
 GRANT SELECT ON fitsync.exercise_categories TO 'fitsync_ml'@'%';
+GRANT SELECT ON fitsync.exercise_preferences TO 'fitsync_ml'@'%';
 FLUSH PRIVILEGES;
 ```
 
-Migration 010 adds a fifth reference table. The service still reads no user
-row.
+Migration 010 adds a fifth reference table. Migration 039 adds a sixth
+reference table (`exercise_preferences`, the team's curated marks). The
+service still reads no user row. `npm run seed:preferences` must run before
+beginners can get plans: until that table has rows, the service refuses every
+beginner plan with a 503 that names the step.
 
 The grant is deliberately not `GRANT SELECT ON fitsync.*`. If the service ever
 needs another table, adding a line here should be a decision someone makes,

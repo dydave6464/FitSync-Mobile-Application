@@ -1,5 +1,5 @@
 from app.catalogue import Candidate
-from app.rules.selection import MUSCLE_PRIORITY, select
+from app.rules.selection import MUSCLE_PRIORITY, select, select_with_top_up
 
 
 def c(exercise_id, muscle_group, name=None):
@@ -143,3 +143,55 @@ def test_arms_are_not_duplicated_when_the_count_runs_deep():
     ids = [x.exercise_id for x in chosen]
     assert len(ids) == len(set(ids)), ids
 
+
+
+# The body-weight top-up (main.py, a day the user's own equipment leaves
+# short). Ids 1-9 stand for the user's own equipment, 10+ for body weight.
+_SHORT_PUSH = [c(1, "pectorals", "db fly"), c(2, "delts", "db press"),
+               c(3, "delts", "db lateral"), c(4, "delts", "db rear fly"),
+               c(5, "triceps", "db kickback")]
+
+
+def test_a_top_up_keeps_every_row_the_users_equipment_gave():
+    # Re-selecting from pool + top-up redid the round-robin: pectorals came
+    # around a second time and the push-ups pushed a dumbbell delts row out.
+    top_up = [c(10, "pectorals", "push-up"), c(11, "pectorals", "knee push-up")]
+
+    chosen = select_with_top_up(_SHORT_PUSH, top_up, 6)
+
+    assert [x.name for x in chosen] == [
+        "db fly", "db press", "db lateral", "db rear fly", "push-up", "db kickback",
+    ], [x.name for x in chosen]
+
+
+def test_a_top_up_keeps_the_arms_last():
+    # Three slots short: the top-up's own walk reserves an arm too. The
+    # body-weight rows go in before the user's reserved arm, and the top-up's
+    # arm after it.
+    pool = [c(1, "pectorals", "db fly"), c(2, "delts", "db press"),
+            c(5, "triceps", "db kickback")]
+    top_up = [c(10, "pectorals", "push-up"), c(11, "delts", "pike push-up"),
+              c(12, "triceps", "bench dip")]
+
+    chosen = select_with_top_up(pool, top_up, 6)
+
+    assert [x.name for x in chosen] == [
+        "db fly", "db press", "push-up", "pike push-up", "db kickback", "bench dip",
+    ], [x.name for x in chosen]
+
+
+def test_a_day_the_pool_fills_is_exactly_select():
+    pool = _SHORT_PUSH + [c(6, "delts", "db front raise")]
+    top_up = [c(10, "pectorals", "push-up")]
+
+    assert select_with_top_up(pool, top_up, 6) == select(pool, 6)
+
+
+def test_no_top_up_rows_is_exactly_select():
+    assert select_with_top_up(_SHORT_PUSH, [], 6) == select(_SHORT_PUSH, 6)
+
+
+def test_the_top_up_never_repeats_a_row_already_chosen():
+    chosen = select_with_top_up(_SHORT_PUSH, [_SHORT_PUSH[0], c(10, "pectorals")], 6)
+
+    assert len({x.exercise_id for x in chosen}) == len(chosen) == 6
