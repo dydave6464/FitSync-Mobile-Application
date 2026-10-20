@@ -33,6 +33,11 @@ class _LogFoodScreenState extends ConsumerState<LogFoodScreen> {
   String _query = '';
   String _tab = 'all';
 
+  /// The meal the food goes into: the one whose Add row or + was tapped,
+  /// shown at the top and changeable before anything is searched. It used
+  /// to be fixed in the title and changeable only in the last step.
+  late String _meal = widget.mealType;
+
   @override
   void dispose() {
     _debounce?.cancel();
@@ -77,7 +82,7 @@ class _LogFoodScreenState extends ConsumerState<LogFoodScreen> {
       }
       if (!mounted) return;
     }
-    final choice = await showLogFoodSheet(context, food, mealType: widget.mealType);
+    final choice = await showLogFoodSheet(context, food, mealType: _meal);
     if (choice == null || !mounted) return;
     final messenger = ScaffoldMessenger.of(context);
     final controller = ref.read(nutritionDayProvider.notifier);
@@ -93,7 +98,7 @@ class _LogFoodScreenState extends ConsumerState<LogFoodScreen> {
 
   Future<void> _manual() async {
     final logged = await Navigator.of(context).push<bool>(MaterialPageRoute(
-      builder: (_) => AddFoodManuallyScreen(mealType: widget.mealType),
+      builder: (_) => AddFoodManuallyScreen(mealType: _meal),
     ));
     if (logged == true && mounted) Navigator.of(context).pop();
   }
@@ -103,7 +108,7 @@ class _LogFoodScreenState extends ConsumerState<LogFoodScreen> {
     final t = context.fs;
     return Scaffold(
       backgroundColor: t.bg,
-      appBar: AppBar(title: Text('Log ${mealLabel(widget.mealType).toLowerCase()}')),
+      appBar: AppBar(title: const Text('Log food')),
       bottomNavigationBar: SafeArea(
         minimum: const EdgeInsets.fromLTRB(20, 0, 20, 16),
         child: FsButton(
@@ -115,6 +120,28 @@ class _LogFoodScreenState extends ConsumerState<LogFoodScreen> {
       ),
       body: Column(
         children: [
+          // Where the food goes, on one labelled line: four meal pills here
+          // looked just like the All / Recents filter below, and on a small
+          // phone at large text they wrapped to 82 dp and pushed the foods
+          // off the screen. Changing it is rare -- it arrives pre-picked. A
+          // Wrap, so at very large text the pill drops under its label
+          // rather than cutting "Breakfast" short; heard as one button.
+          Padding(
+            padding: const EdgeInsets.fromLTRB(20, 4, 20, 0),
+            child: Align(
+              alignment: Alignment.centerLeft,
+              child: MergeSemantics(
+                child: Wrap(
+                  crossAxisAlignment: WrapCrossAlignment.center,
+                  spacing: 10,
+                  children: [
+                    const FsEyebrow('Adding to'),
+                    _MealPicker(meal: _meal, onPicked: (m) => setState(() => _meal = m)),
+                  ],
+                ),
+              ),
+            ),
+          ),
           Padding(
             padding: const EdgeInsets.fromLTRB(20, 8, 20, 8),
             child: FsField(
@@ -153,7 +180,8 @@ class _LogFoodScreenState extends ConsumerState<LogFoodScreen> {
       data: (r) => _FoodList(
         foods: r.foods,
         onTap: _choose,
-        note: r.fatsecretUnavailable ? "Some foods couldn't load. Check your connection." : null,
+        // The phone reached the server, so its connection isn't the problem.
+        note: r.fatsecretUnavailable ? "Some foods couldn't load right now. Try again later." : null,
         empty: 'No foods match "$_query". Try another word, or add it manually.',
       ),
     );
@@ -164,6 +192,99 @@ class _LogFoodScreenState extends ConsumerState<LogFoodScreen> {
     error: (e, _) => _Hint(describeError(e)),
     data: (foods) => _FoodList(foods: foods, onTap: _choose, empty: 'Foods you log show up here.'),
   );
+}
+
+/// The meal the food goes into, as one pill that opens the four meals.
+///
+/// The pill is its own Material, so the ink and the focus colour fill it
+/// inside its rounded edge rather than drawing a square behind it. The
+/// whole 48 dp row around it opens the meals -- by the pill's rounded ends
+/// too, where moving a tap onto the pill's edge would land outside its
+/// shape -- while only a tap on the pill draws a press.
+class _MealPicker extends StatelessWidget {
+  const _MealPicker({required this.meal, required this.onPicked});
+
+  final String meal;
+  final ValueChanged<String> onPicked;
+
+  Future<void> _open(BuildContext row) async {
+    final box = row.findRenderObject()! as RenderBox;
+    final overlay = Navigator.of(row).overlay!.context.findRenderObject()! as RenderBox;
+    final position = RelativeRect.fromRect(
+      Rect.fromPoints(
+        box.localToGlobal(Offset.zero, ancestor: overlay),
+        box.localToGlobal(box.size.bottomRight(Offset.zero), ancestor: overlay),
+      ),
+      Offset.zero & overlay.size,
+    );
+    final picked = await showMenu<String>(
+      context: row,
+      position: position,
+      initialValue: meal,
+      items: [
+        for (final m in mealTypes)
+          CheckedPopupMenuItem<String>(
+            key: Key('log.meal.$m'),
+            value: m,
+            checked: m == meal,
+            child: Text(mealLabel(m)),
+          ),
+      ],
+    );
+    if (picked != null) onPicked(picked);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final t = context.fs;
+    return Builder(
+      builder: (row) => GestureDetector(
+        key: const Key('log.meal'),
+        behavior: HitTestBehavior.opaque,
+        // The pill's InkWell is what a screen reader presses.
+        excludeFromSemantics: true,
+        onTap: () => _open(row),
+        child: ConstrainedBox(
+          constraints: const BoxConstraints(minHeight: 48),
+          child: Center(
+            widthFactor: 1,
+            child: Semantics(
+              button: true,
+              child: Tooltip(
+                message: 'Change meal',
+                child: Material(
+                  color: t.surface,
+                  shape: StadiumBorder(side: BorderSide(color: t.line2)),
+                  child: InkWell(
+                    customBorder: const StadiumBorder(),
+                    onTap: () => _open(row),
+                    child: Padding(
+                      padding: const EdgeInsets.fromLTRB(14, 6, 8, 6),
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          // Never cut: the line wraps the pill under its
+                          // label first.
+                          Flexible(
+                            child: Text(
+                              mealLabel(meal),
+                              style: TextStyle(fontSize: 14, fontWeight: FontWeight.w700, color: t.text),
+                            ),
+                          ),
+                          const SizedBox(width: 2),
+                          Icon(Icons.expand_more, size: 20, color: t.text2),
+                        ],
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
 }
 
 /// Shown before anything is typed: a prompt and a few foods to tap, rather
