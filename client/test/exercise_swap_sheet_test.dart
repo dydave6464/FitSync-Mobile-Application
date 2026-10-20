@@ -58,7 +58,7 @@ class _FailingRepo implements PlanRepository {
   Future<WorkoutPlan> regenerate({
     required String splitStyle,
     required int daysPerWeek,
-    required int sessionLengthMin,
+    int? sessionLengthMin,
     bool replaceCustomPlan = false,
   }) async =>
       throw UnimplementedError('the swap sheet never regenerates a plan');
@@ -112,7 +112,7 @@ class _RecordingRepo implements PlanRepository {
   Future<WorkoutPlan> regenerate({
     required String splitStyle,
     required int daysPerWeek,
-    required int sessionLengthMin,
+    int? sessionLengthMin,
     bool replaceCustomPlan = false,
   }) async =>
       throw UnimplementedError('the swap sheet never regenerates a plan');
@@ -174,7 +174,7 @@ class _SucceedingRepo implements PlanRepository {
   Future<WorkoutPlan> regenerate({
     required String splitStyle,
     required int daysPerWeek,
-    required int sessionLengthMin,
+    int? sessionLengthMin,
     bool replaceCustomPlan = false,
   }) async =>
       throw UnimplementedError('the swap sheet never regenerates a plan');
@@ -217,7 +217,7 @@ class _SlowRepo implements PlanRepository {
   Future<WorkoutPlan> regenerate({
     required String splitStyle,
     required int daysPerWeek,
-    required int sessionLengthMin,
+    int? sessionLengthMin,
     bool replaceCustomPlan = false,
   }) async =>
       throw UnimplementedError('the swap sheet never regenerates a plan');

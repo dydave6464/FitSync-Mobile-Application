@@ -17,7 +17,6 @@ import 'widgets/training_days_row.dart';
 
 const _defaultSplit = 'full_body';
 const _defaultDays = 3;
-const _defaultLength = 45;
 
 class GeneratorScreen extends ConsumerStatefulWidget {
   const GeneratorScreen({super.key});
@@ -64,7 +63,7 @@ class _GeneratorScreenState extends ConsumerState<GeneratorScreen> {
     }
   }
 
-  /// Takes the resolved split/days/length the caller already has in scope
+  /// Takes the resolved split/days the caller already has in scope
   /// rather than re-resolving from the provider -- `_buildControls` only
   /// runs in the data branch, so those values are the ones the user is
   /// actually looking at. Re-reading `activePlanProvider` here would revive
@@ -81,7 +80,6 @@ class _GeneratorScreenState extends ConsumerState<GeneratorScreen> {
   Future<void> _generate(
     String split,
     int days,
-    int length,
     List<int> trainingDays, {
     bool replaceCustomPlan = false,
   }) async {
@@ -107,7 +105,6 @@ class _GeneratorScreenState extends ConsumerState<GeneratorScreen> {
           .regenerate(
             splitStyle: split,
             daysPerWeek: days,
-            sessionLengthMin: length,
             replaceCustomPlan: replaceCustomPlan,
           );
       // The plan changed underneath every screen that reads it, so the whole
@@ -181,7 +178,6 @@ class _GeneratorScreenState extends ConsumerState<GeneratorScreen> {
         await _generate(
           split,
           days,
-          length,
           trainingDays,
           replaceCustomPlan: true,
         );
@@ -202,7 +198,7 @@ class _GeneratorScreenState extends ConsumerState<GeneratorScreen> {
   /// The one place the fallback chain is written. Pure: two calls with the
   /// same plan and trainingDays always agree, so nothing needs to cache what
   /// a previous build computed for the debug getters below to stay honest.
-  ({String split, int days, int length}) _resolve(
+  ({String split, int days}) _resolve(
     WorkoutPlan? plan,
     List<int> trainingDays,
   ) => (
@@ -213,12 +209,10 @@ class _GeneratorScreenState extends ConsumerState<GeneratorScreen> {
     days: trainingDays.isNotEmpty
         ? trainingDays.length
         : (_daysPerWeek ?? plan?.daysPerWeek ?? _defaultDays),
-    // Still resolved and still sent, even though nothing on this screen
-    // sets it any more: omitting sessionLengthMin from the payload hands
-    // the service's `overrides.sessionLengthMin || 45` a 60-minute plan
-    // and silently shortens it. Removing the control must not change the
-    // plan the user gets.
-    length: plan?.sessionLengthMin ?? _defaultLength,
+    // The session length is not sent: the generator derives it from today's
+    // level, goal and health check, so moving up from New to training, or
+    // adding a condition, changes it. (The `|| 45` default lives only in the
+    // server's test stub.)
   );
 
   /// The lead row's sentence: what is actually being applied.
@@ -267,10 +261,6 @@ class _GeneratorScreenState extends ConsumerState<GeneratorScreen> {
     ref.read(activePlanProvider).value,
     ref.read(profileProvider).value?.trainingDays ?? const [],
   ).days;
-  int get debugSessionLengthMin => _resolve(
-    ref.read(activePlanProvider).value,
-    ref.read(profileProvider).value?.trainingDays ?? const [],
-  ).length;
 
   @override
   Widget build(BuildContext context) {
@@ -366,7 +356,7 @@ class _GeneratorScreenState extends ConsumerState<GeneratorScreen> {
     final asyncProfile = ref.watch(profileProvider);
     final daysKnown = asyncProfile.hasValue;
     final trainingDays = asyncProfile.value?.trainingDays ?? const <int>[];
-    final (:split, :days, :length) = _resolve(plan, trainingDays);
+    final (:split, :days) = _resolve(plan, trainingDays);
 
     // The AsyncValue, not `.value ?? const []`: that flattening reads the
     // same for "still loading", "failed" and "no regions exist", and the
@@ -469,9 +459,7 @@ class _GeneratorScreenState extends ConsumerState<GeneratorScreen> {
         // Session length is deliberately not shown. The service derives it
         // from goal and fitness level, so it is neither chosen here nor
         // changeable here, and a number on screen that the user cannot move
-        // is one more thing to rule out. It is still resolved and still sent
-        // -- see `_resolve`, where dropping it from the payload would hand
-        // the service's own 45-minute default a 60-minute plan.
+        // is one more thing to rule out. Nor is it sent -- see `_resolve`.
         if (avoiding.isNotEmpty) ...[
           const SizedBox(height: 22),
           FsCard(
@@ -482,7 +470,7 @@ class _GeneratorScreenState extends ConsumerState<GeneratorScreen> {
                 const SizedBox(width: 11),
                 Expanded(
                   child: Text(
-                    'Avoiding: ${avoiding.join(', ')}',
+                    'Working around: ${avoiding.join(', ')}',
                     style: TextStyle(
                       fontSize: 12,
                       color: t.text2,
@@ -505,7 +493,7 @@ class _GeneratorScreenState extends ConsumerState<GeneratorScreen> {
           label: 'Generate plan',
           // No in-button spinner: `_busy` takes the whole body over with the
           // building screen, so this button is not on screen to spin.
-          onPressed: () => _generate(split, days, length, trainingDays),
+          onPressed: () => _generate(split, days, trainingDays),
         ),
       ],
     );
