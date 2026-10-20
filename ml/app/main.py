@@ -63,7 +63,12 @@ def _plan_name(profile: ProfileRequest, split: Split) -> str:
 
 def _candidates(engine, owned, selected, injury_ids, excluded, training_location=None,
                 beginner_only=False):
-    """Candidates with body weight confined to groups the user cannot train.
+    """The primary candidates, and the body-weight rows held back to top up.
+
+    Returns `(primary, top_up)`. `primary` has body weight confined to groups
+    the user cannot train; `top_up` is the body weight it held back from the
+    groups their own equipment does cover, used only to fill a day that
+    `primary` leaves short (see generate_plan).
 
     `owned` is what is ELIGIBLE and already includes the implicit body weight;
     `selected` is only what the user ticked. Preferring `selected` inside a
@@ -81,20 +86,29 @@ def _candidates(engine, owned, selected, injury_ids, excluded, training_location
     `beginner_only` reaches both queries, so the body-weight fill is
     beginner-friendly too: a group with no beginner-friendly exercise is left
     out rather than filled with one the team ruled out for a beginner.
+
+    The top-up comes from the same `everything` query, so the marks, the
+    beginner rule and the injuries all apply to it as well. With nothing
+    selected, body weight is already the whole pool and there is nothing to
+    top up with.
     """
     everything = fetch_candidates(
         engine, owned, injury_ids, excluded, selected, training_location,
         beginner_only,
     )
     if not selected:
-        return everything
+        return everything, []
 
     strict = fetch_candidates(
         engine, selected, injury_ids, excluded, selected, training_location,
         beginner_only,
     )
     covered = {c.muscle_group for c in strict}
-    return strict + [c for c in everything if c.muscle_group not in covered]
+    strict_ids = {c.exercise_id for c in strict}
+    primary = strict + [c for c in everything if c.muscle_group not in covered]
+    top_up = [c for c in everything
+              if c.muscle_group in covered and c.exercise_id not in strict_ids]
+    return primary, top_up
 
 
 def create_app(settings: Settings) -> FastAPI:
@@ -178,12 +192,15 @@ def create_app(settings: Settings) -> FastAPI:
         # anyone a health check asked to take it gently, is offered only the
         # exercises the team marked beginner-friendly.
         beginner_only = parameters.is_beginner_plan(profile.model_dump())
-        candidates = _candidates(
+        candidates, top_up = _candidates(
             engine(), owned, selected, injury_ids, [], profile.trainingLocation,
             beginner_only,
         )
 
+        # Ranked apart, so a model reordering one list can never move a
+        # body-weight top-up ahead of the user's own equipment.
         ranked = app.state.ranker.rank(candidates)
+        ranked_top_up = app.state.ranker.rank(top_up) if top_up else []
 
         # One session per rotation day, each from that day's muscle pool. The
         # pools within a rotation are disjoint (see app/rules/splits), so an
@@ -194,11 +211,26 @@ def create_app(settings: Settings) -> FastAPI:
         # tolerate having no arms to reserve.
         exercises: List[PlanExercise] = []
         unfillable: List[str] = []
-        for day_index, day in enumerate(split.days, start=1):
-            pool = ranked if not day.muscle_groups else [
-                c for c in ranked if c.muscle_group in day.muscle_groups
+        def in_day(day, candidates_list):
+            return candidates_list if not day.muscle_groups else [
+                c for c in candidates_list if c.muscle_group in day.muscle_groups
             ]
+
+        for day_index, day in enumerate(split.days, start=1):
+            pool = in_day(day, ranked)
             chosen = selection.select(pool, params.exercise_count)
+            # The body-weight top-up, only for a day the user's own equipment
+            # leaves short of its target. A day that fills from `pool` is
+            # left exactly as it was: appending body weight to every day would
+            # let the round-robin's second pass take a push-up over a dumbbell
+            # owner's third delts exercise. The top-up rows come after the
+            # pool, so within a group their own equipment is still taken
+            # first, and they are only from groups the pool already has --
+            # select() gains depth, never a new group.
+            if len(chosen) < params.exercise_count:
+                extra = in_day(day, ranked_top_up)
+                if extra:
+                    chosen = selection.select(pool + extra, params.exercise_count)
             if not chosen:
                 logger.warning(
                     "split %s day %d (%s) came back empty -- no eligible "

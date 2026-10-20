@@ -283,3 +283,37 @@ def mark(engine, catalogue):
                 )
 
     return mark
+
+
+@pytest.fixture
+def add_exercise(engine, catalogue):
+    """Plant one more live strength exercise in the catalogue fixture.
+
+    Registered in catalogue["exercises"], so the catalogue fixture's cleanup
+    removes it (and its mark) with the rest, and `mark` can re-mark it by
+    name. `priority` None leaves it unmarked.
+    """
+    def add_exercise(name, muscle_group, equipment, priority="alternative",
+                     beginner_friendly=True):
+        with engine.begin() as conn:
+            res = conn.execute(
+                text(
+                    "INSERT INTO exercises (name, muscle_group, body_part, "
+                    "equipment_id, status) VALUES (:n, :mg, 'fixture', :eq, 'live')"
+                ),
+                {"n": name, "mg": muscle_group,
+                 "eq": catalogue["equipment"][equipment]},
+            )
+            catalogue["exercises"][name] = res.lastrowid
+            if priority is not None:
+                conn.execute(
+                    text(
+                        "INSERT INTO exercise_preferences "
+                        "(exercise_id, priority, beginner_friendly) "
+                        "VALUES (:x, :p, :b)"
+                    ),
+                    {"x": res.lastrowid, "p": priority, "b": beginner_friendly},
+                )
+        return catalogue["exercises"][name]
+
+    return add_exercise

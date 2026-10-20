@@ -269,12 +269,13 @@ def test_a_plan_uses_the_equipment_the_user_selected(client, catalogue):
     # so it wins the bucket on id order alone; the dumbbell fly wins only if the
     # user's selection is what decides.
     assert "fixture dumbbell fly" in names, names
-    # Both are pectorals. Ranking the fly above the push-up was the old rule
-    # and was not enough: the round-robin reaches depth 2 in this short
-    # fixture and took the push-up as a second pectorals exercise anyway. A
-    # group the user's own equipment can train no longer offers body weight at
-    # all.
-    assert "fixture push-up" not in names, names
+    # Both are pectorals. This fixture cannot fill a six-exercise day from
+    # dumbbells (five rows in all), so the push-up may come back as the
+    # body-weight top-up -- but only after the fly, never in its place. That a
+    # day the dumbbells CAN fill gets no push-up at all is pinned by
+    # test_a_day_the_users_equipment_fills_holds_no_body_weight below.
+    if "fixture push-up" in names:
+        assert names.index("fixture dumbbell fly") < names.index("fixture push-up"), names
 
 
 def test_selecting_nothing_still_produces_a_body_weight_plan(client, catalogue):
@@ -308,6 +309,104 @@ def test_body_weight_still_fills_a_group_the_user_cannot_train(client, catalogue
     assert any(n in ("fixture squat", "fixture quad stretch") for n in names), (
         f"quads has no dumbbell option at all and must not be dropped: {names}"
     )
+
+
+@pytest.mark.parametrize("level", ["beginner", "intermediate"])
+def test_a_short_day_is_topped_up_with_body_weight_that_follows_the_marks(
+    client, catalogue, add_exercise, level
+):
+    """The user's own equipment first; body weight fills what it leaves short.
+
+    A dumbbell owner's dumbbells cover pectorals with one row here, so an
+    eight-exercise day comes back short. Body-weight pectorals rows fill the
+    gap -- after the fly, and only the ones the team's marks allow: never a
+    search_only or never row, and for a beginner only beginner-friendly ones.
+    """
+    add_exercise("fixture knee push-up", "pectorals", "body weight")
+    add_exercise("fixture diamond push-up", "pectorals", "body weight",
+                 beginner_friendly=False)
+    add_exercise("fixture clap push-up", "pectorals", "body weight",
+                 priority="search_only")
+    add_exercise("fixture archer push-up", "pectorals", "body weight",
+                 priority="never")
+    eq = catalogue["equipment"]
+    plan = post_plan(
+        client,
+        mainGoal="build_muscle",
+        fitnessLevel=level,
+        equipment=[{"equipmentId": eq["dumbbell"], "name": "Dumbbells"}],
+        overrides={"sessionLengthMin": 60},
+    )
+    names = [e["name"] for e in plan["exercises"]]
+
+    topped_up = {"fixture push-up", "fixture knee push-up"}
+    if level == "intermediate":
+        topped_up.add("fixture diamond push-up")
+    body_weight_pectorals = {
+        n for n in names
+        if n in ("fixture push-up", "fixture knee push-up",
+                 "fixture diamond push-up", "fixture clap push-up",
+                 "fixture archer push-up")
+    }
+    assert body_weight_pectorals == topped_up, names
+    # Within the group the user's own equipment is still taken first.
+    assert all(names.index("fixture dumbbell fly") < names.index(n)
+               for n in topped_up), names
+
+
+def test_a_day_the_users_equipment_fills_holds_no_body_weight(
+    client, catalogue, add_exercise
+):
+    """A day the dumbbells can fill is exactly what it was before the top-up.
+
+    Push for a dumbbell owner: one pectorals row, four delts, one triceps --
+    six, a full beginner day. Were body weight merely appended to every day's
+    pool, the round-robin would reach pectorals a second time and take the
+    push-up over the third delts row: the "dumbbell owner gets push-ups"
+    plan, back again.
+    """
+    for name in ("fixture dumbbell shoulder press", "fixture dumbbell lateral raise",
+                 "fixture dumbbell front raise", "fixture dumbbell rear fly"):
+        add_exercise(name, "delts", "dumbbell")
+    add_exercise("fixture dumbbell kickback", "triceps", "dumbbell")
+    add_exercise("fixture pike push-up", "delts", "body weight")
+    eq = catalogue["equipment"]
+    plan = post_plan(
+        client,
+        mainGoal="build_muscle",
+        equipment=[{"equipmentId": eq["dumbbell"], "name": "Dumbbells"}],
+        overrides={"splitStyle": "push_pull_legs"},
+    )
+    push = [e["name"] for e in plan["exercises"] if e["dayNo"] == 1]
+    assert push == [
+        "fixture dumbbell fly",
+        "fixture dumbbell shoulder press",
+        "fixture dumbbell lateral raise",
+        "fixture dumbbell front raise",
+        "fixture dumbbell rear fly",
+        "fixture dumbbell kickback",
+    ], push
+
+
+@pytest.mark.parametrize("equipment", [
+    pytest.param([], id="nothing selected"),
+    pytest.param(["body weight"], id="body weight selected"),
+])
+def test_a_body_weight_only_plan_is_unchanged_by_the_top_up(
+    client, catalogue, add_exercise, equipment
+):
+    # Body weight is already the whole pool here: nothing to top up with.
+    add_exercise("fixture knee push-up", "pectorals", "body weight")
+    eq = catalogue["equipment"]
+    plan = post_plan(
+        client,
+        mainGoal="build_muscle",
+        equipment=[{"equipmentId": eq[n], "name": n} for n in equipment],
+    )
+    assert [e["name"] for e in plan["exercises"]] == [
+        "fixture squat", "fixture push-up", "fixture glute bridge",
+        "fixture inverted row", "fixture knee push-up",
+    ]
 
 
 def test_a_plan_with_no_overrides_is_one_day(client):
@@ -530,8 +629,8 @@ def test_training_location_reaches_the_candidate_order(settings, engine, catalog
 
     eq = catalogue["equipment"]
     owned = [eq["body weight"], eq["dumbbell"], eq["machines"]]
-    gym = _candidates(engine, owned, owned, [], [], "commercial_gym")
-    home = _candidates(engine, owned, owned, [], [], "home_gym")
+    gym, _ = _candidates(engine, owned, owned, [], [], "commercial_gym")
+    home, _ = _candidates(engine, owned, owned, [], [], "home_gym")
     assert gym[0].name == "fixture cable row"
     assert home[-1].name == "fixture cable row"
 
