@@ -68,6 +68,13 @@ def _nearest_session_length(requested: int) -> int:
     return min(EXERCISES_BY_SESSION, key=lambda known: (abs(known - requested), known))
 
 
+def is_beginner_plan(profile: Mapping[str, Any]) -> bool:
+    """Planned as a beginner: New to training, Beginner, a skipped level, or
+    a health check asking for a gentler plan. Shared by derive() (volume)
+    and the candidate query (beginner-friendly exercises only)."""
+    return profile.get("fitnessLevel") != "intermediate" or bool(profile.get("healthCaution"))
+
+
 def derive(profile: Mapping[str, Any],
            overrides: Optional[Mapping[str, Any]] = None) -> PlanParameters:
     overrides = overrides or {}
@@ -81,7 +88,7 @@ def derive(profile: Mapping[str, Any],
     # (missing) level is planned as a beginner too: the full intermediate
     # volume is the most demanding plan, the wrong default for someone who
     # did not say. The column holds only new/beginner/intermediate.
-    is_beginner = level != "intermediate" or is_new
+    is_beginner = is_beginner_plan(profile)
 
     goal = profile.get("mainGoal")
     session = LONG_SESSION_MIN if goal in LONG_SESSION_GOALS else SHORT_SESSION_MIN

@@ -67,6 +67,9 @@ class ProfileRequest(BaseModel):
 
 
 class PlanExercise(BaseModel):
+    # The catalogue row this exercise was chosen from. The server saves the
+    # plan by it; the name stays for reading, since two rows can share one.
+    exerciseId: int
     name: str
     # Which rotation day this exercise belongs to, 1-based. Always 1 for a
     # full-body plan, which is every plan onboarding produces.

@@ -1,6 +1,6 @@
 import pytest
 
-from app.rules.parameters import PlanParameters, derive
+from app.rules.parameters import PlanParameters, derive, is_beginner_plan
 
 
 def profile(**overrides):
@@ -242,3 +242,26 @@ def test_no_health_caution_leaves_the_plan_alone():
     params = derive(profile(mainGoal="build_muscle", healthCaution=False))
     assert params.target_sets == 4
     assert params.session_length_min == 60
+
+
+# Beginner mode, shared by derive() (volume) and the candidate query
+# (beginner-friendly exercises only), so the two can never disagree.
+
+def test_an_intermediate_is_not_planned_as_a_beginner():
+    assert is_beginner_plan({"fitnessLevel": "intermediate"}) is False
+
+
+@pytest.mark.parametrize("level", ["beginner", "new"])
+def test_beginner_and_new_to_training_are_planned_as_beginners(level):
+    assert is_beginner_plan({"fitnessLevel": level}) is True
+
+
+@pytest.mark.parametrize("missing", [{}, {"fitnessLevel": None}])
+def test_a_skipped_level_is_a_beginner_plan(missing):
+    assert is_beginner_plan(missing) is True
+
+
+def test_a_health_caution_makes_an_intermediate_a_beginner_plan():
+    assert is_beginner_plan(
+        {"fitnessLevel": "intermediate", "healthCaution": True}
+    ) is True

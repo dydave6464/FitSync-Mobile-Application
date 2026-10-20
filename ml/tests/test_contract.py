@@ -37,6 +37,7 @@ def test_the_response_matches_the_workout_plans_shape(client, catalogue):
     assert isinstance(plan["exercises"], list) and plan["exercises"]
     for exercise in plan["exercises"]:
         assert isinstance(exercise["name"], str)
+        assert isinstance(exercise["exerciseId"], int)
         assert isinstance(exercise["orderNo"], int)
         assert isinstance(exercise["targetSets"], int)
         assert isinstance(exercise["targetReps"], str)
@@ -599,3 +600,90 @@ def test_health_answers_are_not_part_of_the_contract(client):
     extra = post_plan(client, mainGoal="build_muscle",
                       conditions=["asthma"], chestPain=True)
     assert plain == extra
+
+
+# The team's curated marks. The catalogue fixture marks every row an
+# 'alternative' and beginner-friendly; these tests re-mark what they are about.
+
+BEGINNER_PLANS = [
+    pytest.param({}, id="no level"),
+    pytest.param({"fitnessLevel": "new"}, id="new"),
+    pytest.param({"fitnessLevel": "beginner"}, id="beginner"),
+    pytest.param({"fitnessLevel": "intermediate", "healthCaution": True},
+                 id="intermediate with a health caution"),
+]
+
+
+@pytest.mark.parametrize("level", BEGINNER_PLANS)
+def test_a_beginner_plan_holds_only_beginner_friendly_exercises(
+    client, catalogue, mark, level
+):
+    # Traps has no dumbbell exercise, so it is one of the groups the
+    # body-weight fill exists for -- and its only exercise there, the inverted
+    # row, is not beginner-friendly. The group is left out, never filled with
+    # something the team said a beginner should not start on.
+    mark("fixture inverted row", "alternative", beginner_friendly=False)
+    eq = catalogue["equipment"]
+    plan = post_plan(
+        client,
+        mainGoal="build_muscle",
+        equipment=[{"equipmentId": eq["dumbbell"], "name": "Dumbbells"}],
+        **level,
+    )
+    names = [e["name"] for e in plan["exercises"]]
+    assert names, "the rest of the plan must still be there"
+    assert "fixture inverted row" not in names, names
+
+
+def test_an_intermediate_still_gets_exercises_that_are_not_beginner_friendly(
+    client, catalogue, mark
+):
+    # The other half of the test above: the same profile without beginner
+    # mode keeps the traps exercise, so the filter is what removed it.
+    mark("fixture inverted row", "alternative", beginner_friendly=False)
+    eq = catalogue["equipment"]
+    plan = post_plan(
+        client,
+        mainGoal="build_muscle",
+        fitnessLevel="intermediate",
+        equipment=[{"equipmentId": eq["dumbbell"], "name": "Dumbbells"}],
+    )
+    assert "fixture inverted row" in [e["name"] for e in plan["exercises"]]
+
+
+@pytest.mark.parametrize("beginner_friendly", [True, False])
+def test_an_intermediate_gets_the_first_choice_before_a_lower_id_alternative(
+    client, catalogue, mark, beginner_friendly
+):
+    # Both are dumbbell pectorals exercises. The bench press has the lower
+    # exercise_id and won on id alone; the fly is the team's first choice, and
+    # its beginner mark makes no difference to an intermediate.
+    mark("fixture dumbbell fly", "first", beginner_friendly=beginner_friendly)
+    eq = catalogue["equipment"]
+    plan = post_plan(
+        client,
+        mainGoal="build_muscle",
+        fitnessLevel="intermediate",
+        equipment=[{"equipmentId": eq[n], "name": n} for n in ("dumbbell", "bench")],
+    )
+    names = [e["name"] for e in plan["exercises"]]
+    assert names.index("fixture dumbbell fly") < names.index(
+        "fixture dumbbell bench press"
+    ), names
+
+
+def test_every_exercise_carries_the_id_of_the_row_it_was_chosen_from(
+    client, catalogue
+):
+    # The server saves the plan by this id, not by name: two catalogue rows
+    # can share a name, and a name lookup would pick the lower id.
+    eq = catalogue["equipment"]
+    plan = post_plan(
+        client,
+        mainGoal="build_muscle",
+        equipment=[{"equipmentId": eq[n], "name": n} for n in EVERYTHING],
+        overrides={"splitStyle": "push_pull_legs"},
+    )
+    assert plan["exercises"]
+    for exercise in plan["exercises"]:
+        assert exercise["exerciseId"] == catalogue["exercises"][exercise["name"]]

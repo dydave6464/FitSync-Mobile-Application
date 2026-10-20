@@ -1,7 +1,7 @@
 """The only module that opens a database connection.
 
-The account this uses holds SELECT on four reference tables and nothing else
-(see server/MIGRATIONS.md). Keeping connection construction here means the
+The account this uses holds SELECT on the reference tables the generator reads
+and nothing else (see server/MIGRATIONS.md). Keeping connection construction here means the
 read-only boundary has exactly one place to audit.
 """
 from sqlalchemy import create_engine
