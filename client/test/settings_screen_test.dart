@@ -371,13 +371,22 @@ void main() {
     (['build_muscle'], false),
     (['lose_weight'], true),
   ]) {
-    testWidgets('Body metrics ${asked ? 'asks' : 'offers'} goal weight for ${goals.join(' + ')}', (tester) async {
-      await _pump(tester, patches: [], goals: goals);
-      await _openRow(tester, const Key('edit.about'));
+    testWidgets(
+      'Body metrics ${asked ? 'asks' : 'offers'} goal weight for ${goals.join(' + ')}',
+      (tester) async {
+        await _pump(tester, patches: [], goals: goals);
+        await _openRow(tester, const Key('edit.about'));
 
-      expect(find.byKey(const Key('goalWeightKg')), asked ? findsOneWidget : findsNothing);
-      expect(find.byKey(const Key('goalWeight.add')), asked ? findsNothing : findsOneWidget);
-    });
+        expect(
+          find.byKey(const Key('goalWeightKg')),
+          asked ? findsOneWidget : findsNothing,
+        );
+        expect(
+          find.byKey(const Key('goalWeight.add')),
+          asked ? findsNothing : findsOneWidget,
+        );
+      },
+    );
   }
 
   testWidgets('a profile seeded with goals but no focus does not crash Save', (
