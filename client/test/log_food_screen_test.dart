@@ -17,9 +17,16 @@ class _SearchRepo extends FakeNutritionRepository {
   final List<String> queries = [];
   bool unavailable = false;
 
+  /// What a search returns instead of the adobo pair, when a test sets it.
+  List<Food>? results;
+
+  /// What Recents lists instead of Turon, when a test sets it.
+  List<Food>? recents;
+
   @override
   Future<FoodSearchResult> search(String q) async {
     queries.add(q);
+    if (results != null) return FoodSearchResult(fatsecretUnavailable: unavailable, foods: results!);
     return FoodSearchResult(fatsecretUnavailable: unavailable, foods: [
       const Food(source: 'local', id: 6, name: 'Chicken adobo', servingDesc: '1 serving', kcal: 320, proteinG: 28, carbsG: 4, fatG: 21),
       if (!unavailable)
@@ -29,8 +36,23 @@ class _SearchRepo extends FakeNutritionRepository {
 
   @override
   Future<List<Food>> recent() async =>
-      const [Food(source: 'manual', name: 'Turon', kcal: 198, proteinG: 2, carbsG: 34, fatG: 6)];
+      recents ?? const [Food(source: 'manual', name: 'Turon', kcal: 198, proteinG: 2, carbsG: 34, fatG: 6)];
 }
+
+/// "rice" across three of FitSync's food types, then an online food.
+const _mixedRice = [
+  Food(source: 'local', id: 1, name: 'White rice', servingDesc: '1 cup', kcal: 205, proteinG: 4, carbsG: 45, fatG: 0.4, group: 'home'),
+  Food(source: 'local', id: 2, name: 'Garlic fried rice', servingDesc: '1 cup', kcal: 270, proteinG: 5, carbsG: 46, fatG: 7, group: 'home'),
+  Food(source: 'local', id: 3, name: 'Kutsinta', servingDesc: '2 pieces', kcal: 140, proteinG: 1, carbsG: 33, fatG: 0.2, group: 'bread_kakanin'),
+  Food(source: 'local', id: 4, name: 'Jollibee rice meal', servingDesc: '1 meal', kcal: 520, proteinG: 22, carbsG: 70, fatG: 17, group: 'fast_food'),
+  Food(source: 'fatsecret', externalId: 'fs-9', name: 'Rice pilaf', servingDesc: '1 cup', kcal: 240, proteinG: 4, carbsG: 42, fatG: 5),
+];
+
+/// "rice" where every food is home-cooked.
+const _homeRice = [
+  Food(source: 'local', id: 1, name: 'White rice', servingDesc: '1 cup', kcal: 205, proteinG: 4, carbsG: 45, fatG: 0.4, group: 'home'),
+  Food(source: 'local', id: 2, name: 'Garlic fried rice', servingDesc: '1 cup', kcal: 270, proteinG: 5, carbsG: 46, fatG: 7, group: 'home'),
+];
 
 /// A FatSecret detail that loads only when the test says so.
 class _GatedRepo extends _SearchRepo {
@@ -98,6 +120,87 @@ void main() {
     expect(find.text("Some foods couldn't load right now. Try again later."), findsOneWidget);
     expect(find.textContaining('connection'), findsNothing);
     expect(find.text('Powered by fatsecret Platform API'), findsNothing);
+  });
+
+  // Tall enough for every row to be laid out, the last group included.
+  void tallView(WidgetTester tester) {
+    tester.view.physicalSize = const Size(800, 1400);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.reset);
+  }
+
+  Future<void> searchRice(WidgetTester tester) async {
+    await tester.enterText(find.byKey(const Key('food.search')), 'rice');
+    await tester.pump(const Duration(milliseconds: 300));
+    await tester.pumpAndSettle();
+  }
+
+  // Quiet headings make the variety easy to scan; a FatSecret food falls
+  // under "More foods", which names no source.
+  testWidgets('results from two or more groups get a heading above each group', (tester) async {
+    tallView(tester);
+    await _pump(tester, _SearchRepo()..results = _mixedRice);
+    await searchRice(tester);
+    expect(find.text('HOME-COOKED'), findsOneWidget);
+    expect(find.text('BREADS & KAKANIN'), findsOneWidget);
+    expect(find.text('FAST FOOD'), findsOneWidget);
+    expect(find.text('MORE FOODS'), findsOneWidget);
+    // In order, each heading above its first food, the server's order kept.
+    double y(String s) => tester.getTopLeft(find.text(s)).dy;
+    expect(y('HOME-COOKED') < y('White rice'), isTrue);
+    expect(y('White rice') < y('Garlic fried rice'), isTrue);
+    expect(y('Garlic fried rice') < y('BREADS & KAKANIN'), isTrue);
+    expect(y('BREADS & KAKANIN') < y('Kutsinta'), isTrue);
+    expect(y('Kutsinta') < y('FAST FOOD'), isTrue);
+    expect(y('FAST FOOD') < y('Jollibee rice meal'), isTrue);
+    expect(y('Jollibee rice meal') < y('MORE FOODS'), isTrue);
+    expect(y('MORE FOODS') < y('Rice pilaf'), isTrue);
+  });
+
+  testWidgets('results from one group get no heading', (tester) async {
+    await _pump(tester, _SearchRepo()..results = _homeRice);
+    await searchRice(tester);
+    expect(find.text('White rice'), findsOneWidget);
+    expect(find.text('HOME-COOKED'), findsNothing);
+  });
+
+  testWidgets('a screen reader hears each group heading as a heading', (tester) async {
+    tallView(tester);
+    final handle = tester.ensureSemantics();
+    await _pump(tester, _SearchRepo()..results = _mixedRice);
+    await searchRice(tester);
+    expect(tester.getSemantics(find.text('HOME-COOKED')), matchesSemantics(label: 'HOME-COOKED', isHeader: true));
+    expect(tester.getSemantics(find.text('MORE FOODS')), matchesSemantics(label: 'MORE FOODS', isHeader: true));
+    handle.dispose();
+  });
+
+  testWidgets('Recents never shows headings', (tester) async {
+    await _pump(tester, _SearchRepo()..recents = _mixedRice);
+    await tester.tap(find.text('Recents'));
+    await tester.pumpAndSettle();
+    expect(find.text('White rice'), findsOneWidget);
+    expect(find.text('HOME-COOKED'), findsNothing);
+    expect(find.text('MORE FOODS'), findsNothing);
+  });
+
+  testWidgets('headings and foods fit a 320 dp phone at 2x text', (tester) async {
+    tester.view.physicalSize = const Size(320, 640);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.reset);
+    await tester.pumpWidget(ProviderScope(
+      overrides: [nutritionRepositoryProvider.overrideWithValue(_SearchRepo()..results = _mixedRice)],
+      child: MaterialApp(
+        builder: (context, child) => MediaQuery(
+          data: MediaQuery.of(context).copyWith(textScaler: const TextScaler.linear(2.0)),
+          child: child!,
+        ),
+        home: const LogFoodScreen(mealType: 'lunch'),
+      ),
+    ));
+    await tester.pumpAndSettle();
+    await searchRice(tester);
+    expect(tester.takeException(), isNull);
+    expect(find.text('HOME-COOKED'), findsOneWidget);
   });
 
   testWidgets('Recents lists recent foods', (tester) async {

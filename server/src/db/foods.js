@@ -1,5 +1,9 @@
 'use strict';
 
+/// FitSync's food types, in search order: what people eat at home first,
+/// fast food, snacks and sauces near the end. Matches migration 038's ENUM.
+const FOOD_TYPES = ['home', 'fruit_veg', 'bread_kakanin', 'canned_instant', 'drink', 'street', 'snack_sweet', 'fast_food', 'condiment'];
+
 const round2 = (n) => Math.round(Number(n) * 100) / 100;
 const nullable2 = (n) => (n == null ? null : round2(n));
 const nullable1 = (n) => (n == null ? null : Math.round(Number(n) * 10) / 10);
@@ -17,11 +21,12 @@ function asFood(r) {
     sugarG: nullable2(r.sugar_g),
     sodiumMg: nullable1(r.sodium_mg),
     externalId: r.external_id || null,
+    group: r.food_type ?? null,
   };
 }
 
 const SELECT_FOOD = `
-  SELECT f.food_id, f.name, f.serving_desc, f.calories, f.protein_g, f.carbs_g, f.fat_g, f.fiber_g, f.sugar_g, f.sodium_mg, s.external_id
+  SELECT f.food_id, f.name, f.serving_desc, f.calories, f.protein_g, f.carbs_g, f.fat_g, f.fiber_g, f.sugar_g, f.sodium_mg, f.food_type, s.external_id
     FROM foods f LEFT JOIN food_sources s ON s.food_id = f.food_id
 `;
 
@@ -30,16 +35,20 @@ async function findFood(pool, foodId) {
   return rows.length ? asFood(rows[0]) : null;
 }
 
-/// FitSync's own foods (never FatSecret copies) whose name contains [q];
-/// names starting with it first. LIKE wildcards in [q] are escaped.
-async function searchOwnFoods(pool, q, limit = 20) {
+/// FitSync's own foods (never FatSecret copies) matching [q]: by type
+/// (FOOD_TYPES order, untyped last), Filipino before international, names
+/// starting with [q], then the food list's own everyday-first order. LIKE
+/// wildcards in [q] are escaped.
+async function searchOwnFoods(pool, q, limit = 30) {
   const esc = q.replace(/[\\%_]/g, (c) => `\\${c}`);
   const [rows] = await pool.query(
     `${SELECT_FOOD}
       WHERE s.food_id IS NULL AND f.name LIKE ?
-      ORDER BY (f.name LIKE ?) DESC, f.name
+      ORDER BY f.food_type IS NULL, FIELD(f.food_type, ${FOOD_TYPES.map(() => '?').join(', ')}),
+               f.category = 'international', (f.name LIKE ?) DESC,
+               f.list_order IS NULL, f.list_order, f.name
       LIMIT ?`,
-    [`%${esc}%`, `${esc}%`, limit],
+    [`%${esc}%`, ...FOOD_TYPES, `${esc}%`, limit],
   );
   return rows.map(asFood);
 }
@@ -98,4 +107,4 @@ async function upsertFatsecretFood(pool, food, retry = true) {
   }
 }
 
-module.exports = { findFood, searchOwnFoods, upsertFatsecretFood, asFood };
+module.exports = { FOOD_TYPES, findFood, searchOwnFoods, upsertFatsecretFood, asFood };
