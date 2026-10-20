@@ -77,10 +77,7 @@ class _LogFoodScreenState extends ConsumerState<LogFoodScreen> {
       try {
         food = await ref.read(nutritionRepositoryProvider).fatsecretFood(listed.externalId!);
       } catch (_) {
-        if (mounted) {
-          ScaffoldMessenger.of(context)
-              .showSnackBar(const SnackBar(content: Text("Couldn't load this food. Try again.")));
-        }
+        if (mounted) showErrorSnackBar(ScaffoldMessenger.of(context), "Couldn't load this food. Try again.");
         return;
       } finally {
         if (mounted) setState(() => _loadingFood = false);
