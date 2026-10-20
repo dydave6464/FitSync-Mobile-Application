@@ -187,6 +187,7 @@ class _LogFoodScreenState extends ConsumerState<LogFoodScreen> {
       data: (r) => _FoodList(
         foods: r.foods,
         onTap: _choose,
+        grouped: true,
         // The phone reached the server, so its connection isn't the problem.
         note: r.fatsecretUnavailable ? "Some foods couldn't load right now. Try again later." : null,
         empty: 'No foods match "$_query". Try another word, or add it manually.',
@@ -349,18 +350,24 @@ class _Hint extends StatelessWidget {
 }
 
 class _FoodList extends StatelessWidget {
-  const _FoodList({required this.foods, required this.onTap, required this.empty, this.note});
+  const _FoodList({required this.foods, required this.onTap, required this.empty, this.note, this.grouped = false});
 
   final List<Food> foods;
   final ValueChanged<Food> onTap;
   final String empty;
   final String? note;
 
+  /// Search results, headed by food type. Recents keep recency order, unheaded.
+  final bool grouped;
+
   @override
   Widget build(BuildContext context) {
     final t = context.fs;
     if (foods.isEmpty) return _Hint(note == null ? empty : '$note $empty');
     final anyFatsecret = foods.any((f) => f.isFatsecret);
+    final labels = [for (final f in foods) foodGroupLabel(f)];
+    // Headings only when they help: one group needs no heading.
+    final headed = grouped && labels.toSet().length > 1;
     return ListView(
       padding: const EdgeInsets.fromLTRB(20, 12, 20, 12),
       children: [
@@ -369,20 +376,26 @@ class _FoodList extends StatelessWidget {
             padding: const EdgeInsets.only(bottom: 8),
             child: Text(note!, style: TextStyle(color: t.text3, fontSize: 12)),
           ),
-        for (final f in foods)
+        for (var i = 0; i < foods.length; i++) ...[
+          if (headed && (i == 0 || labels[i] != labels[i - 1]))
+            Padding(
+              padding: EdgeInsets.only(top: i == 0 ? 0 : 16, bottom: 4),
+              child: Semantics(header: true, child: FsEyebrow(labels[i], maxLines: 3)),
+            ),
           ListTile(
             contentPadding: EdgeInsets.zero,
-            onTap: () => onTap(f),
-            title: Text(f.name),
+            onTap: () => onTap(foods[i]),
+            title: Text(foods[i].name),
             subtitle: Wrap(
               spacing: 8,
               crossAxisAlignment: WrapCrossAlignment.center,
               children: [
-                if (f.servingDesc != null) Text(f.servingDesc!),
+                if (foods[i].servingDesc != null) Text(foods[i].servingDesc!),
               ],
             ),
-            trailing: Text('${f.kcal} kcal'),
+            trailing: Text('${foods[i].kcal} kcal'),
           ),
+        ],
         if (anyFatsecret) const FatsecretAttribution(),
       ],
     );

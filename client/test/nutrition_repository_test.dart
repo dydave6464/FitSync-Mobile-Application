@@ -132,6 +132,16 @@ void main() {
     expect((await repo.recent()).single.name, 'Mango Shake');
   });
 
+  test("search reads each food's group, and none where the server sends none", () async {
+    final repo = _repo(MockClient((r) async => _ok({'foods': [
+      {..._food, 'source': 'local', 'id': 1, 'externalId': null, 'name': 'White rice', 'group': 'home'},
+      _food,
+    ], 'fatsecretUnavailable': false})));
+    final found = await repo.search('rice');
+    expect(found.foods.first.group, 'home');
+    expect(found.foods.last.group, isNull);
+  });
+
   test('getDay parses fiberG on an entry, the totals and the target', () async {
     final repo = _repo(MockClient((r) async {
       return _ok({'day': {
