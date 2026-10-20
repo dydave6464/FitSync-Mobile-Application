@@ -80,7 +80,9 @@ enum GeneratingPace {
 ///   kind of endless movement the setting asks to be spared; and
 /// * no row ticks before the work it describes has finished. The prototype
 ///   ticks three rows on a schedule and hardcodes "Avoiding lower-back load"
-///   for a user whose injuries it cannot know.
+///   for a user whose injuries it cannot know. This row names the user's own
+///   injuries and says "Working around": the plan is built around them, not
+///   without the body part.
 ///
 /// The schedule is pacing, not progress — see [GeneratingPace].
 ///
@@ -221,7 +223,7 @@ class _GeneratingViewState extends State<GeneratingView> {
                       id: 'avoiding',
                       label: avoiding.isEmpty
                           ? 'No injuries to work around'
-                          : 'Avoiding ${avoiding.join(', ')}',
+                          : 'Working around ${avoiding.join(', ')}',
                       done: widget.leadDone && _open > 1,
                     ),
                     _CheckRow(

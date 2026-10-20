@@ -1104,7 +1104,7 @@ void main() {
 
     // Resolved from injuryOptionsProvider — SelectedInjury carries only an id,
     // so a flow that forgot to look the name up would render an id or nothing.
-    expect(find.text('Avoiding Shoulder'), findsOneWidget);
+    expect(find.text('Working around Shoulder'), findsOneWidget);
 
     gate.complete();
     await tester.pumpAndSettle();

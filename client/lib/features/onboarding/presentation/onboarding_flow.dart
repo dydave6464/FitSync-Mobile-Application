@@ -186,7 +186,7 @@ class _OnboardingFlowState extends ConsumerState<OnboardingFlow> {
       // only when that step's own Continue already ran setInjuries: Skip on
       // that step advances without saving anything, so this is the only
       // write a pick made there and then skipped past would ever get. The
-      // generating screen's "Avoiding …" line already reads from local
+      // generating screen's "Working around …" line already reads from local
       // state regardless, so this only affects what reaches the server.
       await notifier.setInjuries(_injuries);
       // Everything the user answered is now on the server, which is what the

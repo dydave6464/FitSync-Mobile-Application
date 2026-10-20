@@ -76,7 +76,7 @@ class FakePlanRepository implements PlanRepository {
   Future<WorkoutPlan> regenerate({
     required String splitStyle,
     required int daysPerWeek,
-    required int sessionLengthMin,
+    int? sessionLengthMin,
     bool replaceCustomPlan = false,
   }) async {
     regenerateCalls += 1;
@@ -84,7 +84,7 @@ class FakePlanRepository implements PlanRepository {
     sent = {
       'splitStyle': splitStyle,
       'daysPerWeek': daysPerWeek,
-      'sessionLengthMin': sessionLengthMin,
+      'sessionLengthMin': ?sessionLengthMin,
     };
     if (refuseCustomPlan && !replaceCustomPlan) {
       throw const ApiException('CUSTOM_PLAN_WOULD_BE_LOST', _customPlanMessage);
@@ -287,7 +287,6 @@ void main() {
     final screen = tester.state(find.byType(GeneratorScreen)) as dynamic;
     expect(screen.debugSplitStyle, 'push_pull_legs');
     expect(screen.debugDaysPerWeek, 4);
-    expect(screen.debugSessionLengthMin, 60);
 
     // The debug getters can agree with the plan while the rendered controls
     // still show something else entirely -- these assert what a user would
@@ -306,7 +305,6 @@ void main() {
     final screen = tester.state(find.byType(GeneratorScreen)) as dynamic;
     expect(screen.debugSplitStyle, 'full_body');
     expect(screen.debugDaysPerWeek, 3);
-    expect(screen.debugSessionLengthMin, 45);
 
     expect(
       find.descendant(
@@ -359,19 +357,19 @@ void main() {
   });
 
   testWidgets(
-    'with no plan the derived session length still reaches the payload',
+    'a new plan does not carry the old plan\'s session length',
     (tester) async {
-      // Length is no longer shown, so the only place it can be observed is the
-      // request. It still has to be RESOLVED and SENT: omitting sessionLengthMin
-      // hands the service's own `overrides.sessionLengthMin || 45` whatever it
-      // likes, and a 60-minute plan would come back silently shortened.
+      // The generator derives the length from today's level, goal and health
+      // check. Sending the current plan's 60 would pin it there, so a user who
+      // moved up from New to training, or added a condition, kept the old one.
       final repo = FakePlanRepository();
-      await _pump(tester, plan: null, repo: repo);
+      await _pump(tester, plan: _pplPlan, repo: repo);
 
       await tester.tap(find.byKey(const Key('gen.generate')));
       await tester.pumpAndSettle();
 
-      expect(repo.sent!['sessionLengthMin'], 45);
+      expect(repo.regenerateCalls, 1);
+      expect(repo.sent!.containsKey('sessionLengthMin'), isFalse);
     },
   );
 
@@ -600,7 +598,7 @@ void main() {
       reason: 'the split is the plan\'s, not a default',
     );
     expect(find.text('Push / Pull / Legs, Tue · Thu'), findsOneWidget);
-    expect(find.text('Avoiding Knee (right)'), findsOneWidget);
+    expect(find.text('Working around Knee (right)'), findsOneWidget);
 
     await tester.pumpAndSettle();
   });
@@ -763,7 +761,6 @@ void main() {
     expect(repo.sent, {
       'splitStyle': 'upper_lower',
       'daysPerWeek': 5,
-      'sessionLengthMin': 60,
     });
   });
 
@@ -1379,9 +1376,8 @@ void main() {
 
   testWidgets('the screen does not state a session length', (tester) async {
     // The service derives length from goal and fitness level; this screen
-    // cannot change it and showing it only invited the question. It is still
-    // resolved and still sent -- dropping it from the payload would hand the
-    // service's own 45-minute default a 60-minute plan and shorten it.
+    // cannot change it and showing it only invited the question. Nor is it
+    // sent: the generator works it out afresh for each new plan.
     await _pump(tester, plan: _pplPlan);
 
     expect(find.byKey(const Key('gen.length.value')), findsNothing);
@@ -1413,7 +1409,9 @@ void main() {
       ],
     );
 
-    expect(find.text('Avoiding: Knee (right)'), findsOneWidget);
+    expect(find.text('Working around: Knee (right)'), findsOneWidget);
+    // The plan is built around the injury, not without the body part.
+    expect(find.textContaining('Avoiding'), findsNothing);
   });
 
   testWidgets('a non-lateral injury carries no side', (tester) async {
@@ -1444,7 +1442,7 @@ void main() {
   });
 
   testWidgets('with no injuries the card is absent', (tester) async {
-    // An "Avoiding: nothing" card is noise on a screen that already has
+    // A "Working around: nothing" card is noise on a screen that already has
     // three controls competing for attention.
     await _pump(tester, plan: _pplPlan, injuries: const []);
 
@@ -1483,7 +1481,7 @@ void main() {
       // catalogue gave it: lowercasing it renders "si joint" beside a
       // non-lateral "Lower back" that kept its own capital, inconsistent
       // inside a single sentence.
-      expect(find.text('Avoiding: SI joint (left)'), findsOneWidget);
+      expect(find.text('Working around: SI joint (left)'), findsOneWidget);
     },
   );
 
@@ -1504,7 +1502,7 @@ void main() {
       ],
     );
 
-    expect(find.text('Avoiding: Shoulder (both sides)'), findsOneWidget);
+    expect(find.text('Working around: Shoulder (both sides)'), findsOneWidget);
   });
 
   testWidgets('an unrecognised side degrades to the bare name', (tester) async {
@@ -1527,6 +1525,6 @@ void main() {
       ],
     );
 
-    expect(find.text('Avoiding: Shoulder'), findsOneWidget);
+    expect(find.text('Working around: Shoulder'), findsOneWidget);
   });
 }

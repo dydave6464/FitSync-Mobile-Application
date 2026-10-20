@@ -50,7 +50,8 @@ void main() {
     // The mockup hardcodes "Avoiding lower-back load". Reading the user's own
     // reported injuries back to them is the whole point of the row — a
     // regression to fixed copy would pass a findsOneWidget on any text.
-    expect(find.text('Avoiding Lower back, Right knee'), findsOneWidget);
+    expect(find.text('Working around Lower back, Right knee'), findsOneWidget);
+    expect(find.textContaining('Avoiding'), findsNothing);
     await _close(tester);
   });
 
@@ -277,7 +278,7 @@ void main() {
       ),
     );
 
-    expect(find.text('Avoiding Knee (right)'), findsOneWidget);
+    expect(find.text('Working around Knee (right)'), findsOneWidget);
     await _close(tester);
   });
 

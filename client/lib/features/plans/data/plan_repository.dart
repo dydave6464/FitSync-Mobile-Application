@@ -52,16 +52,19 @@ class PlanRepository {
   /// The three overrides are all this endpoint takes: goals, injuries,
   /// equipment and level are read from the profile server-side, which is what
   /// stops a client generating against someone else's.
+  ///
+  /// [sessionLengthMin] is omitted from the body when null, and the generator
+  /// then derives the length from the user's level, goal and health check.
   Future<WorkoutPlan> regenerate({
     required String splitStyle,
     required int daysPerWeek,
-    required int sessionLengthMin,
+    int? sessionLengthMin,
     bool replaceCustomPlan = false,
   }) async {
     final data = await _api.postJson('/api/v1/plans/regenerate', {
       'splitStyle': splitStyle,
       'daysPerWeek': daysPerWeek,
-      'sessionLengthMin': sessionLengthMin,
+      'sessionLengthMin': ?sessionLengthMin,
       // Sent only when the user has actually answered the question. Sending it
       // unasked would defeat the server's guard for every caller at once.
       if (replaceCustomPlan) 'replaceCustomPlan': true,
