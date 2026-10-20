@@ -66,8 +66,9 @@ def _rank(muscle_group: str) -> int:
 
 def select(candidates: Sequence[Candidate], count: int) -> List[Candidate]:
     # The caller's order is the ranker's preference when a model is loaded. With
-    # no model, fetch_candidates already returns exercise_id-ascending, so this
-    # is exactly the old lowest-id tiebreak and determinism is unchanged.
+    # no model it is fetch_candidates' order -- the team's priority, then the
+    # equipment and location tiers, then exercise_id -- so determinism is
+    # unchanged.
     order = {c.exercise_id: index for index, c in enumerate(candidates)}
 
     by_group: Dict[str, List[Candidate]] = {}

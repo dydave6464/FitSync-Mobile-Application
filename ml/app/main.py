@@ -1,8 +1,9 @@
 """FastAPI application for the FitSync ML service.
 
 Node calls this service; it never calls Node. Every user field arrives in the
-request body -- this process holds a read-only grant on four reference tables
-and reads no user row at request time. See the design, section 3.
+request body -- this process holds a read-only grant on the reference tables
+it reads (server/MIGRATIONS.md) and reads no user row at request time. See
+the design, section 3.
 """
 import logging
 import os
@@ -60,7 +61,8 @@ def _plan_name(profile: ProfileRequest, split: Split) -> str:
     return "{} — {}".format(split_label(split), label)
 
 
-def _candidates(engine, owned, selected, injury_ids, excluded, training_location=None):
+def _candidates(engine, owned, selected, injury_ids, excluded, training_location=None,
+                beginner_only=False):
     """Candidates with body weight confined to groups the user cannot train.
 
     `owned` is what is ELIGIBLE and already includes the implicit body weight;
@@ -75,15 +77,21 @@ def _candidates(engine, owned, selected, injury_ids, excluded, training_location
     abductors, adductors, spine, levator scapulae -- have no dumbbell exercise
     at all, and dropping them outright would quietly shrink the plan rather
     than fill those slots honestly.
+
+    `beginner_only` reaches both queries, so the body-weight fill is
+    beginner-friendly too: a group with no beginner-friendly exercise is left
+    out rather than filled with one the team ruled out for a beginner.
     """
     everything = fetch_candidates(
-        engine, owned, injury_ids, excluded, selected, training_location
+        engine, owned, injury_ids, excluded, selected, training_location,
+        beginner_only,
     )
     if not selected:
         return everything
 
     strict = fetch_candidates(
-        engine, selected, injury_ids, excluded, selected, training_location
+        engine, selected, injury_ids, excluded, selected, training_location,
+        beginner_only,
     )
     covered = {c.muscle_group for c in strict}
     return strict + [c for c in everything if c.muscle_group not in covered]
@@ -165,8 +173,14 @@ def create_app(settings: Settings) -> FastAPI:
         # every Legs exercise. The exercises it keeps now carry AI cues written
         # for the injury (server/src/db/cue-gate.js), so the area is coached,
         # not dropped.
+        #
+        # The same beginner rule derive() used for the volume: a beginner, or
+        # anyone a health check asked to take it gently, is offered only the
+        # exercises the team marked beginner-friendly.
+        beginner_only = parameters.is_beginner_plan(profile.model_dump())
         candidates = _candidates(
             engine(), owned, selected, injury_ids, [], profile.trainingLocation,
+            beginner_only,
         )
 
         ranked = app.state.ranker.rank(candidates)
@@ -194,6 +208,7 @@ def create_app(settings: Settings) -> FastAPI:
                 unfillable.append("day {} ({})".format(day_index, day.name))
             exercises.extend(
                 PlanExercise(
+                    exerciseId=candidate.exercise_id,
                     name=candidate.name,
                     dayNo=day_index,
                     # Restarts at 1 on each day: order_no is position WITHIN a

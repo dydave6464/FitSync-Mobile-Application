@@ -207,3 +207,101 @@ def test_selected_equipment_still_outranks_location(engine, catalogue):
         fetch_candidates(engine, owned, [], [], [eq["dumbbell"]], "commercial_gym")
     )
     assert result[0] == "fixture dumbbell curl"
+
+
+# The team's curated marks (exercise_preferences). The catalogue fixture marks
+# every row 'alternative' and beginner-friendly; each test below re-marks only
+# what it is about through the `mark` fixture.
+#
+# Body weight alone reaches four fixture rows, in exercise_id order:
+# push-up, squat, inverted row, glute bridge.
+
+
+def test_search_only_and_never_are_never_offered(engine, catalogue, mark):
+    mark("fixture push-up", "search_only", beginner_friendly=True)
+    mark("fixture squat", "never", beginner_friendly=True)
+    eq = catalogue["equipment"]
+    result = names(fetch_candidates(engine, [eq["body weight"]], [], []))
+    assert result == ["fixture glute bridge", "fixture inverted row"]
+
+
+def test_a_beginner_is_offered_only_beginner_friendly_rows(engine, catalogue, mark):
+    mark("fixture push-up", "alternative", beginner_friendly=False)
+    mark("fixture squat", None)  # unmarked: nobody has said it suits a beginner
+    eq = catalogue["equipment"]
+    beginner = fetch_candidates(engine, [eq["body weight"]], [], [], beginner_only=True)
+    assert names(beginner) == ["fixture glute bridge", "fixture inverted row"]
+
+    everyone = fetch_candidates(engine, [eq["body weight"]], [], [])
+    assert names(everyone) == [
+        "fixture glute bridge", "fixture inverted row",
+        "fixture push-up", "fixture squat",
+    ]
+
+
+def test_first_then_alternative_then_unmarked(engine, catalogue, mark):
+    # Against exercise_id both ways: the highest-id row is the first choice and
+    # the lowest-id row is unmarked.
+    mark("fixture glute bridge", "first")
+    mark("fixture push-up", None)
+    eq = catalogue["equipment"]
+    result = ordered(fetch_candidates(engine, [eq["body weight"]], [], []))
+    assert result == [
+        "fixture glute bridge",   # first
+        "fixture squat",          # alternative, lower id
+        "fixture inverted row",   # alternative
+        "fixture push-up",        # unmarked
+    ]
+
+
+def test_a_higher_id_first_beats_a_lower_id_alternative(engine, catalogue, mark):
+    mark("fixture inverted row", "first")
+    eq = catalogue["equipment"]
+    result = ordered(fetch_candidates(engine, [eq["body weight"]], [], []))
+    assert result.index("fixture inverted row") < result.index("fixture push-up")
+
+
+def test_priority_comes_before_the_selected_equipment(engine, catalogue, mark):
+    # Push-up and fly are both first choices: inside that priority the
+    # dumbbell the user ticked still wins, though push-up has the lower id.
+    # The curl is only an alternative, so it follows the body-weight push-up
+    # even though its equipment was selected.
+    mark("fixture push-up", "first")
+    mark("fixture dumbbell fly", "first")
+    eq = catalogue["equipment"]
+    owned = [eq["body weight"], eq["dumbbell"]]
+    result = ordered(fetch_candidates(engine, owned, [], [], [eq["dumbbell"]]))
+    assert result[:2] == ["fixture dumbbell fly", "fixture push-up"]
+    assert result[2] == "fixture dumbbell curl"
+
+
+def test_priority_comes_before_the_location(engine, catalogue, mark):
+    # At a gym machines lead -- but only among rows of the same priority.
+    mark("fixture push-up", "first")
+    eq = catalogue["equipment"]
+    owned = [eq["body weight"], eq["dumbbell"], eq["machines"]]
+    result = ordered(
+        fetch_candidates(engine, owned, [], [], owned, "commercial_gym")
+    )
+    assert result[:2] == ["fixture push-up", "fixture cable row"]
+
+
+@pytest.mark.parametrize(
+    "kit",
+    [
+        ("body weight",),
+        ("body weight", "dumbbell"),
+        ("dumbbell",),
+        ("dumbbell", "bench"),
+        ("machines",),
+        ("body weight", "pull-up bar"),
+    ],
+)
+def test_beginner_only_never_changes_which_equipment_is_eligible(engine, catalogue, kit):
+    # Every fixture row is beginner-friendly by default, so any difference
+    # here could only come from the equipment filter moving.
+    eq = catalogue["equipment"]
+    owned = [eq[name] for name in kit]
+    assert names(
+        fetch_candidates(engine, owned, [], [], beginner_only=True)
+    ) == names(fetch_candidates(engine, owned, [], []))
