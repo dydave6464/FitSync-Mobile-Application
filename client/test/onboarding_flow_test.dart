@@ -338,6 +338,55 @@ void main() {
     });
   }
 
+  // Going back to step 1 rebuilds step 2 from the goals as they are now, and
+  // a goal weight already typed is never hidden behind the button.
+  testWidgets('a typed goal weight stays in view after losing weight is untaken', (tester) async {
+    await _pumpFlow(tester, patches: [], goalWrites: []);
+    await tester.tap(find.byKey(const Key('goal.lose_weight')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const Key('continue')));
+    await tester.pumpAndSettle();
+    await tester.enterText(
+      find.descendant(of: find.byKey(const Key('goalWeightKg')), matching: find.byType(EditableText)),
+      '64',
+    );
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.byKey(const Key('back')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const Key('goal.lose_weight')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const Key('goal.build_muscle')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const Key('continue')));
+    await tester.pumpAndSettle();
+
+    expect(find.byKey(const Key('goalWeight.add')), findsNothing);
+    expect(
+      find.descendant(of: find.byKey(const Key('goalWeightKg')), matching: find.text('64')),
+      findsOneWidget,
+    );
+  });
+
+  testWidgets('adding losing weight on the way back asks goal weight outright', (tester) async {
+    await _pumpFlow(tester, patches: [], goalWrites: []);
+    await tester.tap(find.byKey(const Key('goal.build_muscle')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const Key('continue')));
+    await tester.pumpAndSettle();
+    expect(find.byKey(const Key('goalWeight.add')), findsOneWidget);
+
+    await tester.tap(find.byKey(const Key('back')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const Key('goal.lose_weight')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const Key('continue')));
+    await tester.pumpAndSettle();
+
+    expect(find.byKey(const Key('goalWeightKg')), findsOneWidget);
+    expect(find.byKey(const Key('goalWeight.add')), findsNothing);
+  });
+
   testWidgets('Continue saves the goals and advances', (tester) async {
     final patches = <Map<String, dynamic>>[];
     final goalWrites = <({List<String> goals, String mainGoal})>[];

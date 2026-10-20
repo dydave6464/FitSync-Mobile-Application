@@ -501,6 +501,9 @@ class _AboutEditorState extends _EditorState<_AboutEditor> {
     return AboutStep(
       value: _value,
       onChanged: (value) => _value = value,
+      // The same rule as onboarding: goal weight is asked outright only when
+      // losing weight is among the saved goals.
+      goals: profile.goals,
       // Not part of the form's working value: it is a display preference, so
       // it saves on tap and survives a cancelled edit rather than sitting in
       // _value waiting for Save.

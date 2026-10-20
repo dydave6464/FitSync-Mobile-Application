@@ -106,15 +106,17 @@ class AboutStep extends StatefulWidget {
     required this.onChanged,
     this.unit = WeightUnit.kg,
     this.onUnitChanged,
-    this.goals = const [],
+    required this.goals,
   });
 
   final AboutAnswers value;
   final ValueChanged<AboutAnswers> onChanged;
 
-  /// The goals step 1 collected. Goal weight only draws the target line on
-  /// the weight chart, so it is asked outright only when losing weight is one
-  /// of them; for anyone else it is one optional tap away.
+  /// The goals step 1 collected, or the saved ones in Settings. Goal weight
+  /// only draws the target line on the weight chart, so it is asked outright
+  /// only when losing weight is one of them; for anyone else it is one
+  /// optional tap away. Required, so no screen showing this step can forget
+  /// to pass them.
   final List<String> goals;
 
   /// The unit the two weight cards display and read. [AboutAnswers] stays in
@@ -142,6 +144,10 @@ class _AboutStepState extends State<AboutStep> {
   /// tucked away behind the button again.
   late bool _showGoalWeight =
       widget.goals.contains('lose_weight') || widget.value.goalWeightKg != null;
+
+  /// True once the user has tapped "Add a goal weight": the field they asked
+  /// for takes focus. A field shown outright never grabs the keyboard.
+  bool _goalWeightRequested = false;
 
   @override
   void initState() {
@@ -268,6 +274,7 @@ class _AboutStepState extends State<AboutStep> {
     String unit, {
     bool accent = false,
     Widget? unitControl,
+    bool autofocus = false,
   }) => FsStatField(
     fieldKey: key,
     label: label,
@@ -275,6 +282,7 @@ class _AboutStepState extends State<AboutStep> {
     controller: controller,
     accent: accent,
     unitControl: unitControl,
+    autofocus: autofocus,
   );
 
   @override
@@ -387,6 +395,7 @@ class _AboutStepState extends State<AboutStep> {
             widget.unit.api,
             // The design's accent belongs to a goal the number serves.
             accent: widget.goals.contains('lose_weight'),
+            autofocus: _goalWeightRequested,
           ),
           const SizedBox(height: 6),
           Text(
@@ -395,11 +404,11 @@ class _AboutStepState extends State<AboutStep> {
           ),
         ] else
           Align(
-            alignment: Alignment.centerLeft,
+            alignment: AlignmentDirectional.centerStart,
             child: TextButton.icon(
               key: const Key('goalWeight.add'),
               style: TextButton.styleFrom(minimumSize: const Size(48, 48)),
-              onPressed: () => setState(() => _showGoalWeight = true),
+              onPressed: () => setState(() => _showGoalWeight = _goalWeightRequested = true),
               icon: const Icon(Icons.add, size: 18),
               label: const Text('Add a goal weight (optional)'),
             ),

@@ -564,10 +564,15 @@ class FsStatField extends StatelessWidget {
     this.fieldKey,
     this.accent = false,
     this.unitControl,
+    this.autofocus = false,
   });
 
   final String label;
   final String unit;
+
+  /// Focus the number as soon as the card appears -- for a card the user has
+  /// just asked for, so the keyboard is ready rather than one more tap away.
+  final bool autofocus;
 
   /// Replaces the static [unit] label. The unit belongs next to the number it
   /// describes, so a field whose unit the user chooses puts the control right
@@ -619,6 +624,7 @@ class FsStatField extends StatelessWidget {
                     child: TextField(
                       key: fieldKey,
                       controller: controller,
+                      autofocus: autofocus,
                       keyboardType: const TextInputType.numberWithOptions(
                         decimal: true,
                       ),
