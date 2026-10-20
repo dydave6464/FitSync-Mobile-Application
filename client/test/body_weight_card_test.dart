@@ -23,16 +23,20 @@ BodyWeightSeries series(
   entries: entries ?? raw.length,
 );
 
+/// Today, for the tests: the morning of 20 October 2026.
+DateTime _oct20() => DateTime(2026, 10, 20, 9);
+
 Future<void> pumpCard(
   WidgetTester tester,
   BodyWeightSeries s, {
   String period = 'week',
   WeightUnit? unit,
+  DateTime Function() now = _oct20,
 }) => tester.pumpWidget(
   MaterialApp(
     theme: fsLightTheme(),
     home: Scaffold(
-      body: BodyWeightCard(series: s, unit: unit, period: period),
+      body: BodyWeightCard(series: s, unit: unit, period: period, now: now),
     ),
   ),
 );
@@ -555,4 +559,90 @@ void main() {
       expect(tester.takeException(), isNull);
     },
   );
+
+  // "Since yesterday" is about today: the morning after two daily weigh-ins,
+  // before weighing in, the change is from the 19th to the 20th, not to now.
+  testWidgets('since yesterday only when the latest weigh-in is today', (
+    tester,
+  ) async {
+    await pumpCard(
+      tester,
+      series([('2026-10-19', 72.9), ('2026-10-20', 72.5)]),
+      now: () => DateTime(2026, 10, 21, 7),
+    );
+
+    expect(find.text('0.4 kg since Oct 19'), findsOneWidget);
+    expect(find.textContaining('yesterday'), findsNothing);
+  });
+
+  testWidgets('an older lone weigh-in asks for another, not for tomorrow', (
+    tester,
+  ) async {
+    await pumpCard(
+      tester,
+      series(
+        [('2026-10-02', 72.5)],
+        reference: const BodyWeightReference(kind: 'start', weightKg: 72.5),
+        widened: true,
+      ),
+    );
+
+    expect(find.text('Weigh in again to see your change.'), findsOneWidget);
+    expect(find.textContaining('tomorrow'), findsNothing);
+  });
+
+  testWidgets('with no chart there is no caption naming its period', (
+    tester,
+  ) async {
+    await pumpCard(
+      tester,
+      series([
+        ('2026-10-20', 72.5),
+      ], reference: const BodyWeightReference(kind: 'start', weightKg: 72.5)),
+    );
+
+    expect(find.byType(FsLineChart), findsNothing);
+    expect(find.text('Last 7 days'), findsNothing);
+    expect(find.text('Add entry'), findsOneWidget);
+  });
+
+  // excludeSemantics drops the InkWell's own tap action, so the button node
+  // has to carry one or a screen reader announces a button that does nothing.
+  testWidgets('a screen reader can open the note from the change', (
+    tester,
+  ) async {
+    final handle = tester.ensureSemantics();
+    await pumpCard(
+      tester,
+      series([('2026-10-19', 72.9), ('2026-10-20', 72.5)]),
+    );
+
+    expect(
+      tester.getSemantics(find.bySemanticsLabel(RegExp('Down 0.4 kg'))),
+      matchesSemantics(
+        isButton: true,
+        hasTapAction: true,
+        label: 'Down 0.4 kg since yesterday',
+        hint: 'Shows what daily changes mean',
+      ),
+    );
+    handle.dispose();
+  });
+
+  testWidgets('the note speaks pounds to an lb user', (tester) async {
+    await pumpCard(
+      tester,
+      series([('2026-10-19', 73.0), ('2026-10-20', 72.5)], unit: 'lb'),
+      unit: WeightUnit.lb,
+    );
+    await tester.tap(find.byKey(const Key('bodyWeight.change')));
+    await tester.pumpAndSettle();
+
+    expect(
+      find.text(
+        'Day-to-day changes of up to about 2 lb are normal (water and food), so the trend over weeks says more than one day.',
+      ),
+      findsOneWidget,
+    );
+  });
 }

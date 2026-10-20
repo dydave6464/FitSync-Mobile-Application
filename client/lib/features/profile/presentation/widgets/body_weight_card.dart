@@ -16,6 +16,7 @@ class BodyWeightCard extends StatelessWidget {
     this.unit,
     this.onAdd,
     this.period = 'week',
+    this.now = DateTime.now,
   });
 
   final BodyWeightSeries series;
@@ -23,6 +24,10 @@ class BodyWeightCard extends StatelessWidget {
   /// The Progress tab's period, `'week'`, `'month'` or `'year'`: what the
   /// chart covers, named in the caption under it.
   final String period;
+
+  /// The clock, so tests can fix "today": "since yesterday" and "tomorrow"
+  /// are only true when the latest weigh-in is today's.
+  final DateTime Function() now;
 
   /// The unit to show, from `weightUnitProvider`. `series.unit` is the unit
   /// the server saw when the series was fetched, and the series provider is
@@ -97,6 +102,12 @@ class BodyWeightCard extends StatelessWidget {
     // and say nothing; one weigh-in draws a chart only for a goal line.
     final firstOnly = points.length == 1;
     final showChart = !firstOnly || reference?.kind == 'goal';
+    final today = now();
+    final latestIsToday =
+        points.last.loggedOn ==
+        '${today.year.toString().padLeft(4, '0')}-'
+            '${today.month.toString().padLeft(2, '0')}-'
+            '${today.day.toString().padLeft(2, '0')}';
     final start = series.start;
 
     return FsCard(
@@ -118,7 +129,9 @@ class BodyWeightCard extends StatelessWidget {
               Padding(
                 padding: const EdgeInsets.only(top: 2),
                 child: Text(
-                  'Weigh in again tomorrow to see your change.',
+                  latestIsToday
+                      ? 'Weigh in again tomorrow to see your change.'
+                      : 'Weigh in again to see your change.',
                   style: TextStyle(fontSize: 12, color: t.text2),
                 ),
               )
@@ -135,9 +148,10 @@ class BodyWeightCard extends StatelessWidget {
                     ? start
                     : null,
                 unit: unit,
+                latestIsToday: latestIsToday,
               ),
             const SizedBox(height: 8),
-            if (showChart)
+            if (showChart) ...[
               FsLineChart(
                 label: 'Body weight',
                 // Spaced by date, not by order: a three-week gap between
@@ -164,7 +178,8 @@ class BodyWeightCard extends StatelessWidget {
                 // Room for a dot on every weigh-in and the dates under them.
                 height: 104,
               ),
-            const SizedBox(height: 8),
+              const SizedBox(height: 8),
+            ],
             // The caption takes what the chip leaves and wraps there; as two
             // fixed widths in one row they overflowed it at large text.
             // The row is as tall as the chip, so it needs room of its own
@@ -172,15 +187,19 @@ class BodyWeightCard extends StatelessWidget {
             FsTapRoom(
               child: Row(
                 children: [
-                  Expanded(
-                    child: Text(
-                      series.widened
-                          ? 'all entries — fewer than two in this period'
-                          : _periodCaption(period),
-                      style: TextStyle(fontSize: 11, color: t.text3),
+                  // No chart, no caption naming what it covers.
+                  if (showChart) ...[
+                    Expanded(
+                      child: Text(
+                        series.widened
+                            ? 'all entries — fewer than two in this period'
+                            : _periodCaption(period),
+                        style: TextStyle(fontSize: 11, color: t.text3),
+                      ),
                     ),
-                  ),
-                  const SizedBox(width: 12),
+                    const SizedBox(width: 12),
+                  ] else
+                    const Spacer(),
                   FsChip(label: 'Add entry', selected: false, onTap: _add),
                 ],
               ),
@@ -219,6 +238,7 @@ class _WeightChange extends StatefulWidget {
     required this.previous,
     required this.start,
     required this.unit,
+    required this.latestIsToday,
   });
 
   final BodyWeightPoint latest;
@@ -226,12 +246,18 @@ class _WeightChange extends StatefulWidget {
   final BodyWeightPoint? start;
   final WeightUnit unit;
 
+  /// "Since yesterday" only reads true when the latest weigh-in is today's;
+  /// otherwise the earlier weigh-in is named by its date.
+  final bool latestIsToday;
+
   @override
   State<_WeightChange> createState() => _WeightChangeState();
 }
 
 class _WeightChangeState extends State<_WeightChange> {
   bool _explained = false;
+
+  void _toggle() => setState(() => _explained = !_explained);
 
   /// One line: an arrow and "0.4 kg since yesterday", or "No change …",
   /// with what a screen reader says for it.
@@ -272,7 +298,7 @@ class _WeightChangeState extends State<_WeightChange> {
     final days =
         BodyWeightCard._dayNumber(widget.latest.loggedOn) -
         BodyWeightCard._dayNumber(widget.previous.loggedOn);
-    final since = days == 1
+    final since = days == 1 && widget.latestIsToday
         ? 'since yesterday'
         : 'since ${shortDate(DateTime.parse(widget.previous.loggedOn))}';
     final lines = [
@@ -288,16 +314,21 @@ class _WeightChangeState extends State<_WeightChange> {
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Semantics(
+          container: true,
           button: true,
           label: lines.map((l) => l.spoken).join('. '),
           hint: _explained
               ? 'Hides what daily changes mean'
               : 'Shows what daily changes mean',
+          // excludeSemantics drops the InkWell's own tap action along with
+          // its children, so this node offers it, or a screen reader would
+          // announce a button that does nothing.
+          onTap: _toggle,
           excludeSemantics: true,
           child: InkWell(
             key: const Key('bodyWeight.change'),
             borderRadius: BorderRadius.circular(8),
-            onTap: () => setState(() => _explained = !_explained),
+            onTap: _toggle,
             child: ConstrainedBox(
               constraints: const BoxConstraints(minHeight: 48),
               child: Row(
@@ -320,7 +351,9 @@ class _WeightChangeState extends State<_WeightChange> {
           Padding(
             padding: const EdgeInsets.only(bottom: 4),
             child: Text(
-              'Day-to-day changes of up to about 1 kg are normal (water and food), so the trend over weeks says more than one day.',
+              'Day-to-day changes of up to about '
+              '${widget.unit == WeightUnit.lb ? '2 lb' : '1 kg'} are normal '
+              '(water and food), so the trend over weeks says more than one day.',
               style: TextStyle(fontSize: 12, color: t.text2, height: 1.4),
             ),
           ),

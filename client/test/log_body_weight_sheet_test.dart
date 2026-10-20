@@ -81,8 +81,7 @@ Future<void> _pump(
               // Progress screen (which also watches it) does.
               ref.watch(bodyWeightProvider('week'));
               return ElevatedButton(
-                onPressed: () =>
-                    showLogBodyWeightSheet(context, period: 'week'),
+                onPressed: () => showLogBodyWeightSheet(context),
                 child: const Text('open'),
               );
             },
@@ -176,4 +175,52 @@ void main() {
       );
     },
   );
+
+  // Month and Year hold the new weigh-in too: refreshing only the period on
+  // screen left them showing the old weight and the old change.
+  testWidgets('a save refreshes every period, not just the one on screen', (
+    tester,
+  ) async {
+    final repo = FakeProfileRepository();
+    final fetches = <String, int>{};
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          profileRepositoryProvider.overrideWithValue(repo),
+          bodyWeightProvider.overrideWith((ref, period) async {
+            fetches[period] = (fetches[period] ?? 0) + 1;
+            return const BodyWeightSeries(
+              widened: false,
+              points: [],
+              reference: null,
+              unit: 'kg',
+            );
+          }),
+        ],
+        child: MaterialApp(
+          theme: fsLightTheme(),
+          home: Scaffold(
+            body: Consumer(
+              builder: (context, ref, _) {
+                ref.watch(bodyWeightProvider('week'));
+                ref.watch(bodyWeightProvider('month'));
+                return ElevatedButton(
+                  onPressed: () => showLogBodyWeightSheet(context),
+                  child: const Text('open'),
+                );
+              },
+            ),
+          ),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('open'));
+    await tester.pumpAndSettle();
+    await tester.enterText(find.byKey(const Key('bodyWeight.field')), '72.5');
+    await tester.tap(find.byKey(const Key('bodyWeight.save')));
+    await tester.pumpAndSettle();
+
+    expect(fetches, {'week': 2, 'month': 2});
+  });
 }
