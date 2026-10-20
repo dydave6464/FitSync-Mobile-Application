@@ -68,7 +68,7 @@ class _GeneratorScreenState extends ConsumerState<GeneratorScreen> {
   /// runs in the data branch, so those values are the ones the user is
   /// actually looking at. Re-reading `activePlanProvider` here would revive
   /// the loading/error-flattening bug the debug getters still carry: a
-  /// failed fetch reads null and falls back to full_body/3/45, and that
+  /// failed fetch reads null and falls back to full_body/3, and that
   /// fallback would go out as the generate payload.
   ///
   /// [replaceCustomPlan] is only ever true on the recursive call this makes
@@ -280,7 +280,7 @@ class _GeneratorScreenState extends ConsumerState<GeneratorScreen> {
       // Loading and error both used to collapse into "no plan" -- plan?.x on
       // a null value reads the same whether the fetch is still in flight or
       // failed outright. That made a transient fetch failure show the
-      // full_body/3/45 defaults under "Generating replaces your current
+      // full_body/3 defaults under "Generating replaces your current
       // plan", so generating really would discard whatever plan the user
       // has. Both states are handled explicitly here, before the fallback
       // chain -- and therefore the controls -- ever runs.
@@ -457,9 +457,10 @@ class _GeneratorScreenState extends ConsumerState<GeneratorScreen> {
           ),
         ],
         // Session length is deliberately not shown. The service derives it
-        // from goal and fitness level, so it is neither chosen here nor
-        // changeable here, and a number on screen that the user cannot move
-        // is one more thing to rule out. Nor is it sent -- see `_resolve`.
+        // from goal, fitness level and health check, so it is neither chosen
+        // here nor changeable here, and a number on screen that the user
+        // cannot move is one more thing to rule out. Nor is it sent -- see
+        // `_resolve`.
         if (avoiding.isNotEmpty) ...[
           const SizedBox(height: 22),
           FsCard(
@@ -737,7 +738,7 @@ class _DescribeCardState extends ConsumerState<_DescribeCard> {
                     // reads injuries server-side and never from this screen.
                     '${injuryLabel(offer.option, offer.injury)} '
                     'is not in your injuries. Add it and every plan from now '
-                    'on will skip the exercises that load it.',
+                    'on will work around it.',
                     style: note,
                   ),
                 ),
@@ -767,8 +768,8 @@ class _DescribeCardState extends ConsumerState<_DescribeCard> {
   /// The domain reports a topic; the wording lives here.
   static String _topicNote(WeekTopic topic) => switch (topic) {
     WeekTopic.sessionLength =>
-      'Session length follows your goal and fitness level, so it is not '
-          'set here.',
+      'Session length follows your goal, fitness level and health check, '
+          'so it is not set here.',
     WeekTopic.goal => 'Your goals are set in your profile.',
     WeekTopic.dayCount =>
       'How many days you train follows the weekdays you have chosen '

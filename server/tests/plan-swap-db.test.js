@@ -595,9 +595,10 @@ test('swap candidates', async (t) => {
   // `biceps` is the only muscle group in the fixture with a non-bodyweight
   // live strength exercise, so this subtest plants its plan there instead.
   //
-  // Every other subtest in this file starts with reset(), whose unscoped
-  // DELETEs wipe plan_exercises/workout_plans/user_equipment/users
-  // regardless of what came before -- so nothing here can leak into an
+  // Every other subtest in this file starts with reset() or curated(), which
+  // runs the same deletes (one subtest runs them inline): unscoped DELETEs
+  // that wipe plan_exercises/workout_plans/user_equipment/users regardless
+  // of what came before -- so nothing here can leak into an
   // earlier-running subtest. Keeping this one last means nothing runs after
   // it either, so no cleanup beyond dropAllTables (already run in t.after)
   // is needed.
