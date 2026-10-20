@@ -286,8 +286,12 @@ test('swap candidates', async (t) => {
       await pool.query('DELETE FROM exercise_contraindications');
       await pool.query('DELETE FROM users');
 
+      // Intermediate: for a beginner the strict list must also hold a
+      // beginner-friendly row, and this fixture marks nothing (see the
+      // beginner kit subtests below).
       const [ins] = await pool.query(
-        "INSERT INTO users (email, password_hash, full_name) VALUES ('ord@example.com','x','O')",
+        `INSERT INTO users (email, password_hash, full_name, fitness_level)
+         VALUES ('ord@example.com','x','O','intermediate')`,
       );
       const ordUserId = ins.insertId;
 
@@ -397,7 +401,9 @@ test('swap candidates', async (t) => {
   // in a muscle group nothing else uses, inserted in an id order that is the
   // reverse of the order the marks call for -- under the old exercise_id
   // order every assertion below would fail. Each removes what it planted.
-  const curated = async (email, fitnessLevel, rows) => {
+  // A row may name its equipment as a fourth element (body weight when it
+  // does not), and `owns` is the equipment the user ticked, by name.
+  const curated = async (email, fitnessLevel, rows, { owns = [] } = {}) => {
     await pool.query('DELETE FROM plan_exercises');
     await pool.query('DELETE FROM workout_plans');
     await pool.query('DELETE FROM user_equipment');
@@ -408,13 +414,21 @@ test('swap candidates', async (t) => {
       "INSERT INTO users (email, password_hash, full_name, fitness_level) VALUES (?, 'x', 'C', ?)",
       [email, fitnessLevel],
     );
-    const [[bw]] = await pool.query("SELECT equipment_id FROM equipment WHERE name = 'body weight'");
+    const equipmentId = async (name) => {
+      const [[row]] = await pool.query('SELECT equipment_id FROM equipment WHERE name = ?', [name]);
+      return row.equipment_id;
+    };
+    for (const name of owns) {
+      await pool.query('INSERT INTO user_equipment (user_id, equipment_id) VALUES (?, ?)',
+        [u.insertId, await equipmentId(name)]);
+    }
     const ids = {};
-    for (const [key, priority, beginnerFriendly] of [['inPlan', null, false], ...rows]) {
+    for (const [key, priority, beginnerFriendly, equipment = 'body weight']
+      of [['inPlan', null, false], ...rows]) {
       const [x] = await pool.query(
         `INSERT INTO exercises (name, muscle_group, equipment_id, status)
          VALUES (?, 'curation test', ?, 'live')`,
-        [`Curated ${key}`, bw.equipment_id],
+        [`Curated ${key}`, await equipmentId(equipment)],
       );
       ids[key] = x.insertId;
       if (priority !== null) {
@@ -528,6 +542,45 @@ test('swap candidates', async (t) => {
       const { userId: uid, planExerciseId, ids } = await curated('int@example.com', 'intermediate', beginnerRows);
       assert.deepEqual(await offeredIds(uid, planExerciseId),
         [ids.firstHard, ids.alternativeEasy, ids.unmarkedEasy]);
+    } finally {
+      await removeCurated();
+    }
+  });
+
+  // A beginner whose own kit holds nothing beginner-friendly in this group
+  // must still see the beginner-friendly body-weight option. Returning the
+  // strict (selected-equipment) list just because it has rows would hide it.
+  const kitRows = [
+    ['dumbbellHard', 'first', false, 'dumbbell'],
+    ['bodyEasy', 'alternative', true],
+  ];
+
+  await t.test('a beginner owning only unfriendly kit is offered body weight first', async () => {
+    try {
+      // fitness_level NULL: a skipped level is planned as a beginner.
+      const { userId: uid, planExerciseId, ids } = await curated(
+        'kit-beg@example.com', null, kitRows, { owns: ['dumbbell'] },
+      );
+      const offered = await offeredIds(uid, planExerciseId);
+      assert.equal(offered[0], ids.bodyEasy, 'the beginner-friendly option leads');
+      assert.ok(offered.includes(ids.dumbbellHard), 'the owned option is still there, after it');
+
+      const ctx = await loadSwapContext(pool, uid, planExerciseId);
+      const [row] = await listAlternatives(pool, ctx, { q: null, limit: 20 });
+      assert.deepEqual(Object.keys(row).sort(),
+        ['equipment', 'exerciseId', 'muscleGroup', 'name', 'thumbnailUrl'],
+        'the beginner flag is used to choose the list, never returned');
+    } finally {
+      await removeCurated();
+    }
+  });
+
+  await t.test('an intermediate owning the same kit still gets only the owned list', async () => {
+    try {
+      const { userId: uid, planExerciseId, ids } = await curated(
+        'kit-int@example.com', 'intermediate', kitRows, { owns: ['dumbbell'] },
+      );
+      assert.deepEqual(await offeredIds(uid, planExerciseId), [ids.dumbbellHard]);
     } finally {
       await removeCurated();
     }
