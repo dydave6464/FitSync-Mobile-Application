@@ -145,9 +145,9 @@ class _AboutStepState extends State<AboutStep> {
   late bool _showGoalWeight =
       widget.goals.contains('lose_weight') || widget.value.goalWeightKg != null;
 
-  /// True once the user has tapped "Add a goal weight": the field they asked
-  /// for takes focus. A field shown outright never grabs the keyboard.
-  bool _goalWeightRequested = false;
+  /// Moves the cursor into goal weight when the user asks for it. A field
+  /// shown outright never grabs the keyboard.
+  final _goalWeightFocus = FocusNode();
 
   @override
   void initState() {
@@ -190,6 +190,7 @@ class _AboutStepState extends State<AboutStep> {
     _height.dispose();
     _weight.dispose();
     _goalWeight.dispose();
+    _goalWeightFocus.dispose();
     super.dispose();
   }
 
@@ -274,7 +275,7 @@ class _AboutStepState extends State<AboutStep> {
     String unit, {
     bool accent = false,
     Widget? unitControl,
-    bool autofocus = false,
+    FocusNode? focusNode,
   }) => FsStatField(
     fieldKey: key,
     label: label,
@@ -282,7 +283,7 @@ class _AboutStepState extends State<AboutStep> {
     controller: controller,
     accent: accent,
     unitControl: unitControl,
-    autofocus: autofocus,
+    focusNode: focusNode,
   );
 
   @override
@@ -395,7 +396,7 @@ class _AboutStepState extends State<AboutStep> {
             widget.unit.api,
             // The design's accent belongs to a goal the number serves.
             accent: widget.goals.contains('lose_weight'),
-            autofocus: _goalWeightRequested,
+            focusNode: _goalWeightFocus,
           ),
           const SizedBox(height: 6),
           Text(
@@ -408,7 +409,15 @@ class _AboutStepState extends State<AboutStep> {
             child: TextButton.icon(
               key: const Key('goalWeight.add'),
               style: TextButton.styleFrom(minimumSize: const Size(48, 48)),
-              onPressed: () => setState(() => _showGoalWeight = _goalWeightRequested = true),
+              onPressed: () {
+                setState(() => _showGoalWeight = true);
+                // The field exists from the next frame. Focus it then, which
+                // also takes the cursor from the weight just typed: a tap
+                // outside a field does not unfocus it on a phone.
+                WidgetsBinding.instance.addPostFrameCallback((_) {
+                  if (mounted) _goalWeightFocus.requestFocus();
+                });
+              },
               icon: const Icon(Icons.add, size: 18),
               label: const Text('Add a goal weight (optional)'),
             ),

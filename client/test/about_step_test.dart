@@ -201,6 +201,24 @@ void main() {
       expect(field.focusNode.hasFocus, isTrue);
     });
 
+    // The usual path: the weight was just typed, so that field still has
+    // focus when Add is tapped (a tap outside a field does not unfocus it).
+    testWidgets('tapping Add right after typing the weight moves the cursor to goal weight', (tester) async {
+      EditableText editable(WidgetTester t, String key) => t.widget<EditableText>(
+        find.descendant(of: find.byKey(Key(key)), matching: find.byType(EditableText)),
+      );
+      await _pumpAndEdit(tester, (t) async {
+        await t.enterText(find.descendant(of: find.byKey(const Key('weightKg')), matching: find.byType(EditableText)), '72');
+        await t.pumpAndSettle();
+        expect(editable(t, 'weightKg').focusNode.hasFocus, isTrue);
+        await _tapKey(t, const Key('goalWeight.add'));
+        await t.pumpAndSettle();
+      }, goals: const ['build_muscle']);
+
+      expect(editable(tester, 'goalWeightKg').focusNode.hasFocus, isTrue);
+      expect(editable(tester, 'weightKg').focusNode.hasFocus, isFalse);
+    });
+
     testWidgets('a goal weight asked outright does not grab the keyboard', (tester) async {
       await _pumpAndEdit(tester, (_) async {}, goals: const ['lose_weight']);
 
