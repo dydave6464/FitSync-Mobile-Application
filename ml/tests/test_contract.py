@@ -623,6 +623,10 @@ def test_a_beginner_plan_holds_only_beginner_friendly_exercises(
     # row, is not beginner-friendly. The group is left out, never filled with
     # something the team said a beginner should not start on.
     mark("fixture inverted row", "alternative", beginner_friendly=False)
+    # The same rule on the user's OWN equipment: the dumbbell fly is in the
+    # strict (selected-equipment) query, not the body-weight fill, so this is
+    # what fails if that query stops passing the beginner filter.
+    mark("fixture dumbbell fly", "alternative", beginner_friendly=False)
     eq = catalogue["equipment"]
     plan = post_plan(
         client,
@@ -633,6 +637,10 @@ def test_a_beginner_plan_holds_only_beginner_friendly_exercises(
     names = [e["name"] for e in plan["exercises"]]
     assert names, "the rest of the plan must still be there"
     assert "fixture inverted row" not in names, names
+    assert "fixture dumbbell fly" not in names, names
+    not_friendly = {"fixture inverted row", "fixture dumbbell fly"}
+    friendly = set(catalogue["exercises"]) - not_friendly
+    assert set(names) <= friendly, names
 
 
 def test_an_intermediate_still_gets_exercises_that_are_not_beginner_friendly(
