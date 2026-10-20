@@ -586,6 +586,26 @@ test('swap candidates', async (t) => {
     }
   });
 
+  // The fallback above is for reaching a beginner-friendly row. When the
+  // wider list has none either, it buys nothing and would put an unfriendly
+  // body-weight row (here marked 'first') above the user's own equipment --
+  // a list of push-ups for a dumbbell owner.
+  await t.test('a beginner keeps their own list when nothing friendly exists anywhere', async () => {
+    try {
+      const { userId: uid, planExerciseId, ids } = await curated(
+        'kit-none@example.com', null,
+        [
+          ['dumbbellHard', 'alternative', false, 'dumbbell'],
+          ['bodyHard', 'first', false],
+        ],
+        { owns: ['dumbbell'] },
+      );
+      assert.deepEqual(await offeredIds(uid, planExerciseId), [ids.dumbbellHard]);
+    } finally {
+      await removeCurated();
+    }
+  });
+
   // Deliberately last and does its own setup rather than calling reset():
   // reset() always builds its plan on `abs` (see the diagnostic in the task
   // report), and every live `abs` exercise in the fixture is body weight, so

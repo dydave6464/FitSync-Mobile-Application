@@ -124,18 +124,29 @@ function safetyClauses(ctx, params, eligibleIds) {
 /// beginner-friendly: a strict list of rows the team ruled out for beginners
 /// would hide the beginner-friendly body-weight ones. The union's ORDER puts
 /// beginner-friendly first, and still lists their own equipment after it.
+/// When the union has nothing beginner-friendly either, the beginner keeps
+/// their own (strict) list.
 async function listAlternatives(pool, ctx, { q = null, limit = 20, bodyweightOnly = false } = {}) {
   // bodyweightOnly asks for the opposite of strictness, so it skips the strict
   // pass entirely. Nothing in the app sends it any more; the parameter and its
   // test remain because the endpoint's contract is public.
+  let strict = [];
   if (!bodyweightOnly && ctx.selectedIds.length > 0) {
-    const strict = await queryAlternatives(
+    strict = await queryAlternatives(
       pool, ctx, ctx.selectedIds, { q, limit, bodyweightOnly },
     );
     const usable = ctx.beginner ? strict.some((r) => r.beginner_friendly) : strict.length > 0;
     if (usable) return strict.map(toAlternative);
   }
   const rows = await queryAlternatives(pool, ctx, ctx.ownedIds, { q, limit, bodyweightOnly });
+  // A beginner's fallback is only worth taking when it reaches a
+  // beginner-friendly row. If the wider list has none either, it would just
+  // put unfriendly body-weight rows above the user's own equipment, so keep
+  // their own list. (The beginner ORDER puts friendly rows first, so the
+  // limit cannot hide one.)
+  if (ctx.beginner && strict.length > 0 && !rows.some((r) => r.beginner_friendly)) {
+    return strict.map(toAlternative);
+  }
   return rows.map(toAlternative);
 }
 
