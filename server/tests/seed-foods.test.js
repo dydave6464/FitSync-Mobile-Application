@@ -23,6 +23,10 @@ test('the seed list is well formed', () => {
     const atwater = 4 * f.proteinG + 4 * f.carbsG + 9 * f.fatG + 7 * (f.alcoholG ?? 0);
     assert.ok(Math.abs(atwater - f.kcal) <= Math.max(40, f.kcal * 0.2), `${f.name}: ${f.kcal} vs ${atwater}`);
   }
+  const { FOOD_TYPES } = require('../src/db/foods');
+  for (const f of FOODS) assert.ok(FOOD_TYPES.includes(f.type), `${f.name} needs a valid type, got ${f.type}`);
+  assert.equal(FOODS[0].name, 'White rice');
+  assert.ok(!FOODS.some((f) => f.name === 'Steamed white rice'), 'renamed to White rice');
 });
 
 test('food seed', async (t) => {
@@ -36,6 +40,15 @@ test('food seed', async (t) => {
     assert.equal(s.inserted, FOODS.length);
     const [[{ n }]] = await pool.query('SELECT COUNT(*) AS n FROM foods');
     assert.equal(Number(n), FOODS.length);
+  });
+
+  await t.test('writes each food\'s type and its 1-based place in the list', async () => {
+    const [[rice]] = await pool.query("SELECT food_type, list_order FROM foods WHERE name = 'White rice'");
+    assert.deepEqual([rice.food_type, rice.list_order], ['home', 1]);
+    const [[yum]] = await pool.query("SELECT food_type FROM foods WHERE name = 'Jollibee Yumburger'");
+    assert.equal(yum.food_type, 'fast_food');
+    const [[{ n }]] = await pool.query('SELECT COUNT(*) AS n FROM foods WHERE food_type IS NULL OR list_order IS NULL');
+    assert.equal(Number(n), 0);
   });
 
   await t.test('seeds Ginisang monggo\'s fiber_g as 6', async () => {
@@ -113,4 +126,20 @@ test('food seed', async (t) => {
     const [[copy]] = await pool.query('SELECT calories FROM foods WHERE food_id = ?', [f.insertId]);
     assert.equal(copy.calories, 999);
   });
+});
+
+test('food seed renames Steamed white rice in place', async (t) => {
+  const pool = createPool(testDbConfig());
+  await dropAllTables(pool);
+  await migrate(testDbConfig());
+  t.after(async () => { await dropAllTables(pool); await pool.end(); });
+  const [r] = await pool.query(
+    "INSERT INTO foods (name, category, serving_desc, calories, protein_g, carbs_g, fat_g) VALUES ('Steamed white rice', 'filipino', '1 cup (160 g)', 205, 4.3, 44.5, 0.4)",
+  );
+  await seedFoods(testDbConfig());
+  const [rows] = await pool.query("SELECT food_id, name FROM foods WHERE name IN ('White rice', 'Steamed white rice')");
+  assert.deepEqual(rows.map((x) => [x.food_id, x.name]), [[r.insertId, 'White rice']]);
+  const again = await seedFoods(testDbConfig());
+  assert.equal(again.inserted, 0);
+  assert.equal(again.updated, 0);
 });

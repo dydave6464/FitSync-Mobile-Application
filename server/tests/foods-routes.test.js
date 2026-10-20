@@ -8,6 +8,7 @@ const { buildTestApp } = require('./helpers/test-app');
 const { testDbConfig, dropAllTables } = require('./helpers/test-db');
 const { markEmailVerified } = require('../src/db/users');
 const { silentLogger } = require('./helpers/test-app');
+const { seedFoods } = require('../src/db/seed-foods');
 
 test('food search and recents', async (t) => {
   const pool = createPool(testDbConfig());
@@ -75,11 +76,11 @@ test('food search and recents', async (t) => {
     assert.deepEqual(foods.map((f) => f.name), ['Adobong kangkong', 'Chicken adobo', 'Pork adobo', 'FatSecret adobo']);
     assert.deepEqual(foods[1], {
       id: chicken, source: 'local', externalId: null, name: 'Chicken adobo', servingDesc: '1 cup',
-      kcal: 300, proteinG: 20, carbsG: 10, fatG: 15, fiberG: null, sugarG: null, sodiumMg: null,
+      kcal: 300, proteinG: 20, carbsG: 10, fatG: 15, fiberG: null, sugarG: null, sodiumMg: null, group: null,
     });
     assert.deepEqual(foods[3], {
       id: null, source: 'fatsecret', externalId: 'fs-9', name: 'FatSecret adobo', servingDesc: '1 cup',
-      kcal: 200, proteinG: 10, carbsG: 20, fatG: 8, fiberG: null, sugarG: null, sodiumMg: null,
+      kcal: 200, proteinG: 10, carbsG: 20, fatG: 8, fiberG: null, sugarG: null, sodiumMg: null, group: null,
     });
   });
 
@@ -136,7 +137,7 @@ test('food search and recents', async (t) => {
     const ok = await request(app).get('/api/v1/foods/fatsecret/fs-9').set(auth).expect(200);
     assert.deepEqual(ok.body.data.food, {
       id: null, source: 'fatsecret', externalId: 'fs-9', name: 'FatSecret chicken thigh', servingDesc: '1 thigh',
-      kcal: 107, proteinG: 12, carbsG: 2, fatG: 6, fiberG: 2.4, sugarG: 1.1, sodiumMg: 310,
+      kcal: 107, proteinG: 12, carbsG: 2, fatG: 6, fiberG: 2.4, sugarG: 1.1, sodiumMg: 310, group: null,
     });
 
     const missing = await request(app).get('/api/v1/foods/fatsecret/fs-missing').set(auth).expect(404);
@@ -177,5 +178,68 @@ test('food search and recents', async (t) => {
       id: null, source: 'manual', externalId: null, name: 'Suman', servingDesc: null,
       kcal: 93, proteinG: 1, carbsG: 20, fatG: 1, fiberG: null, sugarG: 10, sodiumMg: 40,
     }, "a manual recent divides sugarG/sodiumMg back by servings");
+  });
+});
+
+test('food search order with the real food list', async (t) => {
+  const pool = createPool(testDbConfig());
+  await dropAllTables(pool);
+  await migrate(testDbConfig());
+  await seedFoods(testDbConfig());
+  const fatsecret = {
+    async search(q) {
+      return [{ externalId: 'fs-1', name: `FatSecret ${q}`, servingDesc: '1 cup', kcal: 200, proteinG: 10, carbsG: 20, fatG: 8, fiberG: null, sugarG: null, sodiumMg: null }];
+    },
+    async get() { return null; },
+  };
+  const app = buildTestApp({ pool, fatsecret });
+  t.after(async () => { await dropAllTables(pool); await pool.end(); });
+
+  const reg = await request(app).post('/api/v1/auth/register')
+    .send({ email: 'f2@example.com', password: 's3cret-pass', fullName: 'F' }).expect(201);
+  await markEmailVerified(pool, reg.body.data.user.userId);
+  const login = await request(app).post('/api/v1/auth/login')
+    .send({ email: 'f2@example.com', password: 's3cret-pass' }).expect(200);
+  const auth = { Authorization: `Bearer ${login.body.data.token}` };
+  const search = (q) => request(app).get('/api/v1/foods/search').query({ q }).set(auth);
+
+  await t.test('rice: White rice first, home-cooked, then kakanin, then fast food, then online', async () => {
+    const { foods } = (await search('rice').expect(200)).body.data;
+    assert.deepEqual(foods.map((f) => f.name), [
+      'White rice', 'Garlic fried rice (sinangag)', 'Goto (rice porridge with ox tripe)', 'Puso (hanging rice)', 'Brown rice, cooked',
+      'Kutsinta (steamed rice cake)', 'Bibingka (galapong rice cake)', 'Suman malagkit (sticky rice, coconut)',
+      'Suman sa lihiya (lye-treated rice cake)', 'Biko (sticky rice with latik)', 'Palitaw (flattened rice cake)',
+      'Sapin-sapin (layered rice cake)', 'Ginataang bilo-bilo (sweet rice ball stew)',
+      'Jollibee Chickenjoy with rice', 'Jollibee Burger Steak with rice', "McDonald's PH Chicken McDo with rice",
+      'Mang Inasal Chicken Inasal Paa with rice', 'Mang Inasal Chicken Inasal Pecho with rice', 'Mang Inasal Pork BBQ with rice',
+      'KFC Original Recipe chicken with rice', 'FatSecret rice',
+    ]);
+    assert.deepEqual([foods[0].group, foods[5].group, foods[13].group, foods[20].group], ['home', 'bread_kakanin', 'fast_food', null]);
+  });
+
+  await t.test('chicken: home-cooked Filipino first, international after, fast food near the end', async () => {
+    const { foods } = (await search('chicken').expect(200)).body.data;
+    assert.deepEqual(foods.slice(0, 5).map((f) => f.name),
+      ['Chicken adobo', 'Chicken inasal', 'Chicken afritada', 'Grilled chicken breast', 'Fried chicken']);
+    assert.equal(foods.at(-2).name, 'KFC Original Recipe chicken with rice');
+  });
+
+  await t.test('fried: inside a type, names starting with the query first, Filipino before international', async () => {
+    const { foods } = (await search('fried').expect(200)).body.data;
+    assert.deepEqual(foods.slice(0, 7).map((f) => f.name), [
+      'Fried tilapia', 'Fried egg', 'Garlic fried rice (sinangag)', 'Galunggong, fried',
+      'Tokwa (fried tofu)', 'Danggit (fried dried fish)', 'Fried chicken',
+    ]);
+  });
+
+  await t.test('an untyped FitSync food comes after the typed ones, before online', async () => {
+    await pool.query("INSERT INTO foods (name, category, calories, protein_g, carbs_g, fat_g) VALUES ('Rice crispies test', 'filipino', 100, 1, 20, 1)");
+    const { foods } = (await search('rice').expect(200)).body.data;
+    assert.deepEqual(foods.slice(-2).map((f) => [f.name, f.group]), [['Rice crispies test', null], ['FatSecret rice', null]]);
+  });
+
+  await t.test('at most 30 FitSync foods per search', async () => {
+    const { foods } = (await search('an').expect(200)).body.data;
+    assert.equal(foods.filter((f) => f.source === 'local').length, 30);
   });
 });
