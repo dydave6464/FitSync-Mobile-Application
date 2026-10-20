@@ -1041,7 +1041,7 @@ void main() {
   });
 
   testWidgets(
-    'with both switched off, Continue asks nothing and saves nothing',
+    'with both switched off, Continue asks nothing and saves both off',
     (tester) async {
       final scheduler = _FakeScheduler();
       final reminders = _FakeReminderRepository();
@@ -1070,7 +1070,9 @@ void main() {
       await tester.pumpAndSettle();
 
       expect(scheduler.requestPermissionCalls, 0);
-      expect(reminders.patches, isEmpty);
+      expect(reminders.patches, [
+        {'habitsEnabled': false, 'checkinEnabled': false},
+      ]);
       expect(completed, [true]);
     },
   );

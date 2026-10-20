@@ -60,7 +60,7 @@ class _OnboardingFlowState extends ConsumerState<OnboardingFlow> {
   bool _remindCheckin = true;
 
   /// With both off there is nothing to remind about, so the last step's
-  /// Continue neither asks for permission nor saves anything.
+  /// Continue does not ask for permission -- it only saves the off choice.
   bool get _anyReminder => _remindHabits || _remindCheckin;
 
   /// Whether the profile and injury writes have landed. Drives the first tick
@@ -343,6 +343,14 @@ class _OnboardingFlowState extends ConsumerState<OnboardingFlow> {
     await _continue();
   }
 
+  /// The last step's Continue with both switches off: no permission prompt,
+  /// since there is nothing to remind about, but the off choice is still
+  /// saved -- otherwise the server's defaults (on) would quietly win.
+  Future<void> _continueRemindersOff() async {
+    _saveReminderChoices();
+    await _continue();
+  }
+
   /// Saves the last step's switches. Fired and forgotten, like the reminder
   /// prompt flag in _save: a slow or failing write must never hold up the
   /// plan the user is here for. One that never lands leaves the server's
@@ -480,8 +488,10 @@ class _OnboardingFlowState extends ConsumerState<OnboardingFlow> {
             // The health step has no Skip, so Continue waits for a valid answer.
             onContinue: onHealthStep && !_health.isValid
                 ? null
-                : (onLastStep && !retrying && _anyReminder
-                      ? _turnOnReminders
+                : (onLastStep && !retrying
+                      ? (_anyReminder
+                            ? _turnOnReminders
+                            : _continueRemindersOff)
                       : _continue),
             // The last step has no header Skip -- "Not now" is its own button
             // under Continue instead (see secondaryLabel below). The health
@@ -489,11 +499,11 @@ class _OnboardingFlowState extends ConsumerState<OnboardingFlow> {
             // past without one. Every earlier step keeps the header Skip,
             // which keeps what was typed and moves on.
             onSkip: onLastStep || onHealthStep ? null : (_busy ? null : _skip),
-            // Not now still saves and builds the plan -- it only skips asking
-            // for permission first -- so it routes through _continue rather
-            // than the lighter save every earlier step's Skip uses. Once a
-            // build has failed the question is answered, and Try again is the
-            // only button left.
+            // Not now still saves the profile and builds the plan -- it only
+            // skips asking for permission and saving the reminder switches --
+            // so it routes through _continue rather than the lighter save
+            // every earlier step's Skip uses. Once a build has failed the
+            // question is answered, and Try again is the only button left.
             secondaryLabel: onLastStep && !retrying ? 'Not now' : null,
             onSecondary: onLastStep && !retrying
                 ? (_busy ? null : _continue)
