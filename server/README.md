@@ -130,7 +130,9 @@ equipment names and injury region names to ids, so it must run after `seed`,
 `seed:equipment` AND `seed:injuries`, never before — and `npm run
 seed:categories` to restore the exercise category assignments (see
 [Exercise catalogue](#exercise-catalogue)) — it depends only on `seed`, so it
-can run any time after it. `npm test` migrates `<DB_NAME>_test` from
+can run any time after it — then `npm run seed:preferences` to restore the
+team's curated exercise marks, which also depends only on `seed`; until it
+runs, every plan for a beginner is refused. `npm test` migrates `<DB_NAME>_test` from
 scratch on every run, so the test database needs nothing done to it.
 
 ## Exercise catalogue
@@ -168,6 +170,15 @@ npm run seed:categories   # classifies every live exercise as strength,
                            # keeping exercise_id stable, so a renamed
                            # exercise keeps its old, now-wrong category row
                            # until categories are re-seeded.
+
+npm run seed:preferences  # the team's curated marks: first choice,
+                           # alternative, search only or never, and
+                           # beginner-friendly. Depends only on seed. Must run
+                           # before anyone planned as a beginner (new, beginner,
+                           # no level, or a health check) can get a plan: they
+                           # are offered only beginner-friendly exercises, and
+                           # the generator refuses rather than guess. Exits
+                           # non-zero if nothing matched the catalogue.
 ```
 
 To review what the classifier decided before trusting it, run:
