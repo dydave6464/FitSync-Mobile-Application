@@ -1,9 +1,9 @@
 'use strict';
 const AppError = require('../lib/app-error');
 // Top-level require, not inline: the chain body-weight.js -> sessions.js ->
-// lib/app-error.js never loops back to this module (only route files
-// require profile.js, and nothing under src/db/ requires it), so there is
-// no cycle to dodge here.
+// lib/app-error.js never loops back to this module (route files and
+// plan-swap.js require profile.js, and nothing it requires reaches either),
+// so there is no cycle to dodge here.
 const { writeEntry, MIN_KG, MAX_KG } = require('./body-weight');
 
 // API name -> column. Anything not in this map cannot be written, which is what
@@ -23,6 +23,27 @@ const WRITABLE = {
   notificationsEnabled: 'notifications_enabled',
   weightUnit: 'weight_unit',
 };
+
+/// A stored health check that reports a condition or a warning sign. Only
+/// the yes/no the generator needs: the answers themselves stay behind
+/// GET /profile/health and are never part of the profile payload.
+async function hasHealthCaution(pool, userId) {
+  const [[caution]] = await pool.query(
+    `SELECT COUNT(*) AS n FROM health_checks
+      WHERE user_id = ?
+        AND (conditions <> '' OR chest_pain OR dizziness OR supervised_only)`,
+    [userId],
+  );
+  return Number(caution.n) > 0;
+}
+
+/// Beginner mode: fitness level not `intermediate` (so `new`, `beginner` or
+/// missing), or a health caution. Mirrors ml/app/rules/parameters.py
+/// is_beginner_plan -- the two services share no code, so a change to the
+/// rule must be made on both sides.
+function isBeginnerPlan({ fitnessLevel, healthCaution }) {
+  return fitnessLevel !== 'intermediate' || healthCaution === true;
+}
 
 async function getProfile(pool, userId) {
   const [rows] = await pool.query(
@@ -72,14 +93,7 @@ async function getProfile(pool, userId) {
     'SELECT goal FROM user_goals WHERE user_id = ? ORDER BY position', [userId],
   );
 
-  // Only the yes/no the generator needs. The answers themselves stay behind
-  // GET /profile/health and are never part of the profile payload.
-  const [[caution]] = await pool.query(
-    `SELECT COUNT(*) AS n FROM health_checks
-      WHERE user_id = ?
-        AND (conditions <> '' OR chest_pain OR dizziness OR supervised_only)`,
-    [userId],
-  );
+  const healthCaution = await hasHealthCaution(pool, userId);
 
   return {
     userId: u.user_id,
@@ -102,7 +116,7 @@ async function getProfile(pool, userId) {
     city: u.city,
     // A stored health check that reports a condition or a warning sign. It
     // makes the generated plan gentler (minimum sets, 45-minute sessions).
-    healthCaution: Number(caution.n) > 0,
+    healthCaution,
     isPremium: Boolean(u.is_premium),
     notificationsEnabled: Boolean(u.notifications_enabled),
     weightUnit: u.weight_unit,
@@ -336,5 +350,6 @@ async function markOnboardingComplete(pool, userId) {
 
 module.exports = {
   getProfile, updateProfile, setGoals, setEquipment, setInjuries, setTrainingDays,
-  listEquipment, listInjuries, markOnboardingComplete, WRITABLE,
+  listEquipment, listInjuries, markOnboardingComplete, hasHealthCaution, isBeginnerPlan,
+  WRITABLE,
 };

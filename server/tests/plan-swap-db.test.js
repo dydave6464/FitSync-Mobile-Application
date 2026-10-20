@@ -392,6 +392,147 @@ test('swap candidates', async (t) => {
     },
   );
 
+  // The curated marks. The fixture has no muscle group with enough rows to
+  // show an order, so these subtests plant their own body-weight exercises
+  // in a muscle group nothing else uses, inserted in an id order that is the
+  // reverse of the order the marks call for -- under the old exercise_id
+  // order every assertion below would fail. Each removes what it planted.
+  const curated = async (email, fitnessLevel, rows) => {
+    await pool.query('DELETE FROM plan_exercises');
+    await pool.query('DELETE FROM workout_plans');
+    await pool.query('DELETE FROM user_equipment');
+    await pool.query('DELETE FROM user_injuries');
+    await pool.query('DELETE FROM exercise_contraindications');
+    await pool.query('DELETE FROM users');
+    const [u] = await pool.query(
+      "INSERT INTO users (email, password_hash, full_name, fitness_level) VALUES (?, 'x', 'C', ?)",
+      [email, fitnessLevel],
+    );
+    const [[bw]] = await pool.query("SELECT equipment_id FROM equipment WHERE name = 'body weight'");
+    const ids = {};
+    for (const [key, priority, beginnerFriendly] of [['inPlan', null, false], ...rows]) {
+      const [x] = await pool.query(
+        `INSERT INTO exercises (name, muscle_group, equipment_id, status)
+         VALUES (?, 'curation test', ?, 'live')`,
+        [`Curated ${key}`, bw.equipment_id],
+      );
+      ids[key] = x.insertId;
+      if (priority !== null) {
+        await pool.query(
+          `INSERT INTO exercise_preferences (exercise_id, priority, beginner_friendly)
+           VALUES (?, ?, ?)`,
+          [x.insertId, priority, beginnerFriendly],
+        );
+      }
+    }
+    const [plan] = await pool.query(
+      `INSERT INTO workout_plans
+         (user_id, name, split_style, days_per_week, session_length_min, week_no, is_active)
+       VALUES (?, 'P', 'full_body', 3, 45, 1, TRUE)`,
+      [u.insertId],
+    );
+    const [pe] = await pool.query(
+      `INSERT INTO plan_exercises (plan_id, exercise_id, order_no, target_sets, target_reps)
+       VALUES (?, ?, 1, 3, '8-12')`,
+      [plan.insertId, ids.inPlan],
+    );
+    return { userId: u.insertId, planExerciseId: pe.insertId, ids };
+  };
+  const removeCurated = async () => {
+    await pool.query('DELETE FROM plan_swap_alternatives');
+    await pool.query('DELETE FROM plan_swaps');
+    await pool.query('DELETE FROM plan_exercises');
+    await pool.query('DELETE FROM workout_plans');
+    // exercise_preferences cascades with its exercise.
+    await pool.query("DELETE FROM exercises WHERE muscle_group = 'curation test'");
+  };
+  const offeredIds = async (userIdFor, planExerciseId) => {
+    const ctx = await loadSwapContext(pool, userIdFor, planExerciseId);
+    const rows = await listAlternatives(pool, ctx, { q: null, limit: 20 });
+    return rows.map((r) => r.exerciseId);
+  };
+
+  await t.test('never offers a never exercise, and orders first, alternative, unmarked, search_only',
+    async () => {
+      try {
+        const { userId: uid, planExerciseId, ids } = await curated('order@example.com', 'intermediate', [
+          ['never', 'never', true],
+          ['searchOnly', 'search_only', false],
+          ['unmarked', null, false],
+          ['alternative', 'alternative', false],
+          ['first', 'first', false],
+        ]);
+
+        assert.deepEqual(await offeredIds(uid, planExerciseId),
+          [ids.first, ids.alternative, ids.unmarked, ids.searchOnly],
+          'the team’s marks decide the order; the catalogue number only breaks ties');
+      } finally {
+        await removeCurated();
+      }
+    });
+
+  await t.test('refuses a never exercise even when asked directly', async () => {
+    try {
+      const { userId: uid, planExerciseId, ids } = await curated('never@example.com', 'intermediate', [
+        ['never', 'never', true],
+        ['first', 'first', true],
+      ]);
+      const ctx = await loadSwapContext(pool, uid, planExerciseId);
+
+      await assert.rejects(
+        () => swapPlanExercise(pool, ctx, ids.never),
+        (err) => err.code === 'EXERCISE_NOT_ALLOWED',
+        'a stale sheet or a hand-made request must not reach a never exercise',
+      );
+      await swapPlanExercise(pool, ctx, ids.first);
+    } finally {
+      await removeCurated();
+    }
+  });
+
+  const beginnerRows = [
+    ['unmarkedEasy', null, false],
+    ['alternativeEasy', 'alternative', true],
+    ['firstHard', 'first', false],
+  ];
+
+  await t.test('a beginner is offered beginner-friendly exercises first', async () => {
+    try {
+      const { userId: uid, planExerciseId, ids } = await curated('beg@example.com', 'beginner', beginnerRows);
+      // The unmarked row has no preference row at all, so it cannot be
+      // beginner-friendly: it stays after the friendly one.
+      assert.deepEqual(await offeredIds(uid, planExerciseId),
+        [ids.alternativeEasy, ids.firstHard, ids.unmarkedEasy]);
+    } finally {
+      await removeCurated();
+    }
+  });
+
+  await t.test('an intermediate with a health caution is planned as a beginner', async () => {
+    try {
+      const { userId: uid, planExerciseId, ids } = await curated('caution@example.com', 'intermediate', beginnerRows);
+      await pool.query(
+        `INSERT INTO health_checks (user_id, chest_pain, dizziness, supervised_only)
+         VALUES (?, TRUE, FALSE, FALSE)`,
+        [uid],
+      );
+      assert.deepEqual(await offeredIds(uid, planExerciseId),
+        [ids.alternativeEasy, ids.firstHard, ids.unmarkedEasy]);
+    } finally {
+      await removeCurated();
+    }
+  });
+
+  await t.test('for an intermediate without caution the beginner flag changes nothing', async () => {
+    try {
+      const { userId: uid, planExerciseId, ids } = await curated('int@example.com', 'intermediate', beginnerRows);
+      assert.deepEqual(await offeredIds(uid, planExerciseId),
+        [ids.firstHard, ids.alternativeEasy, ids.unmarkedEasy]);
+    } finally {
+      await removeCurated();
+    }
+  });
+
   // Deliberately last and does its own setup rather than calling reset():
   // reset() always builds its plan on `abs` (see the diagnostic in the task
   // report), and every live `abs` exercise in the fixture is body weight, so
