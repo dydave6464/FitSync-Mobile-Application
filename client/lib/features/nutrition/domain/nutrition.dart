@@ -66,6 +66,7 @@ class Food {
     this.fiberG,
     this.sugarG,
     this.sodiumMg,
+    this.group,
   });
 
   factory Food.fromJson(Map<String, dynamic> j) => Food(
@@ -81,6 +82,7 @@ class Food {
     fiberG: j['fiberG'] == null ? null : _d(j['fiberG']),
     sugarG: j['sugarG'] == null ? null : _d(j['sugarG']),
     sodiumMg: j['sodiumMg'] == null ? null : _d(j['sodiumMg']),
+    group: j['group'] as String?,
   );
 
   /// 'local', 'fatsecret' or 'manual'.
@@ -96,6 +98,10 @@ class Food {
   final double? fiberG;
   final double? sugarG;
   final double? sodiumMg;
+
+  /// The food's type in search (a key of [foodGroupLabels]), or null for an
+  /// online food, one without a type, or one not from a search.
+  final String? group;
 
   bool get isFatsecret => source == 'fatsecret';
 
@@ -117,6 +123,23 @@ class Food {
     },
   };
 }
+
+/// The search's food types as headings, in the server's order.
+const foodGroupLabels = {
+  'home': 'Home-cooked',
+  'fruit_veg': 'Fruits & vegetables',
+  'bread_kakanin': 'Breads & kakanin',
+  'canned_instant': 'Canned & instant',
+  'drink': 'Drinks',
+  'street': 'Street food',
+  'snack_sweet': 'Snacks & sweets',
+  'fast_food': 'Fast food',
+  'condiment': 'Sauces & condiments',
+};
+
+/// A food's heading in search: its type, or "More foods" for an online food
+/// or one without a type (the server lists those last). Names no source.
+String foodGroupLabel(Food food) => (food.isFatsecret ? null : foodGroupLabels[food.group]) ?? 'More foods';
 
 /// One logged item. Its numbers are totals (per serving × servings).
 class FoodEntry {
