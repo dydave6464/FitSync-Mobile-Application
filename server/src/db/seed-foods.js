@@ -11,26 +11,36 @@ const FIND_OWN = `
    LIMIT 1
 `;
 
+// A seed food renamed in foods.json: the existing row is renamed rather than
+// a second one inserted, so meals already logged keep pointing at it and
+// show the new name.
+const RENAMES = { 'Steamed white rice': 'White rice' };
+
 async function seedFoods(dbConfig) {
   const pool = createPool(dbConfig);
   try {
     let inserted = 0;
     let updated = 0;
     let unchanged = 0;
-    for (const f of FOODS) {
-      const values = [f.category, f.servingDesc, f.kcal, f.proteinG, f.carbsG, f.fatG, f.fiberG, f.sugarG ?? null, f.sodiumMg ?? null];
+    for (const [from, to] of Object.entries(RENAMES)) {
+      const [[old]] = await pool.query(FIND_OWN, [from]);
+      const [[taken]] = await pool.query(FIND_OWN, [to]);
+      if (old && !taken) await pool.query('UPDATE foods SET name = ? WHERE food_id = ?', [to, old.food_id]);
+    }
+    for (const [i, f] of FOODS.entries()) {
+      const values = [f.category, f.type, i + 1, f.servingDesc, f.kcal, f.proteinG, f.carbsG, f.fatG, f.fiberG, f.sugarG ?? null, f.sodiumMg ?? null];
       const [[own]] = await pool.query(FIND_OWN, [f.name]);
       if (!own) {
         await pool.query(
-          `INSERT INTO foods (name, category, serving_desc, calories, protein_g, carbs_g, fat_g, fiber_g, sugar_g, sodium_mg)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+          `INSERT INTO foods (name, category, food_type, list_order, serving_desc, calories, protein_g, carbs_g, fat_g, fiber_g, sugar_g, sodium_mg)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
           [f.name, ...values],
         );
         inserted += 1;
         continue;
       }
       const [res] = await pool.query(
-        `UPDATE foods SET category = ?, serving_desc = ?, calories = ?, protein_g = ?, carbs_g = ?, fat_g = ?, fiber_g = ?, sugar_g = ?, sodium_mg = ?
+        `UPDATE foods SET category = ?, food_type = ?, list_order = ?, serving_desc = ?, calories = ?, protein_g = ?, carbs_g = ?, fat_g = ?, fiber_g = ?, sugar_g = ?, sodium_mg = ?
           WHERE food_id = ?`,
         [...values, own.food_id],
       );

@@ -1,5 +1,9 @@
 'use strict';
 
+/// FitSync's food types, in search order: what people eat at home first,
+/// fast food, snacks and sauces near the end. Matches migration 038's ENUM.
+const FOOD_TYPES = ['home', 'fruit_veg', 'bread_kakanin', 'canned_instant', 'drink', 'street', 'snack_sweet', 'fast_food', 'condiment'];
+
 const round2 = (n) => Math.round(Number(n) * 100) / 100;
 const nullable2 = (n) => (n == null ? null : round2(n));
 const nullable1 = (n) => (n == null ? null : Math.round(Number(n) * 10) / 10);
@@ -98,4 +102,4 @@ async function upsertFatsecretFood(pool, food, retry = true) {
   }
 }
 
-module.exports = { findFood, searchOwnFoods, upsertFatsecretFood, asFood };
+module.exports = { FOOD_TYPES, findFood, searchOwnFoods, upsertFatsecretFood, asFood };
