@@ -23,8 +23,9 @@ BodyWeightSeries series(
   entries: entries ?? raw.length,
 );
 
-/// Today, for the tests: the morning of 20 October 2026.
-DateTime _oct20() => DateTime(2026, 10, 20, 9);
+/// Today, for the tests: 09:00 on 20 October 2026 in Manila, as a UTC
+/// instant so the result is the same in any machine's time zone.
+DateTime _oct20() => DateTime.utc(2026, 10, 20, 1);
 
 Future<void> pumpCard(
   WidgetTester tester,
@@ -568,7 +569,8 @@ void main() {
     await pumpCard(
       tester,
       series([('2026-10-19', 72.9), ('2026-10-20', 72.5)]),
-      now: () => DateTime(2026, 10, 21, 7),
+      // 07:00 on the 21st in Manila.
+      now: () => DateTime.utc(2026, 10, 20, 23),
     );
 
     expect(find.text('0.4 kg since Oct 19'), findsOneWidget);
@@ -644,5 +646,20 @@ void main() {
       ),
       findsOneWidget,
     );
+  });
+
+  // Weigh-in dates are Manila days (the server's CURDATE on +08:00), so
+  // "today" is too, whatever zone the phone is set to.
+  testWidgets('today is the Manila day, like the weigh-in dates', (
+    tester,
+  ) async {
+    await pumpCard(
+      tester,
+      series([('2026-10-19', 72.9), ('2026-10-20', 72.5)]),
+      // 20:00 UTC on the 19th is 04:00 on the 20th in Manila.
+      now: () => DateTime.utc(2026, 10, 19, 20),
+    );
+
+    expect(find.text('0.4 kg since yesterday'), findsOneWidget);
   });
 }

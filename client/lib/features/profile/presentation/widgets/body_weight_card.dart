@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../../../../core/dates.dart';
+import '../../../../core/manila_day.dart';
 import '../../../../core/theme.dart';
 import '../../../../core/units.dart';
 import '../../../../core/widgets/fs_charts.dart';
@@ -102,12 +103,8 @@ class BodyWeightCard extends StatelessWidget {
     // and say nothing; one weigh-in draws a chart only for a goal line.
     final firstOnly = points.length == 1;
     final showChart = !firstOnly || reference?.kind == 'goal';
-    final today = now();
-    final latestIsToday =
-        points.last.loggedOn ==
-        '${today.year.toString().padLeft(4, '0')}-'
-            '${today.month.toString().padLeft(2, '0')}-'
-            '${today.day.toString().padLeft(2, '0')}';
+    // A Manila day, like the server's log_date, whatever zone the phone is in.
+    final latestIsToday = points.last.loggedOn == manilaDayOf(now());
     final start = series.start;
 
     return FsCard(
