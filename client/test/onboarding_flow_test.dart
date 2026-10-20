@@ -20,9 +20,12 @@ import 'package:fitsync/features/profile/data/profile_repository.dart';
 import 'package:fitsync/features/profile/domain/profile.dart';
 import 'package:fitsync/features/profile/presentation/providers.dart';
 import 'package:fitsync/features/reminders/data/reminder_prompt_store.dart';
+import 'package:fitsync/features/reminders/data/reminder_repository.dart';
 import 'package:fitsync/features/reminders/data/reminder_scheduler.dart';
 import 'package:fitsync/features/reminders/domain/reminders.dart'
-    show PlannedReminder;
+    show PlannedReminder, ReminderSettings;
+import 'package:fitsync/features/reminders/presentation/providers.dart'
+    show reminderRepositoryProvider;
 
 import 'helpers/fake_health.dart';
 
@@ -195,6 +198,27 @@ class _FakeScheduler implements ReminderScheduler {
   Stream<String> get taps => const Stream.empty();
 }
 
+/// Records the reminder choices onboarding saves. [onPatch] runs inside each
+/// patch -- a test passes one that throws, never finishes, or notes how many
+/// permission prompts came first.
+class _FakeReminderRepository implements ReminderRepository {
+  _FakeReminderRepository({this.onPatch});
+
+  final Future<void> Function()? onPatch;
+  final patches = <Map<String, dynamic>>[];
+
+  @override
+  Future<ReminderSettings> patch(Map<String, dynamic> fields) async {
+    patches.add(fields);
+    await onPatch?.call();
+    return ReminderSettings.defaults;
+  }
+
+  @override
+  dynamic noSuchMethod(Invocation i) =>
+      throw UnimplementedError('${i.memberName} is not used here');
+}
+
 /// `markAnswered` fails every time -- a secure-storage write that genuinely
 /// cannot land, e.g. a locked keychain. `answered()` is left to the real
 /// in-memory backing, unused by these tests but harmless either way.
@@ -243,6 +267,7 @@ Future<void> _pumpFlow(
   String? seedMainGoal,
   FakeHealthRepository? health,
   RecordingAuthController? auth,
+  ReminderRepository? reminders,
 }) async {
   await tester.pumpWidget(
     ProviderScope(
@@ -273,6 +298,9 @@ Future<void> _pumpFlow(
           reminderSchedulerProvider.overrideWithValue(scheduler),
         reminderPromptStoreProvider.overrideWithValue(
           store ?? ReminderPromptStore(backing: InMemorySecureStore()),
+        ),
+        reminderRepositoryProvider.overrideWithValue(
+          reminders ?? _FakeReminderRepository(),
         ),
       ],
       child: const MaterialApp(home: OnboardingFlow()),
@@ -306,6 +334,16 @@ Future<void> _passHealthClear(WidgetTester tester) async {
     await _tapKey(tester, Key('health.${q.field}.no'));
   }
   await _tapKey(tester, const Key('continue'));
+}
+
+/// Skips the four skippable steps and answers the health step: the
+/// reminders step is on screen afterwards.
+Future<void> _toRemindersStep(WidgetTester tester) async {
+  await _skip(tester);
+  await _skip(tester);
+  await _skip(tester);
+  await _skip(tester);
+  await _passHealthClear(tester);
 }
 
 void main() {
@@ -882,8 +920,8 @@ void main() {
     expect(find.text('Stay on track'), findsOneWidget);
     expect(
       find.text(
-        "Reminders for your habits before they're due. You can change "
-        'them any time in Settings.',
+        'Pick what to be reminded about. You can change these any time in '
+        'Settings.',
       ),
       findsOneWidget,
     );
@@ -942,6 +980,156 @@ void main() {
 
     expect(scheduler.requestPermissionCalls, 0);
     expect(completions, hasLength(1));
+    expect(completed, [true]);
+  });
+
+  testWidgets('both reminder switches start on', (tester) async {
+    await _pumpFlow(tester, patches: []);
+    await _toRemindersStep(tester);
+
+    Switch at(String key) => tester.widget<Switch>(find.byKey(Key(key)));
+    expect(at('onboarding.remind.habits.switch').value, isTrue);
+    expect(at('onboarding.remind.checkin.switch').value, isTrue);
+  });
+
+  testWidgets('Turn on reminders saves both choices after asking permission', (
+    tester,
+  ) async {
+    final scheduler = _FakeScheduler();
+    final permissionsAtPatch = <int>[];
+    final reminders = _FakeReminderRepository(
+      onPatch: () async =>
+          permissionsAtPatch.add(scheduler.requestPermissionCalls),
+    );
+    final completed = <bool>[];
+    await _pumpFlow(
+      tester,
+      patches: [],
+      completed: completed,
+      scheduler: scheduler,
+      reminders: reminders,
+    );
+    await _toRemindersStep(tester);
+
+    await tester.tap(find.byKey(const Key('continue')));
+    await tester.pumpAndSettle();
+
+    expect(reminders.patches, [
+      {'habitsEnabled': true, 'checkinEnabled': true},
+    ]);
+    expect(permissionsAtPatch, [1], reason: 'permission is asked first');
+    expect(completed, [true]);
+  });
+
+  testWidgets('a switched-off check-in is saved off', (tester) async {
+    final reminders = _FakeReminderRepository();
+    await _pumpFlow(
+      tester,
+      patches: [],
+      scheduler: _FakeScheduler(),
+      reminders: reminders,
+    );
+    await _toRemindersStep(tester);
+
+    await _tapKey(tester, const Key('onboarding.remind.checkin'));
+    await tester.tap(find.byKey(const Key('continue')));
+    await tester.pumpAndSettle();
+
+    expect(reminders.patches, [
+      {'habitsEnabled': true, 'checkinEnabled': false},
+    ]);
+  });
+
+  testWidgets(
+    'with both switched off, Continue asks nothing and saves nothing',
+    (tester) async {
+      final scheduler = _FakeScheduler();
+      final reminders = _FakeReminderRepository();
+      final completed = <bool>[];
+      await _pumpFlow(
+        tester,
+        patches: [],
+        completed: completed,
+        scheduler: scheduler,
+        reminders: reminders,
+      );
+      await _toRemindersStep(tester);
+
+      await _tapKey(tester, const Key('onboarding.remind.habits'));
+      await _tapKey(tester, const Key('onboarding.remind.checkin'));
+      expect(find.text('Turn on reminders'), findsNothing);
+      expect(
+        find.descendant(
+          of: find.byKey(const Key('continue')),
+          matching: find.text('Continue'),
+        ),
+        findsOneWidget,
+      );
+
+      await tester.tap(find.byKey(const Key('continue')));
+      await tester.pumpAndSettle();
+
+      expect(scheduler.requestPermissionCalls, 0);
+      expect(reminders.patches, isEmpty);
+      expect(completed, [true]);
+    },
+  );
+
+  testWidgets('Not now saves no reminder choices', (tester) async {
+    final reminders = _FakeReminderRepository();
+    await _pumpFlow(
+      tester,
+      patches: [],
+      scheduler: _FakeScheduler(),
+      reminders: reminders,
+    );
+    await _toRemindersStep(tester);
+
+    await tester.tap(find.byKey(const Key('secondary')));
+    await tester.pumpAndSettle();
+
+    expect(reminders.patches, isEmpty);
+  });
+
+  testWidgets('reminder choices that cannot be saved do not stop onboarding', (
+    tester,
+  ) async {
+    final completed = <bool>[];
+    await _pumpFlow(
+      tester,
+      patches: [],
+      completed: completed,
+      scheduler: _FakeScheduler(),
+      reminders: _FakeReminderRepository(
+        onPatch: () async => throw Exception('offline'),
+      ),
+    );
+    await _toRemindersStep(tester);
+
+    await tester.tap(find.byKey(const Key('continue')));
+    await tester.pumpAndSettle();
+
+    expect(completed, [true]);
+  });
+
+  testWidgets('a reminder save that never finishes does not stop onboarding', (
+    tester,
+  ) async {
+    final completed = <bool>[];
+    await _pumpFlow(
+      tester,
+      patches: [],
+      completed: completed,
+      scheduler: _FakeScheduler(),
+      reminders: _FakeReminderRepository(
+        onPatch: () => Completer<void>().future,
+      ),
+    );
+    await _toRemindersStep(tester);
+
+    await tester.tap(find.byKey(const Key('continue')));
+    await tester.pumpAndSettle();
+
     expect(completed, [true]);
   });
 
