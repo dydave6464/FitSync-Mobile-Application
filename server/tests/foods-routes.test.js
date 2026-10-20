@@ -224,6 +224,14 @@ test('food search order with the real food list', async (t) => {
     assert.equal(foods.at(-2).name, 'KFC Original Recipe chicken with rice');
   });
 
+  await t.test('fried: inside a type, names starting with the query first, Filipino before international', async () => {
+    const { foods } = (await search('fried').expect(200)).body.data;
+    assert.deepEqual(foods.slice(0, 7).map((f) => f.name), [
+      'Fried tilapia', 'Fried egg', 'Garlic fried rice (sinangag)', 'Galunggong, fried',
+      'Tokwa (fried tofu)', 'Danggit (fried dried fish)', 'Fried chicken',
+    ]);
+  });
+
   await t.test('an untyped FitSync food comes after the typed ones, before online', async () => {
     await pool.query("INSERT INTO foods (name, category, calories, protein_g, carbs_g, fat_g) VALUES ('Rice crispies test', 'filipino', 100, 1, 20, 1)");
     const { foods } = (await search('rice').expect(200)).body.data;
