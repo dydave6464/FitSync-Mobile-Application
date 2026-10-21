@@ -78,10 +78,12 @@ BASE_LOGIT = 0.4         # puts the everyday done rate near two thirds
 DONE_PER = 0.35            # assumption 1
 SKIPPED_PER = -0.55        # assumption 2
 SWAPPED_PER = -1.10        # assumption 2, a swap counts double
-# Assumption 3, by days since the muscle was trained: 0 (earlier today) and 1
-# day equally, then fading by day 3; 4 or more days, nothing. Non-decreasing
-# in days, as the monotonic constraint on days_since_trained requires.
-REST_PENALTY = (-1.0, -1.0, -0.7, -0.3)
+# Assumption 3, by days since the muscle was trained: strongest at 1-2 days
+# (DOMS peaks 24-72 h), fading by day 3; 4 or more days, nothing. Day 0
+# (earlier today) gets the same penalty as days 1-2 rather than a larger one,
+# because the monotonic constraint on days_since_trained (+1) needs the
+# penalty non-decreasing in days.
+REST_PENALTY = (-1.0, -1.0, -1.0, -0.3)
 PICKED_BONUS = 0.5         # assumption 4
 LOCATION_BONUS = 0.4       # assumption 5
 NOISE_SD = 0.5             # on the log-odds: everything unmeasured

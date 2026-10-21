@@ -68,7 +68,10 @@ def test_each_assumption_pushes_the_expected_way():
     assert _logit_with(base, times_skipped=2) < plain               # 2
     assert _logit_with(base, times_swapped=1) < _logit_with(base, times_skipped=1)
     assert _logit_with(base, days_since_trained=1) < plain          # 3
-    assert _logit_with(base, days_since_trained=2) > _logit_with(base, days_since_trained=1)
+    # Strongest at 1-2 days (DOMS peaks 24-72 h), fading by day 3.
+    assert _logit_with(base, days_since_trained=2) == _logit_with(base, days_since_trained=1)
+    assert _logit_with(base, days_since_trained=3) > _logit_with(base, days_since_trained=2)
+    assert _logit_with(base, days_since_trained=3) < plain
     assert _logit_with(base, days_since_trained=4) == plain
     assert _logit_with(base, picked_equipment=1) > plain            # 4
     assert _logit_with(base, location_fit=1) > plain                # 5
@@ -83,3 +86,46 @@ def test_goal_split_length_and_level_have_no_simulated_effect():
     assert _logit_with(base, session_length_min=60) == plain
     assert _logit_with(base, level=2) == plain
     assert _logit_with(base, mark=1) == plain
+
+
+def _profile(X):
+    """Gentle (beginner, new or cautioned) and location-preference masks."""
+    gentle = (X[:, COL["level"]] < 2) | (X[:, COL["health_caution"]] == 1)
+    prefers = X[:, [COL["loc_commercial_gym"], COL["loc_home_gym"],
+                    COL["loc_other"]]].sum(axis=1) == 1
+    return gentle, prefers
+
+
+def _capped_poisson_mean(mean):
+    """Expected value of min(Poisson(mean), COUNT_CAP)."""
+    k = np.arange(rf.COUNT_CAP)
+    pmf = np.exp(-mean) * mean ** k / np.cumprod(np.r_[1, np.maximum(k[1:], 1)])
+    return float((k * pmf).sum() + rf.COUNT_CAP * (1 - pmf.sum()))
+
+
+def test_everyday_marginals_match_the_catalogue_snapshot():
+    data = rd.simulate()
+    X = data.X[~data.coverage]
+    gentle, prefers = _profile(X)
+    first = X[:, COL["mark"]] == rf.MARKS["first"]
+    friendly = X[:, COL["beginner_friendly"]] == 1
+    tol = 0.03
+
+    def near(observed, expected, what):
+        assert abs(observed - expected) <= tol, (what, observed, expected)
+
+    near(first[gentle].mean(), rd.GENTLE_FIRST_P, "gentle P(first)")
+    near(first[~gentle].mean(), rd.OPEN_FIRST_P, "open P(first)")
+    near(friendly[~gentle & first].mean(), rd.OPEN_FRIENDLY_GIVEN_FIRST_P,
+         "open P(friendly | first)")
+    near(friendly[~gentle & ~first].mean(), rd.OPEN_FRIENDLY_GIVEN_ALTERNATIVE_P,
+         "open P(friendly | alternative)")
+    near((X[:, COL["picked_equipment"]] == 1).mean(), rd.PICKED_P, "P(picked)")
+    near((X[prefers, COL["location_fit"]] == 1).mean(), rd.LOCATION_FIT_P,
+         "P(fit | location preference)")
+    near((X[:, COL["days_since_trained"]] == rf.DAYS_CAP).mean(), rd.NEVER_TRAINED_P,
+         "P(never trained)")
+    for column, mean in (("times_done", rd.DONE_MEAN),
+                         ("times_skipped", rd.SKIPPED_MEAN),
+                         ("times_swapped", rd.SWAPPED_MEAN)):
+        near(X[:, COL[column]].mean(), _capped_poisson_mean(mean), column + " mean")
