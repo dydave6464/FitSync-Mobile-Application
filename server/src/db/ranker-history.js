@@ -9,8 +9,9 @@
 ///                  completed workout with a completed set for it, capped
 ///   exercises      per exercise id: completed workouts in the window with a
 ///                  completed set (done); completed PLAN workouts that
-///                  prescribed it on their day with none (skipped); swaps
-///                  that rejected it (swapped). Capped; zeros left out.
+///                  prescribed it on their day, as the day stood then, with
+///                  none (skipped); swaps that rejected it (swapped). Capped;
+///                  zeros left out.
 ///
 /// [before] ('YYYY-MM-DD'): count only earlier days and measure against it.
 /// null: up to and including today, measured against today (Manila: the
@@ -50,19 +51,41 @@ async function readRankerHistory(pool, userId, { before = null } = {}) {
     before === null ? [userId] : [userId, before, before],
   );
 
+  // plan_exercises holds each slot as it is NOW: a swap rewrites the row in
+  // place (plan-swap.js). So the slot's exercise AT a past session is the one
+  // rejected by the first swap of that slot on a later day, or the row's
+  // current one if it was not swapped since. A slot swapped ON the session's
+  // day is left out: a DATE cannot say whether the swap came before or after
+  // the workout. Not recoverable, and so still read from the current rows: a
+  // custom-day replace (plans.js deletes and reinserts the day, nulling its
+  // swaps' plan_exercise_id) and swaps recorded before plan_swaps existed.
   const [skipped] = await pool.query(
-    `SELECT pe.exercise_id AS id, COUNT(*) AS n
-       FROM workout_sessions s
-       JOIN plan_exercises pe
-         ON pe.plan_id = s.plan_id AND pe.day_no = COALESCE(s.plan_day_no, 1)
-      WHERE s.user_id = ? AND s.status = 'completed' AND s.plan_id IS NOT NULL
-        AND ${upper} AND ${lowerFor('s.session_date')}
-        AND NOT EXISTS (
+    `SELECT x.id, COUNT(DISTINCT x.session_id) AS n
+       FROM (
+         SELECT s.session_id,
+                COALESCE(
+                  (SELECT w.rejected_exercise_id FROM plan_swaps w
+                    WHERE w.plan_exercise_id = pe.plan_exercise_id
+                      AND DATE(w.swapped_at) > s.session_date
+                    ORDER BY w.swapped_at, w.swap_id
+                    LIMIT 1),
+                  pe.exercise_id) AS id
+           FROM workout_sessions s
+           JOIN plan_exercises pe
+             ON pe.plan_id = s.plan_id AND pe.day_no = COALESCE(s.plan_day_no, 1)
+          WHERE s.user_id = ? AND s.status = 'completed' AND s.plan_id IS NOT NULL
+            AND ${upper} AND ${lowerFor('s.session_date')}
+            AND NOT EXISTS (
+                  SELECT 1 FROM plan_swaps w
+                   WHERE w.plan_exercise_id = pe.plan_exercise_id
+                     AND DATE(w.swapped_at) = s.session_date)
+       ) x
+      WHERE NOT EXISTS (
               SELECT 1 FROM set_logs sl
-               WHERE sl.session_id = s.session_id
-                 AND sl.exercise_id = pe.exercise_id
+               WHERE sl.session_id = x.session_id
+                 AND sl.exercise_id = x.id
                  AND sl.is_completed = TRUE)
-      GROUP BY pe.exercise_id`,
+      GROUP BY x.id`,
     before === null ? [userId] : [userId, before, before],
   );
 

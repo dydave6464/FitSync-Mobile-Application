@@ -103,13 +103,103 @@ test('ranker history', async (t) => {
     assert.equal((await readRankerHistory(pool, u)).exercises[String(quads)].swapped, 2);
   });
 
-  await t.test('only the last 90 days count, and counts are capped at 5', async () => {
+  /// Swaps day 1's slot [rejected] for [chosen] [daysAgo], as
+  /// swapPlanExercise does: the row is rewritten in place, then recorded.
+  const swapSlot = async (userId, daysAgo, planId, rejected, chosen) => {
+    const [[{ id }]] = await pool.query(
+      'SELECT plan_exercise_id AS id FROM plan_exercises WHERE plan_id = ? AND exercise_id = ?',
+      [planId, rejected]);
+    await pool.query('UPDATE plan_exercises SET exercise_id = ? WHERE plan_exercise_id = ?',
+      [chosen, id]);
+    await pool.query(
+      `INSERT INTO plan_swaps (user_id, plan_id, plan_exercise_id, rejected_exercise_id,
+                               chosen_exercise_id, muscle_group, swapped_at)
+       VALUES (?, ?, ?, ?, ?, 'x', DATE_SUB(NOW(), INTERVAL ? DAY))`,
+      [userId, planId, id, rejected, chosen, daysAgo]);
+  };
+
+  const dayString = async (daysAgo) => {
+    const [[{ d }]] = await pool.query(
+      "SELECT DATE_FORMAT(CURDATE() - INTERVAL ? DAY, '%Y-%m-%d') AS d", [daysAgo]);
+    return d;
+  };
+
+  await t.test('only the last 90 days count: days 0-89 in, 90 out', async () => {
+    const u = await makeUser();
+    const plan = await makePlan(u, [abs, biceps]);
+    for (const d of [1, 2, 89]) await workout(u, d, [abs], plan);   // biceps skipped
+    for (const d of [90, 120]) await workout(u, d, [abs], plan);    // outside
+    await swap(u, 89, quads, abs, plan);
+    await swap(u, 90, quads, abs, plan);
+    await swap(u, 95, quads, abs, plan);
+    const h = await readRankerHistory(pool, u);
+    assert.equal(h.exercises[String(abs)].done, 3);
+    assert.equal(h.exercises[String(biceps)].skipped, 3);
+    assert.equal(h.exercises[String(quads)].swapped, 1);
+  });
+
+  await t.test('before= window: [before - 90, before)', async () => {
+    const u = await makeUser();
+    const plan = await makePlan(u, [abs, biceps]);
+    // before = 2 days ago, so before - 90 = 92 days ago is the first day in.
+    for (const d of [3, 92]) await workout(u, d, [abs], plan);      // inside
+    for (const d of [2, 93]) await workout(u, d, [abs], plan);      // outside
+    await swap(u, 92, quads, abs, plan);                            // inside
+    await swap(u, 93, quads, abs, plan);                            // outside
+    await swap(u, 2, quads, abs, plan);                             // outside
+    const h = await readRankerHistory(pool, u, { before: await dayString(2) });
+    assert.equal(h.exercises[String(abs)].done, 2);
+    assert.equal(h.exercises[String(biceps)].skipped, 2);
+    assert.equal(h.exercises[String(quads)].swapped, 1);
+  });
+
+  await t.test('counts are capped at 5', async () => {
     const u = await makeUser();
     const plan = await makePlan(u, [abs]);
     for (let d = 1; d <= 7; d += 1) await workout(u, d, [abs], plan);
-    await workout(u, 120, [abs], plan);
     const h = await readRankerHistory(pool, u);
     assert.equal(h.exercises[String(abs)].done, 5);
+  });
+
+  await t.test('skips are judged against the day as it was, not after a later swap', async () => {
+    const u = await makeUser();
+    const plan = await makePlan(u, [abs, biceps]);
+    await workout(u, 10, [abs, biceps], plan);  // abs done
+    await workout(u, 8, [biceps], plan);        // abs skipped
+    await swapSlot(u, 5, plan, abs, quads);     // abs -> quads
+    await workout(u, 3, [biceps], plan);        // quads skipped
+    const live = await readRankerHistory(pool, u);
+    assert.deepEqual(live.exercises[String(abs)], { done: 1, skipped: 1, swapped: 1 });
+    assert.deepEqual(live.exercises[String(quads)], { done: 0, skipped: 1, swapped: 0 });
+    assert.deepEqual(live.exercises[String(biceps)], { done: 3, skipped: 0, swapped: 0 });
+
+    // As of a day between the workouts and the swap, the swap is invisible.
+    const asOf = await readRankerHistory(pool, u, { before: await dayString(6) });
+    assert.deepEqual(asOf.exercises[String(abs)], { done: 1, skipped: 1, swapped: 0 });
+    assert.equal(asOf.exercises[String(quads)], undefined);
+  });
+
+  await t.test('a slot swapped twice is read back through both swaps', async () => {
+    const u = await makeUser();
+    const plan = await makePlan(u, [abs]);
+    await workout(u, 10, [], plan);              // abs skipped
+    await swapSlot(u, 8, plan, abs, quads);
+    await workout(u, 6, [], plan);               // quads skipped
+    await swapSlot(u, 4, plan, quads, biceps);
+    const h = await readRankerHistory(pool, u);
+    assert.equal(h.exercises[String(abs)].skipped, 1);
+    assert.equal(h.exercises[String(quads)].skipped, 1);
+    assert.equal(h.exercises[String(biceps)], undefined);
+  });
+
+  await t.test('a slot swapped on the workout day is not counted as skipped', async () => {
+    const u = await makeUser();
+    const plan = await makePlan(u, [abs]);
+    await workout(u, 2, [biceps], plan);         // neither abs nor quads done
+    await swapSlot(u, 2, plan, abs, quads);
+    const h = await readRankerHistory(pool, u);
+    assert.equal(h.exercises[String(abs)].skipped, 0);
+    assert.equal(h.exercises[String(quads)]?.skipped ?? 0, 0);
   });
 
   await t.test('days since trained is capped at 14', async () => {
