@@ -9,6 +9,8 @@ onboarding, and rejecting it would block a user rather than give them a plan.
 See the design, section 4.
 
 trainingLocation arrives and orders the candidates (catalogue.LOCATION_FIRST).
+history arrives for the plan ranker (app/ranker.py), which reorders them
+within the team's curated marks; a malformed one reads as no history.
 """
 import math
 from typing import Any, Dict, List, Optional, Union
@@ -46,6 +48,35 @@ class PlanOverrides(BaseModel):
     sessionLengthMin: Optional[int] = None
 
 
+class ExerciseHistory(BaseModel):
+    """How often, in the last 90 days, the user did, skipped and swapped out
+    one exercise (server/src/db/ranker-history.js)."""
+    done: int = 0
+    skipped: int = 0
+    swapped: int = 0
+
+
+class PlanHistory(BaseModel):
+    """The user's own training, for the plan ranker. Keys of muscleDaysAgo are
+    catalogue muscle groups; keys of exercises are exercise ids as strings."""
+    muscleDaysAgo: Dict[str, int] = Field(default_factory=dict)
+    exercises: Dict[str, ExerciseHistory] = Field(default_factory=dict)
+
+
+def parse_history(raw: Any) -> PlanHistory:
+    """The history if it is well formed, else none at all.
+
+    A malformed history must never fail a plan: the ranker then orders as for
+    a new user, which the rules' order already suits.
+    """
+    if raw is None:
+        return PlanHistory()
+    try:
+        return PlanHistory.model_validate(raw)
+    except Exception:
+        return PlanHistory()
+
+
 class ProfileRequest(BaseModel):
     sex: Optional[str] = None
     dateOfBirth: Optional[Any] = None
@@ -64,6 +95,10 @@ class ProfileRequest(BaseModel):
     # warning sign. The answers themselves never leave Node; this flag is all
     # the generator is told.
     healthCaution: bool = False
+    # The user's own training, sent by the server for the plan ranker
+    # (app/ranker.py). Typed loosely and parsed with parse_history, so a
+    # malformed value orders as for a new user instead of refusing the plan.
+    history: Optional[Any] = None
 
 
 class PlanExercise(BaseModel):
