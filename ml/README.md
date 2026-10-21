@@ -228,7 +228,7 @@ The model (`app/ranker_model.py`) is a scikit-learn random forest predicting the
 
 > This model is trained on simulated trainees built from published findings on exercise adherence and muscle soreness, not on real users, and it is retrained on real workout logs and swaps as they accumulate. The cross-validation metrics measure how well it learned that simulation; they say nothing about how real people choose exercises. The rules still decide which exercises are safe; the model only orders exercises within the team's curated choices.
 
-Retrain after a pilot cycle:
+Retrain after a pilot cycle. Export from the pilot database, not a dev database: the export always leaves out the demo accounts `scripts/seed-demo.js` creates, but any other test account's workouts would be trained on as real.
 
     cd server && npm run export:ranker -- --out /tmp/ranker.csv
     cd ../ml && .venv/bin/python -m app.train_ranker --real /tmp/ranker.csv

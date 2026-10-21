@@ -12,6 +12,10 @@ const { readRankerHistory } = require('./ranker-history');
 /// readRankerHistory(..., { before: event_date }): only what happened on
 /// earlier days, so a row never sees its own outcome. Profile columns are the
 /// profile as stored today -- its history is not kept.
+///
+/// excludeEmails leaves those accounts out of both workouts and swaps.
+/// scripts/export-ranker.js passes the demo accounts scripts/seed-demo.js
+/// creates, whose backdated history is seed arithmetic, not real behaviour.
 const CSV_COLUMNS = [
   'user_id', 'event_date', 'kind', 'main_goal', 'fitness_level',
   'training_location', 'session_length_min', 'split_style', 'health_caution',
@@ -35,7 +39,10 @@ const ATTRIBUTES = `
     LEFT JOIN equipment peq ON peq.equipment_id = eq.parent_equipment_id
     LEFT JOIN exercise_preferences pref ON pref.exercise_id = x.exercise_id`;
 
-async function exportRankerRows(pool) {
+async function exportRankerRows(pool, { excludeEmails = [] } = {}) {
+  // NOT IN () is a syntax error, so with nothing to exclude the filter is
+  // dropped rather than given an empty list.
+  const kept = excludeEmails.length ? 'AND u.email NOT IN (?)' : '';
   // A swap rewrites its plan_exercises row in place, so the exercise a past
   // workout prescribed is reconstructed exactly as readRankerHistory does for
   // skips: the one rejected by the slot's first swap on a later day, else the
@@ -58,10 +65,11 @@ async function exportRankerRows(pool) {
                     LIMIT 1),
                   pe.exercise_id) AS exercise_id
            FROM workout_sessions s
+           JOIN users u ON u.user_id = s.user_id
            JOIN workout_plans p ON p.plan_id = s.plan_id
            JOIN plan_exercises pe
              ON pe.plan_id = s.plan_id AND pe.day_no = COALESCE(s.plan_day_no, 1)
-          WHERE s.status = 'completed'
+          WHERE s.status = 'completed' ${kept}
             AND NOT EXISTS (
                   SELECT 1 FROM plan_swaps w
                    WHERE w.plan_exercise_id = pe.plan_exercise_id
@@ -71,8 +79,11 @@ async function exportRankerRows(pool) {
      SELECT w.user_id, DATE_FORMAT(w.swapped_at, '%Y-%m-%d'), 'swap',
             w.rejected_exercise_id, p.split_style, p.session_length_min, 0
        FROM plan_swaps w
+       JOIN users u ON u.user_id = w.user_id
        JOIN workout_plans p ON p.plan_id = w.plan_id
+      WHERE TRUE ${kept}
       ORDER BY 1, 2, 3, 4`,
+    excludeEmails.length ? [excludeEmails, excludeEmails] : [],
   );
   const [attrRows] = await pool.query(ATTRIBUTES);
   const attrs = new Map(attrRows.map((a) => [a.exercise_id, a]));
@@ -119,6 +130,14 @@ async function exportRankerRows(pool) {
   return rows;
 }
 
+/// How many of these accounts exist: the number an export excluded.
+async function countAccounts(pool, emails) {
+  if (!emails.length) return 0;
+  const [[{ n }]] = await pool.query(
+    'SELECT COUNT(*) AS n FROM users WHERE email IN (?)', [emails]);
+  return Number(n);
+}
+
 function field(value) {
   const s = String(value ?? '');
   return /[",\n\r]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
@@ -130,4 +149,4 @@ function toCsv(rows) {
   return `${lines.join('\n')}\n`;
 }
 
-module.exports = { CSV_COLUMNS, exportRankerRows, toCsv };
+module.exports = { CSV_COLUMNS, exportRankerRows, countAccounts, toCsv };

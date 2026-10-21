@@ -6,7 +6,9 @@ const { createPool } = require('../src/db/pool');
 const { testDbConfig, dropAllTables } = require('./helpers/test-db');
 const { seedExercises } = require('../src/db/seed-exercises');
 const FIXTURE = require('./fixtures/seeds/manifest-fixture.json');
-const { CSV_COLUMNS, exportRankerRows, toCsv } = require('../src/db/ranker-export');
+const {
+  CSV_COLUMNS, exportRankerRows, countAccounts, toCsv,
+} = require('../src/db/ranker-export');
 
 test('ranker export', async (t) => {
   const pool = createPool(testDbConfig());
@@ -83,8 +85,37 @@ test('ranker export', async (t) => {
      VALUES (?, ?, ?, ?, ?, 'quads', DATE_SUB(NOW(), INTERVAL 1 DAY))`,
     [u2.insertId, p2.insertId, slot.insertId, quads, otherAbs]);
 
-  const rows = await exportRankerRows(pool);
+  // A demo account (as scripts/seed-demo.js creates): a completed plan
+  // workout and a swap, both of which must stay out when it is excluded.
+  const [u3] = await pool.query(
+    `INSERT INTO users (email, password_hash, full_name) VALUES ('demo@example.com', 'x', 'D')`);
+  const [p3] = await pool.query(
+    `INSERT INTO workout_plans (user_id, name, split_style, days_per_week, session_length_min, week_no, is_active)
+     VALUES (?, 'P3', 'full_body', 3, 45, 1, 1)`, [u3.insertId]);
+  await pool.query(
+    `INSERT INTO plan_exercises (plan_id, exercise_id, order_no, target_sets, target_reps, day_no)
+     VALUES (?, ?, 1, 3, '8-12', 1)`, [p3.insertId, biceps]);
+  await pool.query(
+    `INSERT INTO workout_sessions (user_id, status, session_date, plan_id, plan_day_no)
+     VALUES (?, 'completed', DATE_SUB(CURDATE(), INTERVAL 5 DAY), ?, 1)`, [u3.insertId, p3.insertId]);
+  await pool.query(
+    `INSERT INTO plan_swaps (user_id, plan_id, rejected_exercise_id, chosen_exercise_id, muscle_group, swapped_at)
+     VALUES (?, ?, ?, ?, 'biceps', DATE_SUB(NOW(), INTERVAL 1 DAY))`,
+    [u3.insertId, p3.insertId, biceps, abs]);
+
+  const everyone = await exportRankerRows(pool);
+  const excluded = ['demo@example.com', 'absent@example.com'];
+  const rows = await exportRankerRows(pool, { excludeEmails: excluded });
   const mine = rows.filter((r) => r.user_id === userId);
+
+  await t.test('excluded accounts are left out of both workouts and swaps', async () => {
+    const demo = (list) => list.filter((r) => r.user_id === u3.insertId).map((r) => r.kind);
+    assert.deepEqual(demo(everyone).sort(), ['prescribed', 'swap']);
+    assert.deepEqual(demo(rows), []);
+    assert.equal(rows.length, everyone.length - 2);
+    assert.equal(await countAccounts(pool, excluded), 1);
+    assert.equal(await countAccounts(pool, []), 0);
+  });
 
   await t.test('one row per prescribed exercise per workout, plus one per swap', async () => {
     assert.equal(mine.filter((r) => r.kind === 'prescribed').length, 4);
