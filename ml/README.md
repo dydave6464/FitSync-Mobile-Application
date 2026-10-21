@@ -213,3 +213,19 @@ exercises the stub directly and two of its assertions expect the plan to echo
 a requested `splitStyle` — this service always returns `full_body` (see spec
 §7), so those two are stub-specific. Everything the Node route actually
 depends on is identical across both modes.
+
+## Plan ranker (exercise-picking model)
+
+`app/ranker.py` orders the safe candidates the rules produce, only within runs of equal curated mark (first / alternative / unmarked) and picked-equipment tier, and only when a candidate's predicted chance is higher by a clear step (5 percentage points). Any failure serves the rules' order.
+
+The model (`app/ranker_model.py`) is a scikit-learn random forest predicting the chance a trainee logs an exercise rather than skipping or swapping it. With no `models/plan_ranker.joblib`, the service trains it from the seeded simulation (`app/ranker_data.py`) at startup and `/health` reports `rankerModel: {"status": "trained", "version": "ranker-rf-sim-1"}`.
+
+> This model is trained on simulated trainees built from published findings on exercise adherence and muscle soreness, not on real users, and it is retrained on real workout logs and swaps as they accumulate. The cross-validation metrics measure how well it learned that simulation; they say nothing about how real people choose exercises. The rules still decide which exercises are safe; the model only orders exercises within the team's curated choices.
+
+Retrain after a pilot cycle:
+
+    cd server && npm run export:ranker -- --out /tmp/ranker.csv
+    cd ../ml && .venv/bin/python -m app.train_ranker --real /tmp/ranker.csv
+    # commit reports/plan_ranker_cv.json on purpose, then restart the ML service
+
+CSV columns (header row, this order): `user_id, event_date, kind, main_goal, fitness_level, training_location, session_length_min, split_style, health_caution, exercise_id, mark, beginner_friendly, equipment_name, picked_equipment, muscle_group, days_since_trained, times_done, times_skipped, times_swapped, done`. `kind` is `prescribed` (an exercise a completed plan workout prescribed; `done` 1 when a completed set was logged) or `swap` (the exercise swapped out; `done` 0). History columns count only what happened before `event_date`; an empty `days_since_trained` means never trained.
