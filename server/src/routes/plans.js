@@ -4,6 +4,7 @@ const requireAuth = require('../middleware/require-auth');
 const AppError = require('../lib/app-error');
 const { getActivePlan, savePlan, createPlanFromSession } = require('../db/plans');
 const { getProfile } = require('../db/profile');
+const { readRankerHistory } = require('../db/ranker-history');
 const { getActiveSession } = require('../db/sessions');
 const { loadSwapContext, listAlternatives, swapPlanExercise } = require('../db/plan-swap');
 
@@ -116,7 +117,8 @@ module.exports = function buildPlansRouter(deps) {
       // Read server-side, so the client cannot regenerate against someone
       // else's profile by sending one.
       const profile = await getProfile(deps.pool, userId);
-      const generated = await deps.ml.generatePlan({ ...profile, overrides });
+      const history = await readRankerHistory(deps.pool, userId);
+      const generated = await deps.ml.generatePlan({ ...profile, overrides, history });
       await savePlan(deps.pool, userId, generated);
 
       res.json({ data: { plan: withUrls(await getActivePlan(deps.pool, userId)) } });

@@ -14,7 +14,9 @@ const { PAIN_LEVELS } = require('../../db/session-outcomes');
 /// days per week and session length; whether a stored health check asks for a
 /// gentler plan (healthCaution); and each check-in's four answers with the
 /// training-load index; for the risk estimate, the reported injuries and the
-/// worst recent pain level. Never sent: email, name, user id, city, date of birth,
+/// worst recent pain level; the user's own training history for the plan
+/// ranker (days since each catalogue muscle group was trained; per exercise,
+/// times done, skipped and swapped out in the last 90 days). Never sent: email, name, user id, city, date of birth,
 /// sex, height, weight, goal weight, activity level, account flags, catalogue
 /// names, injury side, the health check's conditions and answers, and
 /// check-in ids and dates -- no rule reads any of them.
@@ -37,6 +39,28 @@ function toOverrides(o) {
   return out;
 }
 
+function count(value) {
+  return Number.isInteger(value) && value >= 0 ? value : null;
+}
+
+/// The plan ranker's history (db/ranker-history.js), rebuilt key by key so
+/// nothing else that rides along on the object leaves Node.
+function toHistory(h) {
+  if (!h || typeof h !== 'object' || Array.isArray(h)) return null;
+  const muscleDaysAgo = {};
+  for (const [muscle, days] of Object.entries(h.muscleDaysAgo ?? {})) {
+    if (count(days) !== null) muscleDaysAgo[muscle] = days;
+  }
+  const exercises = {};
+  for (const [id, e] of Object.entries(h.exercises ?? {})) {
+    if (!/^\d+$/.test(id) || !e || typeof e !== 'object') continue;
+    const [done, skipped, swapped] = [count(e.done), count(e.skipped), count(e.swapped)];
+    if (done === null || skipped === null || swapped === null) continue;
+    exercises[id] = { done, skipped, swapped };
+  }
+  return { muscleDaysAgo, exercises };
+}
+
 /// The body of POST /generate-plan. [profile] is getProfile's shape, with the
 /// generator screen's `overrides` when it sent any.
 function toPlanPayload(profile) {
@@ -53,6 +77,8 @@ function toPlanPayload(profile) {
   if (p.overrides && typeof p.overrides === 'object') {
     payload.overrides = toOverrides(p.overrides);
   }
+  const history = toHistory(p.history);
+  if (history) payload.history = history;
   return payload;
 }
 
