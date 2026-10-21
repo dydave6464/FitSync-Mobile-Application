@@ -37,6 +37,15 @@ class Candidate(NamedTuple):
     muscle_group: str
 
 
+class CandidateAttributes(NamedTuple):
+    """What the plan ranker reads about a candidate, beside the Candidate
+    itself, which stays the only thing a plan is built from."""
+    mark: str                       # 'first' | 'alternative' | 'unmarked'
+    beginner_friendly: bool
+    equipment_name: Optional[str]   # the curated name: the parent's when there is one
+    picked: bool                    # its equipment is one the user selected
+
+
 _BASE = """
 SELECT x.exercise_id, x.name, x.muscle_group
   FROM exercises x
@@ -185,3 +194,39 @@ def fetch_candidates(
     with engine.connect() as conn:
         rows = conn.execute(statement, params).fetchall()
     return [Candidate(r[0], r[1], r[2]) for r in rows]
+
+
+_ATTRIBUTES = """
+SELECT x.exercise_id,
+       COALESCE(pref.priority, 'unmarked') AS mark,
+       COALESCE(pref.beginner_friendly, 0) AS beginner_friendly,
+       COALESCE(peq.name, eq.name) AS equipment_name,
+       COALESCE(eq.parent_equipment_id, eq.equipment_id) AS root_equipment_id
+  FROM exercises x
+  JOIN equipment eq ON eq.equipment_id = x.equipment_id
+  LEFT JOIN equipment peq ON peq.equipment_id = eq.parent_equipment_id
+  LEFT JOIN exercise_preferences pref ON pref.exercise_id = x.exercise_id
+ WHERE x.exercise_id IN :ids
+"""
+
+
+def fetch_attributes(
+    engine: Engine,
+    exercise_ids: Sequence[int],
+    selected_equipment_ids: Sequence[int] = (),
+) -> Dict[int, CandidateAttributes]:
+    """The ranker's view of each candidate, keyed by exercise_id.
+
+    Reads only catalogue tables this service is granted (server/MIGRATIONS.md).
+    `picked` walks parent_equipment_id exactly as _SELECTED_TIER does.
+    """
+    if not exercise_ids:
+        return {}
+    selected = set(selected_equipment_ids)
+    statement = text(_ATTRIBUTES).bindparams(bindparam("ids", expanding=True))
+    with engine.connect() as conn:
+        rows = conn.execute(statement, {"ids": tuple(exercise_ids)}).fetchall()
+    return {
+        r[0]: CandidateAttributes(str(r[1]), bool(r[2]), r[3], r[4] in selected)
+        for r in rows
+    }

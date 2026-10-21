@@ -146,10 +146,11 @@ def test_health_reports_a_model_trained_in_process(tmp_path):
     body = client_for(tmp_path).get("/health").json()
     assert body["riskModel"] == {"status": "trained",
                                  "version": risk_model.MODEL_VERSION}
-    # The plan ranker's fields keep their meaning.
+    # The plan ranker's fields keep their meaning: with no file of its own,
+    # it is trained in-process too.
     assert body["status"] == "ok"
-    assert body["model"] == "absent"
-    assert body["mode"] == "rules"
+    assert body["model"] == "trained"
+    assert body["mode"] == "model"
 
 
 def test_health_reports_a_loaded_model(tmp_path):

@@ -270,7 +270,7 @@ def test_a_models_ordering_reaches_the_response(client, catalogue):
 
     client.app.state.ranker = type(
         "R", (), {"status": "loaded", "mode": "model",
-                  "rank": staticmethod(lambda items: list(reversed(items)))}
+                  "rank": staticmethod(lambda items, context=None: list(reversed(items)))}
     )()
     reordered = post_plan(client, **profile)
 
@@ -895,3 +895,80 @@ def test_every_exercise_carries_the_id_of_the_row_it_was_chosen_from(
     assert plan["exercises"]
     for exercise in plan["exercises"]:
         assert exercise["exerciseId"] == catalogue["exercises"][exercise["name"]]
+
+
+def test_health_reports_the_ranker(client):
+    body = client.get("/health").json()
+    assert body["model"] in ("trained", "loaded")
+    assert body["mode"] == "model"
+    assert body["rankerModel"]["status"] == body["model"]
+    assert body["rankerModel"]["version"].startswith("ranker-rf-")
+
+
+def test_a_plan_with_history_is_served(client, catalogue):
+    eq = catalogue["equipment"]
+    plan = post_plan(
+        client, mainGoal="build_muscle", fitnessLevel="intermediate",
+        equipment=[{"equipmentId": eq["dumbbell"], "name": "Dumbbell"}], injuries=[],
+        history={"muscleDaysAgo": {"pectorals": 1},
+                 "exercises": {"1": {"done": 2, "skipped": 1, "swapped": 1}}},
+    )
+    assert plan["exercises"]
+
+
+def test_a_malformed_history_is_ignored_not_refused(client, catalogue):
+    eq = catalogue["equipment"]
+    plan = post_plan(client, mainGoal="build_muscle", fitnessLevel="intermediate",
+                     equipment=[{"equipmentId": eq["dumbbell"], "name": "Dumbbell"}], injuries=[],
+                     history="garbage")
+    assert plan["exercises"]
+
+
+def test_the_model_plan_has_the_same_shape_as_the_rules_plan(settings, engine, catalogue):
+    from app.main import create_app
+    from app.ranker import Ranker
+
+    eq = catalogue["equipment"]
+    body = dict(mainGoal="build_muscle", fitnessLevel="intermediate",
+                equipment=[{"equipmentId": eq["dumbbell"], "name": "Dumbbell"}],
+                injuries=[])
+    rules = TestClient(create_app(settings, ranker=Ranker(status="absent")))
+    model = TestClient(create_app(settings))
+    a = post_plan(rules, **body)["exercises"]
+    b = post_plan(model, **body)["exercises"]
+    # The ranker only reorders within runs: the plan keeps its days, slots
+    # and size, whatever it picks inside them.
+    assert [(e["dayNo"], e["orderNo"]) for e in a] == [(e["dayNo"], e["orderNo"]) for e in b]
+
+
+def test_the_history_and_attributes_reach_the_ranker(settings, engine, catalogue):
+    # The wiring, not the model: a stand-in classifier records the rows the
+    # service encoded, so this fails if the history or the catalogue
+    # attributes never reach the ranker.
+    import numpy as np
+
+    from app import ranker_features
+    from app.main import create_app
+    from app.ranker import Ranker
+
+    class Recording:
+        rows = []
+
+        def predict_proba(self, X):
+            Recording.rows.extend(X.tolist())
+            return np.column_stack([np.full(len(X), 0.5), np.full(len(X), 0.5)])
+
+    col = {name: i for i, name in enumerate(ranker_features.FEATURES)}
+    eq, ex = catalogue["equipment"], catalogue["exercises"]
+    client = TestClient(create_app(
+        settings, ranker=Ranker(status="trained", classifier=Recording(), version="v")))
+    post_plan(client, mainGoal="build_muscle", fitnessLevel="intermediate",
+              equipment=[{"equipmentId": eq["dumbbell"], "name": "Dumbbell"}],
+              injuries=[],
+              history={"muscleDaysAgo": {"biceps": 3},
+                       "exercises": {str(ex["fixture dumbbell curl"]): {"swapped": 2}}})
+    rows = Recording.rows
+    assert rows
+    assert any(r[col["times_swapped"]] == 2 and r[col["days_since_trained"]] == 3
+               and r[col["picked_equipment"]] == 1 for r in rows)
+    assert all(r[col["goal_build_muscle"]] == 1 for r in rows)

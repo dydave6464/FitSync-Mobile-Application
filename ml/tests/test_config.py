@@ -64,16 +64,20 @@ from fastapi.testclient import TestClient
 from app.main import create_app
 
 
-def test_health_reports_the_model_is_absent_and_rules_are_serving():
-    # Until a trained model exists, rules serve every request. /health says so
-    # plainly so an operator can tell which mode is live without reading logs.
-    client = TestClient(create_app(Settings.from_env(BASE_ENV)))
+def test_health_reports_a_ranker_trained_in_process_without_a_file(tmp_path):
+    # With no model file, the plan ranker is trained from the seeded
+    # simulation at startup. /health says which mode is live so an operator
+    # can tell without reading logs. A model directory of the test's own, so
+    # a file someone trained into models/ cannot decide the answer.
+    settings = Settings.from_env(dict(BASE_ENV, FITSYNC_MODEL_DIR=str(tmp_path)))
+    client = TestClient(create_app(settings))
     response = client.get("/health")
     assert response.status_code == 200
     body = response.json()
     assert body["status"] == "ok"
-    assert body["model"] == "absent"
-    assert body["mode"] == "rules"
+    assert body["model"] == "trained"
+    assert body["mode"] == "model"
+    assert body["rankerModel"] == {"status": "trained", "version": "ranker-rf-sim-1"}
 
 
 def test_health_does_not_touch_the_database():

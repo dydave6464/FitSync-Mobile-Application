@@ -1,0 +1,194 @@
+{
+  "modelVersion": "ranker-rf-sim-1",
+  "statement": "This model is trained on simulated trainees built from published findings on exercise adherence and muscle soreness, not on real users, and it is retrained on real workout logs and swaps as they accumulate. The cross-validation metrics measure how well it learned that simulation; they say nothing about how real people choose exercises. The rules still decide which exercises are safe; the model only orders exercises within the team's curated choices.",
+  "limitations": [
+    "The cited studies measure whether people keep exercising, not which exercise they choose; applying them to single exercises is FitSync's assumption.",
+    "The simulation's weights encode direction and rough ordering only, not measured effect sizes.",
+    "Goal, fitness level, session length, split and curated mark have no simulated effect; only real rows can teach them.",
+    "A beginner or cautioned trainee is never offered a non-beginner-friendly exercise, so that combination is not simulated.",
+    "The model orders only within runs of equal curated mark and picked-equipment tier, comparing scores in fixed 5-point bands (0.50-0.55, 0.55-0.60, ...): a candidate moves up only when its band is higher. This is not a minimum gap: two candidates less than 5 points apart reorder when they fall on either side of a band edge, and keep the team's order when they share a band. It never adds, removes or reclassifies an exercise."
+  ],
+  "data": {
+    "kind": "simulated",
+    "seed": 20261021,
+    "simulatedRows": 30000,
+    "candidatesPerTrainee": 6,
+    "coverageRows": "about 20% of the simulated trainees; trained on, not scored",
+    "realRows": 0,
+    "realUsers": null
+  },
+  "features": [
+    "goal_gain_strength",
+    "goal_build_muscle",
+    "goal_lose_weight",
+    "goal_improve_endurance",
+    "level",
+    "loc_commercial_gym",
+    "loc_home_gym",
+    "loc_other",
+    "session_length_min",
+    "split_push_pull_legs",
+    "split_upper_lower",
+    "split_cardio_core",
+    "health_caution",
+    "mark",
+    "beginner_friendly",
+    "picked_equipment",
+    "location_fit",
+    "days_since_trained",
+    "times_done",
+    "times_skipped",
+    "times_swapped"
+  ],
+  "simulation": {
+    "sources": [
+      "Rodrigues et al. 2020, 2022; Cid et al. 2025; Conti et al. 2026: past exercise behaviour is the strongest predictor of future adherence.",
+      "Hotfiel et al. 2018; Fu et al. 2024; Kanda et al. 2013: delayed-onset muscle soreness peaks 24-72 h after training.",
+      "Jakicic et al. 1997; Morgan et al. 2016: owned equipment goes with more activity; unfamiliar gym equipment is a common barrier.",
+      "Collado-Mateo et al. 2021; Tross 2024: programmes fitted to the person's setting support adherence."
+    ],
+    "label": "did it (logged a completed set), drawn with probability sigmoid(log-odds + noise), clipped to [0.02, 0.98]",
+    "baseLogit": 0.4,
+    "donePer": 0.35,
+    "skippedPer": -0.55,
+    "swappedPer": -1.1,
+    "restPenaltyByDays": [
+      -1.0,
+      -1.0,
+      -1.0,
+      -0.3
+    ],
+    "pickedBonus": 0.5,
+    "locationBonus": 0.4,
+    "noiseSd": 0.5
+  },
+  "model": {
+    "type": "RandomForestClassifier",
+    "params": {
+      "n_estimators": 60,
+      "max_depth": 12,
+      "min_samples_leaf": 40,
+      "max_features": null,
+      "n_jobs": 1
+    },
+    "monotonicConstraints": {
+      "picked_equipment": 1,
+      "location_fit": 1,
+      "days_since_trained": 1,
+      "times_done": 1,
+      "times_skipped": -1,
+      "times_swapped": -1
+    },
+    "ordering": "within runs of equal (curated mark, picked equipment), by score band floor(score / 0.05) descending; equal bands keep the team's order"
+  },
+  "crossValidation": {
+    "method": "StratifiedGroupKFold",
+    "k": 5,
+    "shuffleSeed": 20261021,
+    "rows": 30000,
+    "evaluatedRows": 23934,
+    "positiveRate": 0.675,
+    "rocAuc": {
+      "mean": 0.6717,
+      "std": 0.0013,
+      "folds": [
+        0.6713,
+        0.6698,
+        0.6723,
+        0.6714,
+        0.6736
+      ]
+    },
+    "logLoss": {
+      "mean": 0.593,
+      "std": 0.0037,
+      "folds": [
+        0.5912,
+        0.591,
+        0.5903,
+        0.5924,
+        0.6003
+      ]
+    },
+    "accuracy": {
+      "mean": 0.6877,
+      "std": 0.0046,
+      "folds": [
+        0.6843,
+        0.6896,
+        0.694,
+        0.6899,
+        0.6808
+      ]
+    },
+    "rulesTierRocAuc": {
+      "mean": 0.5722,
+      "std": 0.003,
+      "folds": [
+        0.5676,
+        0.5757,
+        0.5737,
+        0.5741,
+        0.57
+      ]
+    }
+  },
+  "topPickChangedShare": 0.3605,
+  "probes": [
+    {
+      "trainee": "home beginner; the first candidate's muscle was trained yesterday",
+      "teamOrder": [
+        "trained yesterday",
+        "rested a week",
+        "rested, done twice"
+      ],
+      "scores": {
+        "trained yesterday": 0.6556,
+        "rested a week": 0.7412,
+        "rested, done twice": 0.8394
+      },
+      "order": [
+        "rested, done twice",
+        "rested a week",
+        "trained yesterday"
+      ]
+    },
+    {
+      "trainee": "gym intermediate who swapped the first candidate out twice",
+      "teamOrder": [
+        "swapped out twice",
+        "never tried",
+        "done three times"
+      ],
+      "scores": {
+        "swapped out twice": 0.2007,
+        "never tried": 0.7165,
+        "done three times": 0.8535
+      },
+      "order": [
+        "done three times",
+        "never tried",
+        "swapped out twice"
+      ]
+    },
+    {
+      "trainee": "new user, no history, three equal candidates",
+      "teamOrder": [
+        "candidate A",
+        "candidate B",
+        "candidate C"
+      ],
+      "scores": {
+        "candidate A": 0.7258,
+        "candidate B": 0.7258,
+        "candidate C": 0.7258
+      },
+      "order": [
+        "candidate A",
+        "candidate B",
+        "candidate C"
+      ]
+    }
+  ],
+  "sklearnVersion": "1.6.1"
+}
