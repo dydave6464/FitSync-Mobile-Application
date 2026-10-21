@@ -8,6 +8,7 @@ const {
 } = require('../db/profile');
 const { savePlan, getActivePlan } = require('../db/plans');
 const bodyWeight = require('../db/body-weight');
+const { readRankerHistory } = require('../db/ranker-history');
 
 const ENUMS = {
   sex: ['male', 'female', 'prefer_not_to_say'],
@@ -334,10 +335,11 @@ module.exports = function buildProfileRouter(deps) {
     try {
       const userId = req.user.userId;
       const profile = await getProfile(pool, userId);
+      const history = await readRankerHistory(pool, userId);
 
       // Generate first, mark complete second. If generation throws, the user
       // stays mid-onboarding and can retry — rather than being "done" with no plan.
-      const generated = await deps.ml.generatePlan(profile);
+      const generated = await deps.ml.generatePlan({ ...profile, history });
       await savePlan(pool, userId, generated);
       await markOnboardingComplete(pool, userId);
 

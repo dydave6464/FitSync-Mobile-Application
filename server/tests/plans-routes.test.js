@@ -24,7 +24,9 @@ test('plan endpoints', async (t) => {
 
   // A stub whose exercise names exist in the fixture catalogue.
   const ml = {
+    calls: [],
     generatePlan: async (profile = {}) => {
+      ml.calls.push(profile);
       const overrides = profile.overrides || {};
       const splitStyle = overrides.splitStyle || 'full_body';
       const rotation = SPLIT_DAYS[splitStyle] || 1;
@@ -444,6 +446,19 @@ test('plan endpoints', async (t) => {
 
   await t.test('regenerating requires a token', async () => {
     await request(app).post('/api/v1/plans/regenerate').send({}).expect(401);
+  });
+
+  await t.test('plan generation sends the user\'s training history', async () => {
+    await reset();
+    ml.calls.length = 0;
+    await request(app).post('/api/v1/profile/complete-onboarding')
+      .set('Authorization', auth).expect(200);
+    await request(app).post('/api/v1/plans/regenerate')
+      .set('Authorization', auth).send({}).expect(200);
+    assert.equal(ml.calls.length, 2);
+    for (const call of ml.calls) {
+      assert.deepEqual(call.history, { muscleDaysAgo: {}, exercises: {} });
+    }
   });
 
   await t.test('the active plan says it was generated', async () => {

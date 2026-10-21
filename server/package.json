@@ -18,6 +18,7 @@
     "seed:categories": "node scripts/seed-exercise-categories.js",
     "seed:foods": "node scripts/seed-foods.js",
     "seed:preferences": "node scripts/seed-exercise-preferences.js",
+    "export:ranker": "node scripts/export-ranker.js",
     "review:safety": "node scripts/review-exercise-safety.js",
     "review:categories": "node scripts/review-exercise-categories.js"
   },
