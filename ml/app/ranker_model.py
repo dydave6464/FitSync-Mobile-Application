@@ -11,9 +11,12 @@ The forest is monotonic in the features with a stated direction
 
 reorder() is the rule the service applies to the scores (app/ranker.py): it
 moves an exercise only within a run of consecutive candidates sharing the
-team's curated mark and the picked-equipment tier, and only when its score is
-higher by a clear step, so features with no simulated effect (goal, split)
-cannot shuffle equal choices by noise.
+team's curated mark and the picked-equipment tier. Scores are grouped into
+fixed bands RANK_MARGIN wide (0.50-0.55, 0.55-0.60, ...): an exercise moves up
+only when its band is higher, and exercises in the same band keep the team's
+order. This is not a minimum gap: 0.549 and 0.551 sit in different bands, so
+noise from features with no simulated effect (goal, split) can still reorder
+near-equal choices whenever they straddle a band edge.
 """
 import math
 from functools import lru_cache

@@ -87,12 +87,38 @@ def test_the_cli_writes_a_model_and_a_report(tmp_path):
     assert 0.0 <= data["topPickChangedShare"] <= 1.0
 
 
-def test_the_committed_report_matches_the_defaults():
+def rounded(value, places=3):
+    """Every float in a report rounded, so a library upgrade that moves a
+    metric in its fourth decimal is not mistaken for a stale report."""
+    if isinstance(value, float):
+        return round(value, places)
+    if isinstance(value, list):
+        return [rounded(v, places) for v in value]
+    if isinstance(value, dict):
+        return {k: rounded(v, places) for k, v in value.items()}
+    return value
+
+
+def test_the_committed_report_is_what_the_defaults_produce(tmp_path):
+    # Guards against the committed report going stale when the simulation,
+    # the forest or the ordering rule changes: regenerate it with
+    # `python -m app.train_ranker`.
     with open(REPORT) as handle:
-        data = json.load(handle)
-    if data["data"]["realRows"]:
-        pytest.skip("committed report includes real rows on purpose")
-    assert data["data"]["seed"] == rd.SEED
-    assert data["data"]["simulatedRows"] == rd.ROWS
-    assert data["features"] == list(rf.FEATURES)
-    assert data["modelVersion"] == "ranker-rf-sim-1"
+        committed = json.load(handle)
+    if committed["data"]["kind"] != "simulated" or committed["data"]["realRows"]:
+        pytest.skip("the committed report includes real rows, which this "
+                    "checkout cannot reproduce from the defaults")
+    assert committed["data"]["seed"] == rd.SEED
+    assert committed["data"]["simulatedRows"] == rd.ROWS
+    report = tmp_path / "r.json"
+    assert tr.main(["--model-dir", str(tmp_path), "--report", str(report)]) == 0
+    assert rounded(committed) == rounded(json.loads(report.read_text()))
+
+
+def test_the_report_describes_the_ordering_as_bands_not_a_gap():
+    # reorder() compares floor(score / 0.05): two scores 0.2 points apart can
+    # land in different bands and reorder, while 4.8 points apart in one band
+    # do not. The report must not promise a minimum gap.
+    text = " ".join(tr.LIMITATIONS).lower()
+    assert "band" in text
+    assert "clear step" not in text

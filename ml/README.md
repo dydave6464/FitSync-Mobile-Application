@@ -216,7 +216,7 @@ depends on is identical across both modes.
 
 ## Plan ranker (exercise-picking model)
 
-`app/ranker.py` orders the safe candidates the rules produce, only within runs of equal curated mark (first / alternative / unmarked) and picked-equipment tier, and only when a candidate's predicted chance is higher by a clear step (5 percentage points). Any failure serves the rules' order.
+`app/ranker.py` orders the safe candidates the rules produce, only within runs of equal curated mark (first / alternative / unmarked) and picked-equipment tier. Predicted chances are grouped into fixed 5-point bands (0.50–0.55, 0.55–0.60, …); a candidate moves up only when its band is higher, and candidates in the same band keep the team's order. The bands are not a minimum gap: 0.549 and 0.551 fall in different bands and reorder, while 0.501 and 0.549 share one and do not. Any failure serves the rules' order.
 
 The model (`app/ranker_model.py`) is a scikit-learn random forest predicting the chance a trainee logs an exercise rather than skipping or swapping it. With no `models/plan_ranker.joblib`, the service trains it from the seeded simulation (`app/ranker_data.py`) at startup and `/health` reports `rankerModel: {"status": "trained", "version": "ranker-rf-sim-1"}`.
 

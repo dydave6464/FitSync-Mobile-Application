@@ -59,8 +59,13 @@ LIMITATIONS = [
     "A beginner or cautioned trainee is never offered a non-beginner-friendly "
     "exercise, so that combination is not simulated.",
     "The model orders only within runs of equal curated mark and "
-    "picked-equipment tier, and only by a clear step of {:.0%}; it never adds, "
-    "removes or reclassifies an exercise.".format(ranker_model.RANK_MARGIN),
+    "picked-equipment tier, comparing scores in fixed {:.0f}-point bands "
+    "(0.50-0.55, 0.55-0.60, ...): a candidate moves up only when its band is "
+    "higher. This is not a minimum gap: two candidates less than {:.0f} "
+    "points apart reorder when they fall on either side of a band edge, and "
+    "keep the team's order when they share a band. It never adds, removes or "
+    "reclassifies an exercise.".format(
+        ranker_model.RANK_MARGIN * 100, ranker_model.RANK_MARGIN * 100),
 ]
 
 SOURCES = [
@@ -253,8 +258,8 @@ def build_report(cv: dict, simulated_rows: int, seed: int, real_rows: int,
             "params": dict(ranker_model.FOREST_PARAMS),
             "monotonicConstraints": dict(ranker_features.MONOTONIC),
             "ordering": "within runs of equal (curated mark, picked equipment), "
-                        "by score in steps of {}; ties keep the team's order".format(
-                            ranker_model.RANK_MARGIN),
+                        "by score band floor(score / {}) descending; equal bands "
+                        "keep the team's order".format(ranker_model.RANK_MARGIN),
         },
         "crossValidation": cv,
         "topPickChangedShare": changed_share,

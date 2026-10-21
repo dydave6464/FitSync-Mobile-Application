@@ -69,14 +69,26 @@ def test_cross_validation_groups_by_trainee():
     assert "logLoss" in cv and "accuracy" in cv
 
 
-def test_reorder_moves_only_within_runs_and_only_by_a_clear_margin():
+def test_reorder_moves_only_within_runs_and_only_to_a_higher_band():
     keys = [("first", 1), ("first", 1), ("first", 1), ("alternative", 1), ("first", 0)]
     scores = [0.50, 0.80, 0.52, 0.99, 0.10]
     order = rm.reorder(keys, scores)
-    # The run of three firsts: 0.80 moves up; 0.50 vs 0.52 is inside one
-    # 0.05 step, so they keep their order. The alternative and the
+    # The run of three firsts: 0.80 moves up; 0.50 and 0.52 share the
+    # 0.50-0.55 band, so they keep their order. The alternative and the
     # body-weight first stay in their places.
     assert order == [1, 0, 2, 3, 4]
+
+
+@pytest.mark.parametrize("scores,order", [
+    ([0.549, 0.551], [1, 0]),   # 0.2 points apart, but across a band edge
+    ([0.501, 0.549], [0, 1]),   # 4.8 points apart, but in one band
+    ([0.55, 0.60], [1, 0]),     # band edges belong to the higher band
+])
+def test_reorder_compares_fixed_bands_not_the_gap(scores, order):
+    # The rule is floor(score / 0.05), not a minimum gap: what moves an item
+    # is landing in a higher 5-point band, however small the difference.
+    keys = [("first", 1)] * len(scores)
+    assert rm.reorder(keys, scores) == order
 
 
 def test_reorder_never_merges_two_runs_with_the_same_key():
