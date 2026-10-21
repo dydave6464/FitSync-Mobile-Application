@@ -473,12 +473,7 @@ void main() {
   testWidgets('it says why it asks', (tester) async {
     await _open(tester);
 
-    expect(
-      find.text(
-        "Four quick questions. Your answers feed today's injury-risk estimate.",
-      ),
-      findsOneWidget,
-    );
+    expect(find.text("Helps estimate today's injury risk."), findsOneWidget);
   });
 
   testWidgets('fits a 320 dp phone at 2x text, Save reachable', (tester) async {
@@ -519,13 +514,7 @@ void main() {
       await _open(tester);
 
       expect(find.text('Any pain since?'), findsNothing);
-      expect(
-        find.text(
-          "Four quick questions. Your answers feed today's injury-risk "
-          'estimate.',
-        ),
-        findsOneWidget,
-      );
+      expect(find.text("Helps estimate today's injury risk."), findsOneWidget);
     });
 
     testWidgets('no pain row while the lookup is still loading', (
@@ -535,13 +524,7 @@ void main() {
       final repo = await _open(tester, pendingLookup: () => never.future);
 
       expect(find.text('Any pain since?'), findsNothing);
-      expect(
-        find.text(
-          "Four quick questions. Your answers feed today's injury-risk "
-          'estimate.',
-        ),
-        findsOneWidget,
-      );
+      expect(find.text("Helps estimate today's injury risk."), findsOneWidget);
       // Lets the lookup's time limits run out, so no timer outlives the test.
       await tester.pump(const Duration(seconds: 7));
       expect(find.text('Any pain since?'), findsNothing);
@@ -590,13 +573,7 @@ void main() {
 
       expect(find.text("After Monday's workout · optional"), findsOneWidget);
       expect(find.text('Any pain since?'), findsOneWidget);
-      expect(
-        find.text(
-          'Four quick questions, plus one about your last workout. Your '
-          "answers feed today's injury-risk estimate.",
-        ),
-        findsOneWidget,
-      );
+      expect(find.text("Helps estimate today's injury risk."), findsOneWidget);
       for (final level in painLevels) {
         expect(_chipSelected(tester, 'checkin.pain.$level'), isFalse);
       }

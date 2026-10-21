@@ -314,12 +314,11 @@ class _CheckinSheetState extends ConsumerState<_CheckinSheet> {
               ),
             ),
             const SizedBox(height: 6),
+            // One short line, the same with or without the pain question:
+            // why the sheet asks, not how many questions it has -- the
+            // questions are right below, and the pain one has its own heading.
             Text(
-              _pending == null
-                  ? "Four quick questions. Your answers feed today's "
-                        'injury-risk estimate.'
-                  : 'Four quick questions, plus one about your last workout. '
-                        "Your answers feed today's injury-risk estimate.",
+              "Helps estimate today's injury risk.",
               style: TextStyle(fontSize: 13, color: t.text2, height: 1.4),
             ),
             const SizedBox(height: 16),
