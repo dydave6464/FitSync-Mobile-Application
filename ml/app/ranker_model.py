@@ -15,8 +15,12 @@ team's curated mark and the picked-equipment tier. Scores are grouped into
 fixed bands RANK_MARGIN wide (0.50-0.55, 0.55-0.60, ...): an exercise moves up
 only when its band is higher, and exercises in the same band keep the team's
 order. This is not a minimum gap: 0.549 and 0.551 sit in different bands, so
-noise from features with no simulated effect (goal, split) can still reorder
-near-equal choices whenever they straddle a band edge.
+noise from an input with no simulated effect can still reorder near-equal
+choices whenever they straddle a band edge. Within one request the only such
+input that differs between candidates of a run is beginner-friendly (for an
+intermediate trainee; a beginner is offered only beginner-friendly ones):
+goal, level, session length and split are the same for every candidate, and
+the curated mark is equal within a run by construction.
 """
 import math
 from functools import lru_cache

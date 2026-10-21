@@ -4,8 +4,9 @@
   "limitations": [
     "The cited studies measure whether people keep exercising, not which exercise they choose; applying them to single exercises is FitSync's assumption.",
     "The simulation's weights encode direction and rough ordering only, not measured effect sizes.",
-    "Goal, fitness level, session length, split and curated mark have no simulated effect; only real rows can teach them.",
+    "Goal, fitness level, session length, split, curated mark and beginner-friendly have no simulated effect; only real rows can teach them. Of these, only beginner-friendly can differ between an intermediate trainee's candidates in one run, so it is the one whose noise can reorder near-equal choices.",
     "A beginner or cautioned trainee is never offered a non-beginner-friendly exercise, so that combination is not simulated.",
+    "Days since trained is looked up by muscle group, so it is shared by every candidate of a muscle group: it changes scores but does not favour one exercise over another in a plan. At most it moves near-equal scores across a band edge, the same way as any shift in scores.",
     "The model orders only within runs of equal curated mark and picked-equipment tier, comparing scores in fixed 5-point bands (0.50-0.55, 0.55-0.60, ...): a candidate moves up only when its band is higher. This is not a minimum gap: two candidates less than 5 points apart reorder when they fall on either side of a band edge, and keep the team's order when they share a band. It never adds, removes or reclassifies an exercise."
   ],
   "data": {
@@ -134,23 +135,24 @@
     }
   },
   "topPickChangedShare": 0.3605,
+  "topPickChangedShareDescription": "share of simulated trainees (coverage rows left out) whose first pick the model changes, per trainee's 6 candidates standing in for one muscle group's run; measured in-sample, on the rows the model was trained on",
   "probes": [
     {
-      "trainee": "home beginner; the first candidate's muscle was trained yesterday",
+      "trainee": "home beginner whose legs were trained yesterday",
       "teamOrder": [
-        "trained yesterday",
-        "rested a week",
-        "rested, done twice"
+        "done twice",
+        "never tried",
+        "skipped once"
       ],
       "scores": {
-        "trained yesterday": 0.6556,
-        "rested a week": 0.7412,
-        "rested, done twice": 0.8394
+        "done twice": 0.6556,
+        "never tried": 0.6193,
+        "skipped once": 0.5486
       },
       "order": [
-        "rested, done twice",
-        "rested a week",
-        "trained yesterday"
+        "done twice",
+        "never tried",
+        "skipped once"
       ]
     },
     {

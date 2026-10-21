@@ -54,10 +54,17 @@ LIMITATIONS = [
     "assumption.",
     "The simulation's weights encode direction and rough ordering only, not "
     "measured effect sizes.",
-    "Goal, fitness level, session length, split and curated mark have no "
-    "simulated effect; only real rows can teach them.",
+    "Goal, fitness level, session length, split, curated mark and "
+    "beginner-friendly have no simulated effect; only real rows can teach "
+    "them. Of these, only beginner-friendly can differ between an "
+    "intermediate trainee's candidates in one run, so it is the one whose "
+    "noise can reorder near-equal choices.",
     "A beginner or cautioned trainee is never offered a non-beginner-friendly "
     "exercise, so that combination is not simulated.",
+    "Days since trained is looked up by muscle group, so it is shared by "
+    "every candidate of a muscle group: it changes scores but does not favour "
+    "one exercise over another in a plan. At most it moves near-equal scores "
+    "across a band edge, the same way as any shift in scores.",
     "The model orders only within runs of equal curated mark and "
     "picked-equipment tier, comparing scores in fixed {:.0f}-point bands "
     "(0.50-0.55, 0.55-0.60, ...): a candidate moves up only when its band is "
@@ -158,10 +165,13 @@ def _probe_situation(**changes) -> dict:
 # Each probe: a trainee, three candidates in one run (same mark, same
 # picked tier) in the team's order, and what the model does with them.
 PROBES = [
-    ("home beginner; the first candidate's muscle was trained yesterday", [
-        ("trained yesterday", _probe_situation(daysSinceTrained=1, timesDone=2)),
-        ("rested a week", _probe_situation()),
-        ("rested, done twice", _probe_situation(timesDone=2)),
+    # Days since trained is per muscle group, so all three share it, as every
+    # candidate competing for one slot does when the service ranks a plan.
+    ("home beginner whose legs were trained yesterday", [
+        ("done twice", _probe_situation(daysSinceTrained=1, timesDone=2)),
+        ("never tried", _probe_situation(daysSinceTrained=1, timesDone=0)),
+        ("skipped once", _probe_situation(daysSinceTrained=1, timesDone=0,
+                                          timesSkipped=1)),
     ]),
     ("gym intermediate who swapped the first candidate out twice", [
         ("swapped out twice", _probe_situation(fitnessLevel="intermediate",
@@ -263,6 +273,11 @@ def build_report(cv: dict, simulated_rows: int, seed: int, real_rows: int,
         },
         "crossValidation": cv,
         "topPickChangedShare": changed_share,
+        "topPickChangedShareDescription": (
+            "share of simulated trainees (coverage rows left out) whose first "
+            "pick the model changes, per trainee's {} candidates standing in "
+            "for one muscle group's run; measured in-sample, on the rows the "
+            "model was trained on".format(ranker_data.CANDIDATES_PER_TRAINEE)),
         "probes": probed,
         "sklearnVersion": sklearn.__version__,
     }

@@ -21,8 +21,8 @@ docs/superpowers/specs/2026-10-21-exercise-picking-model-design.md):
 
 Not simulated: a beginner given a non-beginner-friendly exercise (the app
 never offers one -- catalogue._BEGINNER), and any effect of goal, level,
-session length, split or curated mark. Those stay as inputs, with no effect
-here, so real rows can teach them.
+session length, split, curated mark or beginner-friendly. Those stay as
+inputs, with no effect here, so real rows can teach them.
 
 Nothing here is observed. The sources study whether people keep exercising,
 not which exercise they pick; applying them to single exercises is FitSync's
