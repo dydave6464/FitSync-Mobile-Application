@@ -80,6 +80,36 @@ test("the generator screen's three choices pass through, and nothing else inside
   assert.ok(!('overrides' in toPlanPayload({ ...PROFILE, overrides: 'x' })), 'not an object');
 });
 
+test('the plan payload carries a well-formed history', () => {
+  const history = {
+    muscleDaysAgo: { quads: 2, abs: 14 },
+    exercises: { 12: { done: 3, skipped: 1, swapped: 0 } },
+  };
+  assert.deepEqual(toPlanPayload({ history }).history, {
+    muscleDaysAgo: { quads: 2, abs: 14 },
+    exercises: { 12: { done: 3, skipped: 1, swapped: 0 } },
+  });
+});
+
+test('the plan payload builds history field by field', () => {
+  const p = toPlanPayload({
+    history: {
+      muscleDaysAgo: { quads: 2, bad: 'x' },
+      exercises: { 12: { done: 1, skipped: 0, swapped: 0, secret: 'no' }, 13: 'no' },
+      email: 'leak@example.com',
+    },
+  });
+  assert.deepEqual(p.history, {
+    muscleDaysAgo: { quads: 2 },
+    exercises: { 12: { done: 1, skipped: 0, swapped: 0 } },
+  });
+});
+
+test('no history, no history key', () => {
+  assert.equal('history' in toPlanPayload({}), false);
+  assert.equal('history' in toPlanPayload({ history: 'x' }), false);
+});
+
 test('a sparse or missing profile maps without inventing values or throwing', () => {
   const empty = { mainGoal: null, fitnessLevel: null, trainingLocation: null, healthCaution: false, equipment: [], injuries: [], goals: [] };
   assert.deepEqual(toPlanPayload({}), empty);

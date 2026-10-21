@@ -7,15 +7,15 @@ the design, section 3.
 """
 import logging
 import os
-from typing import List
+from typing import List, Optional
 
 from dotenv import load_dotenv
 from fastapi import FastAPI, HTTPException
 
-from app.catalogue import fetch_candidates
+from app.catalogue import fetch_attributes, fetch_candidates
 from app.config import Settings
 from app.db import create_engine_from
-from app.ranker import Ranker
+from app.ranker import RankContext, Ranker
 from app.risk_model import RiskModel, estimate as estimate_injury_risk
 from app.rules import parameters, selection
 from app.rules.splits import Split, label as split_label, resolve as resolve_split
@@ -26,6 +26,7 @@ from app.schemas import (
     PlanExercise,
     PlanResponse,
     ProfileRequest,
+    parse_history,
 )
 
 logger = logging.getLogger(__name__)
@@ -111,7 +112,7 @@ def _candidates(engine, owned, selected, injury_ids, excluded, training_location
     return primary, top_up
 
 
-def create_app(settings: Settings) -> FastAPI:
+def create_app(settings: Settings, ranker: Optional[Ranker] = None) -> FastAPI:
     logging.basicConfig(
         level=getattr(logging, settings.log_level.upper(), logging.INFO),
         format="%(asctime)s %(levelname)s %(name)s %(message)s",
@@ -119,7 +120,7 @@ def create_app(settings: Settings) -> FastAPI:
     app = FastAPI(title="FitSync ML service")
     app.state.settings = settings
     app.state.engine = None
-    app.state.ranker = Ranker.load(settings)
+    app.state.ranker = ranker if ranker is not None else Ranker.load(settings)
     # Loaded (or trained from the seeded simulation) once at startup. There is
     # no auto-reload: a new model file is picked up only on restart.
     app.state.risk_model = RiskModel.load(settings)
@@ -139,6 +140,7 @@ def create_app(settings: Settings) -> FastAPI:
             "status": "ok",
             "model": ranker.status,
             "mode": ranker.mode,
+            "rankerModel": {"status": ranker.status, "version": ranker.version},
             "riskModel": {"status": risk_model.status, "version": risk_model.version},
         }
 
@@ -214,10 +216,29 @@ def create_app(settings: Settings) -> FastAPI:
             beginner_only,
         )
 
+        # The ranker's view of every candidate, read once. A failure here
+        # serves the rules' order, like any ranker failure.
+        try:
+            attributes = fetch_attributes(
+                engine(), [c.exercise_id for c in candidates + top_up], selected)
+            context = RankContext(
+                main_goal=profile.mainGoal,
+                fitness_level=profile.fitnessLevel,
+                training_location=profile.trainingLocation,
+                session_length_min=params.session_length_min,
+                split_style=params.split_style,
+                health_caution=profile.healthCaution,
+                attributes=attributes,
+                history=parse_history(profile.history),
+            )
+        except Exception as err:
+            logger.error("could not build the ranking context, serving rules: %s", err)
+            context = None
+
         # Ranked apart, so a model reordering one list can never move a
         # body-weight top-up ahead of the user's own equipment.
-        ranked = app.state.ranker.rank(candidates)
-        ranked_top_up = app.state.ranker.rank(top_up) if top_up else []
+        ranked = app.state.ranker.rank(candidates, context)
+        ranked_top_up = app.state.ranker.rank(top_up, context) if top_up else []
 
         # One session per rotation day, each from that day's muscle pool. The
         # pools within a rotation are disjoint (see app/rules/splits), so an

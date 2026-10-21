@@ -305,3 +305,41 @@ def test_beginner_only_never_changes_which_equipment_is_eligible(engine, catalog
     assert names(
         fetch_candidates(engine, owned, [], [], beginner_only=True)
     ) == names(fetch_candidates(engine, owned, [], []))
+
+
+def test_attributes_describe_each_candidate(engine, catalogue):
+    from app.catalogue import fetch_attributes
+
+    eq = catalogue["equipment"]
+    ex = catalogue["exercises"]
+    ids = [ex["fixture dumbbell curl"], ex["fixture push-up"]]
+    attrs = fetch_attributes(engine, ids, [eq["dumbbell"]])
+    curl, push_up = attrs[ids[0]], attrs[ids[1]]
+    assert curl.equipment_name == "dumbbell" and curl.picked is True
+    assert push_up.equipment_name == "body weight" and push_up.picked is False
+    # The catalogue fixture marks every exercise an alternative and
+    # beginner-friendly.
+    assert curl.mark == "alternative" and curl.beginner_friendly is True
+    assert fetch_attributes(engine, [], [eq["dumbbell"]]) == {}
+
+
+def test_an_unmarked_exercise_reads_unmarked_and_not_beginner_friendly(
+        engine, catalogue, mark):
+    from app.catalogue import fetch_attributes
+
+    mark("fixture push-up", None)
+    push_up = catalogue["exercises"]["fixture push-up"]
+    attrs = fetch_attributes(engine, [push_up])[push_up]
+    assert attrs.mark == "unmarked" and attrs.beginner_friendly is False
+    assert attrs.picked is False
+
+
+def test_attributes_walk_the_equipment_tree(engine, catalogue):
+    # 'cable' is a child of the curated 'machines': the ranker sees the curated
+    # name, and selecting 'machines' counts as picking it, as _SELECTED_TIER
+    # orders it.
+    from app.catalogue import fetch_attributes
+
+    row = catalogue["exercises"]["fixture cable row"]
+    attrs = fetch_attributes(engine, [row], [catalogue["equipment"]["machines"]])[row]
+    assert attrs.equipment_name == "machines" and attrs.picked is True
