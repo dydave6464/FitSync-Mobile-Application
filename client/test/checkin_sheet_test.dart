@@ -4,19 +4,32 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 
+import 'package:fitsync/core/api_exception.dart';
 import 'package:fitsync/core/theme.dart';
 import 'package:fitsync/core/widgets/fs_kit.dart';
+import 'package:fitsync/features/profile/domain/profile.dart';
+import 'package:fitsync/features/profile/presentation/providers.dart'
+    show injuryOptionsProvider;
 import 'package:fitsync/features/recovery/data/recovery_repository.dart';
 import 'package:fitsync/features/recovery/domain/recovery.dart';
 import 'package:fitsync/features/recovery/presentation/providers.dart';
 import 'package:fitsync/features/recovery/presentation/widgets/checkin_sheet.dart';
+import 'package:fitsync/features/sessions/data/session_repository.dart';
+import 'package:fitsync/features/sessions/domain/session_outcome.dart';
+import 'package:fitsync/features/sessions/presentation/providers.dart'
+    show pendingOutcomeProvider, sessionRepositoryProvider;
 
 class _FakeRepo implements RecoveryRepository {
+  _FakeRepo([this.log]);
+
+  /// Shared with [_FakeSessions], so a test can see which request went first.
+  final List<String>? log;
   Map<String, String>? sent;
   Object? error;
 
   @override
   Future<void> checkIn(Map<String, String> answers) async {
+    log?.add('checkin');
     if (error != null) throw error!;
     sent = answers;
   }
@@ -25,6 +38,56 @@ class _FakeRepo implements RecoveryRepository {
   dynamic noSuchMethod(Invocation i) =>
       throw UnimplementedError('${i.memberName} is not used here');
 }
+
+/// Records every pain answer posted, in the shared [log].
+class _FakeSessions implements SessionRepository {
+  _FakeSessions([List<String>? log]) : log = log ?? [];
+
+  final List<String> log;
+  final outcomes = <({int sessionId, String painLevel, int? injuryId})>[];
+  Object? error;
+
+  @override
+  Future<void> recordOutcome(
+    int sessionId, {
+    required String painLevel,
+    int? injuryId,
+  }) async {
+    log.add('outcome');
+    if (error != null) throw error!;
+    outcomes.add((
+      sessionId: sessionId,
+      painLevel: painLevel,
+      injuryId: injuryId,
+    ));
+  }
+
+  @override
+  dynamic noSuchMethod(Invocation i) =>
+      throw UnimplementedError('${i.memberName} is not used here');
+}
+
+/// 2026-09-21 is a Monday, and never yesterday again.
+const _pending = PendingOutcome(
+  sessionId: 7,
+  sessionDate: '2026-09-21',
+  planName: 'Upper Body · Push',
+);
+
+const _regions = [
+  InjuryOption(
+    injuryId: 1,
+    name: 'Shoulder',
+    isLateral: true,
+    regionGroup: 'upper_body',
+  ),
+  InjuryOption(
+    injuryId: 13,
+    name: 'Knee',
+    isLateral: true,
+    regionGroup: 'lower_body',
+  ),
+];
 
 /// Lets a test hold `checkIn` open on a [Completer] it controls, so the
 /// sheet can be dismissed while the request is still in flight, and counts
@@ -58,11 +121,35 @@ Future<_FakeRepo> _open(
   WidgetTester tester, {
   Object? error,
   MorningCheckin? existing,
+  PendingOutcome? pending,
+  _FakeSessions? sessions,
+  List<String>? log,
+  VoidCallback? onPendingLookup,
+  int regionsFailures = 0,
+  Future<PendingOutcome?> Function()? pendingLookup,
+  Future<void> Function(ProviderContainer container)? beforeOpen,
 }) async {
-  final repo = _FakeRepo()..error = error;
+  final repo = _FakeRepo(log)..error = error;
+  var regionsCalls = 0;
   await tester.pumpWidget(
     ProviderScope(
-      overrides: [recoveryRepositoryProvider.overrideWithValue(repo)],
+      overrides: [
+        recoveryRepositoryProvider.overrideWithValue(repo),
+        sessionRepositoryProvider.overrideWithValue(
+          sessions ?? _FakeSessions(log),
+        ),
+        pendingOutcomeProvider.overrideWith((ref) async {
+          onPendingLookup?.call();
+          if (pendingLookup != null) return pendingLookup();
+          return pending;
+        }),
+        injuryOptionsProvider.overrideWith((ref) async {
+          if (regionsCalls++ < regionsFailures) {
+            throw Exception("Couldn't load body regions.");
+          }
+          return _regions;
+        }),
+      ],
       child: MaterialApp(
         theme: fsLightTheme(),
         home: Builder(
@@ -76,10 +163,26 @@ Future<_FakeRepo> _open(
       ),
     ),
   );
+  if (beforeOpen != null) {
+    await beforeOpen(
+      ProviderScope.containerOf(tester.element(find.text('open'))),
+    );
+    await tester.pump();
+  }
   await tester.tap(find.text('open'));
   await tester.pumpAndSettle();
   return repo;
 }
+
+Future<void> _tapKey(WidgetTester tester, String key) async {
+  await tester.ensureVisible(find.byKey(Key(key)));
+  await tester.pumpAndSettle();
+  await tester.tap(find.byKey(Key(key)));
+  await tester.pumpAndSettle();
+}
+
+bool _chipSelected(WidgetTester tester, String key) =>
+    tester.widget<FsChip>(find.byKey(Key(key))).selected;
 
 /// Answers all four questions, so Save is enabled.
 Future<void> _answerAll(WidgetTester tester) async {
@@ -164,7 +267,10 @@ void main() {
 
       await tester.pumpWidget(
         ProviderScope(
-          overrides: [recoveryRepositoryProvider.overrideWithValue(repo)],
+          overrides: [
+            recoveryRepositoryProvider.overrideWithValue(repo),
+            pendingOutcomeProvider.overrideWith((ref) async => null),
+          ],
           child: MaterialApp(
             theme: fsLightTheme(),
             home: Consumer(
@@ -367,12 +473,7 @@ void main() {
   testWidgets('it says why it asks', (tester) async {
     await _open(tester);
 
-    expect(
-      find.text(
-        "Four quick questions. Your answers feed today's injury-risk estimate.",
-      ),
-      findsOneWidget,
-    );
+    expect(find.text("Helps estimate today's injury risk."), findsOneWidget);
   });
 
   testWidgets('fits a 320 dp phone at 2x text, Save reachable', (tester) async {
@@ -391,5 +492,336 @@ void main() {
     await tester.tap(find.byKey(const Key('checkin.save')));
     await tester.pumpAndSettle();
     expect(repo.sent, isNotNull);
+  });
+
+  group('pain row', () {
+    test('painRowHeading names the day', () {
+      expect(
+        painRowHeading('2026-10-20', '2026-10-21'),
+        "After yesterday's workout",
+      );
+      expect(
+        painRowHeading('2026-10-19', '2026-10-21'),
+        "After Monday's workout",
+      );
+      expect(
+        painRowHeading('2026-10-14', '2026-10-21'),
+        "After last Wednesday's workout",
+      );
+    });
+
+    testWidgets('no pending workout, no pain row', (tester) async {
+      await _open(tester);
+
+      expect(find.text('Any pain since?'), findsNothing);
+      expect(find.text("Helps estimate today's injury risk."), findsOneWidget);
+    });
+
+    testWidgets('no pain row while the lookup is still loading', (
+      tester,
+    ) async {
+      final never = Completer<PendingOutcome?>();
+      final repo = await _open(tester, pendingLookup: () => never.future);
+
+      expect(find.text('Any pain since?'), findsNothing);
+      expect(find.text("Helps estimate today's injury risk."), findsOneWidget);
+      // Lets the lookup's time limits run out, so no timer outlives the test.
+      await tester.pump(const Duration(seconds: 7));
+      expect(find.text('Any pain since?'), findsNothing);
+
+      await _answerAll(tester);
+      await _tapKey(tester, 'checkin.save');
+      expect(repo.sent, isNotNull);
+    });
+
+    testWidgets('no pain row when the lookup fails', (tester) async {
+      final repo = await _open(
+        tester,
+        pendingLookup: () async => throw Exception('offline'),
+      );
+
+      expect(find.text('Any pain since?'), findsNothing);
+      await _answerAll(tester);
+      await _tapKey(tester, 'checkin.save');
+      expect(repo.sent, isNotNull);
+    });
+
+    testWidgets('a workout that became askable overnight gets its row', (
+      tester,
+    ) async {
+      PendingOutcome? answer;
+      await _open(
+        tester,
+        pendingLookup: () async => answer,
+        beforeOpen: (container) async {
+          // Yesterday's settled answer: nothing to ask about.
+          expect(await container.read(pendingOutcomeProvider.future), isNull);
+          // Past midnight the workout is askable, and DayRollover
+          // invalidates the cached answer.
+          answer = _pending;
+          container.invalidate(pendingOutcomeProvider);
+        },
+      );
+
+      expect(find.text('Any pain since?'), findsOneWidget);
+    });
+
+    testWidgets('a pending workout adds an optional row with nothing chosen', (
+      tester,
+    ) async {
+      await _open(tester, pending: _pending);
+
+      expect(find.text("After Monday's workout · optional"), findsOneWidget);
+      expect(find.text('Any pain since?'), findsOneWidget);
+      expect(find.text("Helps estimate today's injury risk."), findsOneWidget);
+      for (final level in painLevels) {
+        expect(_chipSelected(tester, 'checkin.pain.$level'), isFalse);
+      }
+      expect(find.text('Where?'), findsNothing);
+    });
+
+    testWidgets('the four answers alone still save, with no pain request', (
+      tester,
+    ) async {
+      final log = <String>[];
+      final sessions = _FakeSessions(log);
+      await _open(tester, pending: _pending, sessions: sessions, log: log);
+
+      await _answerAll(tester);
+      await _tapKey(tester, 'checkin.save');
+
+      expect(log, ['checkin']);
+      expect(sessions.outcomes, isEmpty);
+    });
+
+    testWidgets('Where? appears with pain, and None clears the region', (
+      tester,
+    ) async {
+      await _open(tester, pending: _pending);
+
+      await _tapKey(tester, 'checkin.pain.mild');
+      expect(find.text('Where?'), findsOneWidget);
+      await _tapKey(tester, 'checkin.region.13');
+      expect(_chipSelected(tester, 'checkin.region.13'), isTrue);
+
+      await _tapKey(tester, 'checkin.pain.none');
+      expect(find.text('Where?'), findsNothing);
+
+      await _tapKey(tester, 'checkin.pain.mild');
+      expect(_chipSelected(tester, 'checkin.region.13'), isFalse);
+    });
+
+    testWidgets('pain without a region blocks Save and says how to skip', (
+      tester,
+    ) async {
+      await _open(tester, pending: _pending);
+      await _answerAll(tester);
+
+      await _tapKey(tester, 'checkin.pain.moderate');
+      expect(_saveEnabled(tester), isFalse);
+      expect(
+        find.text(
+          'Pick where it hurts, or tap Moderate again to skip this question.',
+        ),
+        findsOneWidget,
+      );
+
+      await _tapKey(tester, 'checkin.pain.moderate');
+      expect(_chipSelected(tester, 'checkin.pain.moderate'), isFalse);
+      expect(_saveEnabled(tester), isTrue);
+      expect(find.byKey(const Key('checkin.hint')), findsNothing);
+    });
+
+    testWidgets('the pain answer is saved first, with its region', (
+      tester,
+    ) async {
+      final log = <String>[];
+      final sessions = _FakeSessions(log);
+      var lookups = 0;
+      await _open(
+        tester,
+        pending: _pending,
+        sessions: sessions,
+        log: log,
+        onPendingLookup: () => lookups++,
+      );
+      expect(lookups, 1);
+
+      await _answerAll(tester);
+      await _tapKey(tester, 'checkin.pain.moderate');
+      await _tapKey(tester, 'checkin.region.13');
+      await _tapKey(tester, 'checkin.save');
+
+      expect(log, ['outcome', 'checkin']);
+      expect(sessions.outcomes, [
+        (sessionId: 7, painLevel: 'moderate', injuryId: 13),
+      ]);
+      expect(find.text('Morning check-in'), findsNothing);
+      expect(lookups, 2, reason: 'a stored answer refreshes the pending one');
+    });
+
+    testWidgets('None is saved without a region', (tester) async {
+      final sessions = _FakeSessions();
+      await _open(tester, pending: _pending, sessions: sessions);
+
+      await _answerAll(tester);
+      await _tapKey(tester, 'checkin.pain.none');
+      await _tapKey(tester, 'checkin.save');
+
+      expect(sessions.outcomes, [
+        (sessionId: 7, painLevel: 'none', injuryId: null),
+      ]);
+    });
+
+    testWidgets('an answer already stored elsewhere counts as saved', (
+      tester,
+    ) async {
+      final log = <String>[];
+      final sessions = _FakeSessions(log)
+        ..error = const ApiException('OUTCOME_EXISTS', 'x');
+      var lookups = 0;
+      await _open(
+        tester,
+        pending: _pending,
+        sessions: sessions,
+        log: log,
+        onPendingLookup: () => lookups++,
+      );
+      expect(lookups, 1);
+
+      await _answerAll(tester);
+      await _tapKey(tester, 'checkin.pain.none');
+      await _tapKey(tester, 'checkin.save');
+
+      expect(log, ['outcome', 'checkin']);
+      expect(find.text('Morning check-in'), findsNothing);
+      expect(find.text(painNotSavedMessage), findsNothing);
+      expect(lookups, 2, reason: 'a 409 counts as saved and refreshes');
+    });
+
+    testWidgets('a failed pain answer still saves the check-in, then says so', (
+      tester,
+    ) async {
+      final sessions = _FakeSessions()
+        ..error = const ApiException('INTERNAL', 'x');
+      final repo = await _open(tester, pending: _pending, sessions: sessions);
+
+      await _answerAll(tester);
+      await _tapKey(tester, 'checkin.pain.none');
+      await _tapKey(tester, 'checkin.save');
+
+      expect(repo.sent, isNotNull);
+      expect(find.text('Morning check-in'), findsNothing);
+      expect(find.text(painNotSavedMessage), findsOneWidget);
+    });
+
+    testWidgets('a failed check-in does not resend a saved pain answer', (
+      tester,
+    ) async {
+      final log = <String>[];
+      final sessions = _FakeSessions(log);
+      final repo = await _open(
+        tester,
+        pending: _pending,
+        sessions: sessions,
+        log: log,
+        error: Exception('offline'),
+      );
+
+      await _answerAll(tester);
+      await _tapKey(tester, 'checkin.pain.none');
+      await _tapKey(tester, 'checkin.save');
+      expect(log, ['outcome', 'checkin']);
+      expect(find.text('Morning check-in'), findsOneWidget);
+
+      // The stored answer cannot change from here, so no dead chips stay.
+      expect(find.text("After Monday's workout · optional"), findsOneWidget);
+      expect(find.text('Pain answer saved.'), findsOneWidget);
+      expect(find.text('Any pain since?'), findsNothing);
+      expect(find.byKey(const Key('checkin.pain.none')), findsNothing);
+
+      repo.error = null;
+      await _tapKey(tester, 'checkin.save');
+
+      expect(log, ['outcome', 'checkin', 'checkin']);
+      expect(sessions.outcomes, hasLength(1));
+    });
+
+    testWidgets('Where? offers a retry when regions fail to load', (
+      tester,
+    ) async {
+      await _open(tester, pending: _pending, regionsFailures: 1);
+
+      await _tapKey(tester, 'checkin.pain.mild');
+      expect(find.text("Couldn't load body regions."), findsOneWidget);
+      expect(
+        tester.getSize(find.byKey(const Key('checkin.regions.retry'))).height,
+        greaterThanOrEqualTo(48),
+      );
+
+      await _tapKey(tester, 'checkin.regions.retry');
+      expect(find.byKey(const Key('checkin.region.13')), findsOneWidget);
+    });
+
+    testWidgets('each pain answer is named for a screen reader', (
+      tester,
+    ) async {
+      final semantics = tester.ensureSemantics();
+      await _open(tester, pending: _pending);
+      await _tapKey(tester, 'checkin.pain.mild');
+
+      expect(
+        tester.getSemantics(find.bySemanticsLabel('Any pain since: Mild')),
+        isSemantics(
+          label: 'Any pain since: Mild',
+          isButton: true,
+          isSelected: true,
+        ),
+      );
+      expect(
+        tester.getSemantics(find.bySemanticsLabel('Where: Knee')),
+        isSemantics(label: 'Where: Knee', isButton: true, isSelected: false),
+      );
+      semantics.dispose();
+    });
+
+    testWidgets('every pain and region answer has a full-size tap band', (
+      tester,
+    ) async {
+      await _open(tester, pending: _pending);
+      await _tapKey(tester, 'checkin.pain.mild');
+
+      for (final key in [
+        for (final level in painLevels) 'checkin.pain.$level.target',
+        'checkin.region.13.target',
+      ]) {
+        final size = tester.getSize(find.byKey(Key(key)));
+        expect(size.height, greaterThanOrEqualTo(48), reason: key);
+        expect(size.width, greaterThanOrEqualTo(48), reason: key);
+      }
+    });
+
+    testWidgets('fits a 320 dp phone at 2x text with the pain row', (
+      tester,
+    ) async {
+      tester.view.physicalSize = const Size(320, 640);
+      tester.view.devicePixelRatio = 1;
+      addTearDown(tester.view.reset);
+      tester.platformDispatcher.textScaleFactorTestValue = 2;
+      addTearDown(tester.platformDispatcher.clearTextScaleFactorTestValue);
+
+      final sessions = _FakeSessions();
+      final repo = await _open(tester, pending: _pending, sessions: sessions);
+      expect(tester.takeException(), isNull);
+
+      await _answerAll(tester);
+      await _tapKey(tester, 'checkin.pain.severe');
+      await _tapKey(tester, 'checkin.region.1');
+      expect(tester.takeException(), isNull);
+      await _tapKey(tester, 'checkin.save');
+
+      expect(repo.sent, isNotNull);
+      expect(sessions.outcomes, hasLength(1));
+    });
   });
 }
