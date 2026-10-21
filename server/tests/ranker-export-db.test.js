@@ -59,11 +59,36 @@ test('ranker export', async (t) => {
     `INSERT INTO exercise_preferences (exercise_id, priority, beginner_friendly)
      VALUES (?, 'first', TRUE), (?, 'never', FALSE)`, [biceps, abs]);
 
+  // A second user whose slot was swapped AFTER their workout: plan_exercises
+  // now names the replacement, but the workout prescribed the original.
+  const [[{ exercise_id: otherAbs }]] = await pool.query(
+    "SELECT exercise_id FROM exercises WHERE muscle_group = 'abs' AND exercise_id <> ? LIMIT 1", [abs]);
+  const quads = await exerciseFor('quads');
+  const [u2] = await pool.query(
+    `INSERT INTO users (email, password_hash, full_name) VALUES ('swap@example.com', 'x', 'S')`);
+  const [p2] = await pool.query(
+    `INSERT INTO workout_plans (user_id, name, split_style, days_per_week, session_length_min, week_no, is_active)
+     VALUES (?, 'P2', 'push_pull_legs', 3, 45, 1, 1)`, [u2.insertId]);
+  const [slot] = await pool.query(
+    `INSERT INTO plan_exercises (plan_id, exercise_id, order_no, target_sets, target_reps, day_no)
+     VALUES (?, ?, 1, 3, '8-12', 1)`, [p2.insertId, otherAbs]);
+  const [s2] = await pool.query(
+    `INSERT INTO workout_sessions (user_id, status, session_date, plan_id, plan_day_no)
+     VALUES (?, 'completed', DATE_SUB(CURDATE(), INTERVAL 3 DAY), ?, 1)`, [u2.insertId, p2.insertId]);
+  await pool.query(
+    `INSERT INTO set_logs (session_id, exercise_id, set_number, weight_kg, reps, is_completed)
+     VALUES (?, ?, 1, 20, 10, TRUE)`, [s2.insertId, quads]);
+  await pool.query(
+    `INSERT INTO plan_swaps (user_id, plan_id, plan_exercise_id, rejected_exercise_id, chosen_exercise_id, muscle_group, swapped_at)
+     VALUES (?, ?, ?, ?, ?, 'quads', DATE_SUB(NOW(), INTERVAL 1 DAY))`,
+    [u2.insertId, p2.insertId, slot.insertId, quads, otherAbs]);
+
   const rows = await exportRankerRows(pool);
+  const mine = rows.filter((r) => r.user_id === userId);
 
   await t.test('one row per prescribed exercise per workout, plus one per swap', async () => {
-    assert.equal(rows.filter((r) => r.kind === 'prescribed').length, 4);
-    assert.equal(rows.filter((r) => r.kind === 'swap').length, 1);
+    assert.equal(mine.filter((r) => r.kind === 'prescribed').length, 4);
+    assert.equal(mine.filter((r) => r.kind === 'swap').length, 1);
   });
 
   await t.test('labels: logged = 1, skipped = 0, swapped out = 0', async () => {
@@ -81,7 +106,7 @@ test('ranker export', async (t) => {
     assert.equal(first.days_since_trained, '');
     assert.equal(second.times_done, 1);
     assert.equal(second.days_since_trained, 4);
-    const swapRow = rows.find((r) => r.kind === 'swap');
+    const swapRow = mine.find((r) => r.kind === 'swap');
     assert.equal(swapRow.times_skipped, 1);
   });
 
@@ -97,6 +122,11 @@ test('ranker export', async (t) => {
     assert.ok([0, 1].includes(r.beginner_friendly));
     assert.ok([0, 1].includes(r.picked_equipment));
     assert.ok(typeof r.equipment_name === 'string' && r.equipment_name.length > 0);
+  });
+
+  await t.test('a slot swapped after the workout exports what the workout prescribed', async () => {
+    const theirs = rows.filter((r) => r.user_id === u2.insertId && r.kind === 'prescribed');
+    assert.deepEqual(theirs.map((r) => [r.exercise_id, r.done]), [[quads, 1]]);
   });
 
   await t.test('marks: curated first kept, search_only/never read as unmarked', async () => {

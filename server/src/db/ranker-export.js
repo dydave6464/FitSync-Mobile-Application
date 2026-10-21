@@ -6,8 +6,8 @@ const { readRankerHistory } = require('./ranker-history');
 /// (ml/app/train_ranker.py --real). The columns are a contract with
 /// train_ranker.CSV_COLUMNS: change both or neither.
 ///
-/// One row per exercise a COMPLETED PLAN workout prescribed on its day (done 1
-/// when a completed set was logged for it, else 0), and one per swap (the
+/// One row per exercise a COMPLETED PLAN workout prescribed on its day, as the
+/// day stood then (done 1 when a completed set was logged for it, else 0), and one per swap (the
 /// exercise swapped out, done 0). Each row's history comes from
 /// readRankerHistory(..., { before: event_date }): only what happened on
 /// earlier days, so a row never sees its own outcome. Profile columns are the
@@ -36,18 +36,37 @@ const ATTRIBUTES = `
     LEFT JOIN exercise_preferences pref ON pref.exercise_id = x.exercise_id`;
 
 async function exportRankerRows(pool) {
+  // A swap rewrites its plan_exercises row in place, so the exercise a past
+  // workout prescribed is reconstructed exactly as readRankerHistory does for
+  // skips: the one rejected by the slot's first swap on a later day, else the
+  // row's current one; a slot swapped ON the workout's day is left out (a DATE
+  // cannot say whether the swap came before or after the workout).
   const [events] = await pool.query(
-    `SELECT s.user_id, DATE_FORMAT(s.session_date, '%Y-%m-%d') AS event_date,
-            'prescribed' AS kind, pe.exercise_id, p.split_style, p.session_length_min,
+    `SELECT x.user_id, DATE_FORMAT(x.session_date, '%Y-%m-%d') AS event_date,
+            'prescribed' AS kind, x.exercise_id, x.split_style, x.session_length_min,
             EXISTS (SELECT 1 FROM set_logs sl
-                     WHERE sl.session_id = s.session_id
-                       AND sl.exercise_id = pe.exercise_id
+                     WHERE sl.session_id = x.session_id
+                       AND sl.exercise_id = x.exercise_id
                        AND sl.is_completed = TRUE) AS done
-       FROM workout_sessions s
-       JOIN workout_plans p ON p.plan_id = s.plan_id
-       JOIN plan_exercises pe
-         ON pe.plan_id = s.plan_id AND pe.day_no = COALESCE(s.plan_day_no, 1)
-      WHERE s.status = 'completed'
+       FROM (
+         SELECT s.user_id, s.session_id, s.session_date, p.split_style, p.session_length_min,
+                COALESCE(
+                  (SELECT w.rejected_exercise_id FROM plan_swaps w
+                    WHERE w.plan_exercise_id = pe.plan_exercise_id
+                      AND DATE(w.swapped_at) > s.session_date
+                    ORDER BY w.swapped_at, w.swap_id
+                    LIMIT 1),
+                  pe.exercise_id) AS exercise_id
+           FROM workout_sessions s
+           JOIN workout_plans p ON p.plan_id = s.plan_id
+           JOIN plan_exercises pe
+             ON pe.plan_id = s.plan_id AND pe.day_no = COALESCE(s.plan_day_no, 1)
+          WHERE s.status = 'completed'
+            AND NOT EXISTS (
+                  SELECT 1 FROM plan_swaps w
+                   WHERE w.plan_exercise_id = pe.plan_exercise_id
+                     AND DATE(w.swapped_at) = s.session_date)
+       ) x
      UNION ALL
      SELECT w.user_id, DATE_FORMAT(w.swapped_at, '%Y-%m-%d'), 'swap',
             w.rejected_exercise_id, p.split_style, p.session_length_min, 0
