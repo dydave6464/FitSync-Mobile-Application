@@ -12,10 +12,13 @@ trainingLocation arrives and orders the candidates (catalogue.LOCATION_FIRST).
 history arrives for the plan ranker (app/ranker.py), which reorders them
 within the team's curated marks; a malformed one reads as no history.
 """
+import logging
 import math
 from typing import Any, Dict, List, Optional, Union
 
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, Field, ValidationError, field_validator
+
+logger = logging.getLogger(__name__)
 
 
 class EquipmentRef(BaseModel):
@@ -68,12 +71,31 @@ def parse_history(raw: Any) -> PlanHistory:
 
     A malformed history must never fail a plan: the ranker then orders as for
     a new user, which the rules' order already suits.
+
+    A malformed one is logged, so a server-side shape change does not turn
+    the ranker's history off unseen. The log names only the count and the
+    paths of the errors, never str(err): pydantic's message quotes the input
+    values. A missing history (None) is normal and is not logged.
     """
     if raw is None:
         return PlanHistory()
     try:
         return PlanHistory.model_validate(raw)
-    except Exception:
+    except ValidationError as err:
+        where = ", ".join(
+            ".".join(str(part) for part in e["loc"]) or "<root>"
+            for e in err.errors(include_input=False, include_url=False)
+        )
+        logger.warning(
+            "plan history is malformed, ranking without it: %d error(s) at %s",
+            err.error_count(), where,
+        )
+        return PlanHistory()
+    except Exception as err:
+        logger.warning(
+            "plan history could not be read, ranking without it: %s",
+            type(err).__name__,
+        )
         return PlanHistory()
 
 
