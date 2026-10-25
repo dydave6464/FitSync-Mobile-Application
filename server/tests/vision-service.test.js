@@ -167,7 +167,8 @@ test('groq: a 429 with a short retry-after waits that long plus a second, then a
 
 test('groq: a 429 whose wait would not leave 5 seconds of the 37-second budget is busy at once', async () => {
   const time = fakeTime();
-  const fetchImpl = fakeFetch([{ status: 429, headers: { 'retry-after': '35' } }]);
+  // 32 s + 1 s margin leaves 4 s of 37: busy. (Of a 40 s budget it would leave 7 s and wait.)
+  const fetchImpl = fakeFetch([{ status: 429, headers: { 'retry-after': '32' } }]);
   await assert.rejects(groqClient.create({ apiKey: 'k', fetchImpl, now: time.now, sleep: time.sleep }).recognize(ARGS),
     (e) => e.code === 'VISION_BUSY' && e.status === 429);
   assert.equal(fetchImpl.calls.length, 1);
@@ -231,8 +232,21 @@ test('groq: cancelled mid-request, the request is aborted', async () => {
     opts.signal.addEventListener('abort', () => reject(new Error('aborted')));
     setTimeout(() => cancel.abort(), 10);
   })]);
+  const started = Date.now();
+  await assert.rejects(groqClient.create({ apiKey: 'k', fetchImpl, timeoutMs: 60000 }).recognize({ ...ARGS, signal: cancel.signal }),
+    (e) => e.code === 'VISION_CANCELLED');
+  assert.equal(fetchImpl.calls.length, 1);
+  assert.ok(Date.now() - started < 1000, 'dropped at once, not at the 60 s timeout');
+});
+
+test('groq: cancelled during a real wait, it stops at once', async () => {
+  const cancel = new AbortController();
+  const fetchImpl = fakeFetch([{ status: 429, headers: { 'retry-after': '3' } }, { status: 200, content: GOOD }]);
+  setTimeout(() => cancel.abort(), 20);
+  const started = Date.now();
   await assert.rejects(groqClient.create({ apiKey: 'k', fetchImpl }).recognize({ ...ARGS, signal: cancel.signal }),
     (e) => e.code === 'VISION_CANCELLED');
+  assert.ok(Date.now() - started < 1000, 'the 4 s wait was cut short');
   assert.equal(fetchImpl.calls.length, 1);
 });
 

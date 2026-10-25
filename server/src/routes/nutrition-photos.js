@@ -75,6 +75,14 @@ module.exports = function buildNutritionPhotosRouter(deps) {
   );
 
   router.post('/recognize', auth, requirePro, async (req, res, next) => {
+    // The app may stop waiting -- Cancel or back -- while the recogniser
+    // waits out Groq's busy reply. Then nothing more is sent to Groq and
+    // nothing is recorded: nobody will see the answer, and it must not cost
+    // the user one of today's photos. Listening from the start, and checking
+    // res.destroyed, also catches a hang-up during the checks below.
+    const appLeft = new AbortController();
+    res.on('close', () => { if (!res.writableFinished) appLeft.abort(); });
+    if (res.destroyed) appLeft.abort();
     try {
       checkImage(req.body);
       if (!deps.vision) throw new AppError(502, 'VISION_UNAVAILABLE', VISION_DOWN);
@@ -86,12 +94,7 @@ module.exports = function buildNutritionPhotosRouter(deps) {
         throw new AppError(429, 'PHOTO_LIMIT_REACHED', "You've used today's meal photos. Try again tomorrow.");
       }
       const foods = await menu.get(pool);
-      // The app may stop waiting -- Cancel, back, or its own timeout -- while
-      // the recogniser waits out Groq's busy reply. Then nothing more is sent
-      // to Groq and nothing is recorded: nobody will see the answer, and it
-      // must not cost the user one of today's photos.
-      const appLeft = new AbortController();
-      res.on('close', () => { if (!res.writableFinished) appLeft.abort(); });
+      if (appLeft.signal.aborted) return;
       let reply;
       try {
         reply = await deps.vision.recognize({
