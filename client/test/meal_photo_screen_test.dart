@@ -236,6 +236,24 @@ void main() {
     expect(find.text('Logged 2 items to lunch'), findsOneWidget);
   });
 
+  testWidgets('Undo tapped while Log is sending doesn\'t put the item back', (tester) async {
+    final h = _Harness()..repo.logGate = Completer();
+    await _open(tester, h: h);
+    await tester.tap(find.byKey(const Key('snap.remove.0')));
+    await tester.pump(const Duration(milliseconds: 500));
+    await tester.tap(find.byKey(const Key('snap.log')));
+    await tester.pump();
+    // Called directly: in the test the busy Log button sits under the snack bar.
+    tester.widget<SnackBarAction>(find.byType(SnackBarAction)).onPressed();
+    await tester.pump(const Duration(milliseconds: 500));
+    expect(find.text('White rice'), findsNothing, reason: 'the list stays as it was sent');
+    h.repo.logGate!.complete();
+    await tester.pumpAndSettle();
+    expect(h.repo.logs.single.items, hasLength(1));
+    expect(h.result, isTrue);
+    expect(find.text('Logged 1 item to lunch'), findsOneWidget);
+  });
+
   testWidgets('a failed log keeps the list and shows the server\'s message', (tester) async {
     final h = _Harness()..repo.logError = const ApiException('FATSECRET_UNAVAILABLE', "Couldn't reach FatSecret. Try again, or add the food manually.");
     await _open(tester, h: h);

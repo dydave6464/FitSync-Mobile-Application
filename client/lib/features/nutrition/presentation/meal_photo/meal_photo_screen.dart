@@ -184,7 +184,8 @@ class _MealPhotoScreenState extends ConsumerState<MealPhotoScreen> {
           action: SnackBarAction(
             label: 'Undo',
             onPressed: () {
-              if (!mounted) return;
+              // The snack bar sits outside the frozen list: mid-log, keep what was sent.
+              if (!mounted || _logging) return;
               setState(() => _cards.insert(math.min(index, _cards.length), card));
             },
           ),
