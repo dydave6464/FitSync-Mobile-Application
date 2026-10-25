@@ -42,22 +42,20 @@ void main() {
   File copyOf(List<int> bytes) =>
       File('${dir.path}/picked.jpg')..writeAsBytesSync(bytes);
 
-  test(
-    'asks for a 768 px photo at quality 80, without full metadata',
-    () async {
-      final fake = _FakePlatform(XFile(copyOf(_jpeg).path));
-      ImagePickerPlatform.instance = fake;
-      final photo = await const ImagePickerMealPhotoPicker().pick(
-        PhotoSource.camera,
-      );
-      expect(fake.source, ImageSource.camera);
-      expect(fake.options!.maxWidth, 768);
-      expect(fake.options!.imageQuality, 80);
-      expect(fake.options!.requestFullMetadata, isFalse);
-      expect(photo!.mimeType, 'image/jpeg');
-      expect(photo.bytes, _jpeg);
-    },
-  );
+  test('asks for at most 768 px on the longest side (portrait too), quality 80, no full metadata', () async {
+    final fake = _FakePlatform(XFile(copyOf(_jpeg).path));
+    ImagePickerPlatform.instance = fake;
+    final photo = await const ImagePickerMealPhotoPicker().pick(
+      PhotoSource.camera,
+    );
+    expect(fake.source, ImageSource.camera);
+    expect(fake.options!.maxWidth, 768);
+    expect(fake.options!.maxHeight, 768);
+    expect(fake.options!.imageQuality, 80);
+    expect(fake.options!.requestFullMetadata, isFalse);
+    expect(photo!.mimeType, 'image/jpeg');
+    expect(photo.bytes, _jpeg);
+  });
 
   test('the photo library is the gallery', () async {
     final fake = _FakePlatform(XFile(copyOf(_jpeg).path));
