@@ -4,7 +4,12 @@ const requireAuth = require('../middleware/require-auth');
 const AppError = require('../lib/app-error');
 const { matchItems } = require('../lib/photo-match');
 const { createMenuCache } = require('../db/vision-menu');
-const { countToday, insertFailed, insertRecognition } = require('../db/photo-recognitions');
+const { invalid, checkDate, checkServings, scaled } = require('../lib/nutrition-input');
+const { resolveFood } = require('../lib/resolve-food');
+const { MEALS, insertEntry, getEntry } = require('../db/nutrition');
+const {
+  countToday, insertFailed, insertRecognition, readForLog, markLogged, outcomesFor,
+} = require('../db/photo-recognitions');
 const { VisionError } = require('../services/vision/errors');
 
 /// Photos per Pro user per Manila day. Groq's free plan allows roughly 45
@@ -17,6 +22,10 @@ const MAGIC = {
 };
 const BASE64 = /^[A-Za-z0-9+/]+={0,2}$/;
 const VISION_DOWN = "Couldn't look at your photo right now.";
+
+const MAX_LOG_ITEMS = 20;
+const notFound = () => AppError.notFound('RECOGNITION_NOT_FOUND', 'No such meal photo.');
+const alreadyLogged = () => AppError.conflict('ALREADY_LOGGED', "This photo's meal is already logged.");
 
 const badImage = (message) => AppError.badRequest('INVALID_IMAGE', message);
 
@@ -117,6 +126,79 @@ module.exports = function buildNutritionPhotosRouter(deps) {
           unlisted: unlisted.map((u, i) => ({ itemId: itemIds[items.length + i], name: u.name })),
         },
       });
+    } catch (err) { next(err); }
+  });
+
+  // The confirmed list from the confirm screen, logged as one meal: every
+  // entry or none. itemId ties an entry to the AI's suggestion (null: the
+  // user added it); a suggestion not sent was removed. Outcomes are recorded
+  // for the "first guess kept" figure.
+  router.post('/recognitions/:recognitionId/log', auth, requirePro, async (req, res, next) => {
+    try {
+      const b = req.body || {};
+      const date = checkDate(b.date);
+      if (!MEALS.includes(b.mealType)) throw invalid('mealType', `mealType must be one of: ${MEALS.join(', ')}.`);
+      if (!Array.isArray(b.items) || b.items.length < 1 || b.items.length > MAX_LOG_ITEMS) {
+        throw invalid('items', `items must hold 1 to ${MAX_LOG_ITEMS} foods.`);
+      }
+      const sentIds = new Set();
+      for (const it of b.items) {
+        if (!it || typeof it !== 'object') throw invalid('items', 'Each item must be an object.');
+        if (it.itemId != null) {
+          if (!Number.isInteger(it.itemId)) throw invalid('itemId', 'itemId must be a whole number or null.');
+          if (sentIds.has(it.itemId)) throw invalid('itemId', 'Each itemId may appear once.');
+          sentIds.add(it.itemId);
+        }
+        checkServings(it.servings);
+      }
+
+      const { userId } = req.user;
+      const id = Number(req.params.recognitionId);
+      const known = Number.isInteger(id) && id > 0 ? await readForLog(pool, userId, id) : null;
+      if (!known) throw notFound();
+      if (known.loggedAt) throw alreadyLogged();
+      for (const itemId of sentIds) {
+        if (!known.items.some((s) => s.itemId === itemId)) throw invalid('itemId', 'itemId is not part of this photo.');
+      }
+
+      // Every food first, outside the transaction: a FatSecret lookup is a
+      // network call, and one failing must leave nothing logged.
+      const bases = [];
+      for (const it of b.items) bases.push(await resolveFood(deps, it.food));
+
+      const conn = await pool.getConnection();
+      const ids = [];
+      try {
+        await conn.beginTransaction();
+        // Locked, and checked again: a second log of the same photo waits
+        // here, then finds it logged.
+        const locked = await readForLog(conn, userId, id, { lock: true });
+        if (!locked) throw notFound();
+        if (locked.loggedAt) throw alreadyLogged();
+        for (const [i, it] of b.items.entries()) {
+          const base = bases[i];
+          ids.push(await insertEntry(conn, userId, {
+            date, mealType: b.mealType, servings: it.servings,
+            foodId: base.foodId, customName: base.customName, servingDesc: base.servingDesc,
+            ...scaled(base, it.servings),
+            loggedVia: 'photo',
+          }));
+        }
+        await markLogged(conn, id, outcomesFor(locked.items, b.items.map((it, i) => ({
+          itemId: it.itemId ?? null, foodId: bases[i].foodId, mealLogId: ids[i],
+        }))));
+        await conn.commit();
+      } catch (err) {
+        await conn.rollback();
+        throw err;
+      } finally {
+        conn.release();
+      }
+
+      const entries = [];
+      for (const mealLogId of ids) entries.push(await getEntry(pool, userId, mealLogId));
+      if (deps.logger) deps.logger.info({ recognitionId: id, entries: entries.length }, 'meal photo logged');
+      res.status(201).json({ data: { entries } });
     } catch (err) { next(err); }
   });
 
