@@ -225,12 +225,27 @@ class _MealPhotoScreenState extends ConsumerState<MealPhotoScreen> {
         recognitionId: _recognition!.recognitionId, date: date, mealType: meal, items: items,
       );
     } catch (e) {
+      if (e is ApiException && e.code == 'ALREADY_LOGGED') {
+        // An earlier Log reached the server but its answer was lost (a
+        // timeout, a dropped connection): the meal is logged, as sent then.
+        _logged(container, messenger, navigator, items.length, meal);
+        return;
+      }
+      // The log is all or nothing, but the server may have saved it before
+      // the answer was lost: Nutrition reloads its day to show the truth.
+      container.invalidate(nutritionDayProvider);
       if (!mounted) return;
       setState(() => _logging = false);
-      // Nothing was logged (all or nothing), and the list stays as it was.
+      // The list stays as it was, so Log can be tried again.
       showErrorSnackBar(messenger, describeError(e));
       return;
     }
+    _logged(container, messenger, navigator, n, meal);
+  }
+
+  /// The meal is logged: Nutrition and Recent reload, the screen closes,
+  /// and a snack bar says how many items went to which meal.
+  void _logged(ProviderContainer container, ScaffoldMessengerState messenger, NavigatorState navigator, int n, String meal) {
     container.invalidate(nutritionDayProvider);
     container.invalidate(recentFoodsProvider);
     _undoShowing = false;
@@ -369,17 +384,22 @@ class _MealPhotoScreenState extends ConsumerState<MealPhotoScreen> {
               child: Text('Nothing left to log. Add an item to log this meal.', style: TextStyle(color: t.text2)),
             ),
           for (final (i, card) in _cards.indexed) ...[
-            if (card.isUnlisted)
-              PhotoUnlistedCard(index: i, card: card, onSearch: () => _searchFor(card), onRemove: () => _remove(i))
-            else
-              PhotoItemCard(
-                index: i,
-                card: card,
-                onSwap: (f) => setState(() => card.replaceWith(f)),
-                onSearch: () => _searchFor(card),
-                onServings: (s) => setState(() => card.setServings(s)),
-                onRemove: () => _remove(i),
-              ),
+            // Keyed by the card, not its place: after ✕ or Undo the other
+            // cards move rather than take on a neighbour's food, so no live
+            // portion line changes its text and gets read out again.
+            KeyedSubtree(
+              key: ObjectKey(card),
+              child: card.isUnlisted
+                  ? PhotoUnlistedCard(index: i, card: card, onSearch: () => _searchFor(card), onRemove: () => _remove(i))
+                  : PhotoItemCard(
+                      index: i,
+                      card: card,
+                      onSwap: (f) => setState(() => card.replaceWith(f)),
+                      onSearch: () => _searchFor(card),
+                      onServings: (s) => setState(() => card.setServings(s)),
+                      onRemove: () => _remove(i),
+                    ),
+            ),
             const SizedBox(height: 10),
           ],
           Align(

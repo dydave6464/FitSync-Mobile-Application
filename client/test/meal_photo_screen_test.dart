@@ -12,6 +12,7 @@ import 'package:fitsync/features/nutrition/data/meal_photo_picker.dart';
 import 'package:fitsync/features/nutrition/data/meal_photo_repository.dart';
 import 'package:fitsync/features/nutrition/domain/meal_photo.dart';
 import 'package:fitsync/features/nutrition/presentation/meal_photo/meal_photo_screen.dart';
+import 'package:fitsync/features/nutrition/presentation/meal_photo/photo_cards.dart';
 import 'package:fitsync/features/nutrition/presentation/meal_photo/providers.dart';
 import 'package:fitsync/features/nutrition/presentation/providers.dart';
 
@@ -81,7 +82,9 @@ class _Harness {
   String? searchedInsteadFor;
 }
 
-Future<_Harness> _open(WidgetTester tester, {_Harness? h, PhotoSource source = PhotoSource.camera, bool settle = true, Size size = const Size(400, 1400), double scale = 1}) async {
+/// [watchDay] keeps Nutrition's day loaded underneath, as the Nutrition tab
+/// does, so a test can count its reloads (`get` calls).
+Future<_Harness> _open(WidgetTester tester, {_Harness? h, PhotoSource source = PhotoSource.camera, bool settle = true, Size size = const Size(400, 1400), double scale = 1, bool watchDay = false}) async {
   final harness = h ?? _Harness();
   tester.view.physicalSize = size;
   tester.view.devicePixelRatio = 1;
@@ -96,18 +99,24 @@ Future<_Harness> _open(WidgetTester tester, {_Harness? h, PhotoSource source = P
     child: MaterialApp(
       theme: fsLightTheme(),
       builder: (context, c) => MediaQuery(data: MediaQuery.of(context).copyWith(textScaler: TextScaler.linear(scale)), child: c!),
-      home: Builder(builder: (context) => Scaffold(body: TextButton(
-        onPressed: () async => harness.result = await Navigator.of(context).push<bool>(MaterialPageRoute(
-          builder: (_) => MealPhotoScreen(
-            photo: _photo, source: source, mealType: 'lunch',
-            onSearchInstead: (ctx, meal) {
-              harness.searchedInsteadFor = meal;
-              Navigator.of(ctx).pop(false);
-            },
-          ),
-        )),
-        child: const Text('go'),
-      ))),
+      home: Builder(builder: (context) => Scaffold(body: Column(children: [
+        if (watchDay) Consumer(builder: (context, ref, _) {
+          ref.watch(nutritionDayProvider);
+          return const SizedBox.shrink();
+        }),
+        TextButton(
+          onPressed: () async => harness.result = await Navigator.of(context).push<bool>(MaterialPageRoute(
+            builder: (_) => MealPhotoScreen(
+              photo: _photo, source: source, mealType: 'lunch',
+              onSearchInstead: (ctx, meal) {
+                harness.searchedInsteadFor = meal;
+                Navigator.of(ctx).pop(false);
+              },
+            ),
+          )),
+          child: const Text('go'),
+        ),
+      ]))),
     ),
   ));
   await tester.tap(find.text('go'));
@@ -177,6 +186,25 @@ void main() {
     await tester.pumpAndSettle();
     expect(tester.widget<Text>(find.descendant(of: find.byKey(const Key('snap.item.0')), matching: find.text('White rice'))).data, 'White rice');
     expect(find.text('Log 2 items'), findsOneWidget);
+  });
+
+  testWidgets('✕ and Undo leave the other cards\' portion lines alone, so the screen reader doesn\'t read them again', (tester) async {
+    await _open(tester);
+    int portionNode(int i) => tester.getSemantics(find.byKey(Key('snap.portion.$i'))).id;
+    Element adoboCard() => tester.element(find.ancestor(of: find.text('Chicken adobo'), matching: find.byType(PhotoItemCard)));
+    final riceNode = portionNode(0);
+    final adobo = adoboCard();
+    await tester.tap(find.byKey(const Key('snap.remove.0')));
+    await tester.pumpAndSettle();
+    expect(adoboCard(), same(adobo), reason: 'the card moved up, it was not rebuilt from the removed one');
+    // A live region whose text changes is read out: White rice's line must
+    // not turn into Chicken adobo's.
+    expect(portionNode(0), isNot(riceNode));
+    final adoboNode = portionNode(0);
+    await tester.tap(find.text('Undo'));
+    await tester.pumpAndSettle();
+    expect(adoboCard(), same(adobo));
+    expect(portionNode(0), isNot(adoboNode), reason: "Chicken adobo's line doesn't turn into White rice's");
   });
 
   testWidgets('"Search for it" opens the search on the name without its bracket; the pick takes the card\'s place', (tester) async {
@@ -254,15 +282,37 @@ void main() {
     expect(find.text('Logged 1 item to lunch'), findsOneWidget);
   });
 
-  testWidgets('a failed log keeps the list and shows the server\'s message', (tester) async {
+  int dayLoads(_Harness h) => h.nutrition.calls.where((c) => c.startsWith('get')).length;
+
+  testWidgets('a failed log keeps the list, shows the server\'s message, and reloads Nutrition\'s day', (tester) async {
     final h = _Harness()..repo.logError = const ApiException('FATSECRET_UNAVAILABLE', "Couldn't reach FatSecret. Try again, or add the food manually.");
-    await _open(tester, h: h);
+    await _open(tester, h: h, watchDay: true);
+    final before = dayLoads(h);
     await tester.tap(find.byKey(const Key('snap.log')));
     await tester.pumpAndSettle();
     expect(find.text("Couldn't reach FatSecret. Try again, or add the food manually."), findsOneWidget);
     expect(find.text('White rice'), findsOneWidget);
     expect(tester.widget<FsButton>(find.byKey(const Key('snap.log'))).onPressed, isNotNull, reason: 'Log works again');
     expect(h.result, isNull);
+    // Back on Nutrition (Riverpod pauses it while it is covered), its day
+    // reloads: the server may have saved the meal before the answer was lost.
+    await tester.pageBack();
+    await tester.pumpAndSettle();
+    expect(dayLoads(h), before + 1);
+  });
+
+  testWidgets('ALREADY_LOGGED (an earlier answer was lost) counts as logged: closes, says so, reloads the day', (tester) async {
+    final h = _Harness()..repo.logError = const ApiException('ALREADY_LOGGED', "This photo's meal is already logged.");
+    await _open(tester, h: h, watchDay: true);
+    final before = dayLoads(h);
+    await tester.tap(find.byKey(const Key('snap.meal.dinner')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const Key('snap.log')));
+    await tester.pumpAndSettle();
+    expect(h.result, isTrue);
+    expect(find.text('Logged 2 items to dinner'), findsOneWidget);
+    expect(find.text("This photo's meal is already logged."), findsNothing);
+    expect(dayLoads(h), before + 1);
   });
 
   testWidgets('a food copied from FatSecret shows the FatSecret attribution', (tester) async {
