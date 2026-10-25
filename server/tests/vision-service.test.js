@@ -75,6 +75,7 @@ function fakeFetch(replies) {
     return {
       ok: r.status >= 200 && r.status < 300,
       status: r.status,
+      headers: { get: (name) => (r.headers || {})[name.toLowerCase()] ?? null },
       json: async () => r.error
         ? { error: r.error }
         : { choices: [{ finish_reason: r.finish ?? 'stop', message: { content: r.content } }] },
@@ -147,7 +148,64 @@ test('groq: other 4xx replies are unavailable, not retried, and keep their statu
   }
 });
 
-test('groq: 429 is busy, 5xx and timeouts are unavailable, and neither is retried', async () => {
+/// A clock and a sleep for the tests: sleeping moves the clock, nothing waits.
+function fakeTime() {
+  const t = { clock: 0, slept: [] };
+  t.now = () => t.clock;
+  t.sleep = async (ms) => { t.slept.push(ms); t.clock += ms; };
+  return t;
+}
+
+test('groq: a 429 with a short retry-after waits that long plus half a second, then asks once more', async () => {
+  const time = fakeTime();
+  const fetchImpl = fakeFetch([{ status: 429, headers: { 'retry-after': '3' } }, { status: 200, content: GOOD }]);
+  const reply = await groqClient.create({ apiKey: 'k', fetchImpl, now: time.now, sleep: time.sleep }).recognize(ARGS);
+  assert.equal(reply.items[0].menu, 'White rice');
+  assert.equal(fetchImpl.calls.length, 2);
+  assert.deepEqual(time.slept, [3500]);
+});
+
+test('groq: a 429 whose wait would not leave 5 seconds of the 40-second budget is busy at once', async () => {
+  const time = fakeTime();
+  const fetchImpl = fakeFetch([{ status: 429, headers: { 'retry-after': '35' } }]);
+  await assert.rejects(groqClient.create({ apiKey: 'k', fetchImpl, now: time.now, sleep: time.sleep }).recognize(ARGS),
+    (e) => e.code === 'VISION_BUSY' && e.status === 429);
+  assert.equal(fetchImpl.calls.length, 1);
+  assert.deepEqual(time.slept, []);
+});
+
+test('groq: it waits for a 429 only once per photo', async () => {
+  const time = fakeTime();
+  const fetchImpl = fakeFetch([{ status: 429, headers: { 'retry-after': '2' } }, { status: 429, headers: { 'retry-after': '2' } }]);
+  await assert.rejects(groqClient.create({ apiKey: 'k', fetchImpl, now: time.now, sleep: time.sleep }).recognize(ARGS),
+    (e) => e.code === 'VISION_BUSY');
+  assert.equal(fetchImpl.calls.length, 2);
+  assert.deepEqual(time.slept, [2500]);
+});
+
+test('groq: after a wait, an unreadable reply is asked again only if 5 seconds of the budget remain', async () => {
+  const time = fakeTime();
+  // 30.5 s of waiting, then a reply that takes 5 s and cannot be read: 4.5 s left.
+  const fetchImpl = fakeFetch([
+    { status: 429, headers: { 'retry-after': '30' } },
+    () => { time.clock += 5000; return { ok: true, status: 200, headers: { get: () => null }, json: async () => ({ choices: [{ finish_reason: 'stop', message: { content: 'oops' } }] }) }; },
+  ]);
+  await assert.rejects(groqClient.create({ apiKey: 'k', fetchImpl, now: time.now, sleep: time.sleep }).recognize(ARGS),
+    (e) => e.code === 'VISION_UNAVAILABLE');
+  assert.equal(fetchImpl.calls.length, 2);
+});
+
+test('groq: no attempt outlasts what is left of the budget', async () => {
+  const slow = fakeFetch([(opts) => new Promise((_, reject) => {
+    opts.signal.addEventListener('abort', () => reject(new Error('aborted')));
+  })]);
+  const started = Date.now();
+  await assert.rejects(groqClient.create({ apiKey: 'k', fetchImpl: slow, timeoutMs: 15000, budgetMs: 50 }).recognize(ARGS),
+    (e) => e.code === 'VISION_UNAVAILABLE');
+  assert.ok(Date.now() - started < 2000, 'the 50 ms budget cut the 15 s timeout short');
+});
+
+test('groq: 429 without retry-after is busy, 5xx and timeouts are unavailable, and none is retried', async () => {
   const busy = fakeFetch([{ status: 429, content: '' }]);
   await assert.rejects(groqClient.create({ apiKey: 'k', fetchImpl: busy }).recognize(ARGS), (e) => e.code === 'VISION_BUSY');
   assert.equal(busy.calls.length, 1);

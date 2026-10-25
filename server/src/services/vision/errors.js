@@ -7,12 +7,15 @@
 /// [status] is Groq's HTTP status when it answered (401 bad key, 404 retired
 /// model, 5xx), and [cause] the original error for a timeout or a network
 /// failure, so the route can log why without logging any reply body.
+/// [retryAfterMs] is how long Groq said to wait before asking again (its
+/// retry-after header on a 429), or null when it did not say.
 class VisionError extends Error {
-  constructor(code, { status = null, cause } = {}) {
+  constructor(code, { status = null, cause, retryAfterMs = null } = {}) {
     super(code, cause === undefined ? undefined : { cause });
     this.name = 'VisionError';
     this.code = code;
     this.status = status;
+    this.retryAfterMs = retryAfterMs;
   }
 }
 
