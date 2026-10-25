@@ -61,34 +61,33 @@ class PhotoItemCard extends StatelessWidget {
             style: TextStyle(color: t.text2, fontSize: 12),
           ),
           const SizedBox(height: 8),
-          // Chips wrap rather than clip at large text; FsTapRoom gives the
-          // one-row case its 48 dp out of the card's padding.
-          FsTapRoom(
-            child: Wrap(
-              spacing: 8,
-              runSpacing: 8,
-              children: [
-                for (final (i, alt) in card.alternatives.indexed)
-                  Semantics(
-                    key: Key('snap.alt.$index.$i'),
-                    label: 'Swap to ${alt.name}',
-                    button: true,
-                    excludeSemantics: true,
-                    // excludeSemantics drops the chip's own tap action, so
-                    // the node carries it.
-                    onTap: () => onSwap(alt),
-                    child: FsChip(label: alt.name, selected: false, onTap: () => onSwap(alt)),
-                  ),
+          // Chips wrap rather than clip at large text. Each chip sits in a
+          // 48 dp tall box, so its tap band is 48 dp on every row -- the
+          // band reaches only as far as its parent's box.
+          Wrap(
+            spacing: 8,
+            runSpacing: 8,
+            children: [
+              for (final (i, alt) in card.alternatives.indexed)
                 Semantics(
-                  key: Key('snap.search.$index'),
-                  label: 'Search for another food',
+                  key: Key('snap.alt.$index.$i'),
+                  label: 'Swap to ${alt.name}',
                   button: true,
                   excludeSemantics: true,
-                  onTap: onSearch,
-                  child: FsChip(label: 'Search', selected: false, onTap: onSearch),
+                  // excludeSemantics drops the chip's own tap action, so
+                  // the node carries it.
+                  onTap: () => onSwap(alt),
+                  child: _ChipRoom(child: FsChip(label: alt.name, selected: false, onTap: () => onSwap(alt))),
                 ),
-              ],
-            ),
+              Semantics(
+                key: Key('snap.search.$index'),
+                label: 'Search for another food',
+                button: true,
+                excludeSemantics: true,
+                onTap: onSearch,
+                child: _ChipRoom(child: FsChip(label: 'Search', selected: false, onTap: onSearch)),
+              ),
+            ],
           ),
           const SizedBox(height: 8),
           Wrap(
@@ -123,9 +122,13 @@ class PhotoItemCard extends StatelessWidget {
           ),
           // Read out after every step: how much, of what serving, and what
           // it comes to -- never a bare number.
+          // Its own node, so only this line is the live region.
           Semantics(
             key: Key('snap.portion.$index'),
+            container: true,
             liveRegion: true,
+            label: '${food.name}: ${formatServings(servings)} × ${food.servingDesc ?? 'serving'} · $kcal kcal',
+            excludeSemantics: true,
             child: Text(
               '${formatServings(servings)} × ${food.servingDesc ?? 'serving'} · $kcal kcal',
               style: TextStyle(color: t.text2, fontSize: 12),
@@ -135,6 +138,20 @@ class PhotoItemCard extends StatelessWidget {
       ),
     );
   }
+}
+
+/// A 48 dp tall box around a chip, so the chip's tap band has the room to
+/// reach 48 dp in any row of a Wrap.
+class _ChipRoom extends StatelessWidget {
+  const _ChipRoom({required this.child});
+
+  final Widget child;
+
+  @override
+  Widget build(BuildContext context) => ConstrainedBox(
+    constraints: const BoxConstraints(minHeight: 48),
+    child: Align(widthFactor: 1, heightFactor: 1, child: child),
+  );
 }
 
 /// An item the AI saw that isn't in FitSync's list: its name, a search

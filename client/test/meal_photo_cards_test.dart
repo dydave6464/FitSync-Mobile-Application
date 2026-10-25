@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import 'package:fitsync/core/theme.dart';
+import 'package:fitsync/core/widgets/fs_kit.dart';
 import 'package:fitsync/features/nutrition/domain/meal_photo.dart';
 import 'package:fitsync/features/nutrition/domain/nutrition.dart';
 import 'package:fitsync/features/nutrition/presentation/meal_photo/photo_cards.dart';
@@ -69,7 +70,10 @@ void main() {
     expect(find.byTooltip('Remove White rice'), findsOneWidget);
     expect(find.byTooltip('Less White rice'), findsOneWidget);
     expect(find.byTooltip('More White rice'), findsOneWidget);
-    expect(tester.getSemantics(find.byKey(const Key('snap.portion.0'))), isSemantics(isLiveRegion: true));
+    expect(
+      tester.getSemantics(find.byKey(const Key('snap.portion.0'))),
+      isSemantics(isLiveRegion: true, label: 'White rice: 1.5 × 1 cup (160 g) · 309 kcal'),
+    );
     handle.dispose();
   });
 
@@ -79,6 +83,21 @@ void main() {
       final size = tester.getSize(find.byKey(Key(key)));
       expect(size.width >= 48 && size.height >= 48, isTrue, reason: key);
     }
+  });
+
+  testWidgets('a chip on the second row still answers a tap 7 dp past its edge', (tester) async {
+    const brown = Food(source: 'local', id: 3, name: 'Brown rice', servingDesc: '1 cup (160 g)', kcal: 216, proteinG: 5, carbsG: 45, fatG: 1.8);
+    var searched = 0;
+    await _pump(tester, PhotoItemCard(
+      index: 0, card: _card(alts: const [_garlic, brown]),
+      onSwap: (_) {}, onSearch: () => searched++, onServings: (_) {}, onRemove: () {},
+    ), width: 320);
+    final first = tester.getRect(find.descendant(of: find.byKey(const Key('snap.alt.0.0')), matching: find.byType(FsChip)));
+    final search = tester.getRect(find.descendant(of: find.byKey(const Key('snap.search.0')), matching: find.byType(FsChip)));
+    expect(search.top, greaterThan(first.bottom), reason: 'Search should wrap to a second row');
+    await tester.tapAt(Offset(search.center.dx, search.top - 7));
+    await tester.tapAt(Offset(search.center.dx, search.bottom + 7));
+    expect(searched, 2);
   });
 
   testWidgets('a not-in-the-list card names the item and offers a search', (tester) async {
