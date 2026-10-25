@@ -1,3 +1,6 @@
+import 'dart:io';
+
+import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
 import 'package:image_picker/image_picker.dart';
 
@@ -53,9 +56,26 @@ class ImagePickerMealPhotoPicker implements MealPhotoPicker {
       rethrow;
     }
     if (file == null) return null;
-    final bytes = await file.readAsBytes();
+    final Uint8List bytes;
+    try {
+      bytes = await file.readAsBytes();
+    } finally {
+      // The photo is not kept: the bytes are all the app needs.
+      _deleteCopy(file);
+    }
     final type = sniffImageType(bytes);
     if (type == null) throw const UnsupportedPhoto();
     return PickedPhoto(bytes, type);
+  }
+
+  /// Deletes the file image_picker returned. It is always the plugin's own
+  /// copy in the app's tmp or cache folder (resized, or copied out of the
+  /// gallery), never the original in the user's photos. Best effort: a copy
+  /// left behind is cleared by the OS in time.
+  static void _deleteCopy(XFile file) {
+    if (kIsWeb) return; // a blob URL on the web, not a file
+    try {
+      File(file.path).deleteSync();
+    } catch (_) {}
   }
 }
