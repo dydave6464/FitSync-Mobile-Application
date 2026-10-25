@@ -86,12 +86,20 @@ module.exports = function buildNutritionPhotosRouter(deps) {
         throw new AppError(429, 'PHOTO_LIMIT_REACHED', "You've used today's meal photos. Try again tomorrow.");
       }
       const foods = await menu.get(pool);
+      // The app may stop waiting -- Cancel, back, or its own timeout -- while
+      // the recogniser waits out Groq's busy reply. Then nothing more is sent
+      // to Groq and nothing is recorded: nobody will see the answer, and it
+      // must not cost the user one of today's photos.
+      const appLeft = new AbortController();
+      res.on('close', () => { if (!res.writableFinished) appLeft.abort(); });
       let reply;
       try {
         reply = await deps.vision.recognize({
           imageBase64: req.body.image, mimeType: req.body.mimeType, menuNames: foods.map((f) => f.name),
+          signal: appLeft.signal,
         });
       } catch (err) {
+        if (appLeft.signal.aborted) return;
         // The service's failure, not the user's: recorded, never counted.
         await insertFailed(pool, userId);
         // Codes only, never a message or a reply body: Groq's status tells a
@@ -105,6 +113,7 @@ module.exports = function buildNutritionPhotosRouter(deps) {
         if (isVision && err.code === 'VISION_BUSY') throw new AppError(503, 'VISION_BUSY', VISION_DOWN);
         throw new AppError(502, 'VISION_UNAVAILABLE', VISION_DOWN);
       }
+      if (appLeft.signal.aborted) return;
       const { items, unlisted } = matchItems(reply.items, foods);
       const { recognitionId, itemIds } = await insertRecognition(pool, userId, [
         ...items.map((it) => ({

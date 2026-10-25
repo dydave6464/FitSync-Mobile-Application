@@ -14,15 +14,26 @@ const TIMEOUT_MS = 15000;
 // a full plate needs about 750; this leaves room for a wordier reply, since
 // one cut off at the limit is retried and cut off the same way.
 const MAX_TOKENS = 2000;
-// Everything one photo may take, waits and retries included: under the app's
-// own 45 s, so the app hears the answer rather than giving up first.
-const BUDGET_MS = 40000;
+// Everything one photo may take, waits and retries included. The app gives
+// the whole call 45 s (MealPhotoRepository.recognizeTimeout), and its clock
+// also covers the upload, sign-in check and database work around this, so
+// this stops at 37 s and the app still hears the answer.
+const BUDGET_MS = 37000;
 // No retry starts with less than this left: a photo takes 1-5 s to answer.
 const MIN_ATTEMPT_MS = 5000;
-// Added to Groq's retry-after, which is rounded to whole seconds.
-const RETRY_MARGIN_MS = 500;
+// Added to Groq's retry-after, which is in whole seconds and may be cut down
+// rather than rounded ("try again in 15.2s" arrives as 15).
+const RETRY_MARGIN_MS = 1000;
 
-const wait = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+/// Resolves after [ms], or rejects at once if [signal] aborts first.
+function wait(ms, signal) {
+  return new Promise((resolve, reject) => {
+    if (signal?.aborted) return reject(new Error('aborted'));
+    const timer = setTimeout(() => { signal?.removeEventListener('abort', stop); resolve(); }, ms);
+    function stop() { clearTimeout(timer); reject(new Error('aborted')); }
+    signal?.addEventListener('abort', stop, { once: true });
+  });
+}
 
 /// Groq's retry-after header (seconds) as milliseconds, or null when it is
 /// missing or not a number.
@@ -39,16 +50,16 @@ function create({
   apiKey, model = DEFAULT_MODEL, fetchImpl = fetch, timeoutMs = TIMEOUT_MS,
   budgetMs = BUDGET_MS, now = Date.now, sleep = wait,
 }) {
-  /// One request, given at most [limitMs]. Returns the parsed reply, or null
-  /// for a reply that came back but could not be read; throws VisionError
-  /// for everything else.
-  async function once(body, limitMs) {
+  /// One request, given at most [limitMs] and stopped if [cancel] aborts.
+  /// Returns the parsed reply, or null for a reply that came back but could
+  /// not be read; throws VisionError for everything else.
+  async function once(body, limitMs, cancel) {
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), limitMs);
     try {
       const res = await fetchImpl(ENDPOINT, {
         method: 'POST',
-        signal: controller.signal,
+        signal: cancel ? AbortSignal.any([controller.signal, cancel]) : controller.signal,
         headers: { 'content-type': 'application/json', authorization: `Bearer ${apiKey}` },
         body,
       });
@@ -72,6 +83,7 @@ function create({
       return parseReply(choice?.message?.content);
     } catch (err) {
       if (err instanceof VisionError) throw err;
+      if (cancel?.aborted) throw new VisionError('VISION_CANCELLED');
       // Timeout, abort, DNS, a malformed envelope: one answer for all.
       throw new VisionError('VISION_UNAVAILABLE', { cause: err });
     } finally {
@@ -79,7 +91,9 @@ function create({
     }
   }
 
-  async function recognize({ imageBase64, mimeType, menuNames }) {
+  /// [signal] aborts when the caller stops waiting (the app left): no new
+  /// request starts after that, and one in flight is dropped.
+  async function recognize({ imageBase64, mimeType, menuNames, signal }) {
     const body = JSON.stringify({
       model,
       temperature: 0.2,
@@ -103,14 +117,19 @@ function create({
     let waited = false;
     let retried = false;
     for (;;) {
+      if (signal?.aborted) throw new VisionError('VISION_CANCELLED');
       let reply;
       try {
-        reply = await once(body, Math.max(1, Math.min(timeoutMs, left())));
+        reply = await once(body, Math.max(1, Math.min(timeoutMs, left())), signal);
       } catch (err) {
         const pause = err.retryAfterMs == null ? null : err.retryAfterMs + RETRY_MARGIN_MS;
         if (err.code !== 'VISION_BUSY' || waited || pause == null || left() - pause < MIN_ATTEMPT_MS) throw err;
         waited = true;
-        await sleep(pause);
+        try {
+          await sleep(pause, signal);
+        } catch {
+          throw new VisionError('VISION_CANCELLED');
+        }
         continue;
       }
       if (reply) return reply;

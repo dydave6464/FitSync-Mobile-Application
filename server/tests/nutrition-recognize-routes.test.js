@@ -191,6 +191,22 @@ test('POST /nutrition/recognize', async (t) => {
     assert.deepEqual(await rowsOf(u.userId), []);
   });
 
+  await t.test('when the app stops waiting, the photo is cancelled and nothing is recorded', async () => {
+    const u = await freshUser({ pro: true });
+    let sawCancel;
+    const cancelled = new Promise((resolve) => { sawCancel = resolve; });
+    // Stands in for a recogniser waiting out Groq's busy reply: it finishes
+    // only when told the app has left.
+    answer = ({ signal }) => new Promise((_, reject) => {
+      signal.addEventListener('abort', () => { sawCancel(true); reject(new VisionError('VISION_CANCELLED')); });
+    });
+    await assert.rejects(u.recognize(PHOTO).timeout(200));
+    assert.equal(await cancelled, true, 'the recogniser was told to stop');
+    await new Promise((r) => setTimeout(r, 100));
+    assert.deepEqual(await rowsOf(u.userId), [], 'not counted, not recorded as failed');
+    answer = async () => ({ items: [] });
+  });
+
   await t.test('the photo is never stored or logged', async () => {
     const u = await freshUser({ pro: true });
     answer = async () => ({ items: [{ menu: 'White rice', name: 'White rice', quantity: 1, unit: 'cup', grams: 160, confidence: 0.9, alternatives: [] }] });
