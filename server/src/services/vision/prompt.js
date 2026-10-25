@@ -1,9 +1,12 @@
 'use strict';
+const { menuLine, MAX_CARDS } = require('../../lib/photo-match');
 
 /// The 2026-10-21 spike's second prompt -- FitSync's food names as a menu,
 /// which took the test photos from 4 of 10 dishes right to 8 of 10 -- plus
 /// one rule asking for up to two other menu names per item, for the confirm
-/// screen's "Not right?" chips.
+/// screen's "Not right?" chips. Each menu name is one line of its own
+/// (saved FatSecret copies are third-party text); matchItems compares names
+/// the same way, so the AI's copy of a cleaned name still matches.
 function buildPrompt(menuNames) {
   return `You recognise food for a Philippine fitness app. Look at the meal photo and list EVERY distinct food or drink item that one person is eating.
 
@@ -14,11 +17,12 @@ Rules:
 - Do not list the same item twice; use quantity instead.
 - Estimate each portion as quantity + household unit (cup, piece, slice, bowl, tbsp, glass, skewer) for one person, plus grams. Confidence 0 to 1.
 - For each item, also list in "alternatives" up to 2 other MENU names it could be (exact menu names, most likely first), or [] if none fit.
+- List at most ${MAX_CARDS} items (the most important ones if there are more).
 
-Reply with JSON only: {"items":[{"menu":"<exact menu name or null>","name":"","quantity":0,"unit":"","grams":0,"confidence":0,"alternatives":[]}],"notes":""}
+Reply with JSON only: {"items":[{"menu":"<exact menu name or null>","name":"","quantity":0,"unit":"","grams":0,"confidence":0,"alternatives":[]}]}
 
 MENU:
-${menuNames.join('\n')}`;
+${menuNames.map(menuLine).join('\n')}`;
 }
 
 const text = (v) => (typeof v === 'string' && v.trim() !== '' ? v.trim() : null);

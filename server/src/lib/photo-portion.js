@@ -42,13 +42,15 @@ function leadingUnit(servingDesc) {
 const toHalf = (s) => Math.min(MAX_SERVINGS, Math.max(MIN_SERVINGS, Math.round(s * 2) / 2));
 
 /// How many of the food's servings the AI's portion is: its grams over the
-/// serving's grams; else its quantity over the serving's count when the
-/// units match ("3 pieces" of "1 piece"); else 1. Always 0.5 to 10, in
-/// halves -- the confirm screen's stepper fixes the rest.
+/// serving's grams -- the bracketed weight, or the serving itself when it is
+/// a bare weight ("100 g", "250 ml", ml taken as grams); else its quantity
+/// over the serving's count when the units match ("3 pieces" of "1 piece");
+/// else 1. Always 0.5 to 10, in halves -- the confirm screen's stepper fixes
+/// the rest.
 function estimateServings({ grams, quantity, unit }, servingDesc) {
-  const per = servingGrams(servingDesc);
-  if (per && grams > 0) return toHalf(grams / per);
   const lead = leadingUnit(servingDesc);
+  const per = servingGrams(servingDesc) ?? (lead && (lead.unit === 'g' || lead.unit === 'ml') ? lead.count : null);
+  if (per && grams > 0) return toHalf(grams / per);
   if (lead && quantity > 0 && unit && unitKey(unit) === lead.unit) return toHalf(quantity / lead.count);
   return 1;
 }

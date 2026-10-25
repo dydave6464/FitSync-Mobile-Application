@@ -9,9 +9,11 @@ const ENDPOINT = 'https://api.groq.com/openai/v1/chat/completions';
 // VISION_MODEL overrides it.
 const DEFAULT_MODEL = 'qwen/qwen3.8-27b';
 const TIMEOUT_MS = 15000;
-// The spike's replies used ~170 completion tokens for two items; eight items
-// with two alternatives each stay well inside this.
-const MAX_TOKENS = 900;
+// The spike's replies cost about 55-65 completion tokens per item, and two
+// alternatives add about 20-28 more. The prompt caps the list at 8 items, so
+// a full plate needs about 750; this leaves room for a wordier reply, since
+// one cut off at the limit is retried and cut off the same way.
+const MAX_TOKENS = 2000;
 
 /// [fetchImpl] and [timeoutMs] are injectable for the tests. The photo goes
 /// to Groq inside the request body and nowhere else: nothing here logs it.

@@ -37,3 +37,12 @@ test('grams in the serving but none from the AI fall back to the quantity, then 
   assert.equal(estimateServings({ grams: null, quantity: 2, unit: 'cup' }, '1 cup (160 g)'), 2);
   assert.equal(estimateServings({ grams: 0, quantity: null, unit: null }, '1 cup (160 g)'), 1);
 });
+
+test('a serving that is a bare weight takes the AI\'s grams over its count', () => {
+  assert.equal(estimateServings({ grams: 150, quantity: 1, unit: 'cup' }, '100 g'), 1.5);
+  assert.equal(estimateServings({ grams: 500, quantity: null, unit: null }, '250 ml'), 2);
+  assert.equal(estimateServings({ grams: 150, quantity: null, unit: null }, '100g'), 1.5);
+  assert.equal(estimateServings({ grams: null, quantity: 2, unit: 'g' }, '100 g'), 0.5, 'no grams: the quantity path');
+  assert.equal(estimateServings({ grams: null, quantity: null, unit: null }, '100 g'), 1, 'no grams: then 1');
+  assert.equal(estimateServings({ grams: 300, quantity: null, unit: null }, '1 piece'), 1, 'not a weight: grams ignored');
+});

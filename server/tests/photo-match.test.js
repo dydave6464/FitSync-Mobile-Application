@@ -19,6 +19,15 @@ test('names match menu foods ignoring case; "name" is tried when "menu" is missi
   assert.deepEqual(unlisted, []);
 });
 
+test('a menu name with a line break matches the one-line name the AI was shown', () => {
+  const menu = [food(9, 'Pork\nadobo'), food(10, 'Chicken\r\n\tinasal')];
+  const { items, unlisted } = matchItems([
+    raw({ menu: 'Pork adobo', alternatives: ['chicken inasal'] }),
+  ], menu);
+  assert.deepEqual(items.map((i) => [i.food.foodId, i.alternatives.map((a) => a.foodId)]), [[9, [10]]]);
+  assert.deepEqual(unlisted, []);
+});
+
 test('an item matching nothing is unlisted, once per name', () => {
   const { items, unlisted } = matchItems([
     raw({ menu: null, name: 'Atchara (pickled papaya)', confidence: 0.4 }),

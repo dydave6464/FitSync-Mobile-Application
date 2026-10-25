@@ -37,6 +37,13 @@ test('buildPrompt lists the menu one name per line and asks for alternatives', (
   assert.match(p, /A soup or stew is ONE item/);
   assert.match(p, /"alternatives"/);
   assert.match(p, /Reply with JSON only/);
+  assert.match(p, /- List at most 8 items \(the most important ones if there are more\)\./);
+  assert.doesNotMatch(p, /"notes"/, 'the reply format asks for nothing parseReply ignores');
+});
+
+test('buildPrompt puts each menu name on one line of its own', () => {
+  const p = buildPrompt(['White\nrice', '  Pork\r\n\tadobo ', 'Tinola']);
+  assert.match(p, /MENU:\nWhite rice\nPork adobo\nTinola$/);
 });
 
 test('parseReply keeps what it can read and refuses what it cannot', () => {
@@ -89,6 +96,7 @@ test('groq: sends the photo and the menu the way the spike did', async () => {
   assert.equal(opts.headers.authorization, 'Bearer secret-key');
   assert.equal(body.model, 'qwen/qwen3.8-27b');
   assert.equal(body.temperature, 0.2);
+  assert.equal(body.max_tokens, 2000);
   assert.equal(body.reasoning_effort, 'none');
   assert.deepEqual(body.response_format, { type: 'json_object' });
   const [text, image] = body.messages[0].content;

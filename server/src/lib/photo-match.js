@@ -4,7 +4,11 @@ const { estimateServings } = require('./photo-portion');
 const MAX_CARDS = 8;
 const MAX_ALTERNATIVES = 2;
 const MAX_SERVINGS = 10;
-const key = (s) => String(s).trim().toLowerCase();
+/// A menu name as one line: the prompt lists one name per line, so line
+/// breaks and tabs inside a name (a FatSecret copy is third-party text)
+/// become spaces. The prompt and the matching below both use it.
+const menuLine = (s) => String(s).replace(/[\r\n\t]+/g, ' ').trim();
+const key = (s) => menuLine(s).toLowerCase();
 
 /// The AI's items as the confirm screen's cards. [menu] is the list the AI
 /// chose from. A name is matched to a menu food ignoring case -- "menu"
@@ -47,4 +51,4 @@ function matchItems(rawItems, menu) {
   return { items, unlisted };
 }
 
-module.exports = { matchItems, MAX_CARDS };
+module.exports = { matchItems, menuLine, MAX_CARDS };
