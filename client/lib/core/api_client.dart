@@ -121,6 +121,7 @@ class ApiClient {
     String path,
     Map<String, dynamic> body, {
     Duration? timeout,
+    Future<void>? abortTrigger,
   }) async {
     final uri = Uri.parse('$_baseUrl$path');
     final headers = await _headers(json: true);
@@ -128,26 +129,49 @@ class ApiClient {
 
     final http.Response response;
     try {
-      response = await switch (method) {
-        'POST' => _client.post(uri, headers: headers, body: encoded),
-        'PATCH' => _client.patch(uri, headers: headers, body: encoded),
-        'PUT' => _client.put(uri, headers: headers, body: encoded),
-        'DELETE' => _client.delete(uri, headers: headers, body: encoded),
-        _ => throw ArgumentError('Unsupported method: $method'),
-      }.timeout(timeout ?? _timeout);
+      response = await (abortTrigger != null
+              ? _sendAbortable(method, uri, headers, encoded, abortTrigger)
+              : switch (method) {
+                  'POST' => _client.post(uri, headers: headers, body: encoded),
+                  'PATCH' => _client.patch(uri, headers: headers, body: encoded),
+                  'PUT' => _client.put(uri, headers: headers, body: encoded),
+                  'DELETE' => _client.delete(uri, headers: headers, body: encoded),
+                  _ => throw ArgumentError('Unsupported method: $method'),
+                })
+          .timeout(timeout ?? _timeout);
+    } on http.RequestAbortedException {
+      throw const ApiException('CANCELLED', 'The request was cancelled.');
     } catch (_) {
       throw ApiException('NETWORK_ERROR', _unreachableMessage);
     }
     return _unwrap(response);
   }
 
+  /// A request that ends when [abortTrigger] completes, closing its
+  /// connection, so the server can stop work nobody is waiting for any more.
+  Future<http.Response> _sendAbortable(
+    String method,
+    Uri uri,
+    Map<String, String> headers,
+    String body,
+    Future<void> abortTrigger,
+  ) async {
+    final request = http.AbortableRequest(method, uri, abortTrigger: abortTrigger)
+      ..headers.addAll(headers)
+      ..body = body;
+    return http.Response.fromStream(await _client.send(request));
+  }
+
   /// [timeout] replaces the usual 10 seconds for a request known to take
-  /// longer: Snap a meal waits for the AI.
+  /// longer: Snap a meal waits for the AI. When [abortTrigger] completes, the
+  /// request is dropped (its connection closed) and this throws an
+  /// [ApiException] with code CANCELLED.
   Future<Map<String, dynamic>> postJson(
     String path,
     Map<String, dynamic> body, {
     Duration? timeout,
-  }) => _send('POST', path, body, timeout: timeout);
+    Future<void>? abortTrigger,
+  }) => _send('POST', path, body, timeout: timeout, abortTrigger: abortTrigger);
   Future<Map<String, dynamic>> patchJson(
     String path,
     Map<String, dynamic> body,

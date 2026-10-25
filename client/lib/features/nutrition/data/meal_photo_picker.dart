@@ -43,9 +43,10 @@ class ImagePickerMealPhotoPicker implements MealPhotoPicker {
     try {
       // At most 768 px on the longest side -- width and height both, since
       // phones often shoot portrait -- and quality 80: plenty for naming food,
-      // about 100-170 KB. Size matters because Groq's free plan counts input
-      // tokens per minute for the whole app: a 1024 x 768 photo cost ~2,070
-      // tokens, 768 x 576 about half, so more photos fit in each minute.
+      // about 100-170 KB, quick to send on mobile data. (Groq counts a photo
+      // as about 1,300 input tokens whatever its size -- measured 2026-10-25
+      // at 1024, 768 and 512 px -- so this does not change its per-minute
+      // allowance; the food list in the prompt is most of each request.)
       file = await ImagePicker().pickImage(
         source: source == PhotoSource.camera
             ? ImageSource.camera

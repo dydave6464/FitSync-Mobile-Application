@@ -10,18 +10,22 @@ class MealPhotoRepository {
 
   final ApiClient _api;
 
-  /// The server gives the AI 15 seconds and asks once more after an
-  /// unreadable answer, so this outlasts both.
+  /// The server gives one photo at most 37 seconds -- waiting out a busy
+  /// Groq once, and one retry -- (BUDGET_MS in
+  /// server/src/services/vision/groq-client.js), so this outlasts it with
+  /// room for the upload. Lower it only together with that budget.
   static const recognizeTimeout = Duration(seconds: 45);
 
   /// A FatSecret item is fetched from FatSecret while logging.
   static const logTimeout = Duration(seconds: 30);
 
-  Future<PhotoRecognition> recognize(Uint8List bytes, String mimeType) async {
+  /// Completing [cancel] drops the request: the server then stops, sends
+  /// nothing more to the AI and does not count the photo.
+  Future<PhotoRecognition> recognize(Uint8List bytes, String mimeType, {Future<void>? cancel}) async {
     final data = await _api.postJson('/api/v1/nutrition/recognize', {
       'image': base64Encode(bytes),
       'mimeType': mimeType,
-    }, timeout: recognizeTimeout);
+    }, timeout: recognizeTimeout, abortTrigger: cancel);
     return PhotoRecognition.fromJson(data);
   }
 

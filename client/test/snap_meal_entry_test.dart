@@ -50,7 +50,7 @@ class _Repo implements MealPhotoRepository {
   int logged = 0;
 
   @override
-  Future<PhotoRecognition> recognize(Uint8List bytes, String mimeType) async => PhotoRecognition.fromJson({
+  Future<PhotoRecognition> recognize(Uint8List bytes, String mimeType, {Future<void>? cancel}) async => PhotoRecognition.fromJson({
     'recognitionId': 7, 'remainingToday': 12, 'unlisted': [],
     'items': [{'itemId': 40, 'confidence': 0.9, 'servings': 1, 'alternatives': [], 'food': {
       'id': 1, 'name': 'White rice', 'servingDesc': '1 cup (160 g)', 'fromFatsecret': false,

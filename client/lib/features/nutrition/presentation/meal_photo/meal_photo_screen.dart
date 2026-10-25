@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
@@ -87,6 +88,10 @@ class _MealPhotoScreenState extends ConsumerState<MealPhotoScreen> {
   /// answer stale.
   int _attempt = 0;
 
+  /// Completed when the screen goes away: drops a photo still being looked
+  /// at, so the server stops and does not count it.
+  Completer<void>? _cancel;
+
   ScaffoldMessengerState? _messenger;
   int _undoToken = 0;
   bool _undoShowing = false;
@@ -107,13 +112,17 @@ class _MealPhotoScreenState extends ConsumerState<MealPhotoScreen> {
   void dispose() {
     // A "Removed … · Undo" left up would act on a screen that is gone.
     if (_undoShowing) _messenger?.hideCurrentSnackBar();
+    // Has no effect once the answer has arrived.
+    final cancel = _cancel;
+    if (cancel != null && !cancel.isCompleted) cancel.complete();
     super.dispose();
   }
 
   Future<void> _recognize() async {
     final attempt = ++_attempt;
+    final cancel = _cancel = Completer<void>();
     try {
-      final r = await ref.read(mealPhotoRepositoryProvider).recognize(_photo.bytes, _photo.mimeType);
+      final r = await ref.read(mealPhotoRepositoryProvider).recognize(_photo.bytes, _photo.mimeType, cancel: cancel.future);
       if (!mounted || attempt != _attempt) return;
       setState(() {
         _recognition = r;

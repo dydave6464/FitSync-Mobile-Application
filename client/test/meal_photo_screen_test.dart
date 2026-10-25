@@ -46,8 +46,12 @@ class _PhotoRepo implements MealPhotoRepository {
   Completer<void>? logGate;
   final logs = <({int recognitionId, String date, String mealType, List<PhotoLogItem> items})>[];
 
+  /// The cancel the screen handed over with the latest photo.
+  Future<void>? cancel;
+
   @override
-  Future<PhotoRecognition> recognize(Uint8List bytes, String mimeType) async {
+  Future<PhotoRecognition> recognize(Uint8List bytes, String mimeType, {Future<void>? cancel}) async {
+    this.cancel = cancel;
     recognizeCalls++;
     if (gate != null) return gate!.future;
     if (error != null) throw error!;
@@ -132,6 +136,17 @@ Future<_Harness> _open(WidgetTester tester, {_Harness? h, PhotoSource source = P
 Finder _kcal(String text) => find.descendant(of: find.byKey(const Key('snap.total')), matching: find.text(text));
 
 void main() {
+  testWidgets('leaving while the AI works cancels the request', (tester) async {
+    final h = _Harness()..repo.gate = Completer();
+    await _open(tester, h: h, settle: false);
+    var cancelled = false;
+    h.repo.cancel!.then((_) => cancelled = true);
+    await tester.tap(find.byKey(const Key('snap.cancel')));
+    await tester.pumpAndSettle();
+    expect(find.byKey(const Key('snap.cancel')), findsNothing, reason: 'the screen is gone');
+    expect(cancelled, isTrue);
+  });
+
   testWidgets('shows the photo and "Looking at your meal…" while the AI works, then the list', (tester) async {
     final h = _Harness()..repo.gate = Completer();
     await _open(tester, h: h, settle: false);

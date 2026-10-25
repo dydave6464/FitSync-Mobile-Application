@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 import 'dart:typed_data';
 
@@ -147,4 +148,28 @@ void main() {
     );
     expect(await api.postJson('/x', const {}), isEmpty);
   });
+
+  test('recognize hands its cancel to the request', () async {
+    final api = _RecordingApi();
+    final cancel = Completer<void>();
+    await MealPhotoRepository(api).recognize(Uint8List.fromList([0xFF, 0xD8, 0xFF]), 'image/jpeg', cancel: cancel.future);
+    expect(identical(api.abortTrigger, cancel.future), isTrue);
+    expect(api.timeout, MealPhotoRepository.recognizeTimeout);
+  });
 }
+
+/// Records what the repository asks of the API, and answers an empty photo.
+class _RecordingApi extends ApiClient {
+  _RecordingApi() : super(baseUrl: 'http://test.local', tokens: TokenStore(backing: InMemorySecureStore()));
+
+  Future<void>? abortTrigger;
+  Duration? timeout;
+
+  @override
+  Future<Map<String, dynamic>> postJson(String path, Map<String, dynamic> body, {Duration? timeout, Future<void>? abortTrigger}) async {
+    this.timeout = timeout;
+    this.abortTrigger = abortTrigger;
+    return {'recognitionId': 1, 'remainingToday': 14, 'items': [], 'unlisted': []};
+  }
+}
+
