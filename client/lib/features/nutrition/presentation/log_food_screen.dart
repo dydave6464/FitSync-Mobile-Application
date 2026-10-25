@@ -10,6 +10,7 @@ import '../../exercises/presentation/exercise_list_screen.dart' show describeErr
 import '../domain/nutrition.dart';
 import 'add_food_manually_screen.dart';
 import 'error_snack_bar.dart';
+import 'meal_photo/snap_meal.dart';
 import 'providers.dart';
 import 'widgets/fatsecret_attribution.dart';
 import 'widgets/log_food_sheet.dart';
@@ -148,6 +149,18 @@ class _LogFoodScreenState extends ConsumerState<LogFoodScreen> {
     if (logged == true && mounted) Navigator.of(context).pop();
   }
 
+  Future<void> _snap() async {
+    final logged = await startSnapMeal(
+      context,
+      ref,
+      mealType: _meal,
+      date: ref.read(nutritionDayProvider).value?.date,
+      // Log food is right behind the photo screen: going back is the search.
+      onSearchInstead: (photoContext, _) => Navigator.of(photoContext).pop(false),
+    );
+    if (logged && mounted) Navigator.of(context).pop();
+  }
+
   @override
   Widget build(BuildContext context) {
     final t = context.fs;
@@ -156,12 +169,33 @@ class _LogFoodScreenState extends ConsumerState<LogFoodScreen> {
       appBar: AppBar(title: Text(widget.pick ? 'Choose a food' : 'Log food')),
       bottomNavigationBar: SafeArea(
         minimum: const EdgeInsets.fromLTRB(20, 0, 20, 16),
-        child: FsButton(
-          key: const Key('food.manual'),
-          label: 'Add manually',
-          kind: FsButtonKind.secondary,
-          onPressed: _manual,
-        ),
+        child: Builder(builder: (context) {
+          final manual = FsButton(
+            key: const Key('food.manual'),
+            label: 'Add manually',
+            kind: FsButtonKind.secondary,
+            onPressed: _manual,
+          );
+          // Choosing a food for a photo: no second photo from here.
+          if (widget.pick) return manual;
+          return LayoutBuilder(builder: (context, box) {
+            // One row at every size: on a small phone at large text the
+            // suggested foods above must still show without scrolling. The
+            // labelled pill only where both labels fit whole (Snap a meal
+            // first, as the prototype orders them); otherwise a camera button.
+            final roomy = box.maxWidth >= 340 && MediaQuery.textScalerOf(context).scale(1) <= 1.1;
+            return Row(
+              children: [
+                if (roomy)
+                  Expanded(child: SnapMealButton(key: const Key('food.snap'), onTap: _snap))
+                else
+                  SnapMealButton(key: const Key('food.snap'), onTap: _snap, compact: true),
+                const SizedBox(width: 10),
+                if (roomy) manual else Expanded(child: manual),
+              ],
+            );
+          });
+        }),
       ),
       body: Column(
         children: [

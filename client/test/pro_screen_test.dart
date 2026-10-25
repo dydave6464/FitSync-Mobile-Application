@@ -45,16 +45,38 @@ void main() {
     final planned = find.byKey(const Key('pro.planned'));
     expect(planned, findsOneWidget);
 
-    // The prototype sells food photo recognition and Filipino meal planning.
-    // Neither exists -- there is no nutrition feature at all -- so they may
-    // appear only as things that are coming, never as things you get.
+    // The prototype also sells Filipino meal planning, which isn't built:
+    // it may appear only as something coming, never as something you get.
     expect(
-      find.descendant(of: planned, matching: find.textContaining('Food photo')),
+      find.descendant(
+        of: planned,
+        matching: find.textContaining('meal planning'),
+      ),
       findsOneWidget,
     );
     expect(
       find.descendant(
         of: find.byKey(const Key('pro.today')),
+        matching: find.textContaining('meal planning'),
+      ),
+      findsNothing,
+    );
+  });
+
+  testWidgets('food photo recognition is something Pro unlocks today', (
+    tester,
+  ) async {
+    await _pump(tester);
+    expect(
+      find.descendant(
+        of: find.byKey(const Key('pro.today')),
+        matching: find.textContaining('Food photo'),
+      ),
+      findsOneWidget,
+    );
+    expect(
+      find.descendant(
+        of: find.byKey(const Key('pro.planned')),
         matching: find.textContaining('Food photo'),
       ),
       findsNothing,

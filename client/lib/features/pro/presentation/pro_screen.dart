@@ -5,27 +5,22 @@ import '../../../core/widgets/fs_kit.dart';
 
 /// What Pro unlocks today, in the order a user meets it.
 ///
-/// One feature, gated in two places. `VolumeByMuscleCard` on the Progress tab
-/// draws placeholder bars behind a lock for a free account, and
+/// Volume by muscle, gated in two places: `VolumeByMuscleCard` on the
+/// Progress tab draws placeholder bars behind a lock for a free account, and
 /// `buildReportSnapshot` leaves the muscle section out of a shared report
-/// entirely unless the sharer is premium -- so a coach opening a free user's
-/// link never receives it, rather than receiving it hidden.
+/// unless the sharer is premium. And Snap a meal: the server refuses a free
+/// account (403 PRO_REQUIRED), and both doors to it open this screen first.
 const _unlockedToday = [
   'Volume by muscle on the Progress tab',
   'The same muscle breakdown in reports you share with a coach',
+  'Food photo recognition: Snap a meal on the Nutrition tab',
 ];
 
-/// What the prototype sells that the app cannot yet do.
-///
-/// Listed because the business model is four features wide and the panel
-/// should see it, and kept strictly apart from the list above because none of
-/// this exists: there is no nutrition feature at all, no advertising to
-/// remove, and coaching cues are free to everyone today -- the cue "gate" is
-/// an injury-safety check, not a paywall.
+/// What the prototype sells that the app cannot yet do, kept strictly apart
+/// from the list above.
 const _planned = [
   'Ad-free training',
   'Unlimited AI coaching cues',
-  'Food photo recognition',
   'Filipino meal planning',
 ];
 
