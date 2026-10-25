@@ -97,11 +97,12 @@ function create({
   /// (a now() time) is a budget shared with another client; without one,
   /// this photo gets [budgetMs] of its own.
   async function recognize({ imageBase64, mimeType, menuNames, signal, deadline }) {
+    // The service's extras first, so they cannot replace the fixed fields.
     const body = JSON.stringify({
+      ...extraBody,
       model,
       temperature: 0.2,
       max_tokens: MAX_TOKENS,
-      ...extraBody,
       response_format: { type: 'json_object' },
       messages: [{
         role: 'user',
@@ -112,7 +113,8 @@ function create({
       }],
     });
     // Two second chances, each at most once and only while the budget allows:
-    // a 429 is waited out when the service says how long, and an unreadable
+    // a 429 is waited out when the service says how long (unless
+    // waitWhenBusy is off), and an unreadable
     // reply is asked again. A timeout or a 5xx is not retried -- the user
     // would only wait another 15 s for the same answer.
     const end = deadline ?? now() + budgetMs;
@@ -141,7 +143,7 @@ function create({
     }
   }
 
-  return { recognize, model };
+  return { recognize, model, provider };
 }
 
 module.exports = { create, wait, BUDGET_MS, MIN_ATTEMPT_MS, RETRY_MARGIN_MS };

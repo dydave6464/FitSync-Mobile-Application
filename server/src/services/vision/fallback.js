@@ -2,6 +2,11 @@
 const { wait, BUDGET_MS, MIN_ATTEMPT_MS, RETRY_MARGIN_MS } = require('./chat-client');
 const { VisionError } = require('./errors');
 
+/// What the log may say about a failed attempt: never a message or a body.
+const summary = (provider, err) => ({
+  provider, code: err.code ?? null, status: err.status ?? null, cause: err.cause?.name ?? null,
+});
+
 /// Groq first, and the same model on Cloudflare when Groq can't answer --
 /// busy (its free plan's per-minute limit), down, or unreadable -- so a
 /// photo sent within ~40 s of another is answered in seconds instead of
@@ -11,12 +16,18 @@ const { VisionError } = require('./errors');
 ///
 /// [primary] and [backup] are chat clients made with waitWhenBusy false: the
 /// waiting is decided here. A failure is [primary]'s error, carrying
-/// [backup]'s as `backup` for the route's log line.
+/// [backup]'s as `backup` for the route's log line. A reply that came after
+/// a failure lists it in `failed` (codes only), so a dead Groq key or a
+/// broken backup shows in the log even while the other service answers.
 function create({ primary, backup, budgetMs = BUDGET_MS, now = Date.now, sleep = wait }) {
   async function recognize(args) {
     const deadline = now() + budgetMs;
     const left = () => deadline - now();
-    const ask = (client) => client.recognize({ ...args, deadline });
+    const failed = [];
+    const ask = async (client) => {
+      const reply = await client.recognize({ ...args, deadline });
+      return failed.length ? { ...reply, failed } : reply;
+    };
 
     let failure;
     let failedAt;
@@ -26,6 +37,7 @@ function create({ primary, backup, budgetMs = BUDGET_MS, now = Date.now, sleep =
       if (err.code === 'VISION_CANCELLED') throw err;
       failure = err;
       failedAt = now();
+      failed.push(summary(primary.provider, err));
     }
     if (left() < MIN_ATTEMPT_MS) throw failure;
     try {
@@ -33,6 +45,7 @@ function create({ primary, backup, budgetMs = BUDGET_MS, now = Date.now, sleep =
     } catch (err) {
       if (err.code === 'VISION_CANCELLED') throw err;
       failure.backup = err;
+      failed.push(summary(backup.provider, err));
     }
 
     // Groq's retry-after counted from its reply, so the time Cloudflare took

@@ -218,7 +218,8 @@ test('POST /nutrition/recognize', async (t) => {
 
   await t.test('the photo is never stored or logged', async () => {
     const u = await freshUser({ pro: true });
-    answer = async () => ({ items: [{ menu: 'White rice', name: 'White rice', quantity: 1, unit: 'cup', grams: 160, confidence: 0.9, alternatives: [] }], provider: 'cloudflare' });
+    answer = async () => ({ items: [{ menu: 'White rice', name: 'White rice', quantity: 1, unit: 'cup', grams: 160, confidence: 0.9, alternatives: [] }], provider: 'cloudflare',
+      failed: [{ provider: 'groq', code: 'VISION_UNAVAILABLE', status: 401, cause: null }] });
     await u.recognize({ image: b64(MARKED), mimeType: 'image/jpeg' }).expect(200);
     const needle = b64(MARKED).slice(16, 80);
     const [recs] = await pool.query('SELECT * FROM photo_recognitions WHERE user_id = ?', [u.userId]);
@@ -230,6 +231,8 @@ test('POST /nutrition/recognize', async (t) => {
     const recognised = captured.text().split('\n').filter((l) => l.includes('meal photo recognised')).at(-1);
     assert.ok(recognised, 'the request was logged');
     assert.ok(recognised.includes('"provider":"cloudflare"'), 'with the service that answered');
+    assert.ok(recognised.includes('"failed":[{"provider":"groq","code":"VISION_UNAVAILABLE","status":401,"cause":null}]'),
+      'and why the other did not, so a dead Groq key shows while Cloudflare covers for it');
     assert.ok(!captured.text().includes(needle), 'no log line holds the photo');
   });
 });

@@ -12,8 +12,9 @@ const {
 } = require('../db/photo-recognitions');
 const { VisionError } = require('../services/vision/errors');
 
-/// Photos per Pro user per Manila day. Groq's free plan allows roughly 45
-/// photos a day app-wide with the full menu in each request.
+/// Photos per Pro user per Manila day. App-wide, Groq's free plan takes about
+/// one photo per 40 s (1,000 requests a day), and the Cloudflare backup's
+/// about 40-60 more a day.
 const DAILY_PHOTO_LIMIT = 15;
 const MAX_IMAGE_BYTES = 1_500_000;
 const MAGIC = {
@@ -76,9 +77,9 @@ module.exports = function buildNutritionPhotosRouter(deps) {
 
   router.post('/recognize', auth, requirePro, async (req, res, next) => {
     // The app may stop waiting -- Cancel, back, or its own 45 s timeout, each
-    // of which closes the connection -- while the recogniser waits out Groq's
-    // busy reply. Then nothing more is sent to Groq and
-    // nothing is recorded: nobody will see the answer, and it must not cost
+    // of which closes the connection -- while the recogniser asks Groq or
+    // Cloudflare, or waits out Groq's busy reply. Then nothing more is sent
+    // to either, and nothing is recorded: nobody will see the answer, and it must not cost
     // the user one of today's photos. Listening from the start, and checking
     // res.destroyed, also catches a hang-up during the checks below.
     const appLeft = new AbortController();
@@ -134,10 +135,13 @@ module.exports = function buildNutritionPhotosRouter(deps) {
         ...unlisted.map((u) => ({ foodId: null, name: u.name, confidence: u.confidence, servings: null, alternativeFoodIds: [] })),
       ]);
       // Ids and counts only: never the photo, never the food names. The
-      // provider (groq or cloudflare) shows how often the backup answers.
+      // provider (groq or cloudflare) shows how often the backup answers;
+      // failed (codes only) shows a service that keeps failing while the
+      // other covers for it -- a dead Groq key, a broken Cloudflare token.
       if (deps.logger) {
         deps.logger.info({
           recognitionId, items: items.length, unlisted: unlisted.length, provider: reply.provider ?? null,
+          ...(Array.isArray(reply.failed) && { failed: reply.failed }),
         }, 'meal photo recognised');
       }
       res.json({

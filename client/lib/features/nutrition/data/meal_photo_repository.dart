@@ -10,9 +10,9 @@ class MealPhotoRepository {
 
   final ApiClient _api;
 
-  /// The server gives one photo at most 37 seconds -- waiting out a busy
-  /// Groq once, and one retry -- (BUDGET_MS in
-  /// server/src/services/vision/groq-client.js), so this outlasts it with
+  /// The server gives one photo at most 37 seconds -- the Cloudflare backup,
+  /// waiting out a busy Groq once, and one retry -- (BUDGET_MS in
+  /// server/src/services/vision/chat-client.js), so this outlasts it with
   /// room for the upload. Lower it only together with that budget.
   static const recognizeTimeout = Duration(seconds: 45);
 
