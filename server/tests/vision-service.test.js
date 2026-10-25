@@ -579,3 +579,12 @@ test('backup: cancelled during the second Groq request, the failure is a plain c
     (e) => e.code === 'VISION_CANCELLED' && e.backup === undefined);
   assert.equal(fetchImpl.calls.length, 3);
 });
+
+test("backup: one photo's failures never show on the next photo's reply", async () => {
+  const fetchImpl = fakeFetch([{ status: 401 }, { status: 200, content: GOOD }, { status: 200, content: GOOD }]);
+  const vision = service(BOTH, fetchImpl);
+  assert.equal((await vision.recognize(ARGS)).failed.length, 1);
+  const next = await vision.recognize(ARGS);
+  assert.equal(next.provider, 'groq');
+  assert.equal(next.failed, undefined);
+});

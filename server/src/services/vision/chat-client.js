@@ -114,9 +114,9 @@ function create({
     });
     // Two second chances, each at most once and only while the budget allows:
     // a 429 is waited out when the service says how long (unless
-    // waitWhenBusy is off), and an unreadable
-    // reply is asked again. A timeout or a 5xx is not retried -- the user
-    // would only wait another 15 s for the same answer.
+    // waitWhenBusy is off), and an unreadable reply is asked again. A
+    // timeout or a 5xx is not retried -- the user would only wait another
+    // 15 s for the same answer.
     const end = deadline ?? now() + budgetMs;
     const left = () => end - now();
     let waited = false;
