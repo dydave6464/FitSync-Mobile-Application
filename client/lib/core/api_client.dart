@@ -119,8 +119,9 @@ class ApiClient {
   Future<Map<String, dynamic>> _send(
     String method,
     String path,
-    Map<String, dynamic> body,
-  ) async {
+    Map<String, dynamic> body, {
+    Duration? timeout,
+  }) async {
     final uri = Uri.parse('$_baseUrl$path');
     final headers = await _headers(json: true);
     final encoded = jsonEncode(body);
@@ -133,17 +134,20 @@ class ApiClient {
         'PUT' => _client.put(uri, headers: headers, body: encoded),
         'DELETE' => _client.delete(uri, headers: headers, body: encoded),
         _ => throw ArgumentError('Unsupported method: $method'),
-      }.timeout(_timeout);
+      }.timeout(timeout ?? _timeout);
     } catch (_) {
       throw ApiException('NETWORK_ERROR', _unreachableMessage);
     }
     return _unwrap(response);
   }
 
+  /// [timeout] replaces the usual 10 seconds for a request known to take
+  /// longer: Snap a meal waits for the AI.
   Future<Map<String, dynamic>> postJson(
     String path,
-    Map<String, dynamic> body,
-  ) => _send('POST', path, body);
+    Map<String, dynamic> body, {
+    Duration? timeout,
+  }) => _send('POST', path, body, timeout: timeout);
   Future<Map<String, dynamic>> patchJson(
     String path,
     Map<String, dynamic> body,

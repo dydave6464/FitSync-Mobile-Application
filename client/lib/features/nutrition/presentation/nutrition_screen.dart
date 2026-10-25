@@ -7,6 +7,7 @@ import '../../exercises/presentation/exercise_list_screen.dart' show describeErr
 import '../domain/nutrition.dart';
 import 'error_snack_bar.dart';
 import 'log_food_screen.dart';
+import 'meal_photo/snap_meal.dart';
 import 'providers.dart';
 import 'widgets/fatsecret_attribution.dart';
 import 'widgets/log_food_sheet.dart';
@@ -33,6 +34,18 @@ class NutritionScreen extends ConsumerWidget {
     MaterialPageRoute<void>(builder: (_) => LogFoodScreen(
       mealType: mealType,
       onLogged: (entry, date) => _offerChange(context, ref, entry, date),
+    )),
+  );
+
+  /// Snap a meal from the tab: the meal the clock suggests, on the day shown.
+  /// "Search instead" swaps the photo screen for Log food.
+  Future<void> _snap(BuildContext context, WidgetRef ref, String mealType, String date) => startSnapMeal(
+    context,
+    ref,
+    mealType: mealType,
+    date: date,
+    onSearchInstead: (photoContext, meal) => Navigator.of(photoContext).pushReplacement(MaterialPageRoute<void>(
+      builder: (_) => LogFoodScreen(mealType: meal, onLogged: (entry, d) => _offerChange(context, ref, entry, d)),
     )),
   );
 
@@ -167,6 +180,8 @@ class NutritionScreen extends ConsumerWidget {
           ),
         const SizedBox(height: 8),
         NutritionSummaryCard(day: day, onGoToProfile: onGoToProfile),
+        const SizedBox(height: 12),
+        SnapMealCard(onTap: busy ? null : () => _snap(context, ref, suggested, day.date)),
         const SizedBox(height: 16),
         // One way to add, by meal. The clock's guess marks the likely
         // meal's row, today only: on another day the time says nothing.
