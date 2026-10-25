@@ -31,7 +31,7 @@ const fatsecret = fatsecretStubInProduction ? null : createFatsecretService(conf
 // same foods for every photo. Off instead: Snap a meal answers 502.
 const visionStubInProduction = config.env === 'production' && config.vision.mode === 'stub';
 if (visionStubInProduction) {
-  logger.warn('VISION_MODE is stub in production: Snap a meal is off; set VISION_MODE=groq');
+  logger.warn('VISION_MODE is stub in production: Snap a meal is off; set VISION_MODE=groq or cloudflare');
 }
 const vision = visionStubInProduction ? null : createVisionService(config.vision);
 const storage = createStorage(config.storage);

@@ -10,8 +10,13 @@ const { VisionError } = require('../src/services/vision/errors');
 const ENV = { DB_HOST: 'h', DB_PORT: '3306', DB_USER: 'u', DB_PASSWORD: 'p', DB_NAME: 'n', JWT_SECRET: 'x'.repeat(32) };
 
 test('config: VISION_MODE defaults to the stub and reuses GROQ_API_KEY', () => {
-  assert.deepEqual(load(ENV).vision, { mode: 'stub', apiKey: null, model: null });
-  assert.deepEqual(load({ ...ENV, VISION_MODE: 'groq', GROQ_API_KEY: 'k', VISION_MODEL: 'm' }).vision, { mode: 'groq', apiKey: 'k', model: 'm' });
+  const none = { accountId: null, apiToken: null };
+  assert.deepEqual(load(ENV).vision, { mode: 'stub', apiKey: null, model: null, cloudflare: none });
+  assert.deepEqual(load({ ...ENV, VISION_MODE: 'groq', GROQ_API_KEY: 'k', VISION_MODEL: 'm' }).vision, { mode: 'groq', apiKey: 'k', model: 'm', cloudflare: none });
+});
+
+test('config: the Cloudflare account and token come from CLOUDFLARE_ACCOUNT_ID and CLOUDFLARE_API_TOKEN', () => {
+  assert.deepEqual(load({ ...ENV, CLOUDFLARE_ACCOUNT_ID: 'acc', CLOUDFLARE_API_TOKEN: 'tok' }).vision.cloudflare, { accountId: 'acc', apiToken: 'tok' });
 });
 
 test('createVisionService picks the driver', () => {
@@ -22,9 +27,23 @@ test('createVisionService picks the driver', () => {
   assert.equal(createVisionService({ mode: 'groq', apiKey: 'k', model: 'other/model' }).model, 'other/model');
 });
 
+test('createVisionService: VISION_MODE=cloudflare needs both Cloudflare settings', () => {
+  const needs = /CLOUDFLARE_ACCOUNT_ID and CLOUDFLARE_API_TOKEN are required when VISION_MODE=cloudflare/;
+  assert.throws(() => createVisionService({ mode: 'cloudflare' }), needs);
+  assert.throws(() => createVisionService({ mode: 'cloudflare', cloudflare: { accountId: 'acc', apiToken: null } }), needs);
+  assert.equal(createVisionService({ mode: 'cloudflare', cloudflare: { accountId: 'acc', apiToken: 'tok' } }).model, '@cf/qwen/qwen3.8-27b');
+});
+
+test('createVisionService: with Groq, half a Cloudflare setting stops the server rather than leaving the backup off', () => {
+  const half = /Set both CLOUDFLARE_ACCOUNT_ID and CLOUDFLARE_API_TOKEN, or neither/;
+  assert.throws(() => createVisionService({ mode: 'groq', apiKey: 'k', cloudflare: { accountId: 'acc', apiToken: null } }), half);
+  assert.throws(() => createVisionService({ mode: 'groq', apiKey: 'k', cloudflare: { accountId: null, apiToken: 'tok' } }), half);
+});
+
 test('the stub answers from the menu it is given, with one item not on it', async () => {
   const stub = createVisionService({});
-  const { items } = await stub.recognize({ imageBase64: 'x', mimeType: 'image/jpeg', menuNames: ['White rice', 'Chicken adobo', 'Pork adobo'] });
+  const { items, provider } = await stub.recognize({ imageBase64: 'x', mimeType: 'image/jpeg', menuNames: ['White rice', 'Chicken adobo', 'Pork adobo'] });
+  assert.equal(provider, 'stub');
   assert.deepEqual(items.map((i) => i.menu), ['White rice', 'Chicken adobo', null]);
   assert.deepEqual(items[1].alternatives, ['Pork adobo']);
   const none = await stub.recognize({ imageBase64: 'x', mimeType: 'image/jpeg', menuNames: [] });
@@ -65,6 +84,19 @@ test('parseReply keeps what it can read and refuses what it cannot', () => {
   ]);
 });
 
+/// A fetch response made from a short description: status, headers, and the
+/// reply's content (or an error body).
+function response(r) {
+  return {
+    ok: r.status >= 200 && r.status < 300,
+    status: r.status,
+    headers: { get: (name) => (r.headers || {})[name.toLowerCase()] ?? null },
+    json: async () => r.error
+      ? { error: r.error }
+      : { choices: [{ finish_reason: r.finish ?? 'stop', message: { content: r.content } }] },
+  };
+}
+
 /// A fetch that answers each call from [replies] in turn and records what it was sent.
 function fakeFetch(replies) {
   const calls = [];
@@ -72,14 +104,7 @@ function fakeFetch(replies) {
     calls.push({ url, opts, body: JSON.parse(opts.body) });
     const r = replies[calls.length - 1];
     if (typeof r === 'function') return r(opts);
-    return {
-      ok: r.status >= 200 && r.status < 300,
-      status: r.status,
-      headers: { get: (name) => (r.headers || {})[name.toLowerCase()] ?? null },
-      json: async () => r.error
-        ? { error: r.error }
-        : { choices: [{ finish_reason: r.finish ?? 'stop', message: { content: r.content } }] },
-    };
+    return response(r);
   };
   fn.calls = calls;
   return fn;
@@ -92,6 +117,7 @@ test('groq: sends the photo and the menu the way the spike did', async () => {
   const vision = groqClient.create({ apiKey: 'secret-key', fetchImpl });
   const reply = await vision.recognize(ARGS);
   assert.equal(reply.items[0].menu, 'White rice');
+  assert.equal(reply.provider, 'groq');
   const { url, opts, body } = fetchImpl.calls[0];
   assert.equal(url, 'https://api.groq.com/openai/v1/chat/completions');
   assert.equal(opts.headers.authorization, 'Bearer secret-key');
@@ -275,4 +301,164 @@ test('groq: 429 without retry-after is busy, 5xx and timeouts are unavailable, a
   await assert.rejects(groqClient.create({ apiKey: 'k', fetchImpl: slow, timeoutMs: 20 }).recognize(ARGS),
     (e) => e.code === 'VISION_UNAVAILABLE' && e.status === null && e.cause?.message === 'aborted');
   assert.equal(slow.calls.length, 1);
+});
+
+const GROQ_URL = 'https://api.groq.com/openai/v1/chat/completions';
+const CF_URL = 'https://api.cloudflare.com/client/v4/accounts/acc123/ai/v1/chat/completions';
+const CLOUDFLARE = { accountId: 'acc123', apiToken: 'cf-token' };
+const BOTH = { mode: 'groq', apiKey: 'groq-key', cloudflare: CLOUDFLARE };
+
+/// The vision service as server.js builds it, on a fake network and clock.
+const service = (config, fetchImpl, time = fakeTime()) => createVisionService(config, { fetchImpl, now: time.now, sleep: time.sleep });
+
+test('cloudflare: sends the same photo, menu and settings to the same model, with thinking off', async () => {
+  const fetchImpl = fakeFetch([{ status: 200, content: GOOD }]);
+  const reply = await service({ mode: 'cloudflare', cloudflare: CLOUDFLARE }, fetchImpl).recognize(ARGS);
+  assert.equal(reply.items[0].menu, 'White rice');
+  assert.equal(reply.provider, 'cloudflare');
+  const { url, opts, body } = fetchImpl.calls[0];
+  assert.equal(url, CF_URL);
+  assert.equal(opts.headers.authorization, 'Bearer cf-token');
+  assert.equal(body.model, '@cf/qwen/qwen3.8-27b');
+  assert.deepEqual(body.chat_template_kwargs, { enable_thinking: false });
+  assert.equal('reasoning_effort' in body, false, "Cloudflare's reasoning_effort has no 'none'");
+  assert.equal(body.temperature, 0.2);
+  assert.equal(body.max_tokens, 2000);
+  assert.deepEqual(body.response_format, { type: 'json_object' });
+  const [text, image] = body.messages[0].content;
+  assert.equal(text.text, buildPrompt(['White rice']));
+  assert.equal(image.image_url.url, 'data:image/png;base64,QUJD');
+});
+
+test('cloudflare: on its own, it waits out a 429 that says how long, as Groq does', async () => {
+  const time = fakeTime();
+  const fetchImpl = fakeFetch([{ status: 429, headers: { 'retry-after': '2' } }, { status: 200, content: GOOD }]);
+  assert.equal((await service({ mode: 'cloudflare', cloudflare: CLOUDFLARE }, fetchImpl, time).recognize(ARGS)).provider, 'cloudflare');
+  assert.equal(fetchImpl.calls.length, 2);
+  assert.deepEqual(time.slept, [3000]);
+});
+
+test("cloudflare: the day's free allowance used up (a 429 that does not say how long) is busy at once", async () => {
+  const fetchImpl = fakeFetch([{ status: 429 }]);
+  await assert.rejects(service({ mode: 'cloudflare', cloudflare: CLOUDFLARE }, fetchImpl).recognize(ARGS),
+    (e) => e.code === 'VISION_BUSY' && e.status === 429);
+  assert.equal(fetchImpl.calls.length, 1);
+});
+
+test('without Cloudflare settings, Groq alone waits out its busy reply as before', async () => {
+  const time = fakeTime();
+  const fetchImpl = fakeFetch([{ status: 429, headers: { 'retry-after': '3' } }, { status: 200, content: GOOD }]);
+  const reply = await service({ mode: 'groq', apiKey: 'k' }, fetchImpl, time).recognize(ARGS);
+  assert.equal(reply.provider, 'groq');
+  assert.deepEqual(fetchImpl.calls.map((c) => c.url), [GROQ_URL, GROQ_URL]);
+  assert.deepEqual(time.slept, [4000]);
+});
+
+test('backup: Groq answers, so Cloudflare is never asked', async () => {
+  const fetchImpl = fakeFetch([{ status: 200, content: GOOD }]);
+  const reply = await service(BOTH, fetchImpl).recognize(ARGS);
+  assert.equal(reply.provider, 'groq');
+  assert.deepEqual(fetchImpl.calls.map((c) => c.url), [GROQ_URL]);
+  assert.equal(fetchImpl.calls[0].opts.headers.authorization, 'Bearer groq-key');
+});
+
+test('backup: Groq busy, Cloudflare is asked at once instead of waiting', async () => {
+  const time = fakeTime();
+  const fetchImpl = fakeFetch([{ status: 429, headers: { 'retry-after': '15' } }, { status: 200, content: GOOD }]);
+  const reply = await service(BOTH, fetchImpl, time).recognize(ARGS);
+  assert.equal(reply.provider, 'cloudflare');
+  assert.equal(reply.items[0].menu, 'White rice');
+  assert.deepEqual(fetchImpl.calls.map((c) => c.url), [GROQ_URL, CF_URL]);
+  assert.equal(fetchImpl.calls[1].opts.headers.authorization, 'Bearer cf-token');
+  assert.deepEqual(time.slept, []);
+});
+
+test('backup: Groq down, refusing the key, or unreadable twice, Cloudflare is asked', async () => {
+  for (const groq of [[{ status: 503 }], [{ status: 401 }], [{ status: 200, content: 'oops' }, { status: 200, content: 'oops' }]]) {
+    const fetchImpl = fakeFetch([...groq, { status: 200, content: GOOD }]);
+    const reply = await service(BOTH, fetchImpl).recognize(ARGS);
+    assert.equal(reply.provider, 'cloudflare');
+    assert.deepEqual(fetchImpl.calls.map((c) => c.url), [...groq.map(() => GROQ_URL), CF_URL]);
+  }
+});
+
+test("backup: both busy, it waits out what is left of Groq's wait, then asks Groq once more", async () => {
+  const time = fakeTime();
+  const fetchImpl = fakeFetch([
+    { status: 429, headers: { 'retry-after': '10' } },
+    () => { time.clock += 2000; return response({ status: 429 }); },
+    { status: 200, content: GOOD },
+  ]);
+  const reply = await service(BOTH, fetchImpl, time).recognize(ARGS);
+  assert.equal(reply.provider, 'groq');
+  assert.deepEqual(fetchImpl.calls.map((c) => c.url), [GROQ_URL, CF_URL, GROQ_URL]);
+  assert.deepEqual(time.slept, [9000], "Groq's 10 s plus the 1 s margin, less the 2 s Cloudflare took");
+});
+
+test('backup: both busy and Groq still busy after the wait: busy, with no second wait', async () => {
+  const time = fakeTime();
+  const fetchImpl = fakeFetch([{ status: 429, headers: { 'retry-after': '3' } }, { status: 429 }, { status: 429, headers: { 'retry-after': '3' } }]);
+  await assert.rejects(service(BOTH, fetchImpl, time).recognize(ARGS),
+    (e) => e.code === 'VISION_BUSY' && e.backup?.code === 'VISION_BUSY');
+  assert.equal(fetchImpl.calls.length, 3);
+  assert.deepEqual(time.slept, [4000]);
+});
+
+test("backup: Groq's wait would not fit the 37-second budget: busy at once, carrying why Cloudflare failed", async () => {
+  const time = fakeTime();
+  const fetchImpl = fakeFetch([{ status: 429, headers: { 'retry-after': '32' } }, { status: 503 }]);
+  await assert.rejects(service(BOTH, fetchImpl, time).recognize(ARGS),
+    (e) => e.code === 'VISION_BUSY' && e.status === 429 && e.backup?.code === 'VISION_UNAVAILABLE' && e.backup.status === 503);
+  assert.equal(fetchImpl.calls.length, 2);
+  assert.deepEqual(time.slept, []);
+});
+
+test("backup: both down is Groq's failure, carrying Cloudflare's, and Groq is not asked again", async () => {
+  const fetchImpl = fakeFetch([{ status: 500 }, { status: 401 }]);
+  await assert.rejects(service(BOTH, fetchImpl).recognize(ARGS),
+    (e) => e.code === 'VISION_UNAVAILABLE' && e.status === 500 && e.backup?.status === 401);
+  assert.deepEqual(fetchImpl.calls.map((c) => c.url), [GROQ_URL, CF_URL]);
+});
+
+test('backup: Cloudflare is not asked with less than 5 seconds of the budget left', async () => {
+  const time = fakeTime();
+  const fetchImpl = fakeFetch([() => { time.clock += 33000; return response({ status: 503 }); }]);
+  await assert.rejects(service(BOTH, fetchImpl, time).recognize(ARGS), (e) => e.code === 'VISION_UNAVAILABLE' && e.status === 503);
+  assert.equal(fetchImpl.calls.length, 1);
+});
+
+test('backup: Groq and Cloudflare share the one 37-second budget', async () => {
+  const time = fakeTime();
+  const fetchImpl = fakeFetch([
+    { status: 429, headers: { 'retry-after': '25' } },
+    { status: 429 },
+    () => { time.clock += 7000; return response({ status: 200, content: 'oops' }); },
+    { status: 200, content: GOOD },
+  ]);
+  // 26 s waited, then 7 s for an unreadable reply: 33 s of 37 gone, too
+  // little to ask again. (A fresh 37 s after the wait would ask again.)
+  await assert.rejects(service(BOTH, fetchImpl, time).recognize(ARGS), (e) => e.code === 'VISION_UNAVAILABLE');
+  assert.equal(fetchImpl.calls.length, 3);
+  assert.deepEqual(time.slept, [26000]);
+});
+
+test('backup: cancelled while Groq is asked, Cloudflare is not asked', async () => {
+  const cancel = new AbortController();
+  const fetchImpl = fakeFetch([(opts) => new Promise((_, reject) => {
+    opts.signal.addEventListener('abort', () => reject(new Error('aborted')));
+    setTimeout(() => cancel.abort(), 10);
+  })]);
+  await assert.rejects(service(BOTH, fetchImpl).recognize({ ...ARGS, signal: cancel.signal }), (e) => e.code === 'VISION_CANCELLED');
+  assert.equal(fetchImpl.calls.length, 1);
+});
+
+test('backup: cancelled during the wait for Groq, nothing more is sent', async () => {
+  const time = fakeTime();
+  const cancel = new AbortController();
+  const sleep = async (ms, signal) => { time.slept.push(ms); cancel.abort(); if (signal?.aborted) throw new Error('aborted'); };
+  const fetchImpl = fakeFetch([{ status: 429, headers: { 'retry-after': '3' } }, { status: 429 }, { status: 200, content: GOOD }]);
+  await assert.rejects(createVisionService(BOTH, { fetchImpl, now: time.now, sleep }).recognize({ ...ARGS, signal: cancel.signal }),
+    (e) => e.code === 'VISION_CANCELLED');
+  assert.equal(fetchImpl.calls.length, 2);
+  assert.deepEqual(time.slept, [4000]);
 });

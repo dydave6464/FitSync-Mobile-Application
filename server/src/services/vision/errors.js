@@ -10,7 +10,9 @@
 /// model, 5xx), and [cause] the original error for a timeout or a network
 /// failure, so the route can log why without logging any reply body.
 /// [retryAfterMs] is how long Groq said to wait before asking again (its
-/// retry-after header on a 429), or null when it did not say.
+/// retry-after header on a 429), or null when it did not say. When the
+/// Cloudflare backup was asked too and failed, services/vision/fallback sets
+/// `backup` to its VisionError.
 class VisionError extends Error {
   constructor(code, { status = null, cause, retryAfterMs = null } = {}) {
     super(code, cause === undefined ? undefined : { cause });

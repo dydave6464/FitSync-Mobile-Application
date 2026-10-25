@@ -176,7 +176,16 @@ test('POST /nutrition/recognize', async (t) => {
     assert.ok(dead.includes('"code":"VISION_UNAVAILABLE"'));
     assert.ok(failed.some((l) => l.includes('"code":"VISION_BUSY"')), 'a busy failure is logged too');
     assert.ok(!captured.text().includes(b64(MARKED).slice(16, 80)), 'no log line holds the photo');
-    assert.deepEqual(await rowsOf(u.userId), ['failed', 'failed', 'failed', 'failed']);
+    // Groq busy and the Cloudflare backup refusing its token: both are logged.
+    answer = async () => {
+      const err = new VisionError('VISION_BUSY', { status: 429 });
+      err.backup = new VisionError('VISION_UNAVAILABLE', { status: 401 });
+      throw err;
+    };
+    assert.equal((await u.recognize(PHOTO).expect(503)).body.error.code, 'VISION_BUSY');
+    const both = captured.text().split('\n').filter((l) => l.includes('meal photo recognition failed')).at(-1);
+    assert.ok(both.includes('"status":429') && both.includes('"backupCode":"VISION_UNAVAILABLE"') && both.includes('"backupStatus":401'), both);
+    assert.deepEqual(await rowsOf(u.userId), ['failed', 'failed', 'failed', 'failed', 'failed']);
     answer = async () => ({ items: [] });
     assert.equal((await u.recognize(PHOTO).expect(200)).body.data.remainingToday, 14);
   });
@@ -209,7 +218,7 @@ test('POST /nutrition/recognize', async (t) => {
 
   await t.test('the photo is never stored or logged', async () => {
     const u = await freshUser({ pro: true });
-    answer = async () => ({ items: [{ menu: 'White rice', name: 'White rice', quantity: 1, unit: 'cup', grams: 160, confidence: 0.9, alternatives: [] }] });
+    answer = async () => ({ items: [{ menu: 'White rice', name: 'White rice', quantity: 1, unit: 'cup', grams: 160, confidence: 0.9, alternatives: [] }], provider: 'cloudflare' });
     await u.recognize({ image: b64(MARKED), mimeType: 'image/jpeg' }).expect(200);
     const needle = b64(MARKED).slice(16, 80);
     const [recs] = await pool.query('SELECT * FROM photo_recognitions WHERE user_id = ?', [u.userId]);
@@ -218,7 +227,9 @@ test('POST /nutrition/recognize', async (t) => {
       [u.userId],
     );
     assert.ok(!JSON.stringify([recs, items]).includes(needle), 'no row holds the photo');
-    assert.ok(captured.text().includes('meal photo recognised'), 'the request was logged');
+    const recognised = captured.text().split('\n').filter((l) => l.includes('meal photo recognised')).at(-1);
+    assert.ok(recognised, 'the request was logged');
+    assert.ok(recognised.includes('"provider":"cloudflare"'), 'with the service that answered');
     assert.ok(!captured.text().includes(needle), 'no log line holds the photo');
   });
 });

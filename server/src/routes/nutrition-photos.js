@@ -107,12 +107,19 @@ module.exports = function buildNutritionPhotosRouter(deps) {
         // The service's failure, not the user's: recorded, never counted.
         await insertFailed(pool, userId);
         // Codes only, never a message or a reply body: Groq's status tells a
-        // dead key (401) or a retired model (404) from a short outage.
+        // dead key (401) or a retired model (404) from a short outage. With
+        // the Cloudflare backup on, its failure is logged the same way.
         const isVision = err instanceof VisionError;
+        const backup = isVision ? err.backup : undefined;
         (req.log ?? deps.logger)?.warn({
           code: err?.code ?? null,
           status: err?.status ?? null,
           cause: isVision ? (err.cause?.name ?? null) : (err?.name ?? null),
+          ...(backup && {
+            backupCode: backup.code ?? null,
+            backupStatus: backup.status ?? null,
+            backupCause: backup.cause?.name ?? null,
+          }),
         }, 'meal photo recognition failed');
         if (isVision && err.code === 'VISION_BUSY') throw new AppError(503, 'VISION_BUSY', VISION_DOWN);
         throw new AppError(502, 'VISION_UNAVAILABLE', VISION_DOWN);
@@ -126,8 +133,13 @@ module.exports = function buildNutritionPhotosRouter(deps) {
         })),
         ...unlisted.map((u) => ({ foodId: null, name: u.name, confidence: u.confidence, servings: null, alternativeFoodIds: [] })),
       ]);
-      // Ids and counts only: never the photo, never the food names.
-      if (deps.logger) deps.logger.info({ recognitionId, items: items.length, unlisted: unlisted.length }, 'meal photo recognised');
+      // Ids and counts only: never the photo, never the food names. The
+      // provider (groq or cloudflare) shows how often the backup answers.
+      if (deps.logger) {
+        deps.logger.info({
+          recognitionId, items: items.length, unlisted: unlisted.length, provider: reply.provider ?? null,
+        }, 'meal photo recognised');
+      }
       res.json({
         data: {
           recognitionId,

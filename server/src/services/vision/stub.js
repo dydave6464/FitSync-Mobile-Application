@@ -25,7 +25,7 @@ async function recognize({ menuNames }) {
     menu: null, name: 'Stub side dish (not on the menu)', quantity: 1, unit: 'tbsp', grams: 15, confidence: 0.4,
     alternatives: [],
   });
-  return { items };
+  return { items, provider: MODEL };
 }
 
 module.exports = { recognize, model: MODEL };

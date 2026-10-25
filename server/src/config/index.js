@@ -95,6 +95,13 @@ function load(env = process.env) {
       mode: env.VISION_MODE || 'stub',
       apiKey: env.GROQ_API_KEY || null,
       model: env.VISION_MODEL || null,
+      // The same model on Cloudflare Workers AI: Groq's automatic backup
+      // when both are set (VISION_MODE=groq), or the only recogniser
+      // (VISION_MODE=cloudflare). The token needs Workers AI Read and Edit.
+      cloudflare: {
+        accountId: env.CLOUDFLARE_ACCOUNT_ID || null,
+        apiToken: env.CLOUDFLARE_API_TOKEN || null,
+      },
     },
     fatsecret: {
       // FatSecret's OAuth 2.0 Client ID and Secret are the consumer key and
