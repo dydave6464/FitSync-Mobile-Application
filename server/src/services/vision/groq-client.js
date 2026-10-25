@@ -29,8 +29,16 @@ function create({ apiKey, model = DEFAULT_MODEL, fetchImpl = fetch, timeoutMs = 
         body,
       });
       // A 429 is the free plan working as documented: busy, not broken.
-      if (res.status === 429) throw new VisionError('VISION_BUSY');
-      if (!res.ok) throw new VisionError('VISION_UNAVAILABLE');
+      if (res.status === 429) throw new VisionError('VISION_BUSY', { status: 429 });
+      if (res.status === 400) {
+        // JSON mode answers a reply it could not make valid JSON (often one
+        // cut off at max_tokens) with a 400 json_validate_failed: the
+        // unreadable reply that earns one retry. Its failed_generation is
+        // never logged or kept.
+        const err = await res.json().catch(() => null);
+        if (err?.error?.code === 'json_validate_failed') return null;
+      }
+      if (!res.ok) throw new VisionError('VISION_UNAVAILABLE', { status: res.status });
       const json = await res.json();
       const choice = json?.choices?.[0];
       // Cut off at the token limit: a list that may be missing items.
@@ -39,7 +47,7 @@ function create({ apiKey, model = DEFAULT_MODEL, fetchImpl = fetch, timeoutMs = 
     } catch (err) {
       if (err instanceof VisionError) throw err;
       // Timeout, abort, DNS, a malformed envelope: one answer for all.
-      throw new VisionError('VISION_UNAVAILABLE');
+      throw new VisionError('VISION_UNAVAILABLE', { cause: err });
     } finally {
       clearTimeout(timer);
     }

@@ -68,7 +68,9 @@ function fakeFetch(replies) {
     return {
       ok: r.status >= 200 && r.status < 300,
       status: r.status,
-      json: async () => ({ choices: [{ finish_reason: r.finish ?? 'stop', message: { content: r.content } }] }),
+      json: async () => r.error
+        ? { error: r.error }
+        : { choices: [{ finish_reason: r.finish ?? 'stop', message: { content: r.content } }] },
     };
   };
   fn.calls = calls;
@@ -109,18 +111,47 @@ test('groq: an unreadable reply is asked once more; a second one fails', async (
   assert.equal(twice.calls.length, 2);
 });
 
+// Groq's JSON mode answers a reply it could not make valid JSON with a 400
+// json_validate_failed instead of a 200: that is the unreadable reply too.
+const JSON_FAILED = { status: 400, error: { code: 'json_validate_failed', message: 'Failed to generate JSON', failed_generation: '{"items": [' } };
+
+test('groq: a json_validate_failed 400 is asked once more; a second one fails', async () => {
+  const retried = fakeFetch([JSON_FAILED, { status: 200, content: GOOD }]);
+  assert.equal((await groqClient.create({ apiKey: 'k', fetchImpl: retried }).recognize(ARGS)).items.length, 1);
+  assert.equal(retried.calls.length, 2);
+
+  const twice = fakeFetch([JSON_FAILED, JSON_FAILED]);
+  await assert.rejects(groqClient.create({ apiKey: 'k', fetchImpl: twice }).recognize(ARGS),
+    (e) => e instanceof VisionError && e.code === 'VISION_UNAVAILABLE' && !String(e.message).includes('items'));
+  assert.equal(twice.calls.length, 2);
+});
+
+test('groq: other 4xx replies are unavailable, not retried, and keep their status', async () => {
+  for (const r of [
+    { status: 400, error: { code: 'model_decommissioned', message: 'gone' } },
+    { status: 401, error: { code: 'invalid_api_key', message: 'bad key' } },
+    { status: 404, error: { code: 'model_not_found', message: 'gone' } },
+  ]) {
+    const f = fakeFetch([r]);
+    await assert.rejects(groqClient.create({ apiKey: 'k', fetchImpl: f }).recognize(ARGS),
+      (e) => e instanceof VisionError && e.code === 'VISION_UNAVAILABLE' && e.status === r.status);
+    assert.equal(f.calls.length, 1, `a ${r.status} is not retried`);
+  }
+});
+
 test('groq: 429 is busy, 5xx and timeouts are unavailable, and neither is retried', async () => {
   const busy = fakeFetch([{ status: 429, content: '' }]);
   await assert.rejects(groqClient.create({ apiKey: 'k', fetchImpl: busy }).recognize(ARGS), (e) => e.code === 'VISION_BUSY');
   assert.equal(busy.calls.length, 1);
 
   const down = fakeFetch([{ status: 503, content: '' }]);
-  await assert.rejects(groqClient.create({ apiKey: 'k', fetchImpl: down }).recognize(ARGS), (e) => e.code === 'VISION_UNAVAILABLE');
+  await assert.rejects(groqClient.create({ apiKey: 'k', fetchImpl: down }).recognize(ARGS), (e) => e.code === 'VISION_UNAVAILABLE' && e.status === 503);
   assert.equal(down.calls.length, 1);
 
   const slow = fakeFetch([(opts) => new Promise((_, reject) => {
     opts.signal.addEventListener('abort', () => reject(new Error('aborted')));
   })]);
-  await assert.rejects(groqClient.create({ apiKey: 'k', fetchImpl: slow, timeoutMs: 20 }).recognize(ARGS), (e) => e.code === 'VISION_UNAVAILABLE');
+  await assert.rejects(groqClient.create({ apiKey: 'k', fetchImpl: slow, timeoutMs: 20 }).recognize(ARGS),
+    (e) => e.code === 'VISION_UNAVAILABLE' && e.status === null && e.cause?.message === 'aborted');
   assert.equal(slow.calls.length, 1);
 });
