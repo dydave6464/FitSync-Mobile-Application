@@ -43,7 +43,8 @@ void main() {
   testWidgets('opens on the query, already searched, as "Choose a food" with no meal to pick', (tester) async {
     final h = await _pump(tester, query: 'Atchara');
     expect(find.text('Choose a food'), findsOneWidget);
-    expect(find.text('Adding to'), findsNothing);
+    expect(find.text('ADDING TO'), findsNothing);
+    expect(find.text('Lunch'), findsNothing);
     expect(h.repo.queries, ['Atchara']);
     expect(find.text('Atchara (pickled green papaya)'), findsOneWidget);
   });
