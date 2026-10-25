@@ -10,6 +10,7 @@ import 'package:fitsync/features/nutrition/data/meal_photo_repository.dart';
 import 'package:fitsync/features/nutrition/domain/meal_photo.dart';
 import 'package:fitsync/features/nutrition/domain/nutrition.dart';
 import 'package:fitsync/features/nutrition/presentation/log_food_screen.dart';
+import 'package:fitsync/features/nutrition/presentation/meal_photo/meal_photo_screen.dart';
 import 'package:fitsync/features/nutrition/presentation/meal_photo/providers.dart';
 import 'package:fitsync/features/nutrition/presentation/nutrition_screen.dart';
 import 'package:fitsync/features/nutrition/presentation/providers.dart';
@@ -196,6 +197,29 @@ void main() {
     expect(find.text('go'), findsOneWidget);
   });
 
+  testWidgets('Search instead goes back to Log food with the meal the photo screen had', (tester) async {
+    await _pump(tester, home: Builder(builder: (context) => Scaffold(body: TextButton(
+      onPressed: () => Navigator.of(context).push(MaterialPageRoute<void>(builder: (_) => const LogFoodScreen(mealType: 'lunch'))),
+      child: const Text('go'),
+    ))));
+    await tester.tap(find.text('go'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const Key('food.snap')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const Key('snap.camera')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const Key('snap.meal.dinner')));
+    await tester.pumpAndSettle();
+    // Called as the photo screen's Search instead calls it, with the meal it
+    // holds: Log food is right behind it.
+    final screen = find.byType(MealPhotoScreen);
+    tester.widget<MealPhotoScreen>(screen).onSearchInstead(tester.element(screen), 'dinner');
+    await tester.pumpAndSettle();
+    expect(find.byType(MealPhotoScreen), findsNothing);
+    expect(find.text('Log food'), findsOneWidget);
+    expect(find.descendant(of: find.byKey(const Key('log.meal')), matching: find.text('Dinner')), findsOneWidget);
+  });
+
   testWidgets('choosing a food for a photo offers no second Snap a meal', (tester) async {
     await _pump(tester, home: Builder(builder: (context) => Scaffold(body: TextButton(
       onPressed: () => pickFood(context, mealType: 'lunch'),
@@ -207,14 +231,18 @@ void main() {
     expect(find.byKey(const Key('food.manual')), findsOneWidget);
   });
 
-  for (final (width, scale, labelled) in [(420.0, 1.0, true), (320.0, 1.0, false), (420.0, 2.0, false)]) {
+  // The harness font draws every letter 1 em wide, so the labelled pill
+  // measures whole only on a wide screen here; the real fonts' widths are
+  // checked in log_food_real_font_test.dart.
+  for (final (width, scale, labelled) in [(560.0, 1.0, true), (320.0, 1.0, false), (420.0, 2.0, false)]) {
     testWidgets('Log food\'s bar at ${width.toInt()} dp, ${scale}x: one row, ${labelled ? 'labelled' : 'a camera button'}', (tester) async {
       final handle = tester.ensureSemantics();
       await _pump(tester, home: const LogFoodScreen(mealType: 'lunch'), size: Size(width, 800), scale: scale);
       expect(tester.takeException(), isNull);
       final snap = tester.getRect(find.byKey(const Key('food.snap')));
       final manual = tester.getRect(find.byKey(const Key('food.manual')));
-      expect(snap.top, manual.top, reason: 'one row, never stacked');
+      // Add manually may wrap to two lines beside the camera button.
+      expect(snap.center.dy, manual.center.dy, reason: 'one row, never stacked');
       expect(snap.height, greaterThanOrEqualTo(48));
       expect(snap.width >= 48, isTrue);
       expect(find.descendant(of: find.byKey(const Key('food.snap')), matching: find.text('Snap a meal')), labelled ? findsOneWidget : findsNothing);

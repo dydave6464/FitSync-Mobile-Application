@@ -155,8 +155,12 @@ class _LogFoodScreenState extends ConsumerState<LogFoodScreen> {
       ref,
       mealType: _meal,
       date: ref.read(nutritionDayProvider).value?.date,
-      // Log food is right behind the photo screen: going back is the search.
-      onSearchInstead: (photoContext, _) => Navigator.of(photoContext).pop(false),
+      // Log food is right behind the photo screen: going back is the search,
+      // for the meal the photo screen had.
+      onSearchInstead: (photoContext, meal) {
+        if (mounted) setState(() => _meal = meal);
+        Navigator.of(photoContext).pop(false);
+      },
     );
     if (logged && mounted) Navigator.of(context).pop();
   }
@@ -170,20 +174,32 @@ class _LogFoodScreenState extends ConsumerState<LogFoodScreen> {
       bottomNavigationBar: SafeArea(
         minimum: const EdgeInsets.fromLTRB(20, 0, 20, 16),
         child: Builder(builder: (context) {
-          final manual = FsButton(
+          FsButton manual({bool wrapLabel = false}) => FsButton(
             key: const Key('food.manual'),
             label: 'Add manually',
             kind: FsButtonKind.secondary,
             onPressed: _manual,
+            wrapLabel: wrapLabel,
           );
           // Choosing a food for a photo: no second photo from here.
-          if (widget.pick) return manual;
+          if (widget.pick) return manual();
           return LayoutBuilder(builder: (context, box) {
             // One row at every size: on a small phone at large text the
             // suggested foods above must still show without scrolling. The
-            // labelled pill only where both labels fit whole (Snap a meal
-            // first, as the prototype orders them); otherwise a camera button.
-            final roomy = box.maxWidth >= 340 && MediaQuery.textScalerOf(context).scale(1) <= 1.1;
+            // labelled pill only where both labels measure whole (Snap a
+            // meal first, as the prototype orders them); otherwise a camera
+            // button, and Add manually may wrap to two lines rather than be
+            // cut short -- but only when "manually" fits a line of its own:
+            // a word broken over three lines is no more whole than "Add
+            // manua…", and the taller bar would push the foods off screen.
+            // Add manually is an FsButton: 20 px padding each side of 15 w700
+            // text with -0.15 letter spacing.
+            const manualStyle = TextStyle(fontSize: 15, fontWeight: FontWeight.w700, letterSpacing: -0.15);
+            final style = Theme.of(context).textTheme.bodyMedium?.merge(manualStyle) ?? manualStyle;
+            final manualWidth = 20 + measureTextWidth(context, 'Add manually', style) + 20;
+            final roomy = SnapMealButton.labelledWidth(context) + 10 + manualWidth <= box.maxWidth;
+            // Beside the 52 dp camera button and the 10 dp gap.
+            final wrap = !roomy && 20 + measureTextWidth(context, 'manually', style) + 20 <= box.maxWidth - 52 - 10;
             return Row(
               children: [
                 if (roomy)
@@ -191,7 +207,7 @@ class _LogFoodScreenState extends ConsumerState<LogFoodScreen> {
                 else
                   SnapMealButton(key: const Key('food.snap'), onTap: _snap, compact: true),
                 const SizedBox(width: 10),
-                if (roomy) manual else Expanded(child: manual),
+                if (roomy) manual() else Expanded(child: manual(wrapLabel: wrap)),
               ],
             );
           });

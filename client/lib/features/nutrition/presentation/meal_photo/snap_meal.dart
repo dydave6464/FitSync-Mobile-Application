@@ -144,6 +144,21 @@ class SnapMealButton extends StatelessWidget {
   final VoidCallback onTap;
   final bool compact;
 
+  static const _label = 'Snap a meal';
+  static const _labelStyle = TextStyle(fontSize: 15, fontWeight: FontWeight.w700);
+
+  /// The width the labelled pill needs to show "Snap a meal" and its Pro tag
+  /// whole, measured with the real text styles and the user's text size:
+  /// padding 16, icon 18, gap 8, label, gap 8, tag, padding 16. The tag is
+  /// [FsTag]: 10.5 w600 text in 8 px padding and a 1 px border each side.
+  static double labelledWidth(BuildContext context) {
+    final base = Theme.of(context).textTheme.bodyMedium;
+    final label = measureTextWidth(context, _label, base?.merge(_labelStyle) ?? _labelStyle);
+    const tagStyle = TextStyle(fontSize: 10.5, fontWeight: FontWeight.w600);
+    final tag = measureTextWidth(context, 'Pro', base?.merge(tagStyle) ?? tagStyle) + 8 * 2 + 1 * 2;
+    return 16 + 18 + 8 + label + 8 + tag + 16;
+  }
+
   @override
   Widget build(BuildContext context) {
     final t = context.fs;
@@ -169,10 +184,10 @@ class SnapMealButton extends StatelessWidget {
                       const SizedBox(width: 8),
                       Flexible(
                         child: Text(
-                          'Snap a meal',
+                          _label,
                           maxLines: 1,
                           overflow: TextOverflow.ellipsis,
-                          style: TextStyle(fontSize: 15, fontWeight: FontWeight.w700, color: t.text),
+                          style: _labelStyle.copyWith(color: t.text),
                         ),
                       ),
                       const SizedBox(width: 8),
@@ -193,4 +208,18 @@ class SnapMealButton extends StatelessWidget {
       child: compact ? Tooltip(message: 'Snap a meal (Pro)', child: button) : button,
     );
   }
+}
+
+/// How wide [text] is drawn on one line in [style] at the user's text size,
+/// rounded up to a whole pixel so a measured fit is never short by a hair.
+double measureTextWidth(BuildContext context, String text, TextStyle style) {
+  final painter = TextPainter(
+    text: TextSpan(text: text, style: style),
+    textDirection: Directionality.of(context),
+    textScaler: MediaQuery.textScalerOf(context),
+    maxLines: 1,
+  )..layout();
+  final width = painter.width.ceilToDouble();
+  painter.dispose();
+  return width;
 }
