@@ -64,6 +64,10 @@ dev_dependencies:
   # package. See that file for information about deactivating specific lint
   # rules and activating additional ones.
   flutter_lints: ^6.0.0
+  # Tests only: a stand-in for image_picker's platform side, so the meal photo
+  # picker's request (size, quality) and its temp-file cleanup can be checked.
+  image_picker_platform_interface: ^2.11.2
+  plugin_platform_interface: ^2.1.8
 
 # For information on the generic Dart part of this file, see the
 # following page: https://dart.dev/tools/pub/pubspec
