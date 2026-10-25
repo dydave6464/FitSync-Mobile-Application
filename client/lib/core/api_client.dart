@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 
 import 'package:http/http.dart' as http;
@@ -129,16 +130,15 @@ class ApiClient {
 
     final http.Response response;
     try {
-      response = await (abortTrigger != null
-              ? _sendAbortable(method, uri, headers, encoded, abortTrigger)
-              : switch (method) {
-                  'POST' => _client.post(uri, headers: headers, body: encoded),
-                  'PATCH' => _client.patch(uri, headers: headers, body: encoded),
-                  'PUT' => _client.put(uri, headers: headers, body: encoded),
-                  'DELETE' => _client.delete(uri, headers: headers, body: encoded),
-                  _ => throw ArgumentError('Unsupported method: $method'),
-                })
-          .timeout(timeout ?? _timeout);
+      response = abortTrigger != null
+          ? await _sendAbortable(method, uri, headers, encoded, abortTrigger, timeout ?? _timeout)
+          : await switch (method) {
+              'POST' => _client.post(uri, headers: headers, body: encoded),
+              'PATCH' => _client.patch(uri, headers: headers, body: encoded),
+              'PUT' => _client.put(uri, headers: headers, body: encoded),
+              'DELETE' => _client.delete(uri, headers: headers, body: encoded),
+              _ => throw ArgumentError('Unsupported method: $method'),
+            }.timeout(timeout ?? _timeout);
     } on http.RequestAbortedException {
       throw const ApiException('CANCELLED', 'The request was cancelled.');
     } catch (_) {
@@ -147,19 +147,39 @@ class ApiClient {
     return _unwrap(response);
   }
 
-  /// A request that ends when [abortTrigger] completes, closing its
-  /// connection, so the server can stop work nobody is waiting for any more.
+  /// A request that is dropped -- its connection closed, so the server can
+  /// stop work nobody is waiting for any more -- when [abortTrigger]
+  /// completes (throws [http.RequestAbortedException]) or when [timeout]
+  /// passes (throws [TimeoutException]). A plain Future.timeout would stop
+  /// waiting but leave the connection, and the server's work, running.
   Future<http.Response> _sendAbortable(
     String method,
     Uri uri,
     Map<String, String> headers,
     String body,
     Future<void> abortTrigger,
+    Duration timeout,
   ) async {
-    final request = http.AbortableRequest(method, uri, abortTrigger: abortTrigger)
+    final stop = Completer<void>();
+    var timedOut = false;
+    final timer = Timer(timeout, () {
+      timedOut = true;
+      if (!stop.isCompleted) stop.complete();
+    });
+    unawaited(abortTrigger.then((_) {
+      if (!stop.isCompleted) stop.complete();
+    }));
+    final request = http.AbortableRequest(method, uri, abortTrigger: stop.future)
       ..headers.addAll(headers)
       ..body = body;
-    return http.Response.fromStream(await _client.send(request));
+    try {
+      return await http.Response.fromStream(await _client.send(request));
+    } on http.RequestAbortedException {
+      if (timedOut) throw TimeoutException('No answer within $timeout', timeout);
+      rethrow;
+    } finally {
+      timer.cancel();
+    }
   }
 
   /// [timeout] replaces the usual 10 seconds for a request known to take

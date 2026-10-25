@@ -63,6 +63,23 @@ void main() {
     await hungUp.future.timeout(const Duration(seconds: 2));
   });
 
+  test('its own timeout hangs up too, and reads as no connection', () async {
+    answer = false;
+    final call = api.postJson(
+      '/x',
+      const {'a': 1},
+      timeout: const Duration(milliseconds: 200),
+      abortTrigger: Completer<void>().future,
+    );
+    await expectLater(
+      call,
+      throwsA(
+        isA<ApiException>().having((e) => e.code, 'code', 'NETWORK_ERROR'),
+      ),
+    );
+    await hungUp.future.timeout(const Duration(seconds: 2));
+  });
+
   test(
     'with an abort trigger that never fires, the call answers as usual',
     () async {

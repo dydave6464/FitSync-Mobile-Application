@@ -120,6 +120,9 @@ class _MealPhotoScreenState extends ConsumerState<MealPhotoScreen> {
 
   Future<void> _recognize() async {
     final attempt = ++_attempt;
+    // An earlier attempt's request is dropped, if it is somehow still open.
+    final previous = _cancel;
+    if (previous != null && !previous.isCompleted) previous.complete();
     final cancel = _cancel = Completer<void>();
     try {
       final r = await ref.read(mealPhotoRepositoryProvider).recognize(_photo.bytes, _photo.mimeType, cancel: cancel.future);
