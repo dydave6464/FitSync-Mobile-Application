@@ -75,8 +75,9 @@ module.exports = function buildNutritionPhotosRouter(deps) {
   );
 
   router.post('/recognize', auth, requirePro, async (req, res, next) => {
-    // The app may stop waiting -- Cancel or back -- while the recogniser
-    // waits out Groq's busy reply. Then nothing more is sent to Groq and
+    // The app may stop waiting -- Cancel, back, or its own 45 s timeout, each
+    // of which closes the connection -- while the recogniser waits out Groq's
+    // busy reply. Then nothing more is sent to Groq and
     // nothing is recorded: nobody will see the answer, and it must not cost
     // the user one of today's photos. Listening from the start, and checking
     // res.destroyed, also catches a hang-up during the checks below.

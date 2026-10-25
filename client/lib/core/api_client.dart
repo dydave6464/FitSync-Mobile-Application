@@ -130,8 +130,11 @@ class ApiClient {
 
     final http.Response response;
     try {
+      // The outer timeout bounds everything, connection setup included; the
+      // abortable request's own timer is what hangs up so the server stops.
       response = abortTrigger != null
           ? await _sendAbortable(method, uri, headers, encoded, abortTrigger, timeout ?? _timeout)
+              .timeout(timeout ?? _timeout)
           : await switch (method) {
               'POST' => _client.post(uri, headers: headers, body: encoded),
               'PATCH' => _client.patch(uri, headers: headers, body: encoded),
@@ -183,9 +186,10 @@ class ApiClient {
   }
 
   /// [timeout] replaces the usual 10 seconds for a request known to take
-  /// longer: Snap a meal waits for the AI. When [abortTrigger] completes, the
-  /// request is dropped (its connection closed) and this throws an
-  /// [ApiException] with code CANCELLED.
+  /// longer: Snap a meal waits for the AI. With an [abortTrigger], the
+  /// request is dropped (its connection closed, so the server stops) when the
+  /// trigger completes -- this then throws an [ApiException] with code
+  /// CANCELLED -- or when [timeout] passes (NETWORK_ERROR, as without one).
   Future<Map<String, dynamic>> postJson(
     String path,
     Map<String, dynamic> body, {

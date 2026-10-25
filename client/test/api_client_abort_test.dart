@@ -89,4 +89,43 @@ void main() {
       expect(data, {'ok': true});
     },
   );
+
+  test(
+    'a connection that never finishes setting up still ends at the timeout',
+    () async {
+      // Accepts the TCP connection but never answers the TLS handshake, so the
+      // request never even starts: only an outer limit can end the wait.
+      final silent = await ServerSocket.bind(InternetAddress.loopbackIPv4, 0);
+      final held = <Socket>[];
+      silent.listen(held.add);
+      addTearDown(() async {
+        for (final s in held) {
+          s.destroy();
+        }
+        await silent.close();
+      });
+      final tls = ApiClient(
+        baseUrl: 'https://127.0.0.1:${silent.port}',
+        tokens: TokenStore(backing: InMemorySecureStore()),
+      );
+      final started = DateTime.now();
+      await expectLater(
+        tls
+            .postJson(
+              '/x',
+              const {'a': 1},
+              timeout: const Duration(milliseconds: 200),
+              abortTrigger: Completer<void>().future,
+            )
+            .timeout(const Duration(seconds: 3)),
+        throwsA(
+          isA<ApiException>().having((e) => e.code, 'code', 'NETWORK_ERROR'),
+        ),
+      );
+      expect(
+        DateTime.now().difference(started),
+        lessThan(const Duration(seconds: 2)),
+      );
+    },
+  );
 }
