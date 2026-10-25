@@ -20,7 +20,7 @@ const foodSearchDebounce = Duration(milliseconds: 300);
 const _maxQuery = 60;
 
 class LogFoodScreen extends ConsumerStatefulWidget {
-  const LogFoodScreen({super.key, required this.mealType, this.onLogged});
+  const LogFoodScreen({super.key, required this.mealType, this.onLogged, this.pick = false, this.initialQuery});
 
   final String mealType;
 
@@ -28,9 +28,25 @@ class LogFoodScreen extends ConsumerStatefulWidget {
   /// with the day it went to, after this screen has closed.
   final void Function(FoodEntry entry, String date)? onLogged;
 
+  /// Choosing, not logging: the chosen food (per serving) is popped back to
+  /// the caller and nothing is saved. Snap a meal's confirm screen uses it.
+  final bool pick;
+
+  /// Typed into the search box and searched at once.
+  final String? initialQuery;
+
   @override
   ConsumerState<LogFoodScreen> createState() => _LogFoodScreenState();
 }
+
+/// Opens Log food to choose a food rather than log it. The chosen food (a
+/// FitSync, FatSecret or manual one, per serving) comes back, or null. Snap a
+/// meal's Search and "+ Add an item" use it; [query] is typed in and searched
+/// at once.
+Future<Food?> pickFood(BuildContext context, {required String mealType, String? query}) =>
+    Navigator.of(context).push<Food>(MaterialPageRoute(
+      builder: (_) => LogFoodScreen(mealType: mealType, pick: true, initialQuery: query),
+    ));
 
 class _LogFoodScreenState extends ConsumerState<LogFoodScreen> {
   final _search = TextEditingController();
@@ -42,6 +58,17 @@ class _LogFoodScreenState extends ConsumerState<LogFoodScreen> {
   /// shown at the top and changeable before anything is searched. It used
   /// to be fixed in the title and changeable only in the last step.
   late String _meal = widget.mealType;
+
+  @override
+  void initState() {
+    super.initState();
+    final q = widget.initialQuery?.trim() ?? '';
+    if (q.isNotEmpty) {
+      final clipped = q.length > _maxQuery ? q.substring(0, _maxQuery).trim() : q;
+      _search.text = clipped;
+      _query = clipped;
+    }
+  }
 
   @override
   void dispose() {
@@ -84,6 +111,10 @@ class _LogFoodScreenState extends ConsumerState<LogFoodScreen> {
       }
       if (!mounted) return;
     }
+    if (widget.pick) {
+      Navigator.of(context).pop(food);
+      return;
+    }
     final choice = await showLogFoodSheet(context, food, mealType: _meal);
     if (choice == null || !mounted) return;
     final messenger = ScaffoldMessenger.of(context);
@@ -104,6 +135,13 @@ class _LogFoodScreenState extends ConsumerState<LogFoodScreen> {
   }
 
   Future<void> _manual() async {
+    if (widget.pick) {
+      final food = await Navigator.of(context).push<Food>(MaterialPageRoute(
+        builder: (_) => AddFoodManuallyScreen(mealType: _meal, pick: true),
+      ));
+      if (food != null && mounted) Navigator.of(context).pop(food);
+      return;
+    }
     final logged = await Navigator.of(context).push<bool>(MaterialPageRoute(
       builder: (_) => AddFoodManuallyScreen(mealType: _meal, onLogged: widget.onLogged),
     ));
@@ -115,7 +153,7 @@ class _LogFoodScreenState extends ConsumerState<LogFoodScreen> {
     final t = context.fs;
     return Scaffold(
       backgroundColor: t.bg,
-      appBar: AppBar(title: const Text('Log food')),
+      appBar: AppBar(title: Text(widget.pick ? 'Choose a food' : 'Log food')),
       bottomNavigationBar: SafeArea(
         minimum: const EdgeInsets.fromLTRB(20, 0, 20, 16),
         child: FsButton(
@@ -133,7 +171,8 @@ class _LogFoodScreenState extends ConsumerState<LogFoodScreen> {
           // off the screen. Changing it is rare -- it arrives pre-picked. A
           // Wrap, so at very large text the pill drops under its label
           // rather than cutting "Breakfast" short; heard as one button.
-          Padding(
+          // Not when choosing: the meal is chosen on the confirm screen.
+          if (!widget.pick) Padding(
             padding: const EdgeInsets.fromLTRB(20, 4, 20, 0),
             child: Align(
               alignment: Alignment.centerLeft,
