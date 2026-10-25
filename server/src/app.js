@@ -53,6 +53,10 @@ function createApp({
   app.use(cors());
   app.use(requestId);
   app.use(pinoHttp({ logger, genReqId: (req) => req.id, serializers: { req: reqSerializer } }));
+  // Snap a meal's photo arrives as base64 in JSON: 1.5 MB of photo is 2 MB
+  // encoded, past the 1 MB every other route allows. Parsed here first, so
+  // the general parser below leaves it alone (a parsed body is skipped).
+  app.use('/api/v1/nutrition/recognize', express.json({ limit: '2mb' }));
   app.use(express.json({ limit: '1mb' }));
 
   app.use((req, _res, next) => {

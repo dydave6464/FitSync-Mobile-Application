@@ -120,6 +120,13 @@ async function findOrCreateGoogleUser(pool, identity) {
   return { user: await findUserById(pool, result.insertId), isNew: true };
 }
 
+/// Marks [userId] Pro or not -- `npm run pro:grant`; nobody can buy Pro yet.
+/// True when the user exists (already in that state included).
+async function setPremium(pool, userId, isPremium) {
+  const [res] = await pool.query('UPDATE users SET is_premium = ? WHERE user_id = ?', [isPremium, userId]);
+  return res.affectedRows === 1;
+}
+
 module.exports = {
   findUserByEmail,
   findUserById,
@@ -127,4 +134,5 @@ module.exports = {
   findOrCreateGoogleUser,
   markEmailVerified,
   updatePasswordHash,
+  setPremium,
 };
