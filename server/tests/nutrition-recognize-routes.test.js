@@ -167,7 +167,16 @@ test('POST /nutrition/recognize', async (t) => {
     assert.equal((await u.recognize(PHOTO).expect(502)).body.error.code, 'VISION_UNAVAILABLE');
     answer = async () => { throw new Error('boom'); };
     assert.equal((await u.recognize(PHOTO).expect(502)).body.error.code, 'VISION_UNAVAILABLE');
-    assert.deepEqual(await rowsOf(u.userId), ['failed', 'failed', 'failed']);
+    // A dead key (401) is logged by its status, so it can be told from an outage.
+    answer = async () => { throw new VisionError('VISION_UNAVAILABLE', { status: 401 }); };
+    assert.equal((await u.recognize({ image: b64(MARKED), mimeType: 'image/jpeg' }).expect(502)).body.error.code, 'VISION_UNAVAILABLE');
+    const failed = captured.text().split('\n').filter((l) => l.includes('meal photo recognition failed'));
+    const dead = failed.find((l) => l.includes('"status":401'));
+    assert.ok(dead, 'the 401 is logged with its status');
+    assert.ok(dead.includes('"code":"VISION_UNAVAILABLE"'));
+    assert.ok(failed.some((l) => l.includes('"code":"VISION_BUSY"')), 'a busy failure is logged too');
+    assert.ok(!captured.text().includes(b64(MARKED).slice(16, 80)), 'no log line holds the photo');
+    assert.deepEqual(await rowsOf(u.userId), ['failed', 'failed', 'failed', 'failed']);
     answer = async () => ({ items: [] });
     assert.equal((await u.recognize(PHOTO).expect(200)).body.data.remainingToday, 14);
   });

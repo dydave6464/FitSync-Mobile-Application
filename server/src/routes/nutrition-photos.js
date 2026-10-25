@@ -85,8 +85,15 @@ module.exports = function buildNutritionPhotosRouter(deps) {
       } catch (err) {
         // The service's failure, not the user's: recorded, never counted.
         await insertFailed(pool, userId);
-        if (err instanceof VisionError && err.code === 'VISION_BUSY') throw new AppError(503, 'VISION_BUSY', VISION_DOWN);
-        if (!(err instanceof VisionError) && deps.logger) deps.logger.warn({ err: err.message }, 'meal photo recognition failed');
+        // Codes only, never a message or a reply body: Groq's status tells a
+        // dead key (401) or a retired model (404) from a short outage.
+        const isVision = err instanceof VisionError;
+        (req.log ?? deps.logger)?.warn({
+          code: err?.code ?? null,
+          status: err?.status ?? null,
+          cause: isVision ? (err.cause?.name ?? null) : (err?.name ?? null),
+        }, 'meal photo recognition failed');
+        if (isVision && err.code === 'VISION_BUSY') throw new AppError(503, 'VISION_BUSY', VISION_DOWN);
         throw new AppError(502, 'VISION_UNAVAILABLE', VISION_DOWN);
       }
       const { items, unlisted } = matchItems(reply.items, foods);
