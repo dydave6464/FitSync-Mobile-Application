@@ -262,11 +262,16 @@ class _MealPhotoScreenState extends ConsumerState<MealPhotoScreen> {
           padding: EdgeInsets.zero,
           children: [
             _PhotoHeader(photo: _photo, onBack: () => Navigator.of(context).maybePop()),
-            switch (_phase) {
-              _Phase.analysing => _analysing(context),
-              _Phase.failed => _failed(context),
-              _Phase.confirm => _confirm(context),
-            },
+            // Mid-log the list is frozen: what is sent is what the user sees,
+            // and no search can open over the screen that is about to close.
+            AbsorbPointer(
+              absorbing: _logging,
+              child: switch (_phase) {
+                _Phase.analysing => _analysing(context),
+                _Phase.failed => _failed(context),
+                _Phase.confirm => _confirm(context),
+              },
+            ),
           ],
         ),
       ),

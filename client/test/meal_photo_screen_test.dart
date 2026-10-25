@@ -42,6 +42,7 @@ class _PhotoRepo implements MealPhotoRepository {
   Completer<PhotoRecognition>? gate;
   int recognizeCalls = 0;
   Object? logError;
+  Completer<void>? logGate;
   final logs = <({int recognitionId, String date, String mealType, List<PhotoLogItem> items})>[];
 
   @override
@@ -55,6 +56,7 @@ class _PhotoRepo implements MealPhotoRepository {
   @override
   Future<int> log({required int recognitionId, required String date, required String mealType, required List<PhotoLogItem> items}) async {
     logs.add((recognitionId: recognitionId, date: date, mealType: mealType, items: items));
+    if (logGate != null) await logGate!.future;
     if (logError != null) throw logError!;
     return items.length;
   }
@@ -217,6 +219,21 @@ void main() {
     ]);
     expect(h.result, isTrue);
     expect(find.text('Logged 2 items to dinner'), findsOneWidget);
+  });
+
+  testWidgets('while Log is sending, the list can\'t be changed and no search opens over it', (tester) async {
+    final h = _Harness()..repo.logGate = Completer();
+    await _open(tester, h: h);
+    await tester.tap(find.byKey(const Key('snap.log')));
+    await tester.pump();
+    await tester.tap(find.byKey(const Key('snap.add')), warnIfMissed: false);
+    await tester.pump(const Duration(milliseconds: 500));
+    expect(find.byType(TextField), findsNothing, reason: 'no picker opened mid-log');
+    h.repo.logGate!.complete();
+    await tester.pumpAndSettle();
+    expect(h.repo.logs.single.items, hasLength(2));
+    expect(h.result, isTrue);
+    expect(find.text('Logged 2 items to lunch'), findsOneWidget);
   });
 
   testWidgets('a failed log keeps the list and shows the server\'s message', (tester) async {
