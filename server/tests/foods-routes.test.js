@@ -206,29 +206,34 @@ test('food search order with the real food list', async (t) => {
   await t.test('rice: White rice first, home-cooked, then kakanin, then fast food, then online', async () => {
     const { foods } = (await search('rice').expect(200)).body.data;
     assert.deepEqual(foods.map((f) => f.name), [
-      'White rice', 'Garlic fried rice (sinangag)', 'Goto (rice porridge with ox tripe)', 'Puso (hanging rice)', 'Brown rice, cooked',
+      'White rice', 'Garlic fried rice (sinangag)', 'Goto (rice porridge with ox tripe)', 'Puso (hanging rice)',
+      'Chicksilog (fried chicken, garlic rice, egg)', 'Ginataang mais (corn and sticky rice in coconut milk)', 'Brown rice, cooked',
       'Kutsinta (steamed rice cake)', 'Bibingka (galapong rice cake)', 'Suman malagkit (sticky rice, coconut)',
       'Suman sa lihiya (lye-treated rice cake)', 'Biko (sticky rice with latik)', 'Palitaw (flattened rice cake)',
-      'Sapin-sapin (layered rice cake)', 'Ginataang bilo-bilo (sweet rice ball stew)',
+      'Sapin-sapin (layered rice cake)', 'Espasol (toasted rice flour log)', 'Tupig (grilled sticky rice in banana leaf)',
+      'Tikoy (glutinous rice cake)', 'Ginataang bilo-bilo (sweet rice ball stew)',
       'Jollibee Chickenjoy with rice', 'Jollibee Burger Steak with rice', "McDonald's PH Chicken McDo with rice",
       'Mang Inasal Chicken Inasal Paa with rice', 'Mang Inasal Chicken Inasal Pecho with rice', 'Mang Inasal Pork BBQ with rice',
       'KFC Original Recipe chicken with rice', 'FatSecret rice',
     ]);
-    assert.deepEqual([foods[0].group, foods[5].group, foods[13].group, foods[20].group], ['home', 'bread_kakanin', 'fast_food', null]);
+    assert.deepEqual([foods[0].group, foods[7].group, foods[18].group, foods[25].group], ['home', 'bread_kakanin', 'fast_food', null]);
   });
 
   await t.test('chicken: home-cooked Filipino first, international after, fast food near the end', async () => {
     const { foods } = (await search('chicken').expect(200)).body.data;
-    assert.deepEqual(foods.slice(0, 5).map((f) => f.name),
-      ['Chicken adobo', 'Chicken inasal', 'Chicken afritada', 'Grilled chicken breast', 'Fried chicken']);
+    assert.deepEqual(foods.slice(0, 7).map((f) => f.name), [
+      'Chicken adobo', 'Chicken inasal', 'Chicken afritada', 'Chicksilog (fried chicken, garlic rice, egg)',
+      'Sopas (chicken macaroni soup)', 'Grilled chicken breast', 'Fried chicken',
+    ]);
     assert.equal(foods.at(-2).name, 'KFC Original Recipe chicken with rice');
   });
 
   await t.test('fried: inside a type, names starting with the query first, Filipino before international', async () => {
     const { foods } = (await search('fried').expect(200)).body.data;
-    assert.deepEqual(foods.slice(0, 7).map((f) => f.name), [
+    assert.deepEqual(foods.slice(0, 10).map((f) => f.name), [
       'Fried tilapia', 'Fried egg', 'Garlic fried rice (sinangag)', 'Galunggong, fried',
-      'Tokwa (fried tofu)', 'Danggit (fried dried fish)', 'Fried chicken',
+      'Tokwa (fried tofu)', 'Danggit (fried dried fish)', 'Chicksilog (fried chicken, garlic rice, egg)',
+      'Tuyo (dried salted fish), fried', 'Dilis, fried (crispy dried anchovies)', 'Fried chicken',
     ]);
   });
 
