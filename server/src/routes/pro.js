@@ -26,6 +26,7 @@ module.exports = function buildProRouter(deps) {
   const router = express.Router();
   const auth = requireAuth(deps);
   const { pool, payments, publicBaseUrl } = deps;
+  const checkBudgetMs = deps.proStatusCheckMs ?? 3000;
   const log = (req) => req.log ?? deps.logger;
   const statusOf = async (userId) => ({ ...(await proStatus(pool, userId)), prices: PRICES });
 
@@ -68,10 +69,28 @@ module.exports = function buildProRouter(deps) {
   /// parallel: PayMongo down or a mismatch leaves an attempt pending (logged
   /// in settle) and the status still answers. A database error is a real
   /// failure and propagates.
+  ///
+  /// The check gets [checkBudgetMs], well inside the app's 10 s limit: a
+  /// PayMongo that hangs rather than fails would otherwise hold the status
+  /// for the client's 15 s. Past the budget the status answers as it stands;
+  /// the checks run on, and completePayment is transactional and idempotent,
+  /// so a late finish is safe and the next read shows it.
   async function settleRecent(req, userId) {
     if (!payments) return;
     const pending = await recentPendingPayments(pool, userId);
-    const results = await Promise.allSettled(pending.map((p) => settle(req, p)));
+    if (pending.length === 0) return;
+    const all = Promise.allSettled(pending.map((p) => settle(req, p)));
+    let timer;
+    const late = new Promise((resolve) => { timer = setTimeout(resolve, checkBudgetMs, null); });
+    const results = await Promise.race([all, late]).finally(() => clearTimeout(timer));
+    if (!results) {
+      log(req)?.warn({ userId, pending: pending.length }, 'pro payment check slow');
+      all.then((settled) => {
+        const err = settled.find((r) => r.status === 'rejected' && !(r.reason instanceof AppError));
+        if (err) log(req)?.error({ userId, code: err.reason?.code ?? null }, 'pro payment check failed late');
+      });
+      return;
+    }
     const broken = results.find((r) => r.status === 'rejected' && !(r.reason instanceof AppError));
     if (broken) throw broken.reason;
   }

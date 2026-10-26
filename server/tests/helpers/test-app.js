@@ -33,6 +33,7 @@ function buildTestApp(deps = {}) {
     google: deps.google || require('../../src/services/google').createGoogleVerifier({ mode: 'stub' }),
     mail,
     publicBaseUrl: deps.publicBaseUrl || 'http://localhost:3000',
+    proStatusCheckMs: deps.proStatusCheckMs,
   });
 }
 

@@ -248,6 +248,23 @@ test('/api/v1/pro', async (t) => {
     assert.deepEqual(rows.map((r) => r.status), ['pending']);
   });
 
+  await t.test('a PayMongo that hangs does not hold up the status past its budget', async () => {
+    let calls = 0;
+    const fake = {
+      mode: 'test',
+      async createCheckout() { return { sessionId: `cs_s5h_${Date.now()}_${Math.random()}`, checkoutUrl: 'https://checkout.paymongo.com/x' }; },
+      getCheckout() { calls += 1; return new Promise(() => {}); },
+    };
+    const pm = buildTestApp({ pool, payments: fake, proStatusCheckMs: 200 });
+    const u = await freshUser(pm);
+    await u.checkout({ plan: 'monthly' }).expect(201);
+    const started = Date.now();
+    const res = await u.status().timeout(2000).expect(200);
+    assert.equal(res.body.data.pro, false);
+    assert.equal(calls, 1, 'the left-behind attempt was asked about');
+    assert.ok(Date.now() - started < 1500, `answered in ${Date.now() - started} ms`);
+  });
+
   await t.test('only the newest 3 attempts of the last day are checked', async () => {
     let calls = 0;
     const fake = {
