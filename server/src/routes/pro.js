@@ -1,0 +1,133 @@
+'use strict';
+const express = require('express');
+const requireAuth = require('../middleware/require-auth');
+const AppError = require('../lib/app-error');
+const { PLANS } = require('../lib/pro-plans');
+const { proStatus, createPayment, setCheckoutSession, findPayment, completePayment } = require('../db/pro');
+const { renderPage, escapeHtml } = require('./auth-pages');
+
+// The same test config/index.js applies to PUBLIC_BASE_URL in production.
+const LOCALHOST = /^https?:\/\/(localhost|127(?:\.\d{1,3}){3})(?::\d+)?(?:\/|$)/i;
+const OPEN_FAILED = "Couldn't open the payment page. Try again.";
+const CHECK_FAILED = "Couldn't check your payment. Your money is safe — try again.";
+const unavailable = (status, message) => new AppError(status, 'PAYMENTS_UNAVAILABLE', message);
+const PRICES = { monthly: PLANS.monthly.pricePhp, annual: PLANS.annual.pricePhp };
+
+/// Buying Pro (spec 2026-10-26-pro-payments-design). The server creates
+/// PayMongo's checkout for its own price and confirms a payment by asking
+/// PayMongo -- never by trusting the app -- so no webhook and no public
+/// address are needed. Logs carry ids and statuses only.
+module.exports = function buildProRouter(deps) {
+  const router = express.Router();
+  const auth = requireAuth(deps);
+  const { pool, payments, publicBaseUrl } = deps;
+  const log = (req) => req.log ?? deps.logger;
+  const statusOf = async (userId) => ({ ...(await proStatus(pool, userId)), prices: PRICES });
+
+  /// Where PayMongo sends the browser back: PUBLIC_BASE_URL when it is a real
+  /// address, else the origin the app reached us on -- so the phone hotspot
+  /// needs no setting.
+  const baseFor = (req) => (publicBaseUrl && !LOCALHOST.test(publicBaseUrl)
+    ? publicBaseUrl.replace(/\/+$/, '')
+    : `${req.protocol}://${req.get('host')}`);
+
+  router.get('/', auth, async (req, res, next) => {
+    try {
+      res.json({ data: await statusOf(req.user.userId) });
+    } catch (err) { next(err); }
+  });
+
+  router.post('/checkout', auth, async (req, res, next) => {
+    try {
+      const key = req.body?.plan;
+      if (typeof key !== 'string' || !Object.hasOwn(PLANS, key)) {
+        throw AppError.badRequest('INVALID_PLAN', 'plan must be monthly or annual.');
+      }
+      if (!payments) throw unavailable(503, OPEN_FAILED);
+      const plan = PLANS[key];
+      const paymentId = await createPayment(pool, { userId: req.user.userId, plan: key, amountPhp: plan.pricePhp });
+      const base = baseFor(req);
+      const back = (result) => `${base}/api/v1/pro/return?payment=${paymentId}&result=${result}`;
+      let checkout;
+      try {
+        checkout = await payments.createCheckout({
+          referenceNumber: `fitsync-${paymentId}`,
+          name: plan.name,
+          amountCentavos: plan.pricePhp * 100,
+          successUrl: back('success'),
+          cancelUrl: back('cancel'),
+          pageBase: base,
+        });
+      } catch (err) {
+        log(req)?.warn({ paymentId, code: err?.code ?? null, status: err?.status ?? null }, 'pro checkout failed');
+        throw unavailable(502, OPEN_FAILED);
+      }
+      await setCheckoutSession(pool, paymentId, checkout.sessionId);
+      log(req)?.info({ paymentId, plan: key }, 'pro checkout opened');
+      res.status(201).json({ data: { paymentId, checkoutUrl: checkout.checkoutUrl } });
+    } catch (err) { next(err); }
+  });
+
+  router.post('/payments/:paymentId/confirm', auth, async (req, res, next) => {
+    try {
+      const { userId } = req.user;
+      const paymentId = Number(req.params.paymentId);
+      const payment = Number.isInteger(paymentId) && paymentId > 0 ? await findPayment(pool, userId, paymentId) : null;
+      if (!payment) throw AppError.notFound('PAYMENT_NOT_FOUND', 'No such payment.');
+      if (payment.status !== 'paid') {
+        if (!payment.sessionId || !payments) {
+          return res.json({ data: { status: 'pending', pro: await statusOf(userId) } });
+        }
+        let session;
+        try {
+          session = await payments.getCheckout(payment.sessionId);
+        } catch (err) {
+          log(req)?.warn({ paymentId, code: err?.code ?? null, status: err?.status ?? null }, 'pro payment check failed');
+          throw unavailable(502, CHECK_FAILED);
+        }
+        if (!session.paid) return res.json({ data: { status: 'pending', pro: await statusOf(userId) } });
+        if (session.amountCentavos !== Math.round(payment.amountPhp * 100) || session.currency !== 'PHP') {
+          log(req)?.warn({ paymentId }, 'pro payment does not match its plan');
+          throw AppError.conflict('PAYMENT_MISMATCH', "This payment doesn't match its plan.");
+        }
+        await completePayment(pool, { userId, paymentId, months: PLANS[payment.plan].months, method: session.method });
+        log(req)?.info({ paymentId, plan: payment.plan, method: session.method }, 'pro payment confirmed');
+      }
+      res.json({ data: { status: 'paid', pro: await statusOf(userId) } });
+    } catch (err) { next(err); }
+  });
+
+  // Where PayMongo's page sends the browser after paying or giving up. A
+  // courtesy only: the app confirms the payment itself.
+  router.get('/return', (req, res) => {
+    const paid = req.query.result === 'success';
+    res.type('html').send(renderPage(paid
+      ? { title: 'Payment received', body: '<p>Go back to FitSync. It confirms your Pro by itself.</p>' }
+      : { title: 'Payment not completed', body: '<p>Go back to FitSync to try again or choose another plan.</p>' }));
+  });
+
+  // The stub's stand-in for PayMongo's test page (PAYMONGO_MODE=stub only).
+  if (payments?.mode === 'stub') {
+    router.get('/stub-checkout/:sessionId', (req, res, next) => {
+      const s = payments.session(req.params.sessionId);
+      if (!s) return next(AppError.notFound('CHECKOUT_NOT_FOUND', 'No such checkout.'));
+      const action = escapeHtml(req.params.sessionId);
+      const php = (s.amountCentavos / 100).toLocaleString('en-PH');
+      res.type('html').send(renderPage({
+        title: 'Test checkout',
+        body: `<p>${escapeHtml(s.name)}: ₱${escapeHtml(php)}</p>
+<p>FitSync's stand-in for PayMongo's test page.</p>
+<form method="post" action="${action}"><input type="hidden" name="action" value="authorize"><button type="submit">Authorize</button></form>
+<p></p>
+<form method="post" action="${action}"><input type="hidden" name="action" value="fail"><button type="submit">Fail</button></form>`,
+      }));
+    });
+    router.post('/stub-checkout/:sessionId', express.urlencoded({ extended: false }), (req, res, next) => {
+      const to = payments.complete(req.params.sessionId, req.body?.action);
+      if (!to) return next(AppError.notFound('CHECKOUT_NOT_FOUND', 'No such checkout.'));
+      res.redirect(303, to);
+    });
+  }
+
+  return router;
+};
