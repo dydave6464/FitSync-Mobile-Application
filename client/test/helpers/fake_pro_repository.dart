@@ -4,11 +4,23 @@ import 'package:fitsync/features/pro/domain/pro_status.dart';
 const testPrices = ProPrices(monthly: 249, annual: 1788);
 
 const freeStatus = ProStatus(
-  pro: false, source: null, until: null, plan: null, method: null, endsSoon: false, prices: testPrices,
+  pro: false,
+  source: null,
+  until: null,
+  plan: null,
+  method: null,
+  endsSoon: false,
+  prices: testPrices,
 );
 
 const grantedStatus = ProStatus(
-  pro: true, source: ProSource.granted, until: null, plan: null, method: null, endsSoon: false, prices: testPrices,
+  pro: true,
+  source: ProSource.granted,
+  until: null,
+  plan: null,
+  method: null,
+  endsSoon: false,
+  prices: testPrices,
 );
 
 ProStatus paidStatus({
@@ -35,7 +47,10 @@ class FakeProRepository implements ProRepository {
   Object? statusError;
 
   final List<ProPlan> checkouts = [];
-  ProCheckout checkoutValue = ProCheckout(paymentId: 7, checkoutUrl: Uri.parse('https://checkout.example/cs_7'));
+  ProCheckout checkoutValue = ProCheckout(
+    paymentId: 7,
+    checkoutUrl: Uri.parse('https://checkout.example/cs_7'),
+  );
   Object? checkoutError;
 
   final List<int> confirms = [];

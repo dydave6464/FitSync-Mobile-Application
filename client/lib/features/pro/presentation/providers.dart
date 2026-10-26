@@ -19,7 +19,8 @@ final proStatusProvider = FutureProvider.autoDispose<ProStatus>(
 /// Opens PayMongo's page in a browser sheet over the app (SFSafariViewController
 /// / Chrome Custom Tab). Injectable for tests, which have no browser.
 final proCheckoutOpenerProvider = Provider<Future<bool> Function(Uri)>(
-  (ref) => (uri) => launchUrl(uri, mode: LaunchMode.inAppBrowserView),
+  (ref) =>
+      (uri) => launchUrl(uri, mode: LaunchMode.inAppBrowserView),
 );
 
 /// The latest checkout the Pro screen made that it has not yet seen paid.

@@ -103,16 +103,32 @@ enum ProPaymentState { paid, pending }
 class ProConfirmation {
   const ProConfirmation({required this.state, required this.status});
 
-  factory ProConfirmation.fromJson(Map<String, dynamic> json) => ProConfirmation(
-    state: json['status'] == 'paid' ? ProPaymentState.paid : ProPaymentState.pending,
-    status: ProStatus.fromJson(json['pro'] as Map<String, dynamic>),
-  );
+  factory ProConfirmation.fromJson(Map<String, dynamic> json) =>
+      ProConfirmation(
+        state: json['status'] == 'paid'
+            ? ProPaymentState.paid
+            : ProPaymentState.pending,
+        status: ProStatus.fromJson(json['pro'] as Map<String, dynamic>),
+      );
 
   final ProPaymentState state;
   final ProStatus status;
 }
 
-const _months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+const _months = [
+  'Jan',
+  'Feb',
+  'Mar',
+  'Apr',
+  'May',
+  'Jun',
+  'Jul',
+  'Aug',
+  'Sep',
+  'Oct',
+  'Nov',
+  'Dec',
+];
 
 /// "26 Nov 2026", in the phone's time zone.
 String formatProDate(DateTime d) {
@@ -147,10 +163,14 @@ String? methodLabel(String? method) => switch (method) {
 
 /// The Settings Pro card's second line.
 String proCardSubtitle(ProStatus? status) {
-  if (status == null || !status.pro) return 'See where your training volume goes';
+  if (status == null || !status.pro) {
+    return 'See where your training volume goes';
+  }
   if (status.source == ProSource.granted) return 'Pro (granted)';
   final until = status.until;
   if (until == null) return 'Pro';
-  if (status.endsSoon) return 'Pro ends on ${formatProDay(until)}. Renew to keep Snap a meal and your analytics.';
+  if (status.endsSoon) {
+    return 'Pro ends on ${formatProDay(until)}. Renew to keep Snap a meal and your analytics.';
+  }
   return 'Pro until ${formatProDate(until)}';
 }

@@ -13,12 +13,22 @@ import 'helpers/fake_pro_repository.dart';
 
 const _prices = {'monthly': 249, 'annual': 1788};
 const _free = {
-  'pro': false, 'source': null, 'until': null, 'plan': null, 'method': null,
-  'endsSoon': false, 'prices': _prices,
+  'pro': false,
+  'source': null,
+  'until': null,
+  'plan': null,
+  'method': null,
+  'endsSoon': false,
+  'prices': _prices,
 };
 const _paid = {
-  'pro': true, 'source': 'paid', 'until': '2026-11-26T04:00:00.000Z', 'plan': 'annual',
-  'method': 'paymaya', 'endsSoon': true, 'prices': _prices,
+  'pro': true,
+  'source': 'paid',
+  'until': '2026-11-26T04:00:00.000Z',
+  'plan': 'annual',
+  'method': 'paymaya',
+  'endsSoon': true,
+  'prices': _prices,
 };
 
 (ProRepository, List<http.Request>) _repo(Object body, {int status = 200}) {
@@ -28,7 +38,11 @@ const _paid = {
     tokens: TokenStore(backing: InMemorySecureStore()),
     client: MockClient((request) async {
       requests.add(request);
-      return http.Response(jsonEncode({'data': body}), status, headers: {'content-type': 'application/json'});
+      return http.Response(
+        jsonEncode({'data': body}),
+        status,
+        headers: {'content-type': 'application/json'},
+      );
     }),
   );
   return (ProRepository(api), requests);
@@ -61,7 +75,10 @@ void main() {
   });
 
   test('checkout sends the plan and returns where to pay', () async {
-    final (repo, requests) = _repo({'paymentId': 12, 'checkoutUrl': 'https://checkout.paymongo.com/cs_12'}, status: 201);
+    final (repo, requests) = _repo({
+      'paymentId': 12,
+      'checkoutUrl': 'https://checkout.paymongo.com/cs_12',
+    }, status: 201);
     final c = await repo.checkout(ProPlan.monthly);
     expect(requests.single.method, 'POST');
     expect(requests.single.url.path, '/api/v1/pro/checkout');
@@ -80,26 +97,36 @@ void main() {
     expect((await pending.confirm(12)).state, ProPaymentState.pending);
   });
 
-  test('dates, pesos and payment methods read the way the screen shows them', () {
-    final d = DateTime(2026, 11, 26, 12);
-    expect(formatProDate(d), '26 Nov 2026');
-    expect(formatProDay(d), '26 Nov');
-    expect(peso(249), '₱249');
-    expect(peso(1788), '₱1,788');
-    expect(peso(12345), '₱12,345');
-    expect(methodLabel('gcash'), 'GCash');
-    expect(methodLabel('paymaya'), 'Maya');
-    expect(methodLabel('card'), 'card');
-    expect(methodLabel(null), isNull);
-    expect(methodLabel('other'), isNull);
-  });
+  test(
+    'dates, pesos and payment methods read the way the screen shows them',
+    () {
+      final d = DateTime(2026, 11, 26, 12);
+      expect(formatProDate(d), '26 Nov 2026');
+      expect(formatProDay(d), '26 Nov');
+      expect(peso(249), '₱249');
+      expect(peso(1788), '₱1,788');
+      expect(peso(12345), '₱12,345');
+      expect(methodLabel('gcash'), 'GCash');
+      expect(methodLabel('paymaya'), 'Maya');
+      expect(methodLabel('card'), 'card');
+      expect(methodLabel(null), isNull);
+      expect(methodLabel('other'), isNull);
+    },
+  );
 
   test('the Settings card says how the user is Pro', () {
     expect(proCardSubtitle(null), 'See where your training volume goes');
     expect(proCardSubtitle(freeStatus), 'See where your training volume goes');
     expect(proCardSubtitle(grantedStatus), 'Pro (granted)');
-    expect(proCardSubtitle(paidStatus(until: DateTime(2026, 11, 26, 12))), 'Pro until 26 Nov 2026');
-    expect(proCardSubtitle(paidStatus(until: DateTime(2026, 11, 26, 12), endsSoon: true)),
-        'Pro ends on 26 Nov. Renew to keep Snap a meal and your analytics.');
+    expect(
+      proCardSubtitle(paidStatus(until: DateTime(2026, 11, 26, 12))),
+      'Pro until 26 Nov 2026',
+    );
+    expect(
+      proCardSubtitle(
+        paidStatus(until: DateTime(2026, 11, 26, 12), endsSoon: true),
+      ),
+      'Pro ends on 26 Nov. Renew to keep Snap a meal and your analytics.',
+    );
   });
 }

@@ -15,10 +15,17 @@ class ProRepository {
       ProStatus.fromJson(await _api.getJson('/api/v1/pro'));
 
   Future<ProCheckout> checkout(ProPlan plan) async => ProCheckout.fromJson(
-    await _api.postJson('/api/v1/pro/checkout', {'plan': plan.wire}, timeout: paymentTimeout),
+    await _api.postJson('/api/v1/pro/checkout', {
+      'plan': plan.wire,
+    }, timeout: paymentTimeout),
   );
 
-  Future<ProConfirmation> confirm(int paymentId) async => ProConfirmation.fromJson(
-    await _api.postJson('/api/v1/pro/payments/$paymentId/confirm', const {}, timeout: paymentTimeout),
-  );
+  Future<ProConfirmation> confirm(int paymentId) async =>
+      ProConfirmation.fromJson(
+        await _api.postJson(
+          '/api/v1/pro/payments/$paymentId/confirm',
+          const {},
+          timeout: paymentTimeout,
+        ),
+      );
 }
