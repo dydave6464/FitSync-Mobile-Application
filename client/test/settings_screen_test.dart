@@ -20,6 +20,7 @@ import 'package:fitsync/features/plans/presentation/widgets/training_days_row.da
 import 'package:fitsync/features/profile/domain/profile.dart';
 import 'package:fitsync/features/profile/presentation/providers.dart';
 import 'package:fitsync/features/pro/presentation/pro_screen.dart';
+import 'package:fitsync/features/pro/presentation/providers.dart';
 import 'package:fitsync/features/reminders/domain/reminders.dart';
 import 'package:fitsync/features/reminders/presentation/providers.dart';
 import 'package:fitsync/features/reminders/presentation/reminders_screen.dart';
@@ -34,6 +35,7 @@ import 'package:fitsync/features/schedule/presentation/schedule_screen.dart';
 
 import 'helpers/dialog_buttons.dart';
 import 'helpers/fake_health.dart';
+import 'helpers/fake_pro_repository.dart';
 
 const _baseProfile = Profile(
   userId: 7,
@@ -205,6 +207,7 @@ Future<void> _pump(
   List<({List<String> goals, String mainGoal})>? goalWrites,
   bool failGoals = false,
   FakeHealthRepository? health,
+  FakeProRepository? pro,
 }) async {
   _profile = FakeProfileNotifier(
     patches ?? <Map<String, dynamic>>[],
@@ -236,6 +239,7 @@ Future<void> _pump(
           (ref, span) async =>
               const CalendarRange(today: '2026-09-24', days: []),
         ),
+        proRepositoryProvider.overrideWithValue(pro ?? FakeProRepository()),
         healthRepositoryProvider.overrideWithValue(
           health ?? FakeHealthRepository(),
         ),
@@ -653,6 +657,52 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.byType(ProScreen), findsOneWidget);
+  });
+
+  testWidgets('the Pro card shows when Pro ends', (tester) async {
+    await _pump(
+      tester,
+      pro: FakeProRepository(paidStatus(until: DateTime(2026, 11, 26, 12))),
+    );
+    expect(
+      find.descendant(
+        of: find.byKey(const Key('settings.goPro')),
+        matching: find.text('Pro until 26 Nov 2026'),
+      ),
+      findsOneWidget,
+    );
+  });
+
+  testWidgets('the Pro screen asks for a fresh status each time it opens', (
+    tester,
+  ) async {
+    // The Settings card keeps the status alive for as long as the tab is
+    // mounted, so without a fresh ask a grant made on the server would not
+    // show until the app restarted.
+    final repo = FakeProRepository();
+    await _pump(tester, pro: repo);
+    await tester.tap(find.byKey(const Key('settings.goPro')));
+    await tester.pumpAndSettle();
+    expect(find.byKey(const Key('pro.pay')), findsOneWidget);
+
+    await tester.tap(find.byKey(const Key('pro.close')));
+    await tester.pumpAndSettle();
+    repo.statusValue = grantedStatus;
+
+    await tester.tap(find.byKey(const Key('settings.goPro')));
+    await tester.pumpAndSettle();
+    expect(find.text('FitSync Pro (granted)'), findsOneWidget);
+    expect(find.byKey(const Key('pro.pay')), findsNothing);
+
+    await tester.tap(find.byKey(const Key('pro.close')));
+    await tester.pumpAndSettle();
+    expect(
+      find.descendant(
+        of: find.byKey(const Key('settings.goPro')),
+        matching: find.text('Pro (granted)'),
+      ),
+      findsOneWidget,
+    );
   });
 
   testWidgets('the Streaks & goals row opens the screen', (tester) async {

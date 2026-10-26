@@ -17,7 +17,9 @@ import '../../onboarding/presentation/steps/health_step.dart';
 import '../../onboarding/presentation/steps/injuries_step.dart';
 import '../../onboarding/presentation/steps/level_step.dart';
 import '../../plans/presentation/widgets/training_days_row.dart';
+import '../../pro/domain/pro_status.dart';
 import '../../pro/presentation/pro_screen.dart';
+import '../../pro/presentation/providers.dart' show proStatusProvider;
 import '../../profile/domain/profile.dart';
 import '../../profile/presentation/providers.dart';
 import '../../reminders/presentation/reminders_screen.dart';
@@ -110,6 +112,7 @@ class _SettingsList extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final t = context.fs;
     final theme = Theme.of(context);
+    final proStatus = ref.watch(proStatusProvider).value;
 
     final subtitle = [
       if (profile.fitnessLevel != null)
@@ -188,7 +191,7 @@ class _SettingsList extends ConsumerWidget {
                     ),
                     const SizedBox(height: 2),
                     Text(
-                      'See where your training volume goes',
+                      proCardSubtitle(proStatus),
                       style: TextStyle(fontSize: 11, color: t.text3),
                     ),
                   ],
