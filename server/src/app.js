@@ -42,8 +42,8 @@ function reqSerializer(req) {
 }
 
 function createApp({
-  config, logger, pool, ml = null, storage = null, cues = null, fatsecret = null, vision = null, extraRouter = null,
-  jwt = null, google = null,
+  config, logger, pool, ml = null, storage = null, cues = null, fatsecret = null, vision = null, payments = null,
+  extraRouter = null, jwt = null, google = null,
   mail = null, publicBaseUrl = null,
 }) {
   const app = express();
@@ -96,7 +96,7 @@ function createApp({
   }
 
   app.use('/api/v1', buildRoutes({
-    config, logger, pool, ml, storage, cues, fatsecret, vision, extraRouter, jwt, google, mail, publicBaseUrl,
+    config, logger, pool, ml, storage, cues, fatsecret, vision, payments, extraRouter, jwt, google, mail, publicBaseUrl,
   }));
 
   app.use(notFound);

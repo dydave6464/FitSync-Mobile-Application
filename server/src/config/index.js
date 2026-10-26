@@ -104,6 +104,15 @@ function load(env = process.env) {
         apiToken: env.CLOUDFLARE_API_TOKEN?.trim() || null,
       },
     },
+    payments: {
+      // Buying Pro (routes/pro.js). stub (the default): FitSync's own
+      // Authorize / Fail page, no network -- what every test runs. test:
+      // PayMongo's test mode with an sk_test_ key; services/payments refuses
+      // a live key, so this build can never charge real money. server.js
+      // turns a stub off in production, as it does Snap a meal's.
+      mode: env.PAYMONGO_MODE || 'stub',
+      secretKey: env.PAYMONGO_SECRET_KEY?.trim() || null,
+    },
     fatsecret: {
       // FatSecret's OAuth 2.0 Client ID and Secret are the consumer key and
       // secret the developer console shows.
