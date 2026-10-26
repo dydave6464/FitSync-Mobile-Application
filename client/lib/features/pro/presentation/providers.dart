@@ -21,3 +21,24 @@ final proStatusProvider = FutureProvider.autoDispose<ProStatus>(
 final proCheckoutOpenerProvider = Provider<Future<bool> Function(Uri)>(
   (ref) => (uri) => launchUrl(uri, mode: LaunchMode.inAppBrowserView),
 );
+
+/// The latest checkout the Pro screen made that it has not yet seen paid.
+///
+/// Kept outside the screen so that a payment finished after the screen closed
+/// (closed before the next check, or a check that failed on a weak signal) is
+/// still confirmed the next time the screen opens. It lives in memory only:
+/// if the phone kills the app, the server has to find the payment instead.
+class ProPendingCheckout extends Notifier<ProCheckout?> {
+  @override
+  ProCheckout? build() => null;
+
+  void remember(ProCheckout checkout) => state = checkout;
+
+  /// Forgets [paymentId] once it is paid; a newer checkout stays.
+  void paid(int paymentId) {
+    if (state?.paymentId == paymentId) state = null;
+  }
+}
+
+final proPendingCheckoutProvider =
+    NotifierProvider<ProPendingCheckout, ProCheckout?>(ProPendingCheckout.new);

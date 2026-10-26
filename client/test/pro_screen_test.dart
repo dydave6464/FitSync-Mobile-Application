@@ -1,9 +1,11 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import 'package:fitsync/core/api_exception.dart';
 import 'package:fitsync/core/theme.dart';
+import 'package:fitsync/core/widgets/fs_kit.dart';
 import 'package:fitsync/features/pro/domain/pro_status.dart';
 import 'package:fitsync/features/pro/presentation/pro_screen.dart';
 import 'package:fitsync/features/pro/presentation/providers.dart';
@@ -13,8 +15,10 @@ import 'helpers/fake_pro_repository.dart';
 class _Opener {
   final List<Uri> opened = [];
   bool answer = true;
+  Object? error;
   Future<bool> call(Uri uri) async {
     opened.add(uri);
+    if (error != null) throw error!;
     return answer;
   }
 }
@@ -224,6 +228,123 @@ void main() {
       await tester.pumpAndSettle();
       expect(find.byKey(const Key('pro.openError')), findsOneWidget);
       expect(find.byKey(const Key('pro.waiting')), findsNothing);
+    },
+  );
+
+  testWidgets(
+    'a page opener that throws (as Android does) frees the Pay button and says so',
+    (tester) async {
+      final (_, opener) = await _pump(tester);
+      opener.error = PlatformException(code: 'ACTIVITY_NOT_FOUND');
+      await tester.tap(find.byKey(const Key('pro.pay')));
+      await tester.pumpAndSettle();
+      expect(tester.takeException(), isNull);
+      expect(find.byKey(const Key('pro.openError')), findsOneWidget);
+      expect(find.byKey(const Key('pro.waiting')), findsNothing);
+      final pay = tester.widget<FsButton>(find.byKey(const Key('pro.pay')));
+      expect(pay.busy, isFalse);
+      expect(pay.onPressed, isNotNull);
+    },
+  );
+
+  testWidgets(
+    'a payment finished after the screen closed is confirmed when it opens again',
+    (tester) async {
+      final repo = FakeProRepository();
+      final opener = _Opener();
+      await tester.pumpWidget(
+        ProviderScope(
+          overrides: [
+            proRepositoryProvider.overrideWithValue(repo),
+            proCheckoutOpenerProvider.overrideWithValue(opener.call),
+          ],
+          child: MaterialApp(
+            theme: fsLightTheme(),
+            home: Builder(
+              builder: (context) => TextButton(
+                key: const Key('home.openPro'),
+                onPressed: () => openProScreen(context),
+                child: const Text('Pro'),
+              ),
+            ),
+          ),
+        ),
+      );
+      await tester.tap(find.byKey(const Key('home.openPro')));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const Key('pro.pay')));
+      await tester.pump();
+      expect(find.byKey(const Key('pro.waiting')), findsOneWidget);
+
+      // The user pays on PayMongo's page, then leaves the screen before the
+      // next check.
+      await tester.tap(find.byKey(const Key('pro.close')));
+      await tester.pumpAndSettle();
+      expect(find.byKey(const Key('pro.pay')), findsNothing);
+      expect(repo.confirms, isEmpty);
+
+      repo.confirmAnswers.add(
+        ProConfirmation(
+          state: ProPaymentState.paid,
+          status: paidStatus(until: DateTime(2026, 11, 26, 12)),
+        ),
+      );
+      repo.statusValue = paidStatus(until: DateTime(2026, 11, 26, 12));
+      await tester.tap(find.byKey(const Key('home.openPro')));
+      await tester.pumpAndSettle();
+      expect(repo.confirms, [7]);
+      expect(find.text("You're Pro until 26 Nov 2026"), findsOneWidget);
+
+      // Confirmed once: opening the screen again asks nothing more.
+      await tester.tap(find.byKey(const Key('pro.close')));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const Key('home.openPro')));
+      await tester.pumpAndSettle();
+      expect(repo.confirms, [7]);
+    },
+  );
+
+  testWidgets(
+    'an unpaid attempt left behind is checked quietly and leaves the plans as they were',
+    (tester) async {
+      final repo = FakeProRepository();
+      final opener = _Opener();
+      await tester.pumpWidget(
+        ProviderScope(
+          overrides: [
+            proRepositoryProvider.overrideWithValue(repo),
+            proCheckoutOpenerProvider.overrideWithValue(opener.call),
+          ],
+          child: MaterialApp(
+            theme: fsLightTheme(),
+            home: Builder(
+              builder: (context) => TextButton(
+                key: const Key('home.openPro'),
+                onPressed: () => openProScreen(context),
+                child: const Text('Pro'),
+              ),
+            ),
+          ),
+        ),
+      );
+      await tester.tap(find.byKey(const Key('home.openPro')));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const Key('pro.pay')));
+      await tester.pump();
+      await tester.tap(find.byKey(const Key('pro.close')));
+      await tester.pumpAndSettle();
+
+      repo.confirmError = const ApiException('NETWORK_ERROR', 'offline');
+      await tester.tap(find.byKey(const Key('home.openPro')));
+      await tester.pumpAndSettle();
+      expect(repo.confirms, [7]);
+      expect(find.byKey(const Key('pro.checkFailed')), findsNothing);
+      expect(find.byKey(const Key('pro.pay')), findsOneWidget);
+
+      await tester.pump(proPollEvery * 2);
+      expect(repo.confirms, [
+        7,
+      ], reason: 'no polling for an attempt left behind');
     },
   );
 

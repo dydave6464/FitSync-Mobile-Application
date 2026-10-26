@@ -62,6 +62,13 @@ class _ProScreenState extends ConsumerState<ProScreen> {
   void initState() {
     super.initState();
     _lifecycle = AppLifecycleListener(onResume: _onResume);
+    // A checkout from an earlier visit may have been paid since the screen
+    // closed: ask once, quietly. Only "paid" changes what the screen shows.
+    final leftOver = ref.read(proPendingCheckoutProvider);
+    if (leftOver != null) {
+      _checkout = leftOver;
+      _check(userAsked: false);
+    }
   }
 
   @override
@@ -90,7 +97,11 @@ class _ProScreenState extends ConsumerState<ProScreen> {
       _paidLine = null;
     });
     try {
-      _checkout = await ref.read(proRepositoryProvider).checkout(_plan);
+      final checkout = await ref.read(proRepositoryProvider).checkout(_plan);
+      _checkout = checkout;
+      if (mounted) {
+        ref.read(proPendingCheckoutProvider.notifier).remember(checkout);
+      }
     } catch (_) {
       if (mounted) {
         setState(() {
@@ -106,9 +117,14 @@ class _ProScreenState extends ConsumerState<ProScreen> {
   Future<void> _openPage() async {
     final checkout = _checkout;
     if (checkout == null) return;
-    final opened = await ref.read(proCheckoutOpenerProvider)(
-      checkout.checkoutUrl,
-    );
+    bool opened;
+    try {
+      opened = await ref.read(proCheckoutOpenerProvider)(checkout.checkoutUrl);
+    } catch (_) {
+      // url_launcher throws on most failures (on Android it never returns
+      // false), e.g. no browser, or the app left while the checkout was made.
+      opened = false;
+    }
     if (!mounted) return;
     if (!opened) {
       _stopPolling();
@@ -170,6 +186,7 @@ class _ProScreenState extends ConsumerState<ProScreen> {
               ? "You're Pro"
               : "You're Pro until ${formatProDate(until)}";
         });
+        ref.read(proPendingCheckoutProvider.notifier).paid(checkout.paymentId);
         // Every Pro lock reads the profile; refreshing it unlocks them at once.
         ref.invalidate(profileProvider);
         ref.invalidate(proStatusProvider);
