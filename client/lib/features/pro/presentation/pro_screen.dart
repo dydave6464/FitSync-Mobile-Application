@@ -62,6 +62,15 @@ class _ProScreenState extends ConsumerState<ProScreen> {
   void initState() {
     super.initState();
     _lifecycle = AppLifecycleListener(onResume: _onResume);
+    // The Settings card can keep a status alive for the whole session, so a
+    // grant, an expiry or an "ends soon" would otherwise not show here. The
+    // cached status stays on screen while the fresh one loads. Only when one
+    // is cached: otherwise this screen's own first read is the fresh fetch.
+    if (ref.exists(proStatusProvider)) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) ref.invalidate(proStatusProvider);
+      });
+    }
     // A checkout from an earlier visit may have been paid since the screen
     // closed: ask once, quietly. Only "paid" changes what the screen shows.
     final leftOver = ref.read(proPendingCheckoutProvider);

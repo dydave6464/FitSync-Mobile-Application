@@ -673,6 +673,38 @@ void main() {
     );
   });
 
+  testWidgets('the Pro screen asks for a fresh status each time it opens', (
+    tester,
+  ) async {
+    // The Settings card keeps the status alive for as long as the tab is
+    // mounted, so without a fresh ask a grant made on the server would not
+    // show until the app restarted.
+    final repo = FakeProRepository();
+    await _pump(tester, pro: repo);
+    await tester.tap(find.byKey(const Key('settings.goPro')));
+    await tester.pumpAndSettle();
+    expect(find.byKey(const Key('pro.pay')), findsOneWidget);
+
+    await tester.tap(find.byKey(const Key('pro.close')));
+    await tester.pumpAndSettle();
+    repo.statusValue = grantedStatus;
+
+    await tester.tap(find.byKey(const Key('settings.goPro')));
+    await tester.pumpAndSettle();
+    expect(find.text('FitSync Pro (granted)'), findsOneWidget);
+    expect(find.byKey(const Key('pro.pay')), findsNothing);
+
+    await tester.tap(find.byKey(const Key('pro.close')));
+    await tester.pumpAndSettle();
+    expect(
+      find.descendant(
+        of: find.byKey(const Key('settings.goPro')),
+        matching: find.text('Pro (granted)'),
+      ),
+      findsOneWidget,
+    );
+  });
+
   testWidgets('the Streaks & goals row opens the screen', (tester) async {
     await _pump(tester);
 

@@ -8,6 +8,9 @@ import 'package:fitsync/core/manila_day.dart';
 import 'package:fitsync/features/home/presentation/day_rollover.dart';
 import 'package:fitsync/features/nutrition/domain/nutrition.dart';
 import 'package:fitsync/features/nutrition/presentation/providers.dart';
+import 'package:fitsync/features/pro/domain/pro_status.dart';
+import 'package:fitsync/features/pro/presentation/providers.dart'
+    show proStatusProvider;
 import 'package:fitsync/features/recovery/domain/recovery.dart';
 import 'package:fitsync/features/recovery/presentation/providers.dart'
     show recoveryOverviewProvider;
@@ -105,6 +108,10 @@ void main() {
               return _pending<Streak>();
             }),
             nutritionDayProvider.overrideWith(() => _CountingNutrition(builds)),
+            proStatusProvider.overrideWith((ref) {
+              count('proStatus');
+              return _pending<ProStatus>();
+            }),
           ],
           child: MaterialApp(
             home: DayRollover(
@@ -121,6 +128,8 @@ void main() {
                   ref.watch(pendingOutcomeProvider);
                   ref.watch(streakProvider);
                   ref.watch(nutritionDayProvider);
+                  // "Ends soon" and the end itself turn over by date.
+                  ref.watch(proStatusProvider);
                   return const SizedBox();
                 },
               ),
@@ -151,6 +160,7 @@ void main() {
       'pendingOutcome',
       'streak',
       'nutrition',
+      'proStatus',
     };
 
     setUp(() => builds = {});
