@@ -123,7 +123,8 @@ async function findOrCreateGoogleUser(pool, identity) {
   return { user: await findUserById(pool, result.insertId), isNew: true };
 }
 
-/// Marks [userId] Pro or not -- `npm run pro:grant`; nobody can buy Pro yet.
+/// Grants [userId] Pro by hand, or takes the grant away -- `npm run
+/// pro:grant`. A paid period (db/pro.js) is separate and still counts.
 /// True when the user exists (already in that state included).
 async function setPremium(pool, userId, isPremium) {
   const [res] = await pool.query('UPDATE users SET is_premium = ? WHERE user_id = ?', [isPremium, userId]);
