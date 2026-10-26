@@ -7,6 +7,8 @@ import 'package:fitsync/features/auth/domain/auth_user.dart';
 import 'package:fitsync/features/auth/presentation/auth_controller.dart';
 import 'package:fitsync/features/exercises/domain/exercise.dart';
 import 'package:fitsync/features/exercises/presentation/providers.dart';
+import 'package:fitsync/features/pro/domain/pro_status.dart';
+import 'package:fitsync/features/pro/presentation/providers.dart';
 import 'package:fitsync/features/profile/data/profile_repository.dart';
 import 'package:fitsync/features/profile/domain/body_weight.dart';
 import 'package:fitsync/features/profile/domain/profile.dart';
@@ -386,6 +388,36 @@ void main() {
       isNull,
       reason: "the next account inherited an equipment filter",
     );
+  });
+
+  test("signing out drops the previous account's unfinished payment", () async {
+    // The Pro screen re-checks a remembered checkout each time it opens; the
+    // next account would ask the server about someone else's payment.
+    final tokens = TokenStore(backing: InMemorySecureStore());
+    await tokens.write('token-for-juan');
+    final container = ProviderContainer(
+      overrides: [
+        tokenStoreProvider.overrideWithValue(tokens),
+        authRepositoryProvider.overrideWithValue(FakeAuthRepository(tokens)),
+        profileRepositoryProvider.overrideWithValue(
+          SequenceProfileRepository([_profile(userId: 1, email: 'a@b.c')]),
+        ),
+      ],
+    );
+    addTearDown(container.dispose);
+
+    container
+        .read(proPendingCheckoutProvider.notifier)
+        .remember(
+          ProCheckout(
+            paymentId: 7,
+            checkoutUrl: Uri.parse('https://checkout.example/cs_7'),
+          ),
+        );
+
+    await container.read(authControllerProvider.notifier).signOut();
+
+    expect(container.read(proPendingCheckoutProvider), isNull);
   });
 
   test('signing out clears the stored token', () async {
