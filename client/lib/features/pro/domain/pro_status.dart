@@ -144,3 +144,13 @@ String? methodLabel(String? method) => switch (method) {
   'card' => 'card',
   _ => null,
 };
+
+/// The Settings Pro card's second line.
+String proCardSubtitle(ProStatus? status) {
+  if (status == null || !status.pro) return 'See where your training volume goes';
+  if (status.source == ProSource.granted) return 'Pro (granted)';
+  final until = status.until;
+  if (until == null) return 'Pro';
+  if (status.endsSoon) return 'Pro ends on ${formatProDay(until)}. Renew to keep Snap a meal and your analytics.';
+  return 'Pro until ${formatProDate(until)}';
+}

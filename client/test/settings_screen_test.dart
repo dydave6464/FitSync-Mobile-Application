@@ -659,6 +659,20 @@ void main() {
     expect(find.byType(ProScreen), findsOneWidget);
   });
 
+  testWidgets('the Pro card shows when Pro ends', (tester) async {
+    await _pump(
+      tester,
+      pro: FakeProRepository(paidStatus(until: DateTime(2026, 11, 26, 12))),
+    );
+    expect(
+      find.descendant(
+        of: find.byKey(const Key('settings.goPro')),
+        matching: find.text('Pro until 26 Nov 2026'),
+      ),
+      findsOneWidget,
+    );
+  });
+
   testWidgets('the Streaks & goals row opens the screen', (tester) async {
     await _pump(tester);
 

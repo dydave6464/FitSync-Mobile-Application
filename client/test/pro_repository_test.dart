@@ -9,6 +9,8 @@ import 'package:fitsync/core/token_store.dart';
 import 'package:fitsync/features/pro/data/pro_repository.dart';
 import 'package:fitsync/features/pro/domain/pro_status.dart';
 
+import 'helpers/fake_pro_repository.dart';
+
 const _prices = {'monthly': 249, 'annual': 1788};
 const _free = {
   'pro': false, 'source': null, 'until': null, 'plan': null, 'method': null,
@@ -90,5 +92,14 @@ void main() {
     expect(methodLabel('card'), 'card');
     expect(methodLabel(null), isNull);
     expect(methodLabel('other'), isNull);
+  });
+
+  test('the Settings card says how the user is Pro', () {
+    expect(proCardSubtitle(null), 'See where your training volume goes');
+    expect(proCardSubtitle(freeStatus), 'See where your training volume goes');
+    expect(proCardSubtitle(grantedStatus), 'Pro (granted)');
+    expect(proCardSubtitle(paidStatus(until: DateTime(2026, 11, 26, 12))), 'Pro until 26 Nov 2026');
+    expect(proCardSubtitle(paidStatus(until: DateTime(2026, 11, 26, 12), endsSoon: true)),
+        'Pro ends on 26 Nov. Renew to keep Snap a meal and your analytics.');
   });
 }
