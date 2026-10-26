@@ -1,10 +1,13 @@
 'use strict';
 const AppError = require('../lib/app-error');
+const { isProSql } = require('./pro');
 
+// is_premium here is "is Pro now" (db/pro.js): granted by hand or a paid
+// period that has not ended -- requireAuth and the auth routes read it.
 const USER_COLUMNS = `
   user_id, email, password_hash, full_name, sex, date_of_birth,
   height_cm, weight_kg, goal_weight_kg, main_goal, fitness_level,
-  activity_level, training_location, city, is_premium,
+  activity_level, training_location, city, ${isProSql('users')} AS is_premium,
   notifications_enabled, onboarding_completed_at, email_verified, created_at
 `;
 
