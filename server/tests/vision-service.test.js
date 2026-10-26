@@ -5,7 +5,8 @@ const { load } = require('../src/config');
 const { createVisionService } = require('../src/services/vision');
 const groqClient = require('../src/services/vision/groq-client');
 const chatClient = require('../src/services/vision/chat-client');
-const { buildPrompt, parseReply } = require('../src/services/vision/prompt');
+const { buildPrompt, parseReply, LOOK_ALIKES } = require('../src/services/vision/prompt');
+const { FOODS } = require('../src/db/seed-foods');
 const { VisionError } = require('../src/services/vision/errors');
 
 const ENV = { DB_HOST: 'h', DB_PORT: '3306', DB_USER: 'u', DB_PASSWORD: 'p', DB_NAME: 'n', JWT_SECRET: 'x'.repeat(32) };
@@ -64,6 +65,22 @@ test('buildPrompt lists the menu one name per line and asks for alternatives', (
   assert.match(p, /Reply with JSON only/);
   assert.match(p, /- List at most 8 items \(the most important ones if there are more\)\./);
   assert.doesNotMatch(p, /"notes"/, 'the reply format asks for nothing parseReply ignores');
+});
+
+test('every look-alike hint names foods that are on the FitSync list', () => {
+  const names = new Set(FOODS.map((f) => f.name));
+  assert.ok(LOOK_ALIKES.length > 0);
+  for (const group of LOOK_ALIKES) {
+    assert.ok(group.names.length >= 2, `a look-alike group compares at least two foods: ${group.names}`);
+    for (const name of group.names) assert.ok(names.has(name), `not a FitSync food: ${name}`);
+  }
+});
+
+test('buildPrompt gives the look-alike hints, by exact menu name, before the reply format', () => {
+  const p = buildPrompt(['White rice']);
+  const hints = p.indexOf('LOOK-ALIKES');
+  assert.ok(hints > p.indexOf('Rules:') && hints < p.indexOf('Reply with JSON only'), 'between the rules and the reply format');
+  for (const group of LOOK_ALIKES) assert.ok(p.includes(`- ${group.names.join(' / ')}: ${group.tell}`), group.names[0]);
 });
 
 test('buildPrompt puts each menu name on one line of its own', () => {
