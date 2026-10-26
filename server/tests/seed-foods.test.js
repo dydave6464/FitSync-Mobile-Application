@@ -143,3 +143,27 @@ test('food seed renames Steamed white rice in place', async (t) => {
   assert.equal(again.inserted, 0);
   assert.equal(again.updated, 0);
 });
+
+// Snap a meal's menu: 72 researched foods appended after the original 244,
+// every one with the grams of a serving in its text (the AI's grams are
+// turned into servings with them).
+test('the Snap a meal foods are in the list, each with its serving grams', () => {
+  assert.equal(FOODS.length, 316);
+  const added = FOODS.slice(244);
+  assert.equal(added[0].name, 'Beef caldereta');
+  assert.equal(added.at(-1).name, 'Chico (sapodilla)');
+  for (const f of added) {
+    assert.match(f.servingDesc, /\(\s*~?\s*\d+(?:\.\d+)?\s*(g|ml)\s*\)/i, `${f.name} needs grams in its serving`);
+    assert.ok(!('_agent' in f) && !('whyCommon' in f) && !('whyCommonSource' in f), `${f.name} carries research-only keys`);
+  }
+  const names = FOODS.map((f) => f.name);
+  for (const n of ['Atchara (pickled green papaya)', 'Squid balls with sweet sauce (street food)', 'Dinuguan (pork blood stew)']) {
+    assert.ok(names.includes(n), n);
+  }
+});
+
+test('Fishball\'s sodium is FNRI\'s measured value plus the sauce', () => {
+  const f = FOODS.find((x) => x.name === 'Fishball with sweet sauce (street food)');
+  assert.equal(f.sodiumMg, 1873);
+  assert.match(f.source, /G162/);
+});

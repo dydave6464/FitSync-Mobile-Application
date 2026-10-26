@@ -9,12 +9,16 @@ import 'error_snack_bar.dart';
 import 'providers.dart';
 
 class AddFoodManuallyScreen extends ConsumerStatefulWidget {
-  const AddFoodManuallyScreen({super.key, required this.mealType, this.onLogged});
+  const AddFoodManuallyScreen({super.key, required this.mealType, this.onLogged, this.pick = false});
 
   final String mealType;
 
   /// Called once the food is saved, with the day it went to.
   final void Function(FoodEntry entry, String date)? onLogged;
+
+  /// Choosing for Snap a meal: the typed food (per serving) is popped back,
+  /// not logged, and the meal is left to the confirm screen.
+  final bool pick;
 
   @override
   ConsumerState<AddFoodManuallyScreen> createState() => _AddFoodManuallyScreenState();
@@ -90,12 +94,14 @@ class _AddFoodManuallyScreenState extends ConsumerState<AddFoodManuallyScreen> {
           FsField(controller: _name, fieldKey: const Key('manual.name'), hint: 'Food name',
               textCapitalization: TextCapitalization.sentences, onChanged: (_) => setState(() {})),
           const SizedBox(height: 12),
-          FsSegmented(
-            options: [for (final m in mealTypes) (value: m, label: mealLabel(m))],
-            selected: _meal,
-            onSelected: (m) => setState(() => _meal = m),
-          ),
-          const SizedBox(height: 12),
+          if (!widget.pick) ...[
+            FsSegmented(
+              options: [for (final m in mealTypes) (value: m, label: mealLabel(m))],
+              selected: _meal,
+              onSelected: (m) => setState(() => _meal = m),
+            ),
+            const SizedBox(height: 12),
+          ],
           FsField(controller: _serving, fieldKey: const Key('manual.serving'),
               hint: 'Serving size (optional), e.g. 1 cup', onChanged: (_) => setState(() {})),
           const SizedBox(height: 16),
@@ -137,18 +143,22 @@ class _AddFoodManuallyScreenState extends ConsumerState<AddFoodManuallyScreen> {
           const SizedBox(height: 24),
           FsButton(
             key: const Key('manual.log'),
-            label: 'Log',
+            label: widget.pick ? 'Use this food' : 'Log',
             onPressed: !valid ? null : () async {
-              final messenger = ScaffoldMessenger.of(context);
-              final controller = ref.read(nutritionDayProvider.notifier);
-              final date = ref.read(nutritionDayProvider).value?.date;
-              final onLogged = widget.onLogged;
               final food = Food(
                 source: 'manual', name: name,
                 servingDesc: _serving.text.trim().isEmpty ? null : _serving.text.trim(),
                 kcal: kcal!, proteinG: p, carbsG: c, fatG: f, fiberG: fiber,
                 sugarG: sugar, sodiumMg: sodium,
               );
+              if (widget.pick) {
+                Navigator.of(context).pop(food);
+                return;
+              }
+              final messenger = ScaffoldMessenger.of(context);
+              final controller = ref.read(nutritionDayProvider.notifier);
+              final date = ref.read(nutritionDayProvider).value?.date;
+              final onLogged = widget.onLogged;
               Navigator.of(context).pop(true);
               final FoodEntry saved;
               try {

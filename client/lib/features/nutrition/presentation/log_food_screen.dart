@@ -10,6 +10,7 @@ import '../../exercises/presentation/exercise_list_screen.dart' show describeErr
 import '../domain/nutrition.dart';
 import 'add_food_manually_screen.dart';
 import 'error_snack_bar.dart';
+import 'meal_photo/snap_meal.dart';
 import 'providers.dart';
 import 'widgets/fatsecret_attribution.dart';
 import 'widgets/log_food_sheet.dart';
@@ -20,7 +21,7 @@ const foodSearchDebounce = Duration(milliseconds: 300);
 const _maxQuery = 60;
 
 class LogFoodScreen extends ConsumerStatefulWidget {
-  const LogFoodScreen({super.key, required this.mealType, this.onLogged});
+  const LogFoodScreen({super.key, required this.mealType, this.onLogged, this.pick = false, this.initialQuery});
 
   final String mealType;
 
@@ -28,9 +29,25 @@ class LogFoodScreen extends ConsumerStatefulWidget {
   /// with the day it went to, after this screen has closed.
   final void Function(FoodEntry entry, String date)? onLogged;
 
+  /// Choosing, not logging: the chosen food (per serving) is popped back to
+  /// the caller and nothing is saved. Snap a meal's confirm screen uses it.
+  final bool pick;
+
+  /// Typed into the search box and searched at once.
+  final String? initialQuery;
+
   @override
   ConsumerState<LogFoodScreen> createState() => _LogFoodScreenState();
 }
+
+/// Opens Log food to choose a food rather than log it. The chosen food (a
+/// FitSync, FatSecret or manual one, per serving) comes back, or null. Snap a
+/// meal's Search and "+ Add an item" use it; [query] is typed in and searched
+/// at once.
+Future<Food?> pickFood(BuildContext context, {required String mealType, String? query}) =>
+    Navigator.of(context).push<Food>(MaterialPageRoute(
+      builder: (_) => LogFoodScreen(mealType: mealType, pick: true, initialQuery: query),
+    ));
 
 class _LogFoodScreenState extends ConsumerState<LogFoodScreen> {
   final _search = TextEditingController();
@@ -42,6 +59,17 @@ class _LogFoodScreenState extends ConsumerState<LogFoodScreen> {
   /// shown at the top and changeable before anything is searched. It used
   /// to be fixed in the title and changeable only in the last step.
   late String _meal = widget.mealType;
+
+  @override
+  void initState() {
+    super.initState();
+    final q = widget.initialQuery?.trim() ?? '';
+    if (q.isNotEmpty) {
+      final clipped = q.length > _maxQuery ? q.substring(0, _maxQuery).trim() : q;
+      _search.text = clipped;
+      _query = clipped;
+    }
+  }
 
   @override
   void dispose() {
@@ -84,6 +112,10 @@ class _LogFoodScreenState extends ConsumerState<LogFoodScreen> {
       }
       if (!mounted) return;
     }
+    if (widget.pick) {
+      Navigator.of(context).pop(food);
+      return;
+    }
     final choice = await showLogFoodSheet(context, food, mealType: _meal);
     if (choice == null || !mounted) return;
     final messenger = ScaffoldMessenger.of(context);
@@ -104,10 +136,33 @@ class _LogFoodScreenState extends ConsumerState<LogFoodScreen> {
   }
 
   Future<void> _manual() async {
+    if (widget.pick) {
+      final food = await Navigator.of(context).push<Food>(MaterialPageRoute(
+        builder: (_) => AddFoodManuallyScreen(mealType: _meal, pick: true),
+      ));
+      if (food != null && mounted) Navigator.of(context).pop(food);
+      return;
+    }
     final logged = await Navigator.of(context).push<bool>(MaterialPageRoute(
       builder: (_) => AddFoodManuallyScreen(mealType: _meal, onLogged: widget.onLogged),
     ));
     if (logged == true && mounted) Navigator.of(context).pop();
+  }
+
+  Future<void> _snap() async {
+    final logged = await startSnapMeal(
+      context,
+      ref,
+      mealType: _meal,
+      date: ref.read(nutritionDayProvider).value?.date,
+      // Log food is right behind the photo screen: going back is the search,
+      // for the meal the photo screen had.
+      onSearchInstead: (photoContext, meal) {
+        if (mounted) setState(() => _meal = meal);
+        Navigator.of(photoContext).pop(false);
+      },
+    );
+    if (logged && mounted) Navigator.of(context).pop();
   }
 
   @override
@@ -115,15 +170,48 @@ class _LogFoodScreenState extends ConsumerState<LogFoodScreen> {
     final t = context.fs;
     return Scaffold(
       backgroundColor: t.bg,
-      appBar: AppBar(title: const Text('Log food')),
+      appBar: AppBar(title: Text(widget.pick ? 'Choose a food' : 'Log food')),
       bottomNavigationBar: SafeArea(
         minimum: const EdgeInsets.fromLTRB(20, 0, 20, 16),
-        child: FsButton(
-          key: const Key('food.manual'),
-          label: 'Add manually',
-          kind: FsButtonKind.secondary,
-          onPressed: _manual,
-        ),
+        child: Builder(builder: (context) {
+          FsButton manual({bool wrapLabel = false}) => FsButton(
+            key: const Key('food.manual'),
+            label: 'Add manually',
+            kind: FsButtonKind.secondary,
+            onPressed: _manual,
+            wrapLabel: wrapLabel,
+          );
+          // Choosing a food for a photo: no second photo from here.
+          if (widget.pick) return manual();
+          return LayoutBuilder(builder: (context, box) {
+            // One row at every size: on a small phone at large text the
+            // suggested foods above must still show without scrolling. The
+            // labelled pill only where both labels measure whole (Snap a
+            // meal first, as the prototype orders them); otherwise a camera
+            // button, and Add manually may wrap to two lines rather than be
+            // cut short -- but only when "manually" fits a line of its own:
+            // a word broken over three lines is no more whole than "Add
+            // manua…", and the taller bar would push the foods off screen.
+            // Add manually is an FsButton: 20 px padding each side of 15 w700
+            // text with -0.15 letter spacing.
+            const manualStyle = TextStyle(fontSize: 15, fontWeight: FontWeight.w700, letterSpacing: -0.15);
+            final style = Theme.of(context).textTheme.bodyMedium?.merge(manualStyle) ?? manualStyle;
+            final manualWidth = 20 + measureTextWidth(context, 'Add manually', style) + 20;
+            final roomy = SnapMealButton.labelledWidth(context) + 10 + manualWidth <= box.maxWidth;
+            // Beside the 52 dp camera button and the 10 dp gap.
+            final wrap = !roomy && 20 + measureTextWidth(context, 'manually', style) + 20 <= box.maxWidth - 52 - 10;
+            return Row(
+              children: [
+                if (roomy)
+                  Expanded(child: SnapMealButton(key: const Key('food.snap'), onTap: _snap))
+                else
+                  SnapMealButton(key: const Key('food.snap'), onTap: _snap, compact: true),
+                const SizedBox(width: 10),
+                if (roomy) manual() else Expanded(child: manual(wrapLabel: wrap)),
+              ],
+            );
+          });
+        }),
       ),
       body: Column(
         children: [
@@ -133,7 +221,8 @@ class _LogFoodScreenState extends ConsumerState<LogFoodScreen> {
           // off the screen. Changing it is rare -- it arrives pre-picked. A
           // Wrap, so at very large text the pill drops under its label
           // rather than cutting "Breakfast" short; heard as one button.
-          Padding(
+          // Not when choosing: the meal is chosen on the confirm screen.
+          if (!widget.pick) Padding(
             padding: const EdgeInsets.fromLTRB(20, 4, 20, 0),
             child: Align(
               alignment: Alignment.centerLeft,

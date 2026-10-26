@@ -35,6 +35,10 @@
 	<string>FitSync connects to the development API running on your computer.</string>
 	<key>NSMotionUsageDescription</key>
 	<string>FitSync counts your steps to estimate the distance you walk and the calories it burns.</string>
+	<key>NSCameraUsageDescription</key>
+	<string>FitSync uses the camera to recognise the food in your meal photo.</string>
+	<key>NSPhotoLibraryUsageDescription</key>
+	<string>FitSync uses your photo library to recognise the food in a meal photo.</string>
 	<key>UIApplicationSceneManifest</key>
 	<dict>
 		<key>UIApplicationSupportsMultipleScenes</key>

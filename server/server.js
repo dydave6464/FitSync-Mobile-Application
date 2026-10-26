@@ -5,6 +5,7 @@ const { createPool } = require('./src/db/pool');
 const { createMlService } = require('./src/services/ml');
 const { createCueService } = require('./src/services/cues');
 const { createFatsecretService } = require('./src/services/fatsecret');
+const { createVisionService } = require('./src/services/vision');
 const { createStorage } = require('./src/services/storage');
 const { createGoogleVerifier } = require('./src/services/google');
 const { createMailService } = require('./src/services/mail');
@@ -26,12 +27,19 @@ if (fatsecretStubInProduction) {
   logger.warn('FATSECRET_MODE is stub in production: FatSecret search is off; set FATSECRET_MODE=http');
 }
 const fatsecret = fatsecretStubInProduction ? null : createFatsecretService(config.fatsecret);
+// Same reasoning as FatSecret above: a stub in production would suggest the
+// same foods for every photo. Off instead: Snap a meal answers 502.
+const visionStubInProduction = config.env === 'production' && config.vision.mode === 'stub';
+if (visionStubInProduction) {
+  logger.warn('VISION_MODE is stub in production: Snap a meal is off; set VISION_MODE=groq or cloudflare');
+}
+const vision = visionStubInProduction ? null : createVisionService(config.vision);
 const storage = createStorage(config.storage);
 const google = createGoogleVerifier(config.google);
 const mail = createMailService(config.mail, logger);
 
 const app = createApp({
-  config, logger, pool, ml, storage, cues, fatsecret, jwt: config.jwt, google,
+  config, logger, pool, ml, storage, cues, fatsecret, vision, jwt: config.jwt, google,
   mail, publicBaseUrl: config.publicBaseUrl,
 });
 

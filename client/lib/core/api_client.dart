@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 
 import 'package:http/http.dart' as http;
@@ -119,31 +120,82 @@ class ApiClient {
   Future<Map<String, dynamic>> _send(
     String method,
     String path,
-    Map<String, dynamic> body,
-  ) async {
+    Map<String, dynamic> body, {
+    Duration? timeout,
+    Future<void>? abortTrigger,
+  }) async {
     final uri = Uri.parse('$_baseUrl$path');
     final headers = await _headers(json: true);
     final encoded = jsonEncode(body);
 
     final http.Response response;
     try {
-      response = await switch (method) {
-        'POST' => _client.post(uri, headers: headers, body: encoded),
-        'PATCH' => _client.patch(uri, headers: headers, body: encoded),
-        'PUT' => _client.put(uri, headers: headers, body: encoded),
-        'DELETE' => _client.delete(uri, headers: headers, body: encoded),
-        _ => throw ArgumentError('Unsupported method: $method'),
-      }.timeout(_timeout);
+      // The outer timeout bounds everything, connection setup included; the
+      // abortable request's own timer is what hangs up so the server stops.
+      response = abortTrigger != null
+          ? await _sendAbortable(method, uri, headers, encoded, abortTrigger, timeout ?? _timeout)
+              .timeout(timeout ?? _timeout)
+          : await switch (method) {
+              'POST' => _client.post(uri, headers: headers, body: encoded),
+              'PATCH' => _client.patch(uri, headers: headers, body: encoded),
+              'PUT' => _client.put(uri, headers: headers, body: encoded),
+              'DELETE' => _client.delete(uri, headers: headers, body: encoded),
+              _ => throw ArgumentError('Unsupported method: $method'),
+            }.timeout(timeout ?? _timeout);
+    } on http.RequestAbortedException {
+      throw const ApiException('CANCELLED', 'The request was cancelled.');
     } catch (_) {
       throw ApiException('NETWORK_ERROR', _unreachableMessage);
     }
     return _unwrap(response);
   }
 
+  /// A request that is dropped -- its connection closed, so the server can
+  /// stop work nobody is waiting for any more -- when [abortTrigger]
+  /// completes (throws [http.RequestAbortedException]) or when [timeout]
+  /// passes (throws [TimeoutException]). A plain Future.timeout would stop
+  /// waiting but leave the connection, and the server's work, running.
+  Future<http.Response> _sendAbortable(
+    String method,
+    Uri uri,
+    Map<String, String> headers,
+    String body,
+    Future<void> abortTrigger,
+    Duration timeout,
+  ) async {
+    final stop = Completer<void>();
+    var timedOut = false;
+    final timer = Timer(timeout, () {
+      timedOut = true;
+      if (!stop.isCompleted) stop.complete();
+    });
+    unawaited(abortTrigger.then((_) {
+      if (!stop.isCompleted) stop.complete();
+    }));
+    final request = http.AbortableRequest(method, uri, abortTrigger: stop.future)
+      ..headers.addAll(headers)
+      ..body = body;
+    try {
+      return await http.Response.fromStream(await _client.send(request));
+    } on http.RequestAbortedException {
+      if (timedOut) throw TimeoutException('No answer within $timeout', timeout);
+      rethrow;
+    } finally {
+      timer.cancel();
+    }
+  }
+
+  /// [timeout] replaces the usual 10 seconds for a request known to take
+  /// longer: Snap a meal waits for the AI. With an [abortTrigger], the
+  /// request is dropped (its connection closed, so the server stops) when the
+  /// trigger completes -- this then throws an [ApiException] with code
+  /// CANCELLED -- or when [timeout] passes (NETWORK_ERROR, as without one).
   Future<Map<String, dynamic>> postJson(
     String path,
-    Map<String, dynamic> body,
-  ) => _send('POST', path, body);
+    Map<String, dynamic> body, {
+    Duration? timeout,
+    Future<void>? abortTrigger,
+  }) => _send('POST', path, body, timeout: timeout, abortTrigger: abortTrigger);
   Future<Map<String, dynamic>> patchJson(
     String path,
     Map<String, dynamic> body,

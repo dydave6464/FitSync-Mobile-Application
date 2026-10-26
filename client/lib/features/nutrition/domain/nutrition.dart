@@ -67,6 +67,7 @@ class Food {
     this.sugarG,
     this.sodiumMg,
     this.group,
+    this.fatsecretCopy = false,
   });
 
   factory Food.fromJson(Map<String, dynamic> j) => Food(
@@ -103,7 +104,15 @@ class Food {
   /// online food, one without a type, or one not from a search.
   final String? group;
 
+  /// A FitSync row copied from FatSecret, as Snap a meal suggests it: logged
+  /// by its id like a FitSync food, but the numbers are FatSecret's, so the
+  /// attribution shows wherever this food does.
+  final bool fatsecretCopy;
+
   bool get isFatsecret => source == 'fatsecret';
+
+  /// Whether FatSecret's attribution must show beside this food.
+  bool get showsFatsecret => isFatsecret || fatsecretCopy;
 
   /// The `food` object POST /nutrition/entries takes. A FatSecret food is
   /// sent by id only: the server fetches its numbers itself.

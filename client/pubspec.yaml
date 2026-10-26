@@ -51,6 +51,8 @@ dependencies:
   # with a literal, lower compileSdk (34).
   url_launcher_android: 6.3.14
   font_awesome_flutter: ^11.0.0
+  # Snap a meal: the camera or the photo library, resized on the phone before upload.
+  image_picker: ^1.2.4
 
 dev_dependencies:
   flutter_test:
@@ -62,6 +64,10 @@ dev_dependencies:
   # package. See that file for information about deactivating specific lint
   # rules and activating additional ones.
   flutter_lints: ^6.0.0
+  # Tests only: a stand-in for image_picker's platform side, so the meal photo
+  # picker's request (size, quality) and its temp-file cleanup can be checked.
+  image_picker_platform_interface: ^2.11.2
+  plugin_platform_interface: ^2.1.8
 
 # For information on the generic Dart part of this file, see the
 # following page: https://dart.dev/tools/pub/pubspec

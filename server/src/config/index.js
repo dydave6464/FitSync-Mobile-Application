@@ -87,6 +87,23 @@ function load(env = process.env) {
       apiKey: env.GROQ_API_KEY || null,
       model: env.CUES_MODEL || null,
     },
+    vision: {
+      // Snap a meal's photo recogniser. stub (the default): fixed answers, no
+      // network -- what every test runs. server.js turns a stub off in
+      // production, as it does FatSecret's: the same suggestions for every
+      // photo would be worse than none.
+      mode: env.VISION_MODE || 'stub',
+      apiKey: env.GROQ_API_KEY || null,
+      model: env.VISION_MODEL || null,
+      // The same model on Cloudflare Workers AI: Groq's automatic backup
+      // when both are set (VISION_MODE=groq), or the only recogniser
+      // (VISION_MODE=cloudflare). The token needs Workers AI Read and Edit.
+      // Trimmed: a pasted id with a stray space would be a 404 on every photo.
+      cloudflare: {
+        accountId: env.CLOUDFLARE_ACCOUNT_ID?.trim() || null,
+        apiToken: env.CLOUDFLARE_API_TOKEN?.trim() || null,
+      },
+    },
     fatsecret: {
       // FatSecret's OAuth 2.0 Client ID and Secret are the consumer key and
       // secret the developer console shows.
