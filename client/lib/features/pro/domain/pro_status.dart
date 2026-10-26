@@ -1,0 +1,146 @@
+/// What Pro is for this account, from `GET /api/v1/pro`.
+library;
+
+enum ProPlan {
+  monthly('monthly'),
+  annual('annual');
+
+  const ProPlan(this.wire);
+
+  /// The name the server uses.
+  final String wire;
+
+  static ProPlan? fromWire(Object? value) => switch (value) {
+    'monthly' => ProPlan.monthly,
+    'annual' => ProPlan.annual,
+    _ => null,
+  };
+}
+
+/// Paid for a period, or granted by hand (demo and teacher accounts, which
+/// never expire).
+enum ProSource { paid, granted }
+
+/// The server's prices in pesos -- the only place they are set.
+class ProPrices {
+  const ProPrices({required this.monthly, required this.annual});
+
+  final int monthly;
+  final int annual;
+
+  int forPlan(ProPlan plan) => plan == ProPlan.monthly ? monthly : annual;
+
+  /// The annual card's headline figure: a year's price per month.
+  int get annualPerMonth => (annual / 12).round();
+
+  /// The annual card's tag, e.g. 40 for "-40%".
+  int get annualSavingPct => (100 - annual / 12 / monthly * 100).round();
+}
+
+class ProStatus {
+  const ProStatus({
+    required this.pro,
+    required this.source,
+    required this.until,
+    required this.plan,
+    required this.method,
+    required this.endsSoon,
+    required this.prices,
+  });
+
+  factory ProStatus.fromJson(Map<String, dynamic> json) {
+    final prices = json['prices'] as Map<String, dynamic>;
+    final until = json['until'] as String?;
+    return ProStatus(
+      pro: json['pro'] as bool? ?? false,
+      source: switch (json['source']) {
+        'paid' => ProSource.paid,
+        'granted' => ProSource.granted,
+        _ => null,
+      },
+      until: until == null ? null : DateTime.parse(until),
+      plan: ProPlan.fromWire(json['plan']),
+      method: json['method'] as String?,
+      endsSoon: json['endsSoon'] as bool? ?? false,
+      prices: ProPrices(
+        monthly: (prices['monthly'] as num).toInt(),
+        annual: (prices['annual'] as num).toInt(),
+      ),
+    );
+  }
+
+  final bool pro;
+  final ProSource? source;
+
+  /// When a paid period ends; null when free or granted.
+  final DateTime? until;
+  final ProPlan? plan;
+
+  /// PayMongo's name for how the last period was paid: gcash, paymaya, card.
+  final String? method;
+
+  /// A paid period that ends within 3 days.
+  final bool endsSoon;
+  final ProPrices prices;
+}
+
+/// Where to pay for one attempt.
+class ProCheckout {
+  const ProCheckout({required this.paymentId, required this.checkoutUrl});
+
+  factory ProCheckout.fromJson(Map<String, dynamic> json) => ProCheckout(
+    paymentId: (json['paymentId'] as num).toInt(),
+    checkoutUrl: Uri.parse(json['checkoutUrl'] as String),
+  );
+
+  final int paymentId;
+  final Uri checkoutUrl;
+}
+
+enum ProPaymentState { paid, pending }
+
+/// The server's answer to "was this paid?", with the account's status after it.
+class ProConfirmation {
+  const ProConfirmation({required this.state, required this.status});
+
+  factory ProConfirmation.fromJson(Map<String, dynamic> json) => ProConfirmation(
+    state: json['status'] == 'paid' ? ProPaymentState.paid : ProPaymentState.pending,
+    status: ProStatus.fromJson(json['pro'] as Map<String, dynamic>),
+  );
+
+  final ProPaymentState state;
+  final ProStatus status;
+}
+
+const _months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+
+/// "26 Nov 2026", in the phone's time zone.
+String formatProDate(DateTime d) {
+  final l = d.toLocal();
+  return '${l.day} ${_months[l.month - 1]} ${l.year}';
+}
+
+/// "26 Nov", in the phone's time zone.
+String formatProDay(DateTime d) {
+  final l = d.toLocal();
+  return '${l.day} ${_months[l.month - 1]}';
+}
+
+/// "₱1,788".
+String peso(int php) {
+  final digits = php.toString();
+  final out = StringBuffer('₱');
+  for (var i = 0; i < digits.length; i++) {
+    if (i > 0 && (digits.length - i) % 3 == 0) out.write(',');
+    out.write(digits[i]);
+  }
+  return out.toString();
+}
+
+/// How the app names PayMongo's payment methods; null for one it doesn't know.
+String? methodLabel(String? method) => switch (method) {
+  'gcash' => 'GCash',
+  'paymaya' => 'Maya',
+  'card' => 'card',
+  _ => null,
+};
