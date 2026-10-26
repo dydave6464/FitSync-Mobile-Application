@@ -41,7 +41,10 @@ const paymentsStubInProduction = config.env === 'production' && config.payments.
 if (paymentsStubInProduction) {
   logger.warn('PAYMONGO_MODE is stub in production: buying Pro is off; set PAYMONGO_MODE=test');
 }
-const payments = paymentsStubInProduction ? null : createPaymentsService(config.payments);
+// Built even when it is then turned off, so a live key stops startup in
+// every mode (services/payments).
+const paymentsService = createPaymentsService(config.payments);
+const payments = paymentsStubInProduction ? null : paymentsService;
 const storage = createStorage(config.storage);
 const google = createGoogleVerifier(config.google);
 const mail = createMailService(config.mail, logger);

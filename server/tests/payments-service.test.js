@@ -45,6 +45,14 @@ test('createPaymentsService: stub by default; test mode takes only a test key', 
   assert.throws(() => createPaymentsService({ mode: 'live', secretKey: 'sk_test_abc' }), /Unsupported PAYMONGO_MODE: live/);
 });
 
+test('createPaymentsService: a live key stops startup in every mode, and the test hooks cannot swap the key', async () => {
+  assert.throws(() => createPaymentsService({ secretKey: 'sk_live_abc' }), /live key/);
+  assert.throws(() => createPaymentsService({ mode: 'stub', secretKey: 'sk_live_abc' }), /live key/);
+  const fetchImpl = fakeFetch([{ status: 200, json: { data: { id: 'cs_abc', attributes: { checkout_url: 'https://checkout.paymongo.com/cs_abc' } } } }]);
+  await createPaymentsService({ mode: 'test', secretKey: 'sk_test_abc' }, { secretKey: 'sk_live_xyz', fetchImpl }).createCheckout(ARGS);
+  assert.equal(fetchImpl.calls[0].opts.headers.authorization, `Basic ${Buffer.from('sk_test_abc:').toString('base64')}`);
+});
+
 test('paymongo: creates a checkout for the given amount, GCash, Maya and card, coming back to us', async () => {
   const fetchImpl = fakeFetch([{ status: 200, json: { data: { id: 'cs_abc', attributes: { checkout_url: 'https://checkout.paymongo.com/cs_abc' } } } }]);
   const out = await paymongo.create({ secretKey: 'sk_test_abc', fetchImpl }).createCheckout(ARGS);
