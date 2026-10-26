@@ -29,14 +29,17 @@ final proCheckoutOpenerProvider = Provider<Future<bool> Function(Uri)>(
 /// (closed before the next check, or a check that failed on a weak signal) is
 /// still confirmed the next time the screen opens. It lives in memory only:
 /// if the phone kills the app, the server has to find the payment instead.
+/// It belongs to one account, so sign-out clears it (AuthController).
 class ProPendingCheckout extends Notifier<ProCheckout?> {
   @override
   ProCheckout? build() => null;
 
   void remember(ProCheckout checkout) => state = checkout;
 
-  /// Forgets [paymentId] once it is paid; a newer checkout stays.
-  void paid(int paymentId) {
+  /// Forgets [paymentId] once nothing more can come of it: it was paid, its
+  /// page never opened, or the server does not know it (404, 409). A newer
+  /// checkout stays.
+  void forget(int paymentId) {
     if (state?.paymentId == paymentId) state = null;
   }
 }

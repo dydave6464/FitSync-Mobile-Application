@@ -3,10 +3,11 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../../core/api_exception.dart';
 import '../../../core/theme.dart';
 import '../../../core/widgets/fs_kit.dart';
-import '../../profile/presentation/providers.dart' show profileProvider;
 import '../domain/pro_status.dart';
+import 'pro_sync.dart' show refreshProLocks;
 import 'providers.dart';
 
 /// What Pro unlocks, in the order a user meets it: volume by muscle (the
@@ -53,6 +54,15 @@ class _ProScreenState extends ConsumerState<ProScreen> {
   String? _openError;
   ProCheckout? _checkout;
   bool _checking = false;
+
+  /// The user asked "was it paid?" (a button, or coming back to the app) and
+  /// the answer is not in yet: the panel says "Checking your payment…". Set
+  /// too when the ask lands while a quiet poll is out, and then asked again
+  /// as soon as that poll ends, so it is never dropped.
+  bool _userChecking = false;
+
+  /// PayMongo's page is being opened: a second tap must not open another.
+  bool _opening = false;
   Timer? _poll;
   int _ticks = 0;
   String? _paidLine;
@@ -72,7 +82,8 @@ class _ProScreenState extends ConsumerState<ProScreen> {
       });
     }
     // A checkout from an earlier visit may have been paid since the screen
-    // closed: ask once, quietly. Only "paid" changes what the screen shows.
+    // closed: ask once, quietly. Only "paid" changes what the screen shows;
+    // Pay waits for the answer, so nobody pays twice.
     final leftOver = ref.read(proPendingCheckoutProvider);
     if (leftOver != null) {
       _checkout = leftOver;
@@ -98,8 +109,9 @@ class _ProScreenState extends ConsumerState<ProScreen> {
   }
 
   Future<void> _start() async {
-    // Two taps inside one frame both reach the button before it rebuilds.
-    if (_pay != _Pay.idle) return;
+    // Two taps inside one frame both reach the button before it rebuilds; and
+    // while an earlier attempt is being checked, it may turn out paid.
+    if (_pay != _Pay.idle || _checking) return;
     setState(() {
       _pay = _Pay.opening;
       _openError = null;
@@ -125,7 +137,11 @@ class _ProScreenState extends ConsumerState<ProScreen> {
 
   Future<void> _openPage() async {
     final checkout = _checkout;
-    if (checkout == null) return;
+    if (checkout == null || _opening) return;
+    // Opened again from a waiting panel: the attempt is still live (on an
+    // iPhone the sheet can even still be up), so a failure keeps it.
+    final reopening = _awaiting;
+    setState(() => _opening = true);
     bool opened;
     try {
       opened = await ref.read(proCheckoutOpenerProvider)(checkout.checkoutUrl);
@@ -135,8 +151,14 @@ class _ProScreenState extends ConsumerState<ProScreen> {
       opened = false;
     }
     if (!mounted) return;
+    setState(() => _opening = false);
+    if (!opened && reopening) {
+      setState(() => _openError = _openFailed);
+      return;
+    }
     if (!opened) {
       _stopPolling();
+      ref.read(proPendingCheckoutProvider.notifier).forget(checkout.paymentId);
       setState(() {
         _pay = _Pay.idle;
         _checkout = null;
@@ -144,7 +166,10 @@ class _ProScreenState extends ConsumerState<ProScreen> {
       });
       return;
     }
-    setState(() => _pay = _Pay.waiting);
+    setState(() {
+      _pay = _Pay.waiting;
+      _openError = null;
+    });
     _stopPolling();
     _ticks = 0;
     _poll = Timer.periodic(proPollEvery, (_) {
@@ -170,43 +195,82 @@ class _ProScreenState extends ConsumerState<ProScreen> {
     setState(() {
       _pay = _Pay.idle;
       _checkout = null;
+      _openError = null;
     });
   }
 
   /// Asks the server whether the payment went through. A quiet poll that
   /// hears "pending" or fails changes nothing on screen; a check the user
   /// asked for (a button, or coming back to the app) says what it found.
+  /// An answer about an attempt the user has since left changes nothing but
+  /// "paid", which is news whenever it comes.
   Future<void> _check({required bool userAsked}) async {
     final checkout = _checkout;
-    if (checkout == null || _checking) return;
-    setState(() => _checking = true);
+    if (checkout == null) return;
+    if (_checking) {
+      if (userAsked && !_userChecking) setState(() => _userChecking = true);
+      return;
+    }
+    setState(() {
+      _checking = true;
+      if (userAsked) _userChecking = true;
+    });
     try {
       final result = await ref
           .read(proRepositoryProvider)
           .confirm(checkout.paymentId);
       if (!mounted) return;
+      final current = identical(_checkout, checkout);
       if (result.state == ProPaymentState.paid) {
-        _stopPolling();
         final until = result.status.until;
+        if (current) _stopPolling();
         setState(() {
-          _pay = _Pay.idle;
-          _checkout = null;
+          if (current) {
+            _pay = _Pay.idle;
+            _checkout = null;
+          }
           _paidLine = until == null
               ? "You're Pro"
               : "You're Pro until ${formatProDate(until)}";
         });
-        ref.read(proPendingCheckoutProvider.notifier).paid(checkout.paymentId);
-        // Every Pro lock reads the profile; refreshing it unlocks them at once.
-        ref.invalidate(profileProvider);
+        ref
+            .read(proPendingCheckoutProvider.notifier)
+            .forget(checkout.paymentId);
+        refreshProLocks(ref);
         ref.invalidate(proStatusProvider);
-      } else if (userAsked) {
+      } else if (userAsked && current) {
         setState(() => _pay = _Pay.notCompleted);
       }
+    } on ApiException catch (e) {
+      // Nothing more can come of an attempt the server does not know.
+      if (mounted &&
+          (e.code == 'PAYMENT_NOT_FOUND' || e.code == 'PAYMENT_MISMATCH')) {
+        ref
+            .read(proPendingCheckoutProvider.notifier)
+            .forget(checkout.paymentId);
+      }
+      _checkFailed(checkout, userAsked);
     } catch (_) {
-      if (mounted && userAsked) setState(() => _pay = _Pay.checkFailed);
+      _checkFailed(checkout, userAsked);
     } finally {
-      if (mounted) setState(() => _checking = false);
+      if (mounted) _checkDone(askAgain: !userAsked && _userChecking);
     }
+  }
+
+  void _checkFailed(ProCheckout checkout, bool userAsked) {
+    if (mounted && userAsked && identical(_checkout, checkout)) {
+      setState(() => _pay = _Pay.checkFailed);
+    }
+  }
+
+  /// [askAgain]: the user asked while a quiet poll was out; that poll's
+  /// answer was not theirs, so ask now -- unless it found the payment.
+  void _checkDone({required bool askAgain}) {
+    setState(() {
+      _checking = false;
+      _userChecking = false;
+    });
+    if (askAgain && _awaiting) _check(userAsked: true);
   }
 
   @override
@@ -365,7 +429,8 @@ class _ProScreenState extends ConsumerState<ProScreen> {
       kind: _pay == _Pay.notCompleted
           ? FsButtonKind.primary
           : FsButtonKind.ghost,
-      onPressed: _openPage,
+      busy: _opening,
+      onPressed: _opening ? null : _openPage,
     );
     final otherPlan = FsButton(
       key: const Key('pro.otherPlan'),
@@ -373,41 +438,53 @@ class _ProScreenState extends ConsumerState<ProScreen> {
       kind: FsButtonKind.ghost,
       onPressed: _reset,
     );
+    // A check the user asked for is announced; the panel's own words
+    // return with its answer.
+    const checkingText = 'Checking your payment…';
+    final openError = _openError == null
+        ? null
+        : _Note(key: const Key('pro.openError'), text: _openError!);
     switch (_pay) {
       case _Pay.idle:
       case _Pay.opening:
+        // Busy too while an earlier attempt is being checked: it may be paid.
+        final busy = _pay == _Pay.opening || _checking;
         return Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
             FsButton(
               key: const Key('pro.pay'),
               label: 'Pay ${peso(p.forPlan(_plan))} with PayMongo',
-              busy: _pay == _Pay.opening,
-              onPressed: _pay == _Pay.opening ? null : _start,
+              busy: busy,
+              onPressed: busy ? null : _start,
             ),
-            if (_openError != null) ...[
-              const SizedBox(height: 10),
-              _Note(key: const Key('pro.openError'), text: _openError!),
-            ],
+            if (openError != null) ...[const SizedBox(height: 10), openError],
           ],
         );
       case _Pay.waiting:
         return _Panel(
           key: const Key('pro.waiting'),
-          text: "Finish paying on PayMongo's page. This screen updates by itself.",
+          text: _userChecking ? checkingText : "Finish paying on PayMongo's page. This screen updates by itself.",
+          note: openError,
           actions: [check, reopen, otherPlan],
         );
       case _Pay.notCompleted:
         return _Panel(
           key: const Key('pro.notCompleted'),
-          title: 'Payment not completed',
-          text: "PayMongo hasn't confirmed this payment yet.",
+          title: _userChecking ? null : 'Payment not completed',
+          text: _userChecking
+              ? checkingText
+              : "PayMongo hasn't confirmed this payment yet.",
+          note: openError,
           actions: [reopen, check, otherPlan],
         );
       case _Pay.checkFailed:
         return _Panel(
           key: const Key('pro.checkFailed'),
-          text: "Couldn't check your payment. Your money is safe — try again.",
+          text: _userChecking
+              ? checkingText
+              : "Couldn't check your payment. Your money is safe — try again.",
+          note: openError,
           actions: [
             FsButton(
               key: const Key('pro.retry'),
@@ -465,7 +542,8 @@ class _StatusCard extends StatelessWidget {
 }
 
 /// A choosable plan. FsCard gives the button and selected state to a screen
-/// reader; [semanticsLabel] says the whole price in one sentence.
+/// reader, and the two cards are one radio group; [semanticsLabel] says the
+/// whole price in one sentence.
 class _PlanCard extends StatelessWidget {
   const _PlanCard({
     super.key,
@@ -497,6 +575,7 @@ class _PlanCard extends StatelessWidget {
         onTap: onTap,
         child: Semantics(
           label: semanticsLabel,
+          inMutuallyExclusiveGroup: true,
           excludeSemantics: true,
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
@@ -533,18 +612,21 @@ class _PlanCard extends StatelessWidget {
   }
 }
 
-/// A waiting / not completed / failed state, read out when it appears.
+/// A waiting / not completed / failed state, read out when it appears;
+/// [note] (a page that would not open again) sits under its words.
 class _Panel extends StatelessWidget {
   const _Panel({
     super.key,
     this.title,
     required this.text,
     required this.actions,
+    this.note,
   });
 
   final String? title;
   final String text;
   final List<Widget> actions;
+  final Widget? note;
 
   @override
   Widget build(BuildContext context) {
@@ -581,6 +663,7 @@ class _Panel extends StatelessWidget {
               ],
             ),
           ),
+          if (note != null) ...[const SizedBox(height: 10), note!],
           for (final action in actions) ...[const SizedBox(height: 10), action],
         ],
       ),

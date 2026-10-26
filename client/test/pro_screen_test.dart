@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -9,19 +11,53 @@ import 'package:fitsync/core/widgets/fs_kit.dart';
 import 'package:fitsync/features/pro/domain/pro_status.dart';
 import 'package:fitsync/features/pro/presentation/pro_screen.dart';
 import 'package:fitsync/features/pro/presentation/providers.dart';
+import 'package:fitsync/features/sessions/presentation/providers.dart'
+    show trainingAnalyticsProvider;
 
 import 'helpers/fake_pro_repository.dart';
+import 'helpers/pro_locks_probe.dart';
 
 class _Opener {
   final List<Uri> opened = [];
   bool answer = true;
   Object? error;
+  Completer<bool>? gate;
   Future<bool> call(Uri uri) async {
     opened.add(uri);
+    final g = gate;
+    if (g != null) return g.future;
     if (error != null) throw error!;
     return answer;
   }
 }
+
+/// The Pro screen over [openProScreen]'s button, so it can be left and
+/// opened again.
+Future<void> _pumpBehindButton(
+  WidgetTester tester,
+  FakeProRepository repo,
+  _Opener opener,
+) => tester.pumpWidget(
+  ProviderScope(
+    overrides: [
+      proRepositoryProvider.overrideWithValue(repo),
+      proCheckoutOpenerProvider.overrideWithValue(opener.call),
+    ],
+    child: MaterialApp(
+      theme: fsLightTheme(),
+      home: Builder(
+        builder: (context) => TextButton(
+          key: const Key('home.openPro'),
+          onPressed: () => openProScreen(context),
+          child: const Text('Pro'),
+        ),
+      ),
+    ),
+  ),
+);
+
+ProviderContainer _container(WidgetTester tester) =>
+    ProviderScope.containerOf(tester.element(find.byType(MaterialApp)));
 
 Future<(FakeProRepository, _Opener)> _pump(
   WidgetTester tester, {
@@ -434,4 +470,237 @@ void main() {
     await _pump(tester);
     expect(find.byKey(const Key('pro.close')), findsOneWidget);
   });
+  testWidgets(
+    'paying refetches what Pro unlocks: the profile and every analytics period',
+    (tester) async {
+      final repo = FakeProRepository()
+        ..confirmAnswers.add(
+          ProConfirmation(state: ProPaymentState.paid, status: paidStatus()),
+        )
+        ..statusValue = paidStatus();
+      final probe = ProLocksProbe();
+      final container = ProviderContainer(
+        overrides: [
+          proRepositoryProvider.overrideWithValue(repo),
+          proCheckoutOpenerProvider.overrideWithValue(_Opener().call),
+          ...probe.overrides,
+        ],
+      );
+      addTearDown(container.dispose);
+      probe.watch(container);
+      await tester.pumpWidget(
+        UncontrolledProviderScope(
+          container: container,
+          child: MaterialApp(theme: fsLightTheme(), home: const ProScreen()),
+        ),
+      );
+      await tester.pumpAndSettle();
+      expect(probe.profileLoads, 1);
+      expect(probe.analyticsLoads, 1);
+
+      probe.premium = true;
+      await tester.tap(find.byKey(const Key('pro.pay')));
+      await tester.pump();
+      await tester.tap(find.byKey(const Key('pro.check')));
+      await tester.pumpAndSettle();
+      expect(find.byKey(const Key('pro.paid')), findsOneWidget);
+      expect(probe.profileLoads, 2, reason: 'Snap a meal reads the profile');
+      expect(
+        probe.analyticsLoads,
+        2,
+        reason: 'Volume by muscle is locked or not per analytics answer',
+      );
+      expect(
+        container.read(trainingAnalyticsProvider('month')).value?.musclesLocked,
+        isFalse,
+      );
+    },
+  );
+
+  testWidgets(
+    'a user-asked check says "Checking your payment…" until it answers',
+    (tester) async {
+      final (repo, _) = await _pump(tester);
+      await tester.tap(find.byKey(const Key('pro.pay')));
+      await tester.pump();
+      final gate = Completer<void>();
+      repo.confirmGate = gate;
+      await tester.tap(find.byKey(const Key('pro.check')));
+      await tester.pump();
+      expect(find.text('Checking your payment…'), findsOneWidget);
+
+      gate.complete();
+      await tester.pump();
+      await tester.pump();
+      expect(find.text('Checking your payment…'), findsNothing);
+      expect(find.byKey(const Key('pro.notCompleted')), findsOneWidget);
+    },
+  );
+
+  testWidgets(
+    'the plan cards are one choice: a radio group to a screen reader',
+    (tester) async {
+      await _pump(tester);
+      for (final key in ['pro.plan.annual', 'pro.plan.monthly']) {
+        expect(
+          tester.getSemantics(find.byKey(Key(key))),
+          isSemantics(isInMutuallyExclusiveGroup: true),
+        );
+      }
+    },
+  );
+
+  testWidgets(
+    'coming back while a quiet check is on its way still says what it found',
+    (tester) async {
+      final (repo, _) = await _pump(tester);
+      await tester.tap(find.byKey(const Key('pro.pay')));
+      await tester.pump();
+      final gate = Completer<void>();
+      repo.confirmGate = gate;
+      await tester.pump(proPollEvery); // a quiet poll, held
+      expect(repo.confirms, [7]);
+
+      tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.inactive);
+      tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.resumed);
+      await tester.pump();
+      expect(find.text('Checking your payment…'), findsOneWidget);
+
+      repo.confirmGate = null;
+      gate.complete();
+      await tester.pump();
+      await tester.pump();
+      await tester.pump();
+      expect(repo.confirms, [7, 7], reason: 'asked again once the poll ended');
+      expect(find.byKey(const Key('pro.notCompleted')), findsOneWidget);
+    },
+  );
+
+  testWidgets(
+    'a re-open that fails keeps the attempt, its checks and its panel',
+    (tester) async {
+      final (repo, opener) = await _pump(tester);
+      await tester.tap(find.byKey(const Key('pro.pay')));
+      await tester.pump();
+      opener.error = PlatformException(code: 'failedToLoad');
+      await tester.tap(find.byKey(const Key('pro.reopen')));
+      await tester.pump();
+      expect(find.byKey(const Key('pro.waiting')), findsOneWidget);
+      expect(find.byKey(const Key('pro.openError')), findsOneWidget);
+      expect(_container(tester).read(proPendingCheckoutProvider), isNotNull);
+
+      await tester.pump(proPollEvery);
+      await tester.pump();
+      expect(repo.confirms, [7], reason: 'the screen still checks by itself');
+
+      opener.error = null;
+      await tester.tap(find.byKey(const Key('pro.reopen')));
+      await tester.pump();
+      expect(find.byKey(const Key('pro.openError')), findsNothing);
+    },
+  );
+
+  testWidgets('a second tap while the page is opening opens it once', (
+    tester,
+  ) async {
+    final (_, opener) = await _pump(tester);
+    await tester.tap(find.byKey(const Key('pro.pay')));
+    await tester.pump();
+    final gate = Completer<bool>();
+    opener.gate = gate;
+    await tester.tap(find.byKey(const Key('pro.reopen')));
+    await tester.pump();
+    await tester.tap(find.byKey(const Key('pro.reopen')), warnIfMissed: false);
+    await tester.pump();
+    expect(opener.opened.length, 2, reason: 'Pay once, then one re-open');
+    gate.complete(true);
+    await tester.pump();
+    expect(find.byKey(const Key('pro.waiting')), findsOneWidget);
+  });
+
+  testWidgets('an attempt whose page never opened is not remembered', (
+    tester,
+  ) async {
+    final (_, opener) = await _pump(tester);
+    opener.answer = false;
+    await tester.tap(find.byKey(const Key('pro.pay')));
+    await tester.pumpAndSettle();
+    expect(find.byKey(const Key('pro.openError')), findsOneWidget);
+    expect(_container(tester).read(proPendingCheckoutProvider), isNull);
+  });
+
+  testWidgets('an attempt the server does not know is forgotten', (
+    tester,
+  ) async {
+    for (final code in ['PAYMENT_NOT_FOUND', 'PAYMENT_MISMATCH']) {
+      final (repo, _) = await _pump(tester);
+      await tester.tap(find.byKey(const Key('pro.pay')));
+      await tester.pump();
+      expect(_container(tester).read(proPendingCheckoutProvider), isNotNull);
+      repo.confirmError = ApiException(code, 'no');
+      await tester.tap(find.byKey(const Key('pro.check')));
+      await tester.pump();
+      await tester.pump();
+      expect(
+        _container(tester).read(proPendingCheckoutProvider),
+        isNull,
+        reason: code,
+      );
+      await tester.pumpWidget(const SizedBox());
+    }
+  });
+
+  testWidgets('Pay waits while an attempt left behind is being checked', (
+    tester,
+  ) async {
+    final repo = FakeProRepository();
+    final opener = _Opener();
+    await _pumpBehindButton(tester, repo, opener);
+    await tester.tap(find.byKey(const Key('home.openPro')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const Key('pro.pay')));
+    await tester.pump();
+    await tester.tap(find.byKey(const Key('pro.close')));
+    await tester.pumpAndSettle();
+
+    final gate = Completer<void>();
+    repo.confirmGate = gate;
+    await tester.tap(find.byKey(const Key('home.openPro')));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 500));
+    final pay = tester.widget<FsButton>(find.byKey(const Key('pro.pay')));
+    expect(pay.busy, isTrue);
+    expect(pay.onPressed, isNull);
+    await tester.tap(find.byKey(const Key('pro.pay')), warnIfMissed: false);
+    await tester.pump();
+    expect(repo.checkouts.length, 1, reason: 'no second payment');
+
+    gate.complete();
+    await tester.pumpAndSettle();
+    final after = tester.widget<FsButton>(find.byKey(const Key('pro.pay')));
+    expect(after.busy, isFalse);
+    expect(after.onPressed, isNotNull);
+  });
+
+  testWidgets(
+    'a late answer about an attempt the user left changes nothing on screen',
+    (tester) async {
+      final (repo, _) = await _pump(tester);
+      await tester.tap(find.byKey(const Key('pro.pay')));
+      await tester.pump();
+      final gate = Completer<void>();
+      repo.confirmGate = gate;
+      await tester.tap(find.byKey(const Key('pro.check')));
+      await tester.pump();
+      await tester.tap(find.byKey(const Key('pro.otherPlan')));
+      await tester.pump();
+      expect(find.byKey(const Key('pro.pay')), findsOneWidget);
+
+      gate.complete(); // "pending"
+      await tester.pump();
+      await tester.pump();
+      expect(find.byKey(const Key('pro.notCompleted')), findsNothing);
+      expect(find.byKey(const Key('pro.pay')), findsOneWidget);
+    },
+  );
 }
