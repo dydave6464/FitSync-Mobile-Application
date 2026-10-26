@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:fitsync/features/pro/data/pro_repository.dart';
 import 'package:fitsync/features/pro/domain/pro_status.dart';
 
@@ -39,12 +41,14 @@ ProStatus paidStatus({
 );
 
 /// Answers the Pro calls without a server. Records checkouts and confirms;
-/// [confirmAnswers] are handed out in order, then "pending" for ever.
+/// [confirmAnswers] are handed out in order, then "pending" for ever. A set
+/// [confirmGate] holds each confirm's answer until it completes.
 class FakeProRepository implements ProRepository {
   FakeProRepository([this.statusValue = freeStatus]);
 
   ProStatus statusValue;
   Object? statusError;
+  int statusCalls = 0;
 
   final List<ProPlan> checkouts = [];
   ProCheckout checkoutValue = ProCheckout(
@@ -56,9 +60,11 @@ class FakeProRepository implements ProRepository {
   final List<int> confirms = [];
   final List<ProConfirmation> confirmAnswers = [];
   Object? confirmError;
+  Completer<void>? confirmGate;
 
   @override
   Future<ProStatus> status() async {
+    statusCalls += 1;
     if (statusError != null) throw statusError!;
     return statusValue;
   }
@@ -73,6 +79,8 @@ class FakeProRepository implements ProRepository {
   @override
   Future<ProConfirmation> confirm(int paymentId) async {
     confirms.add(paymentId);
+    final gate = confirmGate;
+    if (gate != null) await gate.future;
     if (confirmError != null) throw confirmError!;
     if (confirmAnswers.isNotEmpty) return confirmAnswers.removeAt(0);
     return ProConfirmation(state: ProPaymentState.pending, status: statusValue);
