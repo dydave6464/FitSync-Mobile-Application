@@ -20,6 +20,7 @@ import 'package:fitsync/features/plans/presentation/widgets/training_days_row.da
 import 'package:fitsync/features/profile/domain/profile.dart';
 import 'package:fitsync/features/profile/presentation/providers.dart';
 import 'package:fitsync/features/pro/presentation/pro_screen.dart';
+import 'package:fitsync/features/pro/presentation/providers.dart';
 import 'package:fitsync/features/reminders/domain/reminders.dart';
 import 'package:fitsync/features/reminders/presentation/providers.dart';
 import 'package:fitsync/features/reminders/presentation/reminders_screen.dart';
@@ -34,6 +35,7 @@ import 'package:fitsync/features/schedule/presentation/schedule_screen.dart';
 
 import 'helpers/dialog_buttons.dart';
 import 'helpers/fake_health.dart';
+import 'helpers/fake_pro_repository.dart';
 
 const _baseProfile = Profile(
   userId: 7,
@@ -205,6 +207,7 @@ Future<void> _pump(
   List<({List<String> goals, String mainGoal})>? goalWrites,
   bool failGoals = false,
   FakeHealthRepository? health,
+  FakeProRepository? pro,
 }) async {
   _profile = FakeProfileNotifier(
     patches ?? <Map<String, dynamic>>[],
@@ -236,6 +239,7 @@ Future<void> _pump(
           (ref, span) async =>
               const CalendarRange(today: '2026-09-24', days: []),
         ),
+        proRepositoryProvider.overrideWithValue(pro ?? FakeProRepository()),
         healthRepositoryProvider.overrideWithValue(
           health ?? FakeHealthRepository(),
         ),

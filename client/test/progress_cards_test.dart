@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import 'package:fitsync/core/units.dart';
@@ -6,7 +7,10 @@ import 'package:fitsync/core/widgets/fs_charts.dart';
 import 'package:fitsync/core/widgets/fs_kit.dart';
 import 'package:fitsync/features/sessions/domain/training_analytics.dart';
 import 'package:fitsync/features/pro/presentation/pro_screen.dart';
+import 'package:fitsync/features/pro/presentation/providers.dart';
 import 'package:fitsync/features/sessions/presentation/widgets/progress_cards.dart';
+
+import 'helpers/fake_pro_repository.dart';
 
 void main() {
   group('training volume', () {
@@ -237,8 +241,13 @@ void main() {
 
     Future<void> pump(WidgetTester tester, TrainingAnalytics a) =>
         tester.pumpWidget(
-          MaterialApp(
-            home: Scaffold(body: VolumeByMuscleCard(analytics: a)),
+          ProviderScope(
+            overrides: [
+              proRepositoryProvider.overrideWithValue(FakeProRepository()),
+            ],
+            child: MaterialApp(
+              home: Scaffold(body: VolumeByMuscleCard(analytics: a)),
+            ),
           ),
         );
 

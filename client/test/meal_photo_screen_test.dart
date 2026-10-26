@@ -15,7 +15,9 @@ import 'package:fitsync/features/nutrition/presentation/meal_photo/meal_photo_sc
 import 'package:fitsync/features/nutrition/presentation/meal_photo/photo_cards.dart';
 import 'package:fitsync/features/nutrition/presentation/meal_photo/providers.dart';
 import 'package:fitsync/features/nutrition/presentation/providers.dart';
+import 'package:fitsync/features/pro/presentation/providers.dart';
 
+import 'helpers/fake_pro_repository.dart';
 import 'nutrition_controller_test.dart' show FakeNutritionRepository;
 
 final _bytes = Uint8List.fromList([0xFF, 0xD8, 0xFF, 0xE0, 1, 2, 3, 4]);
@@ -163,6 +165,7 @@ Future<_Harness> _open(
         mealPhotoRepositoryProvider.overrideWithValue(harness.repo),
         mealPhotoPickerProvider.overrideWithValue(harness.picker),
         nutritionRepositoryProvider.overrideWithValue(harness.nutrition),
+        proRepositoryProvider.overrideWithValue(FakeProRepository()),
         nutritionClockProvider.overrideWithValue(
           () => DateTime.utc(2026, 10, 14, 4),
         ),

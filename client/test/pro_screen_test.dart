@@ -1,131 +1,316 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 
+import 'package:fitsync/core/api_exception.dart';
 import 'package:fitsync/core/theme.dart';
+import 'package:fitsync/features/pro/domain/pro_status.dart';
 import 'package:fitsync/features/pro/presentation/pro_screen.dart';
+import 'package:fitsync/features/pro/presentation/providers.dart';
 
-Future<void> _pump(WidgetTester tester) async {
-  await tester.pumpWidget(
-    MaterialApp(theme: fsLightTheme(), home: const ProScreen()),
-  );
-  await tester.pumpAndSettle();
+import 'helpers/fake_pro_repository.dart';
+
+class _Opener {
+  final List<Uri> opened = [];
+  bool answer = true;
+  Future<bool> call(Uri uri) async {
+    opened.add(uri);
+    return answer;
+  }
 }
 
+Future<(FakeProRepository, _Opener)> _pump(
+  WidgetTester tester, {
+  ProStatus status = freeStatus,
+}) async {
+  final repo = FakeProRepository(status);
+  final opener = _Opener();
+  await tester.pumpWidget(
+    ProviderScope(
+      overrides: [
+        proRepositoryProvider.overrideWithValue(repo),
+        proCheckoutOpenerProvider.overrideWithValue(opener.call),
+      ],
+      child: MaterialApp(theme: fsLightTheme(), home: const ProScreen()),
+    ),
+  );
+  await tester.pumpAndSettle();
+  return (repo, opener);
+}
+
+Finder _inside(String key, Finder f) =>
+    find.descendant(of: find.byKey(Key(key)), matching: f);
+
 void main() {
-  testWidgets('it names the price of both plans', (tester) async {
-    await _pump(tester);
-
-    // Straight from the prototype, and the figures the subscriptions table's
-    // price_php column is waiting for.
-    expect(find.textContaining('249'), findsOneWidget);
-    expect(find.textContaining('149'), findsOneWidget);
-  });
-
-  testWidgets('what Pro unlocks today is what Pro actually gates', (
-    tester,
-  ) async {
-    await _pump(tester);
-
-    final today = find.byKey(const Key('pro.today'));
-    expect(today, findsOneWidget);
-
-    // Volume by muscle is the only paid feature in the app, gated twice:
-    // the Progress card and the muscle section of a shared report.
-    expect(
-      find.descendant(of: today, matching: find.textContaining('muscle')),
-      findsNWidgets(2),
-    );
-  });
-
-  testWidgets('everything not built is under a heading that says so', (
-    tester,
-  ) async {
-    await _pump(tester);
-
-    final planned = find.byKey(const Key('pro.planned'));
-    expect(planned, findsOneWidget);
-
-    // The prototype also sells Filipino meal planning, which isn't built:
-    // it may appear only as something coming, never as something you get.
-    expect(
-      find.descendant(
-        of: planned,
-        matching: find.textContaining('meal planning'),
-      ),
-      findsOneWidget,
-    );
-    expect(
-      find.descendant(
-        of: find.byKey(const Key('pro.today')),
-        matching: find.textContaining('meal planning'),
-      ),
-      findsNothing,
-    );
-  });
-
-  testWidgets('food photo recognition is something Pro unlocks today', (
-    tester,
-  ) async {
-    await _pump(tester);
-    expect(
-      find.descendant(
-        of: find.byKey(const Key('pro.today')),
-        matching: find.textContaining('Food photo'),
-      ),
-      findsOneWidget,
-    );
-    expect(
-      find.descendant(
-        of: find.byKey(const Key('pro.planned')),
-        matching: find.textContaining('Food photo'),
-      ),
-      findsNothing,
-    );
-  });
-
-  testWidgets('there is nothing to buy and the screen says why', (
-    tester,
-  ) async {
-    await _pump(tester);
-
-    // The prototype's footer offers a 7-day trial and a Restore link. Neither
-    // can work: nothing reads or writes the subscriptions table, and
-    // is_premium is deliberately outside the profile PATCH allowlist, so the
-    // app cannot grant itself Pro. A button that cannot do its job is worse
-    // than a sentence explaining there isn't one.
-    expect(find.textContaining('free trial'), findsNothing);
-    expect(find.text('Restore'), findsNothing);
-
-    // Scrolled to, because the note sits below the fold on a test viewport
-    // and a ListView does not build what it has not reached.
-    await tester.scrollUntilVisible(find.byKey(const Key('pro.notYet')), 200);
-    await tester.pumpAndSettle();
-    expect(find.byKey(const Key('pro.notYet')), findsOneWidget);
-  });
-
-  testWidgets('it can be closed', (tester) async {
-    await tester.pumpWidget(
-      MaterialApp(
-        theme: fsLightTheme(),
-        home: Builder(
-          builder: (context) => Scaffold(
-            body: TextButton(
-              onPressed: () => Navigator.of(context).push(
-                MaterialPageRoute<void>(builder: (_) => const ProScreen()),
-              ),
-              child: const Text('open'),
-            ),
-          ),
+  testWidgets(
+    'a free user picks a plan; annual is picked first and named for a screen reader',
+    (tester) async {
+      await _pump(tester);
+      expect(find.text('Pay ₱1,788 with PayMongo'), findsOneWidget);
+      expect(
+        tester.getSemantics(find.byKey(const Key('pro.plan.annual'))),
+        isSemantics(
+          label: 'Annual, ₱149 a month, billed ₱1,788 yearly',
+          isSelected: true,
+          isButton: true,
         ),
+      );
+      expect(
+        tester.getSemantics(find.byKey(const Key('pro.plan.monthly'))),
+        isSemantics(label: 'Monthly, ₱249 a month', isSelected: false),
+      );
+      expect(_inside('pro.plan.annual', find.text('-40%')), findsOneWidget);
+
+      await tester.tap(find.byKey(const Key('pro.plan.monthly')));
+      await tester.pump();
+      expect(find.text('Pay ₱249 with PayMongo'), findsOneWidget);
+      expect(
+        tester.getSemantics(find.byKey(const Key('pro.plan.monthly'))),
+        isSemantics(isSelected: true),
+      );
+    },
+  );
+
+  testWidgets(
+    'what Pro unlocks is what Pro gates, and nothing is sold as "planned"',
+    (tester) async {
+      await _pump(tester);
+      expect(
+        _inside('pro.today', find.textContaining('muscle')),
+        findsNWidgets(2),
+      );
+      expect(
+        _inside('pro.today', find.textContaining('Food photo')),
+        findsOneWidget,
+      );
+      expect(
+        _inside(
+          'pro.today',
+          find.text('Unlimited AI coaching cues (free: 3 exercises a day)'),
+        ),
+        findsOneWidget,
+      );
+      expect(find.byKey(const Key('pro.planned')), findsNothing);
+      expect(find.textContaining('meal planning'), findsNothing);
+      expect(find.textContaining('no way to buy'), findsNothing);
+      expect(
+        find.textContaining('test mode', findRichText: true),
+        findsNothing,
+      );
+      expect(
+        find.textContaining('Test mode', findRichText: true),
+        findsNothing,
+      );
+    },
+  );
+
+  testWidgets(
+    'Pay opens PayMongo, then the screen waits and checks by itself until it is paid',
+    (tester) async {
+      final (repo, opener) = await _pump(tester);
+      repo.confirmAnswers
+        ..add(
+          ProConfirmation(state: ProPaymentState.pending, status: freeStatus),
+        )
+        ..add(
+          ProConfirmation(
+            state: ProPaymentState.paid,
+            status: paidStatus(until: DateTime(2026, 11, 26, 12)),
+          ),
+        );
+      repo.statusValue = paidStatus(until: DateTime(2026, 11, 26, 12));
+
+      await tester.tap(find.byKey(const Key('pro.pay')));
+      await tester.pump();
+      expect(repo.checkouts, [ProPlan.annual]);
+      expect(opener.opened, [Uri.parse('https://checkout.example/cs_7')]);
+      expect(find.byKey(const Key('pro.waiting')), findsOneWidget);
+      expect(find.byKey(const Key('pro.pay')), findsNothing);
+
+      await tester.pump(proPollEvery);
+      await tester.pump();
+      expect(repo.confirms, [7]);
+      expect(
+        find.byKey(const Key('pro.waiting')),
+        findsOneWidget,
+        reason: 'a pending answer while polling keeps waiting',
+      );
+
+      await tester.pump(proPollEvery);
+      await tester.pumpAndSettle();
+      expect(repo.confirms, [7, 7]);
+      expect(find.text("You're Pro until 26 Nov 2026"), findsOneWidget);
+      expect(find.byKey(const Key('pro.waiting')), findsNothing);
+      expect(find.byKey(const Key('pro.status')), findsOneWidget);
+
+      await tester.pump(proPollEvery * 3);
+      expect(repo.confirms, [7, 7], reason: 'polling stops once paid');
+    },
+  );
+
+  testWidgets(
+    'asking by hand: "not completed", then open the page again or choose another plan',
+    (tester) async {
+      final (repo, opener) = await _pump(tester);
+      await tester.tap(find.byKey(const Key('pro.pay')));
+      await tester.pump();
+      await tester.tap(find.byKey(const Key('pro.check')));
+      await tester.pump();
+      await tester.pump();
+      expect(find.byKey(const Key('pro.notCompleted')), findsOneWidget);
+      expect(find.text('Payment not completed'), findsOneWidget);
+
+      await tester.tap(find.byKey(const Key('pro.reopen')));
+      await tester.pump();
+      expect(opener.opened.length, 2);
+      expect(find.byKey(const Key('pro.waiting')), findsOneWidget);
+
+      await tester.tap(find.byKey(const Key('pro.otherPlan')));
+      await tester.pump();
+      expect(find.byKey(const Key('pro.pay')), findsOneWidget);
+      final checks = repo.confirms.length;
+      await tester.pump(proPollEvery * 2);
+      expect(
+        repo.confirms.length,
+        checks,
+        reason: 'no polling after choosing another plan',
+      );
+    },
+  );
+
+  testWidgets('a failed check says the money is safe and offers Try again', (
+    tester,
+  ) async {
+    final (repo, _) = await _pump(tester);
+    await tester.tap(find.byKey(const Key('pro.pay')));
+    await tester.pump();
+    repo.confirmError = const ApiException('NETWORK_ERROR', 'offline');
+    await tester.tap(find.byKey(const Key('pro.check')));
+    await tester.pump();
+    await tester.pump();
+    expect(find.byKey(const Key('pro.checkFailed')), findsOneWidget);
+    expect(
+      find.text("Couldn't check your payment. Your money is safe — try again."),
+      findsOneWidget,
+    );
+
+    repo.confirmError = null;
+    repo.confirmAnswers.add(
+      ProConfirmation(state: ProPaymentState.paid, status: paidStatus()),
+    );
+    repo.statusValue = paidStatus();
+    await tester.tap(find.byKey(const Key('pro.retry')));
+    await tester.pumpAndSettle();
+    expect(find.byKey(const Key('pro.paid')), findsOneWidget);
+  });
+
+  testWidgets(
+    'a checkout that fails, or a page that will not open, keeps the plans and says so',
+    (tester) async {
+      final (repo, opener) = await _pump(tester);
+      repo.checkoutError = const ApiException(
+        'PAYMENTS_UNAVAILABLE',
+        "Couldn't open the payment page. Try again.",
+      );
+      await tester.tap(find.byKey(const Key('pro.pay')));
+      await tester.pumpAndSettle();
+      expect(find.byKey(const Key('pro.openError')), findsOneWidget);
+      expect(find.byKey(const Key('pro.pay')), findsOneWidget);
+      expect(opener.opened, isEmpty);
+
+      repo.checkoutError = null;
+      opener.answer = false;
+      await tester.tap(find.byKey(const Key('pro.pay')));
+      await tester.pumpAndSettle();
+      expect(find.byKey(const Key('pro.openError')), findsOneWidget);
+      expect(find.byKey(const Key('pro.waiting')), findsNothing);
+    },
+  );
+
+  testWidgets('Pay locks while the checkout is being made', (tester) async {
+    final (repo, _) = await _pump(tester);
+    await tester.tap(find.byKey(const Key('pro.pay')));
+    await tester.tap(find.byKey(const Key('pro.pay')), warnIfMissed: false);
+    await tester.pump();
+    expect(repo.checkouts.length, 1);
+  });
+
+  testWidgets('paid: the end date and how it was paid, with plans to extend', (
+    tester,
+  ) async {
+    await _pump(
+      tester,
+      status: paidStatus(until: DateTime(2026, 11, 26, 12), method: 'gcash'),
+    );
+    expect(
+      _inside(
+        'pro.status',
+        find.text('FitSync Pro · until 26 Nov 2026 · paid with GCash'),
+      ),
+      findsOneWidget,
+    );
+    expect(find.text('EXTEND YOUR PRO'), findsOneWidget);
+    expect(find.byKey(const Key('pro.pay')), findsOneWidget);
+    expect(find.byKey(const Key('pro.endsSoon')), findsNothing);
+  });
+
+  testWidgets('ending within 3 days: a reminder to renew', (tester) async {
+    await _pump(
+      tester,
+      status: paidStatus(until: DateTime(2026, 11, 26, 12), endsSoon: true),
+    );
+    expect(
+      find.text(
+        'Pro ends on 26 Nov. Renew to keep Snap a meal and your analytics.',
+      ),
+      findsOneWidget,
+    );
+  });
+
+  testWidgets('granted by hand: Pro with no end and nothing to buy', (
+    tester,
+  ) async {
+    await _pump(tester, status: grantedStatus);
+    expect(
+      _inside('pro.status', find.text('FitSync Pro (granted)')),
+      findsOneWidget,
+    );
+    expect(find.byKey(const Key('pro.pay')), findsNothing);
+    expect(find.byKey(const Key('pro.plan.annual')), findsNothing);
+    expect(find.byKey(const Key('pro.today')), findsOneWidget);
+  });
+
+  testWidgets('a status that will not load offers Try again', (tester) async {
+    final repo = FakeProRepository()
+      ..statusError = const ApiException('NETWORK_ERROR', 'offline');
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [proRepositoryProvider.overrideWithValue(repo)],
+        child: MaterialApp(theme: fsLightTheme(), home: const ProScreen()),
       ),
     );
-    await tester.tap(find.text('open'));
     await tester.pumpAndSettle();
-    expect(find.byType(ProScreen), findsOneWidget);
-
-    await tester.tap(find.byKey(const Key('pro.close')));
+    expect(find.byKey(const Key('pro.retryStatus')), findsOneWidget);
+    repo.statusError = null;
+    await tester.tap(find.byKey(const Key('pro.retryStatus')));
     await tester.pumpAndSettle();
+    expect(find.byKey(const Key('pro.pay')), findsOneWidget);
+  });
 
-    expect(find.byType(ProScreen), findsNothing);
+  testWidgets('coming back to the app checks at once', (tester) async {
+    final (repo, _) = await _pump(tester);
+    await tester.tap(find.byKey(const Key('pro.pay')));
+    await tester.pump();
+    tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.inactive);
+    tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.resumed);
+    await tester.pump();
+    await tester.pump();
+    expect(repo.confirms, [7]);
+    expect(find.byKey(const Key('pro.notCompleted')), findsOneWidget);
+  });
+
+  testWidgets('the close button leaves', (tester) async {
+    await _pump(tester);
+    expect(find.byKey(const Key('pro.close')), findsOneWidget);
   });
 }

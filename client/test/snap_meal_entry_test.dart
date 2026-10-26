@@ -14,9 +14,11 @@ import 'package:fitsync/features/nutrition/presentation/meal_photo/meal_photo_sc
 import 'package:fitsync/features/nutrition/presentation/meal_photo/providers.dart';
 import 'package:fitsync/features/nutrition/presentation/nutrition_screen.dart';
 import 'package:fitsync/features/nutrition/presentation/providers.dart';
+import 'package:fitsync/features/pro/presentation/providers.dart';
 import 'package:fitsync/features/profile/domain/profile.dart';
 import 'package:fitsync/features/profile/presentation/providers.dart';
 
+import 'helpers/fake_pro_repository.dart';
 import 'nutrition_controller_test.dart' show FakeNutritionRepository;
 
 class _Profile extends ProfileNotifier {
@@ -96,6 +98,7 @@ Future<({_Repo repo, _Picker picker, int Function() settingsOpened})> _pump(
       mealPhotoPickerProvider.overrideWithValue(picker),
       appSettingsOpenerProvider.overrideWithValue(() async => settings++),
       nutritionRepositoryProvider.overrideWithValue(nutrition),
+      proRepositoryProvider.overrideWithValue(FakeProRepository()),
       nutritionClockProvider.overrideWithValue(() => DateTime.utc(2026, 10, 14, 4)), // 12:00 Manila: lunch
     ],
     child: MaterialApp(

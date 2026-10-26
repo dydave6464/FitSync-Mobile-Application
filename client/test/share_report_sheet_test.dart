@@ -10,7 +10,10 @@ import 'package:fitsync/features/profile/domain/profile.dart';
 import 'package:fitsync/features/profile/presentation/providers.dart';
 import 'package:fitsync/features/sessions/presentation/providers.dart';
 import 'package:fitsync/features/pro/presentation/pro_screen.dart';
+import 'package:fitsync/features/pro/presentation/providers.dart';
 import 'package:fitsync/features/sessions/presentation/widgets/share_report_sheet.dart';
+
+import 'helpers/fake_pro_repository.dart';
 
 class _FakeRepo implements SessionRepository {
   _FakeRepo({this.error});
@@ -88,6 +91,7 @@ Future<_FakeRepo> _open(
     ProviderScope(
       overrides: [
         sessionRepositoryProvider.overrideWithValue(repo),
+        proRepositoryProvider.overrideWithValue(FakeProRepository()),
         profileProvider.overrideWith(
           () => _StubProfileNotifier(premium: premium),
         ),
