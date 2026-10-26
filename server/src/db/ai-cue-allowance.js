@@ -1,4 +1,5 @@
 'use strict';
+const { isProSql } = require('./pro');
 
 /// How many different exercises a free user gets AI cues for per day. Pro is
 /// unlimited -- the manuscript's "unlimited AI-generated coaching cues".
@@ -8,7 +9,7 @@ const FREE_DAILY_AI_CUES = 3;
 /// 'available' (a new use fits today), or 'exhausted'.
 async function allowanceFor(pool, userId, exerciseId) {
   const [[user]] = await pool.query(
-    'SELECT is_premium FROM users WHERE user_id = ?', [userId],
+    `SELECT ${isProSql('users')} AS is_premium FROM users WHERE user_id = ?`, [userId],
   );
   if (user && user.is_premium) return 'pro';
 
