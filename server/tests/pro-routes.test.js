@@ -201,4 +201,20 @@ test('/api/v1/pro', async (t) => {
     const fake = { mode: 'test', async createCheckout() { return { sessionId: 'cs_x', checkoutUrl: 'x' }; }, async getCheckout() { return { paid: false }; } };
     await request(buildTestApp({ pool, payments: fake })).get(new URL(checkoutUrl).pathname).expect(404);
   });
+
+  // On the phone (http://192.168.x.x) or the emulator (http://10.0.2.2) the
+  // browser would turn the form's POST into https:// and it would fail.
+  await t.test("the stub page's policy does not upgrade its form to https", async () => {
+    const u = await freshUser();
+    const { checkoutUrl } = (await u.checkout({ plan: 'monthly' }).expect(201)).body.data;
+    const page = await request(app).get(new URL(checkoutUrl).pathname).expect(200);
+    const csp = page.headers['content-security-policy'];
+    assert.ok(csp, 'the stub page keeps a content-security-policy');
+    assert.doesNotMatch(csp, /upgrade-insecure-requests/);
+    assert.match(csp, /form-action 'self'/);
+    const back = await stubClick(checkoutUrl, 'fail').expect(303);
+    assert.doesNotMatch(back.headers['content-security-policy'] ?? '', /upgrade-insecure-requests/);
+    const ret = await request(app).get('/api/v1/pro/return?payment=1&result=success').expect(200);
+    assert.match(ret.headers['content-security-policy'], /upgrade-insecure-requests/);
+  });
 });

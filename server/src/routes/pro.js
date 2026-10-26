@@ -1,5 +1,6 @@
 'use strict';
 const express = require('express');
+const helmet = require('helmet');
 const requireAuth = require('../middleware/require-auth');
 const AppError = require('../lib/app-error');
 const { PLANS } = require('../lib/pro-plans');
@@ -108,6 +109,12 @@ module.exports = function buildProRouter(deps) {
 
   // The stub's stand-in for PayMongo's test page (PAYMONGO_MODE=stub only).
   if (payments?.mode === 'stub') {
+    // helmet's default policy asks the browser to upgrade requests to https,
+    // which breaks this form's POST on a plain-http address that is not
+    // localhost (the phone hotspot, the emulator's 10.0.2.2). Same policy,
+    // minus that one directive.
+    const stubPolicy = helmet.contentSecurityPolicy({ useDefaults: true, directives: { upgradeInsecureRequests: null } });
+    router.use('/stub-checkout', stubPolicy);
     router.get('/stub-checkout/:sessionId', (req, res, next) => {
       const s = payments.session(req.params.sessionId);
       if (!s) return next(AppError.notFound('CHECKOUT_NOT_FOUND', 'No such checkout.'));
