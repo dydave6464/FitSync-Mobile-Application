@@ -217,4 +217,53 @@ test('/api/v1/pro', async (t) => {
     const ret = await request(app).get('/api/v1/pro/return?payment=1&result=success').expect(200);
     assert.match(ret.headers['content-security-policy'], /upgrade-insecure-requests/);
   });
+
+  await t.test('a paid attempt the app lost track of is finished when the app next asks for its status', async () => {
+    const u = await freshUser();
+    const { checkoutUrl } = (await u.checkout({ plan: 'monthly' }).expect(201)).body.data;
+    await stubClick(checkoutUrl, 'authorize').expect(303);
+    // No confirm: the screen was closed, or the app killed, before it asked.
+    const res = await u.status().expect(200);
+    assert.equal(res.body.data.pro, true);
+    assert.equal(res.body.data.source, 'paid');
+    assert.equal(res.body.data.plan, 'monthly');
+    await u.status().expect(200);
+    assert.equal((await subsOf(u.userId)).length, 1, 'asking again adds nothing');
+  });
+
+  await t.test('checking left-behind attempts never breaks the status', async () => {
+    let answer = new PaymentsError('PAYMENTS_UNAVAILABLE', { status: 500 });
+    const fake = {
+      mode: 'test',
+      async createCheckout() { return { sessionId: `cs_s5_${Date.now()}_${Math.random()}`, checkoutUrl: 'https://checkout.paymongo.com/x' }; },
+      async getCheckout() { if (answer instanceof Error) throw answer; return answer; },
+    };
+    const pm = buildTestApp({ pool, payments: fake });
+    const u = await freshUser(pm);
+    await u.checkout({ plan: 'monthly' }).expect(201);
+    assert.equal((await u.status().expect(200)).body.data.pro, false, 'PayMongo down: the status still answers');
+    answer = { paid: true, amountCentavos: 100, currency: 'PHP', method: 'card' };
+    assert.equal((await u.status().expect(200)).body.data.pro, false, 'a paid amount that is not our price is not Pro');
+    const [rows] = await pool.query('SELECT status FROM pro_payments WHERE user_id = ?', [u.userId]);
+    assert.deepEqual(rows.map((r) => r.status), ['pending']);
+  });
+
+  await t.test('only the newest 3 attempts of the last day are checked', async () => {
+    let calls = 0;
+    const fake = {
+      mode: 'test',
+      async createCheckout() { return { sessionId: `cs_s5n_${Date.now()}_${Math.random()}`, checkoutUrl: 'https://checkout.paymongo.com/x' }; },
+      async getCheckout() { calls += 1; return { paid: false }; },
+    };
+    const pm = buildTestApp({ pool, payments: fake });
+    const u = await freshUser(pm);
+    for (let i = 0; i < 4; i += 1) await u.checkout({ plan: 'annual' }).expect(201);
+    calls = 0;
+    await u.status().expect(200);
+    assert.equal(calls, 3);
+    await pool.query('UPDATE pro_payments SET created_at = NOW() - INTERVAL 25 HOUR WHERE user_id = ?', [u.userId]);
+    calls = 0;
+    await u.status().expect(200);
+    assert.equal(calls, 0, 'attempts older than a day are left alone');
+  });
 });

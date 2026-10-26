@@ -4,7 +4,9 @@ const helmet = require('helmet');
 const requireAuth = require('../middleware/require-auth');
 const AppError = require('../lib/app-error');
 const { PLANS } = require('../lib/pro-plans');
-const { proStatus, createPayment, setCheckoutSession, findPayment, completePayment } = require('../db/pro');
+const {
+  proStatus, createPayment, setCheckoutSession, findPayment, recentPendingPayments, completePayment,
+} = require('../db/pro');
 const { renderPage, escapeHtml } = require('./auth-pages');
 
 // The same test config/index.js applies to PUBLIC_BASE_URL in production.
@@ -17,7 +19,9 @@ const PRICES = { monthly: PLANS.monthly.pricePhp, annual: PLANS.annual.pricePhp 
 /// Buying Pro (spec 2026-10-26-pro-payments-design). The server creates
 /// PayMongo's checkout for its own price and confirms a payment by asking
 /// PayMongo -- never by trusting the app -- so no webhook and no public
-/// address are needed. Logs carry ids and statuses only.
+/// address are needed. A status read also finishes the caller's recent
+/// attempts that were paid while the app wasn't watching. Logs carry ids and
+/// statuses only.
 module.exports = function buildProRouter(deps) {
   const router = express.Router();
   const auth = requireAuth(deps);
@@ -32,8 +36,49 @@ module.exports = function buildProRouter(deps) {
     ? publicBaseUrl.replace(/\/+$/, '')
     : `${req.protocol}://${req.get('host')}`);
 
+  /// Asks PayMongo whether [payment] was paid and, if so, adds its period.
+  /// Returns 'paid' or 'pending'. Throws PAYMENTS_UNAVAILABLE (502) when
+  /// PayMongo can't be asked, PAYMENT_MISMATCH (409) when what was paid is
+  /// not our price.
+  async function settle(req, payment) {
+    if (payment.status === 'paid') return 'paid';
+    if (!payment.sessionId || !payments) return 'pending';
+    let session;
+    try {
+      session = await payments.getCheckout(payment.sessionId);
+    } catch (err) {
+      log(req)?.warn({ paymentId: payment.paymentId, code: err?.code ?? null, status: err?.status ?? null }, 'pro payment check failed');
+      throw unavailable(502, CHECK_FAILED);
+    }
+    if (!session.paid) return 'pending';
+    if (session.amountCentavos !== Math.round(payment.amountPhp * 100) || session.currency !== 'PHP') {
+      log(req)?.warn({ paymentId: payment.paymentId }, 'pro payment does not match its plan');
+      throw AppError.conflict('PAYMENT_MISMATCH', "This payment doesn't match its plan.");
+    }
+    await completePayment(pool, {
+      userId: payment.userId, paymentId: payment.paymentId, months: PLANS[payment.plan].months, method: session.method,
+    });
+    log(req)?.info({ paymentId: payment.paymentId, plan: payment.plan, method: session.method }, 'pro payment confirmed');
+    return 'paid';
+  }
+
+  /// A payment the app lost track of -- the screen closed, or the app was
+  /// killed, before it asked -- is finished the next time the app asks for
+  /// the status. Best effort, at most 3 attempts from the last day, asked in
+  /// parallel: PayMongo down or a mismatch leaves an attempt pending (logged
+  /// in settle) and the status still answers. A database error is a real
+  /// failure and propagates.
+  async function settleRecent(req, userId) {
+    if (!payments) return;
+    const pending = await recentPendingPayments(pool, userId);
+    const results = await Promise.allSettled(pending.map((p) => settle(req, p)));
+    const broken = results.find((r) => r.status === 'rejected' && !(r.reason instanceof AppError));
+    if (broken) throw broken.reason;
+  }
+
   router.get('/', auth, async (req, res, next) => {
     try {
+      await settleRecent(req, req.user.userId);
       res.json({ data: await statusOf(req.user.userId) });
     } catch (err) { next(err); }
   });
@@ -75,26 +120,8 @@ module.exports = function buildProRouter(deps) {
       const paymentId = Number(req.params.paymentId);
       const payment = Number.isInteger(paymentId) && paymentId > 0 ? await findPayment(pool, userId, paymentId) : null;
       if (!payment) throw AppError.notFound('PAYMENT_NOT_FOUND', 'No such payment.');
-      if (payment.status !== 'paid') {
-        if (!payment.sessionId || !payments) {
-          return res.json({ data: { status: 'pending', pro: await statusOf(userId) } });
-        }
-        let session;
-        try {
-          session = await payments.getCheckout(payment.sessionId);
-        } catch (err) {
-          log(req)?.warn({ paymentId, code: err?.code ?? null, status: err?.status ?? null }, 'pro payment check failed');
-          throw unavailable(502, CHECK_FAILED);
-        }
-        if (!session.paid) return res.json({ data: { status: 'pending', pro: await statusOf(userId) } });
-        if (session.amountCentavos !== Math.round(payment.amountPhp * 100) || session.currency !== 'PHP') {
-          log(req)?.warn({ paymentId }, 'pro payment does not match its plan');
-          throw AppError.conflict('PAYMENT_MISMATCH', "This payment doesn't match its plan.");
-        }
-        await completePayment(pool, { userId, paymentId, months: PLANS[payment.plan].months, method: session.method });
-        log(req)?.info({ paymentId, plan: payment.plan, method: session.method }, 'pro payment confirmed');
-      }
-      res.json({ data: { status: 'paid', pro: await statusOf(userId) } });
+      const status = await settle(req, payment);
+      res.json({ data: { status, pro: await statusOf(userId) } });
     } catch (err) { next(err); }
   });
 

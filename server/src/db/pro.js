@@ -124,4 +124,19 @@ async function completePayment(pool, { userId, paymentId, months, method }) {
   }
 }
 
-module.exports = { isProSql, proStatus, createPayment, setCheckoutSession, findPayment, completePayment };
+/// The caller's attempts that may have been paid while the app wasn't
+/// watching: pending, with a checkout, newest first, from the last [hours].
+async function recentPendingPayments(pool, userId, { hours = 24, limit = 3 } = {}) {
+  const [rows] = await pool.query(
+    `SELECT payment_id FROM pro_payments
+      WHERE user_id = ? AND status = 'pending' AND checkout_session_id IS NOT NULL
+        AND created_at > NOW() - INTERVAL ? HOUR
+      ORDER BY payment_id DESC LIMIT ?`,
+    [userId, hours, limit],
+  );
+  return Promise.all(rows.map((r) => findPayment(pool, userId, r.payment_id)));
+}
+
+module.exports = {
+  isProSql, proStatus, createPayment, setCheckoutSession, findPayment, recentPendingPayments, completePayment,
+};
