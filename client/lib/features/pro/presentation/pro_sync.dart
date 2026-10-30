@@ -31,7 +31,9 @@ void refreshProLocks(WidgetRef ref) {
 /// server whose two answers disagree cannot set off a loop.
 ///
 /// Mounted in the shell, it also reads the status once per launch, which is
-/// what lets the server finish a payment the app lost.
+/// what lets the server finish a payment the app lost. A read that failed is
+/// asked again each time the app comes back, until one answers: the Settings
+/// card shows the free line while there is no status.
 class ProSync extends ConsumerStatefulWidget {
   const ProSync({super.key, required this.child});
 
@@ -42,6 +44,12 @@ class ProSync extends ConsumerStatefulWidget {
 }
 
 class _ProSyncState extends ConsumerState<ProSync> {
+  late final AppLifecycleListener _lifecycle;
+
+  void _onResume() {
+    if (ref.read(proStatusProvider).hasError) ref.invalidate(proStatusProvider);
+  }
+
   Future<void> _match(bool pro) async {
     final bool premium;
     try {
@@ -64,6 +72,13 @@ class _ProSyncState extends ConsumerState<ProSync> {
         _match(value.pro);
       }
     }, fireImmediately: true);
+    _lifecycle = AppLifecycleListener(onResume: _onResume);
+  }
+
+  @override
+  void dispose() {
+    _lifecycle.dispose();
+    super.dispose();
   }
 
   @override

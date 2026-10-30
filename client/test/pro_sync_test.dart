@@ -14,8 +14,9 @@ Future<(FakeProRepository, ProLocksProbe, ProviderContainer)> _pump(
   WidgetTester tester, {
   required ProStatus status,
   required bool premium,
+  Object? statusError,
 }) async {
-  final repo = FakeProRepository(status);
+  final repo = FakeProRepository(status)..statusError = statusError;
   final probe = ProLocksProbe(premium: premium);
   final container = ProviderContainer(
     overrides: [
@@ -104,6 +105,44 @@ void main() {
       status: freeStatus,
       premium: false,
     );
+    expect(repo.statusCalls, 1);
+  });
+
+  testWidgets(
+    'a launch read that failed is asked again when the app comes back',
+    (tester) async {
+      // Until a read succeeds the Settings card shows the free line, so a Pro
+      // user who opened the app on a weak signal saw it all session.
+      final (repo, probe, container) = await _pump(
+        tester,
+        status: paidStatus(),
+        premium: false,
+        statusError: Exception('offline'),
+      );
+      expect(repo.statusCalls, 1);
+      expect(container.read(proStatusProvider).hasError, isTrue);
+
+      repo.statusError = null;
+      tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.inactive);
+      tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.resumed);
+      await tester.pumpAndSettle();
+      expect(repo.statusCalls, 2);
+      expect(container.read(proStatusProvider).value?.pro, isTrue);
+      expect(probe.profileLoads, 2, reason: 'and the Pro locks follow it');
+    },
+  );
+
+  testWidgets('a status that loaded is not read again on every resume', (
+    tester,
+  ) async {
+    final (repo, _, _) = await _pump(
+      tester,
+      status: freeStatus,
+      premium: false,
+    );
+    tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.inactive);
+    tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.resumed);
+    await tester.pumpAndSettle();
     expect(repo.statusCalls, 1);
   });
 }
