@@ -3,6 +3,7 @@ const { load } = require('../src/config');
 const { createPool } = require('../src/db/pool');
 const { setPremium } = require('../src/db/users');
 const { proStatus } = require('../src/db/pro');
+const { manilaDay } = require('../src/lib/manila-day');
 
 /// npm run pro:grant -- --user <id> [--off]
 /// Grants an account Pro by hand (or, with --off, takes the grant away): how
@@ -19,11 +20,12 @@ function parseArgs(argv) {
   return { userId, on: !argv.includes('--off') };
 }
 
-/// What pro:grant prints. [status] is proStatus after the change.
+/// What pro:grant prints. [status] is proStatus after the change; the end
+/// date is the Manila day the app shows, not the UTC one.
 function resultLine(userId, on, status) {
   const line = `User ${userId}: granted Pro ${on ? 'on' : 'off'}`;
   if (!on && status?.source === 'paid') {
-    return `${line} (still Pro until ${status.until.slice(0, 10)} from a paid period).`;
+    return `${line} (still Pro until ${manilaDay(0, new Date(status.until))} from a paid period).`;
   }
   return `${line}.`;
 }

@@ -23,6 +23,11 @@ test('pro:grant says it changed the grant, and when a paid period keeps the acco
     resultLine(34, false, { pro: true, source: 'paid', until: '2026-11-26T04:00:00.000Z' }),
     'User 34: granted Pro off (still Pro until 2026-11-26 from a paid period).',
   );
+  // 20:00 UTC is 04:00 the next day in Manila: the UTC date is a day early.
+  assert.equal(
+    resultLine(34, false, { pro: true, source: 'paid', until: '2026-11-26T20:00:00.000Z' }),
+    'User 34: granted Pro off (still Pro until 2026-11-27 from a paid period).',
+  );
 });
 
 test('setPremium turns Pro on and off, and says when there is no such user', async (t) => {
