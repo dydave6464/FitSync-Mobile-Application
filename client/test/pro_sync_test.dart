@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -131,6 +133,34 @@ void main() {
       expect(probe.profileLoads, 2, reason: 'and the Pro locks follow it');
     },
   );
+
+  testWidgets('a resume while that read is still out does not start another', (
+    tester,
+  ) async {
+    final (repo, _, container) = await _pump(
+      tester,
+      status: paidStatus(),
+      premium: false,
+      statusError: Exception('offline'),
+    );
+    repo
+      ..statusError = null
+      ..statusGate = Completer<void>();
+    tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.inactive);
+    tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.resumed);
+    await tester.pump();
+    expect(repo.statusCalls, 2);
+
+    // Still out on a weak signal when the user leaves and comes back again.
+    tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.inactive);
+    tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.resumed);
+    await tester.pump();
+    expect(repo.statusCalls, 2);
+
+    repo.statusGate!.complete();
+    await tester.pumpAndSettle();
+    expect(container.read(proStatusProvider).value?.pro, isTrue);
+  });
 
   testWidgets('a status that loaded is not read again on every resume', (
     tester,

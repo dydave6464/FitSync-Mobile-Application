@@ -42,13 +42,15 @@ ProStatus paidStatus({
 
 /// Answers the Pro calls without a server. Records checkouts and confirms;
 /// [confirmAnswers] are handed out in order, then "pending" for ever. A set
-/// [confirmGate] holds each confirm's answer until it completes.
+/// [confirmGate] holds each confirm's answer until it completes; a set
+/// [statusGate] does the same for each status read.
 class FakeProRepository implements ProRepository {
   FakeProRepository([this.statusValue = freeStatus]);
 
   ProStatus statusValue;
   Object? statusError;
   int statusCalls = 0;
+  Completer<void>? statusGate;
 
   final List<ProPlan> checkouts = [];
   ProCheckout checkoutValue = ProCheckout(
@@ -65,6 +67,8 @@ class FakeProRepository implements ProRepository {
   @override
   Future<ProStatus> status() async {
     statusCalls += 1;
+    final gate = statusGate;
+    if (gate != null) await gate.future;
     if (statusError != null) throw statusError!;
     return statusValue;
   }
