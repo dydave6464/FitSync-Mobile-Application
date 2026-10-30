@@ -5,6 +5,7 @@ const AppError = require('../lib/app-error');
 // plan-swap.js require profile.js, and nothing it requires reaches either),
 // so there is no cycle to dodge here.
 const { writeEntry, MIN_KG, MAX_KG } = require('./body-weight');
+const { isProSql } = require('./pro');
 
 // API name -> column. Anything not in this map cannot be written, which is what
 // keeps PATCH from becoming a way to set is_premium or onboarding_completed_at.
@@ -62,7 +63,7 @@ async function getProfile(pool, userId) {
     // endpoint, not just blank out one field.
     `SELECT user_id, email, full_name, sex, date_of_birth, height_cm, weight_kg,
             goal_weight_kg, main_goal, fitness_level, activity_level,
-            training_location, city, is_premium, notifications_enabled,
+            training_location, city, ${isProSql('users')} AS is_premium, notifications_enabled,
             weight_unit,
             onboarding_completed_at,
             UNIX_TIMESTAMP(created_at) AS created_at_epoch

@@ -1,10 +1,13 @@
 'use strict';
 const AppError = require('../lib/app-error');
+const { isProSql } = require('./pro');
 
+// is_premium here is "is Pro now" (db/pro.js): granted by hand or a paid
+// period that has not ended -- requireAuth and the auth routes read it.
 const USER_COLUMNS = `
   user_id, email, password_hash, full_name, sex, date_of_birth,
   height_cm, weight_kg, goal_weight_kg, main_goal, fitness_level,
-  activity_level, training_location, city, is_premium,
+  activity_level, training_location, city, ${isProSql('users')} AS is_premium,
   notifications_enabled, onboarding_completed_at, email_verified, created_at
 `;
 
@@ -120,7 +123,8 @@ async function findOrCreateGoogleUser(pool, identity) {
   return { user: await findUserById(pool, result.insertId), isNew: true };
 }
 
-/// Marks [userId] Pro or not -- `npm run pro:grant`; nobody can buy Pro yet.
+/// Grants [userId] Pro by hand, or takes the grant away -- `npm run
+/// pro:grant`. A paid period (db/pro.js) is separate and still counts.
 /// True when the user exists (already in that state included).
 async function setPremium(pool, userId, isPremium) {
   const [res] = await pool.query('UPDATE users SET is_premium = ? WHERE user_id = ?', [isPremium, userId]);

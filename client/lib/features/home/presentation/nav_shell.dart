@@ -5,6 +5,7 @@ import '../../../core/widgets/fs_kit.dart';
 import '../../activity/presentation/activity_sync.dart';
 import '../../nutrition/presentation/nutrition_screen.dart';
 import '../../plans/presentation/start_workout_sheet.dart';
+import '../../pro/presentation/pro_sync.dart';
 import '../../reminders/presentation/reminder_sync.dart';
 import '../../routine/presentation/routine_screen.dart';
 import '../../sessions/presentation/providers.dart'
@@ -136,7 +137,7 @@ class _NavShellState extends State<NavShell> {
         _popToShell();
         _openTrainAt('recovery');
       },
-      child: ActivitySync(child: DayRollover(
+      child: ActivitySync(child: ProSync(child: DayRollover(
         child: Scaffold(
           body: IndexedStack(
             index: _index,
@@ -177,7 +178,7 @@ class _NavShellState extends State<NavShell> {
             onFabTap: () => showStartWorkoutSheet(context),
           ),
         ),
-      )),
+      ))),
     );
   }
 }

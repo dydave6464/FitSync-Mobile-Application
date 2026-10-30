@@ -10,6 +10,7 @@ import '../../home/presentation/plan_ready.dart';
 import '../../nutrition/presentation/providers.dart'
     show nutritionDayProvider, nutritionDateProvider, recentFoodsProvider;
 import '../../plans/presentation/providers.dart';
+import '../../pro/presentation/providers.dart' show proPendingCheckoutProvider;
 import '../../recovery/presentation/providers.dart';
 import '../../reminders/data/reminder_scheduler.dart';
 import '../../reminders/presentation/providers.dart';
@@ -139,6 +140,10 @@ class AuthController extends AsyncNotifier<AuthState> {
   /// `stepAccessProvider` belong on this list for the same reason: none of
   /// them is autoDispose, and each carries another account's training,
   /// recovery, routine, reminder or activity data across the sign-out.
+  ///
+  /// So does `proPendingCheckoutProvider`: the Pro screen re-checks the
+  /// checkout it remembers, and the next account would ask the server about
+  /// someone else's payment.
   void _clearUserScopedCaches() {
     ref.invalidate(profileProvider);
     ref.invalidate(activePlanProvider);
@@ -162,6 +167,7 @@ class AuthController extends AsyncNotifier<AuthState> {
     ref.invalidate(nutritionDateProvider);
     ref.invalidate(recentFoodsProvider);
     ref.invalidate(planReadyProvider);
+    ref.invalidate(proPendingCheckoutProvider);
   }
 
   Future<void> signOut() async {

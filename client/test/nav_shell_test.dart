@@ -24,6 +24,7 @@ import 'package:fitsync/features/plans/domain/exercise_alternative.dart';
 import 'package:fitsync/features/plans/domain/workout_plan.dart';
 import 'package:fitsync/features/plans/presentation/plan_screen.dart';
 import 'package:fitsync/features/plans/presentation/providers.dart';
+import 'package:fitsync/features/pro/presentation/pro_sync.dart';
 import 'package:fitsync/features/profile/domain/profile.dart';
 import 'package:fitsync/features/profile/presentation/providers.dart';
 import 'package:fitsync/features/recovery/domain/recovery.dart';
@@ -297,6 +298,15 @@ final _profileScrollable = find
     .first;
 
 void main() {
+  testWidgets(
+    "keeps the app's Pro locks in line with the server's Pro status",
+    (tester) async {
+      await _pumpShell(tester);
+      await tester.pumpAndSettle();
+      expect(find.byType(ProSync), findsOneWidget);
+    },
+  );
+
   testWidgets(
     'keeps a tab mounted across a switch away and back, so its scroll '
     'position survives the trip',

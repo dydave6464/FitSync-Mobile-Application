@@ -6,6 +6,7 @@ const { createMlService } = require('./src/services/ml');
 const { createCueService } = require('./src/services/cues');
 const { createFatsecretService } = require('./src/services/fatsecret');
 const { createVisionService } = require('./src/services/vision');
+const { createPaymentsService } = require('./src/services/payments');
 const { createStorage } = require('./src/services/storage');
 const { createGoogleVerifier } = require('./src/services/google');
 const { createMailService } = require('./src/services/mail');
@@ -34,12 +35,22 @@ if (visionStubInProduction) {
   logger.warn('VISION_MODE is stub in production: Snap a meal is off; set VISION_MODE=groq or cloudflare');
 }
 const vision = visionStubInProduction ? null : createVisionService(config.vision);
+// Same reasoning again: a stub in production would sell Pro through a fake
+// page. Off instead: checkout answers 503.
+const paymentsStubInProduction = config.env === 'production' && config.payments.mode === 'stub';
+if (paymentsStubInProduction) {
+  logger.warn('PAYMONGO_MODE is stub in production: buying Pro is off; set PAYMONGO_MODE=test');
+}
+// Built even when it is then turned off, so a live key stops startup in
+// every mode (services/payments).
+const paymentsService = createPaymentsService(config.payments);
+const payments = paymentsStubInProduction ? null : paymentsService;
 const storage = createStorage(config.storage);
 const google = createGoogleVerifier(config.google);
 const mail = createMailService(config.mail, logger);
 
 const app = createApp({
-  config, logger, pool, ml, storage, cues, fatsecret, vision, jwt: config.jwt, google,
+  config, logger, pool, ml, storage, cues, fatsecret, vision, payments, jwt: config.jwt, google,
   mail, publicBaseUrl: config.publicBaseUrl,
 });
 
