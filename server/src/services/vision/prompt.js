@@ -4,12 +4,14 @@ const { menuLine, MAX_CARDS } = require('../../lib/photo-match');
 /// Dishes the model mixes up, and what tells them apart. Written from the
 /// dishes themselves and the real check's misses (sinigang -> tinola,
 /// kare-kare -> bulalo, skinless longganisa -> hotdog) before the 42-photo
-/// test set was run. Each group is shown by exact menu name, so the model
-/// can copy the right one; a test checks every name is a FitSync food.
+/// test set was run. Chopsuey and tortang talong were added after that test
+/// (2026-10-30), because the first hints sent them to tinola and grilled fish.
+/// Each group is shown by exact menu name, so the model can copy the right
+/// one; a test checks every name is a FitSync food.
 const LOOK_ALIKES = [
   {
-    names: ['Sinigang na baboy', 'Sinigang na hipon', 'Sinigang na bangus (milkfish sour soup)', 'Tinolang manok', 'Nilagang baka', 'Nilagang baboy (boiled pork soup)', 'Bulalo'],
-    tell: 'sinigang: SOUR, cloudy or reddish broth with kangkong, radish, okra or long green chili; tinola: clear GINGER broth, chicken, green papaya or sayote, malunggay or chili leaves; nilaga: clear broth, beef or pork chunks, potato, cabbage or pechay; bulalo: beef shank with a round marrow bone, corn on the cob, pechay.',
+    names: ['Sinigang na baboy', 'Sinigang na hipon', 'Sinigang na bangus (milkfish sour soup)', 'Tinolang manok', 'Nilagang baka', 'Nilagang baboy (boiled pork soup)', 'Bulalo', 'Chopsuey'],
+    tell: 'sinigang: SOUR, cloudy or reddish broth with kangkong, radish, okra or long green chili; tinola: clear GINGER broth, chicken, green papaya or sayote, malunggay or chili leaves; nilaga: clear broth, beef or pork chunks, potato, cabbage or pechay; bulalo: beef shank with a round marrow bone, corn on the cob, pechay; chopsuey: NOT a soup, stir-fried mixed vegetables (cabbage, carrot, cauliflower, snow peas, often quail eggs) in a thick glossy sauce.',
   },
   {
     names: ['Kare-kare', 'Chicken afritada', 'Pork menudo', 'Beef caldereta', 'Chicken adobo', 'Pork adobo', 'Dinuguan (pork blood stew)'],
@@ -30,6 +32,10 @@ const LOOK_ALIKES = [
   {
     names: ['Lechon manok', 'Chicken inasal', 'Kwek-kwek with vinegar dip', 'Tokneneng (battered fried chicken egg)', 'Fishball with sweet sauce (street food)'],
     tell: 'lechon manok: whole or half roast chicken, glossy brown skin; inasal: grilled pieces, orange-yellow annatto, char marks; kwek-kwek: small orange battered quail eggs; tokneneng: bigger orange battered chicken eggs; fishball: flat, round, grey-brown.',
+  },
+  {
+    names: ['Tortang talong', 'Sutukil sinugba (grilled fish)'],
+    tell: 'tortang talong: a whole eggplant pressed flat in fried egg, often with its stem, no head, tail or fins; grilled fish: head, tail and fins, charred skin.',
   },
 ];
 

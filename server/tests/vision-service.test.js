@@ -76,6 +76,13 @@ test('every look-alike hint names foods that are on the FitSync list', () => {
   }
 });
 
+test('the hints also tell apart the two dishes the first hints sent to a look-alike', () => {
+  // 42-photo test, 2026-10-30: chopsuey -> tinola, tortang talong -> grilled fish.
+  const together = (a, b) => LOOK_ALIKES.some((g) => g.names.includes(a) && g.names.includes(b) && g.tell.includes(a.toLowerCase().split(' ')[0]));
+  assert.ok(together('Chopsuey', 'Tinolang manok'), 'chopsuey beside tinola, with what tells it apart');
+  assert.ok(together('Tortang talong', 'Sutukil sinugba (grilled fish)'), 'tortang talong beside grilled fish, with what tells it apart');
+});
+
 test('buildPrompt gives the look-alike hints, by exact menu name, before the reply format', () => {
   const p = buildPrompt(['White rice']);
   const hints = p.indexOf('LOOK-ALIKES');
