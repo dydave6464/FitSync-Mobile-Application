@@ -228,6 +228,8 @@ class _ProScreenState extends ConsumerState<ProScreen> {
           if (current) {
             _pay = _Pay.idle;
             _checkout = null;
+            // A failed re-open of this attempt: it is paid, nothing to retry.
+            _openError = null;
           }
           _paidLine = until == null
               ? "You're Pro"

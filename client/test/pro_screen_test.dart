@@ -600,6 +600,32 @@ void main() {
     },
   );
 
+  testWidgets(
+    'paid after a failed re-open: the open error goes with the attempt',
+    (tester) async {
+      final (repo, opener) = await _pump(tester);
+      await tester.tap(find.byKey(const Key('pro.pay')));
+      await tester.pump();
+      opener.error = PlatformException(code: 'failedToLoad');
+      await tester.tap(find.byKey(const Key('pro.reopen')));
+      await tester.pump();
+      expect(find.byKey(const Key('pro.openError')), findsOneWidget);
+
+      // The page was still up from the first open, and the user paid there.
+      repo.confirmAnswers.add(
+        ProConfirmation(
+          state: ProPaymentState.paid,
+          status: paidStatus(until: DateTime(2026, 11, 26, 12)),
+        ),
+      );
+      repo.statusValue = paidStatus(until: DateTime(2026, 11, 26, 12));
+      await tester.pump(proPollEvery);
+      await tester.pumpAndSettle();
+      expect(find.text("You're Pro until 26 Nov 2026"), findsOneWidget);
+      expect(find.byKey(const Key('pro.openError')), findsNothing);
+    },
+  );
+
   testWidgets('a second tap while the page is opening opens it once', (
     tester,
   ) async {
