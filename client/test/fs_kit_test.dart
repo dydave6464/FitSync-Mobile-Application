@@ -1580,6 +1580,82 @@ void main() {
       h.dispose();
     });
   });
+
+  // A placeholder vanishes once the user types, and a label beside the field
+  // is a separate node: the field itself has to carry its name.
+  group('field labels', () {
+    testWidgets('FsStatField is announced by its label and unit', (
+      tester,
+    ) async {
+      final h = tester.ensureSemantics();
+      await tester.pumpWidget(
+        host(
+          FsStatField(
+            label: 'Height',
+            unit: 'cm',
+            controller: TextEditingController(),
+          ),
+        ),
+      );
+      expect(find.bySemanticsLabel(RegExp('^Height')), findsOneWidget);
+      final data = tester
+          .getSemantics(find.byType(TextField))
+          .getSemanticsData();
+      expect(data.label, contains('Height'));
+      expect(data.hint, contains('cm'));
+      h.dispose();
+    });
+
+    testWidgets('FsField with a label names its field and shows the label', (
+      tester,
+    ) async {
+      final h = tester.ensureSemantics();
+      await tester.pumpWidget(
+        host(
+          FsField(
+            label: 'Habit name',
+            hint: 'e.g. Stretch',
+            controller: TextEditingController(text: 'Walk'),
+          ),
+        ),
+      );
+      // Drawn in the eyebrow treatment, which sets its text in capitals.
+      expect(find.text('HABIT NAME'), findsOneWidget);
+      expect(
+        tester.getSemantics(find.byType(TextField)).getSemanticsData().label,
+        contains('Habit name'),
+      );
+      h.dispose();
+    });
+
+    testWidgets('FsLabeledField names its field and says its messages', (
+      tester,
+    ) async {
+      final h = tester.ensureSemantics();
+      await tester.pumpWidget(
+        host(
+          FsLabeledField(
+            label: 'Password',
+            helper: 'At least 8 characters',
+            error: 'Too short',
+            field: FsField(controller: TextEditingController(), hint: ''),
+          ),
+        ),
+      );
+      expect(find.text('Password'), findsOneWidget);
+      expect(find.text('At least 8 characters'), findsOneWidget);
+      expect(find.text('Too short'), findsOneWidget);
+      final data = tester
+          .getSemantics(find.byType(TextField))
+          .getSemanticsData();
+      expect(data.label, contains('Password'));
+      expect(data.hint, contains('Too short. At least 8 characters'));
+      // Said once, on the field: not again as separate lines of text.
+      expect(find.bySemanticsLabel('Too short'), findsNothing);
+      expect(find.bySemanticsLabel('At least 8 characters'), findsNothing);
+      h.dispose();
+    });
+  });
 }
 
 void _noop() {}

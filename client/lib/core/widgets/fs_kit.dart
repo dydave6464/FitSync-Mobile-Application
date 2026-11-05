@@ -398,7 +398,13 @@ class FsField extends StatelessWidget {
     this.maxLines = 1,
     this.inputFormatters,
     this.autofillHints,
+    this.label,
   });
+
+  /// The field's name, drawn as an eyebrow above it and given to the field
+  /// as its spoken label. [hint] stays the placeholder, which vanishes as
+  /// soon as the user types and takes the name with it.
+  final String? label;
 
   /// Applied to the inner [TextField] rather than to this wrapper, so
   /// `tester.enterText` can find the editable it needs.
@@ -438,7 +444,7 @@ class FsField extends StatelessWidget {
   Widget build(BuildContext context) {
     final t = context.fs;
 
-    return TextField(
+    final field = TextField(
       key: fieldKey,
       controller: controller,
       obscureText: obscure,
@@ -479,6 +485,80 @@ class FsField extends StatelessWidget {
           borderSide: BorderSide(color: t.accentLine),
         ),
       ),
+    );
+    if (label == null) return field;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        // Said once, by the field below, rather than again as its own node.
+        ExcludeSemantics(child: FsEyebrow(label!)),
+        const SizedBox(height: 6),
+        Semantics(label: label, child: field),
+      ],
+    );
+  }
+}
+
+/// A field with its name above it and its helper or error text below.
+///
+/// The placeholder alone vanishes as soon as the user types, taking the
+/// field's name with it. The visible texts are hidden from screen readers and
+/// given to the field as its label and hint instead, so the field is announced
+/// with its name and any message about it. Not [MergeSemantics]: that would
+/// also swallow the eye button inside the password field, leaving it
+/// unreachable by TalkBack and VoiceOver.
+class FsLabeledField extends StatelessWidget {
+  const FsLabeledField({
+    super.key,
+    required this.label,
+    required this.field,
+    this.helper,
+    this.error,
+  });
+
+  final String label;
+  final Widget field;
+  final String? helper;
+  final String? error;
+
+  @override
+  Widget build(BuildContext context) {
+    final t = context.fs;
+
+    final hint = [error, helper].nonNulls.join('. ');
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        ExcludeSemantics(
+          child: Text(
+            label,
+            style: TextStyle(
+              fontSize: 12.5,
+              fontWeight: FontWeight.w600,
+              color: t.text2,
+            ),
+          ),
+        ),
+        const SizedBox(height: 6),
+        Semantics(label: label, hint: hint.isEmpty ? null : hint, child: field),
+        if (helper != null) ...[
+          const SizedBox(height: 6),
+          ExcludeSemantics(
+            child: Text(
+              helper!,
+              style: TextStyle(fontSize: 12, color: t.text2),
+            ),
+          ),
+        ],
+        if (error != null) ...[
+          const SizedBox(height: 6),
+          ExcludeSemantics(
+            child: Text(error!, style: TextStyle(fontSize: 12.5, color: t.red)),
+          ),
+        ],
+      ],
     );
   }
 }
@@ -655,7 +735,9 @@ class FsStatField extends StatelessWidget {
           crossAxisAlignment: CrossAxisAlignment.start,
           mainAxisSize: MainAxisSize.min,
           children: [
-            FsEyebrow(label),
+            // The field says the label and unit itself (below), so the
+            // visible texts are not read a second time as separate nodes.
+            ExcludeSemantics(child: FsEyebrow(label)),
             // The room above the row is the label's, which takes no taps, so
             // a thumb landing just over the switch still finds it. The
             // switch answers the row's whole height, so with 10 above and
@@ -668,40 +750,47 @@ class FsStatField extends StatelessWidget {
                 textBaseline: TextBaseline.alphabetic,
                 children: [
                   Expanded(
-                    child: TextField(
-                      key: fieldKey,
-                      controller: controller,
-                      focusNode: focusNode,
-                      keyboardType: const TextInputType.numberWithOptions(
-                        decimal: true,
-                      ),
-                      inputFormatters: [
-                        TextInputFormatter.withFunction(
-                          (previous, next) => _measurement.hasMatch(next.text)
-                              ? next
-                              : previous,
+                    // Named here, not by the eyebrow beside it: a screen
+                    // reader otherwise hears three alike number fields as
+                    // "--, edit box", with no name and no unit.
+                    child: Semantics(
+                      label: label,
+                      hint: unit,
+                      child: TextField(
+                        key: fieldKey,
+                        controller: controller,
+                        focusNode: focusNode,
+                        keyboardType: const TextInputType.numberWithOptions(
+                          decimal: true,
                         ),
-                      ],
-                      style: TextStyle(
-                        fontFamily: fsMonoFamily,
-                        fontSize: 22,
-                        fontWeight: FontWeight.w600,
-                        letterSpacing: -0.22,
-                        color: accent ? t.accentText : t.text,
-                      ),
-                      cursorColor: t.accent,
-                      decoration: InputDecoration(
-                        isDense: true,
-                        border: InputBorder.none,
-                        enabledBorder: InputBorder.none,
-                        focusedBorder: InputBorder.none,
-                        contentPadding: EdgeInsets.zero,
-                        hintText: '--',
-                        hintStyle: TextStyle(
+                        inputFormatters: [
+                          TextInputFormatter.withFunction(
+                            (previous, next) => _measurement.hasMatch(next.text)
+                                ? next
+                                : previous,
+                          ),
+                        ],
+                        style: TextStyle(
                           fontFamily: fsMonoFamily,
                           fontSize: 22,
                           fontWeight: FontWeight.w600,
-                          color: t.text3,
+                          letterSpacing: -0.22,
+                          color: accent ? t.accentText : t.text,
+                        ),
+                        cursorColor: t.accent,
+                        decoration: InputDecoration(
+                          isDense: true,
+                          border: InputBorder.none,
+                          enabledBorder: InputBorder.none,
+                          focusedBorder: InputBorder.none,
+                          contentPadding: EdgeInsets.zero,
+                          hintText: '--',
+                          hintStyle: TextStyle(
+                            fontFamily: fsMonoFamily,
+                            fontSize: 22,
+                            fontWeight: FontWeight.w600,
+                            color: t.text3,
+                          ),
                         ),
                       ),
                     ),
@@ -710,7 +799,12 @@ class FsStatField extends StatelessWidget {
                   if (unitControl case final control?)
                     _NoReachBack(child: control)
                   else
-                    Text(unit, style: TextStyle(fontSize: 11, color: t.text3)),
+                    ExcludeSemantics(
+                      child: Text(
+                        unit,
+                        style: TextStyle(fontSize: 11, color: t.text3),
+                      ),
+                    ),
                 ],
               ),
             ),

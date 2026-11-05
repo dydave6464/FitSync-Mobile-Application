@@ -249,7 +249,7 @@ class _SignInScreenState extends ConsumerState<SignInScreen> {
                     crossAxisAlignment: CrossAxisAlignment.stretch,
                     children: [
                       if (_registering) ...[
-                        _LabeledField(
+                        FsLabeledField(
                           label: 'Full name',
                           error: _errorFor(_Field.fullName),
                           field: FsField(
@@ -266,7 +266,7 @@ class _SignInScreenState extends ConsumerState<SignInScreen> {
                         ),
                         const SizedBox(height: 14),
                       ],
-                      _LabeledField(
+                      FsLabeledField(
                         label: 'Email',
                         error: _errorFor(_Field.email),
                         field: FsField(
@@ -281,7 +281,7 @@ class _SignInScreenState extends ConsumerState<SignInScreen> {
                         ),
                       ),
                       const SizedBox(height: 14),
-                      _LabeledField(
+                      FsLabeledField(
                         label: 'Password',
                         // The same minimum the server enforces on register
                         // and on reset, stated before the user picks one
@@ -499,68 +499,6 @@ class _Logo extends StatelessWidget {
             ),
           ),
         ),
-      ],
-    );
-  }
-}
-
-/// A field with its name above it and its helper or error text below.
-///
-/// The placeholder alone vanishes as soon as the user types, taking the
-/// field's name with it. The visible texts are hidden from screen readers and
-/// given to the field as its label and hint instead, so the field is announced
-/// with its name and any message about it. Not [MergeSemantics]: that would
-/// also swallow the eye button inside the password field, leaving it
-/// unreachable by TalkBack and VoiceOver.
-class _LabeledField extends StatelessWidget {
-  const _LabeledField({
-    required this.label,
-    required this.field,
-    this.helper,
-    this.error,
-  });
-
-  final String label;
-  final Widget field;
-  final String? helper;
-  final String? error;
-
-  @override
-  Widget build(BuildContext context) {
-    final t = context.fs;
-
-    final hint = [error, helper].nonNulls.join('. ');
-
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      children: [
-        ExcludeSemantics(
-          child: Text(
-            label,
-            style: TextStyle(
-              fontSize: 12.5,
-              fontWeight: FontWeight.w600,
-              color: t.text2,
-            ),
-          ),
-        ),
-        const SizedBox(height: 6),
-        Semantics(label: label, hint: hint.isEmpty ? null : hint, child: field),
-        if (helper != null) ...[
-          const SizedBox(height: 6),
-          ExcludeSemantics(
-            child: Text(
-              helper!,
-              style: TextStyle(fontSize: 12, color: t.text2),
-            ),
-          ),
-        ],
-        if (error != null) ...[
-          const SizedBox(height: 6),
-          ExcludeSemantics(
-            child: Text(error!, style: TextStyle(fontSize: 12.5, color: t.red)),
-          ),
-        ],
       ],
     );
   }
