@@ -159,6 +159,31 @@ test('POST /nutrition/recognize', async (t) => {
     assert.equal(calls.length, before, 'refused before the AI is asked');
   });
 
+  await t.test('30 failed tries today refuse the next photo with 429 PHOTO_RETRY_LIMIT, before the AI; yesterday\'s do not count', async () => {
+    const u = await freshUser({ pro: true });
+    const failed = (n, when) => pool.query(
+      `INSERT INTO photo_recognitions (user_id, item_count, status, created_at) VALUES ${Array(n).fill(`(?, 0, 'failed', ${when})`).join(', ')}`,
+      Array(n).fill(u.userId),
+    );
+    // The pool runs at +08:00: CURDATE() - 1 second is late yesterday in Manila.
+    await failed(5, 'CURDATE() - INTERVAL 1 SECOND');
+    await failed(29, 'NOW()');
+    // The 30th failure is still allowed to try.
+    answer = async () => { throw new VisionError('VISION_BUSY'); };
+    let before = calls.length;
+    assert.equal((await u.recognize(PHOTO).expect(503)).body.error.code, 'VISION_BUSY');
+    assert.equal(calls.length, before + 1, 'with 29 failed tries today the AI is asked');
+
+    answer = async () => ({ items: [] });
+    before = calls.length;
+    const rows = (await rowsOf(u.userId)).length;
+    const res = await u.recognize(PHOTO).expect(429);
+    assert.equal(res.body.error.code, 'PHOTO_RETRY_LIMIT');
+    assert.equal(res.body.error.message, "Snap a meal can't read photos right now. Try again tomorrow, or add your food with search.");
+    assert.equal(calls.length, before, 'refused before the AI is asked');
+    assert.equal((await rowsOf(u.userId)).length, rows, 'nothing is recorded for a refused photo');
+  });
+
   await t.test('the AI busy is 503, down or broken is 502; each leaves a failed row that does not count', async () => {
     const u = await freshUser({ pro: true });
     answer = async () => { throw new VisionError('VISION_BUSY'); };

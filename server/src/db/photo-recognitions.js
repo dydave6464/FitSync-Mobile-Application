@@ -5,9 +5,22 @@
 /// -- the AI busy or down -- are the service's fault and never count. The
 /// pool runs at +08:00, so CURDATE() is Manila's today.
 async function countToday(pool, userId) {
+  return countTodayWhere(pool, userId, "status IN ('recognised', 'empty')");
+}
+
+/// How many photos [userId] sent today (Manila) that the AI failed on. They
+/// never count against the daily limit, but each cost a full AI call, so the
+/// route caps them separately.
+async function countFailedToday(pool, userId) {
+  return countTodayWhere(pool, userId, "status = 'failed'");
+}
+
+/// [userId]'s rows created today (Manila) that match [statusCondition], a
+/// fixed SQL condition on status -- never user input.
+async function countTodayWhere(pool, userId, statusCondition) {
   const [[row]] = await pool.query(
     `SELECT COUNT(*) AS n FROM photo_recognitions
-      WHERE user_id = ? AND status IN ('recognised', 'empty')
+      WHERE user_id = ? AND ${statusCondition}
         AND created_at >= CURDATE() AND created_at < CURDATE() + INTERVAL 1 DAY`,
     [userId],
   );
@@ -98,4 +111,6 @@ async function markLogged(conn, recognitionId, outcomes) {
   }
 }
 
-module.exports = { countToday, insertFailed, insertRecognition, readForLog, outcomesFor, markLogged };
+module.exports = {
+  countToday, countFailedToday, insertFailed, insertRecognition, readForLog, outcomesFor, markLogged,
+};
