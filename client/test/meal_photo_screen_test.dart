@@ -677,6 +677,28 @@ void main() {
       expect(h.searchedInsteadFor, 'lunch');
     });
 
+    testWidgets('too many failed tries today: announced, only Search instead', (
+      tester,
+    ) async {
+      final h = _Harness()
+        ..repo.error = const ApiException('PHOTO_RETRY_LIMIT', 'x');
+      await _open(tester, h: h);
+      expect(
+        find.descendant(
+          of: find.byKey(const Key('snap.error')),
+          matching: find.text(
+            "Snap a meal can't read photos right now. Try again tomorrow, or add your food with search.",
+          ),
+        ),
+        findsOneWidget,
+      );
+      expect(find.byKey(const Key('snap.retake')), findsNothing);
+      expect(find.byKey(const Key('snap.retry')), findsNothing);
+      await tester.tap(find.byKey(const Key('snap.searchInstead')));
+      await tester.pumpAndSettle();
+      expect(h.searchedInsteadFor, 'lunch');
+    });
+
     testWidgets('a photo the server can\'t read: Retake', (tester) async {
       final h = _Harness()
         ..repo.error = const ApiException('INVALID_IMAGE', 'x');

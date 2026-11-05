@@ -5,7 +5,7 @@ const { migrate } = require('../src/db/migrate');
 const { createPool } = require('../src/db/pool');
 const { testDbConfig, dropAllTables } = require('./helpers/test-db');
 const {
-  countToday, insertFailed, insertRecognition, readForLog, markLogged, outcomesFor,
+  countToday, countFailedToday, insertFailed, insertRecognition, readForLog, markLogged, outcomesFor,
 } = require('../src/db/photo-recognitions');
 
 test('photo recognitions in the database', async (t) => {
@@ -33,6 +33,20 @@ test('photo recognitions in the database', async (t) => {
     );
     assert.equal(await countToday(pool, a), 2);
     assert.equal(await countToday(pool, b), 1);
+  });
+
+  await t.test('countFailedToday counts only today\'s failed tries in Manila: not answered ones, not yesterday\'s, not another user\'s', async () => {
+    const c = await user('c@photo.test');
+    const d = await user('d@photo.test');
+    await pool.query(
+      `INSERT INTO photo_recognitions (user_id, item_count, status, created_at) VALUES
+         (?, 0, 'failed', CURDATE()), (?, 0, 'failed', NOW()), (?, 1, 'recognised', NOW()), (?, 0, 'empty', NOW()),
+         (?, 0, 'failed', CURDATE() - INTERVAL 1 SECOND), (?, 0, 'failed', NOW())`,
+      [c, c, c, c, c, d],
+    );
+    assert.equal(await countFailedToday(pool, c), 2);
+    assert.equal(await countFailedToday(pool, d), 1);
+    assert.equal(await countToday(pool, c), 2, 'the daily limit still counts only answered photos');
   });
 
   await t.test('insertFailed adds a failed row, which does not count', async () => {

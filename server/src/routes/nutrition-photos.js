@@ -8,7 +8,7 @@ const { invalid, checkDate, checkServings, scaled } = require('../lib/nutrition-
 const { resolveFood } = require('../lib/resolve-food');
 const { MEALS, insertEntry, getEntry } = require('../db/nutrition');
 const {
-  countToday, insertFailed, insertRecognition, readForLog, markLogged, outcomesFor,
+  countToday, countFailedToday, insertFailed, insertRecognition, readForLog, markLogged, outcomesFor,
 } = require('../db/photo-recognitions');
 const { VisionError } = require('../services/vision/errors');
 
@@ -17,6 +17,10 @@ const { VisionError } = require('../services/vision/errors');
 /// requests at 1,000 a day), and the Cloudflare backup's about 40-60 more a
 /// day.
 const DAILY_PHOTO_LIMIT = 15;
+/// Failed tries per user per Manila day: each costs a full AI call and never
+/// counts toward DAILY_PHOTO_LIMIT, so Try again could otherwise spend the
+/// app-wide AI budget.
+const FAILED_PHOTO_LIMIT = 30;
 const MAX_IMAGE_BYTES = 1_500_000;
 const MAGIC = {
   'image/jpeg': [0xff, 0xd8, 0xff],
@@ -95,6 +99,9 @@ module.exports = function buildNutritionPhotosRouter(deps) {
       const used = await countToday(pool, userId);
       if (used >= DAILY_PHOTO_LIMIT) {
         throw new AppError(429, 'PHOTO_LIMIT_REACHED', "You've used today's meal photos. Try again tomorrow.");
+      }
+      if (await countFailedToday(pool, userId) >= FAILED_PHOTO_LIMIT) {
+        throw new AppError(429, 'PHOTO_RETRY_LIMIT', "Snap a meal can't read photos right now. Try again tomorrow, or add your food with search.");
       }
       const foods = await menu.get(pool);
       if (appLeft.signal.aborted) return;

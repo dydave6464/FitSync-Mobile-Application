@@ -20,11 +20,13 @@ import '../widgets/fatsecret_attribution.dart';
 import 'photo_cards.dart';
 import 'providers.dart';
 
-/// What went wrong with a photo; each has its own next step.
-enum PhotoProblem { noFood, unavailable, limit, unreadable }
+/// What went wrong with a photo; each has its own next step. retryLimit:
+/// too many failed tries today, so Try again would only be refused.
+enum PhotoProblem { noFood, unavailable, limit, retryLimit, unreadable }
 
 PhotoProblem problemOf(Object error) => switch (error) {
   ApiException(code: 'PHOTO_LIMIT_REACHED') => PhotoProblem.limit,
+  ApiException(code: 'PHOTO_RETRY_LIMIT') => PhotoProblem.retryLimit,
   ApiException(code: 'INVALID_IMAGE' || 'PAYLOAD_TOO_LARGE') => PhotoProblem.unreadable,
   UnsupportedPhoto() => PhotoProblem.unreadable,
   _ => PhotoProblem.unavailable,
@@ -34,6 +36,7 @@ const photoProblemText = {
   PhotoProblem.noFood: "Couldn't spot any food in this photo.",
   PhotoProblem.unavailable: "Couldn't look at your photo right now.",
   PhotoProblem.limit: "You've used today's meal photos. Try again tomorrow.",
+  PhotoProblem.retryLimit: "Snap a meal can't read photos right now. Try again tomorrow, or add your food with search.",
   PhotoProblem.unreadable: "Couldn't read this photo. Try another one.",
 };
 
@@ -343,7 +346,7 @@ class _MealPhotoScreenState extends ConsumerState<MealPhotoScreen> {
         onPressed: _retake,
       ),
       PhotoProblem.unavailable => FsButton(key: const Key('snap.retry'), label: 'Try again', onPressed: _tryAgain),
-      PhotoProblem.limit => null,
+      PhotoProblem.limit || PhotoProblem.retryLimit => null,
     };
     return Padding(
       padding: const EdgeInsets.fromLTRB(20, 28, 20, 24),
