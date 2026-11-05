@@ -1,16 +1,18 @@
 'use strict';
 const AppError = require('./app-error');
-const { invalid, checkManual } = require('./nutrition-input');
+const { invalid, checkManual, basisId, perServingOf } = require('./nutrition-input');
 const { findFood, upsertFatsecretFood } = require('../db/foods');
+const { getStoredEntry } = require('../db/nutrition');
 
 /// One serving of the food a log request names, ready to multiply:
 /// { foodId, customName, servingDesc, kcal, proteinG, carbsG, fatG, fiberG,
 /// sugarG, sodiumMg, manual }. [food] is the request's `food` object:
 /// { source: 'local', id } | { source: 'fatsecret', externalId } |
-/// { source: 'manual', name, … }. A FatSecret food is fetched and copied into
-/// foods; that copy stays even if the caller's own write then fails -- it is
-/// only a cache of FatSecret's numbers.
-async function resolveFood({ pool, fatsecret, logger }, food) {
+/// { source: 'manual', name, …, basedOnFoodId?, basedOnEntryId? }, where
+/// basedOnEntryId is one of [userId]'s logged entries (from Recents). A
+/// FatSecret food is fetched and copied into foods; that copy stays even if the
+/// caller's own write then fails -- it is only a cache of FatSecret's numbers.
+async function resolveFood({ pool, fatsecret, logger }, food, userId) {
   const f = food || {};
   if (f.source === 'local') {
     const found = Number.isInteger(f.id) ? await findFood(pool, f.id) : null;
@@ -47,7 +49,16 @@ async function resolveFood({ pool, fatsecret, logger }, food) {
     return { ...fetched, foodId, customName: null, servingDesc, manual: false };
   }
   if (f.source === 'manual') {
-    const m = checkManual(f);
+    // What the user started from, if anything: its kcal is kept when they left
+    // protein, carbs and fat alone. One of their own logged entries comes
+    // first -- it is what they actually logged -- then a listed food. An id
+    // that isn't one (or is someone else's entry) is no basis, not a 404, so
+    // it says nothing about what exists.
+    const foodId = basisId(f, 'basedOnFoodId');
+    const entryId = basisId(f, 'basedOnEntryId');
+    const entry = entryId === null ? null : await getStoredEntry(pool, userId, entryId);
+    const basedOn = entry ? perServingOf(entry) : foodId === null ? null : await findFood(pool, foodId);
+    const m = checkManual(f, { basedOn });
     return { ...m, foodId: null, customName: m.name, manual: true };
   }
   throw invalid('food', "food.source must be 'local', 'fatsecret' or 'manual'.");

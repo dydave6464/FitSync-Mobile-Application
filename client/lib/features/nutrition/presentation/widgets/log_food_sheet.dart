@@ -93,12 +93,20 @@ class _LogFoodSheetState extends State<LogFoodSheet> {
         (p != f.proteinG || c != f.carbsG || fat != f.fatG || fiber != f.fiberG ||
             sugar != f.sugarG || sodium != f.sodiumMg);
     final changed = touched && gramsOk && sodiumOk;
-    final noMacros = changed && p! + c! + fat! == 0;
-    final canLog = !touched || (changed && !noMacros);
     // Any change, fiber/sugar/sodium alone included, is logged as the user's
-    // own entry, and the server works out a manual entry's kcal as 4·4·9 --
-    // so the preview does too. None of the three ever adds calories.
-    final perKcal = changed ? manualKcal(p!, c!, fat!) : f.kcal;
+    // own entry. The server keeps the listed kcal -- which may count what
+    // 4·4·9 can't, like a beer's alcohol -- while protein, carbs and fat are
+    // as listed and it has something to compare with: the logged entry on an
+    // edit or from Recents, or the FitSync food by its id. Otherwise it works
+    // out 4·4·9, so the preview does too. Fiber, sugar and sodium never add
+    // calories.
+    final hasBasis = widget.changing || f.id != null || f.entryId != null;
+    final macrosChanged = changed &&
+        (!hasBasis || !sameGrams(p!, f.proteinG) || !sameGrams(c!, f.carbsG) || !sameGrams(fat!, f.fatG));
+    // 0/0/0 is fine only when the kept kcal says the food has calories (a spirit).
+    final noMacros = changed && p! + c! + fat! == 0 && (macrosChanged || f.kcal <= 0);
+    final canLog = !touched || (changed && !noMacros);
+    final perKcal = macrosChanged ? manualKcal(p!, c!, fat!) : f.kcal;
     final shown = changed
         ? (p: p!, c: c!, f: fat!, fb: fiber, sg: sugar, na: sodium)
         : (p: f.proteinG, c: f.carbsG, f: f.fatG, fb: f.fiberG, sg: f.sugarG, na: f.sodiumMg);
@@ -168,7 +176,7 @@ class _LogFoodSheetState extends State<LogFoodSheet> {
                 // 13 sp macro line above is what keeps it visually quieter.
                 style: TextStyle(color: t.text2, fontSize: 12),
               ),
-            if (changed)
+            if (macrosChanged)
               Text('Calories worked out from protein, carbs and fat.',
                   style: TextStyle(color: t.text3, fontSize: 12)),
             if (!_editing)
@@ -245,6 +253,8 @@ class _LogFoodSheetState extends State<LogFoodSheet> {
                                 fiberG: fiber,
                                 sugarG: sugar,
                                 sodiumMg: sodium,
+                                basedOnFoodId: f.id,
+                                entryId: f.entryId,
                               )
                             : null,
                       )),

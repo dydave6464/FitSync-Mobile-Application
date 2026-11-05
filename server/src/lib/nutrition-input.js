@@ -48,7 +48,12 @@ function optional(food, key, max, round) {
   return round(v);
 }
 
-function checkManual(food) {
+/// A manual food's per-serving numbers. kcal is 4-4-9 from protein, carbs and
+/// fat -- unless [basedOn], the per-serving numbers it was edited from (a
+/// listed food, or the entry being edited), has the same protein, carbs and
+/// fat: then that kcal is kept, since it may count what 4-4-9 can't (a beer's
+/// alcohol), and 0/0/0 is fine when it is above 0. Never a kcal from the app.
+function checkManual(food, { basedOn = null } = {}) {
   const name = typeof food.name === 'string' ? food.name.trim() : '';
   if (name.length < 1 || name.length > MAX_NAME) throw invalid('name', `name must be 1 to ${MAX_NAME} characters.`);
   let servingDesc = null;
@@ -67,14 +72,37 @@ function checkManual(food) {
     }
     grams[k] = round2(g);
   }
-  if (grams.proteinG + grams.carbsG + grams.fatG === 0) {
+  const listed = basedOn !== null && ['proteinG', 'carbsG', 'fatG'].every((k) => round2(basedOn[k]) === grams[k]);
+  if (grams.proteinG + grams.carbsG + grams.fatG === 0 && !(listed && basedOn.kcal > 0)) {
     throw invalid('food', 'A manual food needs some protein, carbs or fat.');
   }
-  const kcal = Math.round(4 * grams.proteinG + 4 * grams.carbsG + 9 * grams.fatG);
+  const kcal = listed ? basedOn.kcal : Math.round(4 * grams.proteinG + 4 * grams.carbsG + 9 * grams.fatG);
   const fiberG = optional(food, 'fiberG', MAX_GRAMS, round2);
   const sugarG = optional(food, 'sugarG', MAX_GRAMS, round2);
   const sodiumMg = optional(food, 'sodiumMg', MAX_SODIUM_MG, round1);
   return { name, servingDesc, kcal, fiberG, sugarG, sodiumMg, ...grams };
+}
+
+/// [food][key] -- basedOnFoodId or basedOnEntryId -- as an id: absent or null
+/// is none (null); anything but a positive integer is refused like any other
+/// bad field, never quietly read as "no basis".
+function basisId(food, key) {
+  const v = food[key];
+  if (v == null) return null;
+  if (!Number.isInteger(v) || v <= 0) throw invalid(key, `${key} must be a positive whole number.`);
+  return v;
+}
+
+/// One serving of a stored entry (getStoredEntry's shape): each total over its
+/// servings, unknown staying unknown. Unrounded, like the entry itself.
+function perServingOf(stored) {
+  const n = stored.servings;
+  return {
+    kcal: stored.kcal / n, proteinG: stored.proteinG / n, carbsG: stored.carbsG / n, fatG: stored.fatG / n,
+    fiberG: stored.fiberG == null ? null : stored.fiberG / n,
+    sugarG: stored.sugarG == null ? null : stored.sugarG / n,
+    sodiumMg: stored.sodiumMg == null ? null : stored.sodiumMg / n,
+  };
 }
 
 /// Per-serving numbers [base] times [servings], rounded the one way every
@@ -91,4 +119,4 @@ function scaled(base, servings) {
   };
 }
 
-module.exports = { invalid, checkDate, checkServings, checkManual, scaled, round1, round2 };
+module.exports = { invalid, checkDate, checkServings, checkManual, basisId, perServingOf, scaled, round1, round2 };

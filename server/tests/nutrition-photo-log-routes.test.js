@@ -48,6 +48,7 @@ test('POST /nutrition/recognitions/:id/log', async (t) => {
     return {
       userId,
       log: (id, body) => request(app).post(`/api/v1/nutrition/recognitions/${id}/log`).set(auth).send(body),
+      logEntry: (body) => request(app).post('/api/v1/nutrition/entries').set(auth).send(body),
       day: () => request(app).get('/api/v1/nutrition/day').set(auth),
     };
   };
@@ -91,6 +92,32 @@ test('POST /nutrition/recognitions/:id/log', async (t) => {
     ]);
     assert.ok(await loggedAt(recognitionId));
     assert.equal((await u.day().expect(200)).body.data.day.meals.lunch.length, 3);
+  });
+
+  await t.test("an added item picked from Recents keeps its logged entry's kcal", async () => {
+    const u = await freshUser();
+    const SPIRIT = await food('Gin', '1 shot (40 ml)', 97, 0, 0, 0);
+    const gin = { source: 'manual', name: 'Gin', servingDesc: '1 glass', proteinG: 0, carbsG: 0, fatG: 0 };
+    const logged = (await u.logEntry({ mealType: 'dinner', servings: 1, food: { ...gin, basedOnFoodId: SPIRIT } }).expect(201)).body.data.entry;
+    const { recognitionId } = await photo(u);
+    const { entries } = (await u.log(recognitionId, body([
+      { itemId: null, servings: 2, food: { ...gin, basedOnEntryId: logged.id } },
+    ])).expect(201)).body.data;
+    assert.deepEqual(entries.map((e) => [e.name, e.kcal, e.source]), [['Gin', 194, 'manual']]);
+  });
+
+  await t.test("another user's entry is no basis in Snap a meal either", async () => {
+    const owner = await freshUser();
+    const u = await freshUser();
+    const theirs = (await owner.logEntry({
+      mealType: 'dinner', servings: 1, food: { source: 'manual', name: 'Turon', proteinG: 2, carbsG: 34, fatG: 6 },
+    }).expect(201)).body.data.entry;
+    await pool.query('UPDATE meal_logs SET calories = 500 WHERE meal_log_id = ?', [theirs.id]);
+    const { recognitionId } = await photo(u);
+    const { entries } = (await u.log(recognitionId, body([
+      { itemId: null, servings: 1, food: { source: 'manual', name: 'Turon', proteinG: 2, carbsG: 34, fatG: 6, basedOnEntryId: theirs.id } },
+    ])).expect(201)).body.data;
+    assert.equal(entries[0].kcal, 198);
   });
 
   await t.test('a photo is logged once: the second time is 409 ALREADY_LOGGED', async () => {
@@ -140,6 +167,7 @@ test('POST /nutrition/recognitions/:id/log', async (t) => {
       [body([{ ...ok, itemId: other.itemIds[0] }]), 400, 'INVALID_NUTRITION_FIELD'],
       [body([ok, { itemId: null, servings: 1, food: { source: 'other' } }]), 400, 'INVALID_NUTRITION_FIELD'],
       [body([ok, { itemId: null, servings: 1, food: { source: 'local', id: 999999 } }]), 404, 'FOOD_NOT_FOUND'],
+      [body([ok, { itemId: null, servings: 1, food: { source: 'manual', name: 'X', proteinG: 1, carbsG: 0, fatG: 0, basedOnEntryId: '7' } }]), 400, 'INVALID_NUTRITION_FIELD'],
     ];
     for (const [b, status, code] of cases) {
       const res = await u.log(recognitionId, b).expect(status);

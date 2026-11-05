@@ -129,6 +129,24 @@ void main() {
     expect(noFiber.toRef(), {'source': 'manual', 'name': 'Turon', 'proteinG': 2.0, 'carbsG': 34.0, 'fatG': 6.0});
   });
 
+  test('a manual Food.toRef names the listed food it was edited from, never its kcal', () {
+    const beer = Food(source: 'manual', name: 'Beer', kcal: 129, proteinG: 1.1, carbsG: 10.6, fatG: 0, basedOnFoodId: 21);
+    expect(beer.toRef(), {'source': 'manual', 'name': 'Beer', 'proteinG': 1.1, 'carbsG': 10.6, 'fatG': 0.0, 'basedOnFoodId': 21});
+  });
+
+  test("a Recents manual food reads the entry it came from, and logging it again names that entry", () {
+    final beer = Food.fromJson(const {
+      'id': null, 'entryId': 55, 'source': 'manual', 'externalId': null, 'name': 'Beer', 'servingDesc': null,
+      'kcal': 129, 'proteinG': 1.1, 'carbsG': 10.6, 'fatG': 0, 'fiberG': null, 'sugarG': null, 'sodiumMg': null,
+    });
+    expect(beer.entryId, 55);
+    expect(beer.toRef(), {'source': 'manual', 'name': 'Beer', 'proteinG': 1.1, 'carbsG': 10.6, 'fatG': 0.0, 'basedOnEntryId': 55});
+    final rice = Food.fromJson(const {
+      'id': 3, 'source': 'local', 'name': 'White rice', 'kcal': 205, 'proteinG': 4.3, 'carbsG': 44.5, 'fatG': 0.4,
+    });
+    expect(rice.entryId, isNull, reason: 'a listed food has no entry');
+  });
+
   test('FoodEntry.fromJson reads a nullable fiberG', () {
     expect(FoodEntry.fromJson(_entry(fiberG: 3.2)).fiberG, 3.2);
     expect(FoodEntry.fromJson(_entry()).fiberG, isNull);

@@ -10,6 +10,7 @@ import 'package:fitsync/features/nutrition/domain/nutrition.dart';
 import 'package:fitsync/features/nutrition/presentation/add_food_manually_screen.dart';
 import 'package:fitsync/features/nutrition/presentation/log_food_screen.dart';
 import 'package:fitsync/features/nutrition/presentation/providers.dart';
+import 'package:fitsync/features/nutrition/presentation/widgets/log_food_sheet.dart';
 
 import 'nutrition_controller_test.dart' show FakeNutritionRepository;
 
@@ -208,6 +209,22 @@ void main() {
     await tester.tap(find.text('Recents'));
     await tester.pumpAndSettle();
     expect(find.text('Turon'), findsOneWidget);
+  });
+
+  testWidgets("a kept-kcal beer from Recents previews its 129 and is logged naming its entry", (tester) async {
+    final repo = _SearchRepo()
+      ..recents = const [
+        Food(source: 'manual', entryId: 55, name: 'Beer', kcal: 129, proteinG: 1.1, carbsG: 10.6, fatG: 0),
+      ];
+    await _pump(tester, repo);
+    await tester.tap(find.text('Recents'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Beer'));
+    await tester.pumpAndSettle();
+    expect(find.descendant(of: find.byType(LogFoodSheet), matching: find.text('129 kcal')), findsOneWidget);
+    await tester.tap(find.byKey(const Key('logSheet.log')));
+    await tester.pumpAndSettle();
+    expect(repo.lastLogged!.toRef()['basedOnEntryId'], 55, reason: "so the server keeps 129, not 4·4·9's 47");
   });
 
   // The meal is shown, and can be changed, before anything is searched --

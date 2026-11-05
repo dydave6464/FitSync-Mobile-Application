@@ -9,6 +9,10 @@ import 'package:fitsync/features/nutrition/presentation/widgets/log_food_sheet.d
 const _rice = Food(source: 'local', id: 3, name: 'Steamed white rice', servingDesc: '1 cup', kcal: 205, proteinG: 4.3, carbsG: 44.5, fatG: 0.4);
 const _shake = Food(source: 'fatsecret', externalId: 'fs-1', name: 'Mango Shake', servingDesc: '1 glass', kcal: 250, proteinG: 4, carbsG: 50, fatG: 3.5);
 const _oatmeal = Food(source: 'local', id: 9, name: 'Oatmeal', servingDesc: '1 bowl', kcal: 150, proteinG: 5, carbsG: 27, fatG: 3, fiberG: 3);
+const _beer = Food(source: 'local', id: 21, name: 'Beer', servingDesc: '1 can (330 ml)', kcal: 129, proteinG: 1.1, carbsG: 10.6, fatG: 0, sodiumMg: 14);
+const _gin = Food(source: 'local', id: 22, name: 'Gin', servingDesc: '1 shot (40 ml)', kcal: 97, proteinG: 0, carbsG: 0, fatG: 0);
+const _recentBeer = Food(source: 'manual', entryId: 55, name: 'Beer', servingDesc: '1 can (330 ml)', kcal: 129, proteinG: 1.1, carbsG: 10.6, fatG: 0, sodiumMg: 14);
+const _recentGin = Food(source: 'manual', entryId: 56, name: 'Gin', servingDesc: '1 glass', kcal: 97, proteinG: 0, carbsG: 0, fatG: 0);
 const _juice = Food(source: 'local', id: 11, name: 'Mango juice', servingDesc: '1 glass', kcal: 120, proteinG: 1, carbsG: 28, fatG: 0, sugarG: 9.7, sodiumMg: 124);
 
 Future<LogChoice?> _open(WidgetTester tester, Food food) async {
@@ -220,20 +224,23 @@ void main() {
     expect(_fieldText(tester, 'logSheet.sodium'), '');
   });
 
-  testWidgets('changing only sugar logs a manual entry with the new sugar and kcal worked out from protein, carbs and fat', (tester) async {
+  testWidgets("changing only sugar logs a manual entry with the new sugar and the food's listed kcal", (tester) async {
     final result = await _openForResult(tester, _rice);
     await _editNumbers(tester);
     await tester.enterText(find.descendant(of: find.byKey(const Key('logSheet.sugar')), matching: find.byType(TextField)), '12');
     await tester.pump();
-    // 4*4.3 + 4*44.5 + 9*0.4 = 198.8 -> 199, same as any other manual entry; sugar never adds calories.
-    expect(find.text('199 kcal'), findsOneWidget);
+    // Protein, carbs and fat are as listed, so the server keeps the listed
+    // 205 rather than 4·4·9's 199; sugar never adds calories.
+    expect(find.text('205 kcal'), findsOneWidget);
+    expect(find.text('Calories worked out from protein, carbs and fat.'), findsNothing);
     await tester.ensureVisible(find.byKey(const Key('logSheet.log')));
     await tester.pumpAndSettle();
     await tester.tap(find.byKey(const Key('logSheet.log')));
     await tester.pumpAndSettle();
     final edited = result()!.edited!;
     expect(edited.sugarG, 12);
-    expect(edited.kcal, 199);
+    expect(edited.kcal, 205);
+    expect(edited.basedOnFoodId, 3);
   });
 
   testWidgets('clearing sodium logs it as unknown', (tester) async {
@@ -301,15 +308,15 @@ void main() {
     expect(edited.kcal, 222);
   });
 
-  testWidgets('changing only fiber logs a manual entry whose kcal is worked out from protein, carbs and fat', (tester) async {
+  testWidgets("changing only fiber logs a manual entry that keeps the food's listed kcal", (tester) async {
     final result = await _openForResult(tester, _rice);
     await _editNumbers(tester);
     await tester.enterText(find.descendant(of: find.byKey(const Key('logSheet.fiber')), matching: find.byType(TextField)), '5');
     await tester.pump();
-    // The server works out every manual entry's kcal as 4·4·9, so the preview
-    // must too: 4*4.3 + 4*44.5 + 9*0.4 = 198.8 -> 199, not the listed 205.
-    expect(find.text('199 kcal'), findsOneWidget);
-    expect(find.text('Calories worked out from protein, carbs and fat.'), findsOneWidget);
+    // The server keeps the listed food's kcal while protein, carbs and fat
+    // are unchanged, so the preview does too: 205, not 4·4·9's 199.
+    expect(find.text('205 kcal'), findsOneWidget);
+    expect(find.text('Calories worked out from protein, carbs and fat.'), findsNothing);
     await tester.ensureVisible(find.byKey(const Key('logSheet.log')));
     await tester.pumpAndSettle();
     await tester.tap(find.byKey(const Key('logSheet.log')));
@@ -320,7 +327,136 @@ void main() {
     expect(edited.carbsG, _rice.carbsG);
     expect(edited.fatG, _rice.fatG);
     expect(edited.fiberG, 5);
-    expect(edited.kcal, 199, reason: 'what the server will compute');
+    expect(edited.kcal, 205, reason: 'what the server will keep');
+    expect(edited.basedOnFoodId, 3);
+  });
+
+  testWidgets("a beer with only its sodium changed keeps its listed kcal, alcohol and all", (tester) async {
+    final result = await _openForResult(tester, _beer);
+    await _editNumbers(tester);
+    await tester.enterText(find.descendant(of: find.byKey(const Key('logSheet.sodium')), matching: find.byType(TextField)), '40');
+    await tester.pump();
+    expect(find.text('129 kcal'), findsOneWidget, reason: "not 4·4·9's 47");
+    expect(find.text('Calories worked out from protein, carbs and fat.'), findsNothing);
+    await _save(tester);
+    final edited = result()!.edited!;
+    expect(edited.source, 'manual');
+    expect(edited.sodiumMg, 40);
+    expect(edited.kcal, 129);
+    expect(edited.basedOnFoodId, 21);
+    expect(edited.toRef()['basedOnFoodId'], 21);
+  });
+
+  testWidgets('a spirit with no protein, carbs or fat can be logged with its numbers changed', (tester) async {
+    final result = await _openForResult(tester, _gin);
+    await _editNumbers(tester);
+    await tester.enterText(find.descendant(of: find.byKey(const Key('logSheet.sodium')), matching: find.byType(TextField)), '1');
+    await tester.tap(find.byKey(const Key('servings.plus')));
+    await tester.pump();
+    expect(find.text('Add some protein, carbs or fat'), findsNothing, reason: 'protein, carbs and fat are as listed');
+    expect(find.text('146 kcal'), findsOneWidget); // 97 x 1.5 = 145.5 -> 146
+    await _save(tester);
+    final choice = result()!;
+    expect(choice.servings, 1.5);
+    expect(choice.edited!.kcal, 97);
+    expect(choice.edited!.basedOnFoodId, 22);
+  });
+
+  testWidgets('a beer with its carbs changed has its kcal worked out from protein, carbs and fat', (tester) async {
+    final result = await _openForResult(tester, _beer);
+    await _editNumbers(tester);
+    await tester.enterText(find.descendant(of: find.byKey(const Key('logSheet.carbs')), matching: find.byType(TextField)), '5');
+    await tester.pump();
+    expect(find.text('24 kcal'), findsOneWidget); // 4*1.1 + 4*5 = 24.4 -> 24
+    expect(find.text('Calories worked out from protein, carbs and fat.'), findsOneWidget);
+    await _save(tester);
+    expect(result()!.edited!.kcal, 24);
+  });
+
+  testWidgets("a beer's macros changed to 0 still says why and Log stays off", (tester) async {
+    final result = await _openForResult(tester, _beer);
+    await _editNumbers(tester);
+    for (final key in ['logSheet.protein', 'logSheet.carbs']) {
+      await tester.enterText(find.descendant(of: find.byKey(Key(key)), matching: find.byType(TextField)), '0');
+    }
+    await tester.pump();
+    expect(find.text('Add some protein, carbs or fat'), findsOneWidget);
+    await _save(tester);
+    expect(result(), isNull, reason: 'the sheet stays open');
+  });
+
+  testWidgets('a 0-kcal food with no protein, carbs or fat still needs some once any number changes', (tester) async {
+    final result = await _openForResult(tester, const Food(
+      source: 'local', id: 40, name: 'Diet soda', servingDesc: '1 can', kcal: 0, proteinG: 0, carbsG: 0, fatG: 0,
+    ));
+    await _editNumbers(tester);
+    await tester.enterText(find.descendant(of: find.byKey(const Key('logSheet.sodium')), matching: find.byType(TextField)), '30');
+    await tester.pump();
+    // The server keeps a listed kcal only when there is one to keep.
+    expect(find.text('Add some protein, carbs or fat'), findsOneWidget);
+    await _save(tester);
+    expect(result(), isNull, reason: 'the sheet stays open');
+  });
+
+  testWidgets('an online food the server cannot look up has its kcal worked out, as the server will', (tester) async {
+    final result = await _openForResult(tester, _shake);
+    await _editNumbers(tester);
+    await tester.enterText(find.descendant(of: find.byKey(const Key('logSheet.sodium')), matching: find.byType(TextField)), '40');
+    await tester.pump();
+    // No FitSync id to keep the listed 250 by: 4*4 + 4*50 + 9*3.5 = 247.5 -> 248.
+    expect(find.text('248 kcal'), findsOneWidget);
+    expect(find.text('Calories worked out from protein, carbs and fat.'), findsOneWidget);
+    await _save(tester);
+    final edited = result()!.edited!;
+    expect(edited.kcal, 248);
+    expect(edited.basedOnFoodId, isNull);
+  });
+
+  // Recents hands back the user's own logged entry: no FitSync id, but the
+  // entry's id, which the server compares with the same way.
+  testWidgets("a kept-kcal beer from Recents with only its sodium changed keeps 129 and names its entry", (tester) async {
+    final result = await _openForResult(tester, _recentBeer);
+    await _editNumbers(tester);
+    await tester.enterText(find.descendant(of: find.byKey(const Key('logSheet.sodium')), matching: find.byType(TextField)), '40');
+    await tester.pump();
+    expect(find.text('129 kcal'), findsOneWidget, reason: "not 4·4·9's 47");
+    expect(find.text('Calories worked out from protein, carbs and fat.'), findsNothing);
+    await _save(tester);
+    final edited = result()!.edited!;
+    expect(edited.kcal, 129);
+    expect(edited.toRef()['basedOnEntryId'], 55);
+    expect(edited.toRef().containsKey('basedOnFoodId'), isFalse);
+  });
+
+  testWidgets('a kept-kcal beer from Recents logged untouched is sent as it came, naming its entry', (tester) async {
+    final result = await _openForResult(tester, _recentBeer);
+    expect(find.text('129 kcal'), findsOneWidget);
+    await _save(tester);
+    expect(result()!.edited, isNull);
+    expect(_recentBeer.toRef()['basedOnEntryId'], 55);
+  });
+
+  testWidgets('a spirit from Recents can be logged with its numbers changed, at its kcal', (tester) async {
+    final result = await _openForResult(tester, _recentGin);
+    await _editNumbers(tester);
+    await tester.enterText(find.descendant(of: find.byKey(const Key('logSheet.sodium')), matching: find.byType(TextField)), '1');
+    await tester.pump();
+    expect(find.text('Add some protein, carbs or fat'), findsNothing);
+    expect(find.text('97 kcal'), findsOneWidget);
+    await _save(tester);
+    final edited = result()!.edited!;
+    expect(edited.kcal, 97);
+    expect(edited.toRef()['basedOnEntryId'], 56);
+  });
+
+  testWidgets('a beer from Recents with its carbs changed has its kcal worked out', (tester) async {
+    final result = await _openForResult(tester, _recentBeer);
+    await _editNumbers(tester);
+    await tester.enterText(find.descendant(of: find.byKey(const Key('logSheet.carbs')), matching: find.byType(TextField)), '5');
+    await tester.pump();
+    expect(find.text('24 kcal'), findsOneWidget);
+    await _save(tester);
+    expect(result()!.edited!.kcal, 24);
   });
 
   testWidgets('the edited kcal matches the server, which rounds each gram to 2 decimals first', (tester) async {
@@ -560,6 +696,21 @@ void main() {
       expect(edited.name, 'Steamed white rice');
       expect(edited.proteinG, 10);
       expect(edited.kcal, 222);
+    });
+
+    testWidgets("your own entry with only its sodium changed keeps the entry's kcal", (tester) async {
+      // A logged entry is the basis on an edit, id or not: the server
+      // compares with the stored entry.
+      const myBeer = Food(source: 'manual', name: 'Beer', kcal: 129, proteinG: 1.1, carbsG: 10.6, fatG: 0);
+      final sheet = await _openToChange(tester, myBeer, servings: 1);
+      await _editNumbers(tester);
+      await tester.enterText(find.descendant(of: find.byKey(const Key('logSheet.sodium')), matching: find.byType(TextField)), '40');
+      await tester.pump();
+      expect(find.text('129 kcal'), findsOneWidget);
+      await _save(tester);
+      final edited = sheet.result()!.edited!;
+      expect(edited.kcal, 129);
+      expect(edited.basedOnFoodId, isNull);
     });
 
     testWidgets('logging still reads Log', (tester) async {

@@ -4,7 +4,7 @@ const requireAuth = require('../middleware/require-auth');
 const AppError = require('../lib/app-error');
 const { manilaDay } = require('../lib/manila-day');
 const { dailyTarget } = require('../lib/nutrition-target');
-const { invalid, checkDate, checkServings, checkManual, scaled, round1 } = require('../lib/nutrition-input');
+const { invalid, checkDate, checkServings, checkManual, perServingOf, scaled, round1 } = require('../lib/nutrition-input');
 const { resolveFood } = require('../lib/resolve-food');
 const {
   MEALS, insertEntry, getEntry, getStoredEntry, updateEntry, deleteEntry, listDayEntries, targetProfile,
@@ -45,7 +45,7 @@ module.exports = function buildNutritionRouter(deps) {
       const date = checkDate(b.date);
       if (!MEALS.includes(b.mealType)) throw invalid('mealType', `mealType must be one of: ${MEALS.join(', ')}.`);
       const servings = checkServings(b.servings);
-      const base = await resolveFood(deps, b.food);
+      const base = await resolveFood(deps, b.food, req.user.userId);
 
       const id = await insertEntry(pool, req.user.userId, {
         date, mealType: b.mealType, servings,
@@ -62,19 +62,21 @@ module.exports = function buildNutritionRouter(deps) {
       const b = req.body || {};
       if (!MEALS.includes(b.mealType)) throw invalid('mealType', `mealType must be one of: ${MEALS.join(', ')}.`);
       const servings = checkServings(b.servings);
-      let manual = null;
-      if (b.food !== undefined) {
-        // Only the user's own numbers: swapping in another catalogue or
-        // FatSecret food is a delete and a fresh log, not an edit.
-        if (b.food === null || typeof b.food !== 'object' || b.food.source !== 'manual') {
-          throw invalid('food', "food.source must be 'manual'.");
-        }
-        manual = checkManual(b.food);
+      // Only the user's own numbers: swapping in another catalogue or
+      // FatSecret food is a delete and a fresh log, not an edit.
+      if (b.food !== undefined && (b.food === null || typeof b.food !== 'object' || b.food.source !== 'manual')) {
+        throw invalid('food', "food.source must be 'manual'.");
       }
 
       const id = Number(req.params.id);
       const stored = Number.isInteger(id) && id > 0 ? await getStoredEntry(pool, req.user.userId, id) : null;
       if (!stored) throw AppError.notFound('ENTRY_NOT_FOUND', 'No such entry.');
+
+      // From the entry's own numbers, never the foods row: a later
+      // correction to the food list must not rewrite history.
+      const perServing = perServingOf(stored);
+      // The entry is the basis: unchanged protein, carbs and fat keep its kcal.
+      const manual = b.food === undefined ? null : checkManual(b.food, { basedOn: perServing });
 
       let food; // { foodId, customName, servingDesc, loggedVia } and the multiplied numbers
       if (manual) {
@@ -87,15 +89,6 @@ module.exports = function buildNutritionRouter(deps) {
         // can't alter what was logged.
         food = stored;
       } else {
-        // From the entry's own numbers, never the foods row: a later
-        // correction to the food list must not rewrite history.
-        const n = stored.servings;
-        const perServing = {
-          kcal: stored.kcal / n, proteinG: stored.proteinG / n, carbsG: stored.carbsG / n, fatG: stored.fatG / n,
-          fiberG: stored.fiberG == null ? null : stored.fiberG / n,
-          sugarG: stored.sugarG == null ? null : stored.sugarG / n,
-          sodiumMg: stored.sodiumMg == null ? null : stored.sodiumMg / n,
-        };
         food = { ...stored, ...scaled(perServing, servings) };
       }
 

@@ -25,6 +25,10 @@ String mealForTime(DateTime instant) {
 int manualKcal(double proteinG, double carbsG, double fatG) =>
     (4 * _r2(proteinG) + 4 * _r2(carbsG) + 9 * _r2(fatG)).round();
 
+/// Whether two gram values are the same to the server, which rounds each to
+/// 2 decimals before comparing a manual food with the one it was edited from.
+bool sameGrams(double a, double b) => _r2(a) == _r2(b);
+
 /// 1.0 -> "1", 1.5 -> "1.5": how a servings count reads on screen.
 String formatServings(double servings) =>
     servings == servings.roundToDouble() ? servings.toStringAsFixed(0) : servings.toString();
@@ -68,6 +72,8 @@ class Food {
     this.sodiumMg,
     this.group,
     this.fatsecretCopy = false,
+    this.basedOnFoodId,
+    this.entryId,
   });
 
   factory Food.fromJson(Map<String, dynamic> j) => Food(
@@ -84,6 +90,7 @@ class Food {
     sugarG: j['sugarG'] == null ? null : _d(j['sugarG']),
     sodiumMg: j['sodiumMg'] == null ? null : _d(j['sodiumMg']),
     group: j['group'] as String?,
+    entryId: j['entryId'] as int?,
   );
 
   /// 'local', 'fatsecret' or 'manual'.
@@ -109,6 +116,15 @@ class Food {
   /// attribution shows wherever this food does.
   final bool fatsecretCopy;
 
+  /// For the user's own numbers: the FitSync food they were edited from. The
+  /// server keeps that food's kcal while protein, carbs and fat are unchanged.
+  final int? basedOnFoodId;
+
+  /// For the user's own numbers from Recents: the logged entry they came from.
+  /// The server keeps that entry's kcal while protein, carbs and fat are
+  /// unchanged -- a kept-kcal beer stays 129, not 4·4·9's 47.
+  final int? entryId;
+
   bool get isFatsecret => source == 'fatsecret';
 
   /// Whether FatSecret's attribution must show beside this food.
@@ -129,6 +145,8 @@ class Food {
       if (fiberG != null) 'fiberG': fiberG,
       if (sugarG != null) 'sugarG': sugarG,
       if (sodiumMg != null) 'sodiumMg': sodiumMg,
+      if (basedOnFoodId != null) 'basedOnFoodId': basedOnFoodId,
+      if (entryId != null) 'basedOnEntryId': entryId,
     },
   };
 }
