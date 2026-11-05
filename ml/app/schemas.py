@@ -14,7 +14,7 @@ within the team's curated marks; a malformed one reads as no history.
 """
 import logging
 import math
-from typing import Any, Dict, List, Optional, Union
+from typing import Any, Dict, List, Literal, Optional, Union
 
 from pydantic import BaseModel, Field, ValidationError, field_validator
 
@@ -212,3 +212,23 @@ GOAL_LABELS = {
     "improve_endurance": "Improve Endurance",
     "general_fitness": "General Health",
 }
+
+
+class DishRequest(BaseModel):
+    """POST /classify-dish: the meal photo Node already checked (JPEG or PNG, at most
+    1.5 MB, base64 with no data: prefix). The length cap leaves room for the
+    service's own 1.5 MB check to answer 400 rather than 422."""
+    image: str = Field(min_length=1, max_length=2_100_000)
+    mimeType: Literal["image/jpeg", "image/png"]
+
+
+class DishGuess(BaseModel):
+    dish: str
+    probability: float
+
+
+class DishResponse(BaseModel):
+    model: str
+    dishes: List[DishGuess]
+    swapAt: float
+    choiceAt: float
