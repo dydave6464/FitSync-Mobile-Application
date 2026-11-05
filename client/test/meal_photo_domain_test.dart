@@ -165,6 +165,7 @@ void main() {
   test('swapping keeps the food it replaced as a chip, so the swap can be undone; at most two chips', () {
     final card = DraftCard.suggested(
       PhotoRecognition.fromJson(_answer).items.first,
+      id: 0,
     );
     card.replaceWith(_garlic);
     expect(card.food!.name, 'Garlic fried rice (sinangag)');
@@ -184,6 +185,7 @@ void main() {
   test('an unlisted card has no food until one is picked, then logs with its own item id', () {
     final card = DraftCard.unlisted(
       PhotoRecognition.fromJson(_answer).unlisted.single,
+      id: 0,
     );
     expect(card.isUnlisted, isTrue);
     expect(card.label, 'Atchara (pickled papaya)');
@@ -195,7 +197,7 @@ void main() {
   });
 
   test('servings step in halves between 0.5 and 20', () {
-    final card = DraftCard.added(_rice);
+    final card = DraftCard.added(_rice, id: 0);
     expect([card.itemId, card.servings], [null, 1.0]);
     card.setServings(0.5);
     card.setServings(0);
@@ -206,9 +208,12 @@ void main() {
 
   test('the estimated total follows the server\'s rounding and skips unlisted cards', () {
     final cards = [
-      DraftCard.added(_rice)..setServings(1.5),
-      DraftCard.added(_garlic),
-      DraftCard.unlisted(const PhotoUnlisted(itemId: 9, name: 'Atchara')),
+      DraftCard.added(_rice, id: 0)..setServings(1.5),
+      DraftCard.added(_garlic, id: 1),
+      DraftCard.unlisted(
+        const PhotoUnlisted(itemId: 9, name: 'Atchara'),
+        id: 2,
+      ),
     ];
     final t = draftTotals(cards);
     expect(t.kcal, 309 + 299);

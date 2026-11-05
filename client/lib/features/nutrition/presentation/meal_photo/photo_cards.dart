@@ -10,7 +10,6 @@ import '../../domain/nutrition.dart';
 class PhotoItemCard extends StatelessWidget {
   const PhotoItemCard({
     super.key,
-    required this.index,
     required this.card,
     required this.onSwap,
     required this.onSearch,
@@ -18,7 +17,6 @@ class PhotoItemCard extends StatelessWidget {
     required this.onRemove,
   });
 
-  final int index;
   final DraftCard card;
   final ValueChanged<Food> onSwap;
   final VoidCallback onSearch;
@@ -34,7 +32,7 @@ class PhotoItemCard extends StatelessWidget {
     final kcal = (food.kcal * servings).round();
 
     return FsCard(
-      key: Key('snap.item.$index'),
+      key: Key('snap.item.${card.id}'),
       small: true,
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -49,7 +47,7 @@ class PhotoItemCard extends StatelessWidget {
                 ),
               ),
               IconButton(
-                key: Key('snap.remove.$index'),
+                key: Key('snap.remove.${card.id}'),
                 tooltip: 'Remove ${food.name}',
                 onPressed: onRemove,
                 icon: const Icon(Icons.close),
@@ -70,7 +68,7 @@ class PhotoItemCard extends StatelessWidget {
             children: [
               for (final (i, alt) in card.alternatives.indexed)
                 Semantics(
-                  key: Key('snap.alt.$index.$i'),
+                  key: Key('snap.alt.${card.id}.$i'),
                   label: 'Swap to ${alt.name}',
                   button: true,
                   excludeSemantics: true,
@@ -80,7 +78,7 @@ class PhotoItemCard extends StatelessWidget {
                   child: _ChipRoom(child: FsChip(label: alt.name, selected: false, onTap: () => onSwap(alt))),
                 ),
               Semantics(
-                key: Key('snap.search.$index'),
+                key: Key('snap.search.${card.id}'),
                 label: 'Search for another food',
                 button: true,
                 excludeSemantics: true,
@@ -99,7 +97,7 @@ class PhotoItemCard extends StatelessWidget {
                 mainAxisSize: MainAxisSize.min,
                 children: [
                   IconButton(
-                    key: Key('snap.minus.$index'),
+                    key: Key('snap.minus.${card.id}'),
                     tooltip: 'Less ${food.name}',
                     onPressed: servings > minPhotoServings ? () => onServings(servings - 0.5) : null,
                     icon: const Icon(Icons.remove),
@@ -111,7 +109,7 @@ class PhotoItemCard extends StatelessWidget {
                     ),
                   ),
                   IconButton(
-                    key: Key('snap.plus.$index'),
+                    key: Key('snap.plus.${card.id}'),
                     tooltip: 'More ${food.name}',
                     onPressed: servings < maxPhotoServings ? () => onServings(servings + 0.5) : null,
                     icon: const Icon(Icons.add),
@@ -124,7 +122,7 @@ class PhotoItemCard extends StatelessWidget {
           // it comes to -- never a bare number.
           // Its own node, so only this line is the live region.
           Semantics(
-            key: Key('snap.portion.$index'),
+            key: Key('snap.portion.${card.id}'),
             container: true,
             liveRegion: true,
             label: '${food.name}: ${formatServings(servings)} × ${food.servingDesc ?? 'serving'} · $kcal kcal',
@@ -159,13 +157,11 @@ class _ChipRoom extends StatelessWidget {
 class PhotoUnlistedCard extends StatelessWidget {
   const PhotoUnlistedCard({
     super.key,
-    required this.index,
     required this.card,
     required this.onSearch,
     required this.onRemove,
   });
 
-  final int index;
   final DraftCard card;
   final VoidCallback onSearch;
   final VoidCallback onRemove;
@@ -175,7 +171,7 @@ class PhotoUnlistedCard extends StatelessWidget {
     final t = context.fs;
     final name = card.unlistedName!;
     return FsCard(
-      key: Key('snap.unlisted.$index'),
+      key: Key('snap.unlisted.${card.id}'),
       small: true,
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -190,7 +186,7 @@ class PhotoUnlistedCard extends StatelessWidget {
                 ),
               ),
               IconButton(
-                key: Key('snap.remove.$index'),
+                key: Key('snap.remove.${card.id}'),
                 tooltip: 'Remove $name',
                 onPressed: onRemove,
                 icon: const Icon(Icons.close),
@@ -199,7 +195,7 @@ class PhotoUnlistedCard extends StatelessWidget {
           ),
           const SizedBox(height: 8),
           FsButton(
-            key: Key('snap.unlisted.search.$index'),
+            key: Key('snap.unlisted.search.${card.id}'),
             label: 'Search for it',
             kind: FsButtonKind.secondary,
             small: true,

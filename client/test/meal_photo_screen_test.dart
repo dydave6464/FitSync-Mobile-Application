@@ -354,6 +354,13 @@ void main() {
     expect(find.text('Log 1 item'), findsOneWidget);
     await tester.tap(find.text('Undo'));
     await tester.pumpAndSettle();
+    // Back in its old place, first, not added at the end.
+    expect(
+      tester
+          .widgetList<PhotoItemCard>(find.byType(PhotoItemCard))
+          .map((c) => c.card.label),
+      ['White rice', 'Chicken adobo'],
+    );
     expect(
       tester
           .widget<Text>(
@@ -372,35 +379,41 @@ void main() {
     '✕ and Undo leave the other cards\' portion lines alone, so the screen reader doesn\'t read them again',
     (tester) async {
       await _open(tester);
-      int portionNode(int i) =>
-          tester.getSemantics(find.byKey(Key('snap.portion.$i'))).id;
+      final adoboFinder = find.text('Chicken adobo');
       Element adoboCard() => tester.element(
-        find.ancestor(
-          of: find.text('Chicken adobo'),
-          matching: find.byType(PhotoItemCard),
-        ),
+        find.ancestor(of: adoboFinder, matching: find.byType(FsCard)),
       );
-      final riceNode = portionNode(0);
-      final adobo = adoboCard();
+      // Found by what it says, not by a key, so the test can't follow a key
+      // that moves with the card's place.
+      int adoboLine() => tester
+          .getSemantics(
+            find.descendant(
+              of: find.ancestor(
+                of: adoboFinder,
+                matching: find.byType(PhotoItemCard),
+              ),
+              matching: find.byWidgetPredicate(
+                (w) => w is Semantics && (w.properties.liveRegion ?? false),
+              ),
+            ),
+          )
+          .id;
+      final card = adoboCard();
+      final line = adoboLine();
       await tester.tap(find.byKey(const Key('snap.remove.0')));
       await tester.pumpAndSettle();
+      // A new live-region node is read out: Chicken adobo's line must be the
+      // same node after it moves up, not a new one.
       expect(
         adoboCard(),
-        same(adobo),
-        reason: 'the card moved up, it was not rebuilt from the removed one',
+        same(card),
+        reason: 'the card moved up, it was not rebuilt',
       );
-      // A live region whose text changes is read out: White rice's line must
-      // not turn into Chicken adobo's.
-      expect(portionNode(0), isNot(riceNode));
-      final adoboNode = portionNode(0);
+      expect(adoboLine(), line, reason: 'the same portion line, not a new one');
       await tester.tap(find.text('Undo'));
       await tester.pumpAndSettle();
-      expect(adoboCard(), same(adobo));
-      expect(
-        portionNode(0),
-        isNot(adoboNode),
-        reason: "Chicken adobo's line doesn't turn into White rice's",
-      );
+      expect(adoboCard(), same(card));
+      expect(adoboLine(), line);
     },
   );
 
