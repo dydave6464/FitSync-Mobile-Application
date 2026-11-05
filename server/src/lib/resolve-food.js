@@ -7,7 +7,7 @@ const { findFood, upsertFatsecretFood } = require('../db/foods');
 /// { foodId, customName, servingDesc, kcal, proteinG, carbsG, fatG, fiberG,
 /// sugarG, sodiumMg, manual }. [food] is the request's `food` object:
 /// { source: 'local', id } | { source: 'fatsecret', externalId } |
-/// { source: 'manual', name, … }. A FatSecret food is fetched and copied into
+/// { source: 'manual', name, …, basedOnFoodId? }. A FatSecret food is fetched and copied into
 /// foods; that copy stays even if the caller's own write then fails -- it is
 /// only a cache of FatSecret's numbers.
 async function resolveFood({ pool, fatsecret, logger }, food) {
@@ -47,7 +47,10 @@ async function resolveFood({ pool, fatsecret, logger }, food) {
     return { ...fetched, foodId, customName: null, servingDesc, manual: false };
   }
   if (f.source === 'manual') {
-    const m = checkManual(f);
+    // The listed food the user edited, if any: its kcal is kept when they left
+    // protein, carbs and fat alone. An id that isn't a food is no basis.
+    const basedOn = Number.isInteger(f.basedOnFoodId) && f.basedOnFoodId > 0 ? await findFood(pool, f.basedOnFoodId) : null;
+    const m = checkManual(f, { basedOn });
     return { ...m, foodId: null, customName: m.name, manual: true };
   }
   throw invalid('food', "food.source must be 'local', 'fatsecret' or 'manual'.");
