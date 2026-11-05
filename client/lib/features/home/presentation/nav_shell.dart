@@ -120,10 +120,22 @@ class _NavShellState extends State<NavShell> {
   static const _trainIndex = 1;
 
   static const _items = [
-    FsNavItem(icon: Icons.home_outlined, label: 'Home'),
-    FsNavItem(icon: Icons.fitness_center_outlined, label: 'Train'),
-    FsNavItem(icon: Icons.restaurant_outlined, label: 'Nutrition'),
-    FsNavItem(icon: Icons.person_outline, label: 'Profile'),
+    FsNavItem(icon: Icons.home_outlined, activeIcon: Icons.home, label: 'Home'),
+    FsNavItem(
+      icon: Icons.fitness_center_outlined,
+      activeIcon: Icons.fitness_center,
+      label: 'Train',
+    ),
+    FsNavItem(
+      icon: Icons.restaurant_outlined,
+      activeIcon: Icons.restaurant,
+      label: 'Nutrition',
+    ),
+    FsNavItem(
+      icon: Icons.person_outline,
+      activeIcon: Icons.person,
+      label: 'Profile',
+    ),
   ];
 
   Widget _tab(int index, Widget Function() builder) =>
@@ -176,6 +188,7 @@ class _NavShellState extends State<NavShell> {
             onSelect: _select,
             items: _items,
             onFabTap: () => showStartWorkoutSheet(context),
+            fabLabel: 'Start a workout',
           ),
         ),
       ))),

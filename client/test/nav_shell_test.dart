@@ -9,6 +9,7 @@ import 'package:http/testing.dart';
 import 'package:fitsync/core/api_client.dart';
 import 'package:fitsync/core/token_store.dart';
 import 'package:fitsync/core/widgets/fs_charts.dart' show FsRing;
+import 'package:fitsync/core/widgets/fs_kit.dart' show FsNav;
 import 'package:fitsync/features/exercises/data/exercise_repository.dart';
 import 'package:fitsync/features/exercises/domain/exercise_cues.dart';
 import 'package:fitsync/features/exercises/domain/exercise.dart';
@@ -503,6 +504,36 @@ void main() {
       ),
       findsOneWidget,
     );
+  });
+
+  testWidgets('the bar marks the current tab with a filled icon', (
+    tester,
+  ) async {
+    // Hue alone barely separates the current tab from the rest in light
+    // theme, so the shell hands each tab a filled icon for when it is current.
+    Finder inBar(IconData icon) =>
+        find.descendant(of: find.byType(FsNav), matching: find.byIcon(icon));
+    await _pumpShell(tester);
+    expect(inBar(Icons.home), findsOneWidget);
+    expect(inBar(Icons.restaurant_outlined), findsOneWidget);
+
+    await tester.tap(find.byKey(const Key('nav.2')));
+    await tester.pumpAndSettle();
+    expect(inBar(Icons.restaurant), findsOneWidget);
+    expect(inBar(Icons.home_outlined), findsOneWidget);
+  });
+
+  testWidgets('the centre button is named for a screen reader', (tester) async {
+    final h = tester.ensureSemantics();
+    await _pumpShell(tester);
+    expect(
+      find.descendant(
+        of: find.byType(FsNav),
+        matching: find.bySemanticsLabel('Start a workout'),
+      ),
+      findsOneWidget,
+    );
+    h.dispose();
   });
 
   testWidgets('the centre button opens the start sheet', (tester) async {

@@ -79,10 +79,18 @@ class FsButton extends StatelessWidget {
     // One node that says "button", whether it can be pressed, and its label.
     // While busy the label is replaced on screen by a spinner, so the node
     // carries it instead, with "loading" so the wait is announced too.
-    return Semantics(
-      container: true,
-      button: true,
-      enabled: enabled,
+    //
+    // A small button is drawn 42 dp tall but answers a thumb across 48, as
+    // FsChip does. Its band is then the node, so this Semantics folds into
+    // the band's rather than framing the pill alone. The band reaches only as
+    // far as the parent's box: a Row exactly as tall as the button goes in an
+    // [FsTapRoom].
+    final button = Semantics(
+      container: !small,
+      // On a small button the band says these; said here as well, they
+      // would split off a second node the size of the pill.
+      button: small ? null : true,
+      enabled: small ? null : enabled,
       label: busy ? '$label, loading' : null,
       child: Opacity(
         opacity: enabled ? 1 : 0.45,
@@ -183,6 +191,13 @@ class FsButton extends StatelessWidget {
         ),
       ),
     );
+    if (!small) return button;
+    return _TapReach(
+      minSize: const Size(0, _minTapTarget),
+      button: true,
+      enabled: enabled,
+      child: button,
+    );
   }
 }
 
@@ -266,10 +281,15 @@ class FsChip extends StatelessWidget {
     required this.onTap,
     this.small = false,
     this.showCheck = false,
+    this.toggle = true,
   });
 
   final String label;
   final bool selected;
+
+  /// False for an action chip ("Add"), one that does something when pressed
+  /// rather than standing for a choice that is on or off.
+  final bool toggle;
 
   /// Null leaves the chip inert and announced as disabled.
   final VoidCallback? onTap;
@@ -290,7 +310,9 @@ class FsChip extends StatelessWidget {
     return _TapReach(
       button: true,
       enabled: onTap != null,
-      selected: selected,
+      // An action chip is pressed, not switched on, so it reports no selected
+      // state at all rather than a permanent "not selected".
+      selected: toggle ? selected : null,
       child: Material(
         color: selected ? t.accent : t.surface2,
         shape: RoundedRectangleBorder(
@@ -481,60 +503,72 @@ class FsSegmented extends StatelessWidget {
       ),
       child: Padding(
         padding: const EdgeInsets.all(4),
-        child: Row(
-          children: [
-            for (final (index, option) in options.indexed) ...[
-              if (option != options.first) const SizedBox(width: 2),
-              Expanded(
-                // Each segment is its own button in a single-choice group,
-                // with its place in the set, so a screen reader can say
-                // "Female, selected, 2 of 2" rather than just the word.
-                child: Semantics(
-                  container: true,
-                  button: true,
-                  enabled: true,
-                  selected: selected == option.value,
-                  inMutuallyExclusiveGroup: true,
-                  hint: '${index + 1} of ${options.length}',
-                  child: InkWell(
-                    key: Key('segment.${option.value}'),
-                    onTap: () => onSelected(option.value),
-                    borderRadius: BorderRadius.circular(FsRadius.pill),
-                    child: DecoratedBox(
-                      decoration: BoxDecoration(
-                        color: selected == option.value
-                            ? t.accent
-                            : Colors.transparent,
-                        borderRadius: BorderRadius.circular(FsRadius.pill),
-                      ),
-                      child: Padding(
-                        padding: const EdgeInsets.symmetric(vertical: 8),
-                        child: Text(
-                          option.label,
-                          textAlign: TextAlign.center,
-                          // A label that fits in one line renders at exactly
-                          // that height (unchanged from before); one that
-                          // doesn't wraps to a second line rather than
-                          // ellipsizing — "New to training" at 320dp is the
-                          // case this guards, and a label is a binding
-                          // constraint that must never be shortened.
-                          maxLines: 2,
-                          overflow: TextOverflow.ellipsis,
-                          style: TextStyle(
-                            fontSize: 12.5,
-                            fontWeight: FontWeight.w600,
-                            color: selected == option.value
-                                ? t.onAccent
-                                : t.text2,
+        // Every segment as tall as the tallest, and never under 48 dp: a
+        // label that wraps to a second line no longer leaves its neighbours a
+        // smaller target than itself.
+        child: IntrinsicHeight(
+          child: Row(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              for (final (index, option) in options.indexed) ...[
+                if (option != options.first) const SizedBox(width: 2),
+                Expanded(
+                  // Each segment is its own button in a single-choice group,
+                  // with its place in the set, so a screen reader can say
+                  // "Female, selected, 2 of 2" rather than just the word.
+                  child: Semantics(
+                    container: true,
+                    button: true,
+                    enabled: true,
+                    selected: selected == option.value,
+                    inMutuallyExclusiveGroup: true,
+                    hint: '${index + 1} of ${options.length}',
+                    child: InkWell(
+                      key: Key('segment.${option.value}'),
+                      onTap: () => onSelected(option.value),
+                      borderRadius: BorderRadius.circular(FsRadius.pill),
+                      child: DecoratedBox(
+                        decoration: BoxDecoration(
+                          color: selected == option.value
+                              ? t.accent
+                              : Colors.transparent,
+                          borderRadius: BorderRadius.circular(FsRadius.pill),
+                        ),
+                        child: ConstrainedBox(
+                          constraints: const BoxConstraints(
+                            minHeight: _minTapTarget,
+                          ),
+                          child: Padding(
+                            padding: const EdgeInsets.symmetric(vertical: 8),
+                            child: Center(
+                              child: Text(
+                                option.label,
+                                textAlign: TextAlign.center,
+                                // A label too long for one line wraps to a
+                                // second rather than ellipsizing -- "New to
+                                // training" at 320dp is the case this
+                                // guards, and a label is a binding
+                                // constraint that must never be shortened.
+                                maxLines: 2,
+                                overflow: TextOverflow.ellipsis,
+                                style: TextStyle(
+                                  fontSize: 12.5,
+                                  fontWeight: FontWeight.w600,
+                                  color: selected == option.value
+                                      ? t.onAccent
+                                      : t.text2,
+                                ),
+                              ),
+                            ),
                           ),
                         ),
                       ),
                     ),
                   ),
                 ),
-              ),
+              ],
             ],
-          ],
+          ),
         ),
       ),
     );
@@ -784,10 +818,14 @@ class FsTag extends StatelessWidget {
 
 /// One destination in [FsNav].
 class FsNavItem {
-  const FsNavItem({required this.icon, required this.label});
+  const FsNavItem({required this.icon, required this.label, this.activeIcon});
 
   final IconData icon;
   final String label;
+
+  /// The filled form of [icon], shown while this tab is current, so the
+  /// current tab is told by its shape as well as its colour.
+  final IconData? activeIcon;
 }
 
 /// `.botnav` — the bottom bar. Stateless on purpose: it reports a tap and
@@ -799,6 +837,7 @@ class FsNav extends StatelessWidget {
     required this.onSelect,
     required this.items,
     this.onFabTap,
+    this.fabLabel = 'Start a workout',
   });
 
   final int currentIndex;
@@ -812,6 +851,9 @@ class FsNav extends StatelessWidget {
   /// to 3 and Profile from 3 to 4 — renumbering every `nav.$index` key the
   /// shell's tests tap.
   final VoidCallback? onFabTap;
+
+  /// What a screen reader calls the fab, and its tooltip on a long press.
+  final String fabLabel;
 
   static const double _barHeight = 58;
 
@@ -847,29 +889,46 @@ class FsNav extends StatelessWidget {
                   child: Center(child: _fab(t)),
                 ),
               Expanded(
-                child: InkWell(
-                  key: Key('nav.$index'),
-                  onTap: () => onSelect(index),
-                  child: Column(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: [
-                      Icon(
-                        item.icon,
-                        size: _tabIconSize,
-                        color: index == currentIndex ? t.accentText : t.text3,
-                      ),
-                      const SizedBox(height: _tabGap),
-                      Text(
-                        item.label,
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: TextStyle(
-                          fontSize: 10,
-                          fontWeight: FontWeight.w600,
+                // One node per tab: "Profile, selected, tab 4 of 4", so the
+                // current tab is said and not only coloured.
+                child: Semantics(
+                  container: true,
+                  button: true,
+                  enabled: true,
+                  selected: index == currentIndex,
+                  inMutuallyExclusiveGroup: true,
+                  hint: 'Tab ${index + 1} of ${items.length}',
+                  child: InkWell(
+                    key: Key('nav.$index'),
+                    onTap: () => onSelect(index),
+                    child: Column(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        Icon(
+                          // The current tab is filled as well as tinted:
+                          // the accent alone barely sets it apart in light
+                          // theme.
+                          index == currentIndex
+                              ? item.activeIcon ?? item.icon
+                              : item.icon,
+                          size: _tabIconSize,
                           color: index == currentIndex ? t.accentText : t.text3,
                         ),
-                      ),
-                    ],
+                        const SizedBox(height: _tabGap),
+                        Text(
+                          item.label,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: TextStyle(
+                            fontSize: 10,
+                            fontWeight: FontWeight.w600,
+                            color: index == currentIndex
+                                ? t.accentText
+                                : t.text3,
+                          ),
+                        ),
+                      ],
+                    ),
                   ),
                 ),
               ),
@@ -889,26 +948,39 @@ class FsNav extends StatelessWidget {
   /// bar's own box, so all of it is hit-testable — the property a raised cap
   /// had to be positioned carefully to keep, and a `Transform.translate`
   /// would have lost outright.
-  Widget _fab(FsTokens t) => DecoratedBox(
-    // Circle, not the default rectangle: the glow has to follow the
-    // shape it falls from. Painted outside the Material rather than
-    // through its `elevation`, so it is the design's accent glow and
-    // not Material's own grey ambient shadow.
-    decoration: BoxDecoration(
-      shape: BoxShape.circle,
-      boxShadow: fsAccentGlow(t),
-    ),
-    child: Material(
-      color: t.accent,
-      shape: const CircleBorder(),
-      child: InkWell(
-        key: const Key('nav.fab'),
-        customBorder: const CircleBorder(),
-        onTap: onFabTap,
-        child: SizedBox(
-          width: _fabSize,
-          height: _fabSize,
-          child: Icon(Icons.add, size: 26, color: t.onAccent),
+  ///
+  /// A bare "+" says nothing to a screen reader, so the circle carries
+  /// [fabLabel] as its name, and a long press shows it too. The tooltip stays
+  /// out of the semantics tree, or the name would be read twice.
+  Widget _fab(FsTokens t) => Tooltip(
+    message: fabLabel,
+    excludeFromSemantics: true,
+    child: Semantics(
+      container: true,
+      button: true,
+      label: fabLabel,
+      child: DecoratedBox(
+        // Circle, not the default rectangle: the glow has to follow the
+        // shape it falls from. Painted outside the Material rather than
+        // through its `elevation`, so it is the design's accent glow and
+        // not Material's own grey ambient shadow.
+        decoration: BoxDecoration(
+          shape: BoxShape.circle,
+          boxShadow: fsAccentGlow(t),
+        ),
+        child: Material(
+          color: t.accent,
+          shape: const CircleBorder(),
+          child: InkWell(
+            key: const Key('nav.fab'),
+            customBorder: const CircleBorder(),
+            onTap: onFabTap,
+            child: SizedBox(
+              width: _fabSize,
+              height: _fabSize,
+              child: Icon(Icons.add, size: 26, color: t.onAccent),
+            ),
+          ),
         ),
       ),
     ),

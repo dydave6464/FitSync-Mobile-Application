@@ -364,16 +364,23 @@ void main() {
     await tester.tap(find.byKey(const Key('tab.progress')));
     await tester.pumpAndSettle();
     expect(find.textContaining('once you have logged'), findsNothing);
-    // skipOffstage: false -- the Progress tab now leads with four real cards
-    // above the history list, so in the test viewport this message sits below
-    // the fold. A default finder treats "clipped by the ListView's viewport"
-    // the same as "not rendered", which is a fact about this window, not
-    // about whether the widget exists -- see nav_shell_test.dart for the same
-    // caveat with IndexedStack.
-    expect(
-      find.byKey(const Key('progress.empty'), skipOffstage: false),
-      findsOneWidget,
+    // The Progress tab leads with the period switch and four real cards
+    // above the history list, so in the test viewport this message sits
+    // below the fold, past the list's build-ahead once the switch is a full
+    // 48 dp. Scroll to it the way a user would, rather than ask whether it
+    // happens to be built -- see nav_shell_test.dart for the same caveat
+    // with IndexedStack.
+    await tester.scrollUntilVisible(
+      find.byKey(const Key('progress.empty')),
+      200,
+      scrollable: find
+          .descendant(
+            of: find.byType(ProgressScreen),
+            matching: find.byType(Scrollable),
+          )
+          .first,
     );
+    expect(find.byKey(const Key('progress.empty')), findsOneWidget);
   });
 
   testWidgets('Recovery still says what is coming rather than nothing', (

@@ -1,3 +1,5 @@
+import 'dart:ui' show Tristate;
+
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
 import 'package:flutter/services.dart';
@@ -6,6 +8,8 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:fitsync/core/theme.dart';
 import 'package:fitsync/core/units.dart';
 import 'package:fitsync/core/widgets/fs_kit.dart';
+
+import 'helpers/a11y.dart';
 
 Widget _host(Widget child) => MaterialApp(
   theme: fsLightTheme(),
@@ -1274,6 +1278,184 @@ void main() {
         isSemantics(label: 'LB', isSelected: false, isButton: true),
       );
       handle.dispose();
+    });
+  });
+
+  group('48 dp targets and spoken names', () {
+    testWidgets('a small FsButton answers taps across 48 dp', (tester) async {
+      final h = tester.ensureSemantics();
+      var taps = 0;
+      // A width short of the screen's, or the guideline skips the node as
+      // touching the view's edge: a button in a Center fills the width. The
+      // box is taller than the button, as a card's padding is, since the
+      // band reaches only as far as its parent's box.
+      await tester.pumpWidget(
+        host(
+          SizedBox(
+            width: 200,
+            height: 60,
+            child: Center(
+              child: FsButton(
+                label: 'Retry',
+                small: true,
+                onPressed: () => taps++,
+              ),
+            ),
+          ),
+        ),
+      );
+      await expectLater(tester, meetsGuideline(androidTapTargetGuideline));
+      final box = tester.getRect(find.byType(FsButton));
+      // Just above the 42 dp pill.
+      await tester.tapAt(Offset(box.center.dx, box.top - 2));
+      expect(taps, 1);
+      h.dispose();
+    });
+
+    testWidgets('the bottom-bar fab has a name and a tooltip', (tester) async {
+      final h = tester.ensureSemantics();
+      // Four tabs, as the shell has: the fab sits before the third, so a
+      // shorter bar never draws it.
+      await tester.pumpWidget(
+        host(
+          FsNav(
+            currentIndex: 0,
+            onSelect: (_) {},
+            onFabTap: () {},
+            items: const [
+              FsNavItem(
+                icon: Icons.home_outlined,
+                activeIcon: Icons.home,
+                label: 'Home',
+              ),
+              FsNavItem(
+                icon: Icons.fitness_center_outlined,
+                activeIcon: Icons.fitness_center,
+                label: 'Train',
+              ),
+              FsNavItem(
+                icon: Icons.restaurant_outlined,
+                activeIcon: Icons.restaurant,
+                label: 'Nutrition',
+              ),
+              FsNavItem(
+                icon: Icons.person_outline,
+                activeIcon: Icons.person,
+                label: 'Profile',
+              ),
+            ],
+          ),
+        ),
+      );
+      expect(find.byKey(const Key('nav.fab')), findsOneWidget);
+      expect(find.bySemanticsLabel('Start a workout'), findsOneWidget);
+      expect(find.byTooltip('Start a workout'), findsOneWidget);
+      await expectLater(tester, meetsGuideline(labeledTapTargetGuideline));
+      h.dispose();
+    });
+
+    testWidgets(
+      'the current tab is selected in semantics and shows its filled icon',
+      (tester) async {
+        final h = tester.ensureSemantics();
+        await tester.pumpWidget(
+          host(
+            FsNav(
+              currentIndex: 1,
+              onSelect: (_) {},
+              items: const [
+                FsNavItem(
+                  icon: Icons.home_outlined,
+                  activeIcon: Icons.home,
+                  label: 'Home',
+                ),
+                FsNavItem(
+                  icon: Icons.person_outline,
+                  activeIcon: Icons.person,
+                  label: 'Profile',
+                ),
+              ],
+            ),
+          ),
+        );
+        expect(
+          tester.getSemantics(find.text('Profile')),
+          matchesSemantics(
+            isButton: true,
+            isSelected: true,
+            hasSelectedState: true,
+            isInMutuallyExclusiveGroup: true,
+            hasTapAction: true,
+            hasFocusAction: true,
+            isFocusable: true,
+            isEnabled: true,
+            hasEnabledState: true,
+            label: 'Profile',
+            hint: 'Tab 2 of 2',
+          ),
+        );
+        expect(
+          tester.getSemantics(find.text('Home')),
+          isSemantics(isSelected: false, hint: 'Tab 1 of 2'),
+        );
+        expect(find.byIcon(Icons.person), findsOneWidget);
+        expect(find.byIcon(Icons.home_outlined), findsOneWidget);
+        h.dispose();
+      },
+    );
+
+    testWidgets('FsSegmented segments are at least 48 dp tall and equal', (
+      tester,
+    ) async {
+      final h = tester.ensureSemantics();
+      await tester.pumpWidget(
+        host(
+          SizedBox(
+            width: 340,
+            child: FsSegmented(
+              options: const [
+                (value: 'a', label: '15 min'),
+                (value: 'b', label: '1 hour before the session'),
+              ],
+              selected: 'a',
+              onSelected: (_) {},
+            ),
+          ),
+          textScale: 1.6,
+        ),
+      );
+      await expectLater(tester, meetsGuideline(androidTapTargetGuideline));
+      expect(tester.takeException(), isNull);
+      final a = tester.getSize(find.byKey(const Key('segment.a')));
+      final b = tester.getSize(find.byKey(const Key('segment.b')));
+      expect(a.height, b.height, reason: 'segments share one height');
+      expect(a.height, greaterThanOrEqualTo(48));
+      h.dispose();
+    });
+
+    testWidgets('an action chip reports no selected state', (tester) async {
+      final h = tester.ensureSemantics();
+      await tester.pumpWidget(
+        host(
+          FsChip(label: 'Add', selected: false, toggle: false, onTap: () {}),
+        ),
+      );
+      final data = tester.getSemantics(find.text('Add')).getSemanticsData();
+      expect(data.flagsCollection.isSelected, Tristate.none);
+      expect(data.flagsCollection.isButton, isTrue);
+      h.dispose();
+    });
+
+    testWidgets('a toggle chip still reports its selected state', (
+      tester,
+    ) async {
+      final h = tester.ensureSemantics();
+      await tester.pumpWidget(
+        host(FsChip(label: 'Bench', selected: false, onTap: () {})),
+      );
+      final data = tester.getSemantics(find.text('Bench')).getSemanticsData();
+      expect(data.flagsCollection.isSelected, Tristate.isFalse);
+      h.dispose();
     });
   });
 }
