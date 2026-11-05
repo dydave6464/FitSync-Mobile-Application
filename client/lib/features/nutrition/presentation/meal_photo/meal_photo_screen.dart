@@ -82,6 +82,9 @@ class _MealPhotoScreenState extends ConsumerState<MealPhotoScreen> {
   PhotoProblem? _problem;
   PhotoRecognition? _recognition;
   List<DraftCard> _cards = [];
+
+  /// The next card's [DraftCard.id].
+  int _nextCardId = 0;
   bool _logging = false;
 
   /// Which request is current: a Retake or Try again makes an earlier
@@ -133,7 +136,11 @@ class _MealPhotoScreenState extends ConsumerState<MealPhotoScreen> {
           _phase = _Phase.failed;
           _problem = PhotoProblem.noFood;
         } else {
-          _cards = [for (final s in r.items) DraftCard.suggested(s), for (final u in r.unlisted) DraftCard.unlisted(u)];
+          _nextCardId = 0;
+          _cards = [
+            for (final s in r.items) DraftCard.suggested(s, id: _nextCardId++),
+            for (final u in r.unlisted) DraftCard.unlisted(u, id: _nextCardId++),
+          ];
           _phase = _Phase.confirm;
         }
       });
@@ -218,7 +225,7 @@ class _MealPhotoScreenState extends ConsumerState<MealPhotoScreen> {
   Future<void> _add() async {
     final picked = await pickFood(context, mealType: _meal);
     if (picked == null || !mounted) return;
-    setState(() => _cards.add(DraftCard.added(picked)));
+    setState(() => _cards.add(DraftCard.added(picked, id: _nextCardId++)));
   }
 
   Future<void> _log() async {
@@ -396,15 +403,14 @@ class _MealPhotoScreenState extends ConsumerState<MealPhotoScreen> {
               child: Text('Nothing left to log. Add an item to log this meal.', style: TextStyle(color: t.text2)),
             ),
           for (final (i, card) in _cards.indexed) ...[
-            // Keyed by the card, not its place: after ✕ or Undo the other
-            // cards move rather than take on a neighbour's food, so no live
-            // portion line changes its text and gets read out again.
+            // Keyed by the card, not its place, and so are its parts (by
+            // DraftCard.id): after ✕ or Undo the other cards move whole, so
+            // no portion line is made anew and read out again.
             KeyedSubtree(
               key: ObjectKey(card),
               child: card.isUnlisted
-                  ? PhotoUnlistedCard(index: i, card: card, onSearch: () => _searchFor(card), onRemove: () => _remove(i))
+                  ? PhotoUnlistedCard(card: card, onSearch: () => _searchFor(card), onRemove: () => _remove(i))
                   : PhotoItemCard(
-                      index: i,
                       card: card,
                       onSwap: (f) => setState(() => card.replaceWith(f)),
                       onSearch: () => _searchFor(card),
