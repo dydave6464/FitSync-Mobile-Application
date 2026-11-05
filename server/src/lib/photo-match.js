@@ -51,4 +51,4 @@ function matchItems(rawItems, menu) {
   return { items, unlisted };
 }
 
-module.exports = { matchItems, menuLine, MAX_CARDS };
+module.exports = { matchItems, menuLine, MAX_CARDS, MAX_ALTERNATIVES };
