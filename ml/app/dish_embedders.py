@@ -97,16 +97,24 @@ def load_image(data: bytes) -> Image.Image:
 
 def preprocess(img: Image.Image, spec: EmbedderSpec) -> np.ndarray:
     """(1, 3, crop, crop) float32: shortest edge to spec.shortest_edge (bicubic),
-    centre crop, scaled to 0-1, normalised by the model's mean and std."""
+    centre crop, scaled to 0-1, normalised by the model's mean and std.
+
+    Only the photo's part under the crop is resized, straight to crop x crop:
+    the same pixels as resizing the whole photo first, but a thin photo
+    (1x100000 is a few KB) never becomes a many-GB image on the way."""
     width, height = img.size
     scale = spec.shortest_edge / min(width, height)
     new_w = max(spec.crop, int(round(width * scale)))
     new_h = max(spec.crop, int(round(height * scale)))
-    if (new_w, new_h) != (width, height):
-        img = img.resize((new_w, new_h), Image.Resampling.BICUBIC)
     left = (new_w - spec.crop) // 2
     top = (new_h - spec.crop) // 2
-    img = img.crop((left, top, left + spec.crop, top + spec.crop))
+    if (new_w, new_h) == (width, height):
+        img = img.crop((left, top, left + spec.crop, top + spec.crop))
+    else:
+        # The crop window in the resized photo, mapped back onto the original.
+        sx, sy = width / new_w, height / new_h
+        box = (left * sx, top * sy, (left + spec.crop) * sx, (top + spec.crop) * sy)
+        img = img.resize((spec.crop, spec.crop), Image.Resampling.BICUBIC, box=box)
     x = np.asarray(img, dtype=np.float32) / 255.0
     x = (x - np.asarray(spec.mean, dtype=np.float32)) / np.asarray(spec.std, dtype=np.float32)
     return np.ascontiguousarray(x.transpose(2, 0, 1)[None, ...], dtype=np.float32)

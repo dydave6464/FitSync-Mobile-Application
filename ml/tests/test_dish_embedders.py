@@ -58,6 +58,43 @@ def test_preprocess_keeps_the_centre_of_a_wide_photo():
     assert np.isclose(x[0, 0, 100, 223], white, atol=1e-3)
 
 
+def test_preprocess_never_builds_more_than_the_crop_for_a_thin_photo(monkeypatch):
+    # A 1x100000 PNG is a few KB, but scaling its whole short edge up to 256
+    # first would mean a 256x25,600,000 image (about 20 GB). Only the centre
+    # square may be resized, straight to the crop size.
+    spec = de.EMBEDDERS["dinov2-small"]
+    real_resize = Image.Image.resize
+    sizes = []
+
+    def resize(self, size, *args, **kwargs):
+        sizes.append(tuple(size))
+        assert size[0] * size[1] <= spec.crop * spec.crop, "resized the whole photo"
+        return real_resize(self, size, *args, **kwargs)
+
+    monkeypatch.setattr(Image.Image, "resize", resize)
+    buf = io.BytesIO()
+    Image.new("RGB", (1, 100_000), (0, 255, 0)).save(buf, "PNG")
+    x = de.preprocess(de.load_image(buf.getvalue()), spec)
+    assert x.shape == (1, 3, 224, 224)
+    assert sizes == [(224, 224)]
+    green = (1 - spec.mean[1]) / spec.std[1]
+    assert np.allclose(x[0, 1], green, atol=1e-3)
+
+
+def test_preprocess_matches_resizing_the_whole_photo_then_cropping():
+    # The crop-only resize is the same scale and the same window as the
+    # resize-then-crop in each repo's preprocessor_config.json.
+    spec = de.EMBEDDERS["dinov2-small"]
+    rng = np.random.default_rng(0)
+    img = Image.fromarray(rng.integers(0, 256, (300, 410, 3), dtype=np.uint8))
+    whole = img.resize((350, 256), Image.Resampling.BICUBIC)
+    left, top = (350 - 224) // 2, (256 - 224) // 2
+    ref = np.asarray(whole.crop((left, top, left + 224, top + 224)), dtype=np.float32) / 255.0
+    got = de.preprocess(img, spec)[0].transpose(1, 2, 0)
+    got = got * np.asarray(spec.std, dtype=np.float32) + np.asarray(spec.mean, dtype=np.float32)
+    assert np.abs(got - ref).max() <= 2 / 255.0
+
+
 def test_load_image_turns_a_photo_upright_by_its_exif():
     exif = Image.Exif()
     exif[0x0112] = 6  # shown rotated 90 degrees
