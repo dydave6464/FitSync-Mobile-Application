@@ -1282,34 +1282,156 @@ void main() {
   });
 
   group('48 dp targets and spoken names', () {
+    // The pill a small button draws, as opposed to the 48 dp box it lays out.
+    Rect smallPill(WidgetTester tester, [Finder? button]) => tester.getRect(
+      find.descendant(
+        of: button ?? find.byType(FsButton),
+        matching: find.byType(InkWell),
+      ),
+    );
+
     testWidgets('a small FsButton answers taps across 48 dp', (tester) async {
       final h = tester.ensureSemantics();
       var taps = 0;
       // A width short of the screen's, or the guideline skips the node as
-      // touching the view's edge: a button in a Center fills the width. The
-      // box is taller than the button, as a card's padding is, since the
-      // band reaches only as far as its parent's box.
+      // touching the view's edge: a button in a Center fills the width. No
+      // room is given around it: the 48 dp is the button's own.
       await tester.pumpWidget(
         host(
           SizedBox(
             width: 200,
-            height: 60,
-            child: Center(
-              child: FsButton(
-                label: 'Retry',
-                small: true,
-                onPressed: () => taps++,
+            child: FsButton(
+              label: 'Retry',
+              small: true,
+              onPressed: () => taps++,
+            ),
+          ),
+        ),
+      );
+      await expectLater(tester, meetsGuideline(androidTapTargetGuideline));
+      final pill = smallPill(tester);
+      expect(pill.height, 42, reason: 'the pill is drawn as before');
+      expect(tester.getSize(find.byType(FsButton)).height, 48);
+      // Just above and just below the 42 dp pill.
+      await tester.tapAt(Offset(pill.center.dx, pill.top - 2));
+      await tester.tapAt(Offset(pill.center.dx, pill.bottom + 2));
+      expect(taps, 2);
+      h.dispose();
+    });
+
+    testWidgets('a small FsButton that ends a card answers the full 48 dp', (
+      tester,
+    ) async {
+      // Home's "Start workout" and the shell's Retry: the button is the last
+      // child of a Column inside the card's padding, so the Column's bottom
+      // edge is flush with the button. Room outside the Column never reaches
+      // the button, so the 48 dp has to be inside it.
+      final h = tester.ensureSemantics();
+      var taps = 0;
+      await tester.pumpWidget(
+        host(
+          SizedBox(
+            width: 240,
+            child: FsCard(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  const Text('Push day'),
+                  const SizedBox(height: 14),
+                  FsButton(
+                    label: 'Start workout',
+                    small: true,
+                    onPressed: () => taps++,
+                  ),
+                ],
               ),
             ),
           ),
         ),
       );
       await expectLater(tester, meetsGuideline(androidTapTargetGuideline));
-      final box = tester.getRect(find.byType(FsButton));
-      // Just above the 42 dp pill.
-      await tester.tapAt(Offset(box.center.dx, box.top - 2));
-      expect(taps, 1);
+      final pill = smallPill(tester);
+      await tester.tapAt(Offset(pill.center.dx, pill.bottom + 2));
+      expect(taps, 1, reason: 'just below the pill, at the Column\'s end');
+      await tester.tapAt(Offset(pill.center.dx, pill.top - 2));
+      expect(taps, 2, reason: 'just above the pill');
+      // What a screen reader frames is what a thumb can hit.
+      final node = tester.getSemantics(find.text('Start workout'));
+      expect(node.rect.height, 48);
+      expect(node.label, 'Start workout');
       h.dispose();
+    });
+
+    testWidgets('small FsButtons in a Wrap answer above and below the pill', (
+      tester,
+    ) async {
+      // Home's "Turn on" / "Not now" and "Continue": each button fills its
+      // own run of the Wrap, so a run's edge is flush with the pill.
+      var turnOn = 0, notNow = 0;
+      await tester.pumpWidget(
+        host(
+          SizedBox(
+            width: 240,
+            child: FsCard(
+              child: Wrap(
+                spacing: 10,
+                runSpacing: 8,
+                children: [
+                  FsButton(
+                    key: const Key('on'),
+                    label: 'Turn on',
+                    small: true,
+                    onPressed: () => turnOn++,
+                  ),
+                  FsButton(
+                    key: const Key('off'),
+                    label: 'Not now',
+                    small: true,
+                    kind: FsButtonKind.secondary,
+                    onPressed: () => notNow++,
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ),
+      );
+      final on = smallPill(tester, find.byKey(const Key('on')));
+      final off = smallPill(tester, find.byKey(const Key('off')));
+      await tester.tapAt(Offset(on.center.dx, on.top - 2));
+      await tester.tapAt(Offset(on.center.dx, on.bottom + 2));
+      await tester.tapAt(Offset(off.center.dx, off.top - 2));
+      await tester.tapAt(Offset(off.center.dx, off.bottom + 2));
+      expect((turnOn, notNow), (2, 2));
+    });
+
+    testWidgets('a small FsButton in a Row as tall as itself still gets 48', (
+      tester,
+    ) async {
+      // Recovery's "Check in": the Row is as tall as the button.
+      var taps = 0;
+      await tester.pumpWidget(
+        host(
+          SizedBox(
+            width: 300,
+            child: Row(
+              children: [
+                const Expanded(child: Text('How do you feel?')),
+                FsButton(
+                  label: 'Check in',
+                  small: true,
+                  onPressed: () => taps++,
+                ),
+              ],
+            ),
+          ),
+        ),
+      );
+      final pill = smallPill(tester);
+      await tester.tapAt(Offset(pill.center.dx, pill.top - 2));
+      await tester.tapAt(Offset(pill.center.dx, pill.bottom + 2));
+      expect(taps, 2);
     });
 
     testWidgets('the bottom-bar fab has a name and a tooltip', (tester) async {

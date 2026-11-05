@@ -80,11 +80,9 @@ class FsButton extends StatelessWidget {
     // While busy the label is replaced on screen by a spinner, so the node
     // carries it instead, with "loading" so the wait is announced too.
     //
-    // A small button is drawn 42 dp tall but answers a thumb across 48, as
-    // FsChip does. Its band is then the node, so this Semantics folds into
-    // the band's rather than framing the pill alone. The band reaches only as
-    // far as the parent's box: a Row exactly as tall as the button goes in an
-    // [FsTapRoom].
+    // A small button is drawn 42 dp tall but answers a thumb across 48, in a
+    // 48 dp box of its own (below). Its band is then the node, so this
+    // Semantics folds into the band's rather than framing the pill alone.
     final button = Semantics(
       container: !small,
       // On a small button the band says these; said here as well, they
@@ -192,11 +190,26 @@ class FsButton extends StatelessWidget {
       ),
     );
     if (!small) return button;
-    return _TapReach(
-      minSize: const Size(0, _minTapTarget),
-      button: true,
-      enabled: enabled,
-      child: button,
+    // The 48 dp is laid out, not only hit-tested: a band that reached past
+    // the button's own box would be cut off by any Column, Row or Wrap whose
+    // edge is flush with it -- the last button in a card, a button filling
+    // its run of a Wrap -- since a parent never asks a child about a point
+    // outside its own box. So the pill sits centred in a box at least 48 dp
+    // tall, 3 dp of transparent room above and below a 42 dp pill, and the
+    // band fills that box exactly. A wrapped label already taller than 48
+    // gets no extra room. Widths are the pill's own.
+    return ConstrainedBox(
+      constraints: const BoxConstraints(minHeight: _minTapTarget),
+      child: Center(
+        widthFactor: 1,
+        heightFactor: 1,
+        child: _TapReach(
+          minSize: const Size(0, _minTapTarget),
+          button: true,
+          enabled: enabled,
+          child: button,
+        ),
+      ),
     );
   }
 }
