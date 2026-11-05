@@ -83,6 +83,28 @@ function checkManual(food, { basedOn = null } = {}) {
   return { name, servingDesc, kcal, fiberG, sugarG, sodiumMg, ...grams };
 }
 
+/// [food][key] -- basedOnFoodId or basedOnEntryId -- as an id: absent or null
+/// is none (null); anything but a positive integer is refused like any other
+/// bad field, never quietly read as "no basis".
+function basisId(food, key) {
+  const v = food[key];
+  if (v == null) return null;
+  if (!Number.isInteger(v) || v <= 0) throw invalid(key, `${key} must be a positive whole number.`);
+  return v;
+}
+
+/// One serving of a stored entry (getStoredEntry's shape): each total over its
+/// servings, unknown staying unknown. Unrounded, like the entry itself.
+function perServingOf(stored) {
+  const n = stored.servings;
+  return {
+    kcal: stored.kcal / n, proteinG: stored.proteinG / n, carbsG: stored.carbsG / n, fatG: stored.fatG / n,
+    fiberG: stored.fiberG == null ? null : stored.fiberG / n,
+    sugarG: stored.sugarG == null ? null : stored.sugarG / n,
+    sodiumMg: stored.sodiumMg == null ? null : stored.sodiumMg / n,
+  };
+}
+
 /// Per-serving numbers [base] times [servings], rounded the one way every
 /// stored entry is: kcal whole, grams to 2 places, sodium to 1; null stays null.
 function scaled(base, servings) {
@@ -97,4 +119,4 @@ function scaled(base, servings) {
   };
 }
 
-module.exports = { invalid, checkDate, checkServings, checkManual, scaled, round1, round2 };
+module.exports = { invalid, checkDate, checkServings, checkManual, basisId, perServingOf, scaled, round1, round2 };

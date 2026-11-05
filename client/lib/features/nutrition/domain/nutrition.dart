@@ -73,6 +73,7 @@ class Food {
     this.group,
     this.fatsecretCopy = false,
     this.basedOnFoodId,
+    this.entryId,
   });
 
   factory Food.fromJson(Map<String, dynamic> j) => Food(
@@ -89,6 +90,7 @@ class Food {
     sugarG: j['sugarG'] == null ? null : _d(j['sugarG']),
     sodiumMg: j['sodiumMg'] == null ? null : _d(j['sodiumMg']),
     group: j['group'] as String?,
+    entryId: j['entryId'] as int?,
   );
 
   /// 'local', 'fatsecret' or 'manual'.
@@ -118,6 +120,11 @@ class Food {
   /// server keeps that food's kcal while protein, carbs and fat are unchanged.
   final int? basedOnFoodId;
 
+  /// For the user's own numbers from Recents: the logged entry they came from.
+  /// The server keeps that entry's kcal while protein, carbs and fat are
+  /// unchanged -- a kept-kcal beer stays 129, not 4·4·9's 47.
+  final int? entryId;
+
   bool get isFatsecret => source == 'fatsecret';
 
   /// Whether FatSecret's attribution must show beside this food.
@@ -139,6 +146,7 @@ class Food {
       if (sugarG != null) 'sugarG': sugarG,
       if (sodiumMg != null) 'sodiumMg': sodiumMg,
       if (basedOnFoodId != null) 'basedOnFoodId': basedOnFoodId,
+      if (entryId != null) 'basedOnEntryId': entryId,
     },
   };
 }

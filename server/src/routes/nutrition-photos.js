@@ -194,7 +194,7 @@ module.exports = function buildNutritionPhotosRouter(deps) {
       // Every food first, outside the transaction: a FatSecret lookup is a
       // network call, and one failing must leave nothing logged.
       const bases = [];
-      for (const it of b.items) bases.push(await resolveFood(deps, it.food));
+      for (const it of b.items) bases.push(await resolveFood(deps, it.food, userId));
 
       const conn = await pool.getConnection();
       const ids = [];

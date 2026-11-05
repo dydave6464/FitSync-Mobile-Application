@@ -1,7 +1,7 @@
 'use strict';
 const test = require('node:test');
 const assert = require('node:assert/strict');
-const { checkManual } = require('../src/lib/nutrition-input');
+const { checkManual, basisId, perServingOf } = require('../src/lib/nutrition-input');
 
 // A listed beer: its kcal includes alcohol, which 4-4-9 can't see.
 const BEER = { kcal: 129, proteinG: 1.1, carbsG: 10.6, fatG: 0 };
@@ -45,4 +45,20 @@ test('changed carbs recompute kcal from 4-4-9', () => {
 
 test('macros changed to 0/0/0 are refused, whatever the listed kcal', () => {
   assert.equal(fieldOf(() => checkManual({ name: 'Beer', proteinG: 0, carbsG: 0, fatG: 0 }, { basedOn: BEER })), 'food');
+});
+
+test('a basis id is absent (null) or a positive integer; anything else is a 400 on that field', () => {
+  assert.equal(basisId({}, 'basedOnFoodId'), null);
+  assert.equal(basisId({ basedOnFoodId: null }, 'basedOnFoodId'), null);
+  assert.equal(basisId({ basedOnEntryId: 21 }, 'basedOnEntryId'), 21);
+  for (const bad of ['21', 0, -1, 1.5, true, {}]) {
+    assert.equal(fieldOf(() => basisId({ basedOnFoodId: bad }, 'basedOnFoodId')), 'basedOnFoodId', JSON.stringify(bad));
+    assert.equal(fieldOf(() => basisId({ basedOnEntryId: bad }, 'basedOnEntryId')), 'basedOnEntryId', JSON.stringify(bad));
+  }
+});
+
+test("a stored entry's per-serving numbers divide each total by its servings; unknown stays unknown", () => {
+  assert.deepEqual(perServingOf({
+    servings: 2, kcal: 258, proteinG: 2.2, carbsG: 21.2, fatG: 0, fiberG: null, sugarG: 3, sodiumMg: 80,
+  }), { kcal: 129, proteinG: 1.1, carbsG: 10.6, fatG: 0, fiberG: null, sugarG: 1.5, sodiumMg: 40 });
 });

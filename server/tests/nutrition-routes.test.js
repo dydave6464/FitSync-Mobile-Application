@@ -215,6 +215,71 @@ test('nutrition endpoints', async (t) => {
     assert.deepEqual(res.body.error.details, [{ field: 'food' }]);
   });
 
+  // Recents gives back a manual entry, not a listed food: logging it again
+  // names that entry, and its own kcal is kept the same way.
+  await t.test("a manual food based on the user's own logged entry keeps that entry's kcal", async () => {
+    const u = await freshUser();
+    const beer = (await u.log({ mealType: 'dinner', servings: 2, food: beerEdit({ sodiumMg: 40 }) }).expect(201)).body.data.entry;
+    const again = (await u.log({
+      mealType: 'dinner', servings: 1, food: beerEdit({ basedOnFoodId: undefined, sodiumMg: 20, basedOnEntryId: beer.id }),
+    }).expect(201)).body.data.entry;
+    assert.equal(again.kcal, 129); // 258 / 2, not 4-4-9's 47
+    const carbs = (await u.log({
+      mealType: 'dinner', servings: 1, food: beerEdit({ basedOnFoodId: undefined, carbsG: 5, basedOnEntryId: beer.id }),
+    }).expect(201)).body.data.entry;
+    assert.equal(carbs.kcal, 24, 'changed carbs still recompute');
+
+    const gin = { source: 'manual', name: 'Gin', servingDesc: '1 glass', proteinG: 0, carbsG: 0, fatG: 0 };
+    const spirit = (await u.log({ mealType: 'dinner', servings: 2, food: { ...gin, basedOnFoodId: SPIRIT } }).expect(201)).body.data.entry;
+    const spiritAgain = (await u.log({ mealType: 'dinner', servings: 1, food: { ...gin, basedOnEntryId: spirit.id } }).expect(201)).body.data.entry;
+    assert.equal(spiritAgain.kcal, 97);
+  });
+
+  await t.test('the entry wins over the listed food when both are named', async () => {
+    const u = await freshUser();
+    // Logged with no basis, so 4-4-9: 47, not the listed 129.
+    const plain = (await u.log({ mealType: 'dinner', servings: 1, food: beerEdit({ basedOnFoodId: undefined }) }).expect(201)).body.data.entry;
+    assert.equal(plain.kcal, 47);
+    const both = (await u.log({
+      mealType: 'dinner', servings: 1, food: beerEdit({ basedOnEntryId: plain.id }),
+    }).expect(201)).body.data.entry;
+    assert.equal(both.kcal, 47);
+  });
+
+  await t.test("another user's entry, or a missing one, is no basis: 4-4-9, never a 404", async () => {
+    const owner = await freshUser();
+    const u = await freshUser();
+    const beer = (await owner.log({ mealType: 'dinner', servings: 1, food: beerEdit() }).expect(201)).body.data.entry;
+    const gin = (await owner.log({
+      mealType: 'dinner', servings: 1,
+      food: { source: 'manual', name: 'Gin', proteinG: 0, carbsG: 0, fatG: 0, basedOnFoodId: SPIRIT },
+    }).expect(201)).body.data.entry;
+    for (const id of [beer.id, beer.id + 100000]) {
+      const e = (await u.log({
+        mealType: 'dinner', servings: 1, food: beerEdit({ basedOnFoodId: undefined, basedOnEntryId: id }),
+      }).expect(201)).body.data.entry;
+      assert.equal(e.kcal, 47);
+    }
+    const res = await u.log({
+      mealType: 'dinner', servings: 1,
+      food: { source: 'manual', name: 'Gin', proteinG: 0, carbsG: 0, fatG: 0, basedOnEntryId: gin.id },
+    }).expect(400);
+    assert.deepEqual(res.body.error.details, [{ field: 'food' }]);
+  });
+
+  await t.test('a malformed basedOnFoodId or basedOnEntryId is a 400 on that field', async () => {
+    const u = await freshUser();
+    for (const key of ['basedOnFoodId', 'basedOnEntryId']) {
+      for (const bad of [String(BEER), 0, -1, 1.5, true]) {
+        const res = await u.log({ mealType: 'dinner', servings: 1, food: beerEdit({ basedOnFoodId: undefined, [key]: bad }) }).expect(400);
+        assert.equal(res.body.error.code, 'INVALID_NUTRITION_FIELD');
+        assert.deepEqual(res.body.error.details, [{ field: key }], `${key}: ${JSON.stringify(bad)}`);
+      }
+    }
+    const [[{ n }]] = await pool.query('SELECT COUNT(*) AS n FROM meal_logs WHERE user_id = ?', [u.userId]);
+    assert.equal(Number(n), 0);
+  });
+
   await t.test('a FatSecret food is fetched by id, copied once, then reused', async () => {
     const u = await freshUser();
     fatsecretGets = 0;

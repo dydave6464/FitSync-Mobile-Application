@@ -4,7 +4,7 @@ const requireAuth = require('../middleware/require-auth');
 const AppError = require('../lib/app-error');
 const { manilaDay } = require('../lib/manila-day');
 const { dailyTarget } = require('../lib/nutrition-target');
-const { invalid, checkDate, checkServings, checkManual, scaled, round1 } = require('../lib/nutrition-input');
+const { invalid, checkDate, checkServings, checkManual, perServingOf, scaled, round1 } = require('../lib/nutrition-input');
 const { resolveFood } = require('../lib/resolve-food');
 const {
   MEALS, insertEntry, getEntry, getStoredEntry, updateEntry, deleteEntry, listDayEntries, targetProfile,
@@ -45,7 +45,7 @@ module.exports = function buildNutritionRouter(deps) {
       const date = checkDate(b.date);
       if (!MEALS.includes(b.mealType)) throw invalid('mealType', `mealType must be one of: ${MEALS.join(', ')}.`);
       const servings = checkServings(b.servings);
-      const base = await resolveFood(deps, b.food);
+      const base = await resolveFood(deps, b.food, req.user.userId);
 
       const id = await insertEntry(pool, req.user.userId, {
         date, mealType: b.mealType, servings,
@@ -74,13 +74,7 @@ module.exports = function buildNutritionRouter(deps) {
 
       // From the entry's own numbers, never the foods row: a later
       // correction to the food list must not rewrite history.
-      const n = stored.servings;
-      const perServing = {
-        kcal: stored.kcal / n, proteinG: stored.proteinG / n, carbsG: stored.carbsG / n, fatG: stored.fatG / n,
-        fiberG: stored.fiberG == null ? null : stored.fiberG / n,
-        sugarG: stored.sugarG == null ? null : stored.sugarG / n,
-        sodiumMg: stored.sodiumMg == null ? null : stored.sodiumMg / n,
-      };
+      const perServing = perServingOf(stored);
       // The entry is the basis: unchanged protein, carbs and fat keep its kcal.
       const manual = b.food === undefined ? null : checkManual(b.food, { basedOn: perServing });
 

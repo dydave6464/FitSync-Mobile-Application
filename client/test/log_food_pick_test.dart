@@ -19,6 +19,12 @@ class _Repo extends FakeNutritionRepository {
       Food(source: 'fatsecret', externalId: 'fs-2', name: 'Atchara Relish', servingDesc: '1 tbsp', kcal: 15, proteinG: 0, carbsG: 4, fatG: 0),
     ]);
   }
+
+  @override
+  Future<List<Food>> recent() async => const [
+    // A spirit the user logged at its listed kcal: all of it is alcohol.
+    Food(source: 'manual', entryId: 56, name: 'Gin', servingDesc: '1 glass', kcal: 97, proteinG: 0, carbsG: 0, fatG: 0),
+  ];
 }
 
 Future<({_Repo repo, Food? Function() picked})> _pump(WidgetTester tester, {String? query}) async {
@@ -47,6 +53,17 @@ void main() {
     expect(find.text('Lunch'), findsNothing);
     expect(h.repo.queries, ['Atchara']);
     expect(find.text('Atchara (pickled green papaya)'), findsOneWidget);
+  });
+
+  testWidgets('a food picked from Recents comes back naming its entry, so Snap a meal keeps its kcal', (tester) async {
+    final h = await _pump(tester);
+    await tester.tap(find.text('Recents'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Gin'));
+    await tester.pumpAndSettle();
+    expect(h.picked()!.kcal, 97);
+    expect(h.picked()!.toRef()['basedOnEntryId'], 56);
+    expect(h.repo.calls.where((c) => c.startsWith('log')), isEmpty);
   });
 
   testWidgets('a FitSync food comes straight back, with nothing logged', (tester) async {

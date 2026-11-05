@@ -11,6 +11,8 @@ const _shake = Food(source: 'fatsecret', externalId: 'fs-1', name: 'Mango Shake'
 const _oatmeal = Food(source: 'local', id: 9, name: 'Oatmeal', servingDesc: '1 bowl', kcal: 150, proteinG: 5, carbsG: 27, fatG: 3, fiberG: 3);
 const _beer = Food(source: 'local', id: 21, name: 'Beer', servingDesc: '1 can (330 ml)', kcal: 129, proteinG: 1.1, carbsG: 10.6, fatG: 0, sodiumMg: 14);
 const _gin = Food(source: 'local', id: 22, name: 'Gin', servingDesc: '1 shot (40 ml)', kcal: 97, proteinG: 0, carbsG: 0, fatG: 0);
+const _recentBeer = Food(source: 'manual', entryId: 55, name: 'Beer', servingDesc: '1 can (330 ml)', kcal: 129, proteinG: 1.1, carbsG: 10.6, fatG: 0, sodiumMg: 14);
+const _recentGin = Food(source: 'manual', entryId: 56, name: 'Gin', servingDesc: '1 glass', kcal: 97, proteinG: 0, carbsG: 0, fatG: 0);
 const _juice = Food(source: 'local', id: 11, name: 'Mango juice', servingDesc: '1 glass', kcal: 120, proteinG: 1, carbsG: 28, fatG: 0, sugarG: 9.7, sodiumMg: 124);
 
 Future<LogChoice?> _open(WidgetTester tester, Food food) async {
@@ -408,6 +410,53 @@ void main() {
     final edited = result()!.edited!;
     expect(edited.kcal, 248);
     expect(edited.basedOnFoodId, isNull);
+  });
+
+  // Recents hands back the user's own logged entry: no FitSync id, but the
+  // entry's id, which the server compares with the same way.
+  testWidgets("a kept-kcal beer from Recents with only its sodium changed keeps 129 and names its entry", (tester) async {
+    final result = await _openForResult(tester, _recentBeer);
+    await _editNumbers(tester);
+    await tester.enterText(find.descendant(of: find.byKey(const Key('logSheet.sodium')), matching: find.byType(TextField)), '40');
+    await tester.pump();
+    expect(find.text('129 kcal'), findsOneWidget, reason: "not 4·4·9's 47");
+    expect(find.text('Calories worked out from protein, carbs and fat.'), findsNothing);
+    await _save(tester);
+    final edited = result()!.edited!;
+    expect(edited.kcal, 129);
+    expect(edited.toRef()['basedOnEntryId'], 55);
+    expect(edited.toRef().containsKey('basedOnFoodId'), isFalse);
+  });
+
+  testWidgets('a kept-kcal beer from Recents logged untouched is sent as it came, naming its entry', (tester) async {
+    final result = await _openForResult(tester, _recentBeer);
+    expect(find.text('129 kcal'), findsOneWidget);
+    await _save(tester);
+    expect(result()!.edited, isNull);
+    expect(_recentBeer.toRef()['basedOnEntryId'], 55);
+  });
+
+  testWidgets('a spirit from Recents can be logged with its numbers changed, at its kcal', (tester) async {
+    final result = await _openForResult(tester, _recentGin);
+    await _editNumbers(tester);
+    await tester.enterText(find.descendant(of: find.byKey(const Key('logSheet.sodium')), matching: find.byType(TextField)), '1');
+    await tester.pump();
+    expect(find.text('Add some protein, carbs or fat'), findsNothing);
+    expect(find.text('97 kcal'), findsOneWidget);
+    await _save(tester);
+    final edited = result()!.edited!;
+    expect(edited.kcal, 97);
+    expect(edited.toRef()['basedOnEntryId'], 56);
+  });
+
+  testWidgets('a beer from Recents with its carbs changed has its kcal worked out', (tester) async {
+    final result = await _openForResult(tester, _recentBeer);
+    await _editNumbers(tester);
+    await tester.enterText(find.descendant(of: find.byKey(const Key('logSheet.carbs')), matching: find.byType(TextField)), '5');
+    await tester.pump();
+    expect(find.text('24 kcal'), findsOneWidget);
+    await _save(tester);
+    expect(result()!.edited!.kcal, 24);
   });
 
   testWidgets('the edited kcal matches the server, which rounds each gram to 2 decimals first', (tester) async {

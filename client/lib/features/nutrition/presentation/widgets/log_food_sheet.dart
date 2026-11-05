@@ -97,9 +97,10 @@ class _LogFoodSheetState extends State<LogFoodSheet> {
     // own entry. The server keeps the listed kcal -- which may count what
     // 4·4·9 can't, like a beer's alcohol -- while protein, carbs and fat are
     // as listed and it has something to compare with: the logged entry on an
-    // edit, or the FitSync food by its id. Otherwise it works out 4·4·9, so
-    // the preview does too. Fiber, sugar and sodium never add calories.
-    final hasBasis = widget.changing || f.id != null;
+    // edit or from Recents, or the FitSync food by its id. Otherwise it works
+    // out 4·4·9, so the preview does too. Fiber, sugar and sodium never add
+    // calories.
+    final hasBasis = widget.changing || f.id != null || f.entryId != null;
     final macrosChanged = changed &&
         (!hasBasis || !sameGrams(p!, f.proteinG) || !sameGrams(c!, f.carbsG) || !sameGrams(fat!, f.fatG));
     // 0/0/0 is fine only when the kept kcal says the food has calories (a spirit).
@@ -253,6 +254,7 @@ class _LogFoodSheetState extends State<LogFoodSheet> {
                                 sugarG: sugar,
                                 sodiumMg: sodium,
                                 basedOnFoodId: f.id,
+                                entryId: f.entryId,
                               )
                             : null,
                       )),

@@ -158,7 +158,9 @@ async function listRecentFoods(pool, userId, limit = 20) {
     }
     const n = Number(r.servings);
     return {
-      id: null, source: 'manual', externalId: null, name: r.custom_name, servingDesc: r.m_serving,
+      // The entry this came from: logging it again names it as the basis, so
+      // its kcal is kept while protein, carbs and fat are unchanged.
+      id: null, entryId: r.meal_log_id, source: 'manual', externalId: null, name: r.custom_name, servingDesc: r.m_serving,
       kcal: Math.round(r.calories / n),
       proteinG: round2(r.protein_g / n), carbsG: round2(r.carbs_g / n), fatG: round2(r.fat_g / n),
       fiberG: r.fiber_g == null ? null : round2(r.fiber_g / n),
