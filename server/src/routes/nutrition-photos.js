@@ -11,6 +11,7 @@ const {
   countToday, insertFailed, insertRecognition, readForLog, markLogged, outcomesFor,
 } = require('../db/photo-recognitions');
 const { VisionError } = require('../services/vision/errors');
+const { secondOpinion } = require('../services/vision/dish-second-opinion');
 
 /// Photos per Pro user per Manila day. App-wide, Groq's free plan takes about
 /// one photo per 40 s (its per-minute token limit; its headers also cap
@@ -26,6 +27,8 @@ const BASE64 = /^[A-Za-z0-9+/]+={0,2}$/;
 const VISION_DOWN = "Couldn't look at your photo right now.";
 
 const MAX_LOG_ITEMS = 20;
+/// The menu by lower-case name, for the dish classifier's rule.
+const byLowerName = (foods) => new Map(foods.map((f) => [String(f.name).toLowerCase(), f]));
 const notFound = () => AppError.notFound('RECOGNITION_NOT_FOUND', 'No such meal photo.');
 const alreadyLogged = () => AppError.conflict('ALREADY_LOGGED', "This photo's meal is already logged.");
 
@@ -98,6 +101,13 @@ module.exports = function buildNutritionPhotosRouter(deps) {
       }
       const foods = await menu.get(pool);
       if (appLeft.signal.aborted) return;
+      // The dish classifier's second opinion, asked beside the vision AI so it
+      // adds no waiting: it answers in well under a second, and its client
+      // gives up after 2 s. Any failure is simply no opinion.
+      const opinion = deps.ml?.classifyDish
+        ? deps.ml.classifyDish({ imageBase64: req.body.image, mimeType: req.body.mimeType, signal: appLeft.signal })
+          .catch(() => null)
+        : Promise.resolve(null);
       let reply;
       try {
         reply = await deps.vision.recognize({
@@ -127,7 +137,10 @@ module.exports = function buildNutritionPhotosRouter(deps) {
         throw new AppError(502, 'VISION_UNAVAILABLE', VISION_DOWN);
       }
       if (appLeft.signal.aborted) return;
-      const { items, unlisted } = matchItems(reply.items, foods);
+      const matched = matchItems(reply.items, foods);
+      const { items, outcome: dish } = secondOpinion(matched.items, await opinion, byLowerName(foods));
+      const { unlisted } = matched;
+      if (appLeft.signal.aborted) return;
       const { recognitionId, itemIds } = await insertRecognition(pool, userId, [
         ...items.map((it) => ({
           foodId: it.food.foodId, name: it.food.name, confidence: it.confidence, servings: it.servings,
@@ -139,9 +152,10 @@ module.exports = function buildNutritionPhotosRouter(deps) {
       // provider (groq or cloudflare) shows how often the backup answers;
       // failed (codes only) shows a service that keeps failing while the
       // other covers for it -- a dead Groq key, a broken Cloudflare token.
+      // dish is the classifier's outcome word (agreed, swapped, …), never a name.
       if (deps.logger) {
         deps.logger.info({
-          recognitionId, items: items.length, unlisted: unlisted.length, provider: reply.provider ?? null,
+          recognitionId, items: items.length, unlisted: unlisted.length, provider: reply.provider ?? null, dish,
           ...(Array.isArray(reply.failed) && { failed: reply.failed }),
         }, 'meal photo recognised');
       }

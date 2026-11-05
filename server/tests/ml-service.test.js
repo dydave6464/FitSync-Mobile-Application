@@ -104,3 +104,8 @@ test('http mode with a URL builds a client exposing the same interface', () => {
 test('an unknown mode is rejected rather than silently stubbed', () => {
   assert.throws(() => createMlService({ mode: 'magic' }), /magic/);
 });
+
+test('the stub has no dish classifier: classifyDish answers null', async () => {
+  const ml = createMlService({ mode: 'stub' });
+  assert.equal(await ml.classifyDish({ imageBase64: 'aGk=', mimeType: 'image/jpeg' }), null);
+});
