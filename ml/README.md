@@ -235,3 +235,33 @@ Retrain after a pilot cycle. Export from the pilot database, not a dev database:
     # commit reports/plan_ranker_cv.json on purpose, then restart the ML service
 
 CSV columns (header row, this order): `user_id, event_date, kind, main_goal, fitness_level, training_location, session_length_min, split_style, health_caution, exercise_id, mark, beginner_friendly, equipment_name, picked_equipment, muscle_group, days_since_trained, times_done, times_skipped, times_swapped, done`. `kind` is `prescribed` (an exercise a completed plan workout prescribed; `done` 1 when a completed set was logged) or `swap` (the exercise swapped out; `done` 0). History columns count only what happened before `event_date`; an empty `days_since_trained` means never trained.
+
+## Dish classifier (Snap a meal)
+
+A second opinion on a meal photo's main dish for 12 Filipino dishes the vision
+AI confuses (sinigang, tinola, nilaga, bulalo, palabok, bihon, canton,
+Filipino spaghetti, longganisa, hotdog, tocino, tapa). A pre-trained image
+model (ONNX, run by onnxruntime) turns the photo into a vector; a scikit-learn
+logistic regression trained on public, licensed photos names the dish. Node
+asks `POST /classify-dish` beside the vision AI and only lets it change the
+main dish when the AI already picked one of the 12 (spec
+`2026-11-05-food-classifier`).
+
+**Set up (after `pip install -r requirements.txt`):**
+
+    .venv/bin/python -m app.fetch_dish_embedder
+
+downloads the image model `models/dish_classifier.json` names (15-90 MB,
+checked by SHA-256; `models/*.onnx` is git-ignored). Restart the service --
+it has no auto-reload -- and `/health` reports
+`"dishModel": {"status": "loaded", "version": "dish-lr-1-…"}`; without the
+download it reports `"absent"` and Snap a meal keeps the AI's answer.
+
+**Retrain** (the photos are private and not in the repository):
+
+    .venv/bin/python -m app.fetch_dish_embedder --all
+    .venv/bin/python -m app.train_dish --photos <dish-photos folder> --exclude <42-photo test set>
+
+writes `models/dish_classifier.json` (committed: numbers only) and
+`reports/dish_classifier_cv.json` (cross-validated accuracy per image model,
+the thresholds, held-out test accuracy per dish, the confusion matrix).

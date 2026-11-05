@@ -15,12 +15,15 @@ from fastapi import FastAPI, HTTPException
 from app.catalogue import fetch_attributes, fetch_candidates
 from app.config import Settings
 from app.db import create_engine_from
+from app.dish_model import DishModel, decode_photo
 from app.ranker import RankContext, Ranker
 from app.risk_model import RiskModel, estimate as estimate_injury_risk
 from app.rules import parameters, selection
 from app.rules.splits import Split, label as split_label, resolve as resolve_split
 from app.schemas import (
     GOAL_LABELS,
+    DishRequest,
+    DishResponse,
     InjuryRiskRequest,
     InjuryRiskResponse,
     PlanExercise,
@@ -112,7 +115,8 @@ def _candidates(engine, owned, selected, injury_ids, excluded, training_location
     return primary, top_up
 
 
-def create_app(settings: Settings, ranker: Optional[Ranker] = None) -> FastAPI:
+def create_app(settings: Settings, ranker: Optional[Ranker] = None,
+               dish_model: Optional[DishModel] = None) -> FastAPI:
     logging.basicConfig(
         level=getattr(logging, settings.log_level.upper(), logging.INFO),
         format="%(asctime)s %(levelname)s %(name)s %(message)s",
@@ -124,6 +128,9 @@ def create_app(settings: Settings, ranker: Optional[Ranker] = None) -> FastAPI:
     # Loaded (or trained from the seeded simulation) once at startup. There is
     # no auto-reload: a new model file is picked up only on restart.
     app.state.risk_model = RiskModel.load(settings)
+    # The dish classifier: models/dish_classifier.json plus its downloaded
+    # image model, or "absent" (spec 2026-11-05-food-classifier). Read once.
+    app.state.dish_model = dish_model if dish_model is not None else DishModel.load(settings.model_dir)
 
     def engine():
         # Built lazily so /health answers with MySQL down, and so a test that
@@ -142,6 +149,8 @@ def create_app(settings: Settings, ranker: Optional[Ranker] = None) -> FastAPI:
             "mode": ranker.mode,
             "rankerModel": {"status": ranker.status, "version": ranker.version},
             "riskModel": {"status": risk_model.status, "version": risk_model.version},
+            "dishModel": {"status": app.state.dish_model.status,
+                          "version": app.state.dish_model.version},
         }
 
     @app.post("/generate-plan", response_model=PlanResponse)
@@ -355,6 +364,18 @@ def create_app(settings: Settings, ranker: Optional[Ranker] = None) -> FastAPI:
         # max(model score, rules score); the rules alone when no model loaded
         # or the model fails on this request. See app/risk_model.py.
         return estimate_injury_risk(payload, app.state.risk_model)
+
+    @app.post("/classify-dish", response_model=DishResponse)
+    def classify_dish(payload: DishRequest):
+        # Node asks this beside the vision AI and stops waiting after 2 s. A
+        # missing model is 503, which Node treats like a service that is off.
+        dish = app.state.dish_model
+        if not dish.usable:
+            raise HTTPException(status_code=503, detail="dish classifier not loaded")
+        try:
+            return dish.classify(decode_photo(payload.image))
+        except ValueError as err:
+            raise HTTPException(status_code=400, detail=str(err))
 
     return app
 
