@@ -273,7 +273,7 @@ test('classifyDish stops when the caller stops waiting', () =>
       left.abort();
       await assert.rejects(
         () => httpClient.create('http://localhost:8000').classifyDish({ ...PHOTO, signal: left.signal }),
-        /classify-dish/,
+        /classify-dish failed: This operation was aborted/,
       );
     },
   ));
