@@ -6,11 +6,14 @@ const { servingGrams, toHalf } = require('../../lib/photo-portion');
 const dishOf = (food) => DISH_OF_NAME.get(String(food.name).toLowerCase());
 const isProbability = (n) => typeof n === 'number' && Number.isFinite(n) && n >= 0 && n <= 1.01;
 
-/// A /classify-dish answer this rule can act on.
+/// A /classify-dish answer this rule can act on. [classes] is every dish the
+/// model was trained on: a dish dropped for too few photos is not among them.
 function usable(opinion) {
   const top = Array.isArray(opinion?.dishes) ? opinion.dishes[0] : undefined;
+  const { classes } = opinion ?? {};
   return typeof top?.dish === 'string' && isProbability(top.probability)
-    && isProbability(opinion.swapAt) && isProbability(opinion.choiceAt) && opinion.choiceAt <= opinion.swapAt;
+    && isProbability(opinion.swapAt) && isProbability(opinion.choiceAt) && opinion.choiceAt <= opinion.swapAt
+    && Array.isArray(classes) && classes.length > 0 && classes.every((c) => typeof c === 'string');
 }
 
 /// The menu food that stands for [dish]: one the AI already named (a card or
@@ -42,22 +45,25 @@ function sameAmount(servings, from, to) {
 /// [opinion] the ML service's answer (null when it had none), [menuByName]
 /// a lower-case menu name -> food map. Returns the cards to answer with and
 /// one word for the log. Only the first card that is one of the 12 dishes
-/// can change, and only to another of the 12: the classifier knows nothing
-/// else, so for any other food it is ignored. The amount and confidence
+/// and one of the model's classes can change, and only to another of both:
+/// the classifier knows nothing else, so for any other food it is ignored. A
+/// dish dropped from training is never the main dish, or a right AI answer
+/// would always look like a disagreement. The amount and confidence
 /// stay the AI's: a swap rescales the servings to the new food's serving.
 /// Never changes [items]; returns it as is when nothing changes.
 function secondOpinion(items, opinion, menuByName) {
   if (!usable(opinion)) return { items, outcome: 'unavailable' };
-  const at = items.findIndex((it) => dishOf(it.food));
+  const known = new Set(opinion.classes);
+  const at = items.findIndex((it) => known.has(dishOf(it.food)));
   if (at === -1) return { items, outcome: 'skipped' };
   const main = items[at];
   const { dish, probability } = opinion.dishes[0];
-  if (!Object.hasOwn(DISH_FOODS, dish)) return { items, outcome: 'skipped' };
+  if (!Object.hasOwn(DISH_FOODS, dish) || !known.has(dish)) return { items, outcome: 'skipped' };
   if (dish === dishOf(main.food)) return { items, outcome: 'agreed' };
   if (probability < opinion.choiceAt) return { items, outcome: 'skipped' };
   const food = foodFor(dish, items, menuByName);
-  // Already a card of its own: a swap would show the same food twice.
-  if (!food || items.some((it, i) => i !== at && it.food.foodId === food.foodId)) {
+  // Already a card of its own, in any version: a swap would show the dish twice.
+  if (!food || items.some((it, i) => i !== at && dishOf(it.food) === dish)) {
     return { items, outcome: 'skipped' };
   }
   const replaced = (card) => items.map((it, i) => (i === at ? card : it));
