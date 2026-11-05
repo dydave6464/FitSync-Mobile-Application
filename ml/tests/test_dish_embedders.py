@@ -7,6 +7,8 @@ opener, so a fake stands in for the network.
 import hashlib
 import io
 import re
+import struct
+import zlib
 from dataclasses import replace
 
 import numpy as np
@@ -59,9 +61,10 @@ def test_preprocess_keeps_the_centre_of_a_wide_photo():
 
 
 def test_preprocess_never_builds_more_than_the_crop_for_a_thin_photo(monkeypatch):
-    # A 1x100000 PNG is a few KB, but scaling its whole short edge up to 256
-    # first would mean a 256x25,600,000 image (about 20 GB). Only the centre
-    # square may be resized, straight to the crop size.
+    # A 1x4096 PNG (the longest side load_image lets through) is a few KB, but
+    # scaling its whole short edge up to 256 first would mean a 256x1,048,576
+    # image (about 800 MB). Only the centre square may be resized, straight to
+    # the crop size.
     spec = de.EMBEDDERS["dinov2-small"]
     real_resize = Image.Image.resize
     sizes = []
@@ -73,7 +76,7 @@ def test_preprocess_never_builds_more_than_the_crop_for_a_thin_photo(monkeypatch
 
     monkeypatch.setattr(Image.Image, "resize", resize)
     buf = io.BytesIO()
-    Image.new("RGB", (1, 100_000), (0, 255, 0)).save(buf, "PNG")
+    Image.new("RGB", (1, de.MAX_SIDE), (0, 255, 0)).save(buf, "PNG")
     x = de.preprocess(de.load_image(buf.getvalue()), spec)
     assert x.shape == (1, 3, 224, 224)
     assert sizes == [(224, 224)]
@@ -183,3 +186,43 @@ def test_keys_to_fetch_without_a_classifier_or_with_an_unknown_key_says_what_to_
         fetch.keys_to_fetch(False, [], str(tmp_path))
     with pytest.raises(SystemExit, match="unknown"):
         fetch.keys_to_fetch(False, ["resnet"], str(tmp_path))
+
+
+def png_claiming(width, height):
+    """A tiny PNG whose header says width x height. Its pixel data is the 2x2
+    photo's, so decoding it fails as truncated: a "too large" refusal shows
+    the size was read from the header before anything was decoded."""
+    buf = io.BytesIO()
+    Image.new("RGB", (2, 2), (9, 9, 9)).save(buf, "PNG")
+    data = bytearray(buf.getvalue())
+    ihdr = b"IHDR" + struct.pack(">II", width, height) + bytes(data[24:29])
+    data[12:29] = ihdr
+    data[29:33] = struct.pack(">I", zlib.crc32(ihdr))
+    return bytes(data)
+
+
+def test_load_image_refuses_a_long_side_over_4096_before_decoding():
+    with pytest.raises(ValueError, match="too large"):
+        de.load_image(png_claiming(4097, 1))
+    with pytest.raises(ValueError, match="too large"):
+        de.load_image(png_claiming(1, 39_999_999))
+
+
+def test_load_image_refuses_more_than_16_million_pixels_before_decoding():
+    assert de.MAX_PIXELS == 16_000_000 and de.MAX_SIDE == 4096
+    with pytest.raises(ValueError, match="too large"):
+        de.load_image(png_claiming(4001, 4000))  # each side fits, 16,004,000 pixels do not
+
+
+def test_load_image_reads_only_jpeg_and_png():
+    buf = io.BytesIO()
+    Image.new("RGB", (4, 4), (200, 10, 10)).save(buf, "GIF")
+    with pytest.raises(ValueError, match="not a readable image"):
+        de.load_image(buf.getvalue())
+
+
+
+def test_load_image_still_reads_a_photo_at_the_long_side_limit():
+    buf = io.BytesIO()
+    Image.new("RGB", (4096, 2), (10, 10, 200)).save(buf, "PNG")
+    assert de.load_image(buf.getvalue()).size == (4096, 2)

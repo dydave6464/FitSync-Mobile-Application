@@ -26,6 +26,17 @@ TEST_ENV = {
     "FITSYNC_DB_NAME": resolve_db_name(os.environ),
 }
 
+def pytest_configure(config):
+    # numpy on Apple's Accelerate reports divide-by-zero, overflow and invalid
+    # value inside matmul for well-formed inputs (scikit-learn's logistic
+    # regression, train_dish's cosine check); the results are finite and
+    # right. Only these three messages, only as RuntimeWarning.
+    config.addinivalue_line(
+        "filterwarnings",
+        r"ignore:(divide by zero|overflow|invalid value) encountered in matmul:RuntimeWarning",
+    )
+
+
 REQUIRED_TABLES = (
     "exercises",
     "equipment",

@@ -134,6 +134,8 @@ def test_training_end_to_end(tmp_path, photos, model_dir):
     body = json.loads(report.read_text())
     assert body["classes"] == sorted(COLOURS)
     assert body["photos"]["droppedNearDuplicates"] == 1
+    # How many --exclude photos were compared, so a folder matching nothing shows.
+    assert body["photos"]["excludeCompared"] == 1
     assert body["photos"]["train"] == 3 * 22 - 1 and body["photos"]["test"] == 12
     assert set(body["embedders"]) == set(EMBEDDERS)
     # Every fake embedder is as good as the others, so the smallest is kept.
@@ -167,3 +169,36 @@ def test_training_says_to_fetch_the_models_first(photos, tmp_path, monkeypatch):
     with pytest.raises(SystemExit, match="fetch_dish_embedder --all"):
         td.main(["--photos", str(photos), "--model-dir", str(tmp_path / "empty"),
                  "--report", str(tmp_path / "r.json")])
+
+
+def test_training_reads_collects_layout_manifest_beside_a_photos_folder(tmp_path, photos, model_dir):
+    # collect.py keeps dish-photos/manifest.json with the photos in dish-photos/photos/.
+    root = tmp_path / "collected"
+    root.mkdir()
+    shutil.copytree(photos, root / "photos")
+    (root / "photos" / "manifest.json").rename(root / "manifest.json")
+    report = tmp_path / "report.json"
+
+    assert td.main(["--manifest", str(root / "manifest.json"), "--photos", str(root / "photos"),
+                    "--model-dir", str(model_dir), "--report", str(report)]) == 0
+    body = json.loads(report.read_text())
+    assert body["photos"]["train"] == 3 * 22 and body["photos"]["test"] == 12
+    assert body["photos"]["excludeCompared"] == 0
+
+
+def test_training_counts_the_plates_when_the_manifest_groups_photos(photos, model_dir, tmp_path):
+    manifest = photos / "manifest.json"
+    body = json.loads(manifest.read_text())
+    for row in body["photos"]:
+        if row["dish"] == "sinigang":
+            # 26 photos of 13 plates, two angles each.
+            row["group"] = "plate-{}".format(int(row["file"][-7:-4]) // 2)
+    manifest.write_text(json.dumps(body))
+    report = tmp_path / "report.json"
+
+    assert td.main(["--photos", str(photos), "--model-dir", str(model_dir),
+                    "--report", str(report)]) == 0
+    per_dish = json.loads(report.read_text())["photos"]["perDish"]
+    assert per_dish["sinigang"]["plates"] == 13
+    assert per_dish["sinigang"]["train"] == 22 and per_dish["sinigang"]["test"] == 4
+    assert "plates" not in per_dish["tinola"]

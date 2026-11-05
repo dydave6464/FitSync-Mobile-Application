@@ -260,8 +260,12 @@ download it reports `"absent"` and Snap a meal keeps the AI's answer.
 **Retrain** (the photos are private and not in the repository):
 
     .venv/bin/python -m app.fetch_dish_embedder --all
-    .venv/bin/python -m app.train_dish --photos <dish-photos folder> --exclude <42-photo test set>
+    .venv/bin/python -m app.train_dish --manifest <dish-photos folder>/manifest.json \
+        --photos <dish-photos folder>/photos --exclude <42-photo test set>
 
 writes `models/dish_classifier.json` (committed: numbers only) and
 `reports/dish_classifier_cv.json` (cross-validated accuracy per image model,
-the thresholds, held-out test accuracy per dish, the confusion matrix).
+the thresholds, held-out test accuracy per dish, the confusion matrix, how
+many `--exclude` photos were compared, and the plates per dish when the
+manifest gives each photo a `"group"`). `--manifest` defaults to
+`<photos>/manifest.json`.
