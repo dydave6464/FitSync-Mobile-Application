@@ -242,3 +242,63 @@ test('a 503 whose body is not JSON stays an internal error', () =>
       await assert.rejects(() => ml.generatePlan({}), /responded 503/);
     },
   ));
+
+const PHOTO = { imageBase64: 'aGk=', mimeType: 'image/jpeg' };
+
+test('classifyDish posts the photo to /classify-dish and returns the opinion', () =>
+  withFakeFetch(
+    async (url, options) => {
+      assert.equal(new URL(url).pathname, '/classify-dish');
+      assert.deepEqual(JSON.parse(options.body), { image: 'aGk=', mimeType: 'image/jpeg' });
+      assert.ok(options.signal instanceof AbortSignal);
+      return {
+        ok: true,
+        json: async () => ({ model: 'dish-lr-1-x', dishes: [{ dish: 'tinola', probability: 0.9 }], swapAt: 0.8, choiceAt: 0.5 }),
+      };
+    },
+    async () => {
+      const opinion = await httpClient.create('http://localhost:8000').classifyDish(PHOTO);
+      assert.equal(opinion.dishes[0].dish, 'tinola');
+    },
+  ));
+
+test('classifyDish stops when the caller stops waiting', () =>
+  withFakeFetch(
+    async (_url, options) => {
+      assert.equal(options.signal.aborted, true, "the request carries the caller's abort");
+      throw new DOMException('This operation was aborted', 'AbortError');
+    },
+    async () => {
+      const left = new AbortController();
+      left.abort();
+      await assert.rejects(
+        () => httpClient.create('http://localhost:8000').classifyDish({ ...PHOTO, signal: left.signal }),
+        /classify-dish/,
+      );
+    },
+  ));
+
+test('classifyDish gives up after its own 2 s budget', () =>
+  withFakeFetch(
+    (_url, options) => new Promise((_resolve, reject) => {
+      options.signal.addEventListener('abort', () => reject(options.signal.reason));
+    }),
+    async () => {
+      const started = Date.now();
+      await assert.rejects(() => httpClient.create('http://localhost:8000').classifyDish(PHOTO), /classify-dish/);
+      const waited = Date.now() - started;
+      assert.equal(httpClient.DISH_TIMEOUT_MS, 2000);
+      assert.ok(waited >= 1900 && waited < 3000, `waited ${waited} ms`);
+    },
+  ));
+
+test('a /classify-dish 503 (no model loaded) rejects, so the photo keeps the AI answer', () =>
+  withFakeFetch(
+    async () => ({ ok: false, status: 503, json: async () => ({ detail: 'dish classifier not loaded' }) }),
+    async () => {
+      await assert.rejects(
+        () => httpClient.create('http://localhost:8000').classifyDish(PHOTO),
+        /classify-dish responded 503/,
+      );
+    },
+  ));
