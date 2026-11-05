@@ -354,6 +354,13 @@ void main() {
     expect(find.text('Log 1 item'), findsOneWidget);
     await tester.tap(find.text('Undo'));
     await tester.pumpAndSettle();
+    // Back in its old place, first, not added at the end.
+    expect(
+      tester
+          .widgetList<PhotoItemCard>(find.byType(PhotoItemCard))
+          .map((c) => c.card.label),
+      ['White rice', 'Chicken adobo'],
+    );
     expect(
       tester
           .widget<Text>(
