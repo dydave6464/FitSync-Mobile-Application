@@ -148,8 +148,7 @@ test('food seed renames Steamed white rice in place', async (t) => {
 // every one with the grams of a serving in its text (the AI's grams are
 // turned into servings with them).
 test('the Snap a meal foods are in the list, each with its serving grams', () => {
-  assert.equal(FOODS.length, 316);
-  const added = FOODS.slice(244);
+  const added = FOODS.slice(244, 316);
   assert.equal(added[0].name, 'Beef caldereta');
   assert.equal(added.at(-1).name, 'Chico (sapodilla)');
   for (const f of added) {
@@ -166,4 +165,19 @@ test('Fishball\'s sodium is FNRI\'s measured value plus the sauce', () => {
   const f = FOODS.find((x) => x.name === 'Fishball with sweet sauce (street food)');
   assert.equal(f.sodiumMg, 1873);
   assert.match(f.source, /G162/);
+});
+
+// The dish classifier's palabok had only a brand to point to (spec
+// 2026-11-05-food-classifier, section 1).
+test('a plain Pancit palabok follows the Snap a meal foods, with its serving grams', () => {
+  assert.equal(FOODS.length, 317);
+  const palabok = FOODS[316];
+  assert.equal(palabok.name, 'Pancit palabok');
+  assert.equal(palabok.category, 'filipino');
+  assert.equal(palabok.type, 'home');
+  assert.match(palabok.servingDesc, /\(\s*~?\s*\d+(?:\.\d+)?\s*(g|ml)\s*\)/i);
+  for (const k of ['kcal', 'proteinG', 'carbsG', 'fatG', 'fiberG', 'sugarG', 'sodiumMg']) {
+    assert.equal(typeof palabok[k], 'number', `${k} is a number`);
+  }
+  assert.ok(palabok.source.length > 20);
 });
