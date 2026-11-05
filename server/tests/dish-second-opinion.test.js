@@ -92,3 +92,41 @@ test('no opinion, or a malformed one, is unavailable and changes nothing', () =>
     assert.equal(out.items, items);
   }
 });
+
+// Foods with their seed servings, for the portion tests below.
+const SIZED = new Map([
+  ['red filipino hotdog', { ...food('Red Filipino hotdog'), servingDesc: '1 piece (45 g), boiled or fried' }],
+  ['pork tocino', { ...food('Pork tocino'), servingDesc: '1 serving (112 g), fried' }],
+  ['vigan longganisa', { ...food('Vigan longganisa'), servingDesc: '2 links' }],
+]);
+const sized = (name, servings, alternatives = []) => ({
+  food: SIZED.get(name.toLowerCase()), servings, confidence: 0.7, alternatives: alternatives.map((n) => SIZED.get(n.toLowerCase())),
+});
+
+test("a swap keeps the AI's amount, not its count, when the servings weigh differently", () => {
+  // 2 hotdogs of 45 g = 90 g = 0.8 of a 112 g tocino serving -> 1 in halves.
+  const out = secondOpinion([sized('Red Filipino hotdog', 2)], opinion('tocino', 0.9), SIZED);
+  assert.equal(out.outcome, 'swapped');
+  assert.equal(out.items[0].food.name, 'Pork tocino');
+  assert.equal(out.items[0].servings, 1);
+  assert.equal(out.items[0].confidence, 0.7, "the confidence stays the AI's");
+});
+
+test('a swap keeps the count when either serving gives no grams', () => {
+  const out = secondOpinion([sized('Red Filipino hotdog', 2)], opinion('longganisa', 0.9), SIZED);
+  assert.equal(out.outcome, 'swapped');
+  assert.equal(out.items[0].servings, 2);
+});
+
+test('a swap stays within the servings range', () => {
+  // 5 x 112 g = 560 g = 12.4 hotdogs -> the most a card holds.
+  const out = secondOpinion([sized('Pork tocino', 5)], opinion('hotdog', 0.9), SIZED);
+  assert.equal(out.items[0].food.name, 'Red Filipino hotdog');
+  assert.equal(out.items[0].servings, 10);
+});
+
+test('adding a choice leaves the servings alone', () => {
+  const out = secondOpinion([sized('Red Filipino hotdog', 2)], opinion('tocino', 0.6), SIZED);
+  assert.equal(out.outcome, 'added choice');
+  assert.equal(out.items[0].servings, 2);
+});

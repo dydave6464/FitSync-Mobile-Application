@@ -1,6 +1,7 @@
 'use strict';
 const { DISH_FOODS, DISH_OF_NAME } = require('./dish-foods');
 const { MAX_ALTERNATIVES } = require('../../lib/photo-match');
+const { servingGrams, toHalf } = require('../../lib/photo-portion');
 
 const dishOf = (food) => DISH_OF_NAME.get(String(food.name).toLowerCase());
 const isProbability = (n) => typeof n === 'number' && Number.isFinite(n) && n >= 0 && n <= 1.01;
@@ -27,14 +28,24 @@ function foodFor(dish, items, menuByName) {
   return null;
 }
 
+/// [servings] of [from] as servings of [to], so the amount stays the same:
+/// 2 hotdogs of 45 g are about 1 tocino serving of 112 g. Keeps the count
+/// when either serving gives no grams.
+function sameAmount(servings, from, to) {
+  const was = servingGrams(from.servingDesc);
+  const now = servingGrams(to.servingDesc);
+  return was && now ? toHalf((servings * was) / now) : servings;
+}
+
 /// The dish classifier's second opinion on the main dish (spec
 /// 2026-11-05-food-classifier, section 3). [items] are matchItems' cards,
 /// [opinion] the ML service's answer (null when it had none), [menuByName]
 /// a lower-case menu name -> food map. Returns the cards to answer with and
 /// one word for the log. Only the first card that is one of the 12 dishes
 /// can change, and only to another of the 12: the classifier knows nothing
-/// else, so for any other food it is ignored. Portion and confidence stay
-/// the AI's. Never changes [items]; returns it as is when nothing changes.
+/// else, so for any other food it is ignored. The amount and confidence
+/// stay the AI's: a swap rescales the servings to the new food's serving.
+/// Never changes [items]; returns it as is when nothing changes.
 function secondOpinion(items, opinion, menuByName) {
   if (!usable(opinion)) return { items, outcome: 'unavailable' };
   const at = items.findIndex((it) => dishOf(it.food));
@@ -53,7 +64,8 @@ function secondOpinion(items, opinion, menuByName) {
   if (probability >= opinion.swapAt) {
     const alternatives = [main.food, ...main.alternatives.filter((f) => f.foodId !== food.foodId)]
       .slice(0, MAX_ALTERNATIVES);
-    return { items: replaced({ ...main, food, alternatives }), outcome: 'swapped' };
+    const servings = sameAmount(main.servings, main.food, food);
+    return { items: replaced({ ...main, food, servings, alternatives }), outcome: 'swapped' };
   }
   if (main.alternatives.some((f) => f.foodId === food.foodId)) return { items, outcome: 'skipped' };
   const alternatives = [food, ...main.alternatives].slice(0, MAX_ALTERNATIVES);
