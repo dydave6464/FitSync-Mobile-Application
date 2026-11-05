@@ -169,3 +169,26 @@ def test_classify_dish_refuses_what_is_not_a_photo(tmp_path):
         assert res.status_code == 400, image[:20]
     res = client.post("/classify-dish", json={"image": photo((1, 2, 3)), "mimeType": "image/gif"})
     assert res.status_code == 422
+
+
+def test_non_finite_weights_are_absent(tmp_path):
+    def poison(key):
+        def edit(d):
+            d[key] = json.loads(json.dumps(d[key]))
+            if key == "coef":
+                d[key][0][0] = float("nan")
+            else:
+                d[key][1] = float("inf")
+        return edit
+    for key in ("coef", "intercept"):
+        write_classifier(tmp_path, edit=poison(key))
+        assert dm.DishModel.load(str(tmp_path), open_embedder=fake_open).status == "absent", key
+
+
+def test_classify_dish_names_the_classes_the_model_knows(tmp_path):
+    # Node lets the classifier act only on dishes it was trained on: a dish
+    # dropped for too few photos is one it can never answer.
+    write_classifier(tmp_path)
+    client, _ = client_for(tmp_path)
+    res = client.post("/classify-dish", json={"image": photo((230, 20, 20)), "mimeType": "image/jpeg"})
+    assert res.status_code == 200 and res.json()["classes"] == CLASSES

@@ -2,16 +2,21 @@
 
     .venv/bin/python -m app.fetch_dish_embedder --all
     .venv/bin/python -m app.train_dish \\
-        --photos /Users/davedev/claude/projects/docs/superpowers/dish-photos \\
-        --exclude /Users/davedev/claude/projects/docs/superpowers/eval/photos
+        --manifest <dish-photos folder>/manifest.json \\
+        --photos <dish-photos folder>/photos \\
+        --exclude <42-photo set>
 
-Reads <photos>/manifest.json: {"photos": [{"file", "dish", "split"}, ...]},
-split "train" or "test". Drops training photos that are near-copies of a test
-photo or of an --exclude photo (the 42-photo set is never trained on);
-compares the embedders by 5-fold cross-validation on the training photos and
-keeps the best (the smaller when within 2 points); sets the swap and choice
-thresholds from the cross-validated predictions; fits on every training
-photo; scores the held-out test photos once; writes
+Reads the manifest (default <photos>/manifest.json):
+{"photos": [{"file", "dish", "split", "group"?}, ...]}, split "train" or
+"test", each file a name inside --photos. An optional "group" names the plate
+a photo shows (several angles of one plate share it); the report counts the
+plates per dish, and the split is the manifest's to make by group. Drops
+training photos that are near-copies of a test photo or of an --exclude photo
+(the 42-photo set is never trained on; the report says how many were
+compared); compares the embedders by 5-fold cross-validation on the training
+photos and keeps the best (the smaller when within 2 points); sets the swap
+and choice thresholds from the cross-validated predictions; fits on every
+training photo; scores the held-out test photos once; writes
 models/dish_classifier.json and reports/dish_classifier_cv.json.
 """
 import argparse
@@ -20,7 +25,7 @@ import json
 import os
 import sys
 from dataclasses import dataclass
-from typing import Dict, List, Sequence, Tuple
+from typing import Dict, List, Optional, Sequence, Tuple
 
 import numpy as np
 
@@ -50,11 +55,14 @@ class Photo:
     file: str
     dish: str
     split: str
+    # The plate the photo shows, when the manifest says.
+    group: Optional[str] = None
 
 
-def read_manifest(photos_dir: str) -> List[Photo]:
-    with open(os.path.join(photos_dir, "manifest.json")) as f:
-        photos = [Photo(str(r["file"]), str(r["dish"]), str(r["split"]))
+def read_manifest(path: str) -> List[Photo]:
+    with open(path) as f:
+        photos = [Photo(str(r["file"]), str(r["dish"]), str(r["split"]),
+                        None if r.get("group") is None else str(r["group"]))
                   for r in json.load(f)["photos"]]
     bad = [p.file for p in photos if p.split not in ("train", "test")]
     if bad:
@@ -135,7 +143,8 @@ def pick(results: Dict[str, dict]) -> str:
 
 def main(argv=None) -> int:
     parser = argparse.ArgumentParser(description="Train the dish classifier.")
-    parser.add_argument("--photos", required=True)
+    parser.add_argument("--photos", required=True, help="the folder the manifest's files are in")
+    parser.add_argument("--manifest", default=None, help="default: <photos>/manifest.json")
     parser.add_argument("--exclude", default=None, help="photos never to train on (near-copies dropped)")
     parser.add_argument("--model-dir", default=os.environ.get("FITSYNC_MODEL_DIR", "models"))
     parser.add_argument("--report", default=os.path.join("reports", "dish_classifier_cv.json"))
@@ -147,7 +156,7 @@ def main(argv=None) -> int:
     unknown = [k for k in keys if k not in EMBEDDERS]
     if unknown:
         raise SystemExit("unknown embedder(s): " + ", ".join(unknown))
-    photos = read_manifest(args.photos)
+    photos = read_manifest(args.manifest or os.path.join(args.photos, "manifest.json"))
     classes = sorted({p.dish for p in photos})
     if len(classes) < 3:
         raise SystemExit("need at least 3 dishes, got {}".format(len(classes)))
@@ -169,6 +178,7 @@ def main(argv=None) -> int:
     # on the same photos.
     judge = DEDUPE_WITH if DEDUPE_WITH in keys else keys[0]
     parts = [vectors[judge][1]] if test else []
+    names = []
     if args.exclude:
         names = sorted(f for f in os.listdir(args.exclude)
                        if f.lower().endswith((".jpg", ".jpeg", ".png")))
@@ -182,6 +192,10 @@ def main(argv=None) -> int:
     y_test = np.array([classes.index(p.dish) for p in test], dtype=int)
     counts = {d: {"train": int((y_train == i).sum()), "test": int((y_test == i).sum())}
               for i, d in enumerate(classes)}
+    for d in classes:
+        plates = {p.group for p in photos if p.dish == d and p.group is not None}
+        if plates:
+            counts[d]["plates"] = len(plates)
     short = [d for d in classes if counts[d]["train"] < args.min_train]
     if short:
         raise SystemExit("too few training photos (< {}) for: {}".format(
@@ -218,7 +232,7 @@ def main(argv=None) -> int:
         "version": version,
         "classes": classes,
         "photos": {"train": len(keep), "test": len(test), "droppedNearDuplicates": len(dropped),
-                   "perDish": counts},
+                   "excludeCompared": len(names), "perDish": counts},
         "embedders": results,
         "chosen": chosen,
         "thresholds": stats,

@@ -232,3 +232,6 @@ class DishResponse(BaseModel):
     dishes: List[DishGuess]
     swapAt: float
     choiceAt: float
+    # Every dish the model was trained on, so Node never reads a dish it
+    # cannot answer as a disagreement.
+    classes: List[str]

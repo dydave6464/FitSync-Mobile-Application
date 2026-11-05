@@ -109,6 +109,9 @@ class DishModel:
             if (len(classes) < 2 or len(set(classes)) != len(classes) or coef.ndim != 2
                     or coef.shape[0] != len(classes) or intercept.shape != (len(classes),)):
                 raise ValueError("weights do not match the {} classes".format(len(classes)))
+            if not (np.isfinite(coef).all() and np.isfinite(intercept).all()):
+                # Would load, then answer every photo with a 500.
+                raise ValueError("weights are not all finite numbers")
             swap_at, choice_at = float(data["swapAt"]), float(data["choiceAt"])
             if not 0.0 <= choice_at <= swap_at <= 1.01:
                 raise ValueError("thresholds out of order: choiceAt {} swapAt {}".format(
@@ -138,7 +141,9 @@ class DishModel:
         return _softmax(self._coef @ vector + self._intercept)
 
     def classify(self, photo: bytes) -> Dict[str, Any]:
-        """The top 3 dishes for a photo. ValueError when it is not a readable image."""
+        """The top 3 dishes for a photo, and every dish the model knows: Node
+        lets it act only on those (a dish dropped from training is never one
+        it can answer). ValueError when it is not a readable image."""
         p = self.probabilities(self._embedder.embed(photo))
         order = np.argsort(-p)[:TOP]
         return {
@@ -147,4 +152,5 @@ class DishModel:
                        for i in order],
             "swapAt": self.swap_at,
             "choiceAt": self.choice_at,
+            "classes": list(self.classes),
         }

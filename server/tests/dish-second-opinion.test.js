@@ -14,7 +14,8 @@ const byName = new Map(MENU.map((f) => [f.name.toLowerCase(), f]));
 const food = (name) => byName.get(name.toLowerCase());
 const card = (name, alternatives = []) => ({ food: food(name), servings: 1.5, confidence: 0.8, alternatives: alternatives.map(food) });
 const opinion = (dish, probability, extra = {}) => ({
-  model: 'dish-lr-1-test', dishes: [{ dish, probability }], swapAt: 0.8, choiceAt: 0.5, ...extra,
+  model: 'dish-lr-1-test', dishes: [{ dish, probability }], swapAt: 0.8, choiceAt: 0.5,
+  classes: Object.keys(DISH_FOODS).sort(), ...extra,
 });
 const shown = (items) => items.map((it) => [it.food.name, it.alternatives.map((a) => a.name)]);
 
@@ -74,6 +75,38 @@ test('no swap onto a food that is already a card of its own', () => {
   assert.equal(secondOpinion(items, opinion('sinigang', 0.95), byName).outcome, 'skipped');
 });
 
+test('no swap onto a dish that is already a card of its own, in another version', () => {
+  // The swap would pick the choice's Sinigang na baboy beside a Sinigang na hipon card.
+  const items = [card('Tinolang manok', ['Sinigang na baboy']), card('Sinigang na hipon')];
+  const out = secondOpinion(items, opinion('sinigang', 0.9), byName);
+  assert.equal(out.outcome, 'skipped');
+  assert.equal(out.items, items);
+});
+
+test("a dish the model was not trained on is never the main dish, so a right AI answer stays", () => {
+  // Tocino dropped from training: the model can never answer tocino, so its
+  // confident longganisa on a tocino plate is no disagreement to act on.
+  const classes = Object.keys(DISH_FOODS).filter((d) => d !== 'tocino');
+  const items = [card('Pork tocino')];
+  const out = secondOpinion(items, opinion('longganisa', 0.92, { classes }), byName);
+  assert.equal(out.outcome, 'skipped');
+  assert.equal(out.items, items);
+});
+
+test('the main dish is the first card the model was trained on', () => {
+  const classes = Object.keys(DISH_FOODS).filter((d) => d !== 'tocino');
+  const items = [card('Pork tocino'), card('Red Filipino hotdog')];
+  const out = secondOpinion(items, opinion('longganisa', 0.95, { classes }), byName);
+  assert.equal(out.outcome, 'swapped');
+  assert.deepEqual(out.items.map((it) => it.food.name), ['Pork tocino', 'Vigan longganisa']);
+});
+
+test("the classifier's dish must be one of its own classes", () => {
+  const classes = Object.keys(DISH_FOODS).filter((d) => d !== 'sinigang');
+  const items = [card('Tinolang manok')];
+  assert.equal(secondOpinion(items, opinion('sinigang', 0.95, { classes }), byName).outcome, 'skipped');
+});
+
 test('a dish with no food on this menu, or one this server does not know, changes nothing', () => {
   const items = [card('Tinolang manok')];
   assert.equal(secondOpinion(items, opinion('bulalo', 0.95), byName).outcome, 'skipped');
@@ -85,6 +118,8 @@ test('no opinion, or a malformed one, is unavailable and changes nothing', () =>
   const bad = [
     null, {}, { dishes: [] }, opinion('sinigang', 1.5), opinion('sinigang', 0.9, { swapAt: 0.4, choiceAt: 0.6 }),
     opinion('sinigang', 0.9, { swapAt: undefined }), { ...opinion('sinigang', 0.9), dishes: [{ dish: 7, probability: 0.9 }] },
+    opinion('sinigang', 0.9, { classes: undefined }), opinion('sinigang', 0.9, { classes: [] }),
+    opinion('sinigang', 0.9, { classes: ['sinigang', 7] }), opinion('sinigang', 0.9, { classes: 'sinigang' }),
   ];
   for (const o of bad) {
     const out = secondOpinion(items, o, byName);

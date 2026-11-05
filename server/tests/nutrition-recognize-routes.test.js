@@ -229,7 +229,10 @@ test('POST /nutrition/recognize', async (t) => {
       { menu: 'Tinolang manok', name: 'Tinolang manok', quantity: 1, unit: 'bowl', grams: null, confidence: 0.8, alternatives: [] },
       { menu: 'White rice', name: 'White rice', quantity: 1, unit: 'cup', grams: 160, confidence: 0.9, alternatives: [] },
     ] });
-    opinion = async () => ({ model: 'dish-lr-1-test', dishes: [{ dish: 'sinigang', probability: 0.93 }], swapAt: 0.8, choiceAt: 0.5 });
+    opinion = async () => ({
+      model: 'dish-lr-1-test', dishes: [{ dish: 'sinigang', probability: 0.93 }], swapAt: 0.8, choiceAt: 0.5,
+      classes: ['sinigang', 'tinola', 'tapa'],
+    });
     try {
       const d = (await u.recognize(PHOTO).expect(200)).body.data;
       assert.deepEqual(d.items.map((i) => [i.food.name, i.alternatives.map((a) => a.name)]), [

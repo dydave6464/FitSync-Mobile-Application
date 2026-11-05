@@ -14,8 +14,14 @@ import numpy as np
 from PIL import Image, ImageOps
 
 CLASSIFIER_FILENAME = "dish_classifier.json"
-# Pillow refuses far larger images by itself; a meal photo is never near this.
-MAX_PIXELS = 40_000_000
+# The app sends at most 768 px on the long side, and every training photo is
+# as small. Checked from the header before decoding, so a crafted photo (a few
+# KB claiming 1 x 40,000,000 or 6300 x 6300) is refused before it can cost the
+# service hundreds of MB.
+MAX_SIDE = 4096
+MAX_PIXELS = 16_000_000
+# What Node lets through; no other Pillow decoder is reachable.
+FORMATS = ("JPEG", "PNG")
 
 CLIP_MEAN = (0.48145466, 0.4578275, 0.40821073)
 CLIP_STD = (0.26862954, 0.26130258, 0.27577711)
@@ -74,10 +80,12 @@ EMBEDDERS: Dict[str, EmbedderSpec] = {
 
 
 def load_image(data: bytes) -> Image.Image:
-    """The photo upright (EXIF rotation) and in RGB. ValueError if it is not one."""
+    """The photo upright (EXIF rotation) and in RGB. ValueError if it is not a
+    JPEG or PNG, or is larger than MAX_SIDE / MAX_PIXELS."""
     try:
-        img = Image.open(io.BytesIO(data))
-        if img.width * img.height > MAX_PIXELS:
+        # open reads only the header: nothing is decoded before the size check.
+        img = Image.open(io.BytesIO(data), formats=FORMATS)
+        if max(img.size) > MAX_SIDE or img.width * img.height > MAX_PIXELS:
             raise ValueError("the photo is too large")
         img = ImageOps.exif_transpose(img)
         if img.mode in ("RGBA", "LA") or (img.mode == "P" and "transparency" in img.info):

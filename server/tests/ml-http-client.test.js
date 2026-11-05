@@ -253,7 +253,7 @@ test('classifyDish posts the photo to /classify-dish and returns the opinion', (
       assert.ok(options.signal instanceof AbortSignal);
       return {
         ok: true,
-        json: async () => ({ model: 'dish-lr-1-x', dishes: [{ dish: 'tinola', probability: 0.9 }], swapAt: 0.8, choiceAt: 0.5 }),
+        json: async () => ({ model: 'dish-lr-1-x', dishes: [{ dish: 'tinola', probability: 0.9 }], swapAt: 0.8, choiceAt: 0.5, classes: ['tinola'] }),
       };
     },
     async () => {
