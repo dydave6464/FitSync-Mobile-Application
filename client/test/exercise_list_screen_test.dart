@@ -225,6 +225,25 @@ void main() {
     expect(find.text('Equipment'), findsNothing);
   });
 
+  testWidgets('the equipment button says it is a filter, and what is on', (
+    tester,
+  ) async {
+    final handle = tester.ensureSemantics();
+    final repo = FakeRepository();
+    await tester.pumpWidget(harness(repo));
+    await tester.pumpAndSettle();
+
+    expect(find.bySemanticsLabel('Equipment filter'), findsOneWidget);
+
+    await tester.tap(find.byKey(const Key('library.equipment')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const Key('equipment.option.barbell')));
+    await tester.pumpAndSettle();
+
+    expect(find.bySemanticsLabel('Equipment filter: Barbell'), findsOneWidget);
+    handle.dispose();
+  });
+
   testWidgets('the equipment sheet has the shared header and a Close', (
     tester,
   ) async {

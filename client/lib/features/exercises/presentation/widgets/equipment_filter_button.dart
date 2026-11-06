@@ -59,7 +59,14 @@ class EquipmentFilterButton extends ConsumerWidget {
             size: 16,
             color: selected == null ? t.text2 : t.onAccent,
           ),
-          label: Text(chosen ?? 'Equipment'),
+          // Says it is a filter, and which one is on: "Dumbbell" alone
+          // read as an exercise, or as nothing at all.
+          label: Text(
+            chosen ?? 'Equipment',
+            semanticsLabel: chosen == null
+                ? 'Equipment filter'
+                : 'Equipment filter: $chosen',
+          ),
           labelStyle: TextStyle(
             fontSize: 13,
             color: selected == null ? t.text2 : t.onAccent,

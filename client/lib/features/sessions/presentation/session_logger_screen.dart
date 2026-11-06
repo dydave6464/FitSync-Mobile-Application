@@ -1683,44 +1683,50 @@ class _SessionLoggerScreenState extends ConsumerState<SessionLoggerScreen>
                     builder: (context, constraints) => Row(
                       children: [
                         Flexible(
-                          child: InkWell(
-                            key: const Key('logger.position'),
-                            onTap: () => _jumpTo(exercises, session, index),
-                            // The caption stays an 11 px line; the target
-                            // around it is a full 48 dp. It takes the gap
-                            // that used to sit under the row, so the bar
-                            // below moves less than the target grew.
-                            child: ConstrainedBox(
-                              constraints: const BoxConstraints(
-                                minWidth: 48,
-                                minHeight: 48,
-                              ),
-                              child: Row(
-                                mainAxisSize: MainAxisSize.min,
-                                children: [
-                                  Flexible(
-                                    child: Text(
-                                      '${_positionLabel(index, exercises.length)}'
-                                      // Named the way Home and History name
-                                      // it. Not the active plan's name: a
-                                      // workout the user picked themselves
-                                      // is not a day of the AI plan they may
-                                      // be replacing.
-                                      ' · ${openWorkoutTitle(session, plan)}',
-                                      maxLines: 1,
-                                      overflow: TextOverflow.ellipsis,
-                                      style: TextStyle(
-                                        fontSize: 11,
-                                        color: t.text2,
+                          // A caption to look at, but the way to the jump
+                          // sheet: a screen reader hears a button, and why.
+                          child: Semantics(
+                            button: true,
+                            hint: 'Jump to another exercise',
+                            child: InkWell(
+                              key: const Key('logger.position'),
+                              onTap: () => _jumpTo(exercises, session, index),
+                              // The caption stays an 11 px line; the target
+                              // around it is a full 48 dp. It takes the gap
+                              // that used to sit under the row, so the bar
+                              // below moves less than the target grew.
+                              child: ConstrainedBox(
+                                constraints: const BoxConstraints(
+                                  minWidth: 48,
+                                  minHeight: 48,
+                                ),
+                                child: Row(
+                                  mainAxisSize: MainAxisSize.min,
+                                  children: [
+                                    Flexible(
+                                      child: Text(
+                                        '${_positionLabel(index, exercises.length)}'
+                                        // Named the way Home and History name
+                                        // it. Not the active plan's name: a
+                                        // workout the user picked themselves
+                                        // is not a day of the AI plan they may
+                                        // be replacing.
+                                        ' · ${openWorkoutTitle(session, plan)}',
+                                        maxLines: 1,
+                                        overflow: TextOverflow.ellipsis,
+                                        style: TextStyle(
+                                          fontSize: 11,
+                                          color: t.text2,
+                                        ),
                                       ),
                                     ),
-                                  ),
-                                  Icon(
-                                    Icons.arrow_drop_down,
-                                    size: 16,
-                                    color: t.text2,
-                                  ),
-                                ],
+                                    Icon(
+                                      Icons.arrow_drop_down,
+                                      size: 16,
+                                      color: t.text2,
+                                    ),
+                                  ],
+                                ),
                               ),
                             ),
                           ),

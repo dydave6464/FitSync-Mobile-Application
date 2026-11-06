@@ -135,6 +135,36 @@ void main() {
     expect(chosen, [null]);
   });
 
+  // The current row was marked by colour and weight alone.
+  testWidgets(
+    'each row says where it is, how far along, and which is current',
+    (tester) async {
+      final handle = tester.ensureSemantics();
+      await _open(tester, count: 3, current: 1);
+
+      expect(
+        tester.getSemantics(find.byKey(const Key('jump.101'))),
+        matchesSemantics(
+          label: 'Exercise 2 of 3, Exercise 2, 0 of 3 sets',
+          isSelected: true,
+          hasSelectedState: true,
+          isButton: true,
+          hasTapAction: true,
+        ),
+      );
+      expect(
+        tester.getSemantics(find.byKey(const Key('jump.100'))),
+        matchesSemantics(
+          label: 'Exercise 1 of 3, Exercise 1, 0 of 3 sets',
+          hasSelectedState: true,
+          isButton: true,
+          hasTapAction: true,
+        ),
+      );
+      handle.dispose();
+    },
+  );
+
   testWidgets('a short list keeps the sheet short', (tester) async {
     await _open(tester, count: 2);
 

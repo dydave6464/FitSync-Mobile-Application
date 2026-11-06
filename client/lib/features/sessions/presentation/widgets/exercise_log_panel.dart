@@ -332,33 +332,46 @@ class _ExerciseLogPanelState extends State<ExerciseLogPanel> {
                           // table's own header row has no width to spare for
                           // a control once the weight column is gone.
                           if (!showWeight)
-                            InkWell(
-                              key: const Key('logpanel.addweight'),
+                            Semantics(
+                              // "+ weight" is a caption to the eye; to a
+                              // screen reader it is a button with a name.
+                              container: true,
+                              button: true,
+                              label: 'Add a weight column',
+                              excludeSemantics: true,
                               onTap: () => setState(() => _weightAdded = true),
-                              borderRadius: BorderRadius.circular(FsRadius.sm),
-                              // A caption to look at, a 48 dp target to tap:
-                              // the box grows around the text, which keeps
-                              // its size and its place at the left.
-                              child: ConstrainedBox(
-                                constraints: const BoxConstraints(
-                                  minWidth: 48,
-                                  minHeight: 48,
+                              child: InkWell(
+                                key: const Key('logpanel.addweight'),
+                                onTap: () =>
+                                    setState(() => _weightAdded = true),
+                                borderRadius: BorderRadius.circular(
+                                  FsRadius.sm,
                                 ),
-                                child: Padding(
-                                  padding: const EdgeInsets.symmetric(
-                                    horizontal: 4,
+                                // A caption to look at, a 48 dp target to tap:
+                                // the box grows around the text, which keeps
+                                // its size and its place at the left.
+                                child: ConstrainedBox(
+                                  constraints: const BoxConstraints(
+                                    minWidth: 48,
+                                    minHeight: 48,
                                   ),
-                                  child: Align(
-                                    alignment: AlignmentDirectional.centerStart,
-                                    widthFactor: 1,
-                                    heightFactor: 1,
-                                    child: Text(
-                                      '+ weight',
-                                      style: TextStyle(
-                                        fontFamily: fsMonoFamily,
-                                        fontSize: 11,
-                                        fontWeight: FontWeight.w600,
-                                        color: t.accentText,
+                                  child: Padding(
+                                    padding: const EdgeInsets.symmetric(
+                                      horizontal: 4,
+                                    ),
+                                    child: Align(
+                                      alignment:
+                                          AlignmentDirectional.centerStart,
+                                      widthFactor: 1,
+                                      heightFactor: 1,
+                                      child: Text(
+                                        '+ weight',
+                                        style: TextStyle(
+                                          fontFamily: fsMonoFamily,
+                                          fontSize: 11,
+                                          fontWeight: FontWeight.w600,
+                                          color: t.accentText,
+                                        ),
                                       ),
                                     ),
                                   ),

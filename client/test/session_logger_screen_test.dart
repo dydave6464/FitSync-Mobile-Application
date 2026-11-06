@@ -2554,6 +2554,19 @@ void main() {
     });
   });
 
+  // The caption above the bar opens the jump sheet, but read as plain text.
+  testWidgets('the position caption is a button that says what it does', (
+    tester,
+  ) async {
+    final handle = tester.ensureSemantics();
+    await _pump(tester);
+
+    final node = tester.getSemantics(find.byKey(const Key('logger.position')));
+    expect(node.flagsCollection.isButton, isTrue);
+    expect(node.hint, 'Jump to another exercise');
+    handle.dispose();
+  });
+
   // Nothing else rebuilds the screen while the user rests or reads the demo:
   // the rest repaints only its own tag. The caption keeps time on its own.
   testWidgets('the elapsed time moves on while nothing else changes', (
