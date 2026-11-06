@@ -778,4 +778,69 @@ void main() {
     expect(find.text('Enter your email.'), findsOneWidget);
     expect(_hasFocus(tester, 'email'), isTrue);
   });
+  testWidgets('a failed check on the field already in use is read aloud', (
+    tester,
+  ) async {
+    // Typed last, so the password field still has focus when Create account
+    // is tapped: focus cannot move, so without an announcement a screen
+    // reader hears nothing at all.
+    final repo = FakeAuthRepository(onRegister: () async {});
+    final handle = tester.ensureSemantics();
+    await _pump(tester, repo);
+    await tester.pumpAndSettle();
+    await _toRegister(tester);
+
+    await tester.enterText(find.byKey(const Key('fullName')), 'Juan');
+    await _fillAndSubmit(tester, password: 'short12');
+    await tester.pumpAndSettle();
+
+    expect(_hasFocus(tester, 'password'), isTrue);
+    expect(
+      tester.takeAnnouncements().map((a) => a.message),
+      contains('Use at least 8 characters.'),
+    );
+    expect(repo.registerCalls, 0);
+    handle.dispose();
+  });
+
+  testWidgets('a bad email typed just before Sign in is read aloud', (
+    tester,
+  ) async {
+    final handle = tester.ensureSemantics();
+    await _pump(tester, FakeAuthRepository());
+    await tester.pumpAndSettle();
+
+    await tester.enterText(find.byKey(const Key('password')), 's3cret-pass');
+    await tester.enterText(find.byKey(const Key('email')), 'juan');
+    await _tapKey(tester, 'submit');
+    await tester.pumpAndSettle();
+
+    expect(_hasFocus(tester, 'email'), isTrue);
+    expect(
+      tester.takeAnnouncements().map((a) => a.message),
+      contains('That does not look like an email.'),
+    );
+    handle.dispose();
+  });
+
+  testWidgets('a failed check that moves focus is not also announced', (
+    tester,
+  ) async {
+    // Moving focus already reads the field and its message; an announcement
+    // as well would say it twice.
+    final handle = tester.ensureSemantics();
+    await _pump(tester, FakeAuthRepository());
+    await tester.pumpAndSettle();
+    await _toRegister(tester);
+
+    await _tapKey(tester, 'submit');
+    await tester.pumpAndSettle();
+
+    expect(_hasFocus(tester, 'fullName'), isTrue);
+    expect(
+      tester.takeAnnouncements().map((a) => a.message),
+      isNot(contains('Enter your name.')),
+    );
+    handle.dispose();
+  });
 }

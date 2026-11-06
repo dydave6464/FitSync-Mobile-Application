@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/semantics.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../core/api_exception.dart';
@@ -104,7 +105,11 @@ class _SignInScreenState extends ConsumerState<SignInScreen> {
   /// Moves the cursor -- and a screen reader, which then reads the field's
   /// name and the message now in its hint -- to [field]. Otherwise nothing
   /// is heard after Sign in, and a failed check sounds like a hang.
-  void _focus(_Field field) {
+  ///
+  /// When [field] already has focus (typed in last: a phone does not unfocus
+  /// a field on an outside tap) focus cannot move, so nothing would be read.
+  /// [message] is announced instead -- only then, so it is never said twice.
+  void _focus(_Field field, String message) {
     EditableTextState? editable;
     void visit(Element element) {
       if (editable != null) return;
@@ -116,7 +121,17 @@ class _SignInScreenState extends ConsumerState<SignInScreen> {
     }
 
     (_fieldKeys[field]!.currentContext as Element?)?.visitChildren(visit);
-    editable?.requestKeyboard();
+    final target = editable;
+    if (target == null) return;
+    if (target.widget.focusNode.hasFocus) {
+      SemanticsService.sendAnnouncement(
+        View.of(context),
+        message,
+        Directionality.of(context),
+      );
+      return;
+    }
+    target.requestKeyboard();
   }
 
   String? _errorFor(_Field field) =>
@@ -183,7 +198,7 @@ class _SignInScreenState extends ConsumerState<SignInScreen> {
         _fieldError = problem;
         _error = null;
       });
-      _focus(problem.field);
+      _focus(problem.field, problem.message);
       return;
     }
 
