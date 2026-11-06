@@ -163,7 +163,8 @@ class _Tiles extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final t = context.fs;
-    return Column(
+    final tiles = Column(
+      mainAxisSize: MainAxisSize.min,
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
         // One height for all three, though only steps carries the bar.
@@ -219,6 +220,19 @@ class _Tiles extends StatelessWidget {
           ),
         ],
       ],
+    );
+    final label = hint;
+    if (label == null) return tiles;
+    // Before counting is on, the three tiles are one way in, and only the
+    // hint says what a tap does: a screen reader hears that once, as one
+    // button, rather than three buttons named "0".
+    return Semantics(
+      container: true,
+      button: true,
+      label: label,
+      onTap: onTap,
+      excludeSemantics: true,
+      child: tiles,
     );
   }
 }

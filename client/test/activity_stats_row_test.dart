@@ -157,6 +157,30 @@ void main() {
     },
   );
 
+  for (final (access, hint) in const [
+    (StepAccess.notAsked, 'Tap to start counting your steps'),
+    (StepAccess.refused, 'Step counting is off — tap to allow'),
+  ]) {
+    testWidgets(
+      '${access.name}: a screen reader hears one button that says what it '
+      'does, not three zeros',
+      (tester) async {
+        final semantics = tester.ensureSemantics();
+        await _pump(tester, _Permission(access));
+
+        expect(
+          tester.getSemantics(find.bySemanticsLabel(hint)),
+          matchesSemantics(label: hint, isButton: true, hasTapAction: true),
+        );
+        // The tiles' bare figures are not offered as buttons of their own.
+        expect(find.bySemanticsLabel(RegExp(r'^0')), findsNothing);
+        await expectLater(tester, meetsGuideline(androidTapTargetGuideline));
+        await expectLater(tester, meetsGuideline(labeledTapTargetGuideline));
+        semantics.dispose();
+      },
+    );
+  }
+
   testWidgets(
     'refused, granted when asked again: no Settings, the stats show',
     (tester) async {
