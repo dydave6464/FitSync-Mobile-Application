@@ -5,6 +5,7 @@ import '../../../../core/theme.dart';
 import '../../../../core/widgets/fs_kit.dart';
 import '../../domain/nutrition.dart';
 import 'fatsecret_attribution.dart';
+import 'meal_chips.dart';
 import 'number_box.dart';
 
 class LogChoice {
@@ -135,11 +136,7 @@ class _LogFoodSheetState extends State<LogFoodSheet> {
             Text('Per ${f.servingDesc ?? 'serving'}${f.source == 'manual' ? ' · your entry' : ''}',
                 style: TextStyle(color: t.text2, fontSize: 13)),
             const SizedBox(height: 16),
-            FsSegmented(
-              options: [for (final m in mealTypes) (value: m, label: mealLabel(m))],
-              selected: _meal,
-              onSelected: (m) => setState(() => _meal = m),
-            ),
+            MealChips(keyPrefix: 'logSheet.meal', selected: _meal, onSelected: (m) => setState(() => _meal = m)),
             const SizedBox(height: 16),
             Row(
               children: [

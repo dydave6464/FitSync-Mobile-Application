@@ -17,6 +17,7 @@ import '../error_snack_bar.dart';
 import '../log_food_screen.dart' show pickFood;
 import '../providers.dart';
 import '../widgets/fatsecret_attribution.dart';
+import '../widgets/meal_chips.dart';
 import 'photo_cards.dart';
 import 'providers.dart';
 
@@ -396,16 +397,7 @@ class _MealPhotoScreenState extends ConsumerState<MealPhotoScreen> {
           const SizedBox(height: 16),
           Text('Meal', style: TextStyle(color: t.text2, fontSize: 12)),
           const SizedBox(height: 6),
-          FsTapRoom(
-            child: Wrap(
-              spacing: 8,
-              runSpacing: 8,
-              children: [
-                for (final m in mealTypes)
-                  FsChip(key: Key('snap.meal.$m'), label: mealLabel(m), selected: _meal == m, onTap: () => setState(() => _meal = m)),
-              ],
-            ),
-          ),
+          MealChips(keyPrefix: 'snap.meal', selected: _meal, onSelected: (m) => setState(() => _meal = m)),
           const SizedBox(height: 16),
           if (_cards.isEmpty)
             Padding(

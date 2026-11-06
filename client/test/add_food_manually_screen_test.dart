@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/rendering.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 
@@ -337,6 +338,31 @@ void main() {
     testWidgets('the labelled form fits a 320 dp phone at 2x text', (tester) async {
       await _pump(tester, size: const Size(320, 640), textScale: 2);
       expect(tester.takeException(), isNull);
+    });
+  });
+
+  group('the meal choice (NU-11)', () {
+    testWidgets('is the same chips as Snap a meal, and the food goes to the one picked', (tester) async {
+      final repo = await _pump(tester, size: _tall);
+      expect(find.byType(FsSegmented), findsNothing);
+      await tester.tap(find.byKey(const Key('manual.meal.dinner')));
+      await tester.enterText(find.byKey(const Key('manual.name')), 'Turon');
+      await tester.enterText(find.byKey(const Key('manual.carbs')), '34');
+      await tester.pump();
+      await tester.tap(find.byKey(const Key('manual.log')));
+      await tester.pumpAndSettle();
+      expect(repo.calls, contains('log 2026-10-14 dinner Turon x1.0'));
+    });
+
+    testWidgets('"Breakfast" stays whole at 2x text on a 360 dp phone', (tester) async {
+      await _pump(tester, size: const Size(360, 640), textScale: 2);
+      expect(tester.takeException(), isNull);
+      final lines = tester
+          .renderObject<RenderParagraph>(find.text('Breakfast'))
+          .getBoxesForSelection(const TextSelection(baseOffset: 0, extentOffset: 9))
+          .map((b) => b.top)
+          .toSet();
+      expect(lines, hasLength(1), reason: 'never "Breakfa / st"');
     });
   });
 }

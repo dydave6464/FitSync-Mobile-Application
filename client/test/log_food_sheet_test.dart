@@ -649,8 +649,7 @@ void main() {
       await _openToChange(tester, _rice, mealType: 'dinner', servings: 1.5);
       expect(find.text('1.5'), findsOneWidget);
       expect(find.text('308 kcal'), findsOneWidget); // 205 x 1.5
-      final meals = tester.widget<FsSegmented>(find.byType(FsSegmented));
-      expect(meals.selected, 'dinner');
+      expect(tester.widget<FsChip>(find.byKey(const Key('logSheet.meal.dinner'))).selected, isTrue);
       expect(find.text('Save changes'), findsOneWidget);
       expect(find.text('Log'), findsNothing);
     });
@@ -839,6 +838,51 @@ void main() {
       );
       h.dispose();
     });
+  });
+
+  group('the meal choice (NU-11)', () {
+    testWidgets('is the same chips as Snap a meal, and picks a meal', (tester) async {
+      final h = tester.ensureSemantics();
+      final result = await _openForResult(tester, _rice);
+      expect(find.byType(FsSegmented), findsNothing);
+      expect(find.byType(FsChip), findsNWidgets(4));
+      expect(tester.getSemantics(find.byKey(const Key('logSheet.meal.lunch'))), isSemantics(isSelected: true));
+      await tester.tap(find.byKey(const Key('logSheet.meal.dinner')));
+      await tester.pump();
+      expect(tester.getSemantics(find.byKey(const Key('logSheet.meal.dinner'))), isSemantics(isSelected: true));
+      await _save(tester);
+      expect(result()!.mealType, 'dinner');
+      h.dispose();
+    });
+
+    for (final width in [360.0, 320.0]) {
+      testWidgets('"Breakfast" stays whole at 2x text on a ${width.toInt()} dp phone', (tester) async {
+        tester.view.physicalSize = Size(width, 640);
+        tester.view.devicePixelRatio = 1;
+        addTearDown(tester.view.reset);
+        await tester.pumpWidget(MaterialApp(
+          builder: (context, child) => MediaQuery(
+            data: MediaQuery.of(context).copyWith(textScaler: const TextScaler.linear(2)),
+            child: child!,
+          ),
+          home: Builder(builder: (context) => Scaffold(
+            body: TextButton(
+              onPressed: () => showLogFoodSheet(context, _rice, mealType: 'lunch'),
+              child: const Text('open'),
+            ),
+          )),
+        ));
+        await tester.tap(find.text('open'));
+        await tester.pumpAndSettle();
+        expect(tester.takeException(), isNull);
+        final lines = tester
+            .renderObject<RenderParagraph>(find.text('Breakfast'))
+            .getBoxesForSelection(const TextSelection(baseOffset: 0, extentOffset: 9))
+            .map((b) => b.top)
+            .toSet();
+        expect(lines, hasLength(1), reason: 'never "Breakfa / st"');
+      });
+    }
   });
 }
 

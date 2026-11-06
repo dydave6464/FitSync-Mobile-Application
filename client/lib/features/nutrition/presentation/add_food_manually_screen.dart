@@ -7,6 +7,7 @@ import '../../../core/widgets/fs_kit.dart';
 import '../domain/nutrition.dart';
 import 'error_snack_bar.dart';
 import 'providers.dart';
+import 'widgets/meal_chips.dart';
 import 'widgets/number_box.dart';
 
 class AddFoodManuallyScreen extends ConsumerStatefulWidget {
@@ -111,11 +112,7 @@ class _AddFoodManuallyScreenState extends ConsumerState<AddFoodManuallyScreen> {
             if (!widget.pick) ...[
               const FsEyebrow('Meal'),
               const SizedBox(height: 6),
-              FsSegmented(
-                options: [for (final m in mealTypes) (value: m, label: mealLabel(m))],
-                selected: _meal,
-                onSelected: (m) => setState(() => _meal = m),
-              ),
+              MealChips(keyPrefix: 'manual.meal', selected: _meal, onSelected: (m) => setState(() => _meal = m)),
               const SizedBox(height: 16),
             ],
             FsField(
