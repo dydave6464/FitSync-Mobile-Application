@@ -117,7 +117,9 @@ class _Body extends StatelessWidget {
         FsCard(
           child: Column(
             children: [
-              Text(
+              // One line that shrinks rather than wraps: at large text
+              // '12,345' would otherwise break as '12,34' over '5'.
+              FsOneLine(
                 formatSteps(steps),
                 key: const Key('activity.steps'),
                 style: fsNum(t, size: 44),
@@ -179,19 +181,27 @@ class _Body extends StatelessWidget {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Row(
-                  children: [
-                    Text(
-                      'This week',
-                      style: TextStyle(fontSize: 15, fontWeight: FontWeight.w700, color: t.text),
-                    ),
-                    const Spacer(),
-                    if (week.average != null)
+                // Wraps the average under the title when both won't fit on
+                // one line at large text, rather than overflowing the card.
+                SizedBox(
+                  width: double.infinity,
+                  child: Wrap(
+                    alignment: WrapAlignment.spaceBetween,
+                    crossAxisAlignment: WrapCrossAlignment.center,
+                    spacing: 8,
+                    runSpacing: 2,
+                    children: [
                       Text(
-                        'avg ${(week.average! / 1000).toStringAsFixed(1)}k/day',
-                        style: TextStyle(fontSize: 11.5, color: t.text3),
+                        'This week',
+                        style: TextStyle(fontSize: 15, fontWeight: FontWeight.w700, color: t.text),
                       ),
-                  ],
+                      if (week.average != null)
+                        Text(
+                          'avg ${(week.average! / 1000).toStringAsFixed(1)}k/day',
+                          style: TextStyle(fontSize: 11.5, color: t.text3),
+                        ),
+                    ],
+                  ),
                 ),
                 const SizedBox(height: 14),
                 _WeekBars(days: week.days, todaySteps: steps),
@@ -276,7 +286,7 @@ class _Figure extends StatelessWidget {
     return Expanded(
       child: Column(
         children: [
-          Text(value, style: fsNum(t, size: 17)),
+          FsOneLine(value, style: fsNum(t, size: 17)),
           const SizedBox(height: 2),
           Text(label, style: TextStyle(fontSize: 11, color: t.text3)),
         ],

@@ -1,5 +1,6 @@
 import 'package:fl_chart/fl_chart.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/rendering.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 
@@ -241,5 +242,72 @@ void main() {
     );
     expect(tooltip!.text, 'Tuesday · 3,000 steps');
     expect(chart.data.barTouchData.enabled, isTrue);
+  });
+
+  group('large text', () {
+    /// How many lines [text] was laid out on.
+    int lines(WidgetTester tester, String text) {
+      final paragraph = tester.renderObject<RenderParagraph>(find.text(text));
+      final boxes = paragraph.getBoxesForSelection(
+        TextSelection(baseOffset: 0, extentOffset: text.length),
+      );
+      return boxes.map((b) => b.top.round()).toSet().length;
+    }
+
+    final big = ActivityState(
+      today: const DaySteps(steps: 12345),
+      week: ActivityWeek(
+        days: [
+          _d(22, 13000), _d(23, 12000), _d(24, 15000), _d(25, 16000),
+          ActivityDay(date: '2026-09-26', steps: 14000, caloriesBurned: 1234, distanceKm: 10.52, activeMinutes: 145),
+          _d(27, 14000),
+          const ActivityDay(date: '2026-09-28', steps: 12345, caloriesBurned: 1234, distanceKm: 10.52, activeMinutes: 145),
+        ],
+        usual: 14000,
+        missing: const [],
+      ),
+      offline: false,
+    );
+
+    for (final size in const [Size(360, 640), Size(320, 568)]) {
+      testWidgets('at 2x on ${size.width.toInt()} dp nothing overflows and figures stay whole', (tester) async {
+        tester.view.physicalSize = size;
+        tester.view.devicePixelRatio = 1;
+        addTearDown(tester.view.reset);
+        tester.platformDispatcher.textScaleFactorTestValue = 2;
+        addTearDown(tester.platformDispatcher.clearTextScaleFactorTestValue);
+
+        await _pump(tester, big);
+        expect(tester.takeException(), isNull);
+
+        expect(lines(tester, '12,345'), 1, reason: 'the headline must not split mid-number');
+        for (final figure in ['1234', '10.52', '145']) {
+          expect(lines(tester, figure), 1, reason: figure);
+        }
+
+        await tester.scrollUntilVisible(find.text('This week'), 100);
+        await tester.pumpAndSettle();
+        expect(tester.takeException(), isNull);
+      });
+    }
+
+    testWidgets("at iOS's largest text the figures still stay whole", (tester) async {
+      tester.view.physicalSize = const Size(360, 640);
+      tester.view.devicePixelRatio = 1;
+      addTearDown(tester.view.reset);
+      tester.platformDispatcher.textScaleFactorTestValue = 3.1;
+      addTearDown(tester.platformDispatcher.clearTextScaleFactorTestValue);
+
+      await _pump(tester, big);
+      expect(tester.takeException(), isNull);
+
+      expect(lines(tester, '12,345'), 1);
+      for (final figure in ['1234', '10.52', '145']) {
+        expect(lines(tester, figure), 1, reason: figure);
+      }
+      await tester.scrollUntilVisible(find.text('This week'), 100);
+      await tester.pumpAndSettle();
+      expect(tester.takeException(), isNull);
+    });
   });
 }
