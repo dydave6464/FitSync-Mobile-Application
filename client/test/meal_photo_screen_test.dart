@@ -554,7 +554,10 @@ void main() {
       expect(h.result, isNull);
       // Back on Nutrition (Riverpod pauses it while it is covered), its day
       // reloads: the server may have saved the meal before the answer was lost.
+      // Leaving the unlogged list asks first (NU-3).
       await tester.pageBack();
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const Key('discard.confirm')));
       await tester.pumpAndSettle();
       expect(dayLoads(h), before + 1);
     },
@@ -733,4 +736,48 @@ void main() {
       expect(tester.takeException(), isNull);
     });
   }
+
+  group('back on the confirm list (NU-3)', () {
+    testWidgets('system back asks first, and says the photo still counts', (tester) async {
+      final h = await _open(tester);
+      await tester.binding.handlePopRoute();
+      await tester.pumpAndSettle();
+      expect(find.text('Discard your changes?'), findsOneWidget);
+      expect(find.text("This photo still counts toward today's limit."), findsOneWidget);
+
+      await tester.tap(find.byKey(const Key('discard.keep')));
+      await tester.pumpAndSettle();
+      expect(find.text('White rice'), findsOneWidget, reason: 'the list stays');
+      expect(h.result, isNull);
+    });
+
+    testWidgets("the photo's own back asks too, and Discard leaves", (tester) async {
+      final h = await _open(tester);
+      await tester.tap(find.byKey(const Key('snap.back')));
+      await tester.pumpAndSettle();
+      expect(find.text('Discard your changes?'), findsOneWidget);
+      await tester.tap(find.byKey(const Key('discard.confirm')));
+      await tester.pumpAndSettle();
+      expect(find.byKey(const Key('snap.log')), findsNothing, reason: 'the screen is gone');
+      expect(h.result, isNull);
+      expect(h.repo.logs, isEmpty);
+    });
+
+    testWidgets('a failed photo still leaves without asking', (tester) async {
+      final h = _Harness()..repo.error = const ApiException('VISION_BUSY', 'x');
+      await _open(tester, h: h);
+      await tester.binding.handlePopRoute();
+      await tester.pumpAndSettle();
+      expect(find.text('Discard your changes?'), findsNothing);
+      expect(find.byKey(const Key('snap.retry')), findsNothing, reason: 'the screen is gone');
+    });
+
+    testWidgets('logging still closes the screen without asking', (tester) async {
+      final h = await _open(tester);
+      await tester.tap(find.byKey(const Key('snap.log')));
+      await tester.pumpAndSettle();
+      expect(find.text('Discard your changes?'), findsNothing);
+      expect(h.result, isTrue);
+    });
+  });
 }

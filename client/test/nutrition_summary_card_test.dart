@@ -1,9 +1,12 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
+import 'package:fitsync/core/theme.dart';
 import 'package:fitsync/core/widgets/fs_charts.dart' show FsRing;
 import 'package:fitsync/features/nutrition/domain/nutrition.dart';
 import 'package:fitsync/features/nutrition/presentation/widgets/nutrition_summary_card.dart';
+
+import 'helpers/a11y.dart';
 
 NutritionDay _day() => NutritionDay(
   date: '2026-10-14',
@@ -191,5 +194,66 @@ void main() {
 
     expect(tester.takeException(), isNull);
     _expectBarsBesideRing(tester);
+  });
+
+  group('the calorie ring (NU-2)', () {
+    NutritionDay eatenDay(int kcal, {int? target = 2050}) => NutritionDay(
+      date: '2026-10-14',
+      target: target == null
+          ? null
+          : NutritionTarget(kcal: target, proteinG: 95, carbsG: 300, fatG: 58, fiberG: 0),
+      targetMissing: target == null ? const ['sex'] : const [],
+      totals: MacroTotals(kcal: kcal, proteinG: 0, carbsG: 0, fatG: 0, fiberG: 0, sugarG: 0, sodiumMg: 0),
+      meals: {for (final m in mealTypes) m: const []},
+    );
+
+    for (final dark in [false, true]) {
+      testWidgets('the target reads at 4.5:1 on the card\'s strongest tint, ${dark ? 'dark' : 'light'}', (tester) async {
+        await tester.pumpWidget(host(NutritionSummaryCard(day: eatenDay(1160)), dark: dark));
+        final t = dark ? FsTokens.dark : FsTokens.light;
+        final label = tester.widget<Text>(find.text('/ 2,050 kcal'));
+        // The gradient's 16% end, the darkest (light) or brightest (dark)
+        // the ring's middle can sit on.
+        final tint = Color.alphaBlend(t.accent.withValues(alpha: 0.16), t.bg);
+        expect(contrast(label.style!.color!, tint), greaterThanOrEqualTo(4.5));
+      });
+    }
+
+    for (final (scale, size) in [(1.3, 76 * 1.3), (1.6, 76 * 1.6), (2.0, 76 * 1.6)]) {
+      testWidgets('the ring grows with text: ${scale}x draws it at ${size.toStringAsFixed(1)} dp', (tester) async {
+        await _pump(tester, width: 390, textScale: scale, day: eatenDay(1160));
+        expect(tester.takeException(), isNull);
+        expect(tester.getSize(find.byType(FsRing)).width, moreOrLessEquals(size, epsilon: 0.01));
+      });
+    }
+
+    testWidgets('a 360 dp phone at 2x keeps the row and does not overflow', (tester) async {
+      await _pump(tester, width: 360, textScale: 2, day: eatenDay(1160));
+      expect(tester.takeException(), isNull);
+      _expectBarsBesideRing(tester);
+    });
+
+    testWidgets('a screen reader hears eaten, target and what is left as one line', (tester) async {
+      final h = tester.ensureSemantics();
+      await _pump(tester, width: 390, day: eatenDay(1160));
+      expect(tester.getSemantics(find.byType(FsRing)),
+          matchesSemantics(label: '1,160 of 2,050 kcal eaten, 890 left'));
+      h.dispose();
+    });
+
+    testWidgets('going over the target is said, not hidden by the full ring', (tester) async {
+      final h = tester.ensureSemantics();
+      await _pump(tester, width: 390, day: eatenDay(2260));
+      expect(tester.getSemantics(find.byType(FsRing)),
+          matchesSemantics(label: '2,260 of 2,050 kcal eaten, 210 over'));
+      h.dispose();
+    });
+
+    testWidgets('with no target it says only what was eaten', (tester) async {
+      final h = tester.ensureSemantics();
+      await _pump(tester, width: 390, day: eatenDay(1160, target: null));
+      expect(tester.getSemantics(find.byType(FsRing)), matchesSemantics(label: '1,160 kcal eaten'));
+      h.dispose();
+    });
   });
 }

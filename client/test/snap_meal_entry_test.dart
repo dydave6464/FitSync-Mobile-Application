@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 
+import 'package:fitsync/core/api_exception.dart';
 import 'package:fitsync/core/theme.dart';
 import 'package:fitsync/features/nutrition/data/meal_photo_picker.dart';
 import 'package:fitsync/features/nutrition/data/meal_photo_repository.dart';
@@ -22,12 +23,16 @@ import 'helpers/fake_pro_repository.dart';
 import 'nutrition_controller_test.dart' show FakeNutritionRepository;
 
 class _Profile extends ProfileNotifier {
-  _Profile({required this.premium});
+  _Profile({required this.premium, this.fails = false});
 
   final bool premium;
 
+  /// Loading the profile fails (a reply the app can't read; a network error
+  /// is retried first, then fails the same way).
+  final bool fails;
+
   @override
-  Future<Profile> build() async => Profile(
+  Future<Profile> build() async => fails ? throw const ApiException('INVALID_RESPONSE', 'x') : Profile(
     userId: 7, email: 'juan@example.com', fullName: 'Juan Dela Cruz', onboardingCompleted: true,
     isPremium: premium, notificationsEnabled: true, equipment: const [], injuries: const [],
   );
@@ -79,6 +84,7 @@ Future<({_Repo repo, _Picker picker, int Function() settingsOpened})> _pump(
   WidgetTester tester, {
   required Widget home,
   bool premium = true,
+  bool profileFails = false,
   List<Object?>? picks,
   Size size = const Size(400, 1000),
   double scale = 1,
@@ -93,7 +99,7 @@ Future<({_Repo repo, _Picker picker, int Function() settingsOpened})> _pump(
   addTearDown(tester.view.reset);
   await tester.pumpWidget(ProviderScope(
     overrides: [
-      profileProvider.overrideWith(() => _Profile(premium: premium)),
+      profileProvider.overrideWith(() => _Profile(premium: premium, fails: profileFails)),
       mealPhotoRepositoryProvider.overrideWithValue(repo),
       mealPhotoPickerProvider.overrideWithValue(picker),
       appSettingsOpenerProvider.overrideWithValue(() async => settings++),
@@ -270,4 +276,16 @@ void main() {
       expect(tester.takeException(), isNull);
     });
   }
+
+  testWidgets("a Pro status that won't load goes on to the camera, leaving Pro to the server (NU-8)", (tester) async {
+    final h = await _pump(tester, home: const NutritionScreen(), profileFails: true);
+    await tester.tap(find.byKey(const Key('snap.card')));
+    await tester.pumpAndSettle();
+    expect(find.text('FitSync Pro'), findsNothing, reason: 'not sent to the purchase page');
+    expect(find.text('Take a photo'), findsOneWidget);
+    await tester.tap(find.byKey(const Key('snap.library')));
+    await tester.pumpAndSettle();
+    expect(h.picker.sources, [PhotoSource.library]);
+    expect(find.text('White rice'), findsOneWidget);
+  });
 }

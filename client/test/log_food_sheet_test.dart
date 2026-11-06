@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/rendering.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import 'package:fitsync/core/theme.dart';
@@ -260,7 +261,7 @@ void main() {
     await _editNumbers(tester);
     await tester.enterText(find.descendant(of: find.byKey(const Key('logSheet.sodium')), matching: find.byType(TextField)), '20001');
     await tester.pump();
-    expect(find.text('Sodium must be 0–20,000 mg'), findsOneWidget);
+    expect(find.text('Must be 0–20,000 mg'), findsOneWidget);
     await tester.ensureVisible(find.byKey(const Key('logSheet.log')));
     await tester.pumpAndSettle();
     await tester.tap(find.byKey(const Key('logSheet.log')));
@@ -273,7 +274,7 @@ void main() {
     await _editNumbers(tester);
     await tester.enterText(find.descendant(of: find.byKey(const Key('logSheet.sugar')), matching: find.byType(TextField)), '600');
     await tester.pump();
-    expect(find.text('Each value must be 0–500 g'), findsOneWidget);
+    expect(find.text('Must be 0–500 g'), findsOneWidget);
     await tester.ensureVisible(find.byKey(const Key('logSheet.log')));
     await tester.pumpAndSettle();
     await tester.tap(find.byKey(const Key('logSheet.log')));
@@ -557,7 +558,7 @@ void main() {
       kcal: 4990, proteinG: 60, carbsG: 520, fatG: 290,
     ));
     await _editNumbers(tester);
-    expect(find.text('Each value must be 0–500 g'), findsNothing, reason: 'nothing was changed');
+    expect(find.text('Must be 0–500 g'), findsNothing, reason: 'nothing was changed');
     await tester.ensureVisible(find.byKey(const Key('logSheet.log')));
     await tester.pumpAndSettle();
     await tester.tap(find.byKey(const Key('logSheet.log')));
@@ -586,7 +587,7 @@ void main() {
     await _editNumbers(tester);
     await tester.enterText(find.descendant(of: find.byKey(const Key('logSheet.fat')), matching: find.byType(TextField)), '600');
     await tester.pump();
-    expect(find.text('Each value must be 0–500 g'), findsOneWidget);
+    expect(find.text('Must be 0–500 g'), findsOneWidget);
     await tester.ensureVisible(find.byKey(const Key('logSheet.log')));
     await tester.pumpAndSettle();
     await tester.tap(find.byKey(const Key('logSheet.log')));
@@ -599,7 +600,7 @@ void main() {
     await _editNumbers(tester);
     await tester.enterText(find.descendant(of: find.byKey(const Key('logSheet.fiber')), matching: find.byType(TextField)), '600');
     await tester.pump();
-    expect(find.text('Each value must be 0–500 g'), findsOneWidget);
+    expect(find.text('Must be 0–500 g'), findsOneWidget);
     await tester.ensureVisible(find.byKey(const Key('logSheet.log')));
     await tester.pumpAndSettle();
     await tester.tap(find.byKey(const Key('logSheet.log')));
@@ -613,7 +614,7 @@ void main() {
     await tester.enterText(find.descendant(of: find.byKey(const Key('logSheet.protein')), matching: find.byType(TextField)), '.');
     await tester.pump();
     expect(tester.takeException(), isNull);
-    expect(find.text('Each value must be 0–500 g'), findsOneWidget);
+    expect(find.text('Enter a number'), findsOneWidget);
     await tester.ensureVisible(find.byKey(const Key('logSheet.log')));
     await tester.pumpAndSettle();
     await tester.tap(find.byKey(const Key('logSheet.log')));
@@ -648,8 +649,7 @@ void main() {
       await _openToChange(tester, _rice, mealType: 'dinner', servings: 1.5);
       expect(find.text('1.5'), findsOneWidget);
       expect(find.text('308 kcal'), findsOneWidget); // 205 x 1.5
-      final meals = tester.widget<FsSegmented>(find.byType(FsSegmented));
-      expect(meals.selected, 'dinner');
+      expect(tester.widget<FsChip>(find.byKey(const Key('logSheet.meal.dinner'))).selected, isTrue);
       expect(find.text('Save changes'), findsOneWidget);
       expect(find.text('Log'), findsNothing);
     });
@@ -719,4 +719,171 @@ void main() {
       expect(find.text('Save changes'), findsNothing);
     });
   });
+
+  group('servings stepper (NU-1)', () {
+    testWidgets('- and + are named for a screen reader', (tester) async {
+      final h = tester.ensureSemantics();
+      await _open(tester, _rice);
+      expect(find.byTooltip('Fewer servings'), findsOneWidget);
+      expect(find.byTooltip('More servings'), findsOneWidget);
+      await expectLater(tester, meetsGuideline(labeledTapTargetGuideline));
+      await expectLater(tester, meetsGuideline(androidTapTargetGuideline));
+      h.dispose();
+    });
+
+    testWidgets('- turns off at half a serving and + at 20', (tester) async {
+      await _open(tester, _rice);
+      IconButton button(String key) => tester.widget<IconButton>(find.byKey(Key(key)));
+      expect(button('servings.minus').onPressed, isNotNull);
+      await tester.tap(find.byKey(const Key('servings.minus')));
+      await tester.pump();
+      expect(find.text('0.5'), findsOneWidget);
+      expect(button('servings.minus').onPressed, isNull, reason: 'nothing below half a serving');
+      for (var i = 0; i < 39; i++) {
+        await tester.tap(find.byKey(const Key('servings.plus')));
+        await tester.pump();
+      }
+      expect(find.text('20'), findsOneWidget);
+      expect(button('servings.plus').onPressed, isNull, reason: 'nothing above 20 servings');
+    });
+
+    testWidgets('every step is read out as servings and kcal, from one live region', (tester) async {
+      final h = tester.ensureSemantics();
+      await _open(tester, _rice);
+      expect(
+        tester.getSemantics(find.byKey(const Key('logSheet.amount'))),
+        matchesSemantics(label: '1 serving · 205 kcal', isLiveRegion: true),
+      );
+      await tester.tap(find.byKey(const Key('servings.plus')));
+      await tester.pump();
+      expect(
+        tester.getSemantics(find.byKey(const Key('logSheet.amount'))),
+        matchesSemantics(label: '1.5 servings · 308 kcal', isLiveRegion: true),
+      );
+      // The bare figure between the buttons is not a second, contextless node.
+      expect(find.bySemanticsLabel('1.5'), findsNothing);
+      h.dispose();
+    });
+
+    testWidgets('1.5 stays on one line at 2x text on a 360 dp phone', (tester) async {
+      tester.view.physicalSize = const Size(360, 640);
+      tester.view.devicePixelRatio = 1;
+      addTearDown(tester.view.reset);
+      await tester.pumpWidget(MaterialApp(
+        builder: (context, child) => MediaQuery(
+          data: MediaQuery.of(context).copyWith(textScaler: const TextScaler.linear(2)),
+          child: child!,
+        ),
+        home: Builder(builder: (context) => Scaffold(
+          body: TextButton(
+            onPressed: () => showLogFoodSheet(context, _rice, mealType: 'lunch', servings: 1.5),
+            child: const Text('open'),
+          ),
+        )),
+      ));
+      await tester.tap(find.text('open'));
+      await tester.pumpAndSettle();
+      expect(tester.takeException(), isNull);
+      final paragraph = tester.renderObject<RenderParagraph>(find.text('1.5'));
+      final lines = paragraph
+          .getBoxesForSelection(const TextSelection(baseOffset: 0, extentOffset: 3))
+          .map((b) => b.top)
+          .toSet();
+      expect(lines, hasLength(1), reason: '"1.5" must not break over two lines');
+    });
+  });
+
+  group('number errors (NU-10)', () {
+    TextField box(WidgetTester tester, String key) => tester.widget<TextField>(_box(key));
+
+    testWidgets('an out-of-range number is said under its own box, and announced', (tester) async {
+      final h = tester.ensureSemantics();
+      await _open(tester, _rice);
+      await _editNumbers(tester);
+      await tester.enterText(_box('logSheet.carbs'), '600');
+      await tester.pump();
+      final field = tester.getRect(_box('logSheet.carbs'));
+      final error = tester.getRect(find.text('Must be 0–500 g'));
+      expect(error.top, greaterThanOrEqualTo(field.bottom));
+      expect(error.left, greaterThanOrEqualTo(field.left - 1));
+      expect(error.right, lessThanOrEqualTo(field.right + 1));
+      expect(
+        tester.getSemantics(find.ancestor(of: find.text('Must be 0–500 g'), matching: find.byType(FsErrorLine))),
+        isSemantics(isLiveRegion: true),
+      );
+      expect(box(tester, 'logSheet.carbs').controller!.text, '600');
+      h.dispose();
+    });
+
+    testWidgets('an unreadable number asks for a number', (tester) async {
+      await _open(tester, _rice);
+      await _editNumbers(tester);
+      await tester.enterText(_box('logSheet.fat'), '1.2.');
+      await tester.pump();
+      expect(find.text('Enter a number'), findsOneWidget);
+    });
+
+    testWidgets('"Add some protein, carbs or fat" is announced', (tester) async {
+      final h = tester.ensureSemantics();
+      await _open(tester, _rice);
+      await _editNumbers(tester);
+      for (final k in ['logSheet.protein', 'logSheet.carbs', 'logSheet.fat']) {
+        await tester.enterText(_box(k), '0');
+      }
+      await tester.pump();
+      expect(
+        tester.getSemantics(
+            find.ancestor(of: find.text('Add some protein, carbs or fat'), matching: find.byType(FsErrorLine))),
+        isSemantics(isLiveRegion: true),
+      );
+      h.dispose();
+    });
+  });
+
+  group('the meal choice (NU-11)', () {
+    testWidgets('is the same chips as Snap a meal, and picks a meal', (tester) async {
+      final h = tester.ensureSemantics();
+      final result = await _openForResult(tester, _rice);
+      expect(find.byType(FsSegmented), findsNothing);
+      expect(find.byType(FsChip), findsNWidgets(4));
+      expect(tester.getSemantics(find.byKey(const Key('logSheet.meal.lunch'))), isSemantics(isSelected: true));
+      await tester.tap(find.byKey(const Key('logSheet.meal.dinner')));
+      await tester.pump();
+      expect(tester.getSemantics(find.byKey(const Key('logSheet.meal.dinner'))), isSemantics(isSelected: true));
+      await _save(tester);
+      expect(result()!.mealType, 'dinner');
+      h.dispose();
+    });
+
+    for (final width in [360.0, 320.0]) {
+      testWidgets('"Breakfast" stays whole at 2x text on a ${width.toInt()} dp phone', (tester) async {
+        tester.view.physicalSize = Size(width, 640);
+        tester.view.devicePixelRatio = 1;
+        addTearDown(tester.view.reset);
+        await tester.pumpWidget(MaterialApp(
+          builder: (context, child) => MediaQuery(
+            data: MediaQuery.of(context).copyWith(textScaler: const TextScaler.linear(2)),
+            child: child!,
+          ),
+          home: Builder(builder: (context) => Scaffold(
+            body: TextButton(
+              onPressed: () => showLogFoodSheet(context, _rice, mealType: 'lunch'),
+              child: const Text('open'),
+            ),
+          )),
+        ));
+        await tester.tap(find.text('open'));
+        await tester.pumpAndSettle();
+        expect(tester.takeException(), isNull);
+        final lines = tester
+            .renderObject<RenderParagraph>(find.text('Breakfast'))
+            .getBoxesForSelection(const TextSelection(baseOffset: 0, extentOffset: 9))
+            .map((b) => b.top)
+            .toSet();
+        expect(lines, hasLength(1), reason: 'never "Breakfa / st"');
+      });
+    }
+  });
 }
+
+Finder _box(String key) => find.descendant(of: find.byKey(Key(key)), matching: find.byType(TextField));

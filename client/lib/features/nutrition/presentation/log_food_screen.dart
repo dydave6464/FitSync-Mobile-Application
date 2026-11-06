@@ -4,9 +4,9 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../../core/api_exception.dart';
 import '../../../core/theme.dart';
 import '../../../core/widgets/fs_kit.dart';
-import '../../exercises/presentation/exercise_list_screen.dart' show describeError;
 import '../domain/nutrition.dart';
 import 'add_food_manually_screen.dart';
 import 'error_snack_bar.dart';
@@ -104,8 +104,9 @@ class _LogFoodScreenState extends ConsumerState<LogFoodScreen> {
       setState(() => _loadingFood = true);
       try {
         food = await ref.read(nutritionRepositoryProvider).fatsecretFood(listed.externalId!);
-      } catch (_) {
-        if (mounted) showErrorSnackBar(ScaffoldMessenger.of(context), "Couldn't load this food. Try again.");
+      } catch (e) {
+        // The server says what went wrong, and what to do instead.
+        if (mounted) showErrorSnackBar(ScaffoldMessenger.of(context), userMessage(e));
         return;
       } finally {
         if (mounted) setState(() => _loadingFood = false);
@@ -122,17 +123,19 @@ class _LogFoodScreenState extends ConsumerState<LogFoodScreen> {
     final controller = ref.read(nutritionDayProvider.notifier);
     final date = ref.read(nutritionDayProvider).value?.date;
     final onLogged = widget.onLogged;
+    final persist = MediaQuery.accessibleNavigationOf(context);
     Navigator.of(context).pop();
-    final FoodEntry saved;
-    try {
-      // Edited numbers are saved as the user's own entry; the listed food
-      // itself is never changed.
-      saved = await controller.log(choice.edited ?? food, mealType: choice.mealType, servings: choice.servings, date: date);
-    } catch (_) {
-      showErrorSnackBar(messenger, "Couldn't save — try again.");
-      return;
-    }
-    onLogged?.call(saved, date!);
+    // Edited numbers are saved as the user's own entry; the listed food
+    // itself is never changed. Try again sends the same food, meal and
+    // servings, so nothing has to be found or set twice.
+    final logged = choice.edited ?? food;
+    await saveOrOfferRetry(
+      messenger,
+      save: () => controller.log(logged, mealType: choice.mealType, servings: choice.servings, date: date),
+      failure: "Couldn't save ${logged.name}.",
+      persist: persist,
+      onSaved: (saved) => onLogged?.call(saved, date!),
+    );
   }
 
   Future<void> _manual() async {
@@ -272,7 +275,13 @@ class _LogFoodScreenState extends ConsumerState<LogFoodScreen> {
     if (_query.length < 2) return const SizedBox.shrink();
     return ref.watch(foodSearchProvider(_query)).when(
       loading: () => const Center(child: CircularProgressIndicator()),
-      error: (e, _) => _Hint(describeError(e)),
+      error: (e, _) => _LoadError(
+        message: userMessage(e),
+        // Keyed by the query, so the same words again would show the same
+        // cached error: Try again asks afresh.
+        onRetry: () => ref.invalidate(foodSearchProvider(_query)),
+        buttonKey: const Key('food.search.retry'),
+      ),
       data: (r) => _FoodList(
         foods: r.foods,
         onTap: _choose,
@@ -286,7 +295,11 @@ class _LogFoodScreenState extends ConsumerState<LogFoodScreen> {
 
   Widget _recents() => ref.watch(recentFoodsProvider).when(
     loading: () => const Center(child: CircularProgressIndicator()),
-    error: (e, _) => _Hint(describeError(e)),
+    error: (e, _) => _LoadError(
+      message: userMessage(e),
+      onRetry: () => ref.invalidate(recentFoodsProvider),
+      buttonKey: const Key('food.recents.retry'),
+    ),
     data: (foods) => _FoodList(foods: foods, onTap: _choose, empty: 'Foods you log show up here.'),
   );
 }
@@ -435,6 +448,22 @@ class _Hint extends StatelessWidget {
   Widget build(BuildContext context) => Padding(
     padding: const EdgeInsets.all(24),
     child: Text(text, textAlign: TextAlign.center, style: TextStyle(color: context.fs.text2)),
+  );
+}
+
+/// Search or Recents could not load: why, and Try again. Scrollable, so
+/// large text never overflows the space under the search box.
+class _LoadError extends StatelessWidget {
+  const _LoadError({required this.message, required this.onRetry, required this.buttonKey});
+
+  final String message;
+  final VoidCallback onRetry;
+  final Key buttonKey;
+
+  @override
+  Widget build(BuildContext context) => ListView(
+    padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 8),
+    children: [FsRetry(message: message, onRetry: onRetry, buttonKey: buttonKey)],
   );
 }
 

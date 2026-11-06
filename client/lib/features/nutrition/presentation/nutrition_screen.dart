@@ -58,12 +58,15 @@ class NutritionScreen extends ConsumerWidget {
         mealType: entry.mealType, servings: entry.servings, changing: true);
     if (choice == null || !context.mounted) return;
     final messenger = ScaffoldMessenger.of(context);
-    try {
-      await ref.read(nutritionDayProvider.notifier)
-          .change(entry, mealType: choice.mealType, servings: choice.servings, edited: choice.edited, date: date);
-    } catch (_) {
-      showErrorSnackBar(messenger, "Couldn't save — try again.");
-    }
+    final controller = ref.read(nutritionDayProvider.notifier);
+    // Try again sends the same change: the sheet's choices are not lost.
+    await saveOrOfferRetry(
+      messenger,
+      save: () => controller.change(entry,
+          mealType: choice.mealType, servings: choice.servings, edited: choice.edited, date: date),
+      failure: "Couldn't save your changes.",
+      persist: MediaQuery.accessibleNavigationOf(context),
+    );
   }
 
   /// Says where a just-logged food went, with a way to change it: the meal
@@ -121,13 +124,12 @@ class NutritionScreen extends ConsumerWidget {
       content: Text('Removed ${entry.name}'),
       action: SnackBarAction(
         label: 'Undo',
-        onPressed: () async {
-          try {
-            await controller.log(entry.asFood(), mealType: entry.mealType, servings: entry.servings, date: date);
-          } catch (_) {
-            showErrorSnackBar(messenger, "Couldn't save — try again.");
-          }
-        },
+        onPressed: () => saveOrOfferRetry(
+          messenger,
+          save: () => controller.log(entry.asFood(), mealType: entry.mealType, servings: entry.servings, date: date),
+          failure: "Couldn't put ${entry.name} back.",
+          persist: screenReader,
+        ),
       ),
     ));
   }

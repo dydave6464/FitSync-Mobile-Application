@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/rendering.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import 'package:fitsync/core/theme.dart';
@@ -99,6 +100,18 @@ void main() {
     await tester.tapAt(Offset(search.center.dx, search.top - 7));
     await tester.tapAt(Offset(search.center.dx, search.bottom + 7));
     expect(searched, 2);
+  });
+
+  testWidgets('the portion figure stays on one line at 2x text on a 360 dp phone (NU-1)', (tester) async {
+    await _pump(tester, PhotoItemCard(card: _card(), onSwap: (_) {}, onSearch: () {}, onServings: (_) {}, onRemove: () {}),
+        width: 360, scale: 2);
+    expect(tester.takeException(), isNull);
+    final lines = tester
+        .renderObject<RenderParagraph>(find.text('1.5'))
+        .getBoxesForSelection(const TextSelection(baseOffset: 0, extentOffset: 3))
+        .map((b) => b.top)
+        .toSet();
+    expect(lines, hasLength(1), reason: '"1.5" must not break over two lines');
   });
 
   testWidgets('a not-in-the-list card names the item and offers a search', (tester) async {

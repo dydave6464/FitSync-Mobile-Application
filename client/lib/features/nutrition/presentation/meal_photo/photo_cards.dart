@@ -102,10 +102,15 @@ class PhotoItemCard extends StatelessWidget {
                     onPressed: servings > minPhotoServings ? () => onServings(servings - 0.5) : null,
                     icon: const Icon(Icons.remove),
                   ),
-                  SizedBox(
-                    width: 48,
+                  // At least 48 dp; the figure shrinks rather than breaking
+                  // "1.5" over two lines at large text.
+                  ConstrainedBox(
+                    constraints: const BoxConstraints(minWidth: 48),
                     child: ExcludeSemantics(
-                      child: Text(formatServings(servings), textAlign: TextAlign.center, style: theme.textTheme.titleMedium),
+                      child: Center(
+                        widthFactor: 1,
+                        child: FsOneLine(formatServings(servings), style: theme.textTheme.titleMedium!),
+                      ),
                     ),
                   ),
                   IconButton(
