@@ -832,6 +832,15 @@ class FsStatField extends StatelessWidget {
   /// Accent border and accent digits, which the design gives goal weight.
   final bool accent;
 
+  /// The number, typed or the empty dashes: one style for both, so the
+  /// dashes sit and space exactly as a number would.
+  static const _numberStyle = TextStyle(
+    fontFamily: fsMonoFamily,
+    fontSize: 22,
+    fontWeight: FontWeight.w600,
+    letterSpacing: -0.22,
+  );
+
   @override
   Widget build(BuildContext context) {
     final t = context.fs;
@@ -894,11 +903,7 @@ class FsStatField extends StatelessWidget {
                                 : previous,
                           ),
                         ],
-                        style: TextStyle(
-                          fontFamily: fsMonoFamily,
-                          fontSize: 22,
-                          fontWeight: FontWeight.w600,
-                          letterSpacing: -0.22,
+                        style: _numberStyle.copyWith(
                           color: accent ? t.accentText : t.text,
                         ),
                         cursorColor: t.accent,
@@ -914,12 +919,7 @@ class FsStatField extends StatelessWidget {
                           hint: ExcludeSemantics(
                             child: Text(
                               '--',
-                              style: TextStyle(
-                                fontFamily: fsMonoFamily,
-                                fontSize: 22,
-                                fontWeight: FontWeight.w600,
-                                color: t.text3,
-                              ),
+                              style: _numberStyle.copyWith(color: t.text3),
                             ),
                           ),
                         ),
