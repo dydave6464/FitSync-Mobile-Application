@@ -125,6 +125,16 @@ void main() {
     expect(repo.queries, ['a' * 60]);
   });
 
+  // L-62: in the UTF-16 units the server counts, not characters.
+  testWidgets('the search stops at 60 UTF-16 units, whole characters only', (tester) async {
+    final repo = _SearchRepo();
+    await _pump(tester, repo);
+    await tester.enterText(find.byKey(const Key('food.search')), '🍚' * 40);
+    await tester.pump(const Duration(milliseconds: 300));
+    await tester.pumpAndSettle();
+    expect(repo.queries, ['🍚' * 30]);
+  });
+
   // The phone reached the server, so its connection is fine: the note says
   // the gap is temporary and what to do, without blaming the connection.
   testWidgets('FatSecret down shows a quiet note', (tester) async {

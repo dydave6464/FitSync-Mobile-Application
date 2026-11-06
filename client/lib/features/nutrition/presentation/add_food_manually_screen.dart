@@ -1,5 +1,4 @@
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../core/theme.dart';
@@ -9,6 +8,7 @@ import 'error_snack_bar.dart';
 import 'providers.dart';
 import 'widgets/meal_chips.dart';
 import 'widgets/number_box.dart';
+import 'widgets/text_limits.dart';
 
 class AddFoodManuallyScreen extends ConsumerStatefulWidget {
   const AddFoodManuallyScreen({super.key, required this.mealType, this.onLogged, this.pick = false});
@@ -107,7 +107,7 @@ class _AddFoodManuallyScreenState extends ConsumerState<AddFoodManuallyScreen> {
               hint: 'e.g. Grilled bangus',
               textCapitalization: TextCapitalization.sentences,
               // The most the server accepts, so Log never greys out unexplained.
-              inputFormatters: [LengthLimitingTextInputFormatter(_maxName)],
+              inputFormatters: const [Utf16LengthLimit(_maxName)],
               onChanged: (_) => setState(() {}),
             ),
             const SizedBox(height: 16),
@@ -122,7 +122,7 @@ class _AddFoodManuallyScreenState extends ConsumerState<AddFoodManuallyScreen> {
               fieldKey: const Key('manual.serving'),
               label: 'Serving size · optional',
               hint: 'e.g. 1 cup',
-              inputFormatters: [LengthLimitingTextInputFormatter(_maxServing)],
+              inputFormatters: const [Utf16LengthLimit(_maxServing)],
               onChanged: (_) => setState(() {}),
             ),
             const SizedBox(height: 16),

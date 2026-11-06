@@ -1,7 +1,6 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../core/api_exception.dart';
@@ -14,10 +13,12 @@ import 'meal_photo/snap_meal.dart';
 import 'providers.dart';
 import 'widgets/fatsecret_attribution.dart';
 import 'widgets/log_food_sheet.dart';
+import 'widgets/text_limits.dart';
 
 const foodSearchDebounce = Duration(milliseconds: 300);
 
-/// The server refuses a longer q with INVALID_FOOD_QUERY.
+/// The server refuses a longer q with INVALID_FOOD_QUERY, counting UTF-16
+/// units.
 const _maxQuery = 60;
 
 class LogFoodScreen extends ConsumerStatefulWidget {
@@ -65,7 +66,7 @@ class _LogFoodScreenState extends ConsumerState<LogFoodScreen> {
     super.initState();
     final q = widget.initialQuery?.trim() ?? '';
     if (q.isNotEmpty) {
-      final clipped = q.length > _maxQuery ? q.substring(0, _maxQuery).trim() : q;
+      final clipped = clipUtf16(q, _maxQuery);
       _search.text = clipped;
       _query = clipped;
     }
@@ -250,7 +251,7 @@ class _LogFoodScreenState extends ConsumerState<LogFoodScreen> {
               icon: Icons.search,
               onChanged: _onChanged,
               textInputAction: TextInputAction.search,
-              inputFormatters: [LengthLimitingTextInputFormatter(_maxQuery)],
+              inputFormatters: const [Utf16LengthLimit(_maxQuery)],
             ),
           ),
           Padding(

@@ -88,6 +88,22 @@ void main() {
     expect(find.text('go'), findsOneWidget, reason: 'back on the screen underneath');
   });
 
+  // L-62: the server counts UTF-16 units. Counting characters let 60 emoji
+  // (120 units) into a 100-unit name, and Log greyed out with no reason.
+  testWidgets('the name stops at the 100 units the server counts, so Log still works', (tester) async {
+    final repo = await _pump(tester, size: _tall);
+    await tester.enterText(find.byKey(const Key('manual.name')), '😀' * 60);
+    await tester.enterText(find.byKey(const Key('manual.carbs')), '34');
+    await tester.pump();
+    expect(tester.widget<TextField>(find.byKey(const Key('manual.name'))).controller!.text, '😀' * 50);
+    await tester.enterText(find.byKey(const Key('manual.serving')), '🥄' * 40);
+    await tester.pump();
+    expect(tester.widget<TextField>(find.byKey(const Key('manual.serving'))).controller!.text, '🥄' * 30);
+    await tester.tap(find.byKey(const Key('manual.log')));
+    await tester.pumpAndSettle();
+    expect(repo.calls.where((c) => c.startsWith('log')), hasLength(1));
+  });
+
   testWidgets('fiber is optional, logged with the food and never changes kcal', (tester) async {
     final repo = await _pump(tester, size: _tall);
     await tester.enterText(find.byKey(const Key('manual.name')), 'Turon');

@@ -7,6 +7,7 @@ import '../../domain/nutrition.dart';
 import 'fatsecret_attribution.dart';
 import 'meal_chips.dart';
 import 'number_box.dart';
+import 'text_limits.dart';
 
 class LogChoice {
   const LogChoice({required this.mealType, required this.servings, this.edited});
@@ -272,8 +273,8 @@ class _LogFoodSheetState extends State<LogFoodSheet> {
                                 source: 'manual',
                                 // A FatSecret name or serving can be longer
                                 // than a manual entry may be.
-                                name: _clip(f.name, _maxName),
-                                servingDesc: f.servingDesc == null ? null : _clip(f.servingDesc!, _maxServingDesc),
+                                name: clipUtf16(f.name, _maxName),
+                                servingDesc: f.servingDesc == null ? null : clipUtf16(f.servingDesc!, _maxServingDesc),
                                 kcal: perKcal,
                                 proteinG: p!,
                                 carbsG: c!,
@@ -303,19 +304,6 @@ const _maxServings = 20.0;
 /// (server/src/routes/nutrition.js).
 const _maxName = 100;
 const _maxServingDesc = 60;
-
-/// [text], trimmed and cut to at most [max] UTF-16 units -- what the server's
-/// length check counts -- without splitting a character, then trimmed again.
-String _clip(String text, int max) {
-  final trimmed = text.trim();
-  if (trimmed.length <= max) return trimmed;
-  final out = StringBuffer();
-  for (final ch in trimmed.characters) {
-    if (out.length + ch.length > max) break;
-    out.write(ch);
-  }
-  return out.toString().trimRight();
-}
 
 /// 4.3 -> "4.3", 28.0 -> "28": a number as someone would type it.
 String _plain(double v) => v == v.roundToDouble() ? v.toStringAsFixed(0) : v.toString();
