@@ -27,7 +27,7 @@ class StreaksScreen extends ConsumerWidget {
     final today = manilaDayOf(now());
     return Scaffold(
       backgroundColor: t.bg,
-      appBar: AppBar(title: const Text('Streaks & goals')),
+      appBar: AppBar(title: const Text('Streaks & lift goals')),
       body: ListView(
         padding: const EdgeInsets.fromLTRB(20, 8, 20, 24),
         children: [
@@ -39,12 +39,12 @@ class StreaksScreen extends ConsumerWidget {
                 child: Semantics(
                   container: true,
                   header: true,
-                  child: const FsEyebrow('Goals'),
+                  child: const FsEyebrow('Lift goals'),
                 ),
               ),
               IconButton(
                 key: const Key('streaks.goals.add'),
-                tooltip: 'Add a goal',
+                tooltip: 'Add a lift goal',
                 icon: const Icon(Icons.add),
                 onPressed: () => showAddGoalSheet(context),
               ),
@@ -247,7 +247,7 @@ class _GoalsSection extends ConsumerWidget {
             child: Center(child: CircularProgressIndicator()),
           ),
           error: (error, _) => FsRetry(
-            message: "Couldn't load your goals",
+            message: "Couldn't load your lift goals",
             buttonKey: const Key('streaks.goals.retry'),
             onRetry: () => ref.invalidate(goalsProvider),
           ),
@@ -393,11 +393,14 @@ class _NoGoals extends StatelessWidget {
       padding: const EdgeInsets.symmetric(vertical: 12),
       child: Column(
         children: [
-          Text('No goals yet', style: TextStyle(fontSize: 14, color: t.text2)),
+          Text(
+            'No lift goals yet',
+            style: TextStyle(fontSize: 14, color: t.text2),
+          ),
           const SizedBox(height: 12),
           FsButton(
             key: const Key('streaks.goals.empty.add'),
-            label: 'Add a goal',
+            label: 'Add a lift goal',
             onPressed: () => showAddGoalSheet(context),
           ),
         ],

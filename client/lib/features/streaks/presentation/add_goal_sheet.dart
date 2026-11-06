@@ -206,7 +206,7 @@ class _AddGoalSheetState extends ConsumerState<_AddGoalSheet> {
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Text(
-          'New goal',
+          'New lift goal',
           style: TextStyle(
             fontSize: 18,
             fontWeight: FontWeight.w700,

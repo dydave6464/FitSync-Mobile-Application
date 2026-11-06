@@ -136,7 +136,7 @@ void main() {
   testWidgets('lists what you have lifted, each with its best', (tester) async {
     await _open(tester);
 
-    expect(find.text('New goal'), findsOneWidget);
+    expect(find.text('New lift goal'), findsOneWidget);
     expect(find.text('LIFTED BEFORE'), findsOneWidget);
     expect(find.text('Bench Press'), findsOneWidget);
     expect(find.text('Best 52.5 kg'), findsOneWidget);
@@ -460,13 +460,13 @@ void main() {
     await tester.binding.handlePopRoute();
     await tester.pumpAndSettle();
 
-    expect(find.text('New goal'), findsOneWidget);
+    expect(find.text('New lift goal'), findsOneWidget);
     expect(find.text('LIFTED BEFORE'), findsOneWidget);
 
     // From the list, back closes the sheet as before.
     await tester.binding.handlePopRoute();
     await tester.pumpAndSettle();
-    expect(find.text('New goal'), findsNothing);
+    expect(find.text('New lift goal'), findsNothing);
   });
 
   group('a lift that already has a goal', () {
@@ -496,7 +496,7 @@ void main() {
       await tester.pumpAndSettle();
 
       expect(find.byKey(const Key('goal.target')), findsNothing);
-      expect(find.text('New goal'), findsNothing, reason: 'add sheet closed');
+      expect(find.text('New lift goal'), findsNothing, reason: 'add sheet closed');
       expect(find.text('Target 60 kg'), findsOneWidget);
       expect(find.byKey(const Key('goal.delete')), findsOneWidget);
       expect(repo.added, isEmpty);

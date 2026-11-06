@@ -156,7 +156,7 @@ void main() {
   ) async {
     await _pump(tester);
 
-    expect(find.text('Streaks & goals'), findsOneWidget);
+    expect(find.text('Streaks & lift goals'), findsOneWidget);
     expect(
       tester.widget<Text>(find.byKey(const Key('streaks.current'))).data,
       '2',
@@ -258,7 +258,7 @@ void main() {
 
     expect(repo.removed, [1]);
     expect(find.byKey(const Key('streaks.goal.1')), findsNothing);
-    expect(find.text('No goals yet'), findsOneWidget);
+    expect(find.text('No lift goals yet'), findsOneWidget);
   });
 
   group('deleting a goal can be taken back', () {
@@ -372,17 +372,20 @@ void main() {
     // Verify the goal was deleted from the repo and UI updated
     expect(repo.removed, [1]);
     expect(find.byKey(const Key('streaks.goal.1')), findsNothing);
-    expect(find.text('No goals yet'), findsOneWidget);
+    expect(find.text('No lift goals yet'), findsOneWidget);
   });
 
   testWidgets('with no goals it offers to add one', (tester) async {
     await _pump(tester, goals: const []);
 
-    expect(find.text('No goals yet'), findsOneWidget);
+    expect(find.text('No lift goals yet'), findsOneWidget);
+    // "Goals" alone is Profile's training goal, the row above this screen's.
+    expect(find.text('Add a lift goal'), findsOneWidget);
+    expect(find.byTooltip('Add a lift goal'), findsOneWidget);
     await tester.tap(find.byKey(const Key('streaks.goals.empty.add')));
     await tester.pumpAndSettle();
 
-    expect(find.text('New goal'), findsOneWidget);
+    expect(find.text('New lift goal'), findsOneWidget);
   });
 
   testWidgets("the goals section's title is a heading", (tester) async {
@@ -391,7 +394,7 @@ void main() {
 
     expect(
       tester
-          .getSemantics(find.text('GOALS'))
+          .getSemantics(find.text('LIFT GOALS'))
           .getSemanticsData()
           .flagsCollection
           .isHeader,
@@ -406,7 +409,7 @@ void main() {
     await tester.tap(find.byKey(const Key('streaks.goals.add')));
     await tester.pumpAndSettle();
 
-    expect(find.text('New goal'), findsOneWidget);
+    expect(find.text('New lift goal'), findsOneWidget);
   });
 
   testWidgets('a failed streak still shows the goals', (tester) async {
