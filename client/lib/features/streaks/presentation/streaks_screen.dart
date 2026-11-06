@@ -203,7 +203,9 @@ class _WeekDot extends StatelessWidget {
             height: 26,
             decoration: BoxDecoration(
               shape: BoxShape.circle,
-              color: day.active ? t.accent : t.surface2,
+              // accentFill: a done day is data, read for whether it is
+              // filled, so it holds 3:1 on the card's tint.
+              color: day.active ? t.accentFill : t.surface2,
               border: Border.all(
                 color: day.active
                     ? Colors.transparent

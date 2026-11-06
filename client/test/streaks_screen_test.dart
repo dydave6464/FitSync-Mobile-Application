@@ -6,7 +6,7 @@ import 'package:flutter_test/flutter_test.dart';
 
 import 'package:fitsync/core/api_exception.dart';
 import 'package:fitsync/core/theme.dart';
-import 'package:fitsync/core/widgets/fs_kit.dart' show FsRetry;
+import 'package:fitsync/core/widgets/fs_kit.dart' show FsCard, FsRetry;
 import 'package:fitsync/core/units.dart';
 import 'package:fitsync/features/profile/presentation/providers.dart'
     show weightUnitProvider;
@@ -428,4 +428,35 @@ void main() {
     expect(find.byKey(const Key('goal.delete')), findsOneWidget);
     handle.dispose();
   });
+
+  // A done day's dot is data, read for whether it is filled: accentFill,
+  // which holds 3:1 on the card's tint where the brand green (about 2.4:1
+  // there in light) does not.
+  for (final dark in [false, true]) {
+    testWidgets("a done day's dot is filled in accentFill "
+        '(${dark ? 'dark' : 'light'})', (tester) async {
+      await _pump(tester, dark: dark);
+      final t = dark ? FsTokens.dark : FsTokens.light;
+      final key = find.byKey(const Key('streaks.day.2026-09-23'));
+      final fill =
+          (tester.widget<Container>(key).decoration! as BoxDecoration).color!;
+      expect(fill, t.accentFill);
+
+      // The card's tint where the dot sits: FsCard(accent: true) fades from
+      // accent at 0.16 (top left) to 0.03 (bottom right).
+      final card = tester.getRect(
+        find.ancestor(of: key, matching: find.byType(FsCard)).first,
+      );
+      final at = tester.getCenter(key) - card.topLeft;
+      final along =
+          ((at.dx * card.width + at.dy * card.height) /
+                  (card.width * card.width + card.height * card.height))
+              .clamp(0.0, 1.0);
+      final tint = Color.alphaBlend(
+        t.accent.withValues(alpha: 0.16 + (0.03 - 0.16) * along),
+        t.bg,
+      );
+      expect(contrast(fill, tint), greaterThanOrEqualTo(3));
+    });
+  }
 }

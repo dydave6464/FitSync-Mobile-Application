@@ -256,4 +256,27 @@ void main() {
       expect(find.text('12 / 15'), findsOneWidget);
     });
   }
+
+  // The Routine screen's tick box for the same item is outlined in
+  // t.control; Home's kept the 1.4:1 hairline.
+  for (final dark in [false, true]) {
+    testWidgets('an open tick box is outlined at 3:1, as on the Routine '
+        'screen (${dark ? 'dark' : 'light'})', (tester) async {
+      await _pump(tester, _day([_habit(1, 'Stretch')]), dark: dark);
+      final t = dark ? FsTokens.dark : FsTokens.light;
+      final box = tester.widget<Container>(
+        find.descendant(
+          of: find
+              .ancestor(of: find.text('Stretch'), matching: find.byType(Row))
+              .first,
+          matching: find.byWidgetPredicate(
+            (w) => w is Container && w.constraints?.maxWidth == 20,
+          ),
+        ),
+      );
+      final border = (box.decoration! as BoxDecoration).border! as Border;
+      expect(border.top.color, t.control);
+      expect(contrast(border.top.color, t.surface), greaterThanOrEqualTo(3));
+    });
+  }
 }

@@ -109,8 +109,10 @@ class RoutineCard extends StatelessWidget {
                       decoration: BoxDecoration(
                         color: entry.done ? t.accent : Colors.transparent,
                         borderRadius: BorderRadius.circular(6),
+                        // t.control, as the Routine screen's own tick box:
+                        // the outline is what says a box is there (3:1).
                         border: Border.all(
-                          color: entry.done ? t.accent : t.line2,
+                          color: entry.done ? t.accent : t.control,
                           width: 2,
                         ),
                       ),
