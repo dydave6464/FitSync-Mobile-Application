@@ -214,6 +214,13 @@ class _HistoryList extends ConsumerWidget {
     Widget? tail;
     for (var n = 2; n <= shown; n++) {
       final next = ref.watch(olderHistoryProvider(n));
+      // Loading first, even with a value: a page refetched because page 1
+      // was still carries its old rows, cut before a newer workout moved
+      // every row down one (or from the account signed in before).
+      if (next.isLoading) {
+        tail = const _CardLoading();
+        break;
+      }
       if (next.hasError) {
         tail = FsRetry(
           message: userMessage(next.error!),
@@ -221,12 +228,7 @@ class _HistoryList extends ConsumerWidget {
         );
         break;
       }
-      final page = next.value;
-      if (page == null) {
-        tail = const _CardLoading();
-        break;
-      }
-      pages.add(page);
+      pages.add(next.requireValue);
     }
     if (tail == null && pages.last.hasMore) {
       tail = Align(

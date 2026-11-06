@@ -50,16 +50,13 @@ final restSecondsProvider = AsyncNotifierProvider<RestSecondsController, int>(
 /// could not be read -- the 90 seconds the logger always used.
 const defaultRestSeconds = 90;
 
-/// The clock the rest timer reads. A provider so widget tests can hand it the
-/// binding's fake clock, which advances with every pump; everywhere else it
-/// is the phone's.
-final restNowProvider = Provider<DateTime Function()>((ref) => DateTime.now);
-
-/// The phone's clock, which a workout's elapsed time is read from. Not
-/// [restNowProvider]: widget tests hand that one the binding's fake clock,
-/// which starts in 2015, while sessions are stamped with real times. A
-/// provider so a test can move this one on by hand.
-final wallClockProvider = Provider<DateTime Function()>((ref) => DateTime.now);
+/// The clock the logger reads: the rest timer and the workout's elapsed time.
+/// One clock, so the two can never disagree. A provider so widget tests can
+/// hand it the binding's fake clock, which advances with every pump;
+/// everywhere else it is the phone's.
+final loggerClockProvider = Provider<DateTime Function()>(
+  (ref) => DateTime.now,
+);
 
 /// The session being logged right now, or null.
 ///
@@ -233,11 +230,21 @@ final historyPagesProvider = NotifierProvider<HistoryPagesNotifier, int>(
 
 /// Page [page] (2 and on) of the same list as [sessionHistoryProvider],
 /// refetched along with it for the reason [HistoryPagesNotifier] resets.
-final olderHistoryProvider = FutureProvider.autoDispose
-    .family<SessionHistoryPage, int>((ref, page) {
-      ref.watch(sessionHistoryProvider);
-      return ref.watch(sessionRepositoryProvider).history(page: page);
-    }, retry: apiRetryPolicy);
+///
+/// Kept, not autoDispose: the list sits inside the Progress tab's ListView,
+/// which drops it once it is scrolled far away, and coming back must not
+/// fetch the pages already read again. The keys are page numbers, bounded by
+/// how far a person has read, and each is fetched afresh after page 1 is.
+/// While that refetch runs the page still carries its old rows (and, after
+/// a sign-out, the last account's), so readers treat loading as loading and
+/// never show [AsyncValue.value] then.
+final olderHistoryProvider = FutureProvider.family<SessionHistoryPage, int>((
+  ref,
+  page,
+) {
+  ref.watch(sessionHistoryProvider);
+  return ref.watch(sessionRepositoryProvider).history(page: page);
+}, retry: apiRetryPolicy);
 
 /// The workout the "+" sheet offers to repeat, or null when there is none.
 final lastWorkoutProvider = FutureProvider<LastWorkout?>(

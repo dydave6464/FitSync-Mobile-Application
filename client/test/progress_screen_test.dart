@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -91,6 +93,13 @@ class FakeSessionRepository implements SessionRepository {
   final int? total;
 
   final pagesAsked = <int>[];
+
+  /// Thrown by [history] for page 2 and on while set: the first page loads
+  /// and an older one fails.
+  Object? olderError;
+
+  /// Holds [history] for page 2 and on until completed, while set.
+  Completer<void>? olderGate;
   final TrainingAnalytics analyticsValue;
   final TrainingSummary summaryValue;
 
@@ -104,6 +113,10 @@ class FakeSessionRepository implements SessionRepository {
   Future<SessionHistoryPage> history({int page = 1, int limit = 20}) async {
     pagesAsked.add(page);
     if (error != null) throw error!;
+    if (page > 1) {
+      await olderGate?.future;
+      if (olderError != null) throw olderError!;
+    }
     return SessionHistoryPage(
       sessions: entries.skip((page - 1) * limit).take(limit).toList(),
       total: total ?? entries.length,
@@ -503,6 +516,161 @@ void main() {
       expect(find.text('Workout 23', skipOffstage: false), findsOneWidget);
       // Everything is on screen now, so there is nothing older to offer.
       expect(more, findsNothing);
+    });
+
+    Future<void> showOlder(WidgetTester tester) async {
+      // Scrolled to, not ensureVisible: on a short screen the list has not
+      // built the history yet.
+      final more = find.text('Show older workouts');
+      await tester.scrollUntilVisible(
+        more,
+        300,
+        scrollable: find.byType(Scrollable).first,
+      );
+      await tester.pumpAndSettle();
+      await tester.tap(more);
+    }
+
+    // The history is one child of the tab's ListView, which drops it once it
+    // is scrolled far enough away. The pages already read must still be
+    // there when it comes back, not fetched again behind a spinner.
+    testWidgets('scrolling far away and back does not fetch them again', (
+      tester,
+    ) async {
+      tester.view.physicalSize = const Size(360, 480);
+      tester.view.devicePixelRatio = 1;
+      addTearDown(tester.view.reset);
+      final repo = FakeSessionRepository(entries: many(23));
+      await _pump(tester, repo: repo);
+      await showOlder(tester);
+      await tester.pumpAndSettle();
+      expect(repo.pagesAsked.where((p) => p == 2), hasLength(1));
+
+      final list = find.byType(ListView).first;
+      await tester.drag(list, const Offset(0, 20000));
+      await tester.pumpAndSettle();
+      // Gone from the tree, not merely off screen.
+      expect(find.text('Workout 23', skipOffstage: false), findsNothing);
+
+      await tester.drag(list, const Offset(0, -20000));
+      await tester.pump();
+      expect(find.text('Workout 23', skipOffstage: false), findsOneWidget);
+      await tester.pumpAndSettle();
+      expect(repo.pagesAsked.where((p) => p == 2), hasLength(1));
+    });
+
+    testWidgets('an older page still on its way shows a spinner in its place', (
+      tester,
+    ) async {
+      final repo = FakeSessionRepository(entries: many(23));
+      final gate = repo.olderGate = Completer<void>();
+      await _pump(tester, repo: repo);
+      await showOlder(tester);
+      await tester.pump();
+
+      final spinner = find.byType(
+        CircularProgressIndicator,
+        skipOffstage: false,
+      );
+      expect(spinner, findsOneWidget);
+      expect(
+        find.text('Show older workouts', skipOffstage: false),
+        findsNothing,
+      );
+
+      gate.complete();
+      await tester.pumpAndSettle();
+      expect(spinner, findsNothing);
+      expect(find.text('Workout 23', skipOffstage: false), findsOneWidget);
+    });
+
+    testWidgets("an older page's failure keeps the rows and offers Try again", (
+      tester,
+    ) async {
+      final repo = FakeSessionRepository(entries: many(23))
+        ..olderError = const ApiException('NETWORK_ERROR', 'offline');
+      await _pump(tester, repo: repo);
+      await showOlder(tester);
+      await tester.pumpAndSettle();
+
+      // The first page stays; only the tail says what went wrong.
+      expect(find.text('Workout 20', skipOffstage: false), findsOneWidget);
+      expect(find.text('Workout 21', skipOffstage: false), findsNothing);
+      final again = find.text('Try again', skipOffstage: false);
+      expect(again, findsOneWidget);
+      expect(
+        find.text('Show older workouts', skipOffstage: false),
+        findsNothing,
+      );
+
+      repo.olderError = null;
+      await tester.ensureVisible(again);
+      await tester.pumpAndSettle();
+      await tester.tap(again);
+      await tester.pumpAndSettle();
+
+      expect(again, findsNothing);
+      expect(find.text('Workout 23', skipOffstage: false), findsOneWidget);
+    });
+
+    // An older page kept from before page 1 was fetched again is out of
+    // date: a newer workout pushed every row down one. Shown while its own
+    // refetch runs, it would miss the row at the page edge (or repeat one,
+    // or after a sign-out show the last account's workouts).
+    testWidgets('an older page refetched after page 1 shows a spinner, '
+        'never its old rows', (tester) async {
+      tester.view.physicalSize = const Size(360, 480);
+      tester.view.devicePixelRatio = 1;
+      addTearDown(tester.view.reset);
+      final repo = FakeSessionRepository(entries: many(23));
+      await _pump(tester, repo: repo);
+      await showOlder(tester);
+      await tester.pumpAndSettle();
+      expect(find.text('Workout 21', skipOffstage: false), findsOneWidget);
+
+      // Scrolled away, so page 2 has no listener while page 1 refreshes.
+      final list = find.byType(ListView).first;
+      await tester.drag(list, const Offset(0, 20000));
+      await tester.pumpAndSettle();
+      expect(find.text('Workout 21', skipOffstage: false), findsNothing);
+
+      repo.entries.insert(
+        0,
+        const SessionHistoryEntry(
+          sessionId: 200,
+          sessionDate: '2026-08-29',
+          setCount: 1,
+          exerciseCount: 1,
+          planName: 'Newest',
+        ),
+      );
+      final gate = repo.olderGate = Completer<void>();
+      final container = ProviderScope.containerOf(
+        tester.element(find.byType(ProgressScreen)),
+      );
+      container.invalidate(sessionHistoryProvider);
+      await tester.runAsync(
+        () => container.read(sessionHistoryProvider.future),
+      );
+      await tester.pumpAndSettle();
+
+      await tester.drag(list, const Offset(0, -20000));
+      await tester.pumpAndSettle();
+      await showOlder(tester);
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 100));
+
+      expect(find.text('Workout 21', skipOffstage: false), findsNothing);
+      expect(
+        find.byType(CircularProgressIndicator, skipOffstage: false),
+        findsOneWidget,
+      );
+
+      gate.complete();
+      await tester.pumpAndSettle();
+      for (final n in [20, 21, 22, 23]) {
+        expect(find.text('Workout $n', skipOffstage: false), findsOneWidget);
+      }
     });
 
     test('a fresh first page drops the older pages shown', () async {

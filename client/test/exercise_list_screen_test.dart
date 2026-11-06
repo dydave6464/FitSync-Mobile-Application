@@ -232,8 +232,6 @@ void main() {
     expect(find.text('Equipment'), findsNothing);
   });
 
-  // The tiles' own 4 dp inset left the rows 4 dp from the edge, under a
-  // search box and chips inset 12.
   testWidgets("a row's demo can add it to the workout", (tester) async {
     await tester.pumpWidget(harness(FakeRepository()));
     await tester.pumpAndSettle();
@@ -248,6 +246,8 @@ void main() {
     expect(find.text('Review · 1 exercise'), findsOneWidget);
   });
 
+  // The tiles' own 4 dp inset left the rows 4 dp from the edge, under a
+  // search box and chips inset 12.
   testWidgets('rows line up with the search box above them', (tester) async {
     // In the app's theme, which sets the tiles' own 4 dp inset.
     await tester.pumpWidget(
@@ -319,6 +319,53 @@ void main() {
     expect(find.byKey(const Key('equipment.option.any')), findsNothing);
     // Closing is not choosing: the filter stays as it was.
     expect(repo.lastEquipment, isNull);
+  });
+
+  // The content starts where the title starts and ends where the × ends: the
+  // search box sat at 16 and the rows' icons at 4 under a title at 18.
+  testWidgets('the equipment sheet content sits at the header inset', (
+    tester,
+  ) async {
+    await tester.pumpWidget(harness(FakeRepository()));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const Key('library.equipment')));
+    await tester.pumpAndSettle();
+
+    final sheet = tester.getRect(
+      find
+          .descendant(
+            of: find.byType(BottomSheet),
+            matching: find.byType(Material),
+          )
+          .first,
+    );
+    const inset = FsSheetHeader.sideInset;
+
+    final search = tester.getRect(
+      find.descendant(
+        of: find.byType(BottomSheet),
+        matching: find.byType(FsField),
+      ),
+    );
+    expect(search.left - sheet.left, inset, reason: 'search box start');
+    expect(sheet.right - search.right, inset, reason: 'search box end');
+
+    final any = find.byKey(const Key('equipment.option.any'));
+    final icon = tester.getRect(
+      find.descendant(of: any, matching: find.byIcon(Icons.all_inclusive)),
+    );
+    expect(icon.left - sheet.left, inset, reason: 'row icon');
+
+    final barbell = find.byKey(const Key('equipment.option.barbell'));
+    final count = tester.getRect(
+      find.descendant(
+        of: barbell,
+        matching: find.byWidgetPredicate(
+          (w) => w is Text && RegExp(r'^\d+$').hasMatch(w.data ?? ''),
+        ),
+      ),
+    );
+    expect(sheet.right - count.right, inset, reason: 'row count');
   });
 
   testWidgets('the sheet names gear the way onboarding does', (tester) async {

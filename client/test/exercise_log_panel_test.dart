@@ -1234,6 +1234,29 @@ void main() {
       handle.dispose();
     });
 
+    // The screen reader's tap and the finger's tap are one action.
+    testWidgets('a screen reader adding weight brings the column back too', (
+      tester,
+    ) async {
+      final handle = tester.ensureSemantics();
+      await tester.pumpWidget(
+        _host(
+          ExerciseLogPanel(
+            exercise: _bodyweight,
+            session: _session(),
+            drafts: _drafts(tester),
+            onUndoSet: (_) async {},
+          ),
+        ),
+      );
+
+      tester.semantics.tap(find.semantics.byLabel('Add a weight column'));
+      await tester.pumpAndSettle();
+
+      expect(find.byKey(const Key('set.1.weight')), findsOneWidget);
+      handle.dispose();
+    });
+
     // A dip belt is the exception, not the rule, so the field is asked for
     // rather than offered -- and asked for once on the exercise, because
     // nobody belts up for set 2 alone.
