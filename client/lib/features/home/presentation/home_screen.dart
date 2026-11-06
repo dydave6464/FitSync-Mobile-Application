@@ -299,7 +299,10 @@ class _Readiness extends ConsumerWidget {
           // estimate on the default 800dp test surface. An earlier day's adds
           // a "From" line, and a narrow phone can wrap the injury-risk line,
           // so either may still land a little taller.
-          loading: () => const SizedBox(height: 170),
+          loading: () => const SizedBox(
+            key: Key('home.readiness.placeholder'),
+            height: 170,
+          ),
           error: (_, _) => const SizedBox.shrink(),
           data: (overview) => Padding(
             padding: const EdgeInsets.only(bottom: 14),
@@ -375,9 +378,11 @@ class _Routine extends ConsumerWidget {
     return ref
         .watch(routineTodayProvider)
         .when(
-          // The card's with-data height (three rows plus "+N more"), measured
-          // the way _Progress's placeholder note describes.
-          loading: () => const SizedBox(height: 167),
+          // The card's with-data height (three rows, "+N more" and the
+          // streak chip, which is taller than the title alone), measured the
+          // way _Progress's placeholder note describes.
+          loading: () =>
+              const SizedBox(key: Key('home.routine.placeholder'), height: 170),
           error: (_, _) => FsRetry(
             message: "Couldn't load your routine",
             buttonKey: const Key('home.routine.retry'),

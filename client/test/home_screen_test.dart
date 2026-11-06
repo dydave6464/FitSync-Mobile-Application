@@ -237,13 +237,14 @@ class _StubProfileNotifier extends ProfileNotifier {
 }
 
 class _StubRoutine extends RoutineController {
-  _StubRoutine(this.day, this.error);
+  _StubRoutine(this.day, this.error, [this.pending]);
   final RoutineDay? day;
   final Object? error;
+  final Future<RoutineDay>? pending;
   @override
   Future<RoutineDay> build() async {
     if (error != null) throw error!;
-    return day!;
+    return pending ?? day!;
   }
 }
 
@@ -292,6 +293,8 @@ Future<void> _pumpHome(
   // from the very start.
   bool streakFailsOnRefresh = false,
   Future<TrainingSummary>? summaryFuture,
+  Future<RecoveryOverview>? recoveryFuture,
+  Future<RoutineDay>? routineFuture,
   StepPermission? stepPermission,
   bool planReady = false,
 }) async {
@@ -327,7 +330,7 @@ Future<void> _pumpHome(
         ),
         recoveryOverviewProvider.overrideWith((ref) async {
           if (recoveryError != null) throw recoveryError;
-          return recovery!;
+          return recoveryFuture ?? recovery!;
         }),
         homeSummaryProvider.overrideWith((ref) async {
           if (progressError != null) throw progressError;
@@ -338,7 +341,7 @@ Future<void> _pumpHome(
           return _defaultAnalytics;
         }),
         routineTodayProvider.overrideWith(
-          () => _StubRoutine(routine, routineError),
+          () => _StubRoutine(routine, routineError, routineFuture),
         ),
         streakProvider.overrideWith((ref) async {
           streakReads += 1;
@@ -827,6 +830,58 @@ void main() {
       summary.complete(_defaultSummary);
       await tester.pumpAndSettle();
       final card = tester.getSize(find.byKey(const Key('home.progress')));
+      expect(placeholder.height, closeTo(card.height, 1));
+    });
+
+    testWidgets('the readiness placeholder is as tall as the card and its '
+        'gap', (tester) async {
+      _tallScreen(tester);
+      final recovery = Completer<RecoveryOverview>();
+      await _pumpHome(tester, recoveryFuture: recovery.future);
+      final placeholder = tester.getSize(
+        find.byKey(const Key('home.readiness.placeholder')),
+      );
+
+      recovery.complete(_defaultRecovery);
+      await tester.pumpAndSettle();
+      final card = tester.getSize(find.byKey(const Key('home.readiness')));
+      expect(placeholder.height, closeTo(card.height + 14, 1));
+    });
+
+    testWidgets('the routine placeholder is as tall as a full routine card: '
+        'three items, "+N more" and the streak chip', (tester) async {
+      _tallScreen(tester);
+      final routine = Completer<RoutineDay>();
+      await _pumpHome(
+        tester,
+        routineFuture: routine.future,
+        streak: const Streak(current: 4, best: 4, todayActive: true, week: []),
+      );
+      final placeholder = tester.getSize(
+        find.byKey(const Key('home.routine.placeholder')),
+      );
+
+      routine.complete(
+        RoutineDay(
+          date: '2026-09-24',
+          habits: [
+            for (var i = 1; i <= 5; i++)
+              Habit(
+                habitId: i,
+                title: 'Habit $i',
+                time: '06:00',
+                durationMin: null,
+                weekdays: const [1, 2, 3, 4, 5, 6, 7],
+                done: false,
+              ),
+          ],
+          workout: null,
+        ),
+      );
+      await tester.pumpAndSettle();
+      expect(find.byKey(const Key('home.routine.streak')), findsOneWidget);
+      expect(find.byKey(const Key('home.routine.more')), findsOneWidget);
+      final card = tester.getSize(find.byKey(const Key('home.routine')));
       expect(placeholder.height, closeTo(card.height, 1));
     });
 
