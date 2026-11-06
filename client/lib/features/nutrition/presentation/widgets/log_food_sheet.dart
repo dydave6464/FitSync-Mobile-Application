@@ -70,7 +70,7 @@ class _LogFoodSheetState extends State<LogFoodSheet> {
     super.dispose();
   }
 
-  void _step(double by) => setState(() => _servings = (_servings + by).clamp(0.5, 20));
+  void _step(double by) => setState(() => _servings = (_servings + by).clamp(_minServings, _maxServings));
 
   @override
   Widget build(BuildContext context) {
@@ -149,16 +149,44 @@ class _LogFoodSheetState extends State<LogFoodSheet> {
             Row(
               children: [
                 Expanded(child: Text('Servings', style: TextStyle(color: t.text2))),
-                IconButton(key: const Key('servings.minus'), onPressed: () => _step(-0.5), icon: const Icon(Icons.remove)),
-                SizedBox(
-                  width: 48,
-                  child: Text(formatServings(_servings), textAlign: TextAlign.center, style: theme.textTheme.titleMedium),
+                IconButton(
+                  key: const Key('servings.minus'),
+                  tooltip: 'Fewer servings',
+                  onPressed: _servings > _minServings ? () => _step(-0.5) : null,
+                  icon: const Icon(Icons.remove),
                 ),
-                IconButton(key: const Key('servings.plus'), onPressed: () => _step(0.5), icon: const Icon(Icons.add)),
+                // At least 48 dp, and the figure shrinks rather than breaking
+                // "1.5" over two lines at large text. The live region below
+                // speaks it, so it is not a second, bare node.
+                ConstrainedBox(
+                  constraints: const BoxConstraints(minWidth: 48),
+                  child: ExcludeSemantics(
+                    child: Center(
+                      widthFactor: 1,
+                      child: FsOneLine(formatServings(_servings), style: theme.textTheme.titleMedium!),
+                    ),
+                  ),
+                ),
+                IconButton(
+                  key: const Key('servings.plus'),
+                  tooltip: 'More servings',
+                  onPressed: _servings < _maxServings ? () => _step(0.5) : null,
+                  icon: const Icon(Icons.add),
+                ),
               ],
             ),
             const SizedBox(height: 8),
-            Text('${(perKcal * _servings).round()} kcal', style: theme.textTheme.titleLarge),
+            // Read out after every step: how many servings and what they come
+            // to, never a bare number.
+            Semantics(
+              key: const Key('logSheet.amount'),
+              container: true,
+              liveRegion: true,
+              label: '${formatServings(_servings)} ${_servings == 1 ? 'serving' : 'servings'} · '
+                  '${(perKcal * _servings).round()} kcal',
+              excludeSemantics: true,
+              child: Text('${(perKcal * _servings).round()} kcal', style: theme.textTheme.titleLarge),
+            ),
             Text(
               'Protein ${_g(shown.p * _servings)} g · Carbs ${_g(shown.c * _servings)} g · Fat ${_g(shown.f * _servings)} g'
               '${shown.fb == null ? '' : ' · Fiber ${_g(shown.fb! * _servings)} g'}',
@@ -266,6 +294,10 @@ class _LogFoodSheetState extends State<LogFoodSheet> {
     );
   }
 }
+
+/// The fewest and most servings the sheet steps between.
+const _minServings = 0.5;
+const _maxServings = 20.0;
 
 /// The longest name and serving a manual entry may have
 /// (server/src/routes/nutrition.js).

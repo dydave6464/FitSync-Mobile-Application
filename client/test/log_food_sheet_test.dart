@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/rendering.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import 'package:fitsync/core/theme.dart';
@@ -717,6 +718,79 @@ void main() {
       await _open(tester, _rice);
       expect(find.text('Log'), findsOneWidget);
       expect(find.text('Save changes'), findsNothing);
+    });
+  });
+
+  group('servings stepper (NU-1)', () {
+    testWidgets('- and + are named for a screen reader', (tester) async {
+      final h = tester.ensureSemantics();
+      await _open(tester, _rice);
+      expect(find.byTooltip('Fewer servings'), findsOneWidget);
+      expect(find.byTooltip('More servings'), findsOneWidget);
+      await expectLater(tester, meetsGuideline(labeledTapTargetGuideline));
+      await expectLater(tester, meetsGuideline(androidTapTargetGuideline));
+      h.dispose();
+    });
+
+    testWidgets('- turns off at half a serving and + at 20', (tester) async {
+      await _open(tester, _rice);
+      IconButton button(String key) => tester.widget<IconButton>(find.byKey(Key(key)));
+      expect(button('servings.minus').onPressed, isNotNull);
+      await tester.tap(find.byKey(const Key('servings.minus')));
+      await tester.pump();
+      expect(find.text('0.5'), findsOneWidget);
+      expect(button('servings.minus').onPressed, isNull, reason: 'nothing below half a serving');
+      for (var i = 0; i < 39; i++) {
+        await tester.tap(find.byKey(const Key('servings.plus')));
+        await tester.pump();
+      }
+      expect(find.text('20'), findsOneWidget);
+      expect(button('servings.plus').onPressed, isNull, reason: 'nothing above 20 servings');
+    });
+
+    testWidgets('every step is read out as servings and kcal, from one live region', (tester) async {
+      final h = tester.ensureSemantics();
+      await _open(tester, _rice);
+      expect(
+        tester.getSemantics(find.byKey(const Key('logSheet.amount'))),
+        matchesSemantics(label: '1 serving · 205 kcal', isLiveRegion: true),
+      );
+      await tester.tap(find.byKey(const Key('servings.plus')));
+      await tester.pump();
+      expect(
+        tester.getSemantics(find.byKey(const Key('logSheet.amount'))),
+        matchesSemantics(label: '1.5 servings · 308 kcal', isLiveRegion: true),
+      );
+      // The bare figure between the buttons is not a second, contextless node.
+      expect(find.bySemanticsLabel('1.5'), findsNothing);
+      h.dispose();
+    });
+
+    testWidgets('1.5 stays on one line at 2x text on a 360 dp phone', (tester) async {
+      tester.view.physicalSize = const Size(360, 640);
+      tester.view.devicePixelRatio = 1;
+      addTearDown(tester.view.reset);
+      await tester.pumpWidget(MaterialApp(
+        builder: (context, child) => MediaQuery(
+          data: MediaQuery.of(context).copyWith(textScaler: const TextScaler.linear(2)),
+          child: child!,
+        ),
+        home: Builder(builder: (context) => Scaffold(
+          body: TextButton(
+            onPressed: () => showLogFoodSheet(context, _rice, mealType: 'lunch', servings: 1.5),
+            child: const Text('open'),
+          ),
+        )),
+      ));
+      await tester.tap(find.text('open'));
+      await tester.pumpAndSettle();
+      expect(tester.takeException(), isNull);
+      final paragraph = tester.renderObject<RenderParagraph>(find.text('1.5'));
+      final lines = paragraph
+          .getBoxesForSelection(const TextSelection(baseOffset: 0, extentOffset: 3))
+          .map((b) => b.top)
+          .toSet();
+      expect(lines, hasLength(1), reason: '"1.5" must not break over two lines');
     });
   });
 }
