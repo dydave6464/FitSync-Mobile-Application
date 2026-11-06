@@ -1,12 +1,20 @@
+import 'dart:async';
+
+import 'package:fl_chart/fl_chart.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/rendering.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import 'package:fitsync/core/api_exception.dart';
+import 'package:fitsync/core/theme.dart';
+import 'package:fitsync/features/activity/data/step_source.dart';
 import 'package:fitsync/features/activity/domain/activity.dart';
 import 'package:fitsync/features/activity/domain/step_readings.dart';
 import 'package:fitsync/features/activity/presentation/activity_screen.dart';
 import 'package:fitsync/features/activity/presentation/providers.dart';
+
+import 'helpers/a11y.dart' show contrast;
 
 ActivityDay _d(int day, int? steps) => ActivityDay(
   date: '2026-09-${day.toString().padLeft(2, '0')}', steps: steps,
@@ -35,6 +43,7 @@ Future<_StubActivity> _pump(
   WidgetTester tester,
   ActivityState state, {
   ActivityScreen screen = const ActivityScreen(),
+  bool dark = false,
 }) async {
   final stub = _StubActivity(state);
   await tester.pumpWidget(ProviderScope(
@@ -42,10 +51,45 @@ Future<_StubActivity> _pump(
       activityProvider.overrideWith(() => stub),
       liveStepsProvider.overrideWith((ref) => const Stream<int>.empty()),
     ],
-    child: MaterialApp(home: screen),
+    child: MaterialApp(theme: dark ? fsDarkTheme() : fsLightTheme(), home: screen),
   ));
   await tester.pumpAndSettle();
   return stub;
+}
+
+/// Activity whose week never arrives: a slow network.
+class _SlowActivity extends ActivityController {
+  @override
+  Future<ActivityState> build() => Completer<ActivityState>().future;
+  @override
+  Future<void> sync() async {}
+}
+
+/// The phone's own count, which needs no network; null never answers.
+class _PhoneSteps implements StepSource {
+  const _PhoneSteps(this.steps);
+  final int? steps;
+
+  @override
+  Future<DaySteps> today(DateTime now) =>
+      steps == null ? Completer<DaySteps>().future : Future.value(DaySteps(steps: steps!));
+  @override
+  Future<Map<String, int>> earlierDays(DateTime now) async => const {};
+  @override
+  Stream<int> live(DateTime now) => const Stream<int>.empty();
+}
+
+Future<void> _pumpSlow(WidgetTester tester, {int? phoneSteps}) async {
+  await tester.pumpWidget(ProviderScope(
+    overrides: [
+      stepSourceProvider.overrideWithValue(_PhoneSteps(phoneSteps)),
+      activityProvider.overrideWith(_SlowActivity.new),
+      liveStepsProvider.overrideWith((ref) => const Stream<int>.empty()),
+    ],
+    child: MaterialApp(theme: fsLightTheme(), home: const ActivityScreen()),
+  ));
+  await tester.pump();
+  await tester.pump();
 }
 
 class _RetrySyncCount {
@@ -186,5 +230,143 @@ void main() {
     await tester.pump();
 
     expect(calls.calls, 1);
+  });
+
+  for (final dark in [false, true]) {
+    testWidgets('every day of the week reads against its card (${dark ? 'dark' : 'light'})', (tester) async {
+      await _pump(
+        tester,
+        ActivityState(today: const DaySteps(steps: 6420), week: _week(), offline: false),
+        dark: dark,
+      );
+
+      final t = (dark ? fsDarkTheme() : fsLightTheme()).extension<FsTokens>()!;
+      final chart = tester.widget<BarChart>(
+        find.descendant(of: find.byKey(const Key('activity.week')), matching: find.byType(BarChart)),
+      );
+      final rods = [for (final g in chart.data.barGroups) ...g.barRods];
+      expect(rods, hasLength(7));
+      for (final rod in rods) {
+        // WCAG 1.4.11: a bar is a graphical object and needs 3:1.
+        expect(contrast(rod.color!, t.surface), greaterThanOrEqualTo(3));
+      }
+    });
+  }
+
+  testWidgets('the week chart reads each day out to a screen reader', (tester) async {
+    final semantics = tester.ensureSemantics();
+    await _pump(tester, ActivityState(today: const DaySteps(steps: 6500), week: _week(), offline: false));
+
+    // 2026-09-22 is a Tuesday. A day with no count is not called zero, and
+    // today carries the live count rather than the last synced one.
+    expect(
+      find.bySemanticsLabel(
+        'Steps this week: Tuesday, 3,000 steps; Wednesday, no steps recorded; '
+        'Thursday, 5,000 steps; Friday, 6,000 steps; Saturday, no steps recorded; '
+        'Sunday, 4,000 steps; Today, 6,500 steps',
+      ),
+      findsOneWidget,
+    );
+    semantics.dispose();
+  });
+
+  testWidgets("touching a day's bar shows its count", (tester) async {
+    await _pump(tester, ActivityState(today: const DaySteps(steps: 6420), week: _week(), offline: false));
+
+    final chart = tester.widget<BarChart>(find.byType(BarChart));
+    // FsBarChart's tooltips: what a touch shows for each bar.
+    final tooltip = chart.data.barTouchData.touchTooltipData.getTooltipItem(
+      chart.data.barGroups[0], 0, chart.data.barGroups[0].barRods[0], 0,
+    );
+    expect(tooltip!.text, 'Tuesday · 3,000 steps');
+    expect(chart.data.barTouchData.enabled, isTrue);
+  });
+
+  group('large text', () {
+    /// How many lines [text] was laid out on.
+    int lines(WidgetTester tester, String text) {
+      final paragraph = tester.renderObject<RenderParagraph>(find.text(text));
+      final boxes = paragraph.getBoxesForSelection(
+        TextSelection(baseOffset: 0, extentOffset: text.length),
+      );
+      return boxes.map((b) => b.top.round()).toSet().length;
+    }
+
+    final big = ActivityState(
+      today: const DaySteps(steps: 12345),
+      week: ActivityWeek(
+        days: [
+          _d(22, 13000), _d(23, 12000), _d(24, 15000), _d(25, 16000),
+          ActivityDay(date: '2026-09-26', steps: 14000, caloriesBurned: 1234, distanceKm: 10.52, activeMinutes: 145),
+          _d(27, 14000),
+          const ActivityDay(date: '2026-09-28', steps: 12345, caloriesBurned: 1234, distanceKm: 10.52, activeMinutes: 145),
+        ],
+        usual: 14000,
+        missing: const [],
+      ),
+      offline: false,
+    );
+
+    for (final size in const [Size(360, 640), Size(320, 568)]) {
+      testWidgets('at 2x on ${size.width.toInt()} dp nothing overflows and figures stay whole', (tester) async {
+        tester.view.physicalSize = size;
+        tester.view.devicePixelRatio = 1;
+        addTearDown(tester.view.reset);
+        tester.platformDispatcher.textScaleFactorTestValue = 2;
+        addTearDown(tester.platformDispatcher.clearTextScaleFactorTestValue);
+
+        await _pump(tester, big);
+        expect(tester.takeException(), isNull);
+
+        expect(lines(tester, '12,345'), 1, reason: 'the headline must not split mid-number');
+        for (final figure in ['1234', '10.52', '145']) {
+          expect(lines(tester, figure), 1, reason: figure);
+        }
+
+        await tester.scrollUntilVisible(find.text('This week'), 100);
+        await tester.pumpAndSettle();
+        expect(tester.takeException(), isNull);
+      });
+    }
+
+    testWidgets("at iOS's largest text the figures still stay whole", (tester) async {
+      tester.view.physicalSize = const Size(360, 640);
+      tester.view.devicePixelRatio = 1;
+      addTearDown(tester.view.reset);
+      tester.platformDispatcher.textScaleFactorTestValue = 3.1;
+      addTearDown(tester.platformDispatcher.clearTextScaleFactorTestValue);
+
+      await _pump(tester, big);
+      expect(tester.takeException(), isNull);
+
+      expect(lines(tester, '12,345'), 1);
+      for (final figure in ['1234', '10.52', '145']) {
+        expect(lines(tester, figure), 1, reason: figure);
+      }
+      await tester.scrollUntilVisible(find.text('This week'), 100);
+      await tester.pumpAndSettle();
+      expect(tester.takeException(), isNull);
+    });
+  });
+
+  group('while the week loads', () {
+    testWidgets("today's count from the phone shows at once, not a spinner", (tester) async {
+      await _pumpSlow(tester, phoneSteps: 6420);
+
+      expect(find.text('6,420'), findsOneWidget);
+      expect(find.text('steps today'), findsOneWidget);
+      expect(find.text('Loading your week…'), findsOneWidget);
+      // Not "Your usual appears after 3 days", which would be untrue.
+      expect(find.text('Your usual appears after 3 days of walking'), findsNothing);
+      expect(find.descendant(of: find.byKey(const Key('activity.kcal')), matching: find.text('—')), findsOneWidget);
+      expect(find.descendant(of: find.byKey(const Key('activity.km')), matching: find.text('—')), findsOneWidget);
+      expect(find.byType(CircularProgressIndicator), findsNothing);
+    });
+
+    testWidgets('before even the phone answers, a spinner', (tester) async {
+      await _pumpSlow(tester);
+
+      expect(find.byType(CircularProgressIndicator), findsOneWidget);
+    });
   });
 }

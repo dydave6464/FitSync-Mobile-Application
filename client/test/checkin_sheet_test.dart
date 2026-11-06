@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import 'package:flutter/rendering.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 
@@ -258,6 +259,28 @@ void main() {
     expect(find.byKey(const Key('checkin.save')), findsOneWidget);
   });
 
+  testWidgets('a failed save is spoken to a screen reader', (tester) async {
+    final semantics = tester.ensureSemantics();
+    await _open(tester, error: Exception('offline'));
+
+    await _answerAll(tester);
+    await tester.tap(find.byKey(const Key('checkin.save')));
+    await tester.pumpAndSettle();
+
+    // A live region, so TalkBack and VoiceOver read the failure out when it
+    // appears rather than leaving the user to believe it saved.
+    final error = find.text('Something went wrong. Please try again.');
+    expect(error, findsOneWidget);
+    expect(
+      tester.getSemantics(error),
+      isSemantics(
+        isLiveRegion: true,
+        label: 'Something went wrong. Please try again.',
+      ),
+    );
+    semantics.dispose();
+  });
+
   testWidgets(
     'dismissing the sheet mid-save still refreshes the overview once the '
     'save lands',
@@ -492,6 +515,179 @@ void main() {
     await tester.tap(find.byKey(const Key('checkin.save')));
     await tester.pumpAndSettle();
     expect(repo.sent, isNotNull);
+  });
+
+  group('closing with answers given', () {
+    testWidgets('back with nothing answered closes without asking', (
+      tester,
+    ) async {
+      await _open(tester);
+
+      await tester.binding.handlePopRoute();
+      await tester.pumpAndSettle();
+
+      expect(find.text('Discard your changes?'), findsNothing);
+      expect(find.text('Morning check-in'), findsNothing);
+    });
+
+    testWidgets('back asks first, and Keep editing keeps the answers', (
+      tester,
+    ) async {
+      await _open(tester);
+      await _tapKey(tester, 'checkin.sleepQuality.good');
+
+      await tester.binding.handlePopRoute();
+      await tester.pumpAndSettle();
+      expect(find.text('Discard your changes?'), findsOneWidget);
+
+      await tester.tap(find.byKey(const Key('discard.keep')));
+      await tester.pumpAndSettle();
+      expect(find.text('Morning check-in'), findsOneWidget);
+      expect(_chipSelected(tester, 'checkin.sleepQuality.good'), isTrue);
+    });
+
+    testWidgets('Discard closes the sheet without saving', (tester) async {
+      final repo = await _open(tester);
+      await _answerAll(tester);
+
+      await tester.binding.handlePopRoute();
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const Key('discard.confirm')));
+      await tester.pumpAndSettle();
+
+      expect(find.text('Morning check-in'), findsNothing);
+      expect(repo.sent, isNull);
+    });
+
+    testWidgets('a tap on the scrim asks first', (tester) async {
+      await _open(tester);
+      await _tapKey(tester, 'checkin.energy.high');
+
+      await tester.tapAt(const Offset(10, 10));
+      await tester.pumpAndSettle();
+
+      expect(find.text('Discard your changes?'), findsOneWidget);
+    });
+
+    testWidgets('a swipe down asks first rather than closing', (tester) async {
+      await _open(tester);
+      await _tapKey(tester, 'checkin.energy.high');
+
+      await tester.fling(
+        find.text('Morning check-in'),
+        const Offset(0, 300),
+        1500,
+      );
+      await tester.pumpAndSettle();
+
+      expect(find.text('Discard your changes?'), findsOneWidget);
+      await tester.tap(find.byKey(const Key('discard.keep')));
+      await tester.pumpAndSettle();
+      expect(find.text('Morning check-in'), findsOneWidget);
+      expect(_chipSelected(tester, 'checkin.energy.high'), isTrue);
+    });
+
+    testWidgets(
+      'a screen reader is not offered a scroll that opens the question',
+      (tester) async {
+        final semantics = tester.ensureSemantics();
+        await _open(tester);
+        await _tapKey(tester, 'checkin.energy.high');
+
+        // The sheet fits the test screen, so nothing in it scrolls. The
+        // swipe-down guard must not surface as scroll actions, which a
+        // screen reader's scroll gesture would run straight into the
+        // discard question.
+        final scrollable = <SemanticsNode>[];
+        void visit(SemanticsNode node) {
+          final data = node.getSemanticsData();
+          if (data.hasAction(SemanticsAction.scrollDown) ||
+              data.hasAction(SemanticsAction.scrollUp)) {
+            scrollable.add(node);
+          }
+          node.visitChildren((child) {
+            visit(child);
+            return true;
+          });
+        }
+
+        final owner = tester
+            .renderObject(find.text('Morning check-in'))
+            .owner!
+            .semanticsOwner!;
+        visit(owner.rootSemanticsNode!);
+        for (final node in scrollable) {
+          owner.performAction(node.id, SemanticsAction.scrollDown);
+          await tester.pumpAndSettle();
+        }
+
+        expect(find.text('Discard your changes?'), findsNothing);
+        expect(scrollable, isEmpty);
+        semantics.dispose();
+      },
+    );
+
+    testWidgets('a pain answer alone counts as something to lose', (
+      tester,
+    ) async {
+      await _open(tester, pending: _pending);
+      await _tapKey(tester, 'checkin.pain.none');
+
+      await tester.binding.handlePopRoute();
+      await tester.pumpAndSettle();
+
+      expect(find.text('Discard your changes?'), findsOneWidget);
+    });
+
+    testWidgets('an unchanged Update closes without asking', (tester) async {
+      await _open(
+        tester,
+        existing: const MorningCheckin(
+          checkinId: 1,
+          checkinDate: '2026-10-18',
+          sleepQuality: 'fair',
+          muscleSoreness: 'mild',
+          energy: 'very_low',
+          stress: 'moderate',
+        ),
+      );
+
+      await tester.binding.handlePopRoute();
+      await tester.pumpAndSettle();
+
+      expect(find.text('Discard your changes?'), findsNothing);
+      expect(find.text('Morning check-in'), findsNothing);
+    });
+
+    testWidgets('a changed Update asks first, and changing it back does not', (
+      tester,
+    ) async {
+      await _open(
+        tester,
+        existing: const MorningCheckin(
+          checkinId: 1,
+          checkinDate: '2026-10-18',
+          sleepQuality: 'fair',
+          muscleSoreness: 'mild',
+          energy: 'very_low',
+          stress: 'moderate',
+        ),
+      );
+      await _tapKey(tester, 'checkin.energy.high');
+
+      await tester.binding.handlePopRoute();
+      await tester.pumpAndSettle();
+      expect(find.text('Discard your changes?'), findsOneWidget);
+
+      await tester.tap(find.byKey(const Key('discard.keep')));
+      await tester.pumpAndSettle();
+      await _tapKey(tester, 'checkin.energy.very_low');
+
+      await tester.binding.handlePopRoute();
+      await tester.pumpAndSettle();
+      expect(find.text('Discard your changes?'), findsNothing);
+      expect(find.text('Morning check-in'), findsNothing);
+    });
   });
 
   group('pain row', () {

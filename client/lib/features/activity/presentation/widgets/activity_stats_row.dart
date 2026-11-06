@@ -79,7 +79,21 @@ class _Stats extends ConsumerWidget {
     return ref
         .watch(activityProvider)
         .when(
-          loading: () => const _Tiles.zero(onTap: null),
+          // The week is still on its way, but the phone already knows
+          // today's count: show it, with dashes for the estimates that need
+          // the server. Zeros would tell someone who has walked thousands
+          // that they have not.
+          loading: () {
+            final today = ref.watch(todayStepsProvider).value;
+            return _Tiles(
+              steps: today == null ? '—' : formatSteps(today.steps),
+              kcal: '—',
+              km: '—',
+              todaySteps: today?.steps ?? 0,
+              usual: null,
+              onTap: onOpen,
+            );
+          },
           error: (_, _) => _WideTile(
             key: const Key('home.activity.retry'),
             title: "Couldn't load your steps",
