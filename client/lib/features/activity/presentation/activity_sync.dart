@@ -4,8 +4,9 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../data/step_permission.dart';
 import 'providers.dart';
 
-/// Every resume: re-check the permission (it may have changed in Settings)
-/// and, when counting is on, save the day. DayRollover only acts on a new
+/// Every resume: move the live count onto a new Manila day if the clock has
+/// one, re-check the permission (it may have changed in Settings) and, when
+/// counting is on, save the day. DayRollover only acts on a new
 /// day, so this is its own listener -- as the Reminders screen
 /// (reminders_screen.dart) has its own AppLifecycleListener; ReminderSync
 /// does not listen for resumes.
@@ -29,6 +30,9 @@ class _ActivitySyncState extends ConsumerState<ActivitySync> {
 
   Future<void> _onResume() async {
     if (!mounted) return;
+    // After a night in the background, the live count starts again from
+    // the new midnight.
+    ref.read(stepsDayProvider.notifier).refresh();
     ref.invalidate(stepAccessProvider);
     final access = await ref.read(stepAccessProvider.future);
     if (!mounted || access != StepAccess.granted) return;
