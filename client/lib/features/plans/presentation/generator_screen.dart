@@ -143,7 +143,7 @@ class _GeneratorScreenState extends ConsumerState<GeneratorScreen> {
       if (error.code != 'CUSTOM_PLAN_WOULD_BE_LOST') {
         if (!mounted) return;
         setState(() => _busy = false);
-        messenger.showSnackBar(SnackBar(content: Text(error.message)));
+        messenger.showSnackBar(SnackBar(content: Text(userMessage(error))));
         return;
       }
       // Reset before the dialog, not after: nothing has actually started

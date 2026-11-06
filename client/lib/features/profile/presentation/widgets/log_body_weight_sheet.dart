@@ -80,7 +80,7 @@ class _LogBodyWeightSheetState extends ConsumerState<_LogBodyWeightSheet> {
     } on ApiException catch (error) {
       if (!mounted) return;
       setState(() {
-        _error = error.message;
+        _error = userMessage(error);
         _busy = false;
       });
       return;
@@ -168,11 +168,7 @@ class _LogBodyWeightSheetState extends ConsumerState<_LogBodyWeightSheet> {
               ),
               if (_error != null) ...[
                 const SizedBox(height: 10),
-                Text(
-                  _error!,
-                  key: const Key('bodyWeight.error'),
-                  style: TextStyle(fontSize: 12.5, color: t.red),
-                ),
+                FsErrorLine(_error!, key: const Key('bodyWeight.error')),
               ],
               const SizedBox(height: 16),
               FsButton(

@@ -775,6 +775,26 @@ void main() {
     expect(find.textContaining('Finish or discard'), findsOneWidget);
   });
 
+  testWidgets('a broken reply is reported in plain words', (tester) async {
+    final repo = FakePlanRepository(
+      error: const ApiException(
+        'INVALID_RESPONSE',
+        'Server returned a non-JSON body (HTTP 502).',
+      ),
+    );
+    await _pump(tester, plan: _pplPlan, repo: repo);
+
+    await tester.tap(find.byKey(const Key('gen.generate')));
+    await tester.pumpAndSettle();
+
+    expect(
+      find.text('Something went wrong on our side. Please try again.'),
+      findsOneWidget,
+    );
+    expect(find.textContaining('HTTP'), findsNothing);
+    expect(find.textContaining('adb'), findsNothing);
+  });
+
   testWidgets('a failed generation leaves the screen open', (tester) async {
     final repo = FakePlanRepository(
       error: const ApiException(
