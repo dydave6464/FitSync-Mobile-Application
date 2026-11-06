@@ -11,7 +11,8 @@ import '../../domain/nutrition.dart';
 class MealChips extends StatelessWidget {
   const MealChips({super.key, required this.selected, required this.onSelected, required this.keyPrefix});
 
-  final String selected;
+  /// Null: no meal picked yet.
+  final String? selected;
   final ValueChanged<String> onSelected;
   final String keyPrefix;
 
@@ -26,6 +27,8 @@ class MealChips extends StatelessWidget {
             key: Key('$keyPrefix.$m'),
             label: mealLabel(m),
             selected: selected == m,
+            // One meal or another: heard as a radio group, not four toggles.
+            exclusive: true,
             onTap: () => onSelected(m),
           ),
       ],

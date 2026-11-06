@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../../core/manila_day.dart';
 import '../../../core/theme.dart';
 import '../../../core/widgets/fs_kit.dart';
 import '../domain/nutrition.dart';
@@ -9,6 +9,7 @@ import 'error_snack_bar.dart';
 import 'providers.dart';
 import 'widgets/meal_chips.dart';
 import 'widgets/number_box.dart';
+import 'widgets/text_limits.dart';
 
 class AddFoodManuallyScreen extends ConsumerStatefulWidget {
   const AddFoodManuallyScreen({super.key, required this.mealType, this.onLogged, this.pick = false});
@@ -58,12 +59,15 @@ class _AddFoodManuallyScreenState extends ConsumerState<AddFoodManuallyScreen> {
   Widget build(BuildContext context) {
     final t = context.fs;
     final theme = Theme.of(context);
+    // The day the food goes to, named when it is not today (NU-7).
+    final date = ref.watch(nutritionDayProvider).value?.date;
+    final today = manilaDayOf(ref.watch(nutritionClockProvider)());
     final p = _grams(_protein), c = _grams(_carbs), f = _grams(_fat);
     final fiber = _optionalNumber(_fiber);
     final sugar = _optionalNumber(_sugar), sodium = _optionalNumber(_sodium);
-    final gramsOk = [p, c, f].every((g) => g != null && g >= 0 && g <= 500) &&
-        [fiber, sugar].every((g) => g == null || (g >= 0 && g <= 500));
-    final sodiumOk = sodium == null || (sodium >= 0 && sodium <= 20000);
+    final gramsOk = [p, c, f].every((g) => g != null && inGramsRange(g)) &&
+        [fiber, sugar].every((g) => g == null || inGramsRange(g));
+    final sodiumOk = sodium == null || inSodiumRange(sodium);
     final kcal = gramsOk ? manualKcal(p!, c!, f!) : null;
     final name = _name.text.trim();
     final valid = name.isNotEmpty && name.length <= _maxName && _serving.text.trim().length <= _maxServing
@@ -107,12 +111,12 @@ class _AddFoodManuallyScreenState extends ConsumerState<AddFoodManuallyScreen> {
               hint: 'e.g. Grilled bangus',
               textCapitalization: TextCapitalization.sentences,
               // The most the server accepts, so Log never greys out unexplained.
-              inputFormatters: [LengthLimitingTextInputFormatter(_maxName)],
+              inputFormatters: const [Utf16LengthLimit(_maxName)],
               onChanged: (_) => setState(() {}),
             ),
             const SizedBox(height: 16),
             if (!widget.pick) ...[
-              const FsEyebrow('Meal'),
+              FsEyebrow(date == null || date == today ? 'Meal' : 'Meal · ${dayLabel(date, today)}', maxLines: 2),
               const SizedBox(height: 6),
               MealChips(keyPrefix: 'manual.meal', selected: _meal, onSelected: (m) => setState(() => _meal = m)),
               const SizedBox(height: 16),
@@ -122,11 +126,11 @@ class _AddFoodManuallyScreenState extends ConsumerState<AddFoodManuallyScreen> {
               fieldKey: const Key('manual.serving'),
               label: 'Serving size · optional',
               hint: 'e.g. 1 cup',
-              inputFormatters: [LengthLimitingTextInputFormatter(_maxServing)],
+              inputFormatters: const [Utf16LengthLimit(_maxServing)],
               onChanged: (_) => setState(() {}),
             ),
             const SizedBox(height: 16),
-            Text('Macros · per serving', style: theme.textTheme.titleSmall),
+            Semantics(header: true, child: const FsEyebrow('Macros · per serving')),
             const SizedBox(height: 8),
             // Two rows of two, not one row of four: four boxes in a row
             // overflow a narrow phone at large text.

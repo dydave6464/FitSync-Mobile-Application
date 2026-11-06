@@ -3,13 +3,24 @@ import 'package:flutter/rendering.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 
+import 'package:fitsync/core/theme.dart';
 import 'package:fitsync/core/widgets/fs_kit.dart';
 import 'package:fitsync/features/nutrition/presentation/add_food_manually_screen.dart';
 import 'package:fitsync/features/nutrition/presentation/providers.dart';
 
 import 'nutrition_controller_test.dart' show FakeNutritionRepository;
 
-Future<FakeNutritionRepository> _pump(WidgetTester tester, {Size? size, double textScale = 1}) async {
+/// The Nutrition tab turned back to [date].
+class _OnDay extends NutritionDateController {
+  _OnDay(this.date);
+
+  final String date;
+
+  @override
+  String? build() => date;
+}
+
+Future<FakeNutritionRepository> _pump(WidgetTester tester, {Size? size, double textScale = 1, String? day}) async {
   final repo = FakeNutritionRepository();
   if (size != null) {
     tester.view.physicalSize = size;
@@ -20,6 +31,7 @@ Future<FakeNutritionRepository> _pump(WidgetTester tester, {Size? size, double t
     overrides: [
       nutritionRepositoryProvider.overrideWithValue(repo),
       nutritionClockProvider.overrideWithValue(() => DateTime.utc(2026, 10, 14, 4)),
+      if (day != null) nutritionDateProvider.overrideWith(() => _OnDay(day)),
     ],
     child: MaterialApp(
       builder: (context, child) => MediaQuery(
@@ -85,6 +97,33 @@ void main() {
     await tester.pumpAndSettle();
     expect(repo.calls, contains('log 2026-10-14 snack Turon x1.0'));
     expect(find.text('go'), findsOneWidget, reason: 'back on the screen underneath');
+  });
+
+  // L-62: the server counts UTF-16 units. Counting characters let 60 emoji
+  // (120 units) into a 100-unit name, and Log greyed out with no reason.
+  testWidgets('the name stops at the 100 units the server counts, so Log still works', (tester) async {
+    final repo = await _pump(tester, size: _tall);
+    await tester.enterText(find.byKey(const Key('manual.name')), '😀' * 60);
+    await tester.enterText(find.byKey(const Key('manual.carbs')), '34');
+    await tester.pump();
+    expect(tester.widget<TextField>(find.byKey(const Key('manual.name'))).controller!.text, '😀' * 50);
+    await tester.enterText(find.byKey(const Key('manual.serving')), '🥄' * 40);
+    await tester.pump();
+    expect(tester.widget<TextField>(find.byKey(const Key('manual.serving'))).controller!.text, '🥄' * 30);
+    await tester.tap(find.byKey(const Key('manual.log')));
+    await tester.pumpAndSettle();
+    expect(repo.calls.where((c) => c.startsWith('log')), hasLength(1));
+  });
+
+  // NU-7: the day the food goes to is named when it is not today.
+  testWidgets("the meal's eyebrow names a past day", (tester) async {
+    await _pump(tester, size: _tall, day: '2026-10-11');
+    expect(find.text('MEAL · SUN, OCT 11'), findsOneWidget);
+  });
+
+  testWidgets("today's meal eyebrow is just Meal", (tester) async {
+    await _pump(tester, size: _tall);
+    expect(find.text('MEAL'), findsOneWidget);
   });
 
   testWidgets('fiber is optional, logged with the food and never changes kcal', (tester) async {
@@ -186,10 +225,43 @@ void main() {
 
   testWidgets('the Fiber, Sugar and Sodium boxes are labelled and the six boxes fit a 320 dp phone at large text', (tester) async {
     await _pump(tester, size: const Size(320, 900), textScale: 1.6);
-    expect(find.text('Fiber (g)'), findsOneWidget);
-    expect(find.text('Sugar (g)'), findsOneWidget);
-    expect(find.text('Sodium (mg)'), findsOneWidget);
+    expect(find.text('FIBER (G)'), findsOneWidget);
+    expect(find.text('SUGAR (G)'), findsOneWidget);
+    expect(find.text('SODIUM (MG)'), findsOneWidget);
     expect(tester.takeException(), isNull);
+  });
+
+  // L-66: named as every other field in the app is, by an eyebrow above it
+  // (the label rule in fs_kit), and still heard by that name. Two boxes
+  // share a row, so at large text the eyebrow takes a second line rather
+  // than being cut.
+  testWidgets('each number box is named by an eyebrow, never cut at large text', (tester) async {
+    final h = tester.ensureSemantics();
+    await _pump(tester, size: const Size(320, 1400), textScale: 2);
+    for (final (key, label) in [
+      ('manual.protein', 'Protein (g)'), ('manual.carbs', 'Carbs (g)'), ('manual.fat', 'Fat (g)'),
+      ('manual.fiber', 'Fiber (g)'), ('manual.sugar', 'Sugar (g)'), ('manual.sodium', 'Sodium (mg)'),
+    ]) {
+      final eyebrow = find.text(label.toUpperCase());
+      expect(eyebrow, findsOneWidget, reason: label);
+      expect(tester.widget<Text>(eyebrow).style?.fontFamily, fsMonoFamily, reason: label);
+      final paragraph = tester.renderObject<RenderParagraph>(eyebrow);
+      expect(paragraph.didExceedMaxLines, isFalse, reason: '$label is cut');
+      expect(tester.getSemantics(find.byKey(Key(key))).label, startsWith(label), reason: label);
+    }
+    expect(tester.takeException(), isNull);
+    h.dispose();
+  });
+
+  // The prototype's eyebrow, not Material's titleSmall (NU-17), and heard
+  // as the heading of the boxes under it.
+  testWidgets("'Macros · per serving' is an eyebrow heading", (tester) async {
+    final h = tester.ensureSemantics();
+    await _pump(tester, size: _tall);
+    expect(find.text('Macros · per serving'), findsNothing);
+    expect(find.text('MACROS · PER SERVING'), findsOneWidget);
+    expect(tester.getSemantics(find.text('MACROS · PER SERVING')), isSemantics(isHeader: true));
+    h.dispose();
   });
 
   group('back with something typed (NU-3)', () {
@@ -330,7 +402,7 @@ void main() {
     repo.failNext = true;
     await tester.tap(find.byKey(const Key('manual.log')));
     await tester.pumpAndSettle();
-    expect(find.text("Couldn't save Turon."), findsOneWidget);
+    expect(find.text("Couldn't save Turon. Couldn't reach FitSync. Check your connection and try again."), findsOneWidget);
 
     await tester.tap(find.text('Try again'));
     await tester.pumpAndSettle();

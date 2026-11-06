@@ -47,6 +47,15 @@ String logButtonLabel(int n) => switch (n) {
   _ => 'Log $n items',
 };
 
+/// How many meal photos are left today, once few are (at most 5), so the
+/// daily limit is no surprise; null while there are plenty.
+String? photosLeftText(int n) => switch (n) {
+  > 5 => null,
+  <= 0 => 'No meal photos left today',
+  1 => '1 photo left today',
+  _ => '$n photos left today',
+};
+
 /// Snap a meal once the photo is taken: analysing, then the confirm list --
 /// or what went wrong, with a way on. Pops true once the meal is logged.
 class MealPhotoScreen extends ConsumerStatefulWidget {
@@ -64,14 +73,17 @@ class MealPhotoScreen extends ConsumerStatefulWidget {
   /// Where the photo came from, so Retake goes back there.
   final PhotoSource source;
 
-  /// The meal it opens on: Log food's meal, or the time of day's.
-  final String mealType;
+  /// The meal it opens on: Log food's meal, or the time of day's. Null on a
+  /// past day from the Nutrition tab, where the clock says nothing: the
+  /// user picks one before Log.
+  final String? mealType;
 
   /// The day it logs to; null is today in Manila.
   final String? date;
 
-  /// "Search instead", with this screen's context and the meal chosen here.
-  final void Function(BuildContext context, String mealType) onSearchInstead;
+  /// "Search instead", with this screen's context and the meal chosen here,
+  /// if any.
+  final void Function(BuildContext context, String? mealType) onSearchInstead;
 
   @override
   ConsumerState<MealPhotoScreen> createState() => _MealPhotoScreenState();
@@ -81,7 +93,7 @@ enum _Phase { analysing, failed, confirm }
 
 class _MealPhotoScreenState extends ConsumerState<MealPhotoScreen> {
   late PickedPhoto _photo = widget.photo;
-  late String _meal = widget.mealType;
+  late String? _meal = widget.mealType;
   _Phase _phase = _Phase.analysing;
   PhotoProblem? _problem;
   PhotoRecognition? _recognition;
@@ -98,6 +110,12 @@ class _MealPhotoScreenState extends ConsumerState<MealPhotoScreen> {
   /// Completed when the screen goes away: drops a photo still being looked
   /// at, so the server stops and does not count it.
   Completer<void>? _cancel;
+
+  /// The answer can take up to 45 s: after [_slowAfter] the wait says so,
+  /// once, so it does not look stuck.
+  static const _slowAfter = Duration(seconds: 8);
+  Timer? _slowTimer;
+  bool _slow = false;
 
   ScaffoldMessengerState? _messenger;
   int _undoToken = 0;
@@ -117,6 +135,7 @@ class _MealPhotoScreenState extends ConsumerState<MealPhotoScreen> {
 
   @override
   void dispose() {
+    _slowTimer?.cancel();
     // A "Removed … · Undo" left up would act on a screen that is gone.
     if (_undoShowing) _messenger?.hideCurrentSnackBar();
     // Has no effect once the answer has arrived.
@@ -131,9 +150,15 @@ class _MealPhotoScreenState extends ConsumerState<MealPhotoScreen> {
     final previous = _cancel;
     if (previous != null && !previous.isCompleted) previous.complete();
     final cancel = _cancel = Completer<void>();
+    _slow = false;
+    _slowTimer?.cancel();
+    _slowTimer = Timer(_slowAfter, () {
+      if (mounted && attempt == _attempt) setState(() => _slow = true);
+    });
     try {
       final r = await ref.read(mealPhotoRepositoryProvider).recognize(_photo.bytes, _photo.mimeType, cancel: cancel.future);
       if (!mounted || attempt != _attempt) return;
+      _slowTimer?.cancel();
       setState(() {
         _recognition = r;
         if (r.isEmpty) {
@@ -150,6 +175,7 @@ class _MealPhotoScreenState extends ConsumerState<MealPhotoScreen> {
       });
     } catch (e) {
       if (!mounted || attempt != _attempt) return;
+      _slowTimer?.cancel();
       if (e is ApiException && e.code == 'PRO_REQUIRED') {
         final navigator = Navigator.of(context);
         navigator.pop(false);
@@ -221,27 +247,28 @@ class _MealPhotoScreenState extends ConsumerState<MealPhotoScreen> {
 
   /// A card's Search: Log food's search, started from the card's name.
   Future<void> _searchFor(DraftCard card) async {
-    final picked = await pickFood(context, mealType: _meal, query: searchNameOf(card.label));
+    final picked = await pickFood(context, query: searchNameOf(card.label));
     if (picked == null || !mounted) return;
     setState(() => card.replaceWith(picked));
   }
 
   Future<void> _add() async {
-    final picked = await pickFood(context, mealType: _meal);
+    final picked = await pickFood(context);
     if (picked == null || !mounted) return;
     setState(() => _cards.add(DraftCard.added(picked, id: _nextCardId++)));
   }
 
   Future<void> _log() async {
     final items = logItemsOf(_cards);
-    if (items.isEmpty || _logging) return;
+    final meal = _meal;
+    if (items.isEmpty || meal == null || _logging) return;
     setState(() => _logging = true);
     final messenger = ScaffoldMessenger.of(context);
     final navigator = Navigator.of(context);
     // Kept across the await: the screen may be gone when the answer comes.
     final container = ProviderScope.containerOf(context, listen: false);
-    final date = widget.date ?? manilaDayOf(ref.read(nutritionClockProvider)());
-    final meal = _meal;
+    final today = manilaDayOf(ref.read(nutritionClockProvider)());
+    final date = widget.date ?? today;
     final int n;
     try {
       n = await ref.read(mealPhotoRepositoryProvider).log(
@@ -251,7 +278,7 @@ class _MealPhotoScreenState extends ConsumerState<MealPhotoScreen> {
       if (e is ApiException && e.code == 'ALREADY_LOGGED') {
         // An earlier Log reached the server but its answer was lost (a
         // timeout, a dropped connection): the meal is logged, as sent then.
-        _logged(container, messenger, navigator, items.length, meal);
+        _logged(container, messenger, navigator, items.length, meal, onDay(date, today));
         return;
       }
       // The log is all or nothing, but the server may have saved it before
@@ -263,29 +290,41 @@ class _MealPhotoScreenState extends ConsumerState<MealPhotoScreen> {
       showErrorSnackBar(messenger, describeError(e));
       return;
     }
-    _logged(container, messenger, navigator, n, meal);
+    _logged(container, messenger, navigator, n, meal, onDay(date, today));
   }
 
   /// The meal is logged: Nutrition and Recent reload, the screen closes,
-  /// and a snack bar says how many items went to which meal.
-  void _logged(ProviderContainer container, ScaffoldMessengerState messenger, NavigatorState navigator, int n, String meal) {
+  /// and a snack bar says how many items went to which meal -- and [day]
+  /// (see `onDay`), when it was not today.
+  void _logged(
+    ProviderContainer container,
+    ScaffoldMessengerState messenger,
+    NavigatorState navigator,
+    int n,
+    String meal,
+    String day,
+  ) {
     container.invalidate(nutritionDayProvider);
     container.invalidate(recentFoodsProvider);
     _undoShowing = false;
     if (mounted) navigator.pop(true);
     messenger.hideCurrentSnackBar();
-    messenger.showSnackBar(SnackBar(content: Text('Logged $n ${n == 1 ? 'item' : 'items'} to ${mealLabel(meal).toLowerCase()}')));
+    messenger.showSnackBar(SnackBar(content: Text('Logged $n ${n == 1 ? 'item' : 'items'} to ${mealLabel(meal).toLowerCase()}$day')));
   }
 
   @override
   Widget build(BuildContext context) {
     final t = context.fs;
     final toLog = logItemsOf(_cards).length;
+    // No meal yet (a past day): the button says what is missing.
+    final noMeal = _meal == null;
     // Back from the confirm list asks first: the server has already
     // counted this photo, and the photo is not kept, so the list cannot
     // come back without another one.
     return FsDiscardGuard(
       dirty: _phase == _Phase.confirm && !_logging,
+      // Nothing was typed here, so "your changes" would not fit.
+      title: 'Leave without logging?',
       message: "This photo still counts toward today's limit.",
       child: PopScope(
         // Leaving mid-log would hide whether the meal was saved.
@@ -298,9 +337,9 @@ class _MealPhotoScreenState extends ConsumerState<MealPhotoScreen> {
                   minimum: const EdgeInsets.fromLTRB(20, 0, 20, 16),
                   child: FsButton(
                     key: const Key('snap.log'),
-                    label: logButtonLabel(toLog),
+                    label: noMeal ? 'Pick a meal' : logButtonLabel(toLog),
                     busy: _logging,
-                    onPressed: toLog == 0 ? null : _log,
+                    onPressed: toLog == 0 || noMeal ? null : _log,
                   ),
                 ),
           body: ListView(
@@ -333,7 +372,11 @@ class _MealPhotoScreenState extends ConsumerState<MealPhotoScreen> {
         Semantics(
           key: const Key('snap.analysing'),
           liveRegion: true,
-          child: Text('Looking at your meal…', textAlign: TextAlign.center, style: Theme.of(context).textTheme.titleMedium),
+          child: Text(
+            _slow ? 'Still looking — this can take up to half a minute.' : 'Looking at your meal…',
+            textAlign: TextAlign.center,
+            style: Theme.of(context).textTheme.titleMedium,
+          ),
         ),
         const SizedBox(height: 8),
         TextButton(
@@ -379,6 +422,12 @@ class _MealPhotoScreenState extends ConsumerState<MealPhotoScreen> {
     );
   }
 
+  String _mealHeading() {
+    final today = manilaDayOf(ref.read(nutritionClockProvider)());
+    final date = widget.date ?? today;
+    return date == today ? 'Meal' : 'Meal · ${dayLabel(date, today)}';
+  }
+
   Widget _confirm(BuildContext context) {
     final t = context.fs;
     final note = TextStyle(color: t.text2, fontSize: 12, height: 1.5);
@@ -394,8 +443,13 @@ class _MealPhotoScreenState extends ConsumerState<MealPhotoScreen> {
               const Expanded(child: FsEyebrow('AI suggests · check before logging', maxLines: 3)),
             ],
           ),
+          if (photosLeftText(_recognition!.remainingToday) case final left?) ...[
+            const SizedBox(height: 4),
+            Text(left, key: const Key('snap.left'), style: TextStyle(color: t.text2, fontSize: 12)),
+          ],
           const SizedBox(height: 16),
-          Text('Meal', style: TextStyle(color: t.text2, fontSize: 12)),
+          // The day too, when it is not today (NU-7).
+          FsEyebrow(_mealHeading(), maxLines: 2),
           const SizedBox(height: 6),
           MealChips(keyPrefix: 'snap.meal', selected: _meal, onSelected: (m) => setState(() => _meal = m)),
           const SizedBox(height: 16),

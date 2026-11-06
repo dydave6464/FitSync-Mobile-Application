@@ -1,10 +1,10 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../core/api_exception.dart';
+import '../../../core/manila_day.dart';
 import '../../../core/theme.dart';
 import '../../../core/widgets/fs_kit.dart';
 import '../domain/nutrition.dart';
@@ -14,10 +14,12 @@ import 'meal_photo/snap_meal.dart';
 import 'providers.dart';
 import 'widgets/fatsecret_attribution.dart';
 import 'widgets/log_food_sheet.dart';
+import 'widgets/text_limits.dart';
 
 const foodSearchDebounce = Duration(milliseconds: 300);
 
-/// The server refuses a longer q with INVALID_FOOD_QUERY.
+/// The server refuses a longer q with INVALID_FOOD_QUERY, counting UTF-16
+/// units.
 const _maxQuery = 60;
 
 class LogFoodScreen extends ConsumerStatefulWidget {
@@ -44,9 +46,13 @@ class LogFoodScreen extends ConsumerStatefulWidget {
 /// FitSync, FatSecret or manual one, per serving) comes back, or null. Snap a
 /// meal's Search and "+ Add an item" use it; [query] is typed in and searched
 /// at once.
-Future<Food?> pickFood(BuildContext context, {required String mealType, String? query}) =>
+/// No meal is asked for: the confirm screen picks it, and choosing shows
+/// none.
+Future<Food?> pickFood(BuildContext context, {String? query}) =>
     Navigator.of(context).push<Food>(MaterialPageRoute(
-      builder: (_) => LogFoodScreen(mealType: mealType, pick: true, initialQuery: query),
+      // Unused when choosing: neither this screen nor Add manually shows a
+      // meal then.
+      builder: (_) => LogFoodScreen(mealType: mealTypes.first, pick: true, initialQuery: query),
     ));
 
 class _LogFoodScreenState extends ConsumerState<LogFoodScreen> {
@@ -65,7 +71,7 @@ class _LogFoodScreenState extends ConsumerState<LogFoodScreen> {
     super.initState();
     final q = widget.initialQuery?.trim() ?? '';
     if (q.isNotEmpty) {
-      final clipped = q.length > _maxQuery ? q.substring(0, _maxQuery).trim() : q;
+      final clipped = clipUtf16(q, _maxQuery);
       _search.text = clipped;
       _query = clipped;
     }
@@ -161,7 +167,7 @@ class _LogFoodScreenState extends ConsumerState<LogFoodScreen> {
       // Log food is right behind the photo screen: going back is the search,
       // for the meal the photo screen had.
       onSearchInstead: (photoContext, meal) {
-        if (mounted) setState(() => _meal = meal);
+        if (mounted && meal != null) setState(() => _meal = meal);
         Navigator.of(photoContext).pop(false);
       },
     );
@@ -171,6 +177,13 @@ class _LogFoodScreenState extends ConsumerState<LogFoodScreen> {
   @override
   Widget build(BuildContext context) {
     final t = context.fs;
+    // The day the food goes to, named when it is not today (NU-7): "Adding
+    // to yesterday", "Adding to Oct 14". Short, with no dot or weekday, so
+    // it stays one line on a 320 dp phone at 2x text: a second line pushed
+    // the first food behind the bottom bar.
+    final date = ref.watch(nutritionDayProvider).value?.date;
+    final today = manilaDayOf(ref.watch(nutritionClockProvider)());
+    final adding = date == null || date == today ? 'Adding to' : 'Adding to ${shortDayLabel(date, today)}';
     return Scaffold(
       backgroundColor: t.bg,
       appBar: AppBar(title: Text(widget.pick ? 'Choose a food' : 'Log food')),
@@ -234,7 +247,7 @@ class _LogFoodScreenState extends ConsumerState<LogFoodScreen> {
                   crossAxisAlignment: WrapCrossAlignment.center,
                   spacing: 10,
                   children: [
-                    const FsEyebrow('Adding to'),
+                    FsEyebrow(adding, maxLines: 2),
                     _MealPicker(meal: _meal, onPicked: (m) => setState(() => _meal = m)),
                   ],
                 ),
@@ -250,7 +263,7 @@ class _LogFoodScreenState extends ConsumerState<LogFoodScreen> {
               icon: Icons.search,
               onChanged: _onChanged,
               textInputAction: TextInputAction.search,
-              inputFormatters: [LengthLimitingTextInputFormatter(_maxQuery)],
+              inputFormatters: const [Utf16LengthLimit(_maxQuery)],
             ),
           ),
           Padding(
