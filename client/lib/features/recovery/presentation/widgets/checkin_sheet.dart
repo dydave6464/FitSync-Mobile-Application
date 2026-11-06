@@ -277,8 +277,8 @@ class _CheckinSheetState extends ConsumerState<_CheckinSheet> {
     if (_busy) return;
     // Captured before the awaits for the same reason as generator_screen's
     // _generate and session_logger_screen's _addToPlan: the discard guard
-    // stands down while a save is in flight, so the sheet can be swiped
-    // away while a request is still in flight. ref would throw
+    // stands down during a save, so the sheet can still be swiped away
+    // while the request is in flight. ref would throw
     // against a disposed State -- the container outlives the widget, so the
     // refresh still lands even when the sheet is already gone, which is what
     // should happen: the check-in really did save. The messenger is the
