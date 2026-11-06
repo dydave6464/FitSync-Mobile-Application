@@ -158,10 +158,12 @@ class Food {
   /// unchanged -- a kept-kcal beer stays 129, not 4·4·9's 47.
   final int? entryId;
 
-  /// For a food typed in Add manually: the calories per serving from its
-  /// label, which the server saves in place of 4·4·9. Never read from the
-  /// server. When set, [kcal] is this too, so previews and Snap a meal's
-  /// totals match what is saved.
+  /// For a manual food, the calories per serving the server saves in place
+  /// of 4·4·9. Two places set it: Add manually, from the label the user
+  /// typed, and [FoodEntry.asFood], from a logged manual entry whose kcal
+  /// isn't 4·4·9's, so Undo logs it again at the same calories. [Food.fromJson]
+  /// never sets it. When set, [kcal] is this too, so previews and Snap a
+  /// meal's totals match what is saved.
   final int? labelKcal;
 
   bool get isFatsecret => source == 'fatsecret';
