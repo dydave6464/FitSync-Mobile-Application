@@ -1411,6 +1411,27 @@ void main() {
         expect(shown(tester), WeightUnit.kg);
         expect(find.text("Couldn't switch to lb. Try again."), findsOneWidget);
       });
+
+      // L-80: only an ApiException was caught, so any other failure (a
+      // timeout, a bad response) escaped unreported.
+      testWidgets('$editor: a switch failing in any other way says so too', (
+        tester,
+      ) async {
+        await _pump(
+          tester,
+          heightCm: 170,
+          weightKg: 70,
+          patchError: TimeoutException('no answer'),
+        );
+        await openUnit(tester, editor);
+
+        await tester.tap(find.byKey(const Key('unit.lb')));
+        await tester.pumpAndSettle();
+
+        expect(tester.takeException(), isNull);
+        expect(shown(tester), WeightUnit.kg);
+        expect(find.text("Couldn't switch to lb. Try again."), findsOneWidget);
+      });
     }
   });
 

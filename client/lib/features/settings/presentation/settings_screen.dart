@@ -375,7 +375,9 @@ mixin _UnitSwitch<W extends ConsumerStatefulWidget> on ConsumerState<W> {
     setState(() => _pendingUnit = unit);
     try {
       await ref.read(profileProvider.notifier).patch({'weightUnit': unit.api});
-    } on ApiException {
+    } catch (_) {
+      // Any failure, not only an ApiException: a timeout or a bad response
+      // leaves the unit unsaved just the same.
       messenger.showSnackBar(
         SnackBar(content: Text("Couldn't switch to ${unit.api}. Try again.")),
       );
