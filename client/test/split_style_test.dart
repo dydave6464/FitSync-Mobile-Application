@@ -18,6 +18,20 @@ void main() {
     });
   });
 
+  // P-16: the one lookup splitLabel and the week sentence share.
+  group('offeredSplitLabel', () {
+    test('is the choosers\' label for one of the four', () {
+      for (final s in splitStyles) {
+        expect(offeredSplitLabel(s.value), s.label);
+      }
+    });
+
+    test('is null for a split the choosers do not offer, or none', () {
+      expect(offeredSplitLabel('bro_split'), isNull);
+      expect(offeredSplitLabel(null), isNull);
+    });
+  });
+
   group('daysAWeek', () {
     test('says "day" for one and "days" otherwise', () {
       expect(daysAWeek(1), '1 day a week');

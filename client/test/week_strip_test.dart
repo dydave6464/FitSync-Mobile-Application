@@ -588,6 +588,35 @@ void main() {
     handle.dispose();
   });
 
+  // P-16: the tally is a node of its own, framing just the figure, so the
+  // node around the strip does not absorb its label alongside its own.
+  testWidgets('the tally is its own node, the size of the figure (P-16)', (
+    tester,
+  ) async {
+    final handle = tester.ensureSemantics();
+    await tester.pumpWidget(
+      _host(
+        Semantics(
+          container: true,
+          label: 'Plan',
+          child: WeekStrip(
+            daysPerWeek: 4,
+            trainingDays: const [1, 3, 5],
+            completedDates: const {'2026-09-07'},
+            today: DateTime(2026, 9, 10),
+          ),
+        ),
+      ),
+    );
+    final tally = tester.getSemantics(find.byKey(const Key('week.tally')));
+    expect(tally.label, '1 of 3 workouts this week');
+    expect(
+      tally.rect.size,
+      tester.getSize(find.byKey(const Key('week.tally'))),
+    );
+    handle.dispose();
+  });
+
   testWidgets('the card offers Start with no session and Resume with one', (
     tester,
   ) async {

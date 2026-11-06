@@ -17,9 +17,14 @@ const splitStyles = <({String value, String label})>[
 /// [splitStyles], and a readable slug ([describeSplit]) for any other value
 /// the generator returns. Every screen that names a plan's split asks here,
 /// so one split never has two spellings.
-String splitLabel(String slug) {
+String splitLabel(String slug) =>
+    offeredSplitLabel(slug) ?? describeSplit(slug);
+
+/// The choosers' label for one of [splitStyles], or null for any other value
+/// (or none): the one lookup [splitLabel] and the week sentence share.
+String? offeredSplitLabel(String? slug) {
   for (final s in splitStyles) {
     if (s.value == slug) return s.label;
   }
-  return describeSplit(slug);
+  return null;
 }
