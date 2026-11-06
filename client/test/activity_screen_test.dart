@@ -8,6 +8,7 @@ import 'package:flutter_test/flutter_test.dart';
 
 import 'package:fitsync/core/api_exception.dart';
 import 'package:fitsync/core/theme.dart';
+import 'package:fitsync/core/widgets/fs_kit.dart' show FsRetry;
 import 'package:fitsync/features/activity/data/step_source.dart';
 import 'package:fitsync/features/activity/domain/activity.dart';
 import 'package:fitsync/features/activity/domain/step_readings.dart';
@@ -119,6 +120,17 @@ class _RetryStub extends ActivityController {
   }
 }
 
+/// Every load fails with a reply that was not JSON (a proxy's 502 page).
+class _AlwaysFails extends _RetryStub {
+  _AlwaysFails(super.calls);
+
+  @override
+  Future<ActivityState> build() async => throw const ApiException(
+        'INVALID_RESPONSE',
+        'Server returned a non-JSON body (HTTP 502).',
+      );
+}
+
 void main() {
   testWidgets('shows today against the usual, the estimates and the week', (tester) async {
     await _pump(tester, ActivityState(
@@ -206,6 +218,23 @@ void main() {
     await tester.pump(const Duration(seconds: 1));
 
     expect(stub.syncs, 2);
+  });
+
+  testWidgets('a failed load says so in plain words over the kit retry', (tester) async {
+    final calls = _RetrySyncCount();
+    await tester.pumpWidget(ProviderScope(
+      overrides: [
+        activityProvider.overrideWith(() => _AlwaysFails(calls)),
+        liveStepsProvider.overrideWith((ref) => const Stream<int>.empty()),
+      ],
+      child: const MaterialApp(home: ActivityScreen()),
+    ));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Something went wrong on our side. Please try again.'), findsOneWidget);
+    expect(find.textContaining('HTTP'), findsNothing);
+    final retry = tester.widget<FsRetry>(find.byType(FsRetry));
+    expect(retry.fullScreen, isTrue);
   });
 
   testWidgets('a retry after an error keeps syncing correctly', (tester) async {

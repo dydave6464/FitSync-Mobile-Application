@@ -4,10 +4,10 @@ import 'dart:math' as math;
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../../core/api_exception.dart';
 import '../../../core/theme.dart';
 import '../../../core/widgets/fs_charts.dart';
 import '../../../core/widgets/fs_kit.dart';
-import '../../exercises/presentation/exercise_list_screen.dart' show describeError;
 import '../domain/activity.dart';
 import 'providers.dart';
 
@@ -69,21 +69,10 @@ class _ActivityScreenState extends ConsumerState<ActivityScreen> {
           ),
           null => const Center(child: CircularProgressIndicator()),
         },
-        error: (error, _) => Center(
-          child: Padding(
-            padding: const EdgeInsets.all(24),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Text(describeError(error), textAlign: TextAlign.center),
-                const SizedBox(height: 12),
-                FsButton(
-                  label: 'Try again',
-                  onPressed: () => ref.invalidate(activityProvider),
-                ),
-              ],
-            ),
-          ),
+        error: (error, _) => FsRetry(
+          fullScreen: true,
+          message: userMessage(error),
+          onRetry: () => ref.invalidate(activityProvider),
         ),
         data: (state) => _Body(
           state: state,
