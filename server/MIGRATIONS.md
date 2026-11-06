@@ -87,13 +87,15 @@ the failure mode the pre-release policy above depends on nobody hitting. A
 new, forward-only file sidesteps that. The tradeoff is the one below: unlike
 a `CREATE TABLE IF NOT EXISTS`-only file, six of the sixteen are not safe to
 replay after a partial failure. `014`, `028`, `032`, `033`, `034`, `035`,
-`036`, `037` and `038` are the exceptions to the exception, and they replay cleanly for
-different reasons: `014` and `028` restate a column definition rather than
-adding to one, while `032`, `033`, `034`, `035`, `036`, `037` and `038` rely on MySQL
-8's atomic DDL — `032` also on statement ordering, `033`, `034`, `035`, `036`,
-`037` and `038` on the DDL alone, since each of those six files is nothing but the one
-`ALTER` (see their entries below). Which of the sixteen you are holding is
-the thing to know before retrying one.
+`036`, `037`, `038` and `042` are the exceptions to the exception, and they
+replay cleanly for different reasons: `014` and `028` restate a column
+definition rather than adding to one, while `032`, `033`, `034`, `035`, `036`,
+`037` and `038` rely on MySQL 8's atomic DDL — `032` also on statement
+ordering, `033`, `034`, `035`, `036`, `037` and `038` on the DDL alone, since
+each of those six files is nothing but the one `ALTER`. `042` combines the
+two: it restates the `purpose` column like `014`, then ends on one atomic
+`ADD COLUMN` like `032` (see their entries below). Which of the sixteen you
+are holding is the thing to know before retrying one.
 
 **`007_auth_identities.sql`** — alongside its
 `CREATE TABLE IF NOT EXISTS user_identities`, it contains six `ALTER TABLE`
@@ -161,7 +163,7 @@ error) on whichever statement had already committed. Because `ALTER TABLE`
 and `CREATE INDEX` both implicitly commit, a partial failure is not rolled
 back by the runner failing to record the version.
 
-**014, 028, 032, 033, 034, 035, 036, 037 and 038 are the ones that can simply be re-run.** 014 and 028
+**014, 028, 032, 033, 034, 035, 036, 037, 038 and 042 are the ones that can simply be re-run.** 014 and 028
 both use `MODIFY COLUMN`, which restates the column's whole definition rather
 than adding to it, so re-running the file is what is safe: it sets the same
 values both times — `014` on the split_style enum, `028` on fitness_level —
