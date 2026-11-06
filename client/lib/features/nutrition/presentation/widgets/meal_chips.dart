@@ -11,7 +11,8 @@ import '../../domain/nutrition.dart';
 class MealChips extends StatelessWidget {
   const MealChips({super.key, required this.selected, required this.onSelected, required this.keyPrefix});
 
-  final String selected;
+  /// Null: no meal picked yet.
+  final String? selected;
   final ValueChanged<String> onSelected;
   final String keyPrefix;
 

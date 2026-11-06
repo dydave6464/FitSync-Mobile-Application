@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../../core/manila_day.dart';
 import '../../../core/theme.dart';
 import '../../../core/widgets/fs_kit.dart';
 import '../domain/nutrition.dart';
@@ -58,6 +59,9 @@ class _AddFoodManuallyScreenState extends ConsumerState<AddFoodManuallyScreen> {
   Widget build(BuildContext context) {
     final t = context.fs;
     final theme = Theme.of(context);
+    // The day the food goes to, named when it is not today (NU-7).
+    final date = ref.watch(nutritionDayProvider).value?.date;
+    final today = manilaDayOf(ref.watch(nutritionClockProvider)());
     final p = _grams(_protein), c = _grams(_carbs), f = _grams(_fat);
     final fiber = _optionalNumber(_fiber);
     final sugar = _optionalNumber(_sugar), sodium = _optionalNumber(_sodium);
@@ -112,7 +116,7 @@ class _AddFoodManuallyScreenState extends ConsumerState<AddFoodManuallyScreen> {
             ),
             const SizedBox(height: 16),
             if (!widget.pick) ...[
-              const FsEyebrow('Meal'),
+              FsEyebrow(date == null || date == today ? 'Meal' : 'Meal · ${dayLabel(date, today)}', maxLines: 2),
               const SizedBox(height: 6),
               MealChips(keyPrefix: 'manual.meal', selected: _meal, onSelected: (m) => setState(() => _meal = m)),
               const SizedBox(height: 16),

@@ -36,7 +36,7 @@ Future<({_Repo repo, Food? Function() picked})> _pump(WidgetTester tester, {Stri
       nutritionClockProvider.overrideWithValue(() => DateTime.utc(2026, 10, 14, 4)),
     ],
     child: MaterialApp(home: Builder(builder: (context) => Scaffold(body: TextButton(
-      onPressed: () async => picked = await pickFood(context, mealType: 'lunch', query: query),
+      onPressed: () async => picked = await pickFood(context, query: query),
       child: const Text('go'),
     )))),
   ));

@@ -27,6 +27,22 @@ Map<String, dynamic> _day({List<Map<String, dynamic>> lunch = const []}) => {
 };
 
 void main() {
+  // NU-7: a past day is named wherever food is logged to it.
+  group('naming a day', () {
+    test('dayLabel: Today, Yesterday, then the weekday and date', () {
+      expect(dayLabel('2026-11-06', '2026-11-06'), 'Today');
+      expect(dayLabel('2026-11-05', '2026-11-06'), 'Yesterday');
+      expect(dayLabel('2026-11-03', '2026-11-06'), 'Tue, Nov 3');
+      expect(dayLabel('2026-10-11', '2026-11-06'), 'Sun, Oct 11');
+    });
+
+    test('onDay: nothing for today, else words to end a sentence with', () {
+      expect(onDay('2026-11-06', '2026-11-06'), '');
+      expect(onDay('2026-11-05', '2026-11-06'), ' yesterday');
+      expect(onDay('2026-11-03', '2026-11-06'), ' on Tue, Nov 3');
+    });
+  });
+
   test('mealForTime follows Manila hours', () {
     // Manila = UTC+8.
     expect(mealForTime(DateTime.utc(2026, 10, 14, 1, 59)), 'breakfast'); // 09:59

@@ -10,7 +10,17 @@ import 'package:fitsync/features/nutrition/presentation/providers.dart';
 
 import 'nutrition_controller_test.dart' show FakeNutritionRepository;
 
-Future<FakeNutritionRepository> _pump(WidgetTester tester, {Size? size, double textScale = 1}) async {
+/// The Nutrition tab turned back to [date].
+class _OnDay extends NutritionDateController {
+  _OnDay(this.date);
+
+  final String date;
+
+  @override
+  String? build() => date;
+}
+
+Future<FakeNutritionRepository> _pump(WidgetTester tester, {Size? size, double textScale = 1, String? day}) async {
   final repo = FakeNutritionRepository();
   if (size != null) {
     tester.view.physicalSize = size;
@@ -21,6 +31,7 @@ Future<FakeNutritionRepository> _pump(WidgetTester tester, {Size? size, double t
     overrides: [
       nutritionRepositoryProvider.overrideWithValue(repo),
       nutritionClockProvider.overrideWithValue(() => DateTime.utc(2026, 10, 14, 4)),
+      if (day != null) nutritionDateProvider.overrideWith(() => _OnDay(day)),
     ],
     child: MaterialApp(
       builder: (context, child) => MediaQuery(
@@ -102,6 +113,17 @@ void main() {
     await tester.tap(find.byKey(const Key('manual.log')));
     await tester.pumpAndSettle();
     expect(repo.calls.where((c) => c.startsWith('log')), hasLength(1));
+  });
+
+  // NU-7: the day the food goes to is named when it is not today.
+  testWidgets("the meal's eyebrow names a past day", (tester) async {
+    await _pump(tester, size: _tall, day: '2026-10-11');
+    expect(find.text('MEAL · SUN, OCT 11'), findsOneWidget);
+  });
+
+  testWidgets("today's meal eyebrow is just Meal", (tester) async {
+    await _pump(tester, size: _tall);
+    expect(find.text('MEAL'), findsOneWidget);
   });
 
   testWidgets('fiber is optional, logged with the food and never changes kcal', (tester) async {

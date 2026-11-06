@@ -516,6 +516,25 @@ void main() {
       return repo;
     }
 
+    // NU-7: logging to a past day names it, before and after.
+    testWidgets('on a past day, Log food and its message name the day', (tester) async {
+      final repo = await _pump(tester, today: _day('2026-10-14'));
+      await tester.tap(find.byKey(const Key('day.prev')));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const Key('meal.add.dinner')));
+      await tester.pumpAndSettle();
+      expect(find.text('ADDING TO · YESTERDAY'), findsOneWidget);
+      await tester.enterText(find.byKey(const Key('food.search')), 'rice');
+      await tester.pump(foodSearchDebounce);
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Rice'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const Key('logSheet.log')));
+      await tester.pumpAndSettle();
+      expect(repo.calls, contains('log 2026-10-13 dinner Rice x1.0'));
+      expect(find.text('Added Rice to dinner yesterday'), findsOneWidget);
+    });
+
     testWidgets('Log food closes and says where the food went', (tester) async {
       await logRiceToDinner(tester);
       expect(find.byType(LogFoodScreen), findsNothing);

@@ -13,13 +13,14 @@ import 'providers.dart';
 
 /// Snap a meal from either door. A free account sees the Pro screen; a Pro
 /// one picks camera or library, then the photo screen. True once a meal was
-/// logged (Log food then closes as well).
+/// logged (Log food then closes as well). A null [mealType] opens the
+/// confirm list with no meal picked.
 Future<bool> startSnapMeal(
   BuildContext context,
   WidgetRef ref, {
-  required String mealType,
+  required String? mealType,
   String? date,
-  required void Function(BuildContext context, String mealType) onSearchInstead,
+  required void Function(BuildContext context, String? mealType) onSearchInstead,
 }) async {
   final messenger = ScaffoldMessenger.of(context);
   bool pro;

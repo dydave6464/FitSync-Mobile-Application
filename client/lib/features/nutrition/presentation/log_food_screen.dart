@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../core/api_exception.dart';
+import '../../../core/manila_day.dart';
 import '../../../core/theme.dart';
 import '../../../core/widgets/fs_kit.dart';
 import '../domain/nutrition.dart';
@@ -45,9 +46,13 @@ class LogFoodScreen extends ConsumerStatefulWidget {
 /// FitSync, FatSecret or manual one, per serving) comes back, or null. Snap a
 /// meal's Search and "+ Add an item" use it; [query] is typed in and searched
 /// at once.
-Future<Food?> pickFood(BuildContext context, {required String mealType, String? query}) =>
+/// No meal is asked for: the confirm screen picks it, and choosing shows
+/// none.
+Future<Food?> pickFood(BuildContext context, {String? query}) =>
     Navigator.of(context).push<Food>(MaterialPageRoute(
-      builder: (_) => LogFoodScreen(mealType: mealType, pick: true, initialQuery: query),
+      // Unused when choosing: neither this screen nor Add manually shows a
+      // meal then.
+      builder: (_) => LogFoodScreen(mealType: mealTypes.first, pick: true, initialQuery: query),
     ));
 
 class _LogFoodScreenState extends ConsumerState<LogFoodScreen> {
@@ -162,7 +167,7 @@ class _LogFoodScreenState extends ConsumerState<LogFoodScreen> {
       // Log food is right behind the photo screen: going back is the search,
       // for the meal the photo screen had.
       onSearchInstead: (photoContext, meal) {
-        if (mounted) setState(() => _meal = meal);
+        if (mounted && meal != null) setState(() => _meal = meal);
         Navigator.of(photoContext).pop(false);
       },
     );
@@ -172,6 +177,10 @@ class _LogFoodScreenState extends ConsumerState<LogFoodScreen> {
   @override
   Widget build(BuildContext context) {
     final t = context.fs;
+    // The day the food goes to, named when it is not today (NU-7).
+    final date = ref.watch(nutritionDayProvider).value?.date;
+    final today = manilaDayOf(ref.watch(nutritionClockProvider)());
+    final adding = date == null || date == today ? 'Adding to' : 'Adding to · ${dayLabel(date, today)}';
     return Scaffold(
       backgroundColor: t.bg,
       appBar: AppBar(title: Text(widget.pick ? 'Choose a food' : 'Log food')),
@@ -235,7 +244,7 @@ class _LogFoodScreenState extends ConsumerState<LogFoodScreen> {
                   crossAxisAlignment: WrapCrossAlignment.center,
                   spacing: 10,
                   children: [
-                    const FsEyebrow('Adding to'),
+                    FsEyebrow(adding, maxLines: 2),
                     _MealPicker(meal: _meal, onPicked: (m) => setState(() => _meal = m)),
                   ],
                 ),

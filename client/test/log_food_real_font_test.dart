@@ -41,6 +41,11 @@ Future<void> _pumpLogFood(
         nutritionRepositoryProvider.overrideWithValue(
           FakeNutritionRepository(),
         ),
+        // The fake server's today, so the screen is logging to today and
+        // "ADDING TO" names no other day.
+        nutritionClockProvider.overrideWithValue(
+          () => DateTime.utc(2026, 10, 14, 4),
+        ),
       ],
       child: MaterialApp(
         theme: fsLightTheme(),
@@ -91,6 +96,10 @@ void main() {
           overrides: [
             nutritionRepositoryProvider.overrideWithValue(
               FakeNutritionRepository(),
+            ),
+            // Logging to the fake server's today: "ADDING TO" alone.
+            nutritionClockProvider.overrideWithValue(
+              () => DateTime.utc(2026, 10, 14, 4),
             ),
           ],
           child: MaterialApp(
