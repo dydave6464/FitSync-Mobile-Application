@@ -1607,7 +1607,7 @@ class _SessionLoggerScreenState extends ConsumerState<SessionLoggerScreen>
                         value: targetSets == 0 ? 0 : doneSets / targetSets,
                         minHeight: 8,
                         backgroundColor: t.surface2,
-                        valueColor: AlwaysStoppedAnimation<Color>(t.accent),
+                        valueColor: AlwaysStoppedAnimation<Color>(t.accentFill),
                       ),
                     ),
                   ),

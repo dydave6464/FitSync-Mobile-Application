@@ -39,7 +39,7 @@ class AdherenceCard extends StatelessWidget {
                 value: adherence.fraction,
                 minHeight: 8,
                 backgroundColor: t.surface2,
-                color: t.accent,
+                color: t.accentFill,
               ),
             ),
           ],

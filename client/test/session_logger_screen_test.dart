@@ -28,6 +28,7 @@ import 'package:fitsync/features/sessions/presentation/session_logger_screen.dar
 import 'package:fitsync/features/sessions/presentation/widgets/rest_timer.dart';
 import 'package:fitsync/features/sessions/presentation/widgets/set_row.dart';
 
+import 'helpers/a11y.dart';
 import 'helpers/dialog_buttons.dart';
 import 'helpers/fake_rest_alerts.dart';
 import 'helpers/fake_training_settings.dart';
@@ -4522,5 +4523,25 @@ void main() {
       expect(find.byKey(const Key('logger.demo')), findsNothing);
       expect(find.byKey(const Key('set.1.weight')), findsOneWidget);
     });
+  });
+
+  // The overall bar is the only visual count of sets done, so it is drawn in
+  // the fill shade, which holds 3:1 on its light track (SE-5).
+  testWidgets('the progress bar is drawn in the data fill colour', (
+    tester,
+  ) async {
+    await _pump(tester);
+
+    final bar = tester.widget<LinearProgressIndicator>(
+      find.descendant(
+        of: find.byKey(const Key('logger.progress')),
+        matching: find.byType(LinearProgressIndicator),
+      ),
+    );
+    expect(bar.valueColor!.value, FsTokens.light.accentFill);
+    expect(
+      contrast(bar.valueColor!.value!, bar.backgroundColor!),
+      greaterThan(3.0),
+    );
   });
 }
