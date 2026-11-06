@@ -344,10 +344,12 @@ mixin _UnitSwitch<W extends ConsumerStatefulWidget> on ConsumerState<W> {
       messenger.showSnackBar(
         SnackBar(content: Text("Couldn't switch to ${unit.api}. Try again.")),
       );
+    } finally {
+      // On success the profile already holds the new unit; on failure it
+      // still holds the old one, which is what goes back on screen. In a
+      // finally so no failure can leave the switch ignoring taps for good.
+      if (mounted) setState(() => _pendingUnit = null);
     }
-    // On success the profile already holds the new unit; on failure it
-    // still holds the old one, which is what goes back on screen.
-    if (mounted) setState(() => _pendingUnit = null);
   }
 }
 
