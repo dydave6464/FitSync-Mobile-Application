@@ -82,11 +82,11 @@ class _AddFoodManuallyScreenState extends ConsumerState<AddFoodManuallyScreen> {
     // Log is off with no protein, carbs or fat: say so once the user has
     // started, rather than leave the button grey without a reason.
     final noMacros = gramsOk && sodiumOk && p! + c! + f! == 0 &&
-        (name.isNotEmpty || [_protein, _carbs, _fat].any((c) => c.text.trim().isNotEmpty));
+        (name.isNotEmpty || [_protein, _carbs, _fat].any((box) => box.text.trim().isNotEmpty));
 
     // Back with anything typed asks first; an untouched form just leaves.
     final typed = [_name, _serving, _protein, _carbs, _fat, _fiber, _sugar, _sodium]
-        .any((c) => c.text.trim().isNotEmpty);
+        .any((box) => box.text.trim().isNotEmpty);
 
     return FsDiscardGuard(
       dirty: typed,
