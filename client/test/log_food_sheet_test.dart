@@ -80,6 +80,21 @@ String _fieldText(WidgetTester tester, String key) =>
     tester.widget<TextField>(find.descendant(of: find.byKey(Key(key)), matching: find.byType(TextField))).controller!.text;
 
 void main() {
+  // With Edit numbers open it fills most of the screen: the handle says
+  // it can be dragged away, as the app's other sheets do (NU-18), and the
+  // sheet stays clear of the status bar.
+  testWidgets('has a drag handle and keeps out of the status bar', (tester) async {
+    tester.view.physicalSize = const Size(360, 640);
+    tester.view.devicePixelRatio = 1;
+    tester.view.padding = const FakeViewPadding(top: 24);
+    addTearDown(tester.view.reset);
+    await _open(tester, _juice);
+    await tester.tap(find.byKey(const Key('logSheet.edit')));
+    await tester.pumpAndSettle();
+    expect(tester.widget<BottomSheet>(find.byType(BottomSheet)).showDragHandle, isTrue);
+    expect(tester.getTopLeft(find.byType(BottomSheet)).dy, greaterThanOrEqualTo(24));
+  });
+
   testWidgets('servings step by a half and the numbers follow', (tester) async {
     await _open(tester, _rice);
     expect(find.text('205 kcal'), findsOneWidget);

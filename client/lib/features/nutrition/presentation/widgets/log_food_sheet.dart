@@ -27,7 +27,13 @@ Future<LogChoice?> showLogFoodSheet(BuildContext context, Food food,
         {required String mealType, double servings = 1, bool changing = false}) =>
     showModalBottomSheet<LogChoice>(
       context: context,
+      // With Edit numbers open the sheet fills most of the screen: the
+      // handle shows it can be dragged away, as the app's other sheets do.
+      showDragHandle: true,
       isScrollControlled: true,
+      // Scroll-controlled, it may grow to the full height: kept out from
+      // under the status bar.
+      useSafeArea: true,
       builder: (_) => LogFoodSheet(food: food, mealType: mealType, servings: servings, changing: changing),
     );
 
@@ -138,7 +144,7 @@ class _LogFoodSheetState extends State<LogFoodSheet> {
 
     return SafeArea(
       child: SingleChildScrollView(
-        padding: EdgeInsets.fromLTRB(20, 20, 20, 16 + MediaQuery.viewInsetsOf(context).bottom),
+        padding: EdgeInsets.fromLTRB(20, 0, 20, 16 + MediaQuery.viewInsetsOf(context).bottom),
         child: Column(
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.stretch,

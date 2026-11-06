@@ -42,6 +42,12 @@ void main() {
     expect([picked, closed], [PhotoSource.library, true]);
   });
 
+  // As the app's other sheets have it (NU-18).
+  testWidgets('the capture sheet has a drag handle', (tester) async {
+    await _host(tester, (context) => showCaptureChoiceSheet(context));
+    expect(tester.widget<BottomSheet>(find.byType(BottomSheet)).showDragHandle, isTrue);
+  });
+
   testWidgets('each capture choice is a 48 dp target', (tester) async {
     await _host(tester, (context) => showCaptureChoiceSheet(context));
     for (final key in ['snap.camera', 'snap.library']) {
