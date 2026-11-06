@@ -16,12 +16,17 @@ import 'package:fitsync/features/sessions/presentation/widgets/exercise_demo_sta
 
 void main() {
   testWidgets('a failed load says so and can be tried again', (tester) async {
+    // The load stays down until the user asks again: a garbled reply is
+    // retried twice on its own first (apiRetryPolicy), so failing only the
+    // first call would never reach the error state.
     var loads = 0;
+    var down = true;
     await tester.pumpWidget(
       ProviderScope(
         overrides: [
           exerciseDetailProvider.overrideWith((ref, id) async {
-            if (loads++ == 0) {
+            loads++;
+            if (down) {
               throw const ApiException('INVALID_RESPONSE', 'bad');
             }
             return const ExerciseDetail(
@@ -68,11 +73,13 @@ void main() {
       findsOneWidget,
     );
     expect(find.byType(FsRetry), findsOneWidget);
+    expect(loads, 3, reason: 'the first try and two automatic retries');
 
+    down = false;
     await tester.tap(find.text('Try again'));
     await tester.pumpAndSettle();
 
-    expect(loads, 2);
+    expect(loads, 4);
     expect(find.byType(FsRetry), findsNothing);
     expect(find.textContaining('Stand tall.'), findsWidgets);
   });
