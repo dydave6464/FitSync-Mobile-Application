@@ -2,11 +2,14 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../../core/api_exception.dart';
+import '../../../../core/dates.dart';
+import '../../../../core/manila_day.dart';
 import '../../../../core/theme.dart';
 import '../../../../core/units.dart';
 import '../../../../core/widgets/fs_kit.dart';
 import '../providers.dart'
     show
+        bodyWeightClockProvider,
         bodyWeightProvider,
         profileProvider,
         profileRepositoryProvider,
@@ -18,8 +21,9 @@ import '../providers.dart'
 const _minKg = 20.0;
 const _maxKg = 500.0;
 
-/// The Progress tab's "Add entry" sheet: one weight field, one save button.
-/// A save refreshes every period of [bodyWeightProvider].
+/// The Progress tab's "Add entry" sheet: one weight field, the day it is
+/// for (today unless a past day is picked), one save button. A save
+/// refreshes every period of [bodyWeightProvider].
 Future<void> showLogBodyWeightSheet(BuildContext context) {
   return showModalBottomSheet<void>(
     context: context,
@@ -44,6 +48,10 @@ class _LogBodyWeightSheetState extends ConsumerState<_LogBodyWeightSheet> {
   final _weight = TextEditingController();
   bool _busy = false;
   String? _error;
+
+  /// The day picked, as a Manila calendar date; null is today, which is
+  /// left for the server to fill in, as it always has.
+  DateTime? _day;
 
   /// What was typed when [_error] was about the number itself (empty, or
   /// out of range), which also flags the card; null for any other error.
@@ -75,6 +83,42 @@ class _LogBodyWeightSheetState extends ConsumerState<_LogBodyWeightSheet> {
     _flagged = _weight.text;
   });
 
+  /// Today in Manila, the day the server calls today, as a date.
+  DateTime _today() =>
+      DateTime.parse(manilaDayOf(ref.read(bodyWeightClockProvider)()));
+
+  /// A year back at most: the chart's widest period.
+  Future<void> _pickDay() async {
+    final today = _today();
+    final picked = await showDatePicker(
+      context: context,
+      initialDate: _day ?? today,
+      firstDate: DateTime(today.year - 1, today.month, today.day),
+      lastDate: today,
+    );
+    if (picked == null || !mounted) return;
+    setState(() => _day = picked == today ? null : picked);
+  }
+
+  /// "Today", "Yesterday", "Wed, Nov 4", with the year when it is not this
+  /// one.
+  String _dayLabel() {
+    final day = _day;
+    if (day == null) return 'Today';
+    final today = _today();
+    if (today.difference(day).inDays == 1) return 'Yesterday';
+    final date = '${weekdayShort[day.weekday - 1]}, ${shortDate(day)}';
+    return day.year == today.year ? date : '$date ${day.year}';
+  }
+
+  /// The picked day as the server takes it, `YYYY-MM-DD`; null for today.
+  String? get _loggedOn {
+    final day = _day;
+    if (day == null) return null;
+    String pad(int n) => n.toString().padLeft(2, '0');
+    return '${day.year}-${pad(day.month)}-${pad(day.day)}';
+  }
+
   Future<void> _save() async {
     if (_busy) return;
 
@@ -100,7 +144,9 @@ class _LogBodyWeightSheetState extends ConsumerState<_LogBodyWeightSheet> {
     });
 
     try {
-      await ref.read(profileRepositoryProvider).logBodyWeight(kg);
+      await ref
+          .read(profileRepositoryProvider)
+          .logBodyWeight(kg, loggedOn: _loggedOn);
     } on ApiException catch (error) {
       if (!mounted) return;
       setState(() {
@@ -122,6 +168,41 @@ class _LogBodyWeightSheetState extends ConsumerState<_LogBodyWeightSheet> {
     // session, disagreeing with the log this sheet just wrote to.
     ref.invalidate(profileProvider);
     Navigator.of(context).pop();
+  }
+
+  /// The day, drawn as the About step draws date of birth: one button,
+  /// said as what it sets.
+  Widget _dayCard(FsTokens t) {
+    final label = _dayLabel();
+    return FsCard(
+      key: const Key('bodyWeight.date'),
+      small: true,
+      onTap: _busy ? null : _pickDay,
+      child: Semantics(
+        label: 'Date',
+        value: label,
+        hint: 'Opens a date picker',
+        excludeSemantics: true,
+        child: Row(
+          children: [
+            const FsIconTile(icon: Icons.calendar_today_outlined, size: 38),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Text(
+                label,
+                key: const Key('bodyWeight.dateText'),
+                style: TextStyle(
+                  fontSize: 13.5,
+                  fontWeight: FontWeight.w600,
+                  color: t.text,
+                ),
+              ),
+            ),
+            Icon(Icons.chevron_right, size: 16, color: t.text3),
+          ],
+        ),
+      ),
+    );
   }
 
   @override
@@ -195,6 +276,15 @@ class _LogBodyWeightSheetState extends ConsumerState<_LogBodyWeightSheet> {
                 const SizedBox(height: 10),
                 FsErrorLine(_error!, key: const Key('bodyWeight.error')),
               ],
+              const SizedBox(height: 14),
+              _dayCard(t),
+              const SizedBox(height: 8),
+              Text(
+                _day == null
+                    ? "Logging again today replaces today's entry."
+                    : 'Logging again for this day replaces its entry.',
+                style: TextStyle(fontSize: 12, color: t.text2, height: 1.4),
+              ),
               const SizedBox(height: 16),
               FsButton(
                 key: const Key('bodyWeight.save'),

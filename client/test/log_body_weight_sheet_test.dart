@@ -30,6 +30,9 @@ class FakeProfileRepository implements ProfileRepository {
 
   final logged = <double>[];
 
+  /// The day each save was for; null for today (the server's own day).
+  final loggedOn = <String?>[];
+
   /// How many times [load] has been called -- starts at 0, since unlike
   /// [bodyWeightProvider] nothing in `_pump` eagerly watches [profileProvider]
   /// before the sheet opens.
@@ -42,9 +45,13 @@ class FakeProfileRepository implements ProfileRepository {
   }
 
   @override
-  Future<BodyWeightPoint> logBodyWeight(double weightKg) async {
+  Future<BodyWeightPoint> logBodyWeight(
+    double weightKg, {
+    String? loggedOn,
+  }) async {
     if (logError != null) throw logError!;
     logged.add(weightKg);
+    this.loggedOn.add(loggedOn);
     return BodyWeightPoint(loggedOn: '2026-09-16', weightKg: weightKg);
   }
 
@@ -60,14 +67,19 @@ class _FetchCount {
   int value = 0;
 }
 
+/// Noon on 6 Nov 2026 in Manila.
+final _noonNov6 = DateTime.utc(2026, 11, 6, 4);
+
 Future<void> _pump(
   WidgetTester tester, {
   required FakeProfileRepository repo,
   required _FetchCount fetches,
+  DateTime? now,
 }) async {
   await tester.pumpWidget(
     ProviderScope(
       overrides: [
+        bodyWeightClockProvider.overrideWithValue(() => now ?? _noonNov6),
         profileRepositoryProvider.overrideWithValue(repo),
         bodyWeightProvider.overrideWith((ref, period) async {
           fetches.value += 1;
@@ -302,6 +314,132 @@ void main() {
       await tester.pumpAndSettle();
       expect(find.byKey(const Key('bodyWeight.error')), findsOneWidget);
       expect(flagged(tester), isFalse);
+    });
+  });
+
+  // PS-20: weigh-ins could only be for today, and nothing said a second one
+  // today replaces the first.
+  group('the day a weigh-in is for', () {
+    String dateShown(WidgetTester tester) => tester
+        .widget<Text>(
+          find.descendant(
+            of: find.byKey(const Key('bodyWeight.date')),
+            matching: find.byKey(const Key('bodyWeight.dateText')),
+          ),
+        )
+        .data!;
+
+    testWidgets('is today unless picked, and says today is replaced', (
+      tester,
+    ) async {
+      final repo = FakeProfileRepository();
+      await _pump(tester, repo: repo, fetches: _FetchCount());
+      expect(dateShown(tester), 'Today');
+      expect(
+        find.text("Logging again today replaces today's entry."),
+        findsOneWidget,
+      );
+
+      await tester.enterText(find.byKey(const Key('bodyWeight.field')), '72');
+      await tester.tap(find.byKey(const Key('bodyWeight.save')));
+      await tester.pumpAndSettle();
+      expect(repo.loggedOn, [null], reason: "today is the server's own day");
+    });
+
+    testWidgets('a past day can be picked, and is sent', (tester) async {
+      final repo = FakeProfileRepository();
+      await _pump(tester, repo: repo, fetches: _FetchCount());
+
+      await tester.tap(find.byKey(const Key('bodyWeight.date')));
+      await tester.pumpAndSettle();
+      final picker = tester.widget<DatePickerDialog>(
+        find.byType(DatePickerDialog),
+      );
+      expect(picker.lastDate, DateTime(2026, 11, 6), reason: 'no future day');
+      expect(picker.firstDate, DateTime(2025, 11, 6));
+      await tester.tap(find.text('4'));
+      await tester.tap(find.text('OK'));
+      await tester.pumpAndSettle();
+
+      expect(dateShown(tester), 'Wed, Nov 4');
+      expect(
+        find.text('Logging again for this day replaces its entry.'),
+        findsOneWidget,
+      );
+      await tester.enterText(find.byKey(const Key('bodyWeight.field')), '72');
+      await tester.tap(find.byKey(const Key('bodyWeight.save')));
+      await tester.pumpAndSettle();
+      expect(repo.loggedOn, ['2026-11-04']);
+    });
+
+    testWidgets('yesterday is said as Yesterday', (tester) async {
+      await _pump(
+        tester,
+        repo: FakeProfileRepository(),
+        fetches: _FetchCount(),
+      );
+      await tester.tap(find.byKey(const Key('bodyWeight.date')));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('5'));
+      await tester.tap(find.text('OK'));
+      await tester.pumpAndSettle();
+      expect(dateShown(tester), 'Yesterday');
+    });
+
+    testWidgets("today is Manila's, as the server counts it", (tester) async {
+      // 01:00 on 6 Nov in Manila, still 5 Nov in UTC.
+      await _pump(
+        tester,
+        repo: FakeProfileRepository(),
+        fetches: _FetchCount(),
+        now: DateTime.utc(2026, 11, 5, 17),
+      );
+      await tester.tap(find.byKey(const Key('bodyWeight.date')));
+      await tester.pumpAndSettle();
+      expect(
+        tester.widget<DatePickerDialog>(find.byType(DatePickerDialog)).lastDate,
+        DateTime(2026, 11, 6),
+      );
+    });
+
+    testWidgets('the date is one button, named for what it sets', (
+      tester,
+    ) async {
+      final handle = tester.ensureSemantics();
+      await _pump(
+        tester,
+        repo: FakeProfileRepository(),
+        fetches: _FetchCount(),
+      );
+      expect(
+        tester.getSemantics(find.byKey(const Key('bodyWeight.date'))),
+        isSemantics(
+          label: 'Date',
+          value: 'Today',
+          hint: 'Opens a date picker',
+          isButton: true,
+          hasTapAction: true,
+        ),
+      );
+      await expectLater(tester, meetsGuideline(androidTapTargetGuideline));
+      handle.dispose();
+    });
+
+    testWidgets('fits a small phone at 2x text', (tester) async {
+      tester.view.physicalSize = const Size(320, 568);
+      tester.view.devicePixelRatio = 1.0;
+      addTearDown(tester.view.reset);
+      tester.platformDispatcher.textScaleFactorTestValue = 2.0;
+      addTearDown(tester.platformDispatcher.clearTextScaleFactorTestValue);
+      await _pump(
+        tester,
+        repo: FakeProfileRepository(),
+        fetches: _FetchCount(),
+      );
+      expect(tester.takeException(), isNull);
+      await tester.ensureVisible(find.byKey(const Key('bodyWeight.save')));
+      await tester.pumpAndSettle();
+      expect(tester.takeException(), isNull);
     });
   });
 
