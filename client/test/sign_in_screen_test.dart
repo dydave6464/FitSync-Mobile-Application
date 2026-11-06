@@ -5,6 +5,8 @@ import 'package:flutter/semantics.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 
+import 'package:fitsync/core/widgets/fs_kit.dart';
+
 import 'package:fitsync/core/api_exception.dart';
 import 'package:fitsync/features/auth/data/auth_repository.dart';
 import 'package:fitsync/features/auth/domain/auth_user.dart';
@@ -170,6 +172,23 @@ Future<void> _fillAndSubmit(
   await tester.enterText(find.byKey(const Key('password')), password);
   await _tapKey(tester, 'submit');
 }
+
+/// Whether the text [finder] matches is in a live region, which a screen
+/// reader speaks as soon as it appears.
+bool _isLive(WidgetTester tester, Finder finder) =>
+    tester.getSemantics(finder).getSemanticsData().flagsCollection.isLiveRegion;
+
+/// Whether the field keyed [key] has the keyboard focus.
+bool _hasFocus(WidgetTester tester, String key) => tester
+    .state<EditableTextState>(
+      find.descendant(
+        of: find.byKey(Key(key)),
+        matching: find.byType(EditableText),
+      ),
+    )
+    .widget
+    .focusNode
+    .hasFocus;
 
 void main() {
   testWidgets('renders an email and a password field', (tester) async {
@@ -703,8 +722,60 @@ void main() {
     await _tapKey(tester, 'submit');
     await tester.pumpAndSettle();
 
-    expect(find.text('Enter your email.'), findsOneWidget);
+    // The name is drawn first, so it is the field the check names.
+    expect(find.text('Enter your name.'), findsOneWidget);
     expect(find.text('At least 8 characters'), findsOneWidget);
     expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('a request error is a red error line that is read aloud', (
+    tester,
+  ) async {
+    final repo = FakeAuthRepository(
+      onLogin: () async => throw const ApiException(
+        'INVALID_CREDENTIALS',
+        'Email or password is incorrect.',
+      ),
+    );
+    final handle = tester.ensureSemantics();
+    await _pump(tester, repo);
+    await _fillAndSubmit(tester);
+    await tester.pumpAndSettle();
+
+    final message = find.descendant(
+      of: find.byKey(const Key('error')),
+      matching: find.text('Email or password is incorrect.'),
+    );
+    expect(message, findsOneWidget);
+    expect(
+      find.ancestor(of: message, matching: find.byType(FsErrorLine)),
+      findsOneWidget,
+    );
+    expect(_isLive(tester, message), isTrue);
+    handle.dispose();
+  });
+
+  testWidgets('a failed check moves to the first field to fix, top down', (
+    tester,
+  ) async {
+    await _pump(tester, FakeAuthRepository());
+    await tester.pumpAndSettle();
+    await _toRegister(tester);
+
+    // Everything empty: the name is drawn first, so it is the one to fix.
+    await _tapKey(tester, 'submit');
+    await tester.pumpAndSettle();
+
+    expect(find.text('Enter your name.'), findsOneWidget);
+    expect(_hasFocus(tester, 'fullName'), isTrue);
+
+    // Name given, email still empty: the cursor moves on to the email.
+    await tester.enterText(find.byKey(const Key('fullName')), 'Juan');
+    FocusManager.instance.primaryFocus?.unfocus();
+    await _tapKey(tester, 'submit');
+    await tester.pumpAndSettle();
+
+    expect(find.text('Enter your email.'), findsOneWidget);
+    expect(_hasFocus(tester, 'email'), isTrue);
   });
 }

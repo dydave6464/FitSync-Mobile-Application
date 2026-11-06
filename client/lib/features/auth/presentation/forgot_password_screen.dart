@@ -38,7 +38,13 @@ class _ForgotPasswordScreenState extends ConsumerState<ForgotPasswordScreen> {
   /// Set once the server accepts the reset. From then on the button only
   /// retries the sign-in: the code is spent.
   bool _resetDone = false;
-  String? _message;
+
+  /// The last outcome, and whether it went wrong: an error is drawn as one
+  /// (red, with an icon) so it cannot be mistaken for "we've sent a code".
+  ({String text, bool isError})? _message;
+
+  void _showError(String text) =>
+      setState(() => _message = (text: text, isError: true));
 
   @override
   void dispose() {
@@ -54,11 +60,11 @@ class _ForgotPasswordScreenState extends ConsumerState<ForgotPasswordScreen> {
     final email = _email.text.trim();
     if (!_onCodeStep) {
       if (email.isEmpty) {
-        setState(() => _message = 'Enter your email.');
+        _showError('Enter your email.');
         return;
       }
       if (!email.contains('@')) {
-        setState(() => _message = 'That does not look like an email.');
+        _showError('That does not look like an email.');
         return;
       }
     }
@@ -78,7 +84,10 @@ class _ForgotPasswordScreenState extends ConsumerState<ForgotPasswordScreen> {
         setState(() {
           _busy = false;
           _onCodeStep = true;
-          _message = resending ? _resentMessage : _sentMessage;
+          _message = (
+            text: resending ? _resentMessage : _sentMessage,
+            isError: false,
+          );
         });
       }
     }
@@ -88,13 +97,11 @@ class _ForgotPasswordScreenState extends ConsumerState<ForgotPasswordScreen> {
     if (_busy) return;
     if (!_resetDone) {
       if (_code.text.length != 6) {
-        setState(() => _message = 'Enter the 6-digit code from the email.');
+        _showError('Enter the 6-digit code from the email.');
         return;
       }
       if (_password.text.length < 8) {
-        setState(
-          () => _message = 'Use at least 8 characters for your new password.',
-        );
+        _showError('Use at least 8 characters for your new password.');
         return;
       }
     }
@@ -146,13 +153,13 @@ class _ForgotPasswordScreenState extends ConsumerState<ForgotPasswordScreen> {
         }
       }
       if (!mounted) return;
-      setState(() {
-        _message = _resetDone
+      _showError(
+        _resetDone
             ? 'Your password is reset. Tap to sign in.'
             : (error.code == 'CODE_INVALID'
                   ? wrongCodeMessage
-                  : userMessage(error));
-      });
+                  : userMessage(error)),
+      );
     } finally {
       if (mounted) setState(() => _busy = false);
     }
@@ -162,16 +169,27 @@ class _ForgotPasswordScreenState extends ConsumerState<ForgotPasswordScreen> {
   Widget build(BuildContext context) {
     final t = context.fs;
     final theme = Theme.of(context);
-    final message = _message == null
-        ? const <Widget>[]
-        : [
-            const SizedBox(height: 14),
-            Text(
-              _message!,
-              key: const Key('message'),
-              style: TextStyle(fontSize: 12.5, color: t.text2, height: 1.5),
-            ),
-          ];
+    // Both kinds are live regions, so a screen reader says the outcome of
+    // Send code or Reset password as it appears.
+    final message = switch (_message) {
+      null => const <Widget>[],
+      (:final text, isError: true) => [
+        const SizedBox(height: 14),
+        FsErrorLine(text, key: const Key('message')),
+      ],
+      (:final text, isError: false) => [
+        const SizedBox(height: 14),
+        Semantics(
+          container: true,
+          liveRegion: true,
+          child: Text(
+            text,
+            key: const Key('message'),
+            style: TextStyle(fontSize: 12.5, color: t.text2, height: 1.5),
+          ),
+        ),
+      ],
+    };
 
     return Scaffold(
       backgroundColor: t.bg,

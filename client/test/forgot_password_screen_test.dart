@@ -2,6 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 
+import 'package:fitsync/core/widgets/fs_kit.dart';
+
 import 'package:fitsync/core/api_exception.dart';
 import 'package:fitsync/features/auth/data/auth_repository.dart';
 import 'package:fitsync/features/auth/domain/auth_user.dart';
@@ -158,6 +160,9 @@ Future<void> _fillReset(
   await tester.tap(find.byKey(const Key('reset')));
   await tester.pumpAndSettle();
 }
+
+bool _isLive(WidgetTester tester, Finder finder) =>
+    tester.getSemantics(finder).getSemanticsData().flagsCollection.isLiveRegion;
 
 void main() {
   testWidgets('an empty email is rejected without a network call', (
@@ -393,5 +398,66 @@ void main() {
 
     expect(repo.requestCalls, 2);
     expect(find.text(_resent), findsOneWidget);
+  });
+
+  testWidgets('a wrong code is a red error line that is read aloud', (
+    tester,
+  ) async {
+    final repo = FakeAuthRepository(
+      onReset: () async => throw const ApiException(
+        'CODE_INVALID',
+        'That code is wrong or has expired.',
+      ),
+      onLogin: () async => throw const ApiException(
+        'INVALID_CREDENTIALS',
+        'Email or password is incorrect.',
+      ),
+    );
+    final handle = tester.ensureSemantics();
+    await _pump(tester, repo);
+
+    await _sendCode(tester);
+    await _fillReset(tester, code: '000000');
+
+    final message = find.text(wrongCodeMessage);
+    expect(
+      find.ancestor(of: message, matching: find.byType(FsErrorLine)),
+      findsOneWidget,
+    );
+    expect(_isLive(tester, message), isTrue);
+    handle.dispose();
+  });
+
+  testWidgets('the code-sent message is plain news, still read aloud', (
+    tester,
+  ) async {
+    final handle = tester.ensureSemantics();
+    await _pump(tester, FakeAuthRepository());
+
+    await _sendCode(tester);
+
+    final message = find.text(_sent);
+    expect(
+      find.ancestor(of: message, matching: find.byType(FsErrorLine)),
+      findsNothing,
+      reason: 'a confirmation must not look like an error',
+    );
+    expect(_isLive(tester, message), isTrue);
+    handle.dispose();
+  });
+
+  testWidgets('a missing email is a red error line', (tester) async {
+    await _pump(tester, FakeAuthRepository());
+
+    await tester.tap(find.byKey(const Key('submit')));
+    await tester.pumpAndSettle();
+
+    expect(
+      find.ancestor(
+        of: find.text('Enter your email.'),
+        matching: find.byType(FsErrorLine),
+      ),
+      findsOneWidget,
+    );
   });
 }

@@ -67,8 +67,12 @@ class _SignInScreenState extends ConsumerState<SignInScreen> {
   }
 
   /// Returns the first problem and the field it is about, or null when the
-  /// form is usable.
+  /// form is usable. Checked in the order the fields are drawn, so the one
+  /// named is the first a user meets going down the form.
   ({_Field field, String message})? _validate() {
+    if (_registering && _fullName.text.trim().isEmpty) {
+      return (field: _Field.fullName, message: 'Enter your name.');
+    }
     if (_email.text.trim().isEmpty) {
       return (field: _Field.email, message: 'Enter your email.');
     }
@@ -90,10 +94,29 @@ class _SignInScreenState extends ConsumerState<SignInScreen> {
         message: 'Use at least $_minPasswordLength characters.',
       );
     }
-    if (_registering && _fullName.text.trim().isEmpty) {
-      return (field: _Field.fullName, message: 'Enter your name.');
-    }
     return null;
+  }
+
+  /// One per field, around its [FsLabeledField], so a failed check can put
+  /// the cursor in the field it is about.
+  final _fieldKeys = {for (final field in _Field.values) field: GlobalKey()};
+
+  /// Moves the cursor -- and a screen reader, which then reads the field's
+  /// name and the message now in its hint -- to [field]. Otherwise nothing
+  /// is heard after Sign in, and a failed check sounds like a hang.
+  void _focus(_Field field) {
+    EditableTextState? editable;
+    void visit(Element element) {
+      if (editable != null) return;
+      if (element is StatefulElement && element.state is EditableTextState) {
+        editable = element.state as EditableTextState;
+        return;
+      }
+      element.visitChildren(visit);
+    }
+
+    (_fieldKeys[field]!.currentContext as Element?)?.visitChildren(visit);
+    editable?.requestKeyboard();
   }
 
   String? _errorFor(_Field field) =>
@@ -160,6 +183,7 @@ class _SignInScreenState extends ConsumerState<SignInScreen> {
         _fieldError = problem;
         _error = null;
       });
+      _focus(problem.field);
       return;
     }
 
@@ -270,6 +294,7 @@ class _SignInScreenState extends ConsumerState<SignInScreen> {
                     children: [
                       if (_registering) ...[
                         FsLabeledField(
+                          key: _fieldKeys[_Field.fullName],
                           label: 'Full name',
                           error: _errorFor(_Field.fullName),
                           field: FsField(
@@ -287,6 +312,7 @@ class _SignInScreenState extends ConsumerState<SignInScreen> {
                         const SizedBox(height: 14),
                       ],
                       FsLabeledField(
+                        key: _fieldKeys[_Field.email],
                         label: 'Email',
                         error: _errorFor(_Field.email),
                         field: FsField(
@@ -302,6 +328,7 @@ class _SignInScreenState extends ConsumerState<SignInScreen> {
                       ),
                       const SizedBox(height: 14),
                       FsLabeledField(
+                        key: _fieldKeys[_Field.password],
                         label: 'Password',
                         // The same minimum the server enforces on register
                         // and on reset, stated before the user picks one
@@ -374,11 +401,9 @@ class _SignInScreenState extends ConsumerState<SignInScreen> {
                   // Inline rather than a SnackBar: a snack bar times out, and
                   // an error the user needs in order to fix their input should
                   // stay on screen until they do.
-                  Text(
-                    _error!,
-                    key: const Key('error'),
-                    style: TextStyle(fontSize: 12.5, color: t.red),
-                  ),
+                  // A live region, so a screen reader says it as it
+                  // appears: otherwise a failed sign-in sounds like a hang.
+                  FsErrorLine(_error!, key: const Key('error')),
                 ],
                 const SizedBox(height: 18),
                 FsButton(
