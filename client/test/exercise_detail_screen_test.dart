@@ -7,6 +7,7 @@ import 'package:flutter_riverpod/misc.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import 'package:fitsync/core/api_exception.dart';
+import 'package:fitsync/core/theme.dart';
 import 'package:fitsync/core/widgets/fs_kit.dart';
 import 'package:fitsync/features/exercises/domain/exercise.dart';
 import 'package:fitsync/features/exercises/presentation/exercise_detail_screen.dart';
@@ -55,7 +56,10 @@ void main() {
   // Opened from the picker's ⓘ, the demo is where the choice gets made; it
   // must be able to act on it rather than send the user back to find the row.
   group('opened from the picker', () {
-    Future<ProviderContainer> pumpPicker(WidgetTester tester) async {
+    Future<ProviderContainer> pumpPicker(
+      WidgetTester tester, {
+      ExerciseSummary pick = _summary,
+    }) async {
       _usePortraitSurface(tester);
       final container = ProviderContainer(
         overrides: [
@@ -66,8 +70,8 @@ void main() {
       await tester.pumpWidget(
         UncontrolledProviderScope(
           container: container,
-          child: const MaterialApp(
-            home: ExerciseDetailScreen(exerciseId: 1, pick: _summary),
+          child: MaterialApp(
+            home: ExerciseDetailScreen(exerciseId: 1, pick: pick),
           ),
         ),
       );
@@ -88,6 +92,42 @@ void main() {
       await tester.tap(find.text('Remove from workout'));
       await tester.pumpAndSettle();
       expect(container.read(workoutDraftProvider).holds(1), isFalse);
+    });
+
+    // SE-22: this was the one place in the app that added an exercise with
+    // no word that it loads a reported injury.
+    testWidgets('warns above the button when it loads a reported injury', (
+      tester,
+    ) async {
+      await pumpPicker(
+        tester,
+        pick: const ExerciseSummary(
+          exerciseId: 1,
+          name: '3/4 sit-up',
+          muscleGroup: 'abs',
+          equipment: 'body weight',
+          thumbnailUrl: null,
+          contraindicated: true,
+        ),
+      );
+
+      expect(find.text('Loads an injury you reported'), findsOneWidget);
+      final shield = tester.widget<Icon>(find.byKey(const Key('detail.risk')));
+      expect(shield.icon, Icons.shield_outlined);
+      expect(shield.color, tester.element(find.byType(Scaffold)).fs.red);
+      expect(
+        tester.getBottomLeft(find.text('Loads an injury you reported')).dy,
+        lessThanOrEqualTo(
+          tester.getTopLeft(find.byKey(const Key('detail.pick'))).dy,
+        ),
+      );
+    });
+
+    testWidgets('says nothing of injuries when it loads none', (tester) async {
+      await pumpPicker(tester);
+
+      expect(find.text('Loads an injury you reported'), findsNothing);
+      expect(find.byKey(const Key('detail.risk')), findsNothing);
     });
   });
 
