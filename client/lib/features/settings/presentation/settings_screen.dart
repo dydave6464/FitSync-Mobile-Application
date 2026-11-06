@@ -166,6 +166,8 @@ class _SettingsList extends ConsumerWidget {
     final t = context.fs;
     final theme = Theme.of(context);
     final proStatus = ref.watch(proStatusProvider).value;
+    // The Edit chip's one action, for its tap and for its screen-reader node.
+    void editNameCity() => _open(context, const _NameCityEditor());
 
     final subtitle = [
       if (profile.fitnessLevel != null)
@@ -224,7 +226,7 @@ class _SettingsList extends ConsumerWidget {
                   container: true,
                   button: true,
                   label: 'Edit name and city',
-                  onTap: () => _open(context, const _NameCityEditor()),
+                  onTap: editNameCity,
                   excludeSemantics: true,
                   child: ConstrainedBox(
                     constraints: const BoxConstraints(
@@ -240,7 +242,7 @@ class _SettingsList extends ConsumerWidget {
                         small: true,
                         selected: false,
                         toggle: false,
-                        onTap: () => _open(context, const _NameCityEditor()),
+                        onTap: editNameCity,
                       ),
                     ),
                   ),
@@ -408,30 +410,48 @@ class _SettingsList extends ConsumerWidget {
 /// Signs out after asking: signing out also cancels every reminder this
 /// phone has scheduled, which one stray tap should not do.
 Future<void> _confirmSignOut(BuildContext context, WidgetRef ref) async {
+  final confirmed = await _confirmDestructive(
+    context,
+    keyPrefix: 'signOut',
+    title: 'Sign out of FitSync?',
+    message: 'Reminders on this phone stop until you sign in again.',
+    action: 'Sign out',
+  );
+  if (!confirmed || !context.mounted) return;
+  await ref.read(authControllerProvider.notifier).signOut();
+}
+
+/// Asks before a step one stray tap should not take: Cancel, and [action] in
+/// `t.red`, keyed `<keyPrefix>.cancel` and `<keyPrefix>.confirm`. True only
+/// for a tap on [action]; the barrier or back is a no.
+Future<bool> _confirmDestructive(
+  BuildContext context, {
+  required String keyPrefix,
+  required String title,
+  required String message,
+  required String action,
+}) async {
   final confirmed = await showDialog<bool>(
     context: context,
     builder: (dialog) => AlertDialog(
-      title: const Text('Sign out of FitSync?'),
-      content: const Text(
-        'Reminders on this phone stop until you sign in again.',
-      ),
+      title: Text(title),
+      content: Text(message),
       actions: [
         TextButton(
-          key: const Key('signOut.cancel'),
+          key: Key('$keyPrefix.cancel'),
           onPressed: () => Navigator.of(dialog).pop(false),
           child: const Text('Cancel'),
         ),
         TextButton(
-          key: const Key('signOut.confirm'),
+          key: Key('$keyPrefix.confirm'),
           style: TextButton.styleFrom(foregroundColor: dialog.fs.red),
           onPressed: () => Navigator.of(dialog).pop(true),
-          child: const Text('Sign out'),
+          child: Text(action),
         ),
       ],
     ),
   );
-  if (confirmed != true || !context.mounted) return;
-  await ref.read(authControllerProvider.notifier).signOut();
+  return confirmed ?? false;
 }
 
 /// The level editor's row and title: fitness level is changed there too.
@@ -1074,29 +1094,15 @@ class _HealthEditorState extends ConsumerState<_HealthEditor> {
   );
 
   Future<void> _delete() async {
-    final confirmed = await showDialog<bool>(
-      context: context,
-      builder: (dialog) => AlertDialog(
-        title: const Text('Delete your health answers?'),
-        content: const Text(
+    final confirmed = await _confirmDestructive(
+      context,
+      keyPrefix: 'health.delete',
+      title: 'Delete your health answers?',
+      message:
           'Your next plan goes back to your usual sets and session length.',
-        ),
-        actions: [
-          TextButton(
-            key: const Key('health.delete.cancel'),
-            onPressed: () => Navigator.of(dialog).pop(false),
-            child: const Text('Cancel'),
-          ),
-          TextButton(
-            key: const Key('health.delete.confirm'),
-            style: TextButton.styleFrom(foregroundColor: dialog.fs.red),
-            onPressed: () => Navigator.of(dialog).pop(true),
-            child: const Text('Delete'),
-          ),
-        ],
-      ),
+      action: 'Delete',
     );
-    if (confirmed != true || !mounted) return;
+    if (!confirmed || !mounted) return;
     await _run(
       () => ref.read(healthRepositoryProvider).deleteHealth(),
       'Health answers deleted',
