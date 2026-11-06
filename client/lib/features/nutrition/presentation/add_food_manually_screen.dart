@@ -12,9 +12,13 @@ import 'widgets/number_box.dart';
 import 'widgets/text_limits.dart';
 
 class AddFoodManuallyScreen extends ConsumerStatefulWidget {
-  const AddFoodManuallyScreen({super.key, required this.mealType, this.onLogged, this.pick = false});
+  const AddFoodManuallyScreen({super.key, required String this.mealType, this.onLogged}) : pick = false;
 
-  final String mealType;
+  /// Choosing for Snap a meal, as [pick] says: no meal is shown or used.
+  const AddFoodManuallyScreen.pick({super.key}) : mealType = null, onLogged = null, pick = true;
+
+  /// The meal the food goes into; null when choosing, which shows no meal.
+  final String? mealType;
 
   /// Called once the food is saved, with the day it went to.
   final void Function(FoodEntry entry, String date)? onLogged;
@@ -36,7 +40,8 @@ class _AddFoodManuallyScreenState extends ConsumerState<AddFoodManuallyScreen> {
   final _fiber = TextEditingController();
   final _sugar = TextEditingController();
   final _sodium = TextEditingController();
-  late String _meal = widget.mealType;
+  /// Null only when choosing, which never logs.
+  late String? _meal = widget.mealType;
 
   @override
   void dispose() {
@@ -118,7 +123,7 @@ class _AddFoodManuallyScreenState extends ConsumerState<AddFoodManuallyScreen> {
             if (!widget.pick) ...[
               FsEyebrow(date == null || date == today ? 'Meal' : 'Meal · ${dayLabel(date, today)}', maxLines: 2),
               const SizedBox(height: 6),
-              MealChips(keyPrefix: 'manual.meal', selected: _meal, onSelected: (m) => setState(() => _meal = m)),
+              MealChips(keyPrefix: 'manual.meal', selected: _meal!, onSelected: (m) => setState(() => _meal = m)),
               const SizedBox(height: 16),
             ],
             FsField(
@@ -183,7 +188,7 @@ class _AddFoodManuallyScreenState extends ConsumerState<AddFoodManuallyScreen> {
                 final controller = ref.read(nutritionDayProvider.notifier);
                 final date = ref.read(nutritionDayProvider).value?.date;
                 final onLogged = widget.onLogged;
-                final meal = _meal;
+                final meal = _meal!;
                 final persist = MediaQuery.accessibleNavigationOf(context);
                 Navigator.of(context).pop(true);
                 // The form is gone, but the food is kept: Try again sends it
