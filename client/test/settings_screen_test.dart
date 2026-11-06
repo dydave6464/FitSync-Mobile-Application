@@ -1626,12 +1626,25 @@ void main() {
         );
         await openUnit(tester, editor);
 
-        await tester.tap(find.byKey(const Key('unit.lb')));
-        await tester.pumpAndSettle();
+        // P-26: the catch-all said so on screen but left no trace of what
+        // went wrong for whoever reads the log.
+        final logs = <String?>[];
+        final original = debugPrint;
+        debugPrint = (message, {wrapWidth}) => logs.add(message);
+        try {
+          await tester.tap(find.byKey(const Key('unit.lb')));
+          await tester.pumpAndSettle();
+        } finally {
+          debugPrint = original;
+        }
 
         expect(tester.takeException(), isNull);
         expect(shown(tester), WeightUnit.kg);
         expect(find.text("Couldn't switch to lb. Try again."), findsOneWidget);
+        expect(
+          logs,
+          contains(allOf(contains('Weight unit switch'), contains('no answer'))),
+        );
       });
     }
   });
