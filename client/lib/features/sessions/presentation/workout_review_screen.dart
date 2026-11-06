@@ -598,6 +598,9 @@ class _ReviewRow extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final t = context.fs;
+    // At large text the thumbnail's 46 dp go to the name instead: the name
+    // is what tells two similar exercises apart, the picture rarely is.
+    final showThumb = MediaQuery.textScalerOf(context).scale(14) <= 18;
 
     return ListTile(
       // The handle's touch area is 48 wide but its icon still 20, so the
@@ -605,7 +608,7 @@ class _ReviewRow extends StatelessWidget {
       // where it always did, and only the reach around it grew.
       contentPadding: const EdgeInsetsDirectional.only(start: 2, end: 8),
       leading: SizedBox(
-        width: 94,
+        width: showThumb ? 94 : 48,
         child: Row(
           mainAxisSize: MainAxisSize.min,
           children: [
@@ -640,26 +643,31 @@ class _ReviewRow extends StatelessWidget {
                 ),
               ),
             ),
-            const SizedBox(width: 2),
-            SizedBox(
-              width: 44,
-              height: 44,
-              child: exercise.thumbnailUrl == null
-                  ? _ThumbPlaceholder(equipment: exercise.equipment)
-                  : Image.network(
-                      '$baseUrl${exercise.thumbnailUrl}',
-                      fit: BoxFit.cover,
-                      // One unreachable thumbnail must not take the row down.
-                      errorBuilder: (_, _, _) =>
-                          _ThumbPlaceholder(equipment: exercise.equipment),
-                    ),
-            ),
+            if (showThumb) ...[
+              const SizedBox(width: 2),
+              SizedBox(
+                width: 44,
+                height: 44,
+                child: exercise.thumbnailUrl == null
+                    ? _ThumbPlaceholder(equipment: exercise.equipment)
+                    : Image.network(
+                        '$baseUrl${exercise.thumbnailUrl}',
+                        fit: BoxFit.cover,
+                        // One unreachable thumbnail must not take the row
+                        // down.
+                        errorBuilder: (_, _, _) =>
+                            _ThumbPlaceholder(equipment: exercise.equipment),
+                      ),
+              ),
+            ],
           ],
         ),
       ),
+      // Two lines: similar exercises differ at the end of their names, and
+      // this is where the workout's order is set.
       title: Text(
         exercise.name,
-        maxLines: 1,
+        maxLines: 2,
         overflow: TextOverflow.ellipsis,
         style: const TextStyle(fontSize: 14),
       ),

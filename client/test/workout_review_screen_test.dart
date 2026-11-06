@@ -1215,4 +1215,35 @@ void main() {
     expect(tester.takeException(), isNull);
     expect(find.text('Removed Cable fly'), findsOneWidget);
   });
+
+  // Similar exercises differ at the end of their names: 'dumbbell incline
+  // bench press' and 'dumbbell incline fly' both read 'dumbbell incline…'
+  // when cut to one line, on the screen where the order is set (SE-6). The
+  // name is short because the test font is one em per glyph: it is two
+  // lines here as the catalogue's long names are two lines on a phone.
+  group('long names are not cut', () {
+    const long = ExerciseSummary(
+      exerciseId: 404,
+      name: 'Incline DB press',
+      muscleGroup: 'pectorals',
+      equipment: 'dumbbell',
+      thumbnailUrl: null,
+    );
+
+    for (final scale in [1.0, 1.3]) {
+      testWidgets('on a 360 dp phone at ${scale}x text', (tester) async {
+        tester.view.physicalSize = const Size(360, 640);
+        tester.view.devicePixelRatio = 1.0;
+        tester.platformDispatcher.textScaleFactorTestValue = scale;
+        addTearDown(tester.view.reset);
+        addTearDown(tester.platformDispatcher.clearTextScaleFactorTestValue);
+
+        await _pump(tester, picks: const [long]);
+
+        expect(tester.takeException(), isNull);
+        final name = tester.renderObject<RenderParagraph>(find.text(long.name));
+        expect(name.didExceedMaxLines, isFalse);
+      });
+    }
+  });
 }

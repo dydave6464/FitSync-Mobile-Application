@@ -296,9 +296,11 @@ class _ExerciseLogPanelState extends State<ExerciseLogPanel> {
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
+                          // Two lines: a name cut mid-word can be mistaken
+                          // for its neighbour in the workout.
                           Text(
                             exercise.name,
-                            maxLines: 1,
+                            maxLines: 2,
                             overflow: TextOverflow.ellipsis,
                             style: TextStyle(
                               fontSize: 15,
