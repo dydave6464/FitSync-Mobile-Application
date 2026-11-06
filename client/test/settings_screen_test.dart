@@ -919,6 +919,10 @@ void main() {
       'edit.injuries': (t) => tapKey(t, 'injury.1'),
       'edit.health': (t) => tapKey(t, 'health.none'),
       'edit.trainingDays': (t) => tapKey(t, 'weekday.1'),
+      'profile.edit': (t) async {
+        await t.enterText(find.byKey(const Key('profile.city')), 'Davao');
+        await t.pumpAndSettle();
+      },
     };
 
     for (final MapEntry(key: row, value: edit) in edits.entries) {
@@ -974,6 +978,107 @@ void main() {
       await tester.pumpAndSettle();
       expect(find.text('Discard your changes?'), findsNothing);
       expect(find.byType(EditScaffold), findsNothing);
+    });
+  });
+
+  // PS-12: the name Home greets the user with could never be corrected, and
+  // the city was never asked for at all.
+  group('name and city', () {
+    testWidgets('the header card offers Edit, a full-size target', (
+      tester,
+    ) async {
+      final handle = tester.ensureSemantics();
+      await _pump(tester);
+
+      expect(
+        find.descendant(
+          of: find.byKey(const Key('profile.edit')),
+          matching: find.text('Edit'),
+        ),
+        findsOneWidget,
+      );
+      await expectLater(tester, meetsGuideline(androidTapTargetGuideline));
+      await expectLater(tester, meetsGuideline(labeledTapTargetGuideline));
+      handle.dispose();
+    });
+
+    testWidgets('Edit opens both, filled in, and Save writes them', (
+      tester,
+    ) async {
+      final patches = <Map<String, dynamic>>[];
+      await _pump(tester, patches: patches);
+      await _openRow(tester, const Key('profile.edit'));
+
+      expect(find.byType(EditScaffold), findsOneWidget);
+      final name = tester.widget<TextField>(
+        find.byKey(const Key('profile.fullName')),
+      );
+      expect(name.controller!.text, 'Juan Dela Cruz');
+      expect(name.autofillHints, [AutofillHints.name]);
+      expect(
+        tester
+            .widget<TextField>(find.byKey(const Key('profile.city')))
+            .controller!
+            .text,
+        'Cebu City',
+      );
+
+      await tester.enterText(
+        find.byKey(const Key('profile.fullName')),
+        '  Juan D. Cruz ',
+      );
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const Key('save')));
+      await tester.pumpAndSettle();
+
+      expect(patches, [
+        {'fullName': 'Juan D. Cruz', 'city': 'Cebu City'},
+      ]);
+      expect(find.text('Name & city saved'), findsOneWidget);
+    });
+
+    testWidgets('an emptied city is cleared', (tester) async {
+      final patches = <Map<String, dynamic>>[];
+      await _pump(tester, patches: patches);
+      await _openRow(tester, const Key('profile.edit'));
+
+      await tester.enterText(find.byKey(const Key('profile.city')), ' ');
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const Key('save')));
+      await tester.pumpAndSettle();
+
+      expect(patches.single.containsKey('city'), isTrue);
+      expect(patches.single['city'], isNull);
+    });
+
+    testWidgets('the header and the editor fit a small phone at 2x text', (
+      tester,
+    ) async {
+      tester.view.physicalSize = const Size(320, 568);
+      tester.view.devicePixelRatio = 1.0;
+      addTearDown(tester.view.reset);
+      tester.platformDispatcher.textScaleFactorTestValue = 2.0;
+      addTearDown(tester.platformDispatcher.clearTextScaleFactorTestValue);
+
+      await _pump(tester);
+      expect(tester.takeException(), isNull);
+      await _openRow(tester, const Key('profile.edit'));
+      expect(tester.takeException(), isNull);
+    });
+
+    testWidgets('an empty name greys Save and says why', (tester) async {
+      final patches = <Map<String, dynamic>>[];
+      await _pump(tester, patches: patches);
+      await _openRow(tester, const Key('profile.edit'));
+
+      await tester.enterText(find.byKey(const Key('profile.fullName')), '');
+      await tester.pumpAndSettle();
+
+      expect(
+        tester.widget<FsButton>(find.byKey(const Key('save'))).onPressed,
+        isNull,
+      );
+      expect(find.text('Enter your name to save.'), findsOneWidget);
     });
   });
 

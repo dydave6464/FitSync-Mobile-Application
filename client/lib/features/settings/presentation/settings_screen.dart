@@ -1,6 +1,7 @@
 import 'package:flutter/foundation.dart' show listEquals, setEquals;
 import 'package:flutter/material.dart';
 import 'package:flutter/scheduler.dart';
+import 'package:flutter/services.dart' show LengthLimitingTextInputFormatter;
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../core/api_exception.dart';
@@ -160,6 +161,21 @@ class _SettingsList extends ConsumerWidget {
                       style: TextStyle(fontSize: 11, color: t.text3),
                     ),
                   ],
+                ),
+              ),
+              const SizedBox(width: 10),
+              // The prototype's Edit chip. Its target there is goal editing,
+              // which has its own row below; here it edits what this card
+              // shows, the name Home greets the user by and the city, which
+              // nothing else in the app can change.
+              FsTapRoom(
+                child: FsChip(
+                  key: const Key('profile.edit'),
+                  label: 'Edit',
+                  small: true,
+                  selected: false,
+                  toggle: false,
+                  onTap: () => _open(context, const _NameCityEditor()),
                 ),
               ),
             ],
@@ -507,6 +523,91 @@ abstract class _EditorState<W extends ConsumerStatefulWidget>
         children: [step],
       ),
     );
+  }
+}
+
+/// The name and city the Profile header shows. PATCH /profile takes both;
+/// the name is required there (users.full_name is NOT NULL), the city is not.
+class _NameCityEditor extends ConsumerStatefulWidget {
+  const _NameCityEditor();
+
+  @override
+  ConsumerState<_NameCityEditor> createState() => _NameCityEditorState();
+}
+
+class _NameCityEditorState extends _EditorState<_NameCityEditor> {
+  final _name = TextEditingController();
+  final _city = TextEditingController();
+  String _seedName = '';
+  String _seedCity = '';
+  bool _seeded = false;
+
+  @override
+  void dispose() {
+    _name.dispose();
+    _city.dispose();
+    super.dispose();
+  }
+
+  @override
+  String get title => 'Name & city';
+
+  @override
+  bool get isDirty =>
+      _name.text.trim() != _seedName || _city.text.trim() != _seedCity;
+
+  @override
+  String? get blocker =>
+      _name.text.trim().isEmpty ? 'Enter your name to save.' : null;
+
+  @override
+  Widget buildStep(Profile profile) {
+    if (!_seeded) {
+      _seeded = true;
+      _name.text = _seedName = profile.fullName.trim();
+      _city.text = _seedCity = profile.city?.trim() ?? '';
+    }
+    // Both columns are VARCHAR(255); the server refuses anything longer.
+    final limit = [LengthLimitingTextInputFormatter(255)];
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        FsField(
+          fieldKey: const Key('profile.fullName'),
+          label: 'Name',
+          hint: 'e.g. Juan Dela Cruz',
+          controller: _name,
+          textCapitalization: TextCapitalization.words,
+          textInputAction: TextInputAction.next,
+          autofillHints: const [AutofillHints.name],
+          inputFormatters: limit,
+          onChanged: (_) => setState(() {}),
+        ),
+        const SizedBox(height: 16),
+        FsField(
+          fieldKey: const Key('profile.city'),
+          label: 'City',
+          hint: 'e.g. Cebu City',
+          controller: _city,
+          textCapitalization: TextCapitalization.words,
+          textInputAction: TextInputAction.done,
+          autofillHints: const [AutofillHints.addressCity],
+          inputFormatters: limit,
+          onChanged: (_) => setState(() {}),
+        ),
+      ],
+    );
+  }
+
+  @override
+  Future<void> save(ProfileNotifier notifier) {
+    final city = _city.text.trim();
+    return notifier.patch({
+      'fullName': _name.text.trim(),
+      // Optional: an emptied field clears the stored city.
+      'city': city.isEmpty ? null : city,
+    });
   }
 }
 
