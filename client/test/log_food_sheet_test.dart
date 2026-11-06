@@ -747,21 +747,46 @@ void main() {
       expect(button('servings.plus').onPressed, isNull, reason: 'nothing above 20 servings');
     });
 
-    testWidgets('every step is read out as servings and kcal, from one live region', (tester) async {
+    testWidgets('every step is read out as servings and kcal', (tester) async {
       final h = tester.ensureSemantics();
       await _open(tester, _rice);
       expect(
         tester.getSemantics(find.byKey(const Key('logSheet.amount'))),
-        matchesSemantics(label: '1 serving · 205 kcal', isLiveRegion: true),
+        matchesSemantics(label: '1 serving · 205 kcal'),
       );
+      tester.takeAnnouncements();
       await tester.tap(find.byKey(const Key('servings.plus')));
       await tester.pump();
+      expect(tester.takeAnnouncements().map((a) => a.message), ['1.5 servings · 308 kcal']);
       expect(
         tester.getSemantics(find.byKey(const Key('logSheet.amount'))),
-        matchesSemantics(label: '1.5 servings · 308 kcal', isLiveRegion: true),
+        matchesSemantics(label: '1.5 servings · 308 kcal'),
       );
+      await tester.tap(find.byKey(const Key('servings.minus')));
+      await tester.pump();
+      expect(tester.takeAnnouncements().map((a) => a.message), ['1 serving · 205 kcal']);
       // The bare figure between the buttons is not a second, contextless node.
       expect(find.bySemanticsLabel('1.5'), findsNothing);
+      h.dispose();
+    });
+
+    // A live region re-announced "1 serving · N kcal" on every keystroke in
+    // Edit numbers, over the keyboard's own echo.
+    testWidgets('typing in Edit numbers announces nothing', (tester) async {
+      final h = tester.ensureSemantics();
+      await _open(tester, _rice);
+      await _editNumbers(tester);
+      tester.takeAnnouncements();
+
+      await tester.enterText(find.descendant(of: find.byKey(const Key('logSheet.protein')), matching: find.byType(TextField)), '10');
+      await tester.pump();
+
+      expect(tester.takeAnnouncements(), isEmpty);
+      expect(
+        tester.getSemantics(find.byKey(const Key('logSheet.amount'))).flagsCollection.isLiveRegion,
+        isFalse,
+        reason: 'a live region speaks whenever its label changes, typing included',
+      );
       h.dispose();
     });
 
