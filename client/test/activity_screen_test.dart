@@ -343,6 +343,15 @@ void main() {
       offline: false,
     );
 
+    testWidgets('kcal over a thousand is grouped, as steps are', (tester) async {
+      await _pump(tester, big);
+
+      expect(
+        find.descendant(of: find.byKey(const Key('activity.kcal')), matching: find.text('1,234')),
+        findsOneWidget,
+      );
+    });
+
     for (final size in const [Size(360, 640), Size(320, 568)]) {
       testWidgets('at 2x on ${size.width.toInt()} dp nothing overflows and figures stay whole', (tester) async {
         tester.view.physicalSize = size;
@@ -355,7 +364,7 @@ void main() {
         expect(tester.takeException(), isNull);
 
         expect(lines(tester, '12,345'), 1, reason: 'the headline must not split mid-number');
-        for (final figure in ['1234', '10.52', '145']) {
+        for (final figure in ['1,234', '10.52', '145']) {
           expect(lines(tester, figure), 1, reason: figure);
         }
 
@@ -376,7 +385,7 @@ void main() {
       expect(tester.takeException(), isNull);
 
       expect(lines(tester, '12,345'), 1);
-      for (final figure in ['1234', '10.52', '145']) {
+      for (final figure in ['1,234', '10.52', '145']) {
         expect(lines(tester, figure), 1, reason: figure);
       }
       await tester.scrollUntilVisible(find.text('This week'), 100);

@@ -73,14 +73,18 @@ class _FailingActivity extends ActivityController {
   Future<void> sync() async {}
 }
 
-ActivityWeek _week({List<String> missing = const [], int? usual}) =>
+ActivityWeek _week({
+  List<String> missing = const [],
+  int? usual,
+  int kcal = 158,
+}) =>
     ActivityWeek(
       days: [
         for (var d = 22; d <= 28; d++)
           ActivityDay(
             date: '2026-09-$d',
             steps: d == 28 ? 6420 : null,
-            caloriesBurned: d == 28 ? 158 : null,
+            caloriesBurned: d == 28 ? kcal : null,
             distanceKm: d == 28 ? 4.52 : null,
             activeMinutes: d == 28 ? 64 : null,
           ),
@@ -229,6 +233,14 @@ void main() {
     await tester.tap(find.byKey(const Key('home.activity.km')));
     await tester.pumpAndSettle();
     expect(find.byType(ActivityScreen), findsOneWidget);
+  });
+
+  testWidgets('on: kcal over a thousand is grouped, as steps are', (
+    tester,
+  ) async {
+    await _pump(tester, _Permission(StepAccess.granted), week: _week(kcal: 1180));
+
+    expect(tile('kcal', '1,180'), findsOneWidget);
   });
 
   testWidgets('on, weight missing: kcal is a dash, km stays', (tester) async {

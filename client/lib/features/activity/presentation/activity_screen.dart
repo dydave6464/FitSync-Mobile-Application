@@ -146,7 +146,7 @@ class _Body extends StatelessWidget {
                 children: [
                   _Figure(
                     key: const Key('activity.kcal'),
-                    value: noKcal ? '—' : '${today!.caloriesBurned ?? 0}',
+                    value: noKcal ? '—' : formatSteps(today!.caloriesBurned ?? 0),
                     label: 'kcal',
                   ),
                   _Figure(

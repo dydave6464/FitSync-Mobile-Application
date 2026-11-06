@@ -108,7 +108,7 @@ class _Stats extends ConsumerWidget {
                 week == null || week.missingHeight || week.missingWeight;
             return _Tiles(
               steps: formatSteps(state.today.steps),
-              kcal: noKcal ? '—' : '${today!.caloriesBurned ?? 0}',
+              kcal: noKcal ? '—' : formatSteps(today!.caloriesBurned ?? 0),
               km: noKm ? '—' : (today!.distanceKm ?? 0).toStringAsFixed(1),
               todaySteps: state.today.steps,
               usual: week?.usual,
