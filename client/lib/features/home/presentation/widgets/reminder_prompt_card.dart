@@ -30,6 +30,11 @@ class _ReminderPromptCardState extends ConsumerState<ReminderPromptCard> {
   /// same, so nothing downstream needs to tell them apart.
   bool? _show;
 
+  /// Turn on is on its way: the permission prompt, then the switch-on save.
+  /// Both buttons wait for it, so a slow answer sends one request, not one
+  /// per impatient tap, and Not now cannot hide the card mid-request.
+  bool _busy = false;
+
   @override
   void initState() {
     super.initState();
@@ -84,6 +89,17 @@ class _ReminderPromptCardState extends ConsumerState<ReminderPromptCard> {
   /// and a card that just vanished read as "reminders are on" when they were
   /// not.
   Future<void> _turnOn() async {
+    if (_busy) return;
+    setState(() => _busy = true);
+    try {
+      await _askAndSwitchOn();
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
+  }
+
+  /// Turn on's work, held by [_busy] so a second tap sends nothing more.
+  Future<void> _askAndSwitchOn() async {
     final granted = await ref
         .read(reminderSchedulerProvider)
         .requestPermission();
@@ -92,18 +108,31 @@ class _ReminderPromptCardState extends ConsumerState<ReminderPromptCard> {
     // below may touch ref once it is gone.
     if (!mounted) return;
     // The phone's permission is only half of it: with the app's own master
-    // switch (the profile's notificationsEnabled) off, nothing is scheduled,
-    // so "Reminders on" would be untrue. A profile that cannot be read
-    // counts as off.
+    // switch (the profile's notificationsEnabled) off, nothing is scheduled.
+    // The tap meant "remind me", so it switches that on too (D-2), as the
+    // Reminders screen's master switch would: the profile only changes once
+    // the save lands, so a failed one leaves the switch off, and says so.
     var masterOn = false;
     if (granted) {
       try {
         masterOn = (await ref.read(profileProvider.future))
             .notificationsEnabled;
-      } catch (error) {
-        debugPrint('Reminder prompt: profile read failed: $error');
+      } catch (_) {
+        // A profile that cannot be read counts as off: the save below sets
+        // the switch either way.
       }
       if (!mounted) return;
+      if (!masterOn) {
+        try {
+          await ref.read(profileProvider.notifier).patch({
+            'notificationsEnabled': true,
+          });
+          masterOn = true;
+        } catch (_) {
+          // The profile keeps its old value; the SnackBar says so.
+        }
+        if (!mounted) return;
+      }
     }
     final openSettings = ref.read(appSettingsOpenerProvider);
     ScaffoldMessenger.of(context).showSnackBar(
@@ -113,7 +142,8 @@ class _ReminderPromptCardState extends ConsumerState<ReminderPromptCard> {
                 masterOn
                     ? 'Reminders on. Change them in Profile › Notifications '
                           '& reminders.'
-                    : 'Notifications allowed. Turn reminders on in Profile › '
+                    : "Notifications allowed, but reminders couldn't be "
+                          'switched on. Turn them on in Profile › '
                           'Notifications & reminders.',
               ),
             )
@@ -159,6 +189,7 @@ class _ReminderPromptCardState extends ConsumerState<ReminderPromptCard> {
                     key: const Key('home.reminderPrompt.turnOn'),
                     label: 'Turn on',
                     small: true,
+                    busy: _busy,
                     onPressed: _turnOn,
                   ),
                   FsButton(
@@ -166,7 +197,7 @@ class _ReminderPromptCardState extends ConsumerState<ReminderPromptCard> {
                     label: 'Not now',
                     small: true,
                     kind: FsButtonKind.secondary,
-                    onPressed: _hide,
+                    onPressed: _busy ? null : _hide,
                   ),
                 ],
               ),

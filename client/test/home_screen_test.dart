@@ -6,6 +6,7 @@ import 'package:flutter_test/flutter_test.dart';
 
 import 'package:fitsync/core/api_exception.dart';
 import 'package:fitsync/core/widgets/fs_charts.dart' show FsRing;
+import 'package:fitsync/core/theme.dart';
 import 'package:fitsync/core/widgets/fs_kit.dart' hide FsRing;
 import 'package:fitsync/features/activity/data/step_permission.dart';
 import 'package:fitsync/features/activity/data/step_source.dart';
@@ -297,6 +298,7 @@ Future<void> _pumpHome(
   Future<RoutineDay>? routineFuture,
   StepPermission? stepPermission,
   bool planReady = false,
+  ThemeData? theme,
 }) async {
   var streakReads = 0;
   await tester.pumpWidget(
@@ -362,6 +364,7 @@ Future<void> _pumpHome(
         if (planReady) planReadyProvider.overrideWith(_JustOnboarded.new),
       ],
       child: MaterialApp(
+        theme: theme,
         home: HomeScreen(
           onGoToTrain: onGoToTrain,
           onGoToProfile: onGoToProfile,
@@ -1001,6 +1004,45 @@ void main() {
       }
       handle.dispose();
     });
+
+    // P-29a: checked in light only before; the placeholders are drawn from
+    // tokens, so in dark they must take dark's card and bar colours.
+    for (final dark in [false, true]) {
+      testWidgets('the loading placeholders take the '
+          '${dark ? 'dark' : 'light'} theme\'s card and bars', (tester) async {
+        _tallScreen(tester);
+        await _pumpHome(
+          tester,
+          theme: dark ? fsDarkTheme() : fsLightTheme(),
+          recoveryFuture: Completer<RecoveryOverview>().future,
+          summaryFuture: Completer<TrainingSummary>().future,
+          routineFuture: Completer<RoutineDay>().future,
+        );
+        final t = dark ? FsTokens.dark : FsTokens.light;
+        final other = dark ? FsTokens.light : FsTokens.dark;
+
+        for (final key in [
+          'home.readiness.placeholder',
+          'home.progress.placeholder',
+          'home.routine.placeholder',
+        ]) {
+          // Container draws through a DecoratedBox too, so this finds the
+          // card's fill and every bar's.
+          final colors = {
+            for (final box in tester.widgetList<DecoratedBox>(
+              find.descendant(
+                of: find.byKey(Key(key)),
+                matching: find.byType(DecoratedBox),
+              ),
+            ))
+              if (box.decoration case BoxDecoration(:final color?)) color,
+          };
+          expect(colors, containsAll([t.surface, t.surface2]), reason: key);
+          expect(colors, isNot(contains(other.surface)), reason: key);
+          expect(colors, isNot(contains(other.surface2)), reason: key);
+        }
+      });
+    }
 
     testWidgets('steps that cannot be read leave one gap, not two', (
       tester,

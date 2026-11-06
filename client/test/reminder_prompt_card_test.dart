@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 
+import 'package:fitsync/core/api_exception.dart';
 import 'package:fitsync/core/app_settings.dart';
 import 'package:fitsync/core/token_store.dart' show InMemorySecureStore;
 import 'package:fitsync/features/home/presentation/widgets/reminder_prompt_card.dart';
@@ -61,24 +62,47 @@ class _ThrowingAnsweredStore extends ReminderPromptStore {
       Future<bool>.error(Exception('storage unavailable'));
 }
 
+Profile _profile({required bool masterOn}) => Profile(
+  userId: 1,
+  email: 'juan@example.com',
+  fullName: 'Juan Dela Cruz',
+  onboardingCompleted: true,
+  isPremium: false,
+  notificationsEnabled: masterOn,
+  equipment: const [],
+  injuries: const [],
+);
+
 /// The signed-in profile, whose notificationsEnabled is the reminders'
-/// master switch.
+/// master switch. Records each patch; `patchError` makes patches fail, and
+/// `readError` makes the profile itself fail to load.
 class _StubProfile extends ProfileNotifier {
-  _StubProfile({required this.masterOn});
+  _StubProfile({
+    required this.masterOn,
+    required this.patches,
+    this.patchError,
+    this.readError,
+  });
 
   final bool masterOn;
+  final List<Map<String, dynamic>> patches;
+  final Object? patchError;
+  final Object? readError;
 
   @override
-  Future<Profile> build() async => Profile(
-    userId: 1,
-    email: 'juan@example.com',
-    fullName: 'Juan Dela Cruz',
-    onboardingCompleted: true,
-    isPremium: false,
-    notificationsEnabled: masterOn,
-    equipment: const [],
-    injuries: const [],
-  );
+  Future<Profile> build() async {
+    if (readError != null) throw readError!;
+    return _profile(masterOn: masterOn);
+  }
+
+  @override
+  Future<void> patch(Map<String, dynamic> fields) async {
+    patches.add(fields);
+    if (patchError != null) throw patchError!;
+    state = AsyncData(
+      _profile(masterOn: fields['notificationsEnabled'] as bool? ?? masterOn),
+    );
+  }
 }
 
 Future<void> _pump(
@@ -87,11 +111,22 @@ Future<void> _pump(
   ReminderPromptStore? store,
   List<String>? settingsOpened,
   bool masterOn = true,
+  List<Map<String, dynamic>>? patches,
+  Object? patchError,
+  Object? readError,
+  void Function(ProviderContainer)? onContainer,
 }) async {
   await tester.pumpWidget(
     ProviderScope(
       overrides: [
-        profileProvider.overrideWith(() => _StubProfile(masterOn: masterOn)),
+        profileProvider.overrideWith(
+          () => _StubProfile(
+            masterOn: masterOn,
+            patches: patches ?? [],
+            patchError: patchError,
+            readError: readError,
+          ),
+        ),
         reminderSchedulerProvider.overrideWithValue(scheduler),
         reminderPromptStoreProvider.overrideWithValue(
           store ?? ReminderPromptStore(backing: InMemorySecureStore()),
@@ -100,7 +135,12 @@ Future<void> _pump(
           () async => settingsOpened?.add('opened'),
         ),
       ],
-      child: const MaterialApp(home: Scaffold(body: ReminderPromptCard())),
+      child: Builder(
+        builder: (context) {
+          onContainer?.call(ProviderScope.containerOf(context));
+          return const MaterialApp(home: Scaffold(body: ReminderPromptCard()));
+        },
+      ),
     ),
   );
   await tester.pumpAndSettle();
@@ -158,12 +198,24 @@ void main() {
   testWidgets('hides when the answered check fails, instead of throwing', (
     tester,
   ) async {
-    await _pump(
-      tester,
-      scheduler: _FakeScheduler(granted: false),
-      store: _ThrowingAnsweredStore(),
-    );
+    // The failure's cause is logged; captured here rather than printed into
+    // the test output, and checked.
+    final logs = <String?>[];
+    final original = debugPrint;
+    debugPrint = (message, {wrapWidth}) => logs.add(message);
+    try {
+      await _pump(
+        tester,
+        scheduler: _FakeScheduler(granted: false),
+        store: _ThrowingAnsweredStore(),
+      );
+    } finally {
+      debugPrint = original;
+    }
 
+    expect(logs, [
+      'Reminder prompt: answered() failed: Exception: storage unavailable',
+    ]);
     expect(tester.takeException(), isNull);
     expect(find.text('Get reminders for your habits'), findsNothing);
   });
@@ -240,22 +292,164 @@ void main() {
   });
 
   testWidgets('Turn on, allowed, with reminders switched off in Profile, '
-      'does not claim they are on', (tester) async {
-    // The phone now allows notifications, but the app's own master switch
-    // still sends none: "Reminders on" would be untrue.
+      'switches them on too', (tester) async {
+    // D-2: the tap means "remind me". The phone allowing notifications is
+    // only half of it while the app's own master switch sends none.
+    final patches = <Map<String, dynamic>>[];
+    late ProviderContainer container;
     await _pump(
       tester,
       scheduler: _FakeScheduler(granted: false),
       masterOn: false,
+      patches: patches,
+      onContainer: (c) => container = c,
     );
 
     await tester.tap(find.text('Turn on'));
     await tester.pumpAndSettle();
 
+    expect(patches, [
+      {'notificationsEnabled': true},
+    ]);
+    expect(container.read(profileProvider).value?.notificationsEnabled, isTrue);
+    expect(
+      find.text(
+        'Reminders on. Change them in Profile › Notifications & reminders.',
+      ),
+      findsOneWidget,
+    );
+    expect(find.text('Get reminders for your habits'), findsNothing);
+  });
+
+  testWidgets('Turn on, allowed, with reminders already on, saves nothing', (
+    tester,
+  ) async {
+    final patches = <Map<String, dynamic>>[];
+    await _pump(
+      tester,
+      scheduler: _FakeScheduler(granted: false),
+      patches: patches,
+    );
+
+    await tester.tap(find.text('Turn on'));
+    await tester.pumpAndSettle();
+
+    expect(patches, isEmpty);
+  });
+
+  testWidgets('Turn on, allowed, whose switch-on fails, says so and where to '
+      'do it, and leaves the switch off', (tester) async {
+    final patches = <Map<String, dynamic>>[];
+    late ProviderContainer container;
+    await _pump(
+      tester,
+      scheduler: _FakeScheduler(granted: false),
+      masterOn: false,
+      patches: patches,
+      patchError: const ApiException('NETWORK_ERROR', 'offline'),
+      onContainer: (c) => container = c,
+    );
+
+    await tester.tap(find.text('Turn on'));
+    await tester.pumpAndSettle();
+
+    expect(patches, hasLength(1));
     expect(find.textContaining('Reminders on'), findsNothing);
     expect(
       find.text(
-        'Notifications allowed. Turn reminders on in Profile › '
+        "Notifications allowed, but reminders couldn't be switched on. Turn "
+        'them on in Profile › Notifications & reminders.',
+      ),
+      findsOneWidget,
+    );
+    expect(
+      container.read(profileProvider).value?.notificationsEnabled,
+      isFalse,
+      reason: 'the switch stays where it was',
+    );
+    expect(find.text('Get reminders for your habits'), findsNothing);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('Turn on, allowed, with the profile unreadable, still switches '
+      'reminders on', (tester) async {
+    final patches = <Map<String, dynamic>>[];
+    await _pump(
+      tester,
+      scheduler: _FakeScheduler(granted: false),
+      patches: patches,
+      // Not a retryable code: the provider gives up at once.
+      readError: const ApiException('SERVER_ERROR', 'broke'),
+    );
+
+    await tester.tap(find.text('Turn on'));
+    await tester.pumpAndSettle();
+
+    expect(patches, [
+      {'notificationsEnabled': true},
+    ]);
+    expect(
+      find.text(
+        'Reminders on. Change them in Profile › Notifications & reminders.',
+      ),
+      findsOneWidget,
+    );
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('Turn on, refused, switches nothing on', (tester) async {
+    final patches = <Map<String, dynamic>>[];
+    await _pump(
+      tester,
+      scheduler: _FakeScheduler(granted: false, requestAnswer: false),
+      masterOn: false,
+      patches: patches,
+    );
+
+    await tester.tap(find.text('Turn on'));
+    await tester.pumpAndSettle();
+
+    expect(patches, isEmpty);
+  });
+
+  testWidgets('while Turn on is in flight, further taps send nothing more', (
+    tester,
+  ) async {
+    final gate = Completer<bool>();
+    final scheduler = _FakeScheduler(granted: false, pendingRequest: gate);
+    final patches = <Map<String, dynamic>>[];
+    final store = ReminderPromptStore(backing: InMemorySecureStore());
+    await _pump(
+      tester,
+      scheduler: scheduler,
+      store: store,
+      masterOn: false,
+      patches: patches,
+    );
+
+    await tester.tap(find.text('Turn on'));
+    await tester.pump();
+    await tester.tap(
+      find.byKey(const Key('home.reminderPrompt.turnOn')),
+      warnIfMissed: false,
+    );
+    await tester.tap(find.text('Not now'), warnIfMissed: false);
+    await tester.pump();
+
+    expect(scheduler.requestPermissionCalls, 1);
+    expect(
+      find.text('Get reminders for your habits'),
+      findsOneWidget,
+      reason: 'Not now waits for the answer rather than hiding mid-request',
+    );
+
+    gate.complete(true);
+    await tester.pumpAndSettle();
+
+    expect(patches, hasLength(1));
+    expect(
+      find.text(
+        'Reminders on. Change them in Profile › '
         'Notifications & reminders.',
       ),
       findsOneWidget,
