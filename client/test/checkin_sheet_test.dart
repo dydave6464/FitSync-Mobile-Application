@@ -569,6 +569,23 @@ void main() {
       expect(find.text('Discard your changes?'), findsOneWidget);
     });
 
+    testWidgets('a swipe down with nothing answered just closes', (
+      tester,
+    ) async {
+      final repo = await _open(tester);
+
+      await tester.fling(
+        find.text('Morning check-in'),
+        const Offset(0, 300),
+        1500,
+      );
+      await tester.pumpAndSettle();
+
+      expect(find.text('Discard your changes?'), findsNothing);
+      expect(find.text('Morning check-in'), findsNothing);
+      expect(repo.sent, isNull);
+    });
+
     testWidgets('a swipe down asks first rather than closing', (tester) async {
       await _open(tester);
       await _tapKey(tester, 'checkin.energy.high');
