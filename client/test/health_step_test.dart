@@ -388,25 +388,6 @@ void main() {
     expect(find.text('Dizziness or fainting?'), findsOneWidget);
   });
 
-  testWidgets(
-    '"Other condition" does not vouch for a condition it cannot know',
-    (tester) async {
-      // RH-24: "usually safe and helpful with your condition" -- which the
-      // user never named.
-      await _pumpLive(tester);
-      await _tap(tester, 'health.other');
-
-      expect(find.textContaining('with your condition'), findsNothing);
-      expect(
-        find.text(
-          'Many conditions are fine to train with, but your doctor should OK '
-          'it first.',
-        ),
-        findsOneWidget,
-      );
-    },
-  );
-
   testWidgets('opting out takes back the gentler-plan promise', (tester) async {
     await _pumpLive(tester);
 

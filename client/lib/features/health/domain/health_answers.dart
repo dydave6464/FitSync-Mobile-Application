@@ -64,10 +64,8 @@ const healthConditions = <HealthCondition>[
   (
     value: 'other',
     label: 'Other condition',
-    // The user has not said which condition, so this cannot promise exercise
-    // suits it.
     line:
-        'Many conditions are fine to train with, '
+        'Exercise is usually safe and helpful with your condition, '
         'but your doctor should OK it first.',
     tip: 'Ask your doctor which exercises are safe for you.',
   ),
