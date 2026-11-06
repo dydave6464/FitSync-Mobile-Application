@@ -102,7 +102,7 @@ class ScheduleDayCell extends StatelessWidget {
 
   final String date;
 
-  /// False for the neighbouring months' days, which are dimmed.
+  /// False for the neighbouring months' days, whose numbers are dimmed.
   final bool inMonth;
   final bool isToday;
   final bool selected;
@@ -132,65 +132,65 @@ class ScheduleDayCell extends StatelessWidget {
   Widget build(BuildContext context) {
     final t = context.fs;
     final radius = BorderRadius.circular(9);
-    final cell = Opacity(
-      opacity: inMonth ? 1 : 0.35,
-      child: Padding(
-        padding: const EdgeInsets.all(2),
-        child: Material(
-          color: isToday ? t.accent : Colors.transparent,
-          shape: RoundedRectangleBorder(
-            borderRadius: radius,
-            side: selected
-                ? BorderSide(color: isToday ? t.text : t.accent, width: 1.5)
-                : BorderSide.none,
-          ),
-          child: InkWell(
-            borderRadius: radius,
-            onTap: onTap,
-            child: SizedBox(
-              height: 44,
-              child: Column(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  Text(
-                    '${int.parse(date.substring(8, 10))}',
-                    style: TextStyle(
-                      fontSize: 12,
-                      fontWeight: FontWeight.w600,
-                      color: isToday ? t.onAccent : t.text,
-                    ),
+    // A neighbouring month's day is dimmed by its number's colour, not by
+    // fading the whole cell: it can still be tapped, and at 35% its number
+    // was 2.25:1. text3 keeps it at 4.5:1 or better on the card.
+    final cell = Padding(
+      padding: const EdgeInsets.all(2),
+      child: Material(
+        color: isToday ? t.accent : Colors.transparent,
+        shape: RoundedRectangleBorder(
+          borderRadius: radius,
+          side: selected
+              ? BorderSide(color: isToday ? t.text : t.accent, width: 1.5)
+              : BorderSide.none,
+        ),
+        child: InkWell(
+          borderRadius: radius,
+          onTap: onTap,
+          child: SizedBox(
+            height: 44,
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                Text(
+                  '${int.parse(date.substring(8, 10))}',
+                  style: TextStyle(
+                    fontSize: 12,
+                    fontWeight: FontWeight.w600,
+                    color: isToday ? t.onAccent : (inMonth ? t.text : t.text3),
                   ),
-                  const SizedBox(height: 3),
-                  SizedBox(
-                    height: 10,
-                    child: Row(
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      children: [
-                        if (workout != DotState.none)
-                          ScheduleDot(
-                            key: Key('schedule.dot.workout.$date'),
-                            // Green on the accent fill would vanish; off it,
-                            // accentFill keeps the dot at 3:1 in light too.
-                            color: isToday ? t.onAccent : t.accentFill,
-                            filled: workout == DotState.done,
-                          ),
-                        if (workout != DotState.none && habits != DotState.none)
-                          const SizedBox(width: 3),
-                        if (habits != DotState.none)
-                          ScheduleDot(
-                            key: Key('schedule.dot.habits.$date'),
-                            color: t.blue,
-                            // Blue on the accent fill is close to unreadable;
-                            // a small onAccent disc restores the contrast
-                            // without changing the dot's own colour.
-                            backing: isToday ? t.onAccent : null,
-                            filled: habits == DotState.done,
-                          ),
-                      ],
-                    ),
+                ),
+                const SizedBox(height: 3),
+                SizedBox(
+                  height: 10,
+                  child: Row(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      if (workout != DotState.none)
+                        ScheduleDot(
+                          key: Key('schedule.dot.workout.$date'),
+                          // Green on the accent fill would vanish; off it,
+                          // accentFill keeps the dot at 3:1 in light too.
+                          color: isToday ? t.onAccent : t.accentFill,
+                          filled: workout == DotState.done,
+                        ),
+                      if (workout != DotState.none && habits != DotState.none)
+                        const SizedBox(width: 3),
+                      if (habits != DotState.none)
+                        ScheduleDot(
+                          key: Key('schedule.dot.habits.$date'),
+                          color: t.blue,
+                          // Blue on the accent fill is close to unreadable;
+                          // a small onAccent disc restores the contrast
+                          // without changing the dot's own colour.
+                          backing: isToday ? t.onAccent : null,
+                          filled: habits == DotState.done,
+                        ),
+                    ],
                   ),
-                ],
-              ),
+                ),
+              ],
             ),
           ),
         ),
