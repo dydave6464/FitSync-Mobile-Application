@@ -96,6 +96,29 @@ Future<void> _pump(
 }
 
 void main() {
+  // PS-10: the sheet's only escape control was announced as a bare "Button".
+  testWidgets('the close button is named Close for screen readers', (
+    tester,
+  ) async {
+    final handle = tester.ensureSemantics();
+    await _pump(tester, repo: FakeProfileRepository(), fetches: _FetchCount());
+
+    expect(
+      tester.getSemantics(find.byKey(const Key('bodyWeight.close'))),
+      matchesSemantics(
+        tooltip: 'Close',
+        isButton: true,
+        isEnabled: true,
+        hasEnabledState: true,
+        isFocusable: true,
+        hasTapAction: true,
+        hasFocusAction: true,
+      ),
+    );
+    await expectLater(tester, meetsGuideline(labeledTapTargetGuideline));
+    handle.dispose();
+  });
+
   testWidgets(
     'entering a weight and saving calls the repository and refreshes the card',
     (tester) async {
