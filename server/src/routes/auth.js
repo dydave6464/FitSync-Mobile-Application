@@ -331,10 +331,16 @@ module.exports = function buildAuthRouter({
         );
       }
       // Trimmed like login's, so it compares against the hash register made.
-      const currentPassword = requireString('currentPassword', req.body.currentPassword, {
-        maxLength: MAX_PASSWORD_LENGTH,
-      });
-      if (!(await verifyPassword(currentPassword, user.password_hash))) {
+      // One answer for anything that is not the current password: missing,
+      // blank or over-length included, since register never stored such a
+      // password. Those skip bcrypt -- the cap keeps its work bounded -- and
+      // the app shows the message under the current-password field.
+      const currentPassword = typeof req.body.currentPassword === 'string'
+        ? req.body.currentPassword.trim() : '';
+      const matches = currentPassword.length > 0
+        && currentPassword.length <= MAX_PASSWORD_LENGTH
+        && await verifyPassword(currentPassword, user.password_hash);
+      if (!matches) {
         throw AppError.badRequest('WRONG_PASSWORD', "That password isn't right.");
       }
       await updatePasswordHash(pool, user.user_id, await hashPassword(newPassword));

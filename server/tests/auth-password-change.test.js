@@ -113,14 +113,28 @@ test('change password', async (t) => {
     assert.equal((await login('juan@example.com', 's3cret-pass')).status, 200);
   });
 
-  await t.test('a missing current password is a validation error', async () => {
+  // The contract has one answer for a current password that cannot be the
+  // right one: WRONG_PASSWORD, which the app shows under the current-password
+  // field. A missing, blank, non-string or over-length one is no different --
+  // no stored password is blank or over 72 characters.
+  await t.test('a missing, blank or over-length current password is WRONG_PASSWORD', async () => {
     await reset();
     const { token } = await passwordUser();
 
-    const res = await change(token, { newPassword: 'a brand new pass' });
-    assert.equal(res.status, 400);
-    assert.equal(res.body.error.code, 'INVALID_PROFILE_FIELD');
-    assert.deepEqual(res.body.error.details, [{ field: 'currentPassword' }]);
+    const bodies = [
+      {}, { currentPassword: '' }, { currentPassword: '   ' }, { currentPassword: null },
+      { currentPassword: 12345678 }, { currentPassword: 'a'.repeat(73) },
+    ];
+    for (const body of bodies) {
+      const res = await change(token, { ...body, newPassword: 'a brand new pass' });
+      const label = JSON.stringify(body);
+      assert.equal(res.status, 400, label);
+      assert.equal(res.body.error.code, 'WRONG_PASSWORD', label);
+      assert.equal(res.body.error.message, "That password isn't right.", label);
+    }
+
+    await me(token).expect(200);
+    assert.equal((await login('juan@example.com', 's3cret-pass')).status, 200);
   });
 
   await t.test('requires a signed-in caller', async () => {
