@@ -419,8 +419,14 @@ void main() {
     await _pump(tester);
 
     expect(_inside('pro.plan.monthly', find.text('for 1 month')), findsOne);
+    // The ₱149 headline keeps its rate in sight: without "a month" it read
+    // as the annual price, beside ₱1,788 and the monthly card's ₱249.
+    expect(_inside('pro.plan.annual', find.text('₱149')), findsOneWidget);
     expect(
-      _inside('pro.plan.annual', find.text('₱1,788 once, for 12 months')),
+      _inside(
+        'pro.plan.annual',
+        find.text('a month · ₱1,788 once, for 12 months'),
+      ),
       findsOneWidget,
     );
     expect(find.textContaining('billed'), findsNothing);

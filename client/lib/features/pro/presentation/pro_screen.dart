@@ -418,7 +418,11 @@ class _ProScreenState extends ConsumerState<ProScreen> {
             key: const Key('pro.plan.annual'),
             title: 'Annual',
             price: peso(p.annualPerMonth),
-            note: '${peso(p.annual)} once, for ${ProPlan.annual.period}',
+            // The headline is a rate, so "a month" stays beside it; without
+            // it ₱149 read as the annual price.
+            note:
+                'a month · ${peso(p.annual)} once, '
+                'for ${ProPlan.annual.period}',
             tag: '-${p.annualSavingPct}%',
             semanticsLabel:
                 'Annual, ${peso(p.annualPerMonth)} a month, '
