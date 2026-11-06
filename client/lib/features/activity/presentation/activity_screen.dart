@@ -114,7 +114,7 @@ class _Body extends StatelessWidget {
     final notes = [
       if (state.today.sinceTurnedOn) 'Counting since you turned it on',
       if (state.today.includesEarlierDays)
-        "Steps from days FitSync wasn't opened are added to the next day",
+        "Today's count includes steps from days you didn't open FitSync.",
       if (state.offline) "Updates when you're online",
     ];
     return ListView(

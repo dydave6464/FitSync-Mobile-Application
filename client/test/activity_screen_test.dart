@@ -182,7 +182,9 @@ void main() {
     ));
 
     expect(find.text('Counting since you turned it on'), findsOneWidget);
-    expect(find.text("Steps from days FitSync wasn't opened are added to the next day"), findsOneWidget);
+    // Those steps are already in today's count, so the note says so rather
+    // than pointing at "the next day".
+    expect(find.text("Today's count includes steps from days you didn't open FitSync."), findsOneWidget);
     expect(find.text("Updates when you're online"), findsOneWidget);
   });
 
