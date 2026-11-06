@@ -1,7 +1,7 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
-import 'package:flutter/rendering.dart' show RenderParagraph;
+import 'package:flutter/rendering.dart' show RenderParagraph, SemanticsNode;
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 
@@ -18,6 +18,7 @@ import 'package:fitsync/features/onboarding/presentation/steps/level_step.dart';
 import 'package:fitsync/core/api_exception.dart';
 import 'package:fitsync/core/theme.dart';
 import 'package:fitsync/core/theme_controller.dart';
+import 'package:fitsync/core/token_store.dart' show InMemorySecureStore;
 import 'package:fitsync/features/health/domain/health_answers.dart';
 import 'package:fitsync/features/health/presentation/providers.dart';
 import 'package:fitsync/features/onboarding/presentation/steps/health_step.dart';
@@ -162,17 +163,6 @@ class FakeProfileNotifier extends ProfileNotifier {
     weightUnit: weightUnit,
   );
 
-  /// Leaves the provider with no profile at all. Riverpod carries the last
-  /// value into every later loading or error state, so nothing public gets
-  /// back to "no value" once one has loaded; a loading state over a bare
-  /// error is the one it stores as given.
-  void unload() => state = const AsyncLoading<Profile>()
-      // ignore: invalid_use_of_internal_member
-      .copyWithPrevious(AsyncError<Profile>('gone', StackTrace.empty));
-
-  /// Puts a profile back after [unload].
-  void reload(Profile profile) => state = AsyncData(profile);
-
   /// Every `patch` call, counted on arrival -- before [patchGate] holds it
   /// and whether or not it goes on to succeed.
   int patchCalls = 0;
@@ -285,6 +275,12 @@ class _FlakyProfile extends ProfileNotifier {
   }
 }
 
+/// A profile that never arrives: the provider stays loading with no value.
+class _NeverLoads extends ProfileNotifier {
+  @override
+  Future<Profile> build() => Completer<Profile>().future;
+}
+
 /// The profile notifier fake the running test's `_pump` installed. Set fresh
 /// on every call so a test can assert what it recorded -- `_profile.
 /// lastTrainingDays` -- without threading the fake through by hand.
@@ -312,6 +308,7 @@ Future<void> _pump(
   bool dark = false,
   WeightUnit weightUnit = WeightUnit.kg,
   bool isPremium = false,
+  ThemeStore? themeStore,
 }) async {
   _profile = FakeProfileNotifier(
     patches ?? <Map<String, dynamic>>[],
@@ -353,6 +350,10 @@ Future<void> _pump(
         proRepositoryProvider.overrideWithValue(pro ?? FakeProRepository()),
         healthRepositoryProvider.overrideWithValue(
           health ?? FakeHealthRepository(),
+        ),
+        // In memory, so a theme pick never reaches the platform channel.
+        themeStoreProvider.overrideWithValue(
+          themeStore ?? ThemeStore(backing: InMemorySecureStore()),
         ),
       ],
       child: MaterialApp(
@@ -889,18 +890,118 @@ void main() {
     expect(find.byKey(const Key('goal.lose_weight')), findsOneWidget);
   });
 
-  testWidgets('the header toggle flips the theme', (tester) async {
-    await _pump(tester);
+  // D-1 (PS-21): System, Light and Dark, from the header's one button.
+  group('the theme control', () {
+    SemanticsNode segment(WidgetTester tester, String value) =>
+        tester.getSemantics(find.byKey(Key('segment.$value')));
 
-    final container = ProviderScope.containerOf(
-      tester.element(find.byType(SettingsScreen)),
-    );
-    expect(container.read(themeModeProvider), ThemeMode.light);
+    Future<void> openTheme(WidgetTester tester) async {
+      await tester.tap(find.byKey(const Key('theme.open')));
+      await tester.pumpAndSettle();
+    }
 
-    await tester.tap(find.byKey(const Key('themeToggle')));
-    await tester.pumpAndSettle();
+    testWidgets('a fresh install is Light, and the control says so', (
+      tester,
+    ) async {
+      final handle = tester.ensureSemantics();
+      await _pump(tester);
 
-    expect(container.read(themeModeProvider), ThemeMode.dark);
+      expect(find.byTooltip('Theme: Light'), findsOneWidget);
+      await openTheme(tester);
+      expect(find.text('Theme'), findsOneWidget);
+      for (final (value, on) in [
+        ('system', false),
+        ('light', true),
+        ('dark', false),
+      ]) {
+        expect(
+          segment(tester, value),
+          isSemantics(isButton: true, isSelected: on, hasSelectedState: true),
+          reason: value,
+        );
+      }
+      handle.dispose();
+    });
+
+    testWidgets('a stored System choice shows as System, not as Light', (
+      tester,
+    ) async {
+      final store = ThemeStore(backing: InMemorySecureStore());
+      await store.write(ThemeMode.system);
+      final handle = tester.ensureSemantics();
+      await _pump(tester, themeStore: store);
+
+      expect(find.byTooltip('Theme: System'), findsOneWidget);
+      expect(find.byIcon(Icons.brightness_auto_outlined), findsOneWidget);
+      await openTheme(tester);
+      expect(
+        segment(tester, 'system'),
+        isSemantics(isButton: true, isSelected: true, hasSelectedState: true),
+      );
+      expect(
+        segment(tester, 'light'),
+        isSemantics(isButton: true, isSelected: false, hasSelectedState: true),
+      );
+      handle.dispose();
+    });
+
+    testWidgets('each choice applies at once and is remembered', (
+      tester,
+    ) async {
+      final store = ThemeStore(backing: InMemorySecureStore());
+      await _pump(tester, themeStore: store);
+      final container = ProviderScope.containerOf(
+        tester.element(find.byType(SettingsScreen)),
+      );
+      await openTheme(tester);
+
+      for (final (value, mode) in [
+        ('dark', ThemeMode.dark),
+        ('system', ThemeMode.system),
+        ('light', ThemeMode.light),
+      ]) {
+        await tester.tap(find.byKey(Key('segment.$value')));
+        await tester.pumpAndSettle();
+        expect(container.read(themeModeProvider), mode, reason: value);
+        expect(await store.read(), mode, reason: value);
+      }
+      // Still open: the pick shows behind it, and × or a drag closes it.
+      expect(find.text('Theme'), findsOneWidget);
+      await tester.tap(find.byKey(FsSheetHeader.defaultCloseKey));
+      await tester.pumpAndSettle();
+      expect(find.text('Theme'), findsNothing);
+    });
+
+    testWidgets('the sheet reads in the dark theme too', (tester) async {
+      await _pump(tester, dark: true);
+      await openTheme(tester);
+      final title = tester.renderObject<RenderParagraph>(find.text('Theme'));
+      final color = title.text.style!.color!;
+      expect(contrast(color, FsTokens.dark.surface), greaterThan(4.5));
+    });
+
+    testWidgets('the three choices fit a 320 dp phone at 2x text', (
+      tester,
+    ) async {
+      tester.view.physicalSize = const Size(320, 640);
+      tester.view.devicePixelRatio = 1;
+      tester.platformDispatcher.textScaleFactorTestValue = 2;
+      addTearDown(tester.view.reset);
+      addTearDown(tester.platformDispatcher.clearTextScaleFactorTestValue);
+      await _pump(tester);
+      await openTheme(tester);
+      expect(tester.takeException(), isNull);
+      for (final label in ['System', 'Light', 'Dark']) {
+        expect(find.text(label), findsOneWidget);
+      }
+    });
+
+    testWidgets('the header button is a 48 dp target', (tester) async {
+      await _pump(tester);
+      final size = tester.getSize(find.byKey(const Key('theme.open')));
+      expect(size.width, greaterThanOrEqualTo(48));
+      expect(size.height, greaterThanOrEqualTo(48));
+    });
   });
 
   testWidgets('the theme is not also offered as a row', (tester) async {
@@ -1520,12 +1621,27 @@ void main() {
         );
         await openUnit(tester, editor);
 
-        await tester.tap(find.byKey(const Key('unit.lb')));
-        await tester.pumpAndSettle();
+        // P-26: the catch-all said so on screen but left no trace of what
+        // went wrong for whoever reads the log.
+        final logs = <String?>[];
+        final original = debugPrint;
+        debugPrint = (message, {wrapWidth}) => logs.add(message);
+        try {
+          await tester.tap(find.byKey(const Key('unit.lb')));
+          await tester.pumpAndSettle();
+        } finally {
+          debugPrint = original;
+        }
 
         expect(tester.takeException(), isNull);
         expect(shown(tester), WeightUnit.kg);
         expect(find.text("Couldn't switch to lb. Try again."), findsOneWidget);
+        expect(
+          logs,
+          contains(
+            allOf(contains('Weight unit switch'), contains('no answer')),
+          ),
+        );
       });
     }
   });
@@ -1537,12 +1653,42 @@ void main() {
   testWidgets('an editor without a profile waits under its own title', (
     tester,
   ) async {
-    await _pump(tester, goals: const ['lose_fat'], mainGoal: 'lose_fat');
+    // Riverpod carries a loaded value into every later state, so "no
+    // profile" is a second container whose profile never loads, swapped in
+    // under the open editor. Public API only (P-28): the state it needs had
+    // been forged with Riverpod's @internal copyWithPrevious.
+    ProviderContainer container(ProfileNotifier Function() profile) {
+      final made = ProviderContainer(
+        overrides: [
+          profileProvider.overrideWith(profile),
+          proRepositoryProvider.overrideWithValue(FakeProRepository()),
+        ],
+      );
+      addTearDown(made.dispose);
+      return made;
+    }
+
+    final loaded = container(
+      () => FakeProfileNotifier(
+        <Map<String, dynamic>>[],
+        goals: const ['lose_fat'],
+        mainGoal: 'lose_fat',
+      ),
+    );
+    final unloaded = container(_NeverLoads.new);
+    // The same MaterialApp under either container, so the open editor
+    // route survives the swap.
+    Widget app(ProviderContainer on) => UncontrolledProviderScope(
+      container: on,
+      child: const MaterialApp(home: SettingsScreen()),
+    );
+
+    await tester.pumpWidget(app(loaded));
+    await tester.pumpAndSettle();
     await _openRow(tester, const Key('edit.goal'));
     expect(find.byType(EditScaffold), findsOneWidget);
-    final loaded = _profile.state.value!;
 
-    _profile.unload();
+    await tester.pumpWidget(app(unloaded));
     await tester.pump();
     expect(find.byType(EditScaffold), findsNothing);
     expect(
@@ -1552,7 +1698,7 @@ void main() {
     expect(find.byType(CircularProgressIndicator), findsOneWidget);
     expect(find.byType(BackButton), findsOneWidget);
 
-    _profile.reload(loaded);
+    await tester.pumpWidget(app(loaded));
     await tester.pumpAndSettle();
     expect(find.byType(EditScaffold), findsOneWidget);
   });

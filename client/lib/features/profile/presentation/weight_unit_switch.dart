@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../../core/api_exception.dart';
 import '../../../core/units.dart';
 import 'providers.dart' show profileProvider;
 
@@ -25,9 +26,13 @@ mixin WeightUnitSwitch<W extends ConsumerStatefulWidget> on ConsumerState<W> {
     setState(() => _pendingUnit = unit);
     try {
       await ref.read(profileProvider.notifier).patch({'weightUnit': unit.api});
-    } catch (_) {
+    } catch (error) {
       // Any failure, not only an ApiException: a timeout or a bad response
-      // leaves the unit unsaved just the same.
+      // leaves the unit unsaved just the same. Anything the API layer did not
+      // name is logged too: the snack bar says only that it failed, not why.
+      if (error is! ApiException) {
+        debugPrint('Weight unit switch to ${unit.api} failed: $error');
+      }
       messenger.showSnackBar(
         SnackBar(content: Text("Couldn't switch to ${unit.api}. Try again.")),
       );
