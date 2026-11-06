@@ -242,6 +242,9 @@ class _HabitSheetState extends ConsumerState<_HabitSheet> {
                     key: const Key('habit.time'),
                     kind: FsButtonKind.secondary,
                     small: true,
+                    // Grows rather than cutting '7:00 AM' to '7:00 …' at
+                    // large text, which would lose the AM/PM.
+                    wrapLabel: true,
                     onPressed: _busy ? null : _pickTime,
                     icon: const Icon(Icons.schedule, size: 18),
                     label: _time == null ? 'Any time' : formatClock(_time!),
@@ -263,7 +266,10 @@ class _HabitSheetState extends ConsumerState<_HabitSheet> {
                     controller: _duration,
                     fieldKey: const Key('habit.duration'),
                     label: 'Duration',
-                    hint: 'Optional',
+                    // No placeholder: the eyebrow names the field, and the
+                    // 'min' suffix keeps its room even while hidden, so in
+                    // 120 dp any word was cut off ('Optional' at 1x).
+                    hint: '',
                     suffix: 'min',
                     keyboardType: TextInputType.number,
                   ),
