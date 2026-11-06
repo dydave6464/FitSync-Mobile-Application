@@ -344,11 +344,7 @@ class _HabitSheetState extends ConsumerState<_HabitSheet> {
             ),
             if (_error != null) ...[
               const SizedBox(height: 12),
-              Text(
-                _error!,
-                key: const Key('habit.error'),
-                style: TextStyle(fontSize: 12, color: t.red),
-              ),
+              FsErrorLine(_error!, key: const Key('habit.error')),
             ],
             const SizedBox(height: 18),
             FsButton(

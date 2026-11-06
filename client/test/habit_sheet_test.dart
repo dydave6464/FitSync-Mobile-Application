@@ -141,7 +141,7 @@ Future<_FakeRepo> _open(
 }
 
 String _errorText(WidgetTester tester) =>
-    tester.widget<Text>(find.byKey(const Key('habit.error'))).data!;
+    tester.widget<FsErrorLine>(find.byKey(const Key('habit.error'))).message;
 
 void main() {
   testWidgets('an empty title is rejected, shows why, and saves nothing', (
