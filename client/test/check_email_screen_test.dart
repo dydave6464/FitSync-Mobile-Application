@@ -302,6 +302,18 @@ void main() {
         find.text('Your email is verified. Tap to sign in.'),
         findsOneWidget,
       );
+      // AO-9: good news, so neutral text rather than a red error line --
+      // still said aloud as it appears.
+      expect(find.byType(FsErrorLine), findsNothing);
+      expect(
+        find.ancestor(
+          of: find.text('Your email is verified. Tap to sign in.'),
+          matching: find.byWidgetPredicate(
+            (w) => w is Semantics && w.properties.liveRegion == true,
+          ),
+        ),
+        findsOneWidget,
+      );
       expect(find.text('Sign in'), findsOneWidget);
 
       failLogin = false;

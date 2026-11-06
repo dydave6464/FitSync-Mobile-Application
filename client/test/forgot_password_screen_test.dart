@@ -378,6 +378,18 @@ void main() {
       find.text('Your password is reset. Tap to sign in.'),
       findsOneWidget,
     );
+    // AO-9: good news, so neutral text rather than a red error line -- still
+    // said aloud as it appears.
+    expect(find.byType(FsErrorLine), findsNothing);
+    expect(
+      find.ancestor(
+        of: find.text('Your password is reset. Tap to sign in.'),
+        matching: find.byWidgetPredicate(
+          (w) => w is Semantics && w.properties.liveRegion == true,
+        ),
+      ),
+      findsOneWidget,
+    );
 
     failLogin = false;
     await tester.tap(find.byKey(const Key('reset')));
@@ -563,7 +575,9 @@ void main() {
       final eye = find.byKey(const Key('toggleNewPassword'));
       expect(field(tester, 'newPassword').obscureText, isTrue);
       expect(find.byTooltip('Show password'), findsOneWidget);
-      expect(tester.getSize(eye), greaterThanOrEqualTo(const Size(48, 48)));
+      // Each side on its own: Size's >= is true when either side is.
+      expect(tester.getSize(eye).width, greaterThanOrEqualTo(48));
+      expect(tester.getSize(eye).height, greaterThanOrEqualTo(48));
 
       await tester.tap(eye);
       await tester.pumpAndSettle();

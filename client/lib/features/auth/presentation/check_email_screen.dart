@@ -129,7 +129,9 @@ class _CheckEmailScreenState extends ConsumerState<CheckEmailScreen> {
               : (error.code == 'CODE_INVALID'
                     ? wrongCodeMessage
                     : userMessage(error)),
-          isError: true,
+          // Verified is good news, drawn in neutral text rather than as an
+          // error even though the sign-in after it failed.
+          isError: !_verified,
         );
       });
     } finally {
