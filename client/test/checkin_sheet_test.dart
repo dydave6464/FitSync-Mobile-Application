@@ -544,6 +544,31 @@ void main() {
     semantics.dispose();
   });
 
+  testWidgets('all four questions are one-choice groups for a screen reader', (
+    tester,
+  ) async {
+    final semantics = tester.ensureSemantics();
+    await _open(tester);
+
+    for (final label in [
+      'Sleep: Poor',
+      'Soreness: Severe',
+      'Energy: Very low',
+      'Stress: High',
+    ]) {
+      final data = tester
+          .getSemantics(find.bySemanticsLabel(label))
+          .getSemanticsData();
+      expect(
+        data.flagsCollection.isInMutuallyExclusiveGroup,
+        isTrue,
+        reason: label,
+      );
+      expect(data.flagsCollection.isChecked, CheckedState.isFalse);
+    }
+    semantics.dispose();
+  });
+
   testWidgets('it says why it asks', (tester) async {
     await _open(tester);
 
