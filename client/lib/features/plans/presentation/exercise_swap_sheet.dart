@@ -212,6 +212,7 @@ class _ExerciseSwapSheetState extends ConsumerState<ExerciseSwapSheet> {
           children: [
             IconButton(
               key: const Key('swap.preview.back'),
+              tooltip: 'Back to alternatives',
               icon: const Icon(Icons.arrow_back, size: 20),
               padding: EdgeInsets.zero,
               // A full target: the way back is the one control here that
@@ -498,8 +499,17 @@ class _ExerciseSwapSheetState extends ConsumerState<ExerciseSwapSheet> {
     // the bottom sheet pops its route itself once the drag ends. So while
     // busy, a drag is claimed here first -- the innermost vertical-drag
     // recognizer wins the gesture arena -- and the sheet's own never starts.
+    //
+    // On a preview, back (system back, or a tap on the barrier) returns to
+    // the list that found it, as the arrow does, rather than closing the
+    // sheet and losing the search.
     return PopScope(
-      canPop: !_busy,
+      canPop: !_busy && _previewing == null,
+      onPopInvokedWithResult: (didPop, _) {
+        if (!didPop && !_busy && _previewing != null) {
+          setState(() => _previewing = null);
+        }
+      },
       child: GestureDetector(
         behavior: HitTestBehavior.opaque,
         onVerticalDragStart: _busy ? (_) {} : null,

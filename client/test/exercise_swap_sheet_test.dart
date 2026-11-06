@@ -993,4 +993,47 @@ void main() {
     expect(find.byType(ExerciseSwapSheet), findsNothing);
     expect(popped, [null]);
   });
+
+  group("the preview's way back (PT-7)", () {
+    testWidgets('the back arrow is named', (tester) async {
+      final handle = tester.ensureSemantics();
+      await _pumpWithPreview(tester);
+      await tester.tap(find.byKey(const Key('swap.alt.12')));
+      await tester.pumpAndSettle();
+
+      expect(
+        tester.getSemantics(find.byKey(const Key('swap.preview.back'))),
+        isSemantics(
+          tooltip: 'Back to alternatives',
+          isButton: true,
+          hasTapAction: true,
+        ),
+      );
+      handle.dispose();
+    });
+
+    testWidgets('system back returns to the list, then closes the sheet', (
+      tester,
+    ) async {
+      final popped = <String?>[];
+      await _pumpModalSheet(
+        tester,
+        completer: Completer<WorkoutPlan>(),
+        result: popped.add,
+      );
+      expect(find.byKey(const Key('swap.preview')), findsOneWidget);
+
+      await tester.binding.handlePopRoute();
+      await tester.pumpAndSettle();
+      expect(find.byType(ExerciseSwapSheet), findsOneWidget);
+      expect(find.byKey(const Key('swap.preview')), findsNothing);
+      expect(find.byKey(const Key('swap.alt.12')), findsOneWidget);
+      expect(popped, isEmpty);
+
+      await tester.binding.handlePopRoute();
+      await tester.pumpAndSettle();
+      expect(find.byType(ExerciseSwapSheet), findsNothing);
+      expect(popped, [null]);
+    });
+  });
 }
