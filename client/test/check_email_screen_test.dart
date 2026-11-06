@@ -64,6 +64,16 @@ class FakeAuthRepository implements AuthRepository {
   }
 
   @override
+  Future<void> changePassword({
+    required String currentPassword,
+    required String newPassword,
+  }) => throw UnimplementedError();
+
+  @override
+  Future<void> deleteAccount({String? password, String? idToken}) =>
+      throw UnimplementedError();
+
+  @override
   Future<void> resetPassword({
     required String email,
     required String code,

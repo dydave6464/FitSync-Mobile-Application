@@ -49,10 +49,11 @@ function load(env = process.env) {
   const publicBaseUrl = env.PUBLIC_BASE_URL || 'http://localhost:3000';
   // The origin for links that leave the app. Verification and password reset
   // use emailed codes now, so today that is the shared coach-report link
-  // (routes/reports.js). Left unset (or still pointing at localhost) it boots
-  // without error and every shared report link points at a phone's own
-  // loopback address -- the coach it was sent to cannot open it, with nothing
-  // in the response or the logs to say why. Same reasoning as the two guards
+  // (routes/reports.js) and the web account-deletion email's link
+  // (routes/account.js). Left unset (or still pointing at localhost) it boots
+  // without error and every such link points at a phone's own loopback
+  // address -- the coach it was sent to cannot open it, with nothing in the
+  // response or the logs to say why. Same reasoning as the two guards
   // above: fail at startup, not in an incident.
   if (nodeEnv === 'production' && /^https?:\/\/(localhost|127(?:\.\d{1,3}){3})(?::\d+)?(?:\/|$)/i.test(publicBaseUrl)) {
     throw new Error(

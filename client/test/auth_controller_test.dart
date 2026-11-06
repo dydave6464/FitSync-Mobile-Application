@@ -78,6 +78,16 @@ class FakeAuthRepository implements AuthRepository {
       throw UnimplementedError();
 
   @override
+  Future<void> changePassword({
+    required String currentPassword,
+    required String newPassword,
+  }) => throw UnimplementedError();
+
+  @override
+  Future<void> deleteAccount({String? password, String? idToken}) =>
+      throw UnimplementedError();
+
+  @override
   Future<void> resetPassword({
     required String email,
     required String code,
@@ -744,5 +754,66 @@ void main() {
       1,
       reason: 'the next account must not inherit these reminders',
     );
+  });
+
+  test('a deleted account signs out with its reason and cleans up', () async {
+    final tokens = TokenStore(backing: InMemorySecureStore());
+    await tokens.write('tok');
+    final scheduler = _RecordingScheduler();
+    final routines = _SequenceRoutineRepository([
+      const RoutineDay(date: '2026-09-24', habits: [], workout: null),
+      const RoutineDay(date: '2026-09-25', habits: [], workout: null),
+    ]);
+    final container = ProviderContainer(
+      overrides: [
+        tokenStoreProvider.overrideWithValue(tokens),
+        authRepositoryProvider.overrideWithValue(
+          FakeAuthRepository(
+            tokens,
+            onMe: () async => _user(onboardingCompleted: true),
+          ),
+        ),
+        reminderSchedulerProvider.overrideWithValue(scheduler),
+        routineRepositoryProvider.overrideWithValue(routines),
+      ],
+    );
+    addTearDown(container.dispose);
+
+    await container.read(authControllerProvider.future);
+    await container.read(routineTodayProvider.future);
+
+    await container.read(authControllerProvider.notifier).onAccountDeleted();
+
+    final state = container.read(authControllerProvider).value!;
+    expect(state.status, AuthStatus.signedOut);
+    expect(
+      state.reason,
+      SignOutReason.accountDeleted,
+      reason: 'the sign-in screen says why the user is back there',
+    );
+    expect(await tokens.read(), isNull);
+    expect(scheduler.cancels, 1, reason: 'the reminders belong to no one now');
+    expect(
+      (await container.read(routineTodayProvider.future)).date,
+      '2026-09-25',
+      reason: "the deleted account's cached data must go with it",
+    );
+  });
+
+  test('a plain sign-out gives no reason', () async {
+    final tokens = TokenStore(backing: InMemorySecureStore());
+    await tokens.write('tok');
+    final container = _containerWith(
+      tokens,
+      FakeAuthRepository(
+        tokens,
+        onMe: () async => _user(onboardingCompleted: true),
+      ),
+    );
+
+    await container.read(authControllerProvider.future);
+    await container.read(authControllerProvider.notifier).signOut();
+
+    expect(container.read(authControllerProvider).value!.reason, isNull);
   });
 }

@@ -20,9 +20,20 @@ class EditScaffold extends StatelessWidget {
     this.hint,
     this.dirty = false,
     this.error,
+    this.saveLabel = 'Save',
+    this.wrapSaveLabel = false,
   });
 
   final String title;
+
+  /// The button's words, for an editor whose action is more than a save
+  /// ("Change password").
+  final String saveLabel;
+
+  /// Passed to the button's [FsButton.wrapLabel]: a [saveLabel] longer than
+  /// "Save" can be cut to an ellipsis at large text on a narrow phone, which
+  /// hides what the tap does.
+  final bool wrapSaveLabel;
   final Widget child;
 
   /// Null disables Save: the answer on screen is not yet valid.
@@ -79,7 +90,8 @@ class EditScaffold extends StatelessWidget {
                     ],
                     FsButton(
                       key: const Key('save'),
-                      label: 'Save',
+                      label: saveLabel,
+                      wrapLabel: wrapSaveLabel,
                       busy: busy,
                       onPressed: busy ? null : onSave,
                     ),

@@ -15,6 +15,7 @@ import 'package:fitsync/features/auth/presentation/auth_controller.dart';
 import 'package:fitsync/features/auth/presentation/check_email_screen.dart';
 import 'package:fitsync/features/auth/presentation/forgot_password_screen.dart';
 import 'package:fitsync/features/auth/presentation/google_g_mark.dart';
+import 'package:fitsync/features/auth/presentation/password_reveal_toggle.dart';
 import 'package:fitsync/features/auth/presentation/sign_in_screen.dart';
 
 AuthUser _user() => const AuthUser(
@@ -87,6 +88,16 @@ class FakeAuthRepository implements AuthRepository {
       throw UnimplementedError();
 
   @override
+  Future<void> changePassword({
+    required String currentPassword,
+    required String newPassword,
+  }) => throw UnimplementedError();
+
+  @override
+  Future<void> deleteAccount({String? password, String? idToken}) =>
+      throw UnimplementedError();
+
+  @override
   Future<void> resetPassword({
     required String email,
     required String code,
@@ -107,6 +118,13 @@ class RecordingAuthController extends AuthController {
     seen.add(user);
     super.onAuthenticated(user);
   }
+}
+
+/// Signed out because the account was just deleted.
+class _DeletedAuthController extends AuthController {
+  @override
+  Future<AuthState> build() async =>
+      const AuthState(AuthStatus.signedOut, null, SignOutReason.accountDeleted);
 }
 
 Future<void> _pump(
@@ -193,6 +211,39 @@ bool _hasFocus(WidgetTester tester, String key) => tester
     .hasFocus;
 
 void main() {
+  testWidgets('says the account was deleted when that is why it is here', (
+    tester,
+  ) async {
+    final handle = tester.ensureSemantics();
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          authRepositoryProvider.overrideWithValue(FakeAuthRepository()),
+          authControllerProvider.overrideWith(_DeletedAuthController.new),
+        ],
+        child: const MaterialApp(home: SignInScreen()),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    final notice = find.text('Your account was deleted.');
+    expect(notice, findsOneWidget);
+    expect(
+      _isLive(tester, notice),
+      isTrue,
+      reason: 'a screen reader says it as the sign-in screen appears',
+    );
+    handle.dispose();
+  });
+
+  testWidgets('says nothing about deletion after a plain sign-out', (
+    tester,
+  ) async {
+    await _pump(tester, FakeAuthRepository());
+    await tester.pumpAndSettle();
+    expect(find.text('Your account was deleted.'), findsNothing);
+  });
+
   testWidgets('renders an email and a password field', (tester) async {
     await _pump(tester, FakeAuthRepository());
     await tester.pumpAndSettle();
@@ -548,6 +599,11 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(_field(tester, 'password').obscureText, isTrue);
+    expect(
+      tester.widget(find.byKey(const Key('togglePassword'))),
+      isA<PasswordRevealToggle>(),
+      reason: 'one eye for every password field, not a copy per screen',
+    );
     expect(find.byTooltip('Show password'), findsOneWidget);
     expect(
       tester.getSize(find.byKey(const Key('togglePassword'))),

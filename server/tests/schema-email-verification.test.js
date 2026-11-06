@@ -37,14 +37,14 @@ test('email verification schema', async (t) => {
     assert.equal(rows[0].email_verified, 0, 'a new account starts unverified');
   });
 
-  await t.test('auth_tokens has the shape both flows need', async () => {
+  await t.test('auth_tokens has the shape every emailed flow needs', async () => {
     const tokens = await columns('auth_tokens');
     assert.equal(tokens.token_hash.k, 'PRI', 'the hash is the primary key');
     assert.equal(tokens.token_hash.t, 'char(64)', 'sized for a hex sha-256');
     assert.equal(
       tokens.purpose.t,
-      "enum('verify_email','reset_password')",
-      'one table serves both flows',
+      "enum('verify_email','reset_password','delete_account')",
+      'one table serves every emailed flow, new purposes appended at the end',
     );
     assert.equal(tokens.consumed_at.n, 'YES', 'null until spent');
     assert.equal(tokens.expires_at.n, 'NO');

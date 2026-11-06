@@ -97,4 +97,33 @@ class AuthRepository {
       'password': password,
     });
   }
+
+  /// Changes the password of the signed-in account. The server signs every
+  /// other device out and answers with a fresh token for this one, stored
+  /// here before returning: the old token stops working with the change. A
+  /// wrong [currentPassword] is `ApiException('WRONG_PASSWORD')`.
+  Future<void> changePassword({
+    required String currentPassword,
+    required String newPassword,
+  }) async {
+    final data = await _api.postJson('/api/v1/auth/password', {
+      'currentPassword': currentPassword,
+      'newPassword': newPassword,
+    });
+    await _tokens.write(data['token'] as String);
+  }
+
+  /// Deletes the signed-in account and everything in it, confirmed with the
+  /// account's [password] or a fresh Google [idToken] (exactly one). The
+  /// local clean-up afterwards is `AuthController.onAccountDeleted`'s.
+  Future<void> deleteAccount({String? password, String? idToken}) async {
+    assert(
+      (password == null) != (idToken == null),
+      'Confirm with a password or a Google token, not both or neither.',
+    );
+    await _api.postJson('/api/v1/account/delete', {
+      'password': ?password,
+      'idToken': ?idToken,
+    });
+  }
 }
