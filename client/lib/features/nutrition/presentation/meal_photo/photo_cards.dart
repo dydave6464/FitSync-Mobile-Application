@@ -102,8 +102,10 @@ class PhotoItemCard extends StatelessWidget {
                     onPressed: servings > minPhotoServings ? () => onServings(servings - 0.5) : null,
                     icon: const Icon(Icons.remove),
                   ),
-                  // At least 48 dp; the figure shrinks rather than breaking
-                  // "1.5" over two lines at large text.
+                  // At least 48 dp, and "1.5" stays on one line at large
+                  // text. It never shrinks: in this Row it has unbounded
+                  // width, so FsOneLine's scale-down never acts and the box
+                  // grows with the figure instead.
                   ConstrainedBox(
                     constraints: const BoxConstraints(minWidth: 48),
                     child: ExcludeSemantics(
