@@ -2542,6 +2542,97 @@ void main() {
     });
   });
 
+  group('confirmDestructive', () {
+    Future<void> pumpAsker(
+      WidgetTester tester,
+      List<bool> answers, {
+      String? cancel,
+      bool dark = false,
+    }) async {
+      await tester.pumpWidget(
+        MaterialApp(
+          theme: dark ? fsDarkTheme() : fsLightTheme(),
+          home: Builder(
+            builder: (c) => TextButton(
+              onPressed: () async => answers.add(
+                cancel == null
+                    ? await confirmDestructive(
+                        c,
+                        keyPrefix: 'thing',
+                        title: 'Delete the thing?',
+                        message: 'It is gone for good.',
+                        action: 'Delete',
+                      )
+                    : await confirmDestructive(
+                        c,
+                        keyPrefix: 'thing',
+                        title: 'Delete the thing?',
+                        message: 'It is gone for good.',
+                        action: 'Delete',
+                        cancel: cancel,
+                      ),
+              ),
+              child: const Text('ask'),
+            ),
+          ),
+        ),
+      );
+      await tester.tap(find.text('ask'));
+      await tester.pumpAndSettle();
+    }
+
+    testWidgets('Cancel answers false and the action true', (tester) async {
+      final answers = <bool>[];
+      await pumpAsker(tester, answers);
+      expect(find.text('Delete the thing?'), findsOneWidget);
+      expect(find.text('It is gone for good.'), findsOneWidget);
+      await tester.tap(find.byKey(const Key('thing.cancel')));
+      await tester.pumpAndSettle();
+      expect(find.text('Delete the thing?'), findsNothing);
+
+      await tester.tap(find.text('ask'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const Key('thing.confirm')));
+      await tester.pumpAndSettle();
+      expect(answers, [false, true]);
+    });
+
+    testWidgets('the barrier is a no', (tester) async {
+      final answers = <bool>[];
+      await pumpAsker(tester, answers);
+      await tester.tapAt(const Offset(5, 5));
+      await tester.pumpAndSettle();
+      expect(answers, [false]);
+    });
+
+    testWidgets('the safe choice can be named for what it keeps', (
+      tester,
+    ) async {
+      await pumpAsker(tester, [], cancel: 'Keep account');
+      expect(
+        find.descendant(
+          of: find.byKey(const Key('thing.cancel')),
+          matching: find.text('Keep account'),
+        ),
+        findsOneWidget,
+      );
+      expect(find.text('Cancel'), findsNothing);
+    });
+
+    for (final dark in [false, true]) {
+      testWidgets('the action is drawn in red (${dark ? 'dark' : 'light'})', (
+        tester,
+      ) async {
+        await pumpAsker(tester, [], dark: dark);
+        final t = dark ? FsTokens.dark : FsTokens.light;
+        final style = tester
+            .widget<TextButton>(find.byKey(const Key('thing.confirm')))
+            .style!;
+        expect(style.foregroundColor!.resolve({}), t.red);
+      });
+    }
+  });
+
   group('FsDiscardGuard', () {
     Future<void> pumpGuard(
       WidgetTester tester, {

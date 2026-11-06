@@ -2,7 +2,6 @@ import 'dart:math' as math;
 
 import 'package:flutter/foundation.dart' show kDebugMode;
 import 'package:flutter/material.dart';
-import 'package:flutter/semantics.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../core/api_exception.dart';
@@ -15,6 +14,7 @@ import 'check_email_screen.dart';
 import 'editable_under.dart';
 import 'forgot_password_screen.dart';
 import 'google_g_mark.dart';
+import 'password_reveal_toggle.dart';
 
 /// One screen for both signing in and registering.
 ///
@@ -129,26 +129,10 @@ class _SignInScreenState extends ConsumerState<SignInScreen> {
   /// the cursor in the field it is about.
   final _fieldKeys = {for (final field in _Field.values) field: GlobalKey()};
 
-  /// Moves the cursor -- and a screen reader, which then reads the field's
-  /// name and the message now in its hint -- to [field]. Otherwise nothing
-  /// is heard after Sign in, and a failed check sounds like a hang.
-  ///
-  /// When [field] already has focus (typed in last: a phone does not unfocus
-  /// a field on an outside tap) focus cannot move, so nothing would be read.
-  /// [message] is announced instead -- only then, so it is never said twice.
-  void _focus(_Field field, String message) {
-    final target = editableUnder(_fieldKeys[field]!);
-    if (target == null) return;
-    if (target.widget.focusNode.hasFocus) {
-      SemanticsService.sendAnnouncement(
-        View.of(context),
-        message,
-        Directionality.of(context),
-      );
-      return;
-    }
-    target.requestKeyboard();
-  }
+  /// Takes the cursor to [field], or reads [message] when it is already
+  /// there: see [focusOrAnnounce].
+  void _focus(_Field field, String message) =>
+      focusOrAnnounce(context, _fieldKeys[field]!, message);
 
   String? _errorFor(_Field field) =>
       _fieldError?.field == field ? _fieldError!.message : null;
@@ -309,6 +293,9 @@ class _SignInScreenState extends ConsumerState<SignInScreen> {
   Widget build(BuildContext context) {
     final t = context.fs;
     final theme = Theme.of(context);
+    final accountDeleted =
+        ref.watch(authControllerProvider).value?.reason ==
+        SignOutReason.accountDeleted;
 
     return Scaffold(
       backgroundColor: t.bg,
@@ -334,6 +321,10 @@ class _SignInScreenState extends ConsumerState<SignInScreen> {
                   'Filipino-context nutrition — built for your goals.',
                   style: TextStyle(fontSize: 12.5, color: t.text2, height: 1.5),
                 ),
+                if (accountDeleted) ...[
+                  const SizedBox(height: 18),
+                  const _AccountDeletedNote(),
+                ],
                 const SizedBox(height: 30),
                 // One group so a password manager fills the email and the
                 // password together, and offers to save them on success.
@@ -404,22 +395,9 @@ class _SignInScreenState extends ConsumerState<SignInScreen> {
                                 : AutofillHints.password,
                           ],
                           onChanged: (_) => _clearErrorFor(_Field.password),
-                          trailing: IconButton(
+                          trailing: PasswordRevealToggle(
                             key: const Key('togglePassword'),
-                            tooltip: _obscurePassword
-                                ? 'Show password'
-                                : 'Hide password',
-                            constraints: const BoxConstraints(
-                              minWidth: 48,
-                              minHeight: 48,
-                            ),
-                            icon: Icon(
-                              _obscurePassword
-                                  ? Icons.visibility_outlined
-                                  : Icons.visibility_off_outlined,
-                              size: 20,
-                              color: t.text2,
-                            ),
+                            obscured: _obscurePassword,
                             onPressed: () => setState(
                               () => _obscurePassword = !_obscurePassword,
                             ),
@@ -537,6 +515,41 @@ class _SignInScreenState extends ConsumerState<SignInScreen> {
               ],
             ),
           ),
+        ),
+      ),
+    );
+  }
+}
+
+/// Why the user is back on sign-in after Delete account: the account is
+/// gone, and without a word the screen looks like an unexplained sign-out.
+/// Stays until they sign in, unlike a SnackBar that can time out unseen. A
+/// live region, so a screen reader says it as the screen appears.
+class _AccountDeletedNote extends StatelessWidget {
+  const _AccountDeletedNote();
+
+  @override
+  Widget build(BuildContext context) {
+    final t = context.fs;
+
+    return FsCard(
+      key: const Key('signIn.accountDeleted'),
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+      child: Semantics(
+        container: true,
+        liveRegion: true,
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Icon(Icons.check_circle_outline, size: 18, color: t.text2),
+            const SizedBox(width: 10),
+            Expanded(
+              child: Text(
+                'Your account was deleted.',
+                style: TextStyle(fontSize: 13, height: 1.4, color: t.text),
+              ),
+            ),
+          ],
         ),
       ),
     );

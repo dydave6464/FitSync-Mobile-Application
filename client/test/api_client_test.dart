@@ -251,6 +251,16 @@ void main() {
     );
   });
 
+  test('a 204 with no body is a success with no data', () async {
+    // POST /account/delete answers 204: there is nothing left to describe.
+    final client = ApiClient(
+      tokens: TokenStore(backing: InMemorySecureStore()),
+      client: MockClient((_) async => http.Response('', 204)),
+    );
+    final data = await client.postJson('/api/v1/account/delete', const {});
+    expect(data, isEmpty);
+  });
+
   test('a write that cannot reach the server raises NETWORK_ERROR', () async {
     final client = ApiClient(
       tokens: TokenStore(backing: InMemorySecureStore()),

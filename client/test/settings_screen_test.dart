@@ -30,6 +30,8 @@ import 'package:fitsync/features/pro/presentation/providers.dart';
 import 'package:fitsync/features/reminders/domain/reminders.dart';
 import 'package:fitsync/features/reminders/presentation/providers.dart';
 import 'package:fitsync/features/reminders/presentation/reminders_screen.dart';
+import 'package:fitsync/features/settings/presentation/change_password_screen.dart';
+import 'package:fitsync/features/settings/presentation/delete_account_screen.dart';
 import 'package:fitsync/features/settings/presentation/settings_screen.dart';
 import 'package:fitsync/features/streaks/domain/streaks.dart';
 import 'package:fitsync/features/streaks/presentation/providers.dart'
@@ -210,19 +212,24 @@ class DefaultReminderSettings extends ReminderSettingsController {
 }
 
 class RecordingAuthController extends AuthController {
-  RecordingAuthController(this.signOuts);
+  RecordingAuthController(this.signOuts, {this.hasPassword = true});
 
   final List<bool> signOuts;
+
+  /// Whether the signed-in account has a password, or signs in with Google.
+  final bool hasPassword;
 
   @override
   Future<AuthState> build() async => AuthState(
     AuthStatus.ready,
-    const AuthUser(
+    AuthUser(
       userId: 7,
       email: 'juan@example.com',
       fullName: 'Juan Dela Cruz',
       onboardingCompleted: true,
       isPremium: false,
+      hasPassword: hasPassword,
+      hasGoogle: !hasPassword,
     ),
   );
 
@@ -309,6 +316,7 @@ Future<void> _pump(
   WeightUnit weightUnit = WeightUnit.kg,
   bool isPremium = false,
   ThemeStore? themeStore,
+  bool hasPassword = true,
 }) async {
   _profile = FakeProfileNotifier(
     patches ?? <Map<String, dynamic>>[],
@@ -333,7 +341,8 @@ Future<void> _pump(
       overrides: [
         profileProvider.overrideWith(() => _profile),
         authControllerProvider.overrideWith(
-          () => RecordingAuthController(signOuts ?? []),
+          () =>
+              RecordingAuthController(signOuts ?? [], hasPassword: hasPassword),
         ),
         equipmentOptionsProvider.overrideWith((ref) async => _equipment),
         injuryOptionsProvider.overrideWith((ref) async => _injuryOptions),
@@ -778,6 +787,86 @@ void main() {
     await tester.pumpAndSettle();
     expect(find.byType(AlertDialog), findsNothing);
     expect(signOuts, isEmpty);
+  });
+
+  testWidgets('an Account card above Sign out offers Change password', (
+    tester,
+  ) async {
+    await _pump(tester);
+    await tester.scrollUntilVisible(find.byKey(const Key('signOut')), 200);
+    await tester.pumpAndSettle();
+
+    final change = find.byKey(const Key('account.changePassword'));
+    final delete = find.byKey(const Key('account.delete'));
+    expect(find.text('ACCOUNT'), findsOneWidget);
+    expect(change, findsOneWidget);
+    expect(delete, findsOneWidget);
+    expect(find.text('You sign in with Google'), findsNothing);
+    // Change password first, Delete account last, both above Sign out.
+    final signOutTop = tester.getRect(find.byKey(const Key('signOut'))).top;
+    expect(
+      tester.getRect(change).bottom,
+      lessThanOrEqualTo(tester.getRect(delete).top),
+    );
+    expect(tester.getRect(delete).bottom, lessThan(signOutTop));
+    // Rows a thumb can hit.
+    expect(tester.getSize(change).height, greaterThanOrEqualTo(48));
+    expect(tester.getSize(delete).height, greaterThanOrEqualTo(48));
+  });
+
+  testWidgets('a Google-only account is told it signs in with Google', (
+    tester,
+  ) async {
+    final handle = tester.ensureSemantics();
+    await _pump(tester, hasPassword: false);
+    await tester.scrollUntilVisible(find.byKey(const Key('signOut')), 200);
+    await tester.pumpAndSettle();
+
+    expect(find.byKey(const Key('account.changePassword')), findsNothing);
+    final line = find.byKey(const Key('account.google'));
+    expect(line, findsOneWidget);
+    expect(find.text('You sign in with Google'), findsOneWidget);
+    expect(
+      tester.getSemantics(line).getSemanticsData().flagsCollection.isButton,
+      isFalse,
+      reason: 'a statement, not something to tap',
+    );
+    expect(find.byKey(const Key('account.delete')), findsOneWidget);
+    handle.dispose();
+  });
+
+  for (final dark in [false, true]) {
+    testWidgets('Delete account is drawn in red (${dark ? 'dark' : 'light'})', (
+      tester,
+    ) async {
+      await _pump(tester, dark: dark);
+      await tester.scrollUntilVisible(find.byKey(const Key('signOut')), 200);
+      await tester.pumpAndSettle();
+      final label = find.descendant(
+        of: find.byKey(const Key('account.delete')),
+        matching: find.text('Delete account'),
+      );
+      final red = tester.element(label).fs.red;
+      expect(tester.widget<Text>(label).style?.color, red);
+      expect(
+        contrast(red, tester.element(label).fs.surface),
+        greaterThanOrEqualTo(4.5),
+      );
+    });
+  }
+
+  testWidgets('Change password and Delete account open their screens', (
+    tester,
+  ) async {
+    await _pump(tester);
+    await _openRow(tester, const Key('account.changePassword'));
+    expect(find.byType(ChangePasswordScreen), findsOneWidget);
+
+    await tester.pageBack();
+    await tester.pumpAndSettle();
+
+    await _openRow(tester, const Key('account.delete'));
+    expect(find.byType(DeleteAccountScreen), findsOneWidget);
   });
 
   testWidgets('settings offers a training days row', (tester) async {

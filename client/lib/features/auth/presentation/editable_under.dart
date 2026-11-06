@@ -1,3 +1,4 @@
+import 'package:flutter/semantics.dart';
 import 'package:flutter/widgets.dart';
 
 /// The first [EditableTextState] in the subtree under [key], or null when the
@@ -19,4 +20,27 @@ EditableTextState? editableUnder(GlobalKey key) {
 
   (key.currentContext as Element?)?.visitChildren(visit);
   return found;
+}
+
+/// After a failed check, takes the cursor -- and a screen reader, which then
+/// reads the field's name and the message now in its hint -- to the field
+/// under [key]. Otherwise nothing is heard after the tap, and a failed check
+/// sounds like a hang.
+///
+/// When that field already has focus (typed in last: a phone does not
+/// unfocus a field on an outside tap) focus cannot move, so nothing would be
+/// read; [message] is announced instead -- only then, so it is never said
+/// twice. Does nothing when nothing editable is under [key].
+void focusOrAnnounce(BuildContext context, GlobalKey key, String message) {
+  final target = editableUnder(key);
+  if (target == null) return;
+  if (target.widget.focusNode.hasFocus) {
+    SemanticsService.sendAnnouncement(
+      View.of(context),
+      message,
+      Directionality.of(context),
+    );
+    return;
+  }
+  target.requestKeyboard();
 }
