@@ -162,10 +162,10 @@ void main() {
     await _open(tester, _rice);
     expect(find.byKey(const Key('logSheet.protein')), findsNothing, reason: 'hidden until asked for');
     await _editNumbers(tester);
-    expect(find.text('Protein (g)'), findsOneWidget);
-    expect(find.text('Carbs (g)'), findsOneWidget);
-    expect(find.text('Fat (g)'), findsOneWidget);
-    expect(find.text('Fiber (g)'), findsOneWidget);
+    expect(find.text('PROTEIN (G)'), findsOneWidget);
+    expect(find.text('CARBS (G)'), findsOneWidget);
+    expect(find.text('FAT (G)'), findsOneWidget);
+    expect(find.text('FIBER (G)'), findsOneWidget);
     expect(_fieldText(tester, 'logSheet.protein'), '4.3');
     expect(_fieldText(tester, 'logSheet.carbs'), '44.5');
     expect(_fieldText(tester, 'logSheet.fat'), '0.4');
@@ -227,8 +227,8 @@ void main() {
   testWidgets('Edit numbers shows sugar and sodium boxes prefilled when the food lists them', (tester) async {
     await _open(tester, _juice);
     await _editNumbers(tester);
-    expect(find.text('Sugar (g)'), findsOneWidget);
-    expect(find.text('Sodium (mg)'), findsOneWidget);
+    expect(find.text('SUGAR (G)'), findsOneWidget);
+    expect(find.text('SODIUM (MG)'), findsOneWidget);
     expect(_fieldText(tester, 'logSheet.sugar'), '9.7');
     expect(_fieldText(tester, 'logSheet.sodium'), '124');
   });

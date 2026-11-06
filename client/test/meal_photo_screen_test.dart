@@ -350,6 +350,9 @@ void main() {
         find.text('"Atchara (pickled papaya)" isn\'t in FitSync\'s list'),
         findsOneWidget,
       );
+      // Named as Add manually names its meal: an eyebrow (L-66).
+      expect(find.text('MEAL'), findsOneWidget);
+      expect(find.text('Meal'), findsNothing);
       expect(
         tester.getSemantics(find.byKey(const Key('snap.meal.lunch'))),
         isSemantics(isChecked: true, isInMutuallyExclusiveGroup: true),

@@ -428,7 +428,7 @@ class _MealPhotoScreenState extends ConsumerState<MealPhotoScreen> {
             Text(left, key: const Key('snap.left'), style: TextStyle(color: t.text2, fontSize: 12)),
           ],
           const SizedBox(height: 16),
-          Text('Meal', style: TextStyle(color: t.text2, fontSize: 12)),
+          const FsEyebrow('Meal'),
           const SizedBox(height: 6),
           MealChips(keyPrefix: 'snap.meal', selected: _meal, onSelected: (m) => setState(() => _meal = m)),
           const SizedBox(height: 16),
