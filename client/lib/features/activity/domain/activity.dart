@@ -19,16 +19,39 @@ class ActivityDay {
   final double? distanceKm;
   final int? activeMinutes;
 
-  /// This day with its step count moved on to [liveSteps], and the
-  /// server's estimates carried along by the same share. The server works
-  /// them out from the count it last saved, up to five minutes behind the
-  /// phone's; all three grow in step with the steps, so they move with the
-  /// count until the next sync rather than sitting still beside it. The
-  /// formula stays the server's. Home and the Activity screen both read
-  /// today through this, so the two never show different kcal or km for the
-  /// same count. With nothing saved to grow from, the estimates stay as
+  /// This day with its step count moved on to [liveSteps]. The server
+  /// works the estimates out from the count it last saved, up to five
+  /// minutes behind the phone's, so they are carried along to the live
+  /// count rather than sitting still beside it. Home and the Activity
+  /// screen both read today through this, so the two never show different
+  /// kcal or km for the same count.
+  ///
+  /// With the server's [perStep] factors, each estimate is worked out
+  /// afresh, rounded as the server rounds (server/src/lib/
+  /// activity-estimate.js), so it is the figure the server will save for
+  /// that count, and it grows from a day saved at 0 steps too. A null
+  /// factor (no height or weight) keeps the stored value, which the screens
+  /// show as "—" through [ActivityWeek.missing].
+  ///
+  /// Without them (an older server), the saved estimates grow by the share
+  /// the count has grown; with nothing saved to grow from, they stay as
   /// they are.
-  ActivityDay grownTo(int liveSteps) {
+  ActivityDay grownTo(int liveSteps, {ActivityPerStep? perStep}) {
+    if (perStep != null) {
+      final km = perStep.distanceKm;
+      final kcal = perStep.caloriesBurned;
+      return ActivityDay(
+        date: date,
+        steps: liveSteps,
+        caloriesBurned: kcal == null
+            ? caloriesBurned
+            : (liveSteps * kcal).round(),
+        distanceKm: km == null
+            ? distanceKm
+            : (liveSteps * km * 100).round() / 100,
+        activeMinutes: (liveSteps * perStep.activeMinutes).round(),
+      );
+    }
     final saved = steps;
     final factor = saved != null && saved > 0 ? liveSteps / saved : 1.0;
     return ActivityDay(
@@ -53,6 +76,28 @@ class ActivityDay {
   );
 }
 
+/// What one step adds to each estimate, for the profile as it is now:
+/// `perStep` in GET /activity, unrounded. [distanceKm] is null without a
+/// height, and [caloriesBurned] without a height or a weight.
+class ActivityPerStep {
+  const ActivityPerStep({
+    required this.distanceKm,
+    required this.caloriesBurned,
+    required this.activeMinutes,
+  });
+
+  final double? distanceKm;
+  final double? caloriesBurned;
+  final double activeMinutes;
+
+  factory ActivityPerStep.fromJson(Map<String, dynamic> json) =>
+      ActivityPerStep(
+        distanceKm: (json['distanceKm'] as num?)?.toDouble(),
+        caloriesBurned: (json['caloriesBurned'] as num?)?.toDouble(),
+        activeMinutes: (json['activeMinutes'] as num).toDouble(),
+      );
+}
+
 /// GET /activity: the seven days ending today, oldest first, and the user's
 /// usual (null until [usualMinDays] earlier days have steps).
 class ActivityWeek {
@@ -61,6 +106,7 @@ class ActivityWeek {
     required this.usual,
     required this.missing,
     this.usualDays,
+    this.perStep,
   });
 
   final List<ActivityDay> days;
@@ -72,6 +118,10 @@ class ActivityWeek {
 
   /// `height` / `weight` absent from the profile, blocking km and/or kcal.
   final List<String> missing;
+
+  /// The factors that work today's estimates out for a live count (see
+  /// [ActivityDay.grownTo]). Null from a server that does not send them.
+  final ActivityPerStep? perStep;
 
   bool get missingHeight => missing.contains('height');
   bool get missingWeight => missing.contains('weight');
@@ -98,6 +148,9 @@ class ActivityWeek {
     usual: json['usual'] as int?,
     usualDays: json['usualDays'] as int?,
     missing: (json['missing'] as List<dynamic>).cast<String>(),
+    perStep: json['perStep'] is Map<String, dynamic>
+        ? ActivityPerStep.fromJson(json['perStep'] as Map<String, dynamic>)
+        : null,
   );
 }
 

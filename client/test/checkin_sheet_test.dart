@@ -30,10 +30,11 @@ class _FakeRepo implements RecoveryRepository {
   Object? error;
 
   @override
-  Future<void> checkIn(Map<String, String> answers) async {
+  Future<InjuryRiskEstimate?> checkIn(Map<String, String> answers) async {
     log?.add('checkin');
     if (error != null) throw error!;
     sent = answers;
+    return null;
   }
 
   @override
@@ -102,7 +103,10 @@ class _SlowFakeRepo implements RecoveryRepository {
   int overviewCalls = 0;
 
   @override
-  Future<void> checkIn(Map<String, String> answers) => _checkinCompleter.future;
+  Future<InjuryRiskEstimate?> checkIn(Map<String, String> answers) async {
+    await _checkinCompleter.future;
+    return null;
+  }
 
   @override
   Future<RecoveryOverview> overview() async {
