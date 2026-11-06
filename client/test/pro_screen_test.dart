@@ -755,13 +755,24 @@ void main() {
   );
 
   testWidgets(
-    'the plan cards are one choice: a radio group to a screen reader',
+    'the plan cards are one choice: each says whether it is the one picked',
     (tester) async {
       await _pump(tester);
-      for (final key in ['pro.plan.annual', 'pro.plan.monthly']) {
+      for (final (key, picked) in [
+        ('pro.plan.annual', true),
+        ('pro.plan.monthly', false),
+      ]) {
         expect(
           tester.getSemantics(find.byKey(Key(key))),
-          isSemantics(isInMutuallyExclusiveGroup: true),
+          // No group flag (P-30, as FsSegmented): with no checked state it
+          // says nothing on either platform; the selected state does.
+          isSemantics(
+            isButton: true,
+            hasSelectedState: true,
+            isSelected: picked,
+            isInMutuallyExclusiveGroup: false,
+          ),
+          reason: key,
         );
       }
     },

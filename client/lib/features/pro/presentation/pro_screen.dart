@@ -583,8 +583,9 @@ class _StatusCard extends StatelessWidget {
 }
 
 /// A choosable plan. FsCard gives the button and selected state to a screen
-/// reader, and the two cards are one radio group; [semanticsLabel] says the
-/// whole price in one sentence.
+/// reader, which is how the one picked is told from the other; no group flag,
+/// which without a checked state says nothing on either platform (as
+/// FsSegmented). [semanticsLabel] says the whole price in one sentence.
 ///
 /// A null [onTap] (a payment in progress) is said as disabled, and the plan
 /// not being paid for is dimmed as a disabled FsButton is, so neither card
@@ -626,7 +627,6 @@ class _PlanCard extends StatelessWidget {
           onTap: onTap,
           child: Semantics(
             label: semanticsLabel,
-            inMutuallyExclusiveGroup: true,
             enabled: onTap != null,
             excludeSemantics: true,
             child: Column(
