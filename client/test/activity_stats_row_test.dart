@@ -77,21 +77,20 @@ ActivityWeek _week({
   List<String> missing = const [],
   int? usual,
   int kcal = 158,
-}) =>
-    ActivityWeek(
-      days: [
-        for (var d = 22; d <= 28; d++)
-          ActivityDay(
-            date: '2026-09-$d',
-            steps: d == 28 ? 6420 : null,
-            caloriesBurned: d == 28 ? kcal : null,
-            distanceKm: d == 28 ? 4.52 : null,
-            activeMinutes: d == 28 ? 64 : null,
-          ),
-      ],
-      usual: usual,
-      missing: missing,
-    );
+}) => ActivityWeek(
+  days: [
+    for (var d = 22; d <= 28; d++)
+      ActivityDay(
+        date: '2026-09-$d',
+        steps: d == 28 ? 6420 : null,
+        caloriesBurned: d == 28 ? kcal : null,
+        distanceKm: d == 28 ? 4.52 : null,
+        activeMinutes: d == 28 ? 64 : null,
+      ),
+  ],
+  usual: usual,
+  missing: missing,
+);
 
 Future<void> _pump(
   WidgetTester tester,
@@ -177,7 +176,8 @@ void main() {
   );
 
   testWidgets(
-    'while step access loads: zero tiles that do nothing when tapped',
+    'while step access loads: dashes, not zeros, on tiles that do nothing '
+    'when tapped',
     (tester) async {
       final pending = Completer<StepAccess>();
       await tester.pumpWidget(
@@ -192,9 +192,12 @@ void main() {
       );
       await tester.pump();
 
-      expect(tile('steps', '0'), findsOneWidget);
-      expect(tile('kcal', '0'), findsOneWidget);
-      expect(tile('km', '0.0'), findsOneWidget);
+      // Not known yet, rather than none: someone who has walked thousands
+      // would otherwise see "0 steps" flash before their count.
+      expect(tile('steps', '—'), findsOneWidget);
+      expect(tile('kcal', '—'), findsOneWidget);
+      expect(tile('km', '—'), findsOneWidget);
+      expect(tile('steps', '0'), findsNothing);
       expect(find.text('Tap to start counting your steps'), findsNothing);
       await tester.tap(find.byKey(const Key('home.activity.steps')));
       await tester.pump();
@@ -238,7 +241,11 @@ void main() {
   testWidgets('on: kcal over a thousand is grouped, as steps are', (
     tester,
   ) async {
-    await _pump(tester, _Permission(StepAccess.granted), week: _week(kcal: 1180));
+    await _pump(
+      tester,
+      _Permission(StepAccess.granted),
+      week: _week(kcal: 1180),
+    );
 
     expect(tile('kcal', '1,180'), findsOneWidget);
   });

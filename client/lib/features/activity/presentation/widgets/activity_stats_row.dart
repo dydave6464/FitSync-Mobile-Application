@@ -42,7 +42,7 @@ class ActivityStatsRow extends ConsumerWidget {
     AsyncValue<StepAccess> access,
   ) {
     return access.when(
-      loading: () => const _Tiles.zero(onTap: null),
+      loading: () => const _Tiles.unknown(),
       error: (_, _) => const SizedBox.shrink(),
       data: (access) => switch (access) {
         StepAccess.notAsked => _Tiles.zero(
@@ -130,14 +130,25 @@ class _Tiles extends StatelessWidget {
     required this.onTap,
   }) : hint = null;
 
-  /// Before counting is on (or while it loads): zeros, not dashes -- nothing
-  /// is missing yet, there is simply nothing counted.
+  /// Before counting is on: zeros, not dashes -- nothing is missing yet,
+  /// there is simply nothing counted.
   const _Tiles.zero({required this.onTap, this.hint})
     : steps = '0',
       kcal = '0',
       km = '0.0',
       todaySteps = 0,
       usual = null;
+
+  /// While the phone says whether steps may be counted: dashes, not zeros,
+  /// which would flash "0 steps" at someone who has walked thousands.
+  const _Tiles.unknown()
+    : steps = '—',
+      kcal = '—',
+      km = '—',
+      todaySteps = 0,
+      usual = null,
+      onTap = null,
+      hint = null;
 
   final String steps;
   final String kcal;
