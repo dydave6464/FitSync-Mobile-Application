@@ -5,7 +5,7 @@ const { migrate } = require('../src/db/migrate');
 const { createPool } = require('../src/db/pool');
 const { testDbConfig, dropAllTables } = require('./helpers/test-db');
 const {
-  countToday, countFreeTriesToday, insertFailed, insertRecognition, readForLog, markLogged, outcomesFor,
+  countToday, countFreeTriesToday, insertFailed, insertRecognition, readForLog, readLatestToday, markLogged, outcomesFor,
 } = require('../src/db/photo-recognitions');
 
 test('photo recognitions in the database', async (t) => {
@@ -96,6 +96,49 @@ test('photo recognitions in the database', async (t) => {
     await insertFailed(pool, a);
     const [[failed]] = await pool.query("SELECT MAX(recognition_id) AS id FROM photo_recognitions WHERE status = 'failed' AND user_id = ?", [a]);
     assert.equal(await readForLog(pool, a, failed.id), null);
+  });
+
+  await t.test('readLatestToday: today\'s newest recognised photo with its items in order; skips empty and failed ones, never another user\'s', async () => {
+    const e = await user('e@photo.test');
+    assert.equal(await readLatestToday(pool, e), null, 'nothing today');
+    await insertRecognition(pool, e, [
+      { foodId: garlic.insertId, name: 'Garlic fried rice (sinangag)', confidence: 0.5, servings: 1, alternativeFoodIds: [] },
+    ]);
+    const { recognitionId, itemIds } = await insertRecognition(pool, e, [
+      { foodId: rice.insertId, name: 'White rice', confidence: 0.95, servings: 1.5, alternativeFoodIds: [garlic.insertId] },
+      { foodId: null, name: 'Atchara (pickled papaya)', confidence: null, servings: null, alternativeFoodIds: [] },
+    ]);
+    // Newer, but neither is a photo to finish.
+    await insertRecognition(pool, e, []);
+    await insertFailed(pool, e);
+    const read = await readLatestToday(pool, e);
+    assert.equal(read.recognitionId, recognitionId);
+    assert.ok(read.createdAt instanceof Date);
+    assert.equal(read.loggedAt, null);
+    assert.deepEqual(read.items, [
+      { itemId: itemIds[0], foodId: rice.insertId, name: 'White rice', confidence: 0.95, servings: 1.5, alternativeFoodIds: [garlic.insertId] },
+      { itemId: itemIds[1], foodId: null, name: 'Atchara (pickled papaya)', confidence: null, servings: null, alternativeFoodIds: [] },
+    ]);
+    const f = await user('f@photo.test');
+    assert.equal(await readLatestToday(pool, f), null, 'never another user\'s');
+  });
+
+  await t.test('readLatestToday: once the newest is logged it is that one, logged -- an older unlogged one is not offered instead', async () => {
+    const g = await user('g@photo.test');
+    await insertRecognition(pool, g, [{ foodId: rice.insertId, name: 'White rice', confidence: 0.9, servings: 1, alternativeFoodIds: [] }]);
+    const { recognitionId } = await insertRecognition(pool, g, [{ foodId: rice.insertId, name: 'White rice', confidence: 0.9, servings: 1, alternativeFoodIds: [] }]);
+    await pool.query('UPDATE photo_recognitions SET logged_at = NOW() WHERE recognition_id = ?', [recognitionId]);
+    const read = await readLatestToday(pool, g);
+    assert.equal(read.recognitionId, recognitionId);
+    assert.ok(read.loggedAt instanceof Date);
+  });
+
+  await t.test('readLatestToday: yesterday\'s recognised photo never comes back', async () => {
+    const h = await user('h@photo.test');
+    const { recognitionId } = await insertRecognition(pool, h, [{ foodId: rice.insertId, name: 'White rice', confidence: 0.9, servings: 1, alternativeFoodIds: [] }]);
+    // The pool runs at +08:00: CURDATE() - 1 second is late yesterday in Manila.
+    await pool.query('UPDATE photo_recognitions SET created_at = CURDATE() - INTERVAL 1 SECOND WHERE recognition_id = ?', [recognitionId]);
+    assert.equal(await readLatestToday(pool, h), null);
   });
 
   await t.test('markLogged stamps logged_at and every outcome', async () => {

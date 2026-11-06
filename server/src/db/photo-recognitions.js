@@ -83,6 +83,41 @@ async function readForLog(db, userId, recognitionId, { lock = false } = {}) {
   };
 }
 
+/// [userId]'s newest recognised photo today (Manila), with its items in
+/// screen order -- or null when there is none. Empty and failed rows are
+/// skipped. It is the newest even when it is logged (loggedAt set): an older
+/// unlogged photo is never offered instead. foodId is null for an item not
+/// on FitSync's list, or one whose food has since been deleted.
+async function readLatestToday(pool, userId) {
+  const [[rec]] = await pool.query(
+    `SELECT recognition_id, created_at, logged_at FROM photo_recognitions
+      WHERE user_id = ? AND status = 'recognised'
+        AND created_at >= CURDATE() AND created_at < CURDATE() + INTERVAL 1 DAY
+      ORDER BY created_at DESC, recognition_id DESC LIMIT 1`,
+    [userId],
+  );
+  if (!rec) return null;
+  const [items] = await pool.query(
+    `SELECT item_id, suggested_food_id, suggested_name, confidence, suggested_servings, alternative_food_ids
+       FROM photo_recognition_items WHERE recognition_id = ? ORDER BY item_order`,
+    [rec.recognition_id],
+  );
+  const num = (n) => (n == null ? null : Number(n));
+  return {
+    recognitionId: rec.recognition_id,
+    createdAt: rec.created_at,
+    loggedAt: rec.logged_at,
+    items: items.map((r) => ({
+      itemId: r.item_id,
+      foodId: r.suggested_food_id,
+      name: r.suggested_name,
+      confidence: num(r.confidence),
+      servings: num(r.suggested_servings),
+      alternativeFoodIds: r.alternative_food_ids,
+    })),
+  };
+}
+
 /// Every suggestion's outcome once the photo is logged. [suggestions]:
 /// { itemId, suggestedFoodId|null }; [logged]: { itemId|null, foodId|null,
 /// mealLogId }. kept: the suggested food was logged (servings may differ);
@@ -112,5 +147,5 @@ async function markLogged(conn, recognitionId, outcomes) {
 }
 
 module.exports = {
-  countToday, countFreeTriesToday, insertFailed, insertRecognition, readForLog, outcomesFor, markLogged,
+  countToday, countFreeTriesToday, insertFailed, insertRecognition, readForLog, readLatestToday, outcomesFor, markLogged,
 };
