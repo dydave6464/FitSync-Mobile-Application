@@ -103,21 +103,10 @@ class _LogBodyWeightSheetState extends ConsumerState<_LogBodyWeightSheet> {
   }
 
   /// "Today", "Yesterday", "Wed, Nov 4", with the year when it is not this
-  /// one.
+  /// one: "Wed, Dec 31, 2025".
   String _dayLabel() {
     final day = _day;
-    if (day == null) return 'Today';
-    final today = _today();
-    // By calendar date, not a duration: a day across a clock change is not
-    // 24 hours long.
-    if (DateUtils.isSameDay(
-      day,
-      DateTime(today.year, today.month, today.day - 1),
-    )) {
-      return 'Yesterday';
-    }
-    final date = '${weekdayShort[day.weekday - 1]}, ${shortDate(day)}';
-    return day.year == today.year ? date : '$date ${day.year}';
+    return day == null ? 'Today' : calendarDayLabel(day, _today());
   }
 
   /// The picked day as the server takes it, `YYYY-MM-DD`; null for today.

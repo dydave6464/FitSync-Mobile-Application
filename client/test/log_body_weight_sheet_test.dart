@@ -386,6 +386,26 @@ void main() {
       expect(dateShown(tester), 'Yesterday');
     });
 
+    testWidgets('a day in another year carries its year after a comma', (
+      tester,
+    ) async {
+      // P-2: it read 'Wed, Dec 31 2025', with no comma before the year.
+      await _pump(
+        tester,
+        repo: FakeProfileRepository(),
+        fetches: _FetchCount(),
+        now: DateTime.utc(2026, 1, 2, 4),
+      );
+      await tester.tap(find.byKey(const Key('bodyWeight.date')));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byTooltip('Previous month'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('31'));
+      await tester.tap(find.text('OK'));
+      await tester.pumpAndSettle();
+      expect(dateShown(tester), 'Wed, Dec 31, 2025');
+    });
+
     testWidgets("today is Manila's, as the server counts it", (tester) async {
       // 01:00 on 6 Nov in Manila, still 5 Nov in UTC.
       await _pump(

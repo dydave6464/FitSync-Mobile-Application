@@ -34,6 +34,9 @@ void main() {
       expect(dayLabel('2026-11-05', '2026-11-06'), 'Yesterday');
       expect(dayLabel('2026-11-03', '2026-11-06'), 'Tue, Nov 3');
       expect(dayLabel('2026-10-11', '2026-11-06'), 'Sun, Oct 11');
+      // P-2: the same label as sessions and the weigh-in sheet, so another
+      // year's day carries its year.
+      expect(dayLabel('2025-12-30', '2026-01-02'), 'Tue, Dec 30, 2025');
     });
 
     // For a line with no room to spare: Log food's "ADDING TO" eyebrow,

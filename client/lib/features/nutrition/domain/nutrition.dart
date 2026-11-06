@@ -1,3 +1,5 @@
+import '../../../core/dates.dart';
+
 const mealTypes = ['breakfast', 'lunch', 'dinner', 'snack'];
 
 String mealLabel(String mealType) => switch (mealType) {
@@ -20,18 +22,11 @@ String mealForTime(DateTime instant) {
   return 'snack';
 }
 
-const _weekdays = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
-const _months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
-
 /// A day as the Nutrition tab names it, given [today]: "Today",
-/// "Yesterday", or "Tue, Nov 3". Both are dates as YYYY-MM-DD.
-String dayLabel(String date, String today) {
-  if (date == today) return 'Today';
-  final d = DateTime.parse('${date}T00:00:00Z');
-  final y = DateTime.parse('${today}T00:00:00Z').subtract(const Duration(days: 1));
-  if (d == y) return 'Yesterday';
-  return '${_weekdays[d.weekday - 1]}, ${_months[d.month - 1]} ${d.day}';
-}
+/// "Yesterday", "Tue, Nov 3", or "Tue, Nov 4, 2025" in another year (the
+/// app's one day label, [calendarDayLabel]). Both are dates as YYYY-MM-DD.
+String dayLabel(String date, String today) =>
+    calendarDayLabel(DateTime.parse(date), DateTime.parse(today));
 
 /// [dayLabel] without the weekday -- "Today", "Yesterday" or "Nov 3" --
 /// for a line with no room to spare.
