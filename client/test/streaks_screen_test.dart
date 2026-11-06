@@ -83,6 +83,7 @@ Future<_FakeGoalsRepo> _pump(
   List<LiftGoal> goals = const [_benchGoal],
   int failGoals = 0,
   bool dark = false,
+  double textScale = 1.0,
 }) async {
   final repo = _FakeGoalsRepo(goals)..failListTimes = failGoals;
   await tester.pumpWidget(
@@ -98,6 +99,11 @@ Future<_FakeGoalsRepo> _pump(
       child: MaterialApp(
         theme: dark ? fsDarkTheme() : fsLightTheme(),
         home: const StreaksScreen(now: _now),
+        builder: (context, child) => MediaQuery(
+          data: MediaQuery.of(context)
+              .copyWith(textScaler: TextScaler.linear(textScale)),
+          child: child!,
+        ),
       ),
     ),
   );
@@ -382,4 +388,37 @@ void main() {
     );
     handle.dispose();
   });
+
+  for (final size in [const Size(360, 640), const Size(320, 568)]) {
+    for (final scale in [1.3, 2.0]) {
+      testWidgets('a goal\'s figure fits at ${scale}x text on '
+          '${size.width.toInt()} dp', (tester) async {
+        tester.view.physicalSize = size;
+        tester.view.devicePixelRatio = 1.0;
+        addTearDown(tester.view.reset);
+        await _pump(
+          tester,
+          textScale: scale,
+          goals: const [
+            LiftGoal(
+              goalId: 1,
+              exerciseId: 3,
+              exerciseName: 'Bench Press',
+              targetKg: 100,
+              bestKg: null,
+              reachedOn: null,
+            ),
+          ],
+        );
+        await tester.scrollUntilVisible(
+          find.byKey(const Key('streaks.goal.1')),
+          200,
+        );
+        await tester.pumpAndSettle();
+
+        expect(tester.takeException(), isNull);
+        expect(find.text('Not logged yet · 0 / 100 kg'), findsOneWidget);
+      });
+    }
+  }
 }

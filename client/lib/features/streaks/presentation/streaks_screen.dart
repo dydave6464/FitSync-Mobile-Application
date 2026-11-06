@@ -310,27 +310,11 @@ class _GoalCard extends StatelessWidget {
                     ),
                   )
                 else
-                  Row(
-                    children: [
-                      Expanded(
-                        child: ClipRRect(
-                          borderRadius: BorderRadius.circular(99),
-                          child: LinearProgressIndicator(
-                            value: goal.progress,
-                            minHeight: 6,
-                            backgroundColor: t.line,
-                            color: t.accent,
-                          ),
-                        ),
-                      ),
-                      const SizedBox(width: 8),
-                      Text(
-                        best == null
-                            ? 'Not logged yet · 0 / $target'
-                            : '${formatWeight(best, unit)} / $target',
-                        style: TextStyle(fontSize: 10.5, color: t.text3),
-                      ),
-                    ],
+                  _GoalProgress(
+                    progress: goal.progress,
+                    figure: best == null
+                        ? 'Not logged yet · 0 / $target'
+                        : '${formatWeight(best, unit)} / $target',
                   ),
               ],
             ),
@@ -341,6 +325,52 @@ class _GoalCard extends StatelessWidget {
           ],
         ],
       ),
+    );
+  }
+}
+
+/// A goal's bar and its figure. Side by side, as the design draws them; at
+/// large text the figure takes its own line above the bar (as PlanCard does
+/// for its watermark), since beside it there was no room and it overflowed.
+/// Free to wrap either way.
+class _GoalProgress extends StatelessWidget {
+  const _GoalProgress({required this.progress, required this.figure});
+
+  final double progress;
+  final String figure;
+
+  @override
+  Widget build(BuildContext context) {
+    final t = context.fs;
+    final bar = ClipRRect(
+      borderRadius: BorderRadius.circular(99),
+      child: LinearProgressIndicator(
+        value: progress,
+        minHeight: 6,
+        backgroundColor: t.line,
+        color: t.accent,
+      ),
+    );
+    final style = TextStyle(fontSize: 10.5, color: t.text3);
+
+    if (MediaQuery.textScalerOf(context).scale(1) > 1.3) {
+      return Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Text(figure, style: style),
+          const SizedBox(height: 6),
+          bar,
+        ],
+      );
+    }
+    return Row(
+      children: [
+        Expanded(flex: 2, child: bar),
+        const SizedBox(width: 8),
+        Flexible(
+          child: Text(figure, textAlign: TextAlign.end, style: style),
+        ),
+      ],
     );
   }
 }
