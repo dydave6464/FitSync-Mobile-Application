@@ -1,10 +1,18 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import 'package:flutter/rendering.dart' show RenderParagraph;
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 
+import 'package:fitsync/core/api_exception.dart';
 import 'package:fitsync/core/widgets/fs_kit.dart';
+import 'package:fitsync/features/nutrition/presentation/meal_photo/providers.dart'
+    show appSettingsOpenerProvider;
+import 'package:fitsync/features/plans/domain/workout_plan.dart';
+import 'package:fitsync/features/plans/presentation/providers.dart'
+    show activePlanProvider;
+import 'package:fitsync/features/profile/domain/profile.dart';
 import 'package:fitsync/features/profile/presentation/providers.dart';
 import 'package:fitsync/features/reminders/data/reminder_scheduler.dart';
 import 'package:fitsync/features/reminders/domain/reminders.dart';
@@ -72,6 +80,97 @@ class _FakeScheduler implements ReminderScheduler {
   Stream<String> get taps => const Stream.empty();
 }
 
+/// Fails its first load, then answers [ReminderSettings.defaults] -- the
+/// shape of a load that broke once and works on Try again.
+class _FlakyReminderSettings extends ReminderSettingsController {
+  _FlakyReminderSettings(this.loads);
+
+  final List<int> loads;
+
+  @override
+  Future<ReminderSettings> build() async {
+    loads.add(loads.length);
+    if (loads.length == 1) {
+      throw const ApiException('SERVER_ERROR', 'Reminder settings broke.');
+    }
+    return ReminderSettings.defaults;
+  }
+}
+
+/// The profile [FakeProfileNotifier] seeds, but failing its first load.
+class _FlakyProfile extends FakeProfileNotifier {
+  _FlakyProfile(this.loads) : super(<Map<String, dynamic>>[]);
+
+  final List<int> loads;
+
+  @override
+  Future<Profile> build() async {
+    loads.add(loads.length);
+    if (loads.length == 1) {
+      throw const ApiException('SERVER_ERROR', 'Profile broke.');
+    }
+    return super.build();
+  }
+}
+
+/// Holds every patch on [gate] until the test releases it, then saves it
+/// the way the real controller does -- or fails, when the gate errors.
+class _SlowReminderSettings extends ReminderSettingsController {
+  _SlowReminderSettings(this.patches, this.gate);
+
+  final List<Map<String, dynamic>> patches;
+  final Completer<void> gate;
+
+  @override
+  Future<ReminderSettings> build() async => ReminderSettings.defaults;
+
+  @override
+  Future<void> patch(Map<String, dynamic> fields) async {
+    patches.add(fields);
+    await gate.future;
+    final json = {
+      'habitsEnabled': state.value!.habitsEnabled,
+      'habitLeadMin': state.value!.habitLeadMin,
+      'workoutEnabled': state.value!.workoutEnabled,
+      'workoutTime': state.value!.workoutTime,
+      'checkinEnabled': state.value!.checkinEnabled,
+      'checkinTime': state.value!.checkinTime,
+      ...fields,
+    };
+    state = AsyncData(ReminderSettings.fromJson(json));
+  }
+}
+
+/// The seeded profile with the master switch off.
+class _MasterOffProfile extends FakeProfileNotifier {
+  _MasterOffProfile() : super(<Map<String, dynamic>>[]);
+
+  @override
+  Future<Profile> build() async {
+    final p = await super.build();
+    return Profile(
+      userId: p.userId,
+      email: p.email,
+      fullName: p.fullName,
+      onboardingCompleted: p.onboardingCompleted,
+      isPremium: p.isPremium,
+      notificationsEnabled: false,
+      equipment: p.equipment,
+      injuries: p.injuries,
+    );
+  }
+}
+
+const _plan = WorkoutPlan(
+  planId: 1,
+  name: 'Full Body',
+  splitStyle: 'full_body',
+  daysPerWeek: 3,
+  sessionLengthMin: 45,
+  weekNo: 1,
+  exercises: [],
+);
+
 Future<_FakeScheduler> _pump(
   WidgetTester tester, {
   ReminderSettings settings = ReminderSettings.defaults,
@@ -80,6 +179,11 @@ Future<_FakeScheduler> _pump(
   bool granted = true,
   bool requestAnswer = true,
   Future<TimeOfDay?> Function(BuildContext, TimeOfDay)? pickTime,
+  ReminderSettingsController Function()? settingsController,
+  ProfileNotifier Function()? profileNotifier,
+  WorkoutPlan? plan = _plan,
+  List<String>? settingsOpened,
+  double textScale = 1.0,
 }) async {
   final scheduler = _FakeScheduler(
     granted: granted,
@@ -90,14 +194,32 @@ Future<_FakeScheduler> _pump(
     ProviderScope(
       overrides: [
         reminderSettingsProvider.overrideWith(
-          () => _RecordingReminderSettings(settings, patches: settingsPatches),
+          settingsController ??
+              () => _RecordingReminderSettings(
+                settings,
+                patches: settingsPatches,
+              ),
         ),
         profileProvider.overrideWith(
-          () => FakeProfileNotifier(profilePatches ?? <Map<String, dynamic>>[]),
+          profileNotifier ??
+              () => FakeProfileNotifier(
+                profilePatches ?? <Map<String, dynamic>>[],
+              ),
         ),
         reminderSchedulerProvider.overrideWithValue(scheduler),
+        activePlanProvider.overrideWith((ref) async => plan),
+        appSettingsOpenerProvider.overrideWithValue(
+          () async => settingsOpened?.add('opened'),
+        ),
       ],
-      child: MaterialApp(home: RemindersScreen(pickTime: pickTime)),
+      child: MaterialApp(
+        home: RemindersScreen(pickTime: pickTime),
+        builder: (context, child) => MediaQuery(
+          data: MediaQuery.of(context)
+              .copyWith(textScaler: TextScaler.linear(textScale)),
+          child: child!,
+        ),
+      ),
     ),
   );
   await tester.pumpAndSettle();
@@ -130,8 +252,10 @@ void main() {
       isTrue,
     );
     expect(
-      tester.widget<FsSegmented>(find.byType(FsSegmented)).selected,
-      '15',
+      tester
+          .widget<FsChip>(find.byKey(const Key('reminders.lead.15')))
+          .selected,
+      isTrue,
       reason: 'the default habitLeadMin is 15',
     );
     expect(
@@ -165,7 +289,7 @@ void main() {
     final settingsPatches = <Map<String, dynamic>>[];
     await _pump(tester, settingsPatches: settingsPatches);
 
-    await tester.tap(find.byKey(const Key('segment.5')));
+    await tester.tap(find.byKey(const Key('reminders.lead.5')));
     await tester.pumpAndSettle();
 
     expect(settingsPatches, [
@@ -207,6 +331,11 @@ void main() {
     await _scrollAndTap(tester, const Key('reminders.checkin'));
 
     expect(settingsPatches, isEmpty);
+    // Back up to the top, where the banner is.
+    await tester.scrollUntilVisible(
+      find.byKey(const Key('reminders.blocked')),
+      -200,
+    );
     expect(find.byKey(const Key('reminders.blocked')), findsOneWidget);
   });
 
@@ -334,4 +463,338 @@ void main() {
       expect(settingsPatches, isEmpty);
     },
   );
+
+  testWidgets('a settings load error offers Try again, which reloads', (
+    tester,
+  ) async {
+    final loads = <int>[];
+    await _pump(
+      tester,
+      settingsController: () => _FlakyReminderSettings(loads),
+    );
+
+    expect(
+      find.text('Reminder settings broke.'),
+      findsOneWidget,
+      reason: 'the plain message (userMessage) is shown',
+    );
+    expect(find.byType(FsRetry), findsOneWidget);
+
+    await tester.tap(find.byKey(const Key('reminders.retry')));
+    await tester.pumpAndSettle();
+
+    expect(loads, hasLength(2));
+    expect(find.byType(FsRetry), findsNothing);
+    expect(find.byKey(const Key('reminders.master')), findsOneWidget);
+  });
+
+  testWidgets('a profile load error offers Try again, which reloads', (
+    tester,
+  ) async {
+    final loads = <int>[];
+    await _pump(tester, profileNotifier: () => _FlakyProfile(loads));
+
+    expect(find.text('Profile broke.'), findsOneWidget);
+    expect(find.byType(FsRetry), findsOneWidget);
+
+    await tester.tap(find.byKey(const Key('reminders.retry')));
+    await tester.pumpAndSettle();
+
+    expect(loads, hasLength(2));
+    expect(find.byKey(const Key('reminders.master')), findsOneWidget);
+  });
+
+  testWidgets('each switch is named by its row', (tester) async {
+    final handle = tester.ensureSemantics();
+    await _pump(tester);
+
+    for (final (key, label) in [
+      ('reminders.master', 'Notifications & reminders'),
+      ('reminders.habits', 'Remind me about habits'),
+      ('reminders.workout', 'Remind me before my workout'),
+      ('reminders.checkin', 'Remind me to check in'),
+    ]) {
+      await tester.scrollUntilVisible(find.byKey(Key(key)), 200);
+      await tester.pumpAndSettle();
+      expect(
+        tester.getSemantics(find.byKey(Key(key))),
+        matchesSemantics(
+          label: label,
+          hasToggledState: true,
+          isToggled: key != 'reminders.workout' && key != 'reminders.checkin',
+          hasEnabledState: true,
+          isEnabled: true,
+          hasTapAction: true,
+          hasFocusAction: true,
+          isFocusable: true,
+        ),
+        reason: key,
+      );
+    }
+    handle.dispose();
+  });
+
+  testWidgets('with the master switch off the sections say so and are '
+      'disabled', (tester) async {
+    final settingsPatches = <Map<String, dynamic>>[];
+    await _pump(
+      tester,
+      profileNotifier: _MasterOffProfile.new,
+      settingsPatches: settingsPatches,
+    );
+
+    expect(
+      find.text(
+        'Reminders are off. Turn this on to get any of the reminders below.',
+      ),
+      findsOneWidget,
+    );
+    for (final key in [
+      'reminders.habits',
+      'reminders.workout',
+      'reminders.checkin',
+    ]) {
+      await tester.scrollUntilVisible(find.byKey(Key(key)), 200);
+      expect(
+        tester.widget<Switch>(find.byKey(Key(key))).onChanged,
+        isNull,
+        reason: '$key is disabled while nothing can fire',
+      );
+    }
+    expect(
+      tester.widget<FsChip>(find.byKey(const Key('reminders.lead.5'))).onTap,
+      isNull,
+      reason: 'the lead time is disabled too',
+    );
+    // The master switch itself stays live: it is the way back.
+    await tester.scrollUntilVisible(
+      find.byKey(const Key('reminders.master')),
+      -200,
+    );
+    expect(
+      tester
+          .widget<Switch>(find.byKey(const Key('reminders.master')))
+          .onChanged,
+      isNotNull,
+    );
+
+    // A tap on a disabled time row saves nothing.
+    await _scrollAndTap(tester, const Key('reminders.workoutTime'));
+    expect(settingsPatches, isEmpty);
+  });
+
+  testWidgets('with the master switch on there is no "off" line', (
+    tester,
+  ) async {
+    await _pump(tester);
+
+    expect(find.textContaining('Reminders are off.'), findsNothing);
+    expect(
+      tester
+          .widget<Switch>(find.byKey(const Key('reminders.habits')))
+          .onChanged,
+      isNotNull,
+    );
+  });
+
+  testWidgets('Habits says only timed habits are reminded', (tester) async {
+    await _pump(tester);
+
+    expect(
+      find.text('Only habits with a set time get a reminder.'),
+      findsOneWidget,
+    );
+  });
+
+  testWidgets('without a plan the workout section says it needs one', (
+    tester,
+  ) async {
+    await _pump(tester, plan: null);
+    await tester.scrollUntilVisible(
+      find.text('Workout reminders need a plan.'),
+      200,
+    );
+    expect(find.text('Workout reminders need a plan.'), findsOneWidget);
+  });
+
+  testWidgets('with a plan the workout section has no plan note', (
+    tester,
+  ) async {
+    await _pump(tester);
+
+    expect(find.text('Workout reminders need a plan.'), findsNothing);
+  });
+
+  testWidgets('the blocked banner opens the phone\'s settings', (tester) async {
+    final opened = <String>[];
+    await _pump(tester, granted: false, settingsOpened: opened);
+
+    final button = find.descendant(
+      of: find.byKey(const Key('reminders.blocked')),
+      matching: find.widgetWithText(FsButton, 'Open settings'),
+    );
+    expect(button, findsOneWidget);
+
+    await tester.tap(button);
+    await tester.pumpAndSettle();
+
+    expect(opened, ['opened']);
+  });
+
+  bool switchOn(WidgetTester tester, String key) =>
+      tester.widget<Switch>(find.byKey(Key(key))).value;
+
+  testWidgets('a switch moves at once and a second tap while saving sends '
+      'nothing more', (tester) async {
+    final patches = <Map<String, dynamic>>[];
+    final gate = Completer<void>();
+    await _pump(
+      tester,
+      settingsController: () => _SlowReminderSettings(patches, gate),
+    );
+    expect(switchOn(tester, 'reminders.habits'), isTrue);
+
+    await tester.tap(find.byKey(const Key('reminders.habits')));
+    await tester.pump();
+    expect(
+      switchOn(tester, 'reminders.habits'),
+      isFalse,
+      reason: 'the switch shows the new value while the server is asked',
+    );
+
+    await tester.tap(find.byKey(const Key('reminders.habits')));
+    await tester.pump();
+    expect(patches, [
+      {'habitsEnabled': false},
+    ], reason: 'no duplicate PATCH while one is in flight');
+    expect(switchOn(tester, 'reminders.habits'), isFalse);
+
+    gate.complete();
+    await tester.pumpAndSettle();
+    expect(switchOn(tester, 'reminders.habits'), isFalse);
+  });
+
+  testWidgets('a failed save puts the switch back and says why', (
+    tester,
+  ) async {
+    final patches = <Map<String, dynamic>>[];
+    final gate = Completer<void>();
+    await _pump(
+      tester,
+      settingsController: () => _SlowReminderSettings(patches, gate),
+    );
+
+    await tester.tap(find.byKey(const Key('reminders.habits')));
+    await tester.pump();
+    expect(switchOn(tester, 'reminders.habits'), isFalse);
+
+    gate.completeError(
+      const ApiException('SERVER_ERROR', 'That could not be saved.'),
+    );
+    await tester.pumpAndSettle();
+
+    expect(switchOn(tester, 'reminders.habits'), isTrue);
+    expect(find.text('That could not be saved.'), findsOneWidget);
+  });
+
+  testWidgets('a refused permission puts the switch back', (tester) async {
+    await _pump(tester, granted: false, requestAnswer: false);
+
+    await _scrollAndTap(tester, const Key('reminders.checkin'));
+
+    expect(switchOn(tester, 'reminders.checkin'), isFalse);
+  });
+
+  testWidgets('each time row is 48 dp tall and says which time it is', (
+    tester,
+  ) async {
+    final handle = tester.ensureSemantics();
+    await _pump(tester);
+
+    for (final (key, label) in [
+      ('reminders.workoutTime', 'Workout reminder time, 7:00 AM'),
+      ('reminders.checkinTime', 'Check-in reminder time, 7:00 AM'),
+    ]) {
+      await tester.scrollUntilVisible(find.byKey(Key(key)), 200);
+      await tester.pumpAndSettle();
+      expect(
+        tester.getSize(find.byKey(Key(key))).height,
+        greaterThanOrEqualTo(48),
+        reason: key,
+      );
+      expect(
+        tester.getSemantics(find.byKey(Key(key))),
+        matchesSemantics(
+          label: label,
+          isButton: true,
+          hasEnabledState: true,
+          isEnabled: true,
+          hasTapAction: true,
+          hasFocusAction: true,
+          isFocusable: true,
+        ),
+        reason: key,
+      );
+    }
+    await expectLater(tester, meetsGuideline(androidTapTargetGuideline));
+    handle.dispose();
+  });
+
+  testWidgets('the lead time is a set of chips, one of them selected', (
+    tester,
+  ) async {
+    final handle = tester.ensureSemantics();
+    await _pump(tester);
+
+    expect(find.byType(FsSegmented), findsNothing);
+    for (final (value, label) in [
+      ('0', 'At the time'),
+      ('5', '5 min before'),
+      ('15', '15 min before'),
+      ('30', '30 min before'),
+    ]) {
+      final chip = find.byKey(Key('reminders.lead.$value'));
+      expect(
+        find.descendant(of: chip, matching: find.text(label)),
+        findsOneWidget,
+      );
+      expect(
+        tester.widget<FsChip>(chip).selected,
+        value == '15',
+        reason: 'the default habitLeadMin is 15',
+      );
+    }
+    await expectLater(tester, meetsGuideline(androidTapTargetGuideline));
+    handle.dispose();
+  });
+
+  for (final size in [const Size(360, 640), const Size(320, 568)]) {
+    testWidgets('at 2x text on ${size.width.toInt()} dp every lead time '
+        'reads whole', (tester) async {
+      tester.view.physicalSize = size;
+      tester.view.devicePixelRatio = 1.0;
+      addTearDown(tester.view.reset);
+      await _pump(tester, textScale: 2.0);
+
+      expect(tester.takeException(), isNull);
+      for (final label in [
+        'At the time',
+        '5 min before',
+        '15 min before',
+        '30 min before',
+      ]) {
+        await tester.scrollUntilVisible(find.text(label), 100);
+        final paragraph = tester.renderObject<RenderParagraph>(
+          find.text(label),
+        );
+        expect(paragraph.didExceedMaxLines, isFalse, reason: label);
+      }
+      // And nothing further down the screen overflows either.
+      await tester.scrollUntilVisible(
+        find.byKey(const Key('reminders.checkinTime')),
+        200,
+      );
+      expect(tester.takeException(), isNull);
+    });
+  }
 }

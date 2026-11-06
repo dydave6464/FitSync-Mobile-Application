@@ -1,10 +1,12 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../../core/api_exception.dart';
 import '../../../core/theme.dart';
 import '../../../core/widgets/fs_kit.dart';
-import '../../exercises/presentation/exercise_list_screen.dart'
-    show describeError;
+import '../../nutrition/presentation/meal_photo/providers.dart'
+    show appSettingsOpenerProvider;
+import '../../plans/presentation/providers.dart' show activePlanProvider;
 import '../../profile/domain/profile.dart';
 import '../../profile/presentation/providers.dart';
 import '../../routine/domain/routine.dart' show formatClock;
@@ -94,29 +96,45 @@ class _RemindersScreenState extends ConsumerState<RemindersScreen> {
     } catch (error) {
       if (!mounted) return;
       ScaffoldMessenger.of(context)
-          .showSnackBar(SnackBar(content: Text(describeError(error))));
+          .showSnackBar(SnackBar(content: Text(userMessage(error))));
     }
   }
 
+  /// The value each switch shows while its save is in flight, by field. The
+  /// switch moves on the tap rather than after the round trip, and a field
+  /// in here ignores further taps, so a slow network sends one PATCH, not
+  /// one per impatient tap.
+  final _pending = <String, bool>{};
+
   /// Turning a reminder off always saves. Turning one on asks for permission
   /// first when it is not already granted; a refusal saves nothing, and the
-  /// switch stays off because [savePatch] never ran.
+  /// switch goes back to off because [savePatch] never ran. A failed save
+  /// goes back too, with the reason in a SnackBar.
   Future<void> _setEnabled(
+    String field,
     bool value,
     Future<void> Function() savePatch,
   ) async {
-    if (value && !_granted) {
-      final granted = await ref
-          .read(reminderSchedulerProvider)
-          .requestPermission();
-      // The system prompt this just awaited can outlive the screen -- a pop
-      // (or the signed-in shell tearing down) while it is up leaves `ref`
-      // unusable, so nothing below may touch it.
-      if (!mounted) return;
-      await _refreshGranted();
-      if (!granted) return;
+    if (_pending.containsKey(field)) return;
+    setState(() => _pending[field] = value);
+    try {
+      if (value && !_granted) {
+        final granted = await ref
+            .read(reminderSchedulerProvider)
+            .requestPermission();
+        // The system prompt this just awaited can outlive the screen -- a
+        // pop (or the signed-in shell tearing down) while it is up leaves
+        // `ref` unusable, so nothing below may touch it.
+        if (!mounted) return;
+        await _refreshGranted();
+        if (!granted) return;
+      }
+      await _save(savePatch);
+    } finally {
+      // By now the provider holds the saved value, or the old one after a
+      // refusal or failure: either way it is the truth to show.
+      if (mounted) setState(() => _pending.remove(field));
     }
-    await _save(savePatch);
   }
 
   Future<void> _pickTime({
@@ -149,27 +167,88 @@ class _RemindersScreenState extends ConsumerState<RemindersScreen> {
       appBar: AppBar(title: const Text('Reminders')),
       body: settings.when(
         loading: () => const Center(child: CircularProgressIndicator()),
-        error: (error, _) => Center(child: Text(describeError(error))),
+        error: (error, _) => FsRetry(
+          fullScreen: true,
+          message: userMessage(error),
+          buttonKey: const Key('reminders.retry'),
+          onRetry: () => ref.invalidate(reminderSettingsProvider),
+        ),
         data: (loadedSettings) => profile.when(
           loading: () => const Center(child: CircularProgressIndicator()),
-          error: (error, _) => Center(child: Text(describeError(error))),
+          error: (error, _) => FsRetry(
+            fullScreen: true,
+            message: userMessage(error),
+            buttonKey: const Key('reminders.retry'),
+            onRetry: () => ref.invalidate(profileProvider),
+          ),
           data: (loadedProfile) => _body(loadedSettings, loadedProfile),
         ),
       ),
     );
   }
 
-  Widget _body(ReminderSettings settings, Profile profile) => ListView(
-    padding: const EdgeInsets.fromLTRB(20, 8, 20, 24),
+  /// With the master switch off nothing below it is scheduled
+  /// (`planReminders` returns nothing), so the three sections are shown
+  /// dimmed and disabled, with a line that says why, rather than looking
+  /// live.
+  Widget _body(ReminderSettings settings, Profile profile) {
+    final live = profile.notificationsEnabled;
+    // Only a plan known to be absent: while it loads, or if it failed, the
+    // note would be a guess.
+    final plan = ref.watch(activePlanProvider);
+    final noPlan = plan.hasValue && plan.value == null;
+    return ListView(
+      padding: const EdgeInsets.fromLTRB(20, 8, 20, 24),
+      children: [
+        _masterRow(profile.notificationsEnabled),
+        if (!live) ...[
+          const SizedBox(height: 8),
+          _note(
+            'Reminders are off. Turn this on to get any of the reminders '
+            'below.',
+          ),
+        ],
+        if (!_granted) ...[const SizedBox(height: 14), _blockedBanner()],
+        const SizedBox(height: 22),
+        _habitsSection(settings, enabled: live),
+        const SizedBox(height: 22),
+        _workoutSection(settings, enabled: live, noPlan: noPlan),
+        const SizedBox(height: 22),
+        _checkinSection(settings, enabled: live),
+      ],
+    );
+  }
+
+  /// A line of explanation under a row or section.
+  Widget _note(String text) => Text(
+    text,
+    style: TextStyle(fontSize: 12, height: 1.4, color: context.fs.text2),
+  );
+
+  /// One section: its eyebrow, its card, and any notes under the card. A
+  /// disabled section's card is dimmed as FsButton dims a disabled button;
+  /// its controls are disabled by the caller, so a screen reader says so
+  /// too. The notes stay at full strength: they say why.
+  Widget _section({
+    required String title,
+    required bool enabled,
+    required List<Widget> children,
+    List<String> notes = const [],
+  }) => Column(
+    crossAxisAlignment: CrossAxisAlignment.start,
     children: [
-      _masterRow(profile.notificationsEnabled),
-      if (!_granted) ...[const SizedBox(height: 14), _blockedBanner()],
-      const SizedBox(height: 22),
-      _habitsSection(settings),
-      const SizedBox(height: 22),
-      _workoutSection(settings),
-      const SizedBox(height: 22),
-      _checkinSection(settings),
+      FsEyebrow(title),
+      const SizedBox(height: 10),
+      Opacity(
+        opacity: enabled ? 1 : 0.45,
+        child: FsCard(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: children,
+          ),
+        ),
+      ),
+      for (final note in notes) ...[const SizedBox(height: 8), _note(note)],
     ],
   );
 
@@ -187,25 +266,54 @@ class _RemindersScreenState extends ConsumerState<RemindersScreen> {
     );
   }
 
+  /// A label and its switch, read as one control: "Remind me about habits,
+  /// switch, on" rather than a bare "switch, on" beside a separate line of
+  /// text.
+  ///
+  /// [field] names the setting for [_pending]; [saved] is its stored value
+  /// and [save] writes a new one. A disabled row ([enabled] false) has no
+  /// handler, so the switch reads as disabled.
+  Widget _switchRow({
+    required String label,
+    required Key switchKey,
+    required String field,
+    required bool saved,
+    required Future<void> Function(bool value) save,
+    bool enabled = true,
+    List<Widget> leading = const [],
+  }) {
+    return MergeSemantics(
+      child: Row(
+        children: [
+          ...leading,
+          _rowLabel(label),
+          Switch(
+            key: switchKey,
+            value: _pending[field] ?? saved,
+            onChanged: !enabled
+                ? null
+                : (value) => _setEnabled(field, value, () => save(value)),
+          ),
+        ],
+      ),
+    );
+  }
+
   Widget _masterRow(bool notificationsEnabled) {
     return FsCard(
       padding: const EdgeInsets.symmetric(horizontal: 16),
-      child: Row(
-        children: [
+      child: _switchRow(
+        leading: [
           FsIconTile(icon: Icons.notifications_outlined, size: 32),
           const SizedBox(width: 13),
-          _rowLabel('Notifications & reminders'),
-          Switch(
-            key: const Key('reminders.master'),
-            value: notificationsEnabled,
-            onChanged: (value) => _setEnabled(
-              value,
-              () => ref.read(profileProvider.notifier).patch({
-                'notificationsEnabled': value,
-              }),
-            ),
-          ),
         ],
+        label: 'Notifications & reminders',
+        switchKey: const Key('reminders.master'),
+        field: 'notificationsEnabled',
+        saved: notificationsEnabled,
+        save: (value) => ref.read(profileProvider.notifier).patch({
+          'notificationsEnabled': value,
+        }),
       ),
     );
   }
@@ -220,9 +328,25 @@ class _RemindersScreenState extends ConsumerState<RemindersScreen> {
           Icon(Icons.notifications_off_outlined, color: t.red, size: 20),
           const SizedBox(width: 10),
           Expanded(
-            child: Text(
-              remindersBlockedText,
-              style: TextStyle(fontSize: 12, color: t.text2, height: 1.4),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  remindersBlockedText,
+                  style: TextStyle(fontSize: 12, color: t.text2, height: 1.4),
+                ),
+                const SizedBox(height: 8),
+                // Once refused, the app cannot ask again: the phone's own
+                // settings are the only way back. Returning here re-checks
+                // (the resume listener) and clears this banner.
+                FsButton(
+                  key: const Key('reminders.openSettings'),
+                  label: 'Open settings',
+                  small: true,
+                  kind: FsButtonKind.secondary,
+                  onPressed: () => ref.read(appSettingsOpenerProvider)(),
+                ),
+              ],
             ),
           ),
         ],
@@ -230,141 +354,152 @@ class _RemindersScreenState extends ConsumerState<RemindersScreen> {
     );
   }
 
-  Widget _timeRow(Key rowKey, String time, {required VoidCallback onTap}) {
+  /// "Time" and the clock, opening the time picker. [spokenAs] says which
+  /// reminder's time it is: two sections show a row that reads just "Time".
+  /// At least 48 dp tall, a thumb's target.
+  Widget _timeRow(
+    Key rowKey,
+    String time, {
+    required String spokenAs,
+    required VoidCallback? onTap,
+  }) {
     final t = context.fs;
-    return InkWell(
-      key: rowKey,
-      onTap: onTap,
-      child: Padding(
-        padding: const EdgeInsets.symmetric(vertical: 8),
-        child: Row(
-          children: [
-            _rowLabel('Time'),
-            Text(
-              formatClock(time),
-              style: TextStyle(fontSize: 12.5, color: t.text2),
+    return Semantics(
+      container: true,
+      button: true,
+      enabled: onTap != null,
+      label: '$spokenAs, ${formatClock(time)}',
+      child: InkWell(
+        key: rowKey,
+        onTap: onTap,
+        child: ConstrainedBox(
+          constraints: const BoxConstraints(minHeight: 48),
+          // The label above says it all; the row's own words would only
+          // repeat it.
+          child: ExcludeSemantics(
+            child: Row(
+              children: [
+                _rowLabel('Time'),
+                Text(
+                  formatClock(time),
+                  style: TextStyle(fontSize: 12.5, color: t.text2),
+                ),
+                const SizedBox(width: 4),
+                Icon(Icons.chevron_right, size: 16, color: t.text3),
+              ],
             ),
-            const SizedBox(width: 4),
-            Icon(Icons.chevron_right, size: 16, color: t.text3),
-          ],
+          ),
         ),
       ),
     );
   }
 
-  Widget _habitsSection(ReminderSettings settings) => Column(
-    crossAxisAlignment: CrossAxisAlignment.start,
-    children: [
-      const FsEyebrow('Habits'),
-      const SizedBox(height: 10),
-      FsCard(
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            Row(
+  Widget _habitsSection(ReminderSettings settings, {required bool enabled}) =>
+      _section(
+        title: 'Habits',
+        enabled: enabled,
+        // planReminders skips any-time habits: there is no moment to remind.
+        notes: const ['Only habits with a set time get a reminder.'],
+        children: [
+          _switchRow(
+            label: 'Remind me about habits',
+            switchKey: const Key('reminders.habits'),
+            field: 'habitsEnabled',
+            saved: settings.habitsEnabled,
+            enabled: enabled,
+            save: (value) => ref.read(reminderSettingsProvider.notifier).patch({
+              'habitsEnabled': value,
+            }),
+          ),
+          const SizedBox(height: 12),
+          // Chips that wrap whole rather than a four-way segmented control,
+          // which cut "before" short at large text. The 12 dp above and the
+          // card's padding below are the room their 48 dp band reaches into.
+          FsTapRoom(
+            child: Wrap(
+              spacing: 8,
+              runSpacing: 8,
               children: [
-                _rowLabel('Remind me about habits'),
-                Switch(
-                  key: const Key('reminders.habits'),
-                  value: settings.habitsEnabled,
-                  onChanged: (value) => _setEnabled(
-                    value,
-                    () => ref.read(reminderSettingsProvider.notifier).patch({
-                      'habitsEnabled': value,
-                    }),
+                for (final option in _leadOptions)
+                  FsChip(
+                    key: Key('reminders.lead.${option.value}'),
+                    label: option.label,
+                    selected: settings.habitLeadMin.toString() == option.value,
+                    onTap: !enabled
+                        ? null
+                        : () => _save(
+                            () => ref
+                                .read(reminderSettingsProvider.notifier)
+                                .patch({
+                                  'habitLeadMin': int.parse(option.value),
+                                }),
+                          ),
                   ),
-                ),
               ],
             ),
-            const SizedBox(height: 12),
-            FsSegmented(
-              options: _leadOptions,
-              selected: settings.habitLeadMin.toString(),
-              onSelected: (value) => _save(
-                () => ref.read(reminderSettingsProvider.notifier).patch({
-                  'habitLeadMin': int.parse(value),
-                }),
-              ),
-            ),
-          ],
-        ),
-      ),
-    ],
-  );
+          ),
+        ],
+      );
 
-  Widget _workoutSection(ReminderSettings settings) => Column(
-    crossAxisAlignment: CrossAxisAlignment.start,
+  Widget _workoutSection(
+    ReminderSettings settings, {
+    required bool enabled,
+    required bool noPlan,
+  }) => _section(
+    title: 'Workout on training days',
+    enabled: enabled,
+    notes: [if (noPlan) 'Workout reminders need a plan.'],
     children: [
-      const FsEyebrow('Workout on training days'),
-      const SizedBox(height: 10),
-      FsCard(
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            Row(
-              children: [
-                _rowLabel('Remind me before my workout'),
-                Switch(
-                  key: const Key('reminders.workout'),
-                  value: settings.workoutEnabled,
-                  onChanged: (value) => _setEnabled(
-                    value,
-                    () => ref.read(reminderSettingsProvider.notifier).patch({
-                      'workoutEnabled': value,
-                    }),
-                  ),
-                ),
-              ],
-            ),
-            _timeRow(
-              const Key('reminders.workoutTime'),
-              settings.workoutTime,
-              onTap: () => _pickTime(
+      _switchRow(
+        label: 'Remind me before my workout',
+        switchKey: const Key('reminders.workout'),
+        field: 'workoutEnabled',
+        saved: settings.workoutEnabled,
+        enabled: enabled,
+        save: (value) => ref.read(reminderSettingsProvider.notifier).patch({
+          'workoutEnabled': value,
+        }),
+      ),
+      _timeRow(
+        const Key('reminders.workoutTime'),
+        settings.workoutTime,
+        spokenAs: 'Workout reminder time',
+        onTap: !enabled
+            ? null
+            : () => _pickTime(
                 initial: settings.workoutTime,
                 field: 'workoutTime',
               ),
-            ),
-          ],
-        ),
       ),
     ],
   );
 
-  Widget _checkinSection(ReminderSettings settings) => Column(
-    crossAxisAlignment: CrossAxisAlignment.start,
-    children: [
-      const FsEyebrow('Morning check-in'),
-      const SizedBox(height: 10),
-      FsCard(
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            Row(
-              children: [
-                _rowLabel('Remind me to check in'),
-                Switch(
-                  key: const Key('reminders.checkin'),
-                  value: settings.checkinEnabled,
-                  onChanged: (value) => _setEnabled(
-                    value,
-                    () => ref.read(reminderSettingsProvider.notifier).patch({
-                      'checkinEnabled': value,
-                    }),
+  Widget _checkinSection(ReminderSettings settings, {required bool enabled}) =>
+      _section(
+        title: 'Morning check-in',
+        enabled: enabled,
+        children: [
+          _switchRow(
+            label: 'Remind me to check in',
+            switchKey: const Key('reminders.checkin'),
+            field: 'checkinEnabled',
+            saved: settings.checkinEnabled,
+            enabled: enabled,
+            save: (value) => ref.read(reminderSettingsProvider.notifier).patch({
+              'checkinEnabled': value,
+            }),
+          ),
+          _timeRow(
+            const Key('reminders.checkinTime'),
+            settings.checkinTime,
+            spokenAs: 'Check-in reminder time',
+            onTap: !enabled
+                ? null
+                : () => _pickTime(
+                    initial: settings.checkinTime,
+                    field: 'checkinTime',
                   ),
-                ),
-              ],
-            ),
-            _timeRow(
-              const Key('reminders.checkinTime'),
-              settings.checkinTime,
-              onTap: () => _pickTime(
-                initial: settings.checkinTime,
-                field: 'checkinTime',
-              ),
-            ),
-          ],
-        ),
-      ),
-    ],
-  );
+          ),
+        ],
+      );
 }

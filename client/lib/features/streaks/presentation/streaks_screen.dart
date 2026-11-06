@@ -1,12 +1,11 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../../core/api_exception.dart';
 import '../../../core/manila_day.dart';
 import '../../../core/theme.dart';
 import '../../../core/units.dart';
 import '../../../core/widgets/fs_kit.dart';
-import '../../exercises/presentation/exercise_list_screen.dart'
-    show describeError;
 import '../../profile/presentation/providers.dart' show weightUnitProvider;
 import '../domain/streaks.dart';
 import 'add_goal_sheet.dart';
@@ -67,7 +66,7 @@ class _StreakSection extends ConsumerWidget {
             height: 190,
             child: Center(child: CircularProgressIndicator()),
           ),
-          error: (error, _) => _SectionError(
+          error: (error, _) => FsRetry(
             message: "Couldn't load your streak",
             buttonKey: const Key('streaks.streak.retry'),
             onRetry: () => ref.invalidate(streakProvider),
@@ -78,6 +77,31 @@ class _StreakSection extends ConsumerWidget {
 }
 
 const _weekLetters = ['M', 'T', 'W', 'T', 'F', 'S', 'S'];
+const _weekNames = [
+  'Monday',
+  'Tuesday',
+  'Wednesday',
+  'Thursday',
+  'Friday',
+  'Saturday',
+  'Sunday',
+];
+
+/// "This week: Monday, done; Tuesday, missed; Thursday, today, not yet; ..."
+/// -- each day's state in words, Monday first as the dots are drawn.
+String _weekSentence(List<StreakDay> week, String today) {
+  String state(StreakDay day) {
+    if (day.date == today) return day.active ? 'today, done' : 'today, not yet';
+    if (day.date.compareTo(today) > 0) return 'not yet';
+    return day.active ? 'done' : 'missed';
+  }
+
+  final days = [
+    for (var i = 0; i < week.length && i < 7; i++)
+      '${_weekNames[i]}, ${state(week[i])}',
+  ];
+  return 'This week: ${days.join('; ')}';
+}
 
 class _StreakCard extends StatelessWidget {
   const _StreakCard({required this.streak, required this.today});
@@ -125,19 +149,26 @@ class _StreakCard extends StatelessWidget {
               ),
             ],
             const SizedBox(height: 16),
-            Row(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                for (var i = 0; i < streak.week.length && i < 7; i++)
-                  Padding(
-                    padding: const EdgeInsets.symmetric(horizontal: 4.5),
-                    child: _WeekDot(
-                      day: streak.week[i],
-                      label: _weekLetters[i],
-                      today: today,
+            // The dots say done or missed by fill and tick alone; a screen
+            // reader hears the whole week as one sentence instead.
+            Semantics(
+              container: true,
+              label: _weekSentence(streak.week, today),
+              excludeSemantics: true,
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  for (var i = 0; i < streak.week.length && i < 7; i++)
+                    Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 4.5),
+                      child: _WeekDot(
+                        day: streak.week[i],
+                        label: _weekLetters[i],
+                        today: today,
+                      ),
                     ),
-                  ),
-              ],
+                ],
+              ),
             ),
             const SizedBox(height: 4),
           ],
@@ -159,11 +190,14 @@ class _WeekDot extends StatelessWidget {
     final t = context.fs;
     final isToday = day.date == today;
     final isFuture = day.date.compareTo(today) > 0;
-    return Opacity(
-      opacity: isFuture ? 0.4 : 1,
-      child: Column(
-        children: [
-          Container(
+    // Only the circle of a day still to come is dimmed. Its letter stays
+    // whole, in text2: text3 falls under 4.5:1 where the accent card's tint
+    // is strongest.
+    return Column(
+      children: [
+        Opacity(
+          opacity: isFuture ? 0.4 : 1,
+          child: Container(
             key: Key('streaks.day.${day.date}'),
             width: 26,
             height: 26,
@@ -181,10 +215,10 @@ class _WeekDot extends StatelessWidget {
                 ? Icon(Icons.check, size: 13, color: t.onAccent)
                 : null,
           ),
-          const SizedBox(height: 5),
-          Text(label, style: TextStyle(fontSize: 9, color: t.text3)),
-        ],
-      ),
+        ),
+        const SizedBox(height: 5),
+        Text(label, style: TextStyle(fontSize: 9, color: t.text2)),
+      ],
     );
   }
 }
@@ -204,7 +238,7 @@ class _GoalsSection extends ConsumerWidget {
             height: 80,
             child: Center(child: CircularProgressIndicator()),
           ),
-          error: (error, _) => _SectionError(
+          error: (error, _) => FsRetry(
             message: "Couldn't load your goals",
             buttonKey: const Key('streaks.goals.retry'),
             onRetry: () => ref.invalidate(goalsProvider),
@@ -275,27 +309,11 @@ class _GoalCard extends StatelessWidget {
                     ),
                   )
                 else
-                  Row(
-                    children: [
-                      Expanded(
-                        child: ClipRRect(
-                          borderRadius: BorderRadius.circular(99),
-                          child: LinearProgressIndicator(
-                            value: goal.progress,
-                            minHeight: 6,
-                            backgroundColor: t.line,
-                            color: t.accent,
-                          ),
-                        ),
-                      ),
-                      const SizedBox(width: 8),
-                      Text(
-                        best == null
-                            ? 'Not logged yet · 0 / $target'
-                            : '${formatWeight(best, unit)} / $target',
-                        style: TextStyle(fontSize: 10.5, color: t.text3),
-                      ),
-                    ],
+                  _GoalProgress(
+                    progress: goal.progress,
+                    figure: best == null
+                        ? 'Not logged yet · 0 / $target'
+                        : '${formatWeight(best, unit)} / $target',
                   ),
               ],
             ),
@@ -306,6 +324,53 @@ class _GoalCard extends StatelessWidget {
           ],
         ],
       ),
+    );
+  }
+}
+
+/// A goal's bar and its figure. Side by side, as the design draws them; at
+/// large text the figure takes its own line above the bar (as PlanCard does
+/// for its watermark), since beside it there was no room and it overflowed.
+class _GoalProgress extends StatelessWidget {
+  const _GoalProgress({required this.progress, required this.figure});
+
+  final double progress;
+  final String figure;
+
+  @override
+  Widget build(BuildContext context) {
+    final t = context.fs;
+    final bar = ClipRRect(
+      borderRadius: BorderRadius.circular(99),
+      child: LinearProgressIndicator(
+        value: progress,
+        minHeight: 6,
+        backgroundColor: t.line,
+        // The fill token: plain accent is under 3:1 on the light card.
+        color: t.accentFill,
+      ),
+    );
+    final style = TextStyle(fontSize: 10.5, color: t.text3);
+
+    if (MediaQuery.textScalerOf(context).scale(1) > 1.3) {
+      return Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Text(figure, style: style),
+          const SizedBox(height: 6),
+          bar,
+        ],
+      );
+    }
+    // The design's row: the bar takes what is left and the figure keeps its
+    // natural width on one line, flush with the card's edge. Up to 1.3x the
+    // longest figure still fits a 320 dp phone.
+    return Row(
+      children: [
+        Expanded(child: bar),
+        const SizedBox(width: 8),
+        Text(figure, style: style),
+      ],
     );
   }
 }
@@ -357,7 +422,7 @@ class _GoalSheetState extends ConsumerState<_GoalSheet> {
       if (!mounted) return;
       setState(() {
         _busy = false;
-        _error = describeError(error);
+        _error = userMessage(error);
       });
     }
   }
@@ -386,7 +451,7 @@ class _GoalSheetState extends ConsumerState<_GoalSheet> {
           ),
           if (_error != null) ...[
             const SizedBox(height: 10),
-            Text(_error!, style: TextStyle(fontSize: 13, color: t.red)),
+            FsErrorLine(_error!, key: const Key('goal.deleteError')),
           ],
           const SizedBox(height: 16),
           FsButton(
@@ -419,42 +484,6 @@ class _NoGoals extends StatelessWidget {
             key: const Key('streaks.goals.empty.add'),
             label: 'Add a goal',
             onPressed: () => showAddGoalSheet(context),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-class _SectionError extends StatelessWidget {
-  const _SectionError({
-    required this.message,
-    required this.buttonKey,
-    required this.onRetry,
-  });
-
-  final String message;
-  final Key buttonKey;
-  final VoidCallback onRetry;
-
-  @override
-  Widget build(BuildContext context) {
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 12),
-      child: Column(
-        children: [
-          Text(
-            message,
-            textAlign: TextAlign.center,
-            style: TextStyle(fontSize: 13, color: context.fs.text2),
-          ),
-          const SizedBox(height: 8),
-          FsButton(
-            key: buttonKey,
-            label: 'Retry',
-            small: true,
-            kind: FsButtonKind.secondary,
-            onPressed: onRetry,
           ),
         ],
       ),

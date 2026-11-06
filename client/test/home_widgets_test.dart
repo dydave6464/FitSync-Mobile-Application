@@ -11,6 +11,8 @@ import 'package:fitsync/features/home/presentation/widgets/profile_nudge.dart';
 import 'package:fitsync/features/plans/domain/workout_plan.dart';
 import 'package:fitsync/features/profile/domain/profile.dart';
 
+import 'helpers/a11y.dart' show contrast, host;
+
 Widget _host(Widget child) => MaterialApp(
   theme: fsLightTheme(),
   home: Scaffold(body: Center(child: child)),
@@ -919,5 +921,59 @@ void main() {
       );
       expect(tester.takeException(), isNull);
     });
+  });
+
+  for (final dark in [false, true]) {
+    testWidgets('the nudge\'s explanation reads at 4.5:1 where the card\'s '
+        'tint is strongest (${dark ? 'dark' : 'light'})', (tester) async {
+      await tester.pumpWidget(
+        host(
+          ProfileNudge(
+            profile: _profile(
+              mainGoal: null,
+              fitnessLevel: 'beginner',
+              equipment: _someEquipment,
+            ),
+            onTap: () {},
+          ),
+          dark: dark,
+        ),
+      );
+      final t = dark ? FsTokens.dark : FsTokens.light;
+      final strongest = Color.alphaBlend(
+        t.accent.withValues(alpha: 0.16),
+        t.bg,
+      );
+      final body = tester.widget<Text>(find.textContaining('safe defaults'));
+
+      expect(
+        contrast(body.style!.color!, strongest),
+        greaterThanOrEqualTo(4.5),
+      );
+    });
+  }
+
+  testWidgets('the plan card\'s button says it opens the plan, and does', (
+    tester,
+  ) async {
+    // It switches to Train's Plan tab; it does not start a session, so it
+    // must not promise one with "Start workout" and a play icon.
+    var opened = 0;
+    await tester.pumpWidget(
+      _host(
+        PlanCard(
+          plan: _plan(sessionLengthMin: 48, equipment: const ['Barbell']),
+          weightKg: 70,
+          onStart: () => opened++,
+        ),
+      ),
+    );
+
+    expect(find.text('Start workout'), findsNothing);
+    expect(find.byIcon(Icons.play_arrow), findsNothing);
+    expect(find.text("View today's plan"), findsOneWidget);
+
+    await tester.tap(find.byKey(const Key('home.plan.open')));
+    expect(opened, 1);
   });
 }

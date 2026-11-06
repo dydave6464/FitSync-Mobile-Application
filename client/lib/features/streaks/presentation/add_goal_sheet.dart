@@ -4,11 +4,10 @@ import 'dart:math' as math;
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../../core/api_exception.dart';
 import '../../../core/theme.dart';
 import '../../../core/units.dart';
 import '../../../core/widgets/fs_kit.dart';
-import '../../exercises/presentation/exercise_list_screen.dart'
-    show describeError;
 import '../../profile/presentation/providers.dart' show weightUnitProvider;
 import '../domain/streaks.dart';
 import 'providers.dart';
@@ -126,7 +125,7 @@ class _AddGoalSheetState extends ConsumerState<_AddGoalSheet> {
       if (!mounted) return;
       setState(() {
         _busy = false;
-        _error = describeError(error);
+        _error = userMessage(error);
       });
     }
   }
@@ -191,7 +190,7 @@ class _AddGoalSheetState extends ConsumerState<_AddGoalSheet> {
     final unit = ref.watch(weightUnitProvider);
     return options.when(
       loading: () => const Center(child: CircularProgressIndicator()),
-      error: (error, _) => _Hint(describeError(error)),
+      error: (error, _) => _Hint(userMessage(error)),
       data: (list) => list.isEmpty
           ? const _Hint('Search for an exercise to set a goal.')
           : ListView(
@@ -215,7 +214,7 @@ class _AddGoalSheetState extends ConsumerState<_AddGoalSheet> {
         .watch(goalSearchProvider(_query))
         .when(
           loading: () => const Center(child: CircularProgressIndicator()),
-          error: (error, _) => _Hint(describeError(error)),
+          error: (error, _) => _Hint(userMessage(error)),
           data: (items) => items.isEmpty
               ? _Hint('No exercises match "$_query".')
               : ListView(
@@ -279,13 +278,11 @@ class _AddGoalSheetState extends ConsumerState<_AddGoalSheet> {
             fieldKey: const Key('goal.target'),
             keyboardType: const TextInputType.numberWithOptions(decimal: true),
           ),
+          // A live region: a screen reader says why Save did not close the
+          // sheet.
           if (_error != null) ...[
             const SizedBox(height: 10),
-            Text(
-              _error!,
-              key: const Key('goal.error'),
-              style: TextStyle(fontSize: 13, color: t.red),
-            ),
+            FsErrorLine(_error!, key: const Key('goal.error')),
           ],
           const SizedBox(height: 16),
           FsButton(

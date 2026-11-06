@@ -1,11 +1,12 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../../core/api_exception.dart';
 import '../../../core/theme.dart';
 import '../../../core/widgets/fs_kit.dart';
-import '../../exercises/presentation/exercise_list_screen.dart'
-    show describeError;
 import '../../plans/presentation/providers.dart';
+import '../../plans/presentation/widgets/regenerate_plan_button.dart'
+    show openGenerator;
 import '../../recovery/presentation/providers.dart'
     show recoveryOverviewProvider;
 import '../../recovery/presentation/widgets/checkin_sheet.dart'
@@ -89,8 +90,9 @@ class HomeScreen extends ConsumerWidget {
       body: SafeArea(
         child: profile.when(
           loading: () => const Center(child: CircularProgressIndicator()),
-          error: (error, _) => _Retry(
-            message: describeError(error),
+          error: (error, _) => FsRetry(
+            fullScreen: true,
+            message: userMessage(error),
             onRetry: () => ref.invalidate(profileProvider),
           ),
           data: (p) => ListView(
@@ -133,8 +135,8 @@ class HomeScreen extends ConsumerWidget {
                     padding: EdgeInsets.symmetric(vertical: 24),
                     child: Center(child: CircularProgressIndicator()),
                   ),
-                  error: (error, _) => _Retry(
-                    message: describeError(error),
+                  error: (error, _) => FsRetry(
+                    message: userMessage(error),
                     onRetry: () => ref.invalidate(activePlanProvider),
                   ),
                   data: (workoutPlan) => workoutPlan == null
@@ -220,7 +222,7 @@ class _ActiveWorkoutState extends ConsumerState<_ActiveWorkout> {
       // resumable. Say so rather than letting a destructive tap look like it
       // did nothing.
       if (mounted) {
-        messenger.showSnackBar(SnackBar(content: Text(describeError(error))));
+        messenger.showSnackBar(SnackBar(content: Text(userMessage(error))));
       }
     } finally {
       if (mounted) setState(() => _discarding = false);
@@ -241,9 +243,8 @@ class _ActiveWorkoutState extends ConsumerState<_ActiveWorkout> {
   );
 }
 
-/// Plans are created only by `POST /profile/complete-onboarding`. There is no
-/// on-demand generate endpoint, so this state deliberately offers no action —
-/// a button that calls nothing is worse than a sentence that explains why.
+/// No active plan: the Plan tab's words for the same state, and its way out,
+/// "Generate a plan", which opens the generator.
 class _NoPlan extends StatelessWidget {
   const _NoPlan();
 
@@ -262,46 +263,23 @@ class _NoPlan extends StatelessWidget {
         children: [
           const FsEyebrow("Today's plan"),
           const SizedBox(height: 8),
+          Text('No plan yet', style: Theme.of(context).textTheme.titleMedium),
+          const SizedBox(height: 4),
           Text(
-            'You have no active plan yet.',
+            'Build one from your goals, equipment and injuries.',
             style: TextStyle(fontSize: 12.5, color: t.text2),
+          ),
+          const SizedBox(height: 12),
+          FsButton(
+            key: const Key('home.noPlan.generate'),
+            label: 'Generate a plan',
+            small: true,
+            onPressed: () => openGenerator(context),
           ),
         ],
       ),
     );
   }
-}
-
-/// Matches PlanScreen's failure treatment, so the two screens fail the same
-/// way rather than each inventing their own.
-class _Retry extends StatelessWidget {
-  const _Retry({required this.message, required this.onRetry, this.buttonKey});
-
-  final String message;
-  final VoidCallback onRetry;
-
-  /// Lets a caller keep a stable finder for the button itself, since keying
-  /// this whole widget would make a tap land wherever its centre happens to
-  /// fall -- the message above it, say -- rather than on the button.
-  final Key? buttonKey;
-
-  @override
-  Widget build(BuildContext context) => Padding(
-    padding: const EdgeInsets.symmetric(vertical: 16),
-    child: Column(
-      children: [
-        Text(message, textAlign: TextAlign.center),
-        const SizedBox(height: 12),
-        FsButton(
-          key: buttonKey,
-          label: 'Retry',
-          small: true,
-          kind: FsButtonKind.secondary,
-          onPressed: onRetry,
-        ),
-      ],
-    ),
-  );
 }
 
 /// Hidden entirely when the estimate cannot be read: the Recovery tab is
@@ -351,7 +329,7 @@ class _Progress extends ConsumerWidget {
     final analytics = ref.watch(trainingAnalyticsProvider('month'));
 
     if (summary.hasError || analytics.hasError) {
-      return _Retry(
+      return FsRetry(
         message: "Couldn't load progress",
         buttonKey: const Key('home.progress.retry'),
         onRetry: () {
@@ -400,7 +378,7 @@ class _Routine extends ConsumerWidget {
           // The card's with-data height (three rows plus "+N more"), measured
           // the way _Progress's placeholder note describes.
           loading: () => const SizedBox(height: 167),
-          error: (_, _) => _Retry(
+          error: (_, _) => FsRetry(
             message: "Couldn't load your routine",
             buttonKey: const Key('home.routine.retry'),
             onRetry: () => ref.invalidate(routineTodayProvider),

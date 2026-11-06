@@ -5,6 +5,8 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import 'package:fitsync/core/api_exception.dart';
+import 'package:fitsync/core/theme.dart';
+import 'package:fitsync/core/widgets/fs_kit.dart' show FsRetry;
 import 'package:fitsync/core/units.dart';
 import 'package:fitsync/features/profile/presentation/providers.dart'
     show weightUnitProvider;
@@ -12,6 +14,8 @@ import 'package:fitsync/features/streaks/data/streaks_repository.dart';
 import 'package:fitsync/features/streaks/domain/streaks.dart';
 import 'package:fitsync/features/streaks/presentation/providers.dart';
 import 'package:fitsync/features/streaks/presentation/streaks_screen.dart';
+
+import 'helpers/a11y.dart' show contrast;
 
 /// Noon on Thursday 2026-09-24 in Manila.
 DateTime _now() => DateTime.utc(2026, 9, 24, 4);
@@ -62,8 +66,12 @@ class _FakeGoalsRepo implements GoalsRepository {
   Future<LiftGoal> add({required int exerciseId, required double targetKg}) =>
       throw UnimplementedError();
 
+  /// Makes every remove throw it.
+  Object? failRemove;
+
   @override
   Future<void> remove(int goalId) async {
+    if (failRemove != null) throw failRemove!;
     if (_removeDelay != null) {
       await _removeDelay!.future;
     }
@@ -78,6 +86,8 @@ Future<_FakeGoalsRepo> _pump(
   Object? streakError,
   List<LiftGoal> goals = const [_benchGoal],
   int failGoals = 0,
+  bool dark = false,
+  double textScale = 1.0,
 }) async {
   final repo = _FakeGoalsRepo(goals)..failListTimes = failGoals;
   await tester.pumpWidget(
@@ -90,7 +100,15 @@ Future<_FakeGoalsRepo> _pump(
         goalsRepositoryProvider.overrideWithValue(repo),
         weightUnitProvider.overrideWithValue(WeightUnit.kg),
       ],
-      child: const MaterialApp(home: StreaksScreen(now: _now)),
+      child: MaterialApp(
+        theme: dark ? fsDarkTheme() : fsLightTheme(),
+        home: const StreaksScreen(now: _now),
+        builder: (context, child) => MediaQuery(
+          data: MediaQuery.of(context)
+              .copyWith(textScaler: TextScaler.linear(textScale)),
+          child: child!,
+        ),
+      ),
     ),
   );
   await tester.pumpAndSettle();
@@ -99,6 +117,18 @@ Future<_FakeGoalsRepo> _pump(
 
 Finder _inDay(String date, Finder f) =>
     find.descendant(of: find.byKey(Key('streaks.day.$date')), matching: f);
+
+/// The product of every [Opacity] above [finder].
+double _opacityOver(WidgetTester tester, Finder finder) => tester
+    .widgetList<Opacity>(
+      find.ancestor(of: finder, matching: find.byType(Opacity)),
+    )
+    .fold(1.0, (a, o) => a * o.opacity);
+
+/// FsCard(accent: true) where its tint is strongest: accent at 0.16 over
+/// the page.
+Color _strongestTint(FsTokens t) =>
+    Color.alphaBlend(t.accent.withValues(alpha: 0.16), t.bg);
 
 void main() {
   testWidgets('the streak card shows the count, the best, and the week', (
@@ -272,6 +302,9 @@ void main() {
     );
 
     expect(find.byKey(const Key('streaks.streak.retry')), findsOneWidget);
+    // The app's shared retry treatment.
+    expect(find.byType(FsRetry), findsOneWidget);
+    expect(find.text('Try again'), findsOneWidget);
     expect(find.byKey(const Key('streaks.goal.1')), findsOneWidget);
   });
 
@@ -287,5 +320,112 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.byKey(const Key('streaks.goal.1')), findsOneWidget);
+  });
+
+  for (final dark in [false, true]) {
+    testWidgets('the later days\' letters read at 4.5:1 on the streak card '
+        '(${dark ? 'dark' : 'light'})', (tester) async {
+      await _pump(tester, dark: dark);
+      final t = dark ? FsTokens.dark : FsTokens.light;
+
+      // Friday, a day still to come (the clock is Thursday).
+      final letter = find.text('F');
+      final color = tester.widget<Text>(letter).style!.color!;
+      final shown = color.withValues(
+        alpha: color.a * _opacityOver(tester, letter),
+      );
+
+      expect(contrast(shown, _strongestTint(t)), greaterThanOrEqualTo(4.5));
+      // The circle itself is still dimmed, as the design shows.
+      expect(
+        _opacityOver(tester, find.byKey(const Key('streaks.day.2026-09-25'))),
+        lessThan(1),
+      );
+    });
+  }
+
+  testWidgets('a screen reader hears each day of the week with its state', (
+    tester,
+  ) async {
+    final handle = tester.ensureSemantics();
+    await _pump(tester);
+
+    expect(
+      find.bySemanticsLabel(
+        'This week: Monday, done; Tuesday, missed; Wednesday, done; '
+        'Thursday, today, done; Friday, not yet; Saturday, not yet; '
+        'Sunday, not yet',
+      ),
+      findsOneWidget,
+    );
+    expect(
+      find.bySemanticsLabel('M'),
+      findsNothing,
+      reason: 'the bare letters are replaced by the sentence',
+    );
+    handle.dispose();
+  });
+
+  testWidgets('today not yet active reads as "today, not yet"', (tester) async {
+    final handle = tester.ensureSemantics();
+    await _pump(
+      tester,
+      streak: const Streak(
+        current: 1,
+        best: 1,
+        todayActive: false,
+        week: [
+          StreakDay(date: '2026-09-21', active: false),
+          StreakDay(date: '2026-09-22', active: false),
+          StreakDay(date: '2026-09-23', active: true),
+          StreakDay(date: '2026-09-24', active: false),
+          StreakDay(date: '2026-09-25', active: false),
+          StreakDay(date: '2026-09-26', active: false),
+          StreakDay(date: '2026-09-27', active: false),
+        ],
+      ),
+    );
+
+    expect(
+      find.bySemanticsLabel(RegExp('Thursday, today, not yet;')),
+      findsOneWidget,
+    );
+    handle.dispose();
+  });
+
+  for (final dark in [false, true]) {
+    testWidgets('a goal\'s bar reads at 3:1 on its card '
+        '(${dark ? 'dark' : 'light'})', (tester) async {
+      await _pump(tester, dark: dark);
+      final t = dark ? FsTokens.dark : FsTokens.light;
+      final bar = tester.widget<LinearProgressIndicator>(
+        find.descendant(
+          of: find.byKey(const Key('streaks.goal.1')),
+          matching: find.byType(LinearProgressIndicator),
+        ),
+      );
+
+      expect(contrast(bar.color!, t.surface), greaterThanOrEqualTo(3));
+    });
+  }
+
+  testWidgets('a failed delete is spoken and keeps the sheet open', (
+    tester,
+  ) async {
+    final handle = tester.ensureSemantics();
+    final repo = await _pump(tester);
+    repo.failRemove = const ApiException('SERVER_ERROR', 'Could not delete.');
+
+    await tester.tap(find.byKey(const Key('streaks.goal.1')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const Key('goal.delete')));
+    await tester.pumpAndSettle();
+
+    expect(
+      tester.getSemantics(find.byKey(const Key('goal.deleteError'))),
+      matchesSemantics(label: 'Could not delete.', isLiveRegion: true),
+    );
+    expect(find.byKey(const Key('goal.delete')), findsOneWidget);
+    handle.dispose();
   });
 }
