@@ -444,18 +444,18 @@ class _GeneratorScreenState extends ConsumerState<GeneratorScreen> {
         ],
         if (!daysKnown) ...[
           const SizedBox(height: 8),
-          Text(
-            asyncProfile.hasError
-                ? "Couldn't load your training days, so they can't be changed "
-                      'here. ${describeError(asyncProfile.error!)}'
-                : 'Loading your training days…',
-            key: const Key('gen.trainingDays.unavailable'),
-            style: TextStyle(
-              fontSize: 12,
-              color: asyncProfile.hasError ? t.red : t.text3,
-              height: 1.35,
+          if (asyncProfile.hasError)
+            FsErrorLine(
+              "Couldn't load your training days, so they can't be changed "
+              'here. ${describeError(asyncProfile.error!)}',
+              key: const Key('gen.trainingDays.unavailable'),
+            )
+          else
+            Text(
+              'Loading your training days…',
+              key: const Key('gen.trainingDays.unavailable'),
+              style: TextStyle(fontSize: 12, color: t.text3, height: 1.35),
             ),
-          ),
         ],
         // Session length is deliberately not shown. The service derives it
         // from goal, fitness level and health check, so it is neither chosen
@@ -742,10 +742,9 @@ class _DescribeCardState extends ConsumerState<_DescribeCard> {
           Padding(
             key: const Key('gen.describe.catalogueError'),
             padding: const EdgeInsets.only(bottom: 6),
-            child: Text(
+            child: const FsErrorLine(
               "Couldn't check that against your injuries. Anything you wrote "
               'about them has been left alone.',
-              style: note.copyWith(color: t.red),
             ),
           ),
 

@@ -561,10 +561,13 @@ void main() {
     await tester.pump();
 
     expect(_profile.lastTrainingDays, isNull);
+    // The kit's error line: red with its icon, and announced.
     expect(
       tester
-          .widget<Text>(find.byKey(const Key('gen.trainingDays.unavailable')))
-          .data,
+          .widget<FsErrorLine>(
+            find.byKey(const Key('gen.trainingDays.unavailable')),
+          )
+          .message,
       contains("Couldn't load"),
     );
     expect(
@@ -1425,7 +1428,10 @@ void main() {
         await apply(tester);
 
         expect(
-          find.byKey(const Key('gen.describe.catalogueError')),
+          find.descendant(
+            of: find.byKey(const Key('gen.describe.catalogueError')),
+            matching: find.byType(FsErrorLine),
+          ),
           findsOneWidget,
         );
         expect(find.byKey(const Key('gen.describe.add.3')), findsNothing);

@@ -10,13 +10,13 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
 
+import 'package:fitsync/core/widgets/fs_kit.dart';
 import 'package:fitsync/features/exercises/presentation/exercise_list_screen.dart';
 
 import 'package:fitsync/core/api_client.dart';
 import 'package:fitsync/core/api_exception.dart';
 import 'package:fitsync/core/theme.dart';
 import 'package:fitsync/core/token_store.dart';
-import 'package:fitsync/core/widgets/fs_kit.dart' show FsTag;
 import 'package:fitsync/features/exercises/data/exercise_repository.dart';
 import 'package:fitsync/features/exercises/domain/exercise_cues.dart';
 import 'package:fitsync/features/exercises/domain/exercise_filters.dart';
@@ -614,6 +614,10 @@ void main() {
 
         expect(find.text('Start a workout'), findsOneWidget);
         expect(find.text(outcomeNotSavedMessage).hitTestable(), findsOneWidget);
+        expect(
+          find.widgetWithText(FsErrorLine, outcomeNotSavedMessage),
+          findsOneWidget,
+        );
       },
     );
 

@@ -311,10 +311,7 @@ class _ExerciseSwapSheetState extends ConsumerState<ExerciseSwapSheet> {
         ),
         if (_error != null) ...[
           const SizedBox(height: 12),
-          Text(
-            _error!,
-            style: TextStyle(color: Theme.of(context).colorScheme.error),
-          ),
+          FsErrorLine(_error!),
         ],
         const SizedBox(height: 12),
         FsButton(
@@ -389,13 +386,7 @@ class _ExerciseSwapSheetState extends ConsumerState<ExerciseSwapSheet> {
                 ),
         ),
       ),
-      if (_error != null) ...[
-        const SizedBox(height: 12),
-        Text(
-          _error!,
-          style: TextStyle(color: Theme.of(context).colorScheme.error),
-        ),
-      ],
+      if (_error != null) ...[const SizedBox(height: 12), FsErrorLine(_error!)],
       const SizedBox(height: 16),
     ];
     final foot = <Widget>[

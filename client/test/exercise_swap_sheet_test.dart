@@ -473,6 +473,13 @@ void main() {
           'the rejected candidate stays on screen to be retried or '
           'backed out of, rather than dumping the user in the list',
     );
+    expect(
+      find.widgetWithText(
+        FsErrorLine,
+        'That exercise is not available for this plan.',
+      ),
+      findsOneWidget,
+    );
     expect(find.textContaining('not available'), findsOneWidget);
   });
 

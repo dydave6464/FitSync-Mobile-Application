@@ -198,11 +198,7 @@ class _StartWorkoutSheet extends ConsumerWidget {
               ),
               if (notice != null) ...[
                 const SizedBox(height: 4),
-                Text(
-                  notice!,
-                  key: const Key('start.notice'),
-                  style: TextStyle(fontSize: 12, color: t.red),
-                ),
+                FsErrorLine(notice!, key: const Key('start.notice')),
               ],
               const SizedBox(height: 14),
               _Row(
