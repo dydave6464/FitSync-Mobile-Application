@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/rendering.dart' show RenderParagraph;
 import 'package:flutter_test/flutter_test.dart';
 
 import 'package:fitsync/core/theme.dart';
@@ -25,17 +26,27 @@ Future<List<String>> _pump(
   RoutineDay day, {
   int streak = 0,
   bool dark = false,
+  double textScale = 1.0,
 }) async {
   final taps = <String>[];
   await tester.pumpWidget(
     MaterialApp(
       theme: dark ? fsDarkTheme() : fsLightTheme(),
+      builder: (context, child) => MediaQuery(
+        data: MediaQuery.of(context)
+            .copyWith(textScaler: TextScaler.linear(textScale)),
+        child: child!,
+      ),
       home: Scaffold(
-        body: RoutineCard(
-          day: day,
-          onTap: () => taps.add('tap'),
-          streak: streak,
-          onOpenStreak: () => taps.add('streak'),
+        // Scrollable, as Home is: at large text the card is taller than a
+        // small phone.
+        body: SingleChildScrollView(
+          child: RoutineCard(
+            day: day,
+            onTap: () => taps.add('tap'),
+            streak: streak,
+            onOpenStreak: () => taps.add('streak'),
+          ),
         ),
       ),
     ),
@@ -215,4 +226,34 @@ void main() {
     expect(taps, ['streak']);
     handle.dispose();
   });
+
+  for (final size in [const Size(360, 640), const Size(320, 568)]) {
+    testWidgets('at 2x text on ${size.width.toInt()} dp the header neither '
+        'overflows nor breaks the title mid-word', (tester) async {
+      tester.view.physicalSize = size;
+      tester.view.devicePixelRatio = 1.0;
+      addTearDown(tester.view.reset);
+      await _pump(
+        tester,
+        _day([
+          for (var i = 1; i <= 15; i++)
+            _habit(i, 'Habit $i', time: '06:00', done: i <= 12),
+        ]),
+        streak: 125,
+        textScale: 2.0,
+      );
+
+      expect(tester.takeException(), isNull);
+      final title = tester.renderObject<RenderParagraph>(
+        find.text("Today's routine"),
+      );
+      // Narrower than its longest word, a paragraph breaks inside it.
+      expect(
+        title.size.width,
+        greaterThanOrEqualTo(title.getMinIntrinsicWidth(double.infinity)),
+      );
+      expect(find.text('125-day streak'), findsOneWidget);
+      expect(find.text('12 / 15'), findsOneWidget);
+    });
+  }
 }

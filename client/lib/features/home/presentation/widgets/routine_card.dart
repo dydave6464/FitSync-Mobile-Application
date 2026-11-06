@@ -43,12 +43,21 @@ class RoutineCard extends StatelessWidget {
           // and unlike the count tag beside it. The card's padding above and
           // the gap below are the room its 48 dp band reaches into, so a
           // near miss still opens the streak rather than the routine.
+          //
+          // A Wrap, not a Row, as ProgressSnapshotCard's header: at large
+          // text on a small phone the chip and tag left the title too little
+          // room and it broke mid-word, or the row overflowed. Now they move
+          // under it instead. Card-wide, so spaceBetween has room to use.
           FsTapRoom(
             reach: 11,
-            child: Row(
-              children: [
-                Expanded(
-                  child: Text(
+            child: SizedBox(
+              width: double.infinity,
+              child: Wrap(
+                alignment: WrapAlignment.spaceBetween,
+                crossAxisAlignment: WrapCrossAlignment.center,
+                runSpacing: 4,
+                children: [
+                  Text(
                     "Today's routine",
                     style: TextStyle(
                       fontSize: 15,
@@ -56,20 +65,27 @@ class RoutineCard extends StatelessWidget {
                       color: t.text,
                     ),
                   ),
-                ),
-                if (streak >= 1) ...[
-                  FsChip(
-                    key: const Key('home.routine.streak'),
-                    label: '$streak-day streak',
-                    small: true,
-                    selected: false,
-                    toggle: false,
-                    onTap: onOpenStreak,
-                  ),
-                  if (entries.isNotEmpty) const SizedBox(width: 6),
+                  if (streak >= 1 || entries.isNotEmpty)
+                    Wrap(
+                      spacing: 6,
+                      runSpacing: 4,
+                      crossAxisAlignment: WrapCrossAlignment.center,
+                      children: [
+                        if (streak >= 1)
+                          FsChip(
+                            key: const Key('home.routine.streak'),
+                            label: '$streak-day streak',
+                            small: true,
+                            selected: false,
+                            toggle: false,
+                            onTap: onOpenStreak,
+                          ),
+                        if (entries.isNotEmpty)
+                          FsTag('${day.done} / ${day.total}'),
+                      ],
+                    ),
                 ],
-                if (entries.isNotEmpty) FsTag('${day.done} / ${day.total}'),
-              ],
+              ),
             ),
           ),
           const SizedBox(height: 12),
