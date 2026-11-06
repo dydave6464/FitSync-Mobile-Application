@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 
+import 'package:fitsync/core/units.dart';
 import 'package:fitsync/core/widgets/fs_kit.dart';
 import 'package:fitsync/features/auth/domain/auth_user.dart';
 import 'package:fitsync/features/auth/presentation/auth_controller.dart';
@@ -149,8 +150,13 @@ class FakeProfileNotifier extends ProfileNotifier {
     goalWeightKg: goalWeightKg,
   );
 
+  /// Every `patch` call, counted on arrival -- before [patchGate] holds it
+  /// and whether or not it goes on to succeed.
+  int patchCalls = 0;
+
   @override
   Future<void> patch(Map<String, dynamic> fields) async {
+    patchCalls += 1;
     if (patchGate != null) await patchGate!.future;
     if (patchError != null) throw patchError!;
     if (failPatch) {
@@ -969,6 +975,85 @@ void main() {
       expect(find.text('Discard your changes?'), findsNothing);
       expect(find.byType(EditScaffold), findsNothing);
     });
+  });
+
+  // PS-5: the kg/lb switch looked dead until the server answered, and a
+  // failure changed nothing and said nothing.
+  group('the kg/lb switch answers at once', () {
+    WeightUnit shown(WidgetTester tester) =>
+        tester.widget<FsUnitToggle>(find.byType(FsUnitToggle)).value;
+
+    Future<void> openUnit(WidgetTester tester, String editor) async {
+      if (editor == 'row') {
+        await tester.scrollUntilVisible(find.byKey(const Key('unit.lb')), 200);
+        await tester.pumpAndSettle();
+      } else {
+        await _openRow(tester, const Key('edit.about'));
+        await tester.ensureVisible(find.byKey(const Key('unit.lb')));
+        await tester.pumpAndSettle();
+      }
+    }
+
+    // The unit saves on tap, so it is no edit for back to warn about -- even
+    // though the weights on screen are rewritten in pounds, rounded.
+    testWidgets('a unit switch alone leaves Body metrics clean', (
+      tester,
+    ) async {
+      final gate = Completer<void>();
+      await _pump(tester, heightCm: 170, weightKg: 70.3, patchGate: gate);
+      await openUnit(tester, 'Body metrics');
+      await tester.tap(find.byKey(const Key('unit.lb')));
+      await tester.pumpAndSettle();
+
+      await tester.binding.handlePopRoute();
+      await tester.pumpAndSettle();
+      expect(find.text('Discard your changes?'), findsNothing);
+      expect(find.byType(EditScaffold), findsNothing);
+      gate.complete();
+      await tester.pumpAndSettle();
+    });
+
+    for (final editor in ['row', 'Body metrics']) {
+      testWidgets('$editor: shows the new unit while saving, ignoring taps', (
+        tester,
+      ) async {
+        final gate = Completer<void>();
+        await _pump(tester, heightCm: 170, weightKg: 70, patchGate: gate);
+        await openUnit(tester, editor);
+
+        await tester.tap(find.byKey(const Key('unit.lb')));
+        await tester.pump();
+        expect(shown(tester), WeightUnit.lb, reason: 'shown straight away');
+
+        await tester.tap(find.byKey(const Key('unit.kg')));
+        await tester.pump();
+        expect(_profile.patchCalls, 1, reason: 'a second tap waits its turn');
+        expect(shown(tester), WeightUnit.lb);
+
+        gate.complete();
+        await tester.pumpAndSettle();
+        expect(find.byType(SnackBar), findsNothing);
+      });
+
+      testWidgets('$editor: a failed switch goes back and says so', (
+        tester,
+      ) async {
+        await _pump(
+          tester,
+          heightCm: 170,
+          weightKg: 70,
+          patchError: const ApiException('NETWORK_ERROR', 'SocketException'),
+        );
+        await openUnit(tester, editor);
+
+        await tester.tap(find.byKey(const Key('unit.lb')));
+        await tester.pumpAndSettle();
+
+        expect(tester.takeException(), isNull);
+        expect(shown(tester), WeightUnit.kg);
+        expect(find.text("Couldn't switch to lb. Try again."), findsOneWidget);
+      });
+    }
   });
 
   // PS-4: the Health editor's loading screen had no title or back button,

@@ -1,10 +1,12 @@
 import 'package:flutter/foundation.dart' show listEquals, setEquals;
 import 'package:flutter/material.dart';
+import 'package:flutter/scheduler.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../core/api_exception.dart';
 import '../../../core/theme.dart';
 import '../../../core/theme_controller.dart';
+import '../../../core/units.dart';
 import '../../../core/widgets/fs_kit.dart';
 import '../../auth/presentation/auth_controller.dart';
 import '../../exercises/presentation/exercise_list_screen.dart'
@@ -277,12 +279,7 @@ class _SettingsList extends ConsumerWidget {
                 _SettingsRow(
                   icon: Icons.monitor_weight_outlined,
                   label: 'Weight unit',
-                  trailing: FsUnitToggle(
-                    value: profile.weightUnit,
-                    onChanged: (unit) => ref
-                        .read(profileProvider.notifier)
-                        .patch({'weightUnit': unit.api}),
-                  ),
+                  trailing: _WeightUnitSwitch(profile: profile),
                 ),
                 _SettingsRow(
                   rowKey: const Key('notifications'),
@@ -307,6 +304,54 @@ class _SettingsList extends ConsumerWidget {
       ],
     );
   }
+}
+
+/// Saves a kg/lb switch the moment it is tapped, showing the new unit at
+/// once rather than when the server answers (up to the API timeout on a slow
+/// connection, during which the switch looked dead). Further taps wait for
+/// that answer; a refused switch goes back and says so.
+mixin _UnitSwitch<W extends ConsumerStatefulWidget> on ConsumerState<W> {
+  WeightUnit? _pendingUnit;
+
+  /// The unit to draw: the one on its way to the server, else the saved one.
+  WeightUnit shownUnit(Profile profile) => _pendingUnit ?? profile.weightUnit;
+
+  Future<void> switchUnit(WeightUnit unit) async {
+    if (_pendingUnit != null) return;
+    // Captured first: the Body metrics editor can close while this is on
+    // its way, and the app-level messenger outlives it.
+    final messenger = ScaffoldMessenger.of(context);
+    setState(() => _pendingUnit = unit);
+    try {
+      await ref.read(profileProvider.notifier).patch({'weightUnit': unit.api});
+    } on ApiException {
+      messenger.showSnackBar(
+        SnackBar(content: Text("Couldn't switch to ${unit.api}. Try again.")),
+      );
+    }
+    // On success the profile already holds the new unit; on failure it
+    // still holds the old one, which is what goes back on screen.
+    if (mounted) setState(() => _pendingUnit = null);
+  }
+}
+
+/// The App card's kg/lb switch.
+class _WeightUnitSwitch extends ConsumerStatefulWidget {
+  const _WeightUnitSwitch({required this.profile});
+
+  final Profile profile;
+
+  @override
+  ConsumerState<_WeightUnitSwitch> createState() => _WeightUnitSwitchState();
+}
+
+class _WeightUnitSwitchState extends ConsumerState<_WeightUnitSwitch>
+    with _UnitSwitch {
+  @override
+  Widget build(BuildContext context) => FsUnitToggle(
+    value: shownUnit(widget.profile),
+    onChanged: switchUnit,
+  );
 }
 
 /// The prototype's `SettRow`: square icon tile, label, trailing control, and a
@@ -513,7 +558,7 @@ class _AboutEditor extends ConsumerStatefulWidget {
   ConsumerState<_AboutEditor> createState() => _AboutEditorState();
 }
 
-class _AboutEditorState extends _EditorState<_AboutEditor> {
+class _AboutEditorState extends _EditorState<_AboutEditor> with _UnitSwitch {
   AboutAnswers _value = const AboutAnswers();
   AboutAnswers _seed = const AboutAnswers();
   bool _seeded = false;
@@ -545,17 +590,29 @@ class _AboutEditorState extends _EditorState<_AboutEditor> {
     }
     return AboutStep(
       value: _value,
-      // A rebuild per keystroke, so back knows there is an edit to lose.
-      onChanged: (value) => setState(() => _value = value),
+      // A rebuild per keystroke, so back and Save know what is on screen.
+      onChanged: (value) {
+        _value = value;
+        // A kg/lb switch rewrites the weight fields while the step itself is
+        // being rebuilt, where a setState here would assert; the dirty flag
+        // and Save's hint catch up a frame later.
+        final scheduler = SchedulerBinding.instance;
+        if (scheduler.schedulerPhase == SchedulerPhase.persistentCallbacks) {
+          scheduler.addPostFrameCallback((_) {
+            if (mounted) setState(() {});
+          });
+        } else {
+          setState(() {});
+        }
+      },
       // The same rule as onboarding: goal weight is asked outright only when
       // losing weight is among the saved goals.
       goals: profile.goals,
       // Not part of the form's working value: it is a display preference, so
       // it saves on tap and survives a cancelled edit rather than sitting in
       // _value waiting for Save.
-      unit: profile.weightUnit,
-      onUnitChanged: (unit) =>
-          ref.read(profileProvider.notifier).patch({'weightUnit': unit.api}),
+      unit: shownUnit(profile),
+      onUnitChanged: switchUnit,
     );
   }
 
