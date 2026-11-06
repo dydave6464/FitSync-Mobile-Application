@@ -1808,6 +1808,304 @@ void main() {
       h.dispose();
     });
   });
+
+  group('FsErrorLine', () {
+    testWidgets('FsErrorLine is a live region', (tester) async {
+      final h = tester.ensureSemantics();
+      await tester.pumpWidget(host(const FsErrorLine('Wrong code')));
+      expect(
+        tester
+            .getSemantics(find.text('Wrong code'))
+            .getSemanticsData()
+            .flagsCollection
+            .isLiveRegion,
+        isTrue,
+      );
+      h.dispose();
+    });
+
+    for (final dark in [false, true]) {
+      testWidgets('reads in red with a red icon (${dark ? 'dark' : 'light'})', (
+        tester,
+      ) async {
+        await tester.pumpWidget(
+          host(const FsErrorLine('Wrong code'), dark: dark),
+        );
+        final t = dark ? FsTokens.dark : FsTokens.light;
+        expect(
+          tester.widget<Text>(find.text('Wrong code')).style?.color,
+          t.red,
+        );
+        expect(
+          tester.widget<Icon>(find.byIcon(Icons.error_outline)).color,
+          t.red,
+        );
+        expect(contrast(t.red, t.bg), greaterThanOrEqualTo(4.5));
+      });
+    }
+
+    testWidgets('keeps a caller key, so a screen can find it', (tester) async {
+      await tester.pumpWidget(
+        host(const FsErrorLine('Wrong code', key: Key('error'))),
+      );
+      expect(
+        find.descendant(
+          of: find.byKey(const Key('error')),
+          matching: find.text('Wrong code'),
+        ),
+        findsOneWidget,
+      );
+    });
+
+    testWidgets('wraps at large text on a small screen', (tester) async {
+      tester.view.physicalSize = const Size(320, 568);
+      tester.view.devicePixelRatio = 1.0;
+      addTearDown(tester.view.reset);
+      await tester.pumpWidget(
+        host(
+          const FsErrorLine(
+            "Couldn't reach FitSync. Check your connection and try again.",
+          ),
+          textScale: 2.0,
+        ),
+      );
+      expect(tester.takeException(), isNull);
+    });
+  });
+
+  group('FsRetry', () {
+    testWidgets('FsRetry calls back and meets tap-target size', (tester) async {
+      final h = tester.ensureSemantics();
+      var n = 0;
+      await tester.pumpWidget(
+        host(FsRetry(message: "Couldn't load.", onRetry: () => n++)),
+      );
+      await tester.tap(find.text('Try again'));
+      expect(n, 1);
+      await expectLater(tester, meetsGuideline(androidTapTargetGuideline));
+      h.dispose();
+    });
+
+    testWidgets('shows the message over a small secondary Try again', (
+      tester,
+    ) async {
+      await tester.pumpWidget(
+        host(
+          FsRetry(
+            message: "Couldn't load.",
+            onRetry: () {},
+            buttonKey: const Key('retry'),
+          ),
+        ),
+      );
+      final button = tester.widget<FsButton>(find.byKey(const Key('retry')));
+      expect(button.label, 'Try again');
+      expect(button.small, isTrue);
+      expect(button.kind, FsButtonKind.secondary);
+      expect(
+        tester.getRect(find.text("Couldn't load.")).bottom,
+        lessThanOrEqualTo(tester.getRect(find.byKey(const Key('retry'))).top),
+      );
+    });
+
+    testWidgets('puts a secondary action below Try again', (tester) async {
+      await tester.pumpWidget(
+        host(
+          FsRetry(
+            message: "Couldn't load.",
+            onRetry: () {},
+            buttonKey: const Key('retry'),
+            secondary: const Text('Sign out'),
+          ),
+        ),
+      );
+      expect(
+        tester.getRect(find.text('Sign out')).top,
+        greaterThanOrEqualTo(
+          tester.getRect(find.byKey(const Key('retry'))).bottom,
+        ),
+      );
+    });
+
+    testWidgets('full screen sits inside the safe area, centred', (
+      tester,
+    ) async {
+      tester.view.physicalSize = const Size(360, 640);
+      tester.view.devicePixelRatio = 1.0;
+      addTearDown(tester.view.reset);
+      await tester.pumpWidget(
+        MaterialApp(
+          theme: fsLightTheme(),
+          home: Scaffold(
+            body: FsRetry(
+              message: "Couldn't load.",
+              onRetry: () {},
+              fullScreen: true,
+            ),
+          ),
+        ),
+      );
+      expect(
+        find.ancestor(
+          of: find.text("Couldn't load."),
+          matching: find.byType(SafeArea),
+        ),
+        findsOneWidget,
+      );
+      final message = tester.getRect(find.text("Couldn't load."));
+      expect(message.center.dx, closeTo(180, 1));
+      expect(message.top, greaterThan(200));
+    });
+
+    testWidgets('full screen scrolls rather than overflows at large text', (
+      tester,
+    ) async {
+      tester.view.physicalSize = const Size(320, 568);
+      tester.view.devicePixelRatio = 1.0;
+      addTearDown(tester.view.reset);
+      await tester.pumpWidget(
+        MediaQuery(
+          data: const MediaQueryData(textScaler: TextScaler.linear(2.0)),
+          child: MaterialApp(
+            theme: fsLightTheme(),
+            home: Scaffold(
+              body: FsRetry(
+                message:
+                    "Couldn't reach FitSync. Check your connection and try "
+                        'again. ' *
+                    4,
+                onRetry: () {},
+                fullScreen: true,
+                secondary: const Text('Sign out'),
+              ),
+            ),
+          ),
+        ),
+      );
+      expect(tester.takeException(), isNull);
+    });
+  });
+
+  group('confirmDiscard', () {
+    /// Opens the dialog from a button and records its answer in [answers].
+    Future<void> pumpAsker(
+      WidgetTester tester,
+      List<bool> answers, {
+      String? message,
+    }) async {
+      await tester.pumpWidget(
+        MaterialApp(
+          theme: fsLightTheme(),
+          home: Builder(
+            builder: (c) => TextButton(
+              onPressed: () async =>
+                  answers.add(await confirmDiscard(c, message: message)),
+              child: const Text('ask'),
+            ),
+          ),
+        ),
+      );
+      await tester.tap(find.text('ask'));
+      await tester.pumpAndSettle();
+    }
+
+    testWidgets('Keep editing answers false and Discard true', (tester) async {
+      final answers = <bool>[];
+      await pumpAsker(tester, answers);
+      expect(find.text('Discard your changes?'), findsOneWidget);
+      await tester.tap(find.text('Keep editing'));
+      await tester.pumpAndSettle();
+      expect(find.text('Discard your changes?'), findsNothing);
+
+      await tester.tap(find.text('ask'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Discard'));
+      await tester.pumpAndSettle();
+      expect(answers, [false, true]);
+    });
+
+    testWidgets('a dismissed dialog keeps the edits', (tester) async {
+      final answers = <bool>[];
+      await pumpAsker(tester, answers);
+      await tester.tapAt(const Offset(5, 5)); // the barrier
+      await tester.pumpAndSettle();
+      expect(answers, [false]);
+    });
+
+    testWidgets('Discard is drawn in red', (tester) async {
+      await pumpAsker(tester, []);
+      const t = FsTokens.light;
+      final style = tester
+          .widget<TextButton>(
+            find.ancestor(
+              of: find.text('Discard'),
+              matching: find.byType(TextButton),
+            ),
+          )
+          .style!;
+      expect(style.foregroundColor!.resolve({}), t.red);
+    });
+
+    testWidgets('can say why discarding matters here', (tester) async {
+      await pumpAsker(tester, [], message: 'The photo still counts today.');
+      expect(find.text('The photo still counts today.'), findsOneWidget);
+    });
+  });
+
+  group('FsDiscardGuard', () {
+    Future<void> pumpGuard(WidgetTester tester, {required bool dirty}) async {
+      await tester.pumpWidget(
+        MaterialApp(
+          theme: fsLightTheme(),
+          home: Builder(
+            builder: (c) => TextButton(
+              onPressed: () => Navigator.of(c).push(
+                MaterialPageRoute<void>(
+                  builder: (_) => FsDiscardGuard(
+                    dirty: dirty,
+                    message: 'Nothing here is saved yet.',
+                    child: const Scaffold(body: Text('form')),
+                  ),
+                ),
+              ),
+              child: const Text('open'),
+            ),
+          ),
+        ),
+      );
+      await tester.tap(find.text('open'));
+      await tester.pumpAndSettle();
+    }
+
+    testWidgets('a clean screen pops straight away', (tester) async {
+      await pumpGuard(tester, dirty: false);
+      await tester.binding.handlePopRoute();
+      await tester.pumpAndSettle();
+      expect(find.text('Discard your changes?'), findsNothing);
+      expect(find.text('form'), findsNothing);
+    });
+
+    testWidgets('a dirty screen asks, in its own words, then obeys', (
+      tester,
+    ) async {
+      await pumpGuard(tester, dirty: true);
+      await tester.binding.handlePopRoute();
+      await tester.pumpAndSettle();
+      expect(find.text('Discard your changes?'), findsOneWidget);
+      expect(find.text('Nothing here is saved yet.'), findsOneWidget);
+
+      await tester.tap(find.text('Keep editing'));
+      await tester.pumpAndSettle();
+      expect(find.text('form'), findsOneWidget);
+
+      await tester.binding.handlePopRoute();
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Discard'));
+      await tester.pumpAndSettle();
+      expect(find.text('form'), findsNothing);
+      expect(find.text('open'), findsOneWidget);
+    });
+  });
 }
 
 void _noop() {}

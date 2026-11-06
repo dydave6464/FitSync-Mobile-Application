@@ -331,6 +331,9 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.byKey(const Key('habit.save')), findsOneWidget);
-    expect(_errorText(tester), 'offline');
+    expect(
+      _errorText(tester),
+      "Couldn't reach FitSync. Check your connection and try again.",
+    );
   });
 }

@@ -481,7 +481,12 @@ void main() {
     await tester.tap(_start());
     await tester.pumpAndSettle();
 
-    expect(find.textContaining('Could not reach the server.'), findsOneWidget);
+    expect(
+      find.textContaining(
+        "Couldn't reach FitSync. Check your connection and try again.",
+      ),
+      findsOneWidget,
+    );
     expect(container.read(workoutDraftProvider).exerciseIds, [
       101,
       202,

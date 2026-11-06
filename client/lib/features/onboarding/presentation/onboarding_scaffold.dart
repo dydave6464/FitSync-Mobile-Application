@@ -150,7 +150,7 @@ class OnboardingScaffold extends StatelessWidget {
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
                   if (error != null) ...[
-                    _ErrorLine(error!),
+                    FsErrorLine(error!, key: const Key('error')),
                     const SizedBox(height: 10),
                   ],
                   if (hint != null) ...[
@@ -196,37 +196,6 @@ class OnboardingScaffold extends StatelessWidget {
           ],
         ),
       ),
-    );
-  }
-}
-
-/// The last Continue's failure. The icon carries the red so the sentence
-/// itself can stay in body text, which reads at full contrast in both themes.
-class _ErrorLine extends StatelessWidget {
-  const _ErrorLine(this.message);
-
-  final String message;
-
-  @override
-  Widget build(BuildContext context) {
-    final t = context.fs;
-
-    return Row(
-      key: const Key('error'),
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Padding(
-          padding: const EdgeInsets.only(top: 1),
-          child: Icon(Icons.error_outline, size: 16, color: t.red),
-        ),
-        const SizedBox(width: 8),
-        Expanded(
-          child: Text(
-            message,
-            style: TextStyle(fontSize: 13, height: 1.4, color: t.text),
-          ),
-        ),
-      ],
     );
   }
 }

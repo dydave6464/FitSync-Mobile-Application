@@ -1675,3 +1675,177 @@ class _RenderTapRoom extends RenderProxyBox {
     return hit;
   }
 }
+
+/// A failure shown in place, under or above the control it is about.
+///
+/// Red icon and red text: `t.red` reads at 4.5:1 or better on the page in
+/// both themes (theme_contrast_test). A live region, so a screen reader
+/// says the message when it appears, without the screen announcing it
+/// separately -- doing both would say it twice.
+class FsErrorLine extends StatelessWidget {
+  const FsErrorLine(this.message, {super.key});
+
+  final String message;
+
+  @override
+  Widget build(BuildContext context) {
+    final t = context.fs;
+
+    return Semantics(
+      container: true,
+      liveRegion: true,
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Padding(
+            padding: const EdgeInsets.only(top: 1),
+            child: Icon(Icons.error_outline, size: 16, color: t.red),
+          ),
+          const SizedBox(width: 8),
+          Expanded(
+            child: Text(
+              message,
+              style: TextStyle(fontSize: 13, height: 1.4, color: t.red),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+/// What a screen or section shows when its data could not load: the reason
+/// in plain words (see `userMessage`) over a small secondary "Try again".
+///
+/// [fullScreen] is for a Scaffold body with nothing else on it: centred in
+/// the safe area, and scrollable so large text never overflows. [secondary]
+/// is an optional way out under the button, such as Sign out.
+class FsRetry extends StatelessWidget {
+  const FsRetry({
+    super.key,
+    required this.message,
+    required this.onRetry,
+    this.buttonKey,
+    this.fullScreen = false,
+    this.secondary,
+  });
+
+  final String message;
+  final VoidCallback onRetry;
+
+  /// A stable finder for the button itself. Keying the whole widget would
+  /// make a tap land wherever its centre falls -- on the message, say.
+  final Key? buttonKey;
+
+  final bool fullScreen;
+  final Widget? secondary;
+
+  @override
+  Widget build(BuildContext context) {
+    final t = context.fs;
+
+    final body = Column(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Text(
+          message,
+          textAlign: TextAlign.center,
+          style: TextStyle(fontSize: 13, height: 1.45, color: t.text2),
+        ),
+        const SizedBox(height: 12),
+        FsButton(
+          key: buttonKey,
+          label: 'Try again',
+          small: true,
+          kind: FsButtonKind.secondary,
+          onPressed: onRetry,
+        ),
+        if (secondary != null) ...[const SizedBox(height: 4), secondary!],
+      ],
+    );
+
+    if (!fullScreen) {
+      return Padding(
+        padding: const EdgeInsets.symmetric(vertical: 16),
+        child: body,
+      );
+    }
+    return SafeArea(
+      child: LayoutBuilder(
+        builder: (context, constraints) => SingleChildScrollView(
+          padding: const EdgeInsets.all(24),
+          child: ConstrainedBox(
+            constraints: BoxConstraints(
+              minWidth: math.max(0, constraints.maxWidth - 48),
+              minHeight: math.max(0, constraints.maxHeight - 48),
+            ),
+            child: Center(child: body),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// Asks before throwing away unsaved input. True means discard.
+///
+/// Dismissing the dialog any other way (the barrier, back) keeps editing:
+/// losing work must take a deliberate tap. Discard is in `t.red`, as the
+/// app's other destructive dialogs are. [message] says what discarding costs
+/// on this screen, when there is more to say than the title.
+Future<bool> confirmDiscard(BuildContext context, {String? message}) async {
+  final answer = await showDialog<bool>(
+    context: context,
+    builder: (dialog) => AlertDialog(
+      title: const Text('Discard your changes?'),
+      content: message == null ? null : Text(message),
+      actions: [
+        TextButton(
+          key: const Key('discard.keep'),
+          onPressed: () => Navigator.of(dialog).pop(false),
+          child: const Text('Keep editing'),
+        ),
+        TextButton(
+          key: const Key('discard.confirm'),
+          style: TextButton.styleFrom(foregroundColor: dialog.fs.red),
+          onPressed: () => Navigator.of(dialog).pop(true),
+          child: const Text('Discard'),
+        ),
+      ],
+    ),
+  );
+  return answer ?? false;
+}
+
+/// Makes back (the app bar's, Android's, the iOS swipe) ask [confirmDiscard]
+/// first while [dirty], and leave as usual otherwise.
+///
+/// The route reports itself as not poppable while dirty, which is also what
+/// stops a tapped reminder from closing it (see `NavShell`).
+class FsDiscardGuard extends StatelessWidget {
+  const FsDiscardGuard({
+    super.key,
+    required this.dirty,
+    required this.child,
+    this.message,
+  });
+
+  final bool dirty;
+  final Widget child;
+
+  /// Passed to [confirmDiscard].
+  final String? message;
+
+  @override
+  Widget build(BuildContext context) {
+    return PopScope<Object?>(
+      canPop: !dirty,
+      onPopInvokedWithResult: (didPop, result) async {
+        if (didPop) return;
+        final discard = await confirmDiscard(context, message: message);
+        if (discard && context.mounted) Navigator.of(context).pop(result);
+      },
+      child: child,
+    );
+  }
+}

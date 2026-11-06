@@ -228,6 +228,8 @@ Future<void> _pumpShell(
   void Function(String path)? onRequest,
   ReminderScheduler? scheduler,
   RoutineDay? routine,
+  // When given, false swaps the shell out of the app, as a sign-out does.
+  ValueNotifier<bool>? showShell,
 }) => tester.pumpWidget(
   ProviderScope(
     overrides: [
@@ -283,7 +285,16 @@ Future<void> _pumpShell(
       if (routine != null)
         routineTodayProvider.overrideWith(() => _StubRoutine(routine)),
     ],
-    child: const MaterialApp(home: NavShell()),
+    child: MaterialApp(
+      home: showShell == null
+          ? const NavShell()
+          : ValueListenableBuilder<bool>(
+              valueListenable: showShell,
+              builder: (_, shown, _) => shown
+                  ? const NavShell()
+                  : const Scaffold(body: Text('signed out')),
+            ),
+    ),
   ),
 );
 
@@ -776,4 +787,112 @@ void main() {
       expect(find.byType(RecoveryScreen), findsOneWidget);
     },
   );
+
+  group('a reminder tapped over a screen that must not be left', () {
+    /// Pushes a route that refuses to pop, as an editor with unsaved input
+    /// or a meal mid-log does.
+    Future<_FakeReminderScheduler> pumpGuarded(
+      WidgetTester tester, {
+      ValueNotifier<bool>? showShell,
+    }) async {
+      final scheduler = _FakeReminderScheduler();
+      addTearDown(scheduler.tapsController.close);
+      await _pumpShell(
+        tester,
+        scheduler: scheduler,
+        routine: _routineDay,
+        showShell: showShell,
+      );
+      await tester.pumpAndSettle();
+      tester
+          .state<NavigatorState>(find.byType(Navigator).first)
+          .push(
+            MaterialPageRoute<void>(
+              builder: (_) => const PopScope(
+                canPop: false,
+                child: Scaffold(body: Text('half-typed form')),
+              ),
+            ),
+          );
+      await tester.pumpAndSettle();
+      return scheduler;
+    }
+
+    testWidgets('stays put and offers the reminder in a SnackBar', (
+      tester,
+    ) async {
+      final scheduler = await pumpGuarded(tester);
+
+      scheduler.tapsController.add('recovery');
+      await tester.pumpAndSettle();
+
+      expect(find.text('half-typed form'), findsOneWidget);
+      expect(find.byType(RecoveryScreen), findsNothing);
+      expect(find.text('Morning check-in reminder'), findsOneWidget);
+      expect(find.widgetWithText(SnackBarAction, 'Open'), findsOneWidget);
+    });
+
+    testWidgets('names a routine reminder too', (tester) async {
+      final scheduler = await pumpGuarded(tester);
+
+      scheduler.tapsController.add('routine');
+      await tester.pumpAndSettle();
+
+      expect(find.text('half-typed form'), findsOneWidget);
+      expect(find.byType(RoutineScreen), findsNothing);
+      expect(find.text('Routine reminder'), findsOneWidget);
+    });
+
+    testWidgets('Open goes there once the screen is finished with', (
+      tester,
+    ) async {
+      final scheduler = await pumpGuarded(tester);
+      scheduler.tapsController.add('recovery');
+      await tester.pumpAndSettle();
+
+      // The user finishes (here: the route closes itself), then taps Open.
+      tester.state<NavigatorState>(find.byType(Navigator).first).pop();
+      await tester.pumpAndSettle();
+      await tester.tap(find.widgetWithText(SnackBarAction, 'Open'));
+      await tester.pumpAndSettle();
+
+      expect(find.byType(RecoveryScreen), findsOneWidget);
+    });
+
+    testWidgets('Open after the shell has gone does nothing', (tester) async {
+      final showShell = ValueNotifier(true);
+      addTearDown(showShell.dispose);
+      final scheduler = await pumpGuarded(tester, showShell: showShell);
+      scheduler.tapsController.add('recovery');
+      await tester.pumpAndSettle();
+
+      // Finished with the form, then signed out, with the SnackBar still up.
+      tester.state<NavigatorState>(find.byType(Navigator).first).pop();
+      showShell.value = false;
+      await tester.pumpAndSettle();
+      await tester.tap(find.widgetWithText(SnackBarAction, 'Open'));
+      await tester.pumpAndSettle();
+
+      expect(tester.takeException(), isNull);
+      expect(find.text('signed out'), findsOneWidget);
+    });
+
+    testWidgets('a dialog over the guarded screen is closed, the screen kept', (
+      tester,
+    ) async {
+      final scheduler = await pumpGuarded(tester);
+      showDialog<void>(
+        context: tester.element(find.text('half-typed form')),
+        builder: (_) => const AlertDialog(content: Text('a question')),
+      );
+      await tester.pumpAndSettle();
+
+      scheduler.tapsController.add('recovery');
+      await tester.pumpAndSettle();
+
+      expect(find.text('a question'), findsNothing);
+      expect(find.text('half-typed form'), findsOneWidget);
+      expect(find.text('Morning check-in reminder'), findsOneWidget);
+    });
+  });
 }

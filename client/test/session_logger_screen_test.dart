@@ -1682,7 +1682,7 @@ void main() {
   // StateError its _current getter throws. That must land on the same path
   // as the 409 -- pop with the plain-language message -- and never fall
   // through to the generic handler, which would leave the user standing on
-  // a dead session reading "Something went wrong."
+  // a dead session reading "Something went wrong. Please try again."
   testWidgets(
     'a StateError from complete leaves by the already-finished path',
     (tester) async {
@@ -1692,7 +1692,10 @@ void main() {
       await _finishWithSetsLeft(tester);
 
       expect(find.text('This session was already finished.'), findsOneWidget);
-      expect(find.text('Something went wrong.'), findsNothing);
+      expect(
+        find.text('Something went wrong. Please try again.'),
+        findsNothing,
+      );
       expect(find.byKey(const Key('logger.summary')), findsNothing);
       expect(find.byType(SessionLoggerScreen), findsNothing);
       expect(find.text('open logger'), findsOneWidget);
@@ -1734,7 +1737,11 @@ void main() {
       const ApiException('NETWORK', 'No connection.'),
       'No connection.',
     ),
-    ('an unnamed failure', Exception('offline'), 'Something went wrong.'),
+    (
+      'an unnamed failure',
+      Exception('offline'),
+      'Something went wrong. Please try again.',
+    ),
   ]) {
     testWidgets(
       'a finish that fails with $kind leaves the session in progress',
@@ -2680,7 +2687,12 @@ void main() {
     await _finishWithSetsLeft(tester);
     await _makeItMyPlan(tester);
 
-    expect(find.textContaining('Could not reach the server.'), findsOneWidget);
+    expect(
+      find.textContaining(
+        "Couldn't reach FitSync. Check your connection and try again.",
+      ),
+      findsOneWidget,
+    );
   });
 
   // The summary dialog -- and the whole logger route behind it -- pops
@@ -2753,7 +2765,10 @@ void main() {
       await tester.pumpAndSettle();
 
       expect(tester.takeException(), isNull);
-      expect(find.text('Something went wrong.'), findsNothing);
+      expect(
+        find.text('Something went wrong. Please try again.'),
+        findsNothing,
+      );
 
       await container.read(activePlanProvider.future);
       expect(
@@ -2793,7 +2808,9 @@ void main() {
 
       expect(tester.takeException(), isNull);
       expect(
-        find.textContaining('Could not reach the server.'),
+        find.textContaining(
+          "Couldn't reach FitSync. Check your connection and try again.",
+        ),
         findsOneWidget,
       );
     },

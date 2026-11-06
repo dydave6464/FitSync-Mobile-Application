@@ -1,7 +1,6 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
-import 'package:flutter/semantics.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../core/api_exception.dart';
@@ -291,19 +290,14 @@ class _OnboardingFlowState extends ConsumerState<OnboardingFlow> {
       // failure is caught, not only the API's own, because one that escaped
       // would leave the flow busy -- on the last step, a "Building your
       // plan…" screen with no way off it.
-      final message = _plainError(error);
+      // The message appears by the buttons, in an FsErrorLine: a live
+      // region, so someone not looking there, or not looking at all, hears
+      // that the tap did not work without a second announcement here.
       setState(() {
-        _error = message;
+        _error = _plainError(error);
         _busy = false;
         if (_index == _total - 1) _buildFailed = true;
       });
-      // The message appears by the buttons, but someone not looking there,
-      // or not looking at all, needs to hear that the tap did not work.
-      SemanticsService.sendAnnouncement(
-        View.of(context),
-        message,
-        Directionality.of(context),
-      );
       return;
     }
     if (!mounted) return;
@@ -312,20 +306,13 @@ class _OnboardingFlowState extends ConsumerState<OnboardingFlow> {
     _advance();
   }
 
-  /// A failure in words a user can act on. The client's own messages are
-  /// written for whoever is running the server -- an address, an adb command
-  /// -- so those are replaced. So are the server's rejections of a profile
-  /// answer, which name the API field ("goalWeightKg must be ...") rather
-  /// than anything on screen. Its other messages are already plain and kept.
+  /// A failure in words a user can act on: [userMessage], except for the
+  /// server's rejections of a profile answer, which name the API field
+  /// ("goalWeightKg must be ...") rather than anything on screen.
   static String _plainError(Object error) => switch (error) {
-    ApiException(code: 'NETWORK_ERROR') =>
-      "Couldn't reach FitSync. Check your connection and try again.",
     ApiException(code: 'INVALID_PROFILE_FIELD') =>
       "One of these answers can't be saved as it is. Check it and try again.",
-    ApiException(code: 'INVALID_RESPONSE' || 'UNKNOWN_ERROR') =>
-      'Something went wrong on our side. Please try again.',
-    ApiException() => describeError(error),
-    _ => 'Something went wrong. Please try again.',
+    _ => userMessage(error),
   };
 
   /// The last step's Continue: unlike every earlier step, this one has

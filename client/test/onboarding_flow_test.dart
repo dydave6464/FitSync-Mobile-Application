@@ -1648,6 +1648,7 @@ void main() {
             'and that "adb reverse tcp:3000 tcp:3000" has been run.',
       ),
     );
+    final handle = tester.ensureSemantics();
     await tester.tap(find.byKey(const Key('goal.build_muscle')));
     await tester.pumpAndSettle();
     tester.takeAnnouncements();
@@ -1674,10 +1675,18 @@ void main() {
     expect(errorRect.bottom, lessThanOrEqualTo(continueRect.top));
     expect(continueRect.top - errorRect.bottom, lessThan(24));
 
+    // Read aloud by being a live region, which a screen reader speaks as it
+    // appears -- and only that way, so it is not said twice.
     expect(
-      tester.takeAnnouncements().map((a) => a.message),
-      contains("Couldn't reach FitSync. Check your connection and try again."),
+      tester
+          .getSemantics(message)
+          .getSemanticsData()
+          .flagsCollection
+          .isLiveRegion,
+      isTrue,
     );
+    expect(tester.takeAnnouncements(), isEmpty);
+    handle.dispose();
   });
 
   testWidgets('a failed plan build offers Try again, which builds again', (

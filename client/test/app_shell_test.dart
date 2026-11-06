@@ -10,6 +10,7 @@ import 'package:fitsync/app_shell.dart';
 import 'package:fitsync/core/api_client.dart';
 import 'package:fitsync/core/api_exception.dart';
 import 'package:fitsync/core/token_store.dart';
+import 'package:fitsync/core/widgets/fs_kit.dart';
 import 'package:fitsync/features/auth/domain/auth_user.dart';
 import 'package:fitsync/features/auth/presentation/auth_controller.dart';
 import 'package:fitsync/features/auth/presentation/sign_in_screen.dart';
@@ -67,6 +68,10 @@ Future<void> _pumpShell(
   ProviderScope(
     overrides: [
       authControllerProvider.overrideWith(() => FakeAuthController(onBuild)),
+      // Sign out clears the token; keep that off the platform keystore.
+      tokenStoreProvider.overrideWithValue(
+        TokenStore(backing: InMemorySecureStore()),
+      ),
       profileProvider.overrideWith(StubProfileNotifier.new),
       reminderPromptStoreProvider.overrideWithValue(
         inMemoryReminderPromptStore(),
@@ -144,7 +149,7 @@ void main() {
 
     expect(find.text('The server is having a moment.'), findsOneWidget);
 
-    await tester.tap(find.text('Retry'));
+    await tester.tap(find.text('Try again'));
     await tester.pumpAndSettle();
 
     expect(
@@ -152,5 +157,44 @@ void main() {
       findsOneWidget,
       reason: 'retry must re-read the controller, not just clear the error',
     );
+  });
+
+  testWidgets('the profile-load error is in plain words, with Try again', (
+    tester,
+  ) async {
+    await _pumpShell(tester, (callCount) async {
+      throw const ApiException(
+        'NETWORK_ERROR',
+        'Could not reach http://localhost:3000. Check the server is running, '
+            'and that "adb reverse tcp:3000 tcp:3000" has been run.',
+      );
+    });
+    await tester.pumpAndSettle();
+
+    expect(
+      find.text("Couldn't reach FitSync. Check your connection and try again."),
+      findsOneWidget,
+    );
+    expect(find.textContaining('adb'), findsNothing);
+    expect(find.textContaining('localhost'), findsNothing);
+    expect(find.text('Try again'), findsOneWidget);
+    expect(find.byType(FsRetry), findsOneWidget);
+  });
+
+  testWidgets('the error offers Sign out, back to the sign-in screen', (
+    tester,
+  ) async {
+    await _pumpShell(tester, (callCount) async {
+      throw const ApiException(
+        'SERVER_ERROR',
+        'The server is having a moment.',
+      );
+    });
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.text('Sign out'));
+    await tester.pumpAndSettle();
+
+    expect(find.byType(SignInScreen), findsOneWidget);
   });
 }

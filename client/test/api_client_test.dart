@@ -97,6 +97,67 @@ void main() {
     },
   );
 
+  test('a release build names no address and no adb command', () {
+    final release = ApiClient.unreachableMessage(
+      'http://10.0.0.5:3000',
+      debug: false,
+    );
+    expect(release, isNot(contains('adb')));
+    expect(release, isNot(contains('10.0.0.5')));
+    expect(
+      ApiClient.unreachableMessage('http://10.0.0.5:3000', debug: true),
+      contains('adb reverse'),
+    );
+  });
+
+  test('the error envelope keeps the details the server sent', () async {
+    final api = clientReturning(
+      jsonEncode({
+        'error': {
+          'code': 'INVALID_PROFILE_FIELD',
+          'message': 'heightCm must be a positive number.',
+          'details': [
+            {'field': 'heightCm'},
+          ],
+        },
+      }),
+      status: 400,
+    );
+    expect(
+      () => api.getJson('/api/v1/profile'),
+      throwsA(
+        isA<ApiException>().having((e) => e.details, 'details', [
+          {'field': 'heightCm'},
+        ]),
+      ),
+    );
+  });
+
+  test('details that are not a list of objects are dropped, not a crash', () {
+    final api = clientReturning(
+      jsonEncode({
+        'error': {
+          'code': 'BAD',
+          'message': 'Nope.',
+          'details': [
+            'heightCm',
+            4,
+            {'field': 'weightKg'},
+          ],
+        },
+      }),
+      status: 400,
+    );
+    expect(
+      () => api.getJson('/api/v1/profile'),
+      throwsA(
+        isA<ApiException>().having((e) => e.details, 'details', [
+          {'field': 'weightKg'},
+        ]),
+      ),
+    );
+  });
+
   test('null and empty query values are omitted from the URL', () async {
     Uri? seen;
     final api = clientReturning(

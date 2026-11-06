@@ -14,8 +14,9 @@ import 'widgets/recent_strip.dart';
 import 'widgets/region_filter_bar.dart';
 import 'widgets/search_field.dart';
 
-String describeError(Object error) =>
-    error is ApiException ? error.message : 'Something went wrong.';
+/// Kept for its many callers; it says exactly what [userMessage] says, which
+/// new code should call directly.
+String describeError(Object error) => userMessage(error);
 
 /// The exercise library, opened from + → Log a workout: a tap picks a row
 /// into the workout, and each row's ⓘ opens its demo.

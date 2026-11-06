@@ -73,7 +73,6 @@ class _NavShellState extends State<NavShell> {
   /// tapped reminder about a habit or the workout item opens onto, the same
   /// screen Home's own routine card opens.
   void _openRoutine() {
-    _popToShell();
     _select(0);
     Navigator.of(context).push(
       MaterialPageRoute<void>(
@@ -92,8 +91,40 @@ class _NavShellState extends State<NavShell> {
   /// Switching the underlying tab alone would leave it sitting there,
   /// invisible on top -- popped back to the shell first, so the tab the tap
   /// asked for is what is actually seen.
-  void _popToShell() =>
-      Navigator.of(context).popUntil((route) => route.isFirst);
+  ///
+  /// Except past a route that refuses to pop: an editor holding unsaved
+  /// input, or a meal mid-log. `popUntil` does not consult PopScope, so it
+  /// stops there itself, and returns false: the user is left to finish, and
+  /// the reminder waits in a SnackBar.
+  bool _popToShell() {
+    var reached = false;
+    Navigator.of(context).popUntil((route) {
+      if (route.isFirst) return reached = true;
+      return route.popDisposition == RoutePopDisposition.doNotPop;
+    });
+    return reached;
+  }
+
+  /// Opens what a tapped reminder points at, if nothing in the way must be
+  /// kept; otherwise offers it under [name] with an Open action, which tries
+  /// again once the user is done.
+  void _onReminder(String name, VoidCallback open) {
+    // The SnackBar can outlive the shell (a sign-out while it shows).
+    if (!mounted) return;
+    if (_popToShell()) {
+      open();
+      return;
+    }
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text('$name reminder'),
+        action: SnackBarAction(
+          label: 'Open',
+          onPressed: () => _onReminder(name, open),
+        ),
+      ),
+    );
+  }
 
   @override
   void initState() {
@@ -144,11 +175,9 @@ class _NavShellState extends State<NavShell> {
   @override
   Widget build(BuildContext context) {
     return ReminderSync(
-      onOpenRoutine: _openRoutine,
-      onOpenRecovery: () {
-        _popToShell();
-        _openTrainAt('recovery');
-      },
+      onOpenRoutine: () => _onReminder('Routine', _openRoutine),
+      onOpenRecovery: () =>
+          _onReminder('Morning check-in', () => _openTrainAt('recovery')),
       child: ActivitySync(child: ProSync(child: DayRollover(
         child: Scaffold(
           body: IndexedStack(
