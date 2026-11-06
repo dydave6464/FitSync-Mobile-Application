@@ -6,6 +6,8 @@ import 'package:fitsync/features/schedule/domain/calendar.dart';
 import 'package:fitsync/features/schedule/domain/schedule_view.dart';
 import 'package:fitsync/features/schedule/presentation/widgets/month_grid.dart';
 
+import 'helpers/a11y.dart' show contrast;
+
 const _sep = (year: 2026, month: 9);
 const _t = FsTokens.light;
 
@@ -46,10 +48,12 @@ Future<List<String>> _pump(
   Map<String, CalendarDay>? days,
   String? selected,
   bool tappable = true,
+  bool dark = false,
 }) async {
   final taps = <String>[];
   await tester.pumpWidget(
     MaterialApp(
+      theme: dark ? fsDarkTheme() : fsLightTheme(),
       home: Scaffold(
         body: SingleChildScrollView(
           child: MonthGrid(
@@ -150,7 +154,7 @@ void main() {
     // Future, a habit due.
     expect(_dot(tester, 'workout', '2026-09-25'), isNull);
     expect(_dot(tester, 'habits', '2026-09-25')!.filled, isFalse);
-    expect(_dot(tester, 'workout', '2026-09-22')!.color, _t.accent);
+    expect(_dot(tester, 'workout', '2026-09-22')!.color, _t.accentFill);
   });
 
   testWidgets('no dots while nothing has loaded, and taps do nothing', (
@@ -206,4 +210,30 @@ void main() {
       expect(find.text(label), findsOneWidget, reason: label);
     }
   });
+
+  for (final dark in [false, true]) {
+    testWidgets('workout dots and their legend read at 3:1 '
+        '(${dark ? 'dark' : 'light'}) (PT-13)', (tester) async {
+      await _pump(tester, days: _days, dark: dark);
+      final t = dark ? FsTokens.dark : FsTokens.light;
+
+      final dots = [
+        _dot(tester, 'workout', '2026-09-22')!,
+        ...tester
+            .widgetList<ScheduleDot>(
+              find.descendant(
+                of: find.byType(Wrap),
+                matching: find.byType(ScheduleDot),
+              ),
+            )
+            .take(2),
+      ];
+      expect(dots, hasLength(3));
+      for (final dot in dots) {
+        // The grid sits in a card; the page is behind the legend's edges.
+        expect(contrast(dot.color, t.surface), greaterThanOrEqualTo(3));
+        expect(contrast(dot.color, t.bg), greaterThanOrEqualTo(3));
+      }
+    });
+  }
 }

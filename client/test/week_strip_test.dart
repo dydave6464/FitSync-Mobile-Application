@@ -6,6 +6,8 @@ import 'package:fitsync/features/plans/domain/workout_plan.dart';
 import 'package:fitsync/features/plans/presentation/widgets/session_card.dart';
 import 'package:fitsync/features/plans/presentation/widgets/week_strip.dart';
 
+import 'helpers/a11y.dart' show contrast;
+
 const _plan = WorkoutPlan(
   planId: 42,
   name: 'Week 1 — Full body',
@@ -769,5 +771,60 @@ void main() {
 
       expect(tester.takeException(), isNull);
     });
+  });
+
+  group('state dots read at 3:1 (PT-13)', () {
+    for (final dark in [false, true]) {
+      final t = dark ? FsTokens.dark : FsTokens.light;
+      final theme = dark ? 'dark' : 'light';
+
+      BoxDecoration dot(WidgetTester tester, int weekday) =>
+          tester
+                  .widget<DecoratedBox>(
+                    find.descendant(
+                      of: find.byKey(Key('day.$weekday')),
+                      matching: find.byKey(const Key('day.dot')),
+                    ),
+                  )
+                  .decoration
+              as BoxDecoration;
+
+      testWidgets('planned, today-planned and trained dots ($theme)', (
+        tester,
+      ) async {
+        await tester.pumpWidget(
+          MaterialApp(
+            theme: dark ? fsDarkTheme() : fsLightTheme(),
+            home: Scaffold(
+              body: WeekStrip(
+                daysPerWeek: 3,
+                completedDates: const {'2026-09-07'},
+                today: DateTime(2026, 9, 9), // a Wednesday
+                trainingDays: const [1, 3, 5],
+              ),
+            ),
+          ),
+        );
+
+        // Friday: planned, on the plain cell.
+        expect(
+          contrast(dot(tester, 5).color!, t.surface),
+          greaterThanOrEqualTo(3),
+          reason: 'planned dot',
+        );
+        // Wednesday: today and planned, on the accent fill.
+        expect(
+          contrast(dot(tester, 3).color!, t.accent),
+          greaterThanOrEqualTo(3),
+          reason: "today's planned dot",
+        );
+        // Monday: trained, on the plain cell.
+        expect(
+          contrast(dot(tester, 1).color!, t.surface),
+          greaterThanOrEqualTo(3),
+          reason: 'trained marker',
+        );
+      });
+    }
   });
 }

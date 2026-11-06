@@ -151,8 +151,9 @@ class ScheduleDayCell extends StatelessWidget {
                         if (workout != DotState.none)
                           ScheduleDot(
                             key: Key('schedule.dot.workout.$date'),
-                            // Green on the accent fill would vanish.
-                            color: isToday ? t.onAccent : t.accent,
+                            // Green on the accent fill would vanish; off it,
+                            // accentFill keeps the dot at 3:1 in light too.
+                            color: isToday ? t.onAccent : t.accentFill,
                             filled: workout == DotState.done,
                           ),
                         if (workout != DotState.none && habits != DotState.none)
@@ -239,8 +240,8 @@ class _Legend extends StatelessWidget {
       spacing: 14,
       runSpacing: 6,
       children: [
-        entry(t.accent, true, 'Workout done'),
-        entry(t.accent, false, 'Workout planned'),
+        entry(t.accentFill, true, 'Workout done'),
+        entry(t.accentFill, false, 'Workout planned'),
         entry(t.blue, true, 'Habits done'),
         entry(t.blue, false, 'Habits due'),
       ],

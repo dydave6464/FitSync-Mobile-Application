@@ -73,7 +73,8 @@ class WeekDayCell extends StatelessWidget {
         key: const Key('day.dot'),
         decoration: BoxDecoration(
           shape: BoxShape.circle,
-          color: isToday ? t.onAccent : t.accent,
+          // accentFill, not accent: a state marker needs 3:1 on the cell.
+          color: isToday ? t.onAccent : t.accentFill,
         ),
         child: Icon(
           Icons.check,
@@ -95,8 +96,9 @@ class WeekDayCell extends StatelessWidget {
               shape: BoxShape.circle,
               color: switch (mark) {
                 DayMark.missed => Colors.transparent,
-                DayMark.planned =>
-                  isToday ? t.onAccent.withValues(alpha: 0.45) : t.line2,
+                // Full-strength tokens: this dot alone tells a training
+                // day from a rest day, so it needs 3:1 (line2 was 1.4:1).
+                DayMark.planned => isToday ? t.onAccent : t.control,
                 _ => Colors.transparent,
               },
               border: mark == DayMark.missed
