@@ -166,6 +166,27 @@ void main() {
       expect(style.side!.resolve({})!.color, t.control);
     });
 
+    // L-5: one outline for every state drew a disabled button as boldly as
+    // a live one, and gave focus no change of its own.
+    test(
+      'an outlined button outline follows its state in the $theme theme',
+      () {
+        final themeData = theme == 'light' ? fsLightTheme() : fsDarkTheme();
+        final side = themeData.outlinedButtonTheme.style!.side!;
+        // Disabled: M3's own dim outline, onSurface at 12%.
+        expect(
+          side.resolve({WidgetState.disabled})!.color,
+          themeData.colorScheme.onSurface.withValues(alpha: 0.12),
+        );
+        // Focused: a visible change, at 3:1 or better on a card.
+        final focused = side.resolve({WidgetState.focused})!.color;
+        expect(focused, isNot(t.control));
+        expect(_contrast(focused, t.surface), greaterThanOrEqualTo(3.0));
+        // Hovered or pressed alone keep the control outline.
+        expect(side.resolve({WidgetState.pressed})!.color, t.control);
+      },
+    );
+
     test(
       'an unticked checkbox is outlined in the control colour in the $theme theme',
       () {

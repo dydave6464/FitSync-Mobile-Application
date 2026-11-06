@@ -352,10 +352,21 @@ ThemeData _build(FsTokens t, Brightness brightness) {
     ),
     // Unset, M3 drew the label in primary (the brand green, 2.87:1 on white)
     // inside a line2 outline that barely read as a control.
+    //
+    // The outline follows the state, as M3's own does: dim while disabled,
+    // so a dead button does not look live, and the text green while focused
+    // -- M3 uses primary there, the brand green, under 3:1 on white.
     outlinedButtonTheme: OutlinedButtonThemeData(
-      style: OutlinedButton.styleFrom(
-        foregroundColor: t.accentText,
-        side: BorderSide(color: t.control),
+      style: OutlinedButton.styleFrom(foregroundColor: t.accentText).copyWith(
+        side: WidgetStateProperty.resolveWith(
+          (s) => BorderSide(
+            color: s.contains(WidgetState.disabled)
+                ? t.text.withValues(alpha: 0.12)
+                : s.contains(WidgetState.focused)
+                ? t.accentText
+                : t.control,
+          ),
+        ),
       ),
     ),
     snackBarTheme: SnackBarThemeData(
