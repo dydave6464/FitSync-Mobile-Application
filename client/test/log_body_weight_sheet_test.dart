@@ -500,4 +500,40 @@ void main() {
       reason: 'the error must be announced when it appears',
     );
   });
+
+  // P-26: only an ApiException was caught, so a timeout or any other failure
+  // escaped and left the sheet spinning with Save locked for good.
+  testWidgets('a save failing in any other way says so and unlocks Save', (
+    tester,
+  ) async {
+    final repo = FakeProfileRepository(logError: StateError('no answer'));
+    await _pump(tester, repo: repo, fetches: _FetchCount());
+
+    await tester.enterText(find.byKey(const Key('bodyWeight.field')), '72.5');
+    final logs = <String?>[];
+    final original = debugPrint;
+    debugPrint = (message, {wrapWidth}) => logs.add(message);
+    try {
+      await tester.tap(find.byKey(const Key('bodyWeight.save')));
+      await tester.pumpAndSettle();
+    } finally {
+      debugPrint = original;
+    }
+
+    expect(tester.takeException(), isNull);
+    expect(logs, contains(contains('no answer')), reason: 'and logs why');
+    expect(find.byKey(const Key('bodyWeight.error')), findsOneWidget);
+    expect(
+      find.text('Something went wrong. Please try again.'),
+      findsOneWidget,
+    );
+    expect(find.byType(CircularProgressIndicator), findsNothing);
+    expect(
+      tester
+          .widget<FsButton>(find.byKey(const Key('bodyWeight.save')))
+          .onPressed,
+      isNotNull,
+      reason: 'Save must be tappable again',
+    );
+  });
 }

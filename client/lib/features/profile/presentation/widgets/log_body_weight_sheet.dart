@@ -145,7 +145,11 @@ class _LogBodyWeightSheetState extends ConsumerState<_LogBodyWeightSheet> {
       await ref
           .read(profileRepositoryProvider)
           .logBodyWeight(kg, loggedOn: _loggedOn);
-    } on ApiException catch (error) {
+    } catch (error) {
+      // Any failure, not only an ApiException: one that escaped left the
+      // sheet spinning with Save locked. Anything the API layer did not name
+      // is logged, as the line on screen cannot say why.
+      if (error is! ApiException) debugPrint('Weigh-in save failed: $error');
       if (!mounted) return;
       setState(() {
         _error = userMessage(error);
