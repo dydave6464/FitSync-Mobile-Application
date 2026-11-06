@@ -1263,6 +1263,19 @@ class _SessionLoggerScreenState extends ConsumerState<SessionLoggerScreen>
     );
   }
 
+  /// [screen], saying on the way out what Leave says when Back closes the
+  /// logger with sets logged. For the screens before the exercises are on
+  /// show -- the plan failing or loading -- which close on the first Back,
+  /// as exercise 1's demo does (see the PopScope in [build]).
+  Widget _keptOpenOnPop(ActiveSession session, Widget screen) => PopScope(
+    onPopInvokedWithResult: (didPop, _) {
+      if (didPop && !_closedSelf && session.completedSetCount > 0) {
+        _sayKeptOpen(ScaffoldMessenger.of(context));
+      }
+    },
+    child: screen,
+  );
+
   /// The AppBar's leading slot is this wide: the 15 dp inset and the 48 dp
   /// target, which puts the drawn square where the mockup's 20 did.
   static const _backWidth = 63.0;
@@ -1474,10 +1487,13 @@ class _SessionLoggerScreenState extends ConsumerState<SessionLoggerScreen>
     if (carried.isEmpty && asyncPlan.isLoading && !asyncPlan.hasValue) {
       // The session is open on the server already: Back and the menu stay,
       // so a slow plan load never strands anyone on a bare spinner.
-      return Scaffold(
-        backgroundColor: t.bg,
-        appBar: _appBar(t, restSeconds: restSeconds),
-        body: const Center(child: CircularProgressIndicator()),
+      return _keptOpenOnPop(
+        session,
+        Scaffold(
+          backgroundColor: t.bg,
+          appBar: _appBar(t, restSeconds: restSeconds),
+          body: const Center(child: CircularProgressIndicator()),
+        ),
       );
     }
 
@@ -1485,29 +1501,32 @@ class _SessionLoggerScreenState extends ConsumerState<SessionLoggerScreen>
     // train here" and pointing at Discard would invite someone on poor gym
     // Wi-Fi to throw away a real session with sets already logged.
     if (carried.isEmpty && plan == null && asyncPlan.hasError) {
-      return Scaffold(
-        backgroundColor: t.bg,
-        appBar: _appBar(t, restSeconds: restSeconds),
-        body: Center(
-          key: const Key('logger.planError'),
-          child: SingleChildScrollView(
-            padding: const EdgeInsets.all(24),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                FsIconTile(icon: Icons.cloud_off, size: 56),
-                const SizedBox(height: 16),
-                Text(
-                  "Couldn't load today's workout",
-                  textAlign: TextAlign.center,
-                  style: Theme.of(context).textTheme.titleLarge,
-                ),
-                FsRetry(
-                  message: userMessage(asyncPlan.error!),
-                  buttonKey: const Key('logger.planError.retry'),
-                  onRetry: () => ref.invalidate(activePlanProvider),
-                ),
-              ],
+      return _keptOpenOnPop(
+        session,
+        Scaffold(
+          backgroundColor: t.bg,
+          appBar: _appBar(t, restSeconds: restSeconds),
+          body: Center(
+            key: const Key('logger.planError'),
+            child: SingleChildScrollView(
+              padding: const EdgeInsets.all(24),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  FsIconTile(icon: Icons.cloud_off, size: 56),
+                  const SizedBox(height: 16),
+                  Text(
+                    "Couldn't load today's workout",
+                    textAlign: TextAlign.center,
+                    style: Theme.of(context).textTheme.titleLarge,
+                  ),
+                  FsRetry(
+                    message: userMessage(asyncPlan.error!),
+                    buttonKey: const Key('logger.planError.retry'),
+                    onRetry: () => ref.invalidate(activePlanProvider),
+                  ),
+                ],
+              ),
             ),
           ),
         ),

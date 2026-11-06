@@ -580,8 +580,12 @@ Future<FakeSessionController> _pump(
   // The phone's clock, which elapsed time is read from. Null is the real
   // one, which the sessions above are stamped against.
   DateTime Function()? wallClock,
+  // A controller of the test's own, for a state the default cannot reach --
+  // a session that has not loaded yet.
+  FakeSessionController? sessionController,
 }) async {
-  final controller = FakeSessionController(session ?? _session());
+  final controller =
+      sessionController ?? FakeSessionController(session ?? _session());
 
   await tester.pumpWidget(
     ProviderScope(
@@ -4744,6 +4748,92 @@ void main() {
     });
   });
 
+  // The screens shown before the workout itself -- the plan failing or
+  // still loading -- close on Back too, and leave the same open session
+  // behind (L-50).
+  group('back out before the exercises are on screen', () {
+    const logged = [
+      LoggedSet(exerciseId: 101, setNumber: 1, weightKg: 20, reps: 10),
+    ];
+
+    testWidgets('from a plan that failed, says the workout is kept open', (
+      tester,
+    ) async {
+      await _pump(
+        tester,
+        session: _session(planId: 42, sets: logged),
+        plans: _FlakyPlanRepository(failing: true),
+      );
+      expect(find.byKey(const Key('logger.planError')), findsOneWidget);
+
+      await tester.tap(find.byKey(const Key('logger.back')));
+      await tester.pumpAndSettle();
+
+      expect(find.byType(SessionLoggerScreen), findsNothing);
+      expect(find.text(_keptOpen), findsOneWidget);
+    });
+
+    testWidgets('from a plan still loading, says the workout is kept open', (
+      tester,
+    ) async {
+      final gate = Completer<WorkoutPlan?>();
+      await _pump(
+        tester,
+        session: _session(planId: 42, sets: logged),
+        plans: _FlakyPlanRepository(hold: gate),
+        settle: false,
+      );
+
+      await tester.binding.handlePopRoute();
+      await tester.pump();
+      await tester.pump(const Duration(seconds: 1));
+
+      expect(find.byType(SessionLoggerScreen), findsNothing);
+      expect(find.text(_keptOpen), findsOneWidget);
+      gate.complete(_plan);
+    });
+
+    testWidgets('with nothing logged, a failed plan closes quietly', (
+      tester,
+    ) async {
+      await _pump(
+        tester,
+        session: _session(planId: 42),
+        plans: _FlakyPlanRepository(failing: true),
+      );
+
+      await tester.tap(find.byKey(const Key('logger.back')));
+      await tester.pumpAndSettle();
+
+      expect(find.byType(SessionLoggerScreen), findsNothing);
+      expect(find.byType(SnackBar), findsNothing);
+    });
+
+    // L-52. Before the session itself has loaded there is no menu -- nothing
+    // to act on -- but the app bar's Back is there, and works. Nothing is
+    // said on the way out: with no session seen, there are no sets to vouch
+    // for.
+    testWidgets('a session not loaded yet still has a working Back', (
+      tester,
+    ) async {
+      final pending = _PendingSessionController();
+      await _pump(tester, sessionController: pending, settle: false);
+
+      expect(find.byType(AppBar), findsOneWidget);
+      expect(find.byKey(const Key('logger.back')), findsOneWidget);
+      expect(find.byKey(const Key('logger.menu')), findsNothing);
+      expect(find.byType(CircularProgressIndicator), findsOneWidget);
+
+      await tester.tap(find.byKey(const Key('logger.back')));
+      await tester.pump();
+      await tester.pump(const Duration(seconds: 1));
+
+      expect(find.byType(SessionLoggerScreen), findsNothing);
+      expect(find.byType(SnackBar), findsNothing);
+      pending.release();
+    });
+  });
+
   // Back on exercise 1's demo closes the logger. With sets logged, it says
   // the same as Leave, rather than nothing at all (SE-9).
   group('back out of the first exercise', () {
@@ -4820,6 +4910,21 @@ void main() {
       isTrue,
     );
   });
+}
+
+/// A session still on its way from the server: [build] waits until
+/// [release], so the logger shows its no-session state.
+class _PendingSessionController extends FakeSessionController {
+  _PendingSessionController() : super(null);
+
+  final _gate = Completer<ActiveSession?>();
+
+  void release() {
+    if (!_gate.isCompleted) _gate.complete(null);
+  }
+
+  @override
+  Future<ActiveSession?> build() => _gate.future;
 }
 
 /// Fails every plan load the way a dropped connection does while [failing],
