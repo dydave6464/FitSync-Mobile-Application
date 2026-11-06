@@ -183,7 +183,30 @@ class _ScheduleScreenState extends ConsumerState<ScheduleScreen> {
                     ),
                   ],
                 ),
-                const SizedBox(height: 8),
+                // While a month loads its days have no dots and ignore a
+                // tap; this says it is on its way. In the gap that was
+                // already here, so nothing moves when it goes.
+                SizedBox(
+                  height: 8,
+                  child: grid.isLoading
+                      ? Semantics(
+                          // Its own node: the card would fold it in with the
+                          // weekday letters and the legend.
+                          container: true,
+                          child: Align(
+                            alignment: Alignment.topCenter,
+                            child: LinearProgressIndicator(
+                              key: const Key('schedule.grid.loading'),
+                              minHeight: 3,
+                              borderRadius: BorderRadius.circular(
+                                FsRadius.pill,
+                              ),
+                              semanticsLabel: 'Loading month',
+                            ),
+                          ),
+                        )
+                      : null,
+                ),
                 MonthGrid(
                   month: month,
                   dates: dates,

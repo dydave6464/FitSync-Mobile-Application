@@ -207,6 +207,21 @@ class _MutableCalendarRepo implements CalendarRepository {
   }
 }
 
+/// Holds back the answer for [held] until [gate] completes -- a month still
+/// loading -- and answers everything else at once.
+class _GatedCalendarRepo implements CalendarRepository {
+  _GatedCalendarRepo(this.held, this.gate);
+
+  final String held;
+  final Completer<void> gate;
+
+  @override
+  Future<CalendarRange> range(String from, String to) async {
+    if ('$from..$to' == held) await gate.future;
+    return _range(from, to, days: _fixture);
+  }
+}
+
 const _grid = '2026-08-31..2026-10-11';
 const _week = '2026-09-23..2026-09-26';
 
@@ -509,6 +524,44 @@ void main() {
     await tester.tap(find.byKey(const Key('schedule.day.2026-09-25')));
     await tester.pumpAndSettle();
     expect(find.text('Upcoming'), findsOneWidget);
+  });
+
+  testWidgets('a month still loading says so (PT-23)', (tester) async {
+    // Prev/next used to leave a grid with no dots and days that ignored a
+    // tap, with nothing to say the month was on its way.
+    tester.view.physicalSize = const Size(800, 1800);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.reset);
+    final gate = Completer<void>();
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          calendarRepositoryProvider.overrideWithValue(
+            _GatedCalendarRepo('2026-09-28..2026-11-08', gate),
+          ),
+          profileProvider.overrideWith(() => _Profile(true)),
+          reminderSettingsProvider.overrideWith(
+            () => _Settings(ReminderSettings.defaults),
+          ),
+          reminderSchedulerProvider.overrideWithValue(_Scheduler()),
+        ],
+        child: MaterialApp(home: ScheduleScreen(now: () => _now)),
+      ),
+    );
+    await tester.pumpAndSettle();
+    final loading = find.byKey(const Key('schedule.grid.loading'));
+    expect(loading, findsNothing);
+
+    final handle = tester.ensureSemantics();
+    await tester.tap(find.byKey(const Key('schedule.next')));
+    await tester.pump();
+    expect(loading, findsOneWidget);
+    expect(find.bySemanticsLabel('Loading month'), findsOneWidget);
+
+    gate.complete();
+    await tester.pumpAndSettle();
+    expect(loading, findsNothing);
+    handle.dispose();
   });
 
   testWidgets("the grid's error and Retry leave the list showing", (
