@@ -348,7 +348,8 @@ class _GoalProgress extends StatelessWidget {
         value: progress,
         minHeight: 6,
         backgroundColor: t.line,
-        color: t.accent,
+        // The fill token: plain accent is under 3:1 on the light card.
+        color: t.accentFill,
       ),
     );
     final style = TextStyle(fontSize: 10.5, color: t.text3);

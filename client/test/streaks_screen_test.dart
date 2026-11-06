@@ -421,4 +421,20 @@ void main() {
       });
     }
   }
+
+  for (final dark in [false, true]) {
+    testWidgets('a goal\'s bar reads at 3:1 on its card '
+        '(${dark ? 'dark' : 'light'})', (tester) async {
+      await _pump(tester, dark: dark);
+      final t = dark ? FsTokens.dark : FsTokens.light;
+      final bar = tester.widget<LinearProgressIndicator>(
+        find.descendant(
+          of: find.byKey(const Key('streaks.goal.1')),
+          matching: find.byType(LinearProgressIndicator),
+        ),
+      );
+
+      expect(contrast(bar.color!, t.surface), greaterThanOrEqualTo(3));
+    });
+  }
 }
