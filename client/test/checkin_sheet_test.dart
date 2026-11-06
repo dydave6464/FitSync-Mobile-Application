@@ -516,6 +516,109 @@ void main() {
     expect(repo.sent, isNotNull);
   });
 
+  group('closing with answers given', () {
+    testWidgets('back with nothing answered closes without asking', (
+      tester,
+    ) async {
+      await _open(tester);
+
+      await tester.binding.handlePopRoute();
+      await tester.pumpAndSettle();
+
+      expect(find.text('Discard your changes?'), findsNothing);
+      expect(find.text('Morning check-in'), findsNothing);
+    });
+
+    testWidgets('back asks first, and Keep editing keeps the answers', (
+      tester,
+    ) async {
+      await _open(tester);
+      await _tapKey(tester, 'checkin.sleepQuality.good');
+
+      await tester.binding.handlePopRoute();
+      await tester.pumpAndSettle();
+      expect(find.text('Discard your changes?'), findsOneWidget);
+
+      await tester.tap(find.byKey(const Key('discard.keep')));
+      await tester.pumpAndSettle();
+      expect(find.text('Morning check-in'), findsOneWidget);
+      expect(_chipSelected(tester, 'checkin.sleepQuality.good'), isTrue);
+    });
+
+    testWidgets('Discard closes the sheet without saving', (tester) async {
+      final repo = await _open(tester);
+      await _answerAll(tester);
+
+      await tester.binding.handlePopRoute();
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const Key('discard.confirm')));
+      await tester.pumpAndSettle();
+
+      expect(find.text('Morning check-in'), findsNothing);
+      expect(repo.sent, isNull);
+    });
+
+    testWidgets('a tap on the scrim asks first', (tester) async {
+      await _open(tester);
+      await _tapKey(tester, 'checkin.energy.high');
+
+      await tester.tapAt(const Offset(10, 10));
+      await tester.pumpAndSettle();
+
+      expect(find.text('Discard your changes?'), findsOneWidget);
+    });
+
+    testWidgets('a swipe down asks first rather than closing', (tester) async {
+      await _open(tester);
+      await _tapKey(tester, 'checkin.energy.high');
+
+      await tester.fling(
+        find.text('Morning check-in'),
+        const Offset(0, 300),
+        1500,
+      );
+      await tester.pumpAndSettle();
+
+      expect(find.text('Discard your changes?'), findsOneWidget);
+      await tester.tap(find.byKey(const Key('discard.keep')));
+      await tester.pumpAndSettle();
+      expect(find.text('Morning check-in'), findsOneWidget);
+      expect(_chipSelected(tester, 'checkin.energy.high'), isTrue);
+    });
+
+    testWidgets('a pain answer alone counts as something to lose', (
+      tester,
+    ) async {
+      await _open(tester, pending: _pending);
+      await _tapKey(tester, 'checkin.pain.none');
+
+      await tester.binding.handlePopRoute();
+      await tester.pumpAndSettle();
+
+      expect(find.text('Discard your changes?'), findsOneWidget);
+    });
+
+    testWidgets('an unchanged Update closes without asking', (tester) async {
+      await _open(
+        tester,
+        existing: const MorningCheckin(
+          checkinId: 1,
+          checkinDate: '2026-10-18',
+          sleepQuality: 'fair',
+          muscleSoreness: 'mild',
+          energy: 'very_low',
+          stress: 'moderate',
+        ),
+      );
+
+      await tester.binding.handlePopRoute();
+      await tester.pumpAndSettle();
+
+      expect(find.text('Discard your changes?'), findsNothing);
+      expect(find.text('Morning check-in'), findsNothing);
+    });
+  });
+
   group('pain row', () {
     test('painRowHeading names the day', () {
       expect(
