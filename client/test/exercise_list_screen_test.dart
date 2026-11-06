@@ -321,6 +321,53 @@ void main() {
     expect(repo.lastEquipment, isNull);
   });
 
+  // The content starts where the title starts and ends where the × ends: the
+  // search box sat at 16 and the rows' icons at 4 under a title at 18.
+  testWidgets('the equipment sheet content sits at the header inset', (
+    tester,
+  ) async {
+    await tester.pumpWidget(harness(FakeRepository()));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const Key('library.equipment')));
+    await tester.pumpAndSettle();
+
+    final sheet = tester.getRect(
+      find
+          .descendant(
+            of: find.byType(BottomSheet),
+            matching: find.byType(Material),
+          )
+          .first,
+    );
+    const inset = FsSheetHeader.sideInset;
+
+    final search = tester.getRect(
+      find.descendant(
+        of: find.byType(BottomSheet),
+        matching: find.byType(FsField),
+      ),
+    );
+    expect(search.left - sheet.left, inset, reason: 'search box start');
+    expect(sheet.right - search.right, inset, reason: 'search box end');
+
+    final any = find.byKey(const Key('equipment.option.any'));
+    final icon = tester.getRect(
+      find.descendant(of: any, matching: find.byIcon(Icons.all_inclusive)),
+    );
+    expect(icon.left - sheet.left, inset, reason: 'row icon');
+
+    final barbell = find.byKey(const Key('equipment.option.barbell'));
+    final count = tester.getRect(
+      find.descendant(
+        of: barbell,
+        matching: find.byWidgetPredicate(
+          (w) => w is Text && RegExp(r'^\d+$').hasMatch(w.data ?? ''),
+        ),
+      ),
+    );
+    expect(sheet.right - count.right, inset, reason: 'row count');
+  });
+
   testWidgets('the sheet names gear the way onboarding does', (tester) async {
     // The catalogue tags gear as 'smith machine', 'ez barbell', 'cable'. The
     // user picked 'Machines' and 'Barbell' during onboarding and has never
