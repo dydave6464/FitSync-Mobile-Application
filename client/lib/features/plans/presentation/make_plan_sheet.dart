@@ -127,6 +127,7 @@ class _MakePlanSheetState extends State<_MakePlanSheet> {
                       key: Key('makePlan.split.${style.value}'),
                       label: style.label,
                       selected: style.value == _split,
+                      exclusive: true,
                       onTap: () => setState(() => _split = style.value),
                     ),
                   ),
