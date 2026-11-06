@@ -28,20 +28,28 @@ String mealForTime(DateTime instant) {
 String dayLabel(String date, String today) =>
     calendarDayLabel(DateTime.parse(date), DateTime.parse(today));
 
-/// [dayLabel] without the weekday -- "Today", "Yesterday" or "Nov 3" --
-/// for a line with no room to spare.
-String shortDayLabel(String date, String today) {
-  final label = dayLabel(date, today);
-  final comma = label.indexOf(', ');
-  return comma < 0 ? label : label.substring(comma + 2);
-}
+/// How many days [date] is before [today], both YYYY-MM-DD: 0 for today,
+/// 1 for yesterday. Whole days in UTC, which never has a 23-hour day.
+int _daysBefore(String date, String today) =>
+    DateTime.parse('${today}T00:00:00Z').difference(DateTime.parse('${date}T00:00:00Z')).inDays;
+
+/// "Today", "Yesterday" or "Nov 3" -- no weekday, and no year even in
+/// another year -- for a line with no room to spare: Log food's "Adding
+/// to" eyebrow, which must stay one line on a 320 dp phone at 2x text. The
+/// Nutrition tab behind it names the day in full ([dayLabel]).
+String shortDayLabel(String date, String today) => switch (_daysBefore(date, today)) {
+  0 => 'Today',
+  1 => 'Yesterday',
+  _ => shortDate(DateTime.parse(date)),
+};
 
 /// The end of a sentence saying which day food went to, when it was not
-/// today: "" for today, " yesterday", or " on Tue, Nov 3".
-String onDay(String date, String today) => switch (dayLabel(date, today)) {
-  'Today' => '',
-  'Yesterday' => ' yesterday',
-  final label => ' on $label',
+/// today: "" for today, " yesterday", or " on Tue, Nov 3" (with its year in
+/// another year, as [dayLabel] names it).
+String onDay(String date, String today) => switch (_daysBefore(date, today)) {
+  0 => '',
+  1 => ' yesterday',
+  _ => ' on ${dayLabel(date, today)}',
 };
 
 /// Atwater: what the server computes for a manual food. Like the server, it

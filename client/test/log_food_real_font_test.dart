@@ -89,6 +89,8 @@ void main() {
     'today': (DateTime.utc(2026, 10, 14, 4), 'ADDING TO'),
     'yesterday': (DateTime.utc(2026, 10, 15, 4), 'ADDING TO YESTERDAY'),
     'an older day': (DateTime.utc(2026, 10, 16, 4), 'ADDING TO OCT 14'),
+    // Short in another year too: no ", 2026" on a line with no room.
+    'a day in another year': (DateTime.utc(2027, 1, 2, 4), 'ADDING TO OCT 14'),
   };
   for (final MapEntry(key: day, value: (clock, label)) in clocks.entries) {
     for (final scale in [1.0, 1.8, 2.0]) {
