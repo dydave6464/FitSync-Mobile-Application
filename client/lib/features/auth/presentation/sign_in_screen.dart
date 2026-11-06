@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../core/api_exception.dart';
 import '../../../core/theme.dart';
 import '../../../core/widgets/fs_kit.dart';
+import '../data/google_sign_in_gateway.dart';
 import 'auth_controller.dart';
 import 'check_email_screen.dart';
 import 'forgot_password_screen.dart';
@@ -32,6 +33,11 @@ enum _Field { fullName, email, password }
 /// The shortest password the server accepts on register and on reset
 /// (`MIN_PASSWORD_LENGTH` in its auth routes).
 const _minPasswordLength = 8;
+
+/// When Google itself could not sign the user in. Names the other way in,
+/// since retrying may not help on a phone without Play Services.
+const _googleFailedMessage =
+    "Couldn't sign in with Google. Try again, or use your email and password.";
 
 class _SignInScreenState extends ConsumerState<SignInScreen> {
   final _email = TextEditingController();
@@ -110,11 +116,20 @@ class _SignInScreenState extends ConsumerState<SignInScreen> {
     });
 
     try {
-      final idToken = await ref.read(googleSignInGatewayProvider).idToken();
+      final result = await ref.read(googleSignInGatewayProvider).signIn();
       if (!mounted) return;
-      // A cancelled dialog is a decision, not a failure. Leave the screen
-      // exactly as it was so the user can pick another way in.
-      if (idToken == null) return;
+      final String idToken;
+      switch (result) {
+        case GoogleSignInToken(idToken: final token):
+          idToken = token;
+        // A cancelled dialog is a decision, not a failure. Leave the screen
+        // exactly as it was so the user can pick another way in.
+        case GoogleSignInCancelled():
+          return;
+        case GoogleSignInFailed():
+          setState(() => _error = _googleFailedMessage);
+          return;
+      }
 
       final user = await ref
           .read(authRepositoryProvider)
@@ -124,6 +139,11 @@ class _SignInScreenState extends ConsumerState<SignInScreen> {
     } on ApiException catch (error) {
       if (!mounted) return;
       setState(() => _error = userMessage(error));
+    } catch (_) {
+      // Anything else, so a tap never just stops the spinner and says
+      // nothing: this is the only way in without a password.
+      if (!mounted) return;
+      setState(() => _error = _googleFailedMessage);
     } finally {
       if (mounted) setState(() => _busy = false);
     }
