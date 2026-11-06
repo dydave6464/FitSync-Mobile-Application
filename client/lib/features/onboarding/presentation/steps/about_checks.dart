@@ -1,0 +1,89 @@
+import '../../../../core/api_exception.dart';
+import 'about_step.dart';
+
+/// The checks onboarding and Settings > Body metrics share around
+/// [AboutStep]: a number that looks like a slip is queried once before it
+/// is saved, and a field the server turned down is named the way the screen
+/// names it, not by its API name.
+
+/// Profile fields as the steps name them on screen.
+const profileFieldNames = {
+  'sex': 'sex',
+  'dateOfBirth': 'date of birth',
+  'heightCm': 'height',
+  'weightKg': 'weight',
+  'goalWeightKg': 'goal weight',
+  'activityLevel': 'activity level',
+  'fitnessLevel': 'experience',
+  'trainingLocation': 'training location',
+};
+
+/// What to say under an About answer the server turned down.
+const rejectedFieldMessage =
+    "This can't be saved as it is. Check it and try again.";
+
+/// The profile field a rejection points at, from the server's `details`.
+/// Null for any other failure, or a `details` that names no field as text.
+String? rejectedProfileField(Object error) => switch (error) {
+  ApiException(
+    code: 'INVALID_PROFILE_FIELD',
+    details: [{'field': final String field}, ...],
+  ) =>
+    field,
+  _ => null,
+};
+
+/// A failure in words a user can act on: [userMessage], except for the
+/// server's rejections of a profile answer, whose message names the API
+/// field ("goalWeightKg must be ...") rather than anything on screen. The
+/// field it sends in `details` is named the way the step names it instead.
+String plainProfileError(Object error) {
+  if (error is! ApiException || error.code != 'INVALID_PROFILE_FIELD') {
+    return userMessage(error);
+  }
+  final name = profileFieldNames[rejectedProfileField(error)];
+  return name == null
+      ? "One of these answers can't be saved as it is. Check it and try "
+            'again.'
+      : "Your $name can't be saved as it is. Check it and try again.";
+}
+
+/// The line by the button when [fields] (API names) look like slips:
+/// "Check your height. If it's right, tap Continue again."
+String rangeQueryMessage(Iterable<String> fields, {required String button}) {
+  final names = [for (final field in fields) profileFieldNames[field]!];
+  final list = names.length < 2
+      ? names.join()
+      : '${names.sublist(0, names.length - 1).join(', ')} and ${names.last}';
+  final pronoun = names.length < 2 ? "it's" : "they're";
+  return 'Check your $list. If $pronoun right, tap $button again.';
+}
+
+/// One About answer by its API field name.
+Object? aboutValue(AboutAnswers about, String field) => switch (field) {
+  'sex' => about.sex,
+  'dateOfBirth' => about.dateOfBirth,
+  'heightCm' => about.heightCm,
+  'weightKg' => about.weightKg,
+  'goalWeightKg' => about.goalWeightKg,
+  'activityLevel' => about.activityLevel,
+  _ => null,
+};
+
+/// Whether every field in [fields] holds the same answer in [a] and [b].
+bool sameAboutAnswers(
+  Iterable<String> fields,
+  AboutAnswers a,
+  AboutAnswers b,
+) => fields.every((field) => aboutValue(a, field) == aboutValue(b, field));
+
+/// The messages in [errors] whose answer is still the one [queried] held:
+/// an answer changed since loses its message.
+Map<String, String> standingFieldErrors(
+  Map<String, String> errors,
+  AboutAnswers queried,
+  AboutAnswers now,
+) => {
+  for (final MapEntry(:key, value: message) in errors.entries)
+    if (aboutValue(queried, key) == aboutValue(now, key)) key: message,
+};

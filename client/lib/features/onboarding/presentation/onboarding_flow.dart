@@ -20,6 +20,7 @@ import '../../reminders/presentation/providers.dart'
     show reminderRepositoryProvider, reminderSettingsProvider;
 import 'generating_view.dart';
 import 'onboarding_scaffold.dart';
+import 'steps/about_checks.dart';
 import 'steps/about_step.dart';
 import 'steps/goal_step.dart';
 import 'steps/health_step.dart';
@@ -286,34 +287,16 @@ class _OnboardingFlowState extends ConsumerState<OnboardingFlow> {
     final problems = aboutRangeProblems(_about, ref.read(weightUnitProvider));
     if (problems.isEmpty) return false;
     final queried = _queried;
-    if (queried != null &&
-        problems.keys.every(
-          (field) => _aboutValue(queried, field) == _aboutValue(_about, field),
-        )) {
+    if (queried != null && sameAboutAnswers(problems.keys, queried, _about)) {
       return false;
     }
     setState(() {
       _fieldErrors = problems;
       _queried = _about;
-      final names = [for (final field in problems.keys) _fieldNames[field]!];
-      _error =
-          "Check your ${names.join(' and ')}. If it's right, tap Continue "
-          'again.';
+      _error = rangeQueryMessage(problems.keys, button: 'Continue');
     });
     return true;
   }
-
-  /// One About answer by its API field name.
-  static Object? _aboutValue(AboutAnswers about, String field) =>
-      switch (field) {
-        'sex' => about.sex,
-        'dateOfBirth' => about.dateOfBirth,
-        'heightCm' => about.heightCm,
-        'weightKg' => about.weightKg,
-        'goalWeightKg' => about.goalWeightKg,
-        'activityLevel' => about.activityLevel,
-        _ => null,
-      };
 
   /// The About step reports every edit here. An answer the user has changed
   /// since it was queried loses its message; once none is left, so does the
@@ -322,10 +305,7 @@ class _OnboardingFlowState extends ConsumerState<OnboardingFlow> {
     _about = value;
     final queried = _queried;
     if (_fieldErrors.isEmpty || queried == null) return;
-    final left = {
-      for (final MapEntry(:key, value: message) in _fieldErrors.entries)
-        if (_aboutValue(queried, key) == _aboutValue(value, key)) key: message,
-    };
+    final left = standingFieldErrors(_fieldErrors, queried, value);
     if (left.length == _fieldErrors.length) return;
     void clear() {
       if (!mounted) return;
@@ -373,17 +353,13 @@ class _OnboardingFlowState extends ConsumerState<OnboardingFlow> {
       // region, so someone not looking there, or not looking at all, hears
       // that the tap did not work without a second announcement here.
       setState(() {
-        _error = _plainError(error);
+        _error = plainProfileError(error);
         _busy = false;
         if (_index == _total - 1) _buildFailed = true;
         // A rejected About answer is also flagged under its own card.
-        final field = _rejectedField(error);
-        if (_index == 1 &&
-            field != null &&
-            _aboutValue(_about, field) != null) {
-          _fieldErrors = {
-            field: "This can't be saved as it is. Check it and try again.",
-          };
+        final field = rejectedProfileField(error);
+        if (_index == 1 && field != null && aboutValue(_about, field) != null) {
+          _fieldErrors = {field: rejectedFieldMessage};
           _queried = _about;
         }
       });
@@ -394,40 +370,6 @@ class _OnboardingFlowState extends ConsumerState<OnboardingFlow> {
 
     _advance();
   }
-
-  /// A failure in words a user can act on: [userMessage], except for the
-  /// server's rejections of a profile answer, whose message names the API
-  /// field ("goalWeightKg must be ...") rather than anything on screen. The
-  /// field it sends in `details` is named the way the step names it instead.
-  static String _plainError(Object error) {
-    if (error is! ApiException || error.code != 'INVALID_PROFILE_FIELD') {
-      return userMessage(error);
-    }
-    final name = _fieldNames[_rejectedField(error)];
-    return name == null
-        ? "One of these answers can't be saved as it is. Check it and try "
-              'again.'
-        : "Your $name can't be saved as it is. Check it and try again.";
-  }
-
-  /// The profile field a rejection points at, from the server's `details`.
-  static String? _rejectedField(Object error) => switch (error) {
-    ApiException(code: 'INVALID_PROFILE_FIELD', :final details) =>
-      details.firstOrNull?['field'] as String?,
-    _ => null,
-  };
-
-  /// Profile fields as the steps name them on screen.
-  static const _fieldNames = {
-    'sex': 'sex',
-    'dateOfBirth': 'date of birth',
-    'heightCm': 'height',
-    'weightKg': 'weight',
-    'goalWeightKg': 'goal weight',
-    'activityLevel': 'activity level',
-    'fitnessLevel': 'experience',
-    'trainingLocation': 'training location',
-  };
 
   /// The last step's Continue: unlike every earlier step, this one has
   /// something to do before `_continue()` -- show the system permission

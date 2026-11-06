@@ -1939,6 +1939,72 @@ void main() {
       ]);
     });
 
+    testWidgets('one queried answer is "it", several are a list and "they"', (
+      tester,
+    ) async {
+      await _pumpFlow(tester, patches: []);
+      await toAbout(tester);
+
+      await tester.enterText(find.byKey(const Key('heightCm')), '17');
+      await tester.pumpAndSettle();
+      await _tapKey(tester, const Key('continue'));
+      expect(
+        find.text("Check your height. If it's right, tap Continue again."),
+        findsOneWidget,
+      );
+
+      await _tapKey(tester, const Key('goalWeight.add'));
+      await tester.enterText(find.byKey(const Key('weightKg')), '7');
+      await tester.enterText(find.byKey(const Key('goalWeightKg')), '6');
+      await tester.pumpAndSettle();
+      await _tapKey(tester, const Key('continue'));
+      expect(
+        find.text(
+          "Check your height, weight and goal weight. If they're right, tap "
+          'Continue again.',
+        ),
+        findsOneWidget,
+      );
+    });
+
+    testWidgets('a rejection naming its field oddly still frees Continue', (
+      tester,
+    ) async {
+      final patches = <Map<String, dynamic>>[];
+      var fail = true;
+      await _pumpFlow(
+        tester,
+        patches: patches,
+        onPatch: () async {
+          if (!fail) return;
+          throw const ApiException(
+            'INVALID_PROFILE_FIELD',
+            'Bad field.',
+            details: [
+              {'field': 42},
+            ],
+          );
+        },
+      );
+      await toAbout(tester);
+
+      await tester.enterText(find.byKey(const Key('heightCm')), '175');
+      await tester.pumpAndSettle();
+      await _tapKey(tester, const Key('continue'));
+
+      expect(tester.takeException(), isNull);
+      expect(
+        find.text(
+          "One of these answers can't be saved as it is. Check it and try "
+          'again.',
+        ),
+        findsOneWidget,
+      );
+      fail = false;
+      await _tapKey(tester, const Key('continue'));
+      expect(find.text('STEP 3 / 6'), findsOneWidget, reason: 'not stuck busy');
+    });
+
     testWidgets('a new implausible value is queried again', (tester) async {
       final patches = <Map<String, dynamic>>[];
       await _pumpFlow(tester, patches: patches);
