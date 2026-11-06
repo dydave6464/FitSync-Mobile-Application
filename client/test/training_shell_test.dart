@@ -886,4 +886,52 @@ void main() {
     await tester.pumpAndSettle();
     expect(find.byType(RecoveryScreen), findsOneWidget);
   });
+
+  group('sub-tabs (PT-2)', () {
+    testWidgets('each sub-tab is a 48 dp tall target', (tester) async {
+      await _pump(tester);
+      for (final tab in ['plan', 'progress', 'recovery']) {
+        final size = tester.getSize(find.byKey(Key('tab.$tab')));
+        expect(size.height, greaterThanOrEqualTo(48), reason: tab);
+        expect(size.width, greaterThanOrEqualTo(48), reason: tab);
+      }
+    });
+
+    testWidgets('sub-tabs announce as tabs with the current one selected', (
+      tester,
+    ) async {
+      final handle = tester.ensureSemantics();
+      await _pump(tester);
+
+      expect(
+        tester.getSemantics(find.byKey(const Key('tab.plan'))),
+        isSemantics(
+          label: 'Plan',
+          hint: 'Tab 1 of 3',
+          isButton: true,
+          hasSelectedState: true,
+          isSelected: true,
+          isInMutuallyExclusiveGroup: true,
+          hasTapAction: true,
+        ),
+      );
+      expect(
+        tester.getSemantics(find.byKey(const Key('tab.progress'))),
+        isSemantics(
+          label: 'Progress',
+          hint: 'Tab 2 of 3',
+          hasSelectedState: true,
+          isSelected: false,
+        ),
+      );
+
+      await tester.tap(find.byKey(const Key('tab.progress')));
+      await tester.pumpAndSettle();
+      expect(
+        tester.getSemantics(find.byKey(const Key('tab.progress'))),
+        isSemantics(label: 'Progress', isSelected: true),
+      );
+      handle.dispose();
+    });
+  });
 }
