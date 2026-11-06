@@ -13,7 +13,8 @@ import 'meal_photo_screen.dart';
 import 'providers.dart';
 
 /// Snap a meal from either door. A free account sees the Pro screen; a Pro
-/// one picks camera or library, then the photo screen. True once a meal was
+/// one picks camera or library, then the photo screen -- or reopens today's
+/// unlogged photo, straight to its list. True once a meal was
 /// logged (Log food then closes as well). A null [mealType] opens the
 /// confirm list with no meal picked.
 Future<bool> startSnapMeal(
@@ -39,37 +40,53 @@ Future<bool> startSnapMeal(
     await openProScreen(context);
     return false;
   }
-  final captured = await _capture(context, ref, messenger);
-  if (captured == null || !context.mounted) return false;
-  final logged = await Navigator.of(context).push<bool>(MaterialPageRoute(
-    builder: (_) => MealPhotoScreen(
-      photo: captured.photo,
-      source: captured.source,
-      mealType: mealType,
-      date: date,
-      onSearchInstead: onSearchInstead,
-    ),
-  ));
+  // Asked now and not waited for: the sheet opens at once and adds the
+  // answer when it comes. A failure only means the sheet adds nothing.
+  final today = ref.read(mealPhotoRepositoryProvider).today();
+  final choice = await showCaptureChoiceSheet(context, today: today);
+  if (choice == null || !context.mounted) return false;
+  final Widget screen;
+  switch (choice) {
+    case CaptureResume(:final recognition):
+      screen = MealPhotoScreen.resume(
+        recognition: recognition,
+        mealType: mealType,
+        date: date,
+        onSearchInstead: onSearchInstead,
+      );
+    case CapturePhoto(:final source):
+      final captured = await _capture(context, ref, messenger, source);
+      if (captured == null || !context.mounted) return false;
+      screen = MealPhotoScreen(
+        photo: captured.photo,
+        source: captured.source,
+        mealType: mealType,
+        date: date,
+        onSearchInstead: onSearchInstead,
+      );
+  }
+  final logged = await Navigator.of(context).push<bool>(MaterialPageRoute(builder: (_) => screen));
   return logged == true;
 }
 
-/// Camera or library. A refused camera offers Settings or the library; a
-/// photo that isn't a JPEG or PNG, or a picker failure, says so. Null when
-/// the user backed out or nothing usable came back.
+/// The photo from [first], the camera or the library. A refused camera
+/// offers Settings or the library; a photo that isn't a JPEG or PNG, or a
+/// picker failure, says so. Null when the user backed out or nothing usable
+/// came back.
 Future<({PickedPhoto photo, PhotoSource source})?> _capture(
   BuildContext context,
   WidgetRef ref,
   ScaffoldMessengerState messenger,
+  PhotoSource first,
 ) async {
-  var source = await showCaptureChoiceSheet(context);
-  if (source == null || !context.mounted) return null;
+  var source = first;
   final picker = ref.read(mealPhotoPickerProvider);
   final openSettings = ref.read(appSettingsOpenerProvider);
   // At most twice: the camera, then -- if it was refused -- the library,
   // which never raises CameraAccessDenied.
   while (true) {
     try {
-      final photo = await picker.pick(source!);
+      final photo = await picker.pick(source);
       return photo == null ? null : (photo: photo, source: source);
     } on CameraAccessDenied {
       if (!context.mounted) return null;
