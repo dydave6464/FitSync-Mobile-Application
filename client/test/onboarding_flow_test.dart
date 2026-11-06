@@ -1406,6 +1406,9 @@ void main() {
       findsNothing,
       reason: 'the wizard chrome has no place on the generating screen',
     );
+    // AO-19: not "Profile saved" before it has ticked.
+    expect(find.text('Saving your profile'), findsOneWidget);
+    expect(find.text('Profile saved'), findsNothing);
 
     gate.complete();
     await tester.pumpAndSettle();

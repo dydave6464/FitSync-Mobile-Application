@@ -526,6 +526,7 @@ class _OnboardingFlowState extends ConsumerState<OnboardingFlow> {
                 'Matching exercises to your goals, equipment, '
                 'and injury history.',
             leadLabel: 'Profile saved',
+            leadPendingLabel: 'Saving your profile',
             leadDone: _saved,
             avoiding: _avoidingNames(),
             planReady: _planReady,

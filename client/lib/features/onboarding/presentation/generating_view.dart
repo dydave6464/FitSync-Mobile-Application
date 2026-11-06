@@ -103,6 +103,7 @@ class GeneratingView extends StatefulWidget {
     required this.title,
     required this.subtitle,
     required this.leadLabel,
+    this.leadPendingLabel,
     required this.leadDone,
     required this.avoiding,
     required this.planReady,
@@ -119,6 +120,11 @@ class GeneratingView extends StatefulWidget {
   /// The first row's sentence. Onboarding reports the write it just made;
   /// the generator states the split and schedule being applied.
   final String leadLabel;
+
+  /// The first row's sentence until it ticks, when [leadLabel] would claim
+  /// something not yet done ("Saving your profile" before "Profile saved").
+  /// Null keeps [leadLabel] throughout.
+  final String? leadPendingLabel;
 
   /// True once whatever [leadLabel] claims has actually happened.
   final bool leadDone;
@@ -175,6 +181,7 @@ class _GeneratingViewState extends State<GeneratingView> {
     final avoiding = widget.avoiding;
     final still = MediaQuery.disableAnimationsOf(context);
     final icon = Icon(Icons.auto_awesome, size: 34, color: t.accent);
+    final leadDone = widget.leadDone && _open > 0;
 
     return PopScope(
       canPop: widget.canPop,
@@ -198,10 +205,15 @@ class _GeneratingViewState extends State<GeneratingView> {
                   children: [
                     still ? _StillRing(child: icon) : FsRing(child: icon),
                     const SizedBox(height: 28),
-                    Text(
-                      widget.title,
-                      style: Theme.of(context).textTheme.headlineSmall,
-                      textAlign: TextAlign.center,
+                    // A live region, so a screen reader says what is happening
+                    // when this replaces the step it was on.
+                    Semantics(
+                      liveRegion: true,
+                      child: Text(
+                        widget.title,
+                        style: Theme.of(context).textTheme.headlineSmall,
+                        textAlign: TextAlign.center,
+                      ),
                     ),
                     const SizedBox(height: 10),
                     Text(
@@ -216,8 +228,10 @@ class _GeneratingViewState extends State<GeneratingView> {
                     const SizedBox(height: 28),
                     _CheckRow(
                       id: 'lead',
-                      label: widget.leadLabel,
-                      done: widget.leadDone && _open > 0,
+                      label: leadDone
+                          ? widget.leadLabel
+                          : widget.leadPendingLabel ?? widget.leadLabel,
+                      done: leadDone,
                     ),
                     _CheckRow(
                       id: 'avoiding',
@@ -300,39 +314,45 @@ class _CheckRow extends StatelessWidget {
   Widget build(BuildContext context) {
     final t = context.fs;
 
-    return Padding(
-      padding: const EdgeInsets.only(bottom: 10),
-      child: Row(
-        mainAxisAlignment: MainAxisAlignment.center,
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          AnimatedContainer(
-            duration: MediaQuery.disableAnimationsOf(context)
-                ? Duration.zero
-                : const Duration(milliseconds: 220),
-            width: 18,
-            height: 18,
-            decoration: BoxDecoration(
-              shape: BoxShape.circle,
-              color: done ? t.accent : t.surface2,
+    // One node that says the row and its state: on screen the state is only
+    // the circle's fill and a tick.
+    return Semantics(
+      label: '$label, ${done ? 'done' : 'in progress'}',
+      excludeSemantics: true,
+      child: Padding(
+        padding: const EdgeInsets.only(bottom: 10),
+        child: Row(
+          mainAxisAlignment: MainAxisAlignment.center,
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            AnimatedContainer(
+              duration: MediaQuery.disableAnimationsOf(context)
+                  ? Duration.zero
+                  : const Duration(milliseconds: 220),
+              width: 18,
+              height: 18,
+              decoration: BoxDecoration(
+                shape: BoxShape.circle,
+                color: done ? t.accent : t.surface2,
+              ),
+              child: done
+                  ? Icon(
+                      Icons.check,
+                      key: Key('gen.$id.done'),
+                      size: 11,
+                      color: t.onAccent,
+                    )
+                  : null,
             ),
-            child: done
-                ? Icon(
-                    Icons.check,
-                    key: Key('gen.$id.done'),
-                    size: 11,
-                    color: t.onAccent,
-                  )
-                : null,
-          ),
-          const SizedBox(width: 10),
-          Flexible(
-            child: Text(
-              label,
-              style: TextStyle(fontSize: 13, color: done ? t.text : t.text3),
+            const SizedBox(width: 10),
+            Flexible(
+              child: Text(
+                label,
+                style: TextStyle(fontSize: 13, color: done ? t.text : t.text3),
+              ),
             ),
-          ),
-        ],
+          ],
+        ),
       ),
     );
   }
