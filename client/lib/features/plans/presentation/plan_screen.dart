@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../../core/api_exception.dart';
 import '../../../core/theme.dart';
 import '../../../core/widgets/fs_kit.dart';
 import '../../exercises/domain/exercise_labels.dart';
@@ -38,22 +39,10 @@ class PlanScreen extends ConsumerWidget {
 
     return plan.when(
       loading: () => const Center(child: CircularProgressIndicator()),
-      error: (error, _) => Center(
-        child: Padding(
-          padding: const EdgeInsets.all(24),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Text(describeError(error), textAlign: TextAlign.center),
-              const SizedBox(height: 16),
-              FsButton(
-                label: 'Retry',
-                small: true,
-                onPressed: () => ref.invalidate(activePlanProvider),
-              ),
-            ],
-          ),
-        ),
+      error: (error, _) => FsRetry(
+        fullScreen: true,
+        message: userMessage(error),
+        onRetry: () => ref.invalidate(activePlanProvider),
       ),
       data: (loaded) => loaded == null
           ? const _NoPlanYet()

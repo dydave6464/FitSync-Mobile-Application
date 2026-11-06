@@ -307,28 +307,11 @@ class _GeneratorScreenState extends ConsumerState<GeneratorScreen> {
             )
           : asyncPlan.when(
               loading: () => const Center(child: CircularProgressIndicator()),
-              error: (error, _) => Center(
-                child: Padding(
-                  padding: const EdgeInsets.all(24),
-                  child: Column(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      const Text(
-                        "Couldn't load your current plan.",
-                        textAlign: TextAlign.center,
-                      ),
-                      const SizedBox(height: 6),
-                      Text(describeError(error), textAlign: TextAlign.center),
-                      const SizedBox(height: 12),
-                      FsButton(
-                        label: 'Retry',
-                        small: true,
-                        kind: FsButtonKind.secondary,
-                        onPressed: () => ref.invalidate(activePlanProvider),
-                      ),
-                    ],
-                  ),
-                ),
+              error: (error, _) => FsRetry(
+                fullScreen: true,
+                message:
+                    "Couldn't load your current plan. ${userMessage(error)}",
+                onRetry: () => ref.invalidate(activePlanProvider),
               ),
               data: (plan) => _buildControls(context, plan, avoiding),
             ),

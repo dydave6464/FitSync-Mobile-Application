@@ -817,9 +817,17 @@ void main() {
 
     expect(find.byType(FsChip), findsNothing);
     expect(find.text('Generating replaces your current plan.'), findsNothing);
-    expect(find.text('Retry'), findsOneWidget);
+    // The kit's retry, in the app's words (L-46).
+    expect(
+      find.widgetWithText(
+        FsRetry,
+        "Couldn't load your current plan. Something went wrong. "
+        'Please try again.',
+      ),
+      findsOneWidget,
+    );
 
-    await tester.tap(find.text('Retry'));
+    await tester.tap(find.text('Try again'));
     await tester.pumpAndSettle();
 
     expect(calls, 2, reason: 'retry must actually refetch');

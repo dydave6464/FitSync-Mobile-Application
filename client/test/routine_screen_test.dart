@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 
+import 'package:fitsync/core/widgets/fs_kit.dart';
 import 'package:fitsync/core/api_exception.dart';
 import 'package:fitsync/core/theme.dart';
 import 'package:fitsync/features/routine/data/routine_repository.dart';
@@ -384,6 +385,8 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.byKey(const Key('routine.retry')), findsOneWidget);
+    expect(find.widgetWithText(FsRetry, 'Something broke.'), findsOneWidget);
+    expect(find.text('Try again'), findsOneWidget);
   });
 
   testWidgets('the list icon opens every habit', (tester) async {

@@ -218,7 +218,7 @@ class _ScheduleScreenState extends ConsumerState<ScheduleScreen> {
                   onTapDay: loaded == null ? null : _tapDay,
                 ),
                 if (grid.hasError)
-                  _SectionError(
+                  FsRetry(
                     message: "Couldn't load this month",
                     buttonKey: const Key('schedule.grid.retry'),
                     onRetry: () => ref.invalidate(calendarProvider(gridSpan)),
@@ -265,7 +265,7 @@ class _ScheduleScreenState extends ConsumerState<ScheduleScreen> {
         height: 120,
         child: Center(child: CircularProgressIndicator()),
       ),
-      error: (error, _) => _SectionError(
+      error: (error, _) => FsRetry(
         message: "Couldn't load what's coming up",
         buttonKey: const Key('schedule.list.retry'),
         onRetry: () => ref.invalidate(calendarProvider(span)),
@@ -502,40 +502,6 @@ class _Empty extends StatelessWidget {
         text,
         style: TextStyle(fontSize: 13, color: context.fs.text2),
       ),
-    ),
-  );
-}
-
-class _SectionError extends StatelessWidget {
-  const _SectionError({
-    required this.message,
-    required this.buttonKey,
-    required this.onRetry,
-  });
-
-  final String message;
-  final Key buttonKey;
-  final VoidCallback onRetry;
-
-  @override
-  Widget build(BuildContext context) => Padding(
-    padding: const EdgeInsets.symmetric(vertical: 12),
-    child: Column(
-      children: [
-        Text(
-          message,
-          textAlign: TextAlign.center,
-          style: TextStyle(fontSize: 13, color: context.fs.text2),
-        ),
-        const SizedBox(height: 8),
-        FsButton(
-          key: buttonKey,
-          label: 'Retry',
-          small: true,
-          kind: FsButtonKind.secondary,
-          onPressed: onRetry,
-        ),
-      ],
     ),
   );
 }

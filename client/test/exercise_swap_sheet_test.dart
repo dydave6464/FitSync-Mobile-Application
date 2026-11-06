@@ -4,7 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 
-import 'package:fitsync/core/widgets/fs_kit.dart' show FsField;
+import 'package:fitsync/core/widgets/fs_kit.dart';
 
 import 'package:fitsync/core/api_exception.dart';
 import 'package:fitsync/features/exercises/domain/exercise.dart';
@@ -1102,6 +1102,46 @@ void main() {
 
     expect(calls, 2);
     expect(find.byKey(const Key('swap.alt.12')), findsOneWidget);
+  });
+
+  testWidgets("a demo that can't load offers the kit's Try again", (
+    tester,
+  ) async {
+    var calls = 0;
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          planRepositoryProvider.overrideWithValue(_RecordingRepo()),
+          alternativesProvider.overrideWith((ref, key) async => const [_alt]),
+          exerciseDetailProvider.overrideWith((ref, id) async {
+            calls += 1;
+            if (calls == 1) throw Exception('boom');
+            return _detail;
+          }),
+        ],
+        child: const MaterialApp(
+          home: Scaffold(
+            body: ExerciseSwapSheet(
+              planExerciseId: 77,
+              exerciseName: 'Cable Fly',
+            ),
+          ),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const Key('swap.alt.12')));
+    await tester.pumpAndSettle();
+
+    expect(
+      find.widgetWithText(FsRetry, 'Something went wrong. Please try again.'),
+      findsOneWidget,
+    );
+    await tester.tap(find.text('Try again'));
+    await tester.pumpAndSettle();
+
+    expect(calls, 2);
+    expect(find.byType(FsRetry), findsNothing);
   });
 
   group('search box (PT-12)', () {

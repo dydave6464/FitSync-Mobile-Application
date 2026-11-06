@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 
+import 'package:fitsync/core/widgets/fs_kit.dart';
 import 'package:fitsync/core/api_exception.dart';
 import 'package:fitsync/features/profile/domain/profile.dart';
 import 'package:fitsync/features/profile/presentation/providers.dart';
@@ -569,7 +570,10 @@ void main() {
   ) async {
     await _pump(tester, failOnce: {_grid});
 
-    expect(find.text("Couldn't load this month"), findsOneWidget);
+    expect(
+      find.widgetWithText(FsRetry, "Couldn't load this month"),
+      findsOneWidget,
+    );
     expect(find.text('Today · Walk · Any time'), findsOneWidget);
     expect(
       find.byKey(const Key('schedule.dot.workout.2026-09-22')),
@@ -591,7 +595,10 @@ void main() {
   ) async {
     await _pump(tester, failOnce: {_week});
 
-    expect(find.text("Couldn't load what's coming up"), findsOneWidget);
+    expect(
+      find.widgetWithText(FsRetry, "Couldn't load what's coming up"),
+      findsOneWidget,
+    );
     expect(
       find.byKey(const Key('schedule.dot.workout.2026-09-22')),
       findsOneWidget,
