@@ -205,6 +205,34 @@ final sessionHistoryProvider = FutureProvider<SessionHistoryPage>(
   retry: apiRetryPolicy,
 );
 
+/// How many pages of the history list the Progress tab shows: the first,
+/// plus one more per "Show older workouts".
+///
+/// Back to one whenever the first page is fetched again. A newly finished
+/// workout pushes every older one a row down, so pages fetched before it
+/// would repeat a workout at each page edge.
+class HistoryPagesNotifier extends Notifier<int> {
+  @override
+  int build() {
+    ref.watch(sessionHistoryProvider);
+    return 1;
+  }
+
+  void showMore() => state = state + 1;
+}
+
+final historyPagesProvider = NotifierProvider<HistoryPagesNotifier, int>(
+  HistoryPagesNotifier.new,
+);
+
+/// Page [page] (2 and on) of the same list as [sessionHistoryProvider],
+/// refetched along with it for the reason [HistoryPagesNotifier] resets.
+final olderHistoryProvider = FutureProvider.autoDispose
+    .family<SessionHistoryPage, int>((ref, page) {
+      ref.watch(sessionHistoryProvider);
+      return ref.watch(sessionRepositoryProvider).history(page: page);
+    }, retry: apiRetryPolicy);
+
 /// The workout the "+" sheet offers to repeat, or null when there is none.
 final lastWorkoutProvider = FutureProvider<LastWorkout?>(
   (ref) => ref.watch(sessionRepositoryProvider).lastWorkout(),

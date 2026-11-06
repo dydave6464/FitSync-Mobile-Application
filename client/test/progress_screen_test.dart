@@ -75,9 +75,17 @@ class FakeSessionRepository implements SessionRepository {
     this.analyticsValue = _quietAnalytics,
     this.summaryValue = _quietSummary,
     this.error,
+    this.total,
   });
 
   final List<SessionHistoryEntry> entries;
+
+  /// What the server says it holds in all, when that is more than [entries]
+  /// -- null for the same count. Pages are cut from [entries] as the server
+  /// cuts them, newest first.
+  final int? total;
+
+  final pagesAsked = <int>[];
   final TrainingAnalytics analyticsValue;
   final TrainingSummary summaryValue;
 
@@ -89,10 +97,11 @@ class FakeSessionRepository implements SessionRepository {
 
   @override
   Future<SessionHistoryPage> history({int page = 1, int limit = 20}) async {
+    pagesAsked.add(page);
     if (error != null) throw error!;
     return SessionHistoryPage(
-      sessions: entries,
-      total: entries.length,
+      sessions: entries.skip((page - 1) * limit).take(limit).toList(),
+      total: total ?? entries.length,
       page: page,
       limit: limit,
     );
@@ -299,7 +308,12 @@ void main() {
       ),
       findsOneWidget,
     );
-    expect(find.text('Retry'), findsOneWidget);
+    // The kit's retry: plain words over a small secondary "Try again", not a
+    // Material FilledButton under a cloud.
+    expect(find.byType(FsRetry), findsOneWidget);
+    expect(find.text('Try again'), findsOneWidget);
+    expect(find.text('Retry'), findsNothing);
+    expect(find.byType(FilledButton), findsNothing);
     expect(
       find.textContaining('No completed workouts yet'),
       findsNothing,
@@ -307,9 +321,9 @@ void main() {
     );
   });
 
-  // The card's Retry is its last line, drawn about 30 dp tall; the card's
-  // padding beneath it is where the rest of a thumb's target goes.
-  testWidgets("a card's Retry answers a tap 7 dp off its pill", (tester) async {
+  testWidgets("a card's failure uses the kit's Try again, which reloads it", (
+    tester,
+  ) async {
     var loads = 0;
     await _pump(
       tester,
@@ -318,18 +332,18 @@ void main() {
         throw const ApiException('NETWORK_ERROR', 'Could not reach it.');
       },
     );
-    await tester.scrollUntilVisible(find.text('Retry'), 200);
+    final retry = find.descendant(
+      of: find.byType(FsRetry),
+      matching: find.text('Try again'),
+    );
+    await tester.scrollUntilVisible(retry, 200);
     await tester.pumpAndSettle();
+    expect(find.text('Retry'), findsNothing);
     final before = loads;
 
-    final pill = tester.getRect(
-      find.ancestor(of: find.text('Retry'), matching: find.byType(FsChip)),
-    );
-    await tester.tapAt(pill.bottomCenter + const Offset(0, 7));
+    await tester.tap(retry);
     await tester.pumpAndSettle();
-    await tester.tapAt(pill.topCenter - const Offset(0, 7));
-    await tester.pumpAndSettle();
-    expect(loads, before + 2);
+    expect(loads, before + 1);
   });
 
   testWidgets('a session that logged no weight does not read as zero', (
@@ -415,6 +429,88 @@ void main() {
       greaterThan(tester.getTopLeft(find.byType(BodyWeightCard)).dy),
       reason: 'the action comes after what it shares',
     );
+  });
+
+  testWidgets('a past workout reads its day in words, not as an ISO date', (
+    tester,
+  ) async {
+    await _pump(tester, repo: FakeSessionRepository(entries: const [_mine]));
+
+    expect(find.text('2026-09-14', skipOffstage: false), findsNothing);
+    // September 14, 2026 was a Monday.
+    expect(
+      find.textContaining('Mon, Sep 14', skipOffstage: false),
+      findsOneWidget,
+    );
+  });
+
+  group('older workouts', () {
+    List<SessionHistoryEntry> many(int n) => [
+      for (var i = 0; i < n; i++)
+        SessionHistoryEntry(
+          sessionId: 100 - i,
+          sessionDate: '2026-08-${(28 - i).toString().padLeft(2, '0')}',
+          setCount: i + 1,
+          exerciseCount: 1,
+          planName: 'Workout ${i + 1}',
+        ),
+    ];
+
+    testWidgets('past the newest 20, a button loads the next page', (
+      tester,
+    ) async {
+      final repo = FakeSessionRepository(entries: many(23));
+      await _pump(tester, repo: repo);
+
+      final more = find.text('Show older workouts', skipOffstage: false);
+      expect(more, findsOneWidget);
+      expect(find.text('Workout 21', skipOffstage: false), findsNothing);
+
+      await tester.ensureVisible(more);
+      await tester.pumpAndSettle();
+      await tester.tap(more);
+      await tester.pumpAndSettle();
+
+      expect(repo.pagesAsked, contains(2));
+      expect(find.text('Workout 21', skipOffstage: false), findsOneWidget);
+      expect(find.text('Workout 23', skipOffstage: false), findsOneWidget);
+      // Everything is on screen now, so there is nothing older to offer.
+      expect(more, findsNothing);
+    });
+
+    test('a fresh first page drops the older pages shown', () async {
+      // A finished workout refetches page 1 and shifts every older row by
+      // one, so pages fetched before it would repeat a workout.
+      final container = ProviderContainer(
+        overrides: [
+          sessionRepositoryProvider.overrideWithValue(
+            FakeSessionRepository(entries: many(23)),
+          ),
+        ],
+      );
+      addTearDown(container.dispose);
+      final sub = container.listen(historyPagesProvider, (_, _) {});
+      addTearDown(sub.close);
+      await container.read(sessionHistoryProvider.future);
+
+      container.read(historyPagesProvider.notifier).showMore();
+      expect(container.read(historyPagesProvider), 2);
+
+      container.invalidate(sessionHistoryProvider);
+      await container.read(sessionHistoryProvider.future);
+      expect(container.read(historyPagesProvider), 1);
+    });
+
+    testWidgets('no button when the first page holds every workout', (
+      tester,
+    ) async {
+      await _pump(tester, repo: FakeSessionRepository(entries: many(20)));
+
+      expect(
+        find.text('Show older workouts', skipOffstage: false),
+        findsNothing,
+      );
+    });
   });
 
   group('history volume follows the weight unit', () {
