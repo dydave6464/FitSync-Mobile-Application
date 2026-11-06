@@ -388,3 +388,4 @@ module.exports = function buildAuthRouter({
 
 module.exports.toPublicUser = toPublicUser;
 module.exports.requireString = requireString;
+module.exports.MAX_PASSWORD_LENGTH = MAX_PASSWORD_LENGTH;

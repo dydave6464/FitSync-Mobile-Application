@@ -11,11 +11,15 @@ const crypto = require('node:crypto');
 //
 // See the design, section 4.
 
+const RESET_TTL_SECONDS = 60 * 60;
 const TTL_SECONDS = Object.freeze({
   verify_email: 24 * 60 * 60,
   // Deliberately far shorter. An outstanding reset token is a live account
   // takeover; an outstanding verification token is not.
-  reset_password: 60 * 60,
+  reset_password: RESET_TTL_SECONDS,
+  // The web deletion page's emailed link: as destructive as a reset, so the
+  // same short life.
+  delete_account: RESET_TTL_SECONDS,
 });
 
 /// SHA-256, hex. Exported because shared_reports.token_hash holds the same
@@ -33,6 +37,19 @@ async function issueToken(pool, { userId, purpose }) {
     [hashToken(token), userId, purpose, ttl],
   );
   return token;
+}
+
+/// The owner of a live (unspent, unexpired) [token] for [purpose], without
+/// spending it -- for a page that shows the token's form before the POST
+/// that consumes it. `{ userId }` or null.
+async function findLiveToken(pool, { token, purpose }) {
+  if (typeof token !== 'string' || token.length === 0) return null;
+  const [rows] = await pool.query(
+    `SELECT user_id FROM auth_tokens
+      WHERE token_hash = ? AND purpose = ? AND consumed_at IS NULL AND expires_at > NOW()`,
+    [hashToken(token), purpose],
+  );
+  return rows.length === 0 ? null : { userId: rows[0].user_id };
 }
 
 async function consumeToken(pool, { token, purpose }) {
@@ -71,4 +88,6 @@ async function consumeToken(pool, { token, purpose }) {
   return { userId };
 }
 
-module.exports = { issueToken, consumeToken, hashToken, TTL_SECONDS };
+module.exports = {
+  issueToken, findLiveToken, consumeToken, hashToken, TTL_SECONDS,
+};
