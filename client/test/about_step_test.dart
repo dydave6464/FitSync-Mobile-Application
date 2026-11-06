@@ -757,6 +757,150 @@ void main() {
       handle.dispose();
     });
   });
+
+  testWidgets('stacked at large text, each message sits under its own card', (
+    tester,
+  ) async {
+    // L-20: once Weight moved under Height, the height message still came
+    // after both cards, under Weight.
+    await pumpOnPhone(
+      tester,
+      const AboutStep(
+        value: AboutAnswers(heightCm: 17, weightKg: 7),
+        goals: [],
+        onChanged: _ignore,
+        fieldErrors: {
+          'heightCm': 'Check this: 17 cm?',
+          'weightKg': 'Check: 7?',
+        },
+      ),
+      screenWidth: 360,
+    );
+
+    final height = tester.getRect(find.byKey(const Key('heightCm')));
+    final weight = tester.getRect(find.byKey(const Key('weightKg')));
+    final heightError = tester.getRect(find.byKey(const Key('error.heightCm')));
+    final weightError = tester.getRect(find.byKey(const Key('error.weightKg')));
+    expect(weight.top, greaterThan(height.bottom), reason: 'stacked');
+    expect(heightError.top, greaterThan(height.bottom));
+    expect(heightError.bottom, lessThan(weight.top));
+    expect(weightError.top, greaterThan(weight.bottom));
+  });
+
+  testWidgets('side by side, both messages still sit under the pair', (
+    tester,
+  ) async {
+    await pumpOnPhone(
+      tester,
+      const AboutStep(
+        value: AboutAnswers(heightCm: 17, weightKg: 7),
+        goals: [],
+        onChanged: _ignore,
+        fieldErrors: {
+          'heightCm': 'Check this: 17 cm?',
+          'weightKg': 'Check: 7?',
+        },
+      ),
+      screenWidth: 360,
+      textScale: 1.0,
+    );
+
+    final height = tester.getRect(find.byKey(const Key('heightCm')));
+    final heightError = tester.getRect(find.byKey(const Key('error.heightCm')));
+    final weightError = tester.getRect(find.byKey(const Key('error.weightKg')));
+    expect(heightError.top, greaterThan(height.bottom));
+    expect(weightError.top, greaterThan(heightError.bottom));
+  });
+
+  group('the activity level', () {
+    // AO-24: five bare chips, though they move the calorie estimate by more
+    // than half.
+    testWidgets('explains the one picked', (tester) async {
+      await _pumpAndEdit(
+        tester,
+        (_) async {},
+        value: const AboutAnswers(activityLevel: 'light'),
+      );
+
+      expect(
+        tester.widget<Text>(find.byKey(const Key('activity.hint'))).data,
+        'On your feet some of the day, or 1 to 3 workouts a week.',
+      );
+    });
+
+    testWidgets('changes its explanation with the pick', (tester) async {
+      await _pumpAndEdit(tester, (tester) async {
+        await _tapKey(tester, const Key('activity.very_active'));
+      });
+
+      expect(
+        tester.widget<Text>(find.byKey(const Key('activity.hint'))).data,
+        'Hard training most days, or a very physical job.',
+      );
+    });
+
+    testWidgets('says how to choose before anything is picked', (tester) async {
+      await _pumpAndEdit(tester, (_) async {});
+
+      expect(
+        tester.widget<Text>(find.byKey(const Key('activity.hint'))).data,
+        'Pick the one closest to a usual week, work included.',
+      );
+    });
+
+    testWidgets('has a hint of its own for every level', (tester) async {
+      final hints = <String?>{};
+      for (final level in _activityValues) {
+        // A fresh step each time: it reads its value once, as it opens.
+        await tester.pumpWidget(const SizedBox());
+        await _pumpAndEdit(
+          tester,
+          (_) async {},
+          value: AboutAnswers(activityLevel: level),
+        );
+        hints.add(
+          tester.widget<Text>(find.byKey(const Key('activity.hint'))).data,
+        );
+      }
+      expect(hints, hasLength(_activityValues.length));
+    });
+  });
+
+  group('the date of birth picker', () {
+    // AO-25: it opened on a month calendar 25 years back, and allowed today.
+    Future<DatePickerDialog> open(
+      WidgetTester tester, {
+      String? dateOfBirth,
+    }) async {
+      await _pumpAndEdit(tester, (tester) async {
+        await _tapKey(tester, const Key('dateOfBirth'));
+      }, value: AboutAnswers(dateOfBirth: dateOfBirth));
+      return tester.widget<DatePickerDialog>(find.byType(DatePickerDialog));
+    }
+
+    testWidgets('opens on the years', (tester) async {
+      final dialog = await open(tester);
+
+      expect(dialog.initialCalendarMode, DatePickerMode.year);
+      expect(find.byType(YearPicker), findsOneWidget);
+    });
+
+    testWidgets('stops at 13 years ago', (tester) async {
+      final dialog = await open(tester);
+
+      final now = DateTime.now();
+      expect(dialog.lastDate, DateTime(now.year - 13, now.month, now.day));
+    });
+
+    testWidgets('a saved date later than that still opens', (tester) async {
+      final now = DateTime.now();
+      final recent =
+          '${now.year - 2}-${now.month.toString().padLeft(2, '0')}-01';
+      final dialog = await open(tester, dateOfBirth: recent);
+
+      expect(dialog.initialDate, dialog.lastDate);
+    });
+  });
 }
 
 void _ignore(AboutAnswers _) {}

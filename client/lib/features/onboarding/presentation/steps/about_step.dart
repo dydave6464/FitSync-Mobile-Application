@@ -107,6 +107,24 @@ const _activityLevels = <({String value, String label})>[
   (value: 'very_active', label: 'Very active'),
 ];
 
+/// What each activity level means, in a usual week rather than a
+/// multiplier: the five steps run from 1.2 to 1.9 times the resting burn
+/// (daily_targets.dart), the biggest swing in the estimate below, so the
+/// choice should not be a guess. The same pattern as the Level step's hint.
+String _activityHint(String? level) => switch (level) {
+  'sedentary' => 'Mostly sitting, with little or no exercise.',
+  'light' => 'On your feet some of the day, or 1 to 3 workouts a week.',
+  'moderate' => '3 to 5 workouts a week, or a job that keeps you moving.',
+  'active' => '6 or 7 workouts a week, or a physical job.',
+  'very_active' => 'Hard training most days, or a very physical job.',
+  _ => 'Pick the one closest to a usual week, work included.',
+};
+
+/// The youngest age the date picker offers. The calorie estimate uses an
+/// adult equation (Mifflin-St Jeor), and a birthday this year or last is a
+/// slip, not a user.
+const _minimumAge = 13;
+
 const _months = <String>[
   'January',
   'February',
@@ -306,15 +324,22 @@ class _AboutStepState extends State<AboutStep> {
 
   Future<void> _pickDate() async {
     final now = DateTime.now();
-    final initial = _dateOfBirth == null
+    final last = DateTime(now.year - _minimumAge, now.month, now.day);
+    var initial = _dateOfBirth == null
         ? DateTime(now.year - 25)
         : DateTime.tryParse(_dateOfBirth!) ?? DateTime(now.year - 25);
+    // A date saved before the limit existed must still open the picker,
+    // which refuses an initial date past its last one.
+    if (initial.isAfter(last)) initial = last;
 
     final picked = await showDatePicker(
       context: context,
       initialDate: initial,
       firstDate: DateTime(now.year - 100),
-      lastDate: now,
+      lastDate: last,
+      // A birth year is decades back: start on the years rather than make
+      // the user page back month by month.
+      initialDatePickerMode: DatePickerMode.year,
     );
     if (picked == null) return;
 
@@ -475,25 +500,38 @@ class _AboutStepState extends State<AboutStep> {
               ),
             );
 
+            // Stacked, each message goes under its own card; side by side,
+            // both go under the pair.
             if ((constraints.maxWidth - _pairGap) / 2 <
                 _weightCardMinWidth(MediaQuery.textScalerOf(context))) {
               return Column(
                 crossAxisAlignment: CrossAxisAlignment.stretch,
-                children: [height, const SizedBox(height: 10), weight],
+                children: [
+                  height,
+                  ..._errorFor('heightCm'),
+                  const SizedBox(height: 10),
+                  weight,
+                  ..._errorFor('weightKg'),
+                ],
               );
             }
-            return Row(
-              crossAxisAlignment: CrossAxisAlignment.start,
+            return Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
-                Expanded(child: height),
-                const SizedBox(width: _pairGap),
-                Expanded(child: weight),
+                Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Expanded(child: height),
+                    const SizedBox(width: _pairGap),
+                    Expanded(child: weight),
+                  ],
+                ),
+                ..._errorFor('heightCm'),
+                ..._errorFor('weightKg'),
               ],
             );
           },
         ),
-        ..._errorFor('heightCm'),
-        ..._errorFor('weightKg'),
         const SizedBox(height: 10),
         if (_showGoalWeight) ...[
           _statField(
@@ -558,6 +596,11 @@ class _AboutStepState extends State<AboutStep> {
               ],
             ),
           ),
+        ),
+        Text(
+          _activityHint(_activityLevel),
+          key: const Key('activity.hint'),
+          style: TextStyle(fontSize: 12.5, color: t.text2, height: 1.4),
         ),
         ..._errorFor('activityLevel'),
         // Absent until every term of the equation is answered — the same rule
