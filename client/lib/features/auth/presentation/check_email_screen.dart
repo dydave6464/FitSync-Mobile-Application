@@ -196,7 +196,11 @@ class _CheckEmailScreenState extends ConsumerState<CheckEmailScreen> {
                   style: TextStyle(fontSize: 12.5, color: t.text2, height: 1.5),
                 ),
                 const SizedBox(height: 22),
-                if (!_verified) CodeField(controller: _code),
+                if (!_verified)
+                  FsLabeledField(
+                    label: 'Code',
+                    field: CodeField(controller: _code),
+                  ),
                 if (_status case final status?) ...[
                   const SizedBox(height: 14),
                   // Both kinds are live regions, so a screen reader says the

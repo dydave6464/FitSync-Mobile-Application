@@ -461,4 +461,18 @@ void main() {
     expect(_isLive(tester, message), isTrue);
     handle.dispose();
   });
+
+  testWidgets('the code field keeps a visible name a screen reader hears', (
+    tester,
+  ) async {
+    final semantics = tester.ensureSemantics();
+    await _pump(tester, FakeAuthRepository());
+
+    expect(find.text('Code'), findsOneWidget);
+    expect(
+      tester.getSemantics(find.byKey(const Key('code'))).label,
+      contains('Code'),
+    );
+    semantics.dispose();
+  });
 }

@@ -38,6 +38,11 @@ class _ForgotPasswordScreenState extends ConsumerState<ForgotPasswordScreen> {
   bool _onCodeStep = false;
   bool _busy = false;
 
+  /// Starts hidden, as on sign-in; the eye shows it. A successful reset
+  /// signs in with exactly what was typed, so a typo would otherwise become
+  /// the password without the user ever seeing it.
+  bool _obscurePassword = true;
+
   /// Set once the server accepts the reset. From then on the button only
   /// retries the sign-in: the code is spent.
   bool _resetDone = false;
@@ -228,12 +233,16 @@ class _ForgotPasswordScreenState extends ConsumerState<ForgotPasswordScreen> {
                       ),
                     ),
                     const SizedBox(height: 24),
-                    FsField(
-                      fieldKey: const Key('email'),
-                      controller: _email,
-                      hint: 'you@email.com',
-                      icon: Icons.mail_outline,
-                      keyboardType: TextInputType.emailAddress,
+                    FsLabeledField(
+                      label: 'Email',
+                      field: FsField(
+                        fieldKey: const Key('email'),
+                        controller: _email,
+                        hint: 'you@email.com',
+                        icon: Icons.mail_outline,
+                        keyboardType: TextInputType.emailAddress,
+                        autofillHints: const [AutofillHints.email],
+                      ),
                     ),
                     ...message,
                     const SizedBox(height: 18),
@@ -261,15 +270,45 @@ class _ForgotPasswordScreenState extends ConsumerState<ForgotPasswordScreen> {
                     ),
                     const SizedBox(height: 22),
                     if (!_resetDone) ...[
-                      CodeField(controller: _code),
-                      const SizedBox(height: 12),
-                      FsField(
-                        fieldKey: const Key('newPassword'),
-                        controller: _password,
-                        hint: 'New password (8+ characters)',
-                        icon: Icons.lock_outline,
-                        obscure: true,
-                        autofillHints: const [AutofillHints.newPassword],
+                      FsLabeledField(
+                        label: 'Code',
+                        field: CodeField(controller: _code),
+                      ),
+                      const SizedBox(height: 14),
+                      FsLabeledField(
+                        label: 'New password',
+                        // The same minimum the server enforces, kept on
+                        // screen: a placeholder would vanish at the first
+                        // keystroke.
+                        helper: 'At least 8 characters',
+                        field: FsField(
+                          fieldKey: const Key('newPassword'),
+                          controller: _password,
+                          hint: 'Choose a new password',
+                          icon: Icons.lock_outline,
+                          obscure: _obscurePassword,
+                          autofillHints: const [AutofillHints.newPassword],
+                          trailing: IconButton(
+                            key: const Key('toggleNewPassword'),
+                            tooltip: _obscurePassword
+                                ? 'Show password'
+                                : 'Hide password',
+                            constraints: const BoxConstraints(
+                              minWidth: 48,
+                              minHeight: 48,
+                            ),
+                            icon: Icon(
+                              _obscurePassword
+                                  ? Icons.visibility_outlined
+                                  : Icons.visibility_off_outlined,
+                              size: 20,
+                              color: t.text2,
+                            ),
+                            onPressed: () => setState(
+                              () => _obscurePassword = !_obscurePassword,
+                            ),
+                          ),
+                        ),
                       ),
                     ],
                     ...message,

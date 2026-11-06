@@ -519,4 +519,80 @@ void main() {
       expect(find.byKey(const Key('code')), findsOneWidget);
     });
   });
+
+  group('Labels and the new password', () {
+    TextField field(WidgetTester tester, String key) =>
+        tester.widget<TextField>(find.byKey(Key(key)));
+
+    testWidgets('every field keeps a visible name a screen reader hears', (
+      tester,
+    ) async {
+      final semantics = tester.ensureSemantics();
+      await _pump(tester, FakeAuthRepository());
+
+      expect(find.text('Email'), findsOneWidget);
+      expect(
+        tester.getSemantics(find.byKey(const Key('email'))).label,
+        contains('Email'),
+      );
+
+      await _sendCode(tester);
+
+      for (final (key, label) in [
+        ('code', 'Code'),
+        ('newPassword', 'New password'),
+      ]) {
+        expect(find.text(label), findsOneWidget);
+        expect(
+          tester.getSemantics(find.byKey(Key(key))).label,
+          contains(label),
+          reason: 'the $key field must be announced by its label',
+        );
+      }
+      // The rule stays on screen once typing starts, not only as a hint.
+      await tester.enterText(find.byKey(const Key('newPassword')), 'abc');
+      await tester.pumpAndSettle();
+      expect(find.text('At least 8 characters'), findsOneWidget);
+      semantics.dispose();
+    });
+
+    testWidgets('the eye shows and hides the new password', (tester) async {
+      await _pump(tester, FakeAuthRepository());
+      await _sendCode(tester);
+
+      final eye = find.byKey(const Key('toggleNewPassword'));
+      expect(field(tester, 'newPassword').obscureText, isTrue);
+      expect(find.byTooltip('Show password'), findsOneWidget);
+      expect(tester.getSize(eye), greaterThanOrEqualTo(const Size(48, 48)));
+
+      await tester.tap(eye);
+      await tester.pumpAndSettle();
+      expect(field(tester, 'newPassword').obscureText, isFalse);
+      expect(find.byTooltip('Hide password'), findsOneWidget);
+
+      await tester.tap(eye);
+      await tester.pumpAndSettle();
+      expect(field(tester, 'newPassword').obscureText, isTrue);
+    });
+  });
+
+  testWidgets('both steps fit a 320 dp phone at 2.0x text', (tester) async {
+    tester.view.physicalSize = const Size(320, 568);
+    tester.view.devicePixelRatio = 1.0;
+    addTearDown(tester.view.reset);
+    tester.platformDispatcher.textScaleFactorTestValue = 2.0;
+    addTearDown(tester.platformDispatcher.clearTextScaleFactorTestValue);
+
+    await _pump(tester, FakeAuthRepository());
+    expect(tester.takeException(), isNull);
+
+    await tester.enterText(find.byKey(const Key('email')), 'juan@example.com');
+    await tester.ensureVisible(find.byKey(const Key('submit')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const Key('submit')));
+    await tester.pumpAndSettle();
+
+    expect(find.byKey(const Key('toggleNewPassword')), findsOneWidget);
+    expect(tester.takeException(), isNull);
+  });
 }
