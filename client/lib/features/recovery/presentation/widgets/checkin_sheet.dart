@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart' show defaultTargetPlatform;
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
@@ -642,6 +643,12 @@ class _CheckinSheetState extends ConsumerState<_CheckinSheet> {
 ///
 /// A screen reader hears the question with the answer -- "Sleep: Poor" --
 /// rather than a bare "Moderate" that three of the four rows share.
+///
+/// Every row here is one answer per question, so the band reports itself as
+/// FsChip(exclusive: true) does -- the outcome sheet's same pain question
+/// then sounds the same: on Android "radio button, checked" rather than
+/// "selected"; on iOS, which has no radio role, the Selected trait, with an
+/// unpicked one saying "Not selected".
 class _AnswerTarget extends StatelessWidget {
   const _AnswerTarget({
     super.key,
@@ -660,10 +667,18 @@ class _AnswerTarget extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final apple =
+        defaultTargetPlatform == TargetPlatform.iOS ||
+        defaultTargetPlatform == TargetPlatform.macOS;
     return Semantics(
       container: true,
       button: true,
-      selected: selected,
+      inMutuallyExclusiveGroup: true,
+      checked: selected,
+      selected: apple ? selected : null,
+      hint: apple && !selected
+          ? WidgetsLocalizations.of(context).radioButtonUnselectedLabel
+          : null,
       label: label,
       onTap: onTap,
       excludeSemantics: true,

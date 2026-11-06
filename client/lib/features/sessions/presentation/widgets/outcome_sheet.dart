@@ -157,6 +157,9 @@ class _OutcomeSheetState extends ConsumerState<_OutcomeSheet> {
                       key: Key('outcome.pain.$level'),
                       label: _displayLabel(level),
                       selected: _painLevel == level,
+                      // One answer per question: a radio group, as the
+                      // check-in sheet's same question.
+                      exclusive: true,
                       onTap: () => _pickPain(level),
                     ),
                 ],
@@ -177,6 +180,7 @@ class _OutcomeSheetState extends ConsumerState<_OutcomeSheet> {
                           key: Key('outcome.region.${option.injuryId}'),
                           label: option.name,
                           selected: _injuryId == option.injuryId,
+                          exclusive: true,
                           onTap: () {
                             if (_busy) return;
                             setState(() => _injuryId = option.injuryId);

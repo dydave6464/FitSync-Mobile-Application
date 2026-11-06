@@ -1,6 +1,8 @@
 import 'dart:convert';
+import 'dart:ui' show CheckedState, Tristate;
 
 import 'package:flutter/material.dart';
+import 'package:flutter/rendering.dart' show SemanticsData;
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
@@ -209,6 +211,30 @@ void main() {
 
     await _tap(tester, _region(13));
     expect(_submitEnabled(tester), isTrue);
+  });
+
+  testWidgets('pain and region are each one choice for a screen reader', (
+    tester,
+  ) async {
+    // Ruling M4: one answer per question, so TalkBack hears "radio button,
+    // checked" as it does on the check-in sheet's same question.
+    final handle = tester.ensureSemantics();
+    await _open(tester);
+    await _tap(tester, _pain('mild'));
+
+    SemanticsData data(Finder f) => tester.getSemantics(f).getSemanticsData();
+    final mild = data(_pain('mild'));
+    expect(mild.flagsCollection.isInMutuallyExclusiveGroup, isTrue);
+    expect(mild.flagsCollection.isChecked, CheckedState.isTrue);
+    expect(mild.flagsCollection.isSelected, Tristate.none);
+    expect(data(_pain('none')).flagsCollection.isChecked, CheckedState.isFalse);
+
+    final knee = data(_region(13));
+    expect(knee.flagsCollection.isInMutuallyExclusiveGroup, isTrue);
+    expect(knee.flagsCollection.isChecked, CheckedState.isFalse);
+    await _tap(tester, _region(13));
+    expect(data(_region(13)).flagsCollection.isChecked, CheckedState.isTrue);
+    handle.dispose();
   });
 
   // One row of chips is only as tall as a chip, so without room around the

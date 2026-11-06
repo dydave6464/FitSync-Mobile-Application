@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:ui' show CheckedState, Tristate;
 
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
@@ -526,22 +527,20 @@ void main() {
     // Not the bare answer, which "Moderate" alone would leave ambiguous.
     expect(find.bySemanticsLabel('Moderate'), findsNothing);
 
-    expect(
-      tester.getSemantics(find.bySemanticsLabel('Sleep: Poor')),
-      isSemantics(
-        label: 'Sleep: Poor',
-        isButton: true,
-        isSelected: false,
-        hasTapAction: true,
-      ),
-    );
+    SemanticsData poor() => tester
+        .getSemantics(find.bySemanticsLabel('Sleep: Poor'))
+        .getSemanticsData();
+    expect(poor().flagsCollection.isButton, isTrue);
+    expect(poor().hasAction(SemanticsAction.tap), isTrue);
+    // One answer per question: a radio group, as the outcome sheet's.
+    expect(poor().flagsCollection.isInMutuallyExclusiveGroup, isTrue);
+    expect(poor().flagsCollection.isChecked, CheckedState.isFalse);
+    expect(poor().flagsCollection.isSelected, Tristate.none);
 
     await tester.tap(find.byKey(const Key('checkin.sleepQuality.poor')));
     await tester.pump();
-    expect(
-      tester.getSemantics(find.bySemanticsLabel('Sleep: Poor')),
-      isSemantics(label: 'Sleep: Poor', isButton: true, isSelected: true),
-    );
+    expect(poor().flagsCollection.isChecked, CheckedState.isTrue);
+    expect(poor().flagsCollection.isSelected, Tristate.none);
     semantics.dispose();
   });
 
@@ -1169,18 +1168,24 @@ void main() {
       await _open(tester, pending: _pending);
       await _tapKey(tester, 'checkin.pain.mild');
 
+      SemanticsData data(String label) =>
+          tester.getSemantics(find.bySemanticsLabel(label)).getSemanticsData();
+      // The outcome sheet's same question, said the same way: one answer
+      // per row, "radio button, checked".
+      final mild = data('Any pain since: Mild');
+      expect(mild.flagsCollection.isButton, isTrue);
+      expect(mild.flagsCollection.isInMutuallyExclusiveGroup, isTrue);
+      expect(mild.flagsCollection.isChecked, CheckedState.isTrue);
+      expect(mild.flagsCollection.isSelected, Tristate.none);
       expect(
-        tester.getSemantics(find.bySemanticsLabel('Any pain since: Mild')),
-        isSemantics(
-          label: 'Any pain since: Mild',
-          isButton: true,
-          isSelected: true,
-        ),
+        data('Any pain since: None').flagsCollection.isChecked,
+        CheckedState.isFalse,
       );
-      expect(
-        tester.getSemantics(find.bySemanticsLabel('Where: Knee')),
-        isSemantics(label: 'Where: Knee', isButton: true, isSelected: false),
-      );
+      final knee = data('Where: Knee');
+      expect(knee.flagsCollection.isButton, isTrue);
+      expect(knee.flagsCollection.isInMutuallyExclusiveGroup, isTrue);
+      expect(knee.flagsCollection.isChecked, CheckedState.isFalse);
+      expect(knee.flagsCollection.isSelected, Tristate.none);
       semantics.dispose();
     });
 
