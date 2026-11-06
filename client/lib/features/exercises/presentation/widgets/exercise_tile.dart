@@ -82,7 +82,9 @@ class ExerciseTile extends StatelessWidget {
               if (exercise.equipment != null)
                 equipmentLabel(exercise.equipment!),
             ].join(' · '),
-            maxLines: 1,
+            // Two lines, so at large text on a narrow phone the equipment
+            // -- what the library filters by -- wraps rather than being cut.
+            maxLines: 2,
             overflow: TextOverflow.ellipsis,
             style: TextStyle(color: t.text3),
           ),
