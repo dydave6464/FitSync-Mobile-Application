@@ -288,6 +288,27 @@ void main() {
     expect(find.text('That email already has an account.'), findsNothing);
   });
 
+  // P-9: the link was shown by comparing the line's text, so any error that
+  // happened to use the same words offered it, even while already signing in.
+  testWidgets('only EMAIL_TAKEN on register offers "Sign in instead"', (
+    tester,
+  ) async {
+    final repo = FakeAuthRepository(
+      onLogin: () async => throw const ApiException(
+        'SOME_OTHER_ERROR',
+        'That email already has an account.',
+      ),
+    );
+    await _pump(tester, repo);
+    await tester.pumpAndSettle();
+
+    await _fillAndSubmit(tester);
+    await tester.pumpAndSettle();
+
+    expect(find.text('That email already has an account.'), findsOneWidget);
+    expect(find.byKey(const Key('signInInstead')), findsNothing);
+  });
+
   testWidgets('a NETWORK_ERROR shows plain words, not the developer text', (
     tester,
   ) async {
