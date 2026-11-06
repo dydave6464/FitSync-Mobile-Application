@@ -145,11 +145,24 @@ class _AddGoalSheetState extends ConsumerState<_AddGoalSheet> {
       160.0,
       math.min(media.size.height * 0.7, roomAboveKeyboard),
     );
-    return Padding(
-      padding: EdgeInsets.fromLTRB(20, 16, 20, 20 + media.viewInsets.bottom),
-      child: SizedBox(
-        height: height,
-        child: picked == null ? _chooseStep(options) : _targetStep(picked),
+    // The phone's back on the target step goes back a step, as the arrow
+    // does, rather than closing the sheet and losing the chosen lift. Held
+    // while a save is in flight, as the arrow is.
+    return PopScope(
+      canPop: picked == null,
+      onPopInvokedWithResult: (didPop, _) {
+        if (didPop || _busy) return;
+        setState(() {
+          _picked = null;
+          _error = null;
+        });
+      },
+      child: Padding(
+        padding: EdgeInsets.fromLTRB(20, 16, 20, 20 + media.viewInsets.bottom),
+        child: SizedBox(
+          height: height,
+          child: picked == null ? _chooseStep(options) : _targetStep(picked),
+        ),
       ),
     );
   }
@@ -274,7 +287,8 @@ class _AddGoalSheetState extends ConsumerState<_AddGoalSheet> {
           const SizedBox(height: 16),
           FsField(
             controller: _target,
-            hint: 'Target (${unit.api})',
+            hint: 'Target',
+            suffix: unit.api,
             fieldKey: const Key('goal.target'),
             keyboardType: const TextInputType.numberWithOptions(decimal: true),
           ),
@@ -312,26 +326,38 @@ class _PickRow extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final t = context.fs;
-    return InkWell(
-      onTap: onTap,
-      child: Padding(
-        padding: const EdgeInsets.symmetric(vertical: 10),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(
-              title,
-              style: TextStyle(
-                fontSize: 14,
-                fontWeight: FontWeight.w600,
-                color: t.text,
-              ),
+    // One button per row, at least a thumb's 48 dp even with no subtitle.
+    return Semantics(
+      container: true,
+      button: true,
+      child: InkWell(
+        onTap: onTap,
+        child: ConstrainedBox(
+          constraints: const BoxConstraints(minHeight: 48),
+          child: Padding(
+            padding: const EdgeInsets.symmetric(vertical: 10),
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  title,
+                  style: TextStyle(
+                    fontSize: 14,
+                    fontWeight: FontWeight.w600,
+                    color: t.text,
+                  ),
+                ),
+                if (subtitle != null) ...[
+                  const SizedBox(height: 2),
+                  Text(
+                    subtitle!,
+                    style: TextStyle(fontSize: 11.5, color: t.text3),
+                  ),
+                ],
+              ],
             ),
-            if (subtitle != null) ...[
-              const SizedBox(height: 2),
-              Text(subtitle!, style: TextStyle(fontSize: 11.5, color: t.text3)),
-            ],
-          ],
+          ),
         ),
       ),
     );

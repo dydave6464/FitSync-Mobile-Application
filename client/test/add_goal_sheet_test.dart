@@ -407,4 +407,60 @@ void main() {
     );
     handle.dispose();
   });
+
+  testWidgets('the target keeps its unit beside it once a value is typed', (
+    tester,
+  ) async {
+    // The unit lived only in the hint, which goes as soon as you type.
+    await _open(tester, unit: WeightUnit.lb);
+    await tester.tap(find.byKey(const Key('goal.option.3')));
+    await tester.pumpAndSettle();
+    await tester.enterText(find.byKey(const Key('goal.target')), '135');
+    await tester.pump();
+
+    final field = tester.widget<TextField>(
+      find.byKey(const Key('goal.target')),
+    );
+    expect(field.decoration!.suffixText, 'lb');
+    expect(field.decoration!.hintText, 'Target');
+  });
+
+  testWidgets('each exercise row is a 48 dp button', (tester) async {
+    final handle = tester.ensureSemantics();
+    await _open(tester, results: [_summary(8, 'Deadlift')]);
+
+    await _search(tester, 'dead');
+    final row = find.byKey(const Key('goal.result.8'));
+    // A search result has no subtitle, the shortest row there is.
+    expect(tester.getSize(row).height, greaterThanOrEqualTo(48));
+    expect(
+      tester.getSemantics(row),
+      matchesSemantics(
+        label: 'Deadlift',
+        isButton: true,
+        hasTapAction: true,
+        hasFocusAction: true,
+        isFocusable: true,
+      ),
+    );
+    handle.dispose();
+  });
+
+  testWidgets("the phone's back on the target step returns to the list, "
+      'keeping the sheet open', (tester) async {
+    await _open(tester);
+    await tester.tap(find.byKey(const Key('goal.option.3')));
+    await tester.pumpAndSettle();
+
+    await tester.binding.handlePopRoute();
+    await tester.pumpAndSettle();
+
+    expect(find.text('New goal'), findsOneWidget);
+    expect(find.text('LIFTED BEFORE'), findsOneWidget);
+
+    // From the list, back closes the sheet as before.
+    await tester.binding.handlePopRoute();
+    await tester.pumpAndSettle();
+    expect(find.text('New goal'), findsNothing);
+  });
 }
