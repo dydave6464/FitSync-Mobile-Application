@@ -186,4 +186,38 @@ void main() {
     expect(find.text('Sodium (mg)'), findsOneWidget);
     expect(tester.takeException(), isNull);
   });
+
+  group('back with something typed (NU-3)', () {
+    testWidgets('an empty form leaves without asking', (tester) async {
+      await _pump(tester);
+      await tester.binding.handlePopRoute();
+      await tester.pumpAndSettle();
+      expect(find.text('Discard your changes?'), findsNothing);
+      expect(find.text('go'), findsOneWidget);
+    });
+
+    testWidgets('a typed name asks first; Keep editing keeps it', (tester) async {
+      await _pump(tester);
+      await tester.enterText(find.byKey(const Key('manual.name')), 'Turon');
+      await tester.pump();
+      await tester.binding.handlePopRoute();
+      await tester.pumpAndSettle();
+      expect(find.text('Discard your changes?'), findsOneWidget);
+      await tester.tap(find.byKey(const Key('discard.keep')));
+      await tester.pumpAndSettle();
+      expect(find.text('Turon'), findsOneWidget);
+    });
+
+    testWidgets('a typed number asks first; Discard leaves', (tester) async {
+      await _pump(tester);
+      await tester.enterText(find.byKey(const Key('manual.carbs')), '34');
+      await tester.pump();
+      await tester.pageBack();
+      await tester.pumpAndSettle();
+      expect(find.text('Discard your changes?'), findsOneWidget);
+      await tester.tap(find.byKey(const Key('discard.confirm')));
+      await tester.pumpAndSettle();
+      expect(find.text('go'), findsOneWidget);
+    });
+  });
 }

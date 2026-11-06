@@ -85,92 +85,99 @@ class _AddFoodManuallyScreenState extends ConsumerState<AddFoodManuallyScreen> {
       ),
     );
 
-    return Scaffold(
-      backgroundColor: t.bg,
-      appBar: AppBar(title: const Text('Add manually')),
-      body: ListView(
-        padding: const EdgeInsets.all(20),
-        children: [
-          FsField(controller: _name, fieldKey: const Key('manual.name'), hint: 'Food name',
-              textCapitalization: TextCapitalization.sentences, onChanged: (_) => setState(() {})),
-          const SizedBox(height: 12),
-          if (!widget.pick) ...[
-            FsSegmented(
-              options: [for (final m in mealTypes) (value: m, label: mealLabel(m))],
-              selected: _meal,
-              onSelected: (m) => setState(() => _meal = m),
-            ),
+    // Back with anything typed asks first; an untouched form just leaves.
+    final typed = [_name, _serving, _protein, _carbs, _fat, _fiber, _sugar, _sodium]
+        .any((c) => c.text.trim().isNotEmpty);
+
+    return FsDiscardGuard(
+      dirty: typed,
+      child: Scaffold(
+        backgroundColor: t.bg,
+        appBar: AppBar(title: const Text('Add manually')),
+        body: ListView(
+          padding: const EdgeInsets.all(20),
+          children: [
+            FsField(controller: _name, fieldKey: const Key('manual.name'), hint: 'Food name',
+                textCapitalization: TextCapitalization.sentences, onChanged: (_) => setState(() {})),
             const SizedBox(height: 12),
-          ],
-          FsField(controller: _serving, fieldKey: const Key('manual.serving'),
-              hint: 'Serving size (optional), e.g. 1 cup', onChanged: (_) => setState(() {})),
-          const SizedBox(height: 16),
-          Text('Macros · per serving', style: theme.textTheme.titleSmall),
-          const SizedBox(height: 8),
-          // Two rows of two, not one row of four: four boxes in a row
-          // overflow a narrow phone at large text.
-          Row(children: [
-            gramsField('Protein (g)', const Key('manual.protein'), _protein),
-            const SizedBox(width: 10),
-            gramsField('Carbs (g)', const Key('manual.carbs'), _carbs),
-          ]),
-          const SizedBox(height: 10),
-          Row(children: [
-            gramsField('Fat (g)', const Key('manual.fat'), _fat),
-            const SizedBox(width: 10),
-            gramsField('Fiber (g)', const Key('manual.fiber'), _fiber),
-          ]),
-          const SizedBox(height: 10),
-          Row(children: [
-            gramsField('Sugar (g)', const Key('manual.sugar'), _sugar),
-            const SizedBox(width: 10),
-            gramsField('Sodium (mg)', const Key('manual.sodium'), _sodium, hint: 'mg'),
-          ]),
-          if (!gramsOk)
-            Padding(
-              padding: const EdgeInsets.only(top: 6),
-              child: Text('Each value must be 0–500 g', style: TextStyle(color: t.red, fontSize: 12)),
-            )
-          else if (!sodiumOk)
-            Padding(
-              padding: const EdgeInsets.only(top: 6),
-              child: Text('Sodium must be 0–20,000 mg', style: TextStyle(color: t.red, fontSize: 12)),
+            if (!widget.pick) ...[
+              FsSegmented(
+                options: [for (final m in mealTypes) (value: m, label: mealLabel(m))],
+                selected: _meal,
+                onSelected: (m) => setState(() => _meal = m),
+              ),
+              const SizedBox(height: 12),
+            ],
+            FsField(controller: _serving, fieldKey: const Key('manual.serving'),
+                hint: 'Serving size (optional), e.g. 1 cup', onChanged: (_) => setState(() {})),
+            const SizedBox(height: 16),
+            Text('Macros · per serving', style: theme.textTheme.titleSmall),
+            const SizedBox(height: 8),
+            // Two rows of two, not one row of four: four boxes in a row
+            // overflow a narrow phone at large text.
+            Row(children: [
+              gramsField('Protein (g)', const Key('manual.protein'), _protein),
+              const SizedBox(width: 10),
+              gramsField('Carbs (g)', const Key('manual.carbs'), _carbs),
+            ]),
+            const SizedBox(height: 10),
+            Row(children: [
+              gramsField('Fat (g)', const Key('manual.fat'), _fat),
+              const SizedBox(width: 10),
+              gramsField('Fiber (g)', const Key('manual.fiber'), _fiber),
+            ]),
+            const SizedBox(height: 10),
+            Row(children: [
+              gramsField('Sugar (g)', const Key('manual.sugar'), _sugar),
+              const SizedBox(width: 10),
+              gramsField('Sodium (mg)', const Key('manual.sodium'), _sodium, hint: 'mg'),
+            ]),
+            if (!gramsOk)
+              Padding(
+                padding: const EdgeInsets.only(top: 6),
+                child: Text('Each value must be 0–500 g', style: TextStyle(color: t.red, fontSize: 12)),
+              )
+            else if (!sodiumOk)
+              Padding(
+                padding: const EdgeInsets.only(top: 6),
+                child: Text('Sodium must be 0–20,000 mg', style: TextStyle(color: t.red, fontSize: 12)),
+              ),
+            const SizedBox(height: 16),
+            Text('Calories', style: TextStyle(color: t.text2, fontSize: 12)),
+            Text(kcal == null ? '—' : '$kcal kcal', style: theme.textTheme.titleLarge),
+            Text('Worked out from protein, carbs and fat.', style: TextStyle(color: t.text3, fontSize: 12)),
+            const SizedBox(height: 24),
+            FsButton(
+              key: const Key('manual.log'),
+              label: widget.pick ? 'Use this food' : 'Log',
+              onPressed: !valid ? null : () async {
+                final food = Food(
+                  source: 'manual', name: name,
+                  servingDesc: _serving.text.trim().isEmpty ? null : _serving.text.trim(),
+                  kcal: kcal!, proteinG: p, carbsG: c, fatG: f, fiberG: fiber,
+                  sugarG: sugar, sodiumMg: sodium,
+                );
+                if (widget.pick) {
+                  Navigator.of(context).pop(food);
+                  return;
+                }
+                final messenger = ScaffoldMessenger.of(context);
+                final controller = ref.read(nutritionDayProvider.notifier);
+                final date = ref.read(nutritionDayProvider).value?.date;
+                final onLogged = widget.onLogged;
+                Navigator.of(context).pop(true);
+                final FoodEntry saved;
+                try {
+                  saved = await controller.log(food, mealType: _meal, servings: 1, date: date);
+                } catch (_) {
+                  showErrorSnackBar(messenger, "Couldn't save — try again.");
+                  return;
+                }
+                onLogged?.call(saved, date!);
+              },
             ),
-          const SizedBox(height: 16),
-          Text('Calories', style: TextStyle(color: t.text2, fontSize: 12)),
-          Text(kcal == null ? '—' : '$kcal kcal', style: theme.textTheme.titleLarge),
-          Text('Worked out from protein, carbs and fat.', style: TextStyle(color: t.text3, fontSize: 12)),
-          const SizedBox(height: 24),
-          FsButton(
-            key: const Key('manual.log'),
-            label: widget.pick ? 'Use this food' : 'Log',
-            onPressed: !valid ? null : () async {
-              final food = Food(
-                source: 'manual', name: name,
-                servingDesc: _serving.text.trim().isEmpty ? null : _serving.text.trim(),
-                kcal: kcal!, proteinG: p, carbsG: c, fatG: f, fiberG: fiber,
-                sugarG: sugar, sodiumMg: sodium,
-              );
-              if (widget.pick) {
-                Navigator.of(context).pop(food);
-                return;
-              }
-              final messenger = ScaffoldMessenger.of(context);
-              final controller = ref.read(nutritionDayProvider.notifier);
-              final date = ref.read(nutritionDayProvider).value?.date;
-              final onLogged = widget.onLogged;
-              Navigator.of(context).pop(true);
-              final FoodEntry saved;
-              try {
-                saved = await controller.log(food, mealType: _meal, servings: 1, date: date);
-              } catch (_) {
-                showErrorSnackBar(messenger, "Couldn't save — try again.");
-                return;
-              }
-              onLogged?.call(saved, date!);
-            },
-          ),
-        ],
+          ],
+        ),
       ),
     );
   }
