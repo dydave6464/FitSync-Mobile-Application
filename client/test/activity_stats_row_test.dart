@@ -144,7 +144,8 @@ void main() {
   );
 
   testWidgets(
-    'refused: zero tiles; a tap asks again, then opens Settings if still refused',
+    'refused: zero tiles; a tap asks again, then says what to switch on '
+    'before opening Settings',
     (tester) async {
       final permission = _Permission(StepAccess.refused);
       await _pump(tester, permission);
@@ -153,9 +154,67 @@ void main() {
       expect(find.text('Step counting is off — tap to allow'), findsOneWidget);
       await tester.tap(find.byKey(const Key('home.activity.steps')));
       await tester.pumpAndSettle();
+
+      // Not straight out of the app: first what to turn on, and where.
+      expect(permission.log, ['request']);
+      expect(find.text('Step counting is off for FitSync'), findsOneWidget);
+      expect(
+        find.text(
+          'In Settings, open Permissions, then Physical activity, and choose '
+          'Allow.',
+        ),
+        findsOneWidget,
+      );
+      await tester.tap(find.byKey(const Key('activity.settings.open')));
+      await tester.pumpAndSettle();
       expect(permission.log, ['request', 'settings']);
+      expect(find.text('Step counting is off for FitSync'), findsNothing);
     },
   );
+
+  testWidgets('refused: Not now stays in the app', (tester) async {
+    final permission = _Permission(StepAccess.refused);
+    await _pump(tester, permission);
+
+    await tester.tap(find.byKey(const Key('home.activity.kcal')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const Key('activity.settings.notNow')));
+    await tester.pumpAndSettle();
+
+    expect(permission.log, ['request']);
+    expect(find.text('Step counting is off for FitSync'), findsNothing);
+  });
+
+  testWidgets('refused on iPhone: names Motion & Fitness', (tester) async {
+    await _pump(tester, _Permission(StepAccess.refused));
+
+    await tester.tap(find.byKey(const Key('home.activity.steps')));
+    await tester.pumpAndSettle();
+
+    expect(
+      find.text('In Settings, turn on Motion & Fitness for FitSync.'),
+      findsOneWidget,
+    );
+  }, variant: TargetPlatformVariant.only(TargetPlatform.iOS));
+
+  testWidgets('refused: taps while the phone is still asking are ignored', (
+    tester,
+  ) async {
+    final answer = Completer<StepAccess>();
+    final permission = _SlowRequest(answer.future);
+    await _pump(tester, permission);
+
+    await tester.tap(find.byKey(const Key('home.activity.steps')));
+    await tester.pump();
+    await tester.tap(find.byKey(const Key('home.activity.km')));
+    await tester.pump();
+    expect(permission.requests, 1);
+
+    answer.complete(StepAccess.refused);
+    await tester.pumpAndSettle();
+    // One question, not one queued behind another.
+    expect(find.text('Step counting is off for FitSync'), findsOneWidget);
+  });
 
   for (final (access, hint) in const [
     (StepAccess.notAsked, 'Tap to start counting your steps'),
@@ -508,4 +567,17 @@ class _PendingPermission implements StepPermission {
   Future<StepAccess> request() async => StepAccess.refused;
   @override
   Future<void> openSettings() async {}
+}
+
+/// Refused, with the OS prompt held open on [_answer] until a test says.
+class _SlowRequest extends _Permission {
+  _SlowRequest(this._answer) : super(StepAccess.refused);
+  final Future<StepAccess> _answer;
+  int requests = 0;
+
+  @override
+  Future<StepAccess> request() {
+    requests++;
+    return _answer;
+  }
 }

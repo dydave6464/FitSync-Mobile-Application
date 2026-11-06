@@ -12,7 +12,8 @@ import '../providers.dart';
 
 /// Home's steps · kcal · km. Before step counting is on, the same three
 /// tiles show zeros and a tap on any of them is the way in: the activation
-/// screen, or -- once refused -- the OS prompt again and then Settings.
+/// screen, or -- once refused -- the OS prompt again and then, with a word
+/// on what to switch on, Settings.
 class ActivityStatsRow extends ConsumerWidget {
   const ActivityStatsRow({super.key, this.onGoToProfile, this.bottomGap = 0});
 
@@ -50,16 +51,7 @@ class ActivityStatsRow extends ConsumerWidget {
           onTap: () =>
               _open(context, ActivationScreen(onGoToProfile: onGoToProfile)),
         ),
-        StepAccess.refused => _Tiles.zero(
-          hint: 'Step counting is off — tap to allow',
-          onTap: () async {
-            // Ask again first: after a reinstall the OS may still be able to.
-            final controller = ref.read(stepAccessProvider.notifier);
-            if (await controller.request() != StepAccess.granted) {
-              await controller.openSettings();
-            }
-          },
-        ),
+        StepAccess.refused => const _RefusedTiles(),
         StepAccess.granted => _Stats(
           onOpen: () =>
               _open(context, ActivityScreen(onGoToProfile: onGoToProfile)),
@@ -67,6 +59,73 @@ class ActivityStatsRow extends ConsumerWidget {
       },
     );
   }
+}
+
+/// Step access turned down: the zero tiles, and a tap asks the phone again
+/// -- after a reinstall the OS may still be able to -- and, if it still
+/// cannot, says what to switch on before leaving for Settings.
+class _RefusedTiles extends ConsumerStatefulWidget {
+  const _RefusedTiles();
+
+  @override
+  ConsumerState<_RefusedTiles> createState() => _RefusedTilesState();
+}
+
+class _RefusedTilesState extends ConsumerState<_RefusedTiles> {
+  /// A tap while the phone is still answering would queue a second prompt,
+  /// or a second trip to Settings, behind the first.
+  bool _asking = false;
+
+  Future<void> _allow() async {
+    if (_asking) return;
+    _asking = true;
+    try {
+      final controller = ref.read(stepAccessProvider.notifier);
+      if (await controller.request() == StepAccess.granted) return;
+      if (!mounted) return;
+      if (await _confirmSettings(context)) await controller.openSettings();
+    } finally {
+      _asking = false;
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) =>
+      _Tiles.zero(hint: 'Step counting is off — tap to allow', onTap: _allow);
+}
+
+/// What to switch on, and where, before the app sends the user to its page
+/// in Settings. True for Open Settings.
+Future<bool> _confirmSettings(BuildContext context) async {
+  final apple = switch (Theme.of(context).platform) {
+    TargetPlatform.iOS || TargetPlatform.macOS => true,
+    _ => false,
+  };
+  final open = await showDialog<bool>(
+    context: context,
+    builder: (dialog) => AlertDialog(
+      title: const Text('Step counting is off for FitSync'),
+      content: Text(
+        apple
+            ? 'In Settings, turn on Motion & Fitness for FitSync.'
+            : 'In Settings, open Permissions, then Physical activity, and '
+                  'choose Allow.',
+      ),
+      actions: [
+        TextButton(
+          key: const Key('activity.settings.notNow'),
+          onPressed: () => Navigator.of(dialog).pop(false),
+          child: const Text('Not now'),
+        ),
+        TextButton(
+          key: const Key('activity.settings.open'),
+          onPressed: () => Navigator.of(dialog).pop(true),
+          child: const Text('Open Settings'),
+        ),
+      ],
+    ),
+  );
+  return open ?? false;
 }
 
 class _Stats extends ConsumerWidget {
