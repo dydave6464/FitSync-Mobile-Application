@@ -5,7 +5,9 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 
+import 'package:fitsync/core/api_exception.dart';
 import 'package:fitsync/core/theme.dart';
+import 'package:fitsync/core/widgets/fs_kit.dart';
 import 'package:fitsync/features/nutrition/domain/nutrition.dart';
 import 'package:fitsync/features/nutrition/presentation/log_food_screen.dart';
 import 'package:fitsync/features/nutrition/presentation/nutrition_screen.dart';
@@ -40,6 +42,17 @@ class _HeldRepo extends FakeNutritionRepository {
   @override
   Future<NutritionDay> getDay(String? date) async {
     if (date != null && date == heldDate) await gate.future;
+    return super.getDay(date);
+  }
+}
+
+/// Refuses every day with a server error (no automatic retries) until told.
+class _DownRepo extends FakeNutritionRepository {
+  bool down = true;
+
+  @override
+  Future<NutritionDay> getDay(String? date) async {
+    if (down) throw const ApiException('INTERNAL_ERROR', 'An unexpected error occurred.');
     return super.getDay(date);
   }
 }
@@ -232,6 +245,18 @@ void main() {
     await tester.pumpAndSettle();
     expect(tester.getSemantics(find.text('Yesterday')), isSemantics(isLiveRegion: true, label: 'Yesterday'));
     h.dispose();
+  });
+
+  // The kit's own failed-load view: why, in plain words, and Try again.
+  testWidgets("a day that won't load says why, and Try again loads it", (tester) async {
+    final repo = _DownRepo();
+    await _pump(tester, today: _day('2026-10-14', lunch: [_adobo()]), repo: repo);
+    expect(find.byType(FsRetry), findsOneWidget);
+    expect(find.text('An unexpected error occurred.'), findsOneWidget);
+    repo.down = false;
+    await tester.tap(find.text('Try again'));
+    await tester.pumpAndSettle();
+    expect(find.text('Chicken adobo'), findsOneWidget);
   });
 
   testWidgets('delete hides the food and Undo logs it again', (tester) async {

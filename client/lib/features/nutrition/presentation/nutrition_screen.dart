@@ -1,9 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../../core/api_exception.dart';
 import '../../../core/manila_day.dart';
 import '../../../core/theme.dart';
-import '../../exercises/presentation/exercise_list_screen.dart' show describeError;
+import '../../../core/widgets/fs_kit.dart';
 import '../domain/nutrition.dart';
 import 'error_snack_bar.dart';
 import 'log_food_screen.dart';
@@ -148,7 +149,11 @@ class NutritionScreen extends ConsumerWidget {
         bottom: false,
         child: day == null
             ? (async.hasError
-                ? _ErrorView(message: describeError(async.error!), onRetry: () => ref.invalidate(nutritionDayProvider))
+                ? FsRetry(
+                    fullScreen: true,
+                    message: userMessage(async.error!),
+                    onRetry: () => ref.invalidate(nutritionDayProvider),
+                  )
                 : const Center(child: CircularProgressIndicator()))
             : _body(context, ref, day, today, now, busy: async.isLoading, failed: async.hasError),
       ),
@@ -209,23 +214,4 @@ class NutritionScreen extends ConsumerWidget {
       ],
     );
   }
-}
-
-class _ErrorView extends StatelessWidget {
-  const _ErrorView({required this.message, required this.onRetry});
-
-  final String message;
-  final VoidCallback onRetry;
-
-  @override
-  Widget build(BuildContext context) => Center(
-    child: Padding(
-      padding: const EdgeInsets.all(24),
-      child: Column(mainAxisSize: MainAxisSize.min, children: [
-        Text(message, textAlign: TextAlign.center),
-        const SizedBox(height: 12),
-        TextButton(onPressed: onRetry, child: const Text('Try again')),
-      ]),
-    ),
-  );
 }
