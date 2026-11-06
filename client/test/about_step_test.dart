@@ -901,6 +901,34 @@ void main() {
       );
     });
 
+    // P-11a: focus stays on the chip, so the new explanation below it
+    // changed without a word to a screen reader.
+    testWidgets('reads the new explanation aloud when the pick changes', (
+      tester,
+    ) async {
+      final handle = tester.ensureSemantics();
+      await _pumpAndEdit(tester, (tester) async {
+        await _tapKey(tester, const Key('activity.very_active'));
+      }, value: const AboutAnswers(activityLevel: 'light'));
+
+      expect(tester.takeAnnouncements().map((a) => a.message), [
+        'Hard training most days, or a very physical job.',
+      ]);
+      handle.dispose();
+    });
+
+    testWidgets('says nothing more when the picked level is tapped again', (
+      tester,
+    ) async {
+      final handle = tester.ensureSemantics();
+      await _pumpAndEdit(tester, (tester) async {
+        await _tapKey(tester, const Key('activity.light'));
+      }, value: const AboutAnswers(activityLevel: 'light'));
+
+      expect(tester.takeAnnouncements(), isEmpty);
+      handle.dispose();
+    });
+
     testWidgets('says how to choose before anything is picked', (tester) async {
       await _pumpAndEdit(tester, (_) async {});
 
