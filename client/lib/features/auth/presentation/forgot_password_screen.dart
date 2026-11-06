@@ -9,6 +9,7 @@ import 'auth_controller.dart';
 import 'auth_text_link.dart';
 import 'code_entry.dart';
 import 'editable_under.dart';
+import 'password_reveal_toggle.dart';
 
 const _sentMessage = "If that address has an account, we've sent a code.";
 const _resentMessage =
@@ -351,22 +352,9 @@ class _ForgotPasswordScreenState extends ConsumerState<ForgotPasswordScreen> {
                           icon: Icons.lock_outline,
                           obscure: _obscurePassword,
                           autofillHints: const [AutofillHints.newPassword],
-                          trailing: IconButton(
+                          trailing: PasswordRevealToggle(
                             key: const Key('toggleNewPassword'),
-                            tooltip: _obscurePassword
-                                ? 'Show password'
-                                : 'Hide password',
-                            constraints: const BoxConstraints(
-                              minWidth: 48,
-                              minHeight: 48,
-                            ),
-                            icon: Icon(
-                              _obscurePassword
-                                  ? Icons.visibility_outlined
-                                  : Icons.visibility_off_outlined,
-                              size: 20,
-                              color: t.text2,
-                            ),
+                            obscured: _obscurePassword,
                             onPressed: () => setState(
                               () => _obscurePassword = !_obscurePassword,
                             ),

@@ -14,6 +14,7 @@ import 'check_email_screen.dart';
 import 'editable_under.dart';
 import 'forgot_password_screen.dart';
 import 'google_g_mark.dart';
+import 'password_reveal_toggle.dart';
 
 /// One screen for both signing in and registering.
 ///
@@ -394,22 +395,9 @@ class _SignInScreenState extends ConsumerState<SignInScreen> {
                                 : AutofillHints.password,
                           ],
                           onChanged: (_) => _clearErrorFor(_Field.password),
-                          trailing: IconButton(
+                          trailing: PasswordRevealToggle(
                             key: const Key('togglePassword'),
-                            tooltip: _obscurePassword
-                                ? 'Show password'
-                                : 'Hide password',
-                            constraints: const BoxConstraints(
-                              minWidth: 48,
-                              minHeight: 48,
-                            ),
-                            icon: Icon(
-                              _obscurePassword
-                                  ? Icons.visibility_outlined
-                                  : Icons.visibility_off_outlined,
-                              size: 20,
-                              color: t.text2,
-                            ),
+                            obscured: _obscurePassword,
                             onPressed: () => setState(
                               () => _obscurePassword = !_obscurePassword,
                             ),

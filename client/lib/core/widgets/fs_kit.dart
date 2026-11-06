@@ -1926,6 +1926,42 @@ Future<bool> confirmDiscard(
   return answer ?? false;
 }
 
+/// Asks before a step one stray tap should not take (Sign out, deleting
+/// health answers, deleting the account): [cancel] and [action] in `t.red`,
+/// keyed `<keyPrefix>.cancel` and `<keyPrefix>.confirm`. True only for a tap
+/// on [action]; the barrier or back is a no. [cancel] is "Cancel" unless the
+/// safe choice reads better named for what it keeps ("Keep account").
+Future<bool> confirmDestructive(
+  BuildContext context, {
+  required String keyPrefix,
+  required String title,
+  required String message,
+  required String action,
+  String cancel = 'Cancel',
+}) async {
+  final confirmed = await showDialog<bool>(
+    context: context,
+    builder: (dialog) => AlertDialog(
+      title: Text(title),
+      content: Text(message),
+      actions: [
+        TextButton(
+          key: Key('$keyPrefix.cancel'),
+          onPressed: () => Navigator.of(dialog).pop(false),
+          child: Text(cancel),
+        ),
+        TextButton(
+          key: Key('$keyPrefix.confirm'),
+          style: TextButton.styleFrom(foregroundColor: dialog.fs.red),
+          onPressed: () => Navigator.of(dialog).pop(true),
+          child: Text(action),
+        ),
+      ],
+    ),
+  );
+  return confirmed ?? false;
+}
+
 /// Makes back ask [confirmDiscard] first while [dirty], and leave as usual
 /// otherwise.
 ///

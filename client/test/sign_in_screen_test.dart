@@ -15,6 +15,7 @@ import 'package:fitsync/features/auth/presentation/auth_controller.dart';
 import 'package:fitsync/features/auth/presentation/check_email_screen.dart';
 import 'package:fitsync/features/auth/presentation/forgot_password_screen.dart';
 import 'package:fitsync/features/auth/presentation/google_g_mark.dart';
+import 'package:fitsync/features/auth/presentation/password_reveal_toggle.dart';
 import 'package:fitsync/features/auth/presentation/sign_in_screen.dart';
 
 AuthUser _user() => const AuthUser(
@@ -598,6 +599,11 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(_field(tester, 'password').obscureText, isTrue);
+    expect(
+      tester.widget(find.byKey(const Key('togglePassword'))),
+      isA<PasswordRevealToggle>(),
+      reason: 'one eye for every password field, not a copy per screen',
+    );
     expect(find.byTooltip('Show password'), findsOneWidget);
     expect(
       tester.getSize(find.byKey(const Key('togglePassword'))),

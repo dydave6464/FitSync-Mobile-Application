@@ -116,7 +116,16 @@ class _DeleteAccountScreenState extends ConsumerState<DeleteAccountScreen> {
       setState(() => _error = 'Confirm with Google first.');
       return;
     }
-    if (!await _confirmLast(context) || !mounted) return;
+    // The last word: Keep account, or Delete in red.
+    final confirmed = await confirmDestructive(
+      context,
+      keyPrefix: 'deleteAccount',
+      title: 'Delete your account?',
+      message: 'Your account and everything in it are deleted for good.',
+      action: 'Delete',
+      cancel: 'Keep account',
+    );
+    if (!confirmed || !mounted) return;
 
     setState(() {
       _pending = _Pending.delete;
@@ -317,32 +326,4 @@ class _Bullet extends StatelessWidget {
       ),
     );
   }
-}
-
-/// The last word before deleting: Keep account, or Delete in red. True only
-/// for a tap on Delete; the barrier or back keeps the account.
-Future<bool> _confirmLast(BuildContext context) async {
-  final answer = await showDialog<bool>(
-    context: context,
-    builder: (dialog) => AlertDialog(
-      title: const Text('Delete your account?'),
-      content: const Text(
-        'Your account and everything in it are deleted for good.',
-      ),
-      actions: [
-        TextButton(
-          key: const Key('deleteAccount.keep'),
-          onPressed: () => Navigator.of(dialog).pop(false),
-          child: const Text('Keep account'),
-        ),
-        TextButton(
-          key: const Key('deleteAccount.confirm'),
-          style: TextButton.styleFrom(foregroundColor: dialog.fs.red),
-          onPressed: () => Navigator.of(dialog).pop(true),
-          child: const Text('Delete'),
-        ),
-      ],
-    ),
-  );
-  return answer ?? false;
 }

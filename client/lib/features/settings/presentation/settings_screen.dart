@@ -456,7 +456,7 @@ class _SettingsList extends ConsumerWidget {
 /// Signs out after asking: signing out also cancels every reminder this
 /// phone has scheduled, which one stray tap should not do.
 Future<void> _confirmSignOut(BuildContext context, WidgetRef ref) async {
-  final confirmed = await _confirmDestructive(
+  final confirmed = await confirmDestructive(
     context,
     keyPrefix: 'signOut',
     title: 'Sign out of FitSync?',
@@ -465,39 +465,6 @@ Future<void> _confirmSignOut(BuildContext context, WidgetRef ref) async {
   );
   if (!confirmed || !context.mounted) return;
   await ref.read(authControllerProvider.notifier).signOut();
-}
-
-/// Asks before a step one stray tap should not take: Cancel, and [action] in
-/// `t.red`, keyed `<keyPrefix>.cancel` and `<keyPrefix>.confirm`. True only
-/// for a tap on [action]; the barrier or back is a no.
-Future<bool> _confirmDestructive(
-  BuildContext context, {
-  required String keyPrefix,
-  required String title,
-  required String message,
-  required String action,
-}) async {
-  final confirmed = await showDialog<bool>(
-    context: context,
-    builder: (dialog) => AlertDialog(
-      title: Text(title),
-      content: Text(message),
-      actions: [
-        TextButton(
-          key: Key('$keyPrefix.cancel'),
-          onPressed: () => Navigator.of(dialog).pop(false),
-          child: const Text('Cancel'),
-        ),
-        TextButton(
-          key: Key('$keyPrefix.confirm'),
-          style: TextButton.styleFrom(foregroundColor: dialog.fs.red),
-          onPressed: () => Navigator.of(dialog).pop(true),
-          child: Text(action),
-        ),
-      ],
-    ),
-  );
-  return confirmed ?? false;
 }
 
 /// The level editor's row and title: fitness level is changed there too.
@@ -1144,7 +1111,7 @@ class _HealthEditorState extends ConsumerState<_HealthEditor> {
   );
 
   Future<void> _delete() async {
-    final confirmed = await _confirmDestructive(
+    final confirmed = await confirmDestructive(
       context,
       keyPrefix: 'health.delete',
       title: 'Delete your health answers?',

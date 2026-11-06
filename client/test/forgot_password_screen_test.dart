@@ -13,6 +13,7 @@ import 'package:fitsync/features/auth/domain/auth_user.dart';
 import 'package:fitsync/features/auth/presentation/auth_controller.dart';
 import 'package:fitsync/features/auth/presentation/code_entry.dart';
 import 'package:fitsync/features/auth/presentation/forgot_password_screen.dart';
+import 'package:fitsync/features/auth/presentation/password_reveal_toggle.dart';
 
 /// Shown whatever the repository does: the server answers every request the
 /// same way so it can never reveal who has an account, and the app must not
@@ -589,6 +590,11 @@ void main() {
 
       final eye = find.byKey(const Key('toggleNewPassword'));
       expect(field(tester, 'newPassword').obscureText, isTrue);
+      expect(
+        tester.widget(eye),
+        isA<PasswordRevealToggle>(),
+        reason: 'one eye for every password field, not a copy per screen',
+      );
       expect(find.byTooltip('Show password'), findsOneWidget);
       // Each side on its own: Size's >= is true when either side is.
       expect(tester.getSize(eye).width, greaterThanOrEqualTo(48));
