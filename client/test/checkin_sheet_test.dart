@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import 'package:flutter/rendering.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 
@@ -586,6 +587,46 @@ void main() {
       expect(_chipSelected(tester, 'checkin.energy.high'), isTrue);
     });
 
+    testWidgets(
+      'a screen reader is not offered a scroll that opens the question',
+      (tester) async {
+        final semantics = tester.ensureSemantics();
+        await _open(tester);
+        await _tapKey(tester, 'checkin.energy.high');
+
+        // The sheet fits the test screen, so nothing in it scrolls. The
+        // swipe-down guard must not surface as scroll actions, which a
+        // screen reader's scroll gesture would run straight into the
+        // discard question.
+        final scrollable = <SemanticsNode>[];
+        void visit(SemanticsNode node) {
+          final data = node.getSemanticsData();
+          if (data.hasAction(SemanticsAction.scrollDown) ||
+              data.hasAction(SemanticsAction.scrollUp)) {
+            scrollable.add(node);
+          }
+          node.visitChildren((child) {
+            visit(child);
+            return true;
+          });
+        }
+
+        final owner = tester
+            .renderObject(find.text('Morning check-in'))
+            .owner!
+            .semanticsOwner!;
+        visit(owner.rootSemanticsNode!);
+        for (final node in scrollable) {
+          owner.performAction(node.id, SemanticsAction.scrollDown);
+          await tester.pumpAndSettle();
+        }
+
+        expect(find.text('Discard your changes?'), findsNothing);
+        expect(scrollable, isEmpty);
+        semantics.dispose();
+      },
+    );
+
     testWidgets('a pain answer alone counts as something to lose', (
       tester,
     ) async {
@@ -614,6 +655,36 @@ void main() {
       await tester.binding.handlePopRoute();
       await tester.pumpAndSettle();
 
+      expect(find.text('Discard your changes?'), findsNothing);
+      expect(find.text('Morning check-in'), findsNothing);
+    });
+
+    testWidgets('a changed Update asks first, and changing it back does not', (
+      tester,
+    ) async {
+      await _open(
+        tester,
+        existing: const MorningCheckin(
+          checkinId: 1,
+          checkinDate: '2026-10-18',
+          sleepQuality: 'fair',
+          muscleSoreness: 'mild',
+          energy: 'very_low',
+          stress: 'moderate',
+        ),
+      );
+      await _tapKey(tester, 'checkin.energy.high');
+
+      await tester.binding.handlePopRoute();
+      await tester.pumpAndSettle();
+      expect(find.text('Discard your changes?'), findsOneWidget);
+
+      await tester.tap(find.byKey(const Key('discard.keep')));
+      await tester.pumpAndSettle();
+      await _tapKey(tester, 'checkin.energy.very_low');
+
+      await tester.binding.handlePopRoute();
+      await tester.pumpAndSettle();
       expect(find.text('Discard your changes?'), findsNothing);
       expect(find.text('Morning check-in'), findsNothing);
     });

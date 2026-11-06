@@ -127,7 +127,10 @@ class _CheckinSheet extends ConsumerStatefulWidget {
 }
 
 class _CheckinSheetState extends ConsumerState<_CheckinSheet> {
-  late final Map<String, String> _answers = {
+  /// The answers already stored: nothing, for a new check-in. One map seeds
+  /// [_answers] and is what [_dirty] compares against, so a question added
+  /// here is counted by both.
+  late final Map<String, String> _saved = {
     if (widget.existing case final existing?) ...{
       'sleepQuality': existing.sleepQuality,
       'muscleSoreness': existing.muscleSoreness,
@@ -135,6 +138,8 @@ class _CheckinSheetState extends ConsumerState<_CheckinSheet> {
       'stress': existing.stress,
     },
   };
+
+  late final Map<String, String> _answers = {..._saved};
 
   /// Save waits for all four: a partial check-in has nothing honest to put
   /// in the missing columns.
@@ -146,18 +151,9 @@ class _CheckinSheetState extends ConsumerState<_CheckinSheet> {
   /// after the sheet has gone.
   bool get _dirty {
     if (_busy) return false;
-    final existing = widget.existing;
-    final saved = <String, String>{
-      if (existing != null) ...{
-        'sleepQuality': existing.sleepQuality,
-        'muscleSoreness': existing.muscleSoreness,
-        'energy': existing.energy,
-        'stress': existing.stress,
-      },
-    };
     final changed =
-        _answers.length != saved.length ||
-        _answers.entries.any((e) => saved[e.key] != e.value);
+        _answers.length != _saved.length ||
+        _answers.entries.any((e) => _saved[e.key] != e.value);
     return changed || (_painLevel != null && !_painSaved);
   }
 
@@ -330,6 +326,11 @@ class _CheckinSheetState extends ConsumerState<_CheckinSheet> {
       message: "Your check-in answers won't be saved.",
       child: GestureDetector(
         behavior: HitTestBehavior.opaque,
+        // Kept out of semantics: otherwise a dirty sheet tells a screen
+        // reader it scrolls, and a scroll gesture runs these callbacks into
+        // the discard question. Screen readers close the sheet through back,
+        // escape or the scrim, which the guard already covers.
+        excludeFromSemantics: true,
         onVerticalDragStart: dirty ? (_) => _dragDown = 0 : null,
         onVerticalDragUpdate: dirty
             ? (details) => _dragDown += details.primaryDelta ?? 0
