@@ -1153,7 +1153,9 @@ class _TrainingDaysEditorState extends _EditorState<_TrainingDaysEditor> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        const FsEyebrow('Which days do you train?'),
+        // A whole question: it may take a second line at large text rather
+        // than end in an ellipsis.
+        const FsEyebrow('Which days do you train?', maxLines: 2),
         const SizedBox(height: 10),
         TrainingDaysRow(
           selected: _value,
@@ -1162,7 +1164,7 @@ class _TrainingDaysEditorState extends _EditorState<_TrainingDaysEditor> {
         const SizedBox(height: 12),
         Text(
           'Leave every day off if your week varies. Your plan is the same '
-          'either way -- this only decides which days can be reported as '
+          'either way — this only decides which days can be reported as '
           'missed.',
           style: TextStyle(fontSize: 12, color: context.fs.text3, height: 1.4),
         ),

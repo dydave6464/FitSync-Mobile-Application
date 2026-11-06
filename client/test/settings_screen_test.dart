@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import 'package:flutter/rendering.dart' show RenderParagraph;
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 
@@ -772,6 +773,30 @@ void main() {
 
     expect(find.byKey(const Key('edit.trainingDays')), findsOneWidget);
     expect(find.text('Training days'), findsOneWidget);
+  });
+
+  // PS-22: a "--" for a dash, and the question cut off as a one-line
+  // eyebrow at large text.
+  testWidgets('the training days editor reads whole, with a real dash', (
+    tester,
+  ) async {
+    tester.view.physicalSize = const Size(360, 640);
+    tester.view.devicePixelRatio = 1.0;
+    addTearDown(tester.view.reset);
+    tester.platformDispatcher.textScaleFactorTestValue = 2.0;
+    addTearDown(tester.platformDispatcher.clearTextScaleFactorTestValue);
+    await _pump(tester);
+    await _openRow(tester, const Key('edit.trainingDays'));
+
+    final question = tester.renderObject<RenderParagraph>(
+      find.text('WHICH DAYS DO YOU TRAIN?'),
+    );
+    expect(question.didExceedMaxLines, isFalse);
+    expect(
+      find.textContaining('either way — this only decides'),
+      findsOneWidget,
+    );
+    expect(find.textContaining('--'), findsNothing);
   });
 
   testWidgets('the row opens a picker seeded from the profile', (tester) async {

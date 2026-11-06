@@ -189,7 +189,7 @@ class BodyWeightCard extends StatelessWidget {
                     Expanded(
                       child: Text(
                         series.widened
-                            ? 'all entries — fewer than two in this period'
+                            ? 'All entries — fewer than two in this period'
                             : _periodCaption(period),
                         style: TextStyle(fontSize: 11, color: t.text3),
                       ),
