@@ -4,6 +4,8 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../core/api_exception.dart';
 import '../../../core/theme.dart';
 import '../../../core/widgets/fs_kit.dart';
+import '../../nutrition/presentation/meal_photo/providers.dart'
+    show appSettingsOpenerProvider;
 import '../../plans/presentation/providers.dart' show activePlanProvider;
 import '../../profile/domain/profile.dart';
 import '../../profile/presentation/providers.dart';
@@ -300,9 +302,25 @@ class _RemindersScreenState extends ConsumerState<RemindersScreen> {
           Icon(Icons.notifications_off_outlined, color: t.red, size: 20),
           const SizedBox(width: 10),
           Expanded(
-            child: Text(
-              remindersBlockedText,
-              style: TextStyle(fontSize: 12, color: t.text2, height: 1.4),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  remindersBlockedText,
+                  style: TextStyle(fontSize: 12, color: t.text2, height: 1.4),
+                ),
+                const SizedBox(height: 8),
+                // Once refused, the app cannot ask again: the phone's own
+                // settings are the only way back. Returning here re-checks
+                // (the resume listener) and clears this banner.
+                FsButton(
+                  key: const Key('reminders.openSettings'),
+                  label: 'Open settings',
+                  small: true,
+                  kind: FsButtonKind.secondary,
+                  onPressed: () => ref.read(appSettingsOpenerProvider)(),
+                ),
+              ],
             ),
           ),
         ],

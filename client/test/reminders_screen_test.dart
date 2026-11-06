@@ -6,6 +6,8 @@ import 'package:flutter_test/flutter_test.dart';
 
 import 'package:fitsync/core/api_exception.dart';
 import 'package:fitsync/core/widgets/fs_kit.dart';
+import 'package:fitsync/features/nutrition/presentation/meal_photo/providers.dart'
+    show appSettingsOpenerProvider;
 import 'package:fitsync/features/plans/domain/workout_plan.dart';
 import 'package:fitsync/features/plans/presentation/providers.dart'
     show activePlanProvider;
@@ -151,6 +153,7 @@ Future<_FakeScheduler> _pump(
   ReminderSettingsController Function()? settingsController,
   ProfileNotifier Function()? profileNotifier,
   WorkoutPlan? plan = _plan,
+  List<String>? settingsOpened,
 }) async {
   final scheduler = _FakeScheduler(
     granted: granted,
@@ -175,6 +178,9 @@ Future<_FakeScheduler> _pump(
         ),
         reminderSchedulerProvider.overrideWithValue(scheduler),
         activePlanProvider.overrideWith((ref) async => plan),
+        appSettingsOpenerProvider.overrideWithValue(
+          () async => settingsOpened?.add('opened'),
+        ),
       ],
       child: MaterialApp(home: RemindersScreen(pickTime: pickTime)),
     ),
@@ -573,5 +579,21 @@ void main() {
     await _pump(tester);
 
     expect(find.text('Workout reminders need a plan.'), findsNothing);
+  });
+
+  testWidgets('the blocked banner opens the phone\'s settings', (tester) async {
+    final opened = <String>[];
+    await _pump(tester, granted: false, settingsOpened: opened);
+
+    final button = find.descendant(
+      of: find.byKey(const Key('reminders.blocked')),
+      matching: find.widgetWithText(FsButton, 'Open settings'),
+    );
+    expect(button, findsOneWidget);
+
+    await tester.tap(button);
+    await tester.pumpAndSettle();
+
+    expect(opened, ['opened']);
   });
 }
