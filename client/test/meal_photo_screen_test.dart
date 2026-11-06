@@ -281,12 +281,13 @@ void main() {
     },
   );
 
-  // The wait can last up to 45 s (NU-14): after 8 s the words change once,
+  // The wait can last up to 45 s (NU-14): after 8 s the words change once
+  // (D-6: "up to a minute", since half a minute undersold it),
   // so it is clear the app has not stuck; Cancel stays.
   testWidgets('a long wait says so once, and a new try starts over', (tester) async {
     final h = _Harness()..repo.gate = Completer();
     await _open(tester, h: h, settle: false);
-    const still = 'Still looking — this can take up to half a minute.';
+    const still = 'Still looking — this can take up to a minute.';
     await tester.pump(const Duration(seconds: 7));
     expect(find.text('Looking at your meal…'), findsOneWidget);
     expect(find.text(still), findsNothing);

@@ -373,7 +373,7 @@ class _MealPhotoScreenState extends ConsumerState<MealPhotoScreen> {
           key: const Key('snap.analysing'),
           liveRegion: true,
           child: Text(
-            _slow ? 'Still looking — this can take up to half a minute.' : 'Looking at your meal…',
+            _slow ? 'Still looking — this can take up to a minute.' : 'Looking at your meal…',
             textAlign: TextAlign.center,
             style: Theme.of(context).textTheme.titleMedium,
           ),
