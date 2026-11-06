@@ -2,13 +2,20 @@
 library;
 
 enum ProPlan {
-  monthly('monthly'),
-  annual('annual');
+  monthly('monthly', 1),
+  annual('annual', 12);
 
-  const ProPlan(this.wire);
+  const ProPlan(this.wire, this.months);
 
   /// The name the server uses.
   final String wire;
+
+  /// How long one payment adds, as the server's plans define it
+  /// (server/src/lib/pro-plans.js). One payment, one period: nothing renews.
+  final int months;
+
+  /// "1 month", "12 months".
+  String get period => months == 1 ? '1 month' : '$months months';
 
   static ProPlan? fromWire(Object? value) => switch (value) {
     'monthly' => ProPlan.monthly,
