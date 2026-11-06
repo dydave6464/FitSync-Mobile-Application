@@ -130,6 +130,7 @@ void main() {
         ('page', t.bg),
         ('card', t.surface),
         ('chip', t.surface2),
+        ('dialog', t.elev),
       ]) {
         expect(
           _contrast(Color.alphaBlend(t.control, bg), bg),
@@ -146,6 +147,7 @@ void main() {
         ('page', t.bg),
         ('card', t.surface),
         ('chip', t.surface2),
+        ('dialog', t.elev),
       ]) {
         expect(
           _contrast(t.accentFill, bg),
