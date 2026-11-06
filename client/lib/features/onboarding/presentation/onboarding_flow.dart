@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import 'package:flutter/semantics.dart' show SemanticsService;
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../core/api_exception.dart';
@@ -459,20 +460,40 @@ class _OnboardingFlowState extends ConsumerState<OnboardingFlow> {
     );
   }
 
-  void _advance() => setState(() {
-    _error = null;
-    _fieldErrors = const {};
-    _queried = null;
-    if (_index < _total - 1) _index++;
-  });
+  void _advance() => _moveTo(_index + 1);
 
-  void _back() => setState(() {
-    _error = null;
-    _fieldErrors = const {};
-    _queried = null;
-    _buildFailed = false;
-    if (_index > 0) _index--;
-  });
+  void _back() => _moveTo(_index - 1, back: true);
+
+  /// The steps' headings, in order, for [_announceStep].
+  static const _titles = [
+    GoalStep.title,
+    AboutStep.title,
+    LevelStep.title,
+    InjuriesStep.title,
+    HealthStep.title,
+    RemindersStep.title,
+  ];
+
+  void _moveTo(int index, {bool back = false}) {
+    final before = _index;
+    setState(() {
+      _error = null;
+      _fieldErrors = const {};
+      _queried = null;
+      if (back) _buildFailed = false;
+      _index = index.clamp(0, _total - 1);
+    });
+    if (_index != before) _announceStep();
+  }
+
+  /// Says where the user now is. Focus stays on Continue (or Back) across a
+  /// step change, so without this a screen reader hears nothing new and the
+  /// user cannot tell the step changed.
+  void _announceStep() => SemanticsService.sendAnnouncement(
+    View.of(context),
+    'Step ${_index + 1} of $_total: ${_titles[_index]}',
+    Directionality.of(context),
+  );
 
   Widget _stepContent() => switch (_index) {
     0 => GoalStep(

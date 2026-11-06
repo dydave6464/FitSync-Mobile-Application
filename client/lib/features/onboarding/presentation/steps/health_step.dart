@@ -14,6 +14,9 @@ import '../../../health/domain/health_answers.dart';
 /// screen, and deleting has its own button. That flag is also how the copy
 /// tells the two apart, since only onboarding offers the opt-out.
 class HealthStep extends StatelessWidget {
+  /// The step's heading, also said when onboarding moves to it.
+  static const title = 'Your health';
+
   const HealthStep({
     super.key,
     required this.value,
@@ -38,7 +41,12 @@ class HealthStep extends StatelessWidget {
       crossAxisAlignment: CrossAxisAlignment.stretch,
       mainAxisSize: MainAxisSize.min,
       children: [
-        Text('Your health', style: theme.textTheme.headlineSmall),
+        // A heading, so a screen reader can jump to it and hears it as the
+        // title of the step.
+        Semantics(
+          header: true,
+          child: Text(HealthStep.title, style: theme.textTheme.headlineSmall),
+        ),
         const SizedBox(height: 8),
         Text(
           'This helps us keep your plan safe.',

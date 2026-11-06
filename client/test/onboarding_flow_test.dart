@@ -1967,4 +1967,94 @@ void main() {
       expect(find.text('STEP 2 / 6'), findsOneWidget);
     });
   });
+
+  group('Moving between steps', () {
+    double stepOffset(WidgetTester tester) => tester
+        .state<ScrollableState>(
+          find
+              .descendant(
+                of: find.byType(SingleChildScrollView),
+                matching: find.byType(Scrollable),
+              )
+              .first,
+        )
+        .position
+        .pixels;
+
+    testWidgets('each step opens at its top, forwards and back', (
+      tester,
+    ) async {
+      await _pumpFlow(tester, patches: []);
+      await _skip(tester);
+      expect(find.text('STEP 2 / 6'), findsOneWidget);
+
+      // Down the long About step, then on to the next one.
+      await tester.drag(
+        find.byType(SingleChildScrollView).first,
+        const Offset(0, -250),
+      );
+      await tester.pumpAndSettle();
+      expect(stepOffset(tester), greaterThan(0));
+      await _skip(tester);
+
+      expect(find.text('STEP 3 / 6'), findsOneWidget);
+      expect(stepOffset(tester), 0);
+
+      await tester.drag(
+        find.byType(SingleChildScrollView).first,
+        const Offset(0, -250),
+      );
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const Key('back')));
+      await tester.pumpAndSettle();
+
+      expect(find.text('STEP 2 / 6'), findsOneWidget);
+      expect(stepOffset(tester), 0);
+    });
+
+    testWidgets('a screen reader hears which step it is now on', (
+      tester,
+    ) async {
+      final handle = tester.ensureSemantics();
+      await _pumpFlow(tester, patches: []);
+      tester.takeAnnouncements();
+
+      await _skip(tester);
+      expect(tester.takeAnnouncements().map((a) => a.message), [
+        'Step 2 of 6: A bit about you',
+      ]);
+
+      await tester.tap(find.byKey(const Key('back')));
+      await tester.pumpAndSettle();
+      expect(tester.takeAnnouncements().map((a) => a.message), [
+        'Step 1 of 6: What are your goals?',
+      ]);
+      handle.dispose();
+    });
+
+    testWidgets('every step title is a heading', (tester) async {
+      final handle = tester.ensureSemantics();
+      await _pumpFlow(tester, patches: []);
+
+      bool isHeader(String title) => tester
+          .getSemantics(find.text(title))
+          .getSemanticsData()
+          .flagsCollection
+          .isHeader;
+
+      for (final title in [
+        'What are your goals?',
+        'A bit about you',
+        'Your level & equipment',
+        'Any injuries?',
+      ]) {
+        expect(isHeader(title), isTrue, reason: '"$title" heads its step');
+        await _skip(tester);
+      }
+      expect(isHeader('Your health'), isTrue);
+      await _passHealthClear(tester);
+      expect(isHeader('Stay on track'), isTrue);
+      handle.dispose();
+    });
+  });
 }

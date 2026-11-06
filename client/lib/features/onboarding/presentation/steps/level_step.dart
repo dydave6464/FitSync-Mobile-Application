@@ -105,6 +105,9 @@ const locationPrefill = <String, List<String>?>{
 /// Reads the equipment lookup because that list belongs to the server, not to
 /// the design — but still saves nothing and knows nothing about its scaffold.
 class LevelStep extends ConsumerWidget {
+  /// The step's heading, also said when onboarding moves to it.
+  static const title = 'Your level & equipment';
+
   const LevelStep({super.key, required this.value, required this.onChanged});
 
   final LevelAnswers value;
@@ -188,7 +191,12 @@ class LevelStep extends ConsumerWidget {
       crossAxisAlignment: CrossAxisAlignment.stretch,
       mainAxisSize: MainAxisSize.min,
       children: [
-        Text('Your level & equipment', style: theme.textTheme.headlineSmall),
+        // A heading, so a screen reader can jump to it and hears it as the
+        // title of the step.
+        Semantics(
+          header: true,
+          child: Text(LevelStep.title, style: theme.textTheme.headlineSmall),
+        ),
         const SizedBox(height: 22),
         const FsEyebrow('Experience'),
         const SizedBox(height: 10),

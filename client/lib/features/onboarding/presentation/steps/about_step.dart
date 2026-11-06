@@ -154,6 +154,9 @@ String _grouped(int value) {
 ///
 /// Like [GoalStep], it reads no providers and saves nothing.
 class AboutStep extends StatefulWidget {
+  /// The step's heading, also said when onboarding moves to it.
+  static const title = 'A bit about you';
+
   const AboutStep({
     super.key,
     required this.value,
@@ -376,7 +379,12 @@ class _AboutStepState extends State<AboutStep> {
       crossAxisAlignment: CrossAxisAlignment.stretch,
       mainAxisSize: MainAxisSize.min,
       children: [
-        Text('A bit about you', style: theme.textTheme.headlineSmall),
+        // A heading, so a screen reader can jump to it and hears it as the
+        // title of the step.
+        Semantics(
+          header: true,
+          child: Text(AboutStep.title, style: theme.textTheme.headlineSmall),
+        ),
         const SizedBox(height: 8),
         Text(
           'Powers your calorie targets, recovery and progress tracking.',

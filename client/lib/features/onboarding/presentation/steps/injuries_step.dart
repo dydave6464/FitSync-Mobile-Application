@@ -34,6 +34,9 @@ const _sides = <({String value, String label})>[
 /// which regions have sides would duplicate a fact the server already owns —
 /// and the server is what returns a 400 when the two disagree.
 class InjuriesStep extends ConsumerWidget {
+  /// The step's heading, also said when onboarding moves to it.
+  static const title = 'Any injuries?';
+
   const InjuriesStep({super.key, required this.value, required this.onChanged});
 
   final List<SelectedInjury> value;
@@ -100,7 +103,12 @@ class InjuriesStep extends ConsumerWidget {
       crossAxisAlignment: CrossAxisAlignment.stretch,
       mainAxisSize: MainAxisSize.min,
       children: [
-        Text('Any injuries?', style: theme.textTheme.headlineSmall),
+        // A heading, so a screen reader can jump to it and hears it as the
+        // title of the step.
+        Semantics(
+          header: true,
+          child: Text(InjuriesStep.title, style: theme.textTheme.headlineSmall),
+        ),
         const SizedBox(height: 8),
         Text(
           'Tell us where you have had trouble, past or present. Your answers '
