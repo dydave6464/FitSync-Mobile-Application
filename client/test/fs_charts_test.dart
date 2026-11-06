@@ -366,6 +366,24 @@ void main() {
       ),
     );
 
+    // L-11: the brand green is 2.87:1 on a light card, under the 3:1 a line
+    // read as data needs.
+    testWidgets('the line and its dots are in the data green by default', (
+      tester,
+    ) async {
+      await pumpWeights(tester);
+
+      final bar = _lineData(tester).lineBarsData.single;
+      expect(bar.color, FsTokens.light.accentFill);
+      final dot = bar.dotData.getDotPainter(
+        bar.spots.first,
+        0,
+        bar,
+        0,
+      ) as FlDotCirclePainter;
+      expect(dot.color, FsTokens.light.accentFill);
+    });
+
     testWidgets('every weigh-in is a dot on the line', (tester) async {
       await pumpWeights(tester);
 
