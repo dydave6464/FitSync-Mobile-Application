@@ -209,8 +209,17 @@ class _SessionController extends ActiveSessionController {
   final ActiveSession? session;
 
   @override
-  Future<ActiveSession?> build() async => session;
+  Future<ActiveSession?> build() async {
+    _sessionLoads += 1;
+    return _sessionLoads > 1 ? (_sessionOnReload ?? session) : session;
+  }
 }
+
+/// How many times the running test's activeSessionProvider has loaded, and
+/// what it finds from the second load on (null: the same as the first).
+/// Top-level, as a reload may build a fresh controller.
+int _sessionLoads = 0;
+ActiveSession? _sessionOnReload;
 
 const _inProgress = ActiveSession(
   sessionId: 31,
@@ -242,6 +251,8 @@ Future<void> _pump(
   ActiveSession? session,
   bool dark = false,
 }) async {
+  _sessionLoads = 0;
+  _sessionOnReload = null;
   _profile = _FakeProfileNotifier(
     injuries,
     goal: goal,
@@ -337,6 +348,66 @@ void main() {
             .first,
       );
       await tester.tap(resume);
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 400));
+
+      final logger = tester.widget<SessionLoggerScreen>(
+        find.byType(SessionLoggerScreen),
+      );
+      expect(logger.resume, isTrue);
+    });
+
+    // Refused at Generate anyway: the provider was stale, or another phone
+    // started a workout. The snack offers the way in, and the screen reloads
+    // the session so its own note and Resume button appear in place.
+    testWidgets('a refusal at Generate offers Resume and reloads the session', (
+      tester,
+    ) async {
+      final repo = FakePlanRepository(
+        error: const ApiException(
+          'SESSION_IN_PROGRESS',
+          'You have a workout in progress. Finish or discard it before '
+              'changing your plan.',
+          details: [
+            {'sessionId': 31, 'startedAt': '2026-11-06T01:02:03.000Z'},
+          ],
+        ),
+      );
+      await _pump(tester, plan: _pplPlan, repo: repo);
+      expect(_sessionLoads, 1);
+      _sessionOnReload = _inProgress;
+
+      final generate = find.byKey(const Key('gen.generate'));
+      await tester.ensureVisible(generate);
+      await tester.pumpAndSettle();
+      await tester.tap(generate);
+      await tester.pumpAndSettle();
+
+      expect(_sessionLoads, greaterThan(1));
+      expect(find.byType(GeneratingView), findsNothing);
+      final snack = find.byType(SnackBar);
+      expect(
+        find.descendant(
+          of: snack,
+          matching: find.text(
+            'You have a workout in progress. Finish or discard it before '
+            'changing your plan.',
+          ),
+        ),
+        findsOneWidget,
+      );
+      // The reloaded session brings the screen's own note and button back.
+      expect(
+        find.text(
+          'You have a workout in progress. Finish or discard it first.',
+        ),
+        findsOneWidget,
+      );
+      expect(find.byKey(const Key('gen.resume')), findsOneWidget);
+
+      await tester.tap(
+        find.descendant(of: snack, matching: find.text('Resume')),
+      );
       await tester.pump();
       await tester.pump(const Duration(milliseconds: 400));
 
@@ -979,7 +1050,13 @@ void main() {
     await tester.tap(find.byKey(const Key('gen.generate')));
     await tester.pumpAndSettle();
 
-    expect(find.textContaining('Finish or discard'), findsOneWidget);
+    expect(
+      find.descendant(
+        of: find.byType(SnackBar),
+        matching: find.textContaining('Finish or discard'),
+      ),
+      findsOneWidget,
+    );
   });
 
   testWidgets('a broken reply is reported in plain words', (tester) async {

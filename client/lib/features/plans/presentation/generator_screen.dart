@@ -147,6 +147,29 @@ class _GeneratorScreenState extends ConsumerState<GeneratorScreen> {
       );
       if (mounted) navigator.pop();
     } on ApiException catch (error) {
+      if (error.code == 'SESSION_IN_PROGRESS') {
+        // The screen thought nothing was open: its read was stale, or another
+        // phone started a workout. Reloading it brings the in-progress note,
+        // the held Generate and Resume back in place; the snack's own Resume
+        // is the way in even if that reload fails.
+        container.invalidate(activeSessionProvider);
+        if (!mounted) return;
+        setState(() => _busy = false);
+        messenger.showSnackBar(
+          SnackBar(
+            content: Text(userMessage(error)),
+            action: SnackBarAction(
+              label: 'Resume',
+              onPressed: () => navigator.push(
+                MaterialPageRoute<void>(
+                  builder: (_) => const SessionLoggerScreen(resume: true),
+                ),
+              ),
+            ),
+          ),
+        );
+        return;
+      }
       if (error.code != 'CUSTOM_PLAN_WOULD_BE_LOST') {
         if (!mounted) return;
         setState(() => _busy = false);
