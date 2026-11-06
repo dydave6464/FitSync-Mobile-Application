@@ -1526,7 +1526,7 @@ void main() {
       },
     );
 
-    testWidgets('FsSegmented segments are at least 48 dp tall and equal', (
+    testWidgets('FsSegmented segments answer at least 48 dp and are equal', (
       tester,
     ) async {
       final h = tester.ensureSemantics();
@@ -1551,7 +1551,112 @@ void main() {
       final a = tester.getSize(find.byKey(const Key('segment.a')));
       final b = tester.getSize(find.byKey(const Key('segment.b')));
       expect(a.height, b.height, reason: 'segments share one height');
-      expect(a.height, greaterThanOrEqualTo(48));
+      // What a screen reader frames, and a thumb can hit, is 48 dp even
+      // where the pill is drawn shorter.
+      for (final value in ['a', 'b']) {
+        final node = tester.getSemantics(find.byKey(Key('segment.$value')));
+        expect(node.rect.height, greaterThanOrEqualTo(48));
+      }
+      h.dispose();
+    });
+
+    // `.seg > div { padding: 8px 0 }` in the prototype's styles.css: one line
+    // of 12.5 text with 8 above and below it, in a track 4 bigger all round.
+    testWidgets('FsSegmented draws its track and pill at the prototype size', (
+      tester,
+    ) async {
+      await tester.pumpWidget(
+        host(
+          SizedBox(
+            width: 300,
+            child: FsSegmented(
+              options: const [
+                (value: 'male', label: 'Male'),
+                (value: 'female', label: 'Female'),
+              ],
+              selected: 'female',
+              onSelected: (_) {},
+            ),
+          ),
+        ),
+      );
+      final line = tester.getSize(find.text('Female')).height;
+      final pill = tester.getSize(
+        find
+            .ancestor(
+              of: find.text('Female'),
+              matching: find.byType(DecoratedBox),
+            )
+            .first,
+      );
+      final track = tester.getSize(
+        find
+            .descendant(
+              of: find.byType(FsSegmented),
+              matching: find.byType(Material),
+            )
+            .first,
+      );
+      expect(pill.height, line + 16, reason: 'the selected pill, as drawn');
+      expect(pill.height, lessThan(48));
+      expect(track.height, pill.height + 8);
+      // The room for a thumb is laid out around the track, not drawn.
+      expect(tester.getSize(find.byType(FsSegmented)).height, 48);
+    });
+
+    testWidgets('FsSegmented that ends a Column answers taps across 48 dp', (
+      tester,
+    ) async {
+      // The sex and experience pickers: the control is the last child of a
+      // Column, flush with its bottom edge. Room outside the Column never
+      // reaches it, so the 48 dp has to be inside the control's own box.
+      final h = tester.ensureSemantics();
+      final picked = <String>[];
+      await tester.pumpWidget(
+        host(
+          SizedBox(
+            width: 300,
+            child: Column(
+              key: const Key('column'),
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                const Text('Sex'),
+                FsSegmented(
+                  options: const [
+                    (value: 'male', label: 'Male'),
+                    (value: 'female', label: 'Female'),
+                  ],
+                  selected: 'male',
+                  onSelected: picked.add,
+                ),
+              ],
+            ),
+          ),
+        ),
+      );
+      await expectLater(tester, meetsGuideline(androidTapTargetGuideline));
+      final column = tester.getRect(find.byKey(const Key('column')));
+      final pill = tester.getRect(find.byKey(const Key('segment.female')));
+      final track = tester.getRect(
+        find
+            .descendant(
+              of: find.byType(FsSegmented),
+              matching: find.byType(Material),
+            )
+            .first,
+      );
+      final x = pill.center.dx;
+      await tester.tapAt(Offset(x, column.bottom - 0.5));
+      expect(picked, ['female'], reason: 'the Column\'s last dp');
+      await tester.tapAt(Offset(x, pill.bottom + 2));
+      expect(picked, hasLength(2), reason: 'the track, just under the pill');
+      await tester.tapAt(Offset(x, track.top - 1));
+      expect(picked, hasLength(3), reason: 'just above the drawn track');
+      expect(picked.toSet(), {'female'});
+      final node = tester.getSemantics(find.byKey(const Key('segment.female')));
+      expect(node.rect.height, 48);
+      expect(node.label, 'Female');
       h.dispose();
     });
 

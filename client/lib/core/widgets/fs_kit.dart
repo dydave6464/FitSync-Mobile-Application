@@ -588,83 +588,133 @@ class FsSegmented extends StatelessWidget {
   Widget build(BuildContext context) {
     final t = context.fs;
 
-    return Material(
-      color: t.surface,
-      shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(FsRadius.pill),
-        side: BorderSide(color: t.line),
-      ),
-      child: Padding(
-        padding: const EdgeInsets.all(4),
-        // Every segment as tall as the tallest, and never under 48 dp: a
-        // label that wraps to a second line no longer leaves its neighbours a
-        // smaller target than itself.
-        child: IntrinsicHeight(
-          child: Row(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              for (final (index, option) in options.indexed) ...[
-                if (option != options.first) const SizedBox(width: 2),
-                Expanded(
-                  // Each segment is its own button in a single-choice group,
-                  // with its place in the set, so a screen reader can say
-                  // "Female, selected, 2 of 2" rather than just the word.
-                  child: Semantics(
-                    container: true,
-                    button: true,
-                    enabled: true,
-                    selected: selected == option.value,
-                    inMutuallyExclusiveGroup: true,
-                    hint: '${index + 1} of ${options.length}',
-                    child: InkWell(
-                      key: Key('segment.${option.value}'),
-                      onTap: () => onSelected(option.value),
-                      borderRadius: BorderRadius.circular(FsRadius.pill),
-                      child: DecoratedBox(
-                        decoration: BoxDecoration(
-                          color: selected == option.value
-                              ? t.accent
-                              : Colors.transparent,
-                          borderRadius: BorderRadius.circular(FsRadius.pill),
-                        ),
-                        child: ConstrainedBox(
-                          constraints: const BoxConstraints(
-                            minHeight: _minTapTarget,
-                          ),
-                          child: Padding(
-                            padding: const EdgeInsets.symmetric(vertical: 8),
-                            child: Center(
-                              child: Text(
-                                option.label,
-                                textAlign: TextAlign.center,
-                                // A label too long for one line wraps to a
-                                // second rather than ellipsizing -- "New to
-                                // training" at 320dp is the case this
-                                // guards, and a label is a binding
-                                // constraint that must never be shortened.
-                                maxLines: 2,
-                                overflow: TextOverflow.ellipsis,
-                                style: TextStyle(
-                                  fontSize: 12.5,
-                                  fontWeight: FontWeight.w600,
+    // The track and its pills are drawn at the design's size, `.seg > div {
+    // padding: 8px 0 }`, about 34 dp tall. The 48 dp a thumb needs is laid
+    // out around them instead, as transparent room above and below the
+    // track, so a Column ending flush with the control still holds all of
+    // it. Any tap in that box, room or track padding alike, goes to the
+    // segment in line with it.
+    return _SegmentColumns(
+      child: ConstrainedBox(
+        constraints: const BoxConstraints(minHeight: _minTapTarget),
+        child: Center(
+          heightFactor: 1,
+          child: Material(
+            color: t.surface,
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(FsRadius.pill),
+              side: BorderSide(color: t.line),
+            ),
+            child: Padding(
+              padding: const EdgeInsets.all(4),
+              // Every segment as tall as the tallest: a label that wraps to a
+              // second line no longer leaves its neighbours a smaller pill
+              // than itself.
+              child: IntrinsicHeight(
+                child: Row(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    for (final (index, option) in options.indexed) ...[
+                      if (option != options.first) const SizedBox(width: 2),
+                      Expanded(
+                        // Each segment is its own button in a single-choice
+                        // group, with its place in the set, so a screen
+                        // reader can say "Female, selected, 2 of 2" rather
+                        // than just the word. The band carries the node, so
+                        // it frames the 48 dp a thumb can hit, not the pill.
+                        child: _TapReach(
+                          minSize: const Size(0, _minTapTarget),
+                          button: true,
+                          enabled: true,
+                          selected: selected == option.value,
+                          child: Semantics(
+                            inMutuallyExclusiveGroup: true,
+                            hint: '${index + 1} of ${options.length}',
+                            child: InkWell(
+                              key: Key('segment.${option.value}'),
+                              onTap: () => onSelected(option.value),
+                              borderRadius: BorderRadius.circular(
+                                FsRadius.pill,
+                              ),
+                              child: DecoratedBox(
+                                decoration: BoxDecoration(
                                   color: selected == option.value
-                                      ? t.onAccent
-                                      : t.text2,
+                                      ? t.accent
+                                      : Colors.transparent,
+                                  borderRadius: BorderRadius.circular(
+                                    FsRadius.pill,
+                                  ),
+                                ),
+                                child: Padding(
+                                  padding: const EdgeInsets.symmetric(
+                                    vertical: 8,
+                                  ),
+                                  child: Center(
+                                    child: Text(
+                                      option.label,
+                                      textAlign: TextAlign.center,
+                                      // A label too long for one line wraps
+                                      // to a second rather than ellipsizing
+                                      // -- "New to training" at 320dp is the
+                                      // case this guards, and a label is a
+                                      // binding constraint that must never
+                                      // be shortened.
+                                      maxLines: 2,
+                                      overflow: TextOverflow.ellipsis,
+                                      style: TextStyle(
+                                        fontSize: 12.5,
+                                        fontWeight: FontWeight.w600,
+                                        color: selected == option.value
+                                            ? t.onAccent
+                                            : t.text2,
+                                      ),
+                                    ),
+                                  ),
                                 ),
                               ),
                             ),
                           ),
                         ),
                       ),
-                    ),
-                  ),
+                    ],
+                  ],
                 ),
-              ],
-            ],
+              ),
+            ),
           ),
         ),
       ),
     );
+  }
+}
+
+/// Hands every tap in [FsSegmented]'s box to its child on the box's middle
+/// line, at the same x, where the segment in line with the tap is drawn.
+///
+/// The track is centred in the box, so the middle line runs through every
+/// pill. A tap in the room above or below the track, or in the track's own
+/// padding, which the track's Material would otherwise swallow, still picks
+/// the segment under the thumb.
+class _SegmentColumns extends SingleChildRenderObjectWidget {
+  const _SegmentColumns({required Widget super.child});
+
+  @override
+  RenderProxyBox createRenderObject(BuildContext context) =>
+      _RenderSegmentColumns();
+}
+
+class _RenderSegmentColumns extends RenderProxyBox {
+  @override
+  bool hitTest(BoxHitTestResult result, {required Offset position}) {
+    if (!size.contains(position)) return false;
+    final onto = Offset(position.dx, size.height / 2);
+    final hit = result.addWithRawTransform(
+      transform: MatrixUtils.forceToPoint(onto),
+      position: onto,
+      hitTest: (result, _) => hitTestChildren(result, position: onto),
+    );
+    if (hit) result.add(BoxHitTestEntry(this, position));
+    return hit;
   }
 }
 
