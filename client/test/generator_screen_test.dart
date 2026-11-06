@@ -142,7 +142,7 @@ class _FakeProfileNotifier extends ProfileNotifier {
       trainingDays: trainingDays,
     ),
     _ProfileLoad.pending => Completer<Profile>().future,
-    // A plain Exception, not ApiException(NETWORK_ERROR): that is the one
+    // A plain Exception, not ApiException(NETWORK_ERROR): that is a
     // code apiRetryPolicy retries on its own, which would leave the
     // provider looping rather than settling into the error state.
     _ProfileLoad.failed => throw Exception('profile down'),
@@ -803,7 +803,7 @@ void main() {
         overrides: [
           activePlanProvider.overrideWith((ref) async {
             calls += 1;
-            // A plain Exception, not ApiException(NETWORK_ERROR) -- the one
+            // A plain Exception, not ApiException(NETWORK_ERROR) -- a
             // code apiRetryPolicy treats as transient and would retry on its
             // own, which would hide the very state this test is checking.
             if (calls == 1) throw Exception('boom');

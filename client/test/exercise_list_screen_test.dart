@@ -147,7 +147,7 @@ void main() {
   testWidgets('shows the server error code and retries on demand', (
     tester,
   ) async {
-    // NETWORK_ERROR is deliberately avoided here: it is the one code
+    // NETWORK_ERROR is deliberately avoided here: it is a code
     // apiRetryPolicy treats as transient, so it would retry automatically
     // (up to Riverpod's default 10 attempts) instead of surfacing on the
     // first failure the way this test expects. INVALID_QUERY_PARAM is

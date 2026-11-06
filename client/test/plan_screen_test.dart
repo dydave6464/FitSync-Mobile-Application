@@ -125,7 +125,7 @@ class _FakeProfileNotifier extends ProfileNotifier {
 
   @override
   Future<Profile> build() async {
-    // A plain Exception, not ApiException(NETWORK_ERROR): that is the one
+    // A plain Exception, not ApiException(NETWORK_ERROR): that is a
     // code apiRetryPolicy retries, which would never settle.
     if (fails) throw Exception('profile down');
     return Profile(

@@ -44,6 +44,32 @@ void main() {
     expect(describeError(StateError('x')), userMessage(StateError('x')));
   });
 
+  // P-4: one definition of a failure that sending the same request again
+  // may get past, for the automatic retry and the "Try again" action alike.
+  group('isRetryableError', () {
+    test('the transient codes: unreachable, server fault, garbled reply', () {
+      for (final code in [
+        'NETWORK_ERROR',
+        'INTERNAL_ERROR',
+        'INVALID_RESPONSE',
+      ]) {
+        expect(isRetryableError(ApiException(code, 'x')), isTrue, reason: code);
+      }
+    });
+
+    test('a refusal the server named, or a bug, is not', () {
+      for (final error in [
+        const ApiException('ENTRY_NOT_FOUND', 'No such entry.'),
+        const ApiException('INVALID_QUERY_PARAM', 'x'),
+        const ApiException('UNKNOWN_ERROR', 'The request failed.'),
+        const ApiException('CANCELLED', 'The request was cancelled.'),
+        StateError('bug'),
+      ]) {
+        expect(isRetryableError(error), isFalse, reason: '$error');
+      }
+    });
+  });
+
   test('details default to none and keep what the server sent', () {
     expect(const ApiException('X', 'y').details, isEmpty);
     expect(
