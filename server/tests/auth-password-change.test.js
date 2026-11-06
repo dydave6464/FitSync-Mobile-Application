@@ -152,6 +152,25 @@ test('change password', async (t) => {
     assert.equal((await login('juan@example.com', 's3cret-pass')).status, 200);
   });
 
+  // Only a reset code proves the address; knowing the current password does
+  // not, so a change leaves verification exactly as it was.
+  await t.test('a change does not verify the address', async () => {
+    await reset();
+    const res = await request(app).post('/api/v1/auth/register')
+      .send({ email: 'new@example.com', password: 's3cret-pass', fullName: 'N' })
+      .expect(201);
+    const { userId } = res.body.data.user;
+
+    const done = await change(signToken(userId, JWT), {
+      currentPassword: 's3cret-pass', newPassword: 'a brand new pass',
+    });
+    assert.equal(done.status, 200);
+    const [[row]] = await pool.query(
+      'SELECT email_verified FROM users WHERE user_id = ?', [userId],
+    );
+    assert.equal(row.email_verified, 0);
+  });
+
   await t.test('requires a signed-in caller', async () => {
     const res = await request(app).post('/api/v1/auth/password')
       .send({ currentPassword: 's3cret-pass', newPassword: 'a brand new pass' });
