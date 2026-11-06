@@ -356,22 +356,21 @@ void main() {
     expect(_chipOn(tester, label(bottom)), isTrue);
   });
 
-  testWidgets(
-    'a new plan does not carry the old plan\'s session length',
-    (tester) async {
-      // The generator derives the length from today's level, goal and health
-      // check. Sending the current plan's 60 would pin it there, so a user who
-      // moved up from New to training, or added a condition, kept the old one.
-      final repo = FakePlanRepository();
-      await _pump(tester, plan: _pplPlan, repo: repo);
+  testWidgets('a new plan does not carry the old plan\'s session length', (
+    tester,
+  ) async {
+    // The generator derives the length from today's level, goal and health
+    // check. Sending the current plan's 60 would pin it there, so a user who
+    // moved up from New to training, or added a condition, kept the old one.
+    final repo = FakePlanRepository();
+    await _pump(tester, plan: _pplPlan, repo: repo);
 
-      await tester.tap(find.byKey(const Key('gen.generate')));
-      await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const Key('gen.generate')));
+    await tester.pumpAndSettle();
 
-      expect(repo.regenerateCalls, 1);
-      expect(repo.sent!.containsKey('sessionLengthMin'), isFalse);
-    },
-  );
+    expect(repo.regenerateCalls, 1);
+    expect(repo.sent!.containsKey('sessionLengthMin'), isFalse);
+  });
 
   testWidgets('ticking a weekday adds just that day', (tester) async {
     // The behaviour fill-to-N could not express: days are chosen
@@ -758,10 +757,7 @@ void main() {
     await tester.tap(find.byKey(const Key('gen.generate')));
     await tester.pumpAndSettle();
 
-    expect(repo.sent, {
-      'splitStyle': 'upper_lower',
-      'daysPerWeek': 5,
-    });
+    expect(repo.sent, {'splitStyle': 'upper_lower', 'daysPerWeek': 5});
   });
 
   testWidgets('a session in progress is refused with a reason', (tester) async {
@@ -1546,5 +1542,22 @@ void main() {
     );
 
     expect(find.text('Working around: Shoulder'), findsOneWidget);
+  });
+
+  testWidgets('weekday taps say they save as they go (PT-16)', (tester) async {
+    await _pump(tester, plan: _pplPlan, trainingDays: const [1, 3]);
+
+    final caption = find.byKey(const Key('gen.trainingDays.saved'));
+    expect(caption, findsOneWidget);
+    expect(
+      tester.widget<Text>(caption).data,
+      'Saved to your schedule as you tap. Used by reminders and the '
+      'calendar.',
+    );
+    // Under the row it describes.
+    expect(
+      tester.getTopLeft(caption).dy,
+      greaterThan(tester.getBottomLeft(find.byType(TrainingDaysRow)).dy),
+    );
   });
 }

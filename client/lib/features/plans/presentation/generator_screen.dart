@@ -175,12 +175,7 @@ class _GeneratorScreenState extends ConsumerState<GeneratorScreen> {
         // request inline, so the confirmed attempt gets the identical busy
         // state and hold as the first -- there is exactly one place that
         // logic lives.
-        await _generate(
-          split,
-          days,
-          trainingDays,
-          replaceCustomPlan: true,
-        );
+        await _generate(split, days, trainingDays, replaceCustomPlan: true);
       }
     } catch (_) {
       if (!mounted) return;
@@ -441,6 +436,17 @@ class _GeneratorScreenState extends ConsumerState<GeneratorScreen> {
             _setTrainingDays(next, changed.first);
           },
         ),
+        // The split chips wait for Generate; these do not. Said where it
+        // happens, so backing out without generating surprises nobody.
+        if (daysKnown) ...[
+          const SizedBox(height: 8),
+          Text(
+            'Saved to your schedule as you tap. Used by reminders and the '
+            'calendar.',
+            key: const Key('gen.trainingDays.saved'),
+            style: TextStyle(fontSize: 12, color: t.text3, height: 1.35),
+          ),
+        ],
         if (!daysKnown) ...[
           const SizedBox(height: 8),
           Text(
