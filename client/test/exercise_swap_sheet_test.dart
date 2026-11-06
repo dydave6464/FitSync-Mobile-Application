@@ -1179,5 +1179,49 @@ void main() {
       expect(find.text('push'), findsNothing);
       expect(find.byKey(const Key('swap.search.clear')), findsNothing);
     });
+
+    testWidgets('clearing resets the search and drops a pending keystroke '
+        '(L-40)', (tester) async {
+      // Only the empty search has a row; anything typed finds nothing.
+      final asked = <String>[];
+      await tester.pumpWidget(
+        ProviderScope(
+          overrides: [
+            alternativesProvider.overrideWith((ref, key) async {
+              asked.add(key.query);
+              return key.query.isEmpty ? const [_alt] : const [];
+            }),
+          ],
+          child: const MaterialApp(
+            home: Scaffold(
+              body: ExerciseSwapSheet(
+                planExerciseId: 77,
+                exerciseName: 'Cable Fly',
+              ),
+            ),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+      final search = find.byKey(const Key('swap.search'));
+
+      await tester.enterText(search, 'push');
+      await tester.pumpAndSettle(const Duration(milliseconds: 400));
+      expect(asked.last, 'push');
+      expect(find.byKey(const Key('swap.alt.12')), findsNothing);
+
+      // A keystroke still inside its debounce when Clear is tapped.
+      await tester.enterText(search, 'pushu');
+      await tester.pump(const Duration(milliseconds: 100));
+      await tester.tap(find.byKey(const Key('swap.search.clear')));
+      await tester.pumpAndSettle(const Duration(milliseconds: 400));
+
+      expect(asked, isNot(contains('pushu')));
+      expect(
+        find.byKey(const Key('swap.alt.12')),
+        findsOneWidget,
+        reason: 'the list is the empty search again',
+      );
+    });
   });
 }
