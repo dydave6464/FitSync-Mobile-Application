@@ -689,6 +689,26 @@ void main() {
       await tester.pumpAndSettle();
       expect(repo.calls.where((c) => c == 'log 2026-10-14 lunch Chicken adobo x1.0'), hasLength(2));
       expect(find.text('Chicken adobo'), findsOneWidget);
+      // The same key both times, so a first save that did land is not doubled.
+      expect(repo.clientIds, hasLength(2));
+      expect(repo.clientIds.first, isNotNull);
+      expect(repo.clientIds.last, repo.clientIds.first);
+    });
+
+    testWidgets('each Undo is a new log, with its own key', (tester) async {
+      final repo = await _pump(tester, today: _day('2026-10-14', lunch: [_adobo()]));
+      await tester.tap(find.byKey(const Key('entry.delete.7')));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Undo'));
+      await tester.pumpAndSettle();
+      final back = repo.days['2026-10-14']!.entries.single.id;
+      await tester.tap(find.byKey(Key('entry.delete.$back')));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Undo'));
+      await tester.pumpAndSettle();
+      expect(repo.clientIds, hasLength(2));
+      expect(repo.clientIds, everyElement(isNotNull));
+      expect(repo.clientIds.last, isNot(repo.clientIds.first));
     });
 
     testWidgets('the Try again message goes away on its own', (tester) async {

@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../../core/client_id.dart';
 import '../../../core/manila_day.dart';
 import '../../../core/theme.dart';
 import '../../../core/widgets/fs_kit.dart';
@@ -192,10 +193,12 @@ class _AddFoodManuallyScreenState extends ConsumerState<AddFoodManuallyScreen> {
                 final persist = MediaQuery.accessibleNavigationOf(context);
                 Navigator.of(context).pop(true);
                 // The form is gone, but the food is kept: Try again sends it
-                // again rather than asking for it to be typed twice.
+                // again rather than asking for it to be typed twice -- with
+                // this log's one key, so it is never saved twice (NU-4).
+                final clientId = newClientId();
                 await saveOrOfferRetry(
                   messenger,
-                  save: () => controller.log(food, mealType: meal, servings: 1, date: date),
+                  save: () => controller.log(food, mealType: meal, servings: 1, date: date, clientId: clientId),
                   failure: "Couldn't save ${food.name}.",
                   persist: persist,
                   onSaved: (saved) => onLogged?.call(saved, date!),

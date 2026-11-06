@@ -413,6 +413,21 @@ void main() {
     await tester.pumpAndSettle();
     expect(repo.calls.where((c) => c == 'log 2026-10-14 snack Turon x1.0'), hasLength(2));
     expect(repo.days['2026-10-14']!.entries.map((e) => e.name), contains('Turon'));
+    // The same key both times, so a first save that did land is not doubled.
+    expect(repo.clientIds, hasLength(2));
+    expect(repo.clientIds.first, isNotNull);
+    expect(repo.clientIds.last, repo.clientIds.first);
+
+    // A separate log is a new one, with its own key.
+    await tester.tap(find.text('go'));
+    await tester.pumpAndSettle();
+    await tester.enterText(find.byKey(const Key('manual.name')), 'Turon');
+    await tester.enterText(find.byKey(const Key('manual.carbs')), '34');
+    await tester.pump();
+    await tester.tap(find.byKey(const Key('manual.log')));
+    await tester.pumpAndSettle();
+    expect(repo.clientIds, hasLength(3));
+    expect(repo.clientIds.last, isNot(repo.clientIds.first));
   });
 
   group('labels (NU-9)', () {
