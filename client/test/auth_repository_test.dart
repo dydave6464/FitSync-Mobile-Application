@@ -214,4 +214,161 @@ void main() {
     final user = AuthUser.fromJson(_userJson);
     expect(user.emailVerified, isFalse);
   });
+
+  test('AuthUser.fromJson reads hasPassword and hasGoogle', () {
+    final user = AuthUser.fromJson({
+      ..._userJson,
+      'hasPassword': false,
+      'hasGoogle': true,
+    });
+    expect(user.hasPassword, isFalse);
+    expect(user.hasGoogle, isTrue);
+  });
+
+  test('AuthUser.fromJson treats an older server as a password account', () {
+    // A server from before account deletion sends neither field; every
+    // account it knows signs in with a password, and none is linked to
+    // Google as far as the app can tell.
+    final user = AuthUser.fromJson(_userJson);
+    expect(user.hasPassword, isTrue);
+    expect(user.hasGoogle, isFalse);
+  });
+
+  test(
+    'changePassword sends both passwords and stores the fresh token',
+    () async {
+      final tokens = TokenStore(backing: InMemorySecureStore());
+      await tokens.write('old-token');
+      late http.Request sent;
+      final repo = AuthRepository(
+        ApiClient(
+          tokens: tokens,
+          client: MockClient((request) async {
+            sent = request;
+            return http.Response(
+              jsonEncode({
+                'data': {'token': 'new-token'},
+              }),
+              200,
+            );
+          }),
+        ),
+        tokens,
+      );
+
+      await repo.changePassword(
+        currentPassword: 'old secret',
+        newPassword: 'new secret!',
+      );
+
+      expect(sent.method, 'POST');
+      expect(sent.url.path, '/api/v1/auth/password');
+      expect(sent.headers['Authorization'], 'Bearer old-token');
+      expect(jsonDecode(sent.body), {
+        'currentPassword': 'old secret',
+        'newPassword': 'new secret!',
+      });
+      expect(
+        await tokens.read(),
+        'new-token',
+        reason: 'the old token stops working once the password changes',
+      );
+    },
+  );
+
+  test('a refused password change keeps the old token', () async {
+    final tokens = TokenStore(backing: InMemorySecureStore());
+    await tokens.write('old-token');
+    final repo = AuthRepository(
+      _clientReturning(
+        jsonEncode({
+          'error': {
+            'code': 'WRONG_PASSWORD',
+            'message': "That password isn't right.",
+          },
+        }),
+        400,
+        tokens: tokens,
+      ),
+      tokens,
+    );
+
+    await expectLater(
+      repo.changePassword(currentPassword: 'nope', newPassword: 'new secret!'),
+      throwsA(
+        isA<ApiException>().having((e) => e.code, 'code', 'WRONG_PASSWORD'),
+      ),
+    );
+    expect(await tokens.read(), 'old-token');
+  });
+
+  test('deleteAccount with a password posts it and accepts a 204', () async {
+    final tokens = TokenStore(backing: InMemorySecureStore());
+    await tokens.write('tok');
+    late http.Request sent;
+    final repo = AuthRepository(
+      ApiClient(
+        tokens: tokens,
+        client: MockClient((request) async {
+          sent = request;
+          return http.Response('', 204);
+        }),
+      ),
+      tokens,
+    );
+
+    await repo.deleteAccount(password: 'my secret');
+
+    expect(sent.method, 'POST');
+    expect(sent.url.path, '/api/v1/account/delete');
+    expect(sent.headers['Authorization'], 'Bearer tok');
+    expect(jsonDecode(sent.body), {'password': 'my secret'});
+  });
+
+  test('deleteAccount with a Google token posts only the idToken', () async {
+    final tokens = TokenStore(backing: InMemorySecureStore());
+    late http.Request sent;
+    final repo = AuthRepository(
+      ApiClient(
+        tokens: tokens,
+        client: MockClient((request) async {
+          sent = request;
+          return http.Response('', 204);
+        }),
+      ),
+      tokens,
+    );
+
+    await repo.deleteAccount(idToken: 'google-id-token');
+
+    expect(jsonDecode(sent.body), {'idToken': 'google-id-token'});
+  });
+
+  test('a refused deletion surfaces the server code', () async {
+    final tokens = TokenStore(backing: InMemorySecureStore());
+    final repo = AuthRepository(
+      _clientReturning(
+        jsonEncode({
+          'error': {
+            'code': 'GOOGLE_ACCOUNT_MISMATCH',
+            'message': "That Google account isn't the one this account uses.",
+          },
+        }),
+        400,
+        tokens: tokens,
+      ),
+      tokens,
+    );
+
+    await expectLater(
+      repo.deleteAccount(idToken: 'someone-else'),
+      throwsA(
+        isA<ApiException>().having(
+          (e) => e.code,
+          'code',
+          'GOOGLE_ACCOUNT_MISMATCH',
+        ),
+      ),
+    );
+  });
 }

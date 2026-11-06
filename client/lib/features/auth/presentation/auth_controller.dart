@@ -30,11 +30,18 @@ import '../domain/auth_user.dart';
 /// plan yet.
 enum AuthStatus { signedOut, onboarding, ready }
 
+/// Why a session ended, when the sign-in screen has something to say about
+/// it. A plain sign-out needs no words: the user asked for it.
+enum SignOutReason { accountDeleted }
+
 class AuthState {
-  const AuthState(this.status, [this.user]);
+  const AuthState(this.status, [this.user, this.reason]);
 
   final AuthStatus status;
   final AuthUser? user;
+
+  /// Set only on a signed-out state, and only when the screen should say why.
+  final SignOutReason? reason;
 
   static const signedOut = AuthState(AuthStatus.signedOut);
 }
@@ -170,12 +177,21 @@ class AuthController extends AsyncNotifier<AuthState> {
     ref.invalidate(proPendingCheckoutProvider);
   }
 
-  Future<void> signOut() async {
+  Future<void> signOut() => _signOutLocally();
+
+  /// Called once the server has deleted the account: the same clean-up as
+  /// [signOut] (the token, this phone's reminders, every cached screen), then
+  /// the sign-in screen says the account was deleted, so the user does not
+  /// wonder why they are back there.
+  Future<void> onAccountDeleted() =>
+      _signOutLocally(SignOutReason.accountDeleted);
+
+  Future<void> _signOutLocally([SignOutReason? reason]) async {
     await ref.read(authRepositoryProvider).signOut();
     // The next account must not inherit this one's reminders.
     await _cancelReminders();
     _clearUserScopedCaches();
-    state = const AsyncData(AuthState.signedOut);
+    state = AsyncData(AuthState(AuthStatus.signedOut, null, reason));
   }
 
   /// Best-effort: a scheduler failure here must never strand the caller

@@ -65,6 +65,9 @@ class ApiClient {
   }
 
   Map<String, dynamic> _unwrap(http.Response response) {
+    // No Content: a success with nothing to say, such as a deleted account.
+    // Its empty body is not JSON, and must not read as a broken response.
+    if (response.statusCode == 204) return <String, dynamic>{};
     final Map<String, dynamic> body;
     try {
       body = jsonDecode(response.body) as Map<String, dynamic>;
@@ -220,7 +223,8 @@ class ApiClient {
   ) => _send('PUT', path, body);
 
   /// The server answers a delete with `{ data: { … } }` like every other
-  /// route — never 204 — because [_unwrap] requires a `data` object.
+  /// route. A 204 would also do (it unwraps to an empty map), but a caller
+  /// reading fields from the answer would then find none.
   Future<Map<String, dynamic>> deleteJson(String path) =>
       _send('DELETE', path, const {});
 }

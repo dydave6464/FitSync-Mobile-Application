@@ -309,6 +309,9 @@ class _SignInScreenState extends ConsumerState<SignInScreen> {
   Widget build(BuildContext context) {
     final t = context.fs;
     final theme = Theme.of(context);
+    final accountDeleted =
+        ref.watch(authControllerProvider).value?.reason ==
+        SignOutReason.accountDeleted;
 
     return Scaffold(
       backgroundColor: t.bg,
@@ -334,6 +337,10 @@ class _SignInScreenState extends ConsumerState<SignInScreen> {
                   'Filipino-context nutrition — built for your goals.',
                   style: TextStyle(fontSize: 12.5, color: t.text2, height: 1.5),
                 ),
+                if (accountDeleted) ...[
+                  const SizedBox(height: 18),
+                  const _AccountDeletedNote(),
+                ],
                 const SizedBox(height: 30),
                 // One group so a password manager fills the email and the
                 // password together, and offers to save them on success.
@@ -537,6 +544,41 @@ class _SignInScreenState extends ConsumerState<SignInScreen> {
               ],
             ),
           ),
+        ),
+      ),
+    );
+  }
+}
+
+/// Why the user is back on sign-in after Delete account: the account is
+/// gone, and without a word the screen looks like an unexplained sign-out.
+/// Stays until they sign in, unlike a SnackBar that can time out unseen. A
+/// live region, so a screen reader says it as the screen appears.
+class _AccountDeletedNote extends StatelessWidget {
+  const _AccountDeletedNote();
+
+  @override
+  Widget build(BuildContext context) {
+    final t = context.fs;
+
+    return FsCard(
+      key: const Key('signIn.accountDeleted'),
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+      child: Semantics(
+        container: true,
+        liveRegion: true,
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Icon(Icons.check_circle_outline, size: 18, color: t.text2),
+            const SizedBox(width: 10),
+            Expanded(
+              child: Text(
+                'Your account was deleted.',
+                style: TextStyle(fontSize: 13, height: 1.4, color: t.text),
+              ),
+            ),
+          ],
         ),
       ),
     );
