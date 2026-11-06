@@ -258,6 +258,59 @@ void main() {
     handle.dispose();
   });
 
+  // Rows open pre-filled from last session, so the hint that carried the
+  // unit and the target is usually gone: the field's own name says them.
+  testWidgets('a filled field still says its unit and the target', (
+    tester,
+  ) async {
+    final handle = tester.ensureSemantics();
+    final drafts = _drafts(tester);
+    drafts.weight(1).text = '60';
+    drafts.reps(1).text = '10';
+    await tester.pumpWidget(
+      _host(
+        SetRow(
+          setNumber: 1,
+          logged: null,
+          drafts: drafts,
+          unit: WeightUnit.lb,
+          repsHint: '8-12',
+        ),
+      ),
+    );
+
+    String fieldLabel(String key) => tester
+        .getSemantics(
+          find.descendant(
+            of: find.byKey(Key(key)),
+            matching: find.byType(EditableText),
+          ),
+        )
+        .label;
+    expect(fieldLabel('set.1.weight'), contains('Weight in lb'));
+    expect(fieldLabel('set.1.reps'), contains('Reps, target 8-12'));
+    handle.dispose();
+  });
+
+  testWidgets('with no target, reps is just Reps', (tester) async {
+    final handle = tester.ensureSemantics();
+    await tester.pumpWidget(
+      _host(SetRow(setNumber: 1, logged: null, drafts: _drafts(tester))),
+    );
+
+    final label = tester
+        .getSemantics(
+          find.descendant(
+            of: find.byKey(const Key('set.1.reps')),
+            matching: find.byType(EditableText),
+          ),
+        )
+        .label;
+    expect(label, contains('Reps'));
+    expect(label, isNot(contains('target')));
+    handle.dispose();
+  });
+
   testWidgets('an unlogged row offers nothing to reopen', (tester) async {
     final handle = tester.ensureSemantics();
     await tester.pumpWidget(
