@@ -88,15 +88,11 @@ class _FakeGoalsRepo implements GoalsRepository {
 
   final changed = <(int, double)>[];
 
-  /// Makes every changeTarget throw it.
-  Object? failChange;
-
   @override
   Future<LiftGoal> changeTarget({
     required int goalId,
     required double targetKg,
   }) async {
-    if (failChange != null) throw failChange!;
     changed.add((goalId, targetKg));
     final i = goals.indexWhere((g) => g.goalId == goalId);
     final old = goals[i];
@@ -266,6 +262,22 @@ void main() {
     expect(find.text('Not logged yet · 0 / 100 kg'), findsOneWidget);
     expect(find.text('Reached 12 Sep'), findsOneWidget);
     expect(find.text('Reached 30 Dec 2025'), findsOneWidget);
+  });
+
+  testWidgets("a goal's target can be changed from its sheet", (tester) async {
+    final repo = await _pump(tester);
+
+    await tester.tap(find.byKey(const Key('streaks.goal.1')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const Key('goal.changeTarget')));
+    await tester.pumpAndSettle();
+    await tester.enterText(find.byKey(const Key('goal.edit.target')), '70');
+    await tester.tap(find.byKey(const Key('goal.edit.save')));
+    await tester.pumpAndSettle();
+
+    expect(repo.changed, [(1, 70.0)]);
+    expect(find.text('Target changed'), findsOneWidget);
+    expect(find.text('52.5 / 70 kg'), findsOneWidget);
   });
 
   testWidgets('a goal can be deleted from its sheet', (tester) async {

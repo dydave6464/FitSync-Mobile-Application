@@ -11,93 +11,15 @@ import '../../../core/widgets/fs_kit.dart';
 import '../../profile/presentation/providers.dart' show weightUnitProvider;
 import '../domain/streaks.dart';
 import 'goal_sheet.dart';
+import 'goal_sheet_route.dart';
 import 'goal_target.dart';
 import 'providers.dart';
 
 /// Adds a lift goal in two steps: choose the exercise, then the target.
 /// Closes on a save that lands; stays open, saying why, on one that does not.
-///
-/// What [showModalBottomSheet] would push, but through [_AddGoalSheetRoute],
-/// so a tap on the scrim closes the sheet on either step.
-Future<void> showAddGoalSheet(BuildContext context) {
-  final navigator = Navigator.of(context);
-  final localizations = MaterialLocalizations.of(context);
-  return navigator.push(
-    _AddGoalSheetRoute(
-      builder: (_) => const _AddGoalSheet(),
-      capturedThemes: InheritedTheme.capture(
-        from: context,
-        to: navigator.context,
-      ),
-      // Material's 48 dp would push a sheet sized to the room above the keyboard off the top (PT-22).
-      showDragHandle: false,
-      backgroundColor: context.fs.surface,
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(22)),
-      ),
-      isScrollControlled: true,
-      barrierLabel: localizations.scrimLabel,
-      barrierOnTapHint: localizations.scrimOnTapHint(
-        localizations.bottomSheetLabel,
-      ),
-      modalBarrierColor: Theme.of(context).bottomSheetTheme.modalBarrierColor,
-    ),
-  );
-}
-
-/// The sheet's route, whose scrim closes it outright.
-///
-/// The target step holds the phone's back in a [PopScope] to step back to
-/// the list, and the stock scrim asks that same [PopScope] (it calls
-/// `Navigator.maybePop`), so a tap outside the sheet stepped back rather
-/// than closing it. The scrim here pops the route itself, as a drag down
-/// already does, keeping everything else the stock scrim has: its colour
-/// animation, label, tap hint and semantics clip.
-class _AddGoalSheetRoute extends ModalBottomSheetRoute<void> {
-  _AddGoalSheetRoute({
-    required super.builder,
-    required super.isScrollControlled,
-    super.capturedThemes,
-    super.barrierLabel,
-    super.barrierOnTapHint,
-    super.backgroundColor,
-    super.shape,
-    super.modalBarrierColor,
-    super.showDragHandle,
-  });
-
-  /// What a drag down does (BottomSheet's onClosing): a pop that does not
-  /// ask the [PopScope].
-  void _close() {
-    if (isCurrent) navigator?.pop();
-  }
-
-  @override
-  Widget buildModalBarrier() {
-    final barrier = super.buildModalBarrier();
-    return switch (barrier) {
-      AnimatedModalBarrier() => AnimatedModalBarrier(
-        color: barrier.color,
-        dismissible: barrier.dismissible,
-        semanticsLabel: barrier.semanticsLabel,
-        barrierSemanticsDismissible: barrier.barrierSemanticsDismissible,
-        clipDetailsNotifier: barrier.clipDetailsNotifier,
-        semanticsOnTapHint: barrier.semanticsOnTapHint,
-        onDismiss: _close,
-      ),
-      ModalBarrier() => ModalBarrier(
-        color: barrier.color,
-        dismissible: barrier.dismissible,
-        semanticsLabel: barrier.semanticsLabel,
-        barrierSemanticsDismissible: barrier.barrierSemanticsDismissible,
-        clipDetailsNotifier: barrier.clipDetailsNotifier,
-        semanticsOnTapHint: barrier.semanticsOnTapHint,
-        onDismiss: _close,
-      ),
-      _ => barrier,
-    };
-  }
-}
+/// A tap on the scrim closes the sheet on either step ([pushGoalSheet]).
+Future<void> showAddGoalSheet(BuildContext context) =>
+    pushGoalSheet(context, (_) => const _AddGoalSheet());
 
 /// The exercise chosen in step one, with the user's best when known.
 typedef _Picked = ({int exerciseId, String name, double? bestKg});
