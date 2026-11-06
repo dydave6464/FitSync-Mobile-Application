@@ -62,9 +62,29 @@ class _FakeGoalsRepo implements GoalsRepository {
   @override
   Future<List<GoalOption>> options() async => const [];
 
+  final added = <(int, double)>[];
+
+  /// Makes every add throw it.
+  Object? failAdd;
+
   @override
-  Future<LiftGoal> add({required int exerciseId, required double targetKg}) =>
-      throw UnimplementedError();
+  Future<LiftGoal> add({
+    required int exerciseId,
+    required double targetKg,
+  }) async {
+    if (failAdd != null) throw failAdd!;
+    added.add((exerciseId, targetKg));
+    final goal = LiftGoal(
+      goalId: 100 + added.length,
+      exerciseId: exerciseId,
+      exerciseName: 'Bench Press',
+      targetKg: targetKg,
+      bestKg: 52.5,
+      reachedOn: null,
+    );
+    goals.add(goal);
+    return goal;
+  }
 
   /// Makes every remove throw it.
   Object? failRemove;
@@ -87,7 +107,6 @@ Future<_FakeGoalsRepo> _pump(
   List<LiftGoal> goals = const [_benchGoal],
   int failGoals = 0,
   bool dark = false,
-  double textScale = 1.0,
 }) async {
   final repo = _FakeGoalsRepo(goals)..failListTimes = failGoals;
   await tester.pumpWidget(
@@ -103,11 +122,6 @@ Future<_FakeGoalsRepo> _pump(
       child: MaterialApp(
         theme: dark ? fsDarkTheme() : fsLightTheme(),
         home: const StreaksScreen(now: _now),
-        builder: (context, child) => MediaQuery(
-          data: MediaQuery.of(context)
-              .copyWith(textScaler: TextScaler.linear(textScale)),
-          child: child!,
-        ),
       ),
     ),
   );
@@ -136,7 +150,7 @@ void main() {
   ) async {
     await _pump(tester);
 
-    expect(find.text('Streaks & goals'), findsOneWidget);
+    expect(find.text('Streaks & lift goals'), findsOneWidget);
     expect(
       tester.widget<Text>(find.byKey(const Key('streaks.current'))).data,
       '2',
@@ -238,7 +252,86 @@ void main() {
 
     expect(repo.removed, [1]);
     expect(find.byKey(const Key('streaks.goal.1')), findsNothing);
-    expect(find.text('No goals yet'), findsOneWidget);
+    expect(find.text('No lift goals yet'), findsOneWidget);
+  });
+
+  group('deleting a goal can be taken back', () {
+    Future<void> deleteBench(WidgetTester tester) async {
+      await tester.tap(find.byKey(const Key('streaks.goal.1')));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const Key('goal.delete')));
+      await tester.pumpAndSettle();
+    }
+
+    testWidgets('an open goal goes at once, with Undo to put it back', (
+      tester,
+    ) async {
+      // One tap deleted it for good, and a target could only be changed by
+      // deleting, searching, picking and retyping.
+      final repo = await _pump(tester);
+      await deleteBench(tester);
+
+      expect(repo.removed, [1]);
+      expect(find.text('Goal deleted'), findsOneWidget);
+
+      await tester.tap(find.text('Undo'));
+      await tester.pumpAndSettle();
+
+      expect(repo.added, [(3, 60.0)]);
+      expect(find.text('52.5 / 60 kg'), findsOneWidget);
+    });
+
+    testWidgets('an Undo that fails says why', (tester) async {
+      final repo = await _pump(tester);
+      repo.failAdd = const ApiException('NETWORK_ERROR', 'offline');
+      await deleteBench(tester);
+
+      await tester.tap(find.text('Undo'));
+      await tester.pumpAndSettle();
+
+      expect(repo.added, isEmpty);
+      expect(find.text(userMessage(repo.failAdd!)), findsOneWidget);
+    });
+
+    testWidgets('a reached goal asks first, since it cannot be set again', (
+      tester,
+    ) async {
+      const squat = LiftGoal(
+        goalId: 3,
+        exerciseId: 5,
+        exerciseName: 'Squat',
+        targetKg: 80,
+        bestKg: 82.5,
+        reachedOn: '2026-09-12',
+      );
+      final repo = await _pump(tester, goals: const [squat]);
+
+      await tester.tap(find.byKey(const Key('streaks.goal.3')));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const Key('goal.delete')));
+      await tester.pumpAndSettle();
+
+      expect(find.text('Delete this goal?'), findsOneWidget);
+      expect(repo.removed, isEmpty, reason: 'asking is not doing');
+
+      await tester.tap(find.text('Keep it'));
+      await tester.pumpAndSettle();
+      expect(repo.removed, isEmpty);
+      expect(find.byKey(const Key('goal.delete')), findsOneWidget);
+
+      await tester.tap(find.byKey(const Key('goal.delete')));
+      await tester.pumpAndSettle();
+      await tester.tap(
+        find.descendant(
+          of: find.byType(AlertDialog),
+          matching: find.text('Delete'),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      expect(repo.removed, [3]);
+      expect(find.text('Undo'), findsNothing);
+    });
   });
 
   testWidgets('deletion completes even when sheet is dismissed during delete', (
@@ -273,17 +366,35 @@ void main() {
     // Verify the goal was deleted from the repo and UI updated
     expect(repo.removed, [1]);
     expect(find.byKey(const Key('streaks.goal.1')), findsNothing);
-    expect(find.text('No goals yet'), findsOneWidget);
+    expect(find.text('No lift goals yet'), findsOneWidget);
   });
 
   testWidgets('with no goals it offers to add one', (tester) async {
     await _pump(tester, goals: const []);
 
-    expect(find.text('No goals yet'), findsOneWidget);
+    expect(find.text('No lift goals yet'), findsOneWidget);
+    // "Goals" alone is Profile's training goal, the row above this screen's.
+    expect(find.text('Add a lift goal'), findsOneWidget);
+    expect(find.byTooltip('Add a lift goal'), findsOneWidget);
     await tester.tap(find.byKey(const Key('streaks.goals.empty.add')));
     await tester.pumpAndSettle();
 
-    expect(find.text('New goal'), findsOneWidget);
+    expect(find.text('New lift goal'), findsOneWidget);
+  });
+
+  testWidgets("the goals section's title is a heading", (tester) async {
+    final handle = tester.ensureSemantics();
+    await _pump(tester);
+
+    expect(
+      tester
+          .getSemantics(find.text('LIFT GOALS'))
+          .getSemanticsData()
+          .flagsCollection
+          .isHeader,
+      isTrue,
+    );
+    handle.dispose();
   });
 
   testWidgets('the + opens the add-goal sheet', (tester) async {
@@ -292,7 +403,7 @@ void main() {
     await tester.tap(find.byKey(const Key('streaks.goals.add')));
     await tester.pumpAndSettle();
 
-    expect(find.text('New goal'), findsOneWidget);
+    expect(find.text('New lift goal'), findsOneWidget);
   });
 
   testWidgets('a failed streak still shows the goals', (tester) async {

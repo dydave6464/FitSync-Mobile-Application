@@ -56,12 +56,17 @@ class ProgressSnapshotCard extends StatelessWidget {
               crossAxisAlignment: WrapCrossAlignment.center,
               runSpacing: 2,
               children: [
-                Text(
-                  'Your progress',
-                  style: TextStyle(
-                    fontSize: 15,
-                    fontWeight: FontWeight.w700,
-                    color: t.text,
+                // Folds into the card's one button node, which a screen
+                // reader then also offers as a heading.
+                Semantics(
+                  header: true,
+                  child: Text(
+                    'Your progress',
+                    style: TextStyle(
+                      fontSize: 15,
+                      fontWeight: FontWeight.w700,
+                      color: t.text,
+                    ),
                   ),
                 ),
                 Row(

@@ -64,11 +64,12 @@ void main() {
     expect(r.first.at, _manila(9, 25, 6, 15));
     expect(r.last.at, _manila(10, 1, 6, 15));
     expect(r.first.title, 'Stretch');
-    expect(r.first.body, 'At 6:30 AM');
+    // What to do and when, not just a time.
+    expect(r.first.body, 'Starts at 6:30 AM — tap to tick it off');
     expect(r.first.payload, 'routine');
   });
 
-  test('at a lead of 0 it says now', () {
+  test('at a lead of 0 it still names the time', () {
     final r = _plan(
       settings: const ReminderSettings(
         habitsEnabled: true,
@@ -81,7 +82,8 @@ void main() {
       habits: [_habit(1, 'Stretch', time: '06:30')],
     );
     expect(r.first.at, _manila(9, 25, 6, 30));
-    expect(r.first.body, 'Now');
+    // Android may deliver it a few minutes late, when "Now" would be wrong.
+    expect(r.first.body, 'Starts at 6:30 AM — tap to tick it off');
   });
 
   test('untimed habits never remind; a habit only reminds on its weekdays', () {
@@ -135,7 +137,7 @@ void main() {
       _manila(9, 28, 17, 0),
     ]);
     expect(onDays.first.title, 'Workout today');
-    expect(onDays.first.body, 'Upper/Lower');
+    expect(onDays.first.body, 'Upper/Lower at 5:00 PM — tap to get started');
     expect(onDays.first.payload, 'routine');
 
     expect(
@@ -172,7 +174,7 @@ void main() {
     expect(r.length, 7);
     expect(r.first.at, _manila(9, 25, 7, 0));
     expect(r.first.title, 'Morning check-in');
-    expect(r.first.body, 'How did you sleep?');
+    expect(r.first.body, 'How did you sleep? Tap to check in.');
     expect(r.first.payload, 'recovery');
     final done = _plan(
       settings: s,

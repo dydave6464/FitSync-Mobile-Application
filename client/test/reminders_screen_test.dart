@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:ui' show CheckedState;
 
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart' show RenderParagraph;
@@ -825,6 +826,29 @@ void main() {
     handle.dispose();
   });
 
+  testWidgets('each section title is a heading', (tester) async {
+    final handle = tester.ensureSemantics();
+    await _pump(tester);
+
+    for (final title in [
+      'HABITS',
+      'WORKOUT ON TRAINING DAYS',
+      'MORNING CHECK-IN',
+    ]) {
+      await tester.scrollUntilVisible(find.text(title), 100);
+      expect(
+        tester
+            .getSemantics(find.text(title))
+            .getSemanticsData()
+            .flagsCollection
+            .isHeader,
+        isTrue,
+        reason: title,
+      );
+    }
+    handle.dispose();
+  });
+
   testWidgets('the lead time is a set of chips, one of them selected', (
     tester,
   ) async {
@@ -833,10 +857,10 @@ void main() {
 
     expect(find.byType(FsSegmented), findsNothing);
     for (final (value, label) in [
-      ('0', 'At the time'),
-      ('5', '5 min before'),
-      ('15', '15 min before'),
-      ('30', '30 min before'),
+      ('0', 'Around the time'),
+      ('5', 'About 5 min before'),
+      ('15', 'About 15 min before'),
+      ('30', 'About 30 min before'),
     ]) {
       final chip = find.byKey(Key('reminders.lead.$value'));
       expect(
@@ -847,6 +871,18 @@ void main() {
         tester.widget<FsChip>(chip).selected,
         value == '15',
         reason: 'the default habitLeadMin is 15',
+      );
+      // One of a set, as a radio button is: a screen reader hears "checked"
+      // or "not checked", and that picking one unpicks the others.
+      final flags = tester
+          .getSemantics(chip)
+          .getSemanticsData()
+          .flagsCollection;
+      expect(flags.isInMutuallyExclusiveGroup, isTrue, reason: value);
+      expect(
+        flags.isChecked,
+        value == '15' ? CheckedState.isTrue : CheckedState.isFalse,
+        reason: value,
       );
     }
     await expectLater(tester, meetsGuideline(androidTapTargetGuideline));
@@ -863,10 +899,10 @@ void main() {
 
       expect(tester.takeException(), isNull);
       for (final label in [
-        'At the time',
-        '5 min before',
-        '15 min before',
-        '30 min before',
+        'Around the time',
+        'About 5 min before',
+        'About 15 min before',
+        'About 30 min before',
       ]) {
         await tester.scrollUntilVisible(find.text(label), 100);
         final paragraph = tester.renderObject<RenderParagraph>(

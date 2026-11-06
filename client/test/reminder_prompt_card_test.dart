@@ -7,6 +7,8 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:fitsync/core/app_settings.dart';
 import 'package:fitsync/core/token_store.dart' show InMemorySecureStore;
 import 'package:fitsync/features/home/presentation/widgets/reminder_prompt_card.dart';
+import 'package:fitsync/features/profile/domain/profile.dart';
+import 'package:fitsync/features/profile/presentation/providers.dart';
 import 'package:fitsync/features/reminders/data/reminder_prompt_store.dart';
 import 'package:fitsync/features/reminders/data/reminder_scheduler.dart';
 import 'package:fitsync/features/reminders/domain/reminders.dart';
@@ -59,15 +61,37 @@ class _ThrowingAnsweredStore extends ReminderPromptStore {
       Future<bool>.error(Exception('storage unavailable'));
 }
 
+/// The signed-in profile, whose notificationsEnabled is the reminders'
+/// master switch.
+class _StubProfile extends ProfileNotifier {
+  _StubProfile({required this.masterOn});
+
+  final bool masterOn;
+
+  @override
+  Future<Profile> build() async => Profile(
+    userId: 1,
+    email: 'juan@example.com',
+    fullName: 'Juan Dela Cruz',
+    onboardingCompleted: true,
+    isPremium: false,
+    notificationsEnabled: masterOn,
+    equipment: const [],
+    injuries: const [],
+  );
+}
+
 Future<void> _pump(
   WidgetTester tester, {
   required _FakeScheduler scheduler,
   ReminderPromptStore? store,
   List<String>? settingsOpened,
+  bool masterOn = true,
 }) async {
   await tester.pumpWidget(
     ProviderScope(
       overrides: [
+        profileProvider.overrideWith(() => _StubProfile(masterOn: masterOn)),
         reminderSchedulerProvider.overrideWithValue(scheduler),
         reminderPromptStoreProvider.overrideWithValue(
           store ?? ReminderPromptStore(backing: InMemorySecureStore()),
@@ -93,6 +117,22 @@ void main() {
       expect(find.text('Not now'), findsOneWidget);
     },
   );
+
+  testWidgets('its title is a heading, so moving by heading finds it', (
+    tester,
+  ) async {
+    final handle = tester.ensureSemantics();
+    await _pump(tester, scheduler: _FakeScheduler(granted: false));
+    expect(
+      tester
+          .getSemantics(find.text('Get reminders for your habits'))
+          .getSemanticsData()
+          .flagsCollection
+          .isHeader,
+      isTrue,
+    );
+    handle.dispose();
+  });
 
   testWidgets('hidden when permission is already granted', (tester) async {
     await _pump(tester, scheduler: _FakeScheduler(granted: true));
@@ -194,6 +234,29 @@ void main() {
     expect(
       find.text(
         'Reminders on. Change them in Profile › Notifications & reminders.',
+      ),
+      findsOneWidget,
+    );
+  });
+
+  testWidgets('Turn on, allowed, with reminders switched off in Profile, '
+      'does not claim they are on', (tester) async {
+    // The phone now allows notifications, but the app's own master switch
+    // still sends none: "Reminders on" would be untrue.
+    await _pump(
+      tester,
+      scheduler: _FakeScheduler(granted: false),
+      masterOn: false,
+    );
+
+    await tester.tap(find.text('Turn on'));
+    await tester.pumpAndSettle();
+
+    expect(find.textContaining('Reminders on'), findsNothing);
+    expect(
+      find.text(
+        'Notifications allowed. Turn reminders on in Profile › '
+        'Notifications & reminders.',
       ),
       findsOneWidget,
     );
