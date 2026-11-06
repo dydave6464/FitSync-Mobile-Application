@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -70,7 +72,25 @@ class FakeProfileNotifier extends ProfileNotifier {
     this.mainGoal,
     this.goalWrites,
     this.failGoals = false,
+    this.heightCm,
+    this.weightKg,
+    this.goalWeightKg,
+    this.patchError,
+    this.patchGate,
   });
+
+  /// Seed the Body metrics editor, so a test can clear a stored value.
+  final double? heightCm;
+  final double? weightKg;
+  final double? goalWeightKg;
+
+  /// Thrown by `patch` instead of [failPatch]'s generic rejection, so a test
+  /// can pick the error code (a network failure, say).
+  final Object? patchError;
+
+  /// Holds every `patch` until completed, so a test can look at the screen
+  /// while a write is still on its way.
+  final Completer<void>? patchGate;
 
   final List<Map<String, dynamic>> patches;
 
@@ -124,10 +144,15 @@ class FakeProfileNotifier extends ProfileNotifier {
     mainGoal: mainGoal,
     goals: goals,
     fitnessLevel: fitnessLevel,
+    heightCm: heightCm,
+    weightKg: weightKg,
+    goalWeightKg: goalWeightKg,
   );
 
   @override
   Future<void> patch(Map<String, dynamic> fields) async {
+    if (patchGate != null) await patchGate!.future;
+    if (patchError != null) throw patchError!;
     if (failPatch) {
       throw const ApiException('PROFILE_INVALID', 'That could not be saved.');
     }
@@ -208,6 +233,11 @@ Future<void> _pump(
   bool failGoals = false,
   FakeHealthRepository? health,
   FakeProRepository? pro,
+  double? heightCm,
+  double? weightKg,
+  double? goalWeightKg,
+  Object? patchError,
+  Completer<void>? patchGate,
 }) async {
   _profile = FakeProfileNotifier(
     patches ?? <Map<String, dynamic>>[],
@@ -219,6 +249,11 @@ Future<void> _pump(
     mainGoal: mainGoal,
     goalWrites: goalWrites,
     failGoals: failGoals,
+    heightCm: heightCm,
+    weightKg: weightKg,
+    goalWeightKg: goalWeightKg,
+    patchError: patchError,
+    patchGate: patchGate,
   );
   await tester.pumpWidget(
     ProviderScope(
@@ -832,5 +867,142 @@ void main() {
     expect(health.deletes, 1);
     expect(find.byType(HealthStep), findsNothing, reason: 'closed');
     expect(find.text('Health answers deleted'), findsOneWidget);
+  });
+
+  // AO-4 / PS-1: back threw away whatever the editor held, with no warning.
+  group('an edited answer is not dropped on back', () {
+    Future<void> tapKey(WidgetTester tester, String key) async {
+      await tester.ensureVisible(find.byKey(Key(key)));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(Key(key)));
+      await tester.pumpAndSettle();
+    }
+
+    final edits = <String, Future<void> Function(WidgetTester)>{
+      'edit.goal': (t) => tapKey(t, 'goal.build_muscle'),
+      'edit.about': (t) async {
+        await t.enterText(find.byKey(const Key('heightCm')), '181');
+        await t.pumpAndSettle();
+      },
+      'edit.level': (t) => tapKey(t, 'equipment.41'),
+      'edit.injuries': (t) => tapKey(t, 'injury.1'),
+      'edit.health': (t) => tapKey(t, 'health.none'),
+      'edit.trainingDays': (t) => tapKey(t, 'weekday.1'),
+    };
+
+    for (final MapEntry(key: row, value: edit) in edits.entries) {
+      testWidgets('$row asks before discarding, and Keep editing stays', (
+        tester,
+      ) async {
+        final patches = <Map<String, dynamic>>[];
+        await _pump(
+          tester,
+          patches: patches,
+          heightCm: 170,
+          weightKg: 70,
+        );
+        await _openRow(tester, Key(row));
+        await edit(tester);
+
+        await tester.binding.handlePopRoute();
+        await tester.pumpAndSettle();
+        expect(find.text('Discard your changes?'), findsOneWidget);
+
+        await tester.tap(find.byKey(const Key('discard.keep')));
+        await tester.pumpAndSettle();
+        expect(find.byType(EditScaffold), findsOneWidget, reason: 'kept');
+
+        await tester.binding.handlePopRoute();
+        await tester.pumpAndSettle();
+        await tester.tap(find.byKey(const Key('discard.confirm')));
+        await tester.pumpAndSettle();
+        expect(find.byType(EditScaffold), findsNothing, reason: 'discarded');
+        expect(patches, isEmpty, reason: 'discarding writes nothing');
+      });
+
+      testWidgets('$row closes on back without asking when unchanged', (
+        tester,
+      ) async {
+        await _pump(tester, heightCm: 170, weightKg: 70);
+        await _openRow(tester, Key(row));
+
+        await tester.binding.handlePopRoute();
+        await tester.pumpAndSettle();
+        expect(find.text('Discard your changes?'), findsNothing);
+        expect(find.byType(EditScaffold), findsNothing);
+      });
+    }
+
+    testWidgets('undoing an edit makes back quiet again', (tester) async {
+      await _pump(tester);
+      await _openRow(tester, const Key('edit.goal'));
+      await tapKey(tester, 'goal.build_muscle');
+      await tapKey(tester, 'goal.build_muscle');
+
+      await tester.binding.handlePopRoute();
+      await tester.pumpAndSettle();
+      expect(find.text('Discard your changes?'), findsNothing);
+      expect(find.byType(EditScaffold), findsNothing);
+    });
+  });
+
+  // AO-12 / PS-3: a failed save's message sat under the whole form, often
+  // below the fold, and was not announced.
+  group('a failed save is reported right above Save', () {
+    void expectErrorAboveSave(WidgetTester tester, String message) {
+      final line = find.byType(FsErrorLine);
+      expect(line, findsOneWidget);
+      expect(
+        find.descendant(of: line, matching: find.text(message)),
+        findsOneWidget,
+      );
+      expect(find.byKey(const Key('error')), findsOneWidget);
+      final gap =
+          tester.getRect(find.byKey(const Key('save'))).top -
+          tester.getRect(line).bottom;
+      expect(gap, inInclusiveRange(0, 24));
+    }
+
+    testWidgets('in a profile editor, in plain words', (tester) async {
+      await _pump(
+        tester,
+        failTrainingDays: true,
+      );
+      await _openRow(tester, const Key('edit.trainingDays'));
+      await tester.tap(find.byKey(const Key('save')));
+      await tester.pumpAndSettle();
+
+      expectErrorAboveSave(tester, 'That could not be saved.');
+    });
+
+    testWidgets('a lost connection reads as one, not as a raw code', (
+      tester,
+    ) async {
+      await _pump(
+        tester,
+        heightCm: 170,
+        weightKg: 70,
+        patchError: const ApiException('NETWORK_ERROR', 'SocketException'),
+      );
+      await _openRow(tester, const Key('edit.about'));
+      await tester.tap(find.byKey(const Key('save')));
+      await tester.pumpAndSettle();
+
+      expectErrorAboveSave(
+        tester,
+        "Couldn't reach FitSync. Check your connection and try again.",
+      );
+    });
+
+    testWidgets('in the Health editor', (tester) async {
+      final health = FakeHealthRepository(stored: storedAsthma)
+        ..writeError = const ApiException('HEALTH_INVALID', 'Not saved.');
+      await _pump(tester, health: health);
+      await _openRow(tester, const Key('edit.health'));
+      await tester.tap(find.byKey(const Key('save')));
+      await tester.pumpAndSettle();
+
+      expectErrorAboveSave(tester, 'Not saved.');
+    });
   });
 }

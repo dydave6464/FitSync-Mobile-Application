@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart' show listEquals, setEquals;
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
@@ -367,6 +368,18 @@ class _SettingsRow extends StatelessWidget {
   }
 }
 
+/// Whether two collections hold the same items, in any order. The editors'
+/// lists are sets on the server (equipment, injuries, weekdays), so an item
+/// unticked and ticked again is no change.
+bool _sameItems<T>(Iterable<T> a, Iterable<T> b) =>
+    setEquals(a.toSet(), b.toSet());
+
+/// Whether two typed numbers are the same answer. Weight is shown rounded
+/// (to 0.1 lb in pounds), so a stored figure read back from its own field can
+/// differ by a few grams without the user having changed anything.
+bool _sameNumber(double? a, double? b) =>
+    a == null || b == null ? a == b : (a - b).abs() < 0.05;
+
 /// Shared plumbing for the four editors: hold a working value, save it, pop.
 ///
 /// [save] does the writing so each editor can use whichever endpoint its
@@ -379,6 +392,10 @@ abstract class _EditorState<W extends ConsumerStatefulWidget>
   String get title;
   Widget buildStep(Profile profile);
   Future<void> save(ProfileNotifier notifier);
+
+  /// Whether the working value differs from the one the editor was seeded
+  /// with. While it does, back asks before throwing the edit away.
+  bool get isDirty;
 
   Future<void> _onSave() async {
     if (_busy) return;
@@ -398,7 +415,7 @@ abstract class _EditorState<W extends ConsumerStatefulWidget>
     } on ApiException catch (error) {
       if (!mounted) return;
       setState(() {
-        _error = error.message;
+        _error = userMessage(error);
         _busy = false;
       });
       return;
@@ -418,24 +435,19 @@ abstract class _EditorState<W extends ConsumerStatefulWidget>
       return const Scaffold(body: Center(child: CircularProgressIndicator()));
     }
 
+    // Built before isDirty is read: the step seeds the working value on its
+    // first build.
+    final step = buildStep(profile);
     return EditScaffold(
       title: title,
       busy: _busy,
+      dirty: isDirty,
+      error: _error,
       onSave: _onSave,
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         mainAxisSize: MainAxisSize.min,
-        children: [
-          buildStep(profile),
-          if (_error != null) ...[
-            const SizedBox(height: 16),
-            Text(
-              _error!,
-              key: const Key('error'),
-              style: TextStyle(fontSize: 12.5, color: context.fs.red),
-            ),
-          ],
-        ],
+        children: [step],
       ),
     );
   }
@@ -450,16 +462,22 @@ class _GoalEditor extends ConsumerStatefulWidget {
 
 class _GoalEditorState extends _EditorState<_GoalEditor> {
   GoalAnswers _value = const GoalAnswers();
+  GoalAnswers _seed = const GoalAnswers();
   bool _seeded = false;
 
   @override
   String get title => 'Goals';
 
   @override
+  bool get isDirty =>
+      !listEquals(_value.goals, _seed.goals) ||
+      _value.mainGoal != _seed.mainGoal;
+
+  @override
   Widget buildStep(Profile profile) {
     if (!_seeded) {
       _seeded = true;
-      _value = GoalAnswers.fromProfile(profile);
+      _value = _seed = GoalAnswers.fromProfile(profile);
     }
     return GoalStep(
       value: _value,
@@ -483,16 +501,26 @@ class _AboutEditor extends ConsumerStatefulWidget {
 
 class _AboutEditorState extends _EditorState<_AboutEditor> {
   AboutAnswers _value = const AboutAnswers();
+  AboutAnswers _seed = const AboutAnswers();
   bool _seeded = false;
 
   @override
   String get title => 'Body metrics';
 
   @override
+  bool get isDirty =>
+      _value.sex != _seed.sex ||
+      _value.dateOfBirth != _seed.dateOfBirth ||
+      _value.activityLevel != _seed.activityLevel ||
+      !_sameNumber(_value.heightCm, _seed.heightCm) ||
+      !_sameNumber(_value.weightKg, _seed.weightKg) ||
+      !_sameNumber(_value.goalWeightKg, _seed.goalWeightKg);
+
+  @override
   Widget buildStep(Profile profile) {
     if (!_seeded) {
       _seeded = true;
-      _value = AboutAnswers(
+      _value = _seed = AboutAnswers(
         sex: profile.sex,
         dateOfBirth: profile.dateOfBirth,
         heightCm: profile.heightCm,
@@ -503,7 +531,8 @@ class _AboutEditorState extends _EditorState<_AboutEditor> {
     }
     return AboutStep(
       value: _value,
-      onChanged: (value) => _value = value,
+      // A rebuild per keystroke, so back knows there is an edit to lose.
+      onChanged: (value) => setState(() => _value = value),
       // The same rule as onboarding: goal weight is asked outright only when
       // losing weight is among the saved goals.
       goals: profile.goals,
@@ -539,16 +568,23 @@ class _LevelEditor extends ConsumerStatefulWidget {
 
 class _LevelEditorState extends _EditorState<_LevelEditor> {
   LevelAnswers _value = const LevelAnswers();
+  LevelAnswers _seed = const LevelAnswers();
   bool _seeded = false;
 
   @override
   String get title => 'Equipment & location';
 
   @override
+  bool get isDirty =>
+      _value.fitnessLevel != _seed.fitnessLevel ||
+      _value.trainingLocation != _seed.trainingLocation ||
+      !_sameItems(_value.equipmentIds, _seed.equipmentIds);
+
+  @override
   Widget buildStep(Profile profile) {
     if (!_seeded) {
       _seeded = true;
-      _value = LevelAnswers(
+      _value = _seed = LevelAnswers(
         fitnessLevel: profile.fitnessLevel,
         trainingLocation: profile.trainingLocation,
         equipmentIds: profile.equipment
@@ -583,16 +619,25 @@ class _InjuriesEditor extends ConsumerStatefulWidget {
 
 class _InjuriesEditorState extends _EditorState<_InjuriesEditor> {
   List<SelectedInjury> _value = const [];
+  List<SelectedInjury> _seed = const [];
   bool _seeded = false;
 
   @override
   String get title => 'Injuries';
 
+  /// An injury and its side are one answer: moving a shoulder from left to
+  /// both is an edit.
+  static Iterable<String> _keys(List<SelectedInjury> injuries) =>
+      injuries.map((i) => '${i.injuryId}:${i.side}');
+
+  @override
+  bool get isDirty => !_sameItems(_keys(_value), _keys(_seed));
+
   @override
   Widget buildStep(Profile profile) {
     if (!_seeded) {
       _seeded = true;
-      _value = profile.injuries;
+      _value = _seed = profile.injuries;
     }
     return InjuriesStep(
       value: _value,
@@ -618,9 +663,22 @@ class _HealthEditor extends ConsumerStatefulWidget {
 
 class _HealthEditorState extends ConsumerState<_HealthEditor> {
   HealthAnswers _value = const HealthAnswers();
+  HealthAnswers _seed = const HealthAnswers();
   bool _seeded = false;
   bool _busy = false;
   String? _error;
+
+  /// Every answer the step shows, ticks included: re-answering the check is
+  /// a dozen taps, all of them lost to one back gesture before.
+  bool get _isDirty =>
+      !listEquals(_value.conditions, _seed.conditions) ||
+      _value.noneOfThese != _seed.noneOfThese ||
+      _value.chestPain != _seed.chestPain ||
+      _value.dizziness != _seed.dizziness ||
+      _value.supervisedOnly != _seed.supervisedOnly ||
+      _value.acknowledged != _seed.acknowledged ||
+      _value.consent != _seed.consent ||
+      _value.optedOut != _seed.optedOut;
 
   /// Runs a write, then closes with [done]; a refused write stays open and
   /// shows why, like the other editors.
@@ -636,7 +694,7 @@ class _HealthEditorState extends ConsumerState<_HealthEditor> {
     } on ApiException catch (error) {
       if (!mounted) return;
       setState(() {
-        _error = error.message;
+        _error = userMessage(error);
         _busy = false;
       });
       return;
@@ -703,11 +761,13 @@ class _HealthEditorState extends ConsumerState<_HealthEditor> {
       data: (saved) {
         if (!_seeded) {
           _seeded = true;
-          if (saved != null) _value = saved;
+          if (saved != null) _value = _seed = saved;
         }
         return EditScaffold(
           title: 'Health',
           busy: _busy,
+          dirty: _isDirty,
+          error: _error,
           onSave: _value.isValid ? _save : null,
           hint: HealthStep.blockerFor(_value, allowOptOut: false),
           child: Column(
@@ -730,14 +790,6 @@ class _HealthEditorState extends ConsumerState<_HealthEditor> {
                   onPressed: _busy ? null : _delete,
                 ),
               ],
-              if (_error != null) ...[
-                const SizedBox(height: 16),
-                Text(
-                  _error!,
-                  key: const Key('error'),
-                  style: TextStyle(fontSize: 12.5, color: context.fs.red),
-                ),
-              ],
             ],
           ),
         );
@@ -756,10 +808,14 @@ class _TrainingDaysEditor extends ConsumerStatefulWidget {
 
 class _TrainingDaysEditorState extends _EditorState<_TrainingDaysEditor> {
   List<int> _value = const [];
+  List<int> _seed = const [];
   bool _seeded = false;
 
   @override
   String get title => 'Training days';
+
+  @override
+  bool get isDirty => !_sameItems(_value, _seed);
 
   @override
   Widget buildStep(Profile profile) {
@@ -767,7 +823,7 @@ class _TrainingDaysEditorState extends _EditorState<_TrainingDaysEditor> {
     // profile on every rebuild would discard the taps made since opening.
     if (!_seeded) {
       _seeded = true;
-      _value = profile.trainingDays;
+      _value = _seed = profile.trainingDays;
     }
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
