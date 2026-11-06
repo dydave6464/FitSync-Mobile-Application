@@ -1092,7 +1092,17 @@ void main() {
       await _open(tester, pending: _pending, regionsFailures: 1);
 
       await _tapKey(tester, 'checkin.pain.mild');
+      // The kit's retry: the reason, then "Try again", as elsewhere.
+      final retry = tester.widget<FsRetry>(find.byType(FsRetry));
+      expect(retry.message, "Couldn't load body regions.");
       expect(find.text("Couldn't load body regions."), findsOneWidget);
+      expect(
+        find.descendant(
+          of: find.byKey(const Key('checkin.regions.retry')),
+          matching: find.text('Try again'),
+        ),
+        findsOneWidget,
+      );
       expect(
         tester.getSize(find.byKey(const Key('checkin.regions.retry'))).height,
         greaterThanOrEqualTo(48),

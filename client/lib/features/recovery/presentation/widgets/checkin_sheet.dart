@@ -562,7 +562,6 @@ class _CheckinSheetState extends ConsumerState<_CheckinSheet> {
   /// The pain row's question itself: the four levels and -- once there is
   /// pain -- where.
   List<Widget> _painQuestion(TextStyle label) {
-    final t = context.fs;
     return [
       Text('Any pain since?', style: label),
       const SizedBox(height: 2),
@@ -620,21 +619,10 @@ class _CheckinSheetState extends ConsumerState<_CheckinSheet> {
               // The provider is not autoDispose, so without a retry the
               // error would stay cached until the app restarts. Tapping the
               // pain level again still frees Save meanwhile.
-              error: (_, _) => Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    "Couldn't load body regions.",
-                    style: TextStyle(fontSize: 12, color: t.red),
-                  ),
-                  const SizedBox(height: 4),
-                  FsButton(
-                    key: const Key('checkin.regions.retry'),
-                    label: 'Retry',
-                    kind: FsButtonKind.secondary,
-                    onPressed: () => ref.invalidate(injuryOptionsProvider),
-                  ),
-                ],
+              error: (_, _) => FsRetry(
+                message: "Couldn't load body regions.",
+                buttonKey: const Key('checkin.regions.retry'),
+                onRetry: () => ref.invalidate(injuryOptionsProvider),
               ),
             ),
       ],
