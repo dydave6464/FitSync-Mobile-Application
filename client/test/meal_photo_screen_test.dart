@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
+import 'package:flutter/rendering.dart' show RenderParagraph;
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 
@@ -17,6 +18,7 @@ import 'package:fitsync/features/nutrition/presentation/meal_photo/providers.dar
 import 'package:fitsync/features/nutrition/presentation/providers.dart';
 import 'package:fitsync/features/pro/presentation/providers.dart';
 
+import 'helpers/a11y.dart' show contrast;
 import 'helpers/fake_pro_repository.dart';
 import 'nutrition_controller_test.dart' show FakeNutritionRepository;
 
@@ -154,6 +156,7 @@ Future<_Harness> _open(
   Size size = const Size(400, 1400),
   double scale = 1,
   bool watchDay = false,
+  bool dark = false,
 }) async {
   final harness = h ?? _Harness();
   tester.view.physicalSize = size;
@@ -171,7 +174,7 @@ Future<_Harness> _open(
         ),
       ],
       child: MaterialApp(
-        theme: fsLightTheme(),
+        theme: dark ? fsDarkTheme() : fsLightTheme(),
         builder: (context, c) => MediaQuery(
           data: MediaQuery.of(context)
               .copyWith(textScaler: TextScaler.linear(scale)),
@@ -313,6 +316,43 @@ void main() {
     await tester.pumpAndSettle();
     expect(find.text('White rice'), findsOneWidget);
   });
+
+  // P-29: the wait's words, first and slow, and Cancel read clearly in
+  // both themes.
+  for (final dark in [false, true]) {
+    testWidgets('the wait reads clearly in ${dark ? 'dark' : 'light'}', (
+      tester,
+    ) async {
+      final h = _Harness()..repo.gate = Completer();
+      await _open(tester, h: h, settle: false, dark: dark);
+      final screen = tester.widget<Scaffold>(
+        find.ancestor(
+          of: find.byKey(const Key('snap.analysing')),
+          matching: find.byType(Scaffold),
+        ).first,
+      );
+      final bg = screen.backgroundColor!;
+      expect(bg, (dark ? FsTokens.dark : FsTokens.light).bg);
+      void readable(String text) {
+        final style = tester
+            .renderObject<RenderParagraph>(find.text(text))
+            .text
+            .style!;
+        expect(
+          contrast(style.color!, bg),
+          greaterThanOrEqualTo(4.5),
+          reason: '"$text"',
+        );
+      }
+
+      readable('Looking at your meal…');
+      readable('Cancel');
+      await tester.pump(const Duration(seconds: 8));
+      readable('Still looking — this can take up to a minute.');
+      h.repo.gate!.complete(_answer);
+      await tester.pumpAndSettle();
+    });
+  }
 
   // NU-15: the daily limit is no surprise. Shown only when few are left.
   group('photos left today', () {
