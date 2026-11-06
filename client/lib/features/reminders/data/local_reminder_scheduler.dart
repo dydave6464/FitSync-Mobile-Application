@@ -154,13 +154,7 @@ class LocalReminderScheduler implements ReminderScheduler {
           body: reminder.body,
           payload: reminder.payload,
           scheduledDate: tz.TZDateTime.from(reminder.at, tz.local),
-          notificationDetails: const NotificationDetails(
-            android: AndroidNotificationDetails(
-              _channelId,
-              _channelName,
-              importance: Importance.defaultImportance,
-            ),
-          ),
+          notificationDetails: reminderNotificationDetails(reminder),
           androidScheduleMode: AndroidScheduleMode.inexactAllowWhileIdle,
         );
       } catch (error) {
@@ -172,6 +166,20 @@ class LocalReminderScheduler implements ReminderScheduler {
   @override
   Stream<String> get taps => _relay.stream;
 }
+
+/// How the phone shows [reminder]. Big-text style, so Android shows the
+/// whole body rather than one collapsed line that can cut its "— tap to …"
+/// (iOS wraps a body by itself).
+@visibleForTesting
+NotificationDetails reminderNotificationDetails(PlannedReminder reminder) =>
+    NotificationDetails(
+      android: AndroidNotificationDetails(
+        _channelId,
+        _channelName,
+        importance: Importance.defaultImportance,
+        styleInformation: BigTextStyleInformation(reminder.body),
+      ),
+    );
 
 /// Of [ids], the ones that are reminders: all but the rest alert's.
 @visibleForTesting
