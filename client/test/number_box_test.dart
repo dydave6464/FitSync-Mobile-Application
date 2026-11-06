@@ -25,4 +25,12 @@ void main() {
     expect(gramsError('abc'), 'Enter a number');
     expect(gramsError(''), isNull);
   });
+
+  // P-5: the error text is made from the limits, not typed out beside them.
+  test('a range reads from 0 to its limit, thousands grouped', () {
+    expect(rangeText(500, 'g'), '0–500 g');
+    expect(rangeText(20000, 'mg'), '0–20,000 mg');
+    expect(rangeText(1234567, 'mg'), '0–1,234,567 mg');
+    expect(rangeText(999, 'g'), '0–999 g');
+  });
 }

@@ -17,8 +17,8 @@ String? numberError(String text, {required double max, required String range}) {
 }
 
 /// The most grams of protein, carbs, fat, fiber or sugar, and the most
-/// sodium, a food may have per serving (server/src/routes/nutrition.js). The
-/// one place both nutrition forms and their error texts take them from.
+/// sodium, a food may have per serving (server/src/lib/nutrition-input.js).
+/// The one place both nutrition forms and their error texts take them from.
 const maxGrams = 500.0;
 const maxSodiumMg = 20000.0;
 
@@ -28,8 +28,15 @@ bool inGramsRange(double g) => g >= 0 && g <= maxGrams;
 /// Whether [mg] of sodium is allowed. NaN is not.
 bool inSodiumRange(double mg) => mg >= 0 && mg <= maxSodiumMg;
 
-String? gramsError(String text) => numberError(text, max: maxGrams, range: '0–500 g');
-String? sodiumError(String text) => numberError(text, max: maxSodiumMg, range: '0–20,000 mg');
+/// How a range from 0 to [max] reads in an error: '0–20,000 mg'.
+String rangeText(double max, String unit) {
+  final digits = max.round().toString();
+  final grouped = digits.replaceAllMapped(RegExp(r'\B(?=(\d{3})+$)'), (_) => ',');
+  return '0–$grouped $unit';
+}
+
+String? gramsError(String text) => numberError(text, max: maxGrams, range: rangeText(maxGrams, 'g'));
+String? sodiumError(String text) => numberError(text, max: maxSodiumMg, range: rangeText(maxSodiumMg, 'mg'));
 
 /// One number in a nutrition form: its name above the box, and, when
 /// [error] is set, what is wrong under it. The error is tied to the box (a

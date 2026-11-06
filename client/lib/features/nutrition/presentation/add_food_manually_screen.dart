@@ -70,7 +70,7 @@ class _AddFoodManuallyScreenState extends ConsumerState<AddFoodManuallyScreen> {
     final sodiumOk = sodium == null || inSodiumRange(sodium);
     final kcal = gramsOk ? manualKcal(p!, c!, f!) : null;
     final name = _name.text.trim();
-    final valid = name.isNotEmpty && name.length <= _maxName && _serving.text.trim().length <= _maxServing
+    final valid = name.isNotEmpty && name.length <= maxFoodName && _serving.text.trim().length <= maxServingDesc
         && gramsOk && sodiumOk && (p! + c! + f!) > 0;
 
     Widget gramsField(String label, Key key, TextEditingController ctrl, {bool sodium = false}) => Expanded(
@@ -111,7 +111,7 @@ class _AddFoodManuallyScreenState extends ConsumerState<AddFoodManuallyScreen> {
               hint: 'e.g. Grilled bangus',
               textCapitalization: TextCapitalization.sentences,
               // The most the server accepts, so Log never greys out unexplained.
-              inputFormatters: const [Utf16LengthLimit(_maxName)],
+              inputFormatters: const [Utf16LengthLimit(maxFoodName)],
               onChanged: (_) => setState(() {}),
             ),
             const SizedBox(height: 16),
@@ -126,7 +126,7 @@ class _AddFoodManuallyScreenState extends ConsumerState<AddFoodManuallyScreen> {
               fieldKey: const Key('manual.serving'),
               label: 'Serving size · optional',
               hint: 'e.g. 1 cup',
-              inputFormatters: const [Utf16LengthLimit(_maxServing)],
+              inputFormatters: const [Utf16LengthLimit(maxServingDesc)],
               onChanged: (_) => setState(() {}),
             ),
             const SizedBox(height: 16),
@@ -203,8 +203,3 @@ class _AddFoodManuallyScreenState extends ConsumerState<AddFoodManuallyScreen> {
     );
   }
 }
-
-/// The longest name and serving a manual entry may have
-/// (server/src/routes/nutrition.js).
-const _maxName = 100;
-const _maxServing = 60;

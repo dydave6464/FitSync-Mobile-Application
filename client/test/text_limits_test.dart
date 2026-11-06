@@ -7,6 +7,12 @@ import 'package:fitsync/features/nutrition/presentation/widgets/text_limits.dart
 // does; Flutter's LengthLimitingTextInputFormatter counts characters, so
 // "😀" x 60 got through as 60 though the server sees 120.
 void main() {
+  // P-5: one definition for Add manually and the log sheet.
+  test("a manual food's name and serving limits are the server's", () {
+    expect(maxFoodName, 100);
+    expect(maxServingDesc, 60);
+  });
+
   group('clipUtf16', () {
     test('leaves a short text alone, trimmed', () {
       expect(clipUtf16('  Turon ', 100), 'Turon');

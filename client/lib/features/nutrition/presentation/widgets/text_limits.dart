@@ -1,6 +1,12 @@
 import 'package:flutter/widgets.dart' show StringCharacters;
 import 'package:flutter/services.dart';
 
+/// The longest name and serving a manual food may have, in UTF-16 units
+/// (server/src/lib/nutrition-input.js). The one place Add manually and the
+/// log sheet's edited food take them from.
+const maxFoodName = 100;
+const maxServingDesc = 60;
+
 /// [text] cut to at most [max] UTF-16 units -- what the server's length
 /// checks count, as JavaScript's `length` does -- without splitting a
 /// character: an emoji or an accented letter goes whole or not at all.
