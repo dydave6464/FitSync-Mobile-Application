@@ -62,9 +62,29 @@ class _FakeGoalsRepo implements GoalsRepository {
   @override
   Future<List<GoalOption>> options() async => const [];
 
+  final added = <(int, double)>[];
+
+  /// Makes every add throw it.
+  Object? failAdd;
+
   @override
-  Future<LiftGoal> add({required int exerciseId, required double targetKg}) =>
-      throw UnimplementedError();
+  Future<LiftGoal> add({
+    required int exerciseId,
+    required double targetKg,
+  }) async {
+    if (failAdd != null) throw failAdd!;
+    added.add((exerciseId, targetKg));
+    final goal = LiftGoal(
+      goalId: 100 + added.length,
+      exerciseId: exerciseId,
+      exerciseName: 'Bench Press',
+      targetKg: targetKg,
+      bestKg: 52.5,
+      reachedOn: null,
+    );
+    goals.add(goal);
+    return goal;
+  }
 
   /// Makes every remove throw it.
   Object? failRemove;
@@ -239,6 +259,85 @@ void main() {
     expect(repo.removed, [1]);
     expect(find.byKey(const Key('streaks.goal.1')), findsNothing);
     expect(find.text('No goals yet'), findsOneWidget);
+  });
+
+  group('deleting a goal can be taken back', () {
+    Future<void> deleteBench(WidgetTester tester) async {
+      await tester.tap(find.byKey(const Key('streaks.goal.1')));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const Key('goal.delete')));
+      await tester.pumpAndSettle();
+    }
+
+    testWidgets('an open goal goes at once, with Undo to put it back', (
+      tester,
+    ) async {
+      // One tap deleted it for good, and a target could only be changed by
+      // deleting, searching, picking and retyping.
+      final repo = await _pump(tester);
+      await deleteBench(tester);
+
+      expect(repo.removed, [1]);
+      expect(find.text('Goal deleted'), findsOneWidget);
+
+      await tester.tap(find.text('Undo'));
+      await tester.pumpAndSettle();
+
+      expect(repo.added, [(3, 60.0)]);
+      expect(find.text('52.5 / 60 kg'), findsOneWidget);
+    });
+
+    testWidgets('an Undo that fails says why', (tester) async {
+      final repo = await _pump(tester);
+      repo.failAdd = const ApiException('NETWORK_ERROR', 'offline');
+      await deleteBench(tester);
+
+      await tester.tap(find.text('Undo'));
+      await tester.pumpAndSettle();
+
+      expect(repo.added, isEmpty);
+      expect(find.text(userMessage(repo.failAdd!)), findsOneWidget);
+    });
+
+    testWidgets('a reached goal asks first, since it cannot be set again', (
+      tester,
+    ) async {
+      const squat = LiftGoal(
+        goalId: 3,
+        exerciseId: 5,
+        exerciseName: 'Squat',
+        targetKg: 80,
+        bestKg: 82.5,
+        reachedOn: '2026-09-12',
+      );
+      final repo = await _pump(tester, goals: const [squat]);
+
+      await tester.tap(find.byKey(const Key('streaks.goal.3')));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const Key('goal.delete')));
+      await tester.pumpAndSettle();
+
+      expect(find.text('Delete this goal?'), findsOneWidget);
+      expect(repo.removed, isEmpty, reason: 'asking is not doing');
+
+      await tester.tap(find.text('Keep it'));
+      await tester.pumpAndSettle();
+      expect(repo.removed, isEmpty);
+      expect(find.byKey(const Key('goal.delete')), findsOneWidget);
+
+      await tester.tap(find.byKey(const Key('goal.delete')));
+      await tester.pumpAndSettle();
+      await tester.tap(
+        find.descendant(
+          of: find.byType(AlertDialog),
+          matching: find.text('Delete'),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      expect(repo.removed, [3]);
+      expect(find.text('Undo'), findsNothing);
+    });
   });
 
   testWidgets('deletion completes even when sheet is dismissed during delete', (

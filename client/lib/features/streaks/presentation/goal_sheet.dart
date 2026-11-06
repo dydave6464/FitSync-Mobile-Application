@@ -5,6 +5,7 @@ import '../../../core/api_exception.dart';
 import '../../../core/theme.dart';
 import '../../../core/units.dart';
 import '../../../core/widgets/fs_kit.dart';
+import '../data/streaks_repository.dart';
 import '../domain/streaks.dart';
 import 'providers.dart';
 
@@ -24,7 +25,9 @@ Future<void> showGoalSheet(
   );
 }
 
-/// One goal, with Delete. There is no editing: delete and add another.
+/// One goal, with Delete. There is no editing yet: delete and add another.
+/// An open goal goes at once, with Undo in a SnackBar; a reached one asks
+/// first, because adding it back would be refused as already met.
 class _GoalSheet extends ConsumerStatefulWidget {
   const _GoalSheet({required this.goal, required this.unit});
 
@@ -39,18 +42,58 @@ class _GoalSheetState extends ConsumerState<_GoalSheet> {
   bool _busy = false;
   String? _error;
 
+  Future<bool> _confirmDelete() async {
+    final answer = await showDialog<bool>(
+      context: context,
+      builder: (dialog) => AlertDialog(
+        title: const Text('Delete this goal?'),
+        content: const Text(
+          "You've reached it, so it can't be set again once it's gone.",
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(dialog).pop(false),
+            child: const Text('Keep it'),
+          ),
+          TextButton(
+            style: TextButton.styleFrom(foregroundColor: dialog.fs.red),
+            onPressed: () => Navigator.of(dialog).pop(true),
+            child: const Text('Delete'),
+          ),
+        ],
+      ),
+    );
+    return answer ?? false;
+  }
+
   Future<void> _delete() async {
+    final goal = widget.goal;
+    if (goal.reached && !await _confirmDelete()) return;
+    if (!mounted) return;
     // Captured before the await so invalidation succeeds even if the sheet
-    // is dismissed while the delete is in flight.
+    // is dismissed while the delete is in flight, and Undo still works
+    // after the sheet has gone.
     final container = ProviderScope.containerOf(context, listen: false);
     final repo = ref.read(goalsRepositoryProvider);
+    final messenger = ScaffoldMessenger.of(context);
     setState(() {
       _busy = true;
       _error = null;
     });
     try {
-      await repo.remove(widget.goal.goalId);
+      await repo.remove(goal.goalId);
       container.invalidate(goalsProvider);
+      if (!goal.reached) {
+        messenger.showSnackBar(
+          SnackBar(
+            content: const Text('Goal deleted'),
+            action: SnackBarAction(
+              label: 'Undo',
+              onPressed: () => _undo(repo, container, messenger, goal),
+            ),
+          ),
+        );
+      }
       if (mounted) Navigator.of(context).pop();
     } catch (error) {
       if (!mounted) return;
@@ -58,6 +101,22 @@ class _GoalSheetState extends ConsumerState<_GoalSheet> {
         _busy = false;
         _error = userMessage(error);
       });
+    }
+  }
+
+  /// Adds the deleted goal back with the same lift and target. Static, as
+  /// the sheet is long gone by the time Undo is tapped.
+  static Future<void> _undo(
+    GoalsRepository repo,
+    ProviderContainer container,
+    ScaffoldMessengerState messenger,
+    LiftGoal goal,
+  ) async {
+    try {
+      await repo.add(exerciseId: goal.exerciseId, targetKg: goal.targetKg);
+      container.invalidate(goalsProvider);
+    } catch (error) {
+      messenger.showSnackBar(SnackBar(content: Text(userMessage(error))));
     }
   }
 
