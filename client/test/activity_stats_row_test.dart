@@ -17,6 +17,8 @@ import 'package:fitsync/features/activity/presentation/activity_screen.dart';
 import 'package:fitsync/features/activity/presentation/providers.dart';
 import 'package:fitsync/features/activity/presentation/widgets/activity_stats_row.dart';
 
+import 'helpers/a11y.dart' show contrast;
+
 class _Permission implements StepPermission {
   _Permission(this.access, {this.onRequest});
   StepAccess access;
@@ -99,6 +101,7 @@ Future<void> _pump(
   int steps = 6420,
   bool fail = false,
   Stream<int> live = const Stream<int>.empty(),
+  ThemeData? theme,
 }) async {
   await tester.pumpWidget(
     ProviderScope(
@@ -117,7 +120,10 @@ Future<void> _pump(
         ),
         liveStepsProvider.overrideWith((ref) => live),
       ],
-      child: const MaterialApp(home: Scaffold(body: ActivityStatsRow())),
+      child: MaterialApp(
+        theme: theme,
+        home: const Scaffold(body: ActivityStatsRow()),
+      ),
     ),
   );
   await tester.pumpAndSettle();
@@ -198,6 +204,51 @@ void main() {
     );
   }, variant: TargetPlatformVariant.only(TargetPlatform.iOS));
 
+  for (final dark in [false, true]) {
+    testWidgets('refused: the Settings question reads on its dialog '
+        '(${dark ? 'dark' : 'light'})', (tester) async {
+      final theme = dark ? fsDarkTheme() : fsLightTheme();
+      await _pump(tester, _Permission(StepAccess.refused), theme: theme);
+      await tester.tap(find.byKey(const Key('home.activity.steps')));
+      await tester.pumpAndSettle();
+
+      // Drawn on the theme's own dialog surface, not a fixed light one.
+      final surface = tester
+          .widget<Material>(
+            find
+                .descendant(
+                  of: find.byType(AlertDialog),
+                  matching: find.byType(Material),
+                )
+                .first,
+          )
+          .color!;
+      expect(
+        surface,
+        theme.dialogTheme.backgroundColor ??
+            theme.colorScheme.surfaceContainerHigh,
+      );
+      for (final words in [
+        'Step counting is off for FitSync',
+        'In Settings, open Permissions, then Physical activity, and choose '
+            'Allow.',
+        'Not now',
+        'Open Settings',
+      ]) {
+        final color = tester
+            .renderObject<RenderParagraph>(find.text(words))
+            .text
+            .style!
+            .color!;
+        expect(
+          contrast(color, surface),
+          greaterThanOrEqualTo(4.5),
+          reason: words,
+        );
+      }
+    });
+  }
+
   testWidgets('refused: taps while the phone is still asking are ignored', (
     tester,
   ) async {
@@ -240,6 +291,39 @@ void main() {
       },
     );
   }
+
+  testWidgets(
+    "notAsked: the screen reader's button opens the activation screen",
+    (tester) async {
+      final semantics = tester.ensureSemantics();
+      await _pump(tester, _Permission(StepAccess.notAsked));
+
+      tester.semantics.tap(
+        find.semantics.byLabel('Tap to start counting your steps'),
+      );
+      await tester.pumpAndSettle();
+      expect(find.byType(ActivationScreen), findsOneWidget);
+      semantics.dispose();
+    },
+  );
+
+  testWidgets(
+    "refused: the screen reader's button asks again, then says what to "
+    'switch on',
+    (tester) async {
+      final semantics = tester.ensureSemantics();
+      final permission = _Permission(StepAccess.refused);
+      await _pump(tester, permission);
+
+      tester.semantics.tap(
+        find.semantics.byLabel('Step counting is off — tap to allow'),
+      );
+      await tester.pumpAndSettle();
+      expect(permission.log, ['request']);
+      expect(find.text('Step counting is off for FitSync'), findsOneWidget);
+      semantics.dispose();
+    },
+  );
 
   testWidgets(
     'refused, granted when asked again: no Settings, the stats show',
