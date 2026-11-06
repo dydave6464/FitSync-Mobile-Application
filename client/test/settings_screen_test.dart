@@ -1020,8 +1020,19 @@ void main() {
     );
   });
 
-  testWidgets('the Streaks & goals row opens the screen', (tester) async {
+  testWidgets('the Streaks & lift goals row opens the screen it names', (
+    tester,
+  ) async {
     await _pump(tester);
+
+    // HS-29: the row is named as the screen it opens.
+    expect(
+      find.descendant(
+        of: find.byKey(const Key('edit.streaks')),
+        matching: find.text('Streaks & lift goals'),
+      ),
+      findsOneWidget,
+    );
 
     await _openRow(tester, const Key('edit.streaks'));
 

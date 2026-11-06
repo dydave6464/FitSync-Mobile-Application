@@ -251,7 +251,7 @@ class _SettingsList extends ConsumerWidget {
               _SettingsRow(
                 rowKey: const Key('edit.streaks'),
                 icon: Icons.emoji_events_outlined,
-                label: 'Streaks & goals',
+                label: 'Streaks & lift goals',
                 onTap: () => _open(context, const StreaksScreen()),
                 last: true,
               ),
