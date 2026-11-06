@@ -1,6 +1,6 @@
 'use strict';
 const AppError = require('../lib/app-error');
-const { formatDate } = require('./sessions');
+const { formatDate, withMuscleGroups } = require('./sessions');
 
 /// How far back a session may be and still be asked about. Delayed-onset pain
 /// peaks 24-48 hours after training, and a week covers that plus an ordinary
@@ -27,7 +27,7 @@ const PAIN_LEVELS = ['none', 'mild', 'moderate', 'severe'];
 /// older one, even an unanswered one still inside the window.
 async function pendingOutcome(pool, userId) {
   const [rows] = await pool.query(
-    `SELECT s.session_id, s.session_date, p.name AS plan_name, o.outcome_id,
+    `SELECT s.session_id, s.plan_id, s.session_date, p.name AS plan_name, o.outcome_id,
             s.session_date >= CURDATE() - INTERVAL ? DAY
               AND s.session_date < CURDATE() AS in_window
        FROM workout_sessions s
@@ -39,12 +39,15 @@ async function pendingOutcome(pool, userId) {
     [OUTCOME_WINDOW_DAYS, userId],
   );
   if (rows.length === 0) return null;
-  const row = rows[0];
-  if (row.outcome_id !== null || !row.in_window) return null;
+  if (rows[0].outcome_id !== null || !rows[0].in_window) return null;
+  // Named the way History names it: a plan session by its plan, a hand-picked
+  // one by the muscles it worked. The extra query runs only for the latter.
+  const [row] = await withMuscleGroups(pool, rows);
   return {
     sessionId: row.session_id,
     sessionDate: formatDate(row.session_date),
     planName: row.plan_name ?? null,
+    muscleGroups: row.muscle_groups,
   };
 }
 

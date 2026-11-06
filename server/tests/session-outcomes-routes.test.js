@@ -66,12 +66,37 @@ test('session outcome endpoints', async (t) => {
     assert.equal(before.body.data.session.sessionId, sessionId);
     assert.match(before.body.data.session.sessionDate, /^\d{4}-\d{2}-\d{2}$/);
     assert.equal(before.body.data.session.planName, null);
+    assert.deepEqual(before.body.data.session.muscleGroups, []);
 
     await post(token, sessionId, { painLevel: 'none' }).expect(201);
 
     const after = await request(app).get('/api/v1/sessions/pending-outcome')
       .set('Authorization', `Bearer ${token}`).expect(200);
     assert.equal(after.body.data.session, null);
+  });
+
+  await t.test("pending names a hand-picked session by its muscles", async () => {
+    const { token, userId } = await freshUser();
+    const sessionId = await session(userId);
+    const [x] = await pool.query(
+      "INSERT INTO exercises (name, muscle_group, status) VALUES (CONCAT('X ', UUID()), 'chest', 'live')",
+    );
+    const [y] = await pool.query(
+      "INSERT INTO exercises (name, muscle_group, status) VALUES (CONCAT('Y ', UUID()), 'back', 'live')",
+    );
+    await pool.query(
+      'INSERT INTO session_exercises (session_id, exercise_id, order_no) VALUES ?',
+      [[[sessionId, x.insertId, 1], [sessionId, y.insertId, 2]]],
+    );
+
+    const res = await request(app).get('/api/v1/sessions/pending-outcome')
+      .set('Authorization', `Bearer ${token}`).expect(200);
+    assert.deepEqual(res.body.data.session, {
+      sessionId,
+      sessionDate: res.body.data.session.sessionDate,
+      planName: null,
+      muscleGroups: ['chest', 'back'],
+    });
   });
 
   await t.test('pending requires a signed-in user', async () => {

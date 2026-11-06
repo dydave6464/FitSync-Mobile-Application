@@ -769,6 +769,7 @@ async function completedThisWeek(pool, userId) {
 module.exports = {
   formatDate,
   toNumber,
+  withMuscleGroups,
   getSessionById,
   getActiveSession,
   startSession,
