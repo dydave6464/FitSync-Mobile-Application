@@ -45,11 +45,35 @@ class _LogBodyWeightSheetState extends ConsumerState<_LogBodyWeightSheet> {
   bool _busy = false;
   String? _error;
 
+  /// What was typed when [_error] was about the number itself (empty, or
+  /// out of range), which also flags the card; null for any other error.
+  String? _flagged;
+
+  @override
+  void initState() {
+    super.initState();
+    _weight.addListener(_onTyped);
+  }
+
   @override
   void dispose() {
     _weight.dispose();
     super.dispose();
   }
+
+  /// A changed number is a new answer: its flag and message go.
+  void _onTyped() {
+    if (_flagged == null || _weight.text == _flagged) return;
+    setState(() {
+      _flagged = null;
+      _error = null;
+    });
+  }
+
+  void _flag(String message) => setState(() {
+    _error = message;
+    _flagged = _weight.text;
+  });
 
   Future<void> _save() async {
     if (_busy) return;
@@ -57,15 +81,14 @@ class _LogBodyWeightSheetState extends ConsumerState<_LogBodyWeightSheet> {
     final unit = ref.read(weightUnitProvider);
     final kg = parseWeight(_weight.text, unit);
     if (kg == null) {
-      setState(() => _error = 'Enter a weight to log.');
+      _flag('Enter a weight to log.');
       return;
     }
     if (kg < _minKg || kg > _maxKg) {
-      setState(
-        () => _error =
-            'Enter a weight between '
-            '${formatWeight(_minKg, unit)} and ${formatWeight(_maxKg, unit)} '
-            '${unit.api}.',
+      _flag(
+        'Enter a weight between '
+        '${formatWeight(_minKg, unit)} and ${formatWeight(_maxKg, unit)} '
+        '${unit.api}.',
       );
       return;
     }
@@ -73,6 +96,7 @@ class _LogBodyWeightSheetState extends ConsumerState<_LogBodyWeightSheet> {
     setState(() {
       _busy = true;
       _error = null;
+      _flagged = null;
     });
 
     try {
@@ -165,6 +189,7 @@ class _LogBodyWeightSheetState extends ConsumerState<_LogBodyWeightSheet> {
                 label: 'Weight',
                 unit: unit.api,
                 controller: _weight,
+                error: _flagged != null,
               ),
               if (_error != null) ...[
                 const SizedBox(height: 10),

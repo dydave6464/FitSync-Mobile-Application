@@ -4,6 +4,7 @@ import 'package:flutter_test/flutter_test.dart';
 
 import 'package:fitsync/core/api_exception.dart';
 import 'package:fitsync/core/theme.dart';
+import 'package:fitsync/core/widgets/fs_kit.dart';
 import 'package:fitsync/features/profile/data/profile_repository.dart';
 import 'package:fitsync/features/profile/domain/body_weight.dart';
 import 'package:fitsync/features/profile/domain/profile.dart';
@@ -252,6 +253,56 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(fetches, {'week': 2, 'month': 2});
+  });
+
+  // L-85: a weight the sheet turns down is flagged on its card too, as the
+  // About step flags one; a failed request is not the number's fault.
+  group('the weight card is flagged only for a number to fix', () {
+    bool flagged(WidgetTester tester) =>
+        tester.widget<FsStatField>(find.byType(FsStatField)).error;
+
+    testWidgets('empty', (tester) async {
+      await _pump(
+        tester,
+        repo: FakeProfileRepository(),
+        fetches: _FetchCount(),
+      );
+      expect(flagged(tester), isFalse);
+      await tester.tap(find.byKey(const Key('bodyWeight.save')));
+      await tester.pumpAndSettle();
+      expect(flagged(tester), isTrue);
+
+      await tester.enterText(find.byKey(const Key('bodyWeight.field')), '7');
+      await tester.pump();
+      expect(flagged(tester), isFalse, reason: 'cleared once it is changed');
+    });
+
+    testWidgets('out of range', (tester) async {
+      await _pump(
+        tester,
+        repo: FakeProfileRepository(),
+        fetches: _FetchCount(),
+      );
+      await tester.enterText(find.byKey(const Key('bodyWeight.field')), '600');
+      await tester.tap(find.byKey(const Key('bodyWeight.save')));
+      await tester.pumpAndSettle();
+      expect(flagged(tester), isTrue);
+    });
+
+    testWidgets('not for a failed request', (tester) async {
+      await _pump(
+        tester,
+        repo: FakeProfileRepository(
+          logError: const ApiException('NETWORK_ERROR', 'offline'),
+        ),
+        fetches: _FetchCount(),
+      );
+      await tester.enterText(find.byKey(const Key('bodyWeight.field')), '72');
+      await tester.tap(find.byKey(const Key('bodyWeight.save')));
+      await tester.pumpAndSettle();
+      expect(find.byKey(const Key('bodyWeight.error')), findsOneWidget);
+      expect(flagged(tester), isFalse);
+    });
   });
 
   // PS-6 / PS-3: a failed save showed the client's transport text (an
