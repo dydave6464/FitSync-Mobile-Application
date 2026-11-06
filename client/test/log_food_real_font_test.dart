@@ -82,56 +82,73 @@ void main() {
   // Showing the meal is the picker's one job: on a 320 dp phone at large
   // text "Breakfast" was cut to "Brea...". The line wraps instead, and the
   // foods to tap still show without scrolling.
-  for (final scale in [1.0, 1.8, 2.0]) {
-    testWidgets('"Breakfast" shows whole on a 320 dp phone at ${scale}x', (
-      tester,
-    ) async {
-      tester.view.physicalSize = const Size(320, 640);
-      tester.view.devicePixelRatio = 1;
-      addTearDown(tester.view.reset);
-      tester.platformDispatcher.textScaleFactorTestValue = scale;
-      addTearDown(tester.platformDispatcher.clearTextScaleFactorTestValue);
-      await tester.pumpWidget(
-        ProviderScope(
-          overrides: [
-            nutritionRepositoryProvider.overrideWithValue(
-              FakeNutritionRepository(),
+  // The fake server's food day is Oct 14; the clock decides whether that
+  // is today, yesterday or a named day -- the past days name it beside
+  // "ADDING TO" (NU-7), which must not push the foods down either.
+  final clocks = {
+    'today': (DateTime.utc(2026, 10, 14, 4), 'ADDING TO'),
+    'yesterday': (DateTime.utc(2026, 10, 15, 4), 'ADDING TO YESTERDAY'),
+    'an older day': (DateTime.utc(2026, 10, 16, 4), 'ADDING TO OCT 14'),
+  };
+  for (final MapEntry(key: day, value: (clock, label)) in clocks.entries) {
+    for (final scale in [1.0, 1.8, 2.0]) {
+      testWidgets('"Breakfast" shows whole on a 320 dp phone at ${scale}x, '
+          'logging to $day', (tester) async {
+        tester.view.physicalSize = const Size(320, 640);
+        tester.view.devicePixelRatio = 1;
+        addTearDown(tester.view.reset);
+        tester.platformDispatcher.textScaleFactorTestValue = scale;
+        addTearDown(tester.platformDispatcher.clearTextScaleFactorTestValue);
+        await tester.pumpWidget(
+          ProviderScope(
+            overrides: [
+              nutritionRepositoryProvider.overrideWithValue(
+                FakeNutritionRepository(),
+              ),
+              nutritionClockProvider.overrideWithValue(() => clock),
+            ],
+            child: MaterialApp(
+              theme: fsLightTheme(),
+              home: const LogFoodScreen(mealType: 'breakfast'),
             ),
-            // Logging to the fake server's today: "ADDING TO" alone.
-            nutritionClockProvider.overrideWithValue(
-              () => DateTime.utc(2026, 10, 14, 4),
-            ),
-          ],
-          child: MaterialApp(
-            theme: fsLightTheme(),
-            home: const LogFoodScreen(mealType: 'breakfast'),
           ),
-        ),
-      );
-      await tester.pumpAndSettle();
-      expect(tester.takeException(), isNull);
+        );
+        await tester.pumpAndSettle();
+        expect(tester.takeException(), isNull);
 
-      final meal = tester.renderObject<RenderParagraph>(
-        find.descendant(
-          of: find.byKey(const Key('log.meal')),
-          matching: find.text('Breakfast'),
-        ),
-      );
-      expect(
-        meal.size.width,
-        greaterThanOrEqualTo(meal.getMaxIntrinsicWidth(double.infinity) - 0.01),
-        reason: 'the meal was cut short',
-      );
+        final meal = tester.renderObject<RenderParagraph>(
+          find.descendant(
+            of: find.byKey(const Key('log.meal')),
+            matching: find.text('Breakfast'),
+          ),
+        );
+        expect(
+          meal.size.width,
+          greaterThanOrEqualTo(
+            meal.getMaxIntrinsicWidth(double.infinity) - 0.01,
+          ),
+          reason: 'the meal was cut short',
+        );
 
-      // Add manually stays whole: in the camera-button row it may wrap.
-      _expectWhole(tester, const Key('food.manual'), 'Add manually');
+        // The label, with its day, stays one line and is drawn whole.
+        final adding = tester.renderObject<RenderParagraph>(find.text(label));
+        expect(adding.didExceedMaxLines, isFalse, reason: '"$label" was cut');
+        expect(
+          adding.size.height,
+          lessThan(adding.getMinIntrinsicHeight(double.infinity) * 1.5),
+          reason: '"$label" took a second line',
+        );
 
-      // The first food to tap is on screen, above Add manually.
-      expect(
-        tester.getRect(find.text('Rice')).bottom,
-        lessThan(tester.getRect(find.byKey(const Key('food.manual'))).top),
-      );
-    });
+        // Add manually stays whole: in the camera-button row it may wrap.
+        _expectWhole(tester, const Key('food.manual'), 'Add manually');
+
+        // The first food to tap is on screen, above Add manually.
+        expect(
+          tester.getRect(find.text('Rice')).bottom,
+          lessThan(tester.getRect(find.byKey(const Key('food.manual'))).top),
+        );
+      });
+    }
   }
 
   // The labelled pill only when it measures whole beside Add manually: a

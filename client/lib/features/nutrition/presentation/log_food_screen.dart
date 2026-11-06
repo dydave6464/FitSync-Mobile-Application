@@ -177,10 +177,13 @@ class _LogFoodScreenState extends ConsumerState<LogFoodScreen> {
   @override
   Widget build(BuildContext context) {
     final t = context.fs;
-    // The day the food goes to, named when it is not today (NU-7).
+    // The day the food goes to, named when it is not today (NU-7): "Adding
+    // to yesterday", "Adding to Oct 14". Short, with no dot or weekday, so
+    // it stays one line on a 320 dp phone at 2x text: a second line pushed
+    // the first food behind the bottom bar.
     final date = ref.watch(nutritionDayProvider).value?.date;
     final today = manilaDayOf(ref.watch(nutritionClockProvider)());
-    final adding = date == null || date == today ? 'Adding to' : 'Adding to · ${dayLabel(date, today)}';
+    final adding = date == null || date == today ? 'Adding to' : 'Adding to ${shortDayLabel(date, today)}';
     return Scaffold(
       backgroundColor: t.bg,
       appBar: AppBar(title: Text(widget.pick ? 'Choose a food' : 'Log food')),

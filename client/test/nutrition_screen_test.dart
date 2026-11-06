@@ -523,7 +523,7 @@ void main() {
       await tester.pumpAndSettle();
       await tester.tap(find.byKey(const Key('meal.add.dinner')));
       await tester.pumpAndSettle();
-      expect(find.text('ADDING TO · YESTERDAY'), findsOneWidget);
+      expect(find.text('ADDING TO YESTERDAY'), findsOneWidget);
       await tester.enterText(find.byKey(const Key('food.search')), 'rice');
       await tester.pump(foodSearchDebounce);
       await tester.pumpAndSettle();

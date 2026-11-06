@@ -36,6 +36,15 @@ void main() {
       expect(dayLabel('2026-10-11', '2026-11-06'), 'Sun, Oct 11');
     });
 
+    // For a line with no room to spare: Log food's "ADDING TO" eyebrow,
+    // which must stay one line on a 320 dp phone at 2x text.
+    test('shortDayLabel: Today, Yesterday, then the date alone', () {
+      expect(shortDayLabel('2026-11-06', '2026-11-06'), 'Today');
+      expect(shortDayLabel('2026-11-05', '2026-11-06'), 'Yesterday');
+      expect(shortDayLabel('2026-11-03', '2026-11-06'), 'Nov 3');
+      expect(shortDayLabel('2026-10-11', '2026-11-06'), 'Oct 11');
+    });
+
     test('onDay: nothing for today, else words to end a sentence with', () {
       expect(onDay('2026-11-06', '2026-11-06'), '');
       expect(onDay('2026-11-05', '2026-11-06'), ' yesterday');

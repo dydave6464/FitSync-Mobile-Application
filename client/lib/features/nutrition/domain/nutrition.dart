@@ -33,6 +33,14 @@ String dayLabel(String date, String today) {
   return '${_weekdays[d.weekday - 1]}, ${_months[d.month - 1]} ${d.day}';
 }
 
+/// [dayLabel] without the weekday -- "Today", "Yesterday" or "Nov 3" --
+/// for a line with no room to spare.
+String shortDayLabel(String date, String today) {
+  final label = dayLabel(date, today);
+  final comma = label.indexOf(', ');
+  return comma < 0 ? label : label.substring(comma + 2);
+}
+
 /// The end of a sentence saying which day food went to, when it was not
 /// today: "" for today, " yesterday", or " on Tue, Nov 3".
 String onDay(String date, String today) => switch (dayLabel(date, today)) {
