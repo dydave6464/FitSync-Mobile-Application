@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 
+import 'package:fitsync/core/theme.dart';
 import 'package:fitsync/core/widgets/fs_kit.dart';
 
 import 'package:fitsync/core/api_exception.dart';
@@ -280,6 +281,7 @@ Future<double> _pumpAsSheet(
   WidgetTester tester,
   List<ExerciseAlternative> rows, {
   double keyboard = 0,
+  ThemeData? theme,
 }) async {
   tester.view.physicalSize = _screen;
   tester.view.devicePixelRatio = _dpr;
@@ -295,16 +297,16 @@ Future<double> _pumpAsSheet(
         // sheet's route — the "open" button would then be behind a modal
         // barrier and the tap would dismiss the sheet instead.
         key: ValueKey('${rows.length}:$keyboard'),
+        theme: theme,
         home: Scaffold(
           body: Builder(
             builder: (context) => TextButton(
-              onPressed: () => showModalBottomSheet<String>(
-                context: context,
-                isScrollControlled: true,
-                builder: (_) => const ExerciseSwapSheet(
-                  planExerciseId: 77,
-                  exerciseName: 'Cable Fly',
-                ),
+              // The one way the app opens it, so the route's own settings
+              // (no Material handle, scroll-controlled) are what is tested.
+              onPressed: () => showExerciseSwapSheet(
+                context,
+                planExerciseId: 77,
+                exerciseName: 'Cable Fly',
               ),
               child: const Text('open'),
             ),
@@ -681,6 +683,50 @@ void main() {
       );
     },
   );
+
+  // PT-22: in the app's theme the sheet takes the kit's surface, corners and
+  // handle. The handle is its own, inside the drag it holds back mid-swap:
+  // Material's sits outside the sheet's child, where a drag on it would close
+  // the sheet mid-swap, and would add 48 dp on top of the tuned 0.52.
+  testWidgets('in the app theme: one handle, its own, and still 0.52 tall', (
+    tester,
+  ) async {
+    await _pumpAsSheet(tester, _many(3), theme: fsLightTheme());
+
+    expect(
+      tester.widget<BottomSheet>(find.byType(BottomSheet)).showDragHandle,
+      isFalse,
+    );
+    expect(
+      find.descendant(
+        of: find.byType(ExerciseSwapSheet),
+        matching: find.byType(FsSheetHandle),
+      ),
+      findsOneWidget,
+    );
+    final material = tester.widget<Material>(
+      find
+          .descendant(
+            of: find.byType(BottomSheet),
+            matching: find.byType(Material),
+          )
+          .first,
+    );
+    expect(material.color, FsTokens.light.surface);
+    expect(
+      material.shape,
+      const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(
+          top: Radius.circular(FsRadius.card),
+        ),
+      ),
+    );
+    final screen = _screen.height / _dpr;
+    expect(
+      tester.getSize(find.byType(BottomSheet)).height / screen,
+      closeTo(0.52, 0.01),
+    );
+  });
 
   testWidgets('a list too long for the sheet scrolls inside it', (
     tester,

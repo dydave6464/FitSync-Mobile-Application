@@ -27,6 +27,8 @@ const _maxKg = 500.0;
 Future<void> showLogBodyWeightSheet(BuildContext context) {
   return showModalBottomSheet<void>(
     context: context,
+    // It draws its own handle (PT-22).
+    showDragHandle: false,
     backgroundColor: Colors.transparent,
     // Matches showStartWorkoutSheet: full height rather than the default
     // 9/16 cap, so a wide accessibility text scale cannot push the field or

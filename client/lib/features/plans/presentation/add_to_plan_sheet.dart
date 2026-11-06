@@ -28,7 +28,7 @@ Future<AddToPlanChoice> showAddToPlanSheet(
 
   final chosen = await showModalBottomSheet<AddToPlanChoice>(
     context: context,
-    showDragHandle: true,
+    // The handle, surface and corners are the theme's (PT-22).
     builder: (sheetContext) {
       final t = sheetContext.fs;
 

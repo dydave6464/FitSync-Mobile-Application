@@ -23,10 +23,11 @@ Future<void> showHabitSheet(
 }) {
   return showModalBottomSheet<void>(
     context: context,
-    backgroundColor: context.fs.surface,
-    shape: const RoundedRectangleBorder(
-      borderRadius: BorderRadius.vertical(top: Radius.circular(22)),
-    ),
+    // The surface and corners are the theme's. Its handle is not: Material
+    // draws it outside the sheet's child, past the drag the sheet holds back
+    // while something typed would be lost, so the sheet draws the kit's own
+    // inside that hold (PT-22).
+    showDragHandle: false,
     isScrollControlled: true,
     builder: (_) =>
         _HabitSheet(existing: existing, announceRepeats: announceRepeats),
@@ -260,109 +261,121 @@ class _HabitSheetState extends ConsumerState<_HabitSheet> {
     final existing = widget.existing;
 
     return SafeArea(
-      child: SingleChildScrollView(
-        padding: EdgeInsets.fromLTRB(
-          18,
-          10,
-          18,
-          MediaQuery.of(context).viewInsets.bottom + 20,
-        ),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            Text(
-              existing == null ? 'New habit' : 'Edit habit',
-              style: TextStyle(
-                fontSize: 20,
-                fontWeight: FontWeight.w700,
-                color: t.text,
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          const Padding(
+            padding: EdgeInsets.only(top: 10, bottom: 12),
+            child: Center(child: FsSheetHandle()),
+          ),
+          Flexible(child: _form(t, existing)),
+        ],
+      ),
+    );
+  }
+
+  Widget _form(FsTokens t, Habit? existing) {
+    return SingleChildScrollView(
+      padding: EdgeInsets.fromLTRB(
+        18,
+        0,
+        18,
+        MediaQuery.of(context).viewInsets.bottom + 20,
+      ),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Text(
+            existing == null ? 'New habit' : 'Edit habit',
+            style: TextStyle(
+              fontSize: 20,
+              fontWeight: FontWeight.w700,
+              color: t.text,
+            ),
+          ),
+          const SizedBox(height: 16),
+          FsField(
+            controller: _title,
+            fieldKey: const Key('habit.title'),
+            label: 'Name',
+            hint: 'e.g. Morning mobility',
+          ),
+          const SizedBox(height: 12),
+          Row(
+            // The time button lines up with the duration box, not with
+            // the duration's label above it.
+            crossAxisAlignment: CrossAxisAlignment.end,
+            children: [
+              Expanded(
+                // The kit's secondary button: text-coloured on the
+                // surface, like the field beside it, where M3's outlined
+                // button fell back to the brand green (2.87:1 on white).
+                child: FsButton(
+                  key: const Key('habit.time'),
+                  kind: FsButtonKind.secondary,
+                  small: true,
+                  // Grows rather than cutting '7:00 AM' to '7:00 …' at
+                  // large text, which would lose the AM/PM.
+                  wrapLabel: true,
+                  onPressed: _busy ? null : _pickTime,
+                  icon: const Icon(Icons.schedule, size: 18),
+                  label: _time == null ? 'Any time' : formatClock(_time!),
+                ),
               ),
-            ),
-            const SizedBox(height: 16),
-            FsField(
-              controller: _title,
-              fieldKey: const Key('habit.title'),
-              label: 'Name',
-              hint: 'e.g. Morning mobility',
-            ),
+              if (_time != null)
+                IconButton(
+                  key: const Key('habit.time.clear'),
+                  tooltip: 'Clear time',
+                  icon: const Icon(Icons.close, size: 18),
+                  onPressed: _busy ? null : () => setState(() => _time = null),
+                ),
+              const SizedBox(width: 12),
+              SizedBox(
+                width: 120,
+                child: FsField(
+                  controller: _duration,
+                  fieldKey: const Key('habit.duration'),
+                  label: 'Duration',
+                  // No placeholder: the eyebrow names the field, and the
+                  // 'min' suffix keeps its room even while hidden, so in
+                  // 120 dp any word was cut off ('Optional' at 1x).
+                  hint: '',
+                  suffix: 'min',
+                  keyboardType: TextInputType.number,
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 16),
+          const FsEyebrow('Repeat on'),
+          const SizedBox(height: 8),
+          TrainingDaysRow(
+            selected: _weekdays,
+            enabled: !_busy,
+            onChanged: (days) => setState(() => _weekdays = days),
+          ),
+          if (_error != null) ...[
             const SizedBox(height: 12),
-            Row(
-              // The time button lines up with the duration box, not with
-              // the duration's label above it.
-              crossAxisAlignment: CrossAxisAlignment.end,
-              children: [
-                Expanded(
-                  // The kit's secondary button: text-coloured on the
-                  // surface, like the field beside it, where M3's outlined
-                  // button fell back to the brand green (2.87:1 on white).
-                  child: FsButton(
-                    key: const Key('habit.time'),
-                    kind: FsButtonKind.secondary,
-                    small: true,
-                    // Grows rather than cutting '7:00 AM' to '7:00 …' at
-                    // large text, which would lose the AM/PM.
-                    wrapLabel: true,
-                    onPressed: _busy ? null : _pickTime,
-                    icon: const Icon(Icons.schedule, size: 18),
-                    label: _time == null ? 'Any time' : formatClock(_time!),
-                  ),
-                ),
-                if (_time != null)
-                  IconButton(
-                    key: const Key('habit.time.clear'),
-                    tooltip: 'Clear time',
-                    icon: const Icon(Icons.close, size: 18),
-                    onPressed: _busy
-                        ? null
-                        : () => setState(() => _time = null),
-                  ),
-                const SizedBox(width: 12),
-                SizedBox(
-                  width: 120,
-                  child: FsField(
-                    controller: _duration,
-                    fieldKey: const Key('habit.duration'),
-                    label: 'Duration',
-                    // No placeholder: the eyebrow names the field, and the
-                    // 'min' suffix keeps its room even while hidden, so in
-                    // 120 dp any word was cut off ('Optional' at 1x).
-                    hint: '',
-                    suffix: 'min',
-                    keyboardType: TextInputType.number,
-                  ),
-                ),
-              ],
-            ),
-            const SizedBox(height: 16),
-            const FsEyebrow('Repeat on'),
-            const SizedBox(height: 8),
-            TrainingDaysRow(
-              selected: _weekdays,
-              enabled: !_busy,
-              onChanged: (days) => setState(() => _weekdays = days),
-            ),
-            if (_error != null) ...[
-              const SizedBox(height: 12),
-              FsErrorLine(_error!, key: const Key('habit.error')),
-            ],
-            const SizedBox(height: 18),
-            FsButton(
-              key: const Key('habit.save'),
-              label: 'Save',
-              busy: _busy,
-              onPressed: _busy ? null : _save,
-            ),
-            if (existing != null) ...[
-              const SizedBox(height: 6),
-              TextButton(
-                key: const Key('habit.delete'),
-                onPressed: _busy ? null : () => _delete(existing),
-                child: Text('Delete habit', style: TextStyle(color: t.red)),
-              ),
-            ],
+            FsErrorLine(_error!, key: const Key('habit.error')),
           ],
-        ),
+          const SizedBox(height: 18),
+          FsButton(
+            key: const Key('habit.save'),
+            label: 'Save',
+            busy: _busy,
+            onPressed: _busy ? null : _save,
+          ),
+          if (existing != null) ...[
+            const SizedBox(height: 6),
+            TextButton(
+              key: const Key('habit.delete'),
+              onPressed: _busy ? null : () => _delete(existing),
+              child: Text('Delete habit', style: TextStyle(color: t.red)),
+            ),
+          ],
+        ],
       ),
     );
   }

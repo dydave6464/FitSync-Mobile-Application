@@ -4,6 +4,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
 
+import 'package:fitsync/core/theme.dart';
 import 'package:fitsync/core/widgets/fs_kit.dart';
 import 'package:fitsync/core/api_client.dart';
 import 'package:fitsync/core/token_store.dart';
@@ -156,6 +157,7 @@ Future<void> _pump(
   Set<String> completedDays = const <String>{},
   ProfileNotifier Function()? profile,
   double textScale = 1.0,
+  ThemeData? theme,
 }) async {
   await tester.pumpWidget(
     ProviderScope(
@@ -184,6 +186,7 @@ Future<void> _pump(
                     .copyWith(textScaler: TextScaler.linear(textScale)),
                 child: child!,
               ),
+        theme: theme,
         home: Scaffold(body: PlanScreen(onGoToProfile: onGoToProfile)),
       ),
     ),
@@ -348,6 +351,21 @@ void main() {
     await tester.pumpAndSettle();
     expect(find.text('Replace Barbell bench press'), findsOneWidget);
     handle.dispose();
+  });
+
+  testWidgets('the swap sheet opens with one handle, its own (PT-22)', (
+    tester,
+  ) async {
+    await _pump(tester, _plan, alternatives: const [], theme: fsLightTheme());
+
+    await tester.tap(find.byKey(const Key('swap.open.602')));
+    await tester.pumpAndSettle();
+
+    expect(
+      tester.widget<BottomSheet>(find.byType(BottomSheet)).showDragHandle,
+      isFalse,
+    );
+    expect(find.byType(FsSheetHandle), findsOneWidget);
   });
 
   testWidgets('every plan exercise offers a way to change it', (tester) async {

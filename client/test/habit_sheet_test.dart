@@ -554,5 +554,30 @@ void main() {
       await tester.pumpAndSettle();
       expect(find.text('Stretch'), findsOneWidget);
     });
+
+    // PT-22: the kit's handle, drawn inside the guard. Material's own sits
+    // outside the sheet's child, where a drag on it closes the sheet without
+    // asking.
+    testWidgets('one handle, inside the guard: a swipe on it asks first', (
+      tester,
+    ) async {
+      await _open(tester);
+      expect(
+        tester.widget<BottomSheet>(find.byType(BottomSheet)).showDragHandle,
+        isFalse,
+      );
+      expect(find.byType(FsSheetHandle), findsOneWidget);
+      await tester.enterText(find.byKey(const Key('habit.title')), 'Stretch');
+      await tester.pump();
+
+      await tester.fling(
+        find.byType(FsSheetHandle),
+        const Offset(0, 300),
+        1500,
+      );
+      await tester.pumpAndSettle();
+
+      expect(find.text('Discard your changes?'), findsOneWidget);
+    });
   });
 }

@@ -132,6 +132,11 @@ void main() {
     await _open(tester);
     final header = find.byType(FsSheetHeader);
     expect(header, findsOneWidget);
+    // The header's handle is the one handle: not Material's as well (PT-22).
+    expect(
+      tester.widget<BottomSheet>(find.byType(BottomSheet)).showDragHandle,
+      isFalse,
+    );
     expect(
       find.descendant(
         of: header,

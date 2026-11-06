@@ -57,6 +57,8 @@ Future<void> showShareReportSheet(
 }) {
   return showModalBottomSheet<void>(
     context: context,
+    // FsSheetHeader draws the handle (PT-22).
+    showDragHandle: false,
     // The surface goes on the sheet's own Material, the way ExerciseJumpSheet
     // is shown, rather than the Colors.transparent-plus-Container arrangement
     // the body-weight and start-workout sheets use. Those draw custom rows;

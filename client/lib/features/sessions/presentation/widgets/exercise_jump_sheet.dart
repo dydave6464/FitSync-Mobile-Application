@@ -17,6 +17,8 @@ Future<int?> showExerciseJumpSheet(
 }) {
   return showModalBottomSheet<int>(
     context: context,
+    // FsSheetHeader draws the handle (PT-22).
+    showDragHandle: false,
     // Past the default cap of 9/16 of the screen: a long plan's rows ran off
     // the bottom. The sheet sets its own ceiling.
     isScrollControlled: true,

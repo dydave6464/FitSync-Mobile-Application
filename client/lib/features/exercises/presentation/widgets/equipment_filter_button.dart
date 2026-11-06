@@ -87,6 +87,8 @@ class EquipmentFilterButton extends ConsumerWidget {
   ) async {
     final chosen = await showModalBottomSheet<_Choice>(
       context: context,
+      // FsSheetHeader draws the handle (PT-22).
+      showDragHandle: false,
       isScrollControlled: true,
       builder: (_) => _EquipmentSheet(
         options: options,

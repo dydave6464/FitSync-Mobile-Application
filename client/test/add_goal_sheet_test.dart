@@ -145,6 +145,29 @@ Future<void> _setTarget(WidgetTester tester, String text) async {
 }
 
 void main() {
+  // PT-22: the theme's handle is left off. Its 48 dp would push a sheet
+  // sized to the room above the keyboard past the top of the screen, and a
+  // drag on it would close the target step that back steps out of.
+  testWidgets('takes the theme surface without Material\'s handle', (
+    tester,
+  ) async {
+    await _open(tester);
+
+    expect(
+      tester.widget<BottomSheet>(find.byType(BottomSheet)).showDragHandle,
+      isFalse,
+    );
+    final material = tester.widget<Material>(
+      find
+          .descendant(
+            of: find.byType(BottomSheet),
+            matching: find.byType(Material),
+          )
+          .first,
+    );
+    expect(material.color, FsTokens.light.surface);
+  });
+
   testWidgets('lists what you have lifted, each with its best', (tester) async {
     await _open(tester);
 

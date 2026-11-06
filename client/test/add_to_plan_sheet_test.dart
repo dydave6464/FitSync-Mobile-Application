@@ -70,6 +70,34 @@ Future<_Opened> _open(WidgetTester tester) async {
 }
 
 void main() {
+  // PT-22: the theme's chrome -- its handle, the surface and the kit's
+  // 22 dp corners rather than Material's 28.
+  testWidgets('takes the theme chrome', (tester) async {
+    await _open(tester);
+
+    expect(
+      tester.widget<BottomSheet>(find.byType(BottomSheet)).showDragHandle,
+      isTrue,
+    );
+    final material = tester.widget<Material>(
+      find
+          .descendant(
+            of: find.byType(BottomSheet),
+            matching: find.byType(Material),
+          )
+          .first,
+    );
+    expect(material.color, FsTokens.light.surface);
+    expect(
+      material.shape,
+      const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(
+          top: Radius.circular(FsRadius.card),
+        ),
+      ),
+    );
+  });
+
   testWidgets('lists the days already in the plan', (tester) async {
     await _open(tester);
 

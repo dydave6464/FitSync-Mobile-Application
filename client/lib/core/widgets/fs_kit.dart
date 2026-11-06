@@ -1968,6 +1968,28 @@ class FsDiscardGuard extends StatelessWidget {
   }
 }
 
+/// The prototype's sheet handle: a 38 x 4 pill in line2. The theme draws
+/// the same one above any sheet that keeps Material's handle
+/// (`bottomSheetTheme`); this is for a sheet that draws its own -- one that
+/// holds back a drag or back while something would be lost, which Material's
+/// handle, outside the sheet's child, would close it past.
+class FsSheetHandle extends StatelessWidget {
+  const FsSheetHandle({super.key});
+
+  static const size = Size(38, 4);
+
+  @override
+  Widget build(BuildContext context) => SizedBox.fromSize(
+    size: size,
+    child: DecoratedBox(
+      decoration: BoxDecoration(
+        color: context.fs.line2,
+        borderRadius: BorderRadius.circular(FsRadius.pill),
+      ),
+    ),
+  );
+}
+
 /// The top of a bottom sheet, as the prototype draws every sheet
 /// (ScreenStartSheet, ScreenShareProgress): a 38 x 4 handle, the title, and
 /// an × that closes it.
@@ -2001,17 +2023,7 @@ class FsSheetHeader extends StatelessWidget {
       children: [
         Padding(
           padding: const EdgeInsets.only(bottom: 10),
-          child: Center(
-            child: Container(
-              key: const Key('sheet.handle'),
-              width: 38,
-              height: 4,
-              decoration: BoxDecoration(
-                color: t.line2,
-                borderRadius: BorderRadius.circular(99),
-              ),
-            ),
-          ),
+          child: const Center(child: FsSheetHandle(key: Key('sheet.handle'))),
         ),
         Row(
           children: [

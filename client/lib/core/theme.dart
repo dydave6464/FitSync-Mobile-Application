@@ -401,6 +401,22 @@ ThemeData _build(FsTokens t, Brightness brightness) {
       side: BorderSide(color: t.control, width: 2),
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(6)),
     ),
+    // One chrome for every sheet (PT-22): the surface, the card's corners
+    // and the prototype's 38 x 4 line2 handle. A sheet that must hold back a
+    // drag turns Material's handle off and draws FsSheetHandle inside its
+    // guard instead.
+    bottomSheetTheme: BottomSheetThemeData(
+      backgroundColor: t.surface,
+      surfaceTintColor: Colors.transparent,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(
+          top: Radius.circular(FsRadius.card),
+        ),
+      ),
+      showDragHandle: true,
+      dragHandleColor: t.line2,
+      dragHandleSize: const Size(38, 4),
+    ),
     listTileTheme: ListTileThemeData(
       titleTextStyle: textTheme.titleMedium,
       subtitleTextStyle: TextStyle(fontSize: 11, color: t.text3),

@@ -597,6 +597,13 @@ void main() {
       await _open(tester);
 
       expect(find.byKey(const Key('checkin.handle')), findsOneWidget);
+      // Its own, inside the discard guard, and not Material's as well:
+      // Material's sits outside the sheet's child, where a drag on it would
+      // close the sheet without asking (PT-22).
+      expect(
+        tester.widget<BottomSheet>(find.byType(BottomSheet)).showDragHandle,
+        isFalse,
+      );
       expect(
         tester.getSemantics(find.text('Morning check-in')),
         matchesSemantics(label: 'Morning check-in', isHeader: true),

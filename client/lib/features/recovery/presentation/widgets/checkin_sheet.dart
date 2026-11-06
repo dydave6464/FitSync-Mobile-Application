@@ -105,6 +105,8 @@ Future<void> showCheckinSheet(
 }) {
   return showModalBottomSheet<void>(
     context: context,
+    // Its own handle sits inside the discard guard; Material's would sit outside it (PT-22).
+    showDragHandle: false,
     // The surface goes on the sheet's own Material -- see share_report_sheet's
     // note on the same choice. This sheet's chips are InkWells on a Material
     // too, so Colors.transparent-plus-Container would only relocate the same

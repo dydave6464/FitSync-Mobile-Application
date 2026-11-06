@@ -77,6 +77,8 @@ class RestCountdown {
 Future<void> showRestSheet(BuildContext context, {RestCountdown? countdown}) =>
     showModalBottomSheet<void>(
       context: context,
+      // FsSheetHeader draws the handle (PT-22).
+      showDragHandle: false,
       isScrollControlled: true,
       backgroundColor: context.fs.surface,
       shape: const RoundedRectangleBorder(

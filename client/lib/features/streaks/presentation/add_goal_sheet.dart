@@ -18,6 +18,8 @@ import 'providers.dart';
 Future<void> showAddGoalSheet(BuildContext context) {
   return showModalBottomSheet<void>(
     context: context,
+    // Material's 48 dp would push a sheet sized to the room above the keyboard off the top (PT-22).
+    showDragHandle: false,
     backgroundColor: context.fs.surface,
     shape: const RoundedRectangleBorder(
       borderRadius: BorderRadius.vertical(top: Radius.circular(22)),

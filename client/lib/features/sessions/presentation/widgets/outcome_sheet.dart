@@ -34,6 +34,8 @@ Future<bool> showOutcomeSheet(
 ) async {
   final failed = await showModalBottomSheet<bool>(
     context: context,
+    // FsSheetHeader draws the handle (PT-22).
+    showDragHandle: false,
     // The surface on the sheet's own Material, as checkin_sheet.dart does and
     // for its reason: the chips are InkWells and need a Material under them.
     backgroundColor: context.fs.surface,

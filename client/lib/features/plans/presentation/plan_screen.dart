@@ -267,14 +267,11 @@ class _PlanExerciseCard extends StatelessWidget {
     final change = TextButton(
       key: Key('swap.open.${exercise.planExerciseId}'),
       onPressed: () =>
-          showModalBottomSheet<String>(
-            context: context,
-            isScrollControlled: true,
-            builder: (_) => ExerciseSwapSheet(
-              planExerciseId: exercise.planExerciseId,
-              exerciseName: name,
-              onGoToProfile: onGoToProfile,
-            ),
+          showExerciseSwapSheet(
+            context,
+            planExerciseId: exercise.planExerciseId,
+            exerciseName: name,
+            onGoToProfile: onGoToProfile,
           ).then((swappedTo) {
             if (swappedTo != null && context.mounted) {
               ScaffoldMessenger.of(
