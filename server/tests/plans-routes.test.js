@@ -96,6 +96,24 @@ test('plan endpoints', async (t) => {
     assert.equal(res.body.data.plan.exercises[0].targetReps, '8-12');
   });
 
+  await t.test('after PUT /profile/training-days, GET /plans/active reports that many days', async () => {
+    await reset();
+    const onboarded = await request(app).post('/api/v1/profile/complete-onboarding')
+      .set('Authorization', auth).expect(200);
+    const generated = onboarded.body.data.plan.daysPerWeek;
+    assert.equal(generated, 3, 'the stub generates 3, so 4 below is the chosen count');
+
+    await request(app).put('/api/v1/profile/training-days')
+      .set('Authorization', auth).send({ trainingDays: [1, 3, 5, 6] }).expect(200);
+    let res = await request(app).get('/api/v1/plans/active').set('Authorization', auth).expect(200);
+    assert.equal(res.body.data.plan.daysPerWeek, 4);
+
+    await request(app).put('/api/v1/profile/training-days')
+      .set('Authorization', auth).send({ trainingDays: [] }).expect(200);
+    res = await request(app).get('/api/v1/plans/active').set('Authorization', auth).expect(200);
+    assert.equal(res.body.data.plan.daysPerWeek, generated, 'no chosen days: the generated label');
+  });
+
   await t.test('no plan yet is a null, not a 404', async () => {
     await reset();
     const res = await request(app).get('/api/v1/plans/active').set('Authorization', auth).expect(200);
