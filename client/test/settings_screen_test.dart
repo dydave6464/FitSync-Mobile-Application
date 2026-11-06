@@ -1,7 +1,7 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
-import 'package:flutter/rendering.dart' show RenderParagraph;
+import 'package:flutter/rendering.dart' show RenderParagraph, SemanticsNode;
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 
@@ -18,6 +18,7 @@ import 'package:fitsync/features/onboarding/presentation/steps/level_step.dart';
 import 'package:fitsync/core/api_exception.dart';
 import 'package:fitsync/core/theme.dart';
 import 'package:fitsync/core/theme_controller.dart';
+import 'package:fitsync/core/token_store.dart' show InMemorySecureStore;
 import 'package:fitsync/features/health/domain/health_answers.dart';
 import 'package:fitsync/features/health/presentation/providers.dart';
 import 'package:fitsync/features/onboarding/presentation/steps/health_step.dart';
@@ -312,6 +313,7 @@ Future<void> _pump(
   bool dark = false,
   WeightUnit weightUnit = WeightUnit.kg,
   bool isPremium = false,
+  ThemeStore? themeStore,
 }) async {
   _profile = FakeProfileNotifier(
     patches ?? <Map<String, dynamic>>[],
@@ -353,6 +355,10 @@ Future<void> _pump(
         proRepositoryProvider.overrideWithValue(pro ?? FakeProRepository()),
         healthRepositoryProvider.overrideWithValue(
           health ?? FakeHealthRepository(),
+        ),
+        // In memory, so a theme pick never reaches the platform channel.
+        themeStoreProvider.overrideWithValue(
+          themeStore ?? ThemeStore(backing: InMemorySecureStore()),
         ),
       ],
       child: MaterialApp(
@@ -889,18 +895,118 @@ void main() {
     expect(find.byKey(const Key('goal.lose_weight')), findsOneWidget);
   });
 
-  testWidgets('the header toggle flips the theme', (tester) async {
-    await _pump(tester);
+  // D-1 (PS-21): System, Light and Dark, from the header's one button.
+  group('the theme control', () {
+    SemanticsNode segment(WidgetTester tester, String value) =>
+        tester.getSemantics(find.byKey(Key('segment.$value')));
 
-    final container = ProviderScope.containerOf(
-      tester.element(find.byType(SettingsScreen)),
-    );
-    expect(container.read(themeModeProvider), ThemeMode.light);
+    Future<void> openTheme(WidgetTester tester) async {
+      await tester.tap(find.byKey(const Key('theme.open')));
+      await tester.pumpAndSettle();
+    }
 
-    await tester.tap(find.byKey(const Key('themeToggle')));
-    await tester.pumpAndSettle();
+    testWidgets('a fresh install is Light, and the control says so', (
+      tester,
+    ) async {
+      final handle = tester.ensureSemantics();
+      await _pump(tester);
 
-    expect(container.read(themeModeProvider), ThemeMode.dark);
+      expect(find.byTooltip('Theme: Light'), findsOneWidget);
+      await openTheme(tester);
+      expect(find.text('Theme'), findsOneWidget);
+      for (final (value, on) in [
+        ('system', false),
+        ('light', true),
+        ('dark', false),
+      ]) {
+        expect(
+          segment(tester, value),
+          isSemantics(isButton: true, isSelected: on, hasSelectedState: true),
+          reason: value,
+        );
+      }
+      handle.dispose();
+    });
+
+    testWidgets('a stored System choice shows as System, not as Light', (
+      tester,
+    ) async {
+      final store = ThemeStore(backing: InMemorySecureStore());
+      await store.write(ThemeMode.system);
+      final handle = tester.ensureSemantics();
+      await _pump(tester, themeStore: store);
+
+      expect(find.byTooltip('Theme: System'), findsOneWidget);
+      expect(find.byIcon(Icons.brightness_auto_outlined), findsOneWidget);
+      await openTheme(tester);
+      expect(
+        segment(tester, 'system'),
+        isSemantics(isButton: true, isSelected: true, hasSelectedState: true),
+      );
+      expect(
+        segment(tester, 'light'),
+        isSemantics(isButton: true, isSelected: false, hasSelectedState: true),
+      );
+      handle.dispose();
+    });
+
+    testWidgets('each choice applies at once and is remembered', (
+      tester,
+    ) async {
+      final store = ThemeStore(backing: InMemorySecureStore());
+      await _pump(tester, themeStore: store);
+      final container = ProviderScope.containerOf(
+        tester.element(find.byType(SettingsScreen)),
+      );
+      await openTheme(tester);
+
+      for (final (value, mode) in [
+        ('dark', ThemeMode.dark),
+        ('system', ThemeMode.system),
+        ('light', ThemeMode.light),
+      ]) {
+        await tester.tap(find.byKey(Key('segment.$value')));
+        await tester.pumpAndSettle();
+        expect(container.read(themeModeProvider), mode, reason: value);
+        expect(await store.read(), mode, reason: value);
+      }
+      // Still open: the pick shows behind it, and × or a drag closes it.
+      expect(find.text('Theme'), findsOneWidget);
+      await tester.tap(find.byKey(FsSheetHeader.defaultCloseKey));
+      await tester.pumpAndSettle();
+      expect(find.text('Theme'), findsNothing);
+    });
+
+    testWidgets('the sheet reads in the dark theme too', (tester) async {
+      await _pump(tester, dark: true);
+      await openTheme(tester);
+      final title = tester.renderObject<RenderParagraph>(find.text('Theme'));
+      final color = title.text.style!.color!;
+      expect(contrast(color, FsTokens.dark.surface), greaterThan(4.5));
+    });
+
+    testWidgets('the three choices fit a 320 dp phone at 2x text', (
+      tester,
+    ) async {
+      tester.view.physicalSize = const Size(320, 640);
+      tester.view.devicePixelRatio = 1;
+      tester.platformDispatcher.textScaleFactorTestValue = 2;
+      addTearDown(tester.view.reset);
+      addTearDown(tester.platformDispatcher.clearTextScaleFactorTestValue);
+      await _pump(tester);
+      await openTheme(tester);
+      expect(tester.takeException(), isNull);
+      for (final label in ['System', 'Light', 'Dark']) {
+        expect(find.text(label), findsOneWidget);
+      }
+    });
+
+    testWidgets('the header button is a 48 dp target', (tester) async {
+      await _pump(tester);
+      final size = tester.getSize(find.byKey(const Key('theme.open')));
+      expect(size.width, greaterThanOrEqualTo(48));
+      expect(size.height, greaterThanOrEqualTo(48));
+    });
   });
 
   testWidgets('the theme is not also offered as a row', (tester) async {

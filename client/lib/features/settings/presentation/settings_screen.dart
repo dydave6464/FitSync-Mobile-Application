@@ -46,7 +46,7 @@ class SettingsScreen extends ConsumerWidget {
       backgroundColor: t.bg,
       appBar: AppBar(
         title: const Text('Profile'),
-        actions: const [_ThemeToggleButton()],
+        actions: const [_ThemeButton()],
       ),
       body: profile.when(
         loading: () => const Center(child: CircularProgressIndicator()),
@@ -62,24 +62,85 @@ class SettingsScreen extends ConsumerWidget {
   }
 }
 
-/// Dark/light in the header, where the prototype's Profile bar puts its one
+/// The three theme choices, in the order the control draws them.
+const _themeChoices = [
+  (
+    mode: ThemeMode.system,
+    label: 'System',
+    icon: Icons.brightness_auto_outlined,
+  ),
+  (mode: ThemeMode.light, label: 'Light', icon: Icons.light_mode_outlined),
+  (mode: ThemeMode.dark, label: 'Dark', icon: Icons.dark_mode_outlined),
+];
+
+({ThemeMode mode, String label, IconData icon}) _themeChoice(ThemeMode mode) =>
+    _themeChoices.firstWhere((c) => c.mode == mode);
+
+/// The theme in the header, where the prototype's Profile bar puts its one
 /// icon button -- rather than a row the user has to scroll the whole screen
 /// to reach. It is the only control for the setting: a second one in the App
-/// card would be the same switch drawn twice.
-class _ThemeToggleButton extends ConsumerWidget {
-  const _ThemeToggleButton();
+/// card would be the same setting drawn twice.
+///
+/// With System as a third choice (D-1) one tap can no longer flip it, so the
+/// button opens a short sheet with all three side by side. Its icon names the
+/// mode in force, System included, so a stored System never reads as Light.
+class _ThemeButton extends ConsumerWidget {
+  const _ThemeButton();
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final isDark = ref.watch(themeModeProvider) == ThemeMode.dark;
+    final choice = _themeChoice(ref.watch(themeModeProvider));
 
     return IconButton(
-      key: const Key('themeToggle'),
-      // The icon the row used, kept so the meaning does not change with the
-      // move: it names the mode you are in, not the one you would get.
-      icon: Icon(isDark ? Icons.dark_mode_outlined : Icons.light_mode_outlined),
-      tooltip: isDark ? 'Switch to light theme' : 'Switch to dark theme',
-      onPressed: () => ref.read(themeModeProvider.notifier).setDark(!isDark),
+      key: const Key('theme.open'),
+      icon: Icon(choice.icon),
+      tooltip: 'Theme: ${choice.label}',
+      onPressed: () => showModalBottomSheet<void>(
+        context: context,
+        // FsSheetHeader draws the handle.
+        showDragHandle: false,
+        builder: (_) => const _ThemeSheet(),
+      ),
+    );
+  }
+}
+
+/// System / Light / Dark. A pick applies at once and the sheet stays open,
+/// so the new look is seen behind it before it is closed.
+class _ThemeSheet extends ConsumerWidget {
+  const _ThemeSheet();
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final mode = ref.watch(themeModeProvider);
+
+    return SafeArea(
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(
+          FsSheetHeader.sideInset,
+          10,
+          FsSheetHeader.sideInset,
+          18,
+        ),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            const FsSheetHeader(title: 'Theme'),
+            const SizedBox(height: 8),
+            FsSegmented(
+              options: [
+                for (final c in _themeChoices)
+                  (value: c.mode.name, label: c.label),
+              ],
+              selected: mode.name,
+              onSelected: (value) => ref
+                  .read(themeModeProvider.notifier)
+                  .setMode(ThemeMode.values.byName(value)),
+            ),
+          ],
+        ),
+      ),
     );
   }
 }
