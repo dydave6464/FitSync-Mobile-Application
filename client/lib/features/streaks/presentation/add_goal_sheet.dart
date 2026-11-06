@@ -249,8 +249,11 @@ class _AddGoalSheetState extends ConsumerState<_AddGoalSheet> {
       math.min(media.size.height * 0.7, roomAboveKeyboard),
     );
     // The phone's back on the target step goes back a step, as the arrow
-    // does, rather than closing the sheet and losing the chosen lift. Held
-    // while a save is in flight, as the arrow is.
+    // does, rather than closing the sheet and losing the chosen lift. Only
+    // back is held while a save is in flight, as the arrow is. The scrim
+    // and a drag down close the sheet outright, even mid-save; the save
+    // still finishes: one that lands refreshes goalsProvider, and one that
+    // fails goes unseen (the accepted pops-while-busy rule).
     return PopScope(
       canPop: picked == null,
       onPopInvokedWithResult: (didPop, _) {
