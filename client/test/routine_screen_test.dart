@@ -519,29 +519,38 @@ void main() {
     });
 
     for (final dark in [false, true]) {
-      testWidgets('a finished workout says so, in a colour that reads '
-          '(${dark ? 'dark' : 'light'}, PT-1)', (tester) async {
-        final handle = tester.ensureSemantics();
-        final repo = _FakeRoutineRepo(
-          const RoutineDay(
-            date: '2026-09-24',
-            habits: [],
-            workout: RoutineWorkout(title: 'Upper Body', done: true),
-          ),
-        );
-        await tester.pumpWidget(_harness(repo, onOpenPlan: () {}, dark: dark));
-        await tester.pumpAndSettle();
+      for (final done in [true, false]) {
+        testWidgets('${done ? 'a finished' : 'an unfinished'} workout says '
+            'so, with its own icon in a colour that reads '
+            '(${dark ? 'dark' : 'light'}, PT-1, L-43)', (tester) async {
+          final handle = tester.ensureSemantics();
+          final repo = _FakeRoutineRepo(
+            RoutineDay(
+              date: '2026-09-24',
+              habits: const [],
+              workout: RoutineWorkout(title: 'Upper Body', done: done),
+            ),
+          );
+          await tester.pumpWidget(
+            _harness(repo, onOpenPlan: () {}, dark: dark),
+          );
+          await tester.pumpAndSettle();
 
-        final status = find.byKey(const Key('routine.workout.status'));
-        expect(
-          tester.getSemantics(status).getSemanticsData().label,
-          contains('Workout finished'),
-        );
-        final t = tester.element(status).fs;
-        final icon = tester.widget<Icon>(status);
-        expect(contrast(icon.color!, t.surface), greaterThanOrEqualTo(3));
-        handle.dispose();
-      });
+          final status = find.byKey(const Key('routine.workout.status'));
+          expect(
+            tester.getSemantics(status).getSemanticsData().label,
+            contains(done ? 'Workout finished' : 'Not finished yet'),
+          );
+          final t = tester.element(status).fs;
+          final icon = tester.widget<Icon>(status);
+          // The glyph carries the state as well as the colour: colour alone
+          // is not enough to tell done from not done.
+          expect(icon.icon, done ? Icons.check_circle : Icons.schedule);
+          expect(icon.color, done ? t.accentText : t.text3);
+          expect(contrast(icon.color!, t.surface), greaterThanOrEqualTo(3));
+          handle.dispose();
+        });
+      }
     }
 
     testWidgets('a habit row says it edits the habit', (tester) async {
