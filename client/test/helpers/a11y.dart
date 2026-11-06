@@ -3,14 +3,9 @@ import 'package:flutter/material.dart';
 import 'package:fitsync/core/theme.dart';
 
 /// Hosts [child] centred in a Scaffold, in either theme, at a given text
-/// scale. [size] is accepted for callers that want to name the screen they
-/// mean; set the view's size with `tester.view.physicalSize` to apply it.
-Widget host(
-  Widget child, {
-  bool dark = false,
-  double textScale = 1.0,
-  Size? size,
-}) {
+/// scale. For a small screen, set `tester.view.physicalSize` and
+/// `devicePixelRatio` instead.
+Widget host(Widget child, {bool dark = false, double textScale = 1.0}) {
   Widget app = MaterialApp(
     theme: dark ? fsDarkTheme() : fsLightTheme(),
     home: Scaffold(body: Center(child: child)),
