@@ -941,12 +941,14 @@ void main() {
     final handle = tester.ensureSemantics();
     await _pump(tester);
 
-    final flags = tester
+    final data = tester
         .getSemantics(find.text('September 2026'))
-        .getSemanticsData()
-        .flagsCollection;
-    expect(flags.isHeader, isTrue);
-    expect(flags.isLiveRegion, isTrue);
+        .getSemanticsData();
+    // Its own node: merged into the card, the heading and the live region
+    // would be the weekday letters and the legend too.
+    expect(data.label, 'September 2026');
+    expect(data.flagsCollection.isHeader, isTrue);
+    expect(data.flagsCollection.isLiveRegion, isTrue);
     handle.dispose();
   });
 }

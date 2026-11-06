@@ -153,7 +153,10 @@ class _ScheduleScreenState extends ConsumerState<ScheduleScreen> {
                   children: [
                     Expanded(
                       // A heading, and live: prev/next say the new month.
+                      // Its own node, so neither takes in the card's
+                      // weekday letters and legend.
                       child: Semantics(
+                        container: true,
                         header: true,
                         liveRegion: true,
                         child: Text(
