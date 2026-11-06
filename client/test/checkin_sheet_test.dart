@@ -569,6 +569,63 @@ void main() {
     expect(repo.sent, isNotNull);
   });
 
+  testWidgets(
+    'at its fullest the sheet stops short of the status bar, the tab still '
+    'showing above it',
+    (tester) async {
+      // A small phone with a status bar, at large text, with the pain
+      // question and its regions open: more than the screen holds.
+      tester.view.physicalSize = const Size(360, 640);
+      tester.view.devicePixelRatio = 1;
+      tester.view.padding = const FakeViewPadding(top: 24);
+      addTearDown(tester.view.reset);
+      tester.platformDispatcher.textScaleFactorTestValue = 2;
+      addTearDown(tester.platformDispatcher.clearTextScaleFactorTestValue);
+
+      await _open(tester, pending: _pending);
+      await _tapKey(tester, 'checkin.pain.mild');
+      expect(tester.takeException(), isNull);
+
+      // As the How to read sheet does: 90% of the screen at most.
+      final sheet = tester.getRect(find.byType(BottomSheet));
+      expect(sheet.top, greaterThanOrEqualTo(640 * 0.1 - 0.5));
+    },
+  );
+
+  group('like its sibling sheet', () {
+    testWidgets('it has a drag handle and a heading', (tester) async {
+      final semantics = tester.ensureSemantics();
+      await _open(tester);
+
+      expect(find.byKey(const Key('checkin.handle')), findsOneWidget);
+      expect(
+        tester.getSemantics(find.text('Morning check-in')),
+        matchesSemantics(label: 'Morning check-in', isHeader: true),
+      );
+      semantics.dispose();
+    });
+
+    testWidgets('Cancel closes it, so closing never depends on a swipe', (
+      tester,
+    ) async {
+      final repo = await _open(tester);
+
+      await _tapKey(tester, 'checkin.cancel');
+
+      expect(find.text('Morning check-in'), findsNothing);
+      expect(repo.sent, isNull);
+    });
+
+    testWidgets('Cancel with answers given asks first', (tester) async {
+      await _open(tester);
+      await _tapKey(tester, 'checkin.sleepQuality.good');
+
+      await _tapKey(tester, 'checkin.cancel');
+
+      expect(find.text('Discard your changes?'), findsOneWidget);
+    });
+  });
+
   group('closing with answers given', () {
     testWidgets('back with nothing answered closes without asking', (
       tester,
@@ -626,8 +683,10 @@ void main() {
     ) async {
       final repo = await _open(tester);
 
+      // From the handle: on a sheet taller than the test screen, a swipe on
+      // the questions scrolls them instead, as on a phone.
       await tester.fling(
-        find.text('Morning check-in'),
+        find.byKey(const Key('checkin.handle')),
         const Offset(0, 300),
         1500,
       );

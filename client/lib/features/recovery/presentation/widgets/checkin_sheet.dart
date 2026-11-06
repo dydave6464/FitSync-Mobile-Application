@@ -358,22 +358,60 @@ class _CheckinSheetState extends ConsumerState<_CheckinSheet> {
     );
   }
 
+  /// The tallest the sheet grows, as the How to read sheet: a strip of the
+  /// Recovery tab stays in view above it, and its title never slides under
+  /// the status bar.
+  static const _maxHeightFraction = 0.9;
+
   Widget _content(FsTokens t) {
-    // Scrolls, so at large text on a small phone Save is still reachable
-    // rather than pushed off the bottom of the sheet.
-    return SafeArea(
-      child: SingleChildScrollView(
-        padding: EdgeInsets.fromLTRB(
-          18,
-          10,
-          18,
-          MediaQuery.of(context).viewInsets.bottom + 20,
-        ),
+    return ConstrainedBox(
+      constraints: BoxConstraints(
+        maxHeight: MediaQuery.sizeOf(context).height * _maxHeightFraction,
+      ),
+      child: SafeArea(
         child: Column(
           mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            Text(
+            // The handle the How to read sheet draws, so the two sheets on
+            // this tab look and close alike.
+            Center(
+              child: Container(
+                key: const Key('checkin.handle'),
+                width: 38,
+                height: 4,
+                margin: const EdgeInsets.only(top: 10, bottom: 12),
+                decoration: BoxDecoration(
+                  color: t.line2,
+                  borderRadius: BorderRadius.circular(99),
+                ),
+              ),
+            ),
+            // Everything below the handle scrolls, so at large text on a
+            // small phone Save is still reachable rather than pushed off the
+            // bottom of the sheet.
+            Flexible(child: _questionsAndSave(t)),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _questionsAndSave(FsTokens t) {
+    return SingleChildScrollView(
+      padding: EdgeInsets.fromLTRB(
+        18,
+        0,
+        18,
+        MediaQuery.of(context).viewInsets.bottom + 20,
+      ),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Semantics(
+            header: true,
+            child: Text(
               'Morning check-in',
               style: TextStyle(
                 fontSize: 20,
@@ -381,84 +419,94 @@ class _CheckinSheetState extends ConsumerState<_CheckinSheet> {
                 color: t.text,
               ),
             ),
-            const SizedBox(height: 6),
-            // One short line, the same with or without the pain question:
-            // why the sheet asks, not how many questions it has -- the
-            // questions are right below, and the pain one has its own heading.
+          ),
+          const SizedBox(height: 6),
+          // One short line, the same with or without the pain question:
+          // why the sheet asks, not how many questions it has -- the
+          // questions are right below, and the pain one has its own heading.
+          Text(
+            "Helps estimate today's injury risk.",
+            style: TextStyle(fontSize: 13, color: t.text2, height: 1.4),
+          ),
+          const SizedBox(height: 16),
+          for (final q in _questions) ...[
             Text(
-              "Helps estimate today's injury risk.",
-              style: TextStyle(fontSize: 13, color: t.text2, height: 1.4),
-            ),
-            const SizedBox(height: 16),
-            for (final q in _questions) ...[
-              Text(
-                q.label,
-                style: TextStyle(
-                  fontSize: 13.5,
-                  fontWeight: FontWeight.w600,
-                  color: t.text,
-                ),
+              q.label,
+              style: TextStyle(
+                fontSize: 13.5,
+                fontWeight: FontWeight.w600,
+                color: t.text,
               ),
-              // Small gaps around the row: each band is a full 48 dp tall,
-              // so the pills already sit apart by the band's own slack, and
-              // there is no run spacing for the same reason.
-              const SizedBox(height: 2),
-              Wrap(
-                spacing: 8,
-                children: [
-                  for (final value in q.values)
-                    _AnswerTarget(
-                      key: Key('checkin.${q.field}.$value.target'),
-                      label: '${q.label}: ${_displayLabel(value)}',
+            ),
+            // Small gaps around the row: each band is a full 48 dp tall,
+            // so the pills already sit apart by the band's own slack, and
+            // there is no run spacing for the same reason.
+            const SizedBox(height: 2),
+            Wrap(
+              spacing: 8,
+              children: [
+                for (final value in q.values)
+                  _AnswerTarget(
+                    key: Key('checkin.${q.field}.$value.target'),
+                    label: '${q.label}: ${_displayLabel(value)}',
+                    selected: _answers[q.field] == value,
+                    onTap: () {
+                      if (_busy) return;
+                      setState(() => _answers[q.field] = value);
+                    },
+                    child: FsChip(
+                      key: Key('checkin.${q.field}.$value'),
+                      label: _displayLabel(value),
                       selected: _answers[q.field] == value,
                       onTap: () {
                         if (_busy) return;
                         setState(() => _answers[q.field] = value);
                       },
-                      child: FsChip(
-                        key: Key('checkin.${q.field}.$value'),
-                        label: _displayLabel(value),
-                        selected: _answers[q.field] == value,
-                        onTap: () {
-                          if (_busy) return;
-                          setState(() => _answers[q.field] = value);
-                        },
-                      ),
                     ),
-                ],
-              ),
-              const SizedBox(height: 8),
-            ],
-            if (_pending case final pending?) ..._painRow(pending, t),
-            if (_failure != null) ...[
-              // A live region: a screen reader says the failure when it
-              // appears, not just the button's loading ending.
-              FsErrorLine(_failure!, key: const Key('checkin.error')),
-              const SizedBox(height: 12),
-            ],
-            FsButton(
-              key: const Key('checkin.save'),
-              label: 'Save',
-              busy: _busy,
-              onPressed: _busy || !_complete || !_painReady ? null : _save,
+                  ),
+              ],
             ),
-            if (!_complete || !_painReady) ...[
-              const SizedBox(height: 8),
-              Center(
-                child: Text(
-                  !_complete
-                      ? 'Answer all four to save.'
-                      : 'Pick where it hurts, or tap '
-                            '${_displayLabel(_painLevel!)} again to skip this '
-                            'question.',
-                  key: const Key('checkin.hint'),
-                  textAlign: TextAlign.center,
-                  style: TextStyle(fontSize: 12, color: t.text2),
-                ),
-              ),
-            ],
+            const SizedBox(height: 8),
           ],
-        ),
+          if (_pending case final pending?) ..._painRow(pending, t),
+          if (_failure != null) ...[
+            // A live region: a screen reader says the failure when it
+            // appears, not just the button's loading ending.
+            FsErrorLine(_failure!, key: const Key('checkin.error')),
+            const SizedBox(height: 12),
+          ],
+          FsButton(
+            key: const Key('checkin.save'),
+            label: 'Save',
+            busy: _busy,
+            onPressed: _busy || !_complete || !_painReady ? null : _save,
+          ),
+          if (!_complete || !_painReady) ...[
+            const SizedBox(height: 8),
+            Center(
+              child: Text(
+                !_complete
+                    ? 'Answer all four to save.'
+                    : 'Pick where it hurts, or tap '
+                          '${_displayLabel(_painLevel!)} again to skip this '
+                          'question.',
+                key: const Key('checkin.hint'),
+                textAlign: TextAlign.center,
+                style: TextStyle(fontSize: 12, color: t.text2),
+              ),
+            ),
+          ],
+          const SizedBox(height: 8),
+          // A button as well as the drag, the scrim and back, so closing
+          // never depends on a swipe. It asks the route to pop, so answers
+          // given still meet the discard question first.
+          FsButton(
+            key: const Key('checkin.cancel'),
+            label: 'Cancel',
+            kind: FsButtonKind.ghost,
+            onPressed: () => Navigator.of(context).maybePop(),
+          ),
+        ],
       ),
     );
   }
