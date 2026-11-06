@@ -686,14 +686,16 @@ test('POST /recovery/estimate retries today\'s estimate', async (t) => {
     return e;
   };
   // Something in every input, so comparing the two requests compares real
-  // values: an earlier check-in inside the window, a profile injury and a
-  // recent pain report.
-  await pool.query(
-    `INSERT INTO morning_checkins
-       (user_id, checkin_date, sleep_quality, muscle_soreness, energy, stress)
-     VALUES (?, DATE_SUB(CURDATE(), INTERVAL 1 DAY), 'good', 'mild', 'moderate', 'low')`,
-    [userId],
-  );
+  // values: an earlier check-in inside the window and one outside it, a
+  // profile injury and a recent pain report.
+  for (const daysAgo of [1, 5]) {
+    await pool.query(
+      `INSERT INTO morning_checkins
+         (user_id, checkin_date, sleep_quality, muscle_soreness, energy, stress)
+       VALUES (?, DATE_SUB(CURDATE(), INTERVAL ? DAY), 'good', 'mild', 'moderate', 'low')`,
+      [userId, daysAgo],
+    );
+  }
   await pool.query(
     "INSERT INTO user_injuries (user_id, injury_id, side) VALUES (?, ?, 'left')",
     [userId, knee],
