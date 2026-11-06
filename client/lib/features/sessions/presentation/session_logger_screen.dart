@@ -582,9 +582,11 @@ class _SessionLoggerScreenState extends ConsumerState<SessionLoggerScreen>
   /// but switching back is how a switch is undone, and the old exercise
   /// would otherwise come back with rows it was given before it left.
   ///
-  /// No Undo on the SnackBar. Every swap is recorded server-side as "rejected
-  /// this, chose that" for the recommender, so swapping straight back would
-  /// record a rejection the user never meant; Switch again is the way back.
+  /// No Undo on the SnackBar: inside a workout, Switch again is the way back,
+  /// from the same link the user just used. The Plan tab is where a swap is
+  /// undone outright (PlanRepository.undoSwap, which also takes the swap's
+  /// label out of the ranker's history); a Switch back here is a swap of its
+  /// own.
   Future<void> _switchExercise(int index, PlanExercise exercise) async {
     final messenger = ScaffoldMessenger.of(context);
     final swapped = await showExerciseSwapSheet(
