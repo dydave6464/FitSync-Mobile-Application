@@ -1232,6 +1232,55 @@ void main() {
       expect(find.text('Discard your changes?'), findsOneWidget);
     });
 
+    // L-82: a kg/lb switch makes the step rewrite its weights while it is
+    // being rebuilt, and Body metrics catches up a frame later. Pinned here
+    // so a change on either side shows: no assert, the edit still counts,
+    // and it is still saved in kilograms.
+    testWidgets('a typed weight survives a kg/lb switch as an edit', (
+      tester,
+    ) async {
+      final gate = Completer<void>();
+      final patches = <Map<String, dynamic>>[];
+      await _pump(
+        tester,
+        patches: patches,
+        heightCm: 170,
+        weightKg: 70,
+        patchGate: gate,
+      );
+      await _openRow(tester, const Key('edit.about'));
+      await tester.enterText(find.byKey(const Key('weightKg')), '72');
+      await tester.pumpAndSettle();
+
+      await tester.ensureVisible(find.byKey(const Key('unit.lb')));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const Key('unit.lb')));
+      await tester.pumpAndSettle();
+      expect(tester.takeException(), isNull);
+      expect(
+        tester
+            .widget<TextField>(find.byKey(const Key('weightKg')))
+            .controller!
+            .text,
+        '158.7',
+      );
+
+      await tester.binding.handlePopRoute();
+      await tester.pumpAndSettle();
+      expect(find.text('Discard your changes?'), findsOneWidget);
+      await tester.tap(dialogButton('Keep editing'));
+      await tester.pumpAndSettle();
+
+      // The fake keeps the profile in kg, so the switch settles back there.
+      gate.complete();
+      await tester.pumpAndSettle();
+      expect(tester.takeException(), isNull);
+      await tester.ensureVisible(find.byKey(const Key('save')));
+      await tester.tap(find.byKey(const Key('save')));
+      await tester.pumpAndSettle();
+      expect(patches.last['weightKg'], closeTo(72, 0.05));
+    });
+
     testWidgets('undoing an edit makes back quiet again', (tester) async {
       await _pump(tester);
       await _openRow(tester, const Key('edit.goal'));
