@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../core/theme.dart';
@@ -64,7 +65,7 @@ class _AddFoodManuallyScreenState extends ConsumerState<AddFoodManuallyScreen> {
     final sodiumOk = sodium == null || (sodium >= 0 && sodium <= 20000);
     final kcal = gramsOk ? manualKcal(p!, c!, f!) : null;
     final name = _name.text.trim();
-    final valid = name.isNotEmpty && name.length <= 100 && _serving.text.trim().length <= 60
+    final valid = name.isNotEmpty && name.length <= _maxName && _serving.text.trim().length <= _maxServing
         && gramsOk && sodiumOk && (p! + c! + f!) > 0;
 
     Widget gramsField(String label, Key key, TextEditingController ctrl, {bool sodium = false}) => Expanded(
@@ -94,19 +95,37 @@ class _AddFoodManuallyScreenState extends ConsumerState<AddFoodManuallyScreen> {
         body: ListView(
           padding: const EdgeInsets.all(20),
           children: [
-            FsField(controller: _name, fieldKey: const Key('manual.name'), hint: 'Food name',
-                textCapitalization: TextCapitalization.sentences, onChanged: (_) => setState(() {})),
-            const SizedBox(height: 12),
+            // Labelled as the prototype draws them: a placeholder alone goes
+            // as soon as something is typed, taking the field's name with it.
+            FsField(
+              controller: _name,
+              fieldKey: const Key('manual.name'),
+              label: 'Food name',
+              hint: 'e.g. Grilled bangus',
+              textCapitalization: TextCapitalization.sentences,
+              // The most the server accepts, so Log never greys out unexplained.
+              inputFormatters: [LengthLimitingTextInputFormatter(_maxName)],
+              onChanged: (_) => setState(() {}),
+            ),
+            const SizedBox(height: 16),
             if (!widget.pick) ...[
+              const FsEyebrow('Meal'),
+              const SizedBox(height: 6),
               FsSegmented(
                 options: [for (final m in mealTypes) (value: m, label: mealLabel(m))],
                 selected: _meal,
                 onSelected: (m) => setState(() => _meal = m),
               ),
-              const SizedBox(height: 12),
+              const SizedBox(height: 16),
             ],
-            FsField(controller: _serving, fieldKey: const Key('manual.serving'),
-                hint: 'Serving size (optional), e.g. 1 cup', onChanged: (_) => setState(() {})),
+            FsField(
+              controller: _serving,
+              fieldKey: const Key('manual.serving'),
+              label: 'Serving size · optional',
+              hint: 'e.g. 1 cup',
+              inputFormatters: [LengthLimitingTextInputFormatter(_maxServing)],
+              onChanged: (_) => setState(() {}),
+            ),
             const SizedBox(height: 16),
             Text('Macros · per serving', style: theme.textTheme.titleSmall),
             const SizedBox(height: 8),
@@ -177,3 +196,8 @@ class _AddFoodManuallyScreenState extends ConsumerState<AddFoodManuallyScreen> {
     );
   }
 }
+
+/// The longest name and serving a manual entry may have
+/// (server/src/routes/nutrition.js).
+const _maxName = 100;
+const _maxServing = 60;

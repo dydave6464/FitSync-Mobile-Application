@@ -42,9 +42,12 @@ Future<FakeNutritionRepository> _pump(WidgetTester tester, {Size? size, double t
   return repo;
 }
 
+/// Tall enough that the whole form, kcal line included, is built at once.
+const _tall = Size(400, 1200);
+
 void main() {
   testWidgets('calories fill in from the macros', (tester) async {
-    await _pump(tester);
+    await _pump(tester, size: _tall);
     await tester.enterText(find.byKey(const Key('manual.protein')), '2');
     await tester.enterText(find.byKey(const Key('manual.carbs')), '34');
     await tester.enterText(find.byKey(const Key('manual.fat')), '6');
@@ -53,7 +56,7 @@ void main() {
   });
 
   testWidgets('calories match the server, which rounds each gram to 2 decimals first', (tester) async {
-    await _pump(tester);
+    await _pump(tester, size: _tall);
     await tester.enterText(find.byKey(const Key('manual.fat')), '0.0551');
     await tester.pump();
     // 0.0551 -> 0.06 g -> 0.54 kcal -> 1 (unrounded it would show 0).
@@ -84,7 +87,7 @@ void main() {
   });
 
   testWidgets('fiber is optional, logged with the food and never changes kcal', (tester) async {
-    final repo = await _pump(tester);
+    final repo = await _pump(tester, size: _tall);
     await tester.enterText(find.byKey(const Key('manual.name')), 'Turon');
     await tester.enterText(find.byKey(const Key('manual.protein')), '2');
     await tester.enterText(find.byKey(const Key('manual.carbs')), '34');
@@ -132,7 +135,7 @@ void main() {
   });
 
   testWidgets('sugar and sodium are optional, logged with the food and never change kcal', (tester) async {
-    final repo = await _pump(tester);
+    final repo = await _pump(tester, size: _tall);
     await tester.enterText(find.byKey(const Key('manual.name')), 'Turon');
     await tester.enterText(find.byKey(const Key('manual.protein')), '2');
     await tester.enterText(find.byKey(const Key('manual.carbs')), '34');
@@ -294,5 +297,46 @@ void main() {
     await tester.pumpAndSettle();
     expect(repo.calls.where((c) => c == 'log 2026-10-14 snack Turon x1.0'), hasLength(2));
     expect(repo.days['2026-10-14']!.entries.map((e) => e.name), contains('Turon'));
+  });
+
+  group('labels (NU-9)', () {
+    testWidgets('name, meal and serving each have a visible label, as the prototype draws them', (tester) async {
+      await _pump(tester, size: const Size(400, 1200));
+      expect(find.text('FOOD NAME'), findsOneWidget);
+      expect(find.text('MEAL'), findsOneWidget);
+      expect(find.text('SERVING SIZE · OPTIONAL'), findsOneWidget);
+      expect(find.text('e.g. 1 cup'), findsOneWidget, reason: 'the example stays as the placeholder');
+      // Each label sits above its own field.
+      expect(tester.getRect(find.text('FOOD NAME')).bottom,
+          lessThanOrEqualTo(tester.getRect(find.byKey(const Key('manual.name'))).top));
+      expect(tester.getRect(find.text('SERVING SIZE · OPTIONAL')).bottom,
+          lessThanOrEqualTo(tester.getRect(find.byKey(const Key('manual.serving'))).top));
+    });
+
+    testWidgets('a screen reader hears each field by its name once something is typed', (tester) async {
+      final h = tester.ensureSemantics();
+      await _pump(tester, size: const Size(400, 1200));
+      await tester.enterText(find.byKey(const Key('manual.name')), 'Turon');
+      await tester.enterText(find.byKey(const Key('manual.serving')), '1 piece');
+      await tester.pump();
+      expect(tester.getSemantics(find.byKey(const Key('manual.name'))).label, contains('Food name'));
+      expect(tester.getSemantics(find.byKey(const Key('manual.serving'))).label, contains('Serving size'));
+      h.dispose();
+    });
+
+    testWidgets('the name stops at 100 characters and the serving at 60, what the server accepts', (tester) async {
+      await _pump(tester, size: const Size(400, 1200));
+      await tester.enterText(find.byKey(const Key('manual.name')), 'a' * 120);
+      await tester.enterText(find.byKey(const Key('manual.serving')), 'b' * 80);
+      await tester.pump();
+      String text(String key) => tester.widget<TextField>(find.byKey(Key(key))).controller!.text;
+      expect(text('manual.name'), hasLength(100));
+      expect(text('manual.serving'), hasLength(60));
+    });
+
+    testWidgets('the labelled form fits a 320 dp phone at 2x text', (tester) async {
+      await _pump(tester, size: const Size(320, 640), textScale: 2);
+      expect(tester.takeException(), isNull);
+    });
   });
 }
