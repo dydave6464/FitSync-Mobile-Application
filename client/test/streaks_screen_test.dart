@@ -107,7 +107,6 @@ Future<_FakeGoalsRepo> _pump(
   List<LiftGoal> goals = const [_benchGoal],
   int failGoals = 0,
   bool dark = false,
-  double textScale = 1.0,
 }) async {
   final repo = _FakeGoalsRepo(goals)..failListTimes = failGoals;
   await tester.pumpWidget(
@@ -123,11 +122,6 @@ Future<_FakeGoalsRepo> _pump(
       child: MaterialApp(
         theme: dark ? fsDarkTheme() : fsLightTheme(),
         home: const StreaksScreen(now: _now),
-        builder: (context, child) => MediaQuery(
-          data: MediaQuery.of(context)
-              .copyWith(textScaler: TextScaler.linear(textScale)),
-          child: child!,
-        ),
       ),
     ),
   );
