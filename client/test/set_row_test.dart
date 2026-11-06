@@ -308,5 +308,55 @@ void main() {
         expect(focused(tester, 'set.1.$field'), isTrue);
       });
     }
+
+    // Moving from one field to the next through the band must not close the
+    // keyboard on pointer-down and reopen it on pointer-up: the number pad
+    // would drop and come back, and the screen would relayout mid-workout.
+    // A focused field lets go on a tap outside its group, so the band has to
+    // count as inside it.
+    testWidgets('a tap in the band keeps the keyboard up', (tester) async {
+      await tester.pumpWidget(
+        _host(SetRow(setNumber: 1, logged: null, drafts: _drafts(tester))),
+      );
+      await tester.tap(find.byKey(const Key('set.1.weight')));
+      await tester.pump();
+      expect(focused(tester, 'set.1.weight'), isTrue);
+      tester.testTextInput.log.clear();
+
+      final reps = tester.getRect(find.byKey(const Key('set.1.reps')));
+      final gesture = await tester.startGesture(
+        reps.topCenter - const Offset(0, 4),
+      );
+      await tester.pump();
+      expect(
+        tester.testTextInput.log.map((c) => c.method),
+        isNot(contains('TextInput.hide')),
+        reason: 'pointer-down in the band must not close the keyboard',
+      );
+
+      await gesture.up();
+      await tester.pump();
+      expect(focused(tester, 'set.1.reps'), isTrue);
+      expect(
+        tester.testTextInput.log.map((c) => c.method),
+        isNot(contains('TextInput.hide')),
+      );
+    });
+
+    // The band joins the fields' tap group; the rest of the screen does not.
+    testWidgets('a tap away from the row still closes the keyboard', (
+      tester,
+    ) async {
+      await tester.pumpWidget(
+        _host(SetRow(setNumber: 1, logged: null, drafts: _drafts(tester))),
+      );
+      await tester.tap(find.byKey(const Key('set.1.reps')));
+      await tester.pump();
+      expect(focused(tester, 'set.1.reps'), isTrue);
+
+      await tester.tapAt(const Offset(10, 10));
+      await tester.pump();
+      expect(focused(tester, 'set.1.reps'), isFalse);
+    });
   });
 }

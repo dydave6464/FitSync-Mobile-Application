@@ -350,12 +350,17 @@ class _FieldGap extends StatelessWidget {
     );
     final node = focus;
     if (node == null) return gap;
-    return GestureDetector(
-      behavior: HitTestBehavior.opaque,
-      // The field inside is the node a screen reader lands on already.
-      excludeFromSemantics: true,
-      onTap: node.requestFocus,
-      child: gap,
+    // Inside the text fields' tap group: otherwise pointer-down here counts as
+    // a tap outside the focused field, which lets go and closes the keyboard,
+    // and pointer-up reopens it for this one.
+    return TextFieldTapRegion(
+      child: GestureDetector(
+        behavior: HitTestBehavior.opaque,
+        // The field inside is the node a screen reader lands on already.
+        excludeFromSemantics: true,
+        onTap: node.requestFocus,
+        child: gap,
+      ),
     );
   }
 }
