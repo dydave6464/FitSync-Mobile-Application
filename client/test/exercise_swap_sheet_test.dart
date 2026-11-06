@@ -1036,4 +1036,42 @@ void main() {
       expect(popped, [null]);
     });
   });
+
+  testWidgets('a failed alternatives load offers a retry (PT-9)', (
+    tester,
+  ) async {
+    var calls = 0;
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          alternativesProvider.overrideWith((ref, key) async {
+            if (calls++ == 0) {
+              // Not NETWORK_ERROR: that one the provider retries by itself.
+              throw const ApiException('UNKNOWN_ERROR', 'boom');
+            }
+            return const [_alt];
+          }),
+        ],
+        child: const MaterialApp(
+          home: Scaffold(
+            body: ExerciseSwapSheet(
+              planExerciseId: 77,
+              exerciseName: 'Cable Fly',
+            ),
+          ),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(
+      find.text('Something went wrong on our side. Please try again.'),
+      findsOneWidget,
+    );
+    await tester.tap(find.byKey(const Key('swap.alternatives.retry')));
+    await tester.pumpAndSettle();
+
+    expect(calls, 2);
+    expect(find.byKey(const Key('swap.alt.12')), findsOneWidget);
+  });
 }

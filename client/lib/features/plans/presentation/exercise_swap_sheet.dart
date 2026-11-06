@@ -4,6 +4,7 @@ import 'dart:math' as math;
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../../core/api_exception.dart';
 import '../../../core/theme.dart';
 import '../../../core/widgets/fs_kit.dart';
 import '../../exercises/presentation/equipment_icon.dart';
@@ -402,7 +403,18 @@ class _ExerciseSwapSheetState extends ConsumerState<ExerciseSwapSheet> {
           ),
           error: (err, _) => Padding(
             padding: const EdgeInsets.all(16),
-            child: Text(describeError(err)),
+            // A way to try again in place: closing the sheet and tapping
+            // Change again was the only one.
+            child: FsRetry(
+              message: userMessage(err),
+              buttonKey: const Key('swap.alternatives.retry'),
+              onRetry: () => ref.invalidate(
+                alternativesProvider((
+                  planExerciseId: widget.planExerciseId,
+                  query: _query,
+                )),
+              ),
+            ),
           ),
           data: (rows) => rows.isEmpty
               ? Padding(
