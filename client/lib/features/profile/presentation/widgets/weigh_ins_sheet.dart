@@ -96,45 +96,59 @@ class _WeighInsSheetState extends ConsumerState<_WeighInsSheet> {
       _deleting = point.loggedOn;
       _error = null;
     });
-    // Captured before the await: the sheet closes on success, and its own
-    // context goes with it.
+    // Captured before the await. The sheet can be closed while the delete
+    // runs (the close button, the scrim, a drag, system back), and its
+    // context and `ref` go with it; the delete still lands on the server.
     final messenger = ScaffoldMessenger.of(context);
     final navigator = Navigator.of(context);
+    final route = ModalRoute.of(context);
+    final container = ProviderScope.containerOf(context, listen: false);
 
     String done;
     try {
-      await ref
+      await container
           .read(profileRepositoryProvider)
           .deleteBodyWeight(point.loggedOn);
       done = 'Weigh-in deleted';
     } on ApiException catch (error) {
       if (error.code != 'WEIGH_IN_NOT_FOUND') {
-        _failed(error);
+        _failed(error, messenger, route);
         return;
       }
       done = 'That weigh-in was already deleted.';
     } catch (error) {
       debugPrint('Weigh-in delete failed: $error');
-      _failed(error);
+      _failed(error, messenger, route);
       return;
     }
 
     // The same pair the add sheet refreshes: every period's chart, and the
     // profile weight the server may have moved back to the previous entry.
-    ref.invalidate(bodyWeightProvider);
-    ref.invalidate(profileProvider);
-    if (!mounted) return;
+    // Through the container, which outlives a sheet closed mid-delete.
+    container.invalidate(bodyWeightProvider);
+    container.invalidate(profileProvider);
     // Closed first, so the snackbar is not drawn under the sheet, where it
-    // would be neither seen nor read out.
-    navigator.pop();
+    // would be neither seen nor read out. Only while the sheet is still the
+    // top route: once it is closing or gone, a pop would take the page
+    // under it instead.
+    if (mounted && (route?.isCurrent ?? false)) navigator.pop();
     messenger.showSnackBar(SnackBar(content: Text(done)));
   }
 
-  void _failed(Object error) {
+  /// Shows why the delete failed: on the sheet while it is open, or as a
+  /// snackbar on the screen once the sheet is closing or closed.
+  void _failed(
+    Object error,
+    ScaffoldMessengerState messenger,
+    ModalRoute<Object?>? route,
+  ) {
+    final message = userMessage(error);
+    final open = mounted && (route?.isCurrent ?? false);
+    if (!open) messenger.showSnackBar(SnackBar(content: Text(message)));
     if (!mounted) return;
     setState(() {
       _deleting = null;
-      _error = userMessage(error);
+      _error = open ? message : null;
     });
   }
 

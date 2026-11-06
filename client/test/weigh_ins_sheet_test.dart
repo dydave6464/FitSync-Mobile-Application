@@ -74,7 +74,23 @@ Future<void> _pump(
   List<BodyWeightPoint> points = _three,
   WeightUnit unit = WeightUnit.kg,
   _Fetches? fetches,
+  bool onPushedPage = false,
 }) async {
+  final opener = Scaffold(
+    body: Consumer(
+      builder: (context, ref, _) {
+        // As the Profile and Progress screens do: something holds
+        // profileProvider and the chart, so an invalidate refetches them
+        // even once the sheet is gone.
+        ref.watch(profileProvider);
+        ref.watch(bodyWeightProvider('month'));
+        return ElevatedButton(
+          onPressed: () => showWeighInsSheet(context),
+          child: const Text('open'),
+        );
+      },
+    ),
+  );
   await tester.pumpWidget(
     ProviderScope(
       overrides: [
@@ -94,23 +110,25 @@ Future<void> _pump(
       ],
       child: MaterialApp(
         theme: fsLightTheme(),
-        home: Scaffold(
-          body: Consumer(
-            builder: (context, ref, _) {
-              // As the Profile screen does: something holds profileProvider,
-              // so an invalidate refetches it.
-              ref.watch(profileProvider);
-              return ElevatedButton(
-                onPressed: () => showWeighInsSheet(context),
-                child: const Text('open'),
-              );
-            },
-          ),
-        ),
+        // On a pushed page, a pop that misses the sheet takes the page with
+        // it, and a test can see that.
+        home: onPushedPage
+            ? Builder(
+                builder: (context) => TextButton(
+                  onPressed: () => Navigator.of(context)
+                      .push(MaterialPageRoute<void>(builder: (_) => opener)),
+                  child: const Text('go'),
+                ),
+              )
+            : opener,
       ),
     ),
   );
   await tester.pumpAndSettle();
+  if (onPushedPage) {
+    await tester.tap(find.text('go'));
+    await tester.pumpAndSettle();
+  }
   await tester.tap(find.text('open'));
   await tester.pumpAndSettle();
 }
@@ -328,6 +346,106 @@ void main() {
 
     repo.gate!.complete();
     await tester.pumpAndSettle();
+  });
+
+  // The sheet can be closed while a delete runs: the close button, the
+  // scrim, a drag or system back. The delete still lands on the server, so
+  // the chart and the profile still refresh and the outcome is still said.
+  group('closed while a delete runs', () {
+    Future<void> confirmThenClose(WidgetTester tester) async {
+      await tester.tap(_deleteButton('2026-11-04'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const Key('weighIn.delete.confirm')));
+      await tester.pump();
+      await tester.tap(find.byKey(const Key('sheet.close')));
+    }
+
+    testWidgets('still refreshes the chart and profile, and says so', (
+      tester,
+    ) async {
+      final repo = _FakeProfileRepository()..gate = Completer<void>();
+      final fetches = _Fetches();
+      await _pump(tester, repo: repo, fetches: fetches, onPushedPage: true);
+
+      await confirmThenClose(tester);
+      await tester.pumpAndSettle();
+      expect(find.text('Your weigh-ins'), findsNothing);
+      final loadsBefore = repo.loads;
+      final fetchesBefore = fetches.periods.length;
+
+      repo.gate!.complete();
+      await tester.pumpAndSettle();
+
+      expect(tester.takeException(), isNull);
+      expect(repo.deleted, ['2026-11-04']);
+      expect(repo.loads, greaterThan(loadsBefore));
+      expect(fetches.periods.length, greaterThan(fetchesBefore));
+      expect(find.text('Weigh-in deleted'), findsOneWidget);
+      // Nothing else was popped in the sheet's place.
+      expect(find.text('open'), findsOneWidget);
+    });
+
+    testWidgets('landing as the sheet slides away leaves the page under it', (
+      tester,
+    ) async {
+      final repo = _FakeProfileRepository()..gate = Completer<void>();
+      await _pump(tester, repo: repo, onPushedPage: true);
+
+      await confirmThenClose(tester);
+      // One frame into the exit: the sheet is still mounted.
+      await tester.pump();
+      expect(find.text('Your weigh-ins'), findsOneWidget);
+
+      repo.gate!.complete();
+      await tester.pumpAndSettle();
+
+      expect(tester.takeException(), isNull);
+      expect(find.text('Your weigh-ins'), findsNothing);
+      expect(find.text('open'), findsOneWidget);
+      expect(find.text('go'), findsNothing);
+      expect(find.text('Weigh-in deleted'), findsOneWidget);
+    });
+
+    testWidgets('a failure after closing is still said', (tester) async {
+      const message =
+          "You can't delete your only weigh-in. To fix it, log the right "
+          'weight for that day. It replaces this one.';
+      final repo = _FakeProfileRepository(
+        deleteError: const ApiException('ONLY_WEIGH_IN', message),
+      )..gate = Completer<void>();
+      await _pump(tester, repo: repo, onPushedPage: true);
+
+      await confirmThenClose(tester);
+      await tester.pumpAndSettle();
+
+      repo.gate!.complete();
+      await tester.pumpAndSettle();
+
+      expect(tester.takeException(), isNull);
+      expect(find.text(message), findsOneWidget);
+      expect(find.text('open'), findsOneWidget);
+    });
+
+    testWidgets('a failure landing as the sheet slides away is still said', (
+      tester,
+    ) async {
+      final repo = _FakeProfileRepository(
+        deleteError: const ApiException('NETWORK_ERROR', 'No connection.'),
+      )..gate = Completer<void>();
+      await _pump(tester, repo: repo, onPushedPage: true);
+
+      await confirmThenClose(tester);
+      await tester.pump();
+      expect(find.text('Your weigh-ins'), findsOneWidget);
+
+      repo.gate!.complete();
+      await tester.pumpAndSettle();
+
+      expect(tester.takeException(), isNull);
+      expect(find.text('Your weigh-ins'), findsNothing);
+      expect(find.text('open'), findsOneWidget);
+      expect(find.text(userMessage(repo.deleteError!)), findsOneWidget);
+    });
   });
 
   testWidgets('fits a 320 dp screen at 2x text', (tester) async {
