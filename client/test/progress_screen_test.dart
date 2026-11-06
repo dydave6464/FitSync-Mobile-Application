@@ -76,7 +76,12 @@ class FakeSessionRepository implements SessionRepository {
     this.summaryValue = _quietSummary,
     this.error,
     this.total,
+    this.summaryError,
   });
+
+  /// Thrown by [summary] alone: the sets card failing while the rest of the
+  /// screen loads.
+  final Object? summaryError;
 
   final List<SessionHistoryEntry> entries;
 
@@ -117,6 +122,7 @@ class FakeSessionRepository implements SessionRepository {
   @override
   Future<TrainingSummary> summary({String period = 'week'}) async {
     if (error != null) throw error!;
+    if (summaryError != null) throw summaryError!;
     return summaryValue;
   }
 
@@ -344,6 +350,27 @@ void main() {
     await tester.tap(retry);
     await tester.pumpAndSettle();
     expect(loads, before + 1);
+  });
+
+  // The sets card sits in an IntrinsicHeight row beside Sessions; its
+  // failure has to lay out there too, at half the width.
+  testWidgets("the sets card's failure fits beside Sessions", (tester) async {
+    await _pump(
+      tester,
+      repo: FakeSessionRepository(
+        summaryError: const ApiException('NETWORK_ERROR', 'down'),
+      ),
+    );
+
+    expect(tester.takeException(), isNull);
+    expect(find.byType(AdherenceCard), findsOneWidget);
+    expect(
+      find.descendant(
+        of: find.byType(FsRetry),
+        matching: find.text('Try again'),
+      ),
+      findsOneWidget,
+    );
   });
 
   testWidgets('a session that logged no weight does not read as zero', (
