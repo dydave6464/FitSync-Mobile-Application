@@ -7,6 +7,9 @@ const { createPool } = require('../src/db/pool');
 const { buildTestApp } = require('./helpers/test-app');
 const { testDbConfig, dropAllTables } = require('./helpers/test-db');
 const { createMailService } = require('../src/services/mail');
+const jwt = require('jsonwebtoken');
+
+const SECRET = 'test-secret-value-at-least-32-chars';
 
 const codeIn = (message) => message.subject.match(/(\d{6})$/)[1];
 
@@ -82,6 +85,34 @@ test('password reset', async (t) => {
   await t.test('the new password signs in and the old one does not', async () => {
     assert.equal((await login('verified@example.com', 'a whole new password')).status, 200);
     assert.equal((await login('verified@example.com', 'correct horse')).status, 401);
+  });
+
+  // A reset means someone may have had the password: every device signs out.
+  await t.test('a completed reset signs out tokens issued before it', async () => {
+    await registerVerified('signout@example.com');
+    const [row] = (await pool.query(
+      "SELECT user_id FROM users WHERE email = 'signout@example.com'",
+    ))[0];
+    // Backdated: the cutoff is in whole seconds, and a token from the same
+    // second as the reset would legitimately survive it.
+    const iat = Math.floor(Date.now() / 1000) - 60;
+    const old = jwt.sign({ iat }, SECRET, { subject: String(row.user_id), expiresIn: '1h' });
+    const me = (token) => request(app).get('/api/v1/auth/me')
+      .set('Authorization', `Bearer ${token}`);
+    await me(old).expect(200);
+
+    await ask('signout@example.com');
+    const done = await reset({
+      email: 'signout@example.com', code: resetCode('signout@example.com'),
+      password: 'a whole new password',
+    });
+    assert.equal(done.status, 200);
+
+    const stale = await me(old).expect(401);
+    assert.equal(stale.body.error.code, 'UNAUTHENTICATED');
+    const fresh = await login('signout@example.com', 'a whole new password');
+    assert.equal(fresh.status, 200);
+    await me(fresh.body.data.token).expect(200);
   });
 
   await t.test('a used code is CODE_INVALID', async () => {

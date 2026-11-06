@@ -5,7 +5,7 @@ const { signToken } = require('../lib/tokens');
 const { hashPassword, verifyPassword, DUMMY_HASH } = require('../lib/passwords');
 const {
   findUserByEmail, findUserById, createUserWithPassword, findOrCreateGoogleUser,
-  markEmailVerified, updatePasswordHash,
+  markEmailVerified, updatePasswordHash, setTokenCutoff,
 } = require('../db/users');
 const { codeKey, normaliseCode, TTL_MINUTES } = require('../lib/auth-codes');
 const { issueCode, checkCode } = require('../db/auth-codes');
@@ -32,6 +32,9 @@ function toPublicUser(row) {
     onboardingCompleted: row.onboarding_completed_at !== null,
     isPremium: Boolean(row.is_premium),
     emailVerified: Boolean(row.email_verified),
+    // What the app offers: Change password, or "You sign in with Google".
+    hasPassword: row.password_hash !== null,
+    hasGoogle: Boolean(row.has_google),
   };
 }
 
@@ -302,7 +305,41 @@ module.exports = function buildAuthRouter({
       }));
       if (!ok) throw codeInvalid();
       await updatePasswordHash(pool, user.user_id, await hashPassword(password));
+      // Whoever had the old password may hold a token: sign out every device.
+      await setTokenCutoff(pool, user.user_id);
       res.json({ data: { reset: true } });
+    } catch (err) { next(err); }
+  });
+
+  // Change password, from Settings. The new password is checked first, by
+  // the register rule (a 400 that reads nothing). A Google-only account has
+  // no password to confirm, so it is told so before being asked for one.
+  // Success signs out every other device (the cutoff) and hands this one a
+  // fresh token, signed after the cutoff so its own cutoff never catches it.
+  router.post('/password', requireAuth({ pool, jwt }), async (req, res, next) => {
+    try {
+      const newPassword = requireString('newPassword', req.body.newPassword, {
+        minLength: MIN_PASSWORD_LENGTH, maxLength: MAX_PASSWORD_LENGTH,
+      });
+      const user = await findUserById(pool, req.user.userId);
+      if (!user) {
+        throw AppError.unauthorized('UNAUTHENTICATED', 'Sign in again to continue.');
+      }
+      if (user.password_hash === null) {
+        throw AppError.conflict(
+          'NO_PASSWORD', 'This account signs in with Google and has no password.',
+        );
+      }
+      // Trimmed like login's, so it compares against the hash register made.
+      const currentPassword = requireString('currentPassword', req.body.currentPassword, {
+        maxLength: MAX_PASSWORD_LENGTH,
+      });
+      if (!(await verifyPassword(currentPassword, user.password_hash))) {
+        throw AppError.badRequest('WRONG_PASSWORD', "That password isn't right.");
+      }
+      await updatePasswordHash(pool, user.user_id, await hashPassword(newPassword));
+      await setTokenCutoff(pool, user.user_id);
+      res.json({ data: { token: signToken(user.user_id, jwt) } });
     } catch (err) { next(err); }
   });
 

@@ -1,0 +1,132 @@
+'use strict';
+const test = require('node:test');
+const assert = require('node:assert/strict');
+const request = require('supertest');
+const jwt = require('jsonwebtoken');
+const { migrate } = require('../src/db/migrate');
+const { createPool } = require('../src/db/pool');
+const { buildTestApp } = require('./helpers/test-app');
+const { testDbConfig, dropAllTables } = require('./helpers/test-db');
+const { markEmailVerified } = require('../src/db/users');
+
+const SECRET = 'test-secret-value-at-least-32-chars';
+
+test('change password', async (t) => {
+  const pool = createPool(testDbConfig());
+  await dropAllTables(pool);
+  await migrate(testDbConfig());
+  const app = buildTestApp({ pool });
+
+  t.after(async () => { await dropAllTables(pool); await pool.end(); });
+
+  const reset = async () => {
+    await pool.query('DELETE FROM user_identities');
+    await pool.query('DELETE FROM users');
+  };
+
+  /// A verified password account, plus a token for it issued a minute ago --
+  /// "another device". The cutoff is in whole seconds, so a token signed in
+  /// the same second as the change would legitimately survive it; backdating
+  /// keeps the test about the rule, not about the clock.
+  const passwordUser = async (email = 'juan@example.com', password = 's3cret-pass') => {
+    const res = await request(app).post('/api/v1/auth/register')
+      .send({ email, password, fullName: 'Juan' }).expect(201);
+    const { userId } = res.body.data.user;
+    await markEmailVerified(pool, userId);
+    const iat = Math.floor(Date.now() / 1000) - 60;
+    const token = jwt.sign({ iat }, SECRET, { subject: String(userId), expiresIn: '1h' });
+    return { userId, token };
+  };
+
+  const change = (token, body) => request(app).post('/api/v1/auth/password')
+    .set('Authorization', `Bearer ${token}`).send(body);
+  const me = (token) => request(app).get('/api/v1/auth/me')
+    .set('Authorization', `Bearer ${token}`);
+  const login = (email, password) =>
+    request(app).post('/api/v1/auth/login').send({ email, password });
+
+  await t.test('changes the password, returns a fresh token and signs out older ones', async () => {
+    await reset();
+    const { token: old } = await passwordUser();
+
+    const res = await change(old, {
+      currentPassword: 's3cret-pass', newPassword: 'a brand new pass',
+    });
+    assert.equal(res.status, 200);
+    assert.deepEqual(Object.keys(res.body.data), ['token']);
+    assert.equal(typeof res.body.data.token, 'string');
+
+    await me(res.body.data.token).expect(200);
+    const stale = await me(old).expect(401);
+    assert.equal(stale.body.error.code, 'UNAUTHENTICATED');
+
+    assert.equal((await login('juan@example.com', 'a brand new pass')).status, 200);
+    assert.equal((await login('juan@example.com', 's3cret-pass')).status, 401);
+  });
+
+  await t.test('a wrong current password is WRONG_PASSWORD and changes nothing', async () => {
+    await reset();
+    const { token } = await passwordUser();
+
+    const res = await change(token, {
+      currentPassword: 'not-my-pass', newPassword: 'a brand new pass',
+    });
+    assert.equal(res.status, 400);
+    assert.equal(res.body.error.code, 'WRONG_PASSWORD');
+    assert.equal(res.body.error.message, "That password isn't right.");
+
+    await me(token).expect(200);
+    assert.equal((await login('juan@example.com', 's3cret-pass')).status, 200);
+  });
+
+  await t.test('a Google-only account is NO_PASSWORD', async () => {
+    await reset();
+    const google = await request(app).post('/api/v1/auth/google')
+      .send({ idToken: 'stub-token-juan' }).expect(200);
+
+    const res = await change(google.body.data.token, {
+      currentPassword: 'anything at all', newPassword: 'a brand new pass',
+    });
+    assert.equal(res.status, 409);
+    assert.equal(res.body.error.code, 'NO_PASSWORD');
+    assert.equal(res.body.error.message,
+      'This account signs in with Google and has no password.');
+
+    const [rows] = await pool.query(
+      'SELECT password_hash FROM users WHERE user_id = ?', [google.body.data.user.userId],
+    );
+    assert.equal(rows[0].password_hash, null, 'no password was set');
+  });
+
+  await t.test('the new password follows the register rule', async () => {
+    await reset();
+    const { token } = await passwordUser();
+
+    for (const newPassword of ['short', 'a'.repeat(73), undefined, 12345678]) {
+      const res = await change(token, { currentPassword: 's3cret-pass', newPassword });
+      assert.equal(res.status, 400, String(newPassword));
+      assert.equal(res.body.error.code, 'INVALID_PROFILE_FIELD');
+      assert.deepEqual(res.body.error.details, [{ field: 'newPassword' }]);
+    }
+
+    await me(token).expect(200);
+    assert.equal((await login('juan@example.com', 's3cret-pass')).status, 200);
+  });
+
+  await t.test('a missing current password is a validation error', async () => {
+    await reset();
+    const { token } = await passwordUser();
+
+    const res = await change(token, { newPassword: 'a brand new pass' });
+    assert.equal(res.status, 400);
+    assert.equal(res.body.error.code, 'INVALID_PROFILE_FIELD');
+    assert.deepEqual(res.body.error.details, [{ field: 'currentPassword' }]);
+  });
+
+  await t.test('requires a signed-in caller', async () => {
+    const res = await request(app).post('/api/v1/auth/password')
+      .send({ currentPassword: 's3cret-pass', newPassword: 'a brand new pass' });
+    assert.equal(res.status, 401);
+    assert.equal(res.body.error.code, 'UNAUTHENTICATED');
+  });
+});
