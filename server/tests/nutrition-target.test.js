@@ -67,9 +67,9 @@ test('no target, and the missing fields named, when the profile is incomplete', 
   );
 });
 
-test('maintenance agrees with the app onboarding estimate (shared fixture)', () => {
+test('the food-log target agrees with the app onboarding estimate, goals included (shared fixture)', () => {
   for (const c of parity) {
-    const { target } = dailyTarget({ ...c, mainGoal: 'general_fitness' }, c.today);
+    const { target } = dailyTarget({ mainGoal: 'general_fitness', ...c }, c.today);
     assert.equal(target.kcal, c.kcal, `kcal for ${JSON.stringify(c)}`);
     assert.equal(target.proteinG, c.proteinG, `protein for ${JSON.stringify(c)}`);
   }
