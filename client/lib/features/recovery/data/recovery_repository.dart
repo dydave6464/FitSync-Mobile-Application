@@ -38,7 +38,9 @@ class RecoveryRepository {
   /// service still cannot answer.
   Future<InjuryRiskEstimate> retryEstimate() async {
     final data = await _api.postJson('/api/v1/recovery/estimate', const {});
-    return InjuryRiskEstimate.fromJson(data['estimate'] as Map<String, dynamic>);
+    return InjuryRiskEstimate.fromJson(
+      data['estimate'] as Map<String, dynamic>,
+    );
   }
 }
 

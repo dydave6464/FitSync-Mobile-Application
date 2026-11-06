@@ -186,59 +186,65 @@ void main() {
     expect(estimate.drivers!.single.key, 'sleep');
   });
 
-  test('a check-in saved while the ML service was down returns no estimate', () async {
-    final repo = _repo(
-      MockClient(
-        (_) async => http.Response(
-          jsonEncode({
-            'data': {
-              'checkin': _datedCheckinResponse['data']!['checkin'],
-              'estimate': null,
-            },
-          }),
-          201,
-        ),
-      ),
-    );
-
-    expect(await repo.checkIn(_answers), isNull);
-  });
-
-  test('retrying the estimate POSTs to /estimate and parses a dated one', () async {
-    late http.Request seen;
-    final repo = _repo(
-      MockClient((request) async {
-        seen = request;
-        return http.Response(
-          jsonEncode({
-            'data': {
-              'estimate': {
-                'riskLevel': 'moderate',
-                'trainingLoadScore': 47.25,
-                'checkinDate': '2026-10-18',
-                'source': 'rules',
-                'modelVersion': null,
-                'loadPct': 35.0,
-                'drivers': [
-                  {'key': 'load', 'value': 35.0},
-                ],
+  test(
+    'a check-in saved while the ML service was down returns no estimate',
+    () async {
+      final repo = _repo(
+        MockClient(
+          (_) async => http.Response(
+            jsonEncode({
+              'data': {
+                'checkin': _datedCheckinResponse['data']!['checkin'],
+                'estimate': null,
               },
-            },
-          }),
-          201,
-        );
-      }),
-    );
+            }),
+            201,
+          ),
+        ),
+      );
 
-    final estimate = await repo.retryEstimate();
+      expect(await repo.checkIn(_answers), isNull);
+    },
+  );
 
-    expect(seen.method, 'POST');
-    expect(seen.url.path, '/api/v1/recovery/estimate');
-    expect(estimate.riskLevel, 'moderate');
-    expect(estimate.checkinDate, '2026-10-18');
-    expect(estimate.loadPct, 35.0);
-    expect(estimate.drivers!.single.key, 'load');
-  });
+  test(
+    'retrying the estimate POSTs to /estimate and parses a dated one',
+    () async {
+      late http.Request seen;
+      final repo = _repo(
+        MockClient((request) async {
+          seen = request;
+          return http.Response(
+            jsonEncode({
+              'data': {
+                'estimate': {
+                  'riskLevel': 'moderate',
+                  'trainingLoadScore': 47.25,
+                  'checkinDate': '2026-10-18',
+                  'source': 'rules',
+                  'modelVersion': null,
+                  'loadPct': 35.0,
+                  'drivers': [
+                    {'key': 'load', 'value': 35.0},
+                  ],
+                },
+              },
+            }),
+            201,
+          );
+        }),
+      );
+
+      final estimate = await repo.retryEstimate();
+
+      expect(seen.method, 'POST');
+      expect(seen.url.path, '/api/v1/recovery/estimate');
+      expect(estimate.riskLevel, 'moderate');
+      expect(estimate.checkinDate, '2026-10-18');
+      expect(estimate.loadPct, 35.0);
+      expect(estimate.drivers!.single.key, 'load');
+    },
+  );
 }
 
 const _answers = {
