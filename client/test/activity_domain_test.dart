@@ -29,6 +29,27 @@ void main() {
     expect(usualLine(today: 0, usual: 0), 'Matched your usual');
   });
 
+  test('before there is a usual, the line counts down the days it needs', () {
+    expect(
+      usualLine(today: 6420, usual: null, usualDays: 0),
+      'Your usual appears after 3 days of walking',
+    );
+    expect(
+      usualLine(today: 6420, usual: null, usualDays: 1),
+      'Your usual appears after 2 more days of walking',
+    );
+    expect(
+      usualLine(today: 6420, usual: null, usualDays: 2),
+      'Your usual appears after 1 more day of walking',
+    );
+  });
+
+  test('the per-day average reads in thousands, and below one as steps', () {
+    expect(perDayLine(4884), 'avg 4.9k/day');
+    expect(perDayLine(1000), 'avg 1.0k/day');
+    expect(perDayLine(420), 'avg 420/day');
+  });
+
   test('a week parses, with today last and empty days null', () {
     final week = ActivityWeek.fromJson({
       'days': [
@@ -48,10 +69,12 @@ void main() {
     expect(week.today.distanceKm, 4.52);
     expect(week.days[1].steps, isNull);
     expect(week.usual, 4000);
+    expect(week.usualDays, 3);
     expect(week.missingWeight, isTrue);
     expect(week.missingHeight, isFalse);
-    // (3000 + 5000 + 4000 + 6420) / 4 = 4605
-    expect(week.average, 4605);
+    // The days before today, as the usual is worked out: today's partial
+    // count is left out. (3000 + 5000 + 4000) / 3 = 4000.
+    expect(week.average, 4000);
   });
 
   test('a week with no data has no average', () {

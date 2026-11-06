@@ -23,9 +23,10 @@ ActivityDay _d(int day, int? steps) => ActivityDay(
   activeMinutes: steps == null ? null : 64,
 );
 
-ActivityWeek _week({int? usual = 5180, List<String> missing = const []}) => ActivityWeek(
+ActivityWeek _week({int? usual = 5180, int? usualDays, List<String> missing = const []}) => ActivityWeek(
   days: [_d(22, 3000), _d(23, null), _d(24, 5000), _d(25, 6000), _d(26, null), _d(27, 4000), _d(28, 6420)],
   usual: usual,
+  usualDays: usualDays,
   missing: missing,
 );
 
@@ -160,8 +161,9 @@ void main() {
     expect(find.descendant(of: find.byKey(const Key('activity.km')), matching: find.text('4.52')), findsOneWidget);
     expect(find.descendant(of: find.byKey(const Key('activity.minutes')), matching: find.text('64')), findsOneWidget);
     expect(find.text('This week'), findsOneWidget);
-    // (3000 + 5000 + 6000 + 4000 + 6420) / 5 = 4884
-    expect(find.text('avg 4.9k/day'), findsOneWidget);
+    // The days before today, the same baseline as the usual:
+    // (3000 + 5000 + 6000 + 4000) / 4 = 4500.
+    expect(find.text('avg 4.5k/day'), findsOneWidget);
   });
 
   testWidgets('before three days there is no usual and no marker yet', (tester) async {
@@ -171,6 +173,14 @@ void main() {
 
     expect(find.text('Your usual appears after 3 days of walking'), findsOneWidget);
     expect(find.byKey(const Key('activity.usualMarker')), findsNothing);
+  });
+
+  testWidgets('the wait for a usual counts down the days still needed', (tester) async {
+    await _pump(tester, ActivityState(
+      today: const DaySteps(steps: 6420), week: _week(usual: null, usualDays: 2), offline: false,
+    ));
+
+    expect(find.text('Your usual appears after 1 more day of walking'), findsOneWidget);
   });
 
   testWidgets('with no usual there is no bar, and its room is kept', (tester) async {

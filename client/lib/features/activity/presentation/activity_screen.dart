@@ -143,7 +143,11 @@ class _Body extends StatelessWidget {
               Text(
                 loadingWeek
                     ? 'Loading your week…'
-                    : usualLine(today: steps, usual: week?.usual),
+                    : usualLine(
+                        today: steps,
+                        usual: week?.usual,
+                        usualDays: week?.usualDays,
+                      ),
                 key: const Key('activity.usualLine'),
                 style: TextStyle(fontSize: 13, color: t.text),
               ),
@@ -211,7 +215,7 @@ class _Body extends StatelessWidget {
                       ),
                       if (week.average != null)
                         Text(
-                          'avg ${(week.average! / 1000).toStringAsFixed(1)}k/day',
+                          perDayLine(week.average!),
                           style: TextStyle(fontSize: 11.5, color: t.text3),
                         ),
                     ],
