@@ -19,7 +19,6 @@ import 'package:fitsync/features/profile/presentation/providers.dart'
     show injuryOptionsProvider;
 import 'package:fitsync/features/sessions/domain/session_outcome.dart';
 import 'package:fitsync/features/sessions/presentation/widgets/outcome_sheet.dart';
-import 'package:fitsync/features/sessions/presentation/widgets/sheet_header.dart';
 
 const _pending = PendingOutcome(
   sessionId: 7,
@@ -131,7 +130,7 @@ void main() {
     tester,
   ) async {
     await _open(tester);
-    final header = find.byType(SheetHeader);
+    final header = find.byType(FsSheetHeader);
     expect(header, findsOneWidget);
     expect(
       find.descendant(

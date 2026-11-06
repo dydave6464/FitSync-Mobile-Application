@@ -13,7 +13,6 @@ import 'package:fitsync/features/exercises/presentation/exercise_list_screen.dar
 import 'package:fitsync/features/exercises/presentation/exercise_thumb.dart';
 import 'package:fitsync/features/exercises/presentation/providers.dart';
 import 'package:fitsync/features/exercises/presentation/widgets/search_field.dart';
-import 'package:fitsync/features/sessions/presentation/widgets/sheet_header.dart';
 
 import 'helpers/no_recent_exercises.dart';
 
@@ -305,7 +304,7 @@ void main() {
     await tester.tap(find.byKey(const Key('library.equipment')));
     await tester.pumpAndSettle();
 
-    final header = find.byType(SheetHeader);
+    final header = find.byType(FsSheetHeader);
     expect(header, findsOneWidget);
     expect(
       find.descendant(of: header, matching: find.text('Equipment')),

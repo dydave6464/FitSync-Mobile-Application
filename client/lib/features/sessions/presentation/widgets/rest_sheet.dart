@@ -9,7 +9,6 @@ import '../../../exercises/presentation/exercise_list_screen.dart'
     show describeError;
 import '../../data/rest_alerts.dart';
 import '../providers.dart';
-import 'sheet_header.dart';
 
 /// The default rests on offer: every 30 seconds from 0:30 to 5:00.
 const restPresets = [30, 60, 90, 120, 150, 180, 210, 240, 270, 300];
@@ -233,7 +232,7 @@ class _RestSheetState extends ConsumerState<RestSheet> {
           children: [
             // Named by what it is about: the rest running now, or -- from
             // the menu, before any rest -- the rest time itself.
-            SheetHeader(
+            FsSheetHeader(
               title: countdown != null ? 'Rest' : 'Rest time',
               onClose: _close,
             ),

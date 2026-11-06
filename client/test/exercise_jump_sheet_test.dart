@@ -8,7 +8,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:fitsync/core/theme.dart';
 import 'package:fitsync/features/plans/domain/workout_plan.dart';
 import 'package:fitsync/features/sessions/presentation/widgets/exercise_jump_sheet.dart';
-import 'package:fitsync/features/sessions/presentation/widgets/sheet_header.dart';
+import 'package:fitsync/core/widgets/fs_kit.dart';
 
 List<PlanExercise> _plan(int count) => [
   for (var i = 0; i < count; i++)
@@ -71,7 +71,7 @@ void main() {
     tester,
   ) async {
     final chosen = await _open(tester, count: 3);
-    final header = find.byType(SheetHeader);
+    final header = find.byType(FsSheetHeader);
     expect(header, findsOneWidget);
     expect(
       find.descendant(of: header, matching: find.text('Jump to an exercise')),

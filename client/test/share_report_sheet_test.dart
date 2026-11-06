@@ -13,7 +13,6 @@ import 'package:fitsync/features/sessions/presentation/providers.dart';
 import 'package:fitsync/features/pro/presentation/pro_screen.dart';
 import 'package:fitsync/features/pro/presentation/providers.dart';
 import 'package:fitsync/features/sessions/presentation/widgets/share_report_sheet.dart';
-import 'package:fitsync/features/sessions/presentation/widgets/sheet_header.dart';
 
 import 'helpers/fake_pro_repository.dart';
 
@@ -121,7 +120,7 @@ void main() {
     tester,
   ) async {
     await _open(tester);
-    final header = find.byType(SheetHeader);
+    final header = find.byType(FsSheetHeader);
     expect(header, findsOneWidget);
     expect(
       find.descendant(of: header, matching: find.text('Share with coach')),

@@ -10,7 +10,6 @@ import '../../domain/session_dates.dart';
 import '../../domain/session_outcome.dart';
 import '../providers.dart'
     show pendingOutcomeProvider, sessionRepositoryProvider;
-import 'sheet_header.dart';
 
 /// Shown after a save that did not land. The session stays pending, so the
 /// question comes back next time; nothing is queued.
@@ -136,7 +135,7 @@ class _OutcomeSheetState extends ConsumerState<_OutcomeSheet> {
             // Closing is "Not now" by another name: nothing is submitted.
             // Safe mid-save too, as a swipe down always was: _submit holds
             // the container it needs and checks `mounted` before popping.
-            const SheetHeader(title: 'How did your last workout leave you?'),
+            const FsSheetHeader(title: 'How did your last workout leave you?'),
             Text(
               '${widget.pending.title} · '
               '${sessionDayLabel(widget.pending.sessionDate)}',

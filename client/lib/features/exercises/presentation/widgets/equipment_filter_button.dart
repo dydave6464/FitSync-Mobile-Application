@@ -6,7 +6,6 @@ import '../../../../core/widgets/fs_kit.dart';
 import '../../domain/exercise_filters.dart';
 import '../equipment_icon.dart';
 import '../providers.dart';
-import '../../../sessions/presentation/widgets/sheet_header.dart';
 
 /// The catalogue's equipment filter, as a labelled button rather than chips.
 ///
@@ -155,7 +154,7 @@ class _EquipmentSheetState extends State<_EquipmentSheet> {
             // as it was (see _open).
             const Padding(
               padding: EdgeInsets.fromLTRB(20, 10, 8, 0),
-              child: SheetHeader(title: 'Equipment'),
+              child: FsSheetHeader(title: 'Equipment'),
             ),
             Padding(
               padding: const EdgeInsets.fromLTRB(16, 8, 16, 8),

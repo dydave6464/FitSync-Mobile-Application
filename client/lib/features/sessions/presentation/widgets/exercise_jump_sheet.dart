@@ -1,10 +1,10 @@
 import 'package:flutter/material.dart';
 
 import '../../../../core/theme.dart';
+import '../../../../core/widgets/fs_kit.dart';
 import '../../../exercises/presentation/widgets/coaching_tag.dart';
 import '../../../plans/domain/workout_plan.dart';
 import '../../domain/active_session.dart';
-import 'sheet_header.dart';
 import '../../../exercises/domain/exercise_labels.dart';
 
 /// Opens [ExerciseJumpSheet] over the logger: resolves to the index chosen,
@@ -81,7 +81,7 @@ class ExerciseJumpSheet extends StatelessWidget {
           children: [
             const Padding(
               padding: EdgeInsets.fromLTRB(20, 10, 8, 4),
-              child: SheetHeader(title: 'Jump to an exercise'),
+              child: FsSheetHeader(title: 'Jump to an exercise'),
             ),
             // Only the rows scroll; the handle and the title stay put.
             Flexible(
