@@ -31,6 +31,7 @@ import 'package:fitsync/features/routine/presentation/routine_screen.dart';
 import 'package:fitsync/features/sessions/data/session_repository.dart';
 import 'package:fitsync/features/sessions/domain/active_session.dart';
 import 'package:fitsync/features/sessions/domain/session_history.dart';
+import 'package:fitsync/features/sessions/domain/session_outcome.dart';
 import 'package:fitsync/features/sessions/domain/training_analytics.dart';
 import 'package:fitsync/features/sessions/presentation/providers.dart';
 import 'package:fitsync/features/sessions/presentation/session_logger_screen.dart';
@@ -164,6 +165,11 @@ class _FakeSessionRepository implements SessionRepository {
 
   @override
   Future<Set<String>> completedThisWeek() async => const {};
+
+  /// Nothing pending: the check-in sheet asks for this, and an unanswered
+  /// lookup would print a skipped-lookup line into the test output.
+  @override
+  Future<PendingOutcome?> pendingOutcome() async => null;
 
   @override
   String get baseUrl => 'http://test.local';

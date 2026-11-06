@@ -184,6 +184,21 @@ Future<ProviderContainer> _open(
   return container;
 }
 
+/// Runs [body] with `debugPrint` captured rather than printed: a pending-
+/// outcome lookup that fails or times out logs why it was skipped. Restored
+/// inside the test, as flutter_test requires.
+Future<List<String?>> _capturingLogs(Future<void> Function() body) async {
+  final logs = <String?>[];
+  final original = debugPrint;
+  debugPrint = (message, {wrapWidth}) => logs.add(message);
+  try {
+    await body();
+  } finally {
+    debugPrint = original;
+  }
+  return logs;
+}
+
 void main() {
   setUpAll(_loadFont);
 
@@ -558,25 +573,31 @@ void main() {
     });
 
     testWidgets('a failed lookup still opens the start sheet', (tester) async {
-      await _open(
-        tester,
-        pendingError: const ApiException('NETWORK_ERROR', 'unreachable'),
-      );
+      final logs = await _capturingLogs(() async {
+        await _open(
+          tester,
+          pendingError: const ApiException('NETWORK_ERROR', 'unreachable'),
+        );
+      });
       expect(find.text(question), findsNothing);
       expect(find.text('Start a workout'), findsOneWidget);
+      expect(logs, [startsWith('Pending-outcome lookup skipped')]);
     });
 
     testWidgets('a lookup that never answers gives up after three seconds', (
       tester,
     ) async {
-      await _open(tester, pendingFuture: Completer<PendingOutcome?>().future);
-      expect(find.text('Start a workout'), findsNothing);
+      final logs = await _capturingLogs(() async {
+        await _open(tester, pendingFuture: Completer<PendingOutcome?>().future);
+        expect(find.text('Start a workout'), findsNothing);
 
-      await tester.pump(const Duration(seconds: 3));
-      await tester.pumpAndSettle();
+        await tester.pump(const Duration(seconds: 3));
+        await tester.pumpAndSettle();
+      });
 
       expect(find.text(question), findsNothing);
       expect(find.text('Start a workout'), findsOneWidget);
+      expect(logs, [startsWith('Pending-outcome lookup skipped')]);
     });
 
     testWidgets(

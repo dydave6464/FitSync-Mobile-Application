@@ -223,6 +223,21 @@ List<String> _rowLabels(WidgetTester tester, String field) {
   return [for (final p in positions) p.$1];
 }
 
+/// Runs [body] with `debugPrint` captured rather than printed: a pending-
+/// outcome lookup that fails or times out logs why it was skipped. Restored
+/// inside the test, as flutter_test requires.
+Future<List<String?>> _capturingLogs(Future<void> Function() body) async {
+  final logs = <String?>[];
+  final original = debugPrint;
+  debugPrint = (message, {wrapWidth}) => logs.add(message);
+  try {
+    await body();
+  } finally {
+    debugPrint = original;
+  }
+  return logs;
+}
+
 void main() {
   testWidgets('it asks all four questions', (tester) async {
     await _open(tester);
@@ -923,29 +938,41 @@ void main() {
       tester,
     ) async {
       final never = Completer<PendingOutcome?>();
-      final repo = await _open(tester, pendingLookup: () => never.future);
+      late _FakeRepo repo;
+      final logs = await _capturingLogs(() async {
+        repo = await _open(tester, pendingLookup: () => never.future);
 
-      expect(find.text('Any pain since?'), findsNothing);
-      expect(find.text("Helps estimate today's injury risk."), findsOneWidget);
-      // Lets the lookup's time limits run out, so no timer outlives the test.
-      await tester.pump(const Duration(seconds: 7));
-      expect(find.text('Any pain since?'), findsNothing);
+        expect(find.text('Any pain since?'), findsNothing);
+        expect(
+          find.text("Helps estimate today's injury risk."),
+          findsOneWidget,
+        );
+        // Lets the lookup's time limits run out, so no timer outlives the
+        // test.
+        await tester.pump(const Duration(seconds: 7));
+        expect(find.text('Any pain since?'), findsNothing);
 
-      await _answerAll(tester);
-      await _tapKey(tester, 'checkin.save');
+        await _answerAll(tester);
+        await _tapKey(tester, 'checkin.save');
+      });
       expect(repo.sent, isNotNull);
+      expect(logs, [startsWith('Pending-outcome lookup skipped')]);
     });
 
     testWidgets('no pain row when the lookup fails', (tester) async {
-      final repo = await _open(
-        tester,
-        pendingLookup: () async => throw Exception('offline'),
-      );
+      late _FakeRepo repo;
+      final logs = await _capturingLogs(() async {
+        repo = await _open(
+          tester,
+          pendingLookup: () async => throw Exception('offline'),
+        );
 
-      expect(find.text('Any pain since?'), findsNothing);
-      await _answerAll(tester);
-      await _tapKey(tester, 'checkin.save');
+        expect(find.text('Any pain since?'), findsNothing);
+        await _answerAll(tester);
+        await _tapKey(tester, 'checkin.save');
+      });
       expect(repo.sent, isNotNull);
+      expect(logs, [startsWith('Pending-outcome lookup skipped')]);
     });
 
     testWidgets('a workout that became askable overnight gets its row', (
