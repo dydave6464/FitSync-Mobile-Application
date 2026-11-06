@@ -63,4 +63,28 @@ test('auth schema', async (t) => {
   await t.test('exercises keep body_part for injury filtering later', async () => {
     assert.ok(await column('exercises', 'body_part'));
   });
+
+  // Migration 042 (account deletion): the web deletion page reuses the
+  // single-use link tokens, and a password change or reset signs out every
+  // token issued before it.
+  await t.test('auth_tokens can carry a delete_account purpose', async () => {
+    const col = await column('auth_tokens', 'purpose');
+    assert.match(col.COLUMN_TYPE, /'delete_account'/);
+    assert.match(col.COLUMN_TYPE, /'verify_email'/, 'existing purposes stay');
+    assert.match(col.COLUMN_TYPE, /'reset_password'/, 'existing purposes stay');
+  });
+
+  await t.test('users carry a nullable token cutoff, empty by default', async () => {
+    const col = await column('users', 'tokens_valid_after');
+    assert.ok(col, 'users.tokens_valid_after must exist');
+    assert.equal(col.COLUMN_TYPE, 'timestamp');
+    assert.equal(col.IS_NULLABLE, 'YES');
+    const [u] = await pool.query(
+      "INSERT INTO users (email, password_hash, full_name) VALUES ('cutoff@b.com', 'x', 'C')",
+    );
+    const [rows] = await pool.query(
+      'SELECT tokens_valid_after FROM users WHERE user_id = ?', [u.insertId],
+    );
+    assert.equal(rows[0].tokens_valid_after, null, 'no cutoff until a password changes');
+  });
 });

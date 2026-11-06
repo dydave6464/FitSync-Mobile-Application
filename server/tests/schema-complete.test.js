@@ -195,6 +195,7 @@ test('complete FitSync schema', async (t) => {
       '039_exercise_preferences.sql',
       '040_photo_recognitions.sql',
       '041_pro_payments.sql',
+      '042_account_deletion.sql',
     ]);
   });
 
