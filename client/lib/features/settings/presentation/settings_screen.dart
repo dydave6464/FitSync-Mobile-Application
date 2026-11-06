@@ -303,11 +303,40 @@ class _SettingsList extends ConsumerWidget {
           kind: FsButtonKind.ghost,
           danger: true,
           small: true,
-          onPressed: () => ref.read(authControllerProvider.notifier).signOut(),
+          onPressed: () => _confirmSignOut(context, ref),
         ),
       ],
     );
   }
+}
+
+/// Signs out after asking: signing out also cancels every reminder this
+/// phone has scheduled, which one stray tap should not do.
+Future<void> _confirmSignOut(BuildContext context, WidgetRef ref) async {
+  final confirmed = await showDialog<bool>(
+    context: context,
+    builder: (dialog) => AlertDialog(
+      title: const Text('Sign out of FitSync?'),
+      content: const Text(
+        'Reminders on this phone stop until you sign in again.',
+      ),
+      actions: [
+        TextButton(
+          key: const Key('signOut.cancel'),
+          onPressed: () => Navigator.of(dialog).pop(false),
+          child: const Text('Cancel'),
+        ),
+        TextButton(
+          key: const Key('signOut.confirm'),
+          style: TextButton.styleFrom(foregroundColor: dialog.fs.red),
+          onPressed: () => Navigator.of(dialog).pop(true),
+          child: const Text('Sign out'),
+        ),
+      ],
+    ),
+  );
+  if (confirmed != true || !context.mounted) return;
+  await ref.read(authControllerProvider.notifier).signOut();
 }
 
 /// Saves a kg/lb switch the moment it is tapped, showing the new unit at

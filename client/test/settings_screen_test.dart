@@ -659,8 +659,40 @@ void main() {
     await tester.pumpAndSettle();
     await tester.tap(find.byKey(const Key('signOut')));
     await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const Key('signOut.confirm')));
+    await tester.pumpAndSettle();
 
     expect(signOuts, [true]);
+  });
+
+  // PS-19: one tap signed out and stopped this phone's reminders.
+  testWidgets('sign out asks first, saying the reminders stop', (tester) async {
+    final signOuts = <bool>[];
+    await _pump(tester, signOuts: signOuts);
+    await tester.scrollUntilVisible(find.byKey(const Key('signOut')), 200);
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const Key('signOut')));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Sign out of FitSync?'), findsOneWidget);
+    expect(
+      find.text('Reminders on this phone stop until you sign in again.'),
+      findsOneWidget,
+    );
+    expect(signOuts, isEmpty);
+    expect(
+      labelColor(tester, find.byKey(const Key('signOut.confirm'))),
+      dialogRed(tester),
+    );
+    expect(
+      labelColor(tester, find.byKey(const Key('signOut.cancel'))),
+      isNot(dialogRed(tester)),
+    );
+
+    await tester.tap(find.byKey(const Key('signOut.cancel')));
+    await tester.pumpAndSettle();
+    expect(find.byType(AlertDialog), findsNothing);
+    expect(signOuts, isEmpty);
   });
 
   testWidgets('settings offers a training days row', (tester) async {
