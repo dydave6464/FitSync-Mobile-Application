@@ -74,6 +74,12 @@ CalendarRange _range(
   ],
 );
 
+/// What the calendar fakes' server says when a range fails. P-17: the
+/// screen's retry states it after its own lead-in, as every other retry does.
+const _calendarDown = 'The calendar is unavailable right now.';
+const _monthFailed = "Couldn't load this month. $_calendarDown";
+const _upcomingFailed = "Couldn't load what's coming up. $_calendarDown";
+
 class _FakeCalendarRepo implements CalendarRepository {
   _FakeCalendarRepo(this.answer, {Set<String>? failOnce})
     : failOnce = failOnce ?? {};
@@ -88,7 +94,9 @@ class _FakeCalendarRepo implements CalendarRepository {
   Future<CalendarRange> range(String from, String to) async {
     final span = '$from..$to';
     requests.add(span);
-    if (failOnce.remove(span)) throw const ApiException('SERVER_ERROR', 'nope');
+    if (failOnce.remove(span)) {
+      throw const ApiException('SERVER_ERROR', _calendarDown);
+    }
     return answer(from, to);
   }
 }
@@ -108,7 +116,7 @@ class _FlakyCalendarRepo implements CalendarRepository {
     final count = (_counts[span] ?? 0) + 1;
     _counts[span] = count;
     if (span == failFrom && count > 1) {
-      throw const ApiException('SERVER_ERROR', 'nope');
+      throw const ApiException('SERVER_ERROR', _calendarDown);
     }
     return answer(from, to);
   }
@@ -570,10 +578,7 @@ void main() {
   ) async {
     await _pump(tester, failOnce: {_grid});
 
-    expect(
-      find.widgetWithText(FsRetry, "Couldn't load this month"),
-      findsOneWidget,
-    );
+    expect(find.widgetWithText(FsRetry, _monthFailed), findsOneWidget);
     expect(find.text('Today · Walk · Any time'), findsOneWidget);
     expect(
       find.byKey(const Key('schedule.dot.workout.2026-09-22')),
@@ -583,7 +588,7 @@ void main() {
     await tester.tap(find.byKey(const Key('schedule.grid.retry')));
     await tester.pumpAndSettle();
 
-    expect(find.text("Couldn't load this month"), findsNothing);
+    expect(find.byType(FsRetry), findsNothing);
     expect(
       find.byKey(const Key('schedule.dot.workout.2026-09-22')),
       findsOneWidget,
@@ -595,10 +600,7 @@ void main() {
   ) async {
     await _pump(tester, failOnce: {_week});
 
-    expect(
-      find.widgetWithText(FsRetry, "Couldn't load what's coming up"),
-      findsOneWidget,
-    );
+    expect(find.widgetWithText(FsRetry, _upcomingFailed), findsOneWidget);
     expect(
       find.byKey(const Key('schedule.dot.workout.2026-09-22')),
       findsOneWidget,
@@ -607,7 +609,7 @@ void main() {
     await tester.tap(find.byKey(const Key('schedule.list.retry')));
     await tester.pumpAndSettle();
 
-    expect(find.text("Couldn't load what's coming up"), findsNothing);
+    expect(find.byType(FsRetry), findsNothing);
     expect(find.text('Today · Walk · Any time'), findsOneWidget);
   });
 
@@ -747,7 +749,7 @@ void main() {
       expect(find.text('Nothing planned.'), findsNothing);
       expect(find.text('Nothing logged this day.'), findsNothing);
       expect(find.text('Upcoming'), findsOneWidget);
-      expect(find.text("Couldn't load this month"), findsOneWidget);
+      expect(find.widgetWithText(FsRetry, _monthFailed), findsOneWidget);
     },
   );
 

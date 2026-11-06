@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../../core/api_exception.dart' show userMessage;
 import '../../../core/manila_day.dart';
 import '../../../core/theme.dart';
 import '../../../core/widgets/fs_kit.dart';
@@ -219,7 +220,8 @@ class _ScheduleScreenState extends ConsumerState<ScheduleScreen> {
                 ),
                 if (grid.hasError)
                   FsRetry(
-                    message: "Couldn't load this month",
+                    message:
+                        "Couldn't load this month. ${userMessage(grid.error!)}",
                     buttonKey: const Key('schedule.grid.retry'),
                     onRetry: () => ref.invalidate(calendarProvider(gridSpan)),
                   ),
@@ -266,7 +268,7 @@ class _ScheduleScreenState extends ConsumerState<ScheduleScreen> {
         child: Center(child: CircularProgressIndicator()),
       ),
       error: (error, _) => FsRetry(
-        message: "Couldn't load what's coming up",
+        message: "Couldn't load what's coming up. ${userMessage(error)}",
         buttonKey: const Key('schedule.list.retry'),
         onRetry: () => ref.invalidate(calendarProvider(span)),
       ),
