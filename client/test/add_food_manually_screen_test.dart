@@ -364,7 +364,7 @@ void main() {
     repo.failNext = true;
     await tester.tap(find.byKey(const Key('manual.log')));
     await tester.pumpAndSettle();
-    expect(find.text("Couldn't save Turon."), findsOneWidget);
+    expect(find.text("Couldn't save Turon. Couldn't reach FitSync. Check your connection and try again."), findsOneWidget);
 
     await tester.tap(find.text('Try again'));
     await tester.pumpAndSettle();

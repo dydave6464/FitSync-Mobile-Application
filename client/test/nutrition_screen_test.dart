@@ -395,7 +395,7 @@ void main() {
       await tester.pump();
       repo.failNext = true;
       await save(tester);
-      expect(find.text("Couldn't save your changes."), findsOneWidget);
+      expect(find.text("Couldn't save your changes. Couldn't reach FitSync. Check your connection and try again."), findsOneWidget);
       expect(find.text('LUNCH'), findsOneWidget);
       expect(find.text('Add snack'), findsOneWidget);
     });
@@ -582,7 +582,7 @@ void main() {
         repo.failNext = true;
         await tester.tap(find.byKey(const Key('logSheet.log')));
         await tester.pumpAndSettle();
-        expect(find.text("Couldn't save your changes."), findsOneWidget);
+        expect(find.text("Couldn't save your changes. Couldn't reach FitSync. Check your connection and try again."), findsOneWidget);
       });
     });
 
@@ -626,7 +626,7 @@ void main() {
     testWidgets("a failed change offers Try again, which sends the same change", (tester) async {
       final repo = await _pump(tester, today: _day('2026-10-14', lunch: [_adobo()]));
       await failChangeToSnack(tester, repo);
-      expect(find.text("Couldn't save your changes."), findsOneWidget);
+      expect(find.text("Couldn't save your changes. Couldn't reach FitSync. Check your connection and try again."), findsOneWidget);
       await tester.tap(find.text('Try again'));
       await tester.pumpAndSettle();
       expect(repo.calls.where((c) => c == 'update 7 snack x1.0'), hasLength(2));
@@ -640,7 +640,7 @@ void main() {
       repo.failNext = true;
       await tester.tap(find.text('Undo'));
       await tester.pumpAndSettle();
-      expect(find.text("Couldn't put Chicken adobo back."), findsOneWidget);
+      expect(find.text("Couldn't put Chicken adobo back. Couldn't reach FitSync. Check your connection and try again."), findsOneWidget);
       await tester.tap(find.text('Try again'));
       await tester.pumpAndSettle();
       expect(repo.calls.where((c) => c == 'log 2026-10-14 lunch Chicken adobo x1.0'), hasLength(2));
@@ -652,7 +652,7 @@ void main() {
       await failChangeToSnack(tester, repo);
       await tester.pump(const Duration(seconds: 10));
       await tester.pumpAndSettle();
-      expect(find.text("Couldn't save your changes."), findsNothing);
+      expect(find.text("Couldn't save your changes. Couldn't reach FitSync. Check your connection and try again."), findsNothing);
     });
 
     testWidgets('the Try again message stays up for screen-reader users', (tester) async {
@@ -663,7 +663,7 @@ void main() {
       await failChangeToSnack(tester, repo);
       await tester.pump(const Duration(seconds: 10));
       await tester.pumpAndSettle();
-      expect(find.text("Couldn't save your changes."), findsOneWidget);
+      expect(find.text("Couldn't save your changes. Couldn't reach FitSync. Check your connection and try again."), findsOneWidget);
     });
   });
 }

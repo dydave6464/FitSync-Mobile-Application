@@ -378,7 +378,7 @@ void main() {
     await tester.pumpAndSettle();
     await tester.tap(find.byKey(const Key('logSheet.log')));
     await tester.pumpAndSettle();
-    expect(find.text("Couldn't save Chicken adobo."), findsOneWidget);
+    expect(find.text("Couldn't save Chicken adobo. Couldn't reach FitSync. Check your connection and try again."), findsOneWidget);
   });
 
   testWidgets('a food with edited numbers is saved as your own entry', (tester) async {
@@ -597,11 +597,11 @@ void main() {
     await tester.pump();
     await tester.tap(find.byKey(const Key('logSheet.log')));
     await tester.pumpAndSettle();
-    expect(find.text("Couldn't save Chicken adobo."), findsOneWidget);
+    expect(find.text("Couldn't save Chicken adobo. Couldn't reach FitSync. Check your connection and try again."), findsOneWidget);
 
     await tester.tap(find.text('Try again'));
     await tester.pumpAndSettle();
     expect(repo.calls.where((c) => c == 'log 2026-10-14 dinner Chicken adobo x1.5'), hasLength(2));
-    expect(find.text("Couldn't save Chicken adobo."), findsNothing);
+    expect(find.text("Couldn't save Chicken adobo. Couldn't reach FitSync. Check your connection and try again."), findsNothing);
   });
 }
