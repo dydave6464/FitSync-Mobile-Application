@@ -256,11 +256,14 @@ void main() {
     expect(find.text('That email is already registered.'), findsOneWidget);
   });
 
-  testWidgets('a NETWORK_ERROR shows its retryable message', (tester) async {
+  testWidgets('a NETWORK_ERROR shows plain words, not the developer text', (
+    tester,
+  ) async {
     final repo = FakeAuthRepository(
       onLogin: () async => throw const ApiException(
         'NETWORK_ERROR',
-        'Could not reach the server.',
+        'Could not reach http://10.0.2.2:3000. Check the server is running, '
+            'and that "adb reverse tcp:3000 tcp:3000" has been run.',
       ),
     );
     await _pump(tester, repo);
@@ -269,7 +272,34 @@ void main() {
     await _fillAndSubmit(tester);
     await tester.pumpAndSettle();
 
-    expect(find.text('Could not reach the server.'), findsOneWidget);
+    expect(
+      find.text("Couldn't reach FitSync. Check your connection and try again."),
+      findsOneWidget,
+    );
+    expect(find.textContaining('adb'), findsNothing);
+    expect(find.textContaining('10.0.2.2'), findsNothing);
+  });
+
+  testWidgets('a non-JSON reply shows plain words, not the HTTP detail', (
+    tester,
+  ) async {
+    final repo = FakeAuthRepository(
+      onLogin: () async => throw const ApiException(
+        'INVALID_RESPONSE',
+        'Server returned a non-JSON body (HTTP 502).',
+      ),
+    );
+    await _pump(tester, repo);
+    await tester.pumpAndSettle();
+
+    await _fillAndSubmit(tester);
+    await tester.pumpAndSettle();
+
+    expect(
+      find.text('Something went wrong on our side. Please try again.'),
+      findsOneWidget,
+    );
+    expect(find.textContaining('non-JSON'), findsNothing);
   });
 
   testWidgets('a double tap on register cannot create two accounts', (

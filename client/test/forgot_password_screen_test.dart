@@ -282,6 +282,50 @@ void main() {
     expect(find.byType(SnackBar), findsNothing);
   });
 
+  testWidgets('a reset that cannot reach the server says so plainly', (
+    tester,
+  ) async {
+    final repo = FakeAuthRepository(
+      onReset: () async => throw const ApiException(
+        'NETWORK_ERROR',
+        'Could not reach http://10.0.2.2:3000. Check the server is running, '
+            'and that "adb reverse tcp:3000 tcp:3000" has been run.',
+      ),
+    );
+    final seen = await _pump(tester, repo);
+
+    await _sendCode(tester);
+    await _fillReset(tester);
+
+    expect(
+      find.text("Couldn't reach FitSync. Check your connection and try again."),
+      findsOneWidget,
+    );
+    expect(find.textContaining('adb'), findsNothing);
+    expect(seen, isEmpty);
+  });
+
+  testWidgets('a reset that gets a non-JSON reply shows plain words', (
+    tester,
+  ) async {
+    final repo = FakeAuthRepository(
+      onReset: () async => throw const ApiException(
+        'INVALID_RESPONSE',
+        'Server returned a non-JSON body (HTTP 502).',
+      ),
+    );
+    await _pump(tester, repo);
+
+    await _sendCode(tester);
+    await _fillReset(tester);
+
+    expect(
+      find.text('Something went wrong on our side. Please try again.'),
+      findsOneWidget,
+    );
+    expect(find.textContaining('non-JSON'), findsNothing);
+  });
+
   testWidgets('a lost reset response still signs in', (tester) async {
     // The server reset the password but its reply was lost; the retry is told
     // CODE_INVALID for a code this very reset already spent.

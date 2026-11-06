@@ -175,6 +175,29 @@ void main() {
     );
   });
 
+  testWidgets('a Google sign-in that cannot reach the server says so plainly', (
+    tester,
+  ) async {
+    final gateway = FakeGoogleGateway(() async => 'token');
+    final repo = FakeAuthRepository(
+      onGoogle: (_) async => throw const ApiException(
+        'NETWORK_ERROR',
+        'Could not reach http://10.0.2.2:3000. Check the server is running, '
+            'and that "adb reverse tcp:3000 tcp:3000" has been run.',
+      ),
+    );
+
+    await _pump(tester, gateway: gateway, repo: repo);
+    await tester.tap(find.byKey(const Key('google')));
+    await tester.pumpAndSettle();
+
+    expect(
+      find.text("Couldn't reach FitSync. Check your connection and try again."),
+      findsOneWidget,
+    );
+    expect(find.textContaining('adb'), findsNothing);
+  });
+
   testWidgets('the Google button is live, not a coming-soon stub', (
     tester,
   ) async {

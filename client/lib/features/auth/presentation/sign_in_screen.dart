@@ -123,7 +123,7 @@ class _SignInScreenState extends ConsumerState<SignInScreen> {
       ref.read(authControllerProvider.notifier).onAuthenticated(user);
     } on ApiException catch (error) {
       if (!mounted) return;
-      setState(() => _error = error.message);
+      setState(() => _error = userMessage(error));
     } finally {
       if (mounted) setState(() => _busy = false);
     }
@@ -183,7 +183,7 @@ class _SignInScreenState extends ConsumerState<SignInScreen> {
       } else {
         // The fields keep their text on purpose — a wrong password should
         // cost one character, not the whole form.
-        setState(() => _error = error.message);
+        setState(() => _error = userMessage(error));
       }
     } finally {
       if (mounted) setState(() => _busy = false);

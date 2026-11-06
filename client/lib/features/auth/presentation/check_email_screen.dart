@@ -121,7 +121,9 @@ class _CheckEmailScreenState extends ConsumerState<CheckEmailScreen> {
       setState(() {
         _status = _verified
             ? 'Your email is verified. Tap to sign in.'
-            : (error.code == 'CODE_INVALID' ? wrongCodeMessage : error.message);
+            : (error.code == 'CODE_INVALID'
+                  ? wrongCodeMessage
+                  : userMessage(error));
       });
     } finally {
       if (mounted) setState(() => _busy = false);
@@ -145,7 +147,7 @@ class _CheckEmailScreenState extends ConsumerState<CheckEmailScreen> {
       setState(() => _status = newCodeMessage);
     } on ApiException catch (error) {
       if (!mounted) return;
-      setState(() => _status = error.message);
+      setState(() => _status = userMessage(error));
     } finally {
       if (mounted) setState(() => _busy = false);
     }

@@ -149,7 +149,9 @@ class _ForgotPasswordScreenState extends ConsumerState<ForgotPasswordScreen> {
       setState(() {
         _message = _resetDone
             ? 'Your password is reset. Tap to sign in.'
-            : (error.code == 'CODE_INVALID' ? wrongCodeMessage : error.message);
+            : (error.code == 'CODE_INVALID'
+                  ? wrongCodeMessage
+                  : userMessage(error));
       });
     } finally {
       if (mounted) setState(() => _busy = false);

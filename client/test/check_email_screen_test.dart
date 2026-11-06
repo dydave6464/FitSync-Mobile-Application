@@ -344,11 +344,14 @@ void main() {
     expect(find.text(newCodeMessage), findsNothing);
   });
 
-  testWidgets('a resend failure surfaces the server message', (tester) async {
+  testWidgets('a resend failure shows plain words, not the developer text', (
+    tester,
+  ) async {
     final repo = FakeAuthRepository(
       onResend: () async => throw const ApiException(
         'NETWORK_ERROR',
-        'Could not reach the server.',
+        'Could not reach http://10.0.2.2:3000. Check the server is running, '
+            'and that "adb reverse tcp:3000 tcp:3000" has been run.',
       ),
     );
     await _pump(tester, repo);
@@ -356,6 +359,51 @@ void main() {
     await tester.tap(find.byKey(const Key('resend')));
     await tester.pumpAndSettle();
 
-    expect(find.text('Could not reach the server.'), findsOneWidget);
+    expect(
+      find.text("Couldn't reach FitSync. Check your connection and try again."),
+      findsOneWidget,
+    );
+    expect(find.textContaining('adb'), findsNothing);
+  });
+
+  testWidgets('a server message on resend still reads as sent', (tester) async {
+    final repo = FakeAuthRepository(
+      onResend: () async => throw const ApiException(
+        'TOO_MANY_REQUESTS',
+        'Wait a minute before asking for another code.',
+      ),
+    );
+    await _pump(tester, repo);
+
+    await tester.tap(find.byKey(const Key('resend')));
+    await tester.pumpAndSettle();
+
+    expect(
+      find.text('Wait a minute before asking for another code.'),
+      findsOneWidget,
+    );
+  });
+
+  testWidgets('a verify that gets a non-JSON reply shows plain words', (
+    tester,
+  ) async {
+    final repo = FakeAuthRepository(
+      onVerify: () async => throw const ApiException(
+        'INVALID_RESPONSE',
+        'Server returned a non-JSON body (HTTP 502).',
+      ),
+    );
+    await _pump(tester, repo);
+
+    await tester.enterText(find.byKey(const Key('code')), '048213');
+    await tester.pump();
+    await tester.tap(find.byKey(const Key('verify')));
+    await tester.pumpAndSettle();
+
+    expect(
+      find.text('Something went wrong on our side. Please try again.'),
+      findsOneWidget,
+    );
+    expect(find.textContaining('non-JSON'), findsNothing);
   });
 }
