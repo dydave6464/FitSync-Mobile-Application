@@ -12,6 +12,18 @@ test('tokens', async (t) => {
     assert.equal(verifyToken(token, cfg).userId, 7);
   });
 
+  // requireAuth compares this against users.tokens_valid_after.
+  await t.test('reports when the token was issued, in whole seconds', () => {
+    const iat = Math.floor(Date.now() / 1000) - 120;
+    const token = jwt.sign({ iat }, cfg.secret, { subject: '7', expiresIn: '1h' });
+    assert.equal(verifyToken(token, cfg).issuedAt, iat);
+  });
+
+  await t.test('rejects a token with no issue time', () => {
+    const noIat = jwt.sign({ sub: '7' }, cfg.secret, { noTimestamp: true });
+    assert.throws(() => verifyToken(noIat, cfg), (err) => err.code === 'UNAUTHENTICATED');
+  });
+
   await t.test('rejects a token signed with a different secret', () => {
     const forged = jwt.sign({ sub: '7' }, 'not-the-real-secret');
     assert.throws(() => verifyToken(forged, cfg), (err) => err.code === 'UNAUTHENTICATED');

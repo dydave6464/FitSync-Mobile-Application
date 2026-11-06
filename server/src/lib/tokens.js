@@ -26,7 +26,14 @@ function verifyToken(token, jwtConfig) {
   if (!Number.isSafeInteger(userId) || userId < 1) {
     throw AppError.unauthorized('UNAUTHENTICATED', 'Sign in again to continue.');
   }
-  return { userId };
+  // requireAuth compares this with the user's sign-out cutoff
+  // (users.tokens_valid_after). Every token signToken issues carries one; a
+  // token without one could never be shown to postdate a cutoff.
+  const issuedAt = payload.iat;
+  if (!Number.isSafeInteger(issuedAt)) {
+    throw AppError.unauthorized('UNAUTHENTICATED', 'Sign in again to continue.');
+  }
+  return { userId, issuedAt };
 }
 
 module.exports = { signToken, verifyToken };

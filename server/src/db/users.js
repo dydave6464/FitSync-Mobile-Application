@@ -4,11 +4,19 @@ const { isProSql } = require('./pro');
 
 // is_premium here is "is Pro now" (db/pro.js): granted by hand or a paid
 // period that has not ended -- requireAuth and the auth routes read it.
+//
+// tokens_valid_after_s is the sign-out cutoff in whole seconds since the
+// epoch (UNIX_TIMESTAMP, so neither zone setting in pool.js touches it), or
+// NULL; requireAuth reads it. has_google says whether a Google identity is
+// linked -- the public user's hasGoogle.
 const USER_COLUMNS = `
   user_id, email, password_hash, full_name, sex, date_of_birth,
   height_cm, weight_kg, goal_weight_kg, main_goal, fitness_level,
   activity_level, training_location, city, ${isProSql('users')} AS is_premium,
-  notifications_enabled, onboarding_completed_at, email_verified, created_at
+  notifications_enabled, onboarding_completed_at, email_verified, created_at,
+  UNIX_TIMESTAMP(tokens_valid_after) AS tokens_valid_after_s,
+  EXISTS (SELECT 1 FROM user_identities gi
+           WHERE gi.user_id = users.user_id AND gi.provider = 'google') AS has_google
 `;
 
 async function findUserByEmail(pool, email) {
@@ -47,6 +55,20 @@ async function markEmailVerified(pool, userId) {
 // the live reset_password code for this user.
 async function updatePasswordHash(pool, userId, passwordHash) {
   await pool.query('UPDATE users SET password_hash = ? WHERE user_id = ?', [passwordHash, userId]);
+}
+
+/// Signs out every token issued before [atSeconds] (whole seconds since the
+/// epoch; now by default): requireAuth rejects a token whose iat is earlier.
+/// A token issued in that same second still works, so the caller's fresh
+/// token -- signed after this returns -- is never caught by its own cutoff.
+/// Used by the password change and the password-reset completion. Returns
+/// the cutoff it set.
+async function setTokenCutoff(pool, userId, atSeconds = Math.floor(Date.now() / 1000)) {
+  await pool.query(
+    'UPDATE users SET tokens_valid_after = FROM_UNIXTIME(?) WHERE user_id = ?',
+    [atSeconds, userId],
+  );
+  return atSeconds;
 }
 
 async function findOrCreateGoogleUser(pool, identity) {
@@ -138,5 +160,6 @@ module.exports = {
   findOrCreateGoogleUser,
   markEmailVerified,
   updatePasswordHash,
+  setTokenCutoff,
   setPremium,
 };

@@ -6,7 +6,14 @@ const { migrate } = require('../src/db/migrate');
 const { createPool } = require('../src/db/pool');
 const { buildTestApp } = require('./helpers/test-app');
 const { testDbConfig, dropAllTables } = require('./helpers/test-db');
+const jwt = require('jsonwebtoken');
 const { signToken } = require('../src/lib/tokens');
+const { setTokenCutoff } = require('../src/db/users');
+
+const SECRET = 'test-secret-value-at-least-32-chars';
+/// A token for [userId] issued at [iat] (whole seconds since the epoch).
+const tokenIssuedAt = (userId, iat) =>
+  jwt.sign({ iat }, SECRET, { subject: String(userId), expiresIn: '1h' });
 
 test('requireAuth', async (t) => {
   const pool = createPool(testDbConfig());
@@ -40,6 +47,27 @@ test('requireAuth', async (t) => {
       .set('Authorization', `Bearer ${signToken(999999, { secret: 'test-secret-value-at-least-32-chars', expiresIn: '1h' })}`)
       .expect(401);
     assert.equal(res.body.error.code, 'UNAUTHENTICATED');
+  });
+
+  // A password change or reset sets users.tokens_valid_after; every token
+  // issued before it (whole seconds) is signed out, every one after works.
+  await t.test('rejects a token issued before the cutoff, accepts one issued at or after it', async () => {
+    const [u] = await pool.query(
+      "INSERT INTO users (email, password_hash, full_name) VALUES ('cut@b.com', 'x', 'C')",
+    );
+    const now = Math.floor(Date.now() / 1000);
+    const me = (token) => request(app).get('/api/v1/auth/me')
+      .set('Authorization', `Bearer ${token}`);
+
+    // No cutoff yet: an old token still works.
+    await me(tokenIssuedAt(u.insertId, now - 60)).expect(200);
+
+    await setTokenCutoff(pool, u.insertId, now - 30);
+    const before = await me(tokenIssuedAt(u.insertId, now - 31)).expect(401);
+    assert.equal(before.body.error.code, 'UNAUTHENTICATED');
+    assert.equal(before.body.error.message, 'Sign in again to continue.');
+    await me(tokenIssuedAt(u.insertId, now - 30)).expect(200);
+    await me(tokenIssuedAt(u.insertId, now - 29)).expect(200);
   });
 
   await t.test('the exercise catalogue now requires a token', async () => {

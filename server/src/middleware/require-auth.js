@@ -11,12 +11,19 @@ module.exports = function requireAuth({ pool, jwt }) {
       if (scheme !== 'Bearer' || !token) {
         throw AppError.unauthorized('UNAUTHENTICATED', 'Sign in again to continue.');
       }
-      const { userId } = verifyToken(token, jwt);
+      const { userId, issuedAt } = verifyToken(token, jwt);
 
       // A token can outlive its user — the account may have been deleted since
       // it was issued. Checking here means routes can trust req.user exists.
       const user = await findUserById(pool, userId);
       if (!user) {
+        throw AppError.unauthorized('UNAUTHENTICATED', 'Sign in again to continue.');
+      }
+
+      // A password change or reset signed out every token issued before it
+      // (db/users.js setTokenCutoff). Whole seconds on both sides; a token
+      // from the cutoff's own second still works.
+      if (user.tokens_valid_after_s !== null && issuedAt < Number(user.tokens_valid_after_s)) {
         throw AppError.unauthorized('UNAUTHENTICATED', 'Sign in again to continue.');
       }
 
