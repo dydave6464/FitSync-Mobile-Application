@@ -1,7 +1,8 @@
 import 'dart:async';
-import 'dart:ui' show Tristate;
+import 'dart:ui' show CheckedState, SemanticsAction, Tristate;
 
 import 'package:flutter/material.dart';
+import 'package:flutter/semantics.dart' show SemanticsData;
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 
@@ -21,6 +22,7 @@ import 'package:fitsync/features/sessions/domain/active_session.dart';
 import 'package:fitsync/features/sessions/presentation/providers.dart';
 import 'package:fitsync/features/sessions/presentation/session_logger_screen.dart';
 
+import 'helpers/a11y.dart';
 import 'helpers/dialog_buttons.dart';
 
 const _pplPlan = WorkoutPlan(
@@ -238,6 +240,7 @@ Future<void> _pump(
   bool failTrainingDays = false,
   _ProfileLoad profileLoad = _ProfileLoad.loaded,
   ActiveSession? session,
+  bool dark = false,
 }) async {
   _profile = _FakeProfileNotifier(
     injuries,
@@ -265,7 +268,10 @@ Future<void> _pump(
           return injuryOptions;
         }),
       ],
-      child: MaterialApp(theme: fsLightTheme(), home: const GeneratorScreen()),
+      child: MaterialApp(
+        theme: dark ? fsDarkTheme() : fsLightTheme(),
+        home: const GeneratorScreen(),
+      ),
     ),
   );
   await tester.pumpAndSettle();
@@ -340,6 +346,91 @@ void main() {
       expect(logger.resume, isTrue);
     });
 
+    // P-18: a disabled button that only looks faded leaves a screen reader
+    // user hearing "Generate plan, dimmed" with no why. The note above it is
+    // the why, so the button carries it.
+    testWidgets('the disabled Generate carries its reason as a hint', (
+      tester,
+    ) async {
+      final h = tester.ensureSemantics();
+      await _pump(tester, plan: _pplPlan, session: _inProgress);
+
+      final generate = find.byKey(const Key('gen.generate'));
+      await tester.ensureVisible(generate);
+      await tester.pumpAndSettle();
+      expect(
+        tester.getSemantics(generate),
+        matchesSemantics(
+          label: 'Generate plan',
+          hint: 'You have a workout in progress. Finish or discard it first.',
+          isButton: true,
+          hasEnabledState: true,
+          isEnabled: false,
+        ),
+      );
+      h.dispose();
+    });
+
+    testWidgets('an enabled Generate carries no hint', (tester) async {
+      final h = tester.ensureSemantics();
+      await _pump(tester, plan: _pplPlan);
+
+      final generate = find.byKey(const Key('gen.generate'));
+      await tester.ensureVisible(generate);
+      await tester.pumpAndSettle();
+      final data = tester.getSemantics(generate).getSemanticsData();
+      expect(data.label, 'Generate plan');
+      expect(data.hint, isEmpty);
+      expect(data.hasAction(SemanticsAction.tap), isTrue);
+      h.dispose();
+    });
+
+    // P-18: the note, Generate and Resume at 2x text on small phones, in
+    // both themes: nothing overflows, the note wraps whole, and it stays
+    // readable text.
+    for (final width in [320.0, 360.0]) {
+      for (final dark in [false, true]) {
+        testWidgets('fits at 2x text, $width dp, ${dark ? 'dark' : 'light'}', (
+          tester,
+        ) async {
+          tester.view.physicalSize = Size(width, 720);
+          tester.view.devicePixelRatio = 1;
+          tester.platformDispatcher.textScaleFactorTestValue = 2.0;
+          addTearDown(tester.view.reset);
+          addTearDown(tester.platformDispatcher.clearTextScaleFactorTestValue);
+          await _pump(tester, plan: _pplPlan, session: _inProgress, dark: dark);
+
+          const note =
+              'You have a workout in progress. Finish or discard it first.';
+          final noteFinder = find.text(note);
+          await tester.scrollUntilVisible(
+            find.byKey(const Key('gen.resume')),
+            200,
+            scrollable: find
+                .descendant(
+                  of: find.byType(ListView),
+                  matching: find.byType(Scrollable),
+                )
+                .first,
+          );
+          await tester.pumpAndSettle();
+          expect(tester.takeException(), isNull);
+
+          final noteRect = tester.getRect(noteFinder);
+          expect(noteRect.left, greaterThanOrEqualTo(0));
+          expect(noteRect.right, lessThanOrEqualTo(width));
+          final style = tester.widget<Text>(noteFinder).style!;
+          final t = dark ? FsTokens.dark : FsTokens.light;
+          expect(contrast(style.color!, t.bg), greaterThanOrEqualTo(4.5));
+          for (final key in ['gen.generate', 'gen.resume']) {
+            final r = tester.getRect(find.byKey(Key(key)));
+            expect(r.height, greaterThanOrEqualTo(48), reason: key);
+            expect(r.right, lessThanOrEqualTo(width), reason: key);
+          }
+        });
+      }
+    }
+
     testWidgets('with none, Generate is offered as before', (tester) async {
       await _pump(tester, plan: _pplPlan);
 
@@ -413,6 +504,25 @@ void main() {
 
   // One row of chips is only as tall as a chip, and this one sits straight
   // in the list: the room around it has to be the row's own.
+  // P-1b: one split at a time, so a screen reader hears radio buttons,
+  // checked or not checked, rather than a row of independent toggles.
+  testWidgets('the splits are announced as one single-choice group', (
+    tester,
+  ) async {
+    final h = tester.ensureSemantics();
+    await _pump(tester, plan: _pplPlan);
+
+    SemanticsData chip(String label) =>
+        tester.getSemantics(find.text(label)).getSemanticsData();
+    final on = chip('Push / Pull / Legs');
+    final off = chip('Full body');
+    expect(on.flagsCollection.isInMutuallyExclusiveGroup, isTrue);
+    expect(on.flagsCollection.isChecked, CheckedState.isTrue);
+    expect(off.flagsCollection.isInMutuallyExclusiveGroup, isTrue);
+    expect(off.flagsCollection.isChecked, CheckedState.isFalse);
+    h.dispose();
+  });
+
   testWidgets('a split chip takes a tap just above or below its pill', (
     tester,
   ) async {
@@ -773,6 +883,8 @@ void main() {
       await tester.pumpWidget(
         ProviderScope(
           overrides: [
+            // Off the network: no workout in progress, as _pump's default.
+            activeSessionProvider.overrideWith(() => _SessionController(null)),
             activePlanProvider.overrideWith(
               (ref) => Completer<WorkoutPlan?>().future,
             ),
@@ -801,6 +913,8 @@ void main() {
     await tester.pumpWidget(
       ProviderScope(
         overrides: [
+          // Off the network: no workout in progress, as _pump's default.
+          activeSessionProvider.overrideWith(() => _SessionController(null)),
           activePlanProvider.overrideWith((ref) async {
             calls += 1;
             // A plain Exception, not ApiException(NETWORK_ERROR) -- a
@@ -992,6 +1106,8 @@ void main() {
     await tester.pumpWidget(
       ProviderScope(
         overrides: [
+          // Off the network: no workout in progress, as _pump's default.
+          activeSessionProvider.overrideWith(() => _SessionController(null)),
           activePlanProvider.overrideWith((ref) async {
             calls += 1;
             return _pplPlan;
@@ -1034,6 +1150,8 @@ void main() {
     await tester.pumpWidget(
       ProviderScope(
         overrides: [
+          // Off the network: no workout in progress, as _pump's default.
+          activeSessionProvider.overrideWith(() => _SessionController(null)),
           activePlanProvider.overrideWith((ref) async => _pplPlan),
           planRepositoryProvider.overrideWithValue(repo),
           // These three tests are about generate, refresh and pop, not about
@@ -1090,6 +1208,8 @@ void main() {
       var calls = 0;
       final container = ProviderContainer(
         overrides: [
+          // Off the network: no workout in progress, as _pump's default.
+          activeSessionProvider.overrideWith(() => _SessionController(null)),
           activePlanProvider.overrideWith((ref) async {
             calls += 1;
             return _pplPlan;

@@ -1,4 +1,7 @@
+import 'dart:ui' show CheckedState;
+
 import 'package:flutter/material.dart';
+import 'package:flutter/semantics.dart' show SemanticsData;
 import 'package:flutter_test/flutter_test.dart';
 
 import 'package:fitsync/core/theme.dart';
@@ -213,6 +216,25 @@ void main() {
     expect(selected('cardio_core'), isTrue);
     expect(selected('full_body'), isFalse);
     expect(find.text('Names your plan and its days.'), findsOneWidget);
+  });
+
+  // P-1b: one split at a time, so a screen reader hears radio buttons,
+  // checked or not checked, rather than a row of independent toggles.
+  testWidgets('the splits are announced as one single-choice group', (
+    tester,
+  ) async {
+    final h = tester.ensureSemantics();
+    await _open(tester);
+
+    SemanticsData chip(String label) =>
+        tester.getSemantics(find.text(label)).getSemanticsData();
+    final on = chip('Full body');
+    final off = chip('Upper / Lower');
+    expect(on.flagsCollection.isInMutuallyExclusiveGroup, isTrue);
+    expect(on.flagsCollection.isChecked, CheckedState.isTrue);
+    expect(off.flagsCollection.isInMutuallyExclusiveGroup, isTrue);
+    expect(off.flagsCollection.isChecked, CheckedState.isFalse);
+    h.dispose();
   });
 
   // At 1.0x text, where a chip is painted shorter than 48 dp, so the band
