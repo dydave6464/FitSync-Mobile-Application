@@ -7,7 +7,7 @@ const { createPool } = require('../src/db/pool');
 const { buildTestApp } = require('./helpers/test-app');
 const { testDbConfig, dropAllTables } = require('./helpers/test-db');
 const { createMailService } = require('../src/services/mail');
-const jwt = require('jsonwebtoken');
+const { signToken } = require('../src/lib/tokens');
 
 const SECRET = 'test-secret-value-at-least-32-chars';
 
@@ -93,10 +93,9 @@ test('password reset', async (t) => {
     const [row] = (await pool.query(
       "SELECT user_id FROM users WHERE email = 'signout@example.com'",
     ))[0];
-    // Backdated: the cutoff is in whole seconds, and a token from the same
-    // second as the reset would legitimately survive it.
-    const iat = Math.floor(Date.now() / 1000) - 60;
-    const old = jwt.sign({ iat }, SECRET, { subject: String(row.user_id), expiresIn: '1h' });
+    // Signed this very second: the reset must sign it out even when both land
+    // in the same second.
+    const old = signToken(row.user_id, { secret: SECRET, expiresIn: '1h' });
     const me = (token) => request(app).get('/api/v1/auth/me')
       .set('Authorization', `Bearer ${token}`);
     await me(old).expect(200);

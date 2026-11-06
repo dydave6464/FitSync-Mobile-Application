@@ -11,7 +11,7 @@ module.exports = function requireAuth({ pool, jwt }) {
       if (scheme !== 'Bearer' || !token) {
         throw AppError.unauthorized('UNAUTHENTICATED', 'Sign in again to continue.');
       }
-      const { userId, issuedAt } = verifyToken(token, jwt);
+      const { userId, tokenVersion } = verifyToken(token, jwt);
 
       // A token can outlive its user — the account may have been deleted since
       // it was issued. Checking here means routes can trust req.user exists.
@@ -20,10 +20,11 @@ module.exports = function requireAuth({ pool, jwt }) {
         throw AppError.unauthorized('UNAUTHENTICATED', 'Sign in again to continue.');
       }
 
-      // A password change or reset signed out every token issued before it
-      // (db/users.js setTokenCutoff). Whole seconds on both sides; a token
-      // from the cutoff's own second still works.
-      if (user.tokens_valid_after_s !== null && issuedAt < Number(user.tokens_valid_after_s)) {
+      // A password change or reset moves the account to a new token
+      // generation (db/users.js replacePasswordAndSignOut), signing out every
+      // token of an older one. Equality, not "at least": no token is ever
+      // signed for a generation the account has not reached.
+      if (tokenVersion !== Number(user.token_version)) {
         throw AppError.unauthorized('UNAUTHENTICATED', 'Sign in again to continue.');
       }
 

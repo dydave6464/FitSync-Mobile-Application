@@ -2,8 +2,11 @@
 const jwt = require('jsonwebtoken');
 const AppError = require('./app-error');
 
-function signToken(userId, jwtConfig) {
-  return jwt.sign({}, jwtConfig.secret, {
+/// [tokenVersion] is the account's token generation (users.token_version)
+/// as read in the same row the caller authenticated against; requireAuth
+/// accepts the token only while it is still the current one.
+function signToken(userId, jwtConfig, tokenVersion = 0) {
+  return jwt.sign({ tv: tokenVersion }, jwtConfig.secret, {
     subject: String(userId),
     expiresIn: jwtConfig.expiresIn,
   });
@@ -26,14 +29,14 @@ function verifyToken(token, jwtConfig) {
   if (!Number.isSafeInteger(userId) || userId < 1) {
     throw AppError.unauthorized('UNAUTHENTICATED', 'Sign in again to continue.');
   }
-  // requireAuth compares this with the user's sign-out cutoff
-  // (users.tokens_valid_after). Every token signToken issues carries one; a
-  // token without one could never be shown to postdate a cutoff.
-  const issuedAt = payload.iat;
-  if (!Number.isSafeInteger(issuedAt)) {
+  // requireAuth compares this with users.token_version. A token signed
+  // before generations existed has no claim: it belongs to generation 0,
+  // where every account starts.
+  const tokenVersion = payload.tv === undefined ? 0 : payload.tv;
+  if (!Number.isSafeInteger(tokenVersion) || tokenVersion < 0) {
     throw AppError.unauthorized('UNAUTHENTICATED', 'Sign in again to continue.');
   }
-  return { userId, issuedAt };
+  return { userId, tokenVersion };
 }
 
 module.exports = { signToken, verifyToken };

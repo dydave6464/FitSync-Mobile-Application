@@ -12,16 +12,26 @@ test('tokens', async (t) => {
     assert.equal(verifyToken(token, cfg).userId, 7);
   });
 
-  // requireAuth compares this against users.tokens_valid_after.
-  await t.test('reports when the token was issued, in whole seconds', () => {
-    const iat = Math.floor(Date.now() / 1000) - 120;
-    const token = jwt.sign({ iat }, cfg.secret, { subject: '7', expiresIn: '1h' });
-    assert.equal(verifyToken(token, cfg).issuedAt, iat);
+  // requireAuth compares this with users.token_version: a password change or
+  // reset moves the account to a new generation and signs out the old one.
+  await t.test('round-trips the token generation', () => {
+    assert.equal(verifyToken(signToken(7, cfg, 3), cfg).tokenVersion, 3);
   });
 
-  await t.test('rejects a token with no issue time', () => {
-    const noIat = jwt.sign({ sub: '7' }, cfg.secret, { noTimestamp: true });
-    assert.throws(() => verifyToken(noIat, cfg), (err) => err.code === 'UNAUTHENTICATED');
+  await t.test('a token signed without a generation is generation 0', () => {
+    assert.equal(verifyToken(signToken(7, cfg), cfg).tokenVersion, 0);
+    // Tokens issued before generations existed carry no claim at all; they
+    // belong to the generation every account starts at.
+    const legacy = jwt.sign({}, cfg.secret, { subject: '7', expiresIn: '1h' });
+    assert.equal(verifyToken(legacy, cfg).tokenVersion, 0);
+  });
+
+  await t.test('rejects a generation that is not a whole number of at least 0', () => {
+    for (const tv of ['1', -1, 1.5, null]) {
+      const token = jwt.sign({ tv }, cfg.secret, { subject: '7', expiresIn: '1h' });
+      assert.throws(() => verifyToken(token, cfg), (err) => err.code === 'UNAUTHENTICATED',
+        JSON.stringify(tv));
+    }
   });
 
   await t.test('rejects a token signed with a different secret', () => {

@@ -6,9 +6,14 @@
 -- MySQL stores an enum as an index into it, so inserting in the middle would
 -- change what every existing row means (as 014 and 028).
 --
--- users.tokens_valid_after is the sign-out cutoff: requireAuth rejects a
--- token issued (whole seconds) before it. A password change or reset sets it
--- to now. NULL means no cutoff.
+-- users.token_version is the account's token generation: every token carries
+-- the generation it was signed for, and requireAuth accepts only the current
+-- one. A password change or reset moves it on in the same UPDATE that writes
+-- the new hash, signing out every older token. A generation, not a time: a
+-- login that read the old hash before the change landed signs with the old
+-- generation however late it finishes, and there is no same-second window.
+-- Tokens signed before this column existed carry no generation and count as
+-- 0, the starting value, so nobody is signed out by the migration itself.
 --
 -- POLICY EXCEPTION (MIGRATIONS.md). Both statements change tables 001 and 011
 -- already defined. The MODIFY restates the whole column, so it replays
@@ -17,4 +22,4 @@
 ALTER TABLE auth_tokens MODIFY COLUMN purpose
   ENUM('verify_email','reset_password','delete_account') NOT NULL;
 
-ALTER TABLE users ADD COLUMN tokens_valid_after TIMESTAMP NULL DEFAULT NULL;
+ALTER TABLE users ADD COLUMN token_version INT UNSIGNED NOT NULL DEFAULT 0;

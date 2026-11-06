@@ -5,7 +5,7 @@ const { signToken } = require('../lib/tokens');
 const { hashPassword, verifyPassword, DUMMY_HASH } = require('../lib/passwords');
 const {
   findUserByEmail, findUserById, createUserWithPassword, findOrCreateGoogleUser,
-  markEmailVerified, updatePasswordHash, setTokenCutoff,
+  markEmailVerified, replacePasswordAndSignOut,
 } = require('../db/users');
 const { codeKey, normaliseCode, TTL_MINUTES } = require('../lib/auth-codes');
 const { issueCode, checkCode } = require('../db/auth-codes');
@@ -175,7 +175,11 @@ module.exports = function buildAuthRouter({
         );
       }
 
-      res.json({ data: { user: toPublicUser(user), token: signToken(user.user_id, jwt) } });
+      // The generation read with the hash just compared: if a password change
+      // landed during the compare, this token is already signed out.
+      res.json({
+        data: { user: toPublicUser(user), token: signToken(user.user_id, jwt, user.token_version) },
+      });
     } catch (err) { next(err); }
   });
 
@@ -304,9 +308,8 @@ module.exports = function buildAuthRouter({
         key: codesKey(), userId: user.user_id, purpose: 'reset_password', code,
       }));
       if (!ok) throw codeInvalid();
-      await updatePasswordHash(pool, user.user_id, await hashPassword(password));
       // Whoever had the old password may hold a token: sign out every device.
-      await setTokenCutoff(pool, user.user_id);
+      await replacePasswordAndSignOut(pool, user.user_id, await hashPassword(password));
       res.json({ data: { reset: true } });
     } catch (err) { next(err); }
   });
@@ -314,8 +317,8 @@ module.exports = function buildAuthRouter({
   // Change password, from Settings. The new password is checked first, by
   // the register rule (a 400 that reads nothing). A Google-only account has
   // no password to confirm, so it is told so before being asked for one.
-  // Success signs out every other device (the cutoff) and hands this one a
-  // fresh token, signed after the cutoff so its own cutoff never catches it.
+  // Success moves the account to a new token generation, signing out every
+  // other device, and hands this one a fresh token of the new generation.
   router.post('/password', requireAuth({ pool, jwt }), async (req, res, next) => {
     try {
       const newPassword = requireString('newPassword', req.body.newPassword, {
@@ -343,9 +346,10 @@ module.exports = function buildAuthRouter({
       if (!matches) {
         throw AppError.badRequest('WRONG_PASSWORD', "That password isn't right.");
       }
-      await updatePasswordHash(pool, user.user_id, await hashPassword(newPassword));
-      await setTokenCutoff(pool, user.user_id);
-      res.json({ data: { token: signToken(user.user_id, jwt) } });
+      const generation = await replacePasswordAndSignOut(
+        pool, user.user_id, await hashPassword(newPassword),
+      );
+      res.json({ data: { token: signToken(user.user_id, jwt, generation) } });
     } catch (err) { next(err); }
   });
 
@@ -357,7 +361,7 @@ module.exports = function buildAuthRouter({
       res.json({
         data: {
           user: toPublicUser(user),
-          token: signToken(user.user_id, jwt),
+          token: signToken(user.user_id, jwt, user.token_version),
           isNewUser: isNew,
         },
       });

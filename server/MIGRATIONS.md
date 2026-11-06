@@ -214,11 +214,12 @@ fills them in for FitSync's own foods.
 
 **`042_account_deletion.sql`** — an `ALTER TABLE auth_tokens MODIFY COLUMN
 purpose` appending `delete_account` to the enum `011` defined (at the END, as
-014), followed by ONE `ALTER TABLE users ADD COLUMN tokens_valid_after`, the
-sign-out cutoff a password change or reset sets. It replays cleanly for the
-same reasons as 014 and 032 combined: the `MODIFY` restates the whole column,
-and the `ADD COLUMN` is last and atomic, so a failed run never leaves part of
-it behind. Add a statement after it and that stops being true.
+014), followed by ONE `ALTER TABLE users ADD COLUMN token_version`, the token
+generation a password change or reset moves on to sign out older tokens. It
+replays cleanly for the same reasons as 014 and 032 combined: the `MODIFY`
+restates the whole column, and the `ADD COLUMN` is last and atomic, so a
+failed run never leaves part of it behind. Add a statement after it and that
+stops being true.
 
 **If 007, 008, 011, 012, 013 or 017 fails partway through**, recovery is
 manual:

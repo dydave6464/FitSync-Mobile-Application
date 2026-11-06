@@ -2,14 +2,14 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
 const request = require('supertest');
-const jwt = require('jsonwebtoken');
+const { signToken } = require('../src/lib/tokens');
 const { migrate } = require('../src/db/migrate');
 const { createPool } = require('../src/db/pool');
 const { buildTestApp } = require('./helpers/test-app');
 const { testDbConfig, dropAllTables } = require('./helpers/test-db');
 const { markEmailVerified } = require('../src/db/users');
 
-const SECRET = 'test-secret-value-at-least-32-chars';
+const JWT = { secret: 'test-secret-value-at-least-32-chars', expiresIn: '1h' };
 
 test('change password', async (t) => {
   const pool = createPool(testDbConfig());
@@ -24,18 +24,15 @@ test('change password', async (t) => {
     await pool.query('DELETE FROM users');
   };
 
-  /// A verified password account, plus a token for it issued a minute ago --
-  /// "another device". The cutoff is in whole seconds, so a token signed in
-  /// the same second as the change would legitimately survive it; backdating
-  /// keeps the test about the rule, not about the clock.
+  /// A verified password account, plus a token for it from "another
+  /// device", signed this very second: a change must sign it out even when
+  /// both land in the same second.
   const passwordUser = async (email = 'juan@example.com', password = 's3cret-pass') => {
     const res = await request(app).post('/api/v1/auth/register')
       .send({ email, password, fullName: 'Juan' }).expect(201);
     const { userId } = res.body.data.user;
     await markEmailVerified(pool, userId);
-    const iat = Math.floor(Date.now() / 1000) - 60;
-    const token = jwt.sign({ iat }, SECRET, { subject: String(userId), expiresIn: '1h' });
-    return { userId, token };
+    return { userId, token: signToken(userId, JWT) };
   };
 
   const change = (token, body) => request(app).post('/api/v1/auth/password')
@@ -62,6 +59,24 @@ test('change password', async (t) => {
 
     assert.equal((await login('juan@example.com', 'a brand new pass')).status, 200);
     assert.equal((await login('juan@example.com', 's3cret-pass')).status, 401);
+  });
+
+  // Login and Google sign-in sign with the account's current generation, so
+  // the tokens they hand out after a change work.
+  await t.test('signing in again after a change, by password or Google, works', async () => {
+    await reset();
+    const { token } = await passwordUser();
+    // Same address as the stub's Google identity: signing in links it.
+    await request(app).post('/api/v1/auth/google')
+      .send({ idToken: 'stub-token-juan' }).expect(200);
+    await change(token, { currentPassword: 's3cret-pass', newPassword: 'a brand new pass' })
+      .expect(200);
+
+    const byPassword = await login('juan@example.com', 'a brand new pass').expect(200);
+    await me(byPassword.body.data.token).expect(200);
+    const byGoogle = await request(app).post('/api/v1/auth/google')
+      .send({ idToken: 'stub-token-juan' }).expect(200);
+    await me(byGoogle.body.data.token).expect(200);
   });
 
   await t.test('a wrong current password is WRONG_PASSWORD and changes nothing', async () => {
