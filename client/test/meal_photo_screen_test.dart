@@ -297,11 +297,11 @@ void main() {
       );
       expect(
         tester.getSemantics(find.byKey(const Key('snap.meal.lunch'))),
-        isSemantics(isSelected: true),
+        isSemantics(isChecked: true, isInMutuallyExclusiveGroup: true),
       );
       expect(
         tester.getSemantics(find.byKey(const Key('snap.meal.dinner'))),
-        isSemantics(isSelected: false),
+        isSemantics(isChecked: false, isInMutuallyExclusiveGroup: true),
       );
       expect(_kcal('629 kcal'), findsOneWidget);
       expect(find.text('Log 2 items'), findsOneWidget);

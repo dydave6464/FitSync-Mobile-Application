@@ -26,6 +26,8 @@ class MealChips extends StatelessWidget {
             key: Key('$keyPrefix.$m'),
             label: mealLabel(m),
             selected: selected == m,
+            // One meal or another: heard as a radio group, not four toggles.
+            exclusive: true,
             onTap: () => onSelected(m),
           ),
       ],

@@ -143,7 +143,7 @@ void main() {
     await tester.pumpAndSettle();
     expect(h.picker.sources, [PhotoSource.library]);
     expect(find.text('White rice'), findsOneWidget);
-    expect(tester.getSemantics(find.byKey(const Key('snap.meal.lunch'))), isSemantics(isSelected: true));
+    expect(tester.getSemantics(find.byKey(const Key('snap.meal.lunch'))), isSemantics(isChecked: true, isInMutuallyExclusiveGroup: true));
     await tester.tap(find.byKey(const Key('snap.log')));
     await tester.pumpAndSettle();
     expect(h.repo.logged, 1);
@@ -198,7 +198,7 @@ void main() {
     await tester.pumpAndSettle();
     await tester.tap(find.byKey(const Key('snap.camera')));
     await tester.pumpAndSettle();
-    expect(tester.getSemantics(find.byKey(const Key('snap.meal.dinner'))), isSemantics(isSelected: true));
+    expect(tester.getSemantics(find.byKey(const Key('snap.meal.dinner'))), isSemantics(isChecked: true, isInMutuallyExclusiveGroup: true));
     await tester.tap(find.byKey(const Key('snap.log')));
     await tester.pumpAndSettle();
     expect(h.repo.logged, 1);

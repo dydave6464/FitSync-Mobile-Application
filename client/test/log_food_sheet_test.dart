@@ -871,10 +871,10 @@ void main() {
       final result = await _openForResult(tester, _rice);
       expect(find.byType(FsSegmented), findsNothing);
       expect(find.byType(FsChip), findsNWidgets(4));
-      expect(tester.getSemantics(find.byKey(const Key('logSheet.meal.lunch'))), isSemantics(isSelected: true));
+      expect(tester.getSemantics(find.byKey(const Key('logSheet.meal.lunch'))), isSemantics(isChecked: true, isInMutuallyExclusiveGroup: true));
       await tester.tap(find.byKey(const Key('logSheet.meal.dinner')));
       await tester.pump();
-      expect(tester.getSemantics(find.byKey(const Key('logSheet.meal.dinner'))), isSemantics(isSelected: true));
+      expect(tester.getSemantics(find.byKey(const Key('logSheet.meal.dinner'))), isSemantics(isChecked: true, isInMutuallyExclusiveGroup: true));
       await _save(tester);
       expect(result()!.mealType, 'dinner');
       h.dispose();
