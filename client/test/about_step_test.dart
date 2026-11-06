@@ -44,6 +44,7 @@ Future<AboutAnswers?> _pumpAndEdit(
   WeightUnit unit = WeightUnit.kg,
   List<String> goals = const [],
   Map<String, String> fieldErrors = const {},
+  String? mainGoal,
 }) async {
   AboutAnswers? emitted;
   await tester.pumpWidget(
@@ -55,6 +56,7 @@ Future<AboutAnswers?> _pumpAndEdit(
             unit: unit,
             goals: goals,
             fieldErrors: fieldErrors,
+            mainGoal: mainGoal,
             onChanged: (v) => emitted = v,
           ),
         ),
@@ -683,6 +685,22 @@ void main() {
         reason: 'under the card, not at the end of the step',
       );
     });
+  });
+
+  testWidgets('the target follows the main goal, as Nutrition will', (
+    tester,
+  ) async {
+    await _pumpAndEdit(
+      tester,
+      (_) async {},
+      value: _complete,
+      mainGoal: 'lose_weight',
+    );
+
+    expect(
+      find.text('Estimated daily target ≈ 1,800 kcal · 115g protein'),
+      findsOneWidget,
+    );
   });
 }
 

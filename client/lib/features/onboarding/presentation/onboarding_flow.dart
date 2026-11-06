@@ -504,6 +504,7 @@ class _OnboardingFlowState extends ConsumerState<OnboardingFlow> {
       value: _about,
       onChanged: _onAboutChanged,
       goals: _goals.goals,
+      mainGoal: _goals.mainGoal,
       fieldErrors: _fieldErrors,
       // Saved to the account as it is tapped rather than held with the
       // rest of the step: it changes what the two cards on screen say

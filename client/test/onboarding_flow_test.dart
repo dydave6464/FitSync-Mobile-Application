@@ -13,6 +13,7 @@ import 'package:fitsync/features/auth/presentation/auth_controller.dart';
 import 'package:fitsync/features/health/domain/health_answers.dart';
 import 'package:fitsync/features/health/presentation/providers.dart';
 import 'package:fitsync/features/home/presentation/plan_ready.dart';
+import 'package:fitsync/features/onboarding/domain/daily_targets.dart';
 import 'package:fitsync/features/onboarding/presentation/generating_view.dart';
 import 'package:fitsync/features/onboarding/presentation/onboarding_flow.dart';
 import 'package:fitsync/features/onboarding/presentation/onboarding_scaffold.dart';
@@ -2056,5 +2057,42 @@ void main() {
       expect(isHeader('Stay on track'), isTrue);
       handle.dispose();
     });
+  });
+
+  testWidgets('step 2 estimates the target for the goal picked on step 1', (
+    tester,
+  ) async {
+    await _pumpFlow(tester, patches: []);
+    await tester.tap(find.byKey(const Key('goal.lose_weight')));
+    await tester.pumpAndSettle();
+    await _skip(tester);
+
+    await _tapKey(tester, const Key('segment.male'));
+    await _tapKey(tester, const Key('dateOfBirth'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('OK'));
+    await tester.pumpAndSettle();
+    await tester.enterText(find.byKey(const Key('heightCm')), '175');
+    await tester.enterText(find.byKey(const Key('weightKg')), '72');
+    await tester.pumpAndSettle();
+    await _tapKey(tester, const Key('activity.light'));
+    await tester.pumpAndSettle();
+
+    // The picker opens on 1 January, 25 years back.
+    final born = DateTime(DateTime.now().year - 25);
+    String target(String? mainGoal) {
+      final kcal = estimateDailyTargets(
+        sex: 'male',
+        dateOfBirth: '${born.year}-01-01',
+        heightCm: 175,
+        weightKg: 72,
+        activityLevel: 'light',
+        mainGoal: mainGoal,
+      )!.kcal;
+      return '${kcal ~/ 1000},${(kcal % 1000).toString().padLeft(3, '0')} kcal';
+    }
+
+    expect(target('lose_weight'), isNot(target(null)));
+    expect(find.textContaining(target('lose_weight')), findsOneWidget);
   });
 }

@@ -165,7 +165,13 @@ class AboutStep extends StatefulWidget {
     this.onUnitChanged,
     required this.goals,
     this.fieldErrors = const {},
+    this.mainGoal,
   });
+
+  /// The main goal from step 1, which moves the estimate below the way the
+  /// food log's own target moves (-500 kcal to lose weight, +250 to build
+  /// muscle), so the two screens show one number. Null is maintenance.
+  final String? mainGoal;
 
   final AboutAnswers value;
 
@@ -373,6 +379,7 @@ class _AboutStepState extends State<AboutStep> {
       heightCm: _parse(_height.text),
       weightKg: _parseKg(_weight.text),
       activityLevel: _activityLevel,
+      mainGoal: widget.mainGoal,
     );
 
     return Column(
