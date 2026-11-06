@@ -391,6 +391,23 @@ void main() {
     expect(find.text('Juan Dela Cruz'), findsOneWidget);
   });
 
+  // PS-23: the rows had a tap action but no button role.
+  testWidgets('each opening row is announced as a button, by its label', (
+    tester,
+  ) async {
+    final handle = tester.ensureSemantics();
+    await _pump(tester);
+    expect(
+      tester.getSemantics(find.byKey(const Key('edit.goal'))),
+      isSemantics(label: 'Goals', isButton: true, hasTapAction: true),
+    );
+    expect(
+      tester.getSemantics(find.byKey(const Key('edit.about'))),
+      isSemantics(label: 'Body metrics (height, weight)', isButton: true),
+    );
+    handle.dispose();
+  });
+
   testWidgets('shows who is signed in', (tester) async {
     await _pump(tester, patches: []);
 

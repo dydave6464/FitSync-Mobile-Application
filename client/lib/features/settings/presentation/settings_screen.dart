@@ -412,33 +412,49 @@ class _SettingsRow extends StatelessWidget {
   Widget build(BuildContext context) {
     final t = context.fs;
 
-    return InkWell(
+    // A button for a screen reader, as FsCard is: InkWell alone gives a tap
+    // action but no role. The icon tile and chevron are decoration beside
+    // the label.
+    return Semantics(
       key: rowKey,
-      onTap: onTap,
-      child: Container(
-        padding: const EdgeInsets.symmetric(vertical: 12),
-        decoration: BoxDecoration(
-          border: last ? null : Border(bottom: BorderSide(color: t.line)),
-        ),
-        // The row's 12 dp padding is where a trailing switch, drawn a few
-        // pixels tall, gets the rest of its 48 dp.
-        child: FsTapRoom(
-          child: Row(
-            children: [
-              FsIconTile(icon: icon, size: 32, color: iconColor),
-              const SizedBox(width: 13),
-              Expanded(
-                child: Text(
-                  label,
-                  style: TextStyle(
-                    fontSize: 12.5,
-                    fontWeight: FontWeight.w500,
-                    color: t.text,
+      container: true,
+      button: onTap != null,
+      child: InkWell(
+        onTap: onTap,
+        child: Container(
+          padding: const EdgeInsets.symmetric(vertical: 12),
+          decoration: BoxDecoration(
+            border: last ? null : Border(bottom: BorderSide(color: t.line)),
+          ),
+          // The row's 12 dp padding is where a trailing switch, drawn a few
+          // pixels tall, gets the rest of its 48 dp.
+          child: FsTapRoom(
+            child: Row(
+              children: [
+                ExcludeSemantics(
+                  child: FsIconTile(icon: icon, size: 32, color: iconColor),
+                ),
+                const SizedBox(width: 13),
+                Expanded(
+                  child: Text(
+                    label,
+                    style: TextStyle(
+                      fontSize: 12.5,
+                      fontWeight: FontWeight.w500,
+                      color: t.text,
+                    ),
                   ),
                 ),
-              ),
-              trailing ?? Icon(Icons.chevron_right, size: 16, color: t.text3),
-            ],
+                trailing ??
+                    ExcludeSemantics(
+                      child: Icon(
+                        Icons.chevron_right,
+                        size: 16,
+                        color: t.text3,
+                      ),
+                    ),
+              ],
+            ),
           ),
         ),
       ),
