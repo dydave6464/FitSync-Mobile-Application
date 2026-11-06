@@ -162,6 +162,17 @@ class FakeProfileNotifier extends ProfileNotifier {
     weightUnit: weightUnit,
   );
 
+  /// Leaves the provider with no profile at all. Riverpod carries the last
+  /// value into every later loading or error state, so nothing public gets
+  /// back to "no value" once one has loaded; a loading state over a bare
+  /// error is the one it stores as given.
+  void unload() => state = const AsyncLoading<Profile>()
+      // ignore: invalid_use_of_internal_member
+      .copyWithPrevious(AsyncError<Profile>('gone', StackTrace.empty));
+
+  /// Puts a profile back after [unload].
+  void reload(Profile profile) => state = AsyncData(profile);
+
   /// Every `patch` call, counted on arrival -- before [patchGate] holds it
   /// and whether or not it goes on to succeed.
   int patchCalls = 0;
@@ -1433,6 +1444,33 @@ void main() {
         expect(find.text("Couldn't switch to lb. Try again."), findsOneWidget);
       });
     }
+  });
+
+  // L-81: the editors' fallback for a profile with no value. Settings only
+  // opens an editor over a loaded profile, so this pins a defensive path:
+  // the title and back button over a spinner, and the editor back when the
+  // profile is.
+  testWidgets('an editor without a profile waits under its own title', (
+    tester,
+  ) async {
+    await _pump(tester, goals: const ['lose_fat'], mainGoal: 'lose_fat');
+    await _openRow(tester, const Key('edit.goal'));
+    expect(find.byType(EditScaffold), findsOneWidget);
+    final loaded = _profile.state.value!;
+
+    _profile.unload();
+    await tester.pump();
+    expect(find.byType(EditScaffold), findsNothing);
+    expect(
+      find.descendant(of: find.byType(AppBar), matching: find.text('Goals')),
+      findsOneWidget,
+    );
+    expect(find.byType(CircularProgressIndicator), findsOneWidget);
+    expect(find.byType(BackButton), findsOneWidget);
+
+    _profile.reload(loaded);
+    await tester.pumpAndSettle();
+    expect(find.byType(EditScaffold), findsOneWidget);
   });
 
   // PS-4: the Health editor's loading screen had no title or back button,
