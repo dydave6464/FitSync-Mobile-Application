@@ -157,15 +157,18 @@ class _AddFoodManuallyScreenState extends ConsumerState<AddFoodManuallyScreen> {
                 final controller = ref.read(nutritionDayProvider.notifier);
                 final date = ref.read(nutritionDayProvider).value?.date;
                 final onLogged = widget.onLogged;
+                final meal = _meal;
+                final persist = MediaQuery.accessibleNavigationOf(context);
                 Navigator.of(context).pop(true);
-                final FoodEntry saved;
-                try {
-                  saved = await controller.log(food, mealType: _meal, servings: 1, date: date);
-                } catch (_) {
-                  showErrorSnackBar(messenger, "Couldn't save — try again.");
-                  return;
-                }
-                onLogged?.call(saved, date!);
+                // The form is gone, but the food is kept: Try again sends it
+                // again rather than asking for it to be typed twice.
+                await saveOrOfferRetry(
+                  messenger,
+                  save: () => controller.log(food, mealType: meal, servings: 1, date: date),
+                  failure: "Couldn't save ${food.name}.",
+                  persist: persist,
+                  onSaved: (saved) => onLogged?.call(saved, date!),
+                );
               },
             ),
           ],

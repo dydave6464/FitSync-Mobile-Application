@@ -378,7 +378,7 @@ void main() {
     await tester.pumpAndSettle();
     await tester.tap(find.byKey(const Key('logSheet.log')));
     await tester.pumpAndSettle();
-    expect(find.text("Couldn't save — try again."), findsOneWidget);
+    expect(find.text("Couldn't save Chicken adobo."), findsOneWidget);
   });
 
   testWidgets('a food with edited numbers is saved as your own entry', (tester) async {
@@ -581,5 +581,27 @@ void main() {
       await tester.pumpAndSettle();
       expect(find.text('Turon'), findsOneWidget);
     });
+  });
+
+  testWidgets('a failed save offers Try again, which sends the same food, meal and servings (NU-4)', (tester) async {
+    final repo = _SearchRepo();
+    await _pump(tester, repo);
+    await tester.enterText(find.byKey(const Key('food.search')), 'adobo');
+    await tester.pump(const Duration(milliseconds: 300));
+    await tester.pumpAndSettle();
+    repo.failNext = true;
+    await tester.tap(find.text('Chicken adobo'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.descendant(of: find.byType(LogFoodSheet), matching: find.text('Dinner')));
+    await tester.tap(find.byKey(const Key('servings.plus')));
+    await tester.pump();
+    await tester.tap(find.byKey(const Key('logSheet.log')));
+    await tester.pumpAndSettle();
+    expect(find.text("Couldn't save Chicken adobo."), findsOneWidget);
+
+    await tester.tap(find.text('Try again'));
+    await tester.pumpAndSettle();
+    expect(repo.calls.where((c) => c == 'log 2026-10-14 dinner Chicken adobo x1.5'), hasLength(2));
+    expect(find.text("Couldn't save Chicken adobo."), findsNothing);
   });
 }

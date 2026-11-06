@@ -123,17 +123,19 @@ class _LogFoodScreenState extends ConsumerState<LogFoodScreen> {
     final controller = ref.read(nutritionDayProvider.notifier);
     final date = ref.read(nutritionDayProvider).value?.date;
     final onLogged = widget.onLogged;
+    final persist = MediaQuery.accessibleNavigationOf(context);
     Navigator.of(context).pop();
-    final FoodEntry saved;
-    try {
-      // Edited numbers are saved as the user's own entry; the listed food
-      // itself is never changed.
-      saved = await controller.log(choice.edited ?? food, mealType: choice.mealType, servings: choice.servings, date: date);
-    } catch (_) {
-      showErrorSnackBar(messenger, "Couldn't save — try again.");
-      return;
-    }
-    onLogged?.call(saved, date!);
+    // Edited numbers are saved as the user's own entry; the listed food
+    // itself is never changed. Try again sends the same food, meal and
+    // servings, so nothing has to be found or set twice.
+    final logged = choice.edited ?? food;
+    await saveOrOfferRetry(
+      messenger,
+      save: () => controller.log(logged, mealType: choice.mealType, servings: choice.servings, date: date),
+      failure: "Couldn't save ${logged.name}.",
+      persist: persist,
+      onSaved: (saved) => onLogged?.call(saved, date!),
+    );
   }
 
   Future<void> _manual() async {

@@ -279,4 +279,20 @@ void main() {
       expect(find.text('Add some protein, carbs or fat'), findsNothing);
     });
   });
+
+  testWidgets('a failed save offers Try again, which sends the typed food again (NU-4)', (tester) async {
+    final repo = await _pump(tester, size: const Size(400, 1200));
+    await tester.enterText(find.byKey(const Key('manual.name')), 'Turon');
+    await tester.enterText(find.byKey(const Key('manual.carbs')), '34');
+    await tester.pump();
+    repo.failNext = true;
+    await tester.tap(find.byKey(const Key('manual.log')));
+    await tester.pumpAndSettle();
+    expect(find.text("Couldn't save Turon."), findsOneWidget);
+
+    await tester.tap(find.text('Try again'));
+    await tester.pumpAndSettle();
+    expect(repo.calls.where((c) => c == 'log 2026-10-14 snack Turon x1.0'), hasLength(2));
+    expect(repo.days['2026-10-14']!.entries.map((e) => e.name), contains('Turon'));
+  });
 }

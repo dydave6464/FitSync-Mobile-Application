@@ -365,7 +365,7 @@ void main() {
       await tester.pump();
       repo.failNext = true;
       await save(tester);
-      expect(find.text("Couldn't save — try again."), findsOneWidget);
+      expect(find.text("Couldn't save your changes."), findsOneWidget);
       expect(find.text('LUNCH'), findsOneWidget);
       expect(find.text('Add snack'), findsOneWidget);
     });
@@ -552,7 +552,7 @@ void main() {
         repo.failNext = true;
         await tester.tap(find.byKey(const Key('logSheet.log')));
         await tester.pumpAndSettle();
-        expect(find.text("Couldn't save — try again."), findsOneWidget);
+        expect(find.text("Couldn't save your changes."), findsOneWidget);
       });
     });
 
@@ -577,6 +577,63 @@ void main() {
       await tester.tap(find.byKey(const Key('logSheet.log')));
       await tester.pumpAndSettle();
       expect(repo.calls, contains('update 100 dinner x1.5'));
+    });
+  });
+
+  group('a failed save can be tried again (NU-4)', () {
+    Future<void> failChangeToSnack(WidgetTester tester, FakeNutritionRepository repo) async {
+      await tester.tap(find.byKey(const Key('entry.7')));
+      await tester.pumpAndSettle();
+      await tester.tap(find.descendant(of: find.byType(LogFoodSheet), matching: find.text('Snack')));
+      await tester.pump();
+      repo.failNext = true;
+      await tester.ensureVisible(find.byKey(const Key('logSheet.log')));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const Key('logSheet.log')));
+      await tester.pumpAndSettle();
+    }
+
+    testWidgets("a failed change offers Try again, which sends the same change", (tester) async {
+      final repo = await _pump(tester, today: _day('2026-10-14', lunch: [_adobo()]));
+      await failChangeToSnack(tester, repo);
+      expect(find.text("Couldn't save your changes."), findsOneWidget);
+      await tester.tap(find.text('Try again'));
+      await tester.pumpAndSettle();
+      expect(repo.calls.where((c) => c == 'update 7 snack x1.0'), hasLength(2));
+      expect(find.text('SNACK'), findsOneWidget);
+    });
+
+    testWidgets('a failed Undo offers Try again, which puts the food back', (tester) async {
+      final repo = await _pump(tester, today: _day('2026-10-14', lunch: [_adobo()]));
+      await tester.tap(find.byKey(const Key('entry.delete.7')));
+      await tester.pumpAndSettle();
+      repo.failNext = true;
+      await tester.tap(find.text('Undo'));
+      await tester.pumpAndSettle();
+      expect(find.text("Couldn't put Chicken adobo back."), findsOneWidget);
+      await tester.tap(find.text('Try again'));
+      await tester.pumpAndSettle();
+      expect(repo.calls.where((c) => c == 'log 2026-10-14 lunch Chicken adobo x1.0'), hasLength(2));
+      expect(find.text('Chicken adobo'), findsOneWidget);
+    });
+
+    testWidgets('the Try again message goes away on its own', (tester) async {
+      final repo = await _pump(tester, today: _day('2026-10-14', lunch: [_adobo()]));
+      await failChangeToSnack(tester, repo);
+      await tester.pump(const Duration(seconds: 10));
+      await tester.pumpAndSettle();
+      expect(find.text("Couldn't save your changes."), findsNothing);
+    });
+
+    testWidgets('the Try again message stays up for screen-reader users', (tester) async {
+      tester.platformDispatcher.accessibilityFeaturesTestValue =
+          const FakeAccessibilityFeatures(accessibleNavigation: true);
+      addTearDown(tester.platformDispatcher.clearAccessibilityFeaturesTestValue);
+      final repo = await _pump(tester, today: _day('2026-10-14', lunch: [_adobo()]));
+      await failChangeToSnack(tester, repo);
+      await tester.pump(const Duration(seconds: 10));
+      await tester.pumpAndSettle();
+      expect(find.text("Couldn't save your changes."), findsOneWidget);
     });
   });
 }
