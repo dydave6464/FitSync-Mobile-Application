@@ -1321,16 +1321,22 @@ class FsRing extends StatelessWidget {
         ],
       ),
     );
-    final label = semanticLabel;
-    if (label == null) return ring;
-    return Semantics(
-      container: true,
-      label: label,
-      excludeSemantics: true,
-      child: ring,
-    );
+    return fsSpokenAs(semanticLabel, ring);
   }
 }
+
+/// [child] as one node a screen reader hears as [label], in place of what
+/// its parts say one by one -- a ring's "1,160 of 2,050 kcal eaten" rather
+/// than its bare figures. Null leaves [child] as it reads already. Shared by
+/// both rings, this one and fs_charts'.
+Widget fsSpokenAs(String? label, Widget child) => label == null
+    ? child
+    : Semantics(
+        container: true,
+        label: label,
+        excludeSemantics: true,
+        child: child,
+      );
 
 /// A compact kg / lb switch, sized to sit inside a table's column header.
 ///

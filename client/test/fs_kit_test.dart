@@ -1861,6 +1861,29 @@ void main() {
       });
     }
 
+    // L-6: one helper for both rings' "say this instead" wrapper.
+    testWidgets('fsSpokenAs says its label in place of its parts', (
+      tester,
+    ) async {
+      final h = tester.ensureSemantics();
+      await tester.pumpWidget(
+        host(
+          Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              fsSpokenAs('3 of 5 done today', const Text('3/5')),
+              fsSpokenAs(null, const Text('Rest day')),
+            ],
+          ),
+        ),
+      );
+      expect(find.bySemanticsLabel('3 of 5 done today'), findsOneWidget);
+      expect(find.bySemanticsLabel('3/5'), findsNothing);
+      // No label: the child reads as it always did.
+      expect(find.bySemanticsLabel('Rest day'), findsOneWidget);
+      h.dispose();
+    });
+
     testWidgets('FsRing reads as one labelled node', (tester) async {
       final h = tester.ensureSemantics();
       await tester.pumpWidget(

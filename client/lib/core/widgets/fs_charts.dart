@@ -4,6 +4,7 @@ import 'package:fl_chart/fl_chart.dart';
 import 'package:flutter/material.dart';
 
 import '../theme.dart';
+import 'fs_kit.dart' show fsSpokenAs;
 
 /// The ONLY file in the app that imports `fl_chart`.
 ///
@@ -787,14 +788,7 @@ class FsRing extends StatelessWidget {
         child: Center(child: child),
       ),
     );
-    final label = semanticLabel;
-    if (label == null) return ring;
-    return Semantics(
-      container: true,
-      label: label,
-      excludeSemantics: true,
-      child: ring,
-    );
+    return fsSpokenAs(semanticLabel, ring);
   }
 }
 
