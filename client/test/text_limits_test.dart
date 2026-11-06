@@ -127,5 +127,41 @@ void main() {
       expect(v.text, 'xyzxyz');
       expect(v.selection, const TextSelection.collapsed(offset: 6));
     });
+
+    // P-6: a selection mid-text replaced by a long paste cut the end of the
+    // field off rather than the paste.
+    test('a selection mid-text replaced by a long paste keeps the end', () {
+      // "cd" (2..4) selected backwards in 9 units, limit 10: the paste gets
+      // the 2 units it frees plus the 1 spare.
+      final v = Utf16LengthLimit(10).formatEditUpdate(
+        const TextEditingValue(
+          text: 'abcdefEND',
+          selection: TextSelection(baseOffset: 4, extentOffset: 2),
+        ),
+        const TextEditingValue(
+          text: 'abxxxxxxefEND',
+          selection: TextSelection.collapsed(offset: 8),
+        ),
+      );
+      expect(v.text, 'abxxxefEND');
+      expect(v.selection, const TextSelection.collapsed(offset: 5));
+    });
+
+    test('a selection replaced by a character that does not fit changes '
+        'nothing', () {
+      // A full field: "b" selected and an emoji (2 units) typed over it.
+      final v = Utf16LengthLimit(4).formatEditUpdate(
+        const TextEditingValue(
+          text: 'abcd',
+          selection: TextSelection(baseOffset: 1, extentOffset: 2),
+        ),
+        const TextEditingValue(
+          text: 'a😀cd',
+          selection: TextSelection.collapsed(offset: 3),
+        ),
+      );
+      expect(v.text, 'abcd');
+      expect(v.selection, const TextSelection(baseOffset: 1, extentOffset: 2));
+    });
   });
 }
