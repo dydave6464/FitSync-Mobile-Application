@@ -83,6 +83,8 @@ class _AddFoodManuallyScreenState extends ConsumerState<AddFoodManuallyScreen> {
     // started, rather than leave the button grey without a reason.
     final noMacros = gramsOk && sodiumOk && p! + c! + f! == 0 &&
         (name.isNotEmpty || [_protein, _carbs, _fat].any((box) => box.text.trim().isNotEmpty));
+    // Likewise with macros typed but no name.
+    final noName = name.isEmpty && gramsOk && sodiumOk && p! + c! + f! > 0;
 
     // Back with anything typed asks first; an untouched form just leaves.
     final typed = [_name, _serving, _protein, _carbs, _fat, _fiber, _sugar, _sodium]
@@ -149,6 +151,10 @@ class _AddFoodManuallyScreenState extends ConsumerState<AddFoodManuallyScreen> {
             if (noMacros) ...[
               const SizedBox(height: 8),
               const FsErrorLine('Add some protein, carbs or fat'),
+            ],
+            if (noName) ...[
+              const SizedBox(height: 8),
+              const FsErrorLine('Add a food name'),
             ],
             const SizedBox(height: 16),
             Text('Calories', style: TextStyle(color: t.text2, fontSize: 12)),

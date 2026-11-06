@@ -287,6 +287,18 @@ void main() {
       await tester.pump();
       expect(find.text('Add some protein, carbs or fat'), findsNothing);
     });
+
+    testWidgets('macros with no name say why Log is off', (tester) async {
+      await _pump(tester, size: const Size(400, 1200));
+      await tester.enterText(find.byKey(const Key('manual.carbs')), '34');
+      await tester.pump();
+      expect(tester.widget<FsButton>(find.byKey(const Key('manual.log'))).onPressed, isNull);
+      final line = find.ancestor(of: find.text('Add a food name'), matching: find.byType(FsErrorLine));
+      expect(line, findsOneWidget);
+      await tester.enterText(find.byKey(const Key('manual.name')), 'Turon');
+      await tester.pump();
+      expect(find.text('Add a food name'), findsNothing);
+    });
   });
 
   testWidgets('a failed save offers Try again, which sends the typed food again (NU-4)', (tester) async {
