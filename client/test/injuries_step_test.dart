@@ -1,4 +1,7 @@
+import 'dart:ui' show CheckedState;
+
 import 'package:flutter/material.dart';
+import 'package:flutter/semantics.dart' show SemanticsData;
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 
@@ -94,6 +97,14 @@ Future<void> _tapKey(WidgetTester tester, Key key) async {
   await tester.tap(find.byKey(key));
   await tester.pumpAndSettle();
 }
+
+/// The semantics a single-choice chip reports (P-1a): one of a group where
+/// picking one unpicks the rest, checked or not checked.
+SemanticsData _chipData(WidgetTester tester, Key key) => tester
+    .getSemantics(
+      find.descendant(of: find.byKey(key), matching: find.byType(Text)),
+    )
+    .getSemanticsData();
 
 void main() {
   testWidgets('groups the regions and orders the groups for reading', (
@@ -379,5 +390,24 @@ void main() {
 
     expect(calls, 4);
     expect(find.byType(FsRetry), findsNothing);
+  });
+
+  // P-1a: an injury has one side, so its side chips are a radio group.
+  testWidgets('the side chips are one single choice', (tester) async {
+    final handle = tester.ensureSemantics();
+    await _pump(
+      tester,
+      value: const [SelectedInjury(injuryId: 1, side: 'left')],
+    );
+
+    for (final side in ['left', 'right', 'both']) {
+      final data = _chipData(tester, Key('side.1.$side'));
+      expect(data.flagsCollection.isInMutuallyExclusiveGroup, isTrue);
+      expect(
+        data.flagsCollection.isChecked,
+        side == 'left' ? CheckedState.isTrue : CheckedState.isFalse,
+      );
+    }
+    handle.dispose();
   });
 }

@@ -255,6 +255,7 @@ class _RegionCard extends StatelessWidget {
                         key: Key('side.${option.injuryId}.${side.value}'),
                         label: side.label,
                         selected: selection!.side == side.value,
+                        exclusive: true,
                         onTap: () => onSide(side.value),
                       ),
                   ],
