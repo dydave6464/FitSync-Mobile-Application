@@ -236,7 +236,11 @@ class _AddGoalSheetState extends ConsumerState<_AddGoalSheet> {
     final open = _openGoals();
     return options.when(
       loading: () => const Center(child: CircularProgressIndicator()),
-      error: (error, _) => _Hint(userMessage(error)),
+      error: (error, _) => _LoadFailed(
+        message: userMessage(error),
+        buttonKey: const Key('goal.options.retry'),
+        onRetry: () => ref.invalidate(goalOptionsProvider),
+      ),
       data: (list) => list.isEmpty
           ? const _Hint('Search for an exercise to set a goal.')
           : ListView(
@@ -262,7 +266,11 @@ class _AddGoalSheetState extends ConsumerState<_AddGoalSheet> {
         .watch(goalSearchProvider(_query))
         .when(
           loading: () => const Center(child: CircularProgressIndicator()),
-          error: (error, _) => _Hint(userMessage(error)),
+          error: (error, _) => _LoadFailed(
+            message: userMessage(error),
+            buttonKey: const Key('goal.search.retry'),
+            onRetry: () => ref.invalidate(goalSearchProvider(_query)),
+          ),
           data: (items) => items.isEmpty
               ? _Hint('No exercises match "$_query".')
               : ListView(
@@ -432,4 +440,25 @@ class _Hint extends StatelessWidget {
       ),
     );
   }
+}
+
+/// A list that could not load, in the sheet's list area: the kit's
+/// FsRetry, centred, and scrollable so large text never overflows.
+class _LoadFailed extends StatelessWidget {
+  const _LoadFailed({
+    required this.message,
+    required this.buttonKey,
+    required this.onRetry,
+  });
+
+  final String message;
+  final Key buttonKey;
+  final VoidCallback onRetry;
+
+  @override
+  Widget build(BuildContext context) => Center(
+    child: SingleChildScrollView(
+      child: FsRetry(message: message, buttonKey: buttonKey, onRetry: onRetry),
+    ),
+  );
 }

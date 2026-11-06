@@ -7,6 +7,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:fitsync/core/api_exception.dart';
 import 'package:fitsync/core/theme.dart';
 import 'package:fitsync/core/units.dart';
+import 'package:fitsync/core/widgets/fs_kit.dart' show FsRetry;
 import 'package:fitsync/features/exercises/domain/exercise.dart';
 import 'package:fitsync/features/profile/presentation/providers.dart'
     show weightUnitProvider;
@@ -42,8 +43,17 @@ class _FakeGoalsRepo implements GoalsRepository {
   Object? failAdd;
   Completer<void>? blockAdd;
 
+  /// How many loads of the lifted-before list fail before one works.
+  int failOptionsTimes = 0;
+
   @override
-  Future<List<GoalOption>> options() async => _options;
+  Future<List<GoalOption>> options() async {
+    if (failOptionsTimes > 0) {
+      failOptionsTimes--;
+      throw const ApiException('SERVER_ERROR', 'Options broke.');
+    }
+    return _options;
+  }
 
   @override
   Future<List<LiftGoal>> list() async {
@@ -91,8 +101,10 @@ Future<_FakeGoalsRepo> _open(
   WeightUnit unit = WeightUnit.kg,
   List<ExerciseSummary> results = const [],
   List<LiftGoal> existing = const [],
+  int failOptions = 0,
 }) async {
-  final repo = _FakeGoalsRepo(options, existing: existing);
+  final repo = _FakeGoalsRepo(options, existing: existing)
+    ..failOptionsTimes = failOptions;
   await tester.pumpWidget(
     ProviderScope(
       overrides: [
@@ -146,6 +158,27 @@ void main() {
     await _open(tester, options: const []);
 
     expect(find.text('Search for an exercise to set a goal.'), findsOneWidget);
+  });
+
+  testWidgets('a lifted-before list that fails to load offers Try again', (
+    tester,
+  ) async {
+    // It said why, but left no way to load it again short of closing the
+    // sheet.
+    await _open(tester, failOptions: 1);
+
+    expect(find.byType(FsRetry), findsOneWidget);
+    expect(
+      find.text(
+        userMessage(const ApiException('SERVER_ERROR', 'Options broke.')),
+      ),
+      findsOneWidget,
+    );
+
+    await tester.tap(find.byKey(const Key('goal.options.retry')));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Bench Press'), findsOneWidget);
   });
 
   testWidgets('typing searches the whole catalogue', (tester) async {
@@ -496,7 +529,11 @@ void main() {
       await tester.pumpAndSettle();
 
       expect(find.byKey(const Key('goal.target')), findsNothing);
-      expect(find.text('New lift goal'), findsNothing, reason: 'add sheet closed');
+      expect(
+        find.text('New lift goal'),
+        findsNothing,
+        reason: 'add sheet closed',
+      );
       expect(find.text('Target 60 kg'), findsOneWidget);
       expect(find.byKey(const Key('goal.delete')), findsOneWidget);
       expect(repo.added, isEmpty);
