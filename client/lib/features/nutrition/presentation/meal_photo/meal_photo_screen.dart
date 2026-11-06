@@ -34,7 +34,7 @@ PhotoProblem problemOf(Object error) => switch (error) {
 };
 
 const photoProblemText = {
-  PhotoProblem.noFood: "Couldn't spot any food in this photo.",
+  PhotoProblem.noFood: "Couldn't spot any food in this photo. It doesn't count toward today's limit.",
   PhotoProblem.unavailable: "Couldn't look at your photo right now.",
   PhotoProblem.limit: "You've used today's meal photos. Try again tomorrow.",
   PhotoProblem.retryLimit: "Snap a meal can't read photos right now. Try again tomorrow, or add your food with search.",
@@ -61,17 +61,33 @@ String? photosLeftText(int n) => switch (n) {
 class MealPhotoScreen extends ConsumerStatefulWidget {
   const MealPhotoScreen({
     super.key,
-    required this.photo,
-    required this.source,
+    required PickedPhoto this.photo,
+    required PhotoSource this.source,
     required this.mealType,
     this.date,
     required this.onSearchInstead,
-  });
+  }) : recognition = null;
 
-  final PickedPhoto photo;
+  /// Today's unlogged photo, reopened from the capture sheet: straight to
+  /// its confirm list, with no photo sent (the photo itself is not kept).
+  const MealPhotoScreen.resume({
+    super.key,
+    required PhotoRecognition this.recognition,
+    required this.mealType,
+    this.date,
+    required this.onSearchInstead,
+  }) : photo = null,
+       source = null;
 
-  /// Where the photo came from, so Retake goes back there.
-  final PhotoSource source;
+  /// Null for a reopened photo.
+  final PickedPhoto? photo;
+
+  /// Where the photo came from, so Retake goes back there. Null for a
+  /// reopened photo, which never fails and so never offers Retake.
+  final PhotoSource? source;
+
+  /// The answer a reopened photo already has.
+  final PhotoRecognition? recognition;
 
   /// The meal it opens on: Log food's meal, or the time of day's. Null on a
   /// past day from the Nutrition tab, where the clock says nothing: the
@@ -92,7 +108,7 @@ class MealPhotoScreen extends ConsumerStatefulWidget {
 enum _Phase { analysing, failed, confirm }
 
 class _MealPhotoScreenState extends ConsumerState<MealPhotoScreen> {
-  late PickedPhoto _photo = widget.photo;
+  late PickedPhoto? _photo = widget.photo;
   late String? _meal = widget.mealType;
   _Phase _phase = _Phase.analysing;
   PhotoProblem? _problem;
@@ -124,7 +140,24 @@ class _MealPhotoScreenState extends ConsumerState<MealPhotoScreen> {
   @override
   void initState() {
     super.initState();
-    _recognize();
+    final reopened = widget.recognition;
+    if (reopened == null) {
+      _recognize();
+    } else {
+      _recognition = reopened;
+      _cards = _cardsFrom(reopened);
+      _phase = _Phase.confirm;
+    }
+  }
+
+  /// One card per item the photo found, matched first, as the server
+  /// listed them.
+  List<DraftCard> _cardsFrom(PhotoRecognition r) {
+    _nextCardId = 0;
+    return [
+      for (final s in r.items) DraftCard.suggested(s, id: _nextCardId++),
+      for (final u in r.unlisted) DraftCard.unlisted(u, id: _nextCardId++),
+    ];
   }
 
   @override
@@ -156,7 +189,8 @@ class _MealPhotoScreenState extends ConsumerState<MealPhotoScreen> {
       if (mounted && attempt == _attempt) setState(() => _slow = true);
     });
     try {
-      final r = await ref.read(mealPhotoRepositoryProvider).recognize(_photo.bytes, _photo.mimeType, cancel: cancel.future);
+      final photo = _photo!;
+      final r = await ref.read(mealPhotoRepositoryProvider).recognize(photo.bytes, photo.mimeType, cancel: cancel.future);
       if (!mounted || attempt != _attempt) return;
       _slowTimer?.cancel();
       setState(() {
@@ -165,11 +199,7 @@ class _MealPhotoScreenState extends ConsumerState<MealPhotoScreen> {
           _phase = _Phase.failed;
           _problem = PhotoProblem.noFood;
         } else {
-          _nextCardId = 0;
-          _cards = [
-            for (final s in r.items) DraftCard.suggested(s, id: _nextCardId++),
-            for (final u in r.unlisted) DraftCard.unlisted(u, id: _nextCardId++),
-          ];
+          _cards = _cardsFrom(r);
           _phase = _Phase.confirm;
         }
       });
@@ -200,7 +230,7 @@ class _MealPhotoScreenState extends ConsumerState<MealPhotoScreen> {
   Future<void> _retake() async {
     final PickedPhoto? next;
     try {
-      next = await ref.read(mealPhotoPickerProvider).pick(widget.source);
+      next = await ref.read(mealPhotoPickerProvider).pick(widget.source!);
     } on UnsupportedPhoto {
       if (mounted) setState(() => _problem = PhotoProblem.unreadable);
       return;
@@ -319,13 +349,13 @@ class _MealPhotoScreenState extends ConsumerState<MealPhotoScreen> {
     // No meal yet (a past day): the button says what is missing.
     final noMeal = _meal == null;
     // Back from the confirm list asks first: the server has already
-    // counted this photo, and the photo is not kept, so the list cannot
-    // come back without another one.
+    // counted this photo. Its list can be reopened from Snap a meal until
+    // the day ends, but the changes made here are not kept.
     return FsDiscardGuard(
       dirty: _phase == _Phase.confirm && !_logging,
       // Nothing was typed here, so "your changes" would not fit.
       title: 'Leave without logging?',
-      message: "This photo still counts toward today's limit.",
+      message: "It still counts toward today's limit. You can finish it later today from Snap a meal.",
       child: PopScope(
         // Leaving mid-log would hide whether the meal was saved.
         canPop: !_logging,
@@ -499,11 +529,12 @@ class _MealPhotoScreenState extends ConsumerState<MealPhotoScreen> {
   }
 }
 
-/// The photo across the top, with ‹ back and the Pro tag over it.
+/// The photo across the top, with ‹ back and the Pro tag over it. A
+/// reopened photo has none: a plain block the same height says so.
 class _PhotoHeader extends StatelessWidget {
   const _PhotoHeader({required this.photo, required this.onBack});
 
-  final PickedPhoto photo;
+  final PickedPhoto? photo;
   final VoidCallback onBack;
 
   @override
@@ -511,23 +542,27 @@ class _PhotoHeader extends StatelessWidget {
     final t = context.fs;
     final top = MediaQuery.paddingOf(context).top;
     final height = 200 + top;
+    final photo = this.photo;
     return Stack(
       children: [
-        Semantics(
-          image: true,
-          label: 'Your meal photo',
-          child: Image.memory(
-            photo.bytes,
-            key: const Key('snap.photo'),
-            height: height,
-            width: double.infinity,
-            fit: BoxFit.cover,
-            gaplessPlayback: true,
-            excludeFromSemantics: true,
-            // A photo that won't decode still leaves the screen usable.
-            errorBuilder: (_, _, _) => Container(height: height, color: t.surface2),
+        if (photo == null)
+          _NoPhoto(height: height, top: top)
+        else
+          Semantics(
+            image: true,
+            label: 'Your meal photo',
+            child: Image.memory(
+              photo.bytes,
+              key: const Key('snap.photo'),
+              height: height,
+              width: double.infinity,
+              fit: BoxFit.cover,
+              gaplessPlayback: true,
+              excludeFromSemantics: true,
+              // A photo that won't decode still leaves the screen usable.
+              errorBuilder: (_, _, _) => Container(height: height, color: t.surface2),
+            ),
           ),
-        ),
         Positioned(
           top: top + 8,
           left: 12,
@@ -545,6 +580,51 @@ class _PhotoHeader extends StatelessWidget {
         ),
         Positioned(top: top + 18, right: 16, child: const FsTag('Pro')),
       ],
+    );
+  }
+}
+
+/// A reopened photo's header: the photo is never stored, so a plain block
+/// the photo's height says so.
+class _NoPhoto extends StatelessWidget {
+  const _NoPhoto({required this.height, required this.top});
+
+  final double height;
+
+  /// The status bar's height, already part of [height].
+  final double top;
+
+  @override
+  Widget build(BuildContext context) {
+    final t = context.fs;
+    return Container(
+      key: const Key('snap.noPhoto'),
+      height: height,
+      width: double.infinity,
+      color: t.surface2,
+      // Starts below the back button's row, so a long caption at large text
+      // never runs under it.
+      padding: EdgeInsets.fromLTRB(24, top + 56, 24, 12),
+      alignment: Alignment.center,
+      child: Semantics(
+        container: true,
+        label: "Your photo isn't kept",
+        excludeSemantics: true,
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(Icons.no_photography_outlined, size: 28, color: t.text3),
+            const SizedBox(height: 8),
+            Text(
+              "Your photo isn't kept",
+              textAlign: TextAlign.center,
+              maxLines: 2,
+              overflow: TextOverflow.ellipsis,
+              style: TextStyle(color: t.text3, fontSize: 12),
+            ),
+          ],
+        ),
+      ),
     );
   }
 }

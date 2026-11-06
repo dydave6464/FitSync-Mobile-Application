@@ -582,17 +582,19 @@ class _SessionLoggerScreenState extends ConsumerState<SessionLoggerScreen>
   /// but switching back is how a switch is undone, and the old exercise
   /// would otherwise come back with rows it was given before it left.
   ///
-  /// No Undo on the SnackBar. Every swap is recorded server-side as "rejected
-  /// this, chose that" for the recommender, so swapping straight back would
-  /// record a rejection the user never meant; Switch again is the way back.
+  /// No Undo on the SnackBar: inside a workout, Switch again is the way back,
+  /// from the same link the user just used. The Plan tab is where a swap is
+  /// undone outright (PlanRepository.undoSwap, which also takes the swap's
+  /// label out of the ranker's history); a Switch back here is a swap of its
+  /// own.
   Future<void> _switchExercise(int index, PlanExercise exercise) async {
     final messenger = ScaffoldMessenger.of(context);
-    final swappedTo = await showExerciseSwapSheet(
+    final swapped = await showExerciseSwapSheet(
       context,
       planExerciseId: exercise.planExerciseId,
       exerciseName: exerciseDisplayName(exercise.name),
     );
-    if (swappedTo == null || !mounted) return;
+    if (swapped == null || !mounted) return;
     try {
       await ref.read(activePlanProvider.future);
     } catch (error) {
@@ -613,7 +615,7 @@ class _SessionLoggerScreenState extends ConsumerState<SessionLoggerScreen>
         behavior: SnackBarBehavior.floating,
         margin: EdgeInsets.fromLTRB(16, 0, 16, _footerHeight() + 8),
         duration: const Duration(seconds: 4),
-        content: Text('Swapped to $swappedTo'),
+        content: Text('Swapped to ${swapped.swappedTo}'),
       ),
     );
   }
@@ -1110,6 +1112,14 @@ class _SessionLoggerScreenState extends ConsumerState<SessionLoggerScreen>
       // animation, for either outcome. Same as generator_screen.dart.
       messenger.showSnackBar(SnackBar(content: Text('Added to ${plan.name}.')));
     } catch (error) {
+      if (error is ApiException && error.code == 'SESSION_IN_PROGRESS') {
+        // Another workout was opened meanwhile, on this phone or another.
+        // Reloaded so Home's card for it appears; no Resume here, since the
+        // logger has already gone. The server's message says why.
+        container.invalidate(activeSessionProvider);
+        messenger.showSnackBar(SnackBar(content: Text(userMessage(error))));
+        return;
+      }
       messenger.showSnackBar(SnackBar(content: Text(describeError(error))));
     }
   }

@@ -257,7 +257,7 @@ void main() {
         ),
       );
 
-      final pill = tester.getRect(find.byType(FsChip));
+      final pill = tester.getRect(find.widgetWithText(FsChip, 'Add entry'));
       await tester.tapAt(pill.topCenter - const Offset(0, 7));
       await tester.tapAt(pill.bottomCenter + const Offset(0, 7));
       expect(adds, 2);
@@ -665,5 +665,86 @@ void main() {
     );
 
     expect(find.text('0.4 kg since yesterday'), findsOneWidget);
+  });
+
+  // PS-20: the list where a mistaken weigh-in can be deleted.
+  group('All weigh-ins', () {
+    testWidgets('opens the list', (tester) async {
+      var shown = 0;
+      await tester.pumpWidget(
+        MaterialApp(
+          theme: fsLightTheme(),
+          home: Scaffold(
+            body: BodyWeightCard(
+              series: series([('2026-10-19', 73.0), ('2026-10-20', 72.5)]),
+              now: _oct20,
+              onShowEntries: () => shown++,
+            ),
+          ),
+        ),
+      );
+
+      final chip = find.byKey(const Key('bodyWeight.entries'));
+      expect(
+        find.descendant(of: chip, matching: find.text('All weigh-ins')),
+        findsOneWidget,
+      );
+      // Before Add entry, in reading order.
+      expect(
+        tester.getTopLeft(chip).dx,
+        lessThan(tester.getTopLeft(find.text('Add entry')).dx),
+      );
+      await tester.tap(chip);
+      expect(shown, 1);
+    });
+
+    testWidgets('is shown for a lone weigh-in too', (tester) async {
+      await pumpCard(tester, series([('2026-10-20', 72.5)]));
+      expect(find.byKey(const Key('bodyWeight.entries')), findsOneWidget);
+    });
+
+    testWidgets('is not offered before the first weigh-in', (tester) async {
+      await pumpCard(tester, series(const []));
+      expect(find.byKey(const Key('bodyWeight.entries')), findsNothing);
+      expect(find.text('All weigh-ins'), findsNothing);
+      expect(find.text('Add entry'), findsOneWidget);
+    });
+
+    for (final widened in [false, true]) {
+      testWidgets(
+        'the footer fits a 360 dp screen at 2x text (widened: $widened)',
+        (tester) async {
+          tester.view.physicalSize = const Size(360, 900);
+          tester.view.devicePixelRatio = 1;
+          tester.platformDispatcher.textScaleFactorTestValue = 2.0;
+          addTearDown(tester.view.reset);
+          addTearDown(tester.platformDispatcher.clearTextScaleFactorTestValue);
+
+          await tester.pumpWidget(
+            MaterialApp(
+              theme: fsLightTheme(),
+              home: Scaffold(
+                body: SingleChildScrollView(
+                  child: BodyWeightCard(
+                    series: series([
+                      ('2026-10-19', 73.0),
+                      ('2026-10-20', 72.5),
+                    ], widened: widened),
+                    now: _oct20,
+                  ),
+                ),
+              ),
+            ),
+          );
+
+          expect(tester.takeException(), isNull);
+          final card = tester.getRect(find.byType(BodyWeightCard));
+          for (final label in ['All weigh-ins', 'Add entry']) {
+            final chip = tester.getRect(find.widgetWithText(FsChip, label));
+            expect(chip.right, lessThanOrEqualTo(card.right), reason: label);
+          }
+        },
+      );
+    }
   });
 }

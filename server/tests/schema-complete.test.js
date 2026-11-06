@@ -10,7 +10,7 @@ const EXPECTED_TABLES = [
   'activity_logs', 'admins', 'advertisements', 'ai_cue_uses', 'auth_code_issues', 'auth_codes', 'auth_tokens', 'body_weight_logs', 'coaching_cues',
   'equipment', 'exercise_categories', 'exercise_contraindications', 'exercise_equipment_requirements', 'exercise_preferences',
   'exercise_ai_cues', 'exercises', 'food_recognitions', 'food_sources', 'foods', 'goals', 'health_checks', 'injuries',
-  'injury_risk_estimates', 'lift_goals', 'meal_logs', 'morning_checkins', 'photo_recognition_items', 'photo_recognitions', 'plan_exercises',
+  'injury_risk_estimates', 'lift_goals', 'meal_log_client_ids', 'meal_logs', 'morning_checkins', 'photo_recognition_items', 'photo_recognitions', 'plan_exercises',
   'plan_swaps', 'plan_swap_alternatives', 'pro_payments',
   'progress_reports', 'reminder_settings', 'reminders', 'routine_checks', 'routine_habit_days', 'routine_habits', 'routine_items', 'session_exercises', 'session_outcomes', 'set_logs',
   'shared_reports', 'streaks',
@@ -28,10 +28,10 @@ test('complete FitSync schema', async (t) => {
     await pool.end();
   });
 
-  await t.test('creates exactly the 54 tables from the data dictionary', async () => {
+  await t.test('creates exactly the 55 tables from the data dictionary', async () => {
     const names = (await tableNames(pool)).filter((n) => n !== 'schema_migrations');
     assert.deepEqual(names.sort(), [...EXPECTED_TABLES].sort());
-    assert.equal(names.length, 54);
+    assert.equal(names.length, 55);
   });
 
   await t.test('every table is InnoDB and utf8mb4', async () => {
@@ -54,9 +54,12 @@ test('complete FitSync schema', async (t) => {
        GROUP BY table_name`,
       [testDbConfig().database],
     );
-    const composite = rows.filter((r) => r.cols > 1 && r.t !== 'schema_migrations' && r.t !== 'auth_codes');
+    // meal_log_client_ids is keyed by (user_id, client_id): a client id is
+    // unique per user, never app-wide.
+    const composite = rows.filter((r) => r.cols > 1
+      && !['schema_migrations', 'auth_codes', 'meal_log_client_ids'].includes(r.t));
     assert.deepEqual(composite, [], 'no table may use a composite primary key');
-    assert.equal(rows.length, 55); // 54 tables + schema_migrations
+    assert.equal(rows.length, 56); // 55 tables + schema_migrations
   });
 
   await t.test('a user has exactly one streak record', async () => {
@@ -196,6 +199,7 @@ test('complete FitSync schema', async (t) => {
       '040_photo_recognitions.sql',
       '041_pro_payments.sql',
       '042_account_deletion.sql',
+      '043_meal_log_client_ids.sql',
     ]);
   });
 

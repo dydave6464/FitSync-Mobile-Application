@@ -18,6 +18,7 @@ import 'package:fitsync/features/routine/domain/routine.dart';
 import 'package:fitsync/features/routine/presentation/providers.dart';
 import 'package:fitsync/features/sessions/data/session_repository.dart';
 import 'package:fitsync/features/sessions/domain/active_session.dart';
+import 'package:fitsync/features/sessions/domain/session_detail.dart';
 import 'package:fitsync/features/sessions/domain/session_history.dart';
 import 'package:fitsync/features/sessions/domain/session_outcome.dart';
 import 'package:fitsync/features/sessions/domain/shared_report.dart';
@@ -131,6 +132,8 @@ class _SequenceRoutineRepository implements RoutineRepository {
   @override
   Future<void> remove(int habitId) => throw UnimplementedError();
   @override
+  Future<Habit> restore(int habitId) => throw UnimplementedError();
+  @override
   Future<void> check(int habitId, {String? date}) => throw UnimplementedError();
   @override
   Future<void> uncheck(int habitId, {String? date}) =>
@@ -172,6 +175,8 @@ class _SequenceSessionRepository implements SessionRepository {
   @override
   Future<SessionHistoryPage> history({int page = 1, int limit = 20}) =>
       throw UnimplementedError();
+  @override
+  Future<SessionDetail> detail(int sessionId) => throw UnimplementedError();
   @override
   Future<LastWorkout?> lastWorkout() => throw UnimplementedError();
   @override
@@ -267,6 +272,10 @@ class _SequenceActivityRepository implements ActivityRepository {
 
   @override
   Future<ActivityDay> saveDay(String date, int steps) =>
+      throw UnimplementedError();
+
+  @override
+  Future<ActivityWeek> saveDays(Map<String, int> days) =>
       throw UnimplementedError();
 }
 
@@ -609,10 +618,10 @@ void main() {
     () async {
       final tokens = TokenStore(backing: InMemorySecureStore());
       await tokens.write('tok');
+      // One week read per load: with no steps on this phone, a load is a
+      // single GET of the week.
       final activity = _SequenceActivityRepository([
         _activityWeek(6000),
-        _activityWeek(6000),
-        _activityWeek(0),
         _activityWeek(0),
       ]);
       final permission = _SequenceStepPermission([
@@ -657,7 +666,7 @@ void main() {
       );
       expect(
         activity.loads,
-        4,
+        2,
         reason: 'the activity week was not re-fetched',
       );
       expect(permission.loads, 2, reason: 'step access was not re-checked');

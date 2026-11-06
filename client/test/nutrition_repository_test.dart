@@ -66,6 +66,37 @@ void main() {
     expect(entry.id, 9);
   });
 
+  // NU-4: a repeat of the same clientId gets the entry already saved (200).
+  test('logEntry sends the clientId it is given, and a 200 reads like a 201', () async {
+    final repo = _repo(MockClient((r) async {
+      expect(jsonDecode(r.body), {
+        'date': '2026-10-14', 'mealType': 'snack', 'servings': 1.5,
+        'food': {'source': 'fatsecret', 'externalId': 'fs-1'},
+        'clientId': '3f1c2b9e-8d4a-4c1e-9b7a-2e5d6f708192',
+      });
+      return _ok({'entry': {
+        'id': 9, 'mealType': 'snack', 'name': 'Mango Shake', 'servingDesc': '1 glass', 'servings': 1.5,
+        'kcal': 375, 'proteinG': 6, 'carbsG': 75, 'fatG': 5.25, 'source': 'fatsecret', 'foodId': 4, 'externalId': 'fs-1',
+      }}, 200);
+    }));
+    final entry = await repo.logEntry(
+      date: '2026-10-14', mealType: 'snack', servings: 1.5, food: Food.fromJson(_food),
+      clientId: '3f1c2b9e-8d4a-4c1e-9b7a-2e5d6f708192',
+    );
+    expect(entry.id, 9);
+  });
+
+  test('logEntry with a null clientId sends no key at all', () async {
+    final repo = _repo(MockClient((r) async {
+      expect((jsonDecode(r.body) as Map).containsKey('clientId'), isFalse);
+      return _ok({'entry': {
+        'id': 9, 'mealType': 'snack', 'name': 'Mango Shake', 'servingDesc': '1 glass', 'servings': 1.5,
+        'kcal': 375, 'proteinG': 6, 'carbsG': 75, 'fatG': 5.25, 'source': 'fatsecret', 'foodId': 4, 'externalId': 'fs-1',
+      }}, 201);
+    }));
+    await repo.logEntry(date: '2026-10-14', mealType: 'snack', servings: 1.5, food: Food.fromJson(_food), clientId: null);
+  });
+
   test('updateEntry PATCHes meal and servings by id, with no food when the numbers stand', () async {
     final repo = _repo(MockClient((r) async {
       expect(r.method, 'PATCH');

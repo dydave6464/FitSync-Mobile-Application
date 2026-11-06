@@ -272,6 +272,15 @@ async function recordSwap(pool, ctx, chosenExerciseId) {
   );
 }
 
+/// The exercise a swap or its undo has just taken out of the slot, with its
+/// catalogue name -- what the app offers to switch back to.
+async function previousOf(pool, exerciseId) {
+  const [[row]] = await pool.query(
+    'SELECT name FROM exercises WHERE exercise_id = ?', [exerciseId],
+  );
+  return { exerciseId, name: row.name };
+}
+
 async function swapPlanExercise(pool, ctx, exerciseId, { logger = null } = {}) {
   if (!(await isAllowedTarget(pool, ctx, exerciseId))) {
     throw AppError.badRequest(
@@ -297,6 +306,62 @@ async function swapPlanExercise(pool, ctx, exerciseId, { logger = null } = {}) {
       logger.error(`plan swap not recorded: ${err.message}`);
     }
   }
+  return { previous: await previousOf(pool, ctx.exerciseId) };
 }
 
-module.exports = { loadSwapContext, listAlternatives, swapPlanExercise };
+const notUndoable = () => AppError.conflict(
+  'SWAP_NOT_UNDOABLE', "That change can't be undone now.",
+);
+
+/// Undo for [swapPlanExercise]: puts [exerciseId] back in the slot and
+/// deletes the swap's label, so the history reads as if the swap never
+/// happened. An undone swap is not a "swapped" signal -- the forward row says
+/// the user rejected the old exercise, and readRankerHistory and the ranker
+/// export would both keep counting it -- and recording a second, reverse
+/// label would teach the opposite lie.
+///
+/// The slot's latest label is the proof that [exerciseId] was in the plan a
+/// moment ago, so there is no isAllowedTarget check: the strength-only filter
+/// would refuse the cardio and core rows of a cardio_core plan. Without that
+/// proof -- no label, a newer swap since, a slot changed some other way, or
+/// an exercise the swap did not replace -- it is 409 SWAP_NOT_UNDOABLE, never
+/// a write: accepting it would let any client place a contraindicated or
+/// `never` exercise.
+async function revertPlanSwap(pool, ctx, exerciseId) {
+  const conn = await pool.getConnection();
+  try {
+    await conn.beginTransaction();
+    const [[label]] = await conn.query(
+      `SELECT swap_id, rejected_exercise_id, chosen_exercise_id FROM plan_swaps
+        WHERE user_id = ? AND plan_exercise_id = ?
+        ORDER BY swap_id DESC LIMIT 1 FOR UPDATE`,
+      [ctx.userId, ctx.planExerciseId],
+    );
+    if (!label
+        || label.chosen_exercise_id !== ctx.exerciseId
+        || label.rejected_exercise_id !== exerciseId) {
+      throw notUndoable();
+    }
+    // Guarded on the exercise ctx read, so a swap that landed since then
+    // makes this a refusal rather than an overwrite.
+    const [updated] = await conn.query(
+      `UPDATE plan_exercises SET exercise_id = ?
+        WHERE plan_exercise_id = ? AND exercise_id = ?`,
+      [exerciseId, ctx.planExerciseId, ctx.exerciseId],
+    );
+    if (updated.affectedRows !== 1) throw notUndoable();
+    // plan_swap_alternatives goes with it (ON DELETE CASCADE).
+    await conn.query('DELETE FROM plan_swaps WHERE swap_id = ?', [label.swap_id]);
+    await conn.commit();
+  } catch (err) {
+    await conn.rollback();
+    throw err;
+  } finally {
+    conn.release();
+  }
+  return { previous: await previousOf(pool, ctx.exerciseId) };
+}
+
+module.exports = {
+  loadSwapContext, listAlternatives, swapPlanExercise, revertPlanSwap,
+};

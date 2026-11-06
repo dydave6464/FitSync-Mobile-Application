@@ -927,7 +927,10 @@ class _AboutEditorState extends _EditorState<_AboutEditor>
   void onSaveFailed(ApiException error) {
     final field = rejectedProfileField(error);
     if (field == null || aboutValue(_value, field) == null) return;
-    _fieldErrors = {field: rejectedFieldMessage};
+    // The server's limit in the unit on screen, when it sends one.
+    _fieldErrors = {
+      field: rangeFieldMessage(error, _unit) ?? rejectedFieldMessage,
+    };
     _queried = _value;
   }
 

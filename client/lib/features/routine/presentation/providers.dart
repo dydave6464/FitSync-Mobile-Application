@@ -99,6 +99,14 @@ class RoutineController extends AsyncNotifier<RoutineDay> {
     await _afterWrite();
   }
 
+  /// Undo for [remove]. The habit reappearing in the lists is the feedback;
+  /// its reminder comes back with them (ReminderSync follows these
+  /// providers).
+  Future<void> restore(int habitId) async {
+    await _repo.restore(habitId);
+    await _afterWrite();
+  }
+
   /// Today's list and the full list both show the habit just written, so
   /// both refetch, whichever screen the sheet was opened from. The full
   /// list is invalidated first, so its refetch runs alongside today's

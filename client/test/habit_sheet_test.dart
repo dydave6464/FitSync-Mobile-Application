@@ -39,6 +39,15 @@ class _FakeRepo implements RoutineRepository {
   final added = <HabitDraft>[];
   final edited = <(int, HabitDraft)>[];
   final removed = <int>[];
+  final restored = <int>[];
+
+  /// The habits `today()` lists. Delete takes one out, restore puts it back,
+  /// as the server's soft delete does.
+  List<Habit> habits = const [];
+  final _deleted = <int, Habit>{};
+
+  /// Thrown by the next `restore` calls, one per call, in order.
+  final restoreFailures = <ApiException>[];
 
   Future<void> _maybeFail() async {
     if (failNext) {
@@ -55,7 +64,7 @@ class _FakeRepo implements RoutineRepository {
   @override
   Future<RoutineDay> today() async => RoutineDay(
     date: days[(_todayCalls++).clamp(0, days.length - 1)],
-    habits: const [],
+    habits: habits,
     workout: null,
   );
 
@@ -93,6 +102,19 @@ class _FakeRepo implements RoutineRepository {
   Future<void> remove(int habitId) async {
     await _maybeFail();
     removed.add(habitId);
+    for (final h in habits.where((h) => h.habitId == habitId)) {
+      _deleted[habitId] = h;
+    }
+    habits = [...habits.where((h) => h.habitId != habitId)];
+  }
+
+  @override
+  Future<Habit> restore(int habitId) async {
+    restored.add(habitId);
+    if (restoreFailures.isNotEmpty) throw restoreFailures.removeAt(0);
+    final habit = _deleted.remove(habitId) ?? _existing;
+    habits = [...habits, habit];
+    return habit;
   }
 
   @override
@@ -106,8 +128,11 @@ Future<_FakeRepo> _open(
   List<String>? days,
   bool announceRepeats = true,
   bool dark = false,
+  List<Habit> habits = const [],
 }) async {
-  final repo = _FakeRepo()..failNext = failNext;
+  final repo = _FakeRepo()
+    ..failNext = failNext
+    ..habits = habits;
   if (days != null) repo.days = days;
   await tester.pumpWidget(
     ProviderScope(
@@ -321,8 +346,6 @@ void main() {
 
     await tester.tap(find.byKey(const Key('habit.delete')));
     await tester.pumpAndSettle();
-    await tester.tap(find.byKey(const Key('habit.delete.confirm')));
-    await tester.pumpAndSettle();
 
     expect(repo.removed, [7]);
     expect(find.byKey(const Key('habit.delete')), findsNothing);
@@ -440,39 +463,150 @@ void main() {
     });
   });
 
-  group('delete (PT-11)', () {
-    testWidgets('asks before deleting, and deletes nothing yet', (
+  group('delete with Undo (PT-11)', () {
+    List<int> listed(WidgetTester tester) =>
+        ProviderScope.containerOf(tester.element(find.text('open')))
+            .read(routineTodayProvider)
+            .value!
+            .habits
+            .map((h) => h.habitId)
+            .toList();
+
+    testWidgets('deletes at once, with no dialog, and offers Undo', (
       tester,
     ) async {
-      final repo = await _open(tester, existing: _existing);
+      final repo = await _open(
+        tester,
+        existing: _existing,
+        habits: const [_existing],
+      );
 
       await tester.tap(find.byKey(const Key('habit.delete')));
       await tester.pumpAndSettle();
 
-      expect(find.text('Delete this habit?'), findsOneWidget);
-      expect(repo.removed, isEmpty);
-      final delete = tester.widget<TextButton>(
-        find.byKey(const Key('habit.delete.confirm')),
-      );
-      expect(
-        delete.style!.foregroundColor!.resolve(const {}),
-        FsTokens.light.red,
-      );
+      expect(find.byType(AlertDialog), findsNothing);
+      expect(repo.removed, [7]);
+      expect(find.byKey(const Key('habit.save')), findsNothing);
+      expect(find.text('Habit deleted'), findsOneWidget);
+      expect(find.widgetWithText(SnackBarAction, 'Undo'), findsOneWidget);
+      expect(listed(tester), isEmpty);
     });
 
-    testWidgets('Keep it leaves the habit and the sheet as they were', (
+    testWidgets('Undo restores the habit and it is back in the list', (
       tester,
     ) async {
-      final repo = await _open(tester, existing: _existing);
+      final repo = await _open(
+        tester,
+        existing: _existing,
+        habits: const [_existing],
+      );
+      await tester.tap(find.byKey(const Key('habit.delete')));
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.widgetWithText(SnackBarAction, 'Undo'));
+      await tester.pumpAndSettle();
+
+      expect(repo.restored, [7]);
+      expect(listed(tester), [7]);
+      // The habit reappearing is the feedback; nothing more is said.
+      expect(find.byType(SnackBar), findsNothing);
+    });
+
+    testWidgets('the Undo goes away on its own after about 5 seconds', (
+      tester,
+    ) async {
+      await _open(tester, existing: _existing, habits: const [_existing]);
+      await tester.tap(find.byKey(const Key('habit.delete')));
+      await tester.pumpAndSettle();
+
+      final bar = tester.widget<SnackBar>(find.byType(SnackBar));
+      expect(bar.duration, const Duration(seconds: 5));
+      await tester.pump(const Duration(seconds: 6));
+      await tester.pumpAndSettle();
+      expect(find.text('Habit deleted'), findsNothing);
+    });
+
+    testWidgets('a restore that fails says why, with Try again when a retry '
+        'can fix it', (tester) async {
+      final repo = await _open(
+        tester,
+        existing: _existing,
+        habits: const [_existing],
+      );
+      repo.restoreFailures.add(const ApiException('NETWORK_ERROR', 'offline'));
+      await tester.tap(find.byKey(const Key('habit.delete')));
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.widgetWithText(SnackBarAction, 'Undo'));
+      await tester.pumpAndSettle();
+
+      expect(
+        find.text(
+          "Couldn't bring the habit back. Couldn't reach FitSync. "
+          'Check your connection and try again.',
+        ),
+        findsOneWidget,
+      );
+      await tester.tap(find.widgetWithText(SnackBarAction, 'Try again'));
+      await tester.pumpAndSettle();
+      expect(repo.restored, [7, 7]);
+      expect(listed(tester), [7]);
+    });
+
+    testWidgets('a restore that cannot be retried has no Try again', (
+      tester,
+    ) async {
+      final repo = await _open(
+        tester,
+        existing: _existing,
+        habits: const [_existing],
+      );
+      repo.restoreFailures.add(
+        const ApiException('HABIT_NOT_FOUND', 'No such habit.'),
+      );
+      await tester.tap(find.byKey(const Key('habit.delete')));
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.widgetWithText(SnackBarAction, 'Undo'));
+      await tester.pumpAndSettle();
+
+      expect(
+        find.text("Couldn't bring the habit back. No such habit."),
+        findsOneWidget,
+      );
+      expect(find.widgetWithText(SnackBarAction, 'Try again'), findsNothing);
+    });
+
+    testWidgets('with a screen reader the Undo stays up', (tester) async {
+      tester.platformDispatcher.accessibilityFeaturesTestValue =
+          const FakeAccessibilityFeatures(accessibleNavigation: true);
+      addTearDown(
+        tester.platformDispatcher.clearAccessibilityFeaturesTestValue,
+      );
+      await _open(tester, existing: _existing, habits: const [_existing]);
+      await tester.tap(find.byKey(const Key('habit.delete')));
+      await tester.pumpAndSettle();
+
+      await tester.pump(const Duration(seconds: 10));
+      await tester.pumpAndSettle();
+      expect(find.text('Habit deleted'), findsOneWidget);
+    });
+
+    testWidgets('a failed delete keeps the sheet open with the error, and '
+        'offers no Undo', (tester) async {
+      final repo = await _open(
+        tester,
+        existing: _existing,
+        habits: const [_existing],
+        failNext: true,
+      );
 
       await tester.tap(find.byKey(const Key('habit.delete')));
       await tester.pumpAndSettle();
-      await tester.tap(find.byKey(const Key('habit.delete.keep')));
-      await tester.pumpAndSettle();
 
       expect(repo.removed, isEmpty);
-      expect(find.text('Delete this habit?'), findsNothing);
-      expect(find.byKey(const Key('habit.save')), findsOneWidget);
+      expect(find.byKey(const Key('habit.error')), findsOneWidget);
+      expect(find.text('Habit deleted'), findsNothing);
     });
   });
 

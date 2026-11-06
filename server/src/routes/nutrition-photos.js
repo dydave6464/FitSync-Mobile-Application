@@ -7,8 +7,9 @@ const { createMenuCache } = require('../db/vision-menu');
 const { invalid, checkDate, checkServings, scaled } = require('../lib/nutrition-input');
 const { resolveFood } = require('../lib/resolve-food');
 const { MEALS, insertEntry, getEntry } = require('../db/nutrition');
+const { findFoods } = require('../db/foods');
 const {
-  countToday, countFailedToday, insertFailed, insertRecognition, readForLog, markLogged, outcomesFor,
+  countToday, countFreeTriesToday, insertFailed, insertRecognition, readForLog, readLatestToday, markLogged, outcomesFor,
 } = require('../db/photo-recognitions');
 const { VisionError } = require('../services/vision/errors');
 
@@ -17,9 +18,10 @@ const { VisionError } = require('../services/vision/errors');
 /// requests at 1,000 a day), and the Cloudflare backup's about 40-60 more a
 /// day.
 const DAILY_PHOTO_LIMIT = 15;
-/// Failed tries per user per Manila day: each costs a full AI call and never
-/// counts toward DAILY_PHOTO_LIMIT, so Try again could otherwise spend the
-/// app-wide AI budget.
+/// Failed or empty tries per user per Manila day (the AI busy or down, or no
+/// food found): each costs a full AI call and never counts toward
+/// DAILY_PHOTO_LIMIT, so Try again or a run of empty photos could otherwise
+/// spend the app-wide AI budget.
 const FAILED_PHOTO_LIMIT = 30;
 const MAX_IMAGE_BYTES = 1_500_000;
 const MAGIC = {
@@ -68,6 +70,36 @@ function foodOut(f) {
   };
 }
 
+/// Today's newest recognised photo, if it is not logged yet, in the shape
+/// POST /recognize answered with (plus createdAt), so the app reopens it with
+/// the same parser. Foods are read as they are now. An item whose food is
+/// gone (or was never on the list) is unlisted, by the name the AI gave it;
+/// an alternative that is gone is left out.
+async function unloggedToday(pool, userId, remainingToday) {
+  const rec = await readLatestToday(pool, userId);
+  if (!rec || rec.loggedAt) return null;
+  const ids = new Set();
+  for (const it of rec.items) {
+    if (it.foodId != null) ids.add(it.foodId);
+    for (const a of it.alternativeFoodIds) ids.add(a);
+  }
+  const byId = new Map((await findFoods(pool, [...ids])).map((f) => [f.foodId, f]));
+  const items = [];
+  const unlisted = [];
+  for (const it of rec.items) {
+    const f = it.foodId == null ? undefined : byId.get(it.foodId);
+    if (!f) {
+      unlisted.push({ itemId: it.itemId, name: it.name });
+      continue;
+    }
+    items.push({
+      itemId: it.itemId, confidence: it.confidence, servings: it.servings, food: foodOut(f),
+      alternatives: it.alternativeFoodIds.filter((a) => byId.has(a)).map((a) => foodOut(byId.get(a))),
+    });
+  }
+  return { recognitionId: rec.recognitionId, createdAt: rec.createdAt, remainingToday, items, unlisted };
+}
+
 module.exports = function buildNutritionPhotosRouter(deps) {
   const router = express.Router();
   const auth = requireAuth(deps);
@@ -79,6 +111,17 @@ module.exports = function buildNutritionPhotosRouter(deps) {
   const requirePro = (req, _res, next) => next(
     req.user.isPremium ? undefined : AppError.forbidden('PRO_REQUIRED', 'Snap a meal is part of FitSync Pro.'),
   );
+
+  // What the capture sheet shows before a photo is taken: today's allowance,
+  // and today's photo to finish if its list was left without logging.
+  router.get('/recognitions/today', auth, requirePro, async (req, res, next) => {
+    try {
+      const { userId } = req.user;
+      const remainingToday = Math.max(0, DAILY_PHOTO_LIMIT - await countToday(pool, userId));
+      const unlogged = await unloggedToday(pool, userId, remainingToday);
+      res.json({ data: { limit: DAILY_PHOTO_LIMIT, remainingToday, unlogged } });
+    } catch (err) { next(err); }
+  });
 
   router.post('/recognize', auth, requirePro, async (req, res, next) => {
     // The app may stop waiting -- Cancel, back, or its own 45 s timeout, each
@@ -100,7 +143,7 @@ module.exports = function buildNutritionPhotosRouter(deps) {
       if (used >= DAILY_PHOTO_LIMIT) {
         throw new AppError(429, 'PHOTO_LIMIT_REACHED', "You've used today's meal photos. Try again tomorrow.");
       }
-      if (await countFailedToday(pool, userId) >= FAILED_PHOTO_LIMIT) {
+      if (await countFreeTriesToday(pool, userId) >= FAILED_PHOTO_LIMIT) {
         throw new AppError(429, 'PHOTO_RETRY_LIMIT', "Snap a meal can't read photos right now. Try again tomorrow, or add your food with search.");
       }
       const foods = await menu.get(pool);
@@ -155,7 +198,8 @@ module.exports = function buildNutritionPhotosRouter(deps) {
       res.json({
         data: {
           recognitionId,
-          remainingToday: Math.max(0, DAILY_PHOTO_LIMIT - used - 1),
+          // An empty answer (no food found) costs no photo.
+          remainingToday: Math.max(0, DAILY_PHOTO_LIMIT - used - (items.length + unlisted.length ? 1 : 0)),
           items: items.map((it, i) => ({
             itemId: itemIds[i], confidence: it.confidence, servings: it.servings,
             food: foodOut(it.food), alternatives: it.alternatives.map(foodOut),

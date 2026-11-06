@@ -10,6 +10,8 @@ import '../../exercises/presentation/widgets/coaching_tag.dart';
 import '../../exercises/presentation/exercise_detail_screen.dart';
 import '../../exercises/presentation/exercise_list_screen.dart'
     show describeError;
+import '../../nutrition/presentation/error_snack_bar.dart'
+    show saveOrOfferRetry;
 import '../../profile/presentation/providers.dart';
 import '../../sessions/presentation/providers.dart';
 import '../../sessions/presentation/session_logger_screen.dart';
@@ -254,6 +256,56 @@ class _PlanExerciseCard extends StatelessWidget {
   final String baseUrl;
   final VoidCallback? onGoToProfile;
 
+  /// Opens the swap sheet, then says what a swap that landed did, with Undo
+  /// for about five seconds (PT-26). Undo puts the exercise it replaced back
+  /// and takes the swap out of the ranker's history, so nothing is counted
+  /// against the old exercise. The bar replaces any that is up, so only the
+  /// latest swap is undoable; with a screen reader it waits, since reaching
+  /// its action by swiping takes longer than that. Nothing is said when Undo
+  /// lands: the card changing back is the feedback.
+  Future<void> _change(BuildContext context, String name) async {
+    final swapped = await showExerciseSwapSheet(
+      context,
+      planExerciseId: exercise.planExerciseId,
+      exerciseName: name,
+      onGoToProfile: onGoToProfile,
+    );
+    if (swapped == null || !context.mounted) return;
+    final messenger = ScaffoldMessenger.of(context);
+    final container = ProviderScope.containerOf(context, listen: false);
+    final screenReader = MediaQuery.accessibleNavigationOf(context);
+    final planExerciseId = exercise.planExerciseId;
+    final previousExerciseId = swapped.previousExerciseId;
+    final previousName = swapped.previousName;
+    messenger.hideCurrentSnackBar();
+    messenger.showSnackBar(
+      SnackBar(
+        duration: const Duration(seconds: 5),
+        persist: screenReader,
+        content: Text('Swapped to ${swapped.swappedTo}'),
+        // None from a server that does not say what the swap replaced.
+        action: previousExerciseId == null
+            ? null
+            : SnackBarAction(
+                label: 'Undo',
+                onPressed: () => saveOrOfferRetry(
+                  messenger,
+                  save: () => container
+                      .read(planRepositoryProvider)
+                      .undoSwap(planExerciseId, previousExerciseId),
+                  failure: "Couldn't switch back to $previousName.",
+                  persist: screenReader,
+                  onSaved: (_) {
+                    container.invalidate(activePlanProvider);
+                    // Which exercises the plan holds changed for every row.
+                    container.invalidate(alternativesProvider);
+                  },
+                ),
+              ),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final t = context.fs;
@@ -266,19 +318,7 @@ class _PlanExerciseCard extends StatelessWidget {
     final name = exerciseDisplayName(exercise.name);
     final change = TextButton(
       key: Key('swap.open.${exercise.planExerciseId}'),
-      onPressed: () =>
-          showExerciseSwapSheet(
-            context,
-            planExerciseId: exercise.planExerciseId,
-            exerciseName: name,
-            onGoToProfile: onGoToProfile,
-          ).then((swappedTo) {
-            if (swappedTo != null && context.mounted) {
-              ScaffoldMessenger.of(
-                context,
-              ).showSnackBar(SnackBar(content: Text('Swapped to $swappedTo')));
-            }
-          }),
+      onPressed: () => _change(context, name),
       // Says which exercise: a list of bare "Change" buttons reads the same
       // on every card.
       child: Text('Change', semanticsLabel: 'Change $name'),

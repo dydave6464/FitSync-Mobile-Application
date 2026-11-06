@@ -99,6 +99,57 @@ test('session outcomes db', async (t) => {
     assert.equal(pending.sessionId, latest);
     assert.match(pending.sessionDate, /^\d{4}-\d{2}-\d{2}$/);
     assert.equal(pending.planName, null);
+    assert.deepEqual(pending.muscleGroups, []);
+  });
+
+  // A hand-picked session has no plan to be named by, so it is named by the
+  // muscles it worked -- the same rule History's rows follow.
+  const exercise = async (muscle, status = 'live') => {
+    const [x] = await pool.query(
+      "INSERT INTO exercises (name, muscle_group, status) VALUES (CONCAT('X ', UUID()), ?, ?)",
+      [muscle, status],
+    );
+    return x.insertId;
+  };
+
+  await t.test('a pending hand-picked session carries its muscles in list order, repeats kept', async () => {
+    const userId = await newUser();
+    const sessionId = await session(userId);
+    // Inserted out of list order, and one demoted since: neither may change
+    // what the sheet calls a workout already done.
+    const back = await exercise('back');
+    const press = await exercise('chest', 'pending');
+    const fly = await exercise('chest');
+    await pool.query(
+      'INSERT INTO session_exercises (session_id, exercise_id, order_no) VALUES ?',
+      [[[sessionId, back, 3], [sessionId, press, 1], [sessionId, fly, 2]]],
+    );
+
+    const pending = await pendingOutcome(pool, userId);
+
+    assert.equal(pending.sessionId, sessionId);
+    assert.equal(pending.planName, null);
+    assert.deepEqual(pending.muscleGroups, ['chest', 'chest', 'back']);
+  });
+
+  await t.test('a pending plan session is named by its plan and carries no muscles', async () => {
+    const userId = await newUser();
+    const [plan] = await pool.query(
+      `INSERT INTO workout_plans (user_id, name, split_style, days_per_week, session_length_min, is_active)
+       VALUES (?, 'Push Pull Legs', 'push_pull_legs', 3, 45, TRUE)`,
+      [userId],
+    );
+    const [s] = await pool.query(
+      `INSERT INTO workout_sessions (user_id, plan_id, plan_day_no, status, session_date)
+       VALUES (?, ?, 1, 'completed', CURDATE() - INTERVAL 1 DAY)`,
+      [userId, plan.insertId],
+    );
+
+    const pending = await pendingOutcome(pool, userId);
+
+    assert.equal(pending.sessionId, s.insertId);
+    assert.equal(pending.planName, 'Push Pull Legs');
+    assert.deepEqual(pending.muscleGroups, []);
   });
 
   await t.test('the window is seven days, inclusive', async () => {

@@ -51,7 +51,7 @@ class _FailingRepo implements PlanRepository {
   }) async => const [];
 
   @override
-  Future<WorkoutPlan> swap(int planExerciseId, int exerciseId) async =>
+  Future<SwapResult> swap(int planExerciseId, int exerciseId) async =>
       throw const ApiException(
         'EXERCISE_NOT_ALLOWED',
         'That exercise is not available for this plan.',
@@ -74,6 +74,10 @@ class _FailingRepo implements PlanRepository {
   }) async => throw UnimplementedError(
     'the swap sheet never sends a workout to the plan',
   );
+
+  @override
+  Future<WorkoutPlan> undoSwap(int planExerciseId, int previousExerciseId) =>
+      throw UnimplementedError('the swap sheet never undoes a swap');
 }
 
 /// What the catalogue knows about the alternative under preview.
@@ -106,9 +110,13 @@ class _RecordingRepo implements PlanRepository {
   }) async => const [_alt];
 
   @override
-  Future<WorkoutPlan> swap(int planExerciseId, int exerciseId) async {
+  Future<SwapResult> swap(int planExerciseId, int exerciseId) async {
     swaps.add((planExerciseId: planExerciseId, exerciseId: exerciseId));
-    return _plan;
+    return const SwapResult(
+      plan: _plan,
+      previousExerciseId: 41,
+      previousName: 'cable fly',
+    );
   }
 
   @override
@@ -128,6 +136,10 @@ class _RecordingRepo implements PlanRepository {
   }) async => throw UnimplementedError(
     'the swap sheet never sends a workout to the plan',
   );
+
+  @override
+  Future<WorkoutPlan> undoSwap(int planExerciseId, int previousExerciseId) =>
+      throw UnimplementedError('the swap sheet never undoes a swap');
 }
 
 /// Pumps the sheet with a repository that records swaps and a catalogue that
@@ -171,7 +183,8 @@ class _SucceedingRepo implements PlanRepository {
   }) async => const [_alt];
 
   @override
-  Future<WorkoutPlan> swap(int planExerciseId, int exerciseId) async => _plan;
+  Future<SwapResult> swap(int planExerciseId, int exerciseId) async =>
+      const SwapResult(plan: _plan);
 
   @override
   Future<WorkoutPlan> regenerate({
@@ -190,6 +203,10 @@ class _SucceedingRepo implements PlanRepository {
   }) async => throw UnimplementedError(
     'the swap sheet never sends a workout to the plan',
   );
+
+  @override
+  Future<WorkoutPlan> undoSwap(int planExerciseId, int previousExerciseId) =>
+      throw UnimplementedError('the swap sheet never undoes a swap');
 }
 
 /// A [PlanRepository] whose swap does not resolve until [completer] does —
@@ -213,8 +230,14 @@ class _SlowRepo implements PlanRepository {
   }) async => const [_alt];
 
   @override
-  Future<WorkoutPlan> swap(int planExerciseId, int exerciseId) =>
-      completer.future;
+  Future<SwapResult> swap(int planExerciseId, int exerciseId) =>
+      completer.future.then(
+        (plan) => SwapResult(
+          plan: plan,
+          previousExerciseId: 41,
+          previousName: 'cable fly',
+        ),
+      );
 
   @override
   Future<WorkoutPlan> regenerate({
@@ -233,6 +256,10 @@ class _SlowRepo implements PlanRepository {
   }) async => throw UnimplementedError(
     'the swap sheet never sends a workout to the plan',
   );
+
+  @override
+  Future<WorkoutPlan> undoSwap(int planExerciseId, int previousExerciseId) =>
+      throw UnimplementedError('the swap sheet never undoes a swap');
 }
 
 Future<void> _pump(
@@ -327,7 +354,7 @@ Future<double> _pumpAsSheet(
 Future<void> _pumpModalSheet(
   WidgetTester tester, {
   required Completer<WorkoutPlan> completer,
-  required void Function(String?) result,
+  required void Function(SwapOutcome?) result,
 }) async {
   await tester.pumpWidget(
     ProviderScope(
@@ -341,7 +368,7 @@ Future<void> _pumpModalSheet(
         home: Scaffold(
           body: Builder(
             builder: (context) => TextButton(
-              onPressed: () => showModalBottomSheet<String>(
+              onPressed: () => showModalBottomSheet<SwapOutcome>(
                 context: context,
                 isScrollControlled: true,
                 builder: (_) => const ExerciseSwapSheet(
@@ -868,11 +895,28 @@ void main() {
     expect(find.text('push'), findsOneWidget);
     expect(find.byKey(const Key('swap.alt.12')), findsOneWidget);
   });
+  testWidgets('a swap that lands pops the exercise it replaced, for Undo '
+      '(PT-26)', (tester) async {
+    final completer = Completer<WorkoutPlan>();
+    final popped = <SwapOutcome?>[];
+    await _pumpModalSheet(tester, completer: completer, result: popped.add);
+    await tester.tap(find.byKey(const Key('swap.preview.confirm')));
+    await tester.pump();
+    completer.complete(_plan);
+    await tester.pumpAndSettle();
+
+    final outcome = popped.single!;
+    expect(outcome.swappedTo, 'Push-up');
+    expect(outcome.previousExerciseId, 41);
+    // In the library's words, as the Undo's failure message names it.
+    expect(outcome.previousName, 'Cable fly');
+  });
+
   group('while a swap is in flight the sheet stays open', () {
     // Closing it mid-request used to let the swap land with nobody to say
     // so: the plan changed under a screen that thought it had cancelled.
     late Completer<WorkoutPlan> completer;
-    late List<String?> popped;
+    late List<SwapOutcome?> popped;
 
     Future<void> confirm(WidgetTester tester) async {
       completer = Completer<WorkoutPlan>();
@@ -889,7 +933,7 @@ void main() {
       completer.complete(_plan);
       await tester.pumpAndSettle();
       expect(find.byType(ExerciseSwapSheet), findsNothing);
-      expect(popped, ['Push-up']);
+      expect(popped.single!.swappedTo, 'Push-up');
     }
 
     testWidgets('a tap on the barrier', (tester) async {
@@ -1067,7 +1111,7 @@ void main() {
   testWidgets('with no swap in flight a drag down still closes the sheet', (
     tester,
   ) async {
-    final popped = <String?>[];
+    final popped = <SwapOutcome?>[];
     await _pumpModalSheet(
       tester,
       completer: Completer<WorkoutPlan>(),
@@ -1102,7 +1146,7 @@ void main() {
     testWidgets('system back returns to the list, then closes the sheet', (
       tester,
     ) async {
-      final popped = <String?>[];
+      final popped = <SwapOutcome?>[];
       await _pumpModalSheet(
         tester,
         completer: Completer<WorkoutPlan>(),

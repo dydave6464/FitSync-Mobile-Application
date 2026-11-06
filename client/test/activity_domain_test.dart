@@ -52,6 +52,142 @@ void main() {
     });
   });
 
+  group('grownTo with the server\'s per-step factors', () {
+    // 170 cm, 70 kg, no sex given: what GET /activity sends as perStep.
+    const km = 1.70 * 0.414 / 1000;
+    const perStep = ActivityPerStep(
+      distanceKm: km,
+      caloriesBurned: 0.5 * 70 * km,
+      activeMinutes: 0.01,
+    );
+    const saved = ActivityDay(
+      date: '2026-09-28',
+      steps: 6420,
+      caloriesBurned: 158,
+      distanceKm: 4.52,
+      activeMinutes: 64,
+    );
+
+    test('gives the server\'s exact figures for the live count', () {
+      final grown = saved.grownTo(9630, perStep: perStep);
+      expect(grown.steps, 9630);
+      expect(grown.caloriesBurned, 237);
+      expect(grown.distanceKm, 6.78);
+      expect(grown.activeMinutes, 96);
+      expect(grown.date, '2026-09-28');
+    });
+
+    test('rounds as the server does, not by the saved share', () {
+      // By share: 4.52 x 7000 / 6420 = 4.928...; the server saves 4.93.
+      final grown = saved.grownTo(7000, perStep: perStep);
+      expect(grown.distanceKm, 4.93);
+      expect(grown.caloriesBurned, 172);
+      expect(grown.activeMinutes, 70);
+    });
+
+    test('grows from a day saved at 0 steps', () {
+      const zero = ActivityDay(
+        date: '2026-09-28',
+        steps: 0,
+        caloriesBurned: 0,
+        distanceKm: 0,
+        activeMinutes: 0,
+      );
+      final grown = zero.grownTo(6420, perStep: perStep);
+      expect(grown.caloriesBurned, 158);
+      expect(grown.distanceKm, 4.52);
+      expect(grown.activeMinutes, 64);
+    });
+
+    test('grows from a day with nothing saved', () {
+      const none = ActivityDay(
+        date: '2026-09-28',
+        steps: null,
+        caloriesBurned: null,
+        distanceKm: null,
+        activeMinutes: null,
+      );
+      final grown = none.grownTo(6420, perStep: perStep);
+      expect(grown.caloriesBurned, 158);
+      expect(grown.distanceKm, 4.52);
+      expect(grown.activeMinutes, 64);
+    });
+
+    test('a missing factor keeps the stored value', () {
+      // No height: neither km nor kcal can be worked out.
+      const noHeight = ActivityPerStep(
+        distanceKm: null,
+        caloriesBurned: null,
+        activeMinutes: 0.01,
+      );
+      const stored = ActivityDay(
+        date: '2026-09-28',
+        steps: 6420,
+        caloriesBurned: 0,
+        distanceKm: 0,
+        activeMinutes: 64,
+      );
+      final grown = stored.grownTo(9630, perStep: noHeight);
+      expect(grown.distanceKm, 0);
+      expect(grown.caloriesBurned, 0);
+      expect(grown.activeMinutes, 96);
+
+      // No weight: km grows, kcal stays.
+      const noWeight = ActivityPerStep(
+        distanceKm: 1.70 * 0.414 / 1000,
+        caloriesBurned: null,
+        activeMinutes: 0.01,
+      );
+      final partly = stored.grownTo(9630, perStep: noWeight);
+      expect(partly.distanceKm, 6.78);
+      expect(partly.caloriesBurned, 0);
+    });
+  });
+
+  group('the week reads perStep', () {
+    Map<String, dynamic> week([Map<String, dynamic>? extra]) => {
+      'days': [_day('2026-09-28', 6420)],
+      'usual': null,
+      'usualDays': 0,
+      'missing': <String>[],
+      ...?extra,
+    };
+
+    test('with its factors, as sent', () {
+      final w = ActivityWeek.fromJson(
+        week({
+          'perStep': {
+            'distanceKm': 0.0007038,
+            'caloriesBurned': 0.024633,
+            'activeMinutes': 0.01,
+          },
+          'skipped': ['2026-09-20'],
+        }),
+      );
+      expect(w.perStep!.distanceKm, 0.0007038);
+      expect(w.perStep!.caloriesBurned, 0.024633);
+      expect(w.perStep!.activeMinutes, 0.01);
+    });
+
+    test('with null factors for a missing height or weight', () {
+      final w = ActivityWeek.fromJson(
+        week({
+          'perStep': {
+            'distanceKm': null,
+            'caloriesBurned': null,
+            'activeMinutes': 0.01,
+          },
+        }),
+      );
+      expect(w.perStep!.distanceKm, isNull);
+      expect(w.perStep!.caloriesBurned, isNull);
+    });
+
+    test('as null from a server that does not send it', () {
+      expect(ActivityWeek.fromJson(week()).perStep, isNull);
+    });
+  });
+
   test('formatSteps groups thousands', () {
     expect(formatSteps(0), '0');
     expect(formatSteps(999), '999');

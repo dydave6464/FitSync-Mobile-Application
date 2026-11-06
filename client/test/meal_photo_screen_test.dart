@@ -73,6 +73,9 @@ final _answer = PhotoRecognition.fromJson({
 });
 
 class _PhotoRepo implements MealPhotoRepository {
+  @override
+  Future<PhotoToday> today() => throw UnimplementedError();
+
   PhotoRecognition answer = _answer;
   Object? error;
   Completer<PhotoRecognition>? gate;
@@ -157,6 +160,7 @@ Future<_Harness> _open(
   double scale = 1,
   bool watchDay = false,
   bool dark = false,
+  PhotoRecognition? resume,
 }) async {
   final harness = h ?? _Harness();
   tester.view.physicalSize = size;
@@ -195,15 +199,21 @@ Future<_Harness> _open(
                   onPressed: () async =>
                       harness.result = await Navigator.of(context).push<bool>(
                         MaterialPageRoute(
-                          builder: (_) => MealPhotoScreen(
-                            photo: _photo,
-                            source: source,
-                            mealType: 'lunch',
-                            onSearchInstead: (ctx, meal) {
-                              harness.searchedInsteadFor = meal;
-                              Navigator.of(ctx).pop(false);
-                            },
-                          ),
+                          builder: (_) => resume != null
+                              ? MealPhotoScreen.resume(
+                                  recognition: resume,
+                                  mealType: 'lunch',
+                                  onSearchInstead: (ctx, meal) {},
+                                )
+                              : MealPhotoScreen(
+                                  photo: _photo,
+                                  source: source,
+                                  mealType: 'lunch',
+                                  onSearchInstead: (ctx, meal) {
+                                    harness.searchedInsteadFor = meal;
+                                    Navigator.of(ctx).pop(false);
+                                  },
+                                ),
                         ),
                       ),
                   child: const Text('go'),
@@ -718,7 +728,7 @@ void main() {
         });
       await _open(tester, h: h);
       expect(
-        find.text("Couldn't spot any food in this photo."),
+        find.text("Couldn't spot any food in this photo. It doesn't count toward today's limit."),
         findsOneWidget,
       );
       expect(
@@ -842,7 +852,7 @@ void main() {
       await tester.binding.handlePopRoute();
       await tester.pumpAndSettle();
       expect(find.text('Leave without logging?'), findsOneWidget);
-      expect(find.text("This photo still counts toward today's limit."), findsOneWidget);
+      expect(find.text("It still counts toward today's limit. You can finish it later today from Snap a meal."), findsOneWidget);
 
       await tester.tap(find.byKey(const Key('discard.keep')));
       await tester.pumpAndSettle();
@@ -878,5 +888,65 @@ void main() {
       expect(find.text('Leave without logging?'), findsNothing);
       expect(h.result, isTrue);
     });
+  });
+
+  // #21: today's unlogged photo, reopened from the capture sheet.
+  group('a reopened photo', () {
+    final reopened = PhotoRecognition.fromJson({
+      'recognitionId': 41,
+      'remainingToday': 12,
+      'items': [
+        {'itemId': 88, 'confidence': 0.95, 'servings': 1.5, 'food': _food(1, 'White rice', 206), 'alternatives': []},
+      ],
+      'unlisted': [
+        {'itemId': 89, 'name': 'Atchara (pickled papaya)'},
+      ],
+    });
+
+    testWidgets('opens on its list, with no photo sent', (tester) async {
+      final h = await _open(tester, resume: reopened);
+      expect(h.repo.recognizeCalls, 0);
+      expect(find.byKey(const Key('snap.analysing')), findsNothing);
+      expect(find.text('White rice'), findsOneWidget);
+      expect(find.textContaining('Atchara (pickled papaya)'), findsOneWidget);
+      expect(_kcal('309 kcal'), findsOneWidget, reason: '1.5 servings of 206 kcal');
+    });
+
+    testWidgets("its header says the photo isn't kept, with back and the Pro tag", (tester) async {
+      final handle = tester.ensureSemantics();
+      await _open(tester, resume: reopened);
+      expect(find.byKey(const Key('snap.photo')), findsNothing);
+      expect(find.text("Your photo isn't kept"), findsOneWidget);
+      expect(find.byIcon(Icons.no_photography_outlined), findsOneWidget);
+      expect(find.bySemanticsLabel("Your photo isn't kept"), findsOneWidget);
+      expect(find.byKey(const Key('snap.back')), findsOneWidget);
+      expect(find.text('Pro'), findsOneWidget);
+      expect(tester.getSize(find.byKey(const Key('snap.noPhoto'))).height, 200);
+      handle.dispose();
+    });
+
+    testWidgets('Log sends the reopened recognition', (tester) async {
+      final h = await _open(tester, resume: reopened);
+      await tester.tap(find.byKey(const Key('snap.log')));
+      await tester.pumpAndSettle();
+      expect(h.repo.logs.single.recognitionId, 41);
+      expect(h.repo.logs.single.items.single.itemId, 88);
+      expect(h.result, isTrue);
+    });
+
+    testWidgets('back asks first, saying it can be finished later', (tester) async {
+      await _open(tester, resume: reopened);
+      await tester.tap(find.byKey(const Key('snap.back')));
+      await tester.pumpAndSettle();
+      expect(find.text('Leave without logging?'), findsOneWidget);
+      expect(find.text("It still counts toward today's limit. You can finish it later today from Snap a meal."), findsOneWidget);
+    });
+
+    for (final dark in [false, true]) {
+      testWidgets('fits a 320 dp phone at 2x text (${dark ? 'dark' : 'light'})', (tester) async {
+        await _open(tester, resume: reopened, size: const Size(320, 640), scale: 2, dark: dark);
+        expect(tester.takeException(), isNull);
+      });
+    }
   });
 }

@@ -259,6 +259,41 @@ void main() {
     });
   }
 
+  testWidgets("with the server's per-step factors, the live figures are the "
+      "server's own, even from a day saved at 0 steps", (tester) async {
+    final live = StreamController<int>();
+    addTearDown(live.close);
+    const km = 1.70 * 0.414 / 1000;
+    final week = ActivityWeek(
+      days: [
+        ..._week().days.take(6),
+        const ActivityDay(
+          date: '2026-09-28', steps: 0,
+          caloriesBurned: 0, distanceKm: 0, activeMinutes: 0,
+        ),
+      ],
+      usual: 5180,
+      missing: const [],
+      perStep: const ActivityPerStep(
+        distanceKm: km, caloriesBurned: 0.5 * 70 * km, activeMinutes: 0.01,
+      ),
+    );
+    await _pump(
+      tester,
+      ActivityState(today: const DaySteps(steps: 0), week: week, offline: false),
+      live: live.stream,
+    );
+
+    live.add(7000);
+    await tester.pumpAndSettle();
+
+    Finder figure(String key, String value) =>
+        find.descendant(of: find.byKey(Key('activity.$key')), matching: find.text(value));
+    expect(figure('kcal', '172'), findsOneWidget);
+    expect(figure('km', '4.93'), findsOneWidget);
+    expect(figure('minutes', '70'), findsOneWidget);
+  });
+
   testWidgets('missing height shows dashes and a way to Profile', (tester) async {
     await _pump(tester, ActivityState(
       today: const DaySteps(steps: 6420), week: _week(missing: ['height']), offline: false,

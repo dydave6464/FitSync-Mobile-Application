@@ -106,6 +106,7 @@ class Food {
     this.fatsecretCopy = false,
     this.basedOnFoodId,
     this.entryId,
+    this.labelKcal,
   });
 
   factory Food.fromJson(Map<String, dynamic> j) => Food(
@@ -157,6 +158,14 @@ class Food {
   /// unchanged -- a kept-kcal beer stays 129, not 4·4·9's 47.
   final int? entryId;
 
+  /// For a manual food, the calories per serving the server saves in place
+  /// of 4·4·9. Two places set it: Add manually, from the label the user
+  /// typed, and [FoodEntry.asFood], from a logged manual entry whose kcal
+  /// isn't 4·4·9's, so Undo logs it again at the same calories. [Food.fromJson]
+  /// never sets it. When set, [kcal] is this too, so previews and Snap a
+  /// meal's totals match what is saved.
+  final int? labelKcal;
+
   bool get isFatsecret => source == 'fatsecret';
 
   /// Whether FatSecret's attribution must show beside this food.
@@ -179,6 +188,7 @@ class Food {
       if (sodiumMg != null) 'sodiumMg': sodiumMg,
       if (basedOnFoodId != null) 'basedOnFoodId': basedOnFoodId,
       if (entryId != null) 'basedOnEntryId': entryId,
+      if (labelKcal != null) 'kcal': labelKcal,
     },
   };
 }
@@ -280,20 +290,30 @@ class FoodEntry {
   final String? externalId;
 
   /// The per-serving food this entry came from, so Undo can log it again.
-  Food asFood() => Food(
-    source: source,
-    id: foodId,
-    externalId: externalId,
-    name: name,
-    servingDesc: servingDesc,
-    kcal: (kcal / servings).round(),
-    proteinG: _r2(proteinG / servings),
-    carbsG: _r2(carbsG / servings),
-    fatG: _r2(fatG / servings),
-    fiberG: fiberG == null ? null : _r2(fiberG! / servings),
-    sugarG: sugarG == null ? null : _r2(sugarG! / servings),
-    sodiumMg: sodiumMg == null ? null : _r1(sodiumMg! / servings),
-  );
+  /// A manual entry whose kcal isn't 4·4·9's (a label's, or one the server
+  /// kept, like a beer's) carries it as [Food.labelKcal], so Undo sends it
+  /// back: otherwise it would return at 4·4·9's, and a 0/0/0 drink with
+  /// label calories would be refused.
+  Food asFood() {
+    final perKcal = (kcal / servings).round();
+    final p = _r2(proteinG / servings), c = _r2(carbsG / servings), f = _r2(fatG / servings);
+    final ownKcal = source == 'manual' && perKcal != manualKcal(p, c, f) && perKcal >= 0 && perKcal <= 5000;
+    return Food(
+      source: source,
+      id: foodId,
+      externalId: externalId,
+      name: name,
+      servingDesc: servingDesc,
+      kcal: perKcal,
+      proteinG: p,
+      carbsG: c,
+      fatG: f,
+      fiberG: fiberG == null ? null : _r2(fiberG! / servings),
+      sugarG: sugarG == null ? null : _r2(sugarG! / servings),
+      sodiumMg: sodiumMg == null ? null : _r1(sodiumMg! / servings),
+      labelKcal: ownKcal ? perKcal : null,
+    );
+  }
 }
 
 class NutritionTarget {

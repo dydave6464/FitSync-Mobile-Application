@@ -148,6 +148,32 @@ test('analytics db', async (t) => {
     assert.equal((await analytics.readAdherence(pool, userId, 'year')).target, 209);
   });
 
+  await t.test('the adherence target uses the chosen days when set', async () => {
+    const userId = await makeUser('chosen@example.com');
+    await pool.query(
+      `INSERT INTO workout_plans (user_id, name, split_style, days_per_week, session_length_min, is_active)
+       VALUES (?, 'P', 'full_body', 3, 45, TRUE)`,
+      [userId],
+    );
+    for (const weekday of [1, 3, 5, 6]) {
+      await pool.query(
+        'INSERT INTO user_training_days (user_id, weekday) VALUES (?, ?)', [userId, weekday],
+      );
+    }
+    // Someone else's days must not count.
+    const other = await makeUser('chosen-other@example.com');
+    for (const weekday of [1, 2, 3, 4, 5, 6, 7]) {
+      await pool.query(
+        'INSERT INTO user_training_days (user_id, weekday) VALUES (?, ?)', [other, weekday],
+      );
+    }
+
+    assert.equal((await analytics.readAdherence(pool, userId, 'week')).target, 4,
+      'the four chosen days, not the stored label of 3');
+    // 4 x 30/7 = 17.1.
+    assert.equal((await analytics.readAdherence(pool, userId, 'month')).target, 17);
+  });
+
   await t.test('the count and the target describe the same 30 days', async () => {
     // Numerator and denominator over one window: a count over more days than
     // its target covers would let a diligent user score over 100%.

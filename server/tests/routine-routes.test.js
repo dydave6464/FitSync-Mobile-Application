@@ -156,10 +156,61 @@ test('routine endpoints', async (t) => {
     await other.del(`/habits/${habitId}`).expect(404);
     await other.put(`/habits/${habitId}/check`).expect(404);
     await other.del(`/habits/${habitId}/check`).expect(404);
+    await other.post(`/habits/${habitId}/restore`, {}).expect(404);
   });
 
   await t.test('a non-numeric id is not found', async () => {
     await api(await freshUser()).put('/habits/abc/check').expect(404);
+  });
+
+  await t.test('restore brings a deleted habit back to today and All habits', async () => {
+    const a = api(await freshUser());
+    const original = (await a.post('/habits', {
+      title: 'Morning mobility', time: '07:00', durationMin: 10, weekdays: ALL,
+    }).expect(201)).body.data.habit;
+    await a.put(`/habits/${original.habitId}/check`).expect(200);
+    await a.del(`/habits/${original.habitId}`).expect(200);
+
+    const res = await a.post(`/habits/${original.habitId}/restore`, {}).expect(200);
+
+    assert.deepEqual(res.body, { data: { habit: { ...original, done: true } } },
+      "today's tick survived the delete");
+    const today = (await a.get('/today').expect(200)).body.data.habits;
+    assert.deepEqual(today.map((h) => h.habitId), [original.habitId]);
+    const all = (await a.get('/habits').expect(200)).body.data.habits;
+    assert.deepEqual(all.map((h) => h.habitId), [original.habitId]);
+  });
+
+  await t.test('restoring an active habit is harmless', async () => {
+    const a = api(await freshUser());
+    const original = (await a.post('/habits', { title: 'Walk', weekdays: ALL })).body.data.habit;
+    await a.del(`/habits/${original.habitId}`).expect(200);
+
+    const first = await a.post(`/habits/${original.habitId}/restore`, {}).expect(200);
+    const second = await a.post(`/habits/${original.habitId}/restore`, {}).expect(200);
+    assert.deepEqual(second.body, first.body);
+    assert.deepEqual(second.body.data.habit, original);
+  });
+
+  await t.test("another user's habit is not found on restore", async () => {
+    const owner = api(await freshUser());
+    const other = api(await freshUser());
+    const { habitId } = (await owner.post('/habits', { title: 'Mine', weekdays: ALL })).body.data.habit;
+    await owner.del(`/habits/${habitId}`).expect(200);
+
+    const res = await other.post(`/habits/${habitId}/restore`, {}).expect(404);
+    assert.equal(res.body.error.code, 'HABIT_NOT_FOUND');
+    assert.equal(res.body.error.message, 'No such habit.');
+    assert.deepEqual((await owner.get('/habits')).body.data.habits, [], 'still deleted for its owner');
+  });
+
+  await t.test('a non-numeric id is not found on restore', async () => {
+    const res = await api(await freshUser()).post('/habits/abc/restore', {}).expect(404);
+    assert.equal(res.body.error.code, 'HABIT_NOT_FOUND');
+  });
+
+  await t.test('restore requires sign-in', async () => {
+    await request(app).post('/api/v1/routine/habits/1/restore').send({}).expect(401);
   });
 
   await t.test('a habit not scheduled today cannot be ticked', async () => {

@@ -193,6 +193,49 @@ test('routine db', async (t) => {
     assert.equal(rows.length, 1, 'the history outlives the habit');
   });
 
+  await t.test('reactivating a deleted habit brings it back with its weekdays and past ticks', async () => {
+    const u = await newUser();
+    const h = await habit(u, { title: 'Mobility', time: '07:00', durationMin: 10, weekdays: [1, 3, 5] });
+    await routine.setCheck(pool, u, h, true, MONDAY);
+    await routine.deactivateHabit(pool, u, h);
+
+    const back = await routine.reactivateHabit(pool, u, h);
+
+    assert.deepEqual(back, {
+      habitId: h, title: 'Mobility', time: '07:00', durationMin: 10, weekdays: [1, 3, 5],
+      done: false,
+    });
+    const day = await routine.readDay(pool, u, MONDAY);
+    assert.deepEqual(day.habits.map((x) => x.habitId), [h], 'listed on its day again');
+    assert.equal(day.habits[0].done, true, 'the tick from before the delete is intact');
+    const [rows] = await pool.query(
+      'SELECT check_date FROM routine_checks WHERE habit_id = ?', [h],
+    );
+    assert.equal(rows.length, 1);
+  });
+
+  await t.test('reactivating an active habit changes nothing', async () => {
+    const u = await newUser();
+    const h = await habit(u, { title: 'Walk', weekdays: [2] });
+    const before = await routine.readHabit(pool, u, h);
+
+    assert.deepEqual(await routine.reactivateHabit(pool, u, h), before);
+    assert.deepEqual(await routine.reactivateHabit(pool, u, h), before, 'twice is harmless');
+  });
+
+  await t.test("another user's habit cannot be reactivated", async () => {
+    const a = await newUser();
+    const b = await newUser();
+    const theirs = await habit(b, { active: false });
+
+    assert.equal(await routine.reactivateHabit(pool, a, theirs), null);
+    assert.equal(await routine.reactivateHabit(pool, a, 2147483600), null, 'nor a missing one');
+    const [[row]] = await pool.query(
+      'SELECT is_active FROM routine_habits WHERE habit_id = ?', [theirs],
+    );
+    assert.equal(Number(row.is_active), 0, "the owner's habit stays deleted");
+  });
+
   // The workout item. A plan is written directly; is_active defaults to TRUE.
   const plan = async (userId, name = 'Upper Body') => pool.query(
     `INSERT INTO workout_plans (user_id, name, split_style, days_per_week, session_length_min)

@@ -229,23 +229,33 @@ module.exports = function buildAuthRouter({
   });
 
   // Mirrors sendVerification, with one deliberate difference: the mail send
-  // is not awaited. Awaiting it would make the verified branch of
-  // /password-reset/request measurably slower than the others, turning an
-  // endpoint whose whole purpose is an indistinguishable 202 into a timing
-  // oracle. (issueCode's queries are still awaited -- the known residual
-  // recorded on /password-reset/request.)
+  // is not awaited. Awaiting it would make a known address on
+  // /password-reset/request measurably slower than an unknown one, turning
+  // an endpoint whose whole purpose is an indistinguishable 202 into a
+  // timing oracle. (issueCode's queries are still awaited -- the known
+  // residual recorded on /password-reset/request.)
+  //
+  // An unverified account gets the same reset_password code under the same
+  // subject, worded for what using it does there: it sets the password and
+  // finishes setting up (verifies) the account -- see /password-reset.
   async function sendPasswordReset(req, user) {
     const code = await issueCode(pool, {
       key: codesKey(), userId: user.user_id, purpose: 'reset_password',
     });
     if (code === null) return;
+    const text = user.email_verified
+      ? `Enter this code in the FitSync app to reset your password: ${code}\n\n`
+        + `It expires in ${TTL_MINUTES.reset_password} minutes. `
+        + "If you didn't ask to reset your password, you can ignore this email "
+        + "— your password hasn't changed."
+      : 'Enter this code in the FitSync app to choose a new password and finish '
+        + `setting up your account: ${code}\n\n`
+        + `It expires in ${TTL_MINUTES.reset_password} minutes. `
+        + "If you didn't ask for this, you can ignore this email — nothing has changed.";
     void mail.send({
       to: user.email,
       subject: `Your FitSync password reset code: ${code}`,
-      text: `Enter this code in the FitSync app to reset your password: ${code}\n\n`
-        + `It expires in ${TTL_MINUTES.reset_password} minutes. `
-        + "If you didn't ask to reset your password, you can ignore this email "
-        + "— your password hasn't changed.",
+      text,
     }).catch((err) => {
       req.log?.error({ err }, 'password reset email failed to send');
     });
@@ -256,23 +266,26 @@ module.exports = function buildAuthRouter({
   // /verify-email/request and on login's INVALID_CREDENTIALS: anything that
   // differs by case here becomes an account-existence oracle.
   //
-  // An unverified account is refused too, but silently, inside that same
-  // 202 -- mailing a reset code to an address nobody has proven they own
-  // would be a takeover path, not a recovery path.
+  // An unverified account is sent a code too, worded to finish setting the
+  // account up: used on /password-reset it sets the password and verifies
+  // the address. That is recovery, not takeover. An unverified account
+  // cannot sign in (login answers EMAIL_NOT_VERIFIED and /register issues no
+  // token), so it holds nothing beyond a name and a password hash, and the
+  // code goes to the address itself -- the same proof /verify-email accepts.
+  // It is a reset_password code (15 minutes, purpose-bound), not the
+  // verify_email one, which /password-reset could not accept anyway.
   //
-  // Known residual: the verified branch still awaits issueCode's queries
-  // before responding, so it is marginally slower than the unknown/unverified
-  // branches, which return after a single SELECT. Not closed here -- closing
-  // it would mean a dummy INSERT (or similar) on every miss, which buys
-  // nothing while POST /register already answers EMAIL_TAKEN for a known
-  // address in one request. Recorded as a known limitation, not fixed.
+  // Known residual: a known address (verified or not) still awaits
+  // issueCode's queries before responding, so it is marginally slower than
+  // an unknown one, which returns after a single SELECT. Not closed here --
+  // closing it would mean a dummy INSERT (or similar) on every miss, which
+  // buys nothing while POST /register already answers EMAIL_TAKEN for a
+  // known address in one request. Recorded as a known limitation, not fixed.
   router.post('/password-reset/request', async (req, res, next) => {
     try {
       const email = requireString('email', req.body.email).toLowerCase();
       const user = await findUserByEmail(pool, email);
-      if (user && user.email_verified) {
-        await sendPasswordReset(req, user);
-      }
+      if (user) await sendPasswordReset(req, user);
       res.status(202).json({
         data: { message: 'If that account can receive a reset code, it is on its way.' },
       });
@@ -282,16 +295,16 @@ module.exports = function buildAuthRouter({
   // The reset itself, from the app. The password is validated FIRST: a
   // mistyped password is a 400 that spends no attempt and keeps the code
   // alive. Then the code, with the same single CODE_INVALID for every
-  // failure. Only a verified account can have a reset code, but the check is
-  // repeated here so an unverified account could never reset even if one
-  // existed.
+  // failure. A match on an unverified account also verifies it, in the same
+  // UPDATE: the code was mailed to the address, which is what verification
+  // proves (see /password-reset/request). A verify_email code typed here is
+  // still CODE_INVALID, because code hashes are bound to their purpose.
   //
   // Known residual, in timing only, mirroring /verify-email: an unknown
-  // address returns a little sooner than a known one, and a verified account
-  // takes longer than an unknown or unverified one, because only it reaches
-  // checkCode's locked transaction (and, on a match, bcrypt). That reveals
-  // verification status only -- low value next to /register's EMAIL_TAKEN,
-  // so it is left alone.
+  // address returns a little sooner than a known one, because only a known
+  // one reaches checkCode's locked transaction (and, on a match, bcrypt).
+  // That reveals whether an account exists -- low value next to /register's
+  // EMAIL_TAKEN, so it is left alone.
   router.post('/password-reset', async (req, res, next) => {
     try {
       const password = requireString('password', req.body.password, {
@@ -300,12 +313,14 @@ module.exports = function buildAuthRouter({
       const email = emailFrom(req.body.email);
       const code = normaliseCode(req.body.code);
       const user = email && code ? await findUserByEmail(pool, email) : null;
-      const ok = Boolean(user && user.email_verified && await checkCode(pool, {
+      const ok = Boolean(user && await checkCode(pool, {
         key: codesKey(), userId: user.user_id, purpose: 'reset_password', code,
       }));
       if (!ok) throw codeInvalid();
       // Whoever had the old password may hold a token: sign out every device.
-      await replacePasswordAndSignOut(pool, user.user_id, await hashPassword(password));
+      await replacePasswordAndSignOut(
+        pool, user.user_id, await hashPassword(password), { verifyEmail: true },
+      );
       res.json({ data: { reset: true } });
     } catch (err) { next(err); }
   });

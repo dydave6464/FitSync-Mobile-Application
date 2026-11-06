@@ -15,17 +15,22 @@ class NutritionRepository {
     return NutritionDay.fromJson(data['day'] as Map<String, dynamic>);
   }
 
+  /// [clientId] (see `newClientId`) makes the save safe to send again: the
+  /// server answers a repeat with the entry it already saved (200, read the
+  /// same as a 201) rather than saving a second one.
   Future<FoodEntry> logEntry({
     required String date,
     required String mealType,
     required double servings,
     required Food food,
+    String? clientId,
   }) async {
     final data = await _api.postJson('/api/v1/nutrition/entries', {
       'date': date,
       'mealType': mealType,
       'servings': servings,
       'food': food.toRef(),
+      'clientId': ?clientId,
     });
     return FoodEntry.fromJson(data['entry'] as Map<String, dynamic>);
   }

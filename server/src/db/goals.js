@@ -64,7 +64,9 @@ async function createGoal(pool, userId, exerciseId, targetKg) {
 
 /// Create a goal only if [userId] has no unreached goal for that exercise.
 /// Locks the user row to serialize concurrent creates for the same user.
-/// Returns the goal or null if one already exists.
+/// Returns { goal, openGoalId: null } when created, or { goal: null,
+/// openGoalId } naming the unreached goal that blocked it -- read inside the
+/// same transaction, so the id is the one that won.
 async function createGoalIfNoneOpen(pool, userId, exerciseId, targetKg) {
   const conn = await pool.getConnection();
   let insertId = null;
@@ -75,7 +77,7 @@ async function createGoalIfNoneOpen(pool, userId, exerciseId, targetKg) {
 
     // Check for an unreached goal on this exercise.
     const [rows] = await conn.query(
-      `SELECT 1 FROM lift_goals g
+      `SELECT g.goal_id FROM lift_goals g
         WHERE g.user_id = ? AND g.exercise_id = ?
           AND NOT EXISTS (
             SELECT 1 FROM set_logs sl
@@ -88,7 +90,7 @@ async function createGoalIfNoneOpen(pool, userId, exerciseId, targetKg) {
 
     if (rows.length > 0) {
       await conn.rollback();
-      return null;
+      return { goal: null, openGoalId: rows[0].goal_id };
     }
 
     // Insert the goal.
@@ -104,7 +106,18 @@ async function createGoalIfNoneOpen(pool, userId, exerciseId, targetKg) {
   } finally {
     conn.release();
   }
-  return insertId === null ? null : readGoal(pool, userId, insertId);
+  return { goal: await readGoal(pool, userId, insertId), openGoalId: null };
+}
+
+/// Set [userId]'s goal [goalId] to [targetKg]. Returns the goal as it now
+/// reads, or null when there is no such goal of theirs. Read back rather than
+/// trusting affectedRows, which can be 0 for an unchanged value.
+async function updateGoalTarget(pool, userId, goalId, targetKg) {
+  await pool.query(
+    'UPDATE lift_goals SET target_kg = ? WHERE goal_id = ? AND user_id = ?',
+    [targetKg, goalId, userId],
+  );
+  return readGoal(pool, userId, goalId);
 }
 
 /// False when there was no such goal of [userId]'s to delete.
@@ -135,26 +148,35 @@ async function isLiveExercise(pool, exerciseId) {
 }
 
 /// The "Lifted before" list: every live exercise [userId] has a counting set
-/// for, most sets first, each with its best.
+/// for, most sets first, each with its best and the id of its unreached goal
+/// (target above that best), if any. A subquery, not a join, so a broken
+/// one-open-goal rule could never duplicate a row.
 async function listOptions(pool, userId) {
   const [rows] = await pool.query(
-    `SELECT sl.exercise_id, e.name, MAX(sl.weight_kg) AS best_kg, COUNT(*) AS sets
-       FROM set_logs sl
-       JOIN workout_sessions s ON s.session_id = sl.session_id
-       JOIN exercises e ON e.exercise_id = sl.exercise_id
-      WHERE s.user_id = ? AND e.status = 'live' AND ${COUNTS}
-      GROUP BY sl.exercise_id, e.name
-      ORDER BY sets DESC, e.name ASC`,
-    [userId],
+    `SELECT o.*,
+            (SELECT MAX(g.goal_id) FROM lift_goals g
+              WHERE g.user_id = ? AND g.exercise_id = o.exercise_id
+                AND g.target_kg > o.best_kg) AS open_goal_id
+       FROM (SELECT sl.exercise_id, e.name, MAX(sl.weight_kg) AS best_kg, COUNT(*) AS sets
+               FROM set_logs sl
+               JOIN workout_sessions s ON s.session_id = sl.session_id
+               JOIN exercises e ON e.exercise_id = sl.exercise_id
+              WHERE s.user_id = ? AND e.status = 'live' AND ${COUNTS}
+              GROUP BY sl.exercise_id, e.name) o
+      ORDER BY o.sets DESC, o.name ASC`,
+    [userId, userId],
   );
   return rows.map((r) => ({
     exerciseId: r.exercise_id,
     name: r.name,
     bestKg: Number(r.best_kg),
     sets: Number(r.sets),
+    hasOpenGoal: r.open_goal_id !== null,
+    goalId: r.open_goal_id,
   }));
 }
 
 module.exports = {
-  listGoals, readGoal, createGoal, createGoalIfNoneOpen, deleteGoal, bestKg, isLiveExercise, listOptions,
+  listGoals, readGoal, createGoal, createGoalIfNoneOpen, updateGoalTarget, deleteGoal, bestKg,
+  isLiveExercise, listOptions,
 };

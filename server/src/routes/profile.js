@@ -8,6 +8,7 @@ const {
 } = require('../db/profile');
 const { savePlan, getActivePlan } = require('../db/plans');
 const bodyWeight = require('../db/body-weight');
+const { manilaDay } = require('../lib/manila-day');
 const { readRankerHistory } = require('../db/ranker-history');
 
 const ENUMS = {
@@ -18,7 +19,9 @@ const ENUMS = {
   trainingLocation: ['home_gym', 'commercial_gym', 'both', 'other'],
   weightUnit: ['kg', 'lb'],
 };
-const NUMERIC = ['heightCm', 'weightKg', 'goalWeightKg'];
+// heightCm, weightKg and goalWeightKg: each has a plausible hard range
+// (bodyWeight.BODY_RANGES), wider than the app's soft "ask once" ranges.
+const NUMERIC = Object.keys(bodyWeight.BODY_RANGES);
 const SIDES = ['left', 'right', 'both'];
 
 // users.full_name, users.notifications_enabled and users.weight_unit are
@@ -52,6 +55,14 @@ function isRealCalendarDate(value) {
   );
 }
 
+/// A weigh-in's day: a real YYYY-MM-DD calendar day, or DATE_INVALID.
+function parseWeighInDay(value) {
+  if (typeof value !== 'string' || !isRealCalendarDate(value)) {
+    throw AppError.badRequest('DATE_INVALID', "That isn't a real day.");
+  }
+  return value;
+}
+
 // Silently dropping unknown keys is deliberate: the client may send a whole
 // form back. What must never happen is a key outside WRITABLE reaching SQL.
 function validatePatch(body) {
@@ -72,9 +83,13 @@ function validatePatch(body) {
       throw invalid(key, `${key} must be one of: ${ENUMS[key].join(', ')}.`);
     }
     if (NUMERIC.includes(key)) {
-      const n = Number(value);
-      if (!Number.isFinite(n) || n <= 0 || n >= 1000) {
-        throw invalid(key, `${key} must be a number between 0 and 1000.`);
+      // Only a number or a numeric string: Number() would otherwise read
+      // true as 1, [170] as 170 and '' as 0.
+      const n = typeof value === 'number' || (typeof value === 'string' && value.trim() !== '')
+        ? Number(value) : NaN;
+      const { min, max } = bodyWeight.BODY_RANGES[key];
+      if (!Number.isFinite(n) || n < min || n > max) {
+        throw bodyWeight.outOfRange('INVALID_PROFILE_FIELD', key);
       }
       fields[key] = n;
       continue;
@@ -311,13 +326,38 @@ module.exports = function buildProfileRouter(deps) {
   // 201 rather than 200 even when the day's row already existed: from the
   // caller's side an entry was recorded either way, and making a re-log look
   // different from a first log would push the upsert into the client.
+  //
+  // loggedOn is checked before any write: a day that isn't real would reach
+  // SQL as a 500, and a future day would become the newest entry and
+  // overwrite users.weight_kg. Days compare as Manila days, the same calendar
+  // CURDATE() uses on the pool's +08:00 connections.
   router.post('/profile/body-weight', auth, async (req, res, next) => {
     try {
+      const raw = (req.body || {}).loggedOn;
+      const loggedOn = raw === undefined || raw === null ? null : parseWeighInDay(raw);
+      if (loggedOn !== null && loggedOn > manilaDay()) {
+        throw AppError.badRequest('DATE_OUT_OF_RANGE', "A weigh-in can't be logged for a future day.");
+      }
       const entry = await bodyWeight.writeEntry(deps.pool, req.user.userId, {
         weightKg: req.body.weightKg,
-        loggedOn: req.body.loggedOn || null,
+        loggedOn,
       });
       res.status(201).json({ data: entry });
+    } catch (err) {
+      next(err);
+    }
+  });
+
+  // Takes a mistaken weigh-in off the chart. The day is a Manila calendar
+  // day, as POST stores it.
+  router.delete('/profile/body-weight/:loggedOn', auth, async (req, res, next) => {
+    try {
+      const loggedOn = parseWeighInDay(req.params.loggedOn);
+      const result = await bodyWeight.deleteEntry(deps.pool, req.user.userId, loggedOn);
+      if (!result) {
+        throw AppError.notFound('WEIGH_IN_NOT_FOUND', "There's no weigh-in on that day.");
+      }
+      res.json({ data: result });
     } catch (err) {
       next(err);
     }

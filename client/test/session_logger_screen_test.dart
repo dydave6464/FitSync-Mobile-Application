@@ -181,8 +181,15 @@ class FakeSessionController extends ActiveSessionController {
   /// still saving when the phone is locked. Null resolves immediately.
   Completer<void>? logSetGate;
 
+  /// How many times the provider has loaded: once on open, again for each
+  /// invalidation someone reads through.
+  int builds = 0;
+
   @override
-  Future<ActiveSession?> build() async => initial;
+  Future<ActiveSession?> build() async {
+    builds += 1;
+    return initial;
+  }
 
   @override
   Future<void> logSet({
@@ -342,9 +349,9 @@ class _SwapBackRepository extends RecordingPlanRepository {
   final Map<int, WorkoutPlan> plans;
 
   @override
-  Future<WorkoutPlan> swap(int planExerciseId, int exerciseId) async {
+  Future<SwapResult> swap(int planExerciseId, int exerciseId) async {
     swaps.add((planExerciseId, exerciseId));
-    return active = plans[exerciseId]!;
+    return SwapResult(plan: active = plans[exerciseId]!);
   }
 }
 
@@ -423,11 +430,11 @@ class RecordingPlanRepository implements PlanRepository {
   }) async => alternativeRows;
 
   @override
-  Future<WorkoutPlan> swap(int planExerciseId, int exerciseId) async {
+  Future<SwapResult> swap(int planExerciseId, int exerciseId) async {
     swaps.add((planExerciseId, exerciseId));
     await swapGate?.future;
     active = swapped;
-    return swapped!;
+    return SwapResult(plan: swapped!);
   }
 
   @override
@@ -2774,6 +2781,46 @@ void main() {
       ),
       findsOneWidget,
     );
+  });
+
+  // Another phone opened a workout between this one finishing and the plan
+  // write: the server refuses it. The server's words say why, and the open
+  // workout is reloaded so Home's card for it appears.
+  testWidgets('a refusal for a workout in progress says so and reloads it', (
+    tester,
+  ) async {
+    final plans = RecordingPlanRepository(
+      error: const ApiException(
+        'SESSION_IN_PROGRESS',
+        'You have a workout in progress. Finish or discard it before '
+            'changing your plan.',
+        details: [
+          {'sessionId': 12, 'startedAt': '2026-11-06T01:02:03.000Z'},
+        ],
+      ),
+    );
+    final controller = await _pump(
+      tester,
+      session: _manualSessionWithSets(),
+      plans: plans,
+    );
+
+    await _finishWithSetsLeft(tester);
+    final buildsBefore = controller.builds;
+    await _makeItMyPlan(tester);
+
+    expect(
+      find.text(
+        'You have a workout in progress. Finish or discard it before '
+        'changing your plan.',
+      ),
+      findsOneWidget,
+    );
+    final container = ProviderScope.containerOf(
+      tester.element(find.text('open logger')),
+    );
+    await container.read(activeSessionProvider.future);
+    expect(controller.builds, greaterThan(buildsBefore));
   });
 
   // The summary dialog -- and the whole logger route behind it -- pops

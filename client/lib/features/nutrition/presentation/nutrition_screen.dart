@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../core/api_exception.dart';
+import '../../../core/client_id.dart';
 import '../../../core/manila_day.dart';
 import '../../../core/theme.dart';
 import '../../../core/widgets/fs_kit.dart';
@@ -121,12 +122,17 @@ class NutritionScreen extends ConsumerWidget {
       content: Text('Removed ${entry.name}'),
       action: SnackBarAction(
         label: 'Undo',
-        onPressed: () => saveOrOfferRetry(
-          messenger,
-          save: () => controller.log(entry.asFood(), mealType: entry.mealType, servings: entry.servings, date: date),
-          failure: "Couldn't put ${entry.name} back.",
-          persist: screenReader,
-        ),
+        onPressed: () {
+          // Each Undo is a new log with its own key, which its Try again
+          // sends again, so a put-back that did land is not doubled (NU-4).
+          final clientId = newClientId();
+          saveOrOfferRetry(
+            messenger,
+            save: () => controller.log(entry.asFood(), mealType: entry.mealType, servings: entry.servings, date: date, clientId: clientId),
+            failure: "Couldn't put ${entry.name} back.",
+            persist: screenReader,
+          );
+        },
       ),
     ));
   }

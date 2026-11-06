@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../core/api_exception.dart';
+import '../../../core/client_id.dart';
 import '../../../core/manila_day.dart';
 import '../../../core/theme.dart';
 import '../../../core/widgets/fs_kit.dart';
@@ -138,9 +139,11 @@ class _LogFoodScreenState extends ConsumerState<LogFoodScreen> {
     // itself is never changed. Try again sends the same food, meal and
     // servings, so nothing has to be found or set twice.
     final logged = choice.edited ?? food;
+    // One key for this log, sent again by every Try again (NU-4).
+    final clientId = newClientId();
     await saveOrOfferRetry(
       messenger,
-      save: () => controller.log(logged, mealType: choice.mealType, servings: choice.servings, date: date),
+      save: () => controller.log(logged, mealType: choice.mealType, servings: choice.servings, date: date, clientId: clientId),
       failure: "Couldn't save ${logged.name}.",
       persist: persist,
       onSaved: (saved) => onLogged?.call(saved, date!),

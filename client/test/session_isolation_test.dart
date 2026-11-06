@@ -15,6 +15,7 @@ import 'package:fitsync/features/profile/domain/profile.dart';
 import 'package:fitsync/features/profile/presentation/providers.dart';
 import 'package:fitsync/features/sessions/data/session_repository.dart';
 import 'package:fitsync/features/sessions/domain/active_session.dart';
+import 'package:fitsync/features/sessions/domain/session_detail.dart';
 import 'package:fitsync/features/sessions/domain/session_history.dart';
 import 'package:fitsync/features/sessions/domain/session_outcome.dart';
 import 'package:fitsync/features/sessions/domain/shared_report.dart';
@@ -93,6 +94,9 @@ class SequenceProfileRepository implements ProfileRepository {
   @override
   Future<BodyWeightPoint> logBodyWeight(double weightKg, {String? loggedOn}) =>
       throw UnimplementedError();
+
+  @override
+  Future<void> deleteBodyWeight(String loggedOn) => throw UnimplementedError();
 }
 
 /// Hands out a different in-progress session on each call, so a cached one is
@@ -122,6 +126,8 @@ class SequenceSessionRepository implements SessionRepository {
   @override
   Future<SessionHistoryPage> history({int page = 1, int limit = 20}) =>
       throw UnimplementedError();
+  @override
+  Future<SessionDetail> detail(int sessionId) => throw UnimplementedError();
   @override
   Future<TrainingSummary> summary({String period = 'week'}) =>
       throw UnimplementedError();

@@ -4,10 +4,13 @@ const requireAuth = require('../middleware/require-auth');
 const AppError = require('../lib/app-error');
 const { manilaDay } = require('../lib/manila-day');
 const { dailyTarget } = require('../lib/nutrition-target');
-const { invalid, checkDate, checkServings, checkManual, perServingOf, scaled, round1 } = require('../lib/nutrition-input');
+const {
+  invalid, checkDate, checkServings, checkClientId, checkManual, perServingOf, scaled, round1,
+} = require('../lib/nutrition-input');
 const { resolveFood } = require('../lib/resolve-food');
 const {
-  MEALS, insertEntry, getEntry, getStoredEntry, updateEntry, deleteEntry, listDayEntries, targetProfile,
+  MEALS, insertEntry, insertEntryOnce, findEntryIdByClientId, getEntry, getStoredEntry, updateEntry, deleteEntry,
+  listDayEntries, targetProfile,
 } = require('../db/nutrition');
 
 function totalsOf(entries) {
@@ -45,15 +48,29 @@ module.exports = function buildNutritionRouter(deps) {
       const date = checkDate(b.date);
       if (!MEALS.includes(b.mealType)) throw invalid('mealType', `mealType must be one of: ${MEALS.join(', ')}.`);
       const servings = checkServings(b.servings);
-      const base = await resolveFood(deps, b.food, req.user.userId);
+      const clientId = checkClientId(b.clientId);
+      const { userId } = req.user;
 
-      const id = await insertEntry(pool, req.user.userId, {
+      // Try again after a save that did land: the entry already saved, as it
+      // is now, and the body is not compared. Looked up before the food, so a
+      // repeat never asks FatSecret again.
+      if (clientId) {
+        const savedId = await findEntryIdByClientId(pool, userId, clientId);
+        const saved = savedId === null ? null : await getEntry(pool, userId, savedId);
+        if (saved) return res.json({ data: { entry: saved } });
+      }
+
+      const base = await resolveFood(deps, b.food, userId);
+      const e = {
         date, mealType: b.mealType, servings,
         foodId: base.foodId, customName: base.customName, servingDesc: base.servingDesc,
         ...scaled(base, servings),
         loggedVia: base.manual ? 'manual' : 'search',
-      });
-      res.status(201).json({ data: { entry: await getEntry(pool, req.user.userId, id) } });
+      };
+      const { id, created } = clientId
+        ? await insertEntryOnce(pool, userId, e, clientId)
+        : { id: await insertEntry(pool, userId, e), created: true };
+      res.status(created ? 201 : 200).json({ data: { entry: await getEntry(pool, userId, id) } });
     } catch (err) { next(err); }
   });
 

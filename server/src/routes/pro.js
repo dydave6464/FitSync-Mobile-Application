@@ -3,7 +3,7 @@ const express = require('express');
 const helmet = require('helmet');
 const requireAuth = require('../middleware/require-auth');
 const AppError = require('../lib/app-error');
-const { PLANS } = require('../lib/pro-plans');
+const { PLANS, PLAN_TERMS } = require('../lib/pro-plans');
 const {
   proStatus, createPayment, setCheckoutSession, findPayment, recentPendingPayments, completePayment,
 } = require('../db/pro');
@@ -28,7 +28,12 @@ module.exports = function buildProRouter(deps) {
   const { pool, payments, publicBaseUrl } = deps;
   const checkBudgetMs = deps.proStatusCheckMs ?? 3000;
   const log = (req) => req.log ?? deps.logger;
-  const statusOf = async (userId) => ({ ...(await proStatus(pool, userId)), prices: PRICES });
+  // prices stays for apps already installed. plans gives each plan's terms,
+  // and renews is always false: Pro is a one-time payment, never billed again
+  // by itself.
+  const statusOf = async (userId) => ({
+    ...(await proStatus(pool, userId)), prices: PRICES, plans: PLAN_TERMS, renews: false,
+  });
 
   /// Where PayMongo sends the browser back: PUBLIC_BASE_URL when it is a real
   /// address, else the origin the app reached us on -- so the phone hotspot

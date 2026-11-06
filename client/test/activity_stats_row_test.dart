@@ -476,6 +476,43 @@ void main() {
     );
   });
 
+  testWidgets("with the server's per-step factors, the tiles grow from a "
+      'day saved at 0 steps', (tester) async {
+    final live = StreamController<int>();
+    addTearDown(() => unawaited(live.close()));
+    const km = 1.70 * 0.414 / 1000;
+    await _pump(
+      tester,
+      _Permission(StepAccess.granted),
+      steps: 0,
+      week: ActivityWeek(
+        days: [
+          for (var d = 22; d <= 28; d++)
+            ActivityDay(
+              date: '2026-09-$d',
+              steps: d == 28 ? 0 : null,
+              caloriesBurned: d == 28 ? 0 : null,
+              distanceKm: d == 28 ? 0 : null,
+              activeMinutes: d == 28 ? 0 : null,
+            ),
+        ],
+        usual: null,
+        missing: const [],
+        perStep: const ActivityPerStep(
+          distanceKm: km,
+          caloriesBurned: 0.5 * 70 * km,
+          activeMinutes: 0.01,
+        ),
+      ),
+      live: live.stream,
+    );
+    live.add(6420);
+    await tester.pumpAndSettle();
+
+    expect(tile('kcal', '158'), findsOneWidget);
+    expect(tile('km', '4.5'), findsOneWidget);
+  });
+
   testWidgets('before the week arrives, Home shows the live count too', (
     tester,
   ) async {

@@ -6,7 +6,9 @@ const { getActivePlan, savePlan, createPlanFromSession } = require('../db/plans'
 const { getProfile } = require('../db/profile');
 const { readRankerHistory } = require('../db/ranker-history');
 const { getActiveSession } = require('../db/sessions');
-const { loadSwapContext, listAlternatives, swapPlanExercise } = require('../db/plan-swap');
+const {
+  loadSwapContext, listAlternatives, swapPlanExercise, revertPlanSwap,
+} = require('../db/plan-swap');
 
 const DEFAULT_LIMIT = 20;
 const MAX_LIMIT = 50;
@@ -23,6 +25,18 @@ const MIN_DAYS = 1;
 const MAX_DAYS = 7;
 const MIN_SESSION_MIN = 20;
 const MAX_SESSION_MIN = 120;
+
+/// The refusal both plan-changing routes give while a workout is open. It
+/// names that workout, so the app can offer to resume it instead of leaving
+/// the user at a message with no way forward. startedAt is null for a legacy
+/// row that never recorded one.
+function sessionInProgress(open) {
+  return AppError.conflict(
+    'SESSION_IN_PROGRESS',
+    'You have a workout in progress. Finish or discard it before changing your plan.',
+    [{ sessionId: open.sessionId, startedAt: open.startedAt }],
+  );
+}
 
 function invalidPlanField(field, message) {
   return AppError.badRequest('INVALID_PLAN_FIELD', message, [{ field }]);
@@ -92,12 +106,8 @@ module.exports = function buildPlansRouter(deps) {
 
       // Replacing the plan under a running workout would strand the logger on
       // exercises no longer in it. Refusing is honest; finish or discard first.
-      if (await getActiveSession(deps.pool, userId)) {
-        throw AppError.conflict(
-          'SESSION_IN_PROGRESS',
-          'Finish or discard your current session before changing your plan.',
-        );
-      }
+      const open = await getActiveSession(deps.pool, userId);
+      if (open) throw sessionInProgress(open);
 
       // A generated plan is the machine's to replace. One the user built out
       // of workouts they actually did is not, and savePlan deactivates the
@@ -156,12 +166,8 @@ module.exports = function buildPlansRouter(deps) {
 
       // Changing the plan under a running workout would strand the logger on
       // exercises no longer in it. Same guard, same reason, as regenerate.
-      if (await getActiveSession(deps.pool, userId)) {
-        throw AppError.conflict(
-          'SESSION_IN_PROGRESS',
-          'Finish or discard your current session before changing your plan.',
-        );
-      }
+      const open = await getActiveSession(deps.pool, userId);
+      if (open) throw sessionInProgress(open);
 
       await createPlanFromSession(deps.pool, userId, { sessionId, splitStyle, dayNo });
 
@@ -217,16 +223,30 @@ module.exports = function buildPlansRouter(deps) {
         throw AppError.badRequest('EXERCISE_REQUIRED', 'exerciseId is required.');
       }
 
+      // revert: true is the app's Undo: exerciseId is then the exercise to go
+      // back to, and the swap being undone must be the slot's latest label.
+      const revert = req.body?.revert;
+      if (revert !== undefined && typeof revert !== 'boolean') {
+        throw invalidPlanField('revert', 'revert must be true or false.');
+      }
+
       // swapPlanExercise throws AppError.badRequest('EXERCISE_NOT_ALLOWED')
       // itself -- the same way src/db/plans.js and src/db/users.js signal
       // expected failures from this layer -- so next(err) carries it to the
       // error handler unchanged. Do not add a translating try/catch here.
+      // revertPlanSwap throws its 409 SWAP_NOT_UNDOABLE the same way.
       // deps.logger, so a label that fails to record is visible in the server
       // log rather than silently absent from the training data.
-      await swapPlanExercise(deps.pool, ctx, exerciseId, { logger: deps.logger });
+      const { previous } = revert === true
+        ? await revertPlanSwap(deps.pool, ctx, exerciseId)
+        : await swapPlanExercise(deps.pool, ctx, exerciseId, { logger: deps.logger });
 
       res.json({
-        data: { plan: withUrls(await getActivePlan(deps.pool, req.user.userId)) },
+        data: {
+          plan: withUrls(await getActivePlan(deps.pool, req.user.userId)),
+          // What this call took out of the slot, for the app's Undo.
+          previous,
+        },
       });
     } catch (err) { next(err); }
   });

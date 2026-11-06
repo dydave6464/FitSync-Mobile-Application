@@ -527,4 +527,79 @@ test('profile endpoints', async (t) => {
   await t.test('PUT goals requires sign-in', async () => {
     await request(app).put('/api/v1/profile/goals').send({ goals: ['build_muscle'] }).expect(401);
   });
+
+  // Hard limits sit wider than the app's soft "ask once" ranges (100-250 cm,
+  // 25-300 kg), so a second Continue or Save on an unusual value still saves.
+  const HEIGHT = 'Enter a height between 50 and 275 cm.';
+  const WEIGHT = 'Enter a weight between 20 and 500 kg.';
+  const GOAL = 'Enter a goal weight between 20 and 500 kg.';
+  const patch = (body) => request(app).patch('/api/v1/profile').set('Authorization', auth).send(body);
+
+  await t.test('a slipped height is refused in plain words, with the range in details', async () => {
+    await reset();
+    const res = await patch({ heightCm: 17 }).expect(400);
+    assert.equal(res.body.error.code, 'INVALID_PROFILE_FIELD');
+    assert.equal(res.body.error.message, HEIGHT);
+    assert.deepEqual(res.body.error.details, [{ field: 'heightCm', min: 50, max: 275, unit: 'cm' }]);
+  });
+
+  await t.test('the height limits are inclusive', async () => {
+    await reset();
+    for (const heightCm of [49.9, 275.1]) {
+      const res = await patch({ heightCm }).expect(400);
+      assert.equal(res.body.error.message, HEIGHT, String(heightCm));
+    }
+    for (const heightCm of [50, 275]) {
+      const res = await patch({ heightCm }).expect(200);
+      assert.equal(Number(res.body.data.profile.heightCm), heightCm);
+    }
+  });
+
+  await t.test('a height outside the soft range but inside the hard one saves', async () => {
+    await reset();
+    const res = await patch({ heightCm: 120 }).expect(200);
+    assert.equal(Number(res.body.data.profile.heightCm), 120);
+  });
+
+  await t.test('a non-number height gets the same message and details', async () => {
+    await reset();
+    for (const heightCm of ['abc', true, false, [170], {}, '']) {
+      const res = await patch({ heightCm }).expect(400);
+      assert.equal(res.body.error.code, 'INVALID_PROFILE_FIELD', JSON.stringify(heightCm));
+      assert.equal(res.body.error.message, HEIGHT, JSON.stringify(heightCm));
+      assert.deepEqual(res.body.error.details,
+        [{ field: 'heightCm', min: 50, max: 275, unit: 'cm' }], JSON.stringify(heightCm));
+    }
+  });
+
+  await t.test('a weight out of range is a profile field error and changes nothing', async () => {
+    await reset();
+    await patch({ weightKg: 70 }).expect(200);
+    for (const weightKg of [19, 501]) {
+      const res = await patch({ weightKg }).expect(400);
+      assert.equal(res.body.error.code, 'INVALID_PROFILE_FIELD', String(weightKg));
+      assert.equal(res.body.error.message, WEIGHT);
+      assert.deepEqual(res.body.error.details, [{ field: 'weightKg', min: 20, max: 500, unit: 'kg' }]);
+    }
+    const [[user]] = await pool.query('SELECT weight_kg FROM users WHERE user_id = ?', [userId]);
+    assert.equal(Number(user.weight_kg), 70);
+    const [logs] = await pool.query('SELECT weight_kg FROM body_weight_logs WHERE user_id = ?', [userId]);
+    assert.deepEqual(logs.map((r) => Number(r.weight_kg)), [70]);
+  });
+
+  await t.test('a goal weight out of range names the goal weight', async () => {
+    await reset();
+    const res = await patch({ goalWeightKg: 10 }).expect(400);
+    assert.equal(res.body.error.code, 'INVALID_PROFILE_FIELD');
+    assert.equal(res.body.error.message, GOAL);
+    assert.deepEqual(res.body.error.details, [{ field: 'goalWeightKg', min: 20, max: 500, unit: 'kg' }]);
+  });
+
+  await t.test('null still clears the height and the goal weight', async () => {
+    await reset();
+    await patch({ heightCm: 170, goalWeightKg: 65 }).expect(200);
+    const res = await patch({ heightCm: null, goalWeightKg: null }).expect(200);
+    assert.equal(res.body.data.profile.heightCm, null);
+    assert.equal(res.body.data.profile.goalWeightKg, null);
+  });
 });

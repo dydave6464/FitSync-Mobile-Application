@@ -36,6 +36,14 @@ test('activity endpoints', async (t) => {
     .set('Authorization', `Bearer ${token}`).send(payload);
   const get = (token) => request(app).get('/api/v1/activity')
     .set('Authorization', `Bearer ${token}`);
+  const putBatch = (token, payload) => request(app).put('/api/v1/activity')
+    .set('Authorization', `Bearer ${token}`).send(payload);
+  const savedRows = async (userId) => {
+    const [[{ n }]] = await pool.query(
+      'SELECT COUNT(*) AS n FROM activity_logs WHERE user_id = ?', [userId],
+    );
+    return n;
+  };
   const today = manilaDay();
 
   await t.test('both endpoints require sign-in', async () => {
@@ -94,6 +102,7 @@ test('activity endpoints', async (t) => {
     await put(token, manilaDay(6), { steps: 10 }).expect(200);
     const old = await put(token, manilaDay(7), { steps: 10 }).expect(400);
     assert.equal(old.body.error.code, 'DATE_OUT_OF_RANGE');
+    assert.equal(old.body.error.message, 'Steps can be saved for today and the six days before it.');
     const future = await put(token, manilaDay(-1), { steps: 10 }).expect(400);
     assert.equal(future.body.error.code, 'DATE_OUT_OF_RANGE');
   });
@@ -151,6 +160,120 @@ test('activity endpoints', async (t) => {
     assert.deepEqual((await get(token).expect(200)).body.data.missing, ['height', 'weight']);
     await setBody(userId, 170, null);
     assert.deepEqual((await get(token).expect(200)).body.data.missing, ['weight']);
+  });
+
+  await t.test('the week carries the per-step factors of the current profile', async () => {
+    const near = (actual, expected) => assert.ok(
+      Math.abs(actual - expected) < 1e-12, `${actual} is not ${expected}`,
+    );
+    const { userId, token } = await freshUser();
+    await setBody(userId, 170, 70);
+    let { perStep } = (await get(token).expect(200)).body.data;
+    near(perStep.distanceKm, 0.00070380);
+    near(perStep.caloriesBurned, 0.024633);
+    assert.equal(perStep.activeMinutes, 0.01);
+
+    await setBody(userId, null, 70);
+    ({ perStep } = (await get(token).expect(200)).body.data);
+    assert.deepEqual(perStep, { distanceKm: null, caloriesBurned: null, activeMinutes: 0.01 });
+
+    await setBody(userId, 170, null);
+    ({ perStep } = (await get(token).expect(200)).body.data);
+    near(perStep.distanceKm, 0.00070380);
+    assert.equal(perStep.caloriesBurned, null);
+  });
+
+  await t.test('the batch requires sign-in', async () => {
+    await request(app).put('/api/v1/activity')
+      .send({ days: [{ date: today, steps: 1 }] }).expect(401);
+  });
+
+  await t.test('a batch saves several days and answers the week', async () => {
+    const { userId, token } = await freshUser();
+    await setBody(userId, 170, 70);
+    const res = await putBatch(token, {
+      days: [
+        { date: today, steps: 6420 },
+        { date: manilaDay(3), steps: 6420 },
+        { date: manilaDay(1), steps: 6420 },
+      ],
+    }).expect(200);
+    const week = res.body.data;
+    assert.equal(week.days.length, 7);
+    const estimated = {
+      steps: 6420, caloriesBurned: 158, distanceKm: 4.52, activeMinutes: 64,
+    };
+    assert.deepEqual(week.days[6], { date: today, ...estimated });
+    assert.deepEqual(week.days[5], { date: manilaDay(1), ...estimated });
+    assert.deepEqual(week.days[3], { date: manilaDay(3), ...estimated });
+    assert.equal(week.days[4].steps, null);
+    assert.deepEqual(week.skipped, []);
+    assert.deepEqual(week.missing, []);
+    assert.equal(week.usualDays, 2);
+    assert.equal(week.perStep.activeMinutes, 0.01);
+    assert.ok(Math.abs(week.perStep.caloriesBurned - 0.024633) < 1e-12);
+    // The same week GET answers, plus what was skipped.
+    const { skipped, ...rest } = week;
+    assert.deepEqual(rest, (await get(token).expect(200)).body.data);
+  });
+
+  await t.test('a batch never lowers a day', async () => {
+    const { token } = await freshUser();
+    await put(token, manilaDay(2), { steps: 8000 }).expect(200);
+    const res = await putBatch(token, { days: [{ date: manilaDay(2), steps: 5000 }] }).expect(200);
+    assert.equal(res.body.data.days[4].steps, 8000);
+  });
+
+  await t.test('days outside the window are skipped and listed; the rest are saved', async () => {
+    const { userId, token } = await freshUser();
+    const res = await putBatch(token, {
+      days: [
+        { date: manilaDay(-1), steps: 900 },
+        { date: manilaDay(6), steps: 600 },
+        { date: manilaDay(7), steps: 700 },
+        { date: today, steps: 100 },
+      ],
+    }).expect(200);
+    assert.deepEqual(res.body.data.skipped, [manilaDay(-1), manilaDay(7)]);
+    assert.equal(res.body.data.days[0].steps, 600);
+    assert.equal(res.body.data.days[6].steps, 100);
+    assert.equal(await savedRows(userId), 2);
+  });
+
+  await t.test('a malformed list is refused and saves nothing', async () => {
+    const { userId, token } = await freshUser();
+    const listMessage = 'days must be a list of 1 to 7 { date, steps } entries.';
+    const ok = { date: today, steps: 100 };
+    const eight = [0, 1, 2, 3, 4, 5, 6, 7].map((back) => ({ date: manilaDay(back), steps: 10 }));
+    const cases = [
+      ['no body', undefined, listMessage],
+      ['days not a list', { days: ok }, listMessage],
+      ['an empty list', { days: [] }, listMessage],
+      ['eight entries', { days: eight }, listMessage],
+      ['a null entry', { days: [ok, null] }, listMessage],
+      ['a string entry', { days: [ok, '2026-11-01'] }, listMessage],
+      ['a repeated date', { days: [ok, { date: today, steps: 200 }] }, 'Each day can be sent only once.'],
+    ];
+    for (const [name, payload, message] of cases) {
+      const res = await putBatch(token, payload).expect(400);
+      assert.equal(res.body.error.code, 'DAYS_INVALID', name);
+      assert.equal(res.body.error.message, message, name);
+    }
+    assert.equal(await savedRows(userId), 0);
+  });
+
+  await t.test('a bad date or step count in one entry saves none of them', async () => {
+    const { userId, token } = await freshUser();
+    const ok = { date: manilaDay(1), steps: 100 };
+    const bad = await putBatch(token, { days: [ok, { date: '2026-02-30', steps: 10 }] }).expect(400);
+    assert.equal(bad.body.error.code, 'DATE_INVALID');
+    assert.equal(bad.body.error.message, 'date must be a real YYYY-MM-DD day.');
+    for (const steps of [-1, 1.5, 100001]) {
+      const res = await putBatch(token, { days: [ok, { date: today, steps }] }).expect(400);
+      assert.equal(res.body.error.code, 'STEPS_INVALID', String(steps));
+      assert.equal(res.body.error.message, 'steps must be a whole number from 0 to 100000.');
+    }
+    assert.equal(await savedRows(userId), 0);
   });
 
   await t.test("one user never sees another's days", async () => {

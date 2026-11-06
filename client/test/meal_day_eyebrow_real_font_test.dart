@@ -30,6 +30,9 @@ Future<void> _load(String family, String path) async {
 
 class _PhotoRepo implements MealPhotoRepository {
   @override
+  Future<PhotoToday> today() => throw UnimplementedError();
+
+  @override
   Future<PhotoRecognition> recognize(
     Uint8List bytes,
     String mimeType, {

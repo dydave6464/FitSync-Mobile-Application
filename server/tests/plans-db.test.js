@@ -5,7 +5,9 @@ const { migrate } = require('../src/db/migrate');
 const { createPool } = require('../src/db/pool');
 const { testDbConfig, dropAllTables } = require('./helpers/test-db');
 const { seedExercises } = require('../src/db/seed-exercises');
-const { resolveExerciseIds, savePlan, getActivePlan } = require('../src/db/plans');
+const {
+  resolveExerciseIds, savePlan, getActivePlan, effectiveDaysPerWeekSql,
+} = require('../src/db/plans');
 const FIXTURE = require('./fixtures/seeds/manifest-fixture.json');
 
 test('plan persistence', async (t) => {
@@ -79,6 +81,55 @@ test('plan persistence', async (t) => {
     assert.equal(plan.name, 'Starter Plan');
     assert.equal(plan.exercises.length, 1);
     assert.equal(plan.exercises[0].targetReps, '8-12');
+  });
+
+  // PT-18: the plan's stored days_per_week is the label it was generated
+  // with; the days the user chose since are the count every reader reports.
+  const savePlanOf = (days) => savePlan(pool, userId, {
+    name: 'Starter Plan', splitStyle: 'full_body', daysPerWeek: days, sessionLengthMin: 45,
+    weekNo: 1, exercises: [{ name: known, orderNo: 1, targetSets: 3, targetReps: '8-12' }],
+  });
+  const chooseDays = async (forUser, weekdays) => {
+    for (const weekday of weekdays) {
+      await pool.query(
+        'INSERT INTO user_training_days (user_id, weekday) VALUES (?, ?)', [forUser, weekday],
+      );
+    }
+  };
+
+  await t.test('the active plan reports the chosen day count over its stored label', async () => {
+    await reset();
+    await savePlanOf(3);
+    await chooseDays(userId, [1, 3, 5, 6]);
+    assert.equal((await getActivePlan(pool, userId)).daysPerWeek, 4);
+  });
+
+  await t.test('with no chosen days the stored label stands', async () => {
+    await reset();
+    await savePlanOf(3);
+    assert.equal((await getActivePlan(pool, userId)).daysPerWeek, 3);
+  });
+
+  await t.test("another user's chosen days do not count", async () => {
+    await reset();
+    await savePlanOf(3);
+    const [r] = await pool.query(
+      "INSERT INTO users (email, password_hash, full_name) VALUES ('o@example.com','x','O')",
+    );
+    await chooseDays(r.insertId, [1, 2, 3, 4, 5, 6, 7]);
+    assert.equal((await getActivePlan(pool, userId)).daysPerWeek, 3);
+  });
+
+  await t.test('effectiveDaysPerWeekSql is the one rule for reading days_per_week', async () => {
+    await reset();
+    await savePlanOf(3);
+    await chooseDays(userId, [2, 4]);
+    const [[row]] = await pool.query(
+      `SELECT ${effectiveDaysPerWeekSql('p')} AS days
+         FROM workout_plans p WHERE p.user_id = ? AND p.is_active = TRUE`,
+      [userId],
+    );
+    assert.equal(Number(row.days), 2);
   });
 
   // This proves the pre-transaction guard: resolution fails before

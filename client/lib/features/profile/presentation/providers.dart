@@ -4,7 +4,8 @@ import '../../../core/units.dart';
 import '../../exercises/presentation/providers.dart'
     show apiClientProvider, apiRetryPolicy;
 import '../../plans/presentation/providers.dart' show activePlanProvider;
-import '../../sessions/presentation/providers.dart' show activeSessionProvider;
+import '../../sessions/presentation/providers.dart'
+    show activeSessionProvider, trainingAnalyticsProvider;
 import '../data/profile_repository.dart';
 import '../domain/body_weight.dart';
 import '../domain/profile.dart';
@@ -66,6 +67,11 @@ class ProfileNotifier extends AsyncNotifier<Profile> {
     state = AsyncData(
       await ref.read(profileRepositoryProvider).setTrainingDays(weekdays),
     );
+    // The server counts the chosen days for the plan's days a week and for
+    // Progress's adherence target (PT-18), so both read the new count. The
+    // whole analytics family: every period opened holds the old target.
+    ref.invalidate(activePlanProvider);
+    ref.invalidate(trainingAnalyticsProvider);
   }
 
   Future<void> setGoals(List<String> goals, String mainGoal) async {

@@ -38,6 +38,15 @@ String rangeText(double max, String unit) {
 String? gramsError(String text) => numberError(text, max: maxGrams, range: rangeText(maxGrams, 'g'));
 String? sodiumError(String text) => numberError(text, max: maxSodiumMg, range: rangeText(maxSodiumMg, 'mg'));
 
+/// The most calories per serving a label may give a manual food
+/// (MAX_KCAL in server/src/lib/nutrition-input.js).
+const maxKcal = 5000.0;
+
+/// Whether [kcal] is allowed. NaN is not.
+bool inKcalRange(double kcal) => kcal >= 0 && kcal <= maxKcal;
+
+String? kcalError(String text) => numberError(text, max: maxKcal, range: rangeText(maxKcal, 'kcal'));
+
 /// One number in a nutrition form: its name above the box, and, when
 /// [error] is set, what is wrong under it. The error is tied to the box (a
 /// screen reader hears it with the box's name) and is read out when it
@@ -57,6 +66,7 @@ class NumberBox extends StatelessWidget {
     this.fieldKey,
     this.hint = 'g',
     this.error,
+    this.wholeNumbers = false,
   });
 
   final String label;
@@ -65,6 +75,9 @@ class NumberBox extends StatelessWidget {
   final Key? fieldKey;
   final String hint;
   final String? error;
+
+  /// Digits only, with a keyboard that has no decimal point (calories).
+  final bool wholeNumbers;
 
   @override
   Widget build(BuildContext context) {
@@ -90,8 +103,10 @@ class NumberBox extends StatelessWidget {
             hint: hint,
             // A red border, and the message as the box's spoken hint.
             errorText: error,
-            keyboardType: const TextInputType.numberWithOptions(decimal: true),
-            inputFormatters: [FilteringTextInputFormatter.allow(RegExp(r'[0-9.]'))],
+            keyboardType: TextInputType.numberWithOptions(decimal: !wholeNumbers),
+            inputFormatters: [
+              wholeNumbers ? FilteringTextInputFormatter.digitsOnly : FilteringTextInputFormatter.allow(RegExp(r'[0-9.]')),
+            ],
             onChanged: onChanged,
           ),
         ),

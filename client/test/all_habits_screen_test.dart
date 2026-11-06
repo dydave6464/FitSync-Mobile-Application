@@ -76,9 +76,20 @@ class _FakeRepo implements RoutineRepository {
     return h;
   }
 
+  final _deleted = <int, Habit>{};
+
   @override
-  Future<void> remove(int habitId) async =>
-      habits.removeWhere((x) => x.habitId == habitId);
+  Future<void> remove(int habitId) async {
+    _deleted[habitId] = habits.firstWhere((x) => x.habitId == habitId);
+    habits.removeWhere((x) => x.habitId == habitId);
+  }
+
+  @override
+  Future<Habit> restore(int habitId) async {
+    final h = _deleted.remove(habitId)!;
+    habits.add(h);
+    return h;
+  }
 
   @override
   Future<void> check(int habitId, {String? date}) async {}
@@ -158,10 +169,25 @@ void main() {
     await tester.pumpAndSettle();
     await tester.tap(find.byKey(const Key('habit.delete')));
     await tester.pumpAndSettle();
-    await tester.tap(find.byKey(const Key('habit.delete.confirm')));
-    await tester.pumpAndSettle();
 
     expect(find.byKey(const Key('allHabits.habit.4')), findsNothing);
+    expect(find.byKey(const Key('allHabits.habit.5')), findsOneWidget);
+    expect(find.text('Habit deleted'), findsOneWidget);
+  });
+
+  testWidgets('Undo puts a deleted habit back in the list (PT-11)', (
+    tester,
+  ) async {
+    await _pump(tester, [_stretch, _walk]);
+
+    await tester.tap(find.byKey(const Key('allHabits.habit.4')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const Key('habit.delete')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.widgetWithText(SnackBarAction, 'Undo'));
+    await tester.pumpAndSettle();
+
+    expect(find.byKey(const Key('allHabits.habit.4')), findsOneWidget);
     expect(find.byKey(const Key('allHabits.habit.5')), findsOneWidget);
   });
 
