@@ -141,9 +141,11 @@ class _SlowReminderSettings extends ReminderSettingsController {
   }
 }
 
-/// The seeded profile with the master switch off.
+/// The seeded profile with the master switch off. [gate], when given, holds
+/// every patch until the test completes it.
 class _MasterOffProfile extends FakeProfileNotifier {
-  _MasterOffProfile() : super(<Map<String, dynamic>>[]);
+  _MasterOffProfile({Completer<void>? gate})
+    : super(<Map<String, dynamic>>[], patchGate: gate);
 
   @override
   Future<Profile> build() async {
@@ -577,10 +579,52 @@ void main() {
           .onChanged,
       isNotNull,
     );
+    // A tap on a disabled time row: see the next test.
+  });
 
-    // A tap on a disabled time row saves nothing.
+  // A time picker that answers at once: without it, the default picker is a
+  // dialog that never returns in a test, so "saves nothing" could not fail.
+  testWidgets('with the master switch off a time row saves nothing', (
+    tester,
+  ) async {
+    final settingsPatches = <Map<String, dynamic>>[];
+    var picks = 0;
+    await _pump(
+      tester,
+      profileNotifier: _MasterOffProfile.new,
+      settingsPatches: settingsPatches,
+      pickTime: (_, _) async {
+        picks += 1;
+        return const TimeOfDay(hour: 9, minute: 30);
+      },
+    );
+
     await _scrollAndTap(tester, const Key('reminders.workoutTime'));
+
+    expect(picks, 0, reason: 'the picker never opens');
     expect(settingsPatches, isEmpty);
+  });
+
+  // The sections followed the saved master value, so for as long as turning
+  // it on was on its way the switch read On over sections still dimmed and
+  // disabled under "Reminders are off".
+  testWidgets('the sections come alive as soon as the master switch is '
+      'turned on', (tester) async {
+    final gate = Completer<void>();
+    await _pump(tester, profileNotifier: () => _MasterOffProfile(gate: gate));
+
+    await tester.tap(find.byKey(const Key('reminders.master')));
+    await tester.pump();
+
+    expect(find.textContaining('Reminders are off.'), findsNothing);
+    expect(
+      tester
+          .widget<Switch>(find.byKey(const Key('reminders.habits')))
+          .onChanged,
+      isNotNull,
+    );
+    gate.complete();
+    await tester.pumpAndSettle();
   });
 
   testWidgets('with the master switch on there is no "off" line', (
@@ -672,6 +716,48 @@ void main() {
     gate.complete();
     await tester.pumpAndSettle();
     expect(switchOn(tester, 'reminders.habits'), isFalse);
+  });
+
+  testWidgets('the selected lead time does nothing when tapped', (
+    tester,
+  ) async {
+    final settingsPatches = <Map<String, dynamic>>[];
+    await _pump(tester, settingsPatches: settingsPatches);
+
+    await tester.tap(find.byKey(const Key('reminders.lead.15')));
+    await tester.pumpAndSettle();
+
+    expect(settingsPatches, isEmpty, reason: '15 is already the lead time');
+  });
+
+  testWidgets('a lead time moves at once and more taps while saving send '
+      'nothing more', (tester) async {
+    final patches = <Map<String, dynamic>>[];
+    final gate = Completer<void>();
+    await _pump(
+      tester,
+      settingsController: () => _SlowReminderSettings(patches, gate),
+    );
+    bool selected(String value) => tester
+        .widget<FsChip>(find.byKey(Key('reminders.lead.$value')))
+        .selected;
+
+    await tester.tap(find.byKey(const Key('reminders.lead.5')));
+    await tester.pump();
+    expect(selected('5'), isTrue, reason: 'shown while the server is asked');
+    expect(selected('15'), isFalse);
+
+    await tester.tap(find.byKey(const Key('reminders.lead.5')));
+    await tester.tap(find.byKey(const Key('reminders.lead.30')));
+    await tester.pump();
+    expect(patches, [
+      {'habitLeadMin': 5},
+    ], reason: 'no further PATCH while one is in flight');
+    expect(selected('5'), isTrue);
+
+    gate.complete();
+    await tester.pumpAndSettle();
+    expect(selected('5'), isTrue);
   });
 
   testWidgets('a failed save puts the switch back and says why', (

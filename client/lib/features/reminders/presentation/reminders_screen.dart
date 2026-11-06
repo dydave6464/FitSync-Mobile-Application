@@ -106,6 +106,27 @@ class _RemindersScreenState extends ConsumerState<RemindersScreen> {
   /// one per impatient tap.
   final _pending = <String, bool>{};
 
+  /// The lead time on its way to the server, the chips' [_pending]: the
+  /// chip moves on the tap, and further taps wait until the answer.
+  int? _pendingLead;
+
+  /// Saves a new habit lead time. The selected chip, or any tap while one
+  /// save is in flight, sends nothing.
+  Future<void> _setLead(int minutes, int saved) async {
+    if (_pendingLead != null || minutes == saved) return;
+    setState(() => _pendingLead = minutes);
+    try {
+      await _save(
+        () => ref.read(reminderSettingsProvider.notifier).patch({
+          'habitLeadMin': minutes,
+        }),
+      );
+    } finally {
+      // The provider holds the saved value, or the old one after a failure.
+      if (mounted) setState(() => _pendingLead = null);
+    }
+  }
+
   /// Turning a reminder off always saves. Turning one on asks for permission
   /// first when it is not already granted; a refusal saves nothing, and the
   /// switch goes back to off because [savePatch] never ran. A failed save
@@ -192,7 +213,10 @@ class _RemindersScreenState extends ConsumerState<RemindersScreen> {
   /// dimmed and disabled, with a line that says why, rather than looking
   /// live.
   Widget _body(ReminderSettings settings, Profile profile) {
-    final live = profile.notificationsEnabled;
+    // The master switch's value while its save is on its way, so turning it
+    // on brings the sections to life at once, as the switch itself moves.
+    final live =
+        _pending['notificationsEnabled'] ?? profile.notificationsEnabled;
     // Only a plan known to be absent: while it loads, or if it failed, the
     // note would be a guess.
     final plan = ref.watch(activePlanProvider);
@@ -424,15 +448,14 @@ class _RemindersScreenState extends ConsumerState<RemindersScreen> {
                   FsChip(
                     key: Key('reminders.lead.${option.value}'),
                     label: option.label,
-                    selected: settings.habitLeadMin.toString() == option.value,
+                    selected:
+                        (_pendingLead ?? settings.habitLeadMin).toString() ==
+                        option.value,
                     onTap: !enabled
                         ? null
-                        : () => _save(
-                            () => ref
-                                .read(reminderSettingsProvider.notifier)
-                                .patch({
-                                  'habitLeadMin': int.parse(option.value),
-                                }),
+                        : () => _setLead(
+                            int.parse(option.value),
+                            settings.habitLeadMin,
                           ),
                   ),
               ],
