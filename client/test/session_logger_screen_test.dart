@@ -4711,6 +4711,49 @@ void main() {
       expect(find.byType(SnackBar), findsNothing);
     });
   });
+
+  // The fields' focus is held with their text, one store per exercise
+  // (SE-2). Going from one table straight to another, with a field still
+  // focused, hands the same rows a fresh store; nothing may trip over the
+  // old one on the way.
+  testWidgets('a focused field survives a jump from table to table', (
+    tester,
+  ) async {
+    await _pumpLogging(
+      tester,
+      session: _session(
+        sets: const [
+          LoggedSet(exerciseId: 102, setNumber: 1, weightKg: 20, reps: 10),
+        ],
+      ),
+    );
+    await tester.tap(find.byKey(const Key('set.1.reps')));
+    await tester.pump();
+
+    await tester.tap(find.byKey(const Key('logger.position')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const Key('jump.102')));
+    await tester.pumpAndSettle();
+
+    expect(tester.takeException(), isNull);
+    expect(find.byKey(const Key('logger.demo')), findsNothing);
+    // The band still answers on the new table.
+    final cell = tester.getRect(find.byKey(const Key('set.2.reps')));
+    await tester.tapAt(cell.topCenter - const Offset(0, 4));
+    await tester.pump();
+    expect(
+      tester
+          .widget<EditableText>(
+            find.descendant(
+              of: find.byKey(const Key('set.2.reps')),
+              matching: find.byType(EditableText),
+            ),
+          )
+          .focusNode
+          .hasFocus,
+      isTrue,
+    );
+  });
 }
 
 /// Fails every plan load the way a dropped connection does while [failing],
