@@ -146,7 +146,12 @@ class _StartWorkoutSheet extends ConsumerWidget {
     final last = ref.watch(lastWorkoutProvider).value;
 
     return Padding(
-      padding: const EdgeInsets.fromLTRB(18, 0, 18, 22),
+      padding: const EdgeInsets.fromLTRB(
+        FsSheetHeader.sideInset,
+        0,
+        FsSheetHeader.sideInset,
+        22,
+      ),
       child: SafeArea(
         top: false,
         child: SingleChildScrollView(

@@ -223,9 +223,9 @@ class _RestSheetState extends ConsumerState<RestSheet> {
       // screen, and the last of them would otherwise be cut off.
       child: SingleChildScrollView(
         padding: EdgeInsets.fromLTRB(
-          20,
+          FsSheetHeader.sideInset,
           10,
-          20,
+          FsSheetHeader.sideInset,
           20 + MediaQuery.viewInsetsOf(context).bottom,
         ),
         child: Column(

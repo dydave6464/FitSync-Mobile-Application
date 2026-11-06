@@ -10,6 +10,8 @@ import 'package:fitsync/features/plans/domain/workout_plan.dart';
 import 'package:fitsync/features/sessions/presentation/widgets/exercise_jump_sheet.dart';
 import 'package:fitsync/core/widgets/fs_kit.dart';
 
+import 'helpers/sheet_insets.dart';
+
 List<PlanExercise> _plan(int count) => [
   for (var i = 0; i < count; i++)
     PlanExercise(
@@ -86,15 +88,13 @@ void main() {
 
   // P-21: this sheet held its header 8 dp from the right edge while the
   // rest hold it at their content inset, so the × sat in a different place
-  // on each sheet. Now it ends where the content does, the same distance
-  // from the right edge as the title is from the left.
-  testWidgets('the close button ends at the content inset', (tester) async {
+  // on each sheet. Now it sits at the one inset every sheet uses.
+  testWidgets('the close button ends at the shared sheet inset', (
+    tester,
+  ) async {
     await _open(tester, count: 3);
 
-    final sheet = tester.getRect(_sheet);
-    final close = tester.getRect(find.widgetWithIcon(IconButton, Icons.close));
-    final title = tester.getRect(find.text('Jump to an exercise'));
-    expect(sheet.right - close.right, title.left - sheet.left);
+    expectSheetHeaderAtSideInset(tester, title: 'Jump to an exercise');
   });
 
   // Every row is built up front, so only a hit-testable finder makes

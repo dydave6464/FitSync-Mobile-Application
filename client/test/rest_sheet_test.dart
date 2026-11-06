@@ -15,6 +15,7 @@ import 'package:fitsync/features/sessions/presentation/widgets/rest_sheet.dart';
 
 import 'helpers/fake_rest_alerts.dart';
 import 'helpers/fake_training_settings.dart';
+import 'helpers/sheet_insets.dart';
 
 /// Opens the sheet the way the logger's menu does: no countdown, just the
 /// default. A countdown-less sheet has nothing ticking, so it can settle.
@@ -58,6 +59,12 @@ FsChip _chip(WidgetTester tester, String key) =>
     tester.widget<FsChip>(find.byKey(Key(key)));
 
 void main() {
+  // P-21: the × and the title sit at the one sheet inset every sheet uses.
+  testWidgets('the header sits at the shared sheet inset', (tester) async {
+    await _open(tester);
+    expectSheetHeaderAtSideInset(tester, title: 'Rest time');
+  });
+
   testWidgets('has the shared sheet header, and its Close shuts the sheet', (
     tester,
   ) async {

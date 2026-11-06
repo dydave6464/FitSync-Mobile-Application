@@ -82,7 +82,12 @@ class ExerciseJumpSheet extends StatelessWidget {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             const Padding(
-              padding: EdgeInsets.fromLTRB(20, 10, 20, 4),
+              padding: EdgeInsets.fromLTRB(
+                FsSheetHeader.sideInset,
+                10,
+                FsSheetHeader.sideInset,
+                4,
+              ),
               child: FsSheetHeader(title: 'Jump to an exercise'),
             ),
             // Only the rows scroll; the handle and the title stay put.
@@ -130,7 +135,11 @@ class ExerciseJumpSheet extends StatelessWidget {
         key: Key('jump.${exercise.exerciseId}'),
         onTap: pick,
         child: Container(
-          padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 13),
+          // Rows start where the title does.
+          padding: const EdgeInsets.symmetric(
+            horizontal: FsSheetHeader.sideInset,
+            vertical: 13,
+          ),
           color: current ? t.accentDim : null,
           child: Row(
             crossAxisAlignment: CrossAxisAlignment.start,

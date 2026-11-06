@@ -2102,8 +2102,8 @@ class FsSheetHeightCap extends StatelessWidget {
 /// caller reads as "dismissed". [closeKey] keys the × ([defaultCloseKey]
 /// unless given).
 ///
-/// It sits inside the sheet's content padding, the same on both sides, as
-/// the start-workout sheet's header does: the title starts where the
+/// It sits inside the sheet's content padding of [sideInset] on both sides,
+/// as the start-workout sheet's header does: the title starts where the
 /// content starts, and the ×'s 48 dp button ends where the content ends.
 /// So the × is in one place on every sheet.
 class FsSheetHeader extends StatelessWidget {
@@ -2116,6 +2116,12 @@ class FsSheetHeader extends StatelessWidget {
 
   /// The ×'s key on any sheet that does not name its own.
   static const defaultCloseKey = Key('sheet.close');
+
+  /// The side inset of every sheet's content, and so of this header: the
+  /// prototype's sheets pad 18 px at the sides (screens-training.jsx, the
+  /// start and share sheets, `padding: '10px 18px ...'`). One number, so
+  /// the × is in the same place on every sheet.
+  static const sideInset = 18.0;
 
   final String title;
   final VoidCallback? onClose;

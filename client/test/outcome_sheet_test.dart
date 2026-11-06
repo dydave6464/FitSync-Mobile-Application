@@ -20,6 +20,8 @@ import 'package:fitsync/features/profile/presentation/providers.dart'
 import 'package:fitsync/features/sessions/domain/session_outcome.dart';
 import 'package:fitsync/features/sessions/presentation/widgets/outcome_sheet.dart';
 
+import 'helpers/sheet_insets.dart';
+
 const _pending = PendingOutcome(
   sessionId: 7,
   sessionDate: '2026-09-21',
@@ -126,6 +128,15 @@ Future<void> _tap(WidgetTester tester, Finder finder) async {
 }
 
 void main() {
+  // P-21: the × and the title sit at the one sheet inset every sheet uses.
+  testWidgets('the header sits at the shared sheet inset', (tester) async {
+    await _open(tester);
+    expectSheetHeaderAtSideInset(
+      tester,
+      title: 'How did your last workout leave you?',
+    );
+  });
+
   testWidgets('has the shared sheet header, and its Close shuts the sheet', (
     tester,
   ) async {

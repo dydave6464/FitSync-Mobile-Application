@@ -39,6 +39,7 @@ import 'package:fitsync/features/sessions/presentation/workout_review_screen.dar
 
 import 'helpers/a11y.dart' show contrast;
 import 'helpers/no_recent_exercises.dart';
+import 'helpers/sheet_insets.dart';
 
 /// The real face, not the test harness's. The default test font renders
 /// FsTag('Recommended') at 136dp against Space Grotesk's ~62dp, which is
@@ -185,6 +186,12 @@ Future<ProviderContainer> _open(
 
 void main() {
   setUpAll(_loadFont);
+
+  // P-21: the × and the title sit at the one sheet inset every sheet uses.
+  testWidgets('the header sits at the shared sheet inset', (tester) async {
+    await _open(tester);
+    expectSheetHeaderAtSideInset(tester, title: 'Start a workout');
+  });
 
   // PT-22: no guard to slip past here, so the sheet takes the theme's whole
   // chrome -- Material's handle in the kit's 38 x 4 line2, the surface and
