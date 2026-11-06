@@ -1315,6 +1315,30 @@ void main() {
       handle.dispose();
     });
 
+    // L-84: a bare "Edit" said nothing about what it edits.
+    testWidgets('Edit is announced as editing the name and city', (
+      tester,
+    ) async {
+      final handle = tester.ensureSemantics();
+      await _pump(tester);
+      final node = tester.getSemantics(find.byKey(const Key('profile.edit')));
+      expect(
+        node,
+        isSemantics(
+          label: 'Edit name and city',
+          isButton: true,
+          hasTapAction: true,
+        ),
+      );
+      expect(node.rect.width, greaterThanOrEqualTo(48));
+      expect(node.rect.height, greaterThanOrEqualTo(48));
+
+      tester.semantics.tap(find.semantics.byLabel('Edit name and city'));
+      await tester.pumpAndSettle();
+      expect(find.byType(EditScaffold), findsOneWidget);
+      handle.dispose();
+    });
+
     testWidgets('Edit opens both, filled in, and Save writes them', (
       tester,
     ) async {

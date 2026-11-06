@@ -157,13 +157,32 @@ class _SettingsList extends ConsumerWidget {
               // shows, the name Home greets the user by and the city, which
               // nothing else in the app can change.
               FsTapRoom(
-                child: FsChip(
-                  key: const Key('profile.edit'),
-                  label: 'Edit',
-                  small: true,
-                  selected: false,
-                  toggle: false,
+                // Said as what it edits: a bare "Edit" names no target. One
+                // node of at least 48 dp, as the chip's own band is.
+                child: Semantics(
+                  container: true,
+                  button: true,
+                  label: 'Edit name and city',
                   onTap: () => _open(context, const _NameCityEditor()),
+                  excludeSemantics: true,
+                  child: ConstrainedBox(
+                    constraints: const BoxConstraints(
+                      minWidth: 48,
+                      minHeight: 48,
+                    ),
+                    child: Center(
+                      widthFactor: 1,
+                      heightFactor: 1,
+                      child: FsChip(
+                        key: const Key('profile.edit'),
+                        label: 'Edit',
+                        small: true,
+                        selected: false,
+                        toggle: false,
+                        onTap: () => _open(context, const _NameCityEditor()),
+                      ),
+                    ),
+                  ),
                 ),
               ),
             ],
