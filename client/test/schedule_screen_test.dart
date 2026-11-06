@@ -346,7 +346,7 @@ void main() {
     expect(find.text('Upcoming'), findsOneWidget);
     expect(find.text('Reminders on'), findsOneWidget);
     // Defaults: habit reminders 15 min before; workout reminders off.
-    expect(find.text('Reminder 15 min before'), findsOneWidget);
+    expect(find.text('Reminder about 15 min before'), findsOneWidget);
     expect(find.textContaining('Reminder at'), findsNothing);
   });
 
@@ -357,7 +357,7 @@ void main() {
     await _pump(tester, now: DateTime.utc(2026, 9, 24, 13));
 
     expect(find.text('Today · Stretch · 9:00 PM'), findsOneWidget);
-    expect(find.text('Reminder 15 min before'), findsNothing);
+    expect(find.text('Reminder about 15 min before'), findsNothing);
   });
 
   testWidgets(
@@ -424,7 +424,7 @@ void main() {
       _y(tester, 'Reminder at 7:00 AM'),
       greaterThan(_y(tester, 'Tomorrow · Workout · Upper/Lower')),
     );
-    expect(find.text('Reminder 15 min before'), findsNothing);
+    expect(find.text('Reminder about 15 min before'), findsNothing);
   });
 
   testWidgets('nothing today or tomorrow says so, whatever comes later', (
@@ -636,7 +636,7 @@ void main() {
 
       // Sanity: reminders show while the settings are good.
       expect(find.text('Reminders on'), findsOneWidget);
-      expect(find.text('Reminder 15 min before'), findsOneWidget);
+      expect(find.text('Reminder about 15 min before'), findsOneWidget);
 
       // A refetch fails; the settings provider keeps its old value
       // (Riverpod 3's AsyncError.copyWithPrevious) but is now in error.
