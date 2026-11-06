@@ -1,5 +1,4 @@
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../core/theme.dart';
@@ -7,6 +6,7 @@ import '../../../core/widgets/fs_kit.dart';
 import '../domain/nutrition.dart';
 import 'error_snack_bar.dart';
 import 'providers.dart';
+import 'widgets/number_box.dart';
 
 class AddFoodManuallyScreen extends ConsumerStatefulWidget {
   const AddFoodManuallyScreen({super.key, required this.mealType, this.onLogged, this.pick = false});
@@ -67,23 +67,20 @@ class _AddFoodManuallyScreenState extends ConsumerState<AddFoodManuallyScreen> {
     final valid = name.isNotEmpty && name.length <= 100 && _serving.text.trim().length <= 60
         && gramsOk && sodiumOk && (p! + c! + f!) > 0;
 
-    Widget gramsField(String label, Key key, TextEditingController ctrl, {String hint = 'g'}) => Expanded(
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text(label, style: TextStyle(color: t.text2, fontSize: 12)),
-          const SizedBox(height: 4),
-          FsField(
-            controller: ctrl,
-            fieldKey: key,
-            hint: hint,
-            keyboardType: const TextInputType.numberWithOptions(decimal: true),
-            inputFormatters: [FilteringTextInputFormatter.allow(RegExp(r'[0-9.]'))],
-            onChanged: (_) => setState(() {}),
-          ),
-        ],
+    Widget gramsField(String label, Key key, TextEditingController ctrl, {bool sodium = false}) => Expanded(
+      child: NumberBox(
+        label: label,
+        controller: ctrl,
+        fieldKey: key,
+        hint: sodium ? 'mg' : 'g',
+        error: sodium ? sodiumError(ctrl.text) : gramsError(ctrl.text),
+        onChanged: (_) => setState(() {}),
       ),
     );
+    // Log is off with no protein, carbs or fat: say so once the user has
+    // started, rather than leave the button grey without a reason.
+    final noMacros = gramsOk && sodiumOk && p! + c! + f! == 0 &&
+        (name.isNotEmpty || [_protein, _carbs, _fat].any((c) => c.text.trim().isNotEmpty));
 
     // Back with anything typed asks first; an untouched form just leaves.
     final typed = [_name, _serving, _protein, _carbs, _fat, _fiber, _sugar, _sodium]
@@ -115,33 +112,28 @@ class _AddFoodManuallyScreenState extends ConsumerState<AddFoodManuallyScreen> {
             const SizedBox(height: 8),
             // Two rows of two, not one row of four: four boxes in a row
             // overflow a narrow phone at large text.
-            Row(children: [
+            // Tops aligned, so an error under one box never shifts its pair.
+            Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
               gramsField('Protein (g)', const Key('manual.protein'), _protein),
               const SizedBox(width: 10),
               gramsField('Carbs (g)', const Key('manual.carbs'), _carbs),
             ]),
             const SizedBox(height: 10),
-            Row(children: [
+            Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
               gramsField('Fat (g)', const Key('manual.fat'), _fat),
               const SizedBox(width: 10),
               gramsField('Fiber (g)', const Key('manual.fiber'), _fiber),
             ]),
             const SizedBox(height: 10),
-            Row(children: [
+            Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
               gramsField('Sugar (g)', const Key('manual.sugar'), _sugar),
               const SizedBox(width: 10),
-              gramsField('Sodium (mg)', const Key('manual.sodium'), _sodium, hint: 'mg'),
+              gramsField('Sodium (mg)', const Key('manual.sodium'), _sodium, sodium: true),
             ]),
-            if (!gramsOk)
-              Padding(
-                padding: const EdgeInsets.only(top: 6),
-                child: Text('Each value must be 0–500 g', style: TextStyle(color: t.red, fontSize: 12)),
-              )
-            else if (!sodiumOk)
-              Padding(
-                padding: const EdgeInsets.only(top: 6),
-                child: Text('Sodium must be 0–20,000 mg', style: TextStyle(color: t.red, fontSize: 12)),
-              ),
+            if (noMacros) ...[
+              const SizedBox(height: 8),
+              const FsErrorLine('Add some protein, carbs or fat'),
+            ],
             const SizedBox(height: 16),
             Text('Calories', style: TextStyle(color: t.text2, fontSize: 12)),
             Text(kcal == null ? '—' : '$kcal kcal', style: theme.textTheme.titleLarge),

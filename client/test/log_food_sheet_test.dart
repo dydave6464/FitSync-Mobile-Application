@@ -261,7 +261,7 @@ void main() {
     await _editNumbers(tester);
     await tester.enterText(find.descendant(of: find.byKey(const Key('logSheet.sodium')), matching: find.byType(TextField)), '20001');
     await tester.pump();
-    expect(find.text('Sodium must be 0–20,000 mg'), findsOneWidget);
+    expect(find.text('Must be 0–20,000 mg'), findsOneWidget);
     await tester.ensureVisible(find.byKey(const Key('logSheet.log')));
     await tester.pumpAndSettle();
     await tester.tap(find.byKey(const Key('logSheet.log')));
@@ -274,7 +274,7 @@ void main() {
     await _editNumbers(tester);
     await tester.enterText(find.descendant(of: find.byKey(const Key('logSheet.sugar')), matching: find.byType(TextField)), '600');
     await tester.pump();
-    expect(find.text('Each value must be 0–500 g'), findsOneWidget);
+    expect(find.text('Must be 0–500 g'), findsOneWidget);
     await tester.ensureVisible(find.byKey(const Key('logSheet.log')));
     await tester.pumpAndSettle();
     await tester.tap(find.byKey(const Key('logSheet.log')));
@@ -558,7 +558,7 @@ void main() {
       kcal: 4990, proteinG: 60, carbsG: 520, fatG: 290,
     ));
     await _editNumbers(tester);
-    expect(find.text('Each value must be 0–500 g'), findsNothing, reason: 'nothing was changed');
+    expect(find.text('Must be 0–500 g'), findsNothing, reason: 'nothing was changed');
     await tester.ensureVisible(find.byKey(const Key('logSheet.log')));
     await tester.pumpAndSettle();
     await tester.tap(find.byKey(const Key('logSheet.log')));
@@ -587,7 +587,7 @@ void main() {
     await _editNumbers(tester);
     await tester.enterText(find.descendant(of: find.byKey(const Key('logSheet.fat')), matching: find.byType(TextField)), '600');
     await tester.pump();
-    expect(find.text('Each value must be 0–500 g'), findsOneWidget);
+    expect(find.text('Must be 0–500 g'), findsOneWidget);
     await tester.ensureVisible(find.byKey(const Key('logSheet.log')));
     await tester.pumpAndSettle();
     await tester.tap(find.byKey(const Key('logSheet.log')));
@@ -600,7 +600,7 @@ void main() {
     await _editNumbers(tester);
     await tester.enterText(find.descendant(of: find.byKey(const Key('logSheet.fiber')), matching: find.byType(TextField)), '600');
     await tester.pump();
-    expect(find.text('Each value must be 0–500 g'), findsOneWidget);
+    expect(find.text('Must be 0–500 g'), findsOneWidget);
     await tester.ensureVisible(find.byKey(const Key('logSheet.log')));
     await tester.pumpAndSettle();
     await tester.tap(find.byKey(const Key('logSheet.log')));
@@ -614,7 +614,7 @@ void main() {
     await tester.enterText(find.descendant(of: find.byKey(const Key('logSheet.protein')), matching: find.byType(TextField)), '.');
     await tester.pump();
     expect(tester.takeException(), isNull);
-    expect(find.text('Each value must be 0–500 g'), findsOneWidget);
+    expect(find.text('Enter a number'), findsOneWidget);
     await tester.ensureVisible(find.byKey(const Key('logSheet.log')));
     await tester.pumpAndSettle();
     await tester.tap(find.byKey(const Key('logSheet.log')));
@@ -793,4 +793,53 @@ void main() {
       expect(lines, hasLength(1), reason: '"1.5" must not break over two lines');
     });
   });
+
+  group('number errors (NU-10)', () {
+    TextField box(WidgetTester tester, String key) => tester.widget<TextField>(_box(key));
+
+    testWidgets('an out-of-range number is said under its own box, and announced', (tester) async {
+      final h = tester.ensureSemantics();
+      await _open(tester, _rice);
+      await _editNumbers(tester);
+      await tester.enterText(_box('logSheet.carbs'), '600');
+      await tester.pump();
+      final field = tester.getRect(_box('logSheet.carbs'));
+      final error = tester.getRect(find.text('Must be 0–500 g'));
+      expect(error.top, greaterThanOrEqualTo(field.bottom));
+      expect(error.left, greaterThanOrEqualTo(field.left - 1));
+      expect(error.right, lessThanOrEqualTo(field.right + 1));
+      expect(
+        tester.getSemantics(find.ancestor(of: find.text('Must be 0–500 g'), matching: find.byType(FsErrorLine))),
+        isSemantics(isLiveRegion: true),
+      );
+      expect(box(tester, 'logSheet.carbs').controller!.text, '600');
+      h.dispose();
+    });
+
+    testWidgets('an unreadable number asks for a number', (tester) async {
+      await _open(tester, _rice);
+      await _editNumbers(tester);
+      await tester.enterText(_box('logSheet.fat'), '1.2.');
+      await tester.pump();
+      expect(find.text('Enter a number'), findsOneWidget);
+    });
+
+    testWidgets('"Add some protein, carbs or fat" is announced', (tester) async {
+      final h = tester.ensureSemantics();
+      await _open(tester, _rice);
+      await _editNumbers(tester);
+      for (final k in ['logSheet.protein', 'logSheet.carbs', 'logSheet.fat']) {
+        await tester.enterText(_box(k), '0');
+      }
+      await tester.pump();
+      expect(
+        tester.getSemantics(
+            find.ancestor(of: find.text('Add some protein, carbs or fat'), matching: find.byType(FsErrorLine))),
+        isSemantics(isLiveRegion: true),
+      );
+      h.dispose();
+    });
+  });
 }
+
+Finder _box(String key) => find.descendant(of: find.byKey(Key(key)), matching: find.byType(TextField));

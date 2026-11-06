@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 
+import 'package:fitsync/core/widgets/fs_kit.dart';
 import 'package:fitsync/features/nutrition/presentation/add_food_manually_screen.dart';
 import 'package:fitsync/features/nutrition/presentation/providers.dart';
 
@@ -73,7 +74,7 @@ void main() {
     await tester.enterText(find.byKey(const Key('manual.carbs')), '34');
     await tester.enterText(find.byKey(const Key('manual.fat')), '600');
     await tester.pump();
-    expect(find.text('Each value must be 0–500 g'), findsOneWidget);
+    expect(find.text('Must be 0–500 g'), findsOneWidget);
     await tester.enterText(find.byKey(const Key('manual.fat')), '6');
     await tester.pump();
     await tester.tap(find.byKey(const Key('manual.log')));
@@ -122,7 +123,7 @@ void main() {
     await tester.enterText(find.byKey(const Key('manual.fat')), '6');
     await tester.enterText(find.byKey(const Key('manual.fiber')), '600');
     await tester.pump();
-    expect(find.text('Each value must be 0–500 g'), findsOneWidget);
+    expect(find.text('Must be 0–500 g'), findsOneWidget);
     await tester.scrollUntilVisible(find.byKey(const Key('manual.log')), 200, scrollable: find.byType(Scrollable).first);
     await tester.pumpAndSettle();
     await tester.tap(find.byKey(const Key('manual.log')));
@@ -171,7 +172,7 @@ void main() {
     await tester.enterText(find.byKey(const Key('manual.fat')), '6');
     await tester.enterText(find.byKey(const Key('manual.sodium')), '25000');
     await tester.pump();
-    expect(find.text('Sodium must be 0–20,000 mg'), findsOneWidget);
+    expect(find.text('Must be 0–20,000 mg'), findsOneWidget);
     await tester.scrollUntilVisible(find.byKey(const Key('manual.log')), 200, scrollable: find.byType(Scrollable).first);
     await tester.pumpAndSettle();
     await tester.tap(find.byKey(const Key('manual.log')));
@@ -218,6 +219,64 @@ void main() {
       await tester.tap(find.byKey(const Key('discard.confirm')));
       await tester.pumpAndSettle();
       expect(find.text('go'), findsOneWidget);
+    });
+  });
+
+  group('number errors (NU-10)', () {
+    /// [message] sits right under [field]'s box, inside its width.
+    void expectUnder(WidgetTester tester, String field, String message) {
+      final box = tester.getRect(find.byKey(Key(field)));
+      final error = tester.getRect(find.text(message));
+      expect(error.top, greaterThanOrEqualTo(box.bottom));
+      expect(error.top - box.bottom, lessThan(24), reason: 'directly under the box');
+      expect(error.left, greaterThanOrEqualTo(box.left - 1));
+      expect(error.right, lessThanOrEqualTo(box.right + 1));
+    }
+
+    testWidgets('an out-of-range number is said under its own box, and announced', (tester) async {
+      final h = tester.ensureSemantics();
+      await _pump(tester, size: const Size(400, 1200));
+      await tester.enterText(find.byKey(const Key('manual.fat')), '600');
+      await tester.pump();
+      expect(find.text('Must be 0–500 g'), findsOneWidget);
+      expectUnder(tester, 'manual.fat', 'Must be 0–500 g');
+      expect(
+        tester.getSemantics(find.ancestor(of: find.text('Must be 0–500 g'), matching: find.byType(FsErrorLine))),
+        isSemantics(isLiveRegion: true),
+      );
+      // Tied to the box: focusing it says what is wrong.
+      final fat = tester.getSemantics(find.byKey(const Key('manual.fat')));
+      expect(fat.label, startsWith('Fat (g)'));
+      expect(fat.hint, 'Must be 0–500 g');
+      expect(fat.flagsCollection.isTextField, isTrue);
+      h.dispose();
+    });
+
+    testWidgets('an out-of-range sodium is said under the sodium box', (tester) async {
+      await _pump(tester, size: const Size(400, 1200));
+      await tester.enterText(find.byKey(const Key('manual.sodium')), '25000');
+      await tester.pump();
+      expectUnder(tester, 'manual.sodium', 'Must be 0–20,000 mg');
+    });
+
+    testWidgets('an unreadable number asks for a number, not a range', (tester) async {
+      await _pump(tester, size: const Size(400, 1200));
+      await tester.enterText(find.byKey(const Key('manual.protein')), '1.2.');
+      await tester.pump();
+      expectUnder(tester, 'manual.protein', 'Enter a number');
+      expect(find.text('Must be 0–500 g'), findsNothing);
+    });
+
+    testWidgets('a name with no protein, carbs or fat says why Log is off', (tester) async {
+      await _pump(tester, size: const Size(400, 1200));
+      expect(find.text('Add some protein, carbs or fat'), findsNothing, reason: 'nothing typed yet');
+      await tester.enterText(find.byKey(const Key('manual.name')), 'Water');
+      await tester.pump();
+      expect(find.text('Add some protein, carbs or fat'), findsOneWidget);
+      expect(tester.widget<FsButton>(find.byKey(const Key('manual.log'))).onPressed, isNull);
+      await tester.enterText(find.byKey(const Key('manual.carbs')), '1');
+      await tester.pump();
+      expect(find.text('Add some protein, carbs or fat'), findsNothing);
     });
   });
 }

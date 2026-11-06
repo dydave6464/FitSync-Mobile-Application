@@ -1,11 +1,11 @@
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 
 import '../../../../core/numbers.dart';
 import '../../../../core/theme.dart';
 import '../../../../core/widgets/fs_kit.dart';
 import '../../domain/nutrition.dart';
 import 'fatsecret_attribution.dart';
+import 'number_box.dart';
 
 class LogChoice {
   const LogChoice({required this.mealType, required this.servings, this.edited});
@@ -111,21 +111,16 @@ class _LogFoodSheetState extends State<LogFoodSheet> {
         ? (p: p!, c: c!, f: fat!, fb: fiber, sg: sugar, na: sodium)
         : (p: f.proteinG, c: f.carbsG, f: f.fatG, fb: f.fiberG, sg: f.sugarG, na: f.sodiumMg);
 
-    Widget gramsField(String label, String key, TextEditingController controller, {String hint = 'g'}) => Expanded(
-      child: Column(
+    // Errors only once something changed: a listed value the user left
+    // alone never blocks Log, so it is never marked wrong either.
+    Widget gramsField(String label, String key, TextEditingController controller, {bool sodium = false}) => Expanded(
+      child: NumberBox(
         key: Key(key),
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text(label, style: TextStyle(color: t.text2, fontSize: 12)),
-          const SizedBox(height: 4),
-          FsField(
-            controller: controller,
-            hint: hint,
-            keyboardType: const TextInputType.numberWithOptions(decimal: true),
-            inputFormatters: [FilteringTextInputFormatter.allow(RegExp(r'[0-9.]'))],
-            onChanged: (_) => setState(() {}),
-          ),
-        ],
+        label: label,
+        controller: controller,
+        hint: sodium ? 'mg' : 'g',
+        error: !touched ? null : (sodium ? sodiumError(controller.text) : gramsError(controller.text)),
+        onChanged: (_) => setState(() {}),
       ),
     );
 
@@ -222,38 +217,28 @@ class _LogFoodSheetState extends State<LogFoodSheet> {
               const SizedBox(height: 8),
               // Two rows of two, not one row of four: four boxes in a row
               // overflow a narrow phone at large text.
-              Row(children: [
+              // Tops aligned, so an error under one box never shifts its pair.
+              Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
                 gramsField('Protein (g)', 'logSheet.protein', _protein),
                 const SizedBox(width: 10),
                 gramsField('Carbs (g)', 'logSheet.carbs', _carbs),
               ]),
               const SizedBox(height: 10),
-              Row(children: [
+              Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
                 gramsField('Fat (g)', 'logSheet.fat', _fat),
                 const SizedBox(width: 10),
                 gramsField('Fiber (g)', 'logSheet.fiber', _fiber),
               ]),
               const SizedBox(height: 10),
-              Row(children: [
+              Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
                 gramsField('Sugar (g)', 'logSheet.sugar', _sugar),
                 const SizedBox(width: 10),
-                gramsField('Sodium (mg)', 'logSheet.sodium', _sodium, hint: 'mg'),
+                gramsField('Sodium (mg)', 'logSheet.sodium', _sodium, sodium: true),
               ]),
-              if (touched && !gramsOk)
-                Padding(
-                  padding: const EdgeInsets.only(top: 6),
-                  child: Text('Each value must be 0–500 g', style: TextStyle(color: t.red, fontSize: 12)),
-                )
-              else if (touched && !sodiumOk)
-                Padding(
-                  padding: const EdgeInsets.only(top: 6),
-                  child: Text('Sodium must be 0–20,000 mg', style: TextStyle(color: t.red, fontSize: 12)),
-                )
-              else if (noMacros)
-                Padding(
-                  padding: const EdgeInsets.only(top: 6),
-                  child: Text('Add some protein, carbs or fat', style: TextStyle(color: t.red, fontSize: 12)),
-                ),
+              if (noMacros) ...[
+                const SizedBox(height: 8),
+                const FsErrorLine('Add some protein, carbs or fat'),
+              ],
             ],
             const SizedBox(height: 16),
             FsButton(
