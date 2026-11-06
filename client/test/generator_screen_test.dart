@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:ui' show Tristate;
 
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -1559,5 +1560,20 @@ void main() {
       tester.getTopLeft(caption).dy,
       greaterThan(tester.getBottomLeft(find.byType(TrainingDaysRow)).dy),
     );
+  });
+
+  testWidgets('Apply is an action, not a chip stuck selected (PT-19)', (
+    tester,
+  ) async {
+    final handle = tester.ensureSemantics();
+    await _pump(tester, plan: _pplPlan);
+
+    final apply = find.byKey(const Key('gen.describe.apply'));
+    final chip = tester.widget<FsChip>(apply);
+    expect(chip.selected, isFalse);
+    final data = tester.getSemantics(apply).getSemanticsData();
+    expect(data.flagsCollection.isButton, isTrue);
+    expect(data.flagsCollection.isSelected, Tristate.none);
+    handle.dispose();
   });
 }

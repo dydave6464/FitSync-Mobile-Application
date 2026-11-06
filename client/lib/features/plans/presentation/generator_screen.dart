@@ -661,16 +661,21 @@ class _DescribeCardState extends ConsumerState<_DescribeCard> {
                 spacing: 8,
                 runSpacing: 8,
                 children: [
+                  // Actions, not choices: as the prototype's sm chips, off,
+                  // and announced with no selected state. Apply used to be
+                  // drawn and read as permanently "selected".
                   FsChip(
                     key: const Key('gen.describe.apply'),
                     label: 'Apply',
-                    selected: true,
+                    selected: false,
+                    toggle: false,
                     onTap: _apply,
                   ),
                   FsChip(
                     key: const Key('gen.describe.fromProfile'),
                     label: 'From profile',
                     selected: false,
+                    toggle: false,
                     onTap: () => setState(() {
                       _controller.text = widget.composed;
                       _applied = null;
