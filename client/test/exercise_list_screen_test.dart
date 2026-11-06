@@ -232,8 +232,6 @@ void main() {
     expect(find.text('Equipment'), findsNothing);
   });
 
-  // The tiles' own 4 dp inset left the rows 4 dp from the edge, under a
-  // search box and chips inset 12.
   testWidgets("a row's demo can add it to the workout", (tester) async {
     await tester.pumpWidget(harness(FakeRepository()));
     await tester.pumpAndSettle();
@@ -248,6 +246,8 @@ void main() {
     expect(find.text('Review · 1 exercise'), findsOneWidget);
   });
 
+  // The tiles' own 4 dp inset left the rows 4 dp from the edge, under a
+  // search box and chips inset 12.
   testWidgets('rows line up with the search box above them', (tester) async {
     // In the app's theme, which sets the tiles' own 4 dp inset.
     await tester.pumpWidget(

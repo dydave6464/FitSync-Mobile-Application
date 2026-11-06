@@ -155,6 +155,9 @@ class _ExerciseLogPanelState extends State<ExerciseLogPanel> {
       _weightAdded ||
       widget.last?.weightKg != null;
 
+  /// "+ weight": the finger's tap and the screen reader's are one action.
+  void _addWeight() => setState(() => _weightAdded = true);
+
   /// The logger rebuilds this panel in place as the workout moves, so the
   /// reveal has to be dropped explicitly -- left standing, one exercise's dip
   /// belt would follow the user onto the next exercise's push-ups.
@@ -340,11 +343,10 @@ class _ExerciseLogPanelState extends State<ExerciseLogPanel> {
                               button: true,
                               label: 'Add a weight column',
                               excludeSemantics: true,
-                              onTap: () => setState(() => _weightAdded = true),
+                              onTap: _addWeight,
                               child: InkWell(
                                 key: const Key('logpanel.addweight'),
-                                onTap: () =>
-                                    setState(() => _weightAdded = true),
+                                onTap: _addWeight,
                                 borderRadius: BorderRadius.circular(
                                   FsRadius.sm,
                                 ),
