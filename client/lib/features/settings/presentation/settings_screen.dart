@@ -438,7 +438,11 @@ abstract class _EditorState<W extends ConsumerStatefulWidget>
   Widget build(BuildContext context) {
     final profile = ref.watch(profileProvider).value;
     if (profile == null) {
-      return const Scaffold(body: Center(child: CircularProgressIndicator()));
+      return Scaffold(
+        backgroundColor: context.fs.bg,
+        appBar: AppBar(title: Text(title)),
+        body: const Center(child: CircularProgressIndicator()),
+      );
     }
 
     // Built before isDirty is read: the step seeds the working value on its
@@ -768,16 +772,24 @@ class _HealthEditorState extends ConsumerState<_HealthEditor> {
   Widget build(BuildContext context) {
     final stored = ref.watch(healthProvider);
 
+    final t = context.fs;
+
     return stored.when(
-      loading: () =>
-          const Scaffold(body: Center(child: CircularProgressIndicator())),
-      error: (error, _) => Scaffold(
+      // Titled, with its back button, while it loads: a bare spinner gave no
+      // sign of where the user was or how to leave.
+      loading: () => Scaffold(
+        backgroundColor: t.bg,
         appBar: AppBar(title: const Text('Health')),
-        body: Center(
-          child: Padding(
-            padding: const EdgeInsets.all(24),
-            child: Text(describeError(error), textAlign: TextAlign.center),
-          ),
+        body: const Center(child: CircularProgressIndicator()),
+      ),
+      error: (error, _) => Scaffold(
+        backgroundColor: t.bg,
+        appBar: AppBar(title: const Text('Health')),
+        body: FsRetry(
+          fullScreen: true,
+          message: userMessage(error),
+          buttonKey: const Key('health.retry'),
+          onRetry: () => ref.invalidate(healthProvider),
         ),
       ),
       data: (saved) {

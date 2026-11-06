@@ -214,6 +214,31 @@ class RecordingAuthController extends AuthController {
   }
 }
 
+/// A health repository whose load can be held open or made to fail, so a
+/// test can see the editor's loading and error screens.
+class _HealthLoad extends FakeHealthRepository {
+  _HealthLoad({this.gate, this.failures = 0, this.error});
+
+  /// Holds the load until completed.
+  final Completer<HealthAnswers?>? gate;
+
+  /// How many loads fail with [error] before one succeeds.
+  int failures;
+  final Object? error;
+  int loads = 0;
+
+  @override
+  Future<HealthAnswers?> getHealth() async {
+    loads += 1;
+    if (gate != null) return gate!.future;
+    if (failures > 0) {
+      failures -= 1;
+      throw error!;
+    }
+    return stored;
+  }
+}
+
 /// The profile notifier fake the running test's `_pump` installed. Set fresh
 /// on every call so a test can assert what it recorded -- `_profile.
 /// lastTrainingDays` -- without threading the fake through by hand.
@@ -943,6 +968,57 @@ void main() {
       await tester.pumpAndSettle();
       expect(find.text('Discard your changes?'), findsNothing);
       expect(find.byType(EditScaffold), findsNothing);
+    });
+  });
+
+  // PS-4: the Health editor's loading screen had no title or back button,
+  // and its error screen no way to try again.
+  group('the Health editor while it loads or fails', () {
+    testWidgets('loading keeps the title and the back button', (tester) async {
+      final health = _HealthLoad(gate: Completer<HealthAnswers?>());
+      await _pump(tester, health: health);
+      await tester.scrollUntilVisible(
+        find.byKey(const Key('edit.health')),
+        200,
+      );
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const Key('edit.health')));
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 500));
+
+      expect(find.byType(CircularProgressIndicator), findsOneWidget);
+      expect(find.widgetWithText(AppBar, 'Health'), findsOneWidget);
+      expect(find.byType(BackButton), findsOneWidget);
+
+      health.gate!.complete(null);
+      await tester.pumpAndSettle();
+    });
+
+    testWidgets('a failed load offers Try again, which reloads', (
+      tester,
+    ) async {
+      final health = _HealthLoad(
+        failures: 1000,
+        error: const ApiException('NETWORK_ERROR', 'SocketException'),
+      );
+      await _pump(tester, health: health);
+      await _openRow(tester, const Key('edit.health'));
+
+      expect(find.widgetWithText(AppBar, 'Health'), findsOneWidget);
+      expect(find.byType(FsRetry), findsOneWidget);
+      expect(
+        find.text(
+          "Couldn't reach FitSync. Check your connection and try again.",
+        ),
+        findsOneWidget,
+      );
+
+      final loadsBefore = health.loads;
+      health.failures = 0;
+      await tester.tap(find.byKey(const Key('health.retry')));
+      await tester.pumpAndSettle();
+      expect(find.byType(HealthStep), findsOneWidget);
+      expect(health.loads, loadsBefore + 1);
     });
   });
 
