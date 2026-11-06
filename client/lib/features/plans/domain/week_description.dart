@@ -1,6 +1,7 @@
 import 'dart:math';
 
 import '../../profile/domain/profile.dart';
+import 'split_style.dart';
 import 'workout_plan.dart';
 
 /// "Knee (right)", or just "Lower back" where the region has no sides.
@@ -93,14 +94,16 @@ const _numberWords = {
   'seven': 7,
 };
 
-/// The spellings [composeWeekDescription] writes and [parseWeekDescription]
-/// reads, so a composed sentence resolves back to the plan it came from.
-const _splitLabels = {
-  'full_body': 'full body',
-  'push_pull_legs': 'push / pull / legs',
-  'upper_lower': 'upper / lower',
-  'cardio_core': 'cardio + core',
-};
+/// A split as [composeWeekDescription] writes it mid-sentence: the
+/// choosers' own label ([splitStyles]) in lower case, which
+/// [parseWeekDescription] reads back to the same split. Null for a split the
+/// choosers do not offer, which the sentence then leaves out.
+String? _splitInSentence(String? slug) {
+  for (final s in splitStyles) {
+    if (s.value == slug) return s.label.toLowerCase();
+  }
+  return null;
+}
 
 const _goalLabels = {
   'build_muscle': 'build muscle',
@@ -363,7 +366,7 @@ String composeWeekDescription({
     clauses.add('train ${daysAWeek(days)}');
   }
 
-  final split = _splitLabels[plan?.splitStyle];
+  final split = _splitInSentence(plan?.splitStyle);
   if (split != null) clauses.add(split);
 
   final protecting = [
