@@ -399,7 +399,14 @@ class FsField extends StatelessWidget {
     this.inputFormatters,
     this.autofillHints,
     this.label,
+    this.errorText,
   });
+
+  /// What is wrong with the value, or null. Draws the border in `t.red` and
+  /// gives the message to the field as its spoken hint, so a screen reader
+  /// hears it with the field's name. The visible message is the caller's to
+  /// draw (an [FsErrorLine] under the field), so it is not drawn twice.
+  final String? errorText;
 
   /// The field's name, drawn as an eyebrow above it and given to the field
   /// as its spoken label. [hint] stays the placeholder, which vanishes as
@@ -443,8 +450,9 @@ class FsField extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final t = context.fs;
+    final hasError = errorText != null;
 
-    final field = TextField(
+    Widget field = TextField(
       key: fieldKey,
       controller: controller,
       obscureText: obscure,
@@ -478,14 +486,15 @@ class FsField extends StatelessWidget {
         ),
         enabledBorder: OutlineInputBorder(
           borderRadius: BorderRadius.circular(FsRadius.md),
-          borderSide: BorderSide(color: t.line),
+          borderSide: BorderSide(color: hasError ? t.red : t.line),
         ),
         focusedBorder: OutlineInputBorder(
           borderRadius: BorderRadius.circular(FsRadius.md),
-          borderSide: BorderSide(color: t.accentLine),
+          borderSide: BorderSide(color: hasError ? t.red : t.accentLine),
         ),
       ),
     );
+    if (hasError) field = Semantics(hint: errorText, child: field);
     if (label == null) return field;
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -742,10 +751,15 @@ class FsStatField extends StatelessWidget {
     this.accent = false,
     this.unitControl,
     this.focusNode,
+    this.error = false,
   });
 
   final String label;
   final String unit;
+
+  /// Whether the number needs checking: a `t.red` border, over [accent]'s,
+  /// so the card says so as well as the message its screen puts under it.
+  final bool error;
 
   /// Lets the screen move the cursor here -- e.g. into a card the user has
   /// just asked for -- even while another field still has focus.
@@ -773,7 +787,13 @@ class FsStatField extends StatelessWidget {
       decoration: BoxDecoration(
         color: t.surface,
         borderRadius: BorderRadius.circular(FsRadius.sm),
-        border: Border.all(color: accent ? t.accentLine : t.line),
+        border: Border.all(
+          color: error
+              ? t.red
+              : accent
+              ? t.accentLine
+              : t.line,
+        ),
       ),
       // The card's 14 dp of padding past the switch is the rest of lb's band,
       // and its padding below is the bottom of both units' bands; both lie
@@ -1718,8 +1738,12 @@ class FsErrorLine extends StatelessWidget {
 /// in plain words (see `userMessage`) over a small secondary "Try again".
 ///
 /// [fullScreen] is for a Scaffold body with nothing else on it: centred in
-/// the safe area, and scrollable so large text never overflows. [secondary]
-/// is an optional way out under the button, such as Sign out.
+/// the safe area, and scrollable so large text never overflows. Given no
+/// height to fill (inside a list, say), it is drawn inline instead.
+/// [secondary] is an optional way out under the button, such as Sign out.
+///
+/// The message is a live region, so a screen reader says the load failed
+/// when this replaces a spinner.
 class FsRetry extends StatelessWidget {
   const FsRetry({
     super.key,
@@ -1747,10 +1771,14 @@ class FsRetry extends StatelessWidget {
     final body = Column(
       mainAxisSize: MainAxisSize.min,
       children: [
-        Text(
-          message,
-          textAlign: TextAlign.center,
-          style: TextStyle(fontSize: 13, height: 1.45, color: t.text2),
+        Semantics(
+          container: true,
+          liveRegion: true,
+          child: Text(
+            message,
+            textAlign: TextAlign.center,
+            style: TextStyle(fontSize: 13, height: 1.45, color: t.text2),
+          ),
         ),
         const SizedBox(height: 12),
         FsButton(
@@ -1764,25 +1792,31 @@ class FsRetry extends StatelessWidget {
       ],
     );
 
-    if (!fullScreen) {
-      return Padding(
-        padding: const EdgeInsets.symmetric(vertical: 16),
-        child: body,
-      );
-    }
-    return SafeArea(
-      child: LayoutBuilder(
-        builder: (context, constraints) => SingleChildScrollView(
-          padding: const EdgeInsets.all(24),
-          child: ConstrainedBox(
-            constraints: BoxConstraints(
-              minWidth: math.max(0, constraints.maxWidth - 48),
-              minHeight: math.max(0, constraints.maxHeight - 48),
+    final inline = Padding(
+      padding: const EdgeInsets.symmetric(vertical: 16),
+      child: body,
+    );
+    if (!fullScreen) return inline;
+    return LayoutBuilder(
+      builder: (context, outer) {
+        // A scroll view inside something that scrolls the same way has no
+        // height to centre in; the inline layout fits anywhere.
+        if (!outer.hasBoundedHeight) return inline;
+        return SafeArea(
+          child: LayoutBuilder(
+            builder: (context, constraints) => SingleChildScrollView(
+              padding: const EdgeInsets.all(24),
+              child: ConstrainedBox(
+                constraints: BoxConstraints(
+                  minWidth: math.max(0, constraints.maxWidth - 48),
+                  minHeight: math.max(0, constraints.maxHeight - 48),
+                ),
+                child: Center(child: body),
+              ),
             ),
-            child: Center(child: body),
           ),
-        ),
-      ),
+        );
+      },
     );
   }
 }
@@ -1817,11 +1851,14 @@ Future<bool> confirmDiscard(BuildContext context, {String? message}) async {
   return answer ?? false;
 }
 
-/// Makes back (the app bar's, Android's, the iOS swipe) ask [confirmDiscard]
-/// first while [dirty], and leave as usual otherwise.
+/// Makes back ask [confirmDiscard] first while [dirty], and leave as usual
+/// otherwise.
 ///
-/// The route reports itself as not poppable while dirty, which is also what
-/// stops a tapped reminder from closing it (see `NavShell`).
+/// While dirty the app bar's back and Android's back show the dialog; the
+/// iOS back swipe does not ask, because Flutter turns the swipe off for a
+/// route that cannot pop. The route reports itself as not poppable while
+/// dirty, which is also what stops a tapped reminder from closing it (see
+/// `NavShell`).
 class FsDiscardGuard extends StatelessWidget {
   const FsDiscardGuard({
     super.key,

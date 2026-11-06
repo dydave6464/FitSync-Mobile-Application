@@ -1984,6 +1984,144 @@ void main() {
       );
       expect(tester.takeException(), isNull);
     });
+
+    // A load error replaced a spinner in silence: nothing told a screen
+    // reader the screen had failed.
+    for (final fullScreen in [false, true]) {
+      testWidgets('the message is announced as it appears '
+          '(${fullScreen ? 'full screen' : 'inline'})', (tester) async {
+        final h = tester.ensureSemantics();
+        await tester.pumpWidget(
+          MaterialApp(
+            theme: fsLightTheme(),
+            home: Scaffold(
+              body: FsRetry(
+                message: "Couldn't load.",
+                onRetry: () {},
+                fullScreen: fullScreen,
+              ),
+            ),
+          ),
+        );
+        expect(
+          tester
+              .getSemantics(find.text("Couldn't load."))
+              .flagsCollection
+              .isLiveRegion,
+          isTrue,
+        );
+        h.dispose();
+      });
+    }
+
+    testWidgets('full screen in an unbounded height falls back to inline', (
+      tester,
+    ) async {
+      await tester.pumpWidget(
+        MaterialApp(
+          theme: fsLightTheme(),
+          home: Scaffold(
+            body: ListView(
+              children: [
+                FsRetry(
+                  message: "Couldn't load.",
+                  onRetry: () {},
+                  fullScreen: true,
+                ),
+              ],
+            ),
+          ),
+        ),
+      );
+      expect(tester.takeException(), isNull);
+      expect(find.text('Try again'), findsOneWidget);
+    });
+  });
+
+  // AO-13 / NU-10: a field with something wrong looked like every other
+  // field; only the line under it said so.
+  group('fields with an error', () {
+    for (final dark in [false, true]) {
+      final t = dark ? FsTokens.dark : FsTokens.light;
+      final mode = dark ? 'dark' : 'light';
+
+      testWidgets('FsField draws a red border and says the error ($mode)', (
+        tester,
+      ) async {
+        final h = tester.ensureSemantics();
+        final controller = TextEditingController();
+        addTearDown(controller.dispose);
+        await tester.pumpWidget(
+          host(
+            SizedBox(
+              width: 200,
+              child: FsField(
+                controller: controller,
+                hint: 'g',
+                label: 'Protein',
+                fieldKey: const Key('f'),
+                errorText: 'Must be 0–500 g',
+              ),
+            ),
+            dark: dark,
+          ),
+        );
+        final decoration = tester
+            .widget<TextField>(find.byKey(const Key('f')))
+            .decoration!;
+        for (final border in [
+          decoration.enabledBorder,
+          decoration.focusedBorder,
+        ]) {
+          expect((border! as OutlineInputBorder).borderSide.color, t.red);
+        }
+        expect(contrast(t.red, t.surface), greaterThanOrEqualTo(3));
+        expect(
+          tester
+              .getSemantics(find.byKey(const Key('f')))
+              .getSemanticsData()
+              .hint,
+          contains('Must be 0–500 g'),
+        );
+        h.dispose();
+      });
+
+      testWidgets('FsStatField draws a red border with an error ($mode)', (
+        tester,
+      ) async {
+        final controller = TextEditingController();
+        addTearDown(controller.dispose);
+        await tester.pumpWidget(
+          host(
+            SizedBox(
+              width: 200,
+              child: FsStatField(
+                key: const Key('card'),
+                label: 'Height',
+                unit: 'cm',
+                controller: controller,
+                error: true,
+              ),
+            ),
+            dark: dark,
+          ),
+        );
+        final box =
+            tester
+                    .widget<Container>(
+                      find
+                          .descendant(
+                            of: find.byKey(const Key('card')),
+                            matching: find.byType(Container),
+                          )
+                          .first,
+                    )
+                    .decoration!
+                as BoxDecoration;
+        expect((box.border! as Border).top.color, t.red);
+        expect(contrast(t.red, t.surface), greaterThanOrEqualTo(3));
+      });
+    }
   });
 
   group('confirmDiscard', () {
