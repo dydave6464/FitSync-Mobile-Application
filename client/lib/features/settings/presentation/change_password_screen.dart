@@ -136,9 +136,10 @@ class _ChangePasswordScreenState extends ConsumerState<ChangePasswordScreen> {
       return;
     }
 
-    // The new token is stored whether or not the screen is still up.
-    if (!mounted) return;
-    navigator.pop();
+    // The new token is stored whether or not the screen is still up. Back
+    // stays open while busy, so the user may have left already: the change
+    // landed all the same, and the SnackBar on what is left says so.
+    if (mounted) navigator.pop();
     messenger.showSnackBar(
       const SnackBar(
         content: Text('Password changed. Other devices were signed out.'),

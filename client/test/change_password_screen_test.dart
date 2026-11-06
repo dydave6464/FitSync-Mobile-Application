@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -341,6 +343,37 @@ void main() {
       'Show confirmed password',
     ]);
     expect(tooltips.toSet(), hasLength(3), reason: 'TalkBack tells them apart');
+  });
+
+  testWidgets('back during a change still says the password changed', (
+    tester,
+  ) async {
+    final gate = Completer<void>();
+    final repo = _FakeAuthRepository(onChange: () => gate.future);
+    await _pump(tester, repo);
+    await _fill(tester);
+    await tester.ensureVisible(find.byKey(const Key('save')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const Key('save')));
+    await tester.pump();
+
+    await tester.pageBack();
+    await tester.pumpAndSettle();
+    expect(find.byType(ChangePasswordScreen), findsNothing);
+
+    gate.complete();
+    await tester.pumpAndSettle();
+    expect(repo.changes, hasLength(1));
+    expect(
+      find.byKey(const Key('open')),
+      findsOneWidget,
+      reason: 'the screen under it stays: nothing else is popped',
+    );
+    expect(
+      find.text('Password changed. Other devices were signed out.'),
+      findsOneWidget,
+      reason: 'the change landed, so the user is told even after leaving',
+    );
   });
 
   testWidgets('back with nothing typed just closes', (tester) async {
