@@ -30,6 +30,7 @@ class ExerciseTile extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final t = context.fs;
+    final name = exerciseDisplayName(exercise.name);
 
     return ListTile(
       onTap: onTap,
@@ -47,7 +48,7 @@ class ExerciseTile extends StatelessWidget {
         thumbnailUrl: exercise.thumbnailUrl,
         equipment: exercise.equipment,
       ),
-      title: Text(exerciseDisplayName(exercise.name)),
+      title: Text(name),
       // The warning gets a line of its own and is never cut: it is the
       // safety reason, and sharing one ellipsized line with the muscle and
       // equipment lost it at large text and pushed them out at any size.
@@ -92,7 +93,7 @@ class ExerciseTile extends StatelessWidget {
         children: [
           IconButton(
             key: Key('tile.info.${exercise.exerciseId}'),
-            tooltip: 'About ${exerciseDisplayName(exercise.name)}',
+            tooltip: 'About $name',
             onPressed: onInfo,
             constraints: const BoxConstraints(minWidth: 48, minHeight: 48),
             icon: Icon(Icons.info_outline, color: t.text2),

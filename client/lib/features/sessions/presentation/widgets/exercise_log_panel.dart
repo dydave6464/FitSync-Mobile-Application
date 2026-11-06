@@ -205,6 +205,8 @@ class _ExerciseLogPanelState extends State<ExerciseLogPanel> {
   Widget build(BuildContext context) {
     final t = context.fs;
     final exercise = widget.exercise;
+    // Once per build, not once per set row below.
+    final name = exerciseDisplayName(exercise.name);
     final showWeight = _showWeight;
     final rows = widget.setCount ?? exercise.targetSets;
     // Only the last row, and only one added past the target that has not
@@ -249,8 +251,7 @@ class _ExerciseLogPanelState extends State<ExerciseLogPanel> {
                       container: true,
                       button: true,
                       enabled: widget.onOpenDemo != null,
-                      label:
-                          'Watch how to do ${exerciseDisplayName(exercise.name)}',
+                      label: 'Watch how to do $name',
                       child: InkWell(
                         key: Key('logpanel.demo.${exercise.exerciseId}'),
                         onTap: widget.onOpenDemo,
@@ -301,7 +302,7 @@ class _ExerciseLogPanelState extends State<ExerciseLogPanel> {
                           // Two lines: a name cut mid-word can be mistaken
                           // for its neighbour in the workout.
                           Text(
-                            exerciseDisplayName(exercise.name),
+                            name,
                             maxLines: 2,
                             overflow: TextOverflow.ellipsis,
                             style: TextStyle(
@@ -507,7 +508,7 @@ class _ExerciseLogPanelState extends State<ExerciseLogPanel> {
                       ),
                     if (widget.onAddSet != null)
                       _AddSet(
-                        exerciseName: exerciseDisplayName(exercise.name),
+                        exerciseName: name,
                         atCap: rows >= maxSetsPerExercise,
                         onAddSet: widget.onAddSet!,
                       ),
