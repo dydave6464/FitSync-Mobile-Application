@@ -625,4 +625,23 @@ void main() {
 
     expect(find.textContaining('No exercises'), findsOneWidget);
   });
+
+  // With no chip lit, there are no filters to blame and none to clear: the
+  // only thing narrowing the list is the word typed.
+  testWidgets('a search alone that finds nothing names the search', (
+    tester,
+  ) async {
+    final repo = FakeRepository(emptyResults: true);
+    await tester.pumpWidget(harness(repo));
+    await tester.pumpAndSettle();
+
+    await search(tester, 'zzzz');
+
+    expect(
+      find.text('No exercises match "zzzz". Try a shorter word.'),
+      findsOneWidget,
+    );
+    expect(find.textContaining('filters'), findsNothing);
+    expect(find.byKey(const Key('library.clearFilters')), findsNothing);
+  });
 }

@@ -152,6 +152,9 @@ class _ExerciseListScreenState extends ConsumerState<ExerciseListScreen> {
               data: (state) {
                 if (state.items.isEmpty) {
                   return _EmptyView(
+                    // A search with no chip lit has no filters to blame: say
+                    // what was searched for instead.
+                    search: filters.hasChipFilter ? null : filters.search,
                     // Only the chips: the search box carries its own clear
                     // button, and the term is still on screen above.
                     onClear: filters.hasChipFilter
@@ -205,7 +208,10 @@ class _ExerciseListScreenState extends ConsumerState<ExerciseListScreen> {
 }
 
 class _EmptyView extends StatelessWidget {
-  const _EmptyView({required this.onClear});
+  const _EmptyView({required this.onClear, this.search});
+
+  /// The term typed, when it alone is what found nothing.
+  final String? search;
 
   /// Null when no chip is lit, so there is nothing for the button to clear.
   final VoidCallback? onClear;
@@ -217,8 +223,10 @@ class _EmptyView extends StatelessWidget {
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
-          const Text(
-            'No exercises match those filters.',
+          Text(
+            search == null
+                ? 'No exercises match those filters.'
+                : 'No exercises match "$search". Try a shorter word.',
             textAlign: TextAlign.center,
           ),
           if (onClear != null) ...[
