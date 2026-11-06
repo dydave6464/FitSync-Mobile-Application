@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/rendering.dart' show RenderParagraph;
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 
@@ -10,6 +11,8 @@ import 'package:fitsync/features/profile/domain/body_weight.dart';
 import 'package:fitsync/features/profile/domain/profile.dart';
 import 'package:fitsync/features/profile/presentation/providers.dart';
 import 'package:fitsync/features/profile/presentation/widgets/log_body_weight_sheet.dart';
+
+import 'helpers/a11y.dart' show contrast;
 
 const _profile = Profile(
   userId: 1,
@@ -75,6 +78,7 @@ Future<void> _pump(
   required FakeProfileRepository repo,
   required _FetchCount fetches,
   DateTime? now,
+  bool dark = false,
 }) async {
   await tester.pumpWidget(
     ProviderScope(
@@ -92,7 +96,7 @@ Future<void> _pump(
         }),
       ],
       child: MaterialApp(
-        theme: fsLightTheme(),
+        theme: dark ? fsDarkTheme() : fsLightTheme(),
         home: Scaffold(
           body: Consumer(
             builder: (context, ref, _) {
@@ -462,6 +466,35 @@ void main() {
       expect(tester.takeException(), isNull);
     });
   });
+
+  // P-29d: the PS-20 date card and the line under it, in both themes.
+  for (final dark in [false, true]) {
+    testWidgets('${dark ? 'dark' : 'light'}: the date card and its line read', (
+      tester,
+    ) async {
+      final t = dark ? FsTokens.dark : FsTokens.light;
+      await _pump(
+        tester,
+        repo: FakeProfileRepository(),
+        fetches: _FetchCount(),
+        dark: dark,
+      );
+      Color colorOf(Finder text) =>
+          tester.renderObject<RenderParagraph>(text).text.style!.color!;
+
+      final day = find.byKey(const Key('bodyWeight.dateText'));
+      expect(contrast(colorOf(day), t.surface), greaterThanOrEqualTo(4.5));
+      final chevron = tester.widget<Icon>(
+        find.descendant(
+          of: find.byKey(const Key('bodyWeight.date')),
+          matching: find.byIcon(Icons.chevron_right),
+        ),
+      );
+      expect(contrast(chevron.color!, t.surface), greaterThanOrEqualTo(3));
+      final line = find.text("Logging again today replaces today's entry.");
+      expect(contrast(colorOf(line), t.surface), greaterThanOrEqualTo(4.5));
+    });
+  }
 
   // PS-6 / PS-3: a failed save showed the client's transport text (an
   // address, an adb command, "HTTP 502") as a plain red line no screen

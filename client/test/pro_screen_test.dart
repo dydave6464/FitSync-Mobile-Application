@@ -64,6 +64,7 @@ ProviderContainer _container(WidgetTester tester) =>
 Future<(FakeProRepository, _Opener)> _pump(
   WidgetTester tester, {
   ProStatus status = freeStatus,
+  bool dark = false,
 }) async {
   final repo = FakeProRepository(status);
   final opener = _Opener();
@@ -73,7 +74,10 @@ Future<(FakeProRepository, _Opener)> _pump(
         proRepositoryProvider.overrideWithValue(repo),
         proCheckoutOpenerProvider.overrideWithValue(opener.call),
       ],
-      child: MaterialApp(theme: fsLightTheme(), home: const ProScreen()),
+      child: MaterialApp(
+        theme: dark ? fsDarkTheme() : fsLightTheme(),
+        home: const ProScreen(),
+      ),
     ),
   );
   await tester.pumpAndSettle();
@@ -635,6 +639,60 @@ void main() {
       findsOneWidget,
     );
   });
+
+  // P-29d: the PS-16 error line and the PS-17 paying state, checked in the
+  // dark theme as well as the light one.
+  for (final dark in [false, true]) {
+    final theme = dark ? 'dark' : 'light';
+    final t = dark ? FsTokens.dark : FsTokens.light;
+    Color colorOf(WidgetTester tester, Finder text) =>
+        tester.renderObject<RenderParagraph>(text).text.style!.color!;
+
+    testWidgets('$theme: a page that will not open reads in red', (
+      tester,
+    ) async {
+      final (_, opener) = await _pump(tester, dark: dark);
+      opener.answer = false;
+      await tester.tap(find.byKey(const Key('pro.pay')));
+      await tester.pumpAndSettle();
+      final line = find.byKey(const Key('pro.openError'));
+      final words = find.descendant(of: line, matching: find.byType(Text));
+      expect(colorOf(tester, words), t.red);
+      expect(contrast(t.red, t.bg), greaterThanOrEqualTo(4.5));
+      final icon = tester.widget<Icon>(
+        find.descendant(of: line, matching: find.byIcon(Icons.error_outline)),
+      );
+      expect(contrast(icon.color!, t.bg), greaterThanOrEqualTo(3));
+    });
+
+    testWidgets('$theme: while paying, the plan paid for and the panel read', (
+      tester,
+    ) async {
+      await _pump(tester, dark: dark);
+      await tester.tap(find.byKey(const Key('pro.pay')));
+      await tester.pumpAndSettle();
+      expect(find.byKey(const Key('pro.waiting')), findsOneWidget);
+
+      // The plan being paid for stays at full strength on its accent card,
+      // whose tint is drawn over the page.
+      final price = _inside('pro.plan.annual', find.text('₱149'));
+      expect(
+        contrast(
+          colorOf(tester, price),
+          Color.alphaBlend(t.accent.withValues(alpha: 0.16), t.bg),
+        ),
+        greaterThanOrEqualTo(4.5),
+      );
+      final words = _inside(
+        'pro.waiting',
+        find.textContaining("Finish paying on PayMongo's page"),
+      );
+      expect(
+        contrast(colorOf(tester, words), t.surface),
+        greaterThanOrEqualTo(4.5),
+      );
+    });
+  }
 
   testWidgets('a status that will not load says why, with the kit Try again', (
     tester,
