@@ -106,6 +106,7 @@ class Food {
     this.fatsecretCopy = false,
     this.basedOnFoodId,
     this.entryId,
+    this.labelKcal,
   });
 
   factory Food.fromJson(Map<String, dynamic> j) => Food(
@@ -157,6 +158,12 @@ class Food {
   /// unchanged -- a kept-kcal beer stays 129, not 4·4·9's 47.
   final int? entryId;
 
+  /// For a food typed in Add manually: the calories per serving from its
+  /// label, which the server saves in place of 4·4·9. Never read from the
+  /// server. When set, [kcal] is this too, so previews and Snap a meal's
+  /// totals match what is saved.
+  final int? labelKcal;
+
   bool get isFatsecret => source == 'fatsecret';
 
   /// Whether FatSecret's attribution must show beside this food.
@@ -179,6 +186,7 @@ class Food {
       if (sodiumMg != null) 'sodiumMg': sodiumMg,
       if (basedOnFoodId != null) 'basedOnFoodId': basedOnFoodId,
       if (entryId != null) 'basedOnEntryId': entryId,
+      if (labelKcal != null) 'kcal': labelKcal,
     },
   };
 }

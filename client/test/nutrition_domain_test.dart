@@ -162,6 +162,21 @@ void main() {
     expect(noFiber.toRef(), {'source': 'manual', 'name': 'Turon', 'proteinG': 2.0, 'carbsG': 34.0, 'fatG': 6.0});
   });
 
+  // #24: a label's calories, typed in Add manually, go with the food.
+  test("a manual Food.toRef sends the label's kcal only when one was typed", () {
+    const wafer = Food(source: 'manual', name: 'Choco wafer', servingDesc: '1 pack (32 g)', kcal: 160, labelKcal: 160, proteinG: 1.5, carbsG: 21, fatG: 7);
+    expect(wafer.toRef(), {
+      'source': 'manual', 'name': 'Choco wafer', 'servingDesc': '1 pack (32 g)',
+      'proteinG': 1.5, 'carbsG': 21.0, 'fatG': 7.0, 'kcal': 160,
+    });
+    const worked = Food(source: 'manual', name: 'Choco wafer', kcal: 153, proteinG: 1.5, carbsG: 21, fatG: 7);
+    expect(worked.toRef().containsKey('kcal'), isFalse);
+  });
+
+  test('fromJson never sets a label kcal', () {
+    expect(Food.fromJson({'source': 'manual', 'name': 'x', 'kcal': 160, 'proteinG': 1, 'carbsG': 1, 'fatG': 1}).labelKcal, isNull);
+  });
+
   test('a manual Food.toRef names the listed food it was edited from, never its kcal', () {
     const beer = Food(source: 'manual', name: 'Beer', kcal: 129, proteinG: 1.1, carbsG: 10.6, fatG: 0, basedOnFoodId: 21);
     expect(beer.toRef(), {'source': 'manual', 'name': 'Beer', 'proteinG': 1.1, 'carbsG': 10.6, 'fatG': 0.0, 'basedOnFoodId': 21});

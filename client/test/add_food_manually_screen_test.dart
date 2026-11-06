@@ -20,7 +20,7 @@ class _OnDay extends NutritionDateController {
   String? build() => date;
 }
 
-Future<FakeNutritionRepository> _pump(WidgetTester tester, {Size? size, double textScale = 1, String? day}) async {
+Future<FakeNutritionRepository> _pump(WidgetTester tester, {Size? size, double textScale = 1, String? day, bool dark = false}) async {
   final repo = FakeNutritionRepository();
   if (size != null) {
     tester.view.physicalSize = size;
@@ -34,6 +34,7 @@ Future<FakeNutritionRepository> _pump(WidgetTester tester, {Size? size, double t
       if (day != null) nutritionDateProvider.overrideWith(() => _OnDay(day)),
     ],
     child: MaterialApp(
+      theme: dark ? fsDarkTheme() : null,
       builder: (context, child) => MediaQuery(
         data: MediaQuery.of(context).copyWith(textScaler: TextScaler.linear(textScale)),
         child: child!,
@@ -428,6 +429,145 @@ void main() {
     await tester.pumpAndSettle();
     expect(repo.clientIds, hasLength(3));
     expect(repo.clientIds.last, isNot(repo.clientIds.first));
+  });
+
+  // #24: the prototype's "Auto from macros · tap to override".
+  group("the label's calories", () {
+    Future<void> openKcal(WidgetTester tester) async {
+      // `.first` is the screen's own list, as above.
+      await tester.scrollUntilVisible(find.byKey(const Key('manual.kcalEdit')), 200, scrollable: find.byType(Scrollable).first);
+      await tester.ensureVisible(find.byKey(const Key('manual.kcalEdit')));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const Key('manual.kcalEdit')));
+      await tester.pumpAndSettle();
+    }
+
+    Future<void> typeWafer(WidgetTester tester) async {
+      await tester.enterText(find.byKey(const Key('manual.name')), 'Choco wafer');
+      await tester.enterText(find.byKey(const Key('manual.protein')), '1.5');
+      await tester.enterText(find.byKey(const Key('manual.carbs')), '21');
+      await tester.enterText(find.byKey(const Key('manual.fat')), '7');
+      await tester.pump();
+    }
+
+    VoidCallback? log(WidgetTester tester) => tester.widget<FsButton>(find.byKey(const Key('manual.log'))).onPressed;
+
+    testWidgets('by default the calories are worked out, with a way to use the label', (tester) async {
+      await _pump(tester, size: _tall);
+      expect(find.text('Worked out from protein, carbs and fat.'), findsOneWidget);
+      expect(find.text("Use the label's calories"), findsOneWidget);
+      expect(find.byKey(const Key('manual.kcal')), findsNothing);
+      expect(tester.getSize(find.byKey(const Key('manual.kcalEdit'))).height, greaterThanOrEqualTo(48));
+    });
+
+    testWidgets("the label's calories are logged in place of 4-4-9", (tester) async {
+      final repo = await _pump(tester, size: _tall);
+      await typeWafer(tester);
+      expect(find.text('153 kcal'), findsOneWidget);
+      await openKcal(tester);
+      expect(find.text('Calories (kcal)'), findsOneWidget);
+      expect(find.text("From the label. Protein, carbs and fat won't change it."), findsOneWidget);
+      await tester.enterText(find.byKey(const Key('manual.kcal')), '160');
+      await tester.pump();
+      await tester.ensureVisible(find.byKey(const Key('manual.log')));
+      await tester.tap(find.byKey(const Key('manual.log')));
+      await tester.pumpAndSettle();
+      expect([repo.lastLogged!.labelKcal, repo.lastLogged!.kcal, repo.lastLogged!.toRef()['kcal']], [160, 160, 160]);
+    });
+
+    testWidgets('Work it out from macros hides the box and clears it', (tester) async {
+      final repo = await _pump(tester, size: _tall);
+      await typeWafer(tester);
+      await openKcal(tester);
+      await tester.enterText(find.byKey(const Key('manual.kcal')), '160');
+      await tester.pump();
+      await tester.ensureVisible(find.byKey(const Key('manual.kcalAuto')));
+      await tester.tap(find.byKey(const Key('manual.kcalAuto')));
+      await tester.pumpAndSettle();
+      expect(find.byKey(const Key('manual.kcal')), findsNothing);
+      expect(find.text('153 kcal'), findsOneWidget);
+      await openKcal(tester);
+      expect(tester.widget<TextField>(find.descendant(of: find.byKey(const Key('manual.kcal')), matching: find.byType(TextField), matchRoot: true)).controller!.text, isEmpty);
+      await tester.tap(find.byKey(const Key('manual.kcalAuto')));
+      await tester.pumpAndSettle();
+      await tester.ensureVisible(find.byKey(const Key('manual.log')));
+      await tester.tap(find.byKey(const Key('manual.log')));
+      await tester.pumpAndSettle();
+      expect(repo.lastLogged!.labelKcal, isNull);
+      expect(repo.lastLogged!.toRef().containsKey('kcal'), isFalse);
+    });
+
+    testWidgets('a drink with only calories can be logged', (tester) async {
+      final repo = await _pump(tester, size: _tall);
+      await tester.enterText(find.byKey(const Key('manual.name')), 'Iced tea');
+      await tester.pump();
+      expect(find.text('Add some protein, carbs or fat'), findsOneWidget);
+      await openKcal(tester);
+      expect(find.text('Add calories, protein, carbs or fat'), findsOneWidget);
+      expect(log(tester), isNull);
+      await tester.enterText(find.byKey(const Key('manual.kcal')), '90');
+      await tester.pump();
+      expect(find.text('Add calories, protein, carbs or fat'), findsNothing);
+      expect(log(tester), isNotNull);
+      await tester.ensureVisible(find.byKey(const Key('manual.log')));
+      await tester.tap(find.byKey(const Key('manual.log')));
+      await tester.pumpAndSettle();
+      expect([repo.lastLogged!.kcal, repo.lastLogged!.proteinG + repo.lastLogged!.carbsG + repo.lastLogged!.fatG], [90, 0]);
+    });
+
+    testWidgets('0 calories and no macros still cannot be logged', (tester) async {
+      await _pump(tester, size: _tall);
+      await tester.enterText(find.byKey(const Key('manual.name')), 'Water');
+      await openKcal(tester);
+      await tester.enterText(find.byKey(const Key('manual.kcal')), '0');
+      await tester.pump();
+      expect(log(tester), isNull);
+      expect(find.text('Add calories, protein, carbs or fat'), findsOneWidget);
+    });
+
+    testWidgets('over 5,000 says so under the box, and Log is off', (tester) async {
+      await _pump(tester, size: _tall);
+      await typeWafer(tester);
+      await openKcal(tester);
+      await tester.enterText(find.byKey(const Key('manual.kcal')), '5001');
+      await tester.pump();
+      expect(find.text('Must be 0–5,000 kcal'), findsOneWidget);
+      expect(log(tester), isNull);
+      await tester.enterText(find.byKey(const Key('manual.kcal')), '5000');
+      await tester.pump();
+      expect(find.text('Must be 0–5,000 kcal'), findsNothing);
+      expect(log(tester), isNotNull);
+    });
+
+    testWidgets('calories are whole numbers', (tester) async {
+      await _pump(tester, size: _tall);
+      await openKcal(tester);
+      await tester.enterText(find.byKey(const Key('manual.kcal')), '12.5');
+      await tester.pump();
+      expect(find.text('125'), findsOneWidget);
+    });
+
+    testWidgets('typed calories alone ask before leaving', (tester) async {
+      await _pump(tester, size: _tall);
+      await openKcal(tester);
+      await tester.enterText(find.byKey(const Key('manual.kcal')), '160');
+      await tester.pump();
+      await tester.binding.handlePopRoute();
+      await tester.pumpAndSettle();
+      expect(find.byKey(const Key('discard.keep')), findsOneWidget);
+    });
+
+    for (final dark in [false, true]) {
+      testWidgets('the open box fits a 320 dp phone at 2x text (${dark ? 'dark' : 'light'})', (tester) async {
+        await _pump(tester, size: const Size(320, 640), textScale: 2, dark: dark);
+        await openKcal(tester);
+        await tester.scrollUntilVisible(find.byKey(const Key('manual.kcalAuto')), 200, scrollable: find.byType(Scrollable).first);
+        await tester.enterText(find.byKey(const Key('manual.kcal')), '5001');
+        await tester.pump();
+        expect(find.text('Must be 0–5,000 kcal'), findsOneWidget);
+        expect(tester.takeException(), isNull);
+      });
+    }
   });
 
   group('labels (NU-9)', () {

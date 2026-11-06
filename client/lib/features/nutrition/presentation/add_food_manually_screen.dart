@@ -41,12 +41,17 @@ class _AddFoodManuallyScreenState extends ConsumerState<AddFoodManuallyScreen> {
   final _fiber = TextEditingController();
   final _sugar = TextEditingController();
   final _sodium = TextEditingController();
+
+  /// The label's calories per serving, typed once [_labelKcalOpen].
+  final _kcal = TextEditingController();
+  bool _labelKcalOpen = false;
+
   /// Null only when choosing, which never logs.
   late String? _meal = widget.mealType;
 
   @override
   void dispose() {
-    for (final c in [_name, _serving, _protein, _carbs, _fat, _fiber, _sugar, _sodium]) {
+    for (final c in [_name, _serving, _protein, _carbs, _fat, _fiber, _sugar, _sodium, _kcal]) {
       c.dispose();
     }
     super.dispose();
@@ -74,10 +79,18 @@ class _AddFoodManuallyScreenState extends ConsumerState<AddFoodManuallyScreen> {
     final gramsOk = [p, c, f].every((g) => g != null && inGramsRange(g)) &&
         [fiber, sugar].every((g) => g == null || inGramsRange(g));
     final sodiumOk = sodium == null || inSodiumRange(sodium);
-    final kcal = gramsOk ? manualKcal(p!, c!, f!) : null;
+    // The label's calories, when that box is open and filled in (#24).
+    final typedKcal = _labelKcalOpen ? _optionalNumber(_kcal) : null;
+    final labelKcalOk = typedKcal == null || inKcalRange(typedKcal);
+    final labelKcal = typedKcal != null && labelKcalOk ? typedKcal.round() : null;
+    final workedOut = gramsOk ? manualKcal(p!, c!, f!) : null;
+    final kcal = labelKcal ?? workedOut;
+    // Something to count: protein, carbs or fat, or the label's calories (a
+    // drink label may give only those).
+    final hasAmount = gramsOk && (p! + c! + f! > 0 || (labelKcal ?? 0) > 0);
     final name = _name.text.trim();
     final valid = name.isNotEmpty && name.length <= maxFoodName && _serving.text.trim().length <= maxServingDesc
-        && gramsOk && sodiumOk && (p! + c! + f!) > 0;
+        && gramsOk && sodiumOk && labelKcalOk && hasAmount;
 
     Widget gramsField(String label, Key key, TextEditingController ctrl, {bool sodium = false}) => Expanded(
       child: NumberBox(
@@ -91,13 +104,13 @@ class _AddFoodManuallyScreenState extends ConsumerState<AddFoodManuallyScreen> {
     );
     // Log is off with no protein, carbs or fat: say so once the user has
     // started, rather than leave the button grey without a reason.
-    final noMacros = gramsOk && sodiumOk && p! + c! + f! == 0 &&
-        (name.isNotEmpty || [_protein, _carbs, _fat].any((box) => box.text.trim().isNotEmpty));
+    final noMacros = gramsOk && sodiumOk && labelKcalOk && !hasAmount &&
+        (name.isNotEmpty || [_protein, _carbs, _fat, _kcal].any((box) => box.text.trim().isNotEmpty));
     // Likewise with macros typed but no name.
-    final noName = name.isEmpty && gramsOk && sodiumOk && p! + c! + f! > 0;
+    final noName = name.isEmpty && sodiumOk && labelKcalOk && hasAmount;
 
     // Back with anything typed asks first; an untouched form just leaves.
-    final typed = [_name, _serving, _protein, _carbs, _fat, _fiber, _sugar, _sodium]
+    final typed = [_name, _serving, _protein, _carbs, _fat, _fiber, _sugar, _sodium, _kcal]
         .any((box) => box.text.trim().isNotEmpty);
 
     return FsDiscardGuard(
@@ -160,16 +173,51 @@ class _AddFoodManuallyScreenState extends ConsumerState<AddFoodManuallyScreen> {
             ]),
             if (noMacros) ...[
               const SizedBox(height: 8),
-              const FsErrorLine('Add some protein, carbs or fat'),
+              FsErrorLine(_labelKcalOpen ? 'Add calories, protein, carbs or fat' : 'Add some protein, carbs or fat'),
             ],
             if (noName) ...[
               const SizedBox(height: 8),
               const FsErrorLine('Add a food name'),
             ],
             const SizedBox(height: 16),
-            Text('Calories', style: TextStyle(color: t.text2, fontSize: 12)),
-            Text(kcal == null ? '—' : '$kcal kcal', style: theme.textTheme.titleLarge),
-            Text('Worked out from protein, carbs and fat.', style: TextStyle(color: t.text3, fontSize: 12)),
+            // The prototype's "Auto from macros · tap to override" (#24).
+            if (_labelKcalOpen) ...[
+              NumberBox(
+                label: 'Calories (kcal)',
+                controller: _kcal,
+                fieldKey: const Key('manual.kcal'),
+                hint: 'kcal',
+                wholeNumbers: true,
+                error: kcalError(_kcal.text),
+                onChanged: (_) => setState(() {}),
+              ),
+              const SizedBox(height: 6),
+              Text("From the label. Protein, carbs and fat won't change it.", style: TextStyle(color: t.text3, fontSize: 12)),
+              Align(
+                alignment: Alignment.centerLeft,
+                child: TextButton(
+                  key: const Key('manual.kcalAuto'),
+                  onPressed: () => setState(() {
+                    _labelKcalOpen = false;
+                    _kcal.clear();
+                  }),
+                  child: const Text('Work it out from macros'),
+                ),
+              ),
+            ] else ...[
+              Text('Calories', style: TextStyle(color: t.text2, fontSize: 12)),
+              Text(workedOut == null ? '—' : '$workedOut kcal', style: theme.textTheme.titleLarge),
+              Text('Worked out from protein, carbs and fat.', style: TextStyle(color: t.text3, fontSize: 12)),
+              Align(
+                alignment: Alignment.centerLeft,
+                child: TextButton.icon(
+                  key: const Key('manual.kcalEdit'),
+                  onPressed: () => setState(() => _labelKcalOpen = true),
+                  icon: const Icon(Icons.edit_outlined),
+                  label: const Text("Use the label's calories"),
+                ),
+              ),
+            ],
             const SizedBox(height: 24),
             FsButton(
               key: const Key('manual.log'),
@@ -179,7 +227,7 @@ class _AddFoodManuallyScreenState extends ConsumerState<AddFoodManuallyScreen> {
                   source: 'manual', name: name,
                   servingDesc: _serving.text.trim().isEmpty ? null : _serving.text.trim(),
                   kcal: kcal!, proteinG: p, carbsG: c, fatG: f, fiberG: fiber,
-                  sugarG: sugar, sodiumMg: sodium,
+                  sugarG: sugar, sodiumMg: sodium, labelKcal: labelKcal,
                 );
                 if (widget.pick) {
                   Navigator.of(context).pop(food);
