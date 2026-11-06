@@ -28,6 +28,8 @@ import '../../profile/presentation/weight_unit_switch.dart';
 import '../../reminders/presentation/reminders_screen.dart';
 import '../../streaks/presentation/streaks_screen.dart';
 import '../../schedule/presentation/schedule_screen.dart';
+import 'change_password_screen.dart';
+import 'delete_account_screen.dart';
 
 /// FR-1.4: change any onboarding answer later.
 ///
@@ -166,6 +168,10 @@ class _SettingsList extends ConsumerWidget {
     final t = context.fs;
     final theme = Theme.of(context);
     final proStatus = ref.watch(proStatusProvider).value;
+    // From the signed-in user: the profile does not say how the account
+    // signs in. An older server sends nothing, which reads as a password.
+    final hasPassword =
+        ref.watch(authControllerProvider).value?.user?.hasPassword ?? true;
     // The Edit chip's one action, for its tap and for its screen-reader node.
     void editNameCity() => _open(context, const _NameCityEditor());
 
@@ -394,6 +400,46 @@ class _SettingsList extends ConsumerWidget {
           ),
         ),
         const SizedBox(height: 22),
+        const FsEyebrow('Account'),
+        const SizedBox(height: 10),
+        FsCard(
+          padding: const EdgeInsets.symmetric(horizontal: 16),
+          child: Column(
+            children: [
+              // An account without a password has none to change: it is
+              // told how it signs in instead, as a line rather than a row
+              // that leads nowhere.
+              if (hasPassword)
+                _SettingsRow(
+                  rowKey: const Key('account.changePassword'),
+                  icon: Icons.lock_outline,
+                  label: 'Change password',
+                  onTap: () => _open(context, const ChangePasswordScreen()),
+                )
+              else
+                _SettingsRow(
+                  rowKey: const Key('account.google'),
+                  icon: Icons.account_circle_outlined,
+                  label: 'You sign in with Google',
+                  trailing: const SizedBox.shrink(),
+                ),
+              // Last, and in red: the one row here that cannot be undone.
+              _SettingsRow(
+                rowKey: const Key('account.delete'),
+                icon: Icons.delete_outline,
+                label: 'Delete account',
+                iconColor: t.red,
+                labelColor: t.red,
+                onTap: () => _open(
+                  context,
+                  DeleteAccountScreen(hasPassword: hasPassword),
+                ),
+                last: true,
+              ),
+            ],
+          ),
+        ),
+        const SizedBox(height: 22),
         FsButton(
           key: const Key('signOut'),
           label: 'Sign out',
@@ -486,6 +532,7 @@ class _SettingsRow extends StatelessWidget {
     this.onTap,
     this.trailing,
     this.iconColor,
+    this.labelColor,
     this.last = false,
   });
 
@@ -495,6 +542,9 @@ class _SettingsRow extends StatelessWidget {
   final VoidCallback? onTap;
   final Widget? trailing;
   final Color? iconColor;
+
+  /// The label's colour, `t.text` unless given: red for Delete account.
+  final Color? labelColor;
   final bool last;
 
   @override
@@ -530,7 +580,7 @@ class _SettingsRow extends StatelessWidget {
                     style: TextStyle(
                       fontSize: 12.5,
                       fontWeight: FontWeight.w500,
-                      color: t.text,
+                      color: labelColor ?? t.text,
                     ),
                   ),
                 ),
