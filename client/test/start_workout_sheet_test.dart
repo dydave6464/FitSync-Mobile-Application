@@ -667,4 +667,15 @@ void main() {
       expect(contrast(body.style!.color!, row), greaterThanOrEqualTo(4.5));
     });
   }
+
+  testWidgets('the close button is named (PT-8)', (tester) async {
+    final handle = tester.ensureSemantics();
+    await _open(tester);
+
+    expect(
+      tester.getSemantics(find.byKey(const Key('start.close'))),
+      isSemantics(tooltip: 'Close', isButton: true, hasTapAction: true),
+    );
+    handle.dispose();
+  });
 }

@@ -189,6 +189,7 @@ class _StartWorkoutSheet extends ConsumerWidget {
                   ),
                   IconButton(
                     key: const Key('start.close'),
+                    tooltip: 'Close',
                     icon: const Icon(Icons.close, size: 18),
                     color: t.text3,
                     onPressed: () => Navigator.of(context).pop(),
