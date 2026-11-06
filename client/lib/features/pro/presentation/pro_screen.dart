@@ -362,6 +362,16 @@ class _ProScreenState extends ConsumerState<ProScreen> {
         if (s.pro) ...[
           const FsEyebrow('Extend your Pro'),
           const SizedBox(height: 10),
+          // The server starts a new period at the later of now and the
+          // current end, so no days already paid for are lost.
+          if (s.until != null) ...[
+            Text(
+              'Adds ${_plan.period} after ${formatProDate(s.until!)}.',
+              key: const Key('pro.extendsFrom'),
+              style: TextStyle(fontSize: 12.5, color: context.fs.text2),
+            ),
+            const SizedBox(height: 10),
+          ],
         ],
         _plans(s.prices),
         const SizedBox(height: 14),
@@ -393,8 +403,11 @@ class _ProScreenState extends ConsumerState<ProScreen> {
             key: const Key('pro.plan.monthly'),
             title: 'Monthly',
             price: peso(p.monthly),
-            note: 'per month',
-            semanticsLabel: 'Monthly, ${peso(p.monthly)} a month',
+            // Said as a period, not a rate: one payment buys one month and
+            // nothing renews, which "per month" left in doubt.
+            note: 'for ${ProPlan.monthly.period}',
+            semanticsLabel:
+                'Monthly, ${peso(p.monthly)} for ${ProPlan.monthly.period}',
             selected: _plan == ProPlan.monthly,
             onTap: locked ? null : () => pick(ProPlan.monthly),
           ),
@@ -405,10 +418,15 @@ class _ProScreenState extends ConsumerState<ProScreen> {
             key: const Key('pro.plan.annual'),
             title: 'Annual',
             price: peso(p.annualPerMonth),
-            note: 'per month, billed ${peso(p.annual)} yearly',
+            // The headline is a rate, so "a month" stays beside it; without
+            // it ₱149 read as the annual price.
+            note:
+                'a month · ${peso(p.annual)} once, '
+                'for ${ProPlan.annual.period}',
             tag: '-${p.annualSavingPct}%',
             semanticsLabel:
-                'Annual, ${peso(p.annualPerMonth)} a month, billed ${peso(p.annual)} yearly',
+                'Annual, ${peso(p.annualPerMonth)} a month, '
+                '${peso(p.annual)} once, for ${ProPlan.annual.period}',
             selected: _plan == ProPlan.annual,
             onTap: locked ? null : () => pick(ProPlan.annual),
           ),
@@ -459,6 +477,15 @@ class _ProScreenState extends ConsumerState<ProScreen> {
               label: 'Pay ${peso(p.forPlan(_plan))} with PayMongo',
               busy: busy,
               onPressed: busy ? null : _start,
+            ),
+            // The terms, where the prototype states them: under the button
+            // that commits to them.
+            const SizedBox(height: 8),
+            Text(
+              "One-time payment. Pro doesn't renew by itself.",
+              key: const Key('pro.terms'),
+              textAlign: TextAlign.center,
+              style: TextStyle(fontSize: 12, color: context.fs.text2),
             ),
             if (openError != null) ...[const SizedBox(height: 10), openError],
           ],

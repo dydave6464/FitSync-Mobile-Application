@@ -90,14 +90,14 @@ void main() {
       expect(
         tester.getSemantics(find.byKey(const Key('pro.plan.annual'))),
         isSemantics(
-          label: 'Annual, ₱149 a month, billed ₱1,788 yearly',
+          label: 'Annual, ₱149 a month, ₱1,788 once, for 12 months',
           isSelected: true,
           isButton: true,
         ),
       );
       expect(
         tester.getSemantics(find.byKey(const Key('pro.plan.monthly'))),
-        isSemantics(label: 'Monthly, ₱249 a month', isSelected: false),
+        isSemantics(label: 'Monthly, ₱249 for 1 month', isSelected: false),
       );
       expect(_inside('pro.plan.annual', find.text('-40%')), findsOneWidget);
 
@@ -409,6 +409,70 @@ void main() {
     expect(find.text('EXTEND YOUR PRO'), findsOneWidget);
     expect(find.byKey(const Key('pro.pay')), findsOneWidget);
     expect(find.byKey(const Key('pro.endsSoon')), findsNothing);
+  });
+
+  // PS-8: "per month, billed yearly" read as a subscription that renews.
+  // The server sells one period at a time, added after any current one.
+  testWidgets('prices read as a one-off payment for a set period', (
+    tester,
+  ) async {
+    await _pump(tester);
+
+    expect(_inside('pro.plan.monthly', find.text('for 1 month')), findsOne);
+    // The ₱149 headline keeps its rate in sight: without "a month" it read
+    // as the annual price, beside ₱1,788 and the monthly card's ₱249.
+    expect(_inside('pro.plan.annual', find.text('₱149')), findsOneWidget);
+    expect(
+      _inside(
+        'pro.plan.annual',
+        find.text('a month · ₱1,788 once, for 12 months'),
+      ),
+      findsOneWidget,
+    );
+    expect(find.textContaining('billed'), findsNothing);
+    expect(find.textContaining('per month'), findsNothing);
+    expect(
+      find.text("One-time payment. Pro doesn't renew by itself."),
+      findsOneWidget,
+    );
+    final pay = tester.getRect(find.byKey(const Key('pro.pay')));
+    final terms = tester.getRect(
+      find.text("One-time payment. Pro doesn't renew by itself."),
+    );
+    expect(terms.top, greaterThanOrEqualTo(pay.bottom), reason: 'under Pay');
+  });
+
+  testWidgets('extending says the new months start after the current end', (
+    tester,
+  ) async {
+    await _pump(
+      tester,
+      status: paidStatus(until: DateTime(2026, 11, 26, 12), method: 'gcash'),
+    );
+    expect(find.text('Adds 12 months after 26 Nov 2026.'), findsOneWidget);
+
+    await tester.tap(find.byKey(const Key('pro.plan.monthly')));
+    await tester.pump();
+    expect(find.text('Adds 1 month after 26 Nov 2026.'), findsOneWidget);
+  });
+
+  testWidgets('the longer terms fit a small phone at 2x text', (tester) async {
+    tester.view.physicalSize = const Size(360, 640);
+    tester.view.devicePixelRatio = 1.0;
+    addTearDown(tester.view.reset);
+    tester.platformDispatcher.textScaleFactorTestValue = 2.0;
+    addTearDown(tester.platformDispatcher.clearTextScaleFactorTestValue);
+
+    await _pump(
+      tester,
+      status: paidStatus(until: DateTime(2026, 11, 26, 12), method: 'gcash'),
+    );
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('a free user is not told about extending', (tester) async {
+    await _pump(tester);
+    expect(find.textContaining('Adds '), findsNothing);
   });
 
   testWidgets('ending within 3 days: a reminder to renew', (tester) async {

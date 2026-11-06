@@ -151,6 +151,9 @@ class _LogBodyWeightSheetState extends ConsumerState<_LogBodyWeightSheet> {
                   IconButton(
                     key: const Key('bodyWeight.close'),
                     icon: const Icon(Icons.close, size: 18),
+                    // The sheet's only escape: without a name a screen
+                    // reader announced just "Button".
+                    tooltip: 'Close',
                     color: t.text3,
                     onPressed: () => Navigator.of(context).pop(),
                   ),
