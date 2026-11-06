@@ -148,6 +148,13 @@ void _expectBetween(
   }
 }
 
+/// Every `finishAutofillContext` sent to the platform, as its shouldSave
+/// argument: true offers the typed passwords to the password manager.
+List<Object?> _autofillFinishes(WidgetTester tester) => [
+  for (final call in tester.testTextInput.log)
+    if (call.method == 'TextInput.finishAutofillContext') call.arguments,
+];
+
 void main() {
   testWidgets('three labelled password fields, each hidden with a toggle', (
     tester,
@@ -373,6 +380,43 @@ void main() {
       find.text('Password changed. Other devices were signed out.'),
       findsOneWidget,
       reason: 'the change landed, so the user is told even after leaving',
+    );
+  });
+
+  testWidgets('a change offers the password manager the new password', (
+    tester,
+  ) async {
+    await _pump(tester, _FakeAuthRepository());
+    await _fill(tester);
+    tester.testTextInput.log.clear();
+    await _submit(tester);
+
+    expect(find.byType(ChangePasswordScreen), findsNothing);
+    expect(
+      _autofillFinishes(tester).first,
+      isTrue,
+      reason: 'saved once the change took effect, before the screen closes',
+    );
+  });
+
+  testWidgets('leaving without changing offers no password to save', (
+    tester,
+  ) async {
+    await _pump(tester, _FakeAuthRepository());
+    await _fill(tester);
+    tester.testTextInput.log.clear();
+
+    await tester.pageBack();
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const Key('discard.confirm')));
+    await tester.pumpAndSettle();
+
+    expect(find.byType(ChangePasswordScreen), findsNothing);
+    expect(
+      _autofillFinishes(tester),
+      isNot(contains(true)),
+      reason:
+          'a password that never took effect must not replace the saved one',
     );
   });
 

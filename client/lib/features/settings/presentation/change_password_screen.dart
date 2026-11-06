@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../core/api_exception.dart';
@@ -139,7 +140,12 @@ class _ChangePasswordScreenState extends ConsumerState<ChangePasswordScreen> {
     // The new token is stored whether or not the screen is still up. Back
     // stays open while busy, so the user may have left already: the change
     // landed all the same, and the SnackBar on what is left says so.
-    if (mounted) navigator.pop();
+    if (mounted) {
+      // Offer the password manager the password now in effect, before the
+      // group closes and cancels: see the AutofillGroup in [build].
+      TextInput.finishAutofillContext();
+      navigator.pop();
+    }
     messenger.showSnackBar(
       const SnackBar(
         content: Text('Password changed. Other devices were signed out.'),
@@ -199,7 +205,11 @@ class _ChangePasswordScreenState extends ConsumerState<ChangePasswordScreen> {
       error: _error,
       onSave: _submit,
       // One group, so a password manager offers to update the saved one.
+      // Closing it cancels: a new password that never took effect must not
+      // be offered for saving, possibly over the right one. A change that
+      // lands commits it in [_submit] first.
       child: AutofillGroup(
+        onDisposeAction: AutofillContextAction.cancel,
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           mainAxisSize: MainAxisSize.min,

@@ -181,6 +181,13 @@ Future<void> _deleteWithPassword(WidgetTester tester, String password) async {
 bool _isLive(WidgetTester tester, Finder finder) =>
     tester.getSemantics(finder).getSemanticsData().flagsCollection.isLiveRegion;
 
+/// Every `finishAutofillContext` sent to the platform, as its shouldSave
+/// argument: true offers the typed password to the password manager.
+List<Object?> _autofillFinishes(WidgetTester tester) => [
+  for (final call in tester.testTextInput.log)
+    if (call.method == 'TextInput.finishAutofillContext') call.arguments,
+];
+
 void main() {
   testWidgets('says what is deleted and that it cannot be undone', (
     tester,
@@ -445,6 +452,39 @@ void main() {
     expect(find.byKey(const Key('open')), findsOneWidget);
     expect(repo.deletes, isEmpty);
     expect(_controller.deletions, 0);
+  });
+
+  testWidgets('a deletion offers no password to save', (tester) async {
+    await _pump(tester, repo: _FakeAuthRepository());
+    tester.testTextInput.log.clear();
+    await _deleteWithPassword(tester, 'my secret');
+    await tester.tap(dialogButton('Delete'));
+    await tester.pumpAndSettle();
+
+    expect(find.byType(DeleteAccountScreen), findsNothing);
+    expect(
+      _autofillFinishes(tester),
+      isNot(contains(true)),
+      reason: 'the account is gone; its password is worth nothing',
+    );
+  });
+
+  testWidgets('leaving with a password typed offers nothing to save', (
+    tester,
+  ) async {
+    await _pump(tester, repo: _FakeAuthRepository());
+    await tester.enterText(
+      find.byKey(const Key('deleteAccount.password')),
+      'my secret',
+    );
+    await tester.pump();
+    tester.testTextInput.log.clear();
+
+    await tester.pageBack();
+    await tester.pumpAndSettle();
+
+    expect(find.byType(DeleteAccountScreen), findsNothing);
+    expect(_autofillFinishes(tester), isNot(contains(true)));
   });
 
   for (final dark in [false, true]) {

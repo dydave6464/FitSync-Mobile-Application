@@ -227,7 +227,11 @@ class _DeleteAccountScreenState extends ConsumerState<DeleteAccountScreen> {
     );
   }
 
+  // Closing cancels rather than commits: a password that confirmed a
+  // deletion belongs to an account that no longer exists, and one typed and
+  // left behind was never checked.
   Widget _passwordField(FsTokens t) => AutofillGroup(
+    onDisposeAction: AutofillContextAction.cancel,
     child: FsLabeledField(
       key: _passwordKey,
       label: 'Password',
