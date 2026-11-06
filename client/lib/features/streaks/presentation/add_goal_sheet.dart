@@ -10,6 +10,7 @@ import '../../../core/units.dart';
 import '../../../core/widgets/fs_kit.dart';
 import '../../profile/presentation/providers.dart' show weightUnitProvider;
 import '../domain/streaks.dart';
+import 'goal_sheet.dart';
 import 'providers.dart';
 
 /// Adds a lift goal in two steps: choose the exercise, then the target.
@@ -73,6 +74,37 @@ class _AddGoalSheetState extends ConsumerState<_AddGoalSheet> {
       _picked = (exerciseId: exerciseId, name: name, bestKg: best);
       _error = null;
     });
+  }
+
+  /// A lift with an unreached goal can take no second one (the server
+  /// answers GOAL_EXISTS), so its row opens that goal instead: this sheet
+  /// closes and the goal's own sheet opens in its place.
+  void _openGoal(LiftGoal goal) {
+    final navigator = Navigator.of(context);
+    final unit = ref.read(weightUnitProvider);
+    navigator.pop();
+    showGoalSheet(navigator.context, goal, unit);
+  }
+
+  /// The user's unreached goals by exercise, once the list has loaded.
+  /// Until then, or if it fails, every row is offered as before and the
+  /// server still refuses a second goal.
+  Map<int, LiftGoal> _openGoals() => {
+    for (final g in ref.watch(goalsProvider).value ?? const <LiftGoal>[])
+      if (!g.reached) g.exerciseId: g,
+  };
+
+  /// A row's tap: its open goal when it has one, else step two.
+  VoidCallback _onRow(
+    Map<int, LiftGoal> open,
+    int exerciseId,
+    String name,
+    List<GoalOption> known,
+  ) {
+    final goal = open[exerciseId];
+    return goal == null
+        ? () => _pick(exerciseId, name, known)
+        : () => _openGoal(goal);
   }
 
   Future<void> _save() async {
@@ -201,6 +233,7 @@ class _AddGoalSheetState extends ConsumerState<_AddGoalSheet> {
 
   Widget _liftedBefore(AsyncValue<List<GoalOption>> options) {
     final unit = ref.watch(weightUnitProvider);
+    final open = _openGoals();
     return options.when(
       loading: () => const Center(child: CircularProgressIndicator()),
       error: (error, _) => _Hint(userMessage(error)),
@@ -215,7 +248,8 @@ class _AddGoalSheetState extends ConsumerState<_AddGoalSheet> {
                     key: Key('goal.option.${o.exerciseId}'),
                     title: o.name,
                     subtitle: 'Best ${formatWeightWithUnit(o.bestKg, unit)}',
-                    onTap: () => _pick(o.exerciseId, o.name, list),
+                    goalSet: open.containsKey(o.exerciseId),
+                    onTap: _onRow(open, o.exerciseId, o.name, list),
                   ),
               ],
             ),
@@ -223,6 +257,7 @@ class _AddGoalSheetState extends ConsumerState<_AddGoalSheet> {
   }
 
   Widget _searchResults(List<GoalOption> known) {
+    final open = _openGoals();
     return ref
         .watch(goalSearchProvider(_query))
         .when(
@@ -237,7 +272,8 @@ class _AddGoalSheetState extends ConsumerState<_AddGoalSheet> {
                         key: Key('goal.result.${e.exerciseId}'),
                         title: e.name,
                         subtitle: null,
-                        onTap: () => _pick(e.exerciseId, e.name, known),
+                        goalSet: open.containsKey(e.exerciseId),
+                        onTap: _onRow(open, e.exerciseId, e.name, known),
                       ),
                   ],
                 ),
@@ -317,11 +353,15 @@ class _PickRow extends StatelessWidget {
     required this.title,
     required this.subtitle,
     required this.onTap,
+    this.goalSet = false,
   });
 
   final String title;
   final String? subtitle;
   final VoidCallback onTap;
+
+  /// The lift already has an unreached goal; the row opens it.
+  final bool goalSet;
 
   @override
   Widget build(BuildContext context) {
@@ -336,24 +376,34 @@ class _PickRow extends StatelessWidget {
           constraints: const BoxConstraints(minHeight: 48),
           child: Padding(
             padding: const EdgeInsets.symmetric(vertical: 10),
-            child: Column(
-              mainAxisAlignment: MainAxisAlignment.center,
-              crossAxisAlignment: CrossAxisAlignment.start,
+            child: Row(
               children: [
-                Text(
-                  title,
-                  style: TextStyle(
-                    fontSize: 14,
-                    fontWeight: FontWeight.w600,
-                    color: t.text,
+                Expanded(
+                  child: Column(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        title,
+                        style: TextStyle(
+                          fontSize: 14,
+                          fontWeight: FontWeight.w600,
+                          color: t.text,
+                        ),
+                      ),
+                      if (subtitle != null) ...[
+                        const SizedBox(height: 2),
+                        Text(
+                          subtitle!,
+                          style: TextStyle(fontSize: 11.5, color: t.text3),
+                        ),
+                      ],
+                    ],
                   ),
                 ),
-                if (subtitle != null) ...[
-                  const SizedBox(height: 2),
-                  Text(
-                    subtitle!,
-                    style: TextStyle(fontSize: 11.5, color: t.text3),
-                  ),
+                if (goalSet) ...[
+                  const SizedBox(width: 8),
+                  const FsTag('Goal set'),
                 ],
               ],
             ),

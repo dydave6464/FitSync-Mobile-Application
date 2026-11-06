@@ -32,9 +32,12 @@ ExerciseSummary _summary(int id, String name) => ExerciseSummary(
 
 /// Records adds; `failAdd` makes the next add throw it.
 class _FakeGoalsRepo implements GoalsRepository {
-  _FakeGoalsRepo(this._options);
+  _FakeGoalsRepo(this._options, {this.existing = const []});
 
   final List<GoalOption> _options;
+
+  /// Goals the user already had before the sheet opened.
+  final List<LiftGoal> existing;
   final added = <(int, double)>[];
   Object? failAdd;
   Completer<void>? blockAdd;
@@ -44,19 +47,20 @@ class _FakeGoalsRepo implements GoalsRepository {
 
   @override
   Future<List<LiftGoal>> list() async {
-    // Return the goals that were added.
-    return added
-        .map(
-          (e) => LiftGoal(
-            goalId: 1,
-            exerciseId: e.$1,
-            exerciseName: 'x',
-            targetKg: e.$2,
-            bestKg: null,
-            reachedOn: null,
-          ),
-        )
-        .toList();
+    // The goals already there, then the ones that were added.
+    return [
+      ...existing,
+      ...added.map(
+        (e) => LiftGoal(
+          goalId: 1,
+          exerciseId: e.$1,
+          exerciseName: 'x',
+          targetKg: e.$2,
+          bestKg: null,
+          reachedOn: null,
+        ),
+      ),
+    ];
   }
 
   @override
@@ -86,8 +90,9 @@ Future<_FakeGoalsRepo> _open(
   List<GoalOption> options = const [_bench],
   WeightUnit unit = WeightUnit.kg,
   List<ExerciseSummary> results = const [],
+  List<LiftGoal> existing = const [],
 }) async {
-  final repo = _FakeGoalsRepo(options);
+  final repo = _FakeGoalsRepo(options, existing: existing);
   await tester.pumpWidget(
     ProviderScope(
       overrides: [
@@ -462,5 +467,86 @@ void main() {
     await tester.binding.handlePopRoute();
     await tester.pumpAndSettle();
     expect(find.text('New goal'), findsNothing);
+  });
+
+  group('a lift that already has a goal', () {
+    const openBench = LiftGoal(
+      goalId: 9,
+      exerciseId: 3,
+      exerciseName: 'Bench Press',
+      targetKg: 60,
+      bestKg: 52.5,
+      reachedOn: null,
+    );
+
+    testWidgets('is tagged in the list and opens its goal, not a new one', (
+      tester,
+    ) async {
+      // Offered as if new, it failed only after the target was typed and
+      // saved ("You already have a goal for this exercise").
+      final repo = await _open(tester, existing: const [openBench]);
+
+      final row = find.byKey(const Key('goal.option.3'));
+      expect(
+        find.descendant(of: row, matching: find.text('Goal set')),
+        findsOneWidget,
+      );
+
+      await tester.tap(row);
+      await tester.pumpAndSettle();
+
+      expect(find.byKey(const Key('goal.target')), findsNothing);
+      expect(find.text('New goal'), findsNothing, reason: 'add sheet closed');
+      expect(find.text('Target 60 kg'), findsOneWidget);
+      expect(find.byKey(const Key('goal.delete')), findsOneWidget);
+      expect(repo.added, isEmpty);
+    });
+
+    testWidgets('is tagged in search results too', (tester) async {
+      await _open(
+        tester,
+        existing: const [openBench],
+        results: [_summary(3, 'Bench Press'), _summary(8, 'Deadlift')],
+      );
+
+      await _search(tester, 'e');
+      expect(
+        find.descendant(
+          of: find.byKey(const Key('goal.result.3')),
+          matching: find.text('Goal set'),
+        ),
+        findsOneWidget,
+      );
+      expect(
+        find.descendant(
+          of: find.byKey(const Key('goal.result.8')),
+          matching: find.text('Goal set'),
+        ),
+        findsNothing,
+      );
+    });
+
+    testWidgets('a reached goal does not count: the lift can take a new one', (
+      tester,
+    ) async {
+      await _open(
+        tester,
+        existing: const [
+          LiftGoal(
+            goalId: 9,
+            exerciseId: 3,
+            exerciseName: 'Bench Press',
+            targetKg: 50,
+            bestKg: 52.5,
+            reachedOn: '2026-09-01',
+          ),
+        ],
+      );
+
+      expect(find.text('Goal set'), findsNothing);
+      await tester.tap(find.byKey(const Key('goal.option.3')));
+      await tester.pumpAndSettle();
+      expect(find.byKey(const Key('goal.target')), findsOneWidget);
+    });
   });
 }
