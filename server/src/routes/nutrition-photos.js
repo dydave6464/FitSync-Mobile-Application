@@ -8,7 +8,7 @@ const { invalid, checkDate, checkServings, scaled } = require('../lib/nutrition-
 const { resolveFood } = require('../lib/resolve-food');
 const { MEALS, insertEntry, getEntry } = require('../db/nutrition');
 const {
-  countToday, countFailedToday, insertFailed, insertRecognition, readForLog, markLogged, outcomesFor,
+  countToday, countFreeTriesToday, insertFailed, insertRecognition, readForLog, markLogged, outcomesFor,
 } = require('../db/photo-recognitions');
 const { VisionError } = require('../services/vision/errors');
 
@@ -17,9 +17,10 @@ const { VisionError } = require('../services/vision/errors');
 /// requests at 1,000 a day), and the Cloudflare backup's about 40-60 more a
 /// day.
 const DAILY_PHOTO_LIMIT = 15;
-/// Failed tries per user per Manila day: each costs a full AI call and never
-/// counts toward DAILY_PHOTO_LIMIT, so Try again could otherwise spend the
-/// app-wide AI budget.
+/// Failed or empty tries per user per Manila day (the AI busy or down, or no
+/// food found): each costs a full AI call and never counts toward
+/// DAILY_PHOTO_LIMIT, so Try again or a run of empty photos could otherwise
+/// spend the app-wide AI budget.
 const FAILED_PHOTO_LIMIT = 30;
 const MAX_IMAGE_BYTES = 1_500_000;
 const MAGIC = {
@@ -80,6 +81,14 @@ module.exports = function buildNutritionPhotosRouter(deps) {
     req.user.isPremium ? undefined : AppError.forbidden('PRO_REQUIRED', 'Snap a meal is part of FitSync Pro.'),
   );
 
+  // What the capture sheet shows before a photo is taken: today's allowance.
+  router.get('/recognitions/today', auth, requirePro, async (req, res, next) => {
+    try {
+      const used = await countToday(pool, req.user.userId);
+      res.json({ data: { limit: DAILY_PHOTO_LIMIT, remainingToday: Math.max(0, DAILY_PHOTO_LIMIT - used), unlogged: null } });
+    } catch (err) { next(err); }
+  });
+
   router.post('/recognize', auth, requirePro, async (req, res, next) => {
     // The app may stop waiting -- Cancel, back, or its own 45 s timeout, each
     // of which closes the connection -- while the recogniser asks Groq or
@@ -100,7 +109,7 @@ module.exports = function buildNutritionPhotosRouter(deps) {
       if (used >= DAILY_PHOTO_LIMIT) {
         throw new AppError(429, 'PHOTO_LIMIT_REACHED', "You've used today's meal photos. Try again tomorrow.");
       }
-      if (await countFailedToday(pool, userId) >= FAILED_PHOTO_LIMIT) {
+      if (await countFreeTriesToday(pool, userId) >= FAILED_PHOTO_LIMIT) {
         throw new AppError(429, 'PHOTO_RETRY_LIMIT', "Snap a meal can't read photos right now. Try again tomorrow, or add your food with search.");
       }
       const foods = await menu.get(pool);
@@ -155,7 +164,8 @@ module.exports = function buildNutritionPhotosRouter(deps) {
       res.json({
         data: {
           recognitionId,
-          remainingToday: Math.max(0, DAILY_PHOTO_LIMIT - used - 1),
+          // An empty answer (no food found) costs no photo.
+          remainingToday: Math.max(0, DAILY_PHOTO_LIMIT - used - (items.length + unlisted.length ? 1 : 0)),
           items: items.map((it, i) => ({
             itemId: itemIds[i], confidence: it.confidence, servings: it.servings,
             food: foodOut(it.food), alternatives: it.alternatives.map(foodOut),

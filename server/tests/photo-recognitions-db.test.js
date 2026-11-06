@@ -5,7 +5,7 @@ const { migrate } = require('../src/db/migrate');
 const { createPool } = require('../src/db/pool');
 const { testDbConfig, dropAllTables } = require('./helpers/test-db');
 const {
-  countToday, countFailedToday, insertFailed, insertRecognition, readForLog, markLogged, outcomesFor,
+  countToday, countFreeTriesToday, insertFailed, insertRecognition, readForLog, markLogged, outcomesFor,
 } = require('../src/db/photo-recognitions');
 
 test('photo recognitions in the database', async (t) => {
@@ -22,7 +22,7 @@ test('photo recognitions in the database', async (t) => {
   const [rice] = await pool.query("INSERT INTO foods (name, category, serving_desc, calories) VALUES ('White rice', 'filipino', '1 cup (160 g)', 206)");
   const [garlic] = await pool.query("INSERT INTO foods (name, category, serving_desc, calories) VALUES ('Garlic fried rice (sinangag)', 'filipino', '1 cup (160 g)', 299)");
 
-  await t.test('countToday counts today\'s answered photos in Manila: not failed ones, not yesterday\'s, not another user\'s', async () => {
+  await t.test('countToday counts today\'s recognised photos in Manila: not empty or failed ones, not yesterday\'s, not another user\'s', async () => {
     // The pool runs at +08:00, so CURDATE() is Manila's today and
     // CURDATE() - 1 second is 23:59:59 yesterday in Manila.
     await pool.query(
@@ -31,22 +31,23 @@ test('photo recognitions in the database', async (t) => {
          (?, 1, 'recognised', CURDATE() - INTERVAL 1 SECOND), (?, 1, 'recognised', NOW())`,
       [a, a, a, a, b],
     );
-    assert.equal(await countToday(pool, a), 2);
+    assert.equal(await countToday(pool, a), 1);
     assert.equal(await countToday(pool, b), 1);
   });
 
-  await t.test('countFailedToday counts only today\'s failed tries in Manila: not answered ones, not yesterday\'s, not another user\'s', async () => {
+  await t.test('countFreeTriesToday counts today\'s failed and empty tries in Manila: not recognised ones, not yesterday\'s, not another user\'s', async () => {
     const c = await user('c@photo.test');
     const d = await user('d@photo.test');
     await pool.query(
       `INSERT INTO photo_recognitions (user_id, item_count, status, created_at) VALUES
          (?, 0, 'failed', CURDATE()), (?, 0, 'failed', NOW()), (?, 1, 'recognised', NOW()), (?, 0, 'empty', NOW()),
-         (?, 0, 'failed', CURDATE() - INTERVAL 1 SECOND), (?, 0, 'failed', NOW())`,
-      [c, c, c, c, c, d],
+         (?, 0, 'failed', CURDATE() - INTERVAL 1 SECOND), (?, 0, 'empty', CURDATE() - INTERVAL 1 SECOND),
+         (?, 0, 'failed', NOW())`,
+      [c, c, c, c, c, c, d],
     );
-    assert.equal(await countFailedToday(pool, c), 2);
-    assert.equal(await countFailedToday(pool, d), 1);
-    assert.equal(await countToday(pool, c), 2, 'the daily limit still counts only answered photos');
+    assert.equal(await countFreeTriesToday(pool, c), 3);
+    assert.equal(await countFreeTriesToday(pool, d), 1);
+    assert.equal(await countToday(pool, c), 1, 'the daily limit counts only recognised photos');
   });
 
   await t.test('insertFailed adds a failed row, which does not count', async () => {
@@ -76,12 +77,12 @@ test('photo recognitions in the database', async (t) => {
     ]);
   });
 
-  await t.test('no items makes an empty recognition, which still counts', async () => {
+  await t.test('no items makes an empty recognition, which does not count toward the daily limit', async () => {
     const before = await countToday(pool, b);
     const { recognitionId, itemIds } = await insertRecognition(pool, b, []);
     const [[rec]] = await pool.query('SELECT status, item_count FROM photo_recognitions WHERE recognition_id = ?', [recognitionId]);
     assert.deepEqual([rec.status, rec.item_count, itemIds], ['empty', 0, []]);
-    assert.equal(await countToday(pool, b), before + 1);
+    assert.equal(await countToday(pool, b), before);
   });
 
   await t.test('readForLog: the owner\'s recognition with its items; null for another user or a failed one', async () => {

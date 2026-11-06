@@ -1,18 +1,18 @@
 'use strict';
 
 /// How many photos [userId] sent today (Manila) that count against the
-/// daily limit: those the AI answered, with items or without. 'failed' rows
-/// -- the AI busy or down -- are the service's fault and never count. The
-/// pool runs at +08:00, so CURDATE() is Manila's today.
+/// daily limit: those the AI found food in. 'empty' rows (no food found) and
+/// 'failed' rows (the AI busy or down) never count. The pool runs at +08:00,
+/// so CURDATE() is Manila's today.
 async function countToday(pool, userId) {
-  return countTodayWhere(pool, userId, "status IN ('recognised', 'empty')");
+  return countTodayWhere(pool, userId, "status = 'recognised'");
 }
 
-/// How many photos [userId] sent today (Manila) that the AI failed on. They
-/// never count against the daily limit, but each cost a full AI call, so the
-/// route caps them separately.
-async function countFailedToday(pool, userId) {
-  return countTodayWhere(pool, userId, "status = 'failed'");
+/// How many photos [userId] sent today (Manila) that cost no photo: the AI
+/// failed on them or found no food. They never count against the daily
+/// limit, but each cost a full AI call, so the route caps them separately.
+async function countFreeTriesToday(pool, userId) {
+  return countTodayWhere(pool, userId, "status IN ('failed', 'empty')");
 }
 
 /// [userId]'s rows created today (Manila) that match [statusCondition], a
@@ -112,5 +112,5 @@ async function markLogged(conn, recognitionId, outcomes) {
 }
 
 module.exports = {
-  countToday, countFailedToday, insertFailed, insertRecognition, readForLog, outcomesFor, markLogged,
+  countToday, countFreeTriesToday, insertFailed, insertRecognition, readForLog, outcomesFor, markLogged,
 };
