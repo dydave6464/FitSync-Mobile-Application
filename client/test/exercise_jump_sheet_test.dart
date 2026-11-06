@@ -136,6 +136,17 @@ void main() {
     expect(chosen, [null]);
   });
 
+  // One ceiling for every tall sheet, the kit's: the jump sheet had its own
+  // 0.85 beside the check-in's and How to read's 0.9.
+  testWidgets('a long list grows to the shared sheet cap', (tester) async {
+    await _open(tester, count: 20);
+
+    expect(
+      tester.getSize(_sheet).height,
+      closeTo(640 * FsSheetHeightCap.maxHeightFraction, 0.5),
+    );
+  });
+
   // On a list that scrolls, a drag on the rows scrolls them; the handle and
   // the title are where a swipe down closes the sheet.
   testWidgets('a swipe down on the title closes a long list', (tester) async {
