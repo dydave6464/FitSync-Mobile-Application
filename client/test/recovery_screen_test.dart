@@ -840,11 +840,27 @@ void main() {
 
   testWidgets('Check in and Update are full-size tap targets', (tester) async {
     final semantics = tester.ensureSemantics();
-    for (final overview in [
-      const RecoveryOverview(todayCheckin: null, latestEstimate: null, load: []),
-      _withToday(_todays()),
+    for (final (overview, key) in [
+      (
+        const RecoveryOverview(
+          todayCheckin: null,
+          latestEstimate: null,
+          load: [],
+        ),
+        'recovery.checkin',
+      ),
+      (_withToday(_todays()), 'recovery.update'),
     ]) {
       await _pump(tester, overview);
+      // The guideline skips a node clipped off screen, so the button must be
+      // there, and wholly in view, for the check to mean anything.
+      final button = find.byKey(Key(key));
+      expect(button, findsOneWidget);
+      await tester.ensureVisible(button);
+      await tester.pumpAndSettle();
+      final screen =
+          Offset.zero & tester.view.physicalSize / tester.view.devicePixelRatio;
+      expect(screen.intersect(tester.getRect(button)), tester.getRect(button));
       await expectLater(tester, meetsGuideline(androidTapTargetGuideline));
     }
     semantics.dispose();

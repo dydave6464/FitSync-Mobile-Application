@@ -333,14 +333,8 @@ void main() {
       expect(right.left - left.right, greaterThanOrEqualTo(8));
       expect(both.left - right.right, greaterThanOrEqualTo(8));
     });
-
-    testWidgets('meet the 48 dp tap target guideline', (tester) async {
-      final handle = tester.ensureSemantics();
-      await _pump(tester);
-      await _tapKey(tester, const Key('injury.1'));
-
-      await expectLater(tester, meetsGuideline(androidTapTargetGuideline));
-      handle.dispose();
-    });
+    // No androidTapTargetGuideline check here: it passed with the chips'
+    // band at 37 dp. The tap-just-above and tap-just-below tests are the
+    // ones that fail when the band shrinks.
   });
 }
