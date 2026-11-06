@@ -9,6 +9,8 @@ import '../../exercises/presentation/exercise_list_screen.dart'
 import '../../onboarding/presentation/generating_view.dart';
 import '../../profile/domain/profile.dart';
 import '../../profile/presentation/providers.dart';
+import '../../sessions/presentation/providers.dart' show activeSessionProvider;
+import '../../sessions/presentation/session_logger_screen.dart';
 import '../domain/split_style.dart';
 import '../domain/week_description.dart';
 import '../domain/workout_plan.dart';
@@ -361,6 +363,14 @@ class _GeneratorScreenState extends ConsumerState<GeneratorScreen> {
     final asyncOptions = ref.watch(injuryOptionsProvider);
     final options = asyncOptions.value ?? const <InjuryOption>[];
 
+    // The server refuses a new plan while a workout is under way
+    // (SESSION_IN_PROGRESS). Known here already, so it is said before
+    // Generate rather than after the building screen has come and gone.
+    // Only a session that has loaded counts: while the lookup is pending or
+    // has failed, Generate stays offered and the server's refusal still
+    // stands behind it.
+    final inProgress = ref.watch(activeSessionProvider).value != null;
+
     return ListView(
       padding: const EdgeInsets.fromLTRB(20, 12, 20, 24),
       children: [
@@ -493,8 +503,14 @@ class _GeneratorScreenState extends ConsumerState<GeneratorScreen> {
         ],
         const SizedBox(height: 22),
         Text(
-          'Generating replaces your current plan.',
-          style: TextStyle(fontSize: 12, color: t.text3, height: 1.4),
+          inProgress
+              ? 'You have a workout in progress. Finish or discard it first.'
+              : 'Generating replaces your current plan.',
+          style: TextStyle(
+            fontSize: 12,
+            color: inProgress ? t.text2 : t.text3,
+            height: 1.4,
+          ),
         ),
         const SizedBox(height: 18),
         FsButton(
@@ -502,8 +518,23 @@ class _GeneratorScreenState extends ConsumerState<GeneratorScreen> {
           label: 'Generate plan',
           // No in-button spinner: `_busy` takes the whole body over with the
           // building screen, so this button is not on screen to spin.
-          onPressed: () => _generate(split, days, trainingDays),
+          onPressed: inProgress
+              ? null
+              : () => _generate(split, days, trainingDays),
         ),
+        if (inProgress) ...[
+          const SizedBox(height: 10),
+          FsButton(
+            key: const Key('gen.resume'),
+            label: 'Resume workout',
+            kind: FsButtonKind.secondary,
+            onPressed: () => Navigator.of(context).push(
+              MaterialPageRoute<void>(
+                builder: (_) => const SessionLoggerScreen(resume: true),
+              ),
+            ),
+          ),
+        ],
       ],
     );
   }
