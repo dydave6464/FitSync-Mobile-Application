@@ -412,16 +412,30 @@ class _RemindersScreenState extends ConsumerState<RemindersScreen> {
             }),
           ),
           const SizedBox(height: 12),
-          IgnorePointer(
-            ignoring: !enabled,
-            child: FsSegmented(
-              options: _leadOptions,
-              selected: settings.habitLeadMin.toString(),
-              onSelected: (value) => _save(
-                () => ref.read(reminderSettingsProvider.notifier).patch({
-                  'habitLeadMin': int.parse(value),
-                }),
-              ),
+          // Chips that wrap whole rather than a four-way segmented control,
+          // which cut "before" short at large text. The 12 dp above and the
+          // card's padding below are the room their 48 dp band reaches into.
+          FsTapRoom(
+            child: Wrap(
+              spacing: 8,
+              runSpacing: 8,
+              children: [
+                for (final option in _leadOptions)
+                  FsChip(
+                    key: Key('reminders.lead.${option.value}'),
+                    label: option.label,
+                    selected: settings.habitLeadMin.toString() == option.value,
+                    onTap: !enabled
+                        ? null
+                        : () => _save(
+                            () => ref
+                                .read(reminderSettingsProvider.notifier)
+                                .patch({
+                                  'habitLeadMin': int.parse(option.value),
+                                }),
+                          ),
+                  ),
+              ],
             ),
           ),
         ],

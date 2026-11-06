@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import 'package:flutter/rendering.dart' show RenderParagraph;
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 
@@ -182,6 +183,7 @@ Future<_FakeScheduler> _pump(
   ProfileNotifier Function()? profileNotifier,
   WorkoutPlan? plan = _plan,
   List<String>? settingsOpened,
+  double textScale = 1.0,
 }) async {
   final scheduler = _FakeScheduler(
     granted: granted,
@@ -210,7 +212,14 @@ Future<_FakeScheduler> _pump(
           () async => settingsOpened?.add('opened'),
         ),
       ],
-      child: MaterialApp(home: RemindersScreen(pickTime: pickTime)),
+      child: MaterialApp(
+        home: RemindersScreen(pickTime: pickTime),
+        builder: (context, child) => MediaQuery(
+          data: MediaQuery.of(context)
+              .copyWith(textScaler: TextScaler.linear(textScale)),
+          child: child!,
+        ),
+      ),
     ),
   );
   await tester.pumpAndSettle();
@@ -243,8 +252,10 @@ void main() {
       isTrue,
     );
     expect(
-      tester.widget<FsSegmented>(find.byType(FsSegmented)).selected,
-      '15',
+      tester
+          .widget<FsChip>(find.byKey(const Key('reminders.lead.15')))
+          .selected,
+      isTrue,
       reason: 'the default habitLeadMin is 15',
     );
     expect(
@@ -278,7 +289,7 @@ void main() {
     final settingsPatches = <Map<String, dynamic>>[];
     await _pump(tester, settingsPatches: settingsPatches);
 
-    await tester.tap(find.byKey(const Key('segment.5')));
+    await tester.tap(find.byKey(const Key('reminders.lead.5')));
     await tester.pumpAndSettle();
 
     expect(settingsPatches, [
@@ -550,6 +561,11 @@ void main() {
         reason: '$key is disabled while nothing can fire',
       );
     }
+    expect(
+      tester.widget<FsChip>(find.byKey(const Key('reminders.lead.5'))).onTap,
+      isNull,
+      reason: 'the lead time is disabled too',
+    );
     // The master switch itself stays live: it is the way back.
     await tester.scrollUntilVisible(
       find.byKey(const Key('reminders.master')),
@@ -723,4 +739,62 @@ void main() {
     await expectLater(tester, meetsGuideline(androidTapTargetGuideline));
     handle.dispose();
   });
+
+  testWidgets('the lead time is a set of chips, one of them selected', (
+    tester,
+  ) async {
+    final handle = tester.ensureSemantics();
+    await _pump(tester);
+
+    expect(find.byType(FsSegmented), findsNothing);
+    for (final (value, label) in [
+      ('0', 'At the time'),
+      ('5', '5 min before'),
+      ('15', '15 min before'),
+      ('30', '30 min before'),
+    ]) {
+      final chip = find.byKey(Key('reminders.lead.$value'));
+      expect(
+        find.descendant(of: chip, matching: find.text(label)),
+        findsOneWidget,
+      );
+      expect(
+        tester.widget<FsChip>(chip).selected,
+        value == '15',
+        reason: 'the default habitLeadMin is 15',
+      );
+    }
+    await expectLater(tester, meetsGuideline(androidTapTargetGuideline));
+    handle.dispose();
+  });
+
+  for (final size in [const Size(360, 640), const Size(320, 568)]) {
+    testWidgets('at 2x text on ${size.width.toInt()} dp every lead time '
+        'reads whole', (tester) async {
+      tester.view.physicalSize = size;
+      tester.view.devicePixelRatio = 1.0;
+      addTearDown(tester.view.reset);
+      await _pump(tester, textScale: 2.0);
+
+      expect(tester.takeException(), isNull);
+      for (final label in [
+        'At the time',
+        '5 min before',
+        '15 min before',
+        '30 min before',
+      ]) {
+        await tester.scrollUntilVisible(find.text(label), 100);
+        final paragraph = tester.renderObject<RenderParagraph>(
+          find.text(label),
+        );
+        expect(paragraph.didExceedMaxLines, isFalse, reason: label);
+      }
+      // And nothing further down the screen overflows either.
+      await tester.scrollUntilVisible(
+        find.byKey(const Key('reminders.checkinTime')),
+        200,
+      );
+      expect(tester.takeException(), isNull);
+    });
+  }
 }
