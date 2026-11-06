@@ -5,11 +5,13 @@ import 'package:font_awesome_flutter/font_awesome_flutter.dart';
 
 import 'package:fitsync/core/theme.dart';
 import 'package:fitsync/core/widgets/fs_kit.dart';
+import 'package:fitsync/features/home/presentation/widgets/active_workout_card.dart';
 import 'package:fitsync/features/home/presentation/widgets/greeting.dart';
 import 'package:fitsync/features/home/presentation/widgets/plan_card.dart';
 import 'package:fitsync/features/home/presentation/widgets/profile_nudge.dart';
 import 'package:fitsync/features/plans/domain/workout_plan.dart';
 import 'package:fitsync/features/profile/domain/profile.dart';
+import 'package:fitsync/features/sessions/domain/active_session.dart';
 
 import 'helpers/a11y.dart' show contrast, host;
 
@@ -995,5 +997,64 @@ void main() {
 
     await tester.tap(find.byKey(const Key('home.plan.open')));
     expect(opened, 1);
+  });
+
+  group('the active workout card', () {
+    final session = ActiveSession(
+      sessionId: 7,
+      status: 'in_progress',
+      sessionDate: '2026-09-14',
+      startedAt: DateTime(2026, 9, 14, 7),
+      sets: const [],
+    );
+
+    Widget card({required bool discarding}) => _host(
+      ActiveWorkoutCard(
+        session: session,
+        plan: null,
+        discarding: discarding,
+        onContinue: () {},
+        onDiscard: () {},
+      ),
+    );
+
+    testWidgets("Discard is the kit's red ghost button", (tester) async {
+      await tester.pumpWidget(card(discarding: false));
+
+      final discard = tester.widget<FsButton>(
+        find.byKey(const Key('home.inProgress.discard')),
+      );
+      expect(discard.label, 'Discard');
+      expect(discard.kind, FsButtonKind.ghost);
+      expect(discard.danger, isTrue);
+      expect(discard.busy, isFalse);
+      await expectLater(tester, meetsGuideline(androidTapTargetGuideline));
+    });
+
+    testWidgets('while the discard is on its way, Discard spins and is '
+        'disabled', (tester) async {
+      // A plain red TextButton stayed bright red and said nothing while the
+      // abandon request ran.
+      final handle = tester.ensureSemantics();
+      await tester.pumpWidget(card(discarding: true));
+
+      final discard = find.byKey(const Key('home.inProgress.discard'));
+      expect(tester.widget<FsButton>(discard).busy, isTrue);
+      final node = find.descendant(
+        of: discard,
+        matching: find.bySemanticsLabel('Discard, loading'),
+      );
+      expect(node, findsOneWidget);
+      expect(
+        tester.getSemantics(node),
+        matchesSemantics(
+          label: 'Discard, loading',
+          isButton: true,
+          hasEnabledState: true,
+          isEnabled: false,
+        ),
+      );
+      handle.dispose();
+    });
   });
 }

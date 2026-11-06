@@ -82,13 +82,16 @@ class ActiveWorkoutCard extends StatelessWidget {
                 icon: const Icon(Icons.play_arrow),
                 onPressed: onContinue,
               ),
-              TextButton(
+              // The kit's red ghost button, as Sign out is: it dims and
+              // spins while the abandon request runs.
+              FsButton(
                 key: const Key('home.inProgress.discard'),
-                onPressed: discarding ? null : onDiscard,
-                child: Text(
-                  'Discard',
-                  style: TextStyle(fontSize: 13, color: t.red),
-                ),
+                label: 'Discard',
+                kind: FsButtonKind.ghost,
+                danger: true,
+                small: true,
+                busy: discarding,
+                onPressed: onDiscard,
               ),
             ],
           ),
