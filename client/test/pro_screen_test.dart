@@ -531,6 +531,15 @@ void main() {
     expect(find.byKey(const Key('pro.notCompleted')), findsOneWidget);
   });
 
+  // PS-24: the prototype's 56 px crown square is accent-filled.
+  testWidgets('the header crown sits on an accent tile', (tester) async {
+    await _pump(tester);
+    final tile = tester.widget<FsIconTile>(find.byType(FsIconTile).first);
+    expect(tile.icon, Icons.workspace_premium_outlined);
+    expect(tile.size, 56);
+    expect(tile.selected, isTrue);
+  });
+
   testWidgets('the close button leaves', (tester) async {
     await _pump(tester);
     expect(find.byKey(const Key('pro.close')), findsOneWidget);

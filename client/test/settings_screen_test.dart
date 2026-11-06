@@ -782,6 +782,19 @@ void main() {
     await tester.pumpAndSettle();
   });
 
+  // PS-24: the prototype draws the card's crown on an accent square.
+  testWidgets("the Pro card's icon sits on an accent tile", (tester) async {
+    await _pump(tester);
+    final tile = tester.widget<FsIconTile>(
+      find.descendant(
+        of: find.byKey(const Key('settings.goPro')),
+        matching: find.byType(FsIconTile),
+      ),
+    );
+    expect(tile.selected, isTrue);
+    expect(tile.icon, Icons.workspace_premium_outlined);
+  });
+
   testWidgets('a free account is told everything Pro unlocks', (tester) async {
     await _pump(tester);
     expect(

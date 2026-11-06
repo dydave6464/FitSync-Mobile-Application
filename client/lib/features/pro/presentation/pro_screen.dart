@@ -298,7 +298,12 @@ class _ProScreenState extends ConsumerState<ProScreen> {
           Center(
             child: Column(
               children: [
-                FsIconTile(icon: Icons.workspace_premium_outlined, size: 56),
+                // The prototype's crown square: accent-filled, crown in on-accent.
+                const FsIconTile(
+                  icon: Icons.workspace_premium_outlined,
+                  size: 56,
+                  selected: true,
+                ),
                 const SizedBox(height: 16),
                 Text('FitSync Pro', style: theme.textTheme.headlineSmall),
                 const SizedBox(height: 8),

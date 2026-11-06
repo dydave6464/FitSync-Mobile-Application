@@ -191,10 +191,10 @@ class _SettingsList extends ConsumerWidget {
           onTap: () => openProScreen(context),
           child: Row(
             children: [
-              Icon(
-                Icons.workspace_premium_outlined,
-                size: 22,
-                color: t.accentText,
+              // The prototype's accent square, as on the Pro screen.
+              const FsIconTile(
+                icon: Icons.workspace_premium_outlined,
+                selected: true,
               ),
               const SizedBox(width: 13),
               Expanded(
