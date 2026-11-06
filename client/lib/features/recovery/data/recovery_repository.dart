@@ -17,14 +17,32 @@ class RecoveryRepository {
 
   /// Answers go up exactly as given. See MorningCheckin's class comment.
   ///
-  /// Nothing is read back out. The `estimate` this POST returns is the
-  /// server's checked copy of the ML service's answer (`toEstimate` in
-  /// server/src/routes/recovery.js), the same list it stores, but it has no
-  /// `checkinDate`, so it cannot build an [InjuryRiskEstimate], which is
-  /// dated. The dated one comes from GET /api/v1/recovery, which joins the
-  /// check-in that produced it; callers invalidate the overview rather than
-  /// using a return value here, and the two shapes stay one shape each.
-  Future<void> checkIn(Map<String, String> answers) async {
-    await _api.postJson('/api/v1/recovery/checkin', answers);
+  /// Returns the server's checked copy of the ML service's answer
+  /// (`toEstimate` in server/src/routes/recovery.js), dated by the check-in
+  /// that produced it, or null when no estimate came back (the ML service
+  /// was down, or its answer was refused). An older server sent the
+  /// estimate without `checkinDate`; an [InjuryRiskEstimate] is dated, so
+  /// that one is null too rather than a parse failure that would report a
+  /// saved check-in as failed. Callers still invalidate the overview, which
+  /// also carries today's check-in, the load and the muscles.
+  Future<InjuryRiskEstimate?> checkIn(Map<String, String> answers) async {
+    final data = await _api.postJson('/api/v1/recovery/checkin', answers);
+    return _datedEstimate(data['estimate']);
+  }
+
+  /// Works out today's estimate again from the check-in already saved,
+  /// without sending the answers again. The server answers with the
+  /// estimate it already has when today's is there, so a double tap stores
+  /// nothing twice. Throws NO_CHECKIN_TODAY when there is no check-in for
+  /// today (the day rolled over), and ESTIMATE_UNAVAILABLE when the ML
+  /// service still cannot answer.
+  Future<InjuryRiskEstimate> retryEstimate() async {
+    final data = await _api.postJson('/api/v1/recovery/estimate', const {});
+    return InjuryRiskEstimate.fromJson(data['estimate'] as Map<String, dynamic>);
   }
 }
+
+InjuryRiskEstimate? _datedEstimate(Object? raw) =>
+    raw is Map<String, dynamic> && raw['checkinDate'] is String
+    ? InjuryRiskEstimate.fromJson(raw)
+    : null;
