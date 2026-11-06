@@ -155,29 +155,48 @@ class _TrainingShellState extends State<TrainingShell> {
               child: Row(
                 children: [
                   for (var i = 0; i < _tabs.length; i++)
-                    GestureDetector(
-                      key: Key('tab.${_tabs[i].$1}'),
-                      behavior: HitTestBehavior.opaque,
-                      onTap: () => setState(() => _index = i),
-                      child: Container(
-                        margin: const EdgeInsets.only(right: 20),
-                        padding: const EdgeInsets.only(bottom: 10),
-                        decoration: BoxDecoration(
-                          border: Border(
-                            bottom: BorderSide(
-                              width: 2,
-                              color: i == _index
-                                  ? t.accent
-                                  : Colors.transparent,
+                    // Tab semantics as on the bottom nav: "Plan, selected,
+                    // tab 1 of 3", so the current section is said and not
+                    // only underlined. The target is 48 dp tall, the room
+                    // added above the label so the underline stays on the
+                    // divider.
+                    Semantics(
+                      container: true,
+                      button: true,
+                      enabled: true,
+                      selected: i == _index,
+                      inMutuallyExclusiveGroup: true,
+                      hint: 'Tab ${i + 1} of ${_tabs.length}',
+                      child: InkWell(
+                        key: Key('tab.${_tabs[i].$1}'),
+                        onTap: () => setState(() => _index = i),
+                        child: ConstrainedBox(
+                          constraints: const BoxConstraints(minHeight: 48),
+                          child: Align(
+                            alignment: AlignmentDirectional.bottomStart,
+                            widthFactor: 1,
+                            child: Container(
+                              margin: const EdgeInsetsDirectional.only(end: 20),
+                              padding: const EdgeInsets.only(bottom: 10),
+                              decoration: BoxDecoration(
+                                border: Border(
+                                  bottom: BorderSide(
+                                    width: 2,
+                                    color: i == _index
+                                        ? t.accent
+                                        : Colors.transparent,
+                                  ),
+                                ),
+                              ),
+                              child: Text(
+                                _tabs[i].$2,
+                                style: TextStyle(
+                                  fontSize: 14,
+                                  fontWeight: FontWeight.w600,
+                                  color: i == _index ? t.text : t.text3,
+                                ),
+                              ),
                             ),
-                          ),
-                        ),
-                        child: Text(
-                          _tabs[i].$2,
-                          style: TextStyle(
-                            fontSize: 14,
-                            fontWeight: FontWeight.w600,
-                            color: i == _index ? t.text : t.text3,
                           ),
                         ),
                       ),

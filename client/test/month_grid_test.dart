@@ -6,6 +6,8 @@ import 'package:fitsync/features/schedule/domain/calendar.dart';
 import 'package:fitsync/features/schedule/domain/schedule_view.dart';
 import 'package:fitsync/features/schedule/presentation/widgets/month_grid.dart';
 
+import 'helpers/a11y.dart' show contrast;
+
 const _sep = (year: 2026, month: 9);
 const _t = FsTokens.light;
 
@@ -46,10 +48,12 @@ Future<List<String>> _pump(
   Map<String, CalendarDay>? days,
   String? selected,
   bool tappable = true,
+  bool dark = false,
 }) async {
   final taps = <String>[];
   await tester.pumpWidget(
     MaterialApp(
+      theme: dark ? fsDarkTheme() : fsLightTheme(),
       home: Scaffold(
         body: SingleChildScrollView(
           child: MonthGrid(
@@ -150,7 +154,7 @@ void main() {
     // Future, a habit due.
     expect(_dot(tester, 'workout', '2026-09-25'), isNull);
     expect(_dot(tester, 'habits', '2026-09-25')!.filled, isFalse);
-    expect(_dot(tester, 'workout', '2026-09-22')!.color, _t.accent);
+    expect(_dot(tester, 'workout', '2026-09-22')!.color, _t.accentFill);
   });
 
   testWidgets('no dots while nothing has loaded, and taps do nothing', (
@@ -205,5 +209,79 @@ void main() {
     ]) {
       expect(find.text(label), findsOneWidget, reason: label);
     }
+  });
+
+  for (final dark in [false, true]) {
+    testWidgets('workout dots and their legend read at 3:1 '
+        '(${dark ? 'dark' : 'light'}) (PT-13)', (tester) async {
+      await _pump(tester, days: _days, dark: dark);
+      final t = dark ? FsTokens.dark : FsTokens.light;
+
+      final dots = [
+        _dot(tester, 'workout', '2026-09-22')!,
+        ...tester
+            .widgetList<ScheduleDot>(
+              find.descendant(
+                of: find.byType(Wrap),
+                matching: find.byType(ScheduleDot),
+              ),
+            )
+            .take(2),
+      ];
+      expect(dots, hasLength(3));
+      for (final dot in dots) {
+        // The grid sits in a card; the page is behind the legend's edges.
+        expect(contrast(dot.color, t.surface), greaterThanOrEqualTo(3));
+        expect(contrast(dot.color, t.bg), greaterThanOrEqualTo(3));
+      }
+    });
+  }
+
+  group('screen readers (PT-6)', () {
+    testWidgets('a day says its date, today, and what its dots mean', (
+      tester,
+    ) async {
+      final handle = tester.ensureSemantics();
+      await _pump(tester, days: _days, selected: '2026-09-22');
+
+      expect(
+        tester.getSemantics(find.byKey(const Key('schedule.day.2026-09-24'))),
+        isSemantics(
+          label: 'Thu 24 Sep, today, workout planned, habits done',
+          isButton: true,
+          hasSelectedState: true,
+          isSelected: false,
+          hasTapAction: true,
+        ),
+      );
+      expect(
+        tester.getSemantics(find.byKey(const Key('schedule.day.2026-09-22'))),
+        isSemantics(
+          label: 'Tue 22 Sep, workout done, habits done',
+          isSelected: true,
+        ),
+      );
+      expect(
+        tester.getSemantics(find.byKey(const Key('schedule.day.2026-09-25'))),
+        isSemantics(label: 'Fri 25 Sep, habits due'),
+      );
+      // The bare number is folded into the label, not read again.
+      expect(find.bySemanticsLabel('24'), findsNothing);
+      handle.dispose();
+    });
+
+    testWidgets('a day that cannot be tapped yet is not a button', (
+      tester,
+    ) async {
+      final handle = tester.ensureSemantics();
+      await _pump(tester, days: null, tappable: false);
+
+      final node = tester.getSemantics(
+        find.byKey(const Key('schedule.day.2026-09-24')),
+      );
+      expect(node.label, 'Thu 24 Sep, today');
+      expect(node.getSemanticsData().flagsCollection.isButton, isFalse);
+      handle.dispose();
+    });
   });
 }

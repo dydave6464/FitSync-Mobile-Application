@@ -4,6 +4,7 @@ import 'dart:math' as math;
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../../core/api_exception.dart';
 import '../../../core/theme.dart';
 import '../../../core/widgets/fs_kit.dart';
 import '../../exercises/presentation/equipment_icon.dart';
@@ -109,6 +110,14 @@ class _ExerciseSwapSheetState extends ConsumerState<ExerciseSwapSheet> {
     });
   }
 
+  void _clearSearch() {
+    // Cancelled, or a debounce still pending from the last keystroke would
+    // put the old query back a moment after the box emptied.
+    _timer?.cancel();
+    _controller.clear();
+    setState(() => _query = '');
+  }
+
   Future<void> _choose(ExerciseAlternative alt) async {
     if (_busy) return;
     setState(() {
@@ -212,6 +221,7 @@ class _ExerciseSwapSheetState extends ConsumerState<ExerciseSwapSheet> {
           children: [
             IconButton(
               key: const Key('swap.preview.back'),
+              tooltip: 'Back to alternatives',
               icon: const Icon(Icons.arrow_back, size: 20),
               padding: EdgeInsets.zero,
               // A full target: the way back is the one control here that
@@ -356,13 +366,25 @@ class _ExerciseSwapSheetState extends ConsumerState<ExerciseSwapSheet> {
         style: TextStyle(fontSize: 12.5, color: t.text2),
       ),
       const SizedBox(height: 12),
-      TextField(
-        key: const Key('swap.search'),
-        controller: _controller,
-        onChanged: _onChanged,
-        decoration: const InputDecoration(
-          prefixIcon: Icon(Icons.search),
-          hintText: 'Search all exercises',
+      // The kit's search box, as the library's: filled, rounded, and with a
+      // one-tap clear once something is typed.
+      ValueListenableBuilder<TextEditingValue>(
+        valueListenable: _controller,
+        builder: (context, value, _) => FsField(
+          fieldKey: const Key('swap.search'),
+          controller: _controller,
+          hint: 'Search all exercises',
+          icon: Icons.search,
+          onChanged: _onChanged,
+          textInputAction: TextInputAction.search,
+          trailing: value.text.isEmpty
+              ? null
+              : IconButton(
+                  key: const Key('swap.search.clear'),
+                  icon: const Icon(Icons.close, size: 18),
+                  tooltip: 'Clear search',
+                  onPressed: _clearSearch,
+                ),
         ),
       ),
       if (_error != null) ...[
@@ -401,7 +423,18 @@ class _ExerciseSwapSheetState extends ConsumerState<ExerciseSwapSheet> {
           ),
           error: (err, _) => Padding(
             padding: const EdgeInsets.all(16),
-            child: Text(describeError(err)),
+            // A way to try again in place: closing the sheet and tapping
+            // Change again was the only one.
+            child: FsRetry(
+              message: userMessage(err),
+              buttonKey: const Key('swap.alternatives.retry'),
+              onRetry: () => ref.invalidate(
+                alternativesProvider((
+                  planExerciseId: widget.planExerciseId,
+                  query: _query,
+                )),
+              ),
+            ),
           ),
           data: (rows) => rows.isEmpty
               ? Padding(
@@ -498,8 +531,17 @@ class _ExerciseSwapSheetState extends ConsumerState<ExerciseSwapSheet> {
     // the bottom sheet pops its route itself once the drag ends. So while
     // busy, a drag is claimed here first -- the innermost vertical-drag
     // recognizer wins the gesture arena -- and the sheet's own never starts.
+    //
+    // On a preview, back (system back, or a tap on the barrier) returns to
+    // the list that found it, as the arrow does, rather than closing the
+    // sheet and losing the search.
     return PopScope(
-      canPop: !_busy,
+      canPop: !_busy && _previewing == null,
+      onPopInvokedWithResult: (didPop, _) {
+        if (!didPop && !_busy && _previewing != null) {
+          setState(() => _previewing = null);
+        }
+      },
       child: GestureDetector(
         behavior: HitTestBehavior.opaque,
         onVerticalDragStart: _busy ? (_) {} : null,

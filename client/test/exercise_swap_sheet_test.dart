@@ -4,6 +4,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 
+import 'package:fitsync/core/widgets/fs_kit.dart' show FsField;
+
 import 'package:fitsync/core/api_exception.dart';
 import 'package:fitsync/features/exercises/domain/exercise.dart';
 import 'package:fitsync/features/exercises/presentation/providers.dart';
@@ -992,5 +994,116 @@ void main() {
 
     expect(find.byType(ExerciseSwapSheet), findsNothing);
     expect(popped, [null]);
+  });
+
+  group("the preview's way back (PT-7)", () {
+    testWidgets('the back arrow is named', (tester) async {
+      final handle = tester.ensureSemantics();
+      await _pumpWithPreview(tester);
+      await tester.tap(find.byKey(const Key('swap.alt.12')));
+      await tester.pumpAndSettle();
+
+      expect(
+        tester.getSemantics(find.byKey(const Key('swap.preview.back'))),
+        isSemantics(
+          tooltip: 'Back to alternatives',
+          isButton: true,
+          hasTapAction: true,
+        ),
+      );
+      handle.dispose();
+    });
+
+    testWidgets('system back returns to the list, then closes the sheet', (
+      tester,
+    ) async {
+      final popped = <String?>[];
+      await _pumpModalSheet(
+        tester,
+        completer: Completer<WorkoutPlan>(),
+        result: popped.add,
+      );
+      expect(find.byKey(const Key('swap.preview')), findsOneWidget);
+
+      await tester.binding.handlePopRoute();
+      await tester.pumpAndSettle();
+      expect(find.byType(ExerciseSwapSheet), findsOneWidget);
+      expect(find.byKey(const Key('swap.preview')), findsNothing);
+      expect(find.byKey(const Key('swap.alt.12')), findsOneWidget);
+      expect(popped, isEmpty);
+
+      await tester.binding.handlePopRoute();
+      await tester.pumpAndSettle();
+      expect(find.byType(ExerciseSwapSheet), findsNothing);
+      expect(popped, [null]);
+    });
+  });
+
+  testWidgets('a failed alternatives load offers a retry (PT-9)', (
+    tester,
+  ) async {
+    var calls = 0;
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          alternativesProvider.overrideWith((ref, key) async {
+            if (calls++ == 0) {
+              // Not NETWORK_ERROR: that one the provider retries by itself.
+              throw const ApiException('UNKNOWN_ERROR', 'boom');
+            }
+            return const [_alt];
+          }),
+        ],
+        child: const MaterialApp(
+          home: Scaffold(
+            body: ExerciseSwapSheet(
+              planExerciseId: 77,
+              exerciseName: 'Cable Fly',
+            ),
+          ),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(
+      find.text('Something went wrong on our side. Please try again.'),
+      findsOneWidget,
+    );
+    await tester.tap(find.byKey(const Key('swap.alternatives.retry')));
+    await tester.pumpAndSettle();
+
+    expect(calls, 2);
+    expect(find.byKey(const Key('swap.alt.12')), findsOneWidget);
+  });
+
+  group('search box (PT-12)', () {
+    testWidgets("is the kit field, with the app's search look", (tester) async {
+      await _pump(tester, const [_alt]);
+
+      expect(
+        find.ancestor(
+          of: find.byKey(const Key('swap.search')),
+          matching: find.byType(FsField),
+        ),
+        findsOneWidget,
+      );
+      expect(find.text('Search all exercises'), findsOneWidget);
+    });
+
+    testWidgets('a clear button empties it in one tap', (tester) async {
+      await _pump(tester, const [_alt]);
+      expect(find.byKey(const Key('swap.search.clear')), findsNothing);
+
+      await tester.enterText(find.byKey(const Key('swap.search')), 'push');
+      await tester.pumpAndSettle();
+      final clear = find.byKey(const Key('swap.search.clear'));
+      expect(tester.widget<IconButton>(clear).tooltip, 'Clear search');
+
+      await tester.tap(clear);
+      await tester.pumpAndSettle();
+      expect(find.text('push'), findsNothing);
+      expect(find.byKey(const Key('swap.search.clear')), findsNothing);
+    });
   });
 }

@@ -16,6 +16,7 @@ import 'package:fitsync/core/api_client.dart';
 import 'package:fitsync/core/api_exception.dart';
 import 'package:fitsync/core/theme.dart';
 import 'package:fitsync/core/token_store.dart';
+import 'package:fitsync/core/widgets/fs_kit.dart' show FsTag;
 import 'package:fitsync/features/exercises/data/exercise_repository.dart';
 import 'package:fitsync/features/exercises/domain/exercise_cues.dart';
 import 'package:fitsync/features/exercises/domain/exercise_filters.dart';
@@ -36,6 +37,7 @@ import 'package:fitsync/features/sessions/presentation/widgets/outcome_sheet.dar
 import 'package:fitsync/features/sessions/presentation/workout_draft.dart';
 import 'package:fitsync/features/sessions/presentation/workout_review_screen.dart';
 
+import 'helpers/a11y.dart' show contrast;
 import 'helpers/no_recent_exercises.dart';
 
 /// The real face, not the test harness's. The default test font renders
@@ -119,6 +121,7 @@ Future<ProviderContainer> _open(
   Future<PendingOutcome?> Function(int call)? lookup,
   // Resolves one lookup before the tap, as NavShell does when it mounts.
   bool prefetch = false,
+  bool dark = false,
 }) async {
   var lookups = 0;
   final container = ProviderContainer(
@@ -157,7 +160,7 @@ Future<ProviderContainer> _open(
     UncontrolledProviderScope(
       container: container,
       child: MaterialApp(
-        theme: fsLightTheme(),
+        theme: dark ? fsDarkTheme() : fsLightTheme(),
         // Above the Navigator on purpose: the sheet is a route, so a
         // MediaQuery under `home` would not reach it.
         builder: (context, child) => MediaQuery(
@@ -650,5 +653,53 @@ void main() {
       expect(find.text(question), findsNothing);
       expect(find.text('Start a workout'), findsOneWidget);
     });
+  });
+
+  for (final dark in [false, true]) {
+    testWidgets("the generator row's description reads at 4.5:1 "
+        '(${dark ? 'dark' : 'light'}) (PT-15)', (tester) async {
+      await _open(tester, dark: dark);
+      final t = dark ? FsTokens.dark : FsTokens.light;
+
+      final body = tester.widget<Text>(
+        find.text('Auto-build a plan from your profile, goals & recovery.'),
+      );
+      final row = Color.alphaBlend(t.accentDim, t.surface);
+      expect(contrast(body.style!.color!, row), greaterThanOrEqualTo(4.5));
+    });
+  }
+
+  testWidgets('the close button is named (PT-8)', (tester) async {
+    final handle = tester.ensureSemantics();
+    await _open(tester);
+
+    expect(
+      tester.getSemantics(find.byKey(const Key('start.close'))),
+      isSemantics(tooltip: 'Close', isButton: true, hasTapAction: true),
+    );
+    handle.dispose();
+  });
+
+  testWidgets('Log a workout carries no price-like tag (PT-14)', (
+    tester,
+  ) async {
+    await _open(tester);
+
+    expect(find.text('Free'), findsNothing);
+    expect(
+      find.descendant(
+        of: find.byKey(const Key('start.manual')),
+        matching: find.byType(FsTag),
+      ),
+      findsNothing,
+    );
+    // The recommendation stays on the generator.
+    expect(
+      find.descendant(
+        of: find.byKey(const Key('start.generator')),
+        matching: find.text('Recommended'),
+      ),
+      findsOneWidget,
+    );
   });
 }

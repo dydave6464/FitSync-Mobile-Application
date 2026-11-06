@@ -218,6 +218,7 @@ class _PlanViewState extends ConsumerState<_PlanView> {
         SessionCard(
           plan: plan,
           dayNo: todayDayNo,
+          trainingDays: ref.watch(profileProvider).value?.trainingDays,
           hasActiveSession: ref.watch(activeSessionProvider).value != null,
           starting: _starting && !_asking,
           onStart: _startOrResume,
@@ -265,6 +266,32 @@ class _PlanExerciseCard extends StatelessWidget {
   Widget build(BuildContext context) {
     final t = context.fs;
     final theme = Theme.of(context);
+    // At large text the button beside the name left it about 95 dp and broke
+    // names mid-word; there it goes under the prescription instead, and the
+    // name takes the card's full width.
+    final stacked = MediaQuery.textScalerOf(context).scale(15) > 20;
+    final change = TextButton(
+      key: Key('swap.open.${exercise.planExerciseId}'),
+      onPressed: () =>
+          showModalBottomSheet<String>(
+            context: context,
+            isScrollControlled: true,
+            builder: (_) => ExerciseSwapSheet(
+              planExerciseId: exercise.planExerciseId,
+              exerciseName: exercise.name,
+              onGoToProfile: onGoToProfile,
+            ),
+          ).then((swappedTo) {
+            if (swappedTo != null && context.mounted) {
+              ScaffoldMessenger.of(
+                context,
+              ).showSnackBar(SnackBar(content: Text('Swapped to $swappedTo')));
+            }
+          }),
+      // Says which exercise: a list of bare "Change" buttons reads the same
+      // on every card.
+      child: Text('Change', semanticsLabel: 'Change ${exercise.name}'),
+    );
 
     return FsCard(
       small: true,
@@ -286,38 +313,20 @@ class _PlanExerciseCard extends StatelessWidget {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Row(
-                  children: [
-                    Expanded(
-                      child: Text(
-                        exercise.name,
-                        style: theme.textTheme.titleMedium,
+                if (stacked)
+                  Text(exercise.name, style: theme.textTheme.titleMedium)
+                else
+                  Row(
+                    children: [
+                      Expanded(
+                        child: Text(
+                          exercise.name,
+                          style: theme.textTheme.titleMedium,
+                        ),
                       ),
-                    ),
-                    TextButton(
-                      key: Key('swap.open.${exercise.planExerciseId}'),
-                      onPressed: () =>
-                          showModalBottomSheet<String>(
-                            context: context,
-                            isScrollControlled: true,
-                            builder: (_) => ExerciseSwapSheet(
-                              planExerciseId: exercise.planExerciseId,
-                              exerciseName: exercise.name,
-                              onGoToProfile: onGoToProfile,
-                            ),
-                          ).then((swappedTo) {
-                            if (swappedTo != null && context.mounted) {
-                              ScaffoldMessenger.of(context).showSnackBar(
-                                SnackBar(
-                                  content: Text('Swapped to $swappedTo'),
-                                ),
-                              );
-                            }
-                          }),
-                      child: const Text('Change'),
-                    ),
-                  ],
-                ),
+                      change,
+                    ],
+                  ),
                 const SizedBox(height: 3),
                 Text(
                   '${exercise.muscleGroup} · ${exercise.prescription}',
@@ -327,6 +336,11 @@ class _PlanExerciseCard extends StatelessWidget {
                     color: t.text3,
                   ),
                 ),
+                if (stacked)
+                  Align(
+                    alignment: AlignmentDirectional.centerStart,
+                    child: change,
+                  ),
                 if (exercise.coaching != null) ...[
                   const SizedBox(height: 6),
                   Align(

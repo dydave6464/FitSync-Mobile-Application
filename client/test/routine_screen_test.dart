@@ -1,8 +1,11 @@
+import 'dart:ui' show CheckedState;
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import 'package:fitsync/core/api_exception.dart';
+import 'package:fitsync/core/theme.dart';
 import 'package:fitsync/features/routine/data/routine_repository.dart';
 import 'package:fitsync/features/routine/domain/routine.dart';
 import 'package:fitsync/features/routine/presentation/all_habits_screen.dart';
@@ -14,6 +17,7 @@ import 'package:fitsync/features/schedule/domain/calendar.dart';
 import 'package:fitsync/features/schedule/presentation/providers.dart';
 import 'package:fitsync/features/schedule/presentation/schedule_screen.dart';
 
+import 'helpers/a11y.dart' show contrast;
 import 'settings_screen_test.dart'
     show DefaultReminderSettings, FakeProfileNotifier;
 
@@ -91,11 +95,31 @@ class _FakeRoutineRepo implements RoutineRepository {
   Future<void> remove(int habitId) async => throw UnimplementedError();
 }
 
-Widget _harness(_FakeRoutineRepo repo, {VoidCallback? onOpenPlan}) =>
-    ProviderScope(
-      overrides: [routineRepositoryProvider.overrideWithValue(repo)],
-      child: MaterialApp(home: RoutineScreen(onOpenPlan: onOpenPlan)),
-    );
+Widget _harness(
+  _FakeRoutineRepo repo, {
+  VoidCallback? onOpenPlan,
+  bool dark = false,
+}) => ProviderScope(
+  overrides: [routineRepositoryProvider.overrideWithValue(repo)],
+  child: MaterialApp(
+    theme: dark ? fsDarkTheme() : fsLightTheme(),
+    home: RoutineScreen(onOpenPlan: onOpenPlan),
+  ),
+);
+
+/// The drawn 24 dp square inside a tick box.
+BoxDecoration _boxOf(WidgetTester tester, Key key) =>
+    tester
+            .widget<Container>(
+              find.descendant(
+                of: find.byKey(key),
+                matching: find.byWidgetPredicate(
+                  (w) => w is Container && w.decoration is BoxDecoration,
+                ),
+              ),
+            )
+            .decoration!
+        as BoxDecoration;
 
 void main() {
   testWidgets('rows are ordered timed habits, then untimed by title', (
@@ -158,22 +182,64 @@ void main() {
     expect(find.text('All done for today'), findsOneWidget);
   });
 
-  testWidgets('a ticked row is dimmed and struck through', (tester) async {
+  testWidgets('a ticked row is struck through, its text not faded (PT-5)', (
+    tester,
+  ) async {
     final repo = _FakeRoutineRepo(_fixtureDay);
     await tester.pumpWidget(_harness(repo));
     await tester.pumpAndSettle();
 
-    final opacity = tester.widget<Opacity>(
+    // No fade over the text: Opacity took it below AA.
+    expect(
       find.ancestor(of: find.text('Mobility'), matching: find.byType(Opacity)),
+      findsNothing,
     );
-    expect(opacity.opacity, 0.55);
+    expect(
+      find.ancestor(of: find.text('6:30 AM'), matching: find.byType(Opacity)),
+      findsNothing,
+    );
+    // The icon tile still steps back.
+    final tileFade = tester.widget<Opacity>(
+      find
+          .descendant(
+            of: find.ancestor(
+              of: find.text('Mobility'),
+              matching: find.byType(Row),
+            ),
+            matching: find.byType(Opacity),
+          )
+          .first,
+    );
+    expect(tileFade.opacity, lessThan(1));
 
     final title = tester.widget<Text>(find.text('Mobility'));
     expect(title.style?.decoration, TextDecoration.lineThrough);
+    expect(title.style?.color, FsTokens.light.text2);
 
     final walkTitle = tester.widget<Text>(find.text('Walk'));
     expect(walkTitle.style?.decoration, TextDecoration.none);
+    expect(walkTitle.style?.color, FsTokens.light.text);
   });
+
+  for (final dark in [false, true]) {
+    testWidgets('a ticked row reads at 4.5:1 (${dark ? 'dark' : 'light'})', (
+      tester,
+    ) async {
+      final repo = _FakeRoutineRepo(_fixtureDay);
+      await tester.pumpWidget(_harness(repo, dark: dark));
+      await tester.pumpAndSettle();
+      final t = dark ? FsTokens.dark : FsTokens.light;
+
+      for (final text in ['Mobility', '6:30 AM']) {
+        final color = tester.widget<Text>(find.text(text)).style!.color!;
+        expect(
+          contrast(color, t.surface),
+          greaterThanOrEqualTo(4.5),
+          reason: text,
+        );
+      }
+    });
+  }
 
   testWidgets('tapping a tick box ticks the habit and updates the header', (
     tester,
@@ -225,16 +291,28 @@ void main() {
   );
 
   testWidgets(
-    'tapping the workout tick box opens the plan, like the rest of the row',
+    'the workout shows its state as an icon inside the row, not a box of '
+    'its own to tap (PT-1)',
     (tester) async {
       var opened = false;
       final repo = _FakeRoutineRepo(_fixtureDay);
       await tester.pumpWidget(_harness(repo, onOpenPlan: () => opened = true));
       await tester.pumpAndSettle();
 
-      await tester.tap(find.byKey(const Key('routine.workout.tick')));
-      await tester.pumpAndSettle();
+      final status = find.byKey(const Key('routine.workout.status'));
+      // An icon, not the habits' tick square: nothing here looks tickable.
+      expect(tester.widget(status), isA<Icon>());
+      expect(find.byKey(const Key('routine.workout.tick')), findsNothing);
+      // Part of the row's one target, with no tap target of its own.
+      final row = find.byKey(const Key('routine.workout'));
+      expect(find.ancestor(of: status, matching: row), findsOneWidget);
+      expect(
+        find.descendant(of: row, matching: find.byType(InkResponse)),
+        findsNothing,
+      );
 
+      await tester.tap(status);
+      await tester.pumpAndSettle();
       expect(opened, isTrue);
       expect(repo.checkCalls, 0);
       expect(repo.uncheckCalls, 0);
@@ -330,5 +408,137 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.byType(ScheduleScreen), findsOneWidget);
+  });
+
+  group('tick box (PT-1)', () {
+    testWidgets('a habit tick box is a named checkbox with its state', (
+      tester,
+    ) async {
+      final handle = tester.ensureSemantics();
+      final repo = _FakeRoutineRepo(_fixtureDay);
+      await tester.pumpWidget(_harness(repo));
+      await tester.pumpAndSettle();
+
+      expect(
+        tester.getSemantics(find.byKey(const Key('routine.tick.2'))),
+        isSemantics(
+          label: 'Walk',
+          hasCheckedState: true,
+          isChecked: false,
+          hasEnabledState: true,
+          isEnabled: true,
+          hasTapAction: true,
+        ),
+      );
+      expect(
+        tester.getSemantics(find.byKey(const Key('routine.tick.1'))),
+        isSemantics(label: 'Mobility', hasCheckedState: true, isChecked: true),
+      );
+      handle.dispose();
+    });
+
+    testWidgets('tick boxes are 48 dp targets', (tester) async {
+      final repo = _FakeRoutineRepo(_fixtureDay);
+      await tester.pumpWidget(_harness(repo, onOpenPlan: () {}));
+      await tester.pumpAndSettle();
+
+      final size = tester.getSize(find.byKey(const Key('routine.tick.2')));
+      expect(size.width, greaterThanOrEqualTo(48));
+      expect(size.height, greaterThanOrEqualTo(48));
+      // The prototype's square is still drawn at 24 dp.
+      final drawn = tester.getSize(
+        find.descendant(
+          of: find.byKey(const Key('routine.tick.2')),
+          matching: find.byWidgetPredicate(
+            (w) => w is Container && w.decoration is BoxDecoration,
+          ),
+        ),
+      );
+      expect(drawn, const Size(24, 24));
+    });
+
+    testWidgets('the screen meets the tap-target and label guidelines', (
+      tester,
+    ) async {
+      final handle = tester.ensureSemantics();
+      final repo = _FakeRoutineRepo(_fixtureDay);
+      await tester.pumpWidget(_harness(repo, onOpenPlan: () {}));
+      await tester.pumpAndSettle();
+
+      await expectLater(tester, meetsGuideline(androidTapTargetGuideline));
+      await expectLater(tester, meetsGuideline(labeledTapTargetGuideline));
+      handle.dispose();
+    });
+
+    for (final dark in [false, true]) {
+      testWidgets('an unticked box outline is at least 3:1 '
+          '(${dark ? 'dark' : 'light'})', (tester) async {
+        final repo = _FakeRoutineRepo(_fixtureDay);
+        await tester.pumpWidget(_harness(repo, dark: dark));
+        await tester.pumpAndSettle();
+
+        final t = dark ? FsTokens.dark : FsTokens.light;
+        final border = _boxOf(tester, const Key('routine.tick.2')).border!;
+        final side = (border as Border).top;
+        expect(side.color, t.control);
+        expect(contrast(side.color, t.surface), greaterThanOrEqualTo(3));
+      });
+    }
+
+    testWidgets('the workout row is one button that says its state, with '
+        'no checkbox (PT-1)', (tester) async {
+      final handle = tester.ensureSemantics();
+      final repo = _FakeRoutineRepo(_fixtureDay);
+      await tester.pumpWidget(_harness(repo, onOpenPlan: () {}));
+      await tester.pumpAndSettle();
+
+      final data = tester
+          .getSemantics(find.byKey(const Key('routine.workout.status')))
+          .getSemanticsData();
+      expect(data.label, contains('Upper Body'));
+      expect(data.label, contains('Not finished yet'));
+      expect(data.flagsCollection.isButton, isTrue);
+      expect(data.flagsCollection.isChecked, CheckedState.none);
+      handle.dispose();
+    });
+
+    for (final dark in [false, true]) {
+      testWidgets('a finished workout says so, in a colour that reads '
+          '(${dark ? 'dark' : 'light'}, PT-1)', (tester) async {
+        final handle = tester.ensureSemantics();
+        final repo = _FakeRoutineRepo(
+          const RoutineDay(
+            date: '2026-09-24',
+            habits: [],
+            workout: RoutineWorkout(title: 'Upper Body', done: true),
+          ),
+        );
+        await tester.pumpWidget(_harness(repo, onOpenPlan: () {}, dark: dark));
+        await tester.pumpAndSettle();
+
+        final status = find.byKey(const Key('routine.workout.status'));
+        expect(
+          tester.getSemantics(status).getSemanticsData().label,
+          contains('Workout finished'),
+        );
+        final t = tester.element(status).fs;
+        final icon = tester.widget<Icon>(status);
+        expect(contrast(icon.color!, t.surface), greaterThanOrEqualTo(3));
+        handle.dispose();
+      });
+    }
+
+    testWidgets('a habit row says it edits the habit', (tester) async {
+      final handle = tester.ensureSemantics();
+      final repo = _FakeRoutineRepo(_fixtureDay);
+      await tester.pumpWidget(_harness(repo));
+      await tester.pumpAndSettle();
+
+      expect(
+        tester.getSemantics(find.byKey(const Key('routine.habit.2'))),
+        isSemantics(isButton: true, hint: 'Edit habit'),
+      );
+      handle.dispose();
+    });
   });
 }

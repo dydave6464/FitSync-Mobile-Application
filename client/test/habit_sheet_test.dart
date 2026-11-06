@@ -1,13 +1,17 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/rendering.dart' show RenderParagraph;
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import 'package:fitsync/core/api_exception.dart';
 import 'package:fitsync/core/theme.dart';
+import 'package:fitsync/core/widgets/fs_kit.dart';
 import 'package:fitsync/features/routine/data/routine_repository.dart';
 import 'package:fitsync/features/routine/domain/routine.dart';
 import 'package:fitsync/features/routine/presentation/providers.dart';
 import 'package:fitsync/features/routine/presentation/widgets/habit_sheet.dart';
+
+import 'helpers/a11y.dart' show contrast;
 
 const _dummyHabit = Habit(
   habitId: 99,
@@ -101,6 +105,7 @@ Future<_FakeRepo> _open(
   bool failNext = false,
   List<String>? days,
   bool announceRepeats = true,
+  bool dark = false,
 }) async {
   final repo = _FakeRepo()..failNext = failNext;
   if (days != null) repo.days = days;
@@ -108,7 +113,7 @@ Future<_FakeRepo> _open(
     ProviderScope(
       overrides: [routineRepositoryProvider.overrideWithValue(repo)],
       child: MaterialApp(
-        theme: fsLightTheme(),
+        theme: dark ? fsDarkTheme() : fsLightTheme(),
         // Watches the day, as the routine screen and Home's card do: the
         // sheet is only ever opened over a routine that has loaded.
         home: Consumer(
@@ -316,6 +321,8 @@ void main() {
 
     await tester.tap(find.byKey(const Key('habit.delete')));
     await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const Key('habit.delete.confirm')));
+    await tester.pumpAndSettle();
 
     expect(repo.removed, [7]);
     expect(find.byKey(const Key('habit.delete')), findsNothing);
@@ -335,5 +342,137 @@ void main() {
       _errorText(tester),
       "Couldn't reach FitSync. Check your connection and try again.",
     );
+  });
+
+  group('time button (PT-3)', () {
+    testWidgets('is the kit secondary button, small', (tester) async {
+      await _open(tester);
+
+      final button = tester.widget<FsButton>(
+        find.byKey(const Key('habit.time')),
+      );
+      expect(button.kind, FsButtonKind.secondary);
+      expect(button.small, isTrue);
+      expect(button.label, 'Any time');
+      expect(find.byType(OutlinedButton), findsNothing);
+    });
+
+    for (final dark in [false, true]) {
+      testWidgets('its label reads at 4.5:1 (${dark ? 'dark' : 'light'})', (
+        tester,
+      ) async {
+        await _open(tester, dark: dark);
+        final t = dark ? FsTokens.dark : FsTokens.light;
+
+        final paragraph = tester.renderObject<RenderParagraph>(
+          find.descendant(
+            of: find.byKey(const Key('habit.time')),
+            matching: find.text('Any time'),
+          ),
+        );
+        final color = paragraph.text.style!.color!;
+        expect(contrast(color, t.surface), greaterThanOrEqualTo(4.5));
+      });
+    }
+
+    testWidgets('still opens the time picker', (tester) async {
+      await _open(tester);
+      await tester.tap(find.byKey(const Key('habit.time')));
+      await tester.pumpAndSettle();
+      expect(find.byType(TimePickerDialog), findsOneWidget);
+    });
+  });
+
+  group('field labels (PT-10)', () {
+    testWidgets('the name and duration fields keep their names once filled', (
+      tester,
+    ) async {
+      final handle = tester.ensureSemantics();
+      await _open(tester, existing: _existing);
+
+      expect(
+        tester.getSemantics(find.byKey(const Key('habit.title'))),
+        isSemantics(isTextField: true, label: 'Name', value: 'Run'),
+      );
+      expect(
+        tester.getSemantics(find.byKey(const Key('habit.duration'))),
+        isSemantics(isTextField: true, label: 'Duration', value: '20'),
+      );
+      // Visible too, not only spoken: the placeholder is gone once filled.
+      expect(find.text('NAME'), findsOneWidget);
+      expect(find.text('DURATION'), findsOneWidget);
+      expect(find.text('min'), findsOneWidget);
+      handle.dispose();
+    });
+
+    testWidgets('the sheet fits a small phone at 2x text', (tester) async {
+      tester.view.physicalSize = const Size(360, 640);
+      tester.view.devicePixelRatio = 1.0;
+      addTearDown(tester.view.reset);
+      final repo = _FakeRepo();
+      await tester.pumpWidget(
+        ProviderScope(
+          overrides: [routineRepositoryProvider.overrideWithValue(repo)],
+          child: MediaQuery(
+            data: const MediaQueryData(
+              size: Size(360, 640),
+              textScaler: TextScaler.linear(2.0),
+            ),
+            child: MaterialApp(
+              theme: fsLightTheme(),
+              home: Builder(
+                builder: (context) => Scaffold(
+                  body: TextButton(
+                    onPressed: () =>
+                        showHabitSheet(context, existing: _existing),
+                    child: const Text('open'),
+                  ),
+                ),
+              ),
+            ),
+          ),
+        ),
+      );
+      await tester.tap(find.text('open'));
+      await tester.pumpAndSettle();
+      expect(tester.takeException(), isNull);
+      expect(find.text('DURATION'), findsOneWidget);
+    });
+  });
+
+  group('delete (PT-11)', () {
+    testWidgets('asks before deleting, and deletes nothing yet', (
+      tester,
+    ) async {
+      final repo = await _open(tester, existing: _existing);
+
+      await tester.tap(find.byKey(const Key('habit.delete')));
+      await tester.pumpAndSettle();
+
+      expect(find.text('Delete this habit?'), findsOneWidget);
+      expect(repo.removed, isEmpty);
+      final delete = tester.widget<TextButton>(
+        find.byKey(const Key('habit.delete.confirm')),
+      );
+      expect(
+        delete.style!.foregroundColor!.resolve(const {}),
+        FsTokens.light.red,
+      );
+    });
+
+    testWidgets('Keep it leaves the habit and the sheet as they were', (
+      tester,
+    ) async {
+      final repo = await _open(tester, existing: _existing);
+
+      await tester.tap(find.byKey(const Key('habit.delete')));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const Key('habit.delete.keep')));
+      await tester.pumpAndSettle();
+
+      expect(repo.removed, isEmpty);
+      expect(find.text('Delete this habit?'), findsNothing);
+      expect(find.byKey(const Key('habit.save')), findsOneWidget);
+    });
   });
 }
