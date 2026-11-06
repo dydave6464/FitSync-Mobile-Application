@@ -345,6 +345,58 @@ void main() {
     },
   );
 
+  testWidgets(
+    'a save that fails after the sheet was dismissed says so on the screen '
+    'underneath',
+    (tester) async {
+      final completer = Completer<void>();
+      await tester.pumpWidget(
+        ProviderScope(
+          overrides: [
+            recoveryRepositoryProvider.overrideWithValue(
+              _SlowFakeRepo(completer),
+            ),
+            pendingOutcomeProvider.overrideWith((ref) async => null),
+          ],
+          child: MaterialApp(
+            theme: fsLightTheme(),
+            home: Builder(
+              builder: (context) => Scaffold(
+                body: TextButton(
+                  onPressed: () => showCheckinSheet(context),
+                  child: const Text('open'),
+                ),
+              ),
+            ),
+          ),
+        ),
+      );
+      await tester.tap(find.text('open'));
+      await tester.pumpAndSettle();
+
+      await _answerAll(tester);
+      await tester.tap(find.byKey(const Key('checkin.save')));
+      await tester.pump();
+      // Dismissed while the save is in flight.
+      await tester.tapAt(const Offset(10, 10));
+      await tester.pumpAndSettle();
+      expect(find.text('Morning check-in'), findsNothing);
+
+      completer.completeError(Exception('offline'));
+      await tester.pumpAndSettle();
+
+      // The sheet's own error line went with the sheet, so the failure is
+      // said where the user now is, rather than not at all.
+      expect(
+        find.text(
+          "Your check-in wasn't saved. Something went wrong. Please try "
+          'again.',
+        ),
+        findsOneWidget,
+      );
+    },
+  );
+
   testWidgets('a new check-in starts with nothing chosen and Save disabled', (
     tester,
   ) async {

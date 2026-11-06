@@ -300,7 +300,17 @@ class _CheckinSheetState extends ConsumerState<_CheckinSheet> {
         showErrorSnackBar(messenger, painNotSavedMessage);
       }
     } catch (error) {
-      if (!mounted) return;
+      if (!mounted) {
+        // Dismissed mid-save: the error line went with the sheet, so the
+        // failure is said on the screen underneath instead.
+        if (messenger != null) {
+          showErrorSnackBar(
+            messenger,
+            "Your check-in wasn't saved. ${describeError(error)}",
+          );
+        }
+        return;
+      }
       setState(() {
         _busy = false;
         _failure = describeError(error);
