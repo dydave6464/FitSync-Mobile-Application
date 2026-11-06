@@ -450,6 +450,8 @@ class _RemindersScreenState extends ConsumerState<RemindersScreen> {
                   FsChip(
                     key: Key('reminders.lead.${option.value}'),
                     label: option.label,
+                    // One lead time at a time: announced as a radio group.
+                    exclusive: true,
                     selected:
                         (_pendingLead ?? settings.habitLeadMin).toString() ==
                         option.value,

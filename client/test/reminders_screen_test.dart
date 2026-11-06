@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:ui' show CheckedState;
 
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart' show RenderParagraph;
@@ -870,6 +871,18 @@ void main() {
         tester.widget<FsChip>(chip).selected,
         value == '15',
         reason: 'the default habitLeadMin is 15',
+      );
+      // One of a set, as a radio button is: a screen reader hears "checked"
+      // or "not checked", and that picking one unpicks the others.
+      final flags = tester
+          .getSemantics(chip)
+          .getSemanticsData()
+          .flagsCollection;
+      expect(flags.isInMutuallyExclusiveGroup, isTrue, reason: value);
+      expect(
+        flags.isChecked,
+        value == '15' ? CheckedState.isTrue : CheckedState.isFalse,
+        reason: value,
       );
     }
     await expectLater(tester, meetsGuideline(androidTapTargetGuideline));
