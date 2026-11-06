@@ -857,12 +857,19 @@ class FsStatField extends StatelessWidget {
                           enabledBorder: InputBorder.none,
                           focusedBorder: InputBorder.none,
                           contentPadding: EdgeInsets.zero,
-                          hintText: '--',
-                          hintStyle: TextStyle(
-                            fontFamily: fsMonoFamily,
-                            fontSize: 22,
-                            fontWeight: FontWeight.w600,
-                            color: t.text3,
+                          // Drawn, not said: as hintText the dashes were read
+                          // into the field's name, "Height, dash dash, cm".
+                          // An empty field already says it is empty.
+                          hint: ExcludeSemantics(
+                            child: Text(
+                              '--',
+                              style: TextStyle(
+                                fontFamily: fsMonoFamily,
+                                fontSize: 22,
+                                fontWeight: FontWeight.w600,
+                                color: t.text3,
+                              ),
+                            ),
                           ),
                         ),
                       ),

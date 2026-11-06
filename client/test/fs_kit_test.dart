@@ -1713,6 +1713,39 @@ void main() {
       h.dispose();
     });
 
+    // L-3: the empty card's '--' placeholder was read inside its name,
+    // "Height, dash dash, cm".
+    testWidgets('an empty FsStatField does not say its "--" placeholder', (
+      tester,
+    ) async {
+      final h = tester.ensureSemantics();
+      final controller = TextEditingController();
+      addTearDown(controller.dispose);
+      await tester.pumpWidget(
+        host(
+          SizedBox(
+            width: 200,
+            child: FsStatField(
+              label: 'Height',
+              unit: 'cm',
+              controller: controller,
+            ),
+          ),
+        ),
+      );
+      // Still drawn for sighted users.
+      expect(find.text('--'), findsOneWidget);
+      final data = tester
+          .getSemantics(find.byType(TextField))
+          .getSemanticsData();
+      expect(data.label, 'Height');
+      expect(data.hint, 'cm');
+      for (final said in [data.label, data.hint, data.value]) {
+        expect(said, isNot(contains('--')));
+      }
+      h.dispose();
+    });
+
     testWidgets('FsField with a label names its field and shows the label', (
       tester,
     ) async {
