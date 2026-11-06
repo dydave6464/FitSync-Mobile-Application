@@ -360,7 +360,9 @@ class _Row extends StatelessWidget {
                       body,
                       style: TextStyle(
                         fontSize: 12,
-                        color: t.text3,
+                        // text2, not text3: on the accent row text3 is
+                        // 3.85:1 in dark. Both rows alike.
+                        color: t.text2,
                         height: 1.35,
                       ),
                     ),
