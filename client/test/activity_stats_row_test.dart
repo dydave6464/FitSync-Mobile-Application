@@ -242,6 +242,39 @@ void main() {
   }
 
   testWidgets(
+    "notAsked: the screen reader's button opens the activation screen",
+    (tester) async {
+      final semantics = tester.ensureSemantics();
+      await _pump(tester, _Permission(StepAccess.notAsked));
+
+      tester.semantics.tap(
+        find.semantics.byLabel('Tap to start counting your steps'),
+      );
+      await tester.pumpAndSettle();
+      expect(find.byType(ActivationScreen), findsOneWidget);
+      semantics.dispose();
+    },
+  );
+
+  testWidgets(
+    "refused: the screen reader's button asks again, then says what to "
+    'switch on',
+    (tester) async {
+      final semantics = tester.ensureSemantics();
+      final permission = _Permission(StepAccess.refused);
+      await _pump(tester, permission);
+
+      tester.semantics.tap(
+        find.semantics.byLabel('Step counting is off — tap to allow'),
+      );
+      await tester.pumpAndSettle();
+      expect(permission.log, ['request']);
+      expect(find.text('Step counting is off for FitSync'), findsOneWidget);
+      semantics.dispose();
+    },
+  );
+
+  testWidgets(
     'refused, granted when asked again: no Settings, the stats show',
     (tester) async {
       final permission = _Permission(
