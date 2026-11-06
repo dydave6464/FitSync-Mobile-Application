@@ -187,4 +187,32 @@ void main() {
     expect(label.label, contains('Walk, not done'));
     handle.dispose();
   });
+
+  testWidgets('the streak link is a named 48 dp button', (tester) async {
+    final handle = tester.ensureSemantics();
+    final taps = await _pump(tester, _day([_habit(1, 'Walk')]), streak: 3);
+
+    final link = find.byKey(const Key('home.routine.streak'));
+    expect(
+      tester.getSemantics(link),
+      matchesSemantics(
+        label: '3-day streak',
+        isButton: true,
+        hasEnabledState: true,
+        isEnabled: true,
+        hasTapAction: true,
+        hasFocusAction: true,
+        isFocusable: true,
+      ),
+    );
+    await expectLater(tester, meetsGuideline(androidTapTargetGuideline));
+
+    // A thumb landing just under the drawn chip still means the streak, not
+    // the card's own "open the routine".
+    final chip = tester.getRect(link);
+    await tester.tapAt(Offset(chip.center.dx, chip.bottom + 6));
+    await tester.pump();
+    expect(taps, ['streak']);
+    handle.dispose();
+  });
 }

@@ -39,29 +39,38 @@ class RoutineCard extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Row(
-            children: [
-              Expanded(
-                child: Text(
-                  "Today's routine",
-                  style: TextStyle(
-                    fontSize: 15,
-                    fontWeight: FontWeight.w700,
-                    color: t.text,
+          // The streak is a small chip, as the design draws it -- a button,
+          // and unlike the count tag beside it. The card's padding above and
+          // the gap below are the room its 48 dp band reaches into, so a
+          // near miss still opens the streak rather than the routine.
+          FsTapRoom(
+            reach: 11,
+            child: Row(
+              children: [
+                Expanded(
+                  child: Text(
+                    "Today's routine",
+                    style: TextStyle(
+                      fontSize: 15,
+                      fontWeight: FontWeight.w700,
+                      color: t.text,
+                    ),
                   ),
                 ),
-              ),
-              if (streak >= 1) ...[
-                GestureDetector(
-                  key: const Key('home.routine.streak'),
-                  behavior: HitTestBehavior.opaque,
-                  onTap: onOpenStreak,
-                  child: FsTag('$streak-day streak'),
-                ),
-                if (entries.isNotEmpty) const SizedBox(width: 6),
+                if (streak >= 1) ...[
+                  FsChip(
+                    key: const Key('home.routine.streak'),
+                    label: '$streak-day streak',
+                    small: true,
+                    selected: false,
+                    toggle: false,
+                    onTap: onOpenStreak,
+                  ),
+                  if (entries.isNotEmpty) const SizedBox(width: 6),
+                ],
+                if (entries.isNotEmpty) FsTag('${day.done} / ${day.total}'),
               ],
-              if (entries.isNotEmpty) FsTag('${day.done} / ${day.total}'),
-            ],
+            ),
           ),
           const SizedBox(height: 12),
           if (entries.isEmpty)
