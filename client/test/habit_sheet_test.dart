@@ -1,13 +1,17 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/rendering.dart' show RenderParagraph;
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import 'package:fitsync/core/api_exception.dart';
 import 'package:fitsync/core/theme.dart';
+import 'package:fitsync/core/widgets/fs_kit.dart';
 import 'package:fitsync/features/routine/data/routine_repository.dart';
 import 'package:fitsync/features/routine/domain/routine.dart';
 import 'package:fitsync/features/routine/presentation/providers.dart';
 import 'package:fitsync/features/routine/presentation/widgets/habit_sheet.dart';
+
+import 'helpers/a11y.dart' show contrast;
 
 const _dummyHabit = Habit(
   habitId: 99,
@@ -101,6 +105,7 @@ Future<_FakeRepo> _open(
   bool failNext = false,
   List<String>? days,
   bool announceRepeats = true,
+  bool dark = false,
 }) async {
   final repo = _FakeRepo()..failNext = failNext;
   if (days != null) repo.days = days;
@@ -108,7 +113,7 @@ Future<_FakeRepo> _open(
     ProviderScope(
       overrides: [routineRepositoryProvider.overrideWithValue(repo)],
       child: MaterialApp(
-        theme: fsLightTheme(),
+        theme: dark ? fsDarkTheme() : fsLightTheme(),
         // Watches the day, as the routine screen and Home's card do: the
         // sheet is only ever opened over a routine that has loaded.
         home: Consumer(
@@ -335,5 +340,44 @@ void main() {
       _errorText(tester),
       "Couldn't reach FitSync. Check your connection and try again.",
     );
+  });
+
+  group('time button (PT-3)', () {
+    testWidgets('is the kit secondary button, small', (tester) async {
+      await _open(tester);
+
+      final button = tester.widget<FsButton>(
+        find.byKey(const Key('habit.time')),
+      );
+      expect(button.kind, FsButtonKind.secondary);
+      expect(button.small, isTrue);
+      expect(button.label, 'Any time');
+      expect(find.byType(OutlinedButton), findsNothing);
+    });
+
+    for (final dark in [false, true]) {
+      testWidgets('its label reads at 4.5:1 (${dark ? 'dark' : 'light'})', (
+        tester,
+      ) async {
+        await _open(tester, dark: dark);
+        final t = dark ? FsTokens.dark : FsTokens.light;
+
+        final paragraph = tester.renderObject<RenderParagraph>(
+          find.descendant(
+            of: find.byKey(const Key('habit.time')),
+            matching: find.text('Any time'),
+          ),
+        );
+        final color = paragraph.text.style!.color!;
+        expect(contrast(color, t.surface), greaterThanOrEqualTo(4.5));
+      });
+    }
+
+    testWidgets('still opens the time picker', (tester) async {
+      await _open(tester);
+      await tester.tap(find.byKey(const Key('habit.time')));
+      await tester.pumpAndSettle();
+      expect(find.byType(TimePickerDialog), findsOneWidget);
+    });
   });
 }

@@ -201,13 +201,16 @@ class _HabitSheetState extends ConsumerState<_HabitSheet> {
             Row(
               children: [
                 Expanded(
-                  child: OutlinedButton.icon(
+                  // The kit's secondary button: text-coloured on the
+                  // surface, like the field beside it, where M3's outlined
+                  // button fell back to the brand green (2.87:1 on white).
+                  child: FsButton(
                     key: const Key('habit.time'),
+                    kind: FsButtonKind.secondary,
+                    small: true,
                     onPressed: _busy ? null : _pickTime,
                     icon: const Icon(Icons.schedule, size: 18),
-                    label: Text(
-                      _time == null ? 'Any time' : formatClock(_time!),
-                    ),
+                    label: _time == null ? 'Any time' : formatClock(_time!),
                   ),
                 ),
                 if (_time != null)
