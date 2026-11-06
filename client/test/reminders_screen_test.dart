@@ -856,10 +856,10 @@ void main() {
 
     expect(find.byType(FsSegmented), findsNothing);
     for (final (value, label) in [
-      ('0', 'At the time'),
-      ('5', '5 min before'),
-      ('15', '15 min before'),
-      ('30', '30 min before'),
+      ('0', 'Around the time'),
+      ('5', 'About 5 min before'),
+      ('15', 'About 15 min before'),
+      ('30', 'About 30 min before'),
     ]) {
       final chip = find.byKey(Key('reminders.lead.$value'));
       expect(
@@ -886,10 +886,10 @@ void main() {
 
       expect(tester.takeException(), isNull);
       for (final label in [
-        'At the time',
-        '5 min before',
-        '15 min before',
-        '30 min before',
+        'Around the time',
+        'About 5 min before',
+        'About 15 min before',
+        'About 30 min before',
       ]) {
         await tester.scrollUntilVisible(find.text(label), 100);
         final paragraph = tester.renderObject<RenderParagraph>(

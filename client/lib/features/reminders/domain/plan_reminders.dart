@@ -55,7 +55,9 @@ List<PlannedReminder> planReminders({
             time,
           ).subtract(Duration(minutes: settings.habitLeadMin)),
           h.title,
-          settings.habitLeadMin == 0 ? 'Now' : 'At ${formatClock(time)}',
+          // The time itself, never "Now": the phone schedules inexactly and
+          // can deliver a few minutes late. And what to do, not just when.
+          'Starts at ${formatClock(time)} — tap to tick it off',
           'routine',
         );
       }
@@ -69,7 +71,7 @@ List<PlannedReminder> planReminders({
       add(
         manilaInstant(day, settings.workoutTime),
         'Workout today',
-        planName,
+        '$planName at ${formatClock(settings.workoutTime)} — tap to get started',
         'routine',
       );
     }
@@ -78,7 +80,7 @@ List<PlannedReminder> planReminders({
       add(
         manilaInstant(day, settings.checkinTime),
         'Morning check-in',
-        'How did you sleep?',
+        'How did you sleep? Tap to check in.',
         'recovery',
       );
     }
