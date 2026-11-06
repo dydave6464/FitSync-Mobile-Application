@@ -460,4 +460,63 @@ void main() {
       findsOneWidget,
     );
   });
+
+  group('A code request that never reached the server', () {
+    const offline =
+        "Couldn't reach FitSync. Check your connection and try again.";
+    ApiException networkError() => const ApiException(
+      'NETWORK_ERROR',
+      'Could not reach http://10.0.2.2:3000. Check the server is running.',
+    );
+
+    testWidgets('stays on the email step and says so', (tester) async {
+      var offlineNow = true;
+      final repo = FakeAuthRepository(
+        onRequestReset: () async {
+          if (offlineNow) throw networkError();
+        },
+      );
+      await _pump(tester, repo);
+
+      await _sendCode(tester);
+
+      expect(find.text(_sent), findsNothing, reason: 'no code was sent');
+      expect(find.byKey(const Key('code')), findsNothing);
+      expect(
+        find.ancestor(
+          of: find.text(offline),
+          matching: find.byType(FsErrorLine),
+        ),
+        findsOneWidget,
+      );
+      expect(find.textContaining('10.0.2.2'), findsNothing);
+
+      // Back online, the same button sends it.
+      offlineNow = false;
+      await _sendCode(tester);
+      expect(find.text(_sent), findsOneWidget);
+      expect(find.text(offline), findsNothing);
+    });
+
+    testWidgets('on Send a new code, does not claim one is coming', (
+      tester,
+    ) async {
+      var offlineNow = false;
+      final repo = FakeAuthRepository(
+        onRequestReset: () async {
+          if (offlineNow) throw networkError();
+        },
+      );
+      await _pump(tester, repo);
+      await _sendCode(tester);
+
+      offlineNow = true;
+      await tester.tap(find.byKey(const Key('resend')));
+      await tester.pumpAndSettle();
+
+      expect(find.text(_resent), findsNothing);
+      expect(find.text(offline), findsOneWidget);
+      expect(find.byKey(const Key('code')), findsOneWidget);
+    });
+  });
 }

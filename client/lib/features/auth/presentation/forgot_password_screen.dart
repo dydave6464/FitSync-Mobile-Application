@@ -18,7 +18,10 @@ const _resentMessage =
 /// The server answers every code request the same way -- a 202, whatever the
 /// address -- so this screen can never be used to learn who has an account.
 /// It must not undo that: step 1 moves on to step 2 with the same message
-/// whatever happened, a network error included.
+/// whatever the server answered. The one exception is a request that never
+/// reached it (NETWORK_ERROR): no answer came back, so saying so reveals
+/// nothing about the address, and claiming a code was sent would leave the
+/// user waiting for an email nobody asked for.
 class ForgotPasswordScreen extends ConsumerStatefulWidget {
   const ForgotPasswordScreen({super.key});
 
@@ -77,20 +80,28 @@ class _ForgotPasswordScreenState extends ConsumerState<ForgotPasswordScreen> {
 
     try {
       await repo.requestPasswordReset(email);
-    } catch (_) {
-      // Deliberately swallowed -- see the class doc.
-    } finally {
-      if (mounted) {
-        setState(() {
-          _busy = false;
-          _onCodeStep = true;
-          _message = (
-            text: resending ? _resentMessage : _sentMessage,
-            isError: false,
-          );
-        });
+    } on ApiException catch (error) {
+      if (error.code == 'NETWORK_ERROR') {
+        // Nothing was sent: stay where the user is and say why.
+        if (mounted) {
+          setState(() => _busy = false);
+          _showError(userMessage(error));
+        }
+        return;
       }
+      // Any answer the server did give is swallowed -- see the class doc.
+    } catch (_) {
+      // Swallowed too, for the same reason.
     }
+    if (!mounted) return;
+    setState(() {
+      _busy = false;
+      _onCodeStep = true;
+      _message = (
+        text: resending ? _resentMessage : _sentMessage,
+        isError: false,
+      );
+    });
   }
 
   Future<void> _reset() async {
