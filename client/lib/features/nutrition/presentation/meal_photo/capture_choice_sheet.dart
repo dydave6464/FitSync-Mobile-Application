@@ -92,7 +92,10 @@ Future<CaptureChoice?> _sheet(
                 key: const Key('snap.camera'),
                 minTileHeight: 48,
                 enabled: !noneLeft,
-                leading: Icon(Icons.photo_camera_outlined, color: t.text2),
+                // On the tile, not the Icon: a disabled tile swaps it for
+                // the theme's disabled colour, so the icon dims with the title.
+                iconColor: t.text2,
+                leading: const Icon(Icons.photo_camera_outlined),
                 title: const Text('Take a photo'),
                 onTap: () =>
                     Navigator.of(sheet)
@@ -102,7 +105,8 @@ Future<CaptureChoice?> _sheet(
                 key: const Key('snap.library'),
                 minTileHeight: 48,
                 enabled: !noneLeft,
-                leading: Icon(Icons.photo_library_outlined, color: t.text2),
+                iconColor: t.text2,
+                leading: const Icon(Icons.photo_library_outlined),
                 title: const Text('Choose from library'),
                 onTap: () =>
                     Navigator.of(sheet)

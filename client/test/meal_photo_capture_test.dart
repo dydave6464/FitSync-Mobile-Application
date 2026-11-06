@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import 'package:fitsync/core/api_exception.dart';
+import 'package:fitsync/core/theme.dart';
 import 'package:fitsync/features/nutrition/data/meal_photo_picker.dart';
 import 'package:fitsync/features/nutrition/domain/meal_photo.dart';
 import 'package:fitsync/features/nutrition/presentation/meal_photo/capture_choice_sheet.dart';
@@ -107,6 +108,56 @@ void main() {
       await tester.pumpAndSettle();
       expect(picked, isEmpty, reason: 'the sheet stays open');
     });
+
+    // Disabled state clarity: an icon kept at text2 beside a dimmed title
+    // still looks tappable. Under the app's own themes, so text2 is real.
+    for (final (name, theme, t) in [
+      ('dark', fsDarkTheme, FsTokens.dark),
+      ('light', fsLightTheme, FsTokens.light),
+    ]) {
+      testWidgets('none left: the icons dim with the titles ($name)', (tester) async {
+        Color painted(Finder of) => tester
+            .widget<RichText>(find.descendant(of: of, matching: find.byType(RichText)).first)
+            .text
+            .style!
+            .color!;
+        Future<void> open(int remaining) async {
+          await tester.pumpWidget(
+            MaterialApp(
+              theme: theme(),
+              home: Scaffold(
+                body: Builder(
+                  builder: (context) => TextButton(
+                    onPressed: () => showCaptureChoiceSheet(
+                      context,
+                      today: Future.value(PhotoToday(limit: 15, remainingToday: remaining)),
+                    ),
+                    child: const Text('go'),
+                  ),
+                ),
+              ),
+            ),
+          );
+          await tester.tap(find.text('go'));
+          await tester.pumpAndSettle();
+        }
+
+        await open(0);
+        for (final (icon, title) in [
+          (Icons.photo_camera_outlined, 'Take a photo'),
+          (Icons.photo_library_outlined, 'Choose from library'),
+        ]) {
+          expect(painted(find.byIcon(icon)), painted(find.text(title)), reason: icon.toString());
+          expect(painted(find.byIcon(icon)), isNot(t.text2));
+        }
+
+        await tester.pumpWidget(const SizedBox());
+        await open(6);
+        for (final icon in [Icons.photo_camera_outlined, Icons.photo_library_outlined]) {
+          expect(painted(find.byIcon(icon)), t.text2, reason: 'enabled tiles keep text2');
+        }
+      });
+    }
 
     testWidgets('the sheet opens at once, before the answer', (tester) async {
       final gate = Completer<PhotoToday>();
