@@ -702,6 +702,50 @@ void main() {
       findsOneWidget,
     );
   });
+
+  group('the date of birth button', () {
+    testWidgets('says what it sets when nothing is set yet', (tester) async {
+      final handle = tester.ensureSemantics();
+      await _pumpAndEdit(tester, (_) async {});
+
+      final data = tester
+          .getSemantics(find.byKey(const Key('dateOfBirth')))
+          .getSemanticsData();
+      expect(data.label, 'Date of birth');
+      expect(data.value, 'Not set');
+      expect(data.flagsCollection.isButton, isTrue);
+      expect(data.hint, 'Opens a date picker');
+      handle.dispose();
+    });
+
+    testWidgets('reads the date and age as its value', (tester) async {
+      final handle = tester.ensureSemantics();
+      await _pumpAndEdit(
+        tester,
+        (_) async {},
+        value: const AboutAnswers(dateOfBirth: '1998-03-14'),
+      );
+
+      final data = tester
+          .getSemantics(find.byKey(const Key('dateOfBirth')))
+          .getSemanticsData();
+      expect(data.label, 'Date of birth');
+      expect(data.value, startsWith('14 March 1998, '));
+      expect(data.value, endsWith(' years old'));
+      handle.dispose();
+    });
+
+    testWidgets('its eyebrow is not read a second time', (tester) async {
+      final handle = tester.ensureSemantics();
+      await _pumpAndEdit(tester, (_) async {});
+
+      expect(
+        find.bySemanticsLabel(RegExp(r'^date of birth$', caseSensitive: false)),
+        findsOneWidget,
+      );
+      handle.dispose();
+    });
+  });
 }
 
 void _ignore(AboutAnswers _) {}

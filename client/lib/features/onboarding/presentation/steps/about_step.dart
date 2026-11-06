@@ -410,29 +410,46 @@ class _AboutStepState extends State<AboutStep> {
         ),
         ..._errorFor('sex'),
         const SizedBox(height: 18),
-        const FsEyebrow('Date of birth'),
+        // Said by the card below, as its name, rather than as a node of
+        // its own that touch exploration finds apart from the button.
+        const ExcludeSemantics(child: FsEyebrow('Date of birth')),
         const SizedBox(height: 10),
         FsCard(
           key: const Key('dateOfBirth'),
           small: true,
           onTap: _pickDate,
-          child: Row(
-            children: [
-              const FsIconTile(icon: Icons.calendar_today_outlined, size: 38),
-              const SizedBox(width: 12),
-              Expanded(
-                child: Text(
-                  _readableDate(_dateOfBirth) ?? 'Not set',
-                  style: TextStyle(
-                    fontSize: 13.5,
-                    fontWeight: FontWeight.w600,
-                    color: _dateOfBirth == null ? t.text3 : t.text,
+          // Named for what it sets: on its own the date (or 'Not set') says
+          // nothing about what the button is for.
+          child: Semantics(
+            label: 'Date of birth',
+            value: switch (_readableDate(_dateOfBirth)) {
+              null => 'Not set',
+              final date when age != null => '$date, $age years old',
+              final date => date,
+            },
+            hint: 'Opens a date picker',
+            excludeSemantics: true,
+            child: Row(
+              children: [
+                const FsIconTile(icon: Icons.calendar_today_outlined, size: 38),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Text(
+                    _readableDate(_dateOfBirth) ?? 'Not set',
+                    style: TextStyle(
+                      fontSize: 13.5,
+                      fontWeight: FontWeight.w600,
+                      color: _dateOfBirth == null ? t.text3 : t.text,
+                    ),
                   ),
                 ),
-              ),
-              if (age != null) ...[FsTag('$age yrs'), const SizedBox(width: 8)],
-              Icon(Icons.chevron_right, size: 16, color: t.text3),
-            ],
+                if (age != null) ...[
+                  FsTag('$age yrs'),
+                  const SizedBox(width: 8),
+                ],
+                Icon(Icons.chevron_right, size: 16, color: t.text3),
+              ],
+            ),
           ),
         ),
         ..._errorFor('dateOfBirth'),
