@@ -74,6 +74,46 @@ void main() {
     expect(s.endsSoon, isTrue);
   });
 
+  // #31: the server states each plan's terms; the app reads them rather
+  // than inferring months and "no renewal" itself.
+  test('status reads the plans, renews and nextPeriodStartsAt', () async {
+    final (repo, _) = _repo({
+      ..._paid,
+      'plans': {
+        'monthly': {'pricePhp': 299, 'months': 3},
+        'annual': {'pricePhp': 1788, 'months': 12},
+      },
+      'renews': false,
+      'nextPeriodStartsAt': '2026-12-01T04:00:00.000Z',
+    });
+    final s = await repo.status();
+    expect(s.plans[ProPlan.monthly]?.months, 3);
+    expect(s.plans[ProPlan.monthly]?.pricePhp, 299);
+    expect(s.plans[ProPlan.annual]?.months, 12);
+    expect(s.plans[ProPlan.annual]?.pricePhp, 1788);
+    // The prices follow the plans: 299, not the 249 still sent in prices.
+    expect(s.prices.monthly, 299);
+    expect(s.prices.annual, 1788);
+    expect(s.renews, isFalse);
+    expect(s.nextPeriodStartsAt, DateTime.utc(2026, 12, 1, 4));
+  });
+
+  test('an older server without plans: prices and the usual months', () async {
+    final (repo, _) = _repo(_free);
+    final s = await repo.status();
+    expect(s.plans[ProPlan.monthly]?.pricePhp, 249);
+    expect(s.plans[ProPlan.monthly]?.months, 1);
+    expect(s.plans[ProPlan.annual]?.pricePhp, 1788);
+    expect(s.plans[ProPlan.annual]?.months, 12);
+    expect(s.renews, isFalse);
+    expect(s.nextPeriodStartsAt, isNull);
+  });
+
+  test('a renewing plan is read as one', () async {
+    final (repo, _) = _repo({..._free, 'renews': true});
+    expect((await repo.status()).renews, isTrue);
+  });
+
   test('checkout sends the plan and returns where to pay', () async {
     final (repo, requests) = _repo({
       'paymentId': 12,

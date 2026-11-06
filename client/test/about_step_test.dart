@@ -5,8 +5,10 @@ import 'package:flutter/semantics.dart' show SemanticsData;
 import 'package:flutter/rendering.dart' show RenderParagraph;
 import 'package:flutter_test/flutter_test.dart';
 
+import 'package:fitsync/core/api_exception.dart';
 import 'package:fitsync/core/units.dart';
 import 'package:fitsync/core/widgets/fs_kit.dart' show FsStatField;
+import 'package:fitsync/features/onboarding/presentation/steps/about_checks.dart';
 import 'package:fitsync/features/onboarding/presentation/steps/about_step.dart';
 
 import 'helpers/onboarding_screen.dart';
@@ -685,6 +687,137 @@ void main() {
     });
 
     expect(emitted?.activityLevel, _activityValues.last);
+  });
+
+  // #30 + #2: the server's hard limits, said under the card in the user's
+  // unit, rather than "can't be saved as it is".
+  group('rangeFieldMessage', () {
+    ApiException refusal(
+      String field,
+      String unit, {
+      String code = 'INVALID_PROFILE_FIELD',
+      num? min,
+      num? max,
+    }) => ApiException(
+      code,
+      'Enter a ... between ...',
+      details: [
+        {'field': field, 'min': ?min, 'max': ?max, 'unit': unit},
+      ],
+    );
+
+    test('a height reads in centimetres', () {
+      expect(
+        rangeFieldMessage(
+          refusal('heightCm', 'cm', min: 50, max: 275),
+          WeightUnit.lb,
+        ),
+        'Enter a height between 50 and 275 cm.',
+      );
+    });
+
+    test('a weight reads in kilograms for a kg user', () {
+      expect(
+        rangeFieldMessage(
+          refusal('weightKg', 'kg', min: 20, max: 500),
+          WeightUnit.kg,
+        ),
+        'Enter a weight between 20 and 500 kg.',
+      );
+    });
+
+    test('a weight reads in whole pounds for an lb user, inside the range', () {
+      expect(
+        rangeFieldMessage(
+          refusal('weightKg', 'kg', min: 20, max: 500),
+          WeightUnit.lb,
+        ),
+        'Enter a weight between 45 and 1102 lb.',
+      );
+    });
+
+    test('the pounds shown are ones the server takes back', () {
+      // 20 kg is 44.09 lb: "44" would read back as 19.96 kg and be refused
+      // again, so the low end rounds up and the high end rounds down.
+      final message = rangeFieldMessage(
+        refusal('weightKg', 'kg', min: 20, max: 500),
+        WeightUnit.lb,
+      )!;
+      final bounds = RegExp(r'between (\d+) and (\d+) lb').firstMatch(message)!;
+      final low = parseWeight(bounds.group(1)!, WeightUnit.lb)!;
+      final high = parseWeight(bounds.group(2)!, WeightUnit.lb)!;
+      expect(low, greaterThanOrEqualTo(20));
+      expect(high, lessThanOrEqualTo(500));
+    });
+
+    test('a goal weight is named as one', () {
+      expect(
+        rangeFieldMessage(
+          refusal('goalWeightKg', 'kg', min: 20, max: 500),
+          WeightUnit.lb,
+        ),
+        'Enter a goal weight between 45 and 1102 lb.',
+      );
+    });
+
+    test('a weigh-in refusal (WEIGHT_OUT_OF_RANGE) reads the same', () {
+      expect(
+        rangeFieldMessage(
+          refusal(
+            'weightKg',
+            'kg',
+            code: 'WEIGHT_OUT_OF_RANGE',
+            min: 20,
+            max: 500,
+          ),
+          WeightUnit.kg,
+        ),
+        'Enter a weight between 20 and 500 kg.',
+      );
+    });
+
+    test('an older server, with no range in details, gives null', () {
+      expect(rangeFieldMessage(refusal('heightCm', 'cm'), WeightUnit.kg), null);
+      expect(
+        rangeFieldMessage(refusal('heightCm', 'cm', min: 50), WeightUnit.kg),
+        null,
+      );
+    });
+
+    test('any other failure gives null', () {
+      expect(
+        rangeFieldMessage(
+          const ApiException('NETWORK_ERROR', 'offline'),
+          WeightUnit.kg,
+        ),
+        null,
+      );
+      expect(rangeFieldMessage(Exception('boom'), WeightUnit.kg), null);
+    });
+
+    test('WEIGHT_OUT_OF_RANGE naming a field points at it', () {
+      final error = refusal(
+        'weightKg',
+        'kg',
+        code: 'WEIGHT_OUT_OF_RANGE',
+        min: 20,
+        max: 500,
+      );
+      expect(rejectedProfileField(error), 'weightKg');
+      expect(
+        plainProfileError(error),
+        "Your weight can't be saved as it is. Check it and try again.",
+      );
+    });
+
+    test('WEIGHT_OUT_OF_RANGE with no details keeps its own message', () {
+      const error = ApiException(
+        'WEIGHT_OUT_OF_RANGE',
+        'Enter a weight between 20 and 500 kg.',
+      );
+      expect(rejectedProfileField(error), null);
+      expect(plainProfileError(error), 'Enter a weight between 20 and 500 kg.');
+    });
   });
 
   group('implausible numbers', () {

@@ -35,8 +35,9 @@ class AboutAnswers {
 /// Heights and body weights a person can plausibly have. Outside them a
 /// typed number is far more likely a slip -- 17 for 170 -- than a fact, and
 /// it would drive the plan and the calorie target. Soft limits: the step
-/// asks once, and a second Continue keeps the number (the server accepts
-/// anything from 0 to 1000).
+/// asks once, and a second Continue keeps the number. The server refuses
+/// heights outside 50-275 cm and weights outside 20-500 kg, so these must
+/// stay inside those, or the second Continue would be refused.
 const heightRangeCm = (min: 100.0, max: 250.0);
 const weightRangeKg = (min: 25.0, max: 300.0);
 

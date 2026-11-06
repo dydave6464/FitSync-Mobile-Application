@@ -11,7 +11,8 @@ enum ProPlan {
   final String wire;
 
   /// How long one payment adds, as the server's plans define it
-  /// (server/src/lib/pro-plans.js). One payment, one period: nothing renews.
+  /// (server/src/lib/pro-plans.js). Only a fallback for an older server
+  /// that sends no `plans`: the screen reads [ProStatus.plans].
   final int months;
 
   static ProPlan? fromWire(Object? value) => switch (value) {
@@ -24,6 +25,15 @@ enum ProPlan {
 /// Paid for a period, or granted by hand (demo and teacher accounts, which
 /// never expire).
 enum ProSource { paid, granted }
+
+/// One plan's terms as the server states them: what one payment costs and
+/// how many months it adds.
+class ProPlanTerms {
+  const ProPlanTerms({required this.pricePhp, required this.months});
+
+  final int pricePhp;
+  final int months;
+}
 
 /// The server's prices in pesos -- the only place they are set.
 class ProPrices {
@@ -49,12 +59,16 @@ class ProStatus {
     required this.plan,
     required this.method,
     required this.endsSoon,
-    required this.prices,
+    required this.plans,
+    this.renews = false,
+    this.nextPeriodStartsAt,
   });
 
   factory ProStatus.fromJson(Map<String, dynamic> json) {
     final prices = json['prices'] as Map<String, dynamic>;
+    final plans = json['plans'] as Map<String, dynamic>?;
     final until = json['until'] as String?;
+    final next = json['nextPeriodStartsAt'] as String?;
     return ProStatus(
       pro: json['pro'] as bool? ?? false,
       source: switch (json['source']) {
@@ -66,10 +80,21 @@ class ProStatus {
       plan: ProPlan.fromWire(json['plan']),
       method: json['method'] as String?,
       endsSoon: json['endsSoon'] as bool? ?? false,
-      prices: ProPrices(
-        monthly: (prices['monthly'] as num).toInt(),
-        annual: (prices['annual'] as num).toInt(),
-      ),
+      // An older server sends only prices: its months are the ones the
+      // app was built with.
+      plans: {
+        for (final plan in ProPlan.values)
+          plan: switch (plans?[plan.wire]) {
+            {'pricePhp': final num price, 'months': final num months} =>
+              ProPlanTerms(pricePhp: price.toInt(), months: months.toInt()),
+            _ => ProPlanTerms(
+              pricePhp: (prices[plan.wire] as num).toInt(),
+              months: plan.months,
+            ),
+          },
+      },
+      renews: json['renews'] as bool? ?? false,
+      nextPeriodStartsAt: next == null ? null : DateTime.parse(next),
     );
   }
 
@@ -85,7 +110,23 @@ class ProStatus {
 
   /// A paid period that ends within 3 days.
   final bool endsSoon;
-  final ProPrices prices;
+
+  /// Every plan's price and months, as the server states them.
+  final Map<ProPlan, ProPlanTerms> plans;
+
+  /// Whether Pro renews by itself. Always false today: each payment buys
+  /// one period.
+  final bool renews;
+
+  /// When the months of a payment made now would begin: the end of the
+  /// period running now. Null when a payment now starts at once.
+  final DateTime? nextPeriodStartsAt;
+
+  /// The prices, from [plans].
+  ProPrices get prices => ProPrices(
+    monthly: plans[ProPlan.monthly]!.pricePhp,
+    annual: plans[ProPlan.annual]!.pricePhp,
+  );
 }
 
 /// Where to pay for one attempt.

@@ -91,8 +91,63 @@ void main() {
   // L-83: the words for a plan's length live with the screen that says them,
   // not in the domain enum.
   test('a plan says how long one payment lasts', () {
-    expect(planPeriod(ProPlan.monthly), '1 month');
-    expect(planPeriod(ProPlan.annual), '12 months');
+    expect(planPeriod(1), '1 month');
+    expect(planPeriod(12), '12 months');
+  });
+
+  // #31: the terms come from the server, not from the app's enum.
+  group('terms from the server', () {
+    const threeMonths = {
+      ProPlan.monthly: ProPlanTerms(pricePhp: 249, months: 3),
+      ProPlan.annual: ProPlanTerms(pricePhp: 1788, months: 12),
+    };
+
+    testWidgets("a plan's months are the server's", (tester) async {
+      await _pump(
+        tester,
+        status: const ProStatus(
+          pro: false,
+          source: null,
+          until: null,
+          plan: null,
+          method: null,
+          endsSoon: false,
+          plans: threeMonths,
+        ),
+      );
+
+      expect(_inside('pro.plan.monthly', find.text('for 3 months')), findsOne);
+      expect(
+        tester.getSemantics(find.byKey(const Key('pro.plan.monthly'))),
+        isSemantics(label: 'Monthly, ₱249 for 3 months'),
+      );
+    });
+
+    testWidgets('extending starts where the server says the next period does', (
+      tester,
+    ) async {
+      await _pump(
+        tester,
+        status: paidStatus(
+          until: DateTime(2026, 11, 26, 12),
+          nextPeriodStartsAt: DateTime(2026, 12, 1, 12),
+          plans: threeMonths,
+        ),
+      );
+      await tester.tap(find.byKey(const Key('pro.plan.monthly')));
+      await tester.pump();
+
+      expect(find.text('Adds 3 months after 1 Dec 2026.'), findsOneWidget);
+      expect(find.textContaining('26 Nov 2026.'), findsNothing);
+    });
+
+    testWidgets('no "doesn\'t renew" line for a plan that renews', (
+      tester,
+    ) async {
+      await _pump(tester, status: paidStatus(renews: true));
+      expect(find.byKey(const Key('pro.pay')), findsOneWidget);
+      expect(find.byKey(const Key('pro.terms')), findsNothing);
+    });
   });
 
   testWidgets(

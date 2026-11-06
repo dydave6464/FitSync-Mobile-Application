@@ -529,4 +529,24 @@ void main() {
       });
     });
   });
+
+  group('deleteBodyWeight', () {
+    // PS-20: a mistaken weigh-in comes off by its day.
+    test("sends DELETE to the day's weigh-in", () async {
+      final (repo, captured) = _repoReturning({
+        'data': {
+          'deleted': {'loggedOn': '2026-11-04', 'weightKg': 72.5},
+          'start': {'loggedOn': '2026-10-01', 'weightKg': 74.0},
+          'entries': 2,
+          'weightKg': 73.0,
+        },
+      });
+
+      await repo.deleteBodyWeight('2026-11-04');
+
+      final request = captured.requests.single;
+      expect(request.method, 'DELETE');
+      expect(request.url.path, '/api/v1/profile/body-weight/2026-11-04');
+    });
+  });
 }
