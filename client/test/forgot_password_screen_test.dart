@@ -726,6 +726,33 @@ void main() {
       handle.dispose();
     });
 
+    // The link ignores taps while a reset is in flight; a screen reader
+    // must hear it as disabled then, as it did when it was a TextButton.
+    testWidgets('the change link reads as disabled while a reset is sent', (
+      tester,
+    ) async {
+      final pending = Completer<void>();
+      await _pump(tester, FakeAuthRepository(onReset: () => pending.future));
+      await _sendCode(tester);
+      await tester.enterText(find.byKey(const Key('code')), '048213');
+      await tester.enterText(
+        find.byKey(const Key('newPassword')),
+        'a whole new password',
+      );
+      await tester.tap(find.byKey(const Key('reset')));
+      await tester.pump();
+
+      final handle = tester.ensureSemantics();
+      expect(
+        tester.getSemantics(find.byKey(const Key('changeEmail'))),
+        isSemantics(isButton: true, hasEnabledState: true, isEnabled: false),
+      );
+      handle.dispose();
+
+      pending.complete();
+      await tester.pumpAndSettle();
+    });
+
     testWidgets('changing the email puts the cursor in the email field', (
       tester,
     ) async {

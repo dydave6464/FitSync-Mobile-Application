@@ -15,6 +15,8 @@ class AuthTextLink extends StatelessWidget {
   Widget build(BuildContext context) {
     return Semantics(
       button: true,
+      // Without a tap it is a disabled button, as a TextButton would say.
+      enabled: onTap != null,
       child: InkWell(
         onTap: onTap,
         child: ConstrainedBox(
