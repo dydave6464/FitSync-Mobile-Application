@@ -132,7 +132,13 @@ class _Body extends StatelessWidget {
               ),
               Text('steps today', style: TextStyle(fontSize: 13, color: t.text2)),
               const SizedBox(height: 18),
-              _UsualBar(today: steps, usual: week?.usual),
+              // Only once there is a usual to measure against: without one
+              // the fill sat 80% along a track that meant nothing. Its room
+              // is kept, as on Home, so the usual's arriving moves nothing.
+              switch (week?.usual) {
+                final usual? => _UsualBar(today: steps, usual: usual),
+                null => const SizedBox(height: _UsualBar.height),
+              },
               const SizedBox(height: 10),
               Text(
                 loadingWeek
@@ -223,22 +229,24 @@ class _Body extends StatelessWidget {
 }
 
 /// Today's steps filling toward a scale of 1.25 × the larger of today and
-/// the usual, with a marker at the usual.
+/// the usual, with a marker at the usual. Drawn only once there is a usual.
 class _UsualBar extends StatelessWidget {
   const _UsualBar({required this.today, required this.usual});
 
+  static const height = 28.0;
+
   final int today;
-  final int? usual;
+  final int usual;
 
   @override
   Widget build(BuildContext context) {
     final t = context.fs;
-    final scale = math.max(1, math.max(today, usual ?? 0)) * 1.25;
+    final scale = math.max(1, math.max(today, usual)) * 1.25;
     return LayoutBuilder(
       builder: (context, box) {
         final width = box.maxWidth;
         return SizedBox(
-          height: 28,
+          height: height,
           child: Stack(
             clipBehavior: Clip.none,
             children: [
@@ -267,13 +275,12 @@ class _UsualBar extends StatelessWidget {
               // triangle spans y 9-14 of its 24px box, so top 6 puts it right
               // below the bar (which ends at 14) and centring the box centres
               // the tip on the usual.
-              if (usual != null)
-                Positioned(
-                  key: const Key('activity.usualMarker'),
-                  left: width * usual! / scale - 12,
-                  top: 6,
-                  child: Icon(Icons.arrow_drop_up, size: 24, color: t.text),
-                ),
+              Positioned(
+                key: const Key('activity.usualMarker'),
+                left: width * usual / scale - 12,
+                top: 6,
+                child: Icon(Icons.arrow_drop_up, size: 24, color: t.text),
+              ),
             ],
           ),
         );

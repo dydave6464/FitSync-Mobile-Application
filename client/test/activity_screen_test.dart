@@ -131,6 +131,14 @@ class _AlwaysFails extends _RetryStub {
       );
 }
 
+/// The bar's blue fill, drawn only when there is a usual to measure against.
+Finder _usualFill() => find.byWidgetPredicate(
+  (w) =>
+      w is Container &&
+      w.decoration is BoxDecoration &&
+      (w.decoration! as BoxDecoration).color == fsLightTheme().extension<FsTokens>()!.blue,
+);
+
 void main() {
   testWidgets('shows today against the usual, the estimates and the week', (tester) async {
     await _pump(tester, ActivityState(
@@ -163,6 +171,23 @@ void main() {
 
     expect(find.text('Your usual appears after 3 days of walking'), findsOneWidget);
     expect(find.byKey(const Key('activity.usualMarker')), findsNothing);
+  });
+
+  testWidgets('with no usual there is no bar, and its room is kept', (tester) async {
+    await _pump(tester, ActivityState(
+      today: const DaySteps(steps: 6420), week: _week(), offline: false,
+    ));
+    expect(_usualFill(), findsOneWidget);
+    final withUsual = tester.getTopLeft(find.byKey(const Key('activity.usualLine'))).dy;
+
+    await tester.pumpWidget(const SizedBox()); // a fresh scope for the next state
+    await _pump(tester, ActivityState(
+      today: const DaySteps(steps: 6420), week: _week(usual: null), offline: false,
+    ));
+    // A fill with nothing to measure against read as 80% of something.
+    expect(_usualFill(), findsNothing);
+    // The line under it stays put, so the usual's arriving moves nothing.
+    expect(tester.getTopLeft(find.byKey(const Key('activity.usualLine'))).dy, withUsual);
   });
 
   testWidgets('missing height shows dashes and a way to Profile', (tester) async {
@@ -401,6 +426,8 @@ void main() {
       expect(find.text('6,420'), findsOneWidget);
       expect(find.text('steps today'), findsOneWidget);
       expect(find.text('Loading your week…'), findsOneWidget);
+      // No bar until the week brings the usual it measures against.
+      expect(_usualFill(), findsNothing);
       // Not "Your usual appears after 3 days", which would be untrue.
       expect(find.text('Your usual appears after 3 days of walking'), findsNothing);
       expect(find.descendant(of: find.byKey(const Key('activity.kcal')), matching: find.text('—')), findsOneWidget);
