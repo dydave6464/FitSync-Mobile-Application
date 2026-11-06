@@ -4544,4 +4544,69 @@ void main() {
       greaterThan(3.0),
     );
   });
+
+  group('a plan that will not load (SE-1)', () {
+    testWidgets(
+      'says so, with the reason and a retry, not "Nothing to train"',
+      (tester) async {
+        final plans = _FlakyPlanRepository(failing: true);
+        await _pump(tester, session: _session(planId: 42), plans: plans);
+
+        expect(find.text('Nothing to train here'), findsNothing);
+        expect(find.byKey(const Key('logger.planError')), findsOneWidget);
+        expect(find.text("Couldn't load today's workout"), findsOneWidget);
+        expect(
+          find.text(
+            "Couldn't reach FitSync. Check your connection and try again.",
+          ),
+          findsOneWidget,
+        );
+        // Still a session someone can leave or discard.
+        expect(find.byKey(const Key('logger.back')), findsOneWidget);
+        expect(find.byKey(const Key('logger.menu')), findsOneWidget);
+
+        // Back in signal: the retry is what fetches the plan again.
+        plans.failing = false;
+        await tester.tap(find.byKey(const Key('logger.planError.retry')));
+        await tester.pumpAndSettle();
+
+        expect(find.byKey(const Key('logger.planError')), findsNothing);
+        expect(find.byKey(const Key('logger.demo')), findsOneWidget);
+      },
+    );
+
+    testWidgets('a plan still loading keeps the back control', (tester) async {
+      final gate = Completer<WorkoutPlan?>();
+      await _pump(
+        tester,
+        session: _session(planId: 42),
+        plans: _FlakyPlanRepository(hold: gate),
+        settle: false,
+      );
+
+      expect(find.byType(CircularProgressIndicator), findsOneWidget);
+      expect(find.byKey(const Key('logger.back')), findsOneWidget);
+
+      gate.complete(_plan);
+      await tester.pumpAndSettle();
+    });
+  });
+}
+
+/// Fails every plan load the way a dropped connection does while [failing],
+/// and answers [_plan] after; or, with [hold], holds the load open.
+class _FlakyPlanRepository extends RecordingPlanRepository {
+  _FlakyPlanRepository({this.failing = false, this.hold});
+
+  bool failing;
+  final Completer<WorkoutPlan?>? hold;
+
+  @override
+  Future<WorkoutPlan?> activePlan() async {
+    if (hold != null) return hold!.future;
+    if (failing) {
+      throw const ApiException('NETWORK_ERROR', 'Could not reach the server.');
+    }
+    return _plan;
+  }
 }

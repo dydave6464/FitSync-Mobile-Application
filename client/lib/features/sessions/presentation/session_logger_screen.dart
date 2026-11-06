@@ -1208,6 +1208,7 @@ class _SessionLoggerScreenState extends ConsumerState<SessionLoggerScreen>
     required int restSeconds,
     VoidCallback? onRestart,
     _SwitchState? switchState,
+    bool menu = true,
   }) => AppBar(
     // The mockup's 38px rounded-square icon button, not Material's bare
     // arrow. Tooltipped 'Back' so the platform affordance -- and
@@ -1245,95 +1246,98 @@ class _SessionLoggerScreenState extends ConsumerState<SessionLoggerScreen>
         color: t.text,
       ),
     ),
-    actions: [
-      // The rest countdown is a tag up here rather than a card over the
-      // content, so ticking a set does not shove the set table down.
-      // On both stages: the rest carries across exercises, so the demo of
-      // the next one is exactly where it is still running.
-      if (_rest != null || _restOver) ...[
-        RestTimer(
-          reading: _restReading,
-          over: _rest == null && _restOver,
-          onOpen: _rest == null
-              ? null
-              : () => showRestSheet(
-                  context,
-                  countdown: RestCountdown(
-                    reading: _restReading,
-                    onAdjust: (seconds) => setState(() => _adjustRest(seconds)),
-                    onSkip: () => setState(_endRest),
-                  ),
-                ),
-        ),
-        const SizedBox(width: 6),
-      ],
-      // Finish lives here as well as on the footer button, so stopping a
-      // workout early does not mean paging to the end of it first.
-      PopupMenuButton<String>(
-        key: const Key('logger.menu'),
-        onSelected: (value) => switch (value) {
-          'restTime' => showRestSheet(context),
-          'restart' => onRestart?.call(),
-          'switch' => switchState?.onSwitch?.call(),
-          'leave' => _leave(),
-          'finish' => _finish(),
-          _ => _discard(),
-        },
-        itemBuilder: (_) => [
-          // Reachable before the first set, when there is no rest tag yet to
-          // tap. Names the current value so the menu answers the question
-          // without opening anything.
-          PopupMenuItem(
-            key: const Key('logger.restTime'),
-            value: 'restTime',
-            child: Text('Rest time: ${formatRest(restSeconds)}'),
-          ),
-          PopupMenuItem(
-            key: const Key('logger.restart'),
-            value: 'restart',
-            enabled: onRestart != null,
-            child: const Text('Restart this exercise'),
-          ),
-          if (switchState != null)
-            PopupMenuItem(
-              key: const Key('logger.switch.menu'),
-              value: 'switch',
-              enabled: switchState.onSwitch != null,
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  const Text('Switch exercise'),
-                  // Greyed with no reason reads as broken. t.text2 rather
-                  // than the item's own disabled grey, so the reason stays
-                  // readable.
-                  if (switchState.onSwitch == null)
-                    Text(
-                      "You've logged sets on this one",
-                      style: TextStyle(fontSize: 12, color: t.text2),
-                    ),
-                ],
+    actions: !menu
+        ? null
+        : [
+            // The rest countdown is a tag up here rather than a card over the
+            // content, so ticking a set does not shove the set table down.
+            // On both stages: the rest carries across exercises, so the demo of
+            // the next one is exactly where it is still running.
+            if (_rest != null || _restOver) ...[
+              RestTimer(
+                reading: _restReading,
+                over: _rest == null && _restOver,
+                onOpen: _rest == null
+                    ? null
+                    : () => showRestSheet(
+                        context,
+                        countdown: RestCountdown(
+                          reading: _restReading,
+                          onAdjust: (seconds) =>
+                              setState(() => _adjustRest(seconds)),
+                          onSkip: () => setState(_endRest),
+                        ),
+                      ),
               ),
+              const SizedBox(width: 6),
+            ],
+            // Finish lives here as well as on the footer button, so stopping a
+            // workout early does not mean paging to the end of it first.
+            PopupMenuButton<String>(
+              key: const Key('logger.menu'),
+              onSelected: (value) => switch (value) {
+                'restTime' => showRestSheet(context),
+                'restart' => onRestart?.call(),
+                'switch' => switchState?.onSwitch?.call(),
+                'leave' => _leave(),
+                'finish' => _finish(),
+                _ => _discard(),
+              },
+              itemBuilder: (_) => [
+                // Reachable before the first set, when there is no rest tag yet to
+                // tap. Names the current value so the menu answers the question
+                // without opening anything.
+                PopupMenuItem(
+                  key: const Key('logger.restTime'),
+                  value: 'restTime',
+                  child: Text('Rest time: ${formatRest(restSeconds)}'),
+                ),
+                PopupMenuItem(
+                  key: const Key('logger.restart'),
+                  value: 'restart',
+                  enabled: onRestart != null,
+                  child: const Text('Restart this exercise'),
+                ),
+                if (switchState != null)
+                  PopupMenuItem(
+                    key: const Key('logger.switch.menu'),
+                    value: 'switch',
+                    enabled: switchState.onSwitch != null,
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        const Text('Switch exercise'),
+                        // Greyed with no reason reads as broken. t.text2 rather
+                        // than the item's own disabled grey, so the reason stays
+                        // readable.
+                        if (switchState.onSwitch == null)
+                          Text(
+                            "You've logged sets on this one",
+                            style: TextStyle(fontSize: 12, color: t.text2),
+                          ),
+                      ],
+                    ),
+                  ),
+                const PopupMenuItem(
+                  key: Key('logger.leave'),
+                  value: 'leave',
+                  child: Text('Leave, keep for later'),
+                ),
+                const PopupMenuItem(
+                  key: Key('logger.finish'),
+                  value: 'finish',
+                  child: Text('Finish session'),
+                ),
+                const PopupMenuItem(
+                  key: Key('logger.discard'),
+                  value: 'discard',
+                  child: Text('Discard session'),
+                ),
+              ],
             ),
-          const PopupMenuItem(
-            key: Key('logger.leave'),
-            value: 'leave',
-            child: Text('Leave, keep for later'),
-          ),
-          const PopupMenuItem(
-            key: Key('logger.finish'),
-            value: 'finish',
-            child: Text('Finish session'),
-          ),
-          const PopupMenuItem(
-            key: Key('logger.discard'),
-            value: 'discard',
-            child: Text('Discard session'),
-          ),
-        ],
-      ),
-      const SizedBox(width: 8),
-    ],
+            const SizedBox(width: 8),
+          ],
   );
 
   @override
@@ -1349,7 +1353,12 @@ class _SessionLoggerScreenState extends ConsumerState<SessionLoggerScreen>
     final session = live ?? _lastSeenSession;
 
     if (session == null) {
-      return const Scaffold(body: Center(child: CircularProgressIndicator()));
+      // No session to act on yet, so no menu -- but a way back, always.
+      return Scaffold(
+        backgroundColor: t.bg,
+        appBar: _appBar(t, restSeconds: restSeconds, menu: false),
+        body: const Center(child: CircularProgressIndicator()),
+      );
     }
 
     // A session started from a chosen list carries its own exercises and has
@@ -1366,7 +1375,46 @@ class _SessionLoggerScreenState extends ConsumerState<SessionLoggerScreen>
     // session, and a refresh still holds the plan it is replacing -- falling
     // to the spinner then would blank the whole logger for a frame.
     if (carried.isEmpty && asyncPlan.isLoading && !asyncPlan.hasValue) {
-      return const Scaffold(body: Center(child: CircularProgressIndicator()));
+      // The session is open on the server already: Back and the menu stay,
+      // so a slow plan load never strands anyone on a bare spinner.
+      return Scaffold(
+        backgroundColor: t.bg,
+        appBar: _appBar(t, restSeconds: restSeconds),
+        body: const Center(child: CircularProgressIndicator()),
+      );
+    }
+
+    // A plan that failed to load is not an empty day. Saying "Nothing to
+    // train here" and pointing at Discard would invite someone on poor gym
+    // Wi-Fi to throw away a real session with sets already logged.
+    if (carried.isEmpty && plan == null && asyncPlan.hasError) {
+      return Scaffold(
+        backgroundColor: t.bg,
+        appBar: _appBar(t, restSeconds: restSeconds),
+        body: Center(
+          key: const Key('logger.planError'),
+          child: SingleChildScrollView(
+            padding: const EdgeInsets.all(24),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                FsIconTile(icon: Icons.cloud_off, size: 56),
+                const SizedBox(height: 16),
+                Text(
+                  "Couldn't load today's workout",
+                  textAlign: TextAlign.center,
+                  style: Theme.of(context).textTheme.titleLarge,
+                ),
+                FsRetry(
+                  message: userMessage(asyncPlan.error!),
+                  buttonKey: const Key('logger.planError.retry'),
+                  onRetry: () => ref.invalidate(activePlanProvider),
+                ),
+              ],
+            ),
+          ),
+        ),
+      );
     }
 
     // The session's own list wins: a manual session must not fall through to
