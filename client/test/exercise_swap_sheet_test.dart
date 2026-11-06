@@ -493,6 +493,11 @@ void main() {
     // machine reads a page of body-weight rows as the whole catalogue rather
     // than as the consequence of a setting they can change.
     expect(find.textContaining("Don't see your equipment?"), findsOneWidget);
+    // PS-15: names the Profile row by its name now.
+    expect(
+      find.textContaining('Profile \u2192 Level, equipment & location.'),
+      findsOneWidget,
+    );
   });
 
   testWidgets('tapping the equipment note asks for the Profile tab', (
