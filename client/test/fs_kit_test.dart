@@ -2273,15 +2273,18 @@ void main() {
     Future<void> pumpAsker(
       WidgetTester tester,
       List<bool> answers, {
+      String? title,
       String? message,
+      bool dark = false,
     }) async {
       await tester.pumpWidget(
         MaterialApp(
-          theme: fsLightTheme(),
+          theme: dark ? fsDarkTheme() : fsLightTheme(),
           home: Builder(
             builder: (c) => TextButton(
-              onPressed: () async =>
-                  answers.add(await confirmDiscard(c, message: message)),
+              onPressed: () async => answers.add(
+                await confirmDiscard(c, title: title, message: message),
+              ),
               child: const Text('ask'),
             ),
           ),
@@ -2332,10 +2335,21 @@ void main() {
       await pumpAsker(tester, [], message: 'The photo still counts today.');
       expect(find.text('The photo still counts today.'), findsOneWidget);
     });
+
+    // L-8: Snap a meal asks "Leave without logging?", not about changes.
+    testWidgets('can ask in its own words', (tester) async {
+      await pumpAsker(tester, [], title: 'Leave without logging?');
+      expect(find.text('Leave without logging?'), findsOneWidget);
+      expect(find.text('Discard your changes?'), findsNothing);
+    });
   });
 
   group('FsDiscardGuard', () {
-    Future<void> pumpGuard(WidgetTester tester, {required bool dirty}) async {
+    Future<void> pumpGuard(
+      WidgetTester tester, {
+      required bool dirty,
+      String? title,
+    }) async {
       await tester.pumpWidget(
         MaterialApp(
           theme: fsLightTheme(),
@@ -2345,6 +2359,7 @@ void main() {
                 MaterialPageRoute<void>(
                   builder: (_) => FsDiscardGuard(
                     dirty: dirty,
+                    title: title,
                     message: 'Nothing here is saved yet.',
                     child: const Scaffold(body: Text('form')),
                   ),
@@ -2386,6 +2401,14 @@ void main() {
       await tester.pumpAndSettle();
       expect(find.text('form'), findsNothing);
       expect(find.text('open'), findsOneWidget);
+    });
+
+    testWidgets('passes its own title to the dialog', (tester) async {
+      await pumpGuard(tester, dirty: true, title: 'Leave without logging?');
+      await tester.binding.handlePopRoute();
+      await tester.pumpAndSettle();
+      expect(find.text('Leave without logging?'), findsOneWidget);
+      expect(find.text('Discard your changes?'), findsNothing);
     });
   });
 }

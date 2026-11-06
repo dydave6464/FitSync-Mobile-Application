@@ -1847,13 +1847,19 @@ class FsRetry extends StatelessWidget {
 ///
 /// Dismissing the dialog any other way (the barrier, back) keeps editing:
 /// losing work must take a deliberate tap. Discard is in `t.red`, as the
-/// app's other destructive dialogs are. [message] says what discarding costs
-/// on this screen, when there is more to say than the title.
-Future<bool> confirmDiscard(BuildContext context, {String? message}) async {
+/// app's other destructive dialogs are. [title] is the question, "Discard
+/// your changes?" unless the screen has its own words for what is lost
+/// ("Leave without logging?"). [message] says what discarding costs on this
+/// screen, when there is more to say than the title.
+Future<bool> confirmDiscard(
+  BuildContext context, {
+  String? title,
+  String? message,
+}) async {
   final answer = await showDialog<bool>(
     context: context,
     builder: (dialog) => AlertDialog(
-      title: const Text('Discard your changes?'),
+      title: Text(title ?? 'Discard your changes?'),
       content: message == null ? null : Text(message),
       actions: [
         TextButton(
@@ -1886,11 +1892,15 @@ class FsDiscardGuard extends StatelessWidget {
     super.key,
     required this.dirty,
     required this.child,
+    this.title,
     this.message,
   });
 
   final bool dirty;
   final Widget child;
+
+  /// Passed to [confirmDiscard].
+  final String? title;
 
   /// Passed to [confirmDiscard].
   final String? message;
@@ -1901,7 +1911,11 @@ class FsDiscardGuard extends StatelessWidget {
       canPop: !dirty,
       onPopInvokedWithResult: (didPop, result) async {
         if (didPop) return;
-        final discard = await confirmDiscard(context, message: message);
+        final discard = await confirmDiscard(
+          context,
+          title: title,
+          message: message,
+        );
         if (discard && context.mounted) Navigator.of(context).pop(result);
       },
       child: child,
