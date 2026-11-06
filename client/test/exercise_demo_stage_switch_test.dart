@@ -7,6 +7,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import 'package:fitsync/core/theme.dart';
+import 'package:fitsync/core/widgets/fs_kit.dart';
 import 'package:fitsync/features/exercises/domain/exercise.dart';
 import 'package:fitsync/features/exercises/domain/exercise_cues.dart';
 import 'package:fitsync/features/exercises/presentation/providers.dart';
@@ -77,7 +78,7 @@ void main() {
     expect(link, findsOneWidget);
     expect(
       tester.getTopLeft(link).dy,
-      greaterThan(tester.getBottomLeft(find.byType(Chip).first).dy - 1),
+      greaterThan(tester.getBottomLeft(find.byType(FsTag).first).dy - 1),
     );
     expect(
       tester.getTopLeft(link).dy,

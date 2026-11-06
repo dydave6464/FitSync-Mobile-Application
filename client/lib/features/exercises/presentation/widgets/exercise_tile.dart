@@ -5,6 +5,7 @@ import '../../../../core/theme.dart';
 import '../equipment_icon.dart';
 
 import '../../domain/exercise.dart';
+import '../../domain/exercise_labels.dart';
 
 class ExerciseTile extends StatelessWidget {
   const ExerciseTile({
@@ -51,7 +52,7 @@ class ExerciseTile extends StatelessWidget {
                     _ThumbPlaceholder(equipment: exercise.equipment),
               ),
       ),
-      title: Text(exercise.name),
+      title: Text(exerciseDisplayName(exercise.name)),
       // The warning gets a line of its own and is never cut: it is the
       // safety reason, and sharing one ellipsized line with the muscle and
       // equipment lost it at large text and pushed them out at any size.
@@ -81,8 +82,9 @@ class ExerciseTile extends StatelessWidget {
             ),
           Text(
             [
-              exercise.muscleGroup,
-              if (exercise.equipment != null) exercise.equipment!,
+              muscleLabel(exercise.muscleGroup),
+              if (exercise.equipment != null)
+                equipmentLabel(exercise.equipment!),
             ].join(' · '),
             maxLines: 1,
             overflow: TextOverflow.ellipsis,
@@ -95,7 +97,7 @@ class ExerciseTile extends StatelessWidget {
         children: [
           IconButton(
             key: Key('tile.info.${exercise.exerciseId}'),
-            tooltip: 'About ${exercise.name}',
+            tooltip: 'About ${exerciseDisplayName(exercise.name)}',
             onPressed: onInfo,
             constraints: const BoxConstraints(minWidth: 48, minHeight: 48),
             icon: Icon(Icons.info_outline, color: t.text2),

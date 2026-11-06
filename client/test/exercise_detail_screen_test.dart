@@ -50,7 +50,7 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.text('3/4 sit-up'), findsOneWidget);
-    expect(find.textContaining('abs'), findsWidgets);
+    expect(find.textContaining('Abs'), findsWidgets);
     // The cue list moved into AiCueList, shared with the workout's demo stage,
     // so the number is its own widget rather than a "1. " prefix on the text.
     expect(find.text('How to perform'), findsOneWidget);

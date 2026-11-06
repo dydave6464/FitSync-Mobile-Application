@@ -1246,4 +1246,34 @@ void main() {
       });
     }
   });
+
+  // The summary and rows read as the library's filter does, not as the
+  // catalogue stores them (SE-10).
+  testWidgets('names and muscles read as words, not catalogue tags', (
+    tester,
+  ) async {
+    await _pump(
+      tester,
+      picks: const [
+        ExerciseSummary(
+          exerciseId: 505,
+          name: 'barbell bench press',
+          muscleGroup: 'pectorals',
+          equipment: 'barbell',
+          thumbnailUrl: null,
+        ),
+        ExerciseSummary(
+          exerciseId: 506,
+          name: 'push-up',
+          muscleGroup: 'pectorals',
+          equipment: 'body weight',
+          thumbnailUrl: null,
+        ),
+      ],
+    );
+
+    expect(find.text('2 exercises · Chest'), findsOneWidget);
+    expect(find.text('Barbell bench press'), findsOneWidget);
+    expect(find.text('2 · Chest · Bodyweight'), findsOneWidget);
+  });
 }

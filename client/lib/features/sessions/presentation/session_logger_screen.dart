@@ -34,6 +34,7 @@ import 'widgets/logger_action.dart';
 import 'widgets/rest_sheet.dart';
 import 'widgets/rest_timer.dart';
 import 'widgets/set_drafts.dart';
+import '../../exercises/domain/exercise_labels.dart';
 
 /// The active workout, one exercise at a time: its set table, Continue to
 /// the next, and the jump sheet for anything out of order.
@@ -574,7 +575,7 @@ class _SessionLoggerScreenState extends ConsumerState<SessionLoggerScreen>
       isScrollControlled: true,
       builder: (_) => ExerciseSwapSheet(
         planExerciseId: exercise.planExerciseId,
-        exerciseName: exercise.name,
+        exerciseName: exerciseDisplayName(exercise.name),
         onGoToProfile: null,
       ),
     );
@@ -886,7 +887,9 @@ class _SessionLoggerScreenState extends ConsumerState<SessionLoggerScreen>
       // Capped at the target: extra sets on one exercise are real work, but
       // they do not make up for another exercise's missing ones.
       done += logged < exercise.targetSets ? logged : exercise.targetSets;
-      if (_activeSetNumber(exercise, session) != null) left.add(exercise.name);
+      if (_activeSetNumber(exercise, session) != null) {
+        left.add(exerciseDisplayName(exercise.name));
+      }
     }
     if (done >= total) return true;
 
@@ -1163,7 +1166,7 @@ class _SessionLoggerScreenState extends ConsumerState<SessionLoggerScreen>
       context: context,
       builder: (dialogContext) => AlertDialog(
         key: const Key('logger.restartConfirm'),
-        title: Text('Restart ${exercise.name}?'),
+        title: Text('Restart ${exerciseDisplayName(exercise.name)}?'),
         content: Text(
           'Your $count for this exercise will be cleared. '
           'The rest of your session is kept.',
@@ -1226,7 +1229,8 @@ class _SessionLoggerScreenState extends ConsumerState<SessionLoggerScreen>
     messenger.showSnackBar(
       SnackBar(
         content: Text(
-          "Couldn't finish restarting ${exercise.name}. ${describeError(error)}",
+          "Couldn't finish restarting ${exerciseDisplayName(exercise.name)}. "
+          '${describeError(error)}',
         ),
       ),
     );
@@ -1568,7 +1572,7 @@ class _SessionLoggerScreenState extends ConsumerState<SessionLoggerScreen>
     // drawn depends on it.
     final next = _activeSetNumber(exercise, session);
     _restAlertBody = next != null
-        ? 'Next: set $next of ${exercise.name}'
+        ? 'Next: set $next of ${exerciseDisplayName(exercise.name)}'
         : 'Time for your next exercise.';
     final isLast = index == exercises.length - 1;
     // A switch replaces the exercise in the plan, so only a session whose

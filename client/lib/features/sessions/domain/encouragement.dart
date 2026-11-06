@@ -1,5 +1,6 @@
 import '../../plans/domain/workout_plan.dart';
 import 'active_session.dart';
+import '../../exercises/domain/exercise_labels.dart';
 
 /// What the logger says once the exercise on screen is fully logged.
 class Encouragement {
@@ -47,7 +48,7 @@ Encouragement? encouragementFor({
   }
 
   final next = index + 1 < exercises.length
-      ? 'Up next: ${exercises[index + 1].name}'
+      ? 'Up next: ${exerciseDisplayName(exercises[index + 1].name)}'
       : null;
 
   // Rounded up, so five exercises are halfway at three rather than at two
@@ -61,7 +62,7 @@ Encouragement? encouragementFor({
 
   return Encouragement(
     headline: pick(_exerciseLines)(
-      _SetCount(exercise.name, exercise.targetSets),
+      _SetCount(exerciseDisplayName(exercise.name), exercise.targetSets),
     ),
     detail: next,
   );

@@ -89,7 +89,7 @@ void main() {
       );
       final subtitle = tester.widget<RichText>(
         find.descendant(
-          of: find.textContaining('pectorals'),
+          of: find.textContaining('Chest'),
           matching: find.byType(RichText),
         ),
       );
