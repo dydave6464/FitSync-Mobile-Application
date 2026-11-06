@@ -6,7 +6,9 @@ const { getActivePlan, savePlan, createPlanFromSession } = require('../db/plans'
 const { getProfile } = require('../db/profile');
 const { readRankerHistory } = require('../db/ranker-history');
 const { getActiveSession } = require('../db/sessions');
-const { loadSwapContext, listAlternatives, swapPlanExercise } = require('../db/plan-swap');
+const {
+  loadSwapContext, listAlternatives, swapPlanExercise, revertPlanSwap,
+} = require('../db/plan-swap');
 
 const DEFAULT_LIMIT = 20;
 const MAX_LIMIT = 50;
@@ -221,16 +223,30 @@ module.exports = function buildPlansRouter(deps) {
         throw AppError.badRequest('EXERCISE_REQUIRED', 'exerciseId is required.');
       }
 
+      // revert: true is the app's Undo: exerciseId is then the exercise to go
+      // back to, and the swap being undone must be the slot's latest label.
+      const revert = req.body?.revert;
+      if (revert !== undefined && typeof revert !== 'boolean') {
+        throw invalidPlanField('revert', 'revert must be true or false.');
+      }
+
       // swapPlanExercise throws AppError.badRequest('EXERCISE_NOT_ALLOWED')
       // itself -- the same way src/db/plans.js and src/db/users.js signal
       // expected failures from this layer -- so next(err) carries it to the
       // error handler unchanged. Do not add a translating try/catch here.
+      // revertPlanSwap throws its 409 SWAP_NOT_UNDOABLE the same way.
       // deps.logger, so a label that fails to record is visible in the server
       // log rather than silently absent from the training data.
-      await swapPlanExercise(deps.pool, ctx, exerciseId, { logger: deps.logger });
+      const { previous } = revert === true
+        ? await revertPlanSwap(deps.pool, ctx, exerciseId)
+        : await swapPlanExercise(deps.pool, ctx, exerciseId, { logger: deps.logger });
 
       res.json({
-        data: { plan: withUrls(await getActivePlan(deps.pool, req.user.userId)) },
+        data: {
+          plan: withUrls(await getActivePlan(deps.pool, req.user.userId)),
+          // What this call took out of the slot, for the app's Undo.
+          previous,
+        },
       });
     } catch (err) { next(err); }
   });

@@ -7,7 +7,10 @@ const { testDbConfig, dropAllTables } = require('./helpers/test-db');
 const { seedExercises } = require('../src/db/seed-exercises');
 const { seedInjuries } = require('../src/db/seed-injuries');
 const { savePlan, getActivePlan } = require('../src/db/plans');
-const { loadSwapContext, listAlternatives, swapPlanExercise } = require('../src/db/plan-swap');
+const {
+  loadSwapContext, listAlternatives, swapPlanExercise, revertPlanSwap,
+} = require('../src/db/plan-swap');
+const { readRankerHistory } = require('../src/db/ranker-history');
 const FIXTURE = require('./fixtures/seeds/manifest-fixture.json');
 
 test('swap candidates', async (t) => {
@@ -233,6 +236,190 @@ test('swap candidates', async (t) => {
 
     assert.equal(errors.length, 1,
       'a dataset that stops filling must not do so silently');
+  });
+
+  // Undo for a swap (PT-26). The slot's ctx is re-read before every call,
+  // exactly as the route does per request.
+  const swapSlot = async (planExerciseId, exerciseId) => swapPlanExercise(
+    pool, await loadSwapContext(pool, userId, planExerciseId), exerciseId,
+  );
+  const revertSlot = async (planExerciseId, exerciseId) => revertPlanSwap(
+    pool, await loadSwapContext(pool, userId, planExerciseId), exerciseId,
+  );
+  const slotExercise = async (planExerciseId) => {
+    const [[row]] = await pool.query(
+      'SELECT exercise_id FROM plan_exercises WHERE plan_exercise_id = ?', [planExerciseId],
+    );
+    return row.exercise_id;
+  };
+  const swapCount = async () => {
+    const [[row]] = await pool.query('SELECT COUNT(*) AS n FROM plan_swaps');
+    return Number(row.n);
+  };
+  /// An exercise the slot may move to from where it is now, other than
+  /// [not] -- what a second swap from the sheet would pick. The fixture's
+  /// muscle group holds only the pair, and its only other body-weight row is
+  /// the pair's sibling, so the user is given every piece of kit and the
+  /// sheet is searched: a search drops the muscle filter, and '%' matches
+  /// every name.
+  const thirdFor = async (planExerciseId, not) => {
+    await pool.query(
+      'INSERT IGNORE INTO user_equipment (user_id, equipment_id) SELECT ?, equipment_id FROM equipment',
+      [userId],
+    );
+    const ctx = await loadSwapContext(pool, userId, planExerciseId);
+    const offered = await listAlternatives(pool, ctx, { q: '%', limit: 50 });
+    const pick = offered.find((o) => o.exerciseId !== not);
+    assert.ok(pick, 'the fixture must offer a third exercise for this slot');
+    return pick.exerciseId;
+  };
+  const isNotUndoable = (err) => err.code === 'SWAP_NOT_UNDOABLE'
+    && err.status === 409
+    && err.message === "That change can't be undone now.";
+
+  await t.test('a swap returns the exercise it replaced as previous', async () => {
+    const planExerciseId = await reset();
+    const result = await swapSlot(planExerciseId, other.exercise_id);
+    assert.deepEqual(result, {
+      previous: { exerciseId: inPlan.exercise_id, name: inPlan.name },
+    });
+  });
+
+  await t.test('reverting puts the previous exercise back and removes the swap label and its alternatives',
+    async () => {
+      const planExerciseId = await reset();
+      await swapSlot(planExerciseId, other.exercise_id);
+      const [[label]] = await pool.query('SELECT swap_id FROM plan_swaps');
+      const [offered] = await pool.query(
+        'SELECT 1 FROM plan_swap_alternatives WHERE swap_id = ?', [label.swap_id],
+      );
+      assert.ok(offered.length > 0, 'without alternatives the cascade below proves nothing');
+
+      const result = await revertSlot(planExerciseId, inPlan.exercise_id);
+
+      assert.deepEqual(result, {
+        previous: { exerciseId: other.exercise_id, name: other.name },
+      }, 'previous is the exercise just undone');
+      assert.equal(await slotExercise(planExerciseId), inPlan.exercise_id);
+      const [labels] = await pool.query('SELECT 1 FROM plan_swaps WHERE swap_id = ?', [label.swap_id]);
+      assert.equal(labels.length, 0, 'the swap label is gone');
+      const [alts] = await pool.query(
+        'SELECT 1 FROM plan_swap_alternatives WHERE swap_id = ?', [label.swap_id],
+      );
+      assert.equal(alts.length, 0, 'and its choice set with it');
+    });
+
+  await t.test('a revert records no new label', async () => {
+    const planExerciseId = await reset();
+    await swapSlot(planExerciseId, other.exercise_id);
+    await revertSlot(planExerciseId, inPlan.exercise_id);
+    assert.equal(await swapCount(), 0, 'an undone swap is not a swapped signal');
+  });
+
+  await t.test('an undone swap is not counted by the ranker history', async () => {
+    const planExerciseId = await reset();
+    // X -> A, then A -> B, then undo A -> B. X = inPlan, A = other.
+    await swapSlot(planExerciseId, other.exercise_id);
+    const b = await thirdFor(planExerciseId, inPlan.exercise_id);
+    await swapSlot(planExerciseId, b);
+    assert.equal(
+      (await readRankerHistory(pool, userId)).exercises[String(other.exercise_id)]?.swapped, 1,
+      'the A -> B label counts before the undo',
+    );
+
+    await revertSlot(planExerciseId, other.exercise_id);
+
+    const history = await readRankerHistory(pool, userId);
+    assert.equal(history.exercises[String(other.exercise_id)]?.swapped ?? 0, 0,
+      'A was not rejected after all');
+    assert.equal(history.exercises[String(inPlan.exercise_id)]?.swapped, 1,
+      'the earlier X -> A label survives');
+    const [labels] = await pool.query(
+      'SELECT rejected_exercise_id, chosen_exercise_id FROM plan_swaps',
+    );
+    assert.deepEqual(labels.map((r) => [r.rejected_exercise_id, r.chosen_exercise_id]),
+      [[inPlan.exercise_id, other.exercise_id]]);
+  });
+
+  await t.test('a revert is refused once the slot was swapped again', async () => {
+    const planExerciseId = await reset();
+    await swapSlot(planExerciseId, other.exercise_id);                 // A -> B
+    const c = await thirdFor(planExerciseId, inPlan.exercise_id);
+    await swapSlot(planExerciseId, c);                                 // B -> C
+
+    await assert.rejects(() => revertSlot(planExerciseId, inPlan.exercise_id), isNotUndoable);
+    assert.equal(await slotExercise(planExerciseId), c, 'the slot is untouched');
+    assert.equal(await swapCount(), 2, 'and no label was removed');
+  });
+
+  await t.test('a revert is refused for an exercise the swap did not replace', async () => {
+    const planExerciseId = await reset();
+    await swapSlot(planExerciseId, other.exercise_id);
+    const stranger = await thirdFor(planExerciseId, inPlan.exercise_id);
+
+    await assert.rejects(() => revertSlot(planExerciseId, stranger), isNotUndoable);
+    assert.equal(await slotExercise(planExerciseId), other.exercise_id);
+    assert.equal(await swapCount(), 1);
+  });
+
+  await t.test('a revert is refused when the swap label was never recorded', async () => {
+    const planExerciseId = await reset();
+    await swapSlot(planExerciseId, other.exercise_id);
+    await pool.query('DELETE FROM plan_swaps');
+
+    await assert.rejects(() => revertSlot(planExerciseId, inPlan.exercise_id), isNotUndoable);
+    assert.equal(await slotExercise(planExerciseId), other.exercise_id,
+      'without the label nothing proves the old exercise belonged here');
+  });
+
+  await t.test('a revert is refused when the slot no longer holds what the swap chose', async () => {
+    const planExerciseId = await reset();
+    await swapSlot(planExerciseId, other.exercise_id);
+    const elsewhere = await thirdFor(planExerciseId, inPlan.exercise_id);
+    // Changed without a label, as a writer that records none would leave it.
+    await pool.query(
+      'UPDATE plan_exercises SET exercise_id = ? WHERE plan_exercise_id = ?',
+      [elsewhere, planExerciseId],
+    );
+
+    await assert.rejects(() => revertSlot(planExerciseId, inPlan.exercise_id), isNotUndoable);
+    assert.equal(await slotExercise(planExerciseId), elsewhere);
+    assert.equal(await swapCount(), 1);
+  });
+
+  await t.test('a revert does not re-check the strength-only filter', async () => {
+    const planExerciseId = await reset();
+    await swapSlot(planExerciseId, other.exercise_id);
+    // The original is now a non-strength row, as a cardio_core plan's are.
+    const [savedRows] = await pool.query(
+      'SELECT category, is_manual FROM exercise_categories WHERE exercise_id = ?',
+      [inPlan.exercise_id],
+    );
+    const saved = savedRows[0] ?? null;
+    await pool.query(
+      `INSERT INTO exercise_categories (exercise_id, category) VALUES (?, 'stretch')
+       ON DUPLICATE KEY UPDATE category = 'stretch'`,
+      [inPlan.exercise_id],
+    );
+    try {
+      const ctx = await loadSwapContext(pool, userId, planExerciseId);
+      const offered = await listAlternatives(pool, ctx, { q: inPlan.name, limit: 50 });
+      assert.ok(!offered.some((r) => r.exerciseId === inPlan.exercise_id),
+        'a forward swap would refuse it, so the revert is what is being tested');
+
+      await revertSlot(planExerciseId, inPlan.exercise_id);
+
+      assert.equal(await slotExercise(planExerciseId), inPlan.exercise_id);
+    } finally {
+      if (saved === null) {
+        await pool.query('DELETE FROM exercise_categories WHERE exercise_id = ?', [inPlan.exercise_id]);
+      } else {
+        await pool.query(
+          'UPDATE exercise_categories SET category = ?, is_manual = ? WHERE exercise_id = ?',
+          [saved.category, saved.is_manual, inPlan.exercise_id],
+        );
+      }
+    }
   });
 
   await t.test('refuses an exercise already in the plan', async () => {
