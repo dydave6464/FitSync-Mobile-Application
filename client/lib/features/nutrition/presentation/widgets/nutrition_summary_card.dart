@@ -20,20 +20,36 @@ class NutritionSummaryCard extends StatelessWidget {
     final eaten = day.totals;
     final missing = describeMissing(day.targetMissing);
 
+    // The ring grows with the text, up to 1.6x: past that the bars beside
+    // it would run out of room, and the words inside shrink to fit instead.
+    final k = MediaQuery.textScalerOf(context).scale(1).clamp(1.0, 1.6);
+    final eatenText = groupThousands(eaten.kcal.toDouble());
+    final String spoken;
+    if (target == null) {
+      spoken = '$eatenText kcal eaten';
+    } else {
+      final left = target.kcal - eaten.kcal;
+      spoken = '$eatenText of ${groupThousands(target.kcal.toDouble())} kcal eaten, '
+          '${groupThousands(left.abs().toDouble())} ${left >= 0 ? 'left' : 'over'}';
+    }
+
     final ring = FsRing(
-      size: 76,
-      stroke: 9,
+      size: 76 * k,
+      stroke: 9 * k,
       color: t.accent,
       value: target == null || target.kcal == 0 ? 0 : eaten.kcal / target.kcal,
+      // One line for a screen reader, saying what is left or over: the ring
+      // stops at full, so going over looks the same as hitting the target.
+      semanticLabel: spoken,
       // The words go in the clear middle, not the whole 76 dp box: inside
       // the 9 dp stroke that is a circle 29 dp in radius, and a 46 x 34 box
       // is the widest that fits it for two lines (23^2 + 17^2 < 29^2). Laid
       // out against the full box, "/ 2,050 kcal" ran into the stroke. Each
       // line shrinks only as far as it must: at normal text a three-digit
       // total keeps its 18 px, four digits ease to about 16.5-17.5 px, and
-      // the label lands near the prototype's 8 px.
+      // the label lands near the prototype's 8 px. All of it scales by k.
       child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 15, vertical: 21),
+        padding: EdgeInsets.symmetric(horizontal: 15 * k, vertical: 21 * k),
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
@@ -42,14 +58,16 @@ class NutritionSummaryCard extends StatelessWidget {
             // and pressed down on the box instead. A set line height, too:
             // the theme's 1.43 stacked them taller than the prototype does.
             ConstrainedBox(
-              constraints: const BoxConstraints(maxHeight: 22.5),
-              child: FittedBox(child: Text(groupThousands(eaten.kcal.toDouble()),
+              constraints: BoxConstraints(maxHeight: 22.5 * k),
+              child: FittedBox(child: Text(eatenText,
                   style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w700, height: 1.2))),
             ),
             ConstrainedBox(
-              constraints: const BoxConstraints(maxHeight: 11.5),
+              constraints: BoxConstraints(maxHeight: 11.5 * k),
+              // text2, not text3: on the accent card's tint text3 falls
+              // under 4.5:1 in both themes.
               child: FittedBox(child: Text(target == null ? 'kcal' : '/ ${groupThousands(target.kcal.toDouble())} kcal',
-                  style: TextStyle(fontSize: 9, color: t.text3, height: 1.2))),
+                  style: TextStyle(fontSize: 9, color: t.text2, height: 1.2))),
             ),
           ],
         ),
