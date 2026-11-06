@@ -7,9 +7,12 @@ import 'package:http/testing.dart';
 import 'package:fitsync/core/theme.dart';
 import 'package:fitsync/core/widgets/fs_kit.dart';
 import 'package:fitsync/core/api_client.dart';
+import 'package:fitsync/core/api_exception.dart';
 import 'package:fitsync/core/token_store.dart';
+import 'package:fitsync/features/exercises/domain/exercise.dart';
 import 'package:fitsync/features/exercises/presentation/exercise_detail_screen.dart';
 import 'package:fitsync/features/exercises/presentation/providers.dart';
+import 'package:fitsync/features/plans/data/plan_repository.dart';
 import 'package:fitsync/features/plans/domain/exercise_alternative.dart';
 import 'package:fitsync/features/plans/domain/workout_plan.dart';
 import 'package:fitsync/features/plans/presentation/exercise_swap_sheet.dart';
@@ -149,9 +152,60 @@ ApiClient _hermeticClient() => ApiClient(
   client: MockClient((_) async => http.Response('{"data":{}}', 200)),
 );
 
+/// Swaps and undoes against [_plan], recording each, as the server would
+/// answer: a swap names the exercise it replaced, in the catalogue's words.
+class _SwapRepo implements PlanRepository {
+  final swaps = <(int, int)>[];
+  final undos = <(int, int)>[];
+
+  /// Thrown by the next `undoSwap` calls, one per call, in order.
+  final undoFailures = <ApiException>[];
+
+  /// False answers as a server from before Undo: no `previous`.
+  bool namesPrevious = true;
+
+  @override
+  String get baseUrl => 'http://test.local';
+
+  @override
+  Future<SwapResult> swap(int planExerciseId, int exerciseId) async {
+    swaps.add((planExerciseId, exerciseId));
+    final previous = _plan.exercises.firstWhere(
+      (e) => e.planExerciseId == planExerciseId,
+    );
+    if (!namesPrevious) return const SwapResult(plan: _plan);
+    return SwapResult(
+      plan: _plan,
+      previousExerciseId: previous.exerciseId,
+      previousName: previous.name.toLowerCase(),
+    );
+  }
+
+  @override
+  Future<WorkoutPlan> undoSwap(
+    int planExerciseId,
+    int previousExerciseId,
+  ) async {
+    undos.add((planExerciseId, previousExerciseId));
+    if (undoFailures.isNotEmpty) throw undoFailures.removeAt(0);
+    return _plan;
+  }
+
+  @override
+  dynamic noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);
+}
+
+const _boxSquat = ExerciseAlternative(
+  exerciseId: 12,
+  name: 'box squat',
+  muscleGroup: 'quadriceps',
+);
+
 Future<void> _pump(
   WidgetTester tester,
   WorkoutPlan? plan, {
+  PlanRepository? repo,
+  void Function()? onPlanLoad,
   List<ExerciseAlternative>? alternatives,
   VoidCallback? onGoToProfile,
   Set<String> completedDays = const <String>{},
@@ -164,7 +218,24 @@ Future<void> _pump(
       overrides: [
         apiClientProvider.overrideWithValue(_hermeticClient()),
         if (profile != null) profileProvider.overrideWith(profile),
-        activePlanProvider.overrideWith((ref) async => plan),
+        if (repo != null) ...[
+          planRepositoryProvider.overrideWithValue(repo),
+          exerciseDetailProvider.overrideWith(
+            (ref, id) async => ExerciseDetail(
+              exerciseId: id,
+              name: 'box squat',
+              muscleGroup: 'quadriceps',
+              equipment: null,
+              thumbnailUrl: null,
+              animationUrl: null,
+              cues: const [],
+            ),
+          ),
+        ],
+        activePlanProvider.overrideWith((ref) async {
+          onPlanLoad?.call();
+          return plan;
+        }),
         // The screen now also watches these two -- the session card's
         // Start/Resume label and the week strip's filled dots.
         activeSessionProvider.overrideWith(() => _NoSessionController()),
@@ -673,5 +744,132 @@ void main() {
     );
 
     expect(find.textContaining('4 days a week'), findsOneWidget);
+  });
+
+  group('Undo after a swap (PT-26)', () {
+    Future<void> swapRow(WidgetTester tester, int planExerciseId) async {
+      await tester.tap(find.byKey(Key('swap.open.$planExerciseId')));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const Key('swap.alt.12')));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const Key('swap.preview.confirm')));
+      await tester.pumpAndSettle();
+    }
+
+    testWidgets('the Swapped to bar offers Undo for about 5 seconds', (
+      tester,
+    ) async {
+      final repo = _SwapRepo();
+      await _pump(tester, _plan, repo: repo, alternatives: const [_boxSquat]);
+
+      await swapRow(tester, 602);
+
+      expect(repo.swaps, [(602, 12)]);
+      expect(find.text('Swapped to Box squat'), findsOneWidget);
+      expect(find.widgetWithText(SnackBarAction, 'Undo'), findsOneWidget);
+      expect(
+        tester.widget<SnackBar>(find.byType(SnackBar)).duration,
+        const Duration(seconds: 5),
+      );
+    });
+
+    testWidgets('Undo switches back with revert and refreshes the plan', (
+      tester,
+    ) async {
+      final repo = _SwapRepo();
+      var loads = 0;
+      await _pump(
+        tester,
+        _plan,
+        repo: repo,
+        alternatives: const [_boxSquat],
+        onPlanLoad: () => loads++,
+      );
+      await swapRow(tester, 602);
+      final before = loads;
+
+      await tester.tap(find.widgetWithText(SnackBarAction, 'Undo'));
+      await tester.pumpAndSettle();
+
+      expect(repo.undos, [(602, 102)]);
+      expect(loads, greaterThan(before));
+      // The card changing back is the feedback; nothing more is said.
+      expect(find.byType(SnackBar), findsNothing);
+    });
+
+    testWidgets('an Undo the server refuses says so, without Try again', (
+      tester,
+    ) async {
+      final repo = _SwapRepo()
+        ..undoFailures.add(
+          const ApiException(
+            'SWAP_NOT_UNDOABLE',
+            "That change can't be undone now.",
+          ),
+        );
+      await _pump(tester, _plan, repo: repo, alternatives: const [_boxSquat]);
+      await swapRow(tester, 602);
+
+      await tester.tap(find.widgetWithText(SnackBarAction, 'Undo'));
+      await tester.pumpAndSettle();
+
+      expect(
+        find.text(
+          "Couldn't switch back to Push-up. That change can't be undone now.",
+        ),
+        findsOneWidget,
+      );
+      expect(find.widgetWithText(SnackBarAction, 'Try again'), findsNothing);
+    });
+
+    testWidgets('an Undo that does not reach the server offers Try again', (
+      tester,
+    ) async {
+      final repo = _SwapRepo()
+        ..undoFailures.add(const ApiException('NETWORK_ERROR', 'offline'));
+      await _pump(tester, _plan, repo: repo, alternatives: const [_boxSquat]);
+      await swapRow(tester, 602);
+
+      await tester.tap(find.widgetWithText(SnackBarAction, 'Undo'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.widgetWithText(SnackBarAction, 'Try again'));
+      await tester.pumpAndSettle();
+
+      expect(repo.undos, [(602, 102), (602, 102)]);
+    });
+
+    testWidgets('a swap the server does not say it replaced has no Undo', (
+      tester,
+    ) async {
+      final repo = _SwapRepo()..namesPrevious = false;
+      await _pump(tester, _plan, repo: repo, alternatives: const [_boxSquat]);
+
+      await swapRow(tester, 602);
+
+      expect(find.text('Swapped to Box squat'), findsOneWidget);
+      expect(find.widgetWithText(SnackBarAction, 'Undo'), findsNothing);
+    });
+
+    testWidgets('a second swap replaces the first bar, and with a screen '
+        'reader it stays up', (tester) async {
+      tester.platformDispatcher.accessibilityFeaturesTestValue =
+          const FakeAccessibilityFeatures(accessibleNavigation: true);
+      addTearDown(
+        tester.platformDispatcher.clearAccessibilityFeaturesTestValue,
+      );
+      final repo = _SwapRepo();
+      await _pump(tester, _plan, repo: repo, alternatives: const [_boxSquat]);
+
+      await swapRow(tester, 602);
+      await swapRow(tester, 601);
+      await tester.pump(const Duration(seconds: 10));
+      await tester.pumpAndSettle();
+
+      expect(find.byType(SnackBar), findsOneWidget);
+      await tester.tap(find.widgetWithText(SnackBarAction, 'Undo'));
+      await tester.pumpAndSettle();
+      // Only the latest swap is undoable.
+      expect(repo.undos, [(601, 101)]);
+    });
   });
 }

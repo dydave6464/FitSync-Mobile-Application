@@ -94,6 +94,8 @@ class _FakeRoutineRepo implements RoutineRepository {
       throw UnimplementedError();
   @override
   Future<void> remove(int habitId) async => throw UnimplementedError();
+  @override
+  Future<Habit> restore(int habitId) async => throw UnimplementedError();
 }
 
 Widget _harness(

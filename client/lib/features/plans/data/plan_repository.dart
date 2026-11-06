@@ -2,6 +2,21 @@ import '../../../core/api_client.dart';
 import '../domain/exercise_alternative.dart';
 import '../domain/workout_plan.dart';
 
+/// A swap that landed: the updated plan, and the exercise the swap replaced
+/// in its catalogue name. The previous exercise is null only from a server
+/// that predates Undo, which does not say; then there is nothing to undo to.
+class SwapResult {
+  const SwapResult({
+    required this.plan,
+    this.previousExerciseId,
+    this.previousName,
+  });
+
+  final WorkoutPlan plan;
+  final int? previousExerciseId;
+  final String? previousName;
+}
+
 class PlanRepository {
   PlanRepository(this._api);
 
@@ -38,11 +53,33 @@ class PlanRepository {
   }
 
   /// Replaces one exercise and returns the whole updated plan, so the caller
-  /// replaces state in a single hop rather than reconciling a partial update.
-  Future<WorkoutPlan> swap(int planExerciseId, int exerciseId) async {
+  /// replaces state in a single hop rather than reconciling a partial update,
+  /// with the exercise it replaced, which [undoSwap] puts back.
+  Future<SwapResult> swap(int planExerciseId, int exerciseId) async {
     final data = await _api.patchJson(
       '/api/v1/plans/exercises/$planExerciseId',
       {'exerciseId': exerciseId},
+    );
+    final previous = data['previous'] as Map<String, dynamic>?;
+    return SwapResult(
+      plan: WorkoutPlan.fromJson(data['plan'] as Map<String, dynamic>),
+      previousExerciseId: previous?['exerciseId'] as int?,
+      previousName: previous?['name'] as String?,
+    );
+  }
+
+  /// Undo for [swap]: puts [previousExerciseId] back in the row and takes
+  /// the swap out of the ranker's history, so an undone swap does not read
+  /// as the user rejecting it. The server refuses with 409
+  /// `SWAP_NOT_UNDOABLE` once the row has moved on (swapped again, or its
+  /// swap was never recorded).
+  Future<WorkoutPlan> undoSwap(
+    int planExerciseId,
+    int previousExerciseId,
+  ) async {
+    final data = await _api.patchJson(
+      '/api/v1/plans/exercises/$planExerciseId',
+      {'exerciseId': previousExerciseId, 'revert': true},
     );
     return WorkoutPlan.fromJson(data['plan'] as Map<String, dynamic>);
   }

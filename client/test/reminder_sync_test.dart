@@ -134,6 +134,9 @@ class _FakeRoutineRepository implements RoutineRepository {
   Future<void> remove(int habitId) => throw UnimplementedError();
 
   @override
+  Future<Habit> restore(int habitId) => throw UnimplementedError();
+
+  @override
   Future<void> check(int habitId, {String? date}) => throw UnimplementedError();
 
   @override

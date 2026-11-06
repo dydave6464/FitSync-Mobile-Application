@@ -23,24 +23,34 @@ String _altSubtitle(ExerciseAlternative alt) => switch (alt.equipment) {
   null => muscleLabel(alt.muscleGroup),
 };
 
+/// What a swap that landed tells the screen that opened the sheet: the name
+/// swapped to, and the exercise it replaced, for Undo. Both names are in the
+/// library's words. The previous exercise is null only from a server that
+/// predates Undo; then there is nothing to switch back to.
+typedef SwapOutcome = ({
+  String swappedTo,
+  int? previousExerciseId,
+  String? previousName,
+});
+
 /// Replaces one exercise in the active plan.
 ///
 /// Alternatives lead and the search field starts empty: the catalogue's names
 /// are not guessable (one exercise is named `quads`, and the plain bodyweight
 /// squat is filed under glutes), so most swaps should need no typing.
 /// Opens [ExerciseSwapSheet], the one way the app does: from the Plan tab
-/// and from the logger. Resolves to the name swapped to, or null.
+/// and from the logger. Resolves to the swap that landed, or null.
 ///
 /// Material's handle is off: it sits outside the sheet's child, where a drag
 /// on it would close the sheet mid-swap past the hold below, and it would
 /// add its 48 dp on top of the height the sheet is tuned to. The sheet draws
 /// the kit's handle itself instead (PT-22).
-Future<String?> showExerciseSwapSheet(
+Future<SwapOutcome?> showExerciseSwapSheet(
   BuildContext context, {
   required int planExerciseId,
   required String exerciseName,
   VoidCallback? onGoToProfile,
-}) => showModalBottomSheet<String>(
+}) => showModalBottomSheet<SwapOutcome>(
   context: context,
   isScrollControlled: true,
   showDragHandle: false,
@@ -167,7 +177,7 @@ class _ExerciseSwapSheetState extends ConsumerState<ExerciseSwapSheet> {
     final container = ProviderScope.containerOf(context, listen: false);
 
     try {
-      await ref
+      final result = await ref
           .read(planRepositoryProvider)
           .swap(widget.planExerciseId, alt.exerciseId);
       container.invalidate(activePlanProvider);
@@ -178,7 +188,14 @@ class _ExerciseSwapSheetState extends ConsumerState<ExerciseSwapSheet> {
       // invalidates every element of it, not one keyed instance.
       container.invalidate(alternativesProvider);
       if (!mounted) return;
-      Navigator.of(context).pop(exerciseDisplayName(alt.name));
+      final previousName = result.previousName;
+      Navigator.of(context).pop((
+        swappedTo: exerciseDisplayName(alt.name),
+        previousExerciseId: result.previousExerciseId,
+        previousName: previousName == null
+            ? null
+            : exerciseDisplayName(previousName),
+      ));
     } catch (err) {
       // Stay open with the message: closing would throw away the choice they
       // just made, exactly as onboarding stays on a rejected step.

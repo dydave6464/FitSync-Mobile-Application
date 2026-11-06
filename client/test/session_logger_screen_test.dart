@@ -349,9 +349,9 @@ class _SwapBackRepository extends RecordingPlanRepository {
   final Map<int, WorkoutPlan> plans;
 
   @override
-  Future<WorkoutPlan> swap(int planExerciseId, int exerciseId) async {
+  Future<SwapResult> swap(int planExerciseId, int exerciseId) async {
     swaps.add((planExerciseId, exerciseId));
-    return active = plans[exerciseId]!;
+    return SwapResult(plan: active = plans[exerciseId]!);
   }
 }
 
@@ -430,11 +430,11 @@ class RecordingPlanRepository implements PlanRepository {
   }) async => alternativeRows;
 
   @override
-  Future<WorkoutPlan> swap(int planExerciseId, int exerciseId) async {
+  Future<SwapResult> swap(int planExerciseId, int exerciseId) async {
     swaps.add((planExerciseId, exerciseId));
     await swapGate?.future;
     active = swapped;
-    return swapped!;
+    return SwapResult(plan: swapped!);
   }
 
   @override
