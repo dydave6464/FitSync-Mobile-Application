@@ -15,6 +15,7 @@ import '../../exercises/presentation/exercise_list_screen.dart'
 import '../../health/domain/health_answers.dart';
 import '../../health/presentation/providers.dart';
 import '../../onboarding/presentation/edit_scaffold.dart';
+import '../../onboarding/presentation/steps/about_checks.dart';
 import '../../onboarding/presentation/steps/about_step.dart';
 import '../../onboarding/presentation/steps/goal_step.dart';
 import '../../onboarding/presentation/steps/health_step.dart';
@@ -473,8 +474,25 @@ abstract class _EditorState<W extends ConsumerStatefulWidget>
   /// and reports success over a write it skipped.
   String? get blocker => null;
 
+  /// A question to ask before saving -- a number that looks like a slip --
+  /// shown where a save error would be. Non-null stops this Save; the
+  /// editor decides when the same answer may go through.
+  String? queryBeforeSave() => null;
+
+  /// A failed save in words a user can act on.
+  String describeSaveError(ApiException error) => userMessage(error);
+
+  /// Called with a failed save's error, inside the setState that shows it,
+  /// so an editor can point at the answer the server turned down.
+  void onSaveFailed(ApiException error) {}
+
   Future<void> _onSave() async {
     if (_busy) return;
+    final query = queryBeforeSave();
+    if (query != null) {
+      setState(() => _error = query);
+      return;
+    }
     setState(() {
       _busy = true;
       _error = null;
@@ -491,8 +509,9 @@ abstract class _EditorState<W extends ConsumerStatefulWidget>
     } on ApiException catch (error) {
       if (!mounted) return;
       setState(() {
-        _error = userMessage(error);
+        _error = describeSaveError(error);
         _busy = false;
+        onSaveFailed(error);
       });
       return;
     }
@@ -676,6 +695,13 @@ class _AboutEditorState extends _EditorState<_AboutEditor> with _UnitSwitch {
   /// The unit the weights are on screen in, as of the last build.
   WeightUnit _unit = WeightUnit.kg;
 
+  /// What to say under an answer that needs checking, by API field name.
+  Map<String, String> _fieldErrors = const {};
+
+  /// The answers as they were when [_fieldErrors] were set. A Save with the
+  /// queried numbers unchanged goes ahead: the user meant them.
+  AboutAnswers? _queried;
+
   @override
   String get title => 'Body metrics';
 
@@ -707,6 +733,7 @@ class _AboutEditorState extends _EditorState<_AboutEditor> with _UnitSwitch {
       // A rebuild per keystroke, so back and Save know what is on screen.
       onChanged: (value) {
         _value = value;
+        _dropAnsweredErrors();
         // A kg/lb switch rewrites the weight fields while the step itself is
         // being rebuilt, where a setState here would assert; the dirty flag
         // and Save's hint catch up a frame later.
@@ -722,12 +749,55 @@ class _AboutEditorState extends _EditorState<_AboutEditor> with _UnitSwitch {
       // The same rule as onboarding: goal weight is asked outright only when
       // losing weight is among the saved goals.
       goals: profile.goals,
+      // The estimate under the cards moves with the goal, as the food log's
+      // own target does.
+      mainGoal: profile.mainGoal,
+      fieldErrors: _fieldErrors,
       // Not part of the form's working value: it is a display preference, so
       // it saves on tap and survives a cancelled edit rather than sitting in
       // _value waiting for Save.
       unit: shownUnit(profile),
       onUnitChanged: switchUnit,
     );
+  }
+
+  /// An answer changed since it was queried loses its message; once none
+  /// is left, so does the line above Save that pointed at them. Called from
+  /// the step's report, so no setState of its own: the caller's follows.
+  void _dropAnsweredErrors() {
+    final queried = _queried;
+    if (_fieldErrors.isEmpty || queried == null) return;
+    final left = standingFieldErrors(_fieldErrors, queried, _value);
+    if (left.length == _fieldErrors.length) return;
+    _fieldErrors = left;
+    if (left.isEmpty) _error = null;
+  }
+
+  /// The same soft ranges as onboarding: a slip (17 cm, 7 kg) is queried
+  /// once, and a second Save with the same numbers keeps them.
+  @override
+  String? queryBeforeSave() {
+    final problems = aboutRangeProblems(_value, _unit);
+    if (problems.isEmpty) return null;
+    final queried = _queried;
+    if (queried != null && sameAboutAnswers(problems.keys, queried, _value)) {
+      return null;
+    }
+    _fieldErrors = problems;
+    _queried = _value;
+    return rangeQueryMessage(problems.keys, button: 'Save');
+  }
+
+  @override
+  String describeSaveError(ApiException error) => plainProfileError(error);
+
+  /// A rejected answer is also flagged under its own card.
+  @override
+  void onSaveFailed(ApiException error) {
+    final field = rejectedProfileField(error);
+    if (field == null || aboutValue(_value, field) == null) return;
+    _fieldErrors = {field: rejectedFieldMessage};
+    _queried = _value;
   }
 
   /// Height and weight drive every calorie target, so a blank one is asked

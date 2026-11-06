@@ -1405,4 +1405,102 @@ void main() {
       }
     });
   }
+
+  // AO-13 / AO-8: Body metrics saved a slip (17 cm) without a word, named a
+  // rejected field by its API name, and estimated targets with no goal.
+  group('Body metrics checks its numbers like onboarding', () {
+    Future<void> save(WidgetTester tester) async {
+      await tester.ensureVisible(find.byKey(const Key('save')));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const Key('save')));
+      await tester.pumpAndSettle();
+    }
+
+    testWidgets('an implausible height is queried, then kept on a second '
+        'Save', (tester) async {
+      final patches = <Map<String, dynamic>>[];
+      await _pump(tester, patches: patches, heightCm: 170, weightKg: 70);
+      await _openRow(tester, const Key('edit.about'));
+
+      await tester.enterText(find.byKey(const Key('heightCm')), '17');
+      await tester.pumpAndSettle();
+      await save(tester);
+
+      expect(patches, isEmpty, reason: 'nothing saved until it is checked');
+      expect(find.byType(EditScaffold), findsOneWidget);
+      expect(find.byKey(const Key('error.heightCm')), findsOneWidget);
+      expect(
+        find.text("Check your height. If it's right, tap Save again."),
+        findsOneWidget,
+      );
+
+      await save(tester);
+      expect(patches, [
+        {'heightCm': 17.0, 'weightKg': 70.0},
+      ]);
+      expect(find.byType(EditScaffold), findsNothing);
+    });
+
+    testWidgets('fixing the queried answer clears its messages', (
+      tester,
+    ) async {
+      await _pump(tester, heightCm: 170, weightKg: 70);
+      await _openRow(tester, const Key('edit.about'));
+
+      await tester.enterText(find.byKey(const Key('heightCm')), '17');
+      await tester.pumpAndSettle();
+      await save(tester);
+      await tester.enterText(find.byKey(const Key('heightCm')), '175');
+      await tester.pumpAndSettle();
+
+      expect(find.byKey(const Key('error.heightCm')), findsNothing);
+      expect(find.byType(FsErrorLine), findsNothing);
+    });
+
+    testWidgets('a rejected answer is named as on screen, under its card', (
+      tester,
+    ) async {
+      await _pump(
+        tester,
+        heightCm: 170,
+        weightKg: 70,
+        patchError: const ApiException(
+          'INVALID_PROFILE_FIELD',
+          'weightKg must be a number between 0 and 1000.',
+          details: [
+            {'field': 'weightKg'},
+          ],
+        ),
+      );
+      await _openRow(tester, const Key('edit.about'));
+      await tester.enterText(find.byKey(const Key('weightKg')), '72');
+      await tester.pumpAndSettle();
+      await save(tester);
+
+      expect(
+        find.text(
+          "Your weight can't be saved as it is. Check it and try again.",
+        ),
+        findsOneWidget,
+      );
+      expect(find.byKey(const Key('error.weightKg')), findsOneWidget);
+      expect(find.textContaining('weightKg'), findsNothing);
+    });
+
+    testWidgets('the estimate follows the saved main goal', (tester) async {
+      await _pump(
+        tester,
+        heightCm: 170,
+        weightKg: 70,
+        goals: const ['lose_weight'],
+        mainGoal: 'lose_weight',
+      );
+      await _openRow(tester, const Key('edit.about'));
+
+      expect(
+        tester.widget<AboutStep>(find.byType(AboutStep)).mainGoal,
+        'lose_weight',
+      );
+    });
+  });
 }
