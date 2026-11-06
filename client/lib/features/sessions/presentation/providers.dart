@@ -235,6 +235,9 @@ final historyPagesProvider = NotifierProvider<HistoryPagesNotifier, int>(
 /// which drops it once it is scrolled far away, and coming back must not
 /// fetch the pages already read again. The keys are page numbers, bounded by
 /// how far a person has read, and each is fetched afresh after page 1 is.
+/// While that refetch runs the page still carries its old rows (and, after
+/// a sign-out, the last account's), so readers treat loading as loading and
+/// never show [AsyncValue.value] then.
 final olderHistoryProvider = FutureProvider.family<SessionHistoryPage, int>((
   ref,
   page,

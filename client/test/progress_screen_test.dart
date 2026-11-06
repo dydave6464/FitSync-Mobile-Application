@@ -613,6 +613,66 @@ void main() {
       expect(find.text('Workout 23', skipOffstage: false), findsOneWidget);
     });
 
+    // An older page kept from before page 1 was fetched again is out of
+    // date: a newer workout pushed every row down one. Shown while its own
+    // refetch runs, it would miss the row at the page edge (or repeat one,
+    // or after a sign-out show the last account's workouts).
+    testWidgets('an older page refetched after page 1 shows a spinner, '
+        'never its old rows', (tester) async {
+      tester.view.physicalSize = const Size(360, 480);
+      tester.view.devicePixelRatio = 1;
+      addTearDown(tester.view.reset);
+      final repo = FakeSessionRepository(entries: many(23));
+      await _pump(tester, repo: repo);
+      await showOlder(tester);
+      await tester.pumpAndSettle();
+      expect(find.text('Workout 21', skipOffstage: false), findsOneWidget);
+
+      // Scrolled away, so page 2 has no listener while page 1 refreshes.
+      final list = find.byType(ListView).first;
+      await tester.drag(list, const Offset(0, 20000));
+      await tester.pumpAndSettle();
+      expect(find.text('Workout 21', skipOffstage: false), findsNothing);
+
+      repo.entries.insert(
+        0,
+        const SessionHistoryEntry(
+          sessionId: 200,
+          sessionDate: '2026-08-29',
+          setCount: 1,
+          exerciseCount: 1,
+          planName: 'Newest',
+        ),
+      );
+      final gate = repo.olderGate = Completer<void>();
+      final container = ProviderScope.containerOf(
+        tester.element(find.byType(ProgressScreen)),
+      );
+      container.invalidate(sessionHistoryProvider);
+      await tester.runAsync(
+        () => container.read(sessionHistoryProvider.future),
+      );
+      await tester.pumpAndSettle();
+
+      await tester.drag(list, const Offset(0, -20000));
+      await tester.pumpAndSettle();
+      await showOlder(tester);
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 100));
+
+      expect(find.text('Workout 21', skipOffstage: false), findsNothing);
+      expect(
+        find.byType(CircularProgressIndicator, skipOffstage: false),
+        findsOneWidget,
+      );
+
+      gate.complete();
+      await tester.pumpAndSettle();
+      for (final n in [20, 21, 22, 23]) {
+        expect(find.text('Workout $n', skipOffstage: false), findsOneWidget);
+      }
+    });
+
     test('a fresh first page drops the older pages shown', () async {
       // A finished workout refetches page 1 and shifts every older row by
       // one, so pages fetched before it would repeat a workout.
