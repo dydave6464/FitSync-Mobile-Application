@@ -334,14 +334,12 @@ class _ProScreenState extends ConsumerState<ProScreen> {
                 child: Center(child: CircularProgressIndicator()),
               ),
             ],
+            // The kit's load error: why, in plain words, over Try again.
             error: (error, stack) => [
-              _Note(text: "Couldn't load your Pro status."),
-              const SizedBox(height: 12),
-              FsButton(
-                key: const Key('pro.retryStatus'),
-                label: 'Try again',
-                kind: FsButtonKind.secondary,
-                onPressed: () => ref.invalidate(proStatusProvider),
+              FsRetry(
+                message: userMessage(error),
+                buttonKey: const Key('pro.retryStatus'),
+                onRetry: () => ref.invalidate(proStatusProvider),
               ),
             ],
             data: _body,
@@ -468,7 +466,7 @@ class _ProScreenState extends ConsumerState<ProScreen> {
     const checkingText = 'Checking your payment…';
     final openError = _openError == null
         ? null
-        : _Note(key: const Key('pro.openError'), text: _openError!);
+        : FsErrorLine(_openError!, key: const Key('pro.openError'));
     switch (_pay) {
       case _Pay.idle:
       case _Pay.opening:
@@ -705,7 +703,8 @@ class _Panel extends StatelessWidget {
   }
 }
 
-/// One line of news: a paid confirmation ([strong]), a reminder, an error.
+/// One line of news: a paid confirmation ([strong]) or a reminder. Errors
+/// are [FsErrorLine]s, so they never look like this neutral note.
 class _Note extends StatelessWidget {
   const _Note({super.key, required this.text, this.strong = false});
 

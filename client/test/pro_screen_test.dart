@@ -519,6 +519,48 @@ void main() {
     expect(find.byKey(const Key('pro.pay')), findsOneWidget);
   });
 
+  // PS-16: both errors looked like the neutral "Pro ends on" note.
+  testWidgets('a page that will not open is said as an error, in red', (
+    tester,
+  ) async {
+    final (_, opener) = await _pump(tester);
+    opener.answer = false;
+    await tester.tap(find.byKey(const Key('pro.pay')));
+    await tester.pumpAndSettle();
+    final line = find.byKey(const Key('pro.openError'));
+    expect(tester.widget(line), isA<FsErrorLine>());
+    expect(
+      find.descendant(of: line, matching: find.byIcon(Icons.error_outline)),
+      findsOneWidget,
+    );
+  });
+
+  testWidgets('a status that will not load says why, with the kit Try again', (
+    tester,
+  ) async {
+    final repo = FakeProRepository()
+      ..statusError = const ApiException('NETWORK_ERROR', 'offline');
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [proRepositoryProvider.overrideWithValue(repo)],
+        child: MaterialApp(theme: fsLightTheme(), home: const ProScreen()),
+      ),
+    );
+    await tester.pumpAndSettle();
+    expect(find.byType(FsRetry), findsOneWidget);
+    expect(
+      find.text(userMessage(const ApiException('NETWORK_ERROR', 'offline'))),
+      findsOneWidget,
+    );
+    expect(
+      find.descendant(
+        of: find.byType(FsRetry),
+        matching: find.byKey(const Key('pro.retryStatus')),
+      ),
+      findsOneWidget,
+    );
+  });
+
   testWidgets('coming back to the app checks at once', (tester) async {
     final (repo, _) = await _pump(tester);
     await tester.tap(find.byKey(const Key('pro.pay')));
