@@ -1,5 +1,4 @@
 import 'package:flutter/material.dart';
-import 'package:flutter/semantics.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../core/api_exception.dart';
@@ -83,23 +82,10 @@ class _ChangePasswordScreenState extends ConsumerState<ChangePasswordScreen> {
     return null;
   }
 
-  /// Moves the cursor -- and a screen reader, which then reads the field's
-  /// name and the message in its hint -- to [field], as the sign-in form
-  /// does. Already focused, the field would say nothing, so [message] is
-  /// announced instead.
-  void _focus(_Field field, String message) {
-    final target = editableUnder(_fieldKeys[field]!);
-    if (target == null) return;
-    if (target.widget.focusNode.hasFocus) {
-      SemanticsService.sendAnnouncement(
-        View.of(context),
-        message,
-        Directionality.of(context),
-      );
-      return;
-    }
-    target.requestKeyboard();
-  }
+  /// Takes the cursor to [field], or reads [message] when it is already
+  /// there, as the sign-in form does: see [focusOrAnnounce].
+  void _focus(_Field field, String message) =>
+      focusOrAnnounce(context, _fieldKeys[field]!, message);
 
   void _edited(_Field field) => setState(() {
     // The message described the old text; it would wrongly blame the new.
@@ -205,6 +191,8 @@ class _ChangePasswordScreenState extends ConsumerState<ChangePasswordScreen> {
     return EditScaffold(
       title: 'Change password',
       saveLabel: 'Change password',
+      // Cut at 2x text on a 320 dp phone otherwise ("Change passw…").
+      wrapSaveLabel: true,
       busy: _busy,
       dirty: _dirty,
       error: _error,

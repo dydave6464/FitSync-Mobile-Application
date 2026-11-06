@@ -1,6 +1,5 @@
 import 'package:flutter/foundation.dart' show kDebugMode;
 import 'package:flutter/material.dart';
-import 'package:flutter/semantics.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../core/api_exception.dart';
@@ -72,21 +71,10 @@ class _DeleteAccountScreenState extends ConsumerState<DeleteAccountScreen> {
     super.dispose();
   }
 
-  /// Puts the cursor in the password field, which then reads its name and
-  /// the message in its hint; already focused, says [message] instead.
-  void _focusPassword(String message) {
-    final target = editableUnder(_passwordKey);
-    if (target == null) return;
-    if (target.widget.focusNode.hasFocus) {
-      SemanticsService.sendAnnouncement(
-        View.of(context),
-        message,
-        Directionality.of(context),
-      );
-      return;
-    }
-    target.requestKeyboard();
-  }
+  /// Takes the cursor to the password field, or reads [message] when it is
+  /// already there: see [focusOrAnnounce].
+  void _focusPassword(String message) =>
+      focusOrAnnounce(context, _passwordKey, message);
 
   Future<void> _confirmWithGoogle() async {
     if (_busy) return;
@@ -212,6 +200,8 @@ class _DeleteAccountScreenState extends ConsumerState<DeleteAccountScreen> {
                 label: 'Delete my account',
                 kind: FsButtonKind.ghost,
                 danger: true,
+                // Read whole at 2x on a 320 dp phone, not "Delete my acc…".
+                wrapLabel: true,
                 busy: _pending == _Pending.delete,
                 onPressed: _busy ? null : _submit,
               ),
@@ -261,6 +251,7 @@ class _DeleteAccountScreenState extends ConsumerState<DeleteAccountScreen> {
       label: 'Confirm with Google',
       kind: FsButtonKind.secondary,
       small: true,
+      wrapLabel: true,
       icon: const GoogleGMark(),
       busy: _pending == _Pending.google,
       onPressed: _busy ? null : _confirmWithGoogle,

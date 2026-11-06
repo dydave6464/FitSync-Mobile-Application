@@ -2,7 +2,6 @@ import 'dart:math' as math;
 
 import 'package:flutter/foundation.dart' show kDebugMode;
 import 'package:flutter/material.dart';
-import 'package:flutter/semantics.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../core/api_exception.dart';
@@ -129,26 +128,10 @@ class _SignInScreenState extends ConsumerState<SignInScreen> {
   /// the cursor in the field it is about.
   final _fieldKeys = {for (final field in _Field.values) field: GlobalKey()};
 
-  /// Moves the cursor -- and a screen reader, which then reads the field's
-  /// name and the message now in its hint -- to [field]. Otherwise nothing
-  /// is heard after Sign in, and a failed check sounds like a hang.
-  ///
-  /// When [field] already has focus (typed in last: a phone does not unfocus
-  /// a field on an outside tap) focus cannot move, so nothing would be read.
-  /// [message] is announced instead -- only then, so it is never said twice.
-  void _focus(_Field field, String message) {
-    final target = editableUnder(_fieldKeys[field]!);
-    if (target == null) return;
-    if (target.widget.focusNode.hasFocus) {
-      SemanticsService.sendAnnouncement(
-        View.of(context),
-        message,
-        Directionality.of(context),
-      );
-      return;
-    }
-    target.requestKeyboard();
-  }
+  /// Takes the cursor to [field], or reads [message] when it is already
+  /// there: see [focusOrAnnounce].
+  void _focus(_Field field, String message) =>
+      focusOrAnnounce(context, _fieldKeys[field]!, message);
 
   String? _errorFor(_Field field) =>
       _fieldError?.field == field ? _fieldError!.message : null;
