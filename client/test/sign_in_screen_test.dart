@@ -4,7 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/semantics.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:font_awesome_flutter/font_awesome_flutter.dart';
+import 'package:font_awesome_flutter/font_awesome_flutter.dart' show FaIcon;
 
 import 'package:fitsync/core/widgets/fs_kit.dart';
 
@@ -14,6 +14,7 @@ import 'package:fitsync/features/auth/domain/auth_user.dart';
 import 'package:fitsync/features/auth/presentation/auth_controller.dart';
 import 'package:fitsync/features/auth/presentation/check_email_screen.dart';
 import 'package:fitsync/features/auth/presentation/forgot_password_screen.dart';
+import 'package:fitsync/features/auth/presentation/google_g_mark.dart';
 import 'package:fitsync/features/auth/presentation/sign_in_screen.dart';
 
 AuthUser _user() => const AuthUser(
@@ -910,10 +911,30 @@ void main() {
       find.descendant(of: google, matching: find.byIcon(Icons.g_mobiledata)),
       findsNothing,
     );
-    final mark = tester.widget<FaIcon>(
+    // D-7: Google's own colour G, as its sign-in branding requires, never
+    // a one-colour glyph in the button's text colour.
+    expect(
       find.descendant(of: google, matching: find.byType(FaIcon)),
+      findsNothing,
     );
-    expect(mark.icon?.codePoint, FontAwesomeIcons.google.codePoint);
+    final mark = find.descendant(
+      of: google,
+      matching: find.byType(GoogleGMark),
+    );
+    expect(mark, findsOneWidget);
+    expect(tester.getSize(mark), const Size.square(18));
+    final colours = <int>{};
+    expect(
+      find.descendant(of: mark, matching: find.byType(CustomPaint)),
+      paints..everything((method, args) {
+        for (final arg in args) {
+          if (arg is Paint) colours.add(arg.color.toARGB32());
+        }
+        return true;
+      }),
+    );
+    // The bundle's blue and red highlights, drawn over its colour sweep.
+    expect(colours, containsAll([0xFF3186FF, 0xFFFF4641]));
 
     expect(find.byIcon(Icons.bolt), findsNothing);
     expect(find.byKey(const Key('logo.blades')), findsOneWidget);

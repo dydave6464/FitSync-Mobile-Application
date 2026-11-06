@@ -4,7 +4,6 @@ import 'package:flutter/foundation.dart' show kDebugMode;
 import 'package:flutter/material.dart';
 import 'package:flutter/semantics.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:font_awesome_flutter/font_awesome_flutter.dart';
 
 import '../../../core/api_exception.dart';
 import '../../../core/theme.dart';
@@ -14,6 +13,7 @@ import 'auth_controller.dart';
 import 'auth_text_link.dart';
 import 'check_email_screen.dart';
 import 'forgot_password_screen.dart';
+import 'google_g_mark.dart';
 
 /// One screen for both signing in and registering.
 ///
@@ -512,9 +512,9 @@ class _SignInScreenState extends ConsumerState<SignInScreen> {
                   label: 'Continue with Google',
                   kind: FsButtonKind.secondary,
                   small: true,
-                  // Google's own G, as the prototype draws it, in the
-                  // button's text colour.
-                  icon: const FaIcon(FontAwesomeIcons.google),
+                  // Google's own colour G, which its sign-in branding
+                  // requires, in place of the prototype's one-colour G.
+                  icon: const GoogleGMark(),
                   busy: _pending == _Pending.google,
                   onPressed: _busy ? null : _signInWithGoogle,
                 ),
