@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../../core/app_settings.dart';
 import '../../../../core/widgets/fs_kit.dart';
+import '../../../profile/presentation/providers.dart' show profileProvider;
 import '../../../reminders/data/reminder_prompt_store.dart';
 import '../../../reminders/data/reminder_scheduler.dart';
 import '../../../reminders/presentation/reminders_screen.dart'
@@ -90,13 +91,30 @@ class _ReminderPromptCardState extends ConsumerState<ReminderPromptCard> {
     // rebuilding out from under it, or the app backgrounding -- so nothing
     // below may touch ref once it is gone.
     if (!mounted) return;
+    // The phone's permission is only half of it: with the app's own master
+    // switch (the profile's notificationsEnabled) off, nothing is scheduled,
+    // so "Reminders on" would be untrue. A profile that cannot be read
+    // counts as off.
+    var masterOn = false;
+    if (granted) {
+      try {
+        masterOn = (await ref.read(profileProvider.future))
+            .notificationsEnabled;
+      } catch (error) {
+        debugPrint('Reminder prompt: profile read failed: $error');
+      }
+      if (!mounted) return;
+    }
     final openSettings = ref.read(appSettingsOpenerProvider);
     ScaffoldMessenger.of(context).showSnackBar(
       granted
-          ? const SnackBar(
+          ? SnackBar(
               content: Text(
-                'Reminders on. Change them in Profile › Notifications & '
-                'reminders.',
+                masterOn
+                    ? 'Reminders on. Change them in Profile › Notifications '
+                          '& reminders.'
+                    : 'Notifications allowed. Turn reminders on in Profile › '
+                          'Notifications & reminders.',
               ),
             )
           : SnackBar(
