@@ -457,7 +457,7 @@ class _SessionLoggerScreenState extends ConsumerState<SessionLoggerScreen>
     // As in _discard: the rest's alert goes now, not when the pop finishes.
     setState(_endRest);
     ref.invalidate(activeSessionProvider);
-    Navigator.of(context).pop();
+    _closeSelf();
     messenger.showSnackBar(
       const SnackBar(content: Text('This session was already finished.')),
     );
@@ -787,13 +787,33 @@ class _SessionLoggerScreenState extends ConsumerState<SessionLoggerScreen>
     // Captured before the pop, as in _handleAlreadyClosed: the message
     // belongs on the screen underneath.
     final messenger = ScaffoldMessenger.of(context);
+    _closeSelf();
+    _sayKeptOpen(messenger);
+  }
+
+  /// Set by [_closeSelf], so the PopScope can tell the logger closing itself
+  /// -- finished, discarded, closed elsewhere, or Leave with its own message
+  /// -- from the user backing out of exercise 1.
+  bool _closedSelf = false;
+
+  void _closeSelf() {
+    _closedSelf = true;
     Navigator.of(context).pop();
+  }
+
+  /// What leaving with the workout still open means: the sets are kept, but
+  /// nothing counts -- History, the streak, Progress -- until it is finished.
+  /// "Saved" alone read as done, and contradicted the "Tap Finish" lines.
+  static void _sayKeptOpen(ScaffoldMessengerState messenger) {
     // A reopen's Undo is still up for up to four seconds; it would hold this
     // message back, and leaving is the newer news.
     messenger.removeCurrentSnackBar();
     messenger.showSnackBar(
       const SnackBar(
-        content: Text('Workout saved. Resume it any time from Train.'),
+        content: Text(
+          'Workout kept open — your sets are saved. '
+          'Finish it from Train to count it.',
+        ),
       ),
     );
   }
@@ -968,7 +988,7 @@ class _SessionLoggerScreenState extends ConsumerState<SessionLoggerScreen>
           ),
         ) ??
         false;
-    if (!addToPlanWillClose && mounted) Navigator.of(context).pop();
+    if (!addToPlanWillClose && mounted) _closeSelf();
   }
 
   /// Sends the finished workout to the user's own plan.
@@ -1042,7 +1062,7 @@ class _SessionLoggerScreenState extends ConsumerState<SessionLoggerScreen>
     // handed its own pop to this method the moment the offer was tapped, and
     // backing out of the question must not strand the user on a logger whose
     // session is already closed.
-    if (mounted) Navigator.of(context).pop();
+    if (mounted) _closeSelf();
     if (cancelled) return;
 
     try {
@@ -1097,7 +1117,7 @@ class _SessionLoggerScreenState extends ConsumerState<SessionLoggerScreen>
       // waits for frames, and the rest's alert would fire for a workout
       // that was thrown away.
       setState(_endRest);
-      Navigator.of(context).pop();
+      _closeSelf();
     } on StateError {
       // Same _current contract as _finish: already closed elsewhere by the
       // time this reached the controller. Same resolution as the 409 path.
@@ -1591,7 +1611,14 @@ class _SessionLoggerScreenState extends ConsumerState<SessionLoggerScreen>
     return PopScope(
       canPop: index == 0 && _stage == _LoggerStage.demo,
       onPopInvokedWithResult: (didPop, _) {
-        if (didPop) return;
+        if (didPop) {
+          // Back from exercise 1's demo closes the logger, exactly as Leave
+          // does, so with sets logged it says what Leave says.
+          if (!_closedSelf && doneSets > 0) {
+            _sayKeptOpen(ScaffoldMessenger.of(context));
+          }
+          return;
+        }
         setState(() {
           if (_stage == _LoggerStage.logging) {
             _moveTo(stage: _LoggerStage.demo);

@@ -668,6 +668,11 @@ Future<FakeSessionController> _pump(
   return controller;
 }
 
+/// What leaving says: the sets are kept, but an open workout is not counted
+/// in History, the streak or Progress until it is finished (SE-9).
+const _keptOpen =
+    'Workout kept open — your sets are saved. Finish it from Train to count it.';
+
 const _repsPrefill = {
   101: LastPerformance(exerciseId: 101, reps: 10, sessionDate: '2026-09-12'),
   102: LastPerformance(exerciseId: 102, reps: 12, sessionDate: '2026-09-12'),
@@ -2025,10 +2030,7 @@ void main() {
 
       expect(find.byType(SessionLoggerScreen), findsNothing);
       expect(find.text('Set 1 reopened'), findsNothing);
-      expect(
-        find.text('Workout saved. Resume it any time from Train.'),
-        findsOneWidget,
-      );
+      expect(find.text(_keptOpen), findsOneWidget);
     });
 
     // The footer is the next tap after a reopen -- Complete set 1 is how the
@@ -2182,10 +2184,7 @@ void main() {
 
       expect(find.byType(SessionLoggerScreen), findsNothing);
       expect(find.text('open logger'), findsOneWidget);
-      expect(
-        find.text('Workout saved. Resume it any time from Train.'),
-        findsOneWidget,
-      );
+      expect(find.text(_keptOpen), findsOneWidget);
       // Nothing written: still in progress, still resumable.
       expect(controller.calls, isEmpty);
       expect(controller.heldSession, isNotNull);
@@ -2212,10 +2211,7 @@ void main() {
 
       await _menu(tester, 'leave');
 
-      expect(
-        find.text('Workout saved. Resume it any time from Train.'),
-        findsOneWidget,
-      );
+      expect(find.text(_keptOpen), findsOneWidget);
       expect(tester.takeException(), isNull);
     });
   });
@@ -3379,7 +3375,9 @@ void main() {
       );
       // Which closing line shows varies by session; every one points at Finish.
       expect(
-        find.textContaining('Tap Finish session to save it.'),
+        find.textContaining(
+          'Tap Finish session to count it toward your streak.',
+        ),
         findsOneWidget,
       );
     });
@@ -4677,6 +4675,40 @@ void main() {
       expect(tester.takeAnnouncements().map((a) => a.message), [
         card.message.headline,
       ]);
+    });
+  });
+
+  // Back on exercise 1's demo closes the logger. With sets logged, it says
+  // the same as Leave, rather than nothing at all (SE-9).
+  group('back out of the first exercise', () {
+    testWidgets('with sets logged, says the workout is kept open', (
+      tester,
+    ) async {
+      await _pump(
+        tester,
+        session: _session(
+          sets: const [
+            LoggedSet(exerciseId: 101, setNumber: 1, weightKg: 20, reps: 10),
+          ],
+        ),
+      );
+      expect(find.byKey(const Key('logger.demo')), findsOneWidget);
+
+      await tester.binding.handlePopRoute();
+      await tester.pumpAndSettle();
+
+      expect(find.byType(SessionLoggerScreen), findsNothing);
+      expect(find.text(_keptOpen), findsOneWidget);
+    });
+
+    testWidgets('with nothing logged, closes quietly', (tester) async {
+      await _pump(tester);
+
+      await tester.binding.handlePopRoute();
+      await tester.pumpAndSettle();
+
+      expect(find.byType(SessionLoggerScreen), findsNothing);
+      expect(find.byType(SnackBar), findsNothing);
     });
   });
 }

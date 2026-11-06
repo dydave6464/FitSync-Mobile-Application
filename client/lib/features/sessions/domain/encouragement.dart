@@ -108,10 +108,14 @@ final List<String Function(int done, int total)> _halfwayLines = [
 ];
 
 /// Every set of every exercise logged. Each ends by pointing at Finish,
-/// because the session is not saved until it is tapped.
+/// because an open workout is not counted -- in History, the streak or
+/// Progress -- until it is tapped. "Count", not "save": the sets are saved
+/// already, and saying otherwise made leaving sound like losing them.
 const List<String> _finishedLines = [
-  'Every set done — great session! Tap Finish session to save it.',
-  "That's the whole workout — well done! Tap Finish session to save it.",
+  'Every set done — great session! '
+      'Tap Finish session to count it toward your streak.',
+  "That's the whole workout — well done! "
+      'Tap Finish session to count it toward your streak.',
   'Workout complete — you showed up and did the work. '
-      'Tap Finish session to save it.',
+      'Tap Finish session to count it toward your streak.',
 ];
