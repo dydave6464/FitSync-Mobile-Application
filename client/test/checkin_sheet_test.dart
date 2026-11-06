@@ -258,6 +258,28 @@ void main() {
     expect(find.byKey(const Key('checkin.save')), findsOneWidget);
   });
 
+  testWidgets('a failed save is spoken to a screen reader', (tester) async {
+    final semantics = tester.ensureSemantics();
+    await _open(tester, error: Exception('offline'));
+
+    await _answerAll(tester);
+    await tester.tap(find.byKey(const Key('checkin.save')));
+    await tester.pumpAndSettle();
+
+    // A live region, so TalkBack and VoiceOver read the failure out when it
+    // appears rather than leaving the user to believe it saved.
+    final error = find.text('Something went wrong. Please try again.');
+    expect(error, findsOneWidget);
+    expect(
+      tester.getSemantics(error),
+      isSemantics(
+        isLiveRegion: true,
+        label: 'Something went wrong. Please try again.',
+      ),
+    );
+    semantics.dispose();
+  });
+
   testWidgets(
     'dismissing the sheet mid-save still refreshes the overview once the '
     'save lands',

@@ -363,7 +363,9 @@ class _CheckinSheetState extends ConsumerState<_CheckinSheet> {
             ],
             if (_pending case final pending?) ..._painRow(pending, t),
             if (_failure != null) ...[
-              Text(_failure!, style: TextStyle(fontSize: 12, color: t.red)),
+              // A live region: a screen reader says the failure when it
+              // appears, not just the button's loading ending.
+              FsErrorLine(_failure!, key: const Key('checkin.error')),
               const SizedBox(height: 12),
             ],
             FsButton(
