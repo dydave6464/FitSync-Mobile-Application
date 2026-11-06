@@ -52,6 +52,38 @@ async function insertEntry(pool, userId, e) {
   return res.insertId;
 }
 
+/// The id of [userId]'s entry logged with [clientId] (lower-case), or null.
+/// The key goes with its entry, so a deleted entry's clientId is free again.
+async function findEntryIdByClientId(pool, userId, clientId) {
+  const [[row]] = await pool.query(
+    'SELECT meal_log_id FROM meal_log_client_ids WHERE user_id = ? AND client_id = ?', [userId, clientId],
+  );
+  return row ? row.meal_log_id : null;
+}
+
+/// insertEntry and its [clientId] in one transaction: { id, created: true }.
+/// When the same clientId is being logged at the same moment, the second
+/// key hits ER_DUP_ENTRY, its entry rolls back, and the first one's id comes
+/// back with created: false -- one entry, however often it is sent.
+async function insertEntryOnce(pool, userId, e, clientId) {
+  const conn = await pool.getConnection();
+  try {
+    await conn.beginTransaction();
+    const id = await insertEntry(conn, userId, e);
+    await conn.query(
+      'INSERT INTO meal_log_client_ids (user_id, client_id, meal_log_id) VALUES (?, ?, ?)', [userId, clientId, id],
+    );
+    await conn.commit();
+    return { id, created: true };
+  } catch (err) {
+    await conn.rollback();
+    if (err.code !== 'ER_DUP_ENTRY') throw err;
+    return { id: await findEntryIdByClientId(pool, userId, clientId), created: false };
+  } finally {
+    conn.release();
+  }
+}
+
 async function getEntry(pool, userId, id) {
   const [rows] = await pool.query(`${SELECT_ENTRY} WHERE m.user_id = ? AND m.meal_log_id = ?`, [userId, id]);
   return rows.length ? asEntry(rows[0]) : null;
@@ -171,5 +203,5 @@ async function listRecentFoods(pool, userId, limit = 20) {
 }
 
 module.exports = {
-  MEALS, insertEntry, getEntry, getStoredEntry, updateEntry, deleteEntry, listDayEntries, targetProfile, listRecentFoods,
+  MEALS, insertEntry, insertEntryOnce, findEntryIdByClientId, getEntry, getStoredEntry, updateEntry, deleteEntry, listDayEntries, targetProfile, listRecentFoods,
 };

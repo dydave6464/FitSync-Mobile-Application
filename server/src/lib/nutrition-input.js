@@ -10,6 +10,7 @@ const MAX_GRAMS = 500;
 const MAX_SODIUM_MG = 20000;
 const MAX_NAME = 100;
 const MAX_SERVING_DESC = 60;
+const UUID_V4 = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 const round1 = (n) => Math.round(n * 10) / 10;
 const round2 = (n) => Math.round(n * 100) / 100;
 
@@ -35,6 +36,14 @@ function checkServings(s) {
     throw invalid('servings', `servings must be 0.5 to ${MAX_SERVINGS}, in steps of 0.5.`);
   }
   return s;
+}
+
+/// A log's optional clientId, the key that makes Try again safe: absent or
+/// null is none (null); otherwise a v4 UUID, any case, returned lower-case.
+function checkClientId(value) {
+  if (value == null) return null;
+  if (typeof value !== 'string' || !UUID_V4.test(value)) throw invalid('clientId', 'clientId must be a UUID.');
+  return value.toLowerCase();
 }
 
 /// An optional manual value: absent or null is unknown (null); otherwise a
@@ -119,4 +128,4 @@ function scaled(base, servings) {
   };
 }
 
-module.exports = { invalid, checkDate, checkServings, checkManual, basisId, perServingOf, scaled, round1, round2 };
+module.exports = { invalid, checkDate, checkServings, checkClientId, checkManual, basisId, perServingOf, scaled, round1, round2 };

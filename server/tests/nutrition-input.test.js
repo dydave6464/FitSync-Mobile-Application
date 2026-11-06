@@ -1,7 +1,7 @@
 'use strict';
 const test = require('node:test');
 const assert = require('node:assert/strict');
-const { checkManual, basisId, perServingOf } = require('../src/lib/nutrition-input');
+const { checkManual, checkClientId, basisId, perServingOf } = require('../src/lib/nutrition-input');
 
 // A listed beer: its kcal includes alcohol, which 4-4-9 can't see.
 const BEER = { kcal: 129, proteinG: 1.1, carbsG: 10.6, fatG: 0 };
@@ -61,4 +61,23 @@ test("a stored entry's per-serving numbers divide each total by its servings; un
   assert.deepEqual(perServingOf({
     servings: 2, kcal: 258, proteinG: 2.2, carbsG: 21.2, fatG: 0, fiberG: null, sugarG: 3, sodiumMg: 80,
   }), { kcal: 129, proteinG: 1.1, carbsG: 10.6, fatG: 0, fiberG: null, sugarG: 1.5, sodiumMg: 40 });
+});
+
+test('a clientId is absent (null) or a v4 UUID, kept lower-case; anything else is a 400 on clientId', () => {
+  assert.equal(checkClientId(undefined), null);
+  assert.equal(checkClientId(null), null);
+  assert.equal(checkClientId('3f1c2b9e-8d4a-4c1e-9b7a-2e5d6f708192'), '3f1c2b9e-8d4a-4c1e-9b7a-2e5d6f708192');
+  assert.equal(checkClientId('3F1C2B9E-8D4A-4C1E-9B7A-2E5D6F708192'), '3f1c2b9e-8d4a-4c1e-9b7a-2e5d6f708192');
+  for (const bad of [
+    'not-a-uuid', 123, '', true, {},
+    '3f1c2b9e-8d4a-1c1e-9b7a-2e5d6f708192', // version 1, not 4
+    '3f1c2b9e-8d4a-4c1e-7b7a-2e5d6f708192', // not the RFC variant
+    ' 3f1c2b9e-8d4a-4c1e-9b7a-2e5d6f708192', '3f1c2b9e8d4a4c1e9b7a2e5d6f708192',
+  ]) {
+    assert.equal(fieldOf(() => checkClientId(bad)), 'clientId', JSON.stringify(bad));
+  }
+  try { checkClientId('x'); } catch (e) {
+    assert.equal(e.code, 'INVALID_NUTRITION_FIELD');
+    assert.equal(e.message, 'clientId must be a UUID.');
+  }
 });
