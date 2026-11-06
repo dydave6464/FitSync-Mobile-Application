@@ -196,25 +196,44 @@ class _RemindersScreenState extends ConsumerState<RemindersScreen> {
     );
   }
 
+  /// A label and its switch, read as one control: "Remind me about habits,
+  /// switch, on" rather than a bare "switch, on" beside a separate line of
+  /// text.
+  Widget _switchRow({
+    required String label,
+    required Key switchKey,
+    required bool value,
+    required ValueChanged<bool> onChanged,
+    List<Widget> leading = const [],
+  }) {
+    return MergeSemantics(
+      child: Row(
+        children: [
+          ...leading,
+          _rowLabel(label),
+          Switch(key: switchKey, value: value, onChanged: onChanged),
+        ],
+      ),
+    );
+  }
+
   Widget _masterRow(bool notificationsEnabled) {
     return FsCard(
       padding: const EdgeInsets.symmetric(horizontal: 16),
-      child: Row(
-        children: [
+      child: _switchRow(
+        leading: [
           FsIconTile(icon: Icons.notifications_outlined, size: 32),
           const SizedBox(width: 13),
-          _rowLabel('Notifications & reminders'),
-          Switch(
-            key: const Key('reminders.master'),
-            value: notificationsEnabled,
-            onChanged: (value) => _setEnabled(
-              value,
-              () => ref.read(profileProvider.notifier).patch({
-                'notificationsEnabled': value,
-              }),
-            ),
-          ),
         ],
+        label: 'Notifications & reminders',
+        switchKey: const Key('reminders.master'),
+        value: notificationsEnabled,
+        onChanged: (value) => _setEnabled(
+          value,
+          () => ref.read(profileProvider.notifier).patch({
+            'notificationsEnabled': value,
+          }),
+        ),
       ),
     );
   }
@@ -270,20 +289,16 @@ class _RemindersScreenState extends ConsumerState<RemindersScreen> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            Row(
-              children: [
-                _rowLabel('Remind me about habits'),
-                Switch(
-                  key: const Key('reminders.habits'),
-                  value: settings.habitsEnabled,
-                  onChanged: (value) => _setEnabled(
-                    value,
-                    () => ref.read(reminderSettingsProvider.notifier).patch({
-                      'habitsEnabled': value,
-                    }),
-                  ),
-                ),
-              ],
+            _switchRow(
+              label: 'Remind me about habits',
+              switchKey: const Key('reminders.habits'),
+              value: settings.habitsEnabled,
+              onChanged: (value) => _setEnabled(
+                value,
+                () => ref.read(reminderSettingsProvider.notifier).patch({
+                  'habitsEnabled': value,
+                }),
+              ),
             ),
             const SizedBox(height: 12),
             FsSegmented(
@@ -310,20 +325,16 @@ class _RemindersScreenState extends ConsumerState<RemindersScreen> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            Row(
-              children: [
-                _rowLabel('Remind me before my workout'),
-                Switch(
-                  key: const Key('reminders.workout'),
-                  value: settings.workoutEnabled,
-                  onChanged: (value) => _setEnabled(
-                    value,
-                    () => ref.read(reminderSettingsProvider.notifier).patch({
-                      'workoutEnabled': value,
-                    }),
-                  ),
-                ),
-              ],
+            _switchRow(
+              label: 'Remind me before my workout',
+              switchKey: const Key('reminders.workout'),
+              value: settings.workoutEnabled,
+              onChanged: (value) => _setEnabled(
+                value,
+                () => ref.read(reminderSettingsProvider.notifier).patch({
+                  'workoutEnabled': value,
+                }),
+              ),
             ),
             _timeRow(
               const Key('reminders.workoutTime'),
@@ -348,20 +359,16 @@ class _RemindersScreenState extends ConsumerState<RemindersScreen> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            Row(
-              children: [
-                _rowLabel('Remind me to check in'),
-                Switch(
-                  key: const Key('reminders.checkin'),
-                  value: settings.checkinEnabled,
-                  onChanged: (value) => _setEnabled(
-                    value,
-                    () => ref.read(reminderSettingsProvider.notifier).patch({
-                      'checkinEnabled': value,
-                    }),
-                  ),
-                ),
-              ],
+            _switchRow(
+              label: 'Remind me to check in',
+              switchKey: const Key('reminders.checkin'),
+              value: settings.checkinEnabled,
+              onChanged: (value) => _setEnabled(
+                value,
+                () => ref.read(reminderSettingsProvider.notifier).patch({
+                  'checkinEnabled': value,
+                }),
+              ),
             ),
             _timeRow(
               const Key('reminders.checkinTime'),

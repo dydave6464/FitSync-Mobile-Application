@@ -418,4 +418,34 @@ void main() {
     expect(loads, hasLength(2));
     expect(find.byKey(const Key('reminders.master')), findsOneWidget);
   });
+
+  testWidgets('each switch is named by its row', (tester) async {
+    final handle = tester.ensureSemantics();
+    await _pump(tester);
+
+    for (final (key, label) in [
+      ('reminders.master', 'Notifications & reminders'),
+      ('reminders.habits', 'Remind me about habits'),
+      ('reminders.workout', 'Remind me before my workout'),
+      ('reminders.checkin', 'Remind me to check in'),
+    ]) {
+      await tester.scrollUntilVisible(find.byKey(Key(key)), 200);
+      await tester.pumpAndSettle();
+      expect(
+        tester.getSemantics(find.byKey(Key(key))),
+        matchesSemantics(
+          label: label,
+          hasToggledState: true,
+          isToggled: key != 'reminders.workout' && key != 'reminders.checkin',
+          hasEnabledState: true,
+          isEnabled: true,
+          hasTapAction: true,
+          hasFocusAction: true,
+          isFocusable: true,
+        ),
+        reason: key,
+      );
+    }
+    handle.dispose();
+  });
 }
