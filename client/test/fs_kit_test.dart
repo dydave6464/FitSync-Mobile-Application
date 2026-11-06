@@ -2122,6 +2122,79 @@ void main() {
         expect(contrast(t.red, t.surface), greaterThanOrEqualTo(3));
       });
     }
+
+    // R11: an error appearing or clearing while typing remounted the field,
+    // so it lost focus and the keyboard closed mid-number.
+    testWidgets(
+      'FsField keeps focus and keyboard as its error comes and goes',
+      (tester) async {
+        final h = tester.ensureSemantics();
+        final controller = TextEditingController();
+        final error = ValueNotifier<String?>(null);
+        addTearDown(controller.dispose);
+        addTearDown(error.dispose);
+        await tester.pumpWidget(
+          host(
+            SizedBox(
+              width: 200,
+              child: ValueListenableBuilder<String?>(
+                valueListenable: error,
+                builder: (_, message, _) => FsField(
+                  controller: controller,
+                  hint: 'kcal',
+                  fieldKey: const Key('f'),
+                  errorText: message,
+                ),
+              ),
+            ),
+          ),
+        );
+        await tester.showKeyboard(find.byKey(const Key('f')));
+        await tester.pump();
+        final before = tester.state<EditableTextState>(
+          find.byType(EditableText),
+        );
+        expect(before.widget.focusNode.hasFocus, isTrue);
+        expect(tester.testTextInput.isVisible, isTrue);
+
+        Color enabledBorder() =>
+            (tester
+                        .widget<TextField>(find.byKey(const Key('f')))
+                        .decoration!
+                        .enabledBorder!
+                    as OutlineInputBorder)
+                .borderSide
+                .color;
+        String hint() => tester
+            .getSemantics(find.byKey(const Key('f')))
+            .getSemanticsData()
+            .hint;
+
+        for (final message in ['Must be 0–500 g', null, 'Enter a number']) {
+          error.value = message;
+          await tester.pump();
+          final now = tester.state<EditableTextState>(
+            find.byType(EditableText),
+          );
+          expect(
+            identical(now, before),
+            isTrue,
+            reason: 'same field ($message)',
+          );
+          expect(now.widget.focusNode.hasFocus, isTrue, reason: '$message');
+          expect(FocusManager.instance.primaryFocus, before.widget.focusNode);
+          expect(tester.testTextInput.isVisible, isTrue, reason: '$message');
+          if (message == null) {
+            expect(hint(), isEmpty);
+            expect(enabledBorder(), FsTokens.light.line);
+          } else {
+            expect(hint(), message);
+            expect(enabledBorder(), FsTokens.light.red);
+          }
+        }
+        h.dispose();
+      },
+    );
   });
 
   group('confirmDiscard', () {

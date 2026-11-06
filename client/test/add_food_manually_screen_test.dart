@@ -261,6 +261,27 @@ void main() {
       h.dispose();
     });
 
+    // R11: the box was rebuilt when its error came or went, closing the
+    // keyboard mid-number.
+    testWidgets('typing a number in and out of range keeps the box focused', (tester) async {
+      await _pump(tester, size: const Size(400, 1200));
+      final fat = find.byKey(const Key('manual.fat'));
+      await tester.enterText(fat, '6');
+      await tester.pump();
+      EditableTextState editable() =>
+          tester.state<EditableTextState>(find.descendant(of: fat, matching: find.byType(EditableText)));
+      final before = editable();
+      expect(before.widget.focusNode.hasFocus, isTrue);
+      for (final typed in ['600', '60']) {
+        tester.testTextInput.enterText(typed); // as the keyboard would, without refocusing
+        await tester.pump();
+        expect(find.text('Must be 0–500 g'), typed == '600' ? findsOneWidget : findsNothing);
+        expect(identical(editable(), before), isTrue, reason: 'same box after "$typed"');
+        expect(before.widget.focusNode.hasFocus, isTrue, reason: 'still focused after "$typed"');
+        expect(tester.testTextInput.isVisible, isTrue, reason: 'keyboard open after "$typed"');
+      }
+    });
+
     testWidgets('an out-of-range sodium is said under the sodium box', (tester) async {
       await _pump(tester, size: const Size(400, 1200));
       await tester.enterText(find.byKey(const Key('manual.sodium')), '25000');

@@ -494,7 +494,10 @@ class FsField extends StatelessWidget {
         ),
       ),
     );
-    if (hasError) field = Semantics(hint: errorText, child: field);
+    // Always wrapped, even with no error (a null hint adds nothing): a
+    // wrapper added only with an error would remount the field as the error
+    // comes and goes, dropping its focus and closing the keyboard mid-typing.
+    field = Semantics(hint: errorText, child: field);
     if (label == null) return field;
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
