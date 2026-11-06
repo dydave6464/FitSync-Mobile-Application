@@ -587,12 +587,12 @@ class _SessionLoggerScreenState extends ConsumerState<SessionLoggerScreen>
   /// record a rejection the user never meant; Switch again is the way back.
   Future<void> _switchExercise(int index, PlanExercise exercise) async {
     final messenger = ScaffoldMessenger.of(context);
-    final swappedTo = await showExerciseSwapSheet(
+    final swapped = await showExerciseSwapSheet(
       context,
       planExerciseId: exercise.planExerciseId,
       exerciseName: exerciseDisplayName(exercise.name),
     );
-    if (swappedTo == null || !mounted) return;
+    if (swapped == null || !mounted) return;
     try {
       await ref.read(activePlanProvider.future);
     } catch (error) {
@@ -613,7 +613,7 @@ class _SessionLoggerScreenState extends ConsumerState<SessionLoggerScreen>
         behavior: SnackBarBehavior.floating,
         margin: EdgeInsets.fromLTRB(16, 0, 16, _footerHeight() + 8),
         duration: const Duration(seconds: 4),
-        content: Text('Swapped to $swappedTo'),
+        content: Text('Swapped to ${swapped.swappedTo}'),
       ),
     );
   }
