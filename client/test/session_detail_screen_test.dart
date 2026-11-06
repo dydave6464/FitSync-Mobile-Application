@@ -221,16 +221,41 @@ void main() {
   testWidgets('a workout that is gone says so, with nothing to retry', (
     tester,
   ) async {
-    await _pump(
+    final fake = await _pump(
       tester,
       repo: _FakeSessionRepository(
         error: const ApiException('SESSION_NOT_FOUND', 'No such session.'),
       ),
+      settle: false,
     );
+    // One frame for the refused load to land: no retry backoff stands
+    // between the refusal and the message.
+    await tester.pump();
 
     expect(find.text("This workout isn't available any more."), findsOneWidget);
     expect(find.byType(FsRetry), findsNothing);
     expect(find.text('Try again'), findsNothing);
+
+    // Asking again would only be refused again, so it is never asked again.
+    await tester.pump(const Duration(minutes: 1));
+    expect(fake.asked, [41]);
+  });
+
+  testWidgets('a failure that may pass is retried at most twice', (
+    tester,
+  ) async {
+    final fake = await _pump(
+      tester,
+      repo: _FakeSessionRepository(
+        error: const ApiException('NETWORK_ERROR', 'unreachable'),
+      ),
+      settle: false,
+    );
+    await tester.pump(const Duration(minutes: 1));
+    await tester.pump();
+
+    expect(fake.asked, [41, 41, 41]);
+    expect(find.byType(FsRetry), findsOneWidget);
   });
 
   testWidgets('any other failure offers Try again, which reloads', (

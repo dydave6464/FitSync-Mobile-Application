@@ -249,10 +249,15 @@ final olderHistoryProvider = FutureProvider.family<SessionHistoryPage, int>((
 
 /// One finished workout, opened from History. Disposed when its screen
 /// closes: a past workout does not change, and nothing else reads it.
+///
+/// [apiRetryPolicy] like its neighbours: a refusal such as
+/// `SESSION_NOT_FOUND` shows at once instead of after Riverpod's ten
+/// default retries, and a network blip is retried at most twice.
 final sessionDetailProvider = FutureProvider.autoDispose
     .family<SessionDetail, int>(
       (ref, sessionId) =>
           ref.watch(sessionRepositoryProvider).detail(sessionId),
+      retry: apiRetryPolicy,
     );
 
 /// The workout the "+" sheet offers to repeat, or null when there is none.
