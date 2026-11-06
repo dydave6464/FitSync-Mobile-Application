@@ -100,25 +100,41 @@ class _RemindersScreenState extends ConsumerState<RemindersScreen> {
     }
   }
 
+  /// The value each switch shows while its save is in flight, by field. The
+  /// switch moves on the tap rather than after the round trip, and a field
+  /// in here ignores further taps, so a slow network sends one PATCH, not
+  /// one per impatient tap.
+  final _pending = <String, bool>{};
+
   /// Turning a reminder off always saves. Turning one on asks for permission
   /// first when it is not already granted; a refusal saves nothing, and the
-  /// switch stays off because [savePatch] never ran.
+  /// switch goes back to off because [savePatch] never ran. A failed save
+  /// goes back too, with the reason in a SnackBar.
   Future<void> _setEnabled(
+    String field,
     bool value,
     Future<void> Function() savePatch,
   ) async {
-    if (value && !_granted) {
-      final granted = await ref
-          .read(reminderSchedulerProvider)
-          .requestPermission();
-      // The system prompt this just awaited can outlive the screen -- a pop
-      // (or the signed-in shell tearing down) while it is up leaves `ref`
-      // unusable, so nothing below may touch it.
-      if (!mounted) return;
-      await _refreshGranted();
-      if (!granted) return;
+    if (_pending.containsKey(field)) return;
+    setState(() => _pending[field] = value);
+    try {
+      if (value && !_granted) {
+        final granted = await ref
+            .read(reminderSchedulerProvider)
+            .requestPermission();
+        // The system prompt this just awaited can outlive the screen -- a
+        // pop (or the signed-in shell tearing down) while it is up leaves
+        // `ref` unusable, so nothing below may touch it.
+        if (!mounted) return;
+        await _refreshGranted();
+        if (!granted) return;
+      }
+      await _save(savePatch);
+    } finally {
+      // By now the provider holds the saved value, or the old one after a
+      // refusal or failure: either way it is the truth to show.
+      if (mounted) setState(() => _pending.remove(field));
     }
-    await _save(savePatch);
   }
 
   Future<void> _pickTime({
@@ -253,11 +269,17 @@ class _RemindersScreenState extends ConsumerState<RemindersScreen> {
   /// A label and its switch, read as one control: "Remind me about habits,
   /// switch, on" rather than a bare "switch, on" beside a separate line of
   /// text.
+  ///
+  /// [field] names the setting for [_pending]; [saved] is its stored value
+  /// and [save] writes a new one. A disabled row ([enabled] false) has no
+  /// handler, so the switch reads as disabled.
   Widget _switchRow({
     required String label,
     required Key switchKey,
-    required bool value,
-    required ValueChanged<bool>? onChanged,
+    required String field,
+    required bool saved,
+    required Future<void> Function(bool value) save,
+    bool enabled = true,
     List<Widget> leading = const [],
   }) {
     return MergeSemantics(
@@ -265,7 +287,13 @@ class _RemindersScreenState extends ConsumerState<RemindersScreen> {
         children: [
           ...leading,
           _rowLabel(label),
-          Switch(key: switchKey, value: value, onChanged: onChanged),
+          Switch(
+            key: switchKey,
+            value: _pending[field] ?? saved,
+            onChanged: !enabled
+                ? null
+                : (value) => _setEnabled(field, value, () => save(value)),
+          ),
         ],
       ),
     );
@@ -281,13 +309,11 @@ class _RemindersScreenState extends ConsumerState<RemindersScreen> {
         ],
         label: 'Notifications & reminders',
         switchKey: const Key('reminders.master'),
-        value: notificationsEnabled,
-        onChanged: (value) => _setEnabled(
-          value,
-          () => ref.read(profileProvider.notifier).patch({
-            'notificationsEnabled': value,
-          }),
-        ),
+        field: 'notificationsEnabled',
+        saved: notificationsEnabled,
+        save: (value) => ref.read(profileProvider.notifier).patch({
+          'notificationsEnabled': value,
+        }),
       ),
     );
   }
@@ -360,15 +386,12 @@ class _RemindersScreenState extends ConsumerState<RemindersScreen> {
           _switchRow(
             label: 'Remind me about habits',
             switchKey: const Key('reminders.habits'),
-            value: settings.habitsEnabled,
-            onChanged: !enabled
-                ? null
-                : (value) => _setEnabled(
-                    value,
-                    () => ref.read(reminderSettingsProvider.notifier).patch({
-                      'habitsEnabled': value,
-                    }),
-                  ),
+            field: 'habitsEnabled',
+            saved: settings.habitsEnabled,
+            enabled: enabled,
+            save: (value) => ref.read(reminderSettingsProvider.notifier).patch({
+              'habitsEnabled': value,
+            }),
           ),
           const SizedBox(height: 12),
           IgnorePointer(
@@ -398,15 +421,12 @@ class _RemindersScreenState extends ConsumerState<RemindersScreen> {
       _switchRow(
         label: 'Remind me before my workout',
         switchKey: const Key('reminders.workout'),
-        value: settings.workoutEnabled,
-        onChanged: !enabled
-            ? null
-            : (value) => _setEnabled(
-                value,
-                () => ref.read(reminderSettingsProvider.notifier).patch({
-                  'workoutEnabled': value,
-                }),
-              ),
+        field: 'workoutEnabled',
+        saved: settings.workoutEnabled,
+        enabled: enabled,
+        save: (value) => ref.read(reminderSettingsProvider.notifier).patch({
+          'workoutEnabled': value,
+        }),
       ),
       _timeRow(
         const Key('reminders.workoutTime'),
@@ -429,15 +449,12 @@ class _RemindersScreenState extends ConsumerState<RemindersScreen> {
           _switchRow(
             label: 'Remind me to check in',
             switchKey: const Key('reminders.checkin'),
-            value: settings.checkinEnabled,
-            onChanged: !enabled
-                ? null
-                : (value) => _setEnabled(
-                    value,
-                    () => ref.read(reminderSettingsProvider.notifier).patch({
-                      'checkinEnabled': value,
-                    }),
-                  ),
+            field: 'checkinEnabled',
+            saved: settings.checkinEnabled,
+            enabled: enabled,
+            save: (value) => ref.read(reminderSettingsProvider.notifier).patch({
+              'checkinEnabled': value,
+            }),
           ),
           _timeRow(
             const Key('reminders.checkinTime'),

@@ -112,6 +112,34 @@ class _FlakyProfile extends FakeProfileNotifier {
   }
 }
 
+/// Holds every patch on [gate] until the test releases it, then saves it
+/// the way the real controller does -- or fails, when the gate errors.
+class _SlowReminderSettings extends ReminderSettingsController {
+  _SlowReminderSettings(this.patches, this.gate);
+
+  final List<Map<String, dynamic>> patches;
+  final Completer<void> gate;
+
+  @override
+  Future<ReminderSettings> build() async => ReminderSettings.defaults;
+
+  @override
+  Future<void> patch(Map<String, dynamic> fields) async {
+    patches.add(fields);
+    await gate.future;
+    final json = {
+      'habitsEnabled': state.value!.habitsEnabled,
+      'habitLeadMin': state.value!.habitLeadMin,
+      'workoutEnabled': state.value!.workoutEnabled,
+      'workoutTime': state.value!.workoutTime,
+      'checkinEnabled': state.value!.checkinEnabled,
+      'checkinTime': state.value!.checkinTime,
+      ...fields,
+    };
+    state = AsyncData(ReminderSettings.fromJson(json));
+  }
+}
+
 /// The seeded profile with the master switch off.
 class _MasterOffProfile extends FakeProfileNotifier {
   _MasterOffProfile() : super(<Map<String, dynamic>>[]);
@@ -595,5 +623,69 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(opened, ['opened']);
+  });
+
+  bool switchOn(WidgetTester tester, String key) =>
+      tester.widget<Switch>(find.byKey(Key(key))).value;
+
+  testWidgets('a switch moves at once and a second tap while saving sends '
+      'nothing more', (tester) async {
+    final patches = <Map<String, dynamic>>[];
+    final gate = Completer<void>();
+    await _pump(
+      tester,
+      settingsController: () => _SlowReminderSettings(patches, gate),
+    );
+    expect(switchOn(tester, 'reminders.habits'), isTrue);
+
+    await tester.tap(find.byKey(const Key('reminders.habits')));
+    await tester.pump();
+    expect(
+      switchOn(tester, 'reminders.habits'),
+      isFalse,
+      reason: 'the switch shows the new value while the server is asked',
+    );
+
+    await tester.tap(find.byKey(const Key('reminders.habits')));
+    await tester.pump();
+    expect(patches, [
+      {'habitsEnabled': false},
+    ], reason: 'no duplicate PATCH while one is in flight');
+    expect(switchOn(tester, 'reminders.habits'), isFalse);
+
+    gate.complete();
+    await tester.pumpAndSettle();
+    expect(switchOn(tester, 'reminders.habits'), isFalse);
+  });
+
+  testWidgets('a failed save puts the switch back and says why', (
+    tester,
+  ) async {
+    final patches = <Map<String, dynamic>>[];
+    final gate = Completer<void>();
+    await _pump(
+      tester,
+      settingsController: () => _SlowReminderSettings(patches, gate),
+    );
+
+    await tester.tap(find.byKey(const Key('reminders.habits')));
+    await tester.pump();
+    expect(switchOn(tester, 'reminders.habits'), isFalse);
+
+    gate.completeError(
+      const ApiException('SERVER_ERROR', 'That could not be saved.'),
+    );
+    await tester.pumpAndSettle();
+
+    expect(switchOn(tester, 'reminders.habits'), isTrue);
+    expect(find.text('That could not be saved.'), findsOneWidget);
+  });
+
+  testWidgets('a refused permission puts the switch back', (tester) async {
+    await _pump(tester, granted: false, requestAnswer: false);
+
+    await _scrollAndTap(tester, const Key('reminders.checkin'));
+
+    expect(switchOn(tester, 'reminders.checkin'), isFalse);
   });
 }
