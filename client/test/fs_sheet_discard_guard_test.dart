@@ -139,4 +139,44 @@ void main() {
 
     expect(tester.getSize(find.byKey(const Key('tall'))).height, 640 * 0.9);
   });
+
+  // Under the theme's drag handle, Material puts the content 48 dp down, so
+  // a 0.9 cap on the content alone would let the sheet grow 48 dp past it,
+  // up under the status bar. The cap is on the whole sheet either way.
+  testWidgets('FsSheetHeightCap counts the theme handle in the 0.9', (
+    tester,
+  ) async {
+    tester.view.physicalSize = const Size(360, 640);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.reset);
+    await tester.pumpWidget(
+      MaterialApp(
+        theme: fsLightTheme(),
+        home: Builder(
+          builder: (context) => TextButton(
+            onPressed: () => showModalBottomSheet<void>(
+              context: context,
+              isScrollControlled: true,
+              builder: (_) => const FsSheetHeightCap(
+                child: SizedBox(height: 2000, width: 100),
+              ),
+            ),
+            child: const Text('open'),
+          ),
+        ),
+      ),
+    );
+    await tester.tap(find.text('open'));
+    await tester.pumpAndSettle();
+
+    final sheet = find.descendant(
+      of: find.byType(BottomSheet),
+      matching: find.byType(Material),
+    );
+    expect(
+      tester.widget<BottomSheet>(find.byType(BottomSheet)).showDragHandle,
+      isTrue,
+    );
+    expect(tester.getSize(sheet.first).height, 640 * 0.9);
+  });
 }

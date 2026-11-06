@@ -2074,6 +2074,11 @@ class _FsSheetDiscardGuardState extends State<FsSheetDiscardGuard> {
 /// The theme cannot say this (`bottomSheetTheme.constraints` takes sizes,
 /// not a share of the screen), so a sheet opened with
 /// `isScrollControlled: true` wraps its contents in this.
+///
+/// The cap is on the whole sheet. Under the theme's drag handle Material
+/// sets the contents [kMinInteractiveDimension] down, so the contents get
+/// that much less; a sheet that draws its own handle inside (one with a
+/// discard guard) gets the full 0.9.
 class FsSheetHeightCap extends StatelessWidget {
   const FsSheetHeightCap({super.key, required this.child});
 
@@ -2082,12 +2087,24 @@ class FsSheetHeightCap extends StatelessWidget {
   final Widget child;
 
   @override
-  Widget build(BuildContext context) => ConstrainedBox(
-    constraints: BoxConstraints(
-      maxHeight: MediaQuery.sizeOf(context).height * maxHeightFraction,
-    ),
-    child: child,
-  );
+  Widget build(BuildContext context) {
+    final sheet = context.findAncestorWidgetOfExactType<BottomSheet>();
+    // A modal sheet passes the resolved value; a bare BottomSheet may leave
+    // it to the theme, as Material itself then does.
+    final themeHandle =
+        sheet != null &&
+        (sheet.showDragHandle ??
+            (sheet.enableDrag &&
+                (Theme.of(context).bottomSheetTheme.showDragHandle ?? false)));
+    return ConstrainedBox(
+      constraints: BoxConstraints(
+        maxHeight:
+            MediaQuery.sizeOf(context).height * maxHeightFraction -
+            (themeHandle ? kMinInteractiveDimension : 0),
+      ),
+      child: child,
+    );
+  }
 }
 
 /// The top of a bottom sheet, as the prototype draws every sheet
