@@ -4,6 +4,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 
+import 'package:fitsync/core/widgets/fs_kit.dart' show FsField;
+
 import 'package:fitsync/core/api_exception.dart';
 import 'package:fitsync/features/exercises/domain/exercise.dart';
 import 'package:fitsync/features/exercises/presentation/providers.dart';
@@ -1073,5 +1075,35 @@ void main() {
 
     expect(calls, 2);
     expect(find.byKey(const Key('swap.alt.12')), findsOneWidget);
+  });
+
+  group('search box (PT-12)', () {
+    testWidgets("is the kit field, with the app's search look", (tester) async {
+      await _pump(tester, const [_alt]);
+
+      expect(
+        find.ancestor(
+          of: find.byKey(const Key('swap.search')),
+          matching: find.byType(FsField),
+        ),
+        findsOneWidget,
+      );
+      expect(find.text('Search all exercises'), findsOneWidget);
+    });
+
+    testWidgets('a clear button empties it in one tap', (tester) async {
+      await _pump(tester, const [_alt]);
+      expect(find.byKey(const Key('swap.search.clear')), findsNothing);
+
+      await tester.enterText(find.byKey(const Key('swap.search')), 'push');
+      await tester.pumpAndSettle();
+      final clear = find.byKey(const Key('swap.search.clear'));
+      expect(tester.widget<IconButton>(clear).tooltip, 'Clear search');
+
+      await tester.tap(clear);
+      await tester.pumpAndSettle();
+      expect(find.text('push'), findsNothing);
+      expect(find.byKey(const Key('swap.search.clear')), findsNothing);
+    });
   });
 }
