@@ -16,6 +16,7 @@ import 'package:fitsync/core/api_client.dart';
 import 'package:fitsync/core/api_exception.dart';
 import 'package:fitsync/core/theme.dart';
 import 'package:fitsync/core/token_store.dart';
+import 'package:fitsync/core/widgets/fs_kit.dart' show FsTag;
 import 'package:fitsync/features/exercises/data/exercise_repository.dart';
 import 'package:fitsync/features/exercises/domain/exercise_cues.dart';
 import 'package:fitsync/features/exercises/domain/exercise_filters.dart';
@@ -677,5 +678,28 @@ void main() {
       isSemantics(tooltip: 'Close', isButton: true, hasTapAction: true),
     );
     handle.dispose();
+  });
+
+  testWidgets('Log a workout carries no price-like tag (PT-14)', (
+    tester,
+  ) async {
+    await _open(tester);
+
+    expect(find.text('Free'), findsNothing);
+    expect(
+      find.descendant(
+        of: find.byKey(const Key('start.manual')),
+        matching: find.byType(FsTag),
+      ),
+      findsNothing,
+    );
+    // The recommendation stays on the generator.
+    expect(
+      find.descendant(
+        of: find.byKey(const Key('start.generator')),
+        matching: find.text('Recommended'),
+      ),
+      findsOneWidget,
+    );
   });
 }

@@ -229,7 +229,8 @@ class _StartWorkoutSheet extends ConsumerWidget {
                 body:
                     'Pick your own exercises. Keep it as part of your plan '
                     'when you finish, or just log it.',
-                tag: 'Free',
+                // No tag, as the prototype draws it: "Free" read as a price
+                // and implied the recommended generator was paid.
                 accent: false,
                 onTap: () {
                   Navigator.of(context).pop();
@@ -309,7 +310,7 @@ class _Row extends StatelessWidget {
     required this.icon,
     required this.title,
     required this.body,
-    required this.tag,
+    this.tag,
     required this.accent,
     required this.onTap,
   });
@@ -318,7 +319,7 @@ class _Row extends StatelessWidget {
   final IconData icon;
   final String title;
   final String body;
-  final String tag;
+  final String? tag;
   final bool accent;
   final VoidCallback? onTap;
 
@@ -370,8 +371,10 @@ class _Row extends StatelessWidget {
                   ],
                 ),
               ),
-              const SizedBox(width: 10),
-              FsTag(tag),
+              if (tag case final tag?) ...[
+                const SizedBox(width: 10),
+                FsTag(tag),
+              ],
             ],
           ),
         ),
