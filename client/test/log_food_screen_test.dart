@@ -403,6 +403,10 @@ void main() {
     await tester.pumpAndSettle();
     await tester.enterText(find.descendant(of: find.byKey(const Key('logSheet.protein')), matching: find.byType(TextField)), '30');
     await tester.pump();
+    // The boxes' names take two lines in the test font's full-em glyphs, which
+    // pushes Log below this short test screen; the sheet scrolls to it.
+    await tester.ensureVisible(find.byKey(const Key('logSheet.log')));
+    await tester.pumpAndSettle();
     await tester.tap(find.byKey(const Key('logSheet.log')));
     await tester.pumpAndSettle();
     expect(repo.lastLogged!.source, 'manual');
