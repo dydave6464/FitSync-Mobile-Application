@@ -96,9 +96,9 @@ class _LogFoodSheetState extends State<LogFoodSheet> {
     final p = _grams(_protein), c = _grams(_carbs), fat = _grams(_fat);
     final fiber = _optionalNumber(_fiber);
     final sugar = _optionalNumber(_sugar), sodium = _optionalNumber(_sodium);
-    final gramsOk = [p, c, fat].every((g) => g != null && g >= 0 && g <= 500) &&
-        [fiber, sugar].every((g) => g == null || (g >= 0 && g <= 500));
-    final sodiumOk = sodium == null || (sodium >= 0 && sodium <= 20000);
+    final gramsOk = [p, c, fat].every((g) => g != null && inGramsRange(g)) &&
+        [fiber, sugar].every((g) => g == null || inGramsRange(g));
+    final sodiumOk = sodium == null || inSodiumRange(sodium);
     // Only a real change makes this the user's own entry; opening the boxes
     // and logging untouched still logs the listed food, whatever its numbers
     // (a 0-macro drink, or a listed value over 500 g). Unreadable text (null,

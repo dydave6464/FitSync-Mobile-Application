@@ -61,9 +61,9 @@ class _AddFoodManuallyScreenState extends ConsumerState<AddFoodManuallyScreen> {
     final p = _grams(_protein), c = _grams(_carbs), f = _grams(_fat);
     final fiber = _optionalNumber(_fiber);
     final sugar = _optionalNumber(_sugar), sodium = _optionalNumber(_sodium);
-    final gramsOk = [p, c, f].every((g) => g != null && g >= 0 && g <= 500) &&
-        [fiber, sugar].every((g) => g == null || (g >= 0 && g <= 500));
-    final sodiumOk = sodium == null || (sodium >= 0 && sodium <= 20000);
+    final gramsOk = [p, c, f].every((g) => g != null && inGramsRange(g)) &&
+        [fiber, sugar].every((g) => g == null || inGramsRange(g));
+    final sodiumOk = sodium == null || inSodiumRange(sodium);
     final kcal = gramsOk ? manualKcal(p!, c!, f!) : null;
     final name = _name.text.trim();
     final valid = name.isNotEmpty && name.length <= _maxName && _serving.text.trim().length <= _maxServing
