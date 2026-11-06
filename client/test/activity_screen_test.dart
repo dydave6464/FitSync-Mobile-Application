@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:fl_chart/fl_chart.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
@@ -6,6 +8,7 @@ import 'package:flutter_test/flutter_test.dart';
 
 import 'package:fitsync/core/api_exception.dart';
 import 'package:fitsync/core/theme.dart';
+import 'package:fitsync/features/activity/data/step_source.dart';
 import 'package:fitsync/features/activity/domain/activity.dart';
 import 'package:fitsync/features/activity/domain/step_readings.dart';
 import 'package:fitsync/features/activity/presentation/activity_screen.dart';
@@ -52,6 +55,41 @@ Future<_StubActivity> _pump(
   ));
   await tester.pumpAndSettle();
   return stub;
+}
+
+/// Activity whose week never arrives: a slow network.
+class _SlowActivity extends ActivityController {
+  @override
+  Future<ActivityState> build() => Completer<ActivityState>().future;
+  @override
+  Future<void> sync() async {}
+}
+
+/// The phone's own count, which needs no network; null never answers.
+class _PhoneSteps implements StepSource {
+  const _PhoneSteps(this.steps);
+  final int? steps;
+
+  @override
+  Future<DaySteps> today(DateTime now) =>
+      steps == null ? Completer<DaySteps>().future : Future.value(DaySteps(steps: steps!));
+  @override
+  Future<Map<String, int>> earlierDays(DateTime now) async => const {};
+  @override
+  Stream<int> live(DateTime now) => const Stream<int>.empty();
+}
+
+Future<void> _pumpSlow(WidgetTester tester, {int? phoneSteps}) async {
+  await tester.pumpWidget(ProviderScope(
+    overrides: [
+      stepSourceProvider.overrideWithValue(_PhoneSteps(phoneSteps)),
+      activityProvider.overrideWith(_SlowActivity.new),
+      liveStepsProvider.overrideWith((ref) => const Stream<int>.empty()),
+    ],
+    child: MaterialApp(theme: fsLightTheme(), home: const ActivityScreen()),
+  ));
+  await tester.pump();
+  await tester.pump();
 }
 
 class _RetrySyncCount {
@@ -308,6 +346,27 @@ void main() {
       await tester.scrollUntilVisible(find.text('This week'), 100);
       await tester.pumpAndSettle();
       expect(tester.takeException(), isNull);
+    });
+  });
+
+  group('while the week loads', () {
+    testWidgets("today's count from the phone shows at once, not a spinner", (tester) async {
+      await _pumpSlow(tester, phoneSteps: 6420);
+
+      expect(find.text('6,420'), findsOneWidget);
+      expect(find.text('steps today'), findsOneWidget);
+      expect(find.text('Loading your week…'), findsOneWidget);
+      // Not "Your usual appears after 3 days", which would be untrue.
+      expect(find.text('Your usual appears after 3 days of walking'), findsNothing);
+      expect(find.descendant(of: find.byKey(const Key('activity.kcal')), matching: find.text('—')), findsOneWidget);
+      expect(find.descendant(of: find.byKey(const Key('activity.km')), matching: find.text('—')), findsOneWidget);
+      expect(find.byType(CircularProgressIndicator), findsNothing);
+    });
+
+    testWidgets('before even the phone answers, a spinner', (tester) async {
+      await _pumpSlow(tester);
+
+      expect(find.byType(CircularProgressIndicator), findsOneWidget);
     });
   });
 }

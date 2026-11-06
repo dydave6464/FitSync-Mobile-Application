@@ -59,7 +59,16 @@ class _ActivityScreenState extends ConsumerState<ActivityScreen> {
       backgroundColor: t.bg,
       appBar: AppBar(title: const Text('Activity')),
       body: ref.watch(activityProvider).when(
-        loading: () => const Center(child: CircularProgressIndicator()),
+        // The week is still on its way; today's count is already on the
+        // phone, so it shows at once. A spinner only until the phone answers.
+        loading: () => switch (ref.watch(todayStepsProvider).value) {
+          final today? => _Body(
+            state: ActivityState(today: today, week: null, offline: false),
+            steps: live ?? today.steps,
+            loadingWeek: true,
+          ),
+          null => const Center(child: CircularProgressIndicator()),
+        },
         error: (error, _) => Center(
           child: Padding(
             padding: const EdgeInsets.all(24),
@@ -92,11 +101,19 @@ class _ActivityScreenState extends ConsumerState<ActivityScreen> {
 }
 
 class _Body extends StatelessWidget {
-  const _Body({required this.state, required this.steps, this.onGoToProfile});
+  const _Body({
+    required this.state,
+    required this.steps,
+    this.onGoToProfile,
+    this.loadingWeek = false,
+  });
 
   final ActivityState state;
   final int steps;
   final VoidCallback? onGoToProfile;
+
+  /// Today's count is in, the week (the usual and the estimates) is not yet.
+  final bool loadingWeek;
 
   @override
   Widget build(BuildContext context) {
@@ -129,7 +146,9 @@ class _Body extends StatelessWidget {
               _UsualBar(today: steps, usual: week?.usual),
               const SizedBox(height: 10),
               Text(
-                usualLine(today: steps, usual: week?.usual),
+                loadingWeek
+                    ? 'Loading your week…'
+                    : usualLine(today: steps, usual: week?.usual),
                 key: const Key('activity.usualLine'),
                 style: TextStyle(fontSize: 13, color: t.text),
               ),
