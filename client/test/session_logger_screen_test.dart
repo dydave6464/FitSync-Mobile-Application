@@ -4591,6 +4591,31 @@ void main() {
       await tester.pumpAndSettle();
     });
   });
+
+  // The only back control on iOS mid-workout, where the swipe is off: a
+  // named button with a 48 dp target, the 38 dp square drawn inside (SE-3).
+  testWidgets('the back button is a 48 dp named button', (tester) async {
+    final semantics = tester.ensureSemantics();
+    await _pump(tester);
+
+    final back = find.byKey(const Key('logger.back'));
+    final size = tester.getSize(back);
+    expect(size.width, greaterThanOrEqualTo(48));
+    expect(size.height, greaterThanOrEqualTo(48));
+    expect(
+      tester.getSemantics(back),
+      matchesSemantics(
+        // The tooltip is the name a screen reader speaks.
+        tooltip: 'Back',
+        isButton: true,
+        hasTapAction: true,
+        hasFocusAction: true,
+        isFocusable: true,
+      ),
+    );
+    await expectLater(tester, meetsGuideline(androidTapTargetGuideline));
+    semantics.dispose();
+  });
 }
 
 /// Fails every plan load the way a dropped connection does while [failing],

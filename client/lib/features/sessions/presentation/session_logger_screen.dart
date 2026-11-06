@@ -1214,29 +1214,46 @@ class _SessionLoggerScreenState extends ConsumerState<SessionLoggerScreen>
     // arrow. Tooltipped 'Back' so the platform affordance -- and
     // tester.pageBack -- still finds it, and maybePop routes it through
     // the PopScope above, which is what steps an exercise back.
-    leadingWidth: 58,
+    //
+    // The square stays 38 as drawn, inside a 48 dp target: this is the only
+    // back control on iOS mid-workout, where the PopScope turns the swipe
+    // off. Centred, so the toolbar's full height does not stretch the box;
+    // the 15 dp inset puts the drawn square where the mockup's 20 did.
+    leadingWidth: 63,
     leading: Padding(
-      padding: const EdgeInsets.only(left: 20),
-      child: Tooltip(
-        message: 'Back',
-        child: InkWell(
-          key: const Key('logger.back'),
-          onTap: () => Navigator.maybePop(context),
-          borderRadius: BorderRadius.circular(FsRadius.sm),
-          child: Container(
-            width: 38,
-            height: 38,
-            decoration: BoxDecoration(
-              color: t.surface,
+      padding: const EdgeInsets.only(left: 15),
+      child: Center(
+        child: Semantics(
+          button: true,
+          child: Tooltip(
+            message: 'Back',
+            child: InkWell(
+              key: const Key('logger.back'),
+              onTap: () => Navigator.maybePop(context),
               borderRadius: BorderRadius.circular(FsRadius.sm),
-              border: Border.all(color: t.line),
+              child: SizedBox.square(
+                dimension: 48,
+                child: Center(
+                  child: Container(
+                    width: 38,
+                    height: 38,
+                    decoration: BoxDecoration(
+                      color: t.surface,
+                      borderRadius: BorderRadius.circular(FsRadius.sm),
+                      border: Border.all(color: t.line),
+                    ),
+                    child: Icon(Icons.chevron_left, size: 19, color: t.text),
+                  ),
+                ),
+              ),
             ),
-            child: Icon(Icons.chevron_left, size: 19, color: t.text),
           ),
         ),
       ),
     ),
-    titleSpacing: 10,
+    // 5 rather than 10: the target reaches 5 dp past the drawn square, and
+    // the title stays where the mockup puts it.
+    titleSpacing: 5,
     title: Text(
       'Logging',
       style: TextStyle(
