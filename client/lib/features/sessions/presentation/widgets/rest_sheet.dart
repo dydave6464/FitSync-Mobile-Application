@@ -9,6 +9,7 @@ import '../../../exercises/presentation/exercise_list_screen.dart'
     show describeError;
 import '../../data/rest_alerts.dart';
 import '../providers.dart';
+import 'sheet_header.dart';
 
 /// The default rests on offer: every 30 seconds from 0:30 to 5:00.
 const restPresets = [30, 60, 90, 120, 150, 180, 210, 240, 270, 300];
@@ -222,7 +223,7 @@ class _RestSheetState extends ConsumerState<RestSheet> {
       child: SingleChildScrollView(
         padding: EdgeInsets.fromLTRB(
           20,
-          20,
+          10,
           20,
           20 + MediaQuery.viewInsetsOf(context).bottom,
         ),
@@ -230,9 +231,14 @@ class _RestSheetState extends ConsumerState<RestSheet> {
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
+            // Named by what it is about: the rest running now, or -- from
+            // the menu, before any rest -- the rest time itself.
+            SheetHeader(
+              title: countdown != null ? 'Rest' : 'Rest time',
+              onClose: _close,
+            ),
             if (countdown != null) ...[
-              Center(child: Text('Rest', style: fsEyebrow(t))),
-              const SizedBox(height: 10),
+              const SizedBox(height: 4),
               Center(
                 child: ValueListenableBuilder<RestReading?>(
                   valueListenable: countdown.reading,
@@ -370,7 +376,7 @@ class _RestSheetState extends ConsumerState<RestSheet> {
             ],
             if (_error != null) ...[
               const SizedBox(height: 10),
-              Text(_error!, style: TextStyle(fontSize: 12, color: t.red)),
+              FsErrorLine(_error!),
             ],
           ],
         ),

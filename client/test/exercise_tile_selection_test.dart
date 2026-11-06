@@ -4,6 +4,8 @@ import 'package:flutter_test/flutter_test.dart';
 
 import 'package:fitsync/core/theme.dart';
 import 'package:fitsync/features/exercises/domain/exercise.dart';
+import 'package:fitsync/features/exercises/domain/exercise_labels.dart';
+import 'package:fitsync/features/exercises/presentation/exercise_thumb.dart';
 import 'package:fitsync/features/exercises/presentation/widgets/exercise_tile.dart';
 
 const _exercise = ExerciseSummary(
@@ -104,6 +106,14 @@ void main() {
     expect(picked, plain);
   });
 
+  testWidgets('the row draws its exercise with the shared thumb', (
+    tester,
+  ) async {
+    await _pump(tester);
+
+    expect(tester.widget<ExerciseThumb>(find.byType(ExerciseThumb)).size, 56);
+  });
+
   testWidgets('an exercise that loads a reported injury is marked', (
     tester,
   ) async {
@@ -158,9 +168,20 @@ void main() {
           tester.renderObject<RenderParagraph>(warning).didExceedMaxLines,
           isFalse,
         );
-        // Muscle and equipment keep their own line, not pushed out.
-        expect(find.textContaining('Barbell'), findsWidgets);
-        expect(find.textContaining('lute'), findsOneWidget);
+        // Muscle and equipment keep a line of their own, not the warning's:
+        // found whole as a text of its own, so nothing shares it.
+        final line = find.text(
+          '${muscleLabel('glutes')} · ${equipmentLabel('Barbell')}',
+        );
+        expect(line, findsOneWidget);
+        // Uncut at 1.0x. At 2x it is one ellipsized line by design, and the
+        // test font draws every glyph a full em wide, so it is cut there.
+        if (scale == 1.0) {
+          expect(
+            tester.renderObject<RenderParagraph>(line).didExceedMaxLines,
+            isFalse,
+          );
+        }
       });
     }
   });

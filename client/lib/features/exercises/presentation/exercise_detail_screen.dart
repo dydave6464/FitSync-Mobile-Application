@@ -4,18 +4,29 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../core/api_exception.dart';
 import '../../../core/widgets/fs_kit.dart';
+import '../domain/exercise.dart';
+import '../../sessions/presentation/workout_draft.dart';
 import 'providers.dart';
 import 'widgets/exercise_demo_body.dart';
 
 class ExerciseDetailScreen extends ConsumerWidget {
-  const ExerciseDetailScreen({super.key, required this.exerciseId});
+  const ExerciseDetailScreen({super.key, required this.exerciseId, this.pick});
 
   final int exerciseId;
+
+  /// The library row this was opened from, when the library is picking a
+  /// workout. Non-null adds a button to put it in the workout, or take it
+  /// back out. Null -- the Plan tab -- shows the demo alone.
+  final ExerciseSummary? pick;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final detail = ref.watch(exerciseDetailProvider(exerciseId));
     final baseUrl = ref.watch(exerciseRepositoryProvider).baseUrl;
+    final picked = pick;
+    final held =
+        picked != null &&
+        ref.watch(workoutDraftProvider).holds(picked.exerciseId);
 
     return Scaffold(
       // A static title, not the loaded exercise's name: the body already
@@ -23,6 +34,18 @@ class ExerciseDetailScreen extends ConsumerWidget {
       // produced two "findsOneWidget" matches for the same text (see the
       // test file for the assertions this keeps satisfied).
       appBar: AppBar(title: const Text('Exercise')),
+      bottomNavigationBar: picked == null
+          ? null
+          : SafeArea(
+              minimum: const EdgeInsets.fromLTRB(20, 0, 20, 16),
+              child: FsButton(
+                key: const Key('detail.pick'),
+                label: held ? 'Remove from workout' : 'Add to workout',
+                kind: held ? FsButtonKind.secondary : FsButtonKind.primary,
+                onPressed: () =>
+                    ref.read(workoutDraftProvider.notifier).toggle(picked),
+              ),
+            ),
       body: detail.when(
         loading: () => const Center(child: CircularProgressIndicator()),
         error: (error, _) => FsRetry(

@@ -17,6 +17,7 @@ import 'package:fitsync/features/profile/presentation/providers.dart'
     show injuryOptionsProvider;
 import 'package:fitsync/features/sessions/domain/session_outcome.dart';
 import 'package:fitsync/features/sessions/presentation/widgets/outcome_sheet.dart';
+import 'package:fitsync/features/sessions/presentation/widgets/sheet_header.dart';
 
 const _pending = PendingOutcome(
   sessionId: 7,
@@ -124,10 +125,54 @@ Future<void> _tap(WidgetTester tester, Finder finder) async {
 }
 
 void main() {
+  testWidgets('has the shared sheet header, and its Close shuts the sheet', (
+    tester,
+  ) async {
+    await _open(tester);
+    final header = find.byType(SheetHeader);
+    expect(header, findsOneWidget);
+    expect(
+      find.descendant(
+        of: header,
+        matching: find.text('How did your last workout leave you?'),
+      ),
+      findsOneWidget,
+    );
+
+    await tester.tap(find.byTooltip('Close'));
+    await tester.pumpAndSettle();
+    expect(find.text(_question), findsNothing);
+  });
+
   testWidgets('names the session it is asking about', (tester) async {
     await _open(tester);
     expect(find.text(_question), findsOneWidget);
     expect(find.textContaining('Upper Body · Push'), findsOneWidget);
+  });
+
+  test('a hand-picked session is named the way History names it', () {
+    // History calls a session with no plan by the muscles it worked; the
+    // pain question must not call the same workout "Your own workout".
+    final pending = PendingOutcome.fromJson({
+      'sessionId': 9,
+      'sessionDate': '2026-09-21',
+      'planName': null,
+      'muscleGroups': ['pectorals', 'lats'],
+    });
+    expect(pending.title, 'Chest & Back workout');
+    // A server that does not send them yet still gets a name.
+    expect(
+      PendingOutcome.fromJson({'sessionId': 9, 'sessionDate': '2026-09-21'})
+          .title,
+      'Your own workout',
+    );
+  });
+
+  testWidgets('says the day in words, as History does', (tester) async {
+    await _open(tester);
+    expect(find.textContaining('2026-09-21'), findsNothing);
+    // September 21, 2026 was a Monday.
+    expect(find.textContaining('Mon, Sep 21'), findsOneWidget);
   });
 
   testWidgets('opens with nothing selected and nothing to submit', (
@@ -273,6 +318,16 @@ void main() {
 
     expect(find.text("Couldn't load body regions."), findsOneWidget);
     expect(_region(13), findsNothing);
+    // The kit's retry, in plain words, with "Try again" as the button.
+    expect(find.byType(FsRetry), findsOneWidget);
+    expect(
+      find.descendant(
+        of: find.byKey(const Key('outcome.regions.retry')),
+        matching: find.text('Try again'),
+      ),
+      findsOneWidget,
+    );
+    expect(find.text('Retry'), findsNothing);
 
     await _tap(tester, find.byKey(const Key('outcome.regions.retry')));
 

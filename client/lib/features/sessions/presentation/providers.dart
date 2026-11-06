@@ -55,6 +55,12 @@ const defaultRestSeconds = 90;
 /// is the phone's.
 final restNowProvider = Provider<DateTime Function()>((ref) => DateTime.now);
 
+/// The phone's clock, which a workout's elapsed time is read from. Not
+/// [restNowProvider]: widget tests hand that one the binding's fake clock,
+/// which starts in 2015, while sessions are stamped with real times. A
+/// provider so a test can move this one on by hand.
+final wallClockProvider = Provider<DateTime Function()>((ref) => DateTime.now);
+
 /// The session being logged right now, or null.
 ///
 /// Writes fold the server's response back into state rather than refetching:
@@ -204,6 +210,34 @@ final sessionHistoryProvider = FutureProvider<SessionHistoryPage>(
   (ref) => ref.watch(sessionRepositoryProvider).history(),
   retry: apiRetryPolicy,
 );
+
+/// How many pages of the history list the Progress tab shows: the first,
+/// plus one more per "Show older workouts".
+///
+/// Back to one whenever the first page is fetched again. A newly finished
+/// workout pushes every older one a row down, so pages fetched before it
+/// would repeat a workout at each page edge.
+class HistoryPagesNotifier extends Notifier<int> {
+  @override
+  int build() {
+    ref.watch(sessionHistoryProvider);
+    return 1;
+  }
+
+  void showMore() => state = state + 1;
+}
+
+final historyPagesProvider = NotifierProvider<HistoryPagesNotifier, int>(
+  HistoryPagesNotifier.new,
+);
+
+/// Page [page] (2 and on) of the same list as [sessionHistoryProvider],
+/// refetched along with it for the reason [HistoryPagesNotifier] resets.
+final olderHistoryProvider = FutureProvider.autoDispose
+    .family<SessionHistoryPage, int>((ref, page) {
+      ref.watch(sessionHistoryProvider);
+      return ref.watch(sessionRepositoryProvider).history(page: page);
+    }, retry: apiRetryPolicy);
 
 /// The workout the "+" sheet offers to repeat, or null when there is none.
 final lastWorkoutProvider = FutureProvider<LastWorkout?>(

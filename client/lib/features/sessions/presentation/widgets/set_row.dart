@@ -196,12 +196,13 @@ class SetRow extends StatelessWidget {
                 ),
                 if (showWeight) ...[
                   Expanded(
-                    // Named for screen readers: the hint is only the unit, and it
-                    // goes once a number is typed.
+                    // Named for screen readers with its unit: the hint is
+                    // only the unit, and it goes once a number is typed --
+                    // which, on rows filled from last session, is always.
                     child: _FieldGap(
                       focus: editable ? drafts.weightFocus(setNumber) : null,
                       child: Semantics(
-                        label: 'Weight',
+                        label: 'Weight in ${unit.api}',
                         child: TextField(
                           key: Key('set.$setNumber.weight'),
                           controller: drafts.weight(setNumber),
@@ -236,7 +237,11 @@ class SetRow extends StatelessWidget {
                   child: _FieldGap(
                     focus: editable ? drafts.repsFocus(setNumber) : null,
                     child: Semantics(
-                      label: 'Reps',
+                      // The target goes with the hint too, so it is in the
+                      // name; 'reps' is the hint when there is none.
+                      label: repsHint == 'reps'
+                          ? 'Reps'
+                          : 'Reps, target $repsHint',
                       child: TextField(
                         key: Key('set.$setNumber.reps'),
                         controller: drafts.reps(setNumber),

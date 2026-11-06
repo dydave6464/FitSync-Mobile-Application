@@ -63,7 +63,8 @@ class _ExerciseListScreenState extends ConsumerState<ExerciseListScreen> {
 
   void _open(ExerciseSummary exercise) => Navigator.of(context).push(
     MaterialPageRoute<void>(
-      builder: (_) => ExerciseDetailScreen(exerciseId: exercise.exerciseId),
+      builder: (_) =>
+          ExerciseDetailScreen(exerciseId: exercise.exerciseId, pick: exercise),
     ),
   );
 
@@ -137,8 +138,9 @@ class _ExerciseListScreenState extends ConsumerState<ExerciseListScreen> {
           Expanded(
             child: listing.when(
               loading: () => const Center(child: CircularProgressIndicator()),
-              error: (error, _) => _ErrorView(
-                message: describeError(error),
+              error: (error, _) => FsRetry(
+                fullScreen: true,
+                message: userMessage(error),
                 // Both, not just the list. An outage takes the filter bar
                 // down too, and its own error branch renders an empty strip
                 // with no way back — so a retry that recovered only the list
@@ -151,6 +153,9 @@ class _ExerciseListScreenState extends ConsumerState<ExerciseListScreen> {
               data: (state) {
                 if (state.items.isEmpty) {
                   return _EmptyView(
+                    // A search with no chip lit has no filters to blame: say
+                    // what was searched for instead.
+                    search: filters.hasChipFilter ? null : filters.search,
                     // Only the chips: the search box carries its own clear
                     // button, and the term is still on screen above.
                     onClear: filters.hasChipFilter
@@ -176,15 +181,21 @@ class _ExerciseListScreenState extends ConsumerState<ExerciseListScreen> {
                       );
                     }
                     final exercise = state.items[index];
-                    return ExerciseTile(
-                      exercise: exercise,
-                      baseUrl: baseUrl,
-                      selected: draft.holds(exercise.exerciseId),
-                      onTap: () => _toggle(exercise),
-                      // Picking took the row's tap, so the demo needs a
-                      // button of its own: choosing an exercise is easier
-                      // once you have seen what it is.
-                      onInfo: () => _open(exercise),
+                    // With the tile's own 4, rows start at 12 -- under the
+                    // search box and the chips, which are inset 12. The
+                    // Recent strip above keeps its own edge-to-edge scroll.
+                    return Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 8),
+                      child: ExerciseTile(
+                        exercise: exercise,
+                        baseUrl: baseUrl,
+                        selected: draft.holds(exercise.exerciseId),
+                        onTap: () => _toggle(exercise),
+                        // Picking took the row's tap, so the demo needs a
+                        // button of its own: choosing an exercise is easier
+                        // once you have seen what it is.
+                        onInfo: () => _open(exercise),
+                      ),
                     );
                   },
                 );
@@ -198,7 +209,10 @@ class _ExerciseListScreenState extends ConsumerState<ExerciseListScreen> {
 }
 
 class _EmptyView extends StatelessWidget {
-  const _EmptyView({required this.onClear});
+  const _EmptyView({required this.onClear, this.search});
+
+  /// The term typed, when it alone is what found nothing.
+  final String? search;
 
   /// Null when no chip is lit, so there is nothing for the button to clear.
   final VoidCallback? onClear;
@@ -210,8 +224,10 @@ class _EmptyView extends StatelessWidget {
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
-          const Text(
-            'No exercises match those filters.',
+          Text(
+            search == null
+                ? 'No exercises match those filters.'
+                : 'No exercises match "$search". Try a shorter word.',
             textAlign: TextAlign.center,
           ),
           if (onClear != null) ...[
@@ -223,30 +239,6 @@ class _EmptyView extends StatelessWidget {
               child: const Text('Clear filters'),
             ),
           ],
-        ],
-      ),
-    ),
-  );
-}
-
-class _ErrorView extends StatelessWidget {
-  const _ErrorView({required this.message, required this.onRetry});
-
-  final String message;
-  final VoidCallback onRetry;
-
-  @override
-  Widget build(BuildContext context) => Center(
-    child: Padding(
-      padding: const EdgeInsets.all(24),
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          const Icon(Icons.cloud_off, size: 40),
-          const SizedBox(height: 12),
-          Text(message, textAlign: TextAlign.center),
-          const SizedBox(height: 16),
-          FilledButton(onPressed: onRetry, child: const Text('Retry')),
         ],
       ),
     ),

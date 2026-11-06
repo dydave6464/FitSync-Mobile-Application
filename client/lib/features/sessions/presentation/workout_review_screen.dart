@@ -6,7 +6,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../core/theme.dart';
 import '../../../core/widgets/fs_kit.dart';
 import '../../exercises/domain/exercise.dart';
-import '../../exercises/presentation/equipment_icon.dart';
+import '../../exercises/presentation/exercise_thumb.dart';
 import '../../exercises/presentation/exercise_list_screen.dart'
     show ExerciseListScreen, describeError;
 import '../../exercises/presentation/providers.dart';
@@ -601,6 +601,7 @@ class _ReviewRow extends StatelessWidget {
     // At large text the thumbnail's 46 dp go to the name instead: the name
     // is what tells two similar exercises apart, the picture rarely is.
     final showThumb = MediaQuery.textScalerOf(context).scale(14) <= 18;
+    final name = exerciseDisplayName(exercise.name);
 
     return ListTile(
       // The handle's touch area is 48 wide but its icon still 20, so the
@@ -623,7 +624,7 @@ class _ReviewRow extends StatelessWidget {
               // alone; the list's Move up/down actions sit on the row.
               child: Semantics(
                 container: true,
-                label: 'Reorder ${exerciseDisplayName(exercise.name)}',
+                label: 'Reorder $name',
                 // Painted, if invisibly, so the whole 48 dp box catches the
                 // touch: the listener defers to its child, and an empty
                 // SizedBox would leave only the 20 dp glyph to land on.
@@ -645,19 +646,11 @@ class _ReviewRow extends StatelessWidget {
             ),
             if (showThumb) ...[
               const SizedBox(width: 2),
-              SizedBox(
-                width: 44,
-                height: 44,
-                child: exercise.thumbnailUrl == null
-                    ? _ThumbPlaceholder(equipment: exercise.equipment)
-                    : Image.network(
-                        '$baseUrl${exercise.thumbnailUrl}',
-                        fit: BoxFit.cover,
-                        // One unreachable thumbnail must not take the row
-                        // down.
-                        errorBuilder: (_, _, _) =>
-                            _ThumbPlaceholder(equipment: exercise.equipment),
-                      ),
+              ExerciseThumb(
+                size: 44,
+                baseUrl: baseUrl,
+                thumbnailUrl: exercise.thumbnailUrl,
+                equipment: exercise.equipment,
               ),
             ],
           ],
@@ -666,7 +659,7 @@ class _ReviewRow extends StatelessWidget {
       // Two lines: similar exercises differ at the end of their names, and
       // this is where the workout's order is set.
       title: Text(
-        exerciseDisplayName(exercise.name),
+        name,
         maxLines: 2,
         overflow: TextOverflow.ellipsis,
         style: const TextStyle(fontSize: 14),
@@ -690,7 +683,7 @@ class _ReviewRow extends StatelessWidget {
         children: [
           IconButton(
             key: Key('review.remove.${exercise.exerciseId}'),
-            tooltip: 'Remove ${exerciseDisplayName(exercise.name)}',
+            tooltip: 'Remove $name',
             constraints: const BoxConstraints(minWidth: 48, minHeight: 48),
             icon: const Icon(Icons.close),
             onPressed: onRemove,
@@ -698,7 +691,7 @@ class _ReviewRow extends StatelessWidget {
           PopupMenuButton<_RowAction>(
             key: Key('review.more.${exercise.exerciseId}'),
             icon: const Icon(Icons.more_vert),
-            tooltip: 'More options for ${exerciseDisplayName(exercise.name)}',
+            tooltip: 'More options for $name',
             onSelected: onAction,
             itemBuilder: (context) => [
               PopupMenuItem(
@@ -719,16 +712,4 @@ class _ReviewRow extends StatelessWidget {
       ),
     );
   }
-}
-
-class _ThumbPlaceholder extends StatelessWidget {
-  const _ThumbPlaceholder({this.equipment});
-
-  final String? equipment;
-
-  @override
-  Widget build(BuildContext context) => Container(
-    color: Theme.of(context).colorScheme.surfaceContainerHighest,
-    child: Icon(equipmentIcon(equipment), size: 18),
-  );
 }

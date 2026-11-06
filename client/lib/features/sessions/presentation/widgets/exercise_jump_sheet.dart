@@ -4,6 +4,7 @@ import '../../../../core/theme.dart';
 import '../../../exercises/presentation/widgets/coaching_tag.dart';
 import '../../../plans/domain/workout_plan.dart';
 import '../../domain/active_session.dart';
+import 'sheet_header.dart';
 import '../../../exercises/domain/exercise_labels.dart';
 
 /// Opens [ExerciseJumpSheet] over the logger: resolves to the index chosen,
@@ -69,9 +70,6 @@ class ExerciseJumpSheet extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final t = context.fs;
-    final theme = Theme.of(context);
-
     return ConstrainedBox(
       constraints: BoxConstraints(
         maxHeight: MediaQuery.sizeOf(context).height * _maxHeightFraction,
@@ -81,23 +79,9 @@ class ExerciseJumpSheet extends StatelessWidget {
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Center(
-              child: Container(
-                width: 38,
-                height: 4,
-                margin: const EdgeInsets.only(top: 10, bottom: 16),
-                decoration: BoxDecoration(
-                  color: t.line2,
-                  borderRadius: BorderRadius.circular(99),
-                ),
-              ),
-            ),
-            Padding(
-              padding: const EdgeInsets.fromLTRB(20, 0, 20, 12),
-              child: Text(
-                'Jump to an exercise',
-                style: theme.textTheme.titleLarge,
-              ),
+            const Padding(
+              padding: EdgeInsets.fromLTRB(20, 10, 8, 4),
+              child: SheetHeader(title: 'Jump to an exercise'),
             ),
             // Only the rows scroll; the handle and the title stay put.
             Flexible(
@@ -122,65 +106,83 @@ class ExerciseJumpSheet extends StatelessWidget {
     final done = _doneCount(exercise.exerciseId);
     final complete = done >= exercise.targetSets;
     final current = i == currentIndex;
+    final name = exerciseDisplayName(exercise.name);
+    void pick() => Navigator.of(context).pop(i);
 
-    final row = InkWell(
-      key: Key('jump.${exercise.exerciseId}'),
-      onTap: () => Navigator.of(context).pop(i),
-      child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 13),
-        color: current ? t.accentDim : null,
-        child: Row(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            SizedBox(
-              width: 24,
-              child: Text(
-                '${i + 1}',
+    // One sentence per row, and which row is current as a state rather than
+    // by colour and weight alone. The coaching tag is said in it too, since
+    // the row's own nodes are folded into this one.
+    final coaching = exercise.coaching == null
+        ? ''
+        : ', ${exercise.coaching!.injuryName} · AI coached';
+    final row = Semantics(
+      container: true,
+      button: true,
+      selected: current,
+      label:
+          'Exercise ${i + 1} of ${exercises.length}, $name, '
+          '$done of ${exercise.targetSets} sets$coaching',
+      onTap: pick,
+      excludeSemantics: true,
+      child: InkWell(
+        key: Key('jump.${exercise.exerciseId}'),
+        onTap: pick,
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 13),
+          color: current ? t.accentDim : null,
+          child: Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              SizedBox(
+                width: 24,
+                child: Text(
+                  '${i + 1}',
+                  style: TextStyle(
+                    fontFamily: fsMonoFamily,
+                    fontSize: 12,
+                    color: current ? t.accentText : t.text3,
+                  ),
+                ),
+              ),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Text(
+                      name,
+                      style: TextStyle(
+                        fontSize: 13.5,
+                        fontWeight: current ? FontWeight.w700 : FontWeight.w500,
+                        color: t.text,
+                      ),
+                    ),
+                    if (exercise.coaching != null) ...[
+                      const SizedBox(height: 4),
+                      CoachingTag(
+                        key: Key('coaching.jump.${exercise.planExerciseId}'),
+                        injuryName: exercise.coaching!.injuryName,
+                      ),
+                    ],
+                  ],
+                ),
+              ),
+              Text(
+                '$done/${exercise.targetSets} sets',
                 style: TextStyle(
                   fontFamily: fsMonoFamily,
                   fontSize: 12,
-                  color: current ? t.accentText : t.text3,
+                  color: complete ? t.accentText : t.text3,
                 ),
               ),
-            ),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Text(
-                    exerciseDisplayName(exercise.name),
-                    style: TextStyle(
-                      fontSize: 13.5,
-                      fontWeight: current ? FontWeight.w700 : FontWeight.w500,
-                      color: t.text,
-                    ),
-                  ),
-                  if (exercise.coaching != null) ...[
-                    const SizedBox(height: 4),
-                    CoachingTag(
-                      key: Key('coaching.jump.${exercise.planExerciseId}'),
-                      injuryName: exercise.coaching!.injuryName,
-                    ),
-                  ],
-                ],
+              SizedBox(
+                width: 26,
+                child: complete
+                    ? Icon(Icons.check, size: 15, color: t.accentText)
+                    : null,
               ),
-            ),
-            Text(
-              '$done/${exercise.targetSets} sets',
-              style: TextStyle(
-                fontFamily: fsMonoFamily,
-                fontSize: 12,
-                color: complete ? t.accentText : t.text3,
-              ),
-            ),
-            SizedBox(
-              width: 26,
-              child: complete
-                  ? Icon(Icons.check, size: 15, color: t.accentText)
-                  : null,
-            ),
-          ],
+            ],
+          ),
         ),
       ),
     );

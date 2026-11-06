@@ -12,6 +12,8 @@ import '../../../exercises/presentation/exercise_list_screen.dart'
     show describeError;
 import '../../../profile/presentation/providers.dart' show profileProvider;
 import '../providers.dart';
+import 'progress_cards.dart' show periodProgressWords;
+import 'sheet_header.dart';
 
 /// The sections a report can carry, in the order the page draws them.
 ///
@@ -168,10 +170,10 @@ class _ShareReportSheetState extends ConsumerState<_ShareReportSheet> {
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            const FsEyebrow('Share with coach'),
-            const SizedBox(height: 6),
+            const SheetHeader(title: 'Share with coach'),
             Text(
-              'A link to this window, frozen as it is now.',
+              'A link to ${periodProgressWords(widget.period)}, '
+              'frozen as it is now.',
               style: TextStyle(fontSize: 12.5, color: t.text2),
             ),
             const SizedBox(height: 14),
@@ -206,7 +208,7 @@ class _ShareReportSheetState extends ConsumerState<_ShareReportSheet> {
                 ),
             if (_failure != null) ...[
               const SizedBox(height: 8),
-              Text(_failure!, style: TextStyle(fontSize: 12, color: t.red)),
+              FsErrorLine(_failure!),
             ],
             const SizedBox(height: 14),
             FsButton(

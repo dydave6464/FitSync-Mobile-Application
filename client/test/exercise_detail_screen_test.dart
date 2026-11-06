@@ -11,6 +11,7 @@ import 'package:fitsync/core/widgets/fs_kit.dart';
 import 'package:fitsync/features/exercises/domain/exercise.dart';
 import 'package:fitsync/features/exercises/presentation/exercise_detail_screen.dart';
 import 'package:fitsync/features/exercises/presentation/providers.dart';
+import 'package:fitsync/features/sessions/presentation/workout_draft.dart';
 
 const _detail = ExerciseDetail(
   exerciseId: 1,
@@ -42,7 +43,66 @@ void _usePortraitSurface(WidgetTester tester) {
   addTearDown(tester.view.resetDevicePixelRatio);
 }
 
+const _summary = ExerciseSummary(
+  exerciseId: 1,
+  name: '3/4 sit-up',
+  muscleGroup: 'abs',
+  equipment: 'body weight',
+  thumbnailUrl: null,
+);
+
 void main() {
+  // Opened from the picker's ⓘ, the demo is where the choice gets made; it
+  // must be able to act on it rather than send the user back to find the row.
+  group('opened from the picker', () {
+    Future<ProviderContainer> pumpPicker(WidgetTester tester) async {
+      _usePortraitSurface(tester);
+      final container = ProviderContainer(
+        overrides: [
+          exerciseDetailProvider(1).overrideWith((ref) async => _detail),
+        ],
+      );
+      addTearDown(container.dispose);
+      await tester.pumpWidget(
+        UncontrolledProviderScope(
+          container: container,
+          child: const MaterialApp(
+            home: ExerciseDetailScreen(exerciseId: 1, pick: _summary),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+      return container;
+    }
+
+    testWidgets('adds the exercise to the workout, and takes it back out', (
+      tester,
+    ) async {
+      final container = await pumpPicker(tester);
+
+      await tester.tap(find.text('Add to workout'));
+      await tester.pumpAndSettle();
+      expect(container.read(workoutDraftProvider).holds(1), isTrue);
+
+      expect(find.text('Remove from workout'), findsOneWidget);
+      await tester.tap(find.text('Remove from workout'));
+      await tester.pumpAndSettle();
+      expect(container.read(workoutDraftProvider).holds(1), isFalse);
+    });
+  });
+
+  testWidgets('opened from anywhere else, it offers no workout button', (
+    tester,
+  ) async {
+    _usePortraitSurface(tester);
+    await tester.pumpWidget(
+      harness(exerciseDetailProvider(1).overrideWith((ref) async => _detail)),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.text('Add to workout'), findsNothing);
+  });
+
   testWidgets('renders the name, metadata and numbered cues', (tester) async {
     _usePortraitSurface(tester);
     await tester.pumpWidget(
