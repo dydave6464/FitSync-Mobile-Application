@@ -81,29 +81,28 @@ class ActivityController extends AsyncNotifier<ActivityState> {
   @override
   Future<ActivityState> build() => _load(null);
 
-  /// Saves today (and, on iPhone, any earlier day the server has fewer
-  /// steps for), then reads the week back. Offline, today still counts and
-  /// the week stays as it was.
+  /// Saves today and any earlier day the phone has steps for (on iPhone,
+  /// the six before it), and gets the week back with them: one request.
+  /// The server keeps the higher of each count and what it has, so nothing
+  /// is read first to compare. Offline, today still counts and the week
+  /// stays as it was.
   Future<ActivityState> _load(ActivityWeek? previous) async {
     final now = ref.read(activityClockProvider)();
     final source = ref.read(stepSourceProvider);
     final repo = ref.read(activityRepositoryProvider);
     final today = await source.today(now);
+    // A 0-step day is never saved: its row would count toward "usual"
+    // (days with a row) and drag it down for a day with no data.
+    final days = <String, int>{
+      if (today.steps > 0)
+        manilaDayOf(now): math.min(today.steps, maxSavedSteps),
+      for (final entry in (await source.earlierDays(now)).entries)
+        if (entry.value > 0) entry.key: math.min(entry.value, maxSavedSteps),
+    };
     try {
-      final known = previous ?? await repo.week();
-      // A 0-step day is never saved: its row would count toward "usual"
-      // (days with a row) and drag it down for a day with no data.
-      if (today.steps > 0) await _save(repo, manilaDayOf(now), today.steps);
-      final stored = {for (final d in known.days) d.date: d.steps ?? -1};
-      for (final entry in (await source.earlierDays(now)).entries) {
-        final steps = math.min(entry.value, maxSavedSteps);
-        if (steps > 0 && steps > (stored[entry.key] ?? -1)) {
-          await _save(repo, entry.key, steps);
-        }
-      }
       return ActivityState(
         today: today,
-        week: await repo.week(),
+        week: days.isEmpty ? await repo.week() : await _save(repo, days),
         offline: false,
       );
     } on ApiException catch (error) {
@@ -112,14 +111,20 @@ class ActivityController extends AsyncNotifier<ActivityState> {
     }
   }
 
-  /// Saves one day, capped at [maxSavedSteps]. A day the server rejects
-  /// (e.g. DATE_OUT_OF_RANGE when the phone's clock is off) is skipped so
-  /// the rest still loads; NETWORK_ERROR goes on to [_load]'s offline branch.
-  Future<void> _save(ActivityRepository repo, String date, int steps) async {
+  /// Saves [days] and returns the week. A batch the server rejects (a bad
+  /// count, say) still leaves the week to show, read on its own, as the
+  /// single-day saves skipped a rejected day; NETWORK_ERROR goes on to
+  /// [_load]'s offline branch. A day outside the server's window (the
+  /// phone's clock is off) is not an error: the server skips it alone.
+  Future<ActivityWeek> _save(
+    ActivityRepository repo,
+    Map<String, int> days,
+  ) async {
     try {
-      await repo.saveDay(date, math.min(steps, maxSavedSteps));
+      return await repo.saveDays(days);
     } on ApiException catch (error) {
       if (error.code == 'NETWORK_ERROR') rethrow;
+      return repo.week();
     }
   }
 
@@ -137,8 +142,8 @@ class ActivityController extends AsyncNotifier<ActivityState> {
 
 /// Today's count from the phone alone, with no network: what Home's steps
 /// tile and the Activity screen show at once while [activityProvider] is
-/// still saving and reading the week, which can take several requests on a
-/// slow connection. autoDispose: it is only read until that week arrives,
+/// still saving and reading the week, which can take a while on a slow
+/// connection. autoDispose: it is only read until that week arrives,
 /// and a later cold load reads the phone afresh.
 final todayStepsProvider = FutureProvider.autoDispose<DaySteps>(
   (ref) =>

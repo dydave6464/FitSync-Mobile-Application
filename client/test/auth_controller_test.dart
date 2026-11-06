@@ -268,6 +268,10 @@ class _SequenceActivityRepository implements ActivityRepository {
   @override
   Future<ActivityDay> saveDay(String date, int steps) =>
       throw UnimplementedError();
+
+  @override
+  Future<ActivityWeek> saveDays(Map<String, int> days) =>
+      throw UnimplementedError();
 }
 
 /// Hands out a different answer on each call, so a cached one is
@@ -609,10 +613,10 @@ void main() {
     () async {
       final tokens = TokenStore(backing: InMemorySecureStore());
       await tokens.write('tok');
+      // One week read per load: with no steps on this phone, a load is a
+      // single GET of the week.
       final activity = _SequenceActivityRepository([
         _activityWeek(6000),
-        _activityWeek(6000),
-        _activityWeek(0),
         _activityWeek(0),
       ]);
       final permission = _SequenceStepPermission([
@@ -657,7 +661,7 @@ void main() {
       );
       expect(
         activity.loads,
-        4,
+        2,
         reason: 'the activity week was not re-fetched',
       );
       expect(permission.loads, 2, reason: 'step access was not re-checked');
