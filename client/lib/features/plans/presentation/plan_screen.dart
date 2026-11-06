@@ -173,6 +173,12 @@ class _PlanViewState extends ConsumerState<_PlanView> {
     final baseUrl = ref.watch(planRepositoryProvider).baseUrl;
     final completedDays =
         ref.watch(completedDaysProvider).value ?? const <String>{};
+    // No `?? const []`: an empty list means the user chose no days, which is
+    // an answer. While the profile is loading or its fetch has failed the
+    // truth is "not known", and neither the strip nor the card may report a
+    // schedule -- or a target -- off a request that never landed. Read once,
+    // so the two cannot be handed different answers.
+    final trainingDays = ref.watch(profileProvider).value?.trainingDays;
 
     // The rule itself lives on WorkoutPlan.todayDayNo, with the caveat about
     // distinct dates: the Home tab's plan card needs the same number, and two
@@ -198,17 +204,13 @@ class _PlanViewState extends ConsumerState<_PlanView> {
           daysPerWeek: plan.daysPerWeek,
           completedDates: completedDays,
           today: DateTime.now(),
-          // No `?? const []`: an empty list means the user chose no days,
-          // which is an answer. While the profile is loading or its fetch has
-          // failed the truth is "not known", and the strip must not report a
-          // schedule -- or a target -- off a request that never landed.
-          trainingDays: ref.watch(profileProvider).value?.trainingDays,
+          trainingDays: trainingDays,
         ),
         const SizedBox(height: 14),
         SessionCard(
           plan: plan,
           dayNo: todayDayNo,
-          trainingDays: ref.watch(profileProvider).value?.trainingDays,
+          trainingDays: trainingDays,
           hasActiveSession: ref.watch(activeSessionProvider).value != null,
           starting: _starting && !_asking,
           onStart: _startOrResume,
