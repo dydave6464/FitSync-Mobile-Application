@@ -272,6 +272,18 @@ void main() {
     expect(find.text('Chicken adobo'), findsOneWidget);
   });
 
+  testWidgets("Undo puts a label-kcal drink back with its label's kcal", (tester) async {
+    // 0/0/0 + 90 kcal: sent as macros alone, the server would refuse it.
+    const tea = FoodEntry(id: 9, mealType: 'lunch', name: 'Iced tea', servings: 1,
+        kcal: 90, proteinG: 0, carbsG: 0, fatG: 0, source: 'manual');
+    final repo = await _pump(tester, today: _day('2026-10-14', lunch: [tea]));
+    await tester.tap(find.byKey(const Key('entry.delete.9')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Undo'));
+    await tester.pumpAndSettle();
+    expect(repo.lastLogged!.toRef()['kcal'], 90);
+  });
+
   testWidgets('the Undo message goes away on its own', (tester) async {
     // A SnackBar with an action persists by default, which left "Removed …"
     // over the meals for as long as the tab stayed open.
