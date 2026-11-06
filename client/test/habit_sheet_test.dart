@@ -321,6 +321,8 @@ void main() {
 
     await tester.tap(find.byKey(const Key('habit.delete')));
     await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const Key('habit.delete.confirm')));
+    await tester.pumpAndSettle();
 
     expect(repo.removed, [7]);
     expect(find.byKey(const Key('habit.delete')), findsNothing);
@@ -435,6 +437,42 @@ void main() {
       await tester.pumpAndSettle();
       expect(tester.takeException(), isNull);
       expect(find.text('DURATION'), findsOneWidget);
+    });
+  });
+
+  group('delete (PT-11)', () {
+    testWidgets('asks before deleting, and deletes nothing yet', (
+      tester,
+    ) async {
+      final repo = await _open(tester, existing: _existing);
+
+      await tester.tap(find.byKey(const Key('habit.delete')));
+      await tester.pumpAndSettle();
+
+      expect(find.text('Delete this habit?'), findsOneWidget);
+      expect(repo.removed, isEmpty);
+      final delete = tester.widget<TextButton>(
+        find.byKey(const Key('habit.delete.confirm')),
+      );
+      expect(
+        delete.style!.foregroundColor!.resolve(const {}),
+        FsTokens.light.red,
+      );
+    });
+
+    testWidgets('Keep it leaves the habit and the sheet as they were', (
+      tester,
+    ) async {
+      final repo = await _open(tester, existing: _existing);
+
+      await tester.tap(find.byKey(const Key('habit.delete')));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const Key('habit.delete.keep')));
+      await tester.pumpAndSettle();
+
+      expect(repo.removed, isEmpty);
+      expect(find.text('Delete this habit?'), findsNothing);
+      expect(find.byKey(const Key('habit.save')), findsOneWidget);
     });
   });
 }

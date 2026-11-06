@@ -157,6 +157,8 @@ void main() {
     await tester.pumpAndSettle();
     await tester.tap(find.byKey(const Key('habit.delete')));
     await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const Key('habit.delete.confirm')));
+    await tester.pumpAndSettle();
 
     expect(find.byKey(const Key('allHabits.habit.4')), findsNothing);
     expect(find.byKey(const Key('allHabits.habit.5')), findsOneWidget);

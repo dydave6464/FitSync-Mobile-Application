@@ -150,6 +150,36 @@ class _HabitSheetState extends ConsumerState<_HabitSheet> {
     );
   }
 
+  /// Asks first: a mis-tap just under Save would otherwise remove the habit
+  /// with nothing to say so and no way back.
+  Future<void> _delete(Habit existing) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('Delete this habit?'),
+        content: Text('“${existing.title}” leaves your routine.'),
+        actions: [
+          TextButton(
+            key: const Key('habit.delete.keep'),
+            onPressed: () => Navigator.of(dialogContext).pop(false),
+            child: const Text('Keep it'),
+          ),
+          TextButton(
+            key: const Key('habit.delete.confirm'),
+            style: TextButton.styleFrom(foregroundColor: dialogContext.fs.red),
+            onPressed: () => Navigator.of(dialogContext).pop(true),
+            child: const Text('Delete'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true || !mounted) return;
+    await _run((c) async {
+      await c.remove(existing.habitId);
+      return null;
+    });
+  }
+
   Future<void> _pickTime() async {
     final initial = _time == null
         ? const TimeOfDay(hour: 7, minute: 0)
@@ -267,12 +297,7 @@ class _HabitSheetState extends ConsumerState<_HabitSheet> {
               const SizedBox(height: 6),
               TextButton(
                 key: const Key('habit.delete'),
-                onPressed: _busy
-                    ? null
-                    : () => _run((c) async {
-                        await c.remove(existing.habitId);
-                        return null;
-                      }),
+                onPressed: _busy ? null : () => _delete(existing),
                 child: Text('Delete habit', style: TextStyle(color: t.red)),
               ),
             ],
