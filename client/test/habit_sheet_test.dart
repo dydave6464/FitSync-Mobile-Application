@@ -475,4 +475,84 @@ void main() {
       expect(find.byKey(const Key('habit.save')), findsOneWidget);
     });
   });
+
+  group('closing with changes (PT-24)', () {
+    testWidgets('back with nothing typed closes without asking', (
+      tester,
+    ) async {
+      await _open(tester);
+
+      await tester.binding.handlePopRoute();
+      await tester.pumpAndSettle();
+
+      expect(find.text('Discard your changes?'), findsNothing);
+      expect(find.text('New habit'), findsNothing);
+    });
+
+    testWidgets('an edit left as it was closes without asking', (tester) async {
+      await _open(tester, existing: _existing);
+
+      await tester.binding.handlePopRoute();
+      await tester.pumpAndSettle();
+
+      expect(find.text('Discard your changes?'), findsNothing);
+      expect(find.text('Edit habit'), findsNothing);
+    });
+
+    testWidgets('back asks first, and Keep editing keeps what was typed', (
+      tester,
+    ) async {
+      await _open(tester);
+      await tester.enterText(find.byKey(const Key('habit.title')), 'Stretch');
+      await tester.pump();
+
+      await tester.binding.handlePopRoute();
+      await tester.pumpAndSettle();
+      expect(find.text('Discard your changes?'), findsOneWidget);
+
+      await tester.tap(find.byKey(const Key('discard.keep')));
+      await tester.pumpAndSettle();
+      expect(find.text('New habit'), findsOneWidget);
+      expect(find.text('Stretch'), findsOneWidget);
+    });
+
+    testWidgets('Discard closes the sheet and saves nothing', (tester) async {
+      final repo = await _open(tester, existing: _existing);
+      await tester.tap(find.byKey(const Key('weekday.2')));
+      await tester.pump();
+
+      await tester.binding.handlePopRoute();
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const Key('discard.confirm')));
+      await tester.pumpAndSettle();
+
+      expect(find.text('Edit habit'), findsNothing);
+      expect(repo.edited, isEmpty);
+    });
+
+    testWidgets('a tap on the scrim asks first', (tester) async {
+      await _open(tester);
+      await tester.enterText(find.byKey(const Key('habit.duration')), '15');
+      await tester.pump();
+
+      await tester.tapAt(const Offset(10, 10));
+      await tester.pumpAndSettle();
+
+      expect(find.text('Discard your changes?'), findsOneWidget);
+    });
+
+    testWidgets('a swipe down asks first rather than closing', (tester) async {
+      await _open(tester);
+      await tester.enterText(find.byKey(const Key('habit.title')), 'Stretch');
+      await tester.pump();
+
+      await tester.fling(find.text('New habit'), const Offset(0, 300), 1500);
+      await tester.pumpAndSettle();
+
+      expect(find.text('Discard your changes?'), findsOneWidget);
+      await tester.tap(find.byKey(const Key('discard.keep')));
+      await tester.pumpAndSettle();
+      expect(find.text('Stretch'), findsOneWidget);
+    });
+  });
 }
