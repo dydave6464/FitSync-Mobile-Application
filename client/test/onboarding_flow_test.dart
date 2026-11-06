@@ -96,44 +96,28 @@ class FakeProfileNotifier extends ProfileNotifier {
   final List<String> seedGoals;
   final String? seedMainGoal;
 
+  /// The profile as the server would hold it, in its wire form. Each patch
+  /// merges into it and the profile is read back through [Profile.fromJson],
+  /// as the real notifier reads the server's answer, so no field a patch did
+  /// not touch is lost along the way.
+  late final Map<String, dynamic> _stored = {
+    'userId': 7,
+    'email': 'juan@example.com',
+    'fullName': 'Juan Dela Cruz',
+    'onboardingCompleted': false,
+    'goals': seedGoals,
+    'mainGoal': seedMainGoal,
+  };
+
   @override
-  Future<Profile> build() async => Profile(
-    userId: 7,
-    email: 'juan@example.com',
-    fullName: 'Juan Dela Cruz',
-    onboardingCompleted: false,
-    isPremium: false,
-    notificationsEnabled: true,
-    equipment: const [],
-    injuries: const [],
-    goals: seedGoals,
-    mainGoal: seedMainGoal,
-  );
+  Future<Profile> build() async => Profile.fromJson(_stored);
 
   @override
   Future<void> patch(Map<String, dynamic> fields) async {
     patches.add(fields);
     if (onPatch != null) await onPatch!();
-    // The unit is a display preference the step reads back at once, as the
-    // real notifier's refreshed profile would give it.
-    if (fields['weightUnit'] case final String unit) {
-      final loaded = state.value!;
-      state = AsyncData(
-        Profile(
-          userId: loaded.userId,
-          email: loaded.email,
-          fullName: loaded.fullName,
-          onboardingCompleted: loaded.onboardingCompleted,
-          isPremium: loaded.isPremium,
-          notificationsEnabled: loaded.notificationsEnabled,
-          equipment: loaded.equipment,
-          injuries: loaded.injuries,
-          goals: loaded.goals,
-          mainGoal: loaded.mainGoal,
-          weightUnit: WeightUnit.fromApi(unit),
-        ),
-      );
-    }
+    _stored.addAll(fields);
+    state = AsyncData(Profile.fromJson(_stored));
   }
 
   @override
@@ -161,17 +145,20 @@ class FakeProfileNotifier extends ProfileNotifier {
   }
 }
 
-/// A profile that cannot load until [fail] is cleared, counting attempts.
+/// A profile that cannot load while [failing] says so, counting attempts.
+/// A callback rather than a shared flag, so each test owns its own switch.
 class _FailingProfileNotifier extends FakeProfileNotifier {
-  _FailingProfileNotifier(this.attempts) : super([]);
+  _FailingProfileNotifier(this.attempts, {bool Function()? failing})
+    : failing = failing ?? (() => true),
+      super([]);
 
   final List<int> attempts;
-  static bool fail = true;
+  final bool Function() failing;
 
   @override
   Future<Profile> build() async {
     attempts.add(attempts.length);
-    if (fail) {
+    if (failing()) {
       throw const ApiException(
         'NETWORK_ERROR',
         'Could not reach http://10.0.2.2:3000. Check the server is running.',
@@ -1812,12 +1799,11 @@ void main() {
   group('A profile that cannot load', () {
     testWidgets('says why in plain words and retries', (tester) async {
       final attempts = <int>[];
-      _FailingProfileNotifier.fail = true;
-      addTearDown(() => _FailingProfileNotifier.fail = true);
+      var fail = true;
       await _pumpFlow(
         tester,
         patches: [],
-        profile: () => _FailingProfileNotifier(attempts),
+        profile: () => _FailingProfileNotifier(attempts, failing: () => fail),
       );
 
       expect(
@@ -1829,7 +1815,7 @@ void main() {
       expect(find.textContaining('10.0.2.2'), findsNothing);
       expect(find.byType(FsRetry), findsOneWidget);
 
-      _FailingProfileNotifier.fail = false;
+      fail = false;
       final before = attempts.length;
       await tester.tap(find.byKey(const Key('onboarding.retry')));
       await tester.pumpAndSettle();
