@@ -82,7 +82,7 @@ class ExerciseJumpSheet extends StatelessWidget {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             const Padding(
-              padding: EdgeInsets.fromLTRB(20, 10, 8, 4),
+              padding: EdgeInsets.fromLTRB(20, 10, 20, 4),
               child: FsSheetHeader(title: 'Jump to an exercise'),
             ),
             // Only the rows scroll; the handle and the title stay put.

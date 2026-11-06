@@ -310,6 +310,14 @@ void main() {
       find.descendant(of: header, matching: find.text('Equipment')),
       findsOneWidget,
     );
+    // P-21: the × ends at the content inset, as on every other sheet: the
+    // same distance from the right edge as the title is from the left.
+    final sheet = tester.getRect(find.byType(BottomSheet));
+    final close = tester.getRect(find.widgetWithIcon(IconButton, Icons.close));
+    final title = tester.getRect(
+      find.descendant(of: header, matching: find.text('Equipment')),
+    );
+    expect(sheet.right - close.right, title.left - sheet.left);
 
     await tester.tap(find.byTooltip('Close'));
     await tester.pumpAndSettle();

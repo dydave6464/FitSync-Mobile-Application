@@ -155,7 +155,7 @@ class _EquipmentSheetState extends State<_EquipmentSheet> {
             // Closing is not choosing: it pops null, which leaves the filter
             // as it was (see _open).
             const Padding(
-              padding: EdgeInsets.fromLTRB(20, 10, 8, 0),
+              padding: EdgeInsets.fromLTRB(20, 10, 20, 0),
               child: FsSheetHeader(title: 'Equipment'),
             ),
             Padding(

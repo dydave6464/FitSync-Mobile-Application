@@ -84,6 +84,19 @@ void main() {
     expect(chosen, [null]);
   });
 
+  // P-21: this sheet held its header 8 dp from the right edge while the
+  // rest hold it at their content inset, so the × sat in a different place
+  // on each sheet. Now it ends where the content does, the same distance
+  // from the right edge as the title is from the left.
+  testWidgets('the close button ends at the content inset', (tester) async {
+    await _open(tester, count: 3);
+
+    final sheet = tester.getRect(_sheet);
+    final close = tester.getRect(find.widgetWithIcon(IconButton, Icons.close));
+    final title = tester.getRect(find.text('Jump to an exercise'));
+    expect(sheet.right - close.right, title.left - sheet.left);
+  });
+
   // Every row is built up front, so only a hit-testable finder makes
   // scrollUntilVisible drag the list the way a finger does -- rather than
   // jump it there programmatically, which works on a list nobody can scroll.

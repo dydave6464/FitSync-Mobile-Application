@@ -25,6 +25,27 @@ void main() {
     );
   });
 
+  // P-21: closeKey was never passed, so it keyed nothing. Every sheet's ×
+  // now carries one key, which a caller may still replace.
+  testWidgets('the close button has a key by default, or the one given', (
+    tester,
+  ) async {
+    await tester.pumpWidget(host(const FsSheetHeader(title: 'Rest')));
+    expect(
+      find.descendant(
+        of: find.byKey(FsSheetHeader.defaultCloseKey),
+        matching: find.byTooltip('Close'),
+      ),
+      findsOneWidget,
+    );
+
+    await tester.pumpWidget(
+      host(const FsSheetHeader(title: 'Rest', closeKey: Key('rest.close'))),
+    );
+    expect(find.byKey(const Key('rest.close')), findsOneWidget);
+    expect(find.byKey(FsSheetHeader.defaultCloseKey), findsNothing);
+  });
+
   testWidgets('Close calls onClose when given one', (tester) async {
     var closes = 0;
     await tester.pumpWidget(
