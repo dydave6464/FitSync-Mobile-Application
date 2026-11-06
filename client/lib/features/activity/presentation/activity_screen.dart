@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../core/theme.dart';
+import '../../../core/widgets/fs_charts.dart';
 import '../../../core/widgets/fs_kit.dart';
 import '../../exercises/presentation/exercise_list_screen.dart' show describeError;
 import '../domain/activity.dart';
@@ -285,8 +286,20 @@ class _Figure extends StatelessWidget {
 }
 
 const _weekdayLetters = ['M', 'T', 'W', 'T', 'F', 'S', 'S'];
+const _weekdays = [
+  'Monday',
+  'Tuesday',
+  'Wednesday',
+  'Thursday',
+  'Friday',
+  'Saturday',
+  'Sunday',
+];
 
-/// Seven bars, today's highlighted and showing the live count.
+/// The week as the app's other bar charts draw it: every bar in `t.blue`,
+/// which reads at 3:1 or better on the card in both themes (the prototype's
+/// surface-2 "off" bars were barely there), each day's count on touch and
+/// all seven read out to a screen reader. Today carries the live count.
 class _WeekBars extends StatelessWidget {
   const _WeekBars({required this.days, required this.todaySteps});
 
@@ -296,42 +309,28 @@ class _WeekBars extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final t = context.fs;
-    final values = [
-      for (var i = 0; i < days.length; i++)
-        i == days.length - 1 ? todaySteps : (days[i].steps ?? 0),
-    ];
-    final top = math.max(1, values.reduce(math.max));
-    return SizedBox(
+    return FsBarChart(
+      label: 'Steps this week',
+      color: t.blue,
       height: 96,
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.end,
-        children: [
-          for (var i = 0; i < days.length; i++)
-            Expanded(
-              child: Column(
-                mainAxisAlignment: MainAxisAlignment.end,
-                children: [
-                  Container(
-                    height: 72 * values[i] / top,
-                    margin: const EdgeInsets.symmetric(horizontal: 5),
-                    decoration: BoxDecoration(
-                      color: i == days.length - 1 ? t.blue : t.surface2,
-                      borderRadius: BorderRadius.circular(6),
-                    ),
-                  ),
-                  const SizedBox(height: 6),
-                  Text(
-                    _weekdayLetters[DateTime.parse(days[i].date).weekday - 1],
-                    style: TextStyle(
-                      fontSize: 11,
-                      color: i == days.length - 1 ? t.text : t.text3,
-                    ),
-                  ),
-                ],
-              ),
-            ),
-        ],
-      ),
+      bars: [
+        for (var i = 0; i < days.length; i++) _bar(i),
+      ],
+    );
+  }
+
+  FsChartBar _bar(int i) {
+    final isToday = i == days.length - 1;
+    final weekday = DateTime.parse(days[i].date).weekday - 1;
+    final steps = isToday ? todaySteps : days[i].steps;
+    final name = isToday ? 'Today' : _weekdays[weekday];
+    return FsChartBar(
+      value: (steps ?? 0).toDouble(),
+      label: _weekdayLetters[weekday],
+      // A day with no count was never synced, not a day of no walking.
+      tooltip: steps == null
+          ? '$name · no steps recorded'
+          : '$name · ${formatSteps(steps)} steps',
     );
   }
 }

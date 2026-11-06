@@ -1,12 +1,16 @@
+import 'package:fl_chart/fl_chart.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import 'package:fitsync/core/api_exception.dart';
+import 'package:fitsync/core/theme.dart';
 import 'package:fitsync/features/activity/domain/activity.dart';
 import 'package:fitsync/features/activity/domain/step_readings.dart';
 import 'package:fitsync/features/activity/presentation/activity_screen.dart';
 import 'package:fitsync/features/activity/presentation/providers.dart';
+
+import 'helpers/a11y.dart' show contrast;
 
 ActivityDay _d(int day, int? steps) => ActivityDay(
   date: '2026-09-${day.toString().padLeft(2, '0')}', steps: steps,
@@ -35,6 +39,7 @@ Future<_StubActivity> _pump(
   WidgetTester tester,
   ActivityState state, {
   ActivityScreen screen = const ActivityScreen(),
+  bool dark = false,
 }) async {
   final stub = _StubActivity(state);
   await tester.pumpWidget(ProviderScope(
@@ -42,7 +47,7 @@ Future<_StubActivity> _pump(
       activityProvider.overrideWith(() => stub),
       liveStepsProvider.overrideWith((ref) => const Stream<int>.empty()),
     ],
-    child: MaterialApp(home: screen),
+    child: MaterialApp(theme: dark ? fsDarkTheme() : fsLightTheme(), home: screen),
   ));
   await tester.pumpAndSettle();
   return stub;
@@ -186,5 +191,55 @@ void main() {
     await tester.pump();
 
     expect(calls.calls, 1);
+  });
+
+  for (final dark in [false, true]) {
+    testWidgets('every day of the week reads against its card (${dark ? 'dark' : 'light'})', (tester) async {
+      await _pump(
+        tester,
+        ActivityState(today: const DaySteps(steps: 6420), week: _week(), offline: false),
+        dark: dark,
+      );
+
+      final t = (dark ? fsDarkTheme() : fsLightTheme()).extension<FsTokens>()!;
+      final chart = tester.widget<BarChart>(
+        find.descendant(of: find.byKey(const Key('activity.week')), matching: find.byType(BarChart)),
+      );
+      final rods = [for (final g in chart.data.barGroups) ...g.barRods];
+      expect(rods, hasLength(7));
+      for (final rod in rods) {
+        // WCAG 1.4.11: a bar is a graphical object and needs 3:1.
+        expect(contrast(rod.color!, t.surface), greaterThanOrEqualTo(3));
+      }
+    });
+  }
+
+  testWidgets('the week chart reads each day out to a screen reader', (tester) async {
+    final semantics = tester.ensureSemantics();
+    await _pump(tester, ActivityState(today: const DaySteps(steps: 6500), week: _week(), offline: false));
+
+    // 2026-09-22 is a Tuesday. A day with no count is not called zero, and
+    // today carries the live count rather than the last synced one.
+    expect(
+      find.bySemanticsLabel(
+        'Steps this week: Tuesday, 3,000 steps; Wednesday, no steps recorded; '
+        'Thursday, 5,000 steps; Friday, 6,000 steps; Saturday, no steps recorded; '
+        'Sunday, 4,000 steps; Today, 6,500 steps',
+      ),
+      findsOneWidget,
+    );
+    semantics.dispose();
+  });
+
+  testWidgets("touching a day's bar shows its count", (tester) async {
+    await _pump(tester, ActivityState(today: const DaySteps(steps: 6420), week: _week(), offline: false));
+
+    final chart = tester.widget<BarChart>(find.byType(BarChart));
+    // FsBarChart's tooltips: what a touch shows for each bar.
+    final tooltip = chart.data.barTouchData.touchTooltipData.getTooltipItem(
+      chart.data.barGroups[0], 0, chart.data.barGroups[0].barRods[0], 0,
+    );
+    expect(tooltip!.text, 'Tuesday · 3,000 steps');
+    expect(chart.data.barTouchData.enabled, isTrue);
   });
 }
