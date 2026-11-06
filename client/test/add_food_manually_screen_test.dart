@@ -225,28 +225,33 @@ void main() {
 
   testWidgets('the Fiber, Sugar and Sodium boxes are labelled and the six boxes fit a 320 dp phone at large text', (tester) async {
     await _pump(tester, size: const Size(320, 900), textScale: 1.6);
-    expect(find.text('FIBER (G)'), findsOneWidget);
-    expect(find.text('SUGAR (G)'), findsOneWidget);
-    expect(find.text('SODIUM (MG)'), findsOneWidget);
+    expect(find.text('Fiber (g)'), findsOneWidget);
+    expect(find.text('Sugar (g)'), findsOneWidget);
+    expect(find.text('Sodium (mg)'), findsOneWidget);
     expect(tester.takeException(), isNull);
   });
 
-  // L-66: named as every other field in the app is, by an eyebrow above it
-  // (the label rule in fs_kit), and still heard by that name. Two boxes
-  // share a row, so at large text the eyebrow takes a second line rather
-  // than being cut.
-  testWidgets('each number box is named by an eyebrow, never cut at large text', (tester) async {
+  // L-66: named as the prototype draws the macro boxes -- a small dim label,
+  // 'dim t-xs' at weight 600, not an eyebrow (the label rule in fs_kit) --
+  // and still heard by that name. That it is never cut at large text is
+  // checked with the real font, in number_box_real_font_test.dart: this
+  // harness's square glyphs are far wider than the app's.
+  testWidgets("each number box is named by the prototype's dim label", (tester) async {
     final h = tester.ensureSemantics();
     await _pump(tester, size: const Size(320, 1400), textScale: 2);
     for (final (key, label) in [
       ('manual.protein', 'Protein (g)'), ('manual.carbs', 'Carbs (g)'), ('manual.fat', 'Fat (g)'),
       ('manual.fiber', 'Fiber (g)'), ('manual.sugar', 'Sugar (g)'), ('manual.sodium', 'Sodium (mg)'),
     ]) {
-      final eyebrow = find.text(label.toUpperCase());
-      expect(eyebrow, findsOneWidget, reason: label);
-      expect(tester.widget<Text>(eyebrow).style?.fontFamily, fsMonoFamily, reason: label);
-      final paragraph = tester.renderObject<RenderParagraph>(eyebrow);
-      expect(paragraph.didExceedMaxLines, isFalse, reason: '$label is cut');
+      final name = find.text(label);
+      expect(name, findsOneWidget, reason: label);
+      final text = tester.widget<Text>(name);
+      final t = tester.element(name).fs;
+      expect(text.style?.color, t.text2, reason: label);
+      expect(text.style?.fontSize, 12, reason: label);
+      expect(text.style?.fontWeight, FontWeight.w600, reason: label);
+      expect(text.style?.fontFamily, isNot(fsMonoFamily), reason: label);
+      expect(text.maxLines, 2, reason: label);
       expect(tester.getSemantics(find.byKey(Key(key))).label, startsWith(label), reason: label);
     }
     expect(tester.takeException(), isNull);

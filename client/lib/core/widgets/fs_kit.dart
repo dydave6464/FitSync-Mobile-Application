@@ -21,6 +21,8 @@ import '../units.dart';
 /// * The auth forms (sign in, check email, forgot password) use
 ///   [FsLabeledField]: a sentence-case name above, helper or error below.
 /// * [FsStatField] carries its own name, the dim label in its card.
+/// * NumberBox (the nutrition forms' macro boxes) carries its own name too:
+///   the prototype's small dim label above each box, not an eyebrow.
 
 /// `box-shadow: 0 10px 24px -10px` in the accent — the glow the design puts
 /// under anything raised and accent-coloured. `.btn.primary` and the nav's
