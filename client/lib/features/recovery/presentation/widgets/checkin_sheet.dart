@@ -4,11 +4,6 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../../core/theme.dart';
 import '../../../../core/widgets/fs_kit.dart';
-// describeError lives beside the catalogue list rather than in core/ -- it is
-// the one place that turns an ApiException into a sentence, and every screen
-// imports it from there with `show`.
-import '../../../exercises/presentation/exercise_list_screen.dart'
-    show describeError;
 import '../../domain/recovery.dart';
 import '../providers.dart';
 import '../../../../core/api_exception.dart';
@@ -300,14 +295,14 @@ class _CheckinSheetState extends ConsumerState<_CheckinSheet> {
         if (messenger != null) {
           showErrorSnackBar(
             messenger,
-            "Your check-in wasn't saved. ${describeError(error)}",
+            "Your check-in wasn't saved. ${userMessage(error)}",
           );
         }
         return;
       }
       setState(() {
         _busy = false;
-        _failure = describeError(error);
+        _failure = userMessage(error);
       });
     }
   }
