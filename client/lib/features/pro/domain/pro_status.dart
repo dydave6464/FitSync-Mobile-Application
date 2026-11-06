@@ -14,9 +14,6 @@ enum ProPlan {
   /// (server/src/lib/pro-plans.js). One payment, one period: nothing renews.
   final int months;
 
-  /// "1 month", "12 months".
-  String get period => months == 1 ? '1 month' : '$months months';
-
   static ProPlan? fromWire(Object? value) => switch (value) {
     'monthly' => ProPlan.monthly,
     'annual' => ProPlan.annual,

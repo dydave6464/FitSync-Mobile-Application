@@ -30,6 +30,11 @@ const proPollTicks = 150;
 
 const _openFailed = "Couldn't open the payment page. Try again.";
 
+/// How long one payment of [plan] lasts: "1 month", "12 months". Screen
+/// copy, so it lives here rather than in the domain's [ProPlan].
+String planPeriod(ProPlan plan) =>
+    plan.months == 1 ? '1 month' : '${plan.months} months';
+
 /// Opens the Pro screen. Every lock in the app routes through here.
 Future<void> openProScreen(BuildContext context) =>
     Navigator.of(context)
@@ -369,7 +374,7 @@ class _ProScreenState extends ConsumerState<ProScreen> {
           // current end, so no days already paid for are lost.
           if (s.until != null) ...[
             Text(
-              'Adds ${_plan.period} after ${formatProDate(s.until!)}.',
+              'Adds ${planPeriod(_plan)} after ${formatProDate(s.until!)}.',
               key: const Key('pro.extendsFrom'),
               style: TextStyle(fontSize: 12.5, color: context.fs.text2),
             ),
@@ -408,9 +413,9 @@ class _ProScreenState extends ConsumerState<ProScreen> {
             price: peso(p.monthly),
             // Said as a period, not a rate: one payment buys one month and
             // nothing renews, which "per month" left in doubt.
-            note: 'for ${ProPlan.monthly.period}',
+            note: 'for ${planPeriod(ProPlan.monthly)}',
             semanticsLabel:
-                'Monthly, ${peso(p.monthly)} for ${ProPlan.monthly.period}',
+                'Monthly, ${peso(p.monthly)} for ${planPeriod(ProPlan.monthly)}',
             selected: _plan == ProPlan.monthly,
             onTap: locked ? null : () => pick(ProPlan.monthly),
           ),
@@ -425,11 +430,11 @@ class _ProScreenState extends ConsumerState<ProScreen> {
             // it ₱149 read as the annual price.
             note:
                 'a month · ${peso(p.annual)} once, '
-                'for ${ProPlan.annual.period}',
+                'for ${planPeriod(ProPlan.annual)}',
             tag: '-${p.annualSavingPct}%',
             semanticsLabel:
                 'Annual, ${peso(p.annualPerMonth)} a month, '
-                '${peso(p.annual)} once, for ${ProPlan.annual.period}',
+                '${peso(p.annual)} once, for ${planPeriod(ProPlan.annual)}',
             selected: _plan == ProPlan.annual,
             onTap: locked ? null : () => pick(ProPlan.annual),
           ),

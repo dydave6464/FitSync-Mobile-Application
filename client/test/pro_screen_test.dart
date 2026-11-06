@@ -84,6 +84,13 @@ Finder _inside(String key, Finder f) =>
     find.descendant(of: find.byKey(Key(key)), matching: f);
 
 void main() {
+  // L-83: the words for a plan's length live with the screen that says them,
+  // not in the domain enum.
+  test('a plan says how long one payment lasts', () {
+    expect(planPeriod(ProPlan.monthly), '1 month');
+    expect(planPeriod(ProPlan.annual), '12 months');
+  });
+
   testWidgets(
     'a free user picks a plan; annual is picked first and named for a screen reader',
     (tester) async {
