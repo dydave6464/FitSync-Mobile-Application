@@ -422,6 +422,31 @@ void main() {
     expect(_controller.deletions, 0);
   });
 
+  // Not an FsDiscardGuard screen on purpose: back is the safe way out of a
+  // deletion, and the only thing typed is the password, which costs nothing
+  // to type again. A "Discard your changes?" with a red Discard would stand
+  // between the user and changing their mind.
+  testWidgets('back leaves at once, even with a password typed', (
+    tester,
+  ) async {
+    final repo = _FakeAuthRepository();
+    await _pump(tester, repo: repo);
+    await tester.enterText(
+      find.byKey(const Key('deleteAccount.password')),
+      'my secret',
+    );
+    await tester.pump();
+
+    await tester.pageBack();
+    await tester.pumpAndSettle();
+
+    expect(find.byType(AlertDialog), findsNothing);
+    expect(find.byType(DeleteAccountScreen), findsNothing);
+    expect(find.byKey(const Key('open')), findsOneWidget);
+    expect(repo.deletes, isEmpty);
+    expect(_controller.deletions, 0);
+  });
+
   for (final dark in [false, true]) {
     for (final hasPassword in [true, false]) {
       testWidgets('fits 320 dp at 2x text (${dark ? 'dark' : 'light'}, '

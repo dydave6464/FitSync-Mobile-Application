@@ -34,6 +34,12 @@ const _googleFailedMessage = "Couldn't confirm with Google. Try again.";
 /// dialog, then the server deletes everything. Afterwards the same local
 /// clean-up as Sign out runs and the sign-in screen says why the user is
 /// there.
+///
+/// Unlike the app's other typed forms, back is not behind an
+/// [FsDiscardGuard]: leaving is the safe way out of a deletion, and the only
+/// thing typed is the password, which costs nothing to type again. Asking
+/// "Discard your changes?" with a red Discard would stand between the user
+/// and changing their mind.
 class DeleteAccountScreen extends ConsumerStatefulWidget {
   const DeleteAccountScreen({super.key, required this.hasPassword});
 
