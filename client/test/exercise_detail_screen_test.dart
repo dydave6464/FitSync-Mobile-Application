@@ -44,6 +44,20 @@ void _usePortraitSurface(WidgetTester tester) {
   addTearDown(tester.view.resetDevicePixelRatio);
 }
 
+// SE-7: built through fromJson, as the repository builds it, so these tests
+// pin what the app reads off GET /exercises/:id rather than a constructor.
+ExerciseDetail _detailFromServer({required bool contraindicated}) =>
+    ExerciseDetail.fromJson({
+      'exerciseId': 1,
+      'name': '3/4 sit-up',
+      'muscleGroup': 'abs',
+      'equipment': 'body weight',
+      'thumbnailUrl': null,
+      'contraindicated': contraindicated,
+      'animationUrl': null,
+      'cues': ['Lie flat on your back.'],
+    });
+
 const _summary = ExerciseSummary(
   exerciseId: 1,
   name: '3/4 sit-up',
@@ -128,6 +142,116 @@ void main() {
 
       expect(find.text('Loads an injury you reported'), findsNothing);
       expect(find.byKey(const Key('detail.risk')), findsNothing);
+    });
+
+    // SE-7: the row may be older than the user's latest injury report; the
+    // detail the server sends now still warns, and still only once.
+    testWidgets('a picked row the server now flags still warns', (
+      tester,
+    ) async {
+      _usePortraitSurface(tester);
+      final container = ProviderContainer(
+        overrides: [
+          exerciseDetailProvider(1).overrideWith(
+            (ref) async => _detailFromServer(contraindicated: true),
+          ),
+        ],
+      );
+      addTearDown(container.dispose);
+      await tester.pumpWidget(
+        UncontrolledProviderScope(
+          container: container,
+          child: const MaterialApp(
+            home: ExerciseDetailScreen(exerciseId: 1, pick: _summary),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      expect(find.byKey(const Key('detail.risk')), findsOneWidget);
+      expect(find.text('Loads an injury you reported'), findsOneWidget);
+      // In the bottom bar, below the name, right above the button.
+      final line = tester.getBottomLeft(
+        find.text('Loads an injury you reported'),
+      );
+      expect(
+        line.dy,
+        lessThanOrEqualTo(
+          tester.getTopLeft(find.byKey(const Key('detail.pick'))).dy,
+        ),
+      );
+      expect(
+        line.dy,
+        greaterThan(tester.getBottomLeft(find.text('3/4 sit-up')).dy),
+      );
+    });
+  });
+
+  // SE-7: the Plan tab opens the demo with no picker row, so the warning
+  // comes from the detail itself and sits above the name.
+  group('opened from the plan', () {
+    Future<void> pumpPlan(
+      WidgetTester tester, {
+      required bool contraindicated,
+    }) async {
+      await tester.pumpWidget(
+        harness(
+          exerciseDetailProvider(1).overrideWith(
+            (ref) async => _detailFromServer(contraindicated: contraindicated),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+    }
+
+    testWidgets('it warns when the exercise loads a reported injury', (
+      tester,
+    ) async {
+      _usePortraitSurface(tester);
+      await pumpPlan(tester, contraindicated: true);
+
+      expect(find.byKey(const Key('detail.risk')), findsOneWidget);
+      expect(find.text('Loads an injury you reported'), findsOneWidget);
+      expect(find.byKey(const Key('detail.pick')), findsNothing);
+      final shield = tester.widget<Icon>(find.byKey(const Key('detail.risk')));
+      expect(shield.icon, Icons.shield_outlined);
+      expect(shield.size, 14);
+      expect(shield.color, tester.element(find.byType(Scaffold)).fs.red);
+      expect(
+        tester.getBottomLeft(find.text('Loads an injury you reported')).dy,
+        lessThanOrEqualTo(tester.getTopLeft(find.text('3/4 sit-up')).dy),
+      );
+    });
+
+    testWidgets('it says nothing of injuries it does not load', (tester) async {
+      _usePortraitSurface(tester);
+      await pumpPlan(tester, contraindicated: false);
+
+      expect(find.byKey(const Key('detail.risk')), findsNothing);
+      expect(find.text('Loads an injury you reported'), findsNothing);
+    });
+
+    testWidgets('at 2x text on a 360 dp phone the warning wraps, uncut', (
+      tester,
+    ) async {
+      tester.view.physicalSize = const Size(360, 800);
+      tester.view.devicePixelRatio = 1;
+      addTearDown(tester.view.resetPhysicalSize);
+      addTearDown(tester.view.resetDevicePixelRatio);
+      tester.platformDispatcher.textScaleFactorTestValue = 2.0;
+      addTearDown(tester.platformDispatcher.clearTextScaleFactorTestValue);
+      await pumpPlan(tester, contraindicated: true);
+
+      expect(tester.takeException(), isNull);
+      final words = find.text('Loads an injury you reported');
+      expect(words, findsOneWidget);
+      final text = tester.widget<Text>(words);
+      expect(text.maxLines, isNull);
+      expect(text.overflow, isNot(TextOverflow.ellipsis));
+      // 12.5 at 2x is 25 logical px a line; more than one line means it
+      // wrapped rather than ran off the edge.
+      expect(tester.getSize(words).height, greaterThan(30));
+      expect(tester.getTopRight(words).dx, lessThanOrEqualTo(360));
     });
   });
 
@@ -225,5 +349,30 @@ void main() {
 
     expect(tester.takeException(), isNull);
     expect(find.text('3/4 sit-up'), findsOneWidget);
+  });
+
+  // SE-7: GET /exercises/:id now says whether the exercise loads a reported
+  // injury; a reply from before the field existed reads as nothing known.
+  group('ExerciseDetail.fromJson', () {
+    test('reads contraindicated', () {
+      expect(_detailFromServer(contraindicated: true).contraindicated, isTrue);
+      expect(
+        _detailFromServer(contraindicated: false).contraindicated,
+        isFalse,
+      );
+    });
+
+    test('an absent contraindicated reads as false', () {
+      final detail = ExerciseDetail.fromJson({
+        'exerciseId': 1,
+        'name': '3/4 sit-up',
+        'muscleGroup': 'abs',
+        'equipment': null,
+        'thumbnailUrl': null,
+        'animationUrl': null,
+        'cues': <String>[],
+      });
+      expect(detail.contraindicated, isFalse);
+    });
   });
 }

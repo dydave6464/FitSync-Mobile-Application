@@ -5,8 +5,9 @@ import 'package:flutter_test/flutter_test.dart';
 
 import 'package:fitsync/features/onboarding/domain/daily_targets.dart';
 
-/// The server's food-log target must equal this estimate. The fixture holds
-/// maintenance rows only so far.
+/// The server's food-log target must equal this estimate. Rows without a
+/// mainGoal are maintenance; rows with one check the goal adjustment and the
+/// floors on both sides.
 /// Both sides read the same fixture; flutter test runs from client/.
 void main() {
   final cases = (jsonDecode(
@@ -25,8 +26,7 @@ void main() {
           weightKg: (c['weightKg'] as num).toDouble(),
           activityLevel: c['activityLevel'] as String,
           // Absent on the maintenance rows. A row that names a goal checks the
-          // -500 / +250 and the floors too, once the server's side of the test
-          // reads it as well (it forces maintenance today).
+          // -500 / +250 and the floors too, here and on the server.
           mainGoal: c['mainGoal'] as String?,
           today: DateTime.parse(c['today'] as String),
         )!;

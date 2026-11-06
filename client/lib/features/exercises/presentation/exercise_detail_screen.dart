@@ -29,6 +29,13 @@ class ExerciseDetailScreen extends ConsumerWidget {
     final held =
         picked != null &&
         ref.watch(workoutDraftProvider).holds(picked.exerciseId);
+    // The warning shows in exactly one place: in the bottom bar beside the
+    // choice when picking, above the name otherwise. Picking, either source
+    // is enough, so a library row older than the latest injury report
+    // cannot hide what the fresh detail says.
+    final risky =
+        picked != null &&
+        (picked.contraindicated || (detail.value?.contraindicated ?? false));
 
     return Scaffold(
       // A static title, not the loaded exercise's name: the body already
@@ -46,10 +53,7 @@ class ExerciseDetailScreen extends ConsumerWidget {
                 children: [
                   // The library row's warning, said again where the choice
                   // is made, so no path adds this exercise without it.
-                  if (picked.contraindicated) ...[
-                    _RiskLine(t: t),
-                    const SizedBox(height: 10),
-                  ],
+                  if (risky) ...[_RiskLine(t: t), const SizedBox(height: 10)],
                   FsButton(
                     key: const Key('detail.pick'),
                     label: held ? 'Remove from workout' : 'Add to workout',
@@ -67,14 +71,22 @@ class ExerciseDetailScreen extends ConsumerWidget {
           message: userMessage(error),
           onRetry: () => ref.invalidate(exerciseDetailProvider(exerciseId)),
         ),
-        data: (exercise) =>
-            ExerciseDemoBody(exercise: exercise, baseUrl: baseUrl),
+        data: (exercise) => ExerciseDemoBody(
+          exercise: exercise,
+          baseUrl: baseUrl,
+          // Opened from the plan there is no bottom bar, so the detail's
+          // own flag puts the line above the name instead.
+          header: picked == null && exercise.contraindicated
+              ? _RiskLine(t: t)
+              : null,
+        ),
       ),
     );
   }
 }
 
 /// The library row's shield line: the same icon and words as ExerciseTile's.
+/// Wraps rather than truncates, so large text never cuts the warning off.
 class _RiskLine extends StatelessWidget {
   const _RiskLine({required this.t});
 
