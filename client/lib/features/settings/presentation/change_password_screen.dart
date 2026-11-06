@@ -114,6 +114,7 @@ class _ChangePasswordScreenState extends ConsumerState<ChangePasswordScreen> {
     // SnackBar belongs on what is left.
     final repo = ref.read(authRepositoryProvider);
     final navigator = Navigator.of(context);
+    final route = ModalRoute.of(context);
     final messenger = ScaffoldMessenger.of(context);
 
     try {
@@ -140,12 +141,12 @@ class _ChangePasswordScreenState extends ConsumerState<ChangePasswordScreen> {
     // The new token is stored whether or not the screen is still up. Back
     // stays open while busy, so the user may have left already: the change
     // landed all the same, and the SnackBar on what is left says so.
-    if (mounted) {
-      // Offer the password manager the password now in effect, before the
-      // group closes and cancels: see the AutofillGroup in [build].
-      TextInput.finishAutofillContext();
-      navigator.pop();
-    }
+    // Offer the password manager the password now in effect, before the
+    // group closes and cancels: see the AutofillGroup in [build].
+    TextInput.finishAutofillContext();
+    // Not `mounted`: during back's exit transition this screen is still
+    // mounted but no longer current, and pop() would close the one under it.
+    if (route != null && route.isCurrent) navigator.pop();
     messenger.showSnackBar(
       const SnackBar(
         content: Text('Password changed. Other devices were signed out.'),

@@ -383,6 +383,38 @@ void main() {
     );
   });
 
+  testWidgets('a change landing as back closes pops only this screen', (
+    tester,
+  ) async {
+    final gate = Completer<void>();
+    final repo = _FakeAuthRepository(onChange: () => gate.future);
+    await _pump(tester, repo);
+    await _fill(tester);
+    await tester.ensureVisible(find.byKey(const Key('save')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const Key('save')));
+    await tester.pump();
+
+    // One frame into the exit transition: still mounted, no longer current.
+    await tester.pageBack();
+    await tester.pump();
+    expect(find.byType(ChangePasswordScreen), findsOneWidget);
+
+    gate.complete();
+    await tester.pumpAndSettle();
+    expect(repo.changes, hasLength(1));
+    expect(find.byType(ChangePasswordScreen), findsNothing);
+    expect(
+      find.byKey(const Key('open')),
+      findsOneWidget,
+      reason: 'the screen under it stays: the closing one is not popped twice',
+    );
+    expect(
+      find.text('Password changed. Other devices were signed out.'),
+      findsOneWidget,
+    );
+  });
+
   testWidgets('a change offers the password manager the new password', (
     tester,
   ) async {
