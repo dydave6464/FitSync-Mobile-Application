@@ -922,6 +922,22 @@ class _SessionLoggerScreenState extends ConsumerState<SessionLoggerScreen>
     return answer == true;
   }
 
+  /// "42 min · 18 sets · 3,150 kg lifted". The volume only when there is
+  /// some: a bodyweight workout has none, and "0 kg lifted" would read as a
+  /// failure to record -- the reason History leaves it out too.
+  static String _summaryLine(ActiveSession done, WeightUnit unit) {
+    final sets = done.completedSetCount;
+    final volume = done.totalVolumeKg;
+    return [
+      '${done.durationMin} min',
+      '$sets ${sets == 1 ? 'set' : 'sets'}',
+      if (volume != null && volume > 0)
+        // Whole numbers: a session's total volume runs to hundreds, where
+        // formatWeight's decimal place would be noise rather than precision.
+        '${convertFromKg(volume, unit).toStringAsFixed(0)} ${unit.api} lifted',
+    ].join(' · ');
+  }
+
   /// "A", "A and B", "A, B and C" -- and past three, "A, B, C and 2 more",
   /// so a long workout's question still fits a small phone.
   static String _listNames(List<String> names) {
@@ -955,13 +971,7 @@ class _SessionLoggerScreenState extends ConsumerState<SessionLoggerScreen>
           builder: (dialogContext) => AlertDialog(
             key: const Key('logger.summary'),
             title: const Text('Session complete'),
-            content: Text(
-              '${done.durationMin} min · ${done.completedSetCount} sets · '
-              // Whole numbers: a session's total volume runs to hundreds, where
-              // formatWeight's decimal place would be noise rather than precision.
-              '${convertFromKg(done.totalVolumeKg ?? 0, unit).toStringAsFixed(0)} '
-              '${unit.api} lifted',
-            ),
+            content: Text(_summaryLine(done, unit)),
             actions: [
               // Only a hand-picked workout. A plan-backed one is already part of a
               // plan, and offering to add it again would be offering nothing.

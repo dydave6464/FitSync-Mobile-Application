@@ -162,6 +162,10 @@ class FakeSessionController extends ActiveSessionController {
   Object? completeError;
   Object? abandonError;
 
+  /// The closed session's volume as the server reports it: null for a
+  /// workout with no weighted set.
+  double? completedVolumeKg = 380;
+
   /// When set, [abandon] suspends here after recording the call -- a discard
   /// still in flight when the phone is locked. Null resolves immediately.
   Completer<void>? abandonGate;
@@ -237,7 +241,7 @@ class FakeSessionController extends ActiveSessionController {
       sessionDate: '2026-09-08',
       planId: source.planId,
       durationMin: durationMin,
-      totalVolumeKg: 380,
+      totalVolumeKg: completedVolumeKg,
       sets: source.sets,
     );
     state = const AsyncValue.data(null);
@@ -1429,6 +1433,27 @@ void main() {
 
     // The closed session comes back at 380 kg, which is 837.75... lb.
     expect(find.textContaining('838 lb lifted'), findsOneWidget);
+  });
+
+  // History leaves volume out of a bodyweight session for the same reason:
+  // "0 kg lifted" reads as a failure to record, not a fact about the workout.
+  testWidgets('a workout with no weight says nothing about lifting', (
+    tester,
+  ) async {
+    final controller = await _pump(
+      tester,
+      session: _session(
+        sets: const [LoggedSet(exerciseId: 101, setNumber: 1, reps: 10)],
+      ),
+    );
+    controller.completedVolumeKg = null;
+
+    await _finishWithSetsLeft(tester);
+
+    expect(find.byKey(const Key('logger.summary')), findsOneWidget);
+    expect(find.textContaining('lifted'), findsNothing);
+    expect(find.textContaining('1 sets'), findsNothing);
+    expect(find.textContaining('1 set'), findsOneWidget);
   });
 
   testWidgets('switching the unit in the header saves it to the profile', (
