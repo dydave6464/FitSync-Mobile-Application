@@ -52,7 +52,7 @@ class MealSection extends StatelessWidget {
         children: [
           Row(
             children: [
-              Expanded(child: FsEyebrow(mealLabel(mealType).toUpperCase())),
+              Expanded(child: Semantics(header: true, child: FsEyebrow(mealLabel(mealType).toUpperCase()))),
               Text('$subtotal kcal', style: TextStyle(fontSize: 12, color: t.text3)),
               IconButton(
                 key: Key('meal.add.$mealType'),

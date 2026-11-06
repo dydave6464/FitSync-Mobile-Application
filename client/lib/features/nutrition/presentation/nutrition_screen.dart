@@ -163,13 +163,21 @@ class NutritionScreen extends ConsumerWidget {
     return ListView(
       padding: const EdgeInsets.fromLTRB(20, 12, 20, 24),
       children: [
-        Text('Nutrition', style: theme.textTheme.titleLarge),
+        // A heading, as the tabs built on an AppBar have.
+        Semantics(header: true, child: Text('Nutrition', style: theme.textTheme.titleLarge)),
         const SizedBox(height: 8),
         Row(
           children: [
             IconButton(key: const Key('day.prev'), tooltip: 'Previous day',
                 onPressed: busy ? null : () => dates.shift(-1), icon: const Icon(Icons.chevron_left)),
-            Expanded(child: Text(_dayLabel(day.date, today), textAlign: TextAlign.center, style: theme.textTheme.titleMedium)),
+            // Said when an arrow changes it: focus stays on the arrow.
+            Expanded(
+              child: Semantics(
+                container: true,
+                liveRegion: true,
+                child: Text(_dayLabel(day.date, today), textAlign: TextAlign.center, style: theme.textTheme.titleMedium),
+              ),
+            ),
             IconButton(key: const Key('day.next'), tooltip: 'Next day',
                 onPressed: busy || day.date == today ? null : () => dates.shift(1), icon: const Icon(Icons.chevron_right)),
           ],

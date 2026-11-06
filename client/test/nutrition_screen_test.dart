@@ -220,6 +220,20 @@ void main() {
     expect(repo.calls, contains('get 2026-10-13'));
   });
 
+  // NU-13: the tab's title and each meal's name are headings to jump
+  // between, and a new day is said when the arrows change it.
+  testWidgets('the title and meal names are headings, and the day is a live region', (tester) async {
+    final h = tester.ensureSemantics();
+    await _pump(tester, today: _day('2026-10-14', lunch: [_adobo()]));
+    expect(tester.getSemantics(find.text('Nutrition')), isSemantics(isHeader: true));
+    expect(tester.getSemantics(find.text('LUNCH')), isSemantics(isHeader: true));
+    expect(tester.getSemantics(find.text('Today')), isSemantics(isLiveRegion: true, label: 'Today'));
+    await tester.tap(find.byKey(const Key('day.prev')));
+    await tester.pumpAndSettle();
+    expect(tester.getSemantics(find.text('Yesterday')), isSemantics(isLiveRegion: true, label: 'Yesterday'));
+    h.dispose();
+  });
+
   testWidgets('delete hides the food and Undo logs it again', (tester) async {
     final repo = await _pump(tester, today: _day('2026-10-14', lunch: [_adobo()]));
     await tester.tap(find.byKey(const Key('entry.delete.7')));
