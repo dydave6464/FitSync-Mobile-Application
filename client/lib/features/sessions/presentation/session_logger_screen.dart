@@ -1110,6 +1110,14 @@ class _SessionLoggerScreenState extends ConsumerState<SessionLoggerScreen>
       // animation, for either outcome. Same as generator_screen.dart.
       messenger.showSnackBar(SnackBar(content: Text('Added to ${plan.name}.')));
     } catch (error) {
+      if (error is ApiException && error.code == 'SESSION_IN_PROGRESS') {
+        // Another workout was opened meanwhile, on this phone or another.
+        // Reloaded so Home's card for it appears; no Resume here, since the
+        // logger has already gone. The server's message says why.
+        container.invalidate(activeSessionProvider);
+        messenger.showSnackBar(SnackBar(content: Text(userMessage(error))));
+        return;
+      }
       messenger.showSnackBar(SnackBar(content: Text(describeError(error))));
     }
   }

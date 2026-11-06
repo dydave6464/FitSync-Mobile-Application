@@ -2,7 +2,6 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../core/api_exception.dart';
-import '../../../core/numbers.dart';
 import '../../../core/theme.dart';
 import '../../../core/units.dart';
 import '../../../core/widgets/fs_kit.dart';
@@ -14,6 +13,7 @@ import '../../profile/presentation/widgets/weigh_ins_sheet.dart';
 import '../domain/session_dates.dart';
 import '../domain/session_history.dart';
 import 'providers.dart';
+import 'session_detail_screen.dart';
 import 'widgets/progress_cards.dart';
 import 'widgets/share_report_sheet.dart';
 
@@ -200,9 +200,6 @@ class _CardError extends StatelessWidget {
 /// Every page of history fetched so far, and what comes after it: "Show
 /// older workouts" while the server holds more, or the next page loading or
 /// failing.
-///
-/// Rows do not open yet: the server has no read-only detail for a finished
-/// session to open them on.
 class _HistoryList extends ConsumerWidget {
   const _HistoryList({required this.first, required this.unit});
 
@@ -269,54 +266,66 @@ class _HistoryRow extends StatelessWidget {
   Widget build(BuildContext context) {
     final t = context.fs;
 
-    // A bodyweight-only session has no volume. "0 kg" would read as a failure
-    // to record rather than as a fact about the workout, so it is left out.
-    final facts = [
-      '${entry.setCount} ${entry.setCount == 1 ? 'set' : 'sets'}',
-      if (entry.totalVolumeKg != null && entry.totalVolumeKg! > 0)
-        '${groupThousands(convertFromKg(entry.totalVolumeKg!, unit))} '
-            '${unit.api}',
-      if (entry.durationMin != null) '${entry.durationMin} min',
-    ].join(' · ');
+    final facts = sessionFactsLine(
+      setCount: entry.setCount,
+      totalVolumeKg: entry.totalVolumeKg,
+      durationMin: entry.durationMin,
+      unit: unit,
+    );
 
     return Padding(
       padding: const EdgeInsets.only(bottom: 10),
       child: FsCard(
-        child: LayoutBuilder(
-          builder: (context, constraints) => Row(
-            children: [
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      entry.title,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: const TextStyle(
-                        fontSize: 14,
-                        fontWeight: FontWeight.w600,
+        onTap: () => Navigator.of(context).push(
+          MaterialPageRoute<void>(
+            builder: (_) => SessionDetailScreen(
+              sessionId: entry.sessionId,
+              title: entry.title,
+            ),
+          ),
+        ),
+        // Merged into the card's one node: read after the row's words.
+        child: Semantics(
+          hint: 'Opens this workout',
+          child: LayoutBuilder(
+            builder: (context, constraints) => Row(
+              children: [
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        entry.title,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: const TextStyle(
+                          fontSize: 14,
+                          fontWeight: FontWeight.w600,
+                        ),
                       ),
-                    ),
-                    const SizedBox(height: 3),
-                    Text(facts, style: TextStyle(fontSize: 12, color: t.text2)),
-                  ],
+                      const SizedBox(height: 3),
+                      Text(
+                        facts,
+                        style: TextStyle(fontSize: 12, color: t.text2),
+                      ),
+                    ],
+                  ),
                 ),
-              ),
-              const SizedBox(width: 10),
-              // Capped, so at large text on a small phone the day wraps under
-              // itself instead of squeezing the name and the numbers to nothing.
-              ConstrainedBox(
-                constraints: BoxConstraints(
-                  maxWidth: constraints.maxWidth * 0.4,
+                const SizedBox(width: 10),
+                // Capped, so at large text on a small phone the day wraps under
+                // itself instead of squeezing the name and the numbers to nothing.
+                ConstrainedBox(
+                  constraints: BoxConstraints(
+                    maxWidth: constraints.maxWidth * 0.4,
+                  ),
+                  child: Text(
+                    sessionDayLabel(entry.sessionDate),
+                    textAlign: TextAlign.end,
+                    style: TextStyle(fontSize: 11, color: t.text3),
+                  ),
                 ),
-                child: Text(
-                  sessionDayLabel(entry.sessionDate),
-                  textAlign: TextAlign.end,
-                  style: TextStyle(fontSize: 11, color: t.text3),
-                ),
-              ),
-            ],
+              ],
+            ),
           ),
         ),
       ),

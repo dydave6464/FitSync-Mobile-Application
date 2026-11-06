@@ -19,10 +19,12 @@ import 'package:fitsync/features/profile/presentation/providers.dart'
         weightUnitProvider;
 import 'package:fitsync/features/profile/presentation/widgets/body_weight_card.dart';
 import 'package:fitsync/features/sessions/data/session_repository.dart';
+import 'package:fitsync/features/sessions/domain/session_detail.dart';
 import 'package:fitsync/features/sessions/domain/session_history.dart';
 import 'package:fitsync/features/sessions/domain/training_analytics.dart';
 import 'package:fitsync/features/sessions/presentation/progress_screen.dart';
 import 'package:fitsync/features/sessions/presentation/providers.dart';
+import 'package:fitsync/features/sessions/presentation/session_detail_screen.dart';
 import 'package:fitsync/features/sessions/presentation/widgets/progress_cards.dart';
 
 /// The real numbers off a completed manual workout.
@@ -137,6 +139,19 @@ class FakeSessionRepository implements SessionRepository {
     if (error != null) throw error!;
     if (summaryError != null) throw summaryError!;
     return summaryValue;
+  }
+
+  final detailsAsked = <int>[];
+
+  @override
+  Future<SessionDetail> detail(int sessionId) async {
+    detailsAsked.add(sessionId);
+    return SessionDetail(
+      sessionId: sessionId,
+      sessionDate: '2026-09-12',
+      setCount: 0,
+      exercises: const [],
+    );
   }
 
   @override
@@ -261,6 +276,51 @@ void main() {
     );
 
     expect(find.text('Upper Body · Push', skipOffstage: false), findsOneWidget);
+  });
+
+  testWidgets('tapping a workout opens it', (tester) async {
+    final fake = await _pump(
+      tester,
+      repo: FakeSessionRepository(entries: const [_mine, _fromPlan]),
+    );
+
+    final row = find.text('Upper Body · Push', skipOffstage: false);
+    await tester.ensureVisible(row);
+    await tester.pumpAndSettle();
+    await tester.tap(row);
+    await tester.pumpAndSettle();
+
+    final screen = tester.widget<SessionDetailScreen>(
+      find.byType(SessionDetailScreen),
+    );
+    expect(screen.sessionId, 30);
+    expect(screen.title, 'Upper Body · Push');
+    expect(fake.detailsAsked, [30]);
+  });
+
+  testWidgets('a workout row says it opens', (tester) async {
+    final handle = tester.ensureSemantics();
+    await _pump(tester, repo: FakeSessionRepository(entries: const [_mine]));
+
+    final row = find.text('Your own workout', skipOffstage: false);
+    await tester.ensureVisible(row);
+    await tester.pumpAndSettle();
+    expect(
+      tester.getSemantics(
+        find
+            .ancestor(
+              of: row,
+              matching: find.byType(FsCard, skipOffstage: false),
+            )
+            .first,
+      ),
+      isSemantics(
+        isButton: true,
+        hasTapAction: true,
+        hint: 'Opens this workout',
+      ),
+    );
+    handle.dispose();
   });
 
   testWidgets('changing the window asks the server for it', (tester) async {
