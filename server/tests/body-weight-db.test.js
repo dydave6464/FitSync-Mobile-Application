@@ -61,7 +61,12 @@ test('body weight db', async (t) => {
     const userId = await makeUser(pool, 'range@example.com');
     await assert.rejects(
       () => bw.writeEntry(pool, userId, { weightKg: 4 }),
-      (err) => err.code === 'WEIGHT_OUT_OF_RANGE',
+      (err) => {
+        assert.equal(err.code, 'WEIGHT_OUT_OF_RANGE');
+        assert.equal(err.message, 'Enter a weight between 20 and 500 kg.');
+        assert.deepEqual(err.details, [{ field: 'weightKg', min: 20, max: 500, unit: 'kg' }]);
+        return true;
+      },
     );
   });
 
@@ -171,12 +176,114 @@ test('body weight db', async (t) => {
 
     await assert.rejects(
       () => updateProfile(pool, userId, { weightKg: 600 }),
-      (err) => err.code === 'WEIGHT_OUT_OF_RANGE',
+      (err) => {
+        assert.equal(err.code, 'WEIGHT_OUT_OF_RANGE');
+        assert.equal(err.message, 'Enter a weight between 20 and 500 kg.');
+        assert.deepEqual(err.details, [{ field: 'weightKg', min: 20, max: 500, unit: 'kg' }]);
+        return true;
+      },
     );
 
     const [[user]] = await pool.query(
       'SELECT weight_kg FROM users WHERE user_id = ?', [userId],
     );
     assert.equal(Number(user.weight_kg), 70, 'the prior weight was not overwritten');
+  });
+
+  const weightOf = async (userId) => {
+    const [[user]] = await pool.query('SELECT weight_kg FROM users WHERE user_id = ?', [userId]);
+    return user.weight_kg === null ? null : Number(user.weight_kg);
+  };
+
+  await t.test('deleteEntry is null when nothing matches, including another user\'s day', async () => {
+    const userId = await makeUser(pool, 'del-none@example.com');
+    const other = await makeUser(pool, 'del-other@example.com');
+    await bw.writeEntry(pool, userId, { weightKg: 70, loggedOn: '2026-03-01' });
+    await bw.writeEntry(pool, other, { weightKg: 60, loggedOn: '2026-03-02' });
+    await bw.writeEntry(pool, other, { weightKg: 61, loggedOn: '2026-03-03' });
+    assert.equal(await bw.deleteEntry(pool, userId, '2026-03-02'), null);
+    const [rows] = await pool.query('SELECT 1 FROM body_weight_logs WHERE user_id = ?', [other]);
+    assert.equal(rows.length, 2);
+  });
+
+  await t.test('deleteEntry syncs users.weight_kg only when the newest day goes', async () => {
+    const userId = await makeUser(pool, 'del-sync@example.com');
+    await bw.writeEntry(pool, userId, { weightKg: 80, loggedOn: '2026-03-01' });
+    await bw.writeEntry(pool, userId, { weightKg: 79, loggedOn: '2026-03-02' });
+    await bw.writeEntry(pool, userId, { weightKg: 78, loggedOn: '2026-03-03' });
+    // Not the log's newest value, so a sync on an older day would show.
+    await pool.query('UPDATE users SET weight_kg = 77.7 WHERE user_id = ?', [userId]);
+
+    const older = await bw.deleteEntry(pool, userId, '2026-03-01');
+    assert.equal(older.weightKg, 77.7);
+    assert.equal(await weightOf(userId), 77.7, 'an older day leaves it alone');
+
+    const newest = await bw.deleteEntry(pool, userId, '2026-03-03');
+    assert.deepEqual(newest, {
+      deleted: { loggedOn: '2026-03-03', weightKg: 78 },
+      start: { loggedOn: '2026-03-02', weightKg: 79 },
+      entries: 1,
+      weightKg: 79,
+    });
+    assert.equal(await weightOf(userId), 79, 'the newest remaining weigh-in');
+  });
+
+  await t.test('deleteEntry refuses the only weigh-in day', async () => {
+    const userId = await makeUser(pool, 'del-only@example.com');
+    await bw.writeEntry(pool, userId, { weightKg: 80, loggedOn: '2026-03-01' });
+    await assert.rejects(
+      () => bw.deleteEntry(pool, userId, '2026-03-01'),
+      (err) => err.code === 'ONLY_WEIGH_IN' && err.status === 409,
+    );
+    assert.equal(await weightOf(userId), 80);
+  });
+
+  // users.weight_kg is synced from the log, so a delete and a weigh-in by the
+  // same user must run one after the other. Both take the users row first.
+  await t.test('deleteEntry waits for the users row lock', async () => {
+    const userId = await makeUser(pool, 'del-lock@example.com');
+    await bw.writeEntry(pool, userId, { weightKg: 80, loggedOn: '2026-03-01' });
+    await bw.writeEntry(pool, userId, { weightKg: 79, loggedOn: '2026-03-02' });
+    const holder = await pool.getConnection();
+    try {
+      await holder.beginTransaction();
+      await holder.query('SELECT user_id FROM users WHERE user_id = ? FOR UPDATE', [userId]);
+      const pending = bw.deleteEntry(pool, userId, '2026-03-01');
+      await new Promise((r) => { setTimeout(r, 300); });
+      const [still] = await pool.query(
+        "SELECT 1 FROM body_weight_logs WHERE user_id = ? AND log_date = '2026-03-01'", [userId],
+      );
+      assert.equal(still.length, 1, 'the delete has not run while the row is held');
+      await holder.commit();
+      assert.equal((await pending).deleted.loggedOn, '2026-03-01');
+    } finally {
+      await holder.rollback();
+      holder.release();
+    }
+  });
+
+  // A new day's INSERT already waits on its foreign-key check of the users
+  // row; re-logging an existing day has no INSERT, so only the lock holds it.
+  await t.test('writeEntry waits for the users row lock before writing the log', async () => {
+    const userId = await makeUser(pool, 'write-lock@example.com');
+    await bw.writeEntry(pool, userId, { weightKg: 80, loggedOn: '2026-03-01' });
+    await bw.writeEntry(pool, userId, { weightKg: 80, loggedOn: '2026-03-02' });
+    const holder = await pool.getConnection();
+    try {
+      await holder.beginTransaction();
+      await holder.query('SELECT user_id FROM users WHERE user_id = ? FOR UPDATE', [userId]);
+      const pending = bw.writeEntry(pool, userId, { weightKg: 79, loggedOn: '2026-03-02' });
+      await new Promise((r) => { setTimeout(r, 300); });
+      // A locking read that fails at once on any row the write has already
+      // touched: it only succeeds while the write is still waiting.
+      await holder.query(
+        'SELECT 1 FROM body_weight_logs WHERE user_id = ? FOR UPDATE NOWAIT', [userId],
+      );
+      await holder.commit();
+      assert.equal((await pending).loggedOn, '2026-03-02');
+    } finally {
+      await holder.rollback();
+      holder.release();
+    }
   });
 });

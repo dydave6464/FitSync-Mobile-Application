@@ -1,6 +1,7 @@
 'use strict';
 const test = require('node:test');
 const assert = require('node:assert/strict');
+const { randomUUID } = require('node:crypto');
 const request = require('supertest');
 const { migrate } = require('../src/db/migrate');
 const { createPool } = require('../src/db/pool');
@@ -9,6 +10,7 @@ const { testDbConfig, dropAllTables } = require('./helpers/test-db');
 const { markEmailVerified } = require('../src/db/users');
 const { manilaDay } = require('../src/lib/manila-day');
 const { dailyTarget } = require('../src/lib/nutrition-target');
+const { insertEntryOnce } = require('../src/db/nutrition');
 
 const FS_FOOD = {
   externalId: 'fs-1', name: 'Mango Shake', servingDesc: '1 glass', kcal: 250, proteinG: 4, carbsG: 50, fatG: 3.5,
@@ -200,10 +202,10 @@ test('nutrition endpoints', async (t) => {
     assert.equal(entry.kcal, 24); // round(4.4 + 20)
   });
 
-  await t.test("the app's kcal is never used, and an unknown basedOnFoodId is today's 4-4-9", async () => {
+  await t.test("the label kcal sent is used, and an unknown basedOnFoodId is today's 4-4-9", async () => {
     const u = await freshUser();
     const sent = (await u.log({ mealType: 'dinner', servings: 1, food: beerEdit({ kcal: 900 }) }).expect(201)).body.data;
-    assert.equal(sent.entry.kcal, 129);
+    assert.equal(sent.entry.kcal, 900);
     const unknown = (await u.log({
       mealType: 'dinner', servings: 1, food: beerEdit({ basedOnFoodId: BEER + 100000 }),
     }).expect(201)).body.data;
@@ -213,6 +215,35 @@ test('nutrition endpoints', async (t) => {
       food: { source: 'manual', name: 'Gin', proteinG: 0, carbsG: 0, fatG: 0, basedOnFoodId: SPIRIT + 100000 },
     }).expect(400);
     assert.deepEqual(res.body.error.details, [{ field: 'food' }]);
+  });
+
+  await t.test("a manual food's label kcal is per serving, kept by later edits and re-logs, and replaced by a new one", async () => {
+    const u = await freshUser();
+    const wafer = { source: 'manual', name: 'Choco wafer', servingDesc: '1 pack (32 g)', proteinG: 1.5, carbsG: 21, fatG: 7 };
+    const logged = (await u.log({ mealType: 'snack', servings: 2, food: { ...wafer, kcal: 160 } }).expect(201)).body.data.entry;
+    assert.equal(logged.kcal, 320, "160 a pack, not 4-4-9's 153");
+    // Unchanged macros and no kcal: the entry's own 160 a serving is kept.
+    const edited = (await u.edit(logged.id, { mealType: 'snack', servings: 1, food: wafer }).expect(200)).body.data.entry;
+    assert.equal(edited.kcal, 160);
+    const again = (await u.log({ mealType: 'snack', servings: 1, food: { ...wafer, basedOnEntryId: logged.id } }).expect(201)).body.data.entry;
+    assert.equal(again.kcal, 160, 'logged again from Recents');
+    const relabelled = (await u.edit(logged.id, { mealType: 'snack', servings: 1.5, food: { ...wafer, kcal: 200 } }).expect(200)).body.data.entry;
+    assert.equal(relabelled.kcal, 300);
+  });
+
+  await t.test('a drink label: 0/0/0 with kcal logs at that kcal; kcal out of range is a 400 on kcal', async () => {
+    const u = await freshUser();
+    const tea = { source: 'manual', name: 'Iced tea', servingDesc: '1 bottle (500 ml)', proteinG: 0, carbsG: 0, fatG: 0 };
+    assert.equal((await u.log({ mealType: 'snack', servings: 1, food: { ...tea, kcal: 90 } }).expect(201)).body.data.entry.kcal, 90);
+    for (const kcal of [5001, -1, '90']) {
+      const res = await u.log({ mealType: 'snack', servings: 1, food: { ...tea, kcal } }).expect(400);
+      assert.equal(res.body.error.code, 'INVALID_NUTRITION_FIELD');
+      assert.equal(res.body.error.message, 'kcal must be 0 to 5000.');
+      assert.deepEqual(res.body.error.details, [{ field: 'kcal' }]);
+    }
+    const zero = await u.log({ mealType: 'snack', servings: 1, food: { ...tea, kcal: 0 } }).expect(400);
+    assert.equal(zero.body.error.message, 'A manual food needs some protein, carbs or fat.');
+    assert.deepEqual(zero.body.error.details, [{ field: 'food' }]);
   });
 
   // Recents gives back a manual entry, not a listed food: logging it again
@@ -349,6 +380,101 @@ test('nutrition endpoints', async (t) => {
     await bad({ ...ok, date: '2026-02-30' });
     await u.day('2999-01-01').expect(400);
     await u.day('yesterday').expect(400);
+  });
+
+  const keysOf = async (userId) => (await pool.query(
+    'SELECT client_id, meal_log_id FROM meal_log_client_ids WHERE user_id = ?', [userId],
+  ))[0];
+  const entriesOf = async (userId) => (await pool.query('SELECT meal_log_id FROM meal_logs WHERE user_id = ?', [userId]))[0];
+
+  await t.test('no clientId (absent or null) logs as before: 201 each time, no key kept', async () => {
+    const u = await freshUser();
+    const body = { mealType: 'lunch', servings: 1, food: { source: 'local', id: ADOBO } };
+    await u.log(body).expect(201);
+    await u.log({ ...body, clientId: null }).expect(201);
+    assert.equal((await entriesOf(u.userId)).length, 2);
+    assert.deepEqual(await keysOf(u.userId), []);
+  });
+
+  await t.test('a clientId sent again gets the entry already saved: 200, no second row, FatSecret not asked', async () => {
+    const u = await freshUser();
+    const clientId = randomUUID();
+    const body = { mealType: 'snack', servings: 1, food: { source: 'fatsecret', externalId: 'fs-1' }, clientId };
+    const first = (await u.log(body).expect(201)).body.data.entry;
+    assert.deepEqual(await keysOf(u.userId), [{ client_id: clientId, meal_log_id: first.id }]);
+    const gets = fatsecretGets;
+    const again = await u.log(body).expect(200);
+    assert.deepEqual(again.body, { data: { entry: first } });
+    assert.equal(fatsecretGets, gets, 'the key is looked up before the food');
+    // The body of a repeat is not compared: the first entry is the answer.
+    const other = await u.log({ mealType: 'lunch', servings: 3, food: { source: 'local', id: ADOBO }, clientId }).expect(200);
+    assert.deepEqual(other.body.data.entry, first);
+    assert.equal((await entriesOf(u.userId)).length, 1);
+  });
+
+  await t.test('two logs with one clientId sent together: one 201, one 200, one entry', async () => {
+    const u = await freshUser();
+    const body = { mealType: 'lunch', servings: 1, food: { source: 'local', id: ADOBO }, clientId: randomUUID() };
+    const [a, b] = await Promise.all([u.log(body), u.log(body)]);
+    assert.deepEqual([a.status, b.status].sort(), [200, 201]);
+    assert.equal(a.body.data.entry.id, b.body.data.entry.id);
+    assert.equal((await entriesOf(u.userId)).length, 1);
+    assert.equal((await keysOf(u.userId)).length, 1);
+  });
+
+  await t.test('insertEntryOnce: a clientId already taken rolls its entry back and answers with the first id', async () => {
+    const u = await freshUser();
+    const clientId = randomUUID();
+    const e = {
+      date: manilaDay(), mealType: 'lunch', servings: 1, foodId: ADOBO, customName: null, servingDesc: null,
+      kcal: 320, proteinG: 28, carbsG: 4, fatG: 21, fiberG: null, sugarG: null, sodiumMg: null, loggedVia: 'search',
+    };
+    const first = await insertEntryOnce(pool, u.userId, e, clientId);
+    assert.equal(first.created, true);
+    assert.deepEqual(await insertEntryOnce(pool, u.userId, e, clientId), { id: first.id, created: false });
+    assert.deepEqual((await entriesOf(u.userId)).map((r) => r.meal_log_id), [first.id]);
+  });
+
+  await t.test("a clientId is per user: another user's same clientId logs their own entry", async () => {
+    const a = await freshUser();
+    const b = await freshUser();
+    const body = { mealType: 'lunch', servings: 1, food: { source: 'local', id: ADOBO }, clientId: randomUUID() };
+    const mine = (await a.log(body).expect(201)).body.data.entry;
+    const theirs = (await b.log(body).expect(201)).body.data.entry;
+    assert.notEqual(mine.id, theirs.id);
+    assert.equal((await entriesOf(b.userId)).length, 1);
+  });
+
+  await t.test('once the entry is deleted, its clientId logs anew', async () => {
+    const u = await freshUser();
+    const body = { mealType: 'lunch', servings: 1, food: { source: 'local', id: ADOBO }, clientId: randomUUID() };
+    const first = (await u.log(body).expect(201)).body.data.entry;
+    await u.del(first.id).expect(200);
+    const again = (await u.log(body).expect(201)).body.data.entry;
+    assert.notEqual(again.id, first.id);
+    assert.deepEqual(await keysOf(u.userId), [{ client_id: body.clientId, meal_log_id: again.id }]);
+  });
+
+  await t.test('a clientId is matched whatever its case, and stored lower-case', async () => {
+    const u = await freshUser();
+    const clientId = randomUUID();
+    const body = { mealType: 'lunch', servings: 1, food: { source: 'local', id: ADOBO } };
+    const first = (await u.log({ ...body, clientId: clientId.toUpperCase() }).expect(201)).body.data.entry;
+    assert.deepEqual(await keysOf(u.userId), [{ client_id: clientId, meal_log_id: first.id }]);
+    assert.equal((await u.log({ ...body, clientId }).expect(200)).body.data.entry.id, first.id);
+  });
+
+  await t.test('a clientId that is not a UUID is a 400 on clientId, before anything is read', async () => {
+    const u = await freshUser();
+    const gets = fatsecretGets;
+    for (const clientId of ['not-a-uuid', 123, '']) {
+      const res = await u.log({ mealType: 'snack', servings: 1, food: { source: 'fatsecret', externalId: 'fs-1' }, clientId }).expect(400);
+      assert.equal(res.body.error.code, 'INVALID_NUTRITION_FIELD');
+      assert.equal(res.body.error.message, 'clientId must be a UUID.');
+      assert.deepEqual(res.body.error.details, [{ field: 'clientId' }]);
+    }
+    assert.equal(fatsecretGets, gets);
+    assert.deepEqual(await entriesOf(u.userId), []);
   });
 
   await t.test('sugar and sodium accept their top boundary, and sodium rounds to one decimal', async () => {

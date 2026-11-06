@@ -96,6 +96,24 @@ test('plan endpoints', async (t) => {
     assert.equal(res.body.data.plan.exercises[0].targetReps, '8-12');
   });
 
+  await t.test('after PUT /profile/training-days, GET /plans/active reports that many days', async () => {
+    await reset();
+    const onboarded = await request(app).post('/api/v1/profile/complete-onboarding')
+      .set('Authorization', auth).expect(200);
+    const generated = onboarded.body.data.plan.daysPerWeek;
+    assert.equal(generated, 3, 'the stub generates 3, so 4 below is the chosen count');
+
+    await request(app).put('/api/v1/profile/training-days')
+      .set('Authorization', auth).send({ trainingDays: [1, 3, 5, 6] }).expect(200);
+    let res = await request(app).get('/api/v1/plans/active').set('Authorization', auth).expect(200);
+    assert.equal(res.body.data.plan.daysPerWeek, 4);
+
+    await request(app).put('/api/v1/profile/training-days')
+      .set('Authorization', auth).send({ trainingDays: [] }).expect(200);
+    res = await request(app).get('/api/v1/plans/active').set('Authorization', auth).expect(200);
+    assert.equal(res.body.data.plan.daysPerWeek, generated, 'no chosen days: the generated label');
+  });
+
   await t.test('no plan yet is a null, not a 404', async () => {
     await reset();
     const res = await request(app).get('/api/v1/plans/active').set('Authorization', auth).expect(200);
@@ -309,6 +327,93 @@ test('plan endpoints', async (t) => {
       .expect(400);
   });
 
+  // Undo for a swap (PT-26).
+  const swapFirstRow = async () => {
+    await reset();
+    await request(app).post('/api/v1/profile/complete-onboarding').set('Authorization', auth).expect(200);
+    const before = await request(app).get('/api/v1/plans/active').set('Authorization', auth).expect(200);
+    const row = before.body.data.plan.exercises[0];
+    const alts = await request(app)
+      .get(`/api/v1/plans/exercises/${row.planExerciseId}/alternatives`)
+      .set('Authorization', auth).expect(200);
+    const target = alts.body.data.alternatives[0];
+    const swap = await request(app)
+      .patch(`/api/v1/plans/exercises/${row.planExerciseId}`)
+      .set('Authorization', auth).send({ exerciseId: target.exerciseId }).expect(200);
+    return { row, target, swap };
+  };
+  const [catalogue] = await pool.query('SELECT exercise_id, name FROM exercises');
+  const nameOf = (id) => catalogue.find((x) => x.exercise_id === id).name;
+
+  await t.test('a swap returns the exercise it replaced as previous', async () => {
+    const { row, swap } = await swapFirstRow();
+    assert.deepEqual(swap.body.data.previous, {
+      exerciseId: row.exerciseId, name: nameOf(row.exerciseId),
+    });
+  });
+
+  await t.test('revert: true restores the previous exercise', async () => {
+    const { row, target } = await swapFirstRow();
+
+    const res = await request(app)
+      .patch(`/api/v1/plans/exercises/${row.planExerciseId}`)
+      .set('Authorization', auth).send({ exerciseId: row.exerciseId, revert: true }).expect(200);
+
+    const slot = res.body.data.plan.exercises.find((e) => e.planExerciseId === row.planExerciseId);
+    assert.equal(slot.exerciseId, row.exerciseId, 'the slot holds the original again');
+    assert.deepEqual(res.body.data.previous, {
+      exerciseId: target.exerciseId, name: nameOf(target.exerciseId),
+    }, 'previous is the exercise just undone');
+    const [labels] = await pool.query('SELECT 1 FROM plan_swaps');
+    assert.equal(labels.length, 0, 'no swap label is left behind');
+  });
+
+  await t.test('revert must be a boolean', async () => {
+    const { row } = await swapFirstRow();
+    for (const revert of ['true', 1, null, {}]) {
+      const res = await request(app)
+        .patch(`/api/v1/plans/exercises/${row.planExerciseId}`)
+        .set('Authorization', auth).send({ exerciseId: row.exerciseId, revert }).expect(400);
+      assert.deepEqual(res.body.error, {
+        code: 'INVALID_PLAN_FIELD',
+        message: 'revert must be true or false.',
+        details: [{ field: 'revert' }],
+      }, JSON.stringify(revert));
+    }
+  });
+
+  await t.test('an impossible revert answers 409 SWAP_NOT_UNDOABLE with its message', async () => {
+    const { row, target } = await swapFirstRow();
+
+    // The swap replaced row.exerciseId, not the exercise it put in.
+    const res = await request(app)
+      .patch(`/api/v1/plans/exercises/${row.planExerciseId}`)
+      .set('Authorization', auth).send({ exerciseId: target.exerciseId, revert: true }).expect(409);
+
+    assert.equal(res.body.error.code, 'SWAP_NOT_UNDOABLE');
+    assert.equal(res.body.error.message, "That change can't be undone now.");
+    const active = await request(app).get('/api/v1/plans/active').set('Authorization', auth).expect(200);
+    const slot = active.body.data.plan.exercises.find((e) => e.planExerciseId === row.planExerciseId);
+    assert.equal(slot.exerciseId, target.exerciseId, 'nothing changed');
+  });
+
+  await t.test("another user's slot cannot be reverted", async () => {
+    const { row } = await swapFirstRow();
+    await request(app).post('/api/v1/auth/register')
+      .send({ email: 'intruder@example.com', password: 's3cret-pass', fullName: 'I' }).expect(201);
+    const [u] = await pool.query("SELECT user_id FROM users WHERE email='intruder@example.com'");
+    await markEmailVerified(pool, u[0].user_id);
+    const login = await request(app).post('/api/v1/auth/login')
+      .send({ email: 'intruder@example.com', password: 's3cret-pass' }).expect(200);
+
+    const res = await request(app)
+      .patch(`/api/v1/plans/exercises/${row.planExerciseId}`)
+      .set('Authorization', `Bearer ${login.body.data.token}`)
+      .send({ exerciseId: row.exerciseId, revert: true })
+      .expect(404);
+    assert.equal(res.body.error.code, 'PLAN_EXERCISE_NOT_FOUND');
+  });
+
   await t.test('a malformed plan exercise id is a 404, not a 500', async () => {
     await reset();
     await request(app)
@@ -370,12 +475,21 @@ test('plan endpoints', async (t) => {
     await withPlan();
     const before = await request(app).get('/api/v1/plans/active')
       .set('Authorization', auth).expect(200);
-    await request(app).post('/api/v1/sessions').set('Authorization', auth).expect(201);
+    const started = await request(app).post('/api/v1/sessions')
+      .set('Authorization', auth).expect(201);
 
     const res = await request(app).post('/api/v1/plans/regenerate')
       .set('Authorization', auth)
       .send({ splitStyle: 'push_pull_legs' }).expect(409);
     assert.equal(res.body.error.code, 'SESSION_IN_PROGRESS');
+    assert.equal(
+      res.body.error.message,
+      'You have a workout in progress. Finish or discard it before changing your plan.',
+    );
+    // Names the open session, so the app can offer to resume it rather than
+    // leave the user at a dead-end message.
+    assert.equal(res.body.error.details[0].sessionId, started.body.data.session.sessionId);
+    assert.match(res.body.error.details[0].startedAt, /^\d{4}-\d{2}-\d{2}T/);
 
     // The refusal changed nothing: the plan the running session logs against
     // is still the SAME ROW it started with, not merely a row that happens to
@@ -580,7 +694,7 @@ test('plan endpoints', async (t) => {
     await reset();
     const [[u]] = await pool.query("SELECT user_id FROM users WHERE email = 'w@example.com'");
     const sessionId = await finishedWorkout(u.user_id);
-    await pool.query(
+    const [open] = await pool.query(
       `INSERT INTO workout_sessions (user_id, status, session_date, started_at)
        VALUES (?, 'in_progress', CURDATE(), NOW())`,
       [u.user_id],
@@ -591,6 +705,12 @@ test('plan endpoints', async (t) => {
       .send({ sessionId, splitStyle: 'full_body' })
       .expect(409);
     assert.equal(res.body.error.code, 'SESSION_IN_PROGRESS');
+    assert.equal(
+      res.body.error.message,
+      'You have a workout in progress. Finish or discard it before changing your plan.',
+    );
+    assert.equal(res.body.error.details[0].sessionId, open.insertId);
+    assert.equal(typeof res.body.error.details[0].startedAt, 'string');
   });
 
   await t.test('from-session needs a signed-in caller', async () => {

@@ -106,11 +106,12 @@ test('POST /nutrition/recognize', async (t) => {
     assert.deepEqual(await rowsOf(u.userId), ['recognised']);
   });
 
-  await t.test('no food found is a 200 with nothing in it, recorded as empty', async () => {
+  await t.test('no food found is a 200 with nothing in it, recorded as empty, and it costs no photo', async () => {
     const u = await freshUser({ pro: true });
     answer = async () => ({ items: [] });
     const d = (await u.recognize(PHOTO).expect(200)).body.data;
     assert.deepEqual([d.items, d.unlisted], [[], []]);
+    assert.equal(d.remainingToday, 15);
     assert.deepEqual(await rowsOf(u.userId), ['empty']);
   });
 
@@ -143,6 +144,7 @@ test('POST /nutrition/recognize', async (t) => {
   });
 
   await t.test('the 15th photo of the day is allowed, the 16th is 429, and failed attempts never count', async () => {
+    const riceOnly = async () => ({ items: [{ menu: 'White rice', name: 'White rice', quantity: 1, unit: 'cup', grams: 160, confidence: 0.9, alternatives: [] }] });
     const u = await freshUser({ pro: true });
     const values = (n, status) => pool.query(
       `INSERT INTO photo_recognitions (user_id, item_count, status) VALUES ${Array(n).fill(`(?, 0, '${status}')`).join(', ')}`,
@@ -150,13 +152,51 @@ test('POST /nutrition/recognize', async (t) => {
     );
     await values(14, 'recognised');
     await values(20, 'failed');
-    answer = async () => ({ items: [] });
+    answer = riceOnly;
     assert.equal((await u.recognize(PHOTO).expect(200)).body.data.remainingToday, 0);
     const before = calls.length;
     const res = await u.recognize(PHOTO).expect(429);
     assert.equal(res.body.error.code, 'PHOTO_LIMIT_REACHED');
     assert.equal(res.body.error.message, "You've used today's meal photos. Try again tomorrow.");
     assert.equal(calls.length, before, 'refused before the AI is asked');
+  });
+
+  await t.test('an empty answer does not count: with 14 recognised photos, empty answers stay allowed and the 15th recognised one still fits', async () => {
+    const u = await freshUser({ pro: true });
+    const values = (n, status) => pool.query(
+      `INSERT INTO photo_recognitions (user_id, item_count, status) VALUES ${Array(n).fill(`(?, 0, '${status}')`).join(', ')}`,
+      Array(n).fill(u.userId),
+    );
+    await values(14, 'recognised');
+    await values(20, 'empty');
+    answer = async () => ({ items: [] });
+    assert.equal((await u.recognize(PHOTO).expect(200)).body.data.remainingToday, 1, 'an empty answer: 15 - 14 recognised');
+    assert.equal((await u.recognize(PHOTO).expect(200)).body.data.remainingToday, 1, 'and another');
+    answer = async () => ({ items: [{ menu: 'White rice', name: 'White rice', quantity: 1, unit: 'cup', grams: 160, confidence: 0.9, alternatives: [] }] });
+    assert.equal((await u.recognize(PHOTO).expect(200)).body.data.remainingToday, 0, 'a recognised answer: 15 - 14 - 1');
+    const before = calls.length;
+    assert.equal((await u.recognize(PHOTO).expect(429)).body.error.code, 'PHOTO_LIMIT_REACHED');
+    assert.equal(calls.length, before, 'refused before the AI is asked');
+    answer = async () => ({ items: [] });
+  });
+
+  await t.test('30 failed-or-empty tries today refuse the next photo with 429 PHOTO_RETRY_LIMIT, before the AI', async () => {
+    const u = await freshUser({ pro: true });
+    const values = (n, status) => pool.query(
+      `INSERT INTO photo_recognitions (user_id, item_count, status) VALUES ${Array(n).fill(`(?, 0, '${status}')`).join(', ')}`,
+      Array(n).fill(u.userId),
+    );
+    await values(15, 'empty');
+    await values(14, 'failed');
+    answer = async () => ({ items: [] });
+    let before = calls.length;
+    assert.equal((await u.recognize(PHOTO).expect(200)).body.data.remainingToday, 15, 'the 30th try is allowed');
+    assert.equal(calls.length, before + 1);
+    before = calls.length;
+    const res = await u.recognize(PHOTO).expect(429);
+    assert.equal(res.body.error.code, 'PHOTO_RETRY_LIMIT');
+    assert.equal(res.body.error.message, "Snap a meal can't read photos right now. Try again tomorrow, or add your food with search.");
+    assert.equal(calls.length, before, 'the 31st is refused before the AI is asked');
   });
 
   await t.test('30 failed tries today refuse the next photo with 429 PHOTO_RETRY_LIMIT, before the AI; yesterday\'s do not count', async () => {
@@ -212,7 +252,7 @@ test('POST /nutrition/recognize', async (t) => {
     assert.ok(both.includes('"status":429') && both.includes('"backupCode":"VISION_UNAVAILABLE"') && both.includes('"backupStatus":401'), both);
     assert.deepEqual(await rowsOf(u.userId), ['failed', 'failed', 'failed', 'failed', 'failed']);
     answer = async () => ({ items: [] });
-    assert.equal((await u.recognize(PHOTO).expect(200)).body.data.remainingToday, 14);
+    assert.equal((await u.recognize(PHOTO).expect(200)).body.data.remainingToday, 15);
   });
 
   await t.test('with vision off (a stub in production) it is 502 and nothing is recorded', async () => {

@@ -9,6 +9,31 @@ const { formatDate, toNumber, periodDays } = require('./sessions');
 const MIN_KG = 20;
 const MAX_KG = 500;
 
+// The same kind of bound for height. Like the weight bound it sits wider
+// than the app's soft "ask once" range (100-250 cm), so a value the user
+// confirmed still saves, while a slip such as 17 cm or 1.7 (metres) does not.
+const MIN_CM = 50;
+const MAX_CM = 275;
+
+/// The hard range of each profile number, with the words the app shows when
+/// a value falls outside it.
+const BODY_RANGES = {
+  heightCm: { min: MIN_CM, max: MAX_CM, unit: 'cm', noun: 'height' },
+  weightKg: { min: MIN_KG, max: MAX_KG, unit: 'kg', noun: 'weight' },
+  goalWeightKg: { min: MIN_KG, max: MAX_KG, unit: 'kg', noun: 'goal weight' },
+};
+
+/// A 400 for [field] outside its range. details[0] carries the range itself,
+/// so the app can flag the field and restate the range in the user's unit.
+function outOfRange(code, field) {
+  const { min, max, unit, noun } = BODY_RANGES[field];
+  return AppError.badRequest(
+    code,
+    `Enter a ${noun} between ${min} and ${max} ${unit}.`,
+    [{ field, min, max, unit }],
+  );
+}
+
 // How far a widened series may reach back. Enough to draw a shape, few enough
 // that a user logging daily for a year does not ship 365 points to a card
 // 84 pixels tall.
@@ -124,15 +149,15 @@ async function readStart(pool, userId) {
 async function writeEntry(pool, userId, { weightKg, loggedOn = null }) {
   const weight = Number(weightKg);
   if (!Number.isFinite(weight) || weight < MIN_KG || weight > MAX_KG) {
-    throw AppError.badRequest(
-      'WEIGHT_OUT_OF_RANGE',
-      `weightKg must be a number between ${MIN_KG} and ${MAX_KG}.`,
-    );
+    throw outOfRange('WEIGHT_OUT_OF_RANGE', 'weightKg');
   }
 
   const conn = await pool.getConnection();
   try {
     await conn.beginTransaction();
+    // One user's weigh-ins and deletes run one at a time (see deleteEntry),
+    // so users.weight_kg is always synced from a log no one else is changing.
+    await conn.query('SELECT user_id FROM users WHERE user_id = ? FOR UPDATE', [userId]);
 
     // Update-then-insert rather than ON DUPLICATE KEY UPDATE: the table has
     // no unique key on (user_id, log_date), and adding one would need an
@@ -180,4 +205,72 @@ async function writeEntry(pool, userId, { weightKg, loggedOn = null }) {
   return toPoint(row);
 }
 
-module.exports = { readSeries, readReference, readStart, writeEntry, MIN_KG, MAX_KG, MAX_POINTS };
+/// Removes the user's weigh-in on [loggedOn] (YYYY-MM-DD), every row of it:
+/// with no unique key on the day, a race could have left two.
+///
+/// When that day was the newest, users.weight_kg moves to the newest weigh-in
+/// left, so the profile and the chart agree; an older day leaves it alone.
+/// The only weigh-in day is refused (409 ONLY_WEIGH_IN) rather than leaving an
+/// empty chart beside a profile weight: logging the right weight for that day
+/// replaces it instead.
+///
+/// Returns null when the user has no weigh-in that day, else what was deleted,
+/// the start and count left (as readStart) and users.weight_kg afterwards.
+async function deleteEntry(pool, userId, loggedOn) {
+  const conn = await pool.getConnection();
+  try {
+    await conn.beginTransaction();
+    // Taken first, as writeEntry does, so a weigh-in landing at the same
+    // moment waits rather than syncing users.weight_kg from a stale log.
+    await conn.query('SELECT user_id FROM users WHERE user_id = ? FOR UPDATE', [userId]);
+
+    const [[day]] = await conn.query(
+      `SELECT weight_kg, log_date,
+              (SELECT COUNT(DISTINCT log_date) FROM body_weight_logs WHERE user_id = ?) AS days,
+              log_date = (SELECT MAX(log_date) FROM body_weight_logs WHERE user_id = ?) AS newest
+         FROM body_weight_logs
+        WHERE user_id = ? AND log_date = ?
+        ORDER BY weight_log_id DESC LIMIT 1`,
+      [userId, userId, userId, loggedOn],
+    );
+    if (!day) {
+      await conn.rollback();
+      return null;
+    }
+    if (Number(day.days) <= 1) {
+      throw AppError.conflict(
+        'ONLY_WEIGH_IN',
+        "You can't delete your only weigh-in. To fix it, log the right weight for that day. It replaces this one.",
+      );
+    }
+
+    await conn.query(
+      'DELETE FROM body_weight_logs WHERE user_id = ? AND log_date = ?', [userId, loggedOn],
+    );
+    if (Number(day.newest) === 1) {
+      await conn.query(
+        `UPDATE users
+            SET weight_kg = (SELECT weight_kg FROM body_weight_logs
+                              WHERE user_id = ?
+                              ORDER BY log_date DESC, weight_log_id DESC LIMIT 1)
+          WHERE user_id = ?`,
+        [userId, userId],
+      );
+    }
+
+    const left = await readStart(conn, userId);
+    const [[user]] = await conn.query('SELECT weight_kg FROM users WHERE user_id = ?', [userId]);
+    await conn.commit();
+    return { deleted: toPoint(day), ...left, weightKg: toNumber(user.weight_kg) };
+  } catch (err) {
+    await conn.rollback();
+    throw err;
+  } finally {
+    conn.release();
+  }
+}
+
+module.exports = {
+  readSeries, readReference, readStart, writeEntry, deleteEntry, outOfRange,
+  MIN_KG, MAX_KG, MIN_CM, MAX_CM, BODY_RANGES, MAX_POINTS,
+};

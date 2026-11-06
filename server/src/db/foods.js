@@ -35,6 +35,14 @@ async function findFood(pool, foodId) {
   return rows.length ? asFood(rows[0]) : null;
 }
 
+/// The foods with [ids] that still exist, in no particular order: one query
+/// in place of a findFood per id.
+async function findFoods(pool, ids) {
+  if (!ids.length) return [];
+  const [rows] = await pool.query(`${SELECT_FOOD} WHERE f.food_id IN (?)`, [ids]);
+  return rows.map(asFood);
+}
+
 /// FitSync's own foods (never FatSecret copies) matching [q]: by type
 /// (FOOD_TYPES order, untyped last), Filipino before international, names
 /// starting with [q], then the food list's own everyday-first order. LIKE
@@ -107,4 +115,4 @@ async function upsertFatsecretFood(pool, food, retry = true) {
   }
 }
 
-module.exports = { FOOD_TYPES, findFood, searchOwnFoods, upsertFatsecretFood, asFood };
+module.exports = { FOOD_TYPES, findFood, findFoods, searchOwnFoods, upsertFatsecretFood, asFood };

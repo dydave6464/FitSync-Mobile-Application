@@ -29,3 +29,12 @@ test('static helpers set the right status', () => {
   assert.equal(AppError.notFound('A', 'm').status, 404);
   assert.equal(AppError.conflict('A', 'm').status, 409);
 });
+
+test('conflict carries optional details', () => {
+  const err = AppError.conflict('X', 'y', [{ a: 1 }]);
+  assert.equal(err.status, 409);
+  assert.equal(err.code, 'X');
+  assert.equal(err.message, 'y');
+  assert.deepEqual(err.details, [{ a: 1 }]);
+  assert.deepEqual(AppError.conflict('X', 'y').details, []);
+});

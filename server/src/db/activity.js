@@ -1,5 +1,5 @@
 'use strict';
-const { estimateActivity } = require('../lib/activity-estimate');
+const { estimateActivity, perStepFactors } = require('../lib/activity-estimate');
 const { dayNumber, dateOf } = require('../lib/streak');
 
 const WEEK_DAYS = 7;
@@ -71,7 +71,9 @@ async function saveDay(pool, userId, date, steps) {
 /// The seven days ending [today] (YYYY-MM-DD), oldest first, with the
 /// user's usual: the average steps of the earlier days that have a row,
 /// null below USUAL_MIN_DAYS. Today is left out of it, so it never sets its
-/// own comparison.
+/// own comparison. `perStep` is what one step adds to each estimate for the
+/// profile as it is now, so the app can grow today's figures to the phone's
+/// live count exactly as a save would.
 async function readWeek(pool, userId, today) {
   const first = dateOf(dayNumber(today) - (WEEK_DAYS - 1));
   const [rows] = await pool.query(
@@ -100,8 +102,11 @@ async function readWeek(pool, userId, today) {
   const usual = earlier.length >= USUAL_MIN_DAYS
     ? Math.round(earlier.reduce((sum, r) => sum + r.steps, 0) / earlier.length)
     : null;
-  const { missing } = estimateActivity({ steps: 0, ...(await bodyOf(pool, userId)) });
-  return { days, usual, usualDays: earlier.length, missing };
+  const body = await bodyOf(pool, userId);
+  const { missing } = estimateActivity({ steps: 0, ...body });
+  return {
+    days, usual, usualDays: earlier.length, missing, perStep: perStepFactors(body),
+  };
 }
 
 module.exports = { saveDay, readWeek };

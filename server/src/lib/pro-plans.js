@@ -9,4 +9,10 @@ const PLANS = {
   annual: { pricePhp: 1788, months: 12, name: 'FitSync Pro — 1 year' },
 };
 
-module.exports = { PLANS };
+/// What the app is told about each plan: its price and how many months it
+/// adds. PayMongo's line-item [name] stays on the server.
+const PLAN_TERMS = Object.freeze(Object.fromEntries(
+  Object.entries(PLANS).map(([key, { pricePhp, months }]) => [key, Object.freeze({ pricePhp, months })]),
+));
+
+module.exports = { PLANS, PLAN_TERMS };

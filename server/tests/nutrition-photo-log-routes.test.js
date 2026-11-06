@@ -196,4 +196,13 @@ test('POST /nutrition/recognitions/:id/log', async (t) => {
     assert.deepEqual(entries.map((e) => [e.name, e.source]), [['White rice', 'local'], ['Mango Shake', 'fatsecret']]);
     assert.deepEqual((await logsOf(u.userId)).map((r) => r.logged_via), ['photo', 'photo']);
   });
+
+  await t.test("an added manual item with its label's kcal logs at that kcal", async () => {
+    const u = await freshUser();
+    const { recognitionId } = await photo(u);
+    const res = await u.log(recognitionId, body([
+      { itemId: null, servings: 1, food: { source: 'manual', name: 'Choco wafer', proteinG: 1.5, carbsG: 21, fatG: 7, kcal: 160 } },
+    ])).expect(201);
+    assert.equal(res.body.data.entries[0].kcal, 160);
+  });
 });

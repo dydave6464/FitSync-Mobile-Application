@@ -43,9 +43,10 @@ async function createUserWithPassword(pool, { email, passwordHash, fullName }) {
   return findUserById(pool, result.insertId);
 }
 
-// The one place email_verified flips from 0 to 1. Used both by the
-// verify-email route (a token proved the address) and by
-// findOrCreateGoogleUser (Google already vouched for it).
+// Flips email_verified from 0 to 1. Used both by the verify-email route (a
+// code proved the address) and by findOrCreateGoogleUser (Google already
+// vouched for it). The only other place is replacePasswordAndSignOut with
+// { verifyEmail: true }, for a password reset, whose code proves the same.
 async function markEmailVerified(pool, userId) {
   await pool.query('UPDATE users SET email_verified = 1 WHERE user_id = ?', [userId]);
 }
@@ -57,14 +58,19 @@ async function markEmailVerified(pool, userId) {
 /// before it stops working -- including one a login signs later from a row
 /// it read before this landed, which carries the old hash's generation.
 /// Returns the new generation, for the caller's fresh token.
-async function replacePasswordAndSignOut(pool, userId, passwordHash) {
+///
+/// { verifyEmail: true } also marks the address verified in the same UPDATE.
+/// Only the reset passes it: its code was mailed to the address, which is
+/// exactly what verification proves. The change leaves it as it was.
+async function replacePasswordAndSignOut(pool, userId, passwordHash, { verifyEmail = false } = {}) {
   // LAST_INSERT_ID(expr) hands the incremented value back on this
   // connection's OK packet (insertId), so it is the value this UPDATE wrote,
   // not one a concurrent change wrote a moment later.
   const [result] = await pool.query(
-    `UPDATE users SET password_hash = ?, token_version = LAST_INSERT_ID(token_version + 1)
+    `UPDATE users SET password_hash = ?, email_verified = IF(?, 1, email_verified),
+            token_version = LAST_INSERT_ID(token_version + 1)
       WHERE user_id = ?`,
-    [passwordHash, userId],
+    [passwordHash, verifyEmail, userId],
   );
   return result.insertId;
 }
