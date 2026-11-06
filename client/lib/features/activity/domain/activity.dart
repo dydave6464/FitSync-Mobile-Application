@@ -19,6 +19,31 @@ class ActivityDay {
   final double? distanceKm;
   final int? activeMinutes;
 
+  /// This day with its step count moved on to [liveSteps], and the
+  /// server's estimates carried along by the same share. The server works
+  /// them out from the count it last saved, up to five minutes behind the
+  /// phone's; all three grow in step with the steps, so they move with the
+  /// count until the next sync rather than sitting still beside it. The
+  /// formula stays the server's. Home and the Activity screen both read
+  /// today through this, so the two never show different kcal or km for the
+  /// same count. With nothing saved to grow from, the estimates stay as
+  /// they are.
+  ActivityDay grownTo(int liveSteps) {
+    final saved = steps;
+    final factor = saved != null && saved > 0 ? liveSteps / saved : 1.0;
+    return ActivityDay(
+      date: date,
+      steps: liveSteps,
+      caloriesBurned: caloriesBurned == null
+          ? null
+          : (caloriesBurned! * factor).round(),
+      distanceKm: distanceKm == null ? null : distanceKm! * factor,
+      activeMinutes: activeMinutes == null
+          ? null
+          : (activeMinutes! * factor).round(),
+    );
+  }
+
   factory ActivityDay.fromJson(Map<String, dynamic> json) => ActivityDay(
     date: json['date'] as String,
     steps: json['steps'] as int?,

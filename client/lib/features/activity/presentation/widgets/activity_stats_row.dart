@@ -161,7 +161,9 @@ class _Stats extends ConsumerWidget {
           ),
           data: (state) {
             final week = state.week;
-            final today = week?.today;
+            // Grown to the phone's count, as the Activity screen does, so a
+            // tap opens the same kcal and km.
+            final today = week?.today.grownTo(state.today.steps);
             final noKm = week == null || week.missingHeight;
             final noKcal =
                 week == null || week.missingHeight || week.missingWeight;

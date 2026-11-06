@@ -11,6 +11,47 @@ Map<String, dynamic> _day(String date, int? steps) => {
 };
 
 void main() {
+  group('grownTo carries the saved estimates along to the live count', () {
+    const saved = ActivityDay(
+      date: '2026-09-28',
+      steps: 6420,
+      caloriesBurned: 158,
+      distanceKm: 4.52,
+      activeMinutes: 64,
+    );
+
+    test('by the share the count has grown since the server saved it', () {
+      final grown = saved.grownTo(9630);
+      expect(grown.steps, 9630);
+      expect(grown.caloriesBurned, 237);
+      expect(grown.distanceKm, closeTo(6.78, 1e-9));
+      expect(grown.activeMinutes, 96);
+      expect(grown.date, '2026-09-28');
+    });
+
+    test('unchanged when the count has not moved', () {
+      final same = saved.grownTo(6420);
+      expect(same.caloriesBurned, 158);
+      expect(same.distanceKm, 4.52);
+      expect(same.activeMinutes, 64);
+    });
+
+    test('left as saved when nothing was saved to grow from', () {
+      const none = ActivityDay(
+        date: '2026-09-28',
+        steps: 0,
+        caloriesBurned: 0,
+        distanceKm: 0,
+        activeMinutes: null,
+      );
+      final grown = none.grownTo(500);
+      expect(grown.steps, 500);
+      expect(grown.caloriesBurned, 0);
+      expect(grown.distanceKm, 0);
+      expect(grown.activeMinutes, isNull);
+    });
+  });
+
   test('formatSteps groups thousands', () {
     expect(formatSteps(0), '0');
     expect(formatSteps(999), '999');
@@ -19,7 +60,10 @@ void main() {
   });
 
   test('usualLine at each boundary', () {
-    expect(usualLine(today: 6420, usual: null), 'Your usual appears after 3 days of walking');
+    expect(
+      usualLine(today: 6420, usual: null),
+      'Your usual appears after 3 days of walking',
+    );
     expect(usualLine(today: 6420, usual: 5180), '1,240 above your usual');
     expect(usualLine(today: 4350, usual: 5180), '830 to reach your usual');
     // within 1% of 5000 is 50 steps either way

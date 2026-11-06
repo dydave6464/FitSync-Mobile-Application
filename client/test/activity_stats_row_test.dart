@@ -321,6 +321,36 @@ void main() {
     expect(find.byType(ActivityScreen), findsOneWidget);
   });
 
+  testWidgets('kcal and km match the Activity screen the tiles open', (
+    tester,
+  ) async {
+    // RH-13: Activity carries the server's estimates along to the live
+    // count; Home showed the saved ones beside the same step count, so a tap
+    // opened different kcal and km for the same moment.
+    await _pump(tester, _Permission(StepAccess.granted), steps: 9630);
+
+    expect(tile('steps', '9,630'), findsOneWidget);
+    expect(tile('kcal', '237'), findsOneWidget);
+    expect(tile('km', '6.8'), findsOneWidget);
+
+    await tester.tap(find.byKey(const Key('home.activity.kcal')));
+    await tester.pumpAndSettle();
+    expect(
+      find.descendant(
+        of: find.byKey(const Key('activity.kcal')),
+        matching: find.text('237'),
+      ),
+      findsOneWidget,
+    );
+    expect(
+      find.descendant(
+        of: find.byKey(const Key('activity.km')),
+        matching: find.text('6.78'),
+      ),
+      findsOneWidget,
+    );
+  });
+
   testWidgets('on: kcal over a thousand is grouped, as steps are', (
     tester,
   ) async {

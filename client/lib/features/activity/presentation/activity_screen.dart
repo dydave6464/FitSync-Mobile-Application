@@ -58,33 +58,35 @@ class _ActivityScreenState extends ConsumerState<ActivityScreen> {
     return Scaffold(
       backgroundColor: t.bg,
       appBar: AppBar(title: const Text('Activity')),
-      body: ref.watch(activityProvider).when(
-        // The week is still on its way; today's count is already on the
-        // phone, so it shows at once. A spinner only until the phone answers.
-        loading: () => switch (ref.watch(todayStepsProvider).value) {
-          final today? => _Body(
-            state: ActivityState(today: today, week: null, offline: false),
-            steps: live ?? today.steps,
-            loadingWeek: true,
+      body: ref
+          .watch(activityProvider)
+          .when(
+            // The week is still on its way; today's count is already on the
+            // phone, so it shows at once. A spinner only until the phone answers.
+            loading: () => switch (ref.watch(todayStepsProvider).value) {
+              final today? => _Body(
+                state: ActivityState(today: today, week: null, offline: false),
+                steps: live ?? today.steps,
+                loadingWeek: true,
+              ),
+              null => const Center(child: CircularProgressIndicator()),
+            },
+            error: (error, _) => FsRetry(
+              fullScreen: true,
+              message: userMessage(error),
+              onRetry: () => ref.invalidate(activityProvider),
+            ),
+            data: (state) => _Body(
+              state: state,
+              steps: live ?? state.today.steps,
+              onGoToProfile: widget.onGoToProfile == null
+                  ? null
+                  : () {
+                      Navigator.of(context).pop();
+                      widget.onGoToProfile!();
+                    },
+            ),
           ),
-          null => const Center(child: CircularProgressIndicator()),
-        },
-        error: (error, _) => FsRetry(
-          fullScreen: true,
-          message: userMessage(error),
-          onRetry: () => ref.invalidate(activityProvider),
-        ),
-        data: (state) => _Body(
-          state: state,
-          steps: live ?? state.today.steps,
-          onGoToProfile: widget.onGoToProfile == null
-              ? null
-              : () {
-                  Navigator.of(context).pop();
-                  widget.onGoToProfile!();
-                },
-        ),
-      ),
     );
   }
 }
@@ -110,14 +112,9 @@ class _Body extends StatelessWidget {
     final week = state.week;
     final noKm = week == null || week.missingHeight;
     final noKcal = week == null || week.missingHeight || week.missingWeight;
-    final today = week?.today;
-    // The server works the estimates out from the count it last saved, up
-    // to five minutes behind the live one. All three grow in step with the
-    // steps, so they are carried along by the same factor until the next
-    // sync, rather than sitting still beside a climbing count. The formula
-    // stays the server's.
-    final saved = today?.steps;
-    final grown = saved != null && saved > 0 ? steps / saved : 1.0;
+    // The server's estimates, carried along to the live count (see
+    // ActivityDay.grownTo), as Home's tiles show them.
+    final today = week?.today.grownTo(steps);
     final notes = [
       if (state.today.sinceTurnedOn) 'Counting since you turned it on',
       if (state.today.includesEarlierDays)
@@ -137,7 +134,10 @@ class _Body extends StatelessWidget {
                 key: const Key('activity.steps'),
                 style: fsNum(t, size: 44),
               ),
-              Text('steps today', style: TextStyle(fontSize: 13, color: t.text2)),
+              Text(
+                'steps today',
+                style: TextStyle(fontSize: 13, color: t.text2),
+              ),
               const SizedBox(height: 18),
               // Only once there is a usual to measure against: without one
               // the fill sat 80% along a track that meant nothing. Its room
@@ -165,21 +165,21 @@ class _Body extends StatelessWidget {
                     key: const Key('activity.kcal'),
                     value: noKcal
                         ? '—'
-                        : formatSteps(((today!.caloriesBurned ?? 0) * grown).round()),
+                        : formatSteps(today!.caloriesBurned ?? 0),
                     label: 'kcal',
                   ),
                   _Figure(
                     key: const Key('activity.km'),
                     value: noKm
                         ? '—'
-                        : ((today!.distanceKm ?? 0) * grown).toStringAsFixed(2),
+                        : (today!.distanceKm ?? 0).toStringAsFixed(2),
                     label: 'km',
                   ),
                   _Figure(
                     key: const Key('activity.minutes'),
                     value: today?.activeMinutes == null
                         ? '—'
-                        : '${(today!.activeMinutes! * grown).round()}',
+                        : '${today!.activeMinutes}',
                     label: 'active min',
                   ),
                 ],
@@ -200,7 +200,9 @@ class _Body extends StatelessWidget {
             padding: const EdgeInsets.only(top: 10),
             child: Text(
               note,
-              key: note == "Updates when you're online" ? const Key('activity.offline') : null,
+              key: note == "Updates when you're online"
+                  ? const Key('activity.offline')
+                  : null,
               textAlign: TextAlign.center,
               style: TextStyle(fontSize: 12, color: t.text3),
             ),
@@ -224,7 +226,11 @@ class _Body extends StatelessWidget {
                     children: [
                       Text(
                         'This week',
-                        style: TextStyle(fontSize: 15, fontWeight: FontWeight.w700, color: t.text),
+                        style: TextStyle(
+                          fontSize: 15,
+                          fontWeight: FontWeight.w700,
+                          color: t.text,
+                        ),
                       ),
                       if (week.average != null)
                         Text(
@@ -268,7 +274,9 @@ class _UsualBar extends StatelessWidget {
             clipBehavior: Clip.none,
             children: [
               Positioned(
-                left: 0, right: 0, top: 4,
+                left: 0,
+                right: 0,
+                top: 4,
                 child: Container(
                   height: 10,
                   decoration: BoxDecoration(
@@ -278,7 +286,8 @@ class _UsualBar extends StatelessWidget {
                 ),
               ),
               Positioned(
-                left: 0, top: 4,
+                left: 0,
+                top: 4,
                 child: Container(
                   width: width * today / scale,
                   height: 10,
@@ -358,9 +367,7 @@ class _WeekBars extends StatelessWidget {
       highlightIndex: days.length - 1,
       highlightColor: t.blue,
       height: 96,
-      bars: [
-        for (var i = 0; i < days.length; i++) _bar(i),
-      ],
+      bars: [for (var i = 0; i < days.length; i++) _bar(i)],
     );
   }
 
