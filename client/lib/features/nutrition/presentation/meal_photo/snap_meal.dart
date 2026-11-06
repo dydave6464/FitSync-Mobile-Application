@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../../../core/app_settings.dart';
 import '../../../../core/theme.dart';
 import '../../../../core/widgets/fs_kit.dart';
 import '../../../pro/presentation/pro_screen.dart';
