@@ -1878,6 +1878,68 @@ void main() {
     });
   });
 
+  testWidgets('Skip leaves out a number that looks like a slip', (
+    tester,
+  ) async {
+    // L-24: Continue queries 17 cm, but Skip sent it straight to the plan.
+    final patches = <Map<String, dynamic>>[];
+    await _pumpFlow(tester, patches: patches);
+    await _skip(tester);
+
+    await tester.enterText(find.byKey(const Key('weightKg')), '72');
+    await tester.enterText(find.byKey(const Key('heightCm')), '17');
+    await tester.pumpAndSettle();
+    await _skip(tester);
+
+    expect(patches, [
+      {'weightKg': 72.0},
+    ], reason: 'a height of 17 cm is far more likely a typo than a fact');
+    expect(find.text('STEP 3 / 6'), findsOneWidget);
+  });
+
+  group('the kg/lb switch on About', () {
+    // AO-26: it waited for the server to move, and a failed save changed
+    // nothing and said nothing.
+    FsUnitToggle toggle(WidgetTester tester) =>
+        tester.widget<FsUnitToggle>(find.byType(FsUnitToggle));
+
+    testWidgets('moves at once, before the save comes back', (tester) async {
+      final pending = Completer<void>();
+      final patches = <Map<String, dynamic>>[];
+      await _pumpFlow(tester, patches: patches, onPatch: () => pending.future);
+      await _skip(tester);
+
+      await _tapKey(tester, const Key('unit.lb'));
+      await tester.pump();
+
+      expect(toggle(tester).value, WeightUnit.lb);
+      expect(patches, [
+        {'weightUnit': 'lb'},
+      ]);
+
+      pending.complete();
+      await tester.pumpAndSettle();
+      expect(toggle(tester).value, WeightUnit.lb);
+    });
+
+    testWidgets('goes back and says so when the save fails', (tester) async {
+      await _pumpFlow(
+        tester,
+        patches: [],
+        onPatch: () async =>
+            throw const ApiException('NETWORK_ERROR', 'http://10.0.2.2'),
+      );
+      await _skip(tester);
+
+      await _tapKey(tester, const Key('unit.lb'));
+      await tester.pumpAndSettle();
+
+      expect(tester.takeException(), isNull);
+      expect(toggle(tester).value, WeightUnit.kg);
+      expect(find.text("Couldn't switch to lb. Try again."), findsOneWidget);
+    });
+  });
+
   group('About step answers that look wrong', () {
     Future<void> toAbout(WidgetTester tester) async {
       await _skip(tester);
