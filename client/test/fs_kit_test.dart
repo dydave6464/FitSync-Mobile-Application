@@ -1979,6 +1979,27 @@ void main() {
       );
     });
 
+    // L-13: the look in both themes, not only the light one.
+    for (final dark in [false, true]) {
+      testWidgets('reads clearly in the ${dark ? 'dark' : 'light'} theme', (
+        tester,
+      ) async {
+        await tester.pumpWidget(
+          host(
+            FsRetry(message: "Couldn't load.", onRetry: () {}),
+            dark: dark,
+          ),
+        );
+        final t = dark ? FsTokens.dark : FsTokens.light;
+        final message = tester.widget<Text>(find.text("Couldn't load."));
+        expect(message.style?.color, t.text2);
+        expect(contrast(t.text2, t.bg), greaterThanOrEqualTo(4.5));
+        final label = tester.widget<Text>(find.text('Try again'));
+        expect(label.style?.color, t.text);
+        expect(contrast(t.text, t.surface), greaterThanOrEqualTo(4.5));
+      });
+    }
+
     testWidgets('puts a secondary action below Try again', (tester) async {
       await tester.pumpWidget(
         host(
@@ -2317,19 +2338,26 @@ void main() {
       expect(answers, [false]);
     });
 
-    testWidgets('Discard is drawn in red', (tester) async {
-      await pumpAsker(tester, []);
-      const t = FsTokens.light;
-      final style = tester
-          .widget<TextButton>(
-            find.ancestor(
-              of: find.text('Discard'),
-              matching: find.byType(TextButton),
-            ),
-          )
-          .style!;
-      expect(style.foregroundColor!.resolve({}), t.red);
-    });
+    // L-13: in the dark theme too, not only the light one.
+    for (final dark in [false, true]) {
+      testWidgets('Discard is drawn in red (${dark ? 'dark' : 'light'})', (
+        tester,
+      ) async {
+        await pumpAsker(tester, [], dark: dark);
+        final t = dark ? FsTokens.dark : FsTokens.light;
+        final style = tester
+            .widget<TextButton>(
+              find.ancestor(
+                of: find.text('Discard'),
+                matching: find.byType(TextButton),
+              ),
+            )
+            .style!;
+        expect(style.foregroundColor!.resolve({}), t.red);
+        // The dialog sits on elev.
+        expect(contrast(t.red, t.elev), greaterThanOrEqualTo(4.5));
+      });
+    }
 
     testWidgets('can say why discarding matters here', (tester) async {
       await pumpAsker(tester, [], message: 'The photo still counts today.');
