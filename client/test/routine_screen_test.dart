@@ -182,22 +182,64 @@ void main() {
     expect(find.text('All done for today'), findsOneWidget);
   });
 
-  testWidgets('a ticked row is dimmed and struck through', (tester) async {
+  testWidgets('a ticked row is struck through, its text not faded (PT-5)', (
+    tester,
+  ) async {
     final repo = _FakeRoutineRepo(_fixtureDay);
     await tester.pumpWidget(_harness(repo));
     await tester.pumpAndSettle();
 
-    final opacity = tester.widget<Opacity>(
+    // No fade over the text: Opacity took it below AA.
+    expect(
       find.ancestor(of: find.text('Mobility'), matching: find.byType(Opacity)),
+      findsNothing,
     );
-    expect(opacity.opacity, 0.55);
+    expect(
+      find.ancestor(of: find.text('6:30 AM'), matching: find.byType(Opacity)),
+      findsNothing,
+    );
+    // The icon tile still steps back.
+    final tileFade = tester.widget<Opacity>(
+      find
+          .descendant(
+            of: find.ancestor(
+              of: find.text('Mobility'),
+              matching: find.byType(Row),
+            ),
+            matching: find.byType(Opacity),
+          )
+          .first,
+    );
+    expect(tileFade.opacity, lessThan(1));
 
     final title = tester.widget<Text>(find.text('Mobility'));
     expect(title.style?.decoration, TextDecoration.lineThrough);
+    expect(title.style?.color, FsTokens.light.text2);
 
     final walkTitle = tester.widget<Text>(find.text('Walk'));
     expect(walkTitle.style?.decoration, TextDecoration.none);
+    expect(walkTitle.style?.color, FsTokens.light.text);
   });
+
+  for (final dark in [false, true]) {
+    testWidgets('a ticked row reads at 4.5:1 (${dark ? 'dark' : 'light'})', (
+      tester,
+    ) async {
+      final repo = _FakeRoutineRepo(_fixtureDay);
+      await tester.pumpWidget(_harness(repo, dark: dark));
+      await tester.pumpAndSettle();
+      final t = dark ? FsTokens.dark : FsTokens.light;
+
+      for (final text in ['Mobility', '6:30 AM']) {
+        final color = tester.widget<Text>(find.text(text)).style!.color!;
+        expect(
+          contrast(color, t.surface),
+          greaterThanOrEqualTo(4.5),
+          reason: text,
+        );
+      }
+    });
+  }
 
   testWidgets('tapping a tick box ticks the habit and updates the header', (
     tester,

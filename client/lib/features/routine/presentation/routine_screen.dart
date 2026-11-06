@@ -227,64 +227,66 @@ class _Row extends ConsumerWidget {
     };
     final (icon, subtitle, onOpen, box) = parts;
 
-    return Opacity(
-      opacity: entry.done ? 0.55 : 1,
-      child: FsCard(
-        small: true,
-        child: Row(
-          children: [
-            FsIconTile(icon: icon),
-            const SizedBox(width: 12),
-            Expanded(
-              child: Semantics(
-                button: onOpen != null,
-                hint: entry is HabitEntry ? 'Edit habit' : null,
-                child: InkWell(
-                  key: switch (entry) {
-                    HabitEntry(:final habit) => Key(
-                      'routine.habit.${habit.habitId}',
-                    ),
-                    WorkoutEntry() => const Key('routine.workout'),
-                  },
-                  onTap: onOpen,
-                  // As tall as the tick box beside it, so the row's own
-                  // target is 48 dp too.
-                  child: ConstrainedBox(
-                    constraints: const BoxConstraints(minHeight: 48),
-                    child: Align(
-                      alignment: AlignmentDirectional.centerStart,
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(
-                            entry.title,
-                            style: TextStyle(
-                              fontSize: 13.5,
-                              fontWeight: FontWeight.w600,
-                              color: t.text,
-                              decoration: entry.done
-                                  ? TextDecoration.lineThrough
-                                  : TextDecoration.none,
-                            ),
+    // A done row steps back by its icon and its struck-through title, not by
+    // fading the whole card: at 55% its text fell below 4.5:1.
+    return FsCard(
+      small: true,
+      child: Row(
+        children: [
+          Opacity(
+            opacity: entry.done ? 0.55 : 1,
+            child: FsIconTile(icon: icon),
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Semantics(
+              button: onOpen != null,
+              hint: entry is HabitEntry ? 'Edit habit' : null,
+              child: InkWell(
+                key: switch (entry) {
+                  HabitEntry(:final habit) => Key(
+                    'routine.habit.${habit.habitId}',
+                  ),
+                  WorkoutEntry() => const Key('routine.workout'),
+                },
+                onTap: onOpen,
+                // As tall as the tick box beside it, so the row's own
+                // target is 48 dp too.
+                child: ConstrainedBox(
+                  constraints: const BoxConstraints(minHeight: 48),
+                  child: Align(
+                    alignment: AlignmentDirectional.centerStart,
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          entry.title,
+                          style: TextStyle(
+                            fontSize: 13.5,
+                            fontWeight: FontWeight.w600,
+                            color: entry.done ? t.text2 : t.text,
+                            decoration: entry.done
+                                ? TextDecoration.lineThrough
+                                : TextDecoration.none,
                           ),
-                          if (subtitle.isNotEmpty) ...[
-                            const SizedBox(height: 2),
-                            Text(
-                              subtitle,
-                              style: TextStyle(fontSize: 10.5, color: t.text3),
-                            ),
-                          ],
+                        ),
+                        if (subtitle.isNotEmpty) ...[
+                          const SizedBox(height: 2),
+                          Text(
+                            subtitle,
+                            style: TextStyle(fontSize: 10.5, color: t.text3),
+                          ),
                         ],
-                      ),
+                      ],
                     ),
                   ),
                 ),
               ),
             ),
-            const SizedBox(width: 12),
-            box,
-          ],
-        ),
+          ),
+          const SizedBox(width: 12),
+          box,
+        ],
       ),
     );
   }
