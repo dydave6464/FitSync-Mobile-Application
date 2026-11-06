@@ -80,7 +80,11 @@ class FakeProfileNotifier extends ProfileNotifier {
     this.goalWeightKg,
     this.patchError,
     this.patchGate,
+    this.weightUnit = WeightUnit.kg,
   });
+
+  /// The unit the profile opens in.
+  final WeightUnit weightUnit;
 
   /// Seed the Body metrics editor, so a test can clear a stored value.
   final double? heightCm;
@@ -150,6 +154,7 @@ class FakeProfileNotifier extends ProfileNotifier {
     heightCm: heightCm,
     weightKg: weightKg,
     goalWeightKg: goalWeightKg,
+    weightUnit: weightUnit,
   );
 
   /// Every `patch` call, counted on arrival -- before [patchGate] holds it
@@ -272,6 +277,7 @@ Future<void> _pump(
   Object? patchError,
   Completer<void>? patchGate,
   bool dark = false,
+  WeightUnit weightUnit = WeightUnit.kg,
 }) async {
   _profile = FakeProfileNotifier(
     patches ?? <Map<String, dynamic>>[],
@@ -288,6 +294,7 @@ Future<void> _pump(
     goalWeightKg: goalWeightKg,
     patchError: patchError,
     patchGate: patchGate,
+    weightUnit: weightUnit,
   );
   await tester.pumpWidget(
     ProviderScope(
@@ -968,6 +975,26 @@ void main() {
         expect(find.byType(EditScaffold), findsNothing);
       });
     }
+
+    // 0.1 lb is 0.045 kg: inside a 0.05 kg tolerance, so the smallest edit
+    // a user in pounds can make was dropped on back without a word.
+    testWidgets('a 0.1 lb weight edit still asks before discarding', (
+      tester,
+    ) async {
+      await _pump(
+        tester,
+        heightCm: 170,
+        weightKg: 155 * 0.45359237,
+        weightUnit: WeightUnit.lb,
+      );
+      await _openRow(tester, const Key('edit.about'));
+      await tester.enterText(find.byKey(const Key('weightKg')), '155.1');
+      await tester.pumpAndSettle();
+
+      await tester.binding.handlePopRoute();
+      await tester.pumpAndSettle();
+      expect(find.text('Discard your changes?'), findsOneWidget);
+    });
 
     testWidgets('undoing an edit makes back quiet again', (tester) async {
       await _pump(tester);

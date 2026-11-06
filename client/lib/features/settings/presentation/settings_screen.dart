@@ -366,10 +366,8 @@ class _WeightUnitSwitch extends ConsumerStatefulWidget {
 class _WeightUnitSwitchState extends ConsumerState<_WeightUnitSwitch>
     with _UnitSwitch {
   @override
-  Widget build(BuildContext context) => FsUnitToggle(
-    value: shownUnit(widget.profile),
-    onChanged: switchUnit,
-  );
+  Widget build(BuildContext context) =>
+      FsUnitToggle(value: shownUnit(widget.profile), onChanged: switchUnit);
 }
 
 /// The prototype's `SettRow`: square icon tile, label, trailing control, and a
@@ -437,11 +435,20 @@ class _SettingsRow extends StatelessWidget {
 bool _sameItems<T>(Iterable<T> a, Iterable<T> b) =>
     setEquals(a.toSet(), b.toSet());
 
-/// Whether two typed numbers are the same answer. Weight is shown rounded
-/// (to 0.1 lb in pounds), so a stored figure read back from its own field can
-/// differ by a few grams without the user having changed anything.
+/// Whether two typed numbers are the same answer: within half of the
+/// field's 0.1 step.
 bool _sameNumber(double? a, double? b) =>
     a == null || b == null ? a == b : (a - b).abs() < 0.05;
+
+/// [_sameNumber] for two weights in kilograms, compared in the [unit] on
+/// screen. A pound figure is shown rounded to 0.1 lb, so a stored weight
+/// read back from its own field can differ by a few grams without the user
+/// changing anything; but 0.1 lb is only 0.045 kg, so a tolerance in
+/// kilograms would swallow the smallest real edit in pounds.
+bool _sameWeight(double? a, double? b, WeightUnit unit) => _sameNumber(
+  a == null ? null : convertFromKg(a, unit),
+  b == null ? null : convertFromKg(b, unit),
+);
 
 /// Shared plumbing for the four editors: hold a working value, save it, pop.
 ///
@@ -666,6 +673,9 @@ class _AboutEditorState extends _EditorState<_AboutEditor> with _UnitSwitch {
   AboutAnswers _seed = const AboutAnswers();
   bool _seeded = false;
 
+  /// The unit the weights are on screen in, as of the last build.
+  WeightUnit _unit = WeightUnit.kg;
+
   @override
   String get title => 'Body metrics';
 
@@ -675,8 +685,8 @@ class _AboutEditorState extends _EditorState<_AboutEditor> with _UnitSwitch {
       _value.dateOfBirth != _seed.dateOfBirth ||
       _value.activityLevel != _seed.activityLevel ||
       !_sameNumber(_value.heightCm, _seed.heightCm) ||
-      !_sameNumber(_value.weightKg, _seed.weightKg) ||
-      !_sameNumber(_value.goalWeightKg, _seed.goalWeightKg);
+      !_sameWeight(_value.weightKg, _seed.weightKg, _unit) ||
+      !_sameWeight(_value.goalWeightKg, _seed.goalWeightKg, _unit);
 
   @override
   Widget buildStep(Profile profile) {
@@ -691,6 +701,7 @@ class _AboutEditorState extends _EditorState<_AboutEditor> with _UnitSwitch {
         activityLevel: profile.activityLevel,
       );
     }
+    _unit = shownUnit(profile);
     return AboutStep(
       value: _value,
       // A rebuild per keystroke, so back and Save know what is on screen.
