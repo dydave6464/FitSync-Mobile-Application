@@ -1,5 +1,6 @@
 import 'dart:math' as math;
 
+import 'package:flutter/foundation.dart' show defaultTargetPlatform;
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
 import 'package:flutter/services.dart';
@@ -310,8 +311,12 @@ class FsChip extends StatelessWidget {
   final bool selected;
 
   /// True for a chip in a single-choice row (a meal, a reminder's lead
-  /// time), where picking one unpicks the rest. A screen reader then says
-  /// the chip is one of a group, not an independent toggle.
+  /// time), where picking one unpicks the rest. The chip then reports itself
+  /// as Flutter's own radio does on each platform: TalkBack says "radio
+  /// button, checked" or "not checked"; VoiceOver, which has no radio role,
+  /// says "Selected" on the one that is on and "Not selected" on the rest.
+  ///
+  /// Ignored on an action chip (`toggle: false`), which is no choice at all.
   final bool exclusive;
 
   /// False for an action chip ("Add"), one that does something when pressed
@@ -334,15 +339,31 @@ class FsChip extends StatelessWidget {
     // Drawn about 30 dp tall; answers a thumb across 48 wherever its parent
     // has that room. A one-row Wrap or Row is only as tall as the chip, so a
     // row of them sits in an [FsTapRoom] for the band to reach past it.
+    // A single-choice chip follows RawRadio. The group flag on its own
+    // changes nothing a screen reader says: Android reads it only on a node
+    // with a checked state (RadioButton rather than CheckBox), and iOS only
+    // to keep a checked node from becoming a switch. So on Android the chip
+    // is checked or not checked, with no "selected" said twice; on iOS it
+    // keeps the Selected trait, and an unpicked one says "Not selected".
+    final radio = exclusive && toggle;
+    final apple =
+        defaultTargetPlatform == TargetPlatform.iOS ||
+        defaultTargetPlatform == TargetPlatform.macOS;
+
     return _TapReach(
       button: true,
       enabled: onTap != null,
       // An action chip is pressed, not switched on, so it reports no selected
       // state at all rather than a permanent "not selected".
-      selected: toggle ? selected : null,
-      // Folds into the band's node, as FsSegmented's does.
+      selected: toggle && (!radio || apple) ? selected : null,
+      // Folds into the band's node, as FsSegmented's does. Always present,
+      // so flipping `exclusive` or `selected` never remounts the chip.
       child: Semantics(
-        inMutuallyExclusiveGroup: exclusive ? true : null,
+        inMutuallyExclusiveGroup: radio ? true : null,
+        checked: radio ? selected : null,
+        hint: radio && apple && !selected
+            ? WidgetsLocalizations.of(context).radioButtonUnselectedLabel
+            : null,
         child: _chip(t),
       ),
     );

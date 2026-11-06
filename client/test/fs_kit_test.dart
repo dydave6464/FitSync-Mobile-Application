@@ -1,4 +1,4 @@
-import 'dart:ui' show Tristate;
+import 'dart:ui' show CheckedState, Tristate;
 
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
@@ -1683,43 +1683,154 @@ void main() {
 
   // L-7: a row where picking one chip unpicks the others (meal, lead time)
   // was announced like a row of independent toggles.
+  //
+  // The group flag alone changes nothing a screen reader says on a node that
+  // only reports `selected`: Android reads it only on a node with a checked
+  // state, to pick RadioButton over CheckBox, and iOS only uses it to hide a
+  // checked value. So an exclusive chip reports itself the way Flutter's own
+  // radio (RawRadio) does on each platform, and these tests check the flags
+  // each platform's bridge actually reads.
   group('single-choice chips', () {
-    testWidgets('an exclusive chip says it is one of a single-choice group', (
+    SemanticsData chipData(WidgetTester tester, String label) =>
+        tester.getSemantics(find.text(label)).getSemanticsData();
+
+    testWidgets('on Android an exclusive chip is a radio button, checked or '
+        'not checked', (tester) async {
+      final h = tester.ensureSemantics();
+      await tester.pumpWidget(
+        host(
+          Row(
+            children: [
+              FsChip(
+                label: 'Lunch',
+                selected: true,
+                exclusive: true,
+                onTap: () {},
+              ),
+              FsChip(
+                label: 'Dinner',
+                selected: false,
+                exclusive: true,
+                onTap: () {},
+              ),
+            ],
+          ),
+        ),
+      );
+      final lunch = chipData(tester, 'Lunch');
+      final dinner = chipData(tester, 'Dinner');
+      // A checked state with the group flag is what makes Android's bridge
+      // name the node android.widget.RadioButton.
+      expect(lunch.flagsCollection.isChecked, CheckedState.isTrue);
+      expect(dinner.flagsCollection.isChecked, CheckedState.isFalse);
+      expect(lunch.flagsCollection.isInMutuallyExclusiveGroup, isTrue);
+      expect(dinner.flagsCollection.isInMutuallyExclusiveGroup, isTrue);
+      // As RawRadio on Android: the check says it, so no "selected" on top.
+      expect(lunch.flagsCollection.isSelected, Tristate.none);
+      expect(lunch.flagsCollection.isButton, isTrue);
+      expect(lunch.hasAction(SemanticsAction.tap), isTrue);
+      h.dispose();
+    });
+
+    testWidgets('on iOS an exclusive chip is selected, or says it is not', (
       tester,
     ) async {
       final h = tester.ensureSemantics();
       await tester.pumpWidget(
         host(
-          FsChip(label: 'Lunch', selected: true, exclusive: true, onTap: () {}),
+          Row(
+            children: [
+              FsChip(
+                label: 'Lunch',
+                selected: true,
+                exclusive: true,
+                onTap: () {},
+              ),
+              FsChip(
+                label: 'Dinner',
+                selected: false,
+                exclusive: true,
+                onTap: () {},
+              ),
+            ],
+          ),
         ),
       );
-      expect(
-        tester.getSemantics(find.text('Lunch')),
-        isSemantics(
-          label: 'Lunch',
-          isButton: true,
-          isSelected: true,
-          isInMutuallyExclusiveGroup: true,
+      final lunch = chipData(tester, 'Lunch');
+      final dinner = chipData(tester, 'Dinner');
+      // VoiceOver has no radio role: the Selected trait marks the one that
+      // is on, and the others say "Not selected", as RawRadio's do.
+      expect(lunch.flagsCollection.isSelected, Tristate.isTrue);
+      expect(lunch.hint, isEmpty);
+      expect(dinner.flagsCollection.isSelected, Tristate.isFalse);
+      expect(dinner.hint, 'Not selected');
+      // The group flag keeps iOS from making a checked node a switch.
+      expect(dinner.flagsCollection.isInMutuallyExclusiveGroup, isTrue);
+      h.dispose();
+    }, variant: TargetPlatformVariant.only(TargetPlatform.iOS));
+
+    testWidgets('picking another chip moves the check', (tester) async {
+      final h = tester.ensureSemantics();
+      var meal = 'Lunch';
+      await tester.pumpWidget(
+        host(
+          StatefulBuilder(
+            builder: (context, setState) => Row(
+              children: [
+                for (final m in ['Lunch', 'Dinner'])
+                  FsChip(
+                    label: m,
+                    selected: meal == m,
+                    exclusive: true,
+                    onTap: () => setState(() => meal = m),
+                  ),
+              ],
+            ),
+          ),
         ),
+      );
+      await tester.tap(find.text('Dinner'));
+      await tester.pump();
+      expect(
+        chipData(tester, 'Lunch').flagsCollection.isChecked,
+        CheckedState.isFalse,
+      );
+      expect(
+        chipData(tester, 'Dinner').flagsCollection.isChecked,
+        CheckedState.isTrue,
       );
       h.dispose();
     });
 
-    testWidgets('a chip is not in a single-choice group by default', (
-      tester,
-    ) async {
+    testWidgets('a chip is an independent toggle by default', (tester) async {
       final h = tester.ensureSemantics();
       await tester.pumpWidget(
         host(FsChip(label: 'Bench', selected: true, onTap: () {})),
       );
-      expect(
-        tester.getSemantics(find.text('Bench')),
-        isSemantics(
-          label: 'Bench',
-          isSelected: true,
-          isInMutuallyExclusiveGroup: false,
+      final data = chipData(tester, 'Bench');
+      expect(data.flagsCollection.isSelected, Tristate.isTrue);
+      expect(data.flagsCollection.isChecked, CheckedState.none);
+      expect(data.flagsCollection.isInMutuallyExclusiveGroup, isFalse);
+      h.dispose();
+    });
+
+    testWidgets('an action chip ignores exclusive', (tester) async {
+      final h = tester.ensureSemantics();
+      await tester.pumpWidget(
+        host(
+          FsChip(
+            label: 'Add',
+            selected: false,
+            toggle: false,
+            exclusive: true,
+            onTap: () {},
+          ),
         ),
       );
+      final data = chipData(tester, 'Add');
+      expect(data.flagsCollection.isChecked, CheckedState.none);
+      expect(data.flagsCollection.isSelected, Tristate.none);
+      expect(data.flagsCollection.isInMutuallyExclusiveGroup, isFalse);
       h.dispose();
     });
   });
