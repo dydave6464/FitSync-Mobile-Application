@@ -184,7 +184,7 @@ void main() {
         final focused = side.resolve({WidgetState.focused})!.color;
         expect(focused, isNot(t.control));
         expect(_contrast(focused, t.surface), greaterThanOrEqualTo(3.0));
-        // Hovered or pressed alone keep the control outline.
+        // Pressed alone keeps the control outline.
         expect(side.resolve({WidgetState.pressed})!.color, t.control);
       },
     );
