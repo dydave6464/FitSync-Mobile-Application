@@ -139,6 +139,26 @@ class FakeProfileNotifier extends ProfileNotifier {
   }
 }
 
+/// A profile that cannot load until [fail] is cleared, counting attempts.
+class _FailingProfileNotifier extends FakeProfileNotifier {
+  _FailingProfileNotifier(this.attempts) : super([]);
+
+  final List<int> attempts;
+  static bool fail = true;
+
+  @override
+  Future<Profile> build() async {
+    attempts.add(attempts.length);
+    if (fail) {
+      throw const ApiException(
+        'NETWORK_ERROR',
+        'Could not reach http://10.0.2.2:3000. Check the server is running.',
+      );
+    }
+    return super.build();
+  }
+}
+
 /// Records the shell hand-off so a test can prove onboarding actually ends.
 class RecordingAuthController extends AuthController {
   RecordingAuthController(this.completed);
@@ -268,23 +288,25 @@ Future<void> _pumpFlow(
   FakeHealthRepository? health,
   RecordingAuthController? auth,
   ReminderRepository? reminders,
+  ProfileNotifier Function()? profile,
 }) async {
   await tester.pumpWidget(
     ProviderScope(
       overrides: [
         profileProvider.overrideWith(
-          () => FakeProfileNotifier(
-            patches,
-            onPatch: onPatch,
-            equipmentWrites: equipmentWrites,
-            injuryWrites: injuryWrites,
-            completions: completions,
-            onComplete: onComplete,
-            goalWrites: goalWrites,
-            onSetGoals: onSetGoals,
-            seedGoals: seedGoals,
-            seedMainGoal: seedMainGoal,
-          ),
+          profile ??
+              () => FakeProfileNotifier(
+                patches,
+                onPatch: onPatch,
+                equipmentWrites: equipmentWrites,
+                injuryWrites: injuryWrites,
+                completions: completions,
+                onComplete: onComplete,
+                goalWrites: goalWrites,
+                onSetGoals: onSetGoals,
+                seedGoals: seedGoals,
+                seedMainGoal: seedMainGoal,
+              ),
         ),
         authControllerProvider.overrideWith(
           () => auth ?? RecordingAuthController(completed ?? []),
@@ -1755,6 +1777,75 @@ void main() {
       await _skip(tester);
 
       expect(find.byKey(const Key('signOut')), findsNothing);
+    });
+  });
+
+  group('A profile that cannot load', () {
+    testWidgets('says why in plain words and retries', (tester) async {
+      final attempts = <int>[];
+      _FailingProfileNotifier.fail = true;
+      addTearDown(() => _FailingProfileNotifier.fail = true);
+      await _pumpFlow(
+        tester,
+        patches: [],
+        profile: () => _FailingProfileNotifier(attempts),
+      );
+
+      expect(
+        find.text(
+          "Couldn't reach FitSync. Check your connection and try again.",
+        ),
+        findsOneWidget,
+      );
+      expect(find.textContaining('10.0.2.2'), findsNothing);
+      expect(find.byType(FsRetry), findsOneWidget);
+
+      _FailingProfileNotifier.fail = false;
+      final before = attempts.length;
+      await tester.tap(find.byKey(const Key('onboarding.retry')));
+      await tester.pumpAndSettle();
+
+      expect(attempts.length, greaterThan(before));
+      expect(find.text('STEP 1 / 6'), findsOneWidget);
+    });
+
+    testWidgets('offers a way back to sign-in', (tester) async {
+      final auth = RecordingAuthController([]);
+      await _pumpFlow(
+        tester,
+        patches: [],
+        auth: auth,
+        profile: () => _FailingProfileNotifier([]),
+      );
+
+      final signOut = find.byKey(const Key('signOut'));
+      expect(
+        find.ancestor(
+          of: find.text('Sign out'),
+          matching: find.byType(FsButton),
+        ),
+        findsOneWidget,
+      );
+      await tester.tap(signOut);
+      await tester.pumpAndSettle();
+      expect(auth.signOuts, 1);
+    });
+
+    testWidgets('fits a small phone at 2.0x text', (tester) async {
+      tester.view.physicalSize = const Size(320, 568);
+      tester.view.devicePixelRatio = 1.0;
+      addTearDown(tester.view.reset);
+      tester.platformDispatcher.textScaleFactorTestValue = 2.0;
+      addTearDown(tester.platformDispatcher.clearTextScaleFactorTestValue);
+
+      await _pumpFlow(
+        tester,
+        patches: [],
+        profile: () => _FailingProfileNotifier([]),
+      );
+
+      expect(tester.takeException(), isNull);
+      expect(find.byType(FilledButton), findsNothing);
     });
   });
 }

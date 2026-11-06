@@ -4,9 +4,9 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../core/api_exception.dart';
+import '../../../core/theme.dart';
+import '../../../core/widgets/fs_kit.dart';
 import '../../auth/presentation/auth_controller.dart';
-import '../../exercises/presentation/exercise_list_screen.dart'
-    show describeError;
 import '../../health/domain/health_answers.dart';
 import '../../health/presentation/providers.dart';
 import '../../home/presentation/plan_ready.dart';
@@ -413,21 +413,22 @@ class _OnboardingFlowState extends ConsumerState<OnboardingFlow> {
     return profile.when(
       loading: () =>
           const Scaffold(body: Center(child: CircularProgressIndicator())),
+      // Sign out as well as Try again: someone who signed in with the wrong
+      // account, or whose account cannot load, must not be stuck retrying.
       error: (error, _) => Scaffold(
-        body: Center(
-          child: Padding(
-            padding: const EdgeInsets.all(24),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Text(describeError(error), textAlign: TextAlign.center),
-                const SizedBox(height: 16),
-                FilledButton(
-                  onPressed: () => ref.invalidate(profileProvider),
-                  child: const Text('Retry'),
-                ),
-              ],
-            ),
+        backgroundColor: context.fs.bg,
+        body: FsRetry(
+          fullScreen: true,
+          message: userMessage(error),
+          onRetry: () => ref.invalidate(profileProvider),
+          buttonKey: const Key('onboarding.retry'),
+          secondary: FsButton(
+            key: const Key('signOut'),
+            label: 'Sign out',
+            kind: FsButtonKind.ghost,
+            small: true,
+            onPressed: () =>
+                ref.read(authControllerProvider.notifier).signOut(),
           ),
         ),
       ),
