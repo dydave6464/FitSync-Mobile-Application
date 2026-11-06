@@ -52,28 +52,41 @@ class ExerciseTile extends StatelessWidget {
               ),
       ),
       title: Text(exercise.name),
-      subtitle: Row(
+      // The warning gets a line of its own and is never cut: it is the
+      // safety reason, and sharing one ellipsized line with the muscle and
+      // equipment lost it at large text and pushed them out at any size.
+      isThreeLine: exercise.contraindicated,
+      subtitle: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        mainAxisSize: MainAxisSize.min,
         children: [
-          if (exercise.contraindicated) ...[
-            Icon(
-              Icons.shield_outlined,
-              key: Key('tile.risk.${exercise.exerciseId}'),
-              size: 14,
-              color: t.red,
+          if (exercise.contraindicated)
+            Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Icon(
+                  Icons.shield_outlined,
+                  key: Key('tile.risk.${exercise.exerciseId}'),
+                  size: 14,
+                  color: t.red,
+                ),
+                const SizedBox(width: 5),
+                Flexible(
+                  child: Text(
+                    'Loads an injury you reported',
+                    style: TextStyle(color: t.text3),
+                  ),
+                ),
+              ],
             ),
-            const SizedBox(width: 5),
-          ],
-          Flexible(
-            child: Text(
-              [
-                if (exercise.contraindicated) 'Loads an injury you reported',
-                exercise.muscleGroup,
-                if (exercise.equipment != null) exercise.equipment!,
-              ].join(' · '),
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-              style: TextStyle(color: t.text3),
-            ),
+          Text(
+            [
+              exercise.muscleGroup,
+              if (exercise.equipment != null) exercise.equipment!,
+            ].join(' · '),
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: TextStyle(color: t.text3),
           ),
         ],
       ),
