@@ -408,6 +408,26 @@ void main() {
     );
   });
 
+  // The Plan tab and the generator say "Push / Pull / Legs"; Home said
+  // "Push Pull Legs".
+  testWidgets('the split is named as the Plan tab names it', (tester) async {
+    await tester.pumpWidget(
+      _host(
+        PlanCard(
+          plan: _plan(
+            sessionLengthMin: 45,
+            equipment: const ['Barbell'],
+            splitStyle: 'push_pull_legs',
+          ),
+          weightKg: 70,
+          onStart: () {},
+        ),
+      ),
+    );
+
+    expect(find.text('PUSH / PULL / LEGS'), findsOneWidget);
+  });
+
   testWidgets('the card renders the plan name and exercise count', (
     tester,
   ) async {
@@ -691,7 +711,7 @@ void main() {
           ),
         ),
       );
-      expect(find.text('DAY 4 OF 4 · PUSH PULL LEGS'), findsOneWidget);
+      expect(find.text('DAY 4 OF 4 · PUSH / PULL / LEGS'), findsOneWidget);
     });
 
     testWidgets('an unnamed day reads as the split', (tester) async {
@@ -710,7 +730,7 @@ void main() {
           ),
         ),
       );
-      expect(find.text('DAY 2 OF 2 · PUSH PULL LEGS'), findsOneWidget);
+      expect(find.text('DAY 2 OF 2 · PUSH / PULL / LEGS'), findsOneWidget);
     });
 
     testWidgets('the focus is read as one phrase', (tester) async {
@@ -776,7 +796,7 @@ void main() {
           ),
         ),
       );
-      expect(find.text('UPPER LOWER'), findsOneWidget);
+      expect(find.text('UPPER / LOWER'), findsOneWidget);
       expect(find.textContaining('DAY 1 OF'), findsNothing);
     });
 

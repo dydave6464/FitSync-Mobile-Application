@@ -277,6 +277,45 @@ void main() {
     expect(find.byType(GeneratorScreen), findsOneWidget);
   });
 
+  // The library and the logger say 'Barbell bench press' and 'Chest'; the
+  // Plan card said 'barbell bench press · pectorals', as the catalogue
+  // stores them.
+  testWidgets('an exercise reads as it does in the library and logger', (
+    tester,
+  ) async {
+    final handle = tester.ensureSemantics();
+    const plan = WorkoutPlan(
+      planId: 43,
+      name: 'Week 1 — Full body',
+      splitStyle: 'full_body',
+      daysPerWeek: 3,
+      sessionLengthMin: 45,
+      weekNo: 1,
+      exercises: [
+        PlanExercise(
+          planExerciseId: 603,
+          exerciseId: 103,
+          name: 'barbell bench press',
+          muscleGroup: 'pectorals',
+          orderNo: 1,
+          targetSets: 3,
+          targetReps: '8-12',
+        ),
+      ],
+    );
+    await _pump(tester, plan, alternatives: const []);
+
+    expect(find.text('Barbell bench press'), findsOneWidget);
+    expect(find.textContaining('Chest · '), findsOneWidget);
+    expect(find.textContaining('pectorals'), findsNothing);
+    expect(find.bySemanticsLabel('Change Barbell bench press'), findsOneWidget);
+
+    await tester.tap(find.byKey(const Key('swap.open.603')));
+    await tester.pumpAndSettle();
+    expect(find.text('Replace Barbell bench press'), findsOneWidget);
+    handle.dispose();
+  });
+
   testWidgets('every plan exercise offers a way to change it', (tester) async {
     await _pump(tester, _plan);
 

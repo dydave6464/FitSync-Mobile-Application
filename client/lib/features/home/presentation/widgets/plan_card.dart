@@ -5,6 +5,7 @@ import '../../../../core/theme.dart';
 import '../../../../core/widgets/fs_kit.dart';
 import '../../../exercises/domain/muscle_regions.dart';
 import '../../../plans/domain/plan_energy.dart';
+import '../../../plans/domain/split_style.dart';
 import '../../../plans/domain/workout_plan.dart';
 
 /// The today's-plan card.
@@ -68,7 +69,8 @@ class PlanCard extends StatelessWidget {
         .where((d) => d.dayNo == day)
         .map((d) => d.name)
         .firstOrNull;
-    final split = describeSplit(plan.splitStyle);
+    // The Plan tab's spelling ("Push / Pull / Legs"), not the slug's.
+    final split = splitLabel(plan.splitStyle);
     final eyebrow = rotation > 1
         ? [
             'Day $day of $rotation',

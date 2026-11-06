@@ -7,6 +7,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../core/api_exception.dart';
 import '../../../core/theme.dart';
 import '../../../core/widgets/fs_kit.dart';
+import '../../exercises/domain/exercise_labels.dart';
 import '../../exercises/presentation/equipment_icon.dart';
 import '../../exercises/presentation/exercise_list_screen.dart'
     show describeError;
@@ -14,6 +15,13 @@ import '../../exercises/presentation/providers.dart'
     show exerciseDetailProvider;
 import '../domain/exercise_alternative.dart';
 import 'providers.dart';
+
+/// An alternative's second line: its equipment, else its muscle, each in
+/// the library's words.
+String _altSubtitle(ExerciseAlternative alt) => switch (alt.equipment) {
+  final equipment? => equipmentLabel(equipment),
+  null => muscleLabel(alt.muscleGroup),
+};
 
 /// Replaces one exercise in the active plan.
 ///
@@ -143,7 +151,7 @@ class _ExerciseSwapSheetState extends ConsumerState<ExerciseSwapSheet> {
       // invalidates every element of it, not one keyed instance.
       container.invalidate(alternativesProvider);
       if (!mounted) return;
-      Navigator.of(context).pop(alt.name);
+      Navigator.of(context).pop(exerciseDisplayName(alt.name));
     } catch (err) {
       // Stay open with the message: closing would throw away the choice they
       // just made, exactly as onboarding stays on a rejected step.
@@ -236,9 +244,12 @@ class _ExerciseSwapSheetState extends ConsumerState<ExerciseSwapSheet> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Text(alt.name, style: theme.textTheme.titleLarge),
                   Text(
-                    alt.equipment ?? alt.muscleGroup,
+                    exerciseDisplayName(alt.name),
+                    style: theme.textTheme.titleLarge,
+                  ),
+                  Text(
+                    _altSubtitle(alt),
                     style: TextStyle(fontSize: 11.5, color: t.text3),
                   ),
                 ],
@@ -404,8 +415,8 @@ class _ExerciseSwapSheetState extends ConsumerState<ExerciseSwapSheet> {
     Widget tile(ExerciseAlternative alt) => ListTile(
       key: Key('swap.alt.${alt.exerciseId}'),
       contentPadding: EdgeInsets.zero,
-      title: Text(alt.name),
-      subtitle: Text(alt.equipment ?? alt.muscleGroup),
+      title: Text(exerciseDisplayName(alt.name)),
+      subtitle: Text(_altSubtitle(alt)),
       trailing: Icon(Icons.chevron_right, size: 16, color: t.text3),
       // Opens a look at it. The swap itself now waits for the confirm button
       // on the preview: a tap here used to replace an exercise outright,

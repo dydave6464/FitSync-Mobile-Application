@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../core/theme.dart';
 import '../../../core/widgets/fs_kit.dart';
+import '../../exercises/domain/exercise_labels.dart';
 import '../../exercises/presentation/exercise_thumb.dart';
 import '../../exercises/presentation/widgets/coaching_tag.dart';
 import '../../exercises/presentation/exercise_detail_screen.dart';
@@ -270,6 +271,8 @@ class _PlanExerciseCard extends StatelessWidget {
     // names mid-word; there it goes under the prescription instead, and the
     // name takes the card's full width.
     final stacked = MediaQuery.textScalerOf(context).scale(15) > 20;
+    // As the library and the logger name it, not the catalogue's lowercase.
+    final name = exerciseDisplayName(exercise.name);
     final change = TextButton(
       key: Key('swap.open.${exercise.planExerciseId}'),
       onPressed: () =>
@@ -278,7 +281,7 @@ class _PlanExerciseCard extends StatelessWidget {
             isScrollControlled: true,
             builder: (_) => ExerciseSwapSheet(
               planExerciseId: exercise.planExerciseId,
-              exerciseName: exercise.name,
+              exerciseName: name,
               onGoToProfile: onGoToProfile,
             ),
           ).then((swappedTo) {
@@ -290,7 +293,7 @@ class _PlanExerciseCard extends StatelessWidget {
           }),
       // Says which exercise: a list of bare "Change" buttons reads the same
       // on every card.
-      child: Text('Change', semanticsLabel: 'Change ${exercise.name}'),
+      child: Text('Change', semanticsLabel: 'Change $name'),
     );
 
     return FsCard(
@@ -314,22 +317,20 @@ class _PlanExerciseCard extends StatelessWidget {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 if (stacked)
-                  Text(exercise.name, style: theme.textTheme.titleMedium)
+                  Text(name, style: theme.textTheme.titleMedium)
                 else
                   Row(
                     children: [
                       Expanded(
-                        child: Text(
-                          exercise.name,
-                          style: theme.textTheme.titleMedium,
-                        ),
+                        child: Text(name, style: theme.textTheme.titleMedium),
                       ),
                       change,
                     ],
                   ),
                 const SizedBox(height: 3),
                 Text(
-                  '${exercise.muscleGroup} · ${exercise.prescription}',
+                  '${muscleLabel(exercise.muscleGroup)} · '
+                  '${exercise.prescription}',
                   style: TextStyle(
                     fontFamily: fsMonoFamily,
                     fontSize: 11,

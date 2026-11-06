@@ -397,6 +397,33 @@ void main() {
     expect(find.text('Bodyweight'), findsOneWidget);
   });
 
+  // The catalogue's lowercase, as the library and logger never show it.
+  testWidgets('alternatives read as they do in the library', (tester) async {
+    await _pump(tester, const [
+      ExerciseAlternative(
+        exerciseId: 31,
+        name: 'dumbbell fly',
+        muscleGroup: 'pectorals',
+        equipment: 'dumbbell',
+      ),
+      ExerciseAlternative(
+        exerciseId: 32,
+        name: 'push-up',
+        muscleGroup: 'pectorals',
+      ),
+    ]);
+
+    expect(find.text('Dumbbell fly'), findsOneWidget);
+    expect(find.text('Dumbbells'), findsOneWidget);
+    expect(find.text('Push-up'), findsOneWidget);
+    expect(find.text('Chest'), findsOneWidget);
+
+    await tester.tap(find.byKey(const Key('swap.alt.31')));
+    await tester.pump(); // The detail below it is still loading.
+    expect(find.text('Dumbbell fly'), findsOneWidget, reason: 'the preview');
+    expect(find.text('Dumbbells'), findsOneWidget);
+  });
+
   testWidgets('explains an empty pool rather than showing a blank list', (
     tester,
   ) async {
