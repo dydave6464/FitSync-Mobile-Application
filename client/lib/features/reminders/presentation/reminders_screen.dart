@@ -354,23 +354,41 @@ class _RemindersScreenState extends ConsumerState<RemindersScreen> {
     );
   }
 
-  Widget _timeRow(Key rowKey, String time, {required VoidCallback? onTap}) {
+  /// "Time" and the clock, opening the time picker. [spokenAs] says which
+  /// reminder's time it is: two sections show a row that reads just "Time".
+  /// At least 48 dp tall, a thumb's target.
+  Widget _timeRow(
+    Key rowKey,
+    String time, {
+    required String spokenAs,
+    required VoidCallback? onTap,
+  }) {
     final t = context.fs;
-    return InkWell(
-      key: rowKey,
-      onTap: onTap,
-      child: Padding(
-        padding: const EdgeInsets.symmetric(vertical: 8),
-        child: Row(
-          children: [
-            _rowLabel('Time'),
-            Text(
-              formatClock(time),
-              style: TextStyle(fontSize: 12.5, color: t.text2),
+    return Semantics(
+      container: true,
+      button: true,
+      enabled: onTap != null,
+      label: '$spokenAs, ${formatClock(time)}',
+      child: InkWell(
+        key: rowKey,
+        onTap: onTap,
+        child: ConstrainedBox(
+          constraints: const BoxConstraints(minHeight: 48),
+          // The label above says it all; the row's own words would only
+          // repeat it.
+          child: ExcludeSemantics(
+            child: Row(
+              children: [
+                _rowLabel('Time'),
+                Text(
+                  formatClock(time),
+                  style: TextStyle(fontSize: 12.5, color: t.text2),
+                ),
+                const SizedBox(width: 4),
+                Icon(Icons.chevron_right, size: 16, color: t.text3),
+              ],
             ),
-            const SizedBox(width: 4),
-            Icon(Icons.chevron_right, size: 16, color: t.text3),
-          ],
+          ),
         ),
       ),
     );
@@ -431,6 +449,7 @@ class _RemindersScreenState extends ConsumerState<RemindersScreen> {
       _timeRow(
         const Key('reminders.workoutTime'),
         settings.workoutTime,
+        spokenAs: 'Workout reminder time',
         onTap: !enabled
             ? null
             : () => _pickTime(
@@ -459,6 +478,7 @@ class _RemindersScreenState extends ConsumerState<RemindersScreen> {
           _timeRow(
             const Key('reminders.checkinTime'),
             settings.checkinTime,
+            spokenAs: 'Check-in reminder time',
             onTap: !enabled
                 ? null
                 : () => _pickTime(

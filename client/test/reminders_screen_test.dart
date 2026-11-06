@@ -688,4 +688,39 @@ void main() {
 
     expect(switchOn(tester, 'reminders.checkin'), isFalse);
   });
+
+  testWidgets('each time row is 48 dp tall and says which time it is', (
+    tester,
+  ) async {
+    final handle = tester.ensureSemantics();
+    await _pump(tester);
+
+    for (final (key, label) in [
+      ('reminders.workoutTime', 'Workout reminder time, 7:00 AM'),
+      ('reminders.checkinTime', 'Check-in reminder time, 7:00 AM'),
+    ]) {
+      await tester.scrollUntilVisible(find.byKey(Key(key)), 200);
+      await tester.pumpAndSettle();
+      expect(
+        tester.getSize(find.byKey(Key(key))).height,
+        greaterThanOrEqualTo(48),
+        reason: key,
+      );
+      expect(
+        tester.getSemantics(find.byKey(Key(key))),
+        matchesSemantics(
+          label: label,
+          isButton: true,
+          hasEnabledState: true,
+          isEnabled: true,
+          hasTapAction: true,
+          hasFocusAction: true,
+          isFocusable: true,
+        ),
+        reason: key,
+      );
+    }
+    await expectLater(tester, meetsGuideline(androidTapTargetGuideline));
+    handle.dispose();
+  });
 }
