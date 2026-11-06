@@ -370,20 +370,18 @@ void main() {
     handle.dispose();
   });
 
-  testWidgets('each question reads under its lead-in', (tester) async {
-    // RH-23: "In the last 12 months, have you had: A doctor tell you to
-    // exercise only with medical supervision?" is not a sentence.
+  testWidgets('the questions keep the wording the teacher read', (
+    tester,
+  ) async {
+    // Ruling M5: the RH-23 rewording goes to the user as a suggestion, so the
+    // lead-in and the third question stay as they are on main.
     await _pumpLive(tester);
 
-    expect(find.text('In the last 12 months:'), findsOneWidget);
+    expect(find.text('In the last 12 months, have you had:'), findsOneWidget);
     expect(
-      find.text(
-        'Has a doctor told you to exercise only with medical supervision?',
-      ),
+      find.text('A doctor tell you to exercise only with medical supervision?'),
       findsOneWidget,
     );
-    // The other two are noun phrases, which read under the shorter lead-in
-    // as they did under the old one.
     expect(find.text('Chest pain during physical activity?'), findsOneWidget);
     expect(find.text('Dizziness or fainting?'), findsOneWidget);
   });

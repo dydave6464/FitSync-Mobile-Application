@@ -83,7 +83,10 @@ class HealthStep extends StatelessWidget {
           ),
         ),
         const SizedBox(height: 22),
-        Text('In the last 12 months:', style: theme.textTheme.titleMedium),
+        Text(
+          'In the last 12 months, have you had:',
+          style: theme.textTheme.titleMedium,
+        ),
         for (final q in healthQuestions) ...[
           const SizedBox(height: 12),
           // Said with each answer instead (below), so a screen reader never

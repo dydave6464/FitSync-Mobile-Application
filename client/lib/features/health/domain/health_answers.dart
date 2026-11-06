@@ -71,14 +71,13 @@ const healthConditions = <HealthCondition>[
   ),
 ];
 
-/// The three warning-sign questions, each answered Yes or No, under the
-/// lead-in "In the last 12 months:" -- each a question on its own.
+/// The three warning-sign questions, each answered Yes or No.
 const healthQuestions = <({String field, String label})>[
   (field: 'chestPain', label: 'Chest pain during physical activity?'),
   (field: 'dizziness', label: 'Dizziness or fainting?'),
   (
     field: 'supervisedOnly',
-    label: 'Has a doctor told you to exercise only with medical supervision?',
+    label: 'A doctor tell you to exercise only with medical supervision?',
   ),
 ];
 
