@@ -1,12 +1,11 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../../core/api_exception.dart';
 import '../../../core/manila_day.dart';
 import '../../../core/theme.dart';
 import '../../../core/units.dart';
 import '../../../core/widgets/fs_kit.dart';
-import '../../exercises/presentation/exercise_list_screen.dart'
-    show describeError;
 import '../../profile/presentation/providers.dart' show weightUnitProvider;
 import '../domain/streaks.dart';
 import 'add_goal_sheet.dart';
@@ -423,7 +422,7 @@ class _GoalSheetState extends ConsumerState<_GoalSheet> {
       if (!mounted) return;
       setState(() {
         _busy = false;
-        _error = describeError(error);
+        _error = userMessage(error);
       });
     }
   }
@@ -452,7 +451,7 @@ class _GoalSheetState extends ConsumerState<_GoalSheet> {
           ),
           if (_error != null) ...[
             const SizedBox(height: 10),
-            Text(_error!, style: TextStyle(fontSize: 13, color: t.red)),
+            FsErrorLine(_error!, key: const Key('goal.deleteError')),
           ],
           const SizedBox(height: 16),
           FsButton(

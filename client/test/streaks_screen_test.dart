@@ -66,8 +66,12 @@ class _FakeGoalsRepo implements GoalsRepository {
   Future<LiftGoal> add({required int exerciseId, required double targetKg}) =>
       throw UnimplementedError();
 
+  /// Makes every remove throw it.
+  Object? failRemove;
+
   @override
   Future<void> remove(int goalId) async {
+    if (failRemove != null) throw failRemove!;
     if (_removeDelay != null) {
       await _removeDelay!.future;
     }
@@ -437,4 +441,24 @@ void main() {
       expect(contrast(bar.color!, t.surface), greaterThanOrEqualTo(3));
     });
   }
+
+  testWidgets('a failed delete is spoken and keeps the sheet open', (
+    tester,
+  ) async {
+    final handle = tester.ensureSemantics();
+    final repo = await _pump(tester);
+    repo.failRemove = const ApiException('SERVER_ERROR', 'Could not delete.');
+
+    await tester.tap(find.byKey(const Key('streaks.goal.1')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const Key('goal.delete')));
+    await tester.pumpAndSettle();
+
+    expect(
+      tester.getSemantics(find.byKey(const Key('goal.deleteError'))),
+      matchesSemantics(label: 'Could not delete.', isLiveRegion: true),
+    );
+    expect(find.byKey(const Key('goal.delete')), findsOneWidget);
+    handle.dispose();
+  });
 }
