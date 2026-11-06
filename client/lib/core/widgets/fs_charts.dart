@@ -4,6 +4,7 @@ import 'package:fl_chart/fl_chart.dart';
 import 'package:flutter/material.dart';
 
 import '../theme.dart';
+import 'fs_kit.dart' show fsSpokenAs;
 
 /// The ONLY file in the app that imports `fl_chart`.
 ///
@@ -150,10 +151,11 @@ class FsLineChart extends StatefulWidget {
   /// Without it nothing on the chart said what the dashed line meant.
   final String? referenceLabel;
 
-  /// The series' own colour. Null is the accent, which is what a chart of
-  /// training output uses. Body weight is not training output -- it is the
-  /// body the training acts on -- and reads in blue so the two are not
-  /// skimmed as the same measure.
+  /// The series' own colour. Null is the data green ([FsTokens.accentFill]),
+  /// which is what a chart of training output uses: the brand green is under
+  /// the 3:1 a line read as data needs on a light card. Body weight is not
+  /// training output -- it is the body the training acts on -- and reads in
+  /// blue so the two are not skimmed as the same measure.
   final Color? color;
 
   final double height;
@@ -225,7 +227,7 @@ class FsLineChart extends StatefulWidget {
     required void Function(FlTouchEvent, int?) onTouch,
   }) {
     final t = context.fs;
-    final series = color ?? t.accent;
+    final series = color ?? t.accentFill;
     final newest = points.length - 1;
     final scaler = MediaQuery.textScalerOf(context);
     final referenceStyle = _axisStyle(t)
@@ -786,14 +788,7 @@ class FsRing extends StatelessWidget {
         child: Center(child: child),
       ),
     );
-    final label = semanticLabel;
-    if (label == null) return ring;
-    return Semantics(
-      container: true,
-      label: label,
-      excludeSemantics: true,
-      child: ring,
-    );
+    return fsSpokenAs(semanticLabel, ring);
   }
 }
 

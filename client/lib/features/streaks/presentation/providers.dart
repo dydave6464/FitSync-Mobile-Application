@@ -23,7 +23,7 @@ final streakProvider = FutureProvider<Streak>(
   retry: apiRetryPolicy,
 );
 
-/// The goals list; lives only while the Streaks & goals screen is open.
+/// The goals list; lives only while the Streaks & lift goals screen is open.
 final goalsProvider = FutureProvider.autoDispose<List<LiftGoal>>(
   (ref) => ref.watch(goalsRepositoryProvider).list(),
   retry: apiRetryPolicy,

@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import 'package:flutter/rendering.dart' show RenderParagraph;
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 
@@ -81,7 +82,11 @@ class FakeProfileNotifier extends ProfileNotifier {
     this.patchError,
     this.patchGate,
     this.weightUnit = WeightUnit.kg,
+    this.isPremium = false,
   });
+
+  /// Whether the profile says the account is Pro.
+  final bool isPremium;
 
   /// The unit the profile opens in.
   final WeightUnit weightUnit;
@@ -142,7 +147,7 @@ class FakeProfileNotifier extends ProfileNotifier {
     email: _baseProfile.email,
     fullName: _baseProfile.fullName,
     onboardingCompleted: _baseProfile.onboardingCompleted,
-    isPremium: _baseProfile.isPremium,
+    isPremium: isPremium,
     notificationsEnabled: _baseProfile.notificationsEnabled,
     equipment: _baseProfile.equipment,
     injuries: _baseProfile.injuries,
@@ -156,6 +161,17 @@ class FakeProfileNotifier extends ProfileNotifier {
     goalWeightKg: goalWeightKg,
     weightUnit: weightUnit,
   );
+
+  /// Leaves the provider with no profile at all. Riverpod carries the last
+  /// value into every later loading or error state, so nothing public gets
+  /// back to "no value" once one has loaded; a loading state over a bare
+  /// error is the one it stores as given.
+  void unload() => state = const AsyncLoading<Profile>()
+      // ignore: invalid_use_of_internal_member
+      .copyWithPrevious(AsyncError<Profile>('gone', StackTrace.empty));
+
+  /// Puts a profile back after [unload].
+  void reload(Profile profile) => state = AsyncData(profile);
 
   /// Every `patch` call, counted on arrival -- before [patchGate] holds it
   /// and whether or not it goes on to succeed.
@@ -252,6 +268,23 @@ class _HealthLoad extends FakeHealthRepository {
   }
 }
 
+/// A profile whose first [failures] loads are refused, the count shared by
+/// every notifier the provider makes, so a test can retry into a good load.
+class _FlakyProfile extends ProfileNotifier {
+  _FlakyProfile(this.failures);
+
+  final List<int> failures;
+
+  @override
+  Future<Profile> build() async {
+    if (failures.first > 0) {
+      failures[0] -= 1;
+      throw const ApiException('SERVER_ERROR', 'Your profile could not load.');
+    }
+    return _baseProfile;
+  }
+}
+
 /// The profile notifier fake the running test's `_pump` installed. Set fresh
 /// on every call so a test can assert what it recorded -- `_profile.
 /// lastTrainingDays` -- without threading the fake through by hand.
@@ -278,6 +311,7 @@ Future<void> _pump(
   Completer<void>? patchGate,
   bool dark = false,
   WeightUnit weightUnit = WeightUnit.kg,
+  bool isPremium = false,
 }) async {
   _profile = FakeProfileNotifier(
     patches ?? <Map<String, dynamic>>[],
@@ -295,6 +329,7 @@ Future<void> _pump(
     patchError: patchError,
     patchGate: patchGate,
     weightUnit: weightUnit,
+    isPremium: isPremium,
   );
   await tester.pumpWidget(
     ProviderScope(
@@ -343,6 +378,103 @@ Future<void> _openRow(WidgetTester tester, Key key) async {
 }
 
 void main() {
+  // A failed load used a local "Retry" over a raw description; the kit's
+  // FsRetry says why in plain words and offers "Try again".
+  testWidgets('a profile that will not load offers Try again, which reloads', (
+    tester,
+  ) async {
+    final failures = [1];
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          profileProvider.overrideWith(() => _FlakyProfile(failures)),
+          proRepositoryProvider.overrideWithValue(FakeProRepository()),
+        ],
+        child: const MaterialApp(home: SettingsScreen()),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.byType(FsRetry), findsOneWidget);
+    expect(find.text('Your profile could not load.'), findsOneWidget);
+    expect(find.text('Retry'), findsNothing);
+    await tester.tap(find.byKey(const Key('settings.retry')));
+    await tester.pumpAndSettle();
+    expect(find.text('Juan Dela Cruz'), findsOneWidget);
+  });
+
+  // PS-23: the rows had a tap action but no button role.
+  testWidgets('each opening row is announced as a button, by its label', (
+    tester,
+  ) async {
+    final handle = tester.ensureSemantics();
+    await _pump(tester);
+    expect(
+      tester.getSemantics(find.byKey(const Key('edit.goal'))),
+      isSemantics(label: 'Goals', isButton: true, hasTapAction: true),
+    );
+    expect(
+      tester.getSemantics(find.byKey(const Key('edit.about'))),
+      isSemantics(label: 'Body metrics (height, weight)', isButton: true),
+    );
+    handle.dispose();
+  });
+
+  // PS-15: fitness level was edited under a row that never named it, and
+  // the plan rows shared one long card with the profile answers.
+  group('rows are grouped and named as the prototype has them', () {
+    Finder cardOf(String key) => find
+        .ancestor(of: find.byKey(Key(key)), matching: find.byType(FsCard))
+        .first;
+
+    testWidgets('the level row and its editor say level', (tester) async {
+      await _pump(tester);
+      expect(
+        find.descendant(
+          of: find.byKey(const Key('edit.level')),
+          matching: find.text('Level, equipment & location'),
+        ),
+        findsOneWidget,
+      );
+      await _openRow(tester, const Key('edit.level'));
+      expect(
+        find.descendant(
+          of: find.byType(AppBar),
+          matching: find.text('Level, equipment & location'),
+        ),
+        findsOneWidget,
+      );
+    });
+
+    testWidgets('training days, schedule and streaks sit under Plan & '
+        'motivation, apart from the profile answers', (tester) async {
+      tester.view.physicalSize = const Size(800, 3000);
+      tester.view.devicePixelRatio = 1.0;
+      addTearDown(tester.view.reset);
+      await _pump(tester);
+
+      final plan = tester.widget(cardOf('edit.schedule'));
+      expect(tester.widget(cardOf('edit.trainingDays')), same(plan));
+      expect(tester.widget(cardOf('edit.streaks')), same(plan));
+      for (final key in ['edit.goal', 'edit.level', 'edit.health']) {
+        expect(tester.widget(cardOf(key)), isNot(same(plan)), reason: key);
+      }
+      final eyebrow = find.text('PLAN & MOTIVATION');
+      expect(eyebrow, findsOneWidget);
+      // Directly over its card: below the Pro card, above the plan rows.
+      expect(
+        tester.getTopLeft(eyebrow).dy,
+        lessThan(tester.getTopLeft(cardOf('edit.trainingDays')).dy),
+      );
+      expect(
+        tester.getTopLeft(eyebrow).dy,
+        greaterThan(
+          tester.getBottomLeft(find.byKey(const Key('settings.goPro'))).dy,
+        ),
+      );
+    });
+  });
+
   testWidgets('shows who is signed in', (tester) async {
     await _pump(tester, patches: []);
 
@@ -611,8 +743,40 @@ void main() {
     await tester.pumpAndSettle();
     await tester.tap(find.byKey(const Key('signOut')));
     await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const Key('signOut.confirm')));
+    await tester.pumpAndSettle();
 
     expect(signOuts, [true]);
+  });
+
+  // PS-19: one tap signed out and stopped this phone's reminders.
+  testWidgets('sign out asks first, saying the reminders stop', (tester) async {
+    final signOuts = <bool>[];
+    await _pump(tester, signOuts: signOuts);
+    await tester.scrollUntilVisible(find.byKey(const Key('signOut')), 200);
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const Key('signOut')));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Sign out of FitSync?'), findsOneWidget);
+    expect(
+      find.text('Reminders on this phone stop until you sign in again.'),
+      findsOneWidget,
+    );
+    expect(signOuts, isEmpty);
+    expect(
+      labelColor(tester, find.byKey(const Key('signOut.confirm'))),
+      dialogRed(tester),
+    );
+    expect(
+      labelColor(tester, find.byKey(const Key('signOut.cancel'))),
+      isNot(dialogRed(tester)),
+    );
+
+    await tester.tap(find.byKey(const Key('signOut.cancel')));
+    await tester.pumpAndSettle();
+    expect(find.byType(AlertDialog), findsNothing);
+    expect(signOuts, isEmpty);
   });
 
   testWidgets('settings offers a training days row', (tester) async {
@@ -620,6 +784,30 @@ void main() {
 
     expect(find.byKey(const Key('edit.trainingDays')), findsOneWidget);
     expect(find.text('Training days'), findsOneWidget);
+  });
+
+  // PS-22: a "--" for a dash, and the question cut off as a one-line
+  // eyebrow at large text.
+  testWidgets('the training days editor reads whole, with a real dash', (
+    tester,
+  ) async {
+    tester.view.physicalSize = const Size(360, 640);
+    tester.view.devicePixelRatio = 1.0;
+    addTearDown(tester.view.reset);
+    tester.platformDispatcher.textScaleFactorTestValue = 2.0;
+    addTearDown(tester.platformDispatcher.clearTextScaleFactorTestValue);
+    await _pump(tester);
+    await _openRow(tester, const Key('edit.trainingDays'));
+
+    final question = tester.renderObject<RenderParagraph>(
+      find.text('WHICH DAYS DO YOU TRAIN?'),
+    );
+    expect(question.didExceedMaxLines, isFalse);
+    expect(
+      find.textContaining('either way — this only decides'),
+      findsOneWidget,
+    );
+    expect(find.textContaining('--'), findsNothing);
   });
 
   testWidgets('the row opens a picker seeded from the profile', (tester) async {
@@ -752,6 +940,54 @@ void main() {
     );
   });
 
+  // PS-14: while the status loads, or after a failed read, a Pro account
+  // was shown the free pitch.
+  testWidgets('a Pro account reads as Pro while its status is still loading', (
+    tester,
+  ) async {
+    final repo = FakeProRepository(grantedStatus)..statusGate = Completer();
+    await _pump(tester, pro: repo, isPremium: true);
+
+    final card = find.byKey(const Key('settings.goPro'));
+    expect(
+      find.descendant(of: card, matching: find.text('Pro')),
+      findsOneWidget,
+    );
+    expect(
+      find.descendant(
+        of: card,
+        matching: find.text('Muscle analytics, Snap a meal, unlimited AI cues'),
+      ),
+      findsNothing,
+    );
+    repo.statusGate!.complete();
+    await tester.pumpAndSettle();
+  });
+
+  // PS-24: the prototype draws the card's crown on an accent square.
+  testWidgets("the Pro card's icon sits on an accent tile", (tester) async {
+    await _pump(tester);
+    final tile = tester.widget<FsIconTile>(
+      find.descendant(
+        of: find.byKey(const Key('settings.goPro')),
+        matching: find.byType(FsIconTile),
+      ),
+    );
+    expect(tile.selected, isTrue);
+    expect(tile.icon, Icons.workspace_premium_outlined);
+  });
+
+  testWidgets('a free account is told everything Pro unlocks', (tester) async {
+    await _pump(tester);
+    expect(
+      find.descendant(
+        of: find.byKey(const Key('settings.goPro')),
+        matching: find.text('Muscle analytics, Snap a meal, unlimited AI cues'),
+      ),
+      findsOneWidget,
+    );
+  });
+
   testWidgets('the Pro screen asks for a fresh status each time it opens', (
     tester,
   ) async {
@@ -784,8 +1020,19 @@ void main() {
     );
   });
 
-  testWidgets('the Streaks & goals row opens the screen', (tester) async {
+  testWidgets('the Streaks & lift goals row opens the screen it names', (
+    tester,
+  ) async {
     await _pump(tester);
+
+    // HS-29: the row is named as the screen it opens.
+    expect(
+      find.descendant(
+        of: find.byKey(const Key('edit.streaks')),
+        matching: find.text('Streaks & lift goals'),
+      ),
+      findsOneWidget,
+    );
 
     await _openRow(tester, const Key('edit.streaks'));
 
@@ -996,6 +1243,55 @@ void main() {
       expect(find.text('Discard your changes?'), findsOneWidget);
     });
 
+    // L-82: a kg/lb switch makes the step rewrite its weights while it is
+    // being rebuilt, and Body metrics catches up a frame later. Pinned here
+    // so a change on either side shows: no assert, the edit still counts,
+    // and it is still saved in kilograms.
+    testWidgets('a typed weight survives a kg/lb switch as an edit', (
+      tester,
+    ) async {
+      final gate = Completer<void>();
+      final patches = <Map<String, dynamic>>[];
+      await _pump(
+        tester,
+        patches: patches,
+        heightCm: 170,
+        weightKg: 70,
+        patchGate: gate,
+      );
+      await _openRow(tester, const Key('edit.about'));
+      await tester.enterText(find.byKey(const Key('weightKg')), '72');
+      await tester.pumpAndSettle();
+
+      await tester.ensureVisible(find.byKey(const Key('unit.lb')));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const Key('unit.lb')));
+      await tester.pumpAndSettle();
+      expect(tester.takeException(), isNull);
+      expect(
+        tester
+            .widget<TextField>(find.byKey(const Key('weightKg')))
+            .controller!
+            .text,
+        '158.7',
+      );
+
+      await tester.binding.handlePopRoute();
+      await tester.pumpAndSettle();
+      expect(find.text('Discard your changes?'), findsOneWidget);
+      await tester.tap(dialogButton('Keep editing'));
+      await tester.pumpAndSettle();
+
+      // The fake keeps the profile in kg, so the switch settles back there.
+      gate.complete();
+      await tester.pumpAndSettle();
+      expect(tester.takeException(), isNull);
+      await tester.ensureVisible(find.byKey(const Key('save')));
+      await tester.tap(find.byKey(const Key('save')));
+      await tester.pumpAndSettle();
+      expect(patches.last['weightKg'], closeTo(72, 0.05));
+    });
+
     testWidgets('undoing an edit makes back quiet again', (tester) async {
       await _pump(tester);
       await _openRow(tester, const Key('edit.goal'));
@@ -1027,6 +1323,30 @@ void main() {
       );
       await expectLater(tester, meetsGuideline(androidTapTargetGuideline));
       await expectLater(tester, meetsGuideline(labeledTapTargetGuideline));
+      handle.dispose();
+    });
+
+    // L-84: a bare "Edit" said nothing about what it edits.
+    testWidgets('Edit is announced as editing the name and city', (
+      tester,
+    ) async {
+      final handle = tester.ensureSemantics();
+      await _pump(tester);
+      final node = tester.getSemantics(find.byKey(const Key('profile.edit')));
+      expect(
+        node,
+        isSemantics(
+          label: 'Edit name and city',
+          isButton: true,
+          hasTapAction: true,
+        ),
+      );
+      expect(node.rect.width, greaterThanOrEqualTo(48));
+      expect(node.rect.height, greaterThanOrEqualTo(48));
+
+      tester.semantics.tap(find.semantics.byLabel('Edit name and city'));
+      await tester.pumpAndSettle();
+      expect(find.byType(EditScaffold), findsOneWidget);
       handle.dispose();
     });
 
@@ -1186,7 +1506,55 @@ void main() {
         expect(shown(tester), WeightUnit.kg);
         expect(find.text("Couldn't switch to lb. Try again."), findsOneWidget);
       });
+
+      // L-80: only an ApiException was caught, so any other failure (a
+      // timeout, a bad response) escaped unreported.
+      testWidgets('$editor: a switch failing in any other way says so too', (
+        tester,
+      ) async {
+        await _pump(
+          tester,
+          heightCm: 170,
+          weightKg: 70,
+          patchError: TimeoutException('no answer'),
+        );
+        await openUnit(tester, editor);
+
+        await tester.tap(find.byKey(const Key('unit.lb')));
+        await tester.pumpAndSettle();
+
+        expect(tester.takeException(), isNull);
+        expect(shown(tester), WeightUnit.kg);
+        expect(find.text("Couldn't switch to lb. Try again."), findsOneWidget);
+      });
     }
+  });
+
+  // L-81: the editors' fallback for a profile with no value. Settings only
+  // opens an editor over a loaded profile, so this pins a defensive path:
+  // the title and back button over a spinner, and the editor back when the
+  // profile is.
+  testWidgets('an editor without a profile waits under its own title', (
+    tester,
+  ) async {
+    await _pump(tester, goals: const ['lose_fat'], mainGoal: 'lose_fat');
+    await _openRow(tester, const Key('edit.goal'));
+    expect(find.byType(EditScaffold), findsOneWidget);
+    final loaded = _profile.state.value!;
+
+    _profile.unload();
+    await tester.pump();
+    expect(find.byType(EditScaffold), findsNothing);
+    expect(
+      find.descendant(of: find.byType(AppBar), matching: find.text('Goals')),
+      findsOneWidget,
+    );
+    expect(find.byType(CircularProgressIndicator), findsOneWidget);
+    expect(find.byType(BackButton), findsOneWidget);
+
+    _profile.reload(loaded);
+    await tester.pumpAndSettle();
+    expect(find.byType(EditScaffold), findsOneWidget);
   });
 
   // PS-4: the Health editor's loading screen had no title or back button,

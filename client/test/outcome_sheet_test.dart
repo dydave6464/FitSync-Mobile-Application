@@ -1,6 +1,8 @@
 import 'dart:convert';
+import 'dart:ui' show CheckedState, Tristate;
 
 import 'package:flutter/material.dart';
+import 'package:flutter/rendering.dart' show SemanticsData;
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
@@ -124,10 +126,59 @@ Future<void> _tap(WidgetTester tester, Finder finder) async {
 }
 
 void main() {
+  testWidgets('has the shared sheet header, and its Close shuts the sheet', (
+    tester,
+  ) async {
+    await _open(tester);
+    final header = find.byType(FsSheetHeader);
+    expect(header, findsOneWidget);
+    // The header's handle is the one handle: not Material's as well (PT-22).
+    expect(
+      tester.widget<BottomSheet>(find.byType(BottomSheet)).showDragHandle,
+      isFalse,
+    );
+    expect(
+      find.descendant(
+        of: header,
+        matching: find.text('How did your last workout leave you?'),
+      ),
+      findsOneWidget,
+    );
+
+    await tester.tap(find.byTooltip('Close'));
+    await tester.pumpAndSettle();
+    expect(find.text(_question), findsNothing);
+  });
+
   testWidgets('names the session it is asking about', (tester) async {
     await _open(tester);
     expect(find.text(_question), findsOneWidget);
     expect(find.textContaining('Upper Body · Push'), findsOneWidget);
+  });
+
+  test('a hand-picked session is named the way History names it', () {
+    // History calls a session with no plan by the muscles it worked; the
+    // pain question must not call the same workout "Your own workout".
+    final pending = PendingOutcome.fromJson({
+      'sessionId': 9,
+      'sessionDate': '2026-09-21',
+      'planName': null,
+      'muscleGroups': ['pectorals', 'lats'],
+    });
+    expect(pending.title, 'Chest & Back workout');
+    // A server that does not send them yet still gets a name.
+    expect(
+      PendingOutcome.fromJson({'sessionId': 9, 'sessionDate': '2026-09-21'})
+          .title,
+      'Your own workout',
+    );
+  });
+
+  testWidgets('says the day in words, as History does', (tester) async {
+    await _open(tester);
+    expect(find.textContaining('2026-09-21'), findsNothing);
+    // September 21, 2026 was a Monday.
+    expect(find.textContaining('Mon, Sep 21'), findsOneWidget);
   });
 
   testWidgets('opens with nothing selected and nothing to submit', (
@@ -164,6 +215,30 @@ void main() {
 
     await _tap(tester, _region(13));
     expect(_submitEnabled(tester), isTrue);
+  });
+
+  testWidgets('pain and region are each one choice for a screen reader', (
+    tester,
+  ) async {
+    // Ruling M4: one answer per question, so TalkBack hears "radio button,
+    // checked" as it does on the check-in sheet's same question.
+    final handle = tester.ensureSemantics();
+    await _open(tester);
+    await _tap(tester, _pain('mild'));
+
+    SemanticsData data(Finder f) => tester.getSemantics(f).getSemanticsData();
+    final mild = data(_pain('mild'));
+    expect(mild.flagsCollection.isInMutuallyExclusiveGroup, isTrue);
+    expect(mild.flagsCollection.isChecked, CheckedState.isTrue);
+    expect(mild.flagsCollection.isSelected, Tristate.none);
+    expect(data(_pain('none')).flagsCollection.isChecked, CheckedState.isFalse);
+
+    final knee = data(_region(13));
+    expect(knee.flagsCollection.isInMutuallyExclusiveGroup, isTrue);
+    expect(knee.flagsCollection.isChecked, CheckedState.isFalse);
+    await _tap(tester, _region(13));
+    expect(data(_region(13)).flagsCollection.isChecked, CheckedState.isTrue);
+    handle.dispose();
   });
 
   // One row of chips is only as tall as a chip, so without room around the
@@ -273,6 +348,16 @@ void main() {
 
     expect(find.text("Couldn't load body regions."), findsOneWidget);
     expect(_region(13), findsNothing);
+    // The kit's retry, in plain words, with "Try again" as the button.
+    expect(find.byType(FsRetry), findsOneWidget);
+    expect(
+      find.descendant(
+        of: find.byKey(const Key('outcome.regions.retry')),
+        matching: find.text('Try again'),
+      ),
+      findsOneWidget,
+    );
+    expect(find.text('Retry'), findsNothing);
 
     await _tap(tester, find.byKey(const Key('outcome.regions.retry')));
 

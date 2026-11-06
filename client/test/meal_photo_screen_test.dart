@@ -281,6 +281,61 @@ void main() {
     },
   );
 
+  // The wait can last up to 45 s (NU-14): after 8 s the words change once,
+  // so it is clear the app has not stuck; Cancel stays.
+  testWidgets('a long wait says so once, and a new try starts over', (tester) async {
+    final h = _Harness()..repo.gate = Completer();
+    await _open(tester, h: h, settle: false);
+    const still = 'Still looking — this can take up to half a minute.';
+    await tester.pump(const Duration(seconds: 7));
+    expect(find.text('Looking at your meal…'), findsOneWidget);
+    expect(find.text(still), findsNothing);
+    await tester.pump(const Duration(seconds: 1));
+    expect(find.text(still), findsOneWidget);
+    expect(find.text('Looking at your meal…'), findsNothing);
+    expect(
+      tester.getSemantics(find.byKey(const Key('snap.analysing'))),
+      isSemantics(isLiveRegion: true, label: still),
+    );
+    expect(find.byKey(const Key('snap.cancel')), findsOneWidget);
+
+    // It fails; Try again is a new wait, from the first words.
+    h.repo.gate!.completeError(const ApiException('VISION_BUSY', 'x'));
+    await tester.pumpAndSettle();
+    h.repo.gate = Completer();
+    await tester.tap(find.byKey(const Key('snap.retry')));
+    await tester.pump();
+    expect(find.text('Looking at your meal…'), findsOneWidget);
+    await tester.pump(const Duration(seconds: 8));
+    expect(find.text(still), findsOneWidget);
+    h.repo.gate!.complete(_answer);
+    await tester.pumpAndSettle();
+    expect(find.text('White rice'), findsOneWidget);
+  });
+
+  // NU-15: the daily limit is no surprise. Shown only when few are left.
+  group('photos left today', () {
+    PhotoRecognition left(int n) => PhotoRecognition(
+      recognitionId: _answer.recognitionId,
+      remainingToday: n,
+      items: _answer.items,
+      unlisted: _answer.unlisted,
+    );
+    for (final (n, text) in [(5, '5 photos left today'), (1, '1 photo left today'), (0, 'No meal photos left today')]) {
+      testWidgets('$n left: "$text"', (tester) async {
+        final h = _Harness()..repo.answer = left(n);
+        await _open(tester, h: h);
+        expect(find.text(text), findsOneWidget);
+      });
+    }
+
+    testWidgets('6 or more left: nothing said', (tester) async {
+      final h = _Harness()..repo.answer = left(6);
+      await _open(tester, h: h);
+      expect(find.textContaining('left today'), findsNothing);
+    });
+  });
+
   testWidgets(
     'the confirm list: every item, the one not on the list, the meal, the total and Log N items',
     (tester) async {
@@ -295,13 +350,16 @@ void main() {
         find.text('"Atchara (pickled papaya)" isn\'t in FitSync\'s list'),
         findsOneWidget,
       );
+      // Named as Add manually names its meal: an eyebrow (L-66).
+      expect(find.text('MEAL'), findsOneWidget);
+      expect(find.text('Meal'), findsNothing);
       expect(
         tester.getSemantics(find.byKey(const Key('snap.meal.lunch'))),
-        isSemantics(isSelected: true),
+        isSemantics(isChecked: true, isInMutuallyExclusiveGroup: true),
       );
       expect(
         tester.getSemantics(find.byKey(const Key('snap.meal.dinner'))),
-        isSemantics(isSelected: false),
+        isSemantics(isChecked: false, isInMutuallyExclusiveGroup: true),
       );
       expect(_kcal('629 kcal'), findsOneWidget);
       expect(find.text('Log 2 items'), findsOneWidget);
@@ -742,7 +800,7 @@ void main() {
       final h = await _open(tester);
       await tester.binding.handlePopRoute();
       await tester.pumpAndSettle();
-      expect(find.text('Discard your changes?'), findsOneWidget);
+      expect(find.text('Leave without logging?'), findsOneWidget);
       expect(find.text("This photo still counts toward today's limit."), findsOneWidget);
 
       await tester.tap(find.byKey(const Key('discard.keep')));
@@ -755,7 +813,7 @@ void main() {
       final h = await _open(tester);
       await tester.tap(find.byKey(const Key('snap.back')));
       await tester.pumpAndSettle();
-      expect(find.text('Discard your changes?'), findsOneWidget);
+      expect(find.text('Leave without logging?'), findsOneWidget);
       await tester.tap(find.byKey(const Key('discard.confirm')));
       await tester.pumpAndSettle();
       expect(find.byKey(const Key('snap.log')), findsNothing, reason: 'the screen is gone');
@@ -768,7 +826,7 @@ void main() {
       await _open(tester, h: h);
       await tester.binding.handlePopRoute();
       await tester.pumpAndSettle();
-      expect(find.text('Discard your changes?'), findsNothing);
+      expect(find.text('Leave without logging?'), findsNothing);
       expect(find.byKey(const Key('snap.retry')), findsNothing, reason: 'the screen is gone');
     });
 
@@ -776,7 +834,7 @@ void main() {
       final h = await _open(tester);
       await tester.tap(find.byKey(const Key('snap.log')));
       await tester.pumpAndSettle();
-      expect(find.text('Discard your changes?'), findsNothing);
+      expect(find.text('Leave without logging?'), findsNothing);
       expect(h.result, isTrue);
     });
   });

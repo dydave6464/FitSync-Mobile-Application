@@ -1,4 +1,7 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
+import 'package:flutter/rendering.dart' show RenderParagraph;
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 
@@ -486,5 +489,111 @@ void main() {
       contains('Code'),
     );
     semantics.dispose();
+  });
+
+  group('only the button that was tapped spins', () {
+    // AO-18: Verify used to spin, and be announced as "Verify, loading",
+    // while a new code was on its way.
+    testWidgets('Send a new code', (tester) async {
+      final pending = Completer<void>();
+      await _pump(tester, FakeAuthRepository(onResend: () => pending.future));
+
+      await tester.tap(find.byKey(const Key('resend')));
+      await tester.pump();
+
+      expect(
+        tester.widget<FsButton>(find.byKey(const Key('resend'))).busy,
+        isTrue,
+      );
+      final verify = tester.widget<FsButton>(find.byKey(const Key('verify')));
+      expect(verify.busy, isFalse);
+      expect(verify.onPressed, isNull, reason: 'one request at a time');
+
+      pending.complete();
+      await tester.pumpAndSettle();
+    });
+
+    testWidgets('the code asked for on open', (tester) async {
+      final pending = Completer<void>();
+      final repo = FakeAuthRepository(onResend: () => pending.future);
+      // Pumped by hand: a spinner never settles.
+      await tester.pumpWidget(
+        ProviderScope(
+          overrides: [authRepositoryProvider.overrideWithValue(repo)],
+          child: const MaterialApp(
+            home: CheckEmailScreen(
+              email: 'juan@example.com',
+              password: 's3cret-pass',
+              sendCodeOnOpen: true,
+            ),
+          ),
+        ),
+      );
+      await tester.pump();
+
+      expect(repo.resendCalls, 1);
+      expect(
+        tester.widget<FsButton>(find.byKey(const Key('verify'))).busy,
+        isFalse,
+      );
+      expect(
+        tester.widget<FsButton>(find.byKey(const Key('resend'))).busy,
+        isTrue,
+      );
+
+      pending.complete();
+      await tester.pumpAndSettle();
+    });
+
+    testWidgets('Verify', (tester) async {
+      final pending = Completer<void>();
+      await _pump(tester, FakeAuthRepository(onVerify: () => pending.future));
+
+      await tester.enterText(find.byKey(const Key('code')), '123456');
+      await tester.pump();
+      await tester.tap(find.byKey(const Key('verify')));
+      await tester.pump();
+
+      expect(
+        tester.widget<FsButton>(find.byKey(const Key('verify'))).busy,
+        isTrue,
+      );
+      final resend = tester.widget<FsButton>(find.byKey(const Key('resend')));
+      expect(resend.busy, isFalse);
+      expect(resend.onPressed, isNull);
+
+      pending.complete();
+      await tester.pumpAndSettle();
+    });
+  });
+
+  testWidgets('an error line sits centred, like the rest of the screen', (
+    tester,
+  ) async {
+    // L-22: the icon and words used to start at the left edge of a screen
+    // whose every other line is centred.
+    final repo = FakeAuthRepository(
+      onResend: () async =>
+          throw const ApiException('RATE_LIMITED', 'Wait a minute.'),
+    );
+    await _pump(tester, repo);
+
+    await tester.tap(find.byKey(const Key('resend')));
+    await tester.pumpAndSettle();
+
+    final line = find.byKey(const Key('status'));
+    final icon = find.descendant(
+      of: line,
+      matching: find.byIcon(Icons.error_outline),
+    );
+    final text = find.text('Wait a minute.');
+    final textLeft = tester.getTopLeft(text).dx;
+    final textRight =
+        textLeft + tester.renderObject<RenderParagraph>(text).textSize.width;
+    final screen = tester.getRect(find.byType(CheckEmailScreen));
+    final leftRoom = tester.getTopLeft(icon).dx - screen.left;
+    final rightRoom = screen.right - textRight;
+    expect(leftRoom, greaterThan(40), reason: 'not against the margin');
+    expect((leftRoom - rightRoom).abs(), lessThan(2));
   });
 }

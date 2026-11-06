@@ -236,8 +236,9 @@ class _RecentCard extends StatelessWidget {
   Widget build(BuildContext context) {
     final t = context.fs;
     final radius = BorderRadius.circular(FsRadius.md);
+    final name = exerciseDisplayName(exercise.name);
     final label = [
-      exerciseDisplayName(exercise.name),
+      name,
       'recent',
       if (exercise.contraindicated) 'loads an injury you reported',
       added ? 'added' : 'not added',
@@ -303,7 +304,7 @@ class _RecentCard extends StatelessWidget {
                       ],
                       Expanded(
                         child: Text(
-                          exerciseDisplayName(exercise.name),
+                          name,
                           maxLines: 2,
                           overflow: TextOverflow.ellipsis,
                           style: TextStyle(

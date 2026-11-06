@@ -1,5 +1,6 @@
 import 'dart:math' as math;
 
+import 'package:flutter/foundation.dart' show defaultTargetPlatform;
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
 import 'package:flutter/services.dart';
@@ -12,6 +13,16 @@ import '../units.dart';
 ///
 /// Screens compose these instead of styling Material widgets inline, which is
 /// what keeps the look consistent and the screens readable.
+///
+/// Field labels follow one rule, so a form does not mix four styles:
+///
+/// * In the app, a field's name is an eyebrow above it, given as
+///   `FsField(label:)`, wherever the prototype draws an eyebrow there.
+/// * The auth forms (sign in, check email, forgot password) use
+///   [FsLabeledField]: a sentence-case name above, helper or error below.
+/// * [FsStatField] carries its own name, the dim label in its card.
+/// * NumberBox (the nutrition forms' macro boxes) carries its own name too:
+///   the prototype's small dim label above each box, not an eyebrow.
 
 /// `box-shadow: 0 10px 24px -10px` in the accent — the glow the design puts
 /// under anything raised and accent-coloured. `.btn.primary` and the nav's
@@ -295,10 +306,20 @@ class FsChip extends StatelessWidget {
     this.small = false,
     this.showCheck = false,
     this.toggle = true,
+    this.exclusive = false,
   });
 
   final String label;
   final bool selected;
+
+  /// True for a chip in a single-choice row (a meal, a reminder's lead
+  /// time), where picking one unpicks the rest. The chip then reports itself
+  /// as Flutter's own radio does on each platform: TalkBack says "radio
+  /// button, checked" or "not checked"; VoiceOver, which has no radio role,
+  /// says "Selected" on the one that is on and "Not selected" on the rest.
+  ///
+  /// Ignored on an action chip (`toggle: false`), which is no choice at all.
+  final bool exclusive;
 
   /// False for an action chip ("Add"), one that does something when pressed
   /// rather than standing for a choice that is on or off.
@@ -320,63 +341,85 @@ class FsChip extends StatelessWidget {
     // Drawn about 30 dp tall; answers a thumb across 48 wherever its parent
     // has that room. A one-row Wrap or Row is only as tall as the chip, so a
     // row of them sits in an [FsTapRoom] for the band to reach past it.
+    // A single-choice chip follows RawRadio. The group flag on its own
+    // changes nothing a screen reader says: Android reads it only on a node
+    // with a checked state (RadioButton rather than CheckBox), and iOS only
+    // to keep a checked node from becoming a switch. So on Android the chip
+    // is checked or not checked, with no "selected" said twice; on iOS it
+    // keeps the Selected trait, and an unpicked one says "Not selected".
+    final radio = exclusive && toggle;
+    final apple =
+        defaultTargetPlatform == TargetPlatform.iOS ||
+        defaultTargetPlatform == TargetPlatform.macOS;
+
     return _TapReach(
       button: true,
       enabled: onTap != null,
       // An action chip is pressed, not switched on, so it reports no selected
       // state at all rather than a permanent "not selected".
-      selected: toggle ? selected : null,
-      child: Material(
-        color: selected ? t.accent : t.surface2,
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(FsRadius.pill),
-          side: BorderSide(color: selected ? Colors.transparent : t.line),
-        ),
-        child: InkWell(
-          onTap: onTap,
-          borderRadius: BorderRadius.circular(FsRadius.pill),
-          child: Padding(
-            padding: small
-                ? const EdgeInsets.symmetric(horizontal: 10, vertical: 5)
-                : const EdgeInsets.symmetric(horizontal: 13, vertical: 7),
-            child: Row(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                // The slot is reserved whenever the chip can show a check, not
-                // only while it does. Building it on selection alone made the
-                // chip 18px wider the moment it was ticked, which reflowed the
-                // enclosing Wrap and shunted its neighbours onto another line.
-                if (showCheck) ...[
-                  SizedBox(
-                    width: small ? 11 : 13,
-                    height: small ? 11 : 13,
-                    child: selected
-                        ? Icon(
-                            Icons.check,
-                            size: small ? 11 : 13,
-                            color: t.onAccent,
-                          )
-                        : null,
-                  ),
-                  const SizedBox(width: 5),
-                ],
-                Flexible(
-                  child: Text(
-                    label,
-                    style: TextStyle(
-                      fontSize: small ? 11 : 12.5,
-                      fontWeight: FontWeight.w600,
-                      color: selected ? t.onAccent : t.text2,
-                    ),
-                  ),
-                ),
-              ],
-            ),
-          ),
-        ),
+      selected: toggle && (!radio || apple) ? selected : null,
+      // Folds into the band's node, as FsSegmented's does. Always present,
+      // so flipping `exclusive` or `selected` never remounts the chip.
+      child: Semantics(
+        inMutuallyExclusiveGroup: radio ? true : null,
+        checked: radio ? selected : null,
+        hint: radio && apple && !selected
+            ? WidgetsLocalizations.of(context).radioButtonUnselectedLabel
+            : null,
+        child: _chip(t),
       ),
     );
   }
+
+  Widget _chip(FsTokens t) => Material(
+    color: selected ? t.accent : t.surface2,
+    shape: RoundedRectangleBorder(
+      borderRadius: BorderRadius.circular(FsRadius.pill),
+      side: BorderSide(color: selected ? Colors.transparent : t.line),
+    ),
+    child: InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(FsRadius.pill),
+      child: Padding(
+        padding: small
+            ? const EdgeInsets.symmetric(horizontal: 10, vertical: 5)
+            : const EdgeInsets.symmetric(horizontal: 13, vertical: 7),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            // The slot is reserved whenever the chip can show a check, not
+            // only while it does. Building it on selection alone made the
+            // chip 18px wider the moment it was ticked, which reflowed the
+            // enclosing Wrap and shunted its neighbours onto another line.
+            if (showCheck) ...[
+              SizedBox(
+                width: small ? 11 : 13,
+                height: small ? 11 : 13,
+                child: selected
+                    ? Icon(
+                        Icons.check,
+                        size: small ? 11 : 13,
+                        color: t.onAccent,
+                      )
+                    : null,
+              ),
+              const SizedBox(width: 5),
+            ],
+            Flexible(
+              child: Text(
+                label,
+                style: TextStyle(
+                  fontSize: small ? 11 : 12.5,
+                  fontWeight: FontWeight.w600,
+                  color: selected ? t.onAccent : t.text2,
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    ),
+  );
 }
 
 /// `.field` — 52px, 16px radius, surface, accent border on focus.
@@ -410,7 +453,12 @@ class FsField extends StatelessWidget {
 
   /// The field's name, drawn as an eyebrow above it and given to the field
   /// as its spoken label. [hint] stays the placeholder, which vanishes as
-  /// soon as the user types and takes the name with it.
+  /// soon as the user types and takes the name with it. The app's way of
+  /// naming a field; see the label rule at the top of this file.
+  ///
+  /// With a label the eyebrow and field stretch to the width they are
+  /// given, so it needs a bounded one: in a Row, wrap it in Expanded or a
+  /// SizedBox. Unbounded, layout fails.
   final String? label;
 
   /// Applied to the inner [TextField] rather than to this wrapper, so
@@ -520,6 +568,9 @@ class FsField extends StatelessWidget {
 /// with its name and any message about it. Not [MergeSemantics]: that would
 /// also swallow the eye button inside the password field, leaving it
 /// unreachable by TalkBack and VoiceOver.
+///
+/// For the auth forms only; everywhere else a field is named with
+/// `FsField(label:)` (the label rule at the top of this file).
 class FsLabeledField extends StatelessWidget {
   const FsLabeledField({
     super.key,
@@ -857,12 +908,19 @@ class FsStatField extends StatelessWidget {
                           enabledBorder: InputBorder.none,
                           focusedBorder: InputBorder.none,
                           contentPadding: EdgeInsets.zero,
-                          hintText: '--',
-                          hintStyle: TextStyle(
-                            fontFamily: fsMonoFamily,
-                            fontSize: 22,
-                            fontWeight: FontWeight.w600,
-                            color: t.text3,
+                          // Drawn, not said: as hintText the dashes were read
+                          // into the field's name, "Height, dash dash, cm".
+                          // An empty field already says it is empty.
+                          hint: ExcludeSemantics(
+                            child: Text(
+                              '--',
+                              style: TextStyle(
+                                fontFamily: fsMonoFamily,
+                                fontSize: 22,
+                                fontWeight: FontWeight.w600,
+                                color: t.text3,
+                              ),
+                            ),
                           ),
                         ),
                       ),
@@ -1302,16 +1360,22 @@ class FsRing extends StatelessWidget {
         ],
       ),
     );
-    final label = semanticLabel;
-    if (label == null) return ring;
-    return Semantics(
-      container: true,
-      label: label,
-      excludeSemantics: true,
-      child: ring,
-    );
+    return fsSpokenAs(semanticLabel, ring);
   }
 }
+
+/// [child] as one node a screen reader hears as [label], in place of what
+/// its parts say one by one -- a ring's "1,160 of 2,050 kcal eaten" rather
+/// than its bare figures. Null leaves [child] as it reads already. Shared by
+/// both rings, this one and fs_charts'.
+Widget fsSpokenAs(String? label, Widget child) => label == null
+    ? child
+    : Semantics(
+        container: true,
+        label: label,
+        excludeSemantics: true,
+        child: child,
+      );
 
 /// A compact kg / lb switch, sized to sit inside a table's column header.
 ///
@@ -1828,13 +1892,19 @@ class FsRetry extends StatelessWidget {
 ///
 /// Dismissing the dialog any other way (the barrier, back) keeps editing:
 /// losing work must take a deliberate tap. Discard is in `t.red`, as the
-/// app's other destructive dialogs are. [message] says what discarding costs
-/// on this screen, when there is more to say than the title.
-Future<bool> confirmDiscard(BuildContext context, {String? message}) async {
+/// app's other destructive dialogs are. [title] is the question, "Discard
+/// your changes?" unless the screen has its own words for what is lost
+/// ("Leave without logging?"). [message] says what discarding costs on this
+/// screen, when there is more to say than the title.
+Future<bool> confirmDiscard(
+  BuildContext context, {
+  String? title,
+  String? message,
+}) async {
   final answer = await showDialog<bool>(
     context: context,
     builder: (dialog) => AlertDialog(
-      title: const Text('Discard your changes?'),
+      title: Text(title ?? 'Discard your changes?'),
       content: message == null ? null : Text(message),
       actions: [
         TextButton(
@@ -1867,11 +1937,15 @@ class FsDiscardGuard extends StatelessWidget {
     super.key,
     required this.dirty,
     required this.child,
+    this.title,
     this.message,
   });
 
   final bool dirty;
   final Widget child;
+
+  /// Passed to [confirmDiscard].
+  final String? title;
 
   /// Passed to [confirmDiscard].
   final String? message;
@@ -1882,10 +1956,99 @@ class FsDiscardGuard extends StatelessWidget {
       canPop: !dirty,
       onPopInvokedWithResult: (didPop, result) async {
         if (didPop) return;
-        final discard = await confirmDiscard(context, message: message);
+        final discard = await confirmDiscard(
+          context,
+          title: title,
+          message: message,
+        );
         if (discard && context.mounted) Navigator.of(context).pop(result);
       },
       child: child,
+    );
+  }
+}
+
+/// The prototype's sheet handle: a 38 x 4 pill in line2. The theme draws
+/// the same one above any sheet that keeps Material's handle
+/// (`bottomSheetTheme`); this is for a sheet that draws its own -- one that
+/// holds back a drag or back while something would be lost, which Material's
+/// handle, outside the sheet's child, would close it past.
+class FsSheetHandle extends StatelessWidget {
+  const FsSheetHandle({super.key});
+
+  static const size = Size(38, 4);
+
+  @override
+  Widget build(BuildContext context) => SizedBox.fromSize(
+    size: size,
+    child: DecoratedBox(
+      decoration: BoxDecoration(
+        color: context.fs.line2,
+        borderRadius: BorderRadius.circular(FsRadius.pill),
+      ),
+    ),
+  );
+}
+
+/// The top of a bottom sheet, as the prototype draws every sheet
+/// (ScreenStartSheet, ScreenShareProgress): a 38 x 4 handle, the title, and
+/// an × that closes it.
+///
+/// One header for the jump, rest, share, pain-question and equipment sheets,
+/// which had grown five different tops -- two with no visible way to close
+/// but a swipe. The same shape as the start-workout sheet's own header.
+///
+/// [onClose] defaults to popping the sheet with no result, which every
+/// caller reads as "dismissed". Padding is the sheet's own business: this
+/// fills whatever width it is given.
+class FsSheetHeader extends StatelessWidget {
+  const FsSheetHeader({
+    super.key,
+    required this.title,
+    this.onClose,
+    this.closeKey,
+  });
+
+  final String title;
+  final VoidCallback? onClose;
+  final Key? closeKey;
+
+  @override
+  Widget build(BuildContext context) {
+    final t = context.fs;
+
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        Padding(
+          padding: const EdgeInsets.only(bottom: 10),
+          child: const Center(child: FsSheetHandle(key: Key('sheet.handle'))),
+        ),
+        Row(
+          children: [
+            // Expanded, so at 2x text a long question wraps instead of
+            // pushing the close button off the sheet.
+            Expanded(
+              child: Semantics(
+                header: true,
+                child: Text(
+                  title,
+                  style: Theme.of(context).textTheme.titleLarge
+                      ?.copyWith(color: t.text),
+                ),
+              ),
+            ),
+            IconButton(
+              key: closeKey,
+              tooltip: 'Close',
+              icon: const Icon(Icons.close, size: 18),
+              color: t.text2,
+              onPressed: onClose ?? () => Navigator.of(context).maybePop(),
+            ),
+          ],
+        ),
+      ],
     );
   }
 }

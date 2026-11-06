@@ -30,6 +30,11 @@ const proPollTicks = 150;
 
 const _openFailed = "Couldn't open the payment page. Try again.";
 
+/// How long one payment of [plan] lasts: "1 month", "12 months". Screen
+/// copy, so it lives here rather than in the domain's [ProPlan].
+String planPeriod(ProPlan plan) =>
+    plan.months == 1 ? '1 month' : '${plan.months} months';
+
 /// Opens the Pro screen. Every lock in the app routes through here.
 Future<void> openProScreen(BuildContext context) =>
     Navigator.of(context)
@@ -298,7 +303,12 @@ class _ProScreenState extends ConsumerState<ProScreen> {
           Center(
             child: Column(
               children: [
-                FsIconTile(icon: Icons.workspace_premium_outlined, size: 56),
+                // The prototype's crown square: accent-filled, crown in on-accent.
+                const FsIconTile(
+                  icon: Icons.workspace_premium_outlined,
+                  size: 56,
+                  selected: true,
+                ),
                 const SizedBox(height: 16),
                 Text('FitSync Pro', style: theme.textTheme.headlineSmall),
                 const SizedBox(height: 8),
@@ -329,14 +339,12 @@ class _ProScreenState extends ConsumerState<ProScreen> {
                 child: Center(child: CircularProgressIndicator()),
               ),
             ],
+            // The kit's load error: why, in plain words, over Try again.
             error: (error, stack) => [
-              _Note(text: "Couldn't load your Pro status."),
-              const SizedBox(height: 12),
-              FsButton(
-                key: const Key('pro.retryStatus'),
-                label: 'Try again',
-                kind: FsButtonKind.secondary,
-                onPressed: () => ref.invalidate(proStatusProvider),
+              FsRetry(
+                message: userMessage(error),
+                buttonKey: const Key('pro.retryStatus'),
+                onRetry: () => ref.invalidate(proStatusProvider),
               ),
             ],
             data: _body,
@@ -366,7 +374,7 @@ class _ProScreenState extends ConsumerState<ProScreen> {
           // current end, so no days already paid for are lost.
           if (s.until != null) ...[
             Text(
-              'Adds ${_plan.period} after ${formatProDate(s.until!)}.',
+              'Adds ${planPeriod(_plan)} after ${formatProDate(s.until!)}.',
               key: const Key('pro.extendsFrom'),
               style: TextStyle(fontSize: 12.5, color: context.fs.text2),
             ),
@@ -405,9 +413,9 @@ class _ProScreenState extends ConsumerState<ProScreen> {
             price: peso(p.monthly),
             // Said as a period, not a rate: one payment buys one month and
             // nothing renews, which "per month" left in doubt.
-            note: 'for ${ProPlan.monthly.period}',
+            note: 'for ${planPeriod(ProPlan.monthly)}',
             semanticsLabel:
-                'Monthly, ${peso(p.monthly)} for ${ProPlan.monthly.period}',
+                'Monthly, ${peso(p.monthly)} for ${planPeriod(ProPlan.monthly)}',
             selected: _plan == ProPlan.monthly,
             onTap: locked ? null : () => pick(ProPlan.monthly),
           ),
@@ -422,11 +430,11 @@ class _ProScreenState extends ConsumerState<ProScreen> {
             // it ₱149 read as the annual price.
             note:
                 'a month · ${peso(p.annual)} once, '
-                'for ${ProPlan.annual.period}',
+                'for ${planPeriod(ProPlan.annual)}',
             tag: '-${p.annualSavingPct}%',
             semanticsLabel:
                 'Annual, ${peso(p.annualPerMonth)} a month, '
-                '${peso(p.annual)} once, for ${ProPlan.annual.period}',
+                '${peso(p.annual)} once, for ${planPeriod(ProPlan.annual)}',
             selected: _plan == ProPlan.annual,
             onTap: locked ? null : () => pick(ProPlan.annual),
           ),
@@ -451,6 +459,8 @@ class _ProScreenState extends ConsumerState<ProScreen> {
           : FsButtonKind.ghost,
       busy: _opening,
       onPressed: _opening ? null : _openPage,
+      // Read whole at large text: "again" is what says the page reopens.
+      wrapLabel: true,
     );
     final otherPlan = FsButton(
       key: const Key('pro.otherPlan'),
@@ -463,7 +473,7 @@ class _ProScreenState extends ConsumerState<ProScreen> {
     const checkingText = 'Checking your payment…';
     final openError = _openError == null
         ? null
-        : _Note(key: const Key('pro.openError'), text: _openError!);
+        : FsErrorLine(_openError!, key: const Key('pro.openError'));
     switch (_pay) {
       case _Pay.idle:
       case _Pay.opening:
@@ -477,6 +487,8 @@ class _ProScreenState extends ConsumerState<ProScreen> {
               label: 'Pay ${peso(p.forPlan(_plan))} with PayMongo',
               busy: busy,
               onPressed: busy ? null : _start,
+              // The amount and who takes it, read whole at large text.
+              wrapLabel: true,
             ),
             // The terms, where the prototype states them: under the button
             // that commits to them.
@@ -573,6 +585,10 @@ class _StatusCard extends StatelessWidget {
 /// A choosable plan. FsCard gives the button and selected state to a screen
 /// reader, and the two cards are one radio group; [semanticsLabel] says the
 /// whole price in one sentence.
+///
+/// A null [onTap] (a payment in progress) is said as disabled, and the plan
+/// not being paid for is dimmed as a disabled FsButton is, so neither card
+/// looks like a choice that a tap would change.
 class _PlanCard extends StatelessWidget {
   const _PlanCard({
     super.key,
@@ -596,7 +612,7 @@ class _PlanCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final t = context.fs;
-    return MergeSemantics(
+    final card = MergeSemantics(
       child: FsCard(
         small: true,
         accent: selected,
@@ -605,6 +621,7 @@ class _PlanCard extends StatelessWidget {
         child: Semantics(
           label: semanticsLabel,
           inMutuallyExclusiveGroup: true,
+          enabled: onTap != null,
           excludeSemantics: true,
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
@@ -638,6 +655,8 @@ class _PlanCard extends StatelessWidget {
         ),
       ),
     );
+    if (onTap != null || selected) return card;
+    return Opacity(opacity: 0.45, child: card);
   }
 }
 
@@ -700,7 +719,8 @@ class _Panel extends StatelessWidget {
   }
 }
 
-/// One line of news: a paid confirmation ([strong]), a reminder, an error.
+/// One line of news: a paid confirmation ([strong]) or a reminder. Errors
+/// are [FsErrorLine]s, so they never look like this neutral note.
 class _Note extends StatelessWidget {
   const _Note({super.key, required this.text, this.strong = false});
 

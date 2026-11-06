@@ -5,8 +5,6 @@ import '../../../core/api_exception.dart';
 import '../../../core/theme.dart';
 import '../../../core/widgets/fs_charts.dart' show FsRing;
 import '../../../core/widgets/fs_kit.dart' hide FsRing;
-import '../../exercises/presentation/exercise_list_screen.dart'
-    show describeError;
 import '../domain/routine.dart';
 import 'all_habits_screen.dart';
 import 'providers.dart';
@@ -59,24 +57,11 @@ class RoutineScreen extends ConsumerWidget {
           .watch(routineTodayProvider)
           .when(
             loading: () => const Center(child: CircularProgressIndicator()),
-            error: (error, _) => Center(
-              child: Padding(
-                padding: const EdgeInsets.all(24),
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Text(describeError(error), textAlign: TextAlign.center),
-                    const SizedBox(height: 12),
-                    FsButton(
-                      key: const Key('routine.retry'),
-                      label: 'Retry',
-                      small: true,
-                      kind: FsButtonKind.secondary,
-                      onPressed: () => ref.invalidate(routineTodayProvider),
-                    ),
-                  ],
-                ),
-              ),
+            error: (error, _) => FsRetry(
+              fullScreen: true,
+              message: userMessage(error),
+              buttonKey: const Key('routine.retry'),
+              onRetry: () => ref.invalidate(routineTodayProvider),
             ),
             data: (day) => day.entries.isEmpty
                 ? _Empty(onAdd: () => showHabitSheet(context))
@@ -114,6 +99,8 @@ class _Header extends StatelessWidget {
             color: t.accent,
             size: 62,
             stroke: 7,
+            // "1/3" is read as "1 slash 3", or as a date.
+            semanticLabel: '${day.done} of ${day.total} done today',
             // In the clear middle, not the whole 62 dp box: inside the 7 dp
             // stroke that is a circle 24 dp in radius, and 41 x 19 is a line
             // that fits it with room to spare (20.5^2 + 9.5^2 < 24^2).

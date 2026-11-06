@@ -4,7 +4,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 
-import 'package:fitsync/core/widgets/fs_kit.dart' show FsField;
+import 'package:fitsync/core/theme.dart';
+import 'package:fitsync/core/widgets/fs_kit.dart';
 
 import 'package:fitsync/core/api_exception.dart';
 import 'package:fitsync/features/exercises/domain/exercise.dart';
@@ -280,6 +281,7 @@ Future<double> _pumpAsSheet(
   WidgetTester tester,
   List<ExerciseAlternative> rows, {
   double keyboard = 0,
+  ThemeData? theme,
 }) async {
   tester.view.physicalSize = _screen;
   tester.view.devicePixelRatio = _dpr;
@@ -295,16 +297,16 @@ Future<double> _pumpAsSheet(
         // sheet's route — the "open" button would then be behind a modal
         // barrier and the tap would dismiss the sheet instead.
         key: ValueKey('${rows.length}:$keyboard'),
+        theme: theme,
         home: Scaffold(
           body: Builder(
             builder: (context) => TextButton(
-              onPressed: () => showModalBottomSheet<String>(
-                context: context,
-                isScrollControlled: true,
-                builder: (_) => const ExerciseSwapSheet(
-                  planExerciseId: 77,
-                  exerciseName: 'Cable Fly',
-                ),
+              // The one way the app opens it, so the route's own settings
+              // (no Material handle, scroll-controlled) are what is tested.
+              onPressed: () => showExerciseSwapSheet(
+                context,
+                planExerciseId: 77,
+                exerciseName: 'Cable Fly',
               ),
               child: const Text('open'),
             ),
@@ -473,6 +475,13 @@ void main() {
           'the rejected candidate stays on screen to be retried or '
           'backed out of, rather than dumping the user in the list',
     );
+    expect(
+      find.widgetWithText(
+        FsErrorLine,
+        'That exercise is not available for this plan.',
+      ),
+      findsOneWidget,
+    );
     expect(find.textContaining('not available'), findsOneWidget);
   });
 
@@ -486,6 +495,11 @@ void main() {
     // machine reads a page of body-weight rows as the whole catalogue rather
     // than as the consequence of a setting they can change.
     expect(find.textContaining("Don't see your equipment?"), findsOneWidget);
+    // PS-15: names the Profile row by its name now.
+    expect(
+      find.textContaining('Profile \u2192 Level, equipment & location.'),
+      findsOneWidget,
+    );
   });
 
   testWidgets('tapping the equipment note asks for the Profile tab', (
@@ -669,6 +683,50 @@ void main() {
       );
     },
   );
+
+  // PT-22: in the app's theme the sheet takes the kit's surface, corners and
+  // handle. The handle is its own, inside the drag it holds back mid-swap:
+  // Material's sits outside the sheet's child, where a drag on it would close
+  // the sheet mid-swap, and would add 48 dp on top of the tuned 0.52.
+  testWidgets('in the app theme: one handle, its own, and still 0.52 tall', (
+    tester,
+  ) async {
+    await _pumpAsSheet(tester, _many(3), theme: fsLightTheme());
+
+    expect(
+      tester.widget<BottomSheet>(find.byType(BottomSheet)).showDragHandle,
+      isFalse,
+    );
+    expect(
+      find.descendant(
+        of: find.byType(ExerciseSwapSheet),
+        matching: find.byType(FsSheetHandle),
+      ),
+      findsOneWidget,
+    );
+    final material = tester.widget<Material>(
+      find
+          .descendant(
+            of: find.byType(BottomSheet),
+            matching: find.byType(Material),
+          )
+          .first,
+    );
+    expect(material.color, FsTokens.light.surface);
+    expect(
+      material.shape,
+      const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(
+          top: Radius.circular(FsRadius.card),
+        ),
+      ),
+    );
+    final screen = _screen.height / _dpr;
+    expect(
+      tester.getSize(find.byType(BottomSheet)).height / screen,
+      closeTo(0.52, 0.01),
+    );
+  });
 
   testWidgets('a list too long for the sheet scrolls inside it', (
     tester,
@@ -1104,6 +1162,46 @@ void main() {
     expect(find.byKey(const Key('swap.alt.12')), findsOneWidget);
   });
 
+  testWidgets("a demo that can't load offers the kit's Try again", (
+    tester,
+  ) async {
+    var calls = 0;
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          planRepositoryProvider.overrideWithValue(_RecordingRepo()),
+          alternativesProvider.overrideWith((ref, key) async => const [_alt]),
+          exerciseDetailProvider.overrideWith((ref, id) async {
+            calls += 1;
+            if (calls == 1) throw Exception('boom');
+            return _detail;
+          }),
+        ],
+        child: const MaterialApp(
+          home: Scaffold(
+            body: ExerciseSwapSheet(
+              planExerciseId: 77,
+              exerciseName: 'Cable Fly',
+            ),
+          ),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const Key('swap.alt.12')));
+    await tester.pumpAndSettle();
+
+    expect(
+      find.widgetWithText(FsRetry, 'Something went wrong. Please try again.'),
+      findsOneWidget,
+    );
+    await tester.tap(find.text('Try again'));
+    await tester.pumpAndSettle();
+
+    expect(calls, 2);
+    expect(find.byType(FsRetry), findsNothing);
+  });
+
   group('search box (PT-12)', () {
     testWidgets("is the kit field, with the app's search look", (tester) async {
       await _pump(tester, const [_alt]);
@@ -1131,6 +1229,50 @@ void main() {
       await tester.pumpAndSettle();
       expect(find.text('push'), findsNothing);
       expect(find.byKey(const Key('swap.search.clear')), findsNothing);
+    });
+
+    testWidgets('clearing resets the search and drops a pending keystroke '
+        '(L-40)', (tester) async {
+      // Only the empty search has a row; anything typed finds nothing.
+      final asked = <String>[];
+      await tester.pumpWidget(
+        ProviderScope(
+          overrides: [
+            alternativesProvider.overrideWith((ref, key) async {
+              asked.add(key.query);
+              return key.query.isEmpty ? const [_alt] : const [];
+            }),
+          ],
+          child: const MaterialApp(
+            home: Scaffold(
+              body: ExerciseSwapSheet(
+                planExerciseId: 77,
+                exerciseName: 'Cable Fly',
+              ),
+            ),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+      final search = find.byKey(const Key('swap.search'));
+
+      await tester.enterText(search, 'push');
+      await tester.pumpAndSettle(const Duration(milliseconds: 400));
+      expect(asked.last, 'push');
+      expect(find.byKey(const Key('swap.alt.12')), findsNothing);
+
+      // A keystroke still inside its debounce when Clear is tapped.
+      await tester.enterText(search, 'pushu');
+      await tester.pump(const Duration(milliseconds: 100));
+      await tester.tap(find.byKey(const Key('swap.search.clear')));
+      await tester.pumpAndSettle(const Duration(milliseconds: 400));
+
+      expect(asked, isNot(contains('pushu')));
+      expect(
+        find.byKey(const Key('swap.alt.12')),
+        findsOneWidget,
+        reason: 'the list is the empty search again',
+      );
     });
   });
 }

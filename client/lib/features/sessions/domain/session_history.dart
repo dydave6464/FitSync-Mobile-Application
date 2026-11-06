@@ -5,7 +5,7 @@ import '../../exercises/domain/muscle_regions.dart';
 /// areas it worked ("Chest & Back workout"). "Your own workout" only when
 /// there is nothing to name it by -- a column of identical titles tells the
 /// user nothing.
-String _titleFor(String? planName, Iterable<String> muscleGroups) =>
+String sessionTitle(String? planName, Iterable<String> muscleGroups) =>
     planName ?? manualWorkoutName(muscleGroups) ?? 'Your own workout';
 
 /// One finished workout, as the Progress tab lists it.
@@ -56,7 +56,7 @@ class SessionHistoryEntry {
 
   /// What to call it. A hand-picked session has no plan to borrow a name
   /// from, and "Session 32" tells the user nothing they wanted to know.
-  String get title => _titleFor(planName, muscleGroups);
+  String get title => sessionTitle(planName, muscleGroups);
 
   factory SessionHistoryEntry.fromJson(Map<String, dynamic> json) =>
       SessionHistoryEntry(
@@ -129,7 +129,8 @@ class LastWorkout {
   final String? planName;
 
   /// What to call it, the same way [SessionHistoryEntry] does.
-  String get title => _titleFor(planName, exercises.map((e) => e.muscleGroup));
+  String get title =>
+      sessionTitle(planName, exercises.map((e) => e.muscleGroup));
 
   /// "2 exercises", for the sheet's subtitle.
   String get describeCount =>

@@ -80,6 +80,21 @@ String _fieldText(WidgetTester tester, String key) =>
     tester.widget<TextField>(find.descendant(of: find.byKey(Key(key)), matching: find.byType(TextField))).controller!.text;
 
 void main() {
+  // With Edit numbers open it fills most of the screen: the handle says
+  // it can be dragged away, as the app's other sheets do (NU-18), and the
+  // sheet stays clear of the status bar.
+  testWidgets('has a drag handle and keeps out of the status bar', (tester) async {
+    tester.view.physicalSize = const Size(360, 640);
+    tester.view.devicePixelRatio = 1;
+    tester.view.padding = const FakeViewPadding(top: 24);
+    addTearDown(tester.view.reset);
+    await _open(tester, _juice);
+    await tester.tap(find.byKey(const Key('logSheet.edit')));
+    await tester.pumpAndSettle();
+    expect(tester.widget<BottomSheet>(find.byType(BottomSheet)).showDragHandle, isTrue);
+    expect(tester.getTopLeft(find.byType(BottomSheet)).dy, greaterThanOrEqualTo(24));
+  });
+
   testWidgets('servings step by a half and the numbers follow', (tester) async {
     await _open(tester, _rice);
     expect(find.text('205 kcal'), findsOneWidget);
@@ -747,9 +762,14 @@ void main() {
       expect(button('servings.plus').onPressed, isNull, reason: 'nothing above 20 servings');
     });
 
-    testWidgets('every step is read out as servings and kcal', (tester) async {
+    // L-67: said by a live region, not an announcement (deprecated on
+    // Android 16). Its words follow the servings only, so typing under Edit
+    // numbers, which moves the kcal, never sets it off.
+    testWidgets('every step is said by a live region that follows the servings alone', (tester) async {
       final h = tester.ensureSemantics();
       await _open(tester, _rice);
+      final servings = find.byKey(const Key('logSheet.servings'));
+      expect(tester.getSemantics(servings), isSemantics(isLiveRegion: true, label: '1 serving'));
       expect(
         tester.getSemantics(find.byKey(const Key('logSheet.amount'))),
         matchesSemantics(label: '1 serving · 205 kcal'),
@@ -757,16 +777,23 @@ void main() {
       tester.takeAnnouncements();
       await tester.tap(find.byKey(const Key('servings.plus')));
       await tester.pump();
-      expect(tester.takeAnnouncements().map((a) => a.message), ['1.5 servings · 308 kcal']);
+      expect(tester.getSemantics(servings), isSemantics(isLiveRegion: true, label: '1.5 servings'));
       expect(
         tester.getSemantics(find.byKey(const Key('logSheet.amount'))),
         matchesSemantics(label: '1.5 servings · 308 kcal'),
       );
       await tester.tap(find.byKey(const Key('servings.minus')));
       await tester.pump();
-      expect(tester.takeAnnouncements().map((a) => a.message), ['1 serving · 205 kcal']);
-      // The bare figure between the buttons is not a second, contextless node.
+      expect(tester.getSemantics(servings), isSemantics(isLiveRegion: true, label: '1 serving'));
+      expect(tester.takeAnnouncements(), isEmpty, reason: 'the live region says it');
+      // The bare figure between the buttons is not a contextless node.
       expect(find.bySemanticsLabel('1.5'), findsNothing);
+
+      // Typing moves the kcal but not the live region's words.
+      await _editNumbers(tester);
+      await tester.enterText(find.descendant(of: find.byKey(const Key('logSheet.protein')), matching: find.byType(TextField)), '10');
+      await tester.pump();
+      expect(tester.getSemantics(servings), isSemantics(isLiveRegion: true, label: '1 serving'));
       h.dispose();
     });
 
@@ -865,16 +892,27 @@ void main() {
     });
   });
 
+  testWidgets("'Your numbers, per serving' is an eyebrow heading (NU-17)", (tester) async {
+    final h = tester.ensureSemantics();
+    await _open(tester, _rice);
+    await tester.tap(find.byKey(const Key('logSheet.edit')));
+    await tester.pumpAndSettle();
+    expect(find.text('Your numbers, per serving'), findsNothing);
+    expect(find.text('YOUR NUMBERS, PER SERVING'), findsOneWidget);
+    expect(tester.getSemantics(find.text('YOUR NUMBERS, PER SERVING')), isSemantics(isHeader: true));
+    h.dispose();
+  });
+
   group('the meal choice (NU-11)', () {
     testWidgets('is the same chips as Snap a meal, and picks a meal', (tester) async {
       final h = tester.ensureSemantics();
       final result = await _openForResult(tester, _rice);
       expect(find.byType(FsSegmented), findsNothing);
       expect(find.byType(FsChip), findsNWidgets(4));
-      expect(tester.getSemantics(find.byKey(const Key('logSheet.meal.lunch'))), isSemantics(isSelected: true));
+      expect(tester.getSemantics(find.byKey(const Key('logSheet.meal.lunch'))), isSemantics(isChecked: true, isInMutuallyExclusiveGroup: true));
       await tester.tap(find.byKey(const Key('logSheet.meal.dinner')));
       await tester.pump();
-      expect(tester.getSemantics(find.byKey(const Key('logSheet.meal.dinner'))), isSemantics(isSelected: true));
+      expect(tester.getSemantics(find.byKey(const Key('logSheet.meal.dinner'))), isSemantics(isChecked: true, isInMutuallyExclusiveGroup: true));
       await _save(tester);
       expect(result()!.mealType, 'dinner');
       h.dispose();

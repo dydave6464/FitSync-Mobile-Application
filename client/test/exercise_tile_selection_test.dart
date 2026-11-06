@@ -4,6 +4,8 @@ import 'package:flutter_test/flutter_test.dart';
 
 import 'package:fitsync/core/theme.dart';
 import 'package:fitsync/features/exercises/domain/exercise.dart';
+import 'package:fitsync/features/exercises/domain/exercise_labels.dart';
+import 'package:fitsync/features/exercises/presentation/exercise_thumb.dart';
 import 'package:fitsync/features/exercises/presentation/widgets/exercise_tile.dart';
 
 const _exercise = ExerciseSummary(
@@ -104,6 +106,14 @@ void main() {
     expect(picked, plain);
   });
 
+  testWidgets('the row draws its exercise with the shared thumb', (
+    tester,
+  ) async {
+    await _pump(tester);
+
+    expect(tester.widget<ExerciseThumb>(find.byType(ExerciseThumb)).size, 56);
+  });
+
   testWidgets('an exercise that loads a reported injury is marked', (
     tester,
   ) async {
@@ -158,10 +168,74 @@ void main() {
           tester.renderObject<RenderParagraph>(warning).didExceedMaxLines,
           isFalse,
         );
-        // Muscle and equipment keep their own line, not pushed out.
-        expect(find.textContaining('Barbell'), findsWidgets);
-        expect(find.textContaining('lute'), findsOneWidget);
+        // Muscle and equipment keep a line of their own, not the warning's:
+        // found whole as a text of its own, so nothing shares it.
+        final line = find.text(
+          '${muscleLabel('glutes')} · ${equipmentLabel('Barbell')}',
+        );
+        expect(line, findsOneWidget);
+        // Uncut at 1.0x. At 2x the test font draws every glyph a full em
+        // wide, so this pair is cut there even on two lines; the wrap is
+        // checked below with a pair short enough for that font.
+        if (scale == 1.0) {
+          expect(
+            tester.renderObject<RenderParagraph>(line).didExceedMaxLines,
+            isFalse,
+          );
+        }
       });
     }
   });
+
+  // At 2x text on a narrow phone the line was one ellipsized line, so the
+  // equipment -- what the library filters by -- was the part cut. A short
+  // pair, so it fits two lines even in the test font's full-em glyphs.
+  for (final contraindicated in [false, true]) {
+    testWidgets('muscle and equipment wrap to a second line at 2x on a 360 dp '
+        'phone${contraindicated ? ', under the injury warning' : ''}', (
+      tester,
+    ) async {
+      tester.view.physicalSize = const Size(360, 640);
+      tester.view.devicePixelRatio = 1.0;
+      addTearDown(tester.view.reset);
+      await tester.pumpWidget(
+        MediaQuery(
+          data: const MediaQueryData(textScaler: TextScaler.linear(2)),
+          child: MaterialApp(
+            theme: fsLightTheme(),
+            home: Scaffold(
+              body: ListView(
+                children: [
+                  ExerciseTile(
+                    exercise: ExerciseSummary(
+                      exerciseId: 7,
+                      name: 'Neck curl',
+                      muscleGroup: 'levator scapulae',
+                      equipment: 'band',
+                      thumbnailUrl: null,
+                      contraindicated: contraindicated,
+                    ),
+                    baseUrl: 'http://test.local',
+                    onTap: () {},
+                    selected: false,
+                    onInfo: () {},
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ),
+      );
+
+      expect(tester.takeException(), isNull);
+      final line = find.text(
+        '${muscleLabel('levator scapulae')} · ${equipmentLabel('band')}',
+      );
+      expect(
+        tester.renderObject<RenderParagraph>(line).didExceedMaxLines,
+        isFalse,
+        reason: 'the equipment was cut',
+      );
+    });
+  }
 }

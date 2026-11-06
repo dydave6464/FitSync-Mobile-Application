@@ -127,11 +127,22 @@ class _SessionLoggerScreenState extends ConsumerState<SessionLoggerScreen>
   /// `ref.read` during dispose is not allowed.
   late final RestAlertScheduler _alerts;
 
+  /// Redraws the "min elapsed" caption, and only it. Nothing else rebuilds
+  /// the screen while the user rests or reads a demo -- the rest repaints
+  /// its own tag -- so without this the caption stood still for minutes.
+  /// Every 30 seconds, so a minute turning over shows within half a minute.
+  final _elapsedTick = ValueNotifier<int>(0);
+  Timer? _elapsedTicker;
+
   @override
   void initState() {
     super.initState();
     _alerts = ref.read(restAlertSchedulerProvider);
     WidgetsBinding.instance.addObserver(this);
+    _elapsedTicker = Timer.periodic(
+      const Duration(seconds: 30),
+      (_) => _elapsedTick.value++,
+    );
   }
 
   @override
@@ -404,6 +415,8 @@ class _SessionLoggerScreenState extends ConsumerState<SessionLoggerScreen>
     _restTicker?.cancel();
     _restOverTimer?.cancel();
     _restReading.dispose();
+    _elapsedTicker?.cancel();
+    _elapsedTick.dispose();
     WidgetsBinding.instance.removeObserver(this);
     unawaited(_alerts.cancel());
     super.dispose();
@@ -446,7 +459,11 @@ class _SessionLoggerScreenState extends ConsumerState<SessionLoggerScreen>
   /// being suspicious of when the number it produces is always the bound.
   int _elapsedMinutes(DateTime? startedAt) {
     if (startedAt == null) return 0;
-    return DateTime.now().difference(startedAt).inMinutes.clamp(0, 1440);
+    return ref
+        .read(wallClockProvider)()
+        .difference(startedAt)
+        .inMinutes
+        .clamp(0, 1440);
   }
 
   /// The session was closed by someone/something else -- another device, an
@@ -570,14 +587,10 @@ class _SessionLoggerScreenState extends ConsumerState<SessionLoggerScreen>
   /// record a rejection the user never meant; Switch again is the way back.
   Future<void> _switchExercise(int index, PlanExercise exercise) async {
     final messenger = ScaffoldMessenger.of(context);
-    final swappedTo = await showModalBottomSheet<String>(
-      context: context,
-      isScrollControlled: true,
-      builder: (_) => ExerciseSwapSheet(
-        planExerciseId: exercise.planExerciseId,
-        exerciseName: exerciseDisplayName(exercise.name),
-        onGoToProfile: null,
-      ),
+    final swappedTo = await showExerciseSwapSheet(
+      context,
+      planExerciseId: exercise.planExerciseId,
+      exerciseName: exerciseDisplayName(exercise.name),
     );
     if (swappedTo == null || !mounted) return;
     try {
@@ -922,6 +935,22 @@ class _SessionLoggerScreenState extends ConsumerState<SessionLoggerScreen>
     return answer == true;
   }
 
+  /// "42 min · 18 sets · 3,150 kg lifted". The volume only when there is
+  /// some: a bodyweight workout has none, and "0 kg lifted" would read as a
+  /// failure to record -- the reason History leaves it out too.
+  static String _summaryLine(ActiveSession done, WeightUnit unit) {
+    final sets = done.completedSetCount;
+    final volume = done.totalVolumeKg;
+    return [
+      '${done.durationMin} min',
+      '$sets ${sets == 1 ? 'set' : 'sets'}',
+      if (volume != null && volume > 0)
+        // Whole numbers: a session's total volume runs to hundreds, where
+        // formatWeight's decimal place would be noise rather than precision.
+        '${convertFromKg(volume, unit).toStringAsFixed(0)} ${unit.api} lifted',
+    ].join(' · ');
+  }
+
   /// "A", "A and B", "A, B and C" -- and past three, "A, B, C and 2 more",
   /// so a long workout's question still fits a small phone.
   static String _listNames(List<String> names) {
@@ -955,13 +984,7 @@ class _SessionLoggerScreenState extends ConsumerState<SessionLoggerScreen>
           builder: (dialogContext) => AlertDialog(
             key: const Key('logger.summary'),
             title: const Text('Session complete'),
-            content: Text(
-              '${done.durationMin} min · ${done.completedSetCount} sets · '
-              // Whole numbers: a session's total volume runs to hundreds, where
-              // formatWeight's decimal place would be noise rather than precision.
-              '${convertFromKg(done.totalVolumeKg ?? 0, unit).toStringAsFixed(0)} '
-              '${unit.api} lifted',
-            ),
+            content: Text(_summaryLine(done, unit)),
             actions: [
               // Only a hand-picked workout. A plan-backed one is already part of a
               // plan, and offering to add it again would be offering nothing.
@@ -1236,6 +1259,19 @@ class _SessionLoggerScreenState extends ConsumerState<SessionLoggerScreen>
     );
   }
 
+  /// [screen], saying on the way out what Leave says when Back closes the
+  /// logger with sets logged. For the screens before the exercises are on
+  /// show -- the plan failing or loading -- which close on the first Back,
+  /// as exercise 1's demo does (see the PopScope in [build]).
+  Widget _keptOpenOnPop(ActiveSession session, Widget screen) => PopScope(
+    onPopInvokedWithResult: (didPop, _) {
+      if (didPop && !_closedSelf && session.completedSetCount > 0) {
+        _sayKeptOpen(ScaffoldMessenger.of(context));
+      }
+    },
+    child: screen,
+  );
+
   /// The AppBar's leading slot is this wide: the 15 dp inset and the 48 dp
   /// target, which puts the drawn square where the mockup's 20 did.
   static const _backWidth = 63.0;
@@ -1447,10 +1483,13 @@ class _SessionLoggerScreenState extends ConsumerState<SessionLoggerScreen>
     if (carried.isEmpty && asyncPlan.isLoading && !asyncPlan.hasValue) {
       // The session is open on the server already: Back and the menu stay,
       // so a slow plan load never strands anyone on a bare spinner.
-      return Scaffold(
-        backgroundColor: t.bg,
-        appBar: _appBar(t, restSeconds: restSeconds),
-        body: const Center(child: CircularProgressIndicator()),
+      return _keptOpenOnPop(
+        session,
+        Scaffold(
+          backgroundColor: t.bg,
+          appBar: _appBar(t, restSeconds: restSeconds),
+          body: const Center(child: CircularProgressIndicator()),
+        ),
       );
     }
 
@@ -1458,29 +1497,32 @@ class _SessionLoggerScreenState extends ConsumerState<SessionLoggerScreen>
     // train here" and pointing at Discard would invite someone on poor gym
     // Wi-Fi to throw away a real session with sets already logged.
     if (carried.isEmpty && plan == null && asyncPlan.hasError) {
-      return Scaffold(
-        backgroundColor: t.bg,
-        appBar: _appBar(t, restSeconds: restSeconds),
-        body: Center(
-          key: const Key('logger.planError'),
-          child: SingleChildScrollView(
-            padding: const EdgeInsets.all(24),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                FsIconTile(icon: Icons.cloud_off, size: 56),
-                const SizedBox(height: 16),
-                Text(
-                  "Couldn't load today's workout",
-                  textAlign: TextAlign.center,
-                  style: Theme.of(context).textTheme.titleLarge,
-                ),
-                FsRetry(
-                  message: userMessage(asyncPlan.error!),
-                  buttonKey: const Key('logger.planError.retry'),
-                  onRetry: () => ref.invalidate(activePlanProvider),
-                ),
-              ],
+      return _keptOpenOnPop(
+        session,
+        Scaffold(
+          backgroundColor: t.bg,
+          appBar: _appBar(t, restSeconds: restSeconds),
+          body: Center(
+            key: const Key('logger.planError'),
+            child: SingleChildScrollView(
+              padding: const EdgeInsets.all(24),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  FsIconTile(icon: Icons.cloud_off, size: 56),
+                  const SizedBox(height: 16),
+                  Text(
+                    "Couldn't load today's workout",
+                    textAlign: TextAlign.center,
+                    style: Theme.of(context).textTheme.titleLarge,
+                  ),
+                  FsRetry(
+                    message: userMessage(asyncPlan.error!),
+                    buttonKey: const Key('logger.planError.retry'),
+                    onRetry: () => ref.invalidate(activePlanProvider),
+                  ),
+                ],
+              ),
             ),
           ),
         ),
@@ -1656,44 +1698,50 @@ class _SessionLoggerScreenState extends ConsumerState<SessionLoggerScreen>
                     builder: (context, constraints) => Row(
                       children: [
                         Flexible(
-                          child: InkWell(
-                            key: const Key('logger.position'),
-                            onTap: () => _jumpTo(exercises, session, index),
-                            // The caption stays an 11 px line; the target
-                            // around it is a full 48 dp. It takes the gap
-                            // that used to sit under the row, so the bar
-                            // below moves less than the target grew.
-                            child: ConstrainedBox(
-                              constraints: const BoxConstraints(
-                                minWidth: 48,
-                                minHeight: 48,
-                              ),
-                              child: Row(
-                                mainAxisSize: MainAxisSize.min,
-                                children: [
-                                  Flexible(
-                                    child: Text(
-                                      '${_positionLabel(index, exercises.length)}'
-                                      // Named the way Home and History name
-                                      // it. Not the active plan's name: a
-                                      // workout the user picked themselves
-                                      // is not a day of the AI plan they may
-                                      // be replacing.
-                                      ' · ${openWorkoutTitle(session, plan)}',
-                                      maxLines: 1,
-                                      overflow: TextOverflow.ellipsis,
-                                      style: TextStyle(
-                                        fontSize: 11,
-                                        color: t.text2,
+                          // A caption to look at, but the way to the jump
+                          // sheet: a screen reader hears a button, and why.
+                          child: Semantics(
+                            button: true,
+                            hint: 'Jump to another exercise',
+                            child: InkWell(
+                              key: const Key('logger.position'),
+                              onTap: () => _jumpTo(exercises, session, index),
+                              // The caption stays an 11 px line; the target
+                              // around it is a full 48 dp. It takes the gap
+                              // that used to sit under the row, so the bar
+                              // below moves less than the target grew.
+                              child: ConstrainedBox(
+                                constraints: const BoxConstraints(
+                                  minWidth: 48,
+                                  minHeight: 48,
+                                ),
+                                child: Row(
+                                  mainAxisSize: MainAxisSize.min,
+                                  children: [
+                                    Flexible(
+                                      child: Text(
+                                        '${_positionLabel(index, exercises.length)}'
+                                        // Named the way Home and History name
+                                        // it. Not the active plan's name: a
+                                        // workout the user picked themselves
+                                        // is not a day of the AI plan they may
+                                        // be replacing.
+                                        ' · ${openWorkoutTitle(session, plan)}',
+                                        maxLines: 1,
+                                        overflow: TextOverflow.ellipsis,
+                                        style: TextStyle(
+                                          fontSize: 11,
+                                          color: t.text2,
+                                        ),
                                       ),
                                     ),
-                                  ),
-                                  Icon(
-                                    Icons.arrow_drop_down,
-                                    size: 16,
-                                    color: t.text2,
-                                  ),
-                                ],
+                                    Icon(
+                                      Icons.arrow_drop_down,
+                                      size: 16,
+                                      color: t.text2,
+                                    ),
+                                  ],
+                                ),
                               ),
                             ),
                           ),
@@ -1708,12 +1756,16 @@ class _SessionLoggerScreenState extends ConsumerState<SessionLoggerScreen>
                           constraints: BoxConstraints(
                             maxWidth: constraints.maxWidth * 0.45,
                           ),
-                          child: Text(
-                            '${_elapsedMinutes(session.startedAt)} min elapsed',
-                            style: TextStyle(
-                              fontFamily: fsMonoFamily,
-                              fontSize: 11,
-                              color: t.text3,
+                          child: ValueListenableBuilder<int>(
+                            valueListenable: _elapsedTick,
+                            builder: (_, _, _) => Text(
+                              '${_elapsedMinutes(session.startedAt)} '
+                              'min elapsed',
+                              style: TextStyle(
+                                fontFamily: fsMonoFamily,
+                                fontSize: 11,
+                                color: t.text3,
+                              ),
                             ),
                           ),
                         ),

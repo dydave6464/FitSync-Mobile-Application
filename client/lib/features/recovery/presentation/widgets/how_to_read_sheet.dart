@@ -13,6 +13,8 @@ import '../../domain/recovery.dart';
 Future<void> showHowToReadSheet(BuildContext context) {
   return showModalBottomSheet<void>(
     context: context,
+    // It draws its own handle (PT-22).
+    showDragHandle: false,
     // The surface goes on the sheet's own Material, as the check-in sheet
     // does, rather than a transparent sheet around a coloured Container.
     backgroundColor: context.fs.surface,

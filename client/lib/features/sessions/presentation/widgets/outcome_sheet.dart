@@ -6,6 +6,7 @@ import '../../../../core/theme.dart';
 import '../../../../core/widgets/fs_kit.dart';
 import '../../../profile/presentation/providers.dart'
     show injuryOptionsProvider;
+import '../../domain/session_dates.dart';
 import '../../domain/session_outcome.dart';
 import '../providers.dart'
     show pendingOutcomeProvider, sessionRepositoryProvider;
@@ -33,6 +34,8 @@ Future<bool> showOutcomeSheet(
 ) async {
   final failed = await showModalBottomSheet<bool>(
     context: context,
+    // FsSheetHeader draws the handle (PT-22).
+    showDragHandle: false,
     // The surface on the sheet's own Material, as checkin_sheet.dart does and
     // for its reason: the chips are InkWells and need a Material under them.
     backgroundColor: context.fs.surface,
@@ -131,17 +134,13 @@ class _OutcomeSheetState extends ConsumerState<_OutcomeSheet> {
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
+            // Closing is "Not now" by another name: nothing is submitted.
+            // Safe mid-save too, as a swipe down always was: _submit holds
+            // the container it needs and checks `mounted` before popping.
+            const FsSheetHeader(title: 'How did your last workout leave you?'),
             Text(
-              'How did your last workout leave you?',
-              style: TextStyle(
-                fontSize: 20,
-                fontWeight: FontWeight.w700,
-                color: t.text,
-              ),
-            ),
-            const SizedBox(height: 4),
-            Text(
-              '${widget.pending.title} · ${widget.pending.sessionDate}',
+              '${widget.pending.title} · '
+              '${sessionDayLabel(widget.pending.sessionDate)}',
               style: TextStyle(fontSize: 12, color: t.text3),
             ),
             const SizedBox(height: 16),
@@ -159,6 +158,9 @@ class _OutcomeSheetState extends ConsumerState<_OutcomeSheet> {
                       key: Key('outcome.pain.$level'),
                       label: _displayLabel(level),
                       selected: _painLevel == level,
+                      // One answer per question: a radio group, as the
+                      // check-in sheet's same question.
+                      exclusive: true,
                       onTap: () => _pickPain(level),
                     ),
                 ],
@@ -179,6 +181,7 @@ class _OutcomeSheetState extends ConsumerState<_OutcomeSheet> {
                           key: Key('outcome.region.${option.injuryId}'),
                           label: option.name,
                           selected: _injuryId == option.injuryId,
+                          exclusive: true,
                           onTap: () {
                             if (_busy) return;
                             setState(() => _injuryId = option.injuryId);
@@ -199,22 +202,10 @@ class _OutcomeSheetState extends ConsumerState<_OutcomeSheet> {
                 // stays off; "Not now" still gets the user to their workout.
                 // The provider is not autoDispose, so without a retry the
                 // error would stay cached until the app restarts.
-                error: (_, _) => Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      "Couldn't load body regions.",
-                      style: TextStyle(fontSize: 12, color: t.red),
-                    ),
-                    const SizedBox(height: 4),
-                    FsButton(
-                      key: const Key('outcome.regions.retry'),
-                      label: 'Retry',
-                      small: true,
-                      kind: FsButtonKind.secondary,
-                      onPressed: () => ref.invalidate(injuryOptionsProvider),
-                    ),
-                  ],
+                error: (_, _) => FsRetry(
+                  message: "Couldn't load body regions.",
+                  buttonKey: const Key('outcome.regions.retry'),
+                  onRetry: () => ref.invalidate(injuryOptionsProvider),
                 ),
               ),
             ],

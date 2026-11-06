@@ -7,11 +7,12 @@ import '../../data/meal_photo_picker.dart';
 Future<PhotoSource?> showCaptureChoiceSheet(BuildContext context) =>
     showModalBottomSheet<PhotoSource>(
       context: context,
+      showDragHandle: true,
       builder: (sheet) {
         final t = sheet.fs;
         return SafeArea(
           child: Padding(
-            padding: const EdgeInsets.fromLTRB(8, 16, 8, 8),
+            padding: const EdgeInsets.fromLTRB(8, 0, 8, 8),
             child: Column(
               mainAxisSize: MainAxisSize.min,
               crossAxisAlignment: CrossAxisAlignment.stretch,

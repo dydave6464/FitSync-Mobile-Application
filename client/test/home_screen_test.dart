@@ -237,13 +237,14 @@ class _StubProfileNotifier extends ProfileNotifier {
 }
 
 class _StubRoutine extends RoutineController {
-  _StubRoutine(this.day, this.error);
+  _StubRoutine(this.day, this.error, [this.pending]);
   final RoutineDay? day;
   final Object? error;
+  final Future<RoutineDay>? pending;
   @override
   Future<RoutineDay> build() async {
     if (error != null) throw error!;
-    return day!;
+    return pending ?? day!;
   }
 }
 
@@ -292,6 +293,8 @@ Future<void> _pumpHome(
   // from the very start.
   bool streakFailsOnRefresh = false,
   Future<TrainingSummary>? summaryFuture,
+  Future<RecoveryOverview>? recoveryFuture,
+  Future<RoutineDay>? routineFuture,
   StepPermission? stepPermission,
   bool planReady = false,
 }) async {
@@ -327,7 +330,7 @@ Future<void> _pumpHome(
         ),
         recoveryOverviewProvider.overrideWith((ref) async {
           if (recoveryError != null) throw recoveryError;
-          return recovery!;
+          return recoveryFuture ?? recovery!;
         }),
         homeSummaryProvider.overrideWith((ref) async {
           if (progressError != null) throw progressError;
@@ -338,7 +341,7 @@ Future<void> _pumpHome(
           return _defaultAnalytics;
         }),
         routineTodayProvider.overrideWith(
-          () => _StubRoutine(routine, routineError),
+          () => _StubRoutine(routine, routineError, routineFuture),
         ),
         streakProvider.overrideWith((ref) async {
           streakReads += 1;
@@ -783,6 +786,87 @@ void main() {
     });
   });
 
+  group('headings', () {
+    bool isHeader(WidgetTester tester, String text) => tester
+        .getSemantics(find.text(text))
+        .getSemanticsData()
+        .flagsCollection
+        .isHeader;
+
+    testWidgets('the greeting and each card title are headings', (
+      tester,
+    ) async {
+      // A screen reader moving by heading found nothing on Home.
+      _tallScreen(tester);
+      final handle = tester.ensureSemantics();
+      await _pumpHome(tester);
+
+      for (final title in [
+        'Kumusta, Juan',
+        "TODAY'S PLAN",
+        'Your progress',
+        "Today's routine",
+      ]) {
+        expect(isHeader(tester, title), isTrue, reason: title);
+      }
+      // A heading is the title alone, not the line under it.
+      expect(isHeader(tester, 'Upper Body · Push'), isFalse);
+      handle.dispose();
+    });
+
+    testWidgets('with no plan, that card is headed too', (tester) async {
+      final handle = tester.ensureSemantics();
+      await _pumpHome(tester, plan: null);
+      expect(isHeader(tester, "TODAY'S PLAN"), isTrue);
+      expect(isHeader(tester, 'No plan yet'), isFalse);
+      handle.dispose();
+    });
+
+    testWidgets('a workout under way is headed too', (tester) async {
+      final handle = tester.ensureSemantics();
+      await _pumpHome(tester, sessions: _FakeSessionRepository(_planSession()));
+      expect(isHeader(tester, 'WORKOUT IN PROGRESS'), isTrue);
+      handle.dispose();
+    });
+
+    testWidgets('with no readiness score yet, that card is headed too', (
+      tester,
+    ) async {
+      _tallScreen(tester);
+      final handle = tester.ensureSemantics();
+      await _pumpHome(
+        tester,
+        recovery: const RecoveryOverview(
+          todayCheckin: null,
+          latestEstimate: null,
+          load: [],
+        ),
+      );
+      // The title folds into the card's one button node (as Progress and
+      // Routine do), so that node is the heading; the check-in chip is its
+      // own button and stays out of it.
+      expect(isHeader(tester, 'READINESS'), isTrue);
+      expect(isHeader(tester, 'Check in'), isFalse);
+      handle.dispose();
+    });
+
+    testWidgets('a plan just built is headed too', (tester) async {
+      _tallScreen(tester);
+      final handle = tester.ensureSemantics();
+      await _pumpHome(tester, planReady: true);
+      expect(isHeader(tester, 'YOUR PLAN IS READY'), isTrue);
+      handle.dispose();
+    });
+
+    testWidgets('the profile nudge is headed too', (tester) async {
+      _tallScreen(tester);
+      final handle = tester.ensureSemantics();
+      await _pumpHome(tester, profile: _profile(mainGoal: null));
+      expect(isHeader(tester, 'Finish your profile'), isTrue);
+      handle.dispose();
+    });
+  });
+
   group('readiness and progress', () {
     testWidgets('Home reads top to bottom as the prototype does', (
       tester,
@@ -828,6 +912,94 @@ void main() {
       await tester.pumpAndSettle();
       final card = tester.getSize(find.byKey(const Key('home.progress')));
       expect(placeholder.height, closeTo(card.height, 1));
+    });
+
+    testWidgets('the readiness placeholder is as tall as the card and its '
+        'gap', (tester) async {
+      _tallScreen(tester);
+      final recovery = Completer<RecoveryOverview>();
+      await _pumpHome(tester, recoveryFuture: recovery.future);
+      final placeholder = tester.getSize(
+        find.byKey(const Key('home.readiness.placeholder')),
+      );
+
+      recovery.complete(_defaultRecovery);
+      await tester.pumpAndSettle();
+      final card = tester.getSize(find.byKey(const Key('home.readiness')));
+      expect(placeholder.height, closeTo(card.height + 14, 1));
+    });
+
+    testWidgets('the routine placeholder is as tall as a full routine card: '
+        'three items, "+N more" and the streak chip', (tester) async {
+      _tallScreen(tester);
+      final routine = Completer<RoutineDay>();
+      await _pumpHome(
+        tester,
+        routineFuture: routine.future,
+        streak: const Streak(current: 4, best: 4, todayActive: true, week: []),
+      );
+      final placeholder = tester.getSize(
+        find.byKey(const Key('home.routine.placeholder')),
+      );
+
+      routine.complete(
+        RoutineDay(
+          date: '2026-09-24',
+          habits: [
+            for (var i = 1; i <= 5; i++)
+              Habit(
+                habitId: i,
+                title: 'Habit $i',
+                time: '06:00',
+                durationMin: null,
+                weekdays: const [1, 2, 3, 4, 5, 6, 7],
+                done: false,
+              ),
+          ],
+          workout: null,
+        ),
+      );
+      await tester.pumpAndSettle();
+      expect(find.byKey(const Key('home.routine.streak')), findsOneWidget);
+      expect(find.byKey(const Key('home.routine.more')), findsOneWidget);
+      final card = tester.getSize(find.byKey(const Key('home.routine')));
+      expect(placeholder.height, closeTo(card.height, 1));
+    });
+
+    testWidgets('a card still loading shows a card-shaped placeholder and '
+        'says it is loading', (tester) async {
+      // Blank space of the right height kept Home from jumping, but drew
+      // and announced nothing, so the wait looked like an empty screen.
+      _tallScreen(tester);
+      final handle = tester.ensureSemantics();
+      await _pumpHome(
+        tester,
+        recoveryFuture: Completer<RecoveryOverview>().future,
+        summaryFuture: Completer<TrainingSummary>().future,
+        routineFuture: Completer<RoutineDay>().future,
+      );
+
+      for (final (key, label) in [
+        ('home.readiness.placeholder', 'Loading readiness'),
+        ('home.progress.placeholder', 'Loading progress'),
+        ('home.routine.placeholder', "Loading today's routine"),
+      ]) {
+        final placeholder = find.byKey(Key(key));
+        expect(
+          find.descendant(of: placeholder, matching: find.byType(FsCard)),
+          findsOneWidget,
+          reason: key,
+        );
+        expect(
+          find.descendant(
+            of: placeholder,
+            matching: find.bySemanticsLabel(label),
+          ),
+          findsOneWidget,
+          reason: key,
+        );
+      }
+      handle.dispose();
     });
 
     testWidgets('steps that cannot be read leave one gap, not two', (

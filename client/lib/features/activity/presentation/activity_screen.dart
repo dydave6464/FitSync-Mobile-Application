@@ -58,33 +58,35 @@ class _ActivityScreenState extends ConsumerState<ActivityScreen> {
     return Scaffold(
       backgroundColor: t.bg,
       appBar: AppBar(title: const Text('Activity')),
-      body: ref.watch(activityProvider).when(
-        // The week is still on its way; today's count is already on the
-        // phone, so it shows at once. A spinner only until the phone answers.
-        loading: () => switch (ref.watch(todayStepsProvider).value) {
-          final today? => _Body(
-            state: ActivityState(today: today, week: null, offline: false),
-            steps: live ?? today.steps,
-            loadingWeek: true,
+      body: ref
+          .watch(activityProvider)
+          .when(
+            // The week is still on its way; today's count is already on the
+            // phone, so it shows at once. A spinner only until the phone answers.
+            loading: () => switch (ref.watch(todayStepsProvider).value) {
+              final today? => _Body(
+                state: ActivityState(today: today, week: null, offline: false),
+                steps: live ?? today.steps,
+                loadingWeek: true,
+              ),
+              null => const Center(child: CircularProgressIndicator()),
+            },
+            error: (error, _) => FsRetry(
+              fullScreen: true,
+              message: userMessage(error),
+              onRetry: () => ref.invalidate(activityProvider),
+            ),
+            data: (state) => _Body(
+              state: state,
+              steps: live ?? state.today.steps,
+              onGoToProfile: widget.onGoToProfile == null
+                  ? null
+                  : () {
+                      Navigator.of(context).pop();
+                      widget.onGoToProfile!();
+                    },
+            ),
           ),
-          null => const Center(child: CircularProgressIndicator()),
-        },
-        error: (error, _) => FsRetry(
-          fullScreen: true,
-          message: userMessage(error),
-          onRetry: () => ref.invalidate(activityProvider),
-        ),
-        data: (state) => _Body(
-          state: state,
-          steps: live ?? state.today.steps,
-          onGoToProfile: widget.onGoToProfile == null
-              ? null
-              : () {
-                  Navigator.of(context).pop();
-                  widget.onGoToProfile!();
-                },
-        ),
-      ),
     );
   }
 }
@@ -110,11 +112,13 @@ class _Body extends StatelessWidget {
     final week = state.week;
     final noKm = week == null || week.missingHeight;
     final noKcal = week == null || week.missingHeight || week.missingWeight;
-    final today = week?.today;
+    // The server's estimates, carried along to the live count (see
+    // ActivityDay.grownTo), as Home's tiles show them.
+    final today = week?.today.grownTo(steps);
     final notes = [
       if (state.today.sinceTurnedOn) 'Counting since you turned it on',
       if (state.today.includesEarlierDays)
-        "Steps from days FitSync wasn't opened are added to the next day",
+        "Today's count includes steps from days you didn't open FitSync.",
       if (state.offline) "Updates when you're online",
     ];
     return ListView(
@@ -130,14 +134,27 @@ class _Body extends StatelessWidget {
                 key: const Key('activity.steps'),
                 style: fsNum(t, size: 44),
               ),
-              Text('steps today', style: TextStyle(fontSize: 13, color: t.text2)),
+              Text(
+                'steps today',
+                style: TextStyle(fontSize: 13, color: t.text2),
+              ),
               const SizedBox(height: 18),
-              _UsualBar(today: steps, usual: week?.usual),
+              // Only once there is a usual to measure against: without one
+              // the fill sat 80% along a track that meant nothing. Its room
+              // is kept, as on Home, so the usual's arriving moves nothing.
+              switch (week?.usual) {
+                final usual? => _UsualBar(today: steps, usual: usual),
+                null => const SizedBox(height: _UsualBar.height),
+              },
               const SizedBox(height: 10),
               Text(
                 loadingWeek
                     ? 'Loading your week…'
-                    : usualLine(today: steps, usual: week?.usual),
+                    : usualLine(
+                        today: steps,
+                        usual: week?.usual,
+                        usualDays: week?.usualDays,
+                      ),
                 key: const Key('activity.usualLine'),
                 style: TextStyle(fontSize: 13, color: t.text),
               ),
@@ -146,17 +163,23 @@ class _Body extends StatelessWidget {
                 children: [
                   _Figure(
                     key: const Key('activity.kcal'),
-                    value: noKcal ? '—' : '${today!.caloriesBurned ?? 0}',
+                    value: noKcal
+                        ? '—'
+                        : formatSteps(today!.caloriesBurned ?? 0),
                     label: 'kcal',
                   ),
                   _Figure(
                     key: const Key('activity.km'),
-                    value: noKm ? '—' : (today!.distanceKm ?? 0).toStringAsFixed(2),
+                    value: noKm
+                        ? '—'
+                        : (today!.distanceKm ?? 0).toStringAsFixed(2),
                     label: 'km',
                   ),
                   _Figure(
                     key: const Key('activity.minutes'),
-                    value: today?.activeMinutes == null ? '—' : '${today!.activeMinutes}',
+                    value: today?.activeMinutes == null
+                        ? '—'
+                        : '${today!.activeMinutes}',
                     label: 'active min',
                   ),
                 ],
@@ -177,7 +200,9 @@ class _Body extends StatelessWidget {
             padding: const EdgeInsets.only(top: 10),
             child: Text(
               note,
-              key: note == "Updates when you're online" ? const Key('activity.offline') : null,
+              key: note == "Updates when you're online"
+                  ? const Key('activity.offline')
+                  : null,
               textAlign: TextAlign.center,
               style: TextStyle(fontSize: 12, color: t.text3),
             ),
@@ -201,11 +226,15 @@ class _Body extends StatelessWidget {
                     children: [
                       Text(
                         'This week',
-                        style: TextStyle(fontSize: 15, fontWeight: FontWeight.w700, color: t.text),
+                        style: TextStyle(
+                          fontSize: 15,
+                          fontWeight: FontWeight.w700,
+                          color: t.text,
+                        ),
                       ),
                       if (week.average != null)
                         Text(
-                          'avg ${(week.average! / 1000).toStringAsFixed(1)}k/day',
+                          perDayLine(week.average!),
                           style: TextStyle(fontSize: 11.5, color: t.text3),
                         ),
                     ],
@@ -223,27 +252,31 @@ class _Body extends StatelessWidget {
 }
 
 /// Today's steps filling toward a scale of 1.25 × the larger of today and
-/// the usual, with a marker at the usual.
+/// the usual, with a marker at the usual. Drawn only once there is a usual.
 class _UsualBar extends StatelessWidget {
   const _UsualBar({required this.today, required this.usual});
 
+  static const height = 28.0;
+
   final int today;
-  final int? usual;
+  final int usual;
 
   @override
   Widget build(BuildContext context) {
     final t = context.fs;
-    final scale = math.max(1, math.max(today, usual ?? 0)) * 1.25;
+    final scale = math.max(1, math.max(today, usual)) * 1.25;
     return LayoutBuilder(
       builder: (context, box) {
         final width = box.maxWidth;
         return SizedBox(
-          height: 28,
+          height: height,
           child: Stack(
             clipBehavior: Clip.none,
             children: [
               Positioned(
-                left: 0, right: 0, top: 4,
+                left: 0,
+                right: 0,
+                top: 4,
                 child: Container(
                   height: 10,
                   decoration: BoxDecoration(
@@ -253,7 +286,8 @@ class _UsualBar extends StatelessWidget {
                 ),
               ),
               Positioned(
-                left: 0, top: 4,
+                left: 0,
+                top: 4,
                 child: Container(
                   width: width * today / scale,
                   height: 10,
@@ -267,13 +301,12 @@ class _UsualBar extends StatelessWidget {
               // triangle spans y 9-14 of its 24px box, so top 6 puts it right
               // below the bar (which ends at 14) and centring the box centres
               // the tip on the usual.
-              if (usual != null)
-                Positioned(
-                  key: const Key('activity.usualMarker'),
-                  left: width * usual! / scale - 12,
-                  top: 6,
-                  child: Icon(Icons.arrow_drop_up, size: 24, color: t.text),
-                ),
+              Positioned(
+                key: const Key('activity.usualMarker'),
+                left: width * usual / scale - 12,
+                top: 6,
+                child: Icon(Icons.arrow_drop_up, size: 24, color: t.text),
+              ),
             ],
           ),
         );
@@ -334,9 +367,7 @@ class _WeekBars extends StatelessWidget {
       highlightIndex: days.length - 1,
       highlightColor: t.blue,
       height: 96,
-      bars: [
-        for (var i = 0; i < days.length; i++) _bar(i),
-      ],
+      bars: [for (var i = 0; i < days.length; i++) _bar(i)],
     );
   }
 

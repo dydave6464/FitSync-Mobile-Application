@@ -9,6 +9,8 @@ import '../../exercises/presentation/exercise_list_screen.dart'
 import '../../onboarding/presentation/generating_view.dart';
 import '../../profile/domain/profile.dart';
 import '../../profile/presentation/providers.dart';
+import '../../sessions/presentation/providers.dart' show activeSessionProvider;
+import '../../sessions/presentation/session_logger_screen.dart';
 import '../domain/split_style.dart';
 import '../domain/week_description.dart';
 import '../domain/workout_plan.dart';
@@ -305,28 +307,11 @@ class _GeneratorScreenState extends ConsumerState<GeneratorScreen> {
             )
           : asyncPlan.when(
               loading: () => const Center(child: CircularProgressIndicator()),
-              error: (error, _) => Center(
-                child: Padding(
-                  padding: const EdgeInsets.all(24),
-                  child: Column(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      const Text(
-                        "Couldn't load your current plan.",
-                        textAlign: TextAlign.center,
-                      ),
-                      const SizedBox(height: 6),
-                      Text(describeError(error), textAlign: TextAlign.center),
-                      const SizedBox(height: 12),
-                      FsButton(
-                        label: 'Retry',
-                        small: true,
-                        kind: FsButtonKind.secondary,
-                        onPressed: () => ref.invalidate(activePlanProvider),
-                      ),
-                    ],
-                  ),
-                ),
+              error: (error, _) => FsRetry(
+                fullScreen: true,
+                message:
+                    "Couldn't load your current plan. ${userMessage(error)}",
+                onRetry: () => ref.invalidate(activePlanProvider),
               ),
               data: (plan) => _buildControls(context, plan, avoiding),
             ),
@@ -360,6 +345,14 @@ class _GeneratorScreenState extends ConsumerState<GeneratorScreen> {
     // catalogue it would state that nothing the user typed matched.
     final asyncOptions = ref.watch(injuryOptionsProvider);
     final options = asyncOptions.value ?? const <InjuryOption>[];
+
+    // The server refuses a new plan while a workout is under way
+    // (SESSION_IN_PROGRESS). Known here already, so it is said before
+    // Generate rather than after the building screen has come and gone.
+    // Only a session that has loaded counts: while the lookup is pending or
+    // has failed, Generate stays offered and the server's refusal still
+    // stands behind it.
+    final inProgress = ref.watch(activeSessionProvider).value != null;
 
     return ListView(
       padding: const EdgeInsets.fromLTRB(20, 12, 20, 24),
@@ -451,18 +444,18 @@ class _GeneratorScreenState extends ConsumerState<GeneratorScreen> {
         ],
         if (!daysKnown) ...[
           const SizedBox(height: 8),
-          Text(
-            asyncProfile.hasError
-                ? "Couldn't load your training days, so they can't be changed "
-                      'here. ${describeError(asyncProfile.error!)}'
-                : 'Loading your training days…',
-            key: const Key('gen.trainingDays.unavailable'),
-            style: TextStyle(
-              fontSize: 12,
-              color: asyncProfile.hasError ? t.red : t.text3,
-              height: 1.35,
+          if (asyncProfile.hasError)
+            FsErrorLine(
+              "Couldn't load your training days, so they can't be changed "
+              'here. ${describeError(asyncProfile.error!)}',
+              key: const Key('gen.trainingDays.unavailable'),
+            )
+          else
+            Text(
+              'Loading your training days…',
+              key: const Key('gen.trainingDays.unavailable'),
+              style: TextStyle(fontSize: 12, color: t.text3, height: 1.35),
             ),
-          ),
         ],
         // Session length is deliberately not shown. The service derives it
         // from goal, fitness level and health check, so it is neither chosen
@@ -493,8 +486,14 @@ class _GeneratorScreenState extends ConsumerState<GeneratorScreen> {
         ],
         const SizedBox(height: 22),
         Text(
-          'Generating replaces your current plan.',
-          style: TextStyle(fontSize: 12, color: t.text3, height: 1.4),
+          inProgress
+              ? 'You have a workout in progress. Finish or discard it first.'
+              : 'Generating replaces your current plan.',
+          style: TextStyle(
+            fontSize: 12,
+            color: inProgress ? t.text2 : t.text3,
+            height: 1.4,
+          ),
         ),
         const SizedBox(height: 18),
         FsButton(
@@ -502,8 +501,23 @@ class _GeneratorScreenState extends ConsumerState<GeneratorScreen> {
           label: 'Generate plan',
           // No in-button spinner: `_busy` takes the whole body over with the
           // building screen, so this button is not on screen to spin.
-          onPressed: () => _generate(split, days, trainingDays),
+          onPressed: inProgress
+              ? null
+              : () => _generate(split, days, trainingDays),
         ),
+        if (inProgress) ...[
+          const SizedBox(height: 10),
+          FsButton(
+            key: const Key('gen.resume'),
+            label: 'Resume workout',
+            kind: FsButtonKind.secondary,
+            onPressed: () => Navigator.of(context).push(
+              MaterialPageRoute<void>(
+                builder: (_) => const SessionLoggerScreen(resume: true),
+              ),
+            ),
+          ),
+        ],
       ],
     );
   }
@@ -728,10 +742,9 @@ class _DescribeCardState extends ConsumerState<_DescribeCard> {
           Padding(
             key: const Key('gen.describe.catalogueError'),
             padding: const EdgeInsets.only(bottom: 6),
-            child: Text(
+            child: const FsErrorLine(
               "Couldn't check that against your injuries. Anything you wrote "
               'about them has been left alone.',
-              style: note.copyWith(color: t.red),
             ),
           ),
 

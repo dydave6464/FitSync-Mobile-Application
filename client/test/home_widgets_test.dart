@@ -5,11 +5,13 @@ import 'package:font_awesome_flutter/font_awesome_flutter.dart';
 
 import 'package:fitsync/core/theme.dart';
 import 'package:fitsync/core/widgets/fs_kit.dart';
+import 'package:fitsync/features/home/presentation/widgets/active_workout_card.dart';
 import 'package:fitsync/features/home/presentation/widgets/greeting.dart';
 import 'package:fitsync/features/home/presentation/widgets/plan_card.dart';
 import 'package:fitsync/features/home/presentation/widgets/profile_nudge.dart';
 import 'package:fitsync/features/plans/domain/workout_plan.dart';
 import 'package:fitsync/features/profile/domain/profile.dart';
+import 'package:fitsync/features/sessions/domain/active_session.dart';
 
 import 'helpers/a11y.dart' show contrast, host;
 
@@ -396,7 +398,7 @@ void main() {
         PlanCard(
           plan: _plan(sessionLengthMin: 48, equipment: const ['Barbell']),
           weightKg: null,
-          onStart: () {},
+          onOpenPlan: () {},
         ),
       ),
     );
@@ -420,7 +422,7 @@ void main() {
             splitStyle: 'push_pull_legs',
           ),
           weightKg: 70,
-          onStart: () {},
+          onOpenPlan: () {},
         ),
       ),
     );
@@ -444,7 +446,7 @@ void main() {
             equipment: const ['Barbell', 'Dumbbells', 'Bodyweight'],
           ),
           weightKg: 70,
-          onStart: () {},
+          onOpenPlan: () {},
         ),
       ),
     );
@@ -464,7 +466,7 @@ void main() {
         PlanCard(
           plan: _plan(sessionLengthMin: 30, equipment: const ['Barbell']),
           weightKg: 70,
-          onStart: () {},
+          onOpenPlan: () {},
         ),
       ),
     );
@@ -508,7 +510,7 @@ void main() {
                     ],
                   ),
                   weightKg: 70,
-                  onStart: () {},
+                  onOpenPlan: () {},
                 ),
               ),
             ),
@@ -552,7 +554,7 @@ void main() {
                       'with_extra_accessory_work_for_the_whole_body',
                 ),
                 weightKg: 70,
-                onStart: () {},
+                onOpenPlan: () {},
               ),
             ),
           ),
@@ -628,7 +630,7 @@ void main() {
     // opens one session. Counting all four exercises of a three-day rotation
     // promises a workout twice the length of the one that starts.
     await tester.pumpWidget(
-      _host(PlanCard(plan: _rotationPlan, weightKg: 70, onStart: () {})),
+      _host(PlanCard(plan: _rotationPlan, weightKg: 70, onOpenPlan: () {})),
     );
 
     expect(find.textContaining('1 exercise'), findsOneWidget);
@@ -639,7 +641,12 @@ void main() {
     // the assertion above just as well as a correct one.
     await tester.pumpWidget(
       _host(
-        PlanCard(plan: _rotationPlan, weightKg: 70, dayNo: 2, onStart: () {}),
+        PlanCard(
+          plan: _rotationPlan,
+          weightKg: 70,
+          dayNo: 2,
+          onOpenPlan: () {},
+        ),
       ),
     );
 
@@ -684,7 +691,9 @@ void main() {
       tester,
     ) async {
       await tester.pumpWidget(
-        _host(PlanCard(plan: pull(), weightKg: 70, dayNo: 2, onStart: () {})),
+        _host(
+          PlanCard(plan: pull(), weightKg: 70, dayNo: 2, onOpenPlan: () {}),
+        ),
       );
       expect(find.text('DAY 2 OF 3 · PULL'), findsOneWidget);
     });
@@ -707,7 +716,7 @@ void main() {
             ),
             weightKg: 70,
             dayNo: 4,
-            onStart: () {},
+            onOpenPlan: () {},
           ),
         ),
       );
@@ -726,7 +735,7 @@ void main() {
             ),
             weightKg: 70,
             dayNo: 2,
-            onStart: () {},
+            onOpenPlan: () {},
           ),
         ),
       );
@@ -736,7 +745,9 @@ void main() {
     testWidgets('the focus is read as one phrase', (tester) async {
       final semantics = tester.ensureSemantics();
       await tester.pumpWidget(
-        _host(PlanCard(plan: pull(), weightKg: 70, dayNo: 2, onStart: () {})),
+        _host(
+          PlanCard(plan: pull(), weightKg: 70, dayNo: 2, onOpenPlan: () {}),
+        ),
       );
       // "Back" alone could be taken for a way back.
       expect(
@@ -770,7 +781,7 @@ void main() {
                   ),
                   weightKg: 70,
                   dayNo: 1,
-                  onStart: () {},
+                  onOpenPlan: () {},
                 ),
               ),
             ),
@@ -792,7 +803,7 @@ void main() {
           PlanCard(
             plan: _plan(sessionLengthMin: 45, equipment: const ['Barbell']),
             weightKg: 70,
-            onStart: () {},
+            onOpenPlan: () {},
           ),
         ),
       );
@@ -804,7 +815,9 @@ void main() {
       tester,
     ) async {
       await tester.pumpWidget(
-        _host(PlanCard(plan: pull(), weightKg: 70, dayNo: 2, onStart: () {})),
+        _host(
+          PlanCard(plan: pull(), weightKg: 70, dayNo: 2, onOpenPlan: () {}),
+        ),
       );
       final back = find.byKey(const Key('plan.focus.back'));
       final arms = find.byKey(const Key('plan.focus.arms'));
@@ -839,7 +852,7 @@ void main() {
             ),
             weightKg: 70,
             dayNo: 2,
-            onStart: () {},
+            onOpenPlan: () {},
           ),
         ),
       );
@@ -863,7 +876,9 @@ void main() {
       tester,
     ) async {
       await tester.pumpWidget(
-        _host(PlanCard(plan: pull(), weightKg: 70, dayNo: 2, onStart: () {})),
+        _host(
+          PlanCard(plan: pull(), weightKg: 70, dayNo: 2, onOpenPlan: () {}),
+        ),
       );
       // In the info line itself, not just the faded one on the band.
       final infoLine = find.ancestor(
@@ -888,7 +903,9 @@ void main() {
     ) async {
       final watermark = find.byKey(const Key('plan.watermark'));
       await tester.pumpWidget(
-        _host(PlanCard(plan: pull(), weightKg: 70, dayNo: 2, onStart: () {})),
+        _host(
+          PlanCard(plan: pull(), weightKg: 70, dayNo: 2, onOpenPlan: () {}),
+        ),
       );
       expect(watermark, findsOneWidget);
 
@@ -901,7 +918,7 @@ void main() {
               plan: pull(),
               weightKg: 70,
               dayNo: 2,
-              onStart: () {},
+              onOpenPlan: () {},
             ),
           ),
         ),
@@ -932,7 +949,7 @@ void main() {
                   ),
                   weightKg: 70,
                   dayNo: 2,
-                  onStart: () {},
+                  onOpenPlan: () {},
                 ),
               ),
             ),
@@ -984,7 +1001,7 @@ void main() {
         PlanCard(
           plan: _plan(sessionLengthMin: 48, equipment: const ['Barbell']),
           weightKg: 70,
-          onStart: () => opened++,
+          onOpenPlan: () => opened++,
         ),
       ),
     );
@@ -995,5 +1012,64 @@ void main() {
 
     await tester.tap(find.byKey(const Key('home.plan.open')));
     expect(opened, 1);
+  });
+
+  group('the active workout card', () {
+    final session = ActiveSession(
+      sessionId: 7,
+      status: 'in_progress',
+      sessionDate: '2026-09-14',
+      startedAt: DateTime(2026, 9, 14, 7),
+      sets: const [],
+    );
+
+    Widget card({required bool discarding}) => _host(
+      ActiveWorkoutCard(
+        session: session,
+        plan: null,
+        discarding: discarding,
+        onContinue: () {},
+        onDiscard: () {},
+      ),
+    );
+
+    testWidgets("Discard is the kit's red ghost button", (tester) async {
+      await tester.pumpWidget(card(discarding: false));
+
+      final discard = tester.widget<FsButton>(
+        find.byKey(const Key('home.inProgress.discard')),
+      );
+      expect(discard.label, 'Discard');
+      expect(discard.kind, FsButtonKind.ghost);
+      expect(discard.danger, isTrue);
+      expect(discard.busy, isFalse);
+      await expectLater(tester, meetsGuideline(androidTapTargetGuideline));
+    });
+
+    testWidgets('while the discard is on its way, Discard spins and is '
+        'disabled', (tester) async {
+      // A plain red TextButton stayed bright red and said nothing while the
+      // abandon request ran.
+      final handle = tester.ensureSemantics();
+      await tester.pumpWidget(card(discarding: true));
+
+      final discard = find.byKey(const Key('home.inProgress.discard'));
+      expect(tester.widget<FsButton>(discard).busy, isTrue);
+      final node = find.descendant(
+        of: discard,
+        matching: find.bySemanticsLabel('Discard, loading'),
+      );
+      expect(node, findsOneWidget);
+      expect(
+        tester.getSemantics(node),
+        matchesSemantics(
+          label: 'Discard, loading',
+          isButton: true,
+          hasEnabledState: true,
+          isEnabled: false,
+        ),
+      );
+      handle.dispose();
+    });
   });
 }

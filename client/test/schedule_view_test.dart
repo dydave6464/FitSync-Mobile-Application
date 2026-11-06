@@ -192,14 +192,15 @@ void main() {
   });
 
   group('reminders', () {
-    test('a timed habit: minutes before, or at the time at lead 0', () {
+    test('a timed habit: about minutes before, or around the time at lead 0, '
+        'in the Reminders screen\'s words', () {
       expect(
         _line(_timed, (masterOn: true, settings: _settings())),
-        'Reminder 15 min before',
+        'Reminder about 15 min before',
       );
       expect(
         _line(_timed, (masterOn: true, settings: _settings(lead: 0))),
-        'Reminder at the time',
+        'Reminder around the time',
       );
     });
 
@@ -238,7 +239,7 @@ void main() {
       // 6:30 AM on 24 Sep, 15 min before: fires 6:15 AM Manila (22:15 UTC).
       expect(
         reminderLine(_timed, r, now: DateTime.utc(2026, 9, 23, 22, 14)),
-        'Reminder 15 min before',
+        'Reminder about 15 min before',
       );
       expect(
         reminderLine(_timed, r, now: DateTime.utc(2026, 9, 23, 22, 15)),
@@ -259,7 +260,7 @@ void main() {
       );
       expect(
         reminderLine(tomorrow, r, now: DateTime.utc(2026, 9, 24, 2)),
-        'Reminder 15 min before',
+        'Reminder about 15 min before',
       );
     });
 
@@ -290,7 +291,7 @@ void main() {
       );
       expect(
         reminderLine(early, r, now: DateTime.utc(2026, 9, 24, 15, 50)),
-        'Reminder 15 min before',
+        'Reminder about 15 min before',
       );
       expect(
         reminderLine(early, r, now: DateTime.utc(2026, 9, 24, 15, 56)),

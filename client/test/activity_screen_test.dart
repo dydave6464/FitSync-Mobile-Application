@@ -23,9 +23,10 @@ ActivityDay _d(int day, int? steps) => ActivityDay(
   activeMinutes: steps == null ? null : 64,
 );
 
-ActivityWeek _week({int? usual = 5180, List<String> missing = const []}) => ActivityWeek(
+ActivityWeek _week({int? usual = 5180, int? usualDays, List<String> missing = const []}) => ActivityWeek(
   days: [_d(22, 3000), _d(23, null), _d(24, 5000), _d(25, 6000), _d(26, null), _d(27, 4000), _d(28, 6420)],
   usual: usual,
+  usualDays: usualDays,
   missing: missing,
 );
 
@@ -45,12 +46,13 @@ Future<_StubActivity> _pump(
   ActivityState state, {
   ActivityScreen screen = const ActivityScreen(),
   bool dark = false,
+  Stream<int> live = const Stream<int>.empty(),
 }) async {
   final stub = _StubActivity(state);
   await tester.pumpWidget(ProviderScope(
     overrides: [
       activityProvider.overrideWith(() => stub),
-      liveStepsProvider.overrideWith((ref) => const Stream<int>.empty()),
+      liveStepsProvider.overrideWith((ref) => live),
     ],
     child: MaterialApp(theme: dark ? fsDarkTheme() : fsLightTheme(), home: screen),
   ));
@@ -131,6 +133,14 @@ class _AlwaysFails extends _RetryStub {
       );
 }
 
+/// The bar's blue fill, drawn only when there is a usual to measure against.
+Finder _usualFill() => find.byWidgetPredicate(
+  (w) =>
+      w is Container &&
+      w.decoration is BoxDecoration &&
+      (w.decoration! as BoxDecoration).color == fsLightTheme().extension<FsTokens>()!.blue,
+);
+
 void main() {
   testWidgets('shows today against the usual, the estimates and the week', (tester) async {
     await _pump(tester, ActivityState(
@@ -152,8 +162,9 @@ void main() {
     expect(find.descendant(of: find.byKey(const Key('activity.km')), matching: find.text('4.52')), findsOneWidget);
     expect(find.descendant(of: find.byKey(const Key('activity.minutes')), matching: find.text('64')), findsOneWidget);
     expect(find.text('This week'), findsOneWidget);
-    // (3000 + 5000 + 6000 + 4000 + 6420) / 5 = 4884
-    expect(find.text('avg 4.9k/day'), findsOneWidget);
+    // The days before today, the same baseline as the usual:
+    // (3000 + 5000 + 6000 + 4000) / 4 = 4500.
+    expect(find.text('avg 4.5k/day'), findsOneWidget);
   });
 
   testWidgets('before three days there is no usual and no marker yet', (tester) async {
@@ -163,6 +174,52 @@ void main() {
 
     expect(find.text('Your usual appears after 3 days of walking'), findsOneWidget);
     expect(find.byKey(const Key('activity.usualMarker')), findsNothing);
+  });
+
+  testWidgets('the wait for a usual counts down the days still needed', (tester) async {
+    await _pump(tester, ActivityState(
+      today: const DaySteps(steps: 6420), week: _week(usual: null, usualDays: 2), offline: false,
+    ));
+
+    expect(find.text('Your usual appears after 1 more day of walking'), findsOneWidget);
+  });
+
+  testWidgets('with no usual there is no bar, and its room is kept', (tester) async {
+    await _pump(tester, ActivityState(
+      today: const DaySteps(steps: 6420), week: _week(), offline: false,
+    ));
+    expect(_usualFill(), findsOneWidget);
+    final withUsual = tester.getTopLeft(find.byKey(const Key('activity.usualLine'))).dy;
+
+    await tester.pumpWidget(const SizedBox()); // a fresh scope for the next state
+    await _pump(tester, ActivityState(
+      today: const DaySteps(steps: 6420), week: _week(usual: null), offline: false,
+    ));
+    // A fill with nothing to measure against read as 80% of something.
+    expect(_usualFill(), findsNothing);
+    // The line under it stays put, so the usual's arriving moves nothing.
+    expect(tester.getTopLeft(find.byKey(const Key('activity.usualLine'))).dy, withUsual);
+  });
+
+  testWidgets('kcal, km and active minutes keep up with the live count', (tester) async {
+    final live = StreamController<int>();
+    addTearDown(live.close);
+    await _pump(
+      tester,
+      ActivityState(today: const DaySteps(steps: 6420), week: _week(), offline: false),
+      live: live.stream,
+    );
+
+    // Twice the steps saved at the last sync: twice the walking.
+    live.add(12840);
+    await tester.pumpAndSettle();
+
+    expect(find.text('12,840'), findsOneWidget);
+    Finder figure(String key, String value) =>
+        find.descendant(of: find.byKey(Key('activity.$key')), matching: find.text(value));
+    expect(figure('kcal', '316'), findsOneWidget);
+    expect(figure('km', '9.04'), findsOneWidget);
+    expect(figure('minutes', '128'), findsOneWidget);
   });
 
   testWidgets('missing height shows dashes and a way to Profile', (tester) async {
@@ -182,7 +239,9 @@ void main() {
     ));
 
     expect(find.text('Counting since you turned it on'), findsOneWidget);
-    expect(find.text("Steps from days FitSync wasn't opened are added to the next day"), findsOneWidget);
+    // Those steps are already in today's count, so the note says so rather
+    // than pointing at "the next day".
+    expect(find.text("Today's count includes steps from days you didn't open FitSync."), findsOneWidget);
     expect(find.text("Updates when you're online"), findsOneWidget);
   });
 
@@ -307,13 +366,26 @@ void main() {
   testWidgets("touching a day's bar shows its count", (tester) async {
     await _pump(tester, ActivityState(today: const DaySteps(steps: 6420), week: _week(), offline: false));
 
-    final chart = tester.widget<BarChart>(find.byType(BarChart));
-    // FsBarChart's tooltips: what a touch shows for each bar.
-    final tooltip = chart.data.barTouchData.touchTooltipData.getTooltipItem(
-      chart.data.barGroups[0], 0, chart.data.barGroups[0].barRods[0], 0,
+    BarChartData data() => tester.widget<BarChart>(find.byType(BarChart)).data;
+    List<int> showing() => [
+      for (final (i, group) in data().barGroups.indexed)
+        if (group.showingTooltipIndicators.isNotEmpty) i,
+    ];
+    expect(showing(), isEmpty);
+
+    // A real tap in the middle of Tuesday's column, the first of seven.
+    await tester.ensureVisible(find.byType(BarChart));
+    await tester.pumpAndSettle();
+    final chart = tester.getRect(find.byType(BarChart));
+    await tester.tapAt(Offset(chart.left + chart.width / 14, chart.top + 30));
+    await tester.pump();
+
+    expect(showing(), [0]);
+    final group = data().barGroups[0];
+    final tooltip = data().barTouchData.touchTooltipData.getTooltipItem(
+      group, 0, group.barRods[0], 0,
     );
     expect(tooltip!.text, 'Tuesday · 3,000 steps');
-    expect(chart.data.barTouchData.enabled, isTrue);
   });
 
   group('large text', () {
@@ -341,6 +413,15 @@ void main() {
       offline: false,
     );
 
+    testWidgets('kcal over a thousand is grouped, as steps are', (tester) async {
+      await _pump(tester, big);
+
+      expect(
+        find.descendant(of: find.byKey(const Key('activity.kcal')), matching: find.text('1,234')),
+        findsOneWidget,
+      );
+    });
+
     for (final size in const [Size(360, 640), Size(320, 568)]) {
       testWidgets('at 2x on ${size.width.toInt()} dp nothing overflows and figures stay whole', (tester) async {
         tester.view.physicalSize = size;
@@ -353,7 +434,7 @@ void main() {
         expect(tester.takeException(), isNull);
 
         expect(lines(tester, '12,345'), 1, reason: 'the headline must not split mid-number');
-        for (final figure in ['1234', '10.52', '145']) {
+        for (final figure in ['1,234', '10.52', '145']) {
           expect(lines(tester, figure), 1, reason: figure);
         }
 
@@ -374,7 +455,7 @@ void main() {
       expect(tester.takeException(), isNull);
 
       expect(lines(tester, '12,345'), 1);
-      for (final figure in ['1234', '10.52', '145']) {
+      for (final figure in ['1,234', '10.52', '145']) {
         expect(lines(tester, figure), 1, reason: figure);
       }
       await tester.scrollUntilVisible(find.text('This week'), 100);
@@ -390,6 +471,8 @@ void main() {
       expect(find.text('6,420'), findsOneWidget);
       expect(find.text('steps today'), findsOneWidget);
       expect(find.text('Loading your week…'), findsOneWidget);
+      // No bar until the week brings the usual it measures against.
+      expect(_usualFill(), findsNothing);
       // Not "Your usual appears after 3 days", which would be untrue.
       expect(find.text('Your usual appears after 3 days of walking'), findsNothing);
       expect(find.descendant(of: find.byKey(const Key('activity.kcal')), matching: find.text('—')), findsOneWidget);

@@ -205,6 +205,8 @@ class _ExerciseLogPanelState extends State<ExerciseLogPanel> {
   Widget build(BuildContext context) {
     final t = context.fs;
     final exercise = widget.exercise;
+    // Once per build, not once per set row below.
+    final name = exerciseDisplayName(exercise.name);
     final showWeight = _showWeight;
     final rows = widget.setCount ?? exercise.targetSets;
     // Only the last row, and only one added past the target that has not
@@ -249,8 +251,7 @@ class _ExerciseLogPanelState extends State<ExerciseLogPanel> {
                       container: true,
                       button: true,
                       enabled: widget.onOpenDemo != null,
-                      label:
-                          'Watch how to do ${exerciseDisplayName(exercise.name)}',
+                      label: 'Watch how to do $name',
                       child: InkWell(
                         key: Key('logpanel.demo.${exercise.exerciseId}'),
                         onTap: widget.onOpenDemo,
@@ -301,7 +302,7 @@ class _ExerciseLogPanelState extends State<ExerciseLogPanel> {
                           // Two lines: a name cut mid-word can be mistaken
                           // for its neighbour in the workout.
                           Text(
-                            exerciseDisplayName(exercise.name),
+                            name,
                             maxLines: 2,
                             overflow: TextOverflow.ellipsis,
                             style: TextStyle(
@@ -332,33 +333,46 @@ class _ExerciseLogPanelState extends State<ExerciseLogPanel> {
                           // table's own header row has no width to spare for
                           // a control once the weight column is gone.
                           if (!showWeight)
-                            InkWell(
-                              key: const Key('logpanel.addweight'),
+                            Semantics(
+                              // "+ weight" is a caption to the eye; to a
+                              // screen reader it is a button with a name.
+                              container: true,
+                              button: true,
+                              label: 'Add a weight column',
+                              excludeSemantics: true,
                               onTap: () => setState(() => _weightAdded = true),
-                              borderRadius: BorderRadius.circular(FsRadius.sm),
-                              // A caption to look at, a 48 dp target to tap:
-                              // the box grows around the text, which keeps
-                              // its size and its place at the left.
-                              child: ConstrainedBox(
-                                constraints: const BoxConstraints(
-                                  minWidth: 48,
-                                  minHeight: 48,
+                              child: InkWell(
+                                key: const Key('logpanel.addweight'),
+                                onTap: () =>
+                                    setState(() => _weightAdded = true),
+                                borderRadius: BorderRadius.circular(
+                                  FsRadius.sm,
                                 ),
-                                child: Padding(
-                                  padding: const EdgeInsets.symmetric(
-                                    horizontal: 4,
+                                // A caption to look at, a 48 dp target to tap:
+                                // the box grows around the text, which keeps
+                                // its size and its place at the left.
+                                child: ConstrainedBox(
+                                  constraints: const BoxConstraints(
+                                    minWidth: 48,
+                                    minHeight: 48,
                                   ),
-                                  child: Align(
-                                    alignment: AlignmentDirectional.centerStart,
-                                    widthFactor: 1,
-                                    heightFactor: 1,
-                                    child: Text(
-                                      '+ weight',
-                                      style: TextStyle(
-                                        fontFamily: fsMonoFamily,
-                                        fontSize: 11,
-                                        fontWeight: FontWeight.w600,
-                                        color: t.accentText,
+                                  child: Padding(
+                                    padding: const EdgeInsets.symmetric(
+                                      horizontal: 4,
+                                    ),
+                                    child: Align(
+                                      alignment:
+                                          AlignmentDirectional.centerStart,
+                                      widthFactor: 1,
+                                      heightFactor: 1,
+                                      child: Text(
+                                        '+ weight',
+                                        style: TextStyle(
+                                          fontFamily: fsMonoFamily,
+                                          fontSize: 11,
+                                          fontWeight: FontWeight.w600,
+                                          color: t.accentText,
+                                        ),
                                       ),
                                     ),
                                   ),
@@ -494,7 +508,7 @@ class _ExerciseLogPanelState extends State<ExerciseLogPanel> {
                       ),
                     if (widget.onAddSet != null)
                       _AddSet(
-                        exerciseName: exerciseDisplayName(exercise.name),
+                        exerciseName: name,
                         atCap: rows >= maxSetsPerExercise,
                         onAddSet: widget.onAddSet!,
                       ),

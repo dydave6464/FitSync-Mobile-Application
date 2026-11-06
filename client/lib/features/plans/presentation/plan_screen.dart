@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../../core/api_exception.dart';
 import '../../../core/theme.dart';
 import '../../../core/widgets/fs_kit.dart';
 import '../../exercises/domain/exercise_labels.dart';
@@ -38,22 +39,10 @@ class PlanScreen extends ConsumerWidget {
 
     return plan.when(
       loading: () => const Center(child: CircularProgressIndicator()),
-      error: (error, _) => Center(
-        child: Padding(
-          padding: const EdgeInsets.all(24),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Text(describeError(error), textAlign: TextAlign.center),
-              const SizedBox(height: 16),
-              FsButton(
-                label: 'Retry',
-                small: true,
-                onPressed: () => ref.invalidate(activePlanProvider),
-              ),
-            ],
-          ),
-        ),
+      error: (error, _) => FsRetry(
+        fullScreen: true,
+        message: userMessage(error),
+        onRetry: () => ref.invalidate(activePlanProvider),
       ),
       data: (loaded) => loaded == null
           ? const _NoPlanYet()
@@ -184,6 +173,12 @@ class _PlanViewState extends ConsumerState<_PlanView> {
     final baseUrl = ref.watch(planRepositoryProvider).baseUrl;
     final completedDays =
         ref.watch(completedDaysProvider).value ?? const <String>{};
+    // No `?? const []`: an empty list means the user chose no days, which is
+    // an answer. While the profile is loading or its fetch has failed the
+    // truth is "not known", and neither the strip nor the card may report a
+    // schedule -- or a target -- off a request that never landed. Read once,
+    // so the two cannot be handed different answers.
+    final trainingDays = ref.watch(profileProvider).value?.trainingDays;
 
     // The rule itself lives on WorkoutPlan.todayDayNo, with the caveat about
     // distinct dates: the Home tab's plan card needs the same number, and two
@@ -209,17 +204,13 @@ class _PlanViewState extends ConsumerState<_PlanView> {
           daysPerWeek: plan.daysPerWeek,
           completedDates: completedDays,
           today: DateTime.now(),
-          // No `?? const []`: an empty list means the user chose no days,
-          // which is an answer. While the profile is loading or its fetch has
-          // failed the truth is "not known", and the strip must not report a
-          // schedule -- or a target -- off a request that never landed.
-          trainingDays: ref.watch(profileProvider).value?.trainingDays,
+          trainingDays: trainingDays,
         ),
         const SizedBox(height: 14),
         SessionCard(
           plan: plan,
           dayNo: todayDayNo,
-          trainingDays: ref.watch(profileProvider).value?.trainingDays,
+          trainingDays: trainingDays,
           hasActiveSession: ref.watch(activeSessionProvider).value != null,
           starting: _starting && !_asking,
           onStart: _startOrResume,
@@ -276,14 +267,11 @@ class _PlanExerciseCard extends StatelessWidget {
     final change = TextButton(
       key: Key('swap.open.${exercise.planExerciseId}'),
       onPressed: () =>
-          showModalBottomSheet<String>(
-            context: context,
-            isScrollControlled: true,
-            builder: (_) => ExerciseSwapSheet(
-              planExerciseId: exercise.planExerciseId,
-              exerciseName: name,
-              onGoToProfile: onGoToProfile,
-            ),
+          showExerciseSwapSheet(
+            context,
+            planExerciseId: exercise.planExerciseId,
+            exerciseName: name,
+            onGoToProfile: onGoToProfile,
           ).then((swappedTo) {
             if (swappedTo != null && context.mounted) {
               ScaffoldMessenger.of(

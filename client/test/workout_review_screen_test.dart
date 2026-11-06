@@ -13,6 +13,7 @@ import 'package:fitsync/core/theme.dart';
 import 'package:fitsync/core/widgets/fs_kit.dart';
 import 'package:fitsync/features/exercises/data/exercise_repository.dart';
 import 'package:fitsync/features/exercises/domain/exercise.dart';
+import 'package:fitsync/features/exercises/presentation/exercise_thumb.dart';
 import 'package:fitsync/features/exercises/presentation/providers.dart';
 import 'package:fitsync/features/plans/domain/workout_plan.dart';
 import 'package:fitsync/features/plans/presentation/providers.dart';
@@ -360,6 +361,18 @@ void main() {
       tester.getTopLeft(find.text('Bench press')).dy,
     ];
     expect(positions, orderedEquals([...positions]..sort()));
+  });
+
+  // The kit's rounded thumb with its themed placeholder, as the plan list
+  // and the logger draw an exercise -- not a bare square Image.network.
+  testWidgets('each row draws its exercise with the shared thumb', (
+    tester,
+  ) async {
+    await _pump(tester, picks: const [_squat, _fly]);
+
+    final thumbs = tester.widgetList<ExerciseThumb>(find.byType(ExerciseThumb));
+    expect(thumbs, hasLength(2));
+    expect(thumbs.map((t) => t.size), everyElement(44));
   });
 
   testWidgets('says how many exercises the workout holds', (tester) async {

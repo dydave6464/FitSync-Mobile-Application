@@ -8,6 +8,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:fitsync/core/theme.dart';
 import 'package:fitsync/features/plans/domain/workout_plan.dart';
 import 'package:fitsync/features/sessions/presentation/widgets/exercise_jump_sheet.dart';
+import 'package:fitsync/core/widgets/fs_kit.dart';
 
 List<PlanExercise> _plan(int count) => [
   for (var i = 0; i < count; i++)
@@ -66,6 +67,23 @@ Finder get _list =>
     find.descendant(of: _sheet, matching: find.byType(Scrollable)).first;
 
 void main() {
+  testWidgets('has the shared sheet header, and its Close shuts the sheet', (
+    tester,
+  ) async {
+    final chosen = await _open(tester, count: 3);
+    final header = find.byType(FsSheetHeader);
+    expect(header, findsOneWidget);
+    expect(
+      find.descendant(of: header, matching: find.text('Jump to an exercise')),
+      findsOneWidget,
+    );
+
+    await tester.tap(find.byTooltip('Close'));
+    await tester.pumpAndSettle();
+    expect(_sheet, findsNothing);
+    expect(chosen, [null]);
+  });
+
   // Every row is built up front, so only a hit-testable finder makes
   // scrollUntilVisible drag the list the way a finger does -- rather than
   // jump it there programmatically, which works on a list nobody can scroll.
@@ -116,6 +134,36 @@ void main() {
     expect(_sheet, findsNothing);
     expect(chosen, [null]);
   });
+
+  // The current row was marked by colour and weight alone.
+  testWidgets(
+    'each row says where it is, how far along, and which is current',
+    (tester) async {
+      final handle = tester.ensureSemantics();
+      await _open(tester, count: 3, current: 1);
+
+      expect(
+        tester.getSemantics(find.byKey(const Key('jump.101'))),
+        matchesSemantics(
+          label: 'Exercise 2 of 3, Exercise 2, 0 of 3 sets',
+          isSelected: true,
+          hasSelectedState: true,
+          isButton: true,
+          hasTapAction: true,
+        ),
+      );
+      expect(
+        tester.getSemantics(find.byKey(const Key('jump.100'))),
+        matchesSemantics(
+          label: 'Exercise 1 of 3, Exercise 1, 0 of 3 sets',
+          hasSelectedState: true,
+          isButton: true,
+          hasTapAction: true,
+        ),
+      );
+      handle.dispose();
+    },
+  );
 
   testWidgets('a short list keeps the sheet short', (tester) async {
     await _open(tester, count: 2);

@@ -5,7 +5,9 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import 'package:fitsync/core/api_exception.dart';
+import 'package:fitsync/core/app_settings.dart';
 import 'package:fitsync/core/theme.dart';
+import 'package:fitsync/core/widgets/fs_kit.dart';
 import 'package:fitsync/features/nutrition/data/meal_photo_picker.dart';
 import 'package:fitsync/features/nutrition/data/meal_photo_repository.dart';
 import 'package:fitsync/features/nutrition/domain/meal_photo.dart';
@@ -55,6 +57,8 @@ class _Picker implements MealPhotoPicker {
 
 class _Repo implements MealPhotoRepository {
   int logged = 0;
+  String? loggedDate;
+  String? loggedMeal;
 
   @override
   Future<PhotoRecognition> recognize(Uint8List bytes, String mimeType, {Future<void>? cancel}) async => PhotoRecognition.fromJson({
@@ -68,6 +72,8 @@ class _Repo implements MealPhotoRepository {
   @override
   Future<int> log({required int recognitionId, required String date, required String mealType, required List<PhotoLogItem> items}) async {
     logged += items.length;
+    loggedDate = date;
+    loggedMeal = mealType;
     return items.length;
   }
 }
@@ -126,6 +132,33 @@ void main() {
     expect(find.descendant(of: find.byKey(const Key('snap.card')), matching: find.text('Pro')), findsOneWidget);
   });
 
+  // NU-7: the clock says nothing about which meal a past day's photo was;
+  // the confirm screen names the day and waits for a meal to be picked.
+  testWidgets('on a past day: no meal picked for you, the day named, and logged to it', (tester) async {
+    final h = await _pump(tester, home: const NutritionScreen());
+    await tester.tap(find.byKey(const Key('day.prev')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const Key('snap.card')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const Key('snap.library')));
+    await tester.pumpAndSettle();
+    expect(find.text('MEAL · YESTERDAY'), findsOneWidget);
+    for (final m in mealTypes) {
+      expect(tester.getSemantics(find.byKey(Key('snap.meal.$m'))), isSemantics(isChecked: false), reason: m);
+    }
+    final log = tester.widget<FsButton>(find.byKey(const Key('snap.log')));
+    expect(log.label, 'Pick a meal');
+    expect(log.onPressed, isNull);
+
+    await tester.tap(find.byKey(const Key('snap.meal.dinner')));
+    await tester.pump();
+    expect(tester.widget<FsButton>(find.byKey(const Key('snap.log'))).label, 'Log 1 item');
+    await tester.tap(find.byKey(const Key('snap.log')));
+    await tester.pumpAndSettle();
+    expect([h.repo.loggedDate, h.repo.loggedMeal], ['2026-10-13', 'dinner']);
+    expect(find.text('Logged 1 item to dinner yesterday'), findsOneWidget);
+  });
+
   testWidgets('a free account goes to the Pro screen, and the camera never opens', (tester) async {
     final h = await _pump(tester, home: const NutritionScreen(), premium: false);
     await tester.tap(find.byKey(const Key('snap.card')));
@@ -143,7 +176,7 @@ void main() {
     await tester.pumpAndSettle();
     expect(h.picker.sources, [PhotoSource.library]);
     expect(find.text('White rice'), findsOneWidget);
-    expect(tester.getSemantics(find.byKey(const Key('snap.meal.lunch'))), isSemantics(isSelected: true));
+    expect(tester.getSemantics(find.byKey(const Key('snap.meal.lunch'))), isSemantics(isChecked: true, isInMutuallyExclusiveGroup: true));
     await tester.tap(find.byKey(const Key('snap.log')));
     await tester.pumpAndSettle();
     expect(h.repo.logged, 1);
@@ -198,7 +231,7 @@ void main() {
     await tester.pumpAndSettle();
     await tester.tap(find.byKey(const Key('snap.camera')));
     await tester.pumpAndSettle();
-    expect(tester.getSemantics(find.byKey(const Key('snap.meal.dinner'))), isSemantics(isSelected: true));
+    expect(tester.getSemantics(find.byKey(const Key('snap.meal.dinner'))), isSemantics(isChecked: true, isInMutuallyExclusiveGroup: true));
     await tester.tap(find.byKey(const Key('snap.log')));
     await tester.pumpAndSettle();
     expect(h.repo.logged, 1);
@@ -231,7 +264,7 @@ void main() {
 
   testWidgets('choosing a food for a photo offers no second Snap a meal', (tester) async {
     await _pump(tester, home: Builder(builder: (context) => Scaffold(body: TextButton(
-      onPressed: () => pickFood(context, mealType: 'lunch'),
+      onPressed: () => pickFood(context),
       child: const Text('go'),
     ))));
     await tester.tap(find.text('go'));

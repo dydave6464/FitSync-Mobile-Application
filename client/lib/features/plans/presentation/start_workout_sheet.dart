@@ -50,9 +50,9 @@ Future<void> showStartWorkoutSheet(BuildContext context) async {
     notSaved = await showOutcomeSheet(context, pending);
   }
   if (!context.mounted) return;
+  // The surface, the corners and the handle are the theme's (PT-22).
   return showModalBottomSheet<void>(
     context: context,
-    backgroundColor: Colors.transparent,
     // A modal sheet is capped at 9/16 of the screen unless it is told
     // otherwise, and this one's content does not shrink: sideways on a
     // phone that cap lands "Log a workout" past the bottom edge, where debug
@@ -145,12 +145,8 @@ class _StartWorkoutSheet extends ConsumerWidget {
     // scratch must not depend on history loading.
     final last = ref.watch(lastWorkoutProvider).value;
 
-    return Container(
-      decoration: BoxDecoration(
-        color: t.surface,
-        borderRadius: const BorderRadius.vertical(top: Radius.circular(22)),
-      ),
-      padding: const EdgeInsets.fromLTRB(18, 10, 18, 22),
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(18, 0, 18, 22),
       child: SafeArea(
         top: false,
         child: SingleChildScrollView(
@@ -158,17 +154,6 @@ class _StartWorkoutSheet extends ConsumerWidget {
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              Center(
-                child: Container(
-                  width: 38,
-                  height: 4,
-                  margin: const EdgeInsets.only(bottom: 16),
-                  decoration: BoxDecoration(
-                    color: t.line2,
-                    borderRadius: BorderRadius.circular(99),
-                  ),
-                ),
-              ),
               Row(
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
@@ -198,11 +183,7 @@ class _StartWorkoutSheet extends ConsumerWidget {
               ),
               if (notice != null) ...[
                 const SizedBox(height: 4),
-                Text(
-                  notice!,
-                  key: const Key('start.notice'),
-                  style: TextStyle(fontSize: 12, color: t.red),
-                ),
+                FsErrorLine(notice!, key: const Key('start.notice')),
               ],
               const SizedBox(height: 14),
               _Row(

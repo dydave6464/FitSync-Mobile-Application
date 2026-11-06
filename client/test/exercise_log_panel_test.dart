@@ -1209,6 +1209,31 @@ void main() {
       expect(size.height, greaterThanOrEqualTo(48));
     });
 
+    // "+ weight" said nothing of what it does, and was not a button.
+    testWidgets('the add-weight control is a named button', (tester) async {
+      final handle = tester.ensureSemantics();
+      await tester.pumpWidget(
+        _host(
+          ExerciseLogPanel(
+            exercise: _bodyweight,
+            session: _session(),
+            drafts: _drafts(tester),
+            onUndoSet: (_) async {},
+          ),
+        ),
+      );
+
+      expect(
+        tester.getSemantics(find.byKey(const Key('logpanel.addweight'))),
+        matchesSemantics(
+          label: 'Add a weight column',
+          isButton: true,
+          hasTapAction: true,
+        ),
+      );
+      handle.dispose();
+    });
+
     // A dip belt is the exception, not the rule, so the field is asked for
     // rather than offered -- and asked for once on the exercise, because
     // nobody belts up for set 2 alone.

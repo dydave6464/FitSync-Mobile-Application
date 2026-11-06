@@ -13,6 +13,10 @@ const _plan = WorkoutPlan(
   sessionLengthMin: 45,
   weekNo: 1,
   source: 'custom',
+  days: [
+    PlanDay(dayNo: 1, name: 'Push'),
+    PlanDay(dayNo: 2, name: ''),
+  ],
   exercises: [
     PlanExercise(
       planExerciseId: 1,
@@ -66,12 +70,70 @@ Future<_Opened> _open(WidgetTester tester) async {
 }
 
 void main() {
+  // PT-22: the theme's chrome -- its handle, the surface and the kit's
+  // 22 dp corners rather than Material's 28.
+  testWidgets('takes the theme chrome', (tester) async {
+    await _open(tester);
+
+    expect(
+      tester.widget<BottomSheet>(find.byType(BottomSheet)).showDragHandle,
+      isTrue,
+    );
+    final material = tester.widget<Material>(
+      find
+          .descendant(
+            of: find.byType(BottomSheet),
+            matching: find.byType(Material),
+          )
+          .first,
+    );
+    expect(material.color, FsTokens.light.surface);
+    expect(
+      material.shape,
+      const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(
+          top: Radius.circular(FsRadius.card),
+        ),
+      ),
+    );
+  });
+
   testWidgets('lists the days already in the plan', (tester) async {
     await _open(tester);
 
-    expect(find.text('Day 1'), findsOneWidget);
-    expect(find.text('Day 2'), findsOneWidget);
+    expect(find.byKey(const Key('addToPlan.day.1')), findsOneWidget);
+    expect(find.byKey(const Key('addToPlan.day.2')), findsOneWidget);
     expect(find.byKey(const Key('addToPlan.newDay')), findsOneWidget);
+  });
+
+  testWidgets('names each day as the Plan tab does, with its number under '
+      'it (PT-21)', (tester) async {
+    // "Day 1" says nothing about what is replaced; the Plan tab calls the
+    // same day "Push". A day the plan never named keeps its number.
+    await _open(tester);
+
+    final push = find.byKey(const Key('addToPlan.day.1'));
+    expect(
+      find.descendant(of: push, matching: find.text('Push')),
+      findsOneWidget,
+    );
+    expect(
+      find.descendant(
+        of: push,
+        matching: find.text('Day 1 · Replaces 1 exercise'),
+      ),
+      findsOneWidget,
+    );
+
+    final unnamed = find.byKey(const Key('addToPlan.day.2'));
+    expect(
+      find.descendant(of: unnamed, matching: find.text('Day 2')),
+      findsOneWidget,
+    );
+    expect(
+      find.descendant(of: unnamed, matching: find.text('Replaces 1 exercise')),
+      findsOneWidget,
+    );
   });
 
   testWidgets('says how much is in each day', (tester) async {

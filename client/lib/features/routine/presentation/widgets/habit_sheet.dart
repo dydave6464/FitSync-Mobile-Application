@@ -23,10 +23,11 @@ Future<void> showHabitSheet(
 }) {
   return showModalBottomSheet<void>(
     context: context,
-    backgroundColor: context.fs.surface,
-    shape: const RoundedRectangleBorder(
-      borderRadius: BorderRadius.vertical(top: Radius.circular(22)),
-    ),
+    // The surface and corners are the theme's. Its handle is not: Material
+    // draws it outside the sheet's child, past the drag the sheet holds back
+    // while something typed would be lost, so the sheet draws the kit's own
+    // inside that hold (PT-22).
+    showDragHandle: false,
     isScrollControlled: true,
     builder: (_) =>
         _HabitSheet(existing: existing, announceRepeats: announceRepeats),
@@ -55,6 +56,24 @@ class _HabitSheetState extends ConsumerState<_HabitSheet> {
   bool _busy = false;
   String? _error;
 
+  /// Whether closing now would throw away what was typed or picked: any
+  /// field that differs from what the sheet opened with. Never while a save
+  /// is in flight -- that save still lands after the sheet has gone.
+  bool get _dirty {
+    if (_busy) return false;
+    final existing = widget.existing;
+    final days = existing?.weekdays ?? const [1, 2, 3, 4, 5, 6, 7];
+    return _title.text != (existing?.title ?? '') ||
+        _duration.text != (existing?.durationMin?.toString() ?? '') ||
+        _time != existing?.time ||
+        !(_weekdays.toSet().length == days.toSet().length &&
+            _weekdays.toSet().containsAll(days));
+  }
+
+  /// How far the current drag has pulled the sheet down, while [_dirty]
+  /// holds the drag back from the sheet itself.
+  double _dragDown = 0;
+
   /// The weekday of the day the routine screen was showing when this sheet
   /// opened, 1-7. Read once, in initState, rather than each time it is
   /// needed: the provider may have already moved on to a different day by the
@@ -69,7 +88,13 @@ class _HabitSheetState extends ConsumerState<_HabitSheet> {
     _openedOnWeekday = DateTime.tryParse(
       ref.read(routineTodayProvider).value?.date ?? '',
     )?.weekday;
+    // The fields are not rebuilt by typing; whether closing asks first
+    // depends on what is in them.
+    _title.addListener(_refresh);
+    _duration.addListener(_refresh);
   }
+
+  void _refresh() => setState(() {});
 
   @override
   void dispose() {
@@ -198,117 +223,159 @@ class _HabitSheetState extends ConsumerState<_HabitSheet> {
 
   @override
   Widget build(BuildContext context) {
+    // Typed or picked and not saved: back, a tap on the scrim and a swipe
+    // down ask before throwing it away, as the check-in sheet does.
+    // FsDiscardGuard covers back and the scrim, which ask the route to pop.
+    // A drag down never asks -- the bottom sheet pops its route itself once
+    // the drag ends -- so while dirty the drag is claimed here first and a
+    // clear pull down asks the route to pop, which the guard turns into the
+    // question.
+    final dirty = _dirty;
+    return FsDiscardGuard(
+      dirty: dirty,
+      child: GestureDetector(
+        behavior: HitTestBehavior.opaque,
+        // Kept out of semantics, so a dirty sheet does not tell a screen
+        // reader it scrolls; screen readers close it through back or the
+        // scrim, which the guard covers.
+        excludeFromSemantics: true,
+        onVerticalDragStart: dirty ? (_) => _dragDown = 0 : null,
+        onVerticalDragUpdate: dirty
+            ? (details) => _dragDown += details.primaryDelta ?? 0
+            : null,
+        onVerticalDragEnd: dirty
+            ? (details) {
+                final velocity = details.primaryVelocity ?? 0;
+                if (_dragDown > 48 || velocity > 700) {
+                  Navigator.of(context).maybePop();
+                }
+              }
+            : null,
+        child: _content(),
+      ),
+    );
+  }
+
+  Widget _content() {
     final t = context.fs;
     final existing = widget.existing;
 
     return SafeArea(
-      child: SingleChildScrollView(
-        padding: EdgeInsets.fromLTRB(
-          18,
-          10,
-          18,
-          MediaQuery.of(context).viewInsets.bottom + 20,
-        ),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            Text(
-              existing == null ? 'New habit' : 'Edit habit',
-              style: TextStyle(
-                fontSize: 20,
-                fontWeight: FontWeight.w700,
-                color: t.text,
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          const Padding(
+            padding: EdgeInsets.only(top: 10, bottom: 12),
+            child: Center(child: FsSheetHandle()),
+          ),
+          Flexible(child: _form(t, existing)),
+        ],
+      ),
+    );
+  }
+
+  Widget _form(FsTokens t, Habit? existing) {
+    return SingleChildScrollView(
+      padding: EdgeInsets.fromLTRB(
+        18,
+        0,
+        18,
+        MediaQuery.of(context).viewInsets.bottom + 20,
+      ),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Text(
+            existing == null ? 'New habit' : 'Edit habit',
+            style: TextStyle(
+              fontSize: 20,
+              fontWeight: FontWeight.w700,
+              color: t.text,
+            ),
+          ),
+          const SizedBox(height: 16),
+          FsField(
+            controller: _title,
+            fieldKey: const Key('habit.title'),
+            label: 'Name',
+            hint: 'e.g. Morning mobility',
+          ),
+          const SizedBox(height: 12),
+          Row(
+            // The time button lines up with the duration box, not with
+            // the duration's label above it.
+            crossAxisAlignment: CrossAxisAlignment.end,
+            children: [
+              Expanded(
+                // The kit's secondary button: text-coloured on the
+                // surface, like the field beside it, where M3's outlined
+                // button fell back to the brand green (2.87:1 on white).
+                child: FsButton(
+                  key: const Key('habit.time'),
+                  kind: FsButtonKind.secondary,
+                  small: true,
+                  // Grows rather than cutting '7:00 AM' to '7:00 …' at
+                  // large text, which would lose the AM/PM.
+                  wrapLabel: true,
+                  onPressed: _busy ? null : _pickTime,
+                  icon: const Icon(Icons.schedule, size: 18),
+                  label: _time == null ? 'Any time' : formatClock(_time!),
+                ),
               ),
-            ),
-            const SizedBox(height: 16),
-            FsField(
-              controller: _title,
-              fieldKey: const Key('habit.title'),
-              label: 'Name',
-              hint: 'e.g. Morning mobility',
-            ),
+              if (_time != null)
+                IconButton(
+                  key: const Key('habit.time.clear'),
+                  tooltip: 'Clear time',
+                  icon: const Icon(Icons.close, size: 18),
+                  onPressed: _busy ? null : () => setState(() => _time = null),
+                ),
+              const SizedBox(width: 12),
+              SizedBox(
+                width: 120,
+                child: FsField(
+                  controller: _duration,
+                  fieldKey: const Key('habit.duration'),
+                  label: 'Duration',
+                  // No placeholder: the eyebrow names the field, and the
+                  // 'min' suffix keeps its room even while hidden, so in
+                  // 120 dp any word was cut off ('Optional' at 1x).
+                  hint: '',
+                  suffix: 'min',
+                  keyboardType: TextInputType.number,
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 16),
+          const FsEyebrow('Repeat on'),
+          const SizedBox(height: 8),
+          TrainingDaysRow(
+            selected: _weekdays,
+            enabled: !_busy,
+            onChanged: (days) => setState(() => _weekdays = days),
+          ),
+          if (_error != null) ...[
             const SizedBox(height: 12),
-            Row(
-              // The time button lines up with the duration box, not with
-              // the duration's label above it.
-              crossAxisAlignment: CrossAxisAlignment.end,
-              children: [
-                Expanded(
-                  // The kit's secondary button: text-coloured on the
-                  // surface, like the field beside it, where M3's outlined
-                  // button fell back to the brand green (2.87:1 on white).
-                  child: FsButton(
-                    key: const Key('habit.time'),
-                    kind: FsButtonKind.secondary,
-                    small: true,
-                    // Grows rather than cutting '7:00 AM' to '7:00 …' at
-                    // large text, which would lose the AM/PM.
-                    wrapLabel: true,
-                    onPressed: _busy ? null : _pickTime,
-                    icon: const Icon(Icons.schedule, size: 18),
-                    label: _time == null ? 'Any time' : formatClock(_time!),
-                  ),
-                ),
-                if (_time != null)
-                  IconButton(
-                    key: const Key('habit.time.clear'),
-                    tooltip: 'Clear time',
-                    icon: const Icon(Icons.close, size: 18),
-                    onPressed: _busy
-                        ? null
-                        : () => setState(() => _time = null),
-                  ),
-                const SizedBox(width: 12),
-                SizedBox(
-                  width: 120,
-                  child: FsField(
-                    controller: _duration,
-                    fieldKey: const Key('habit.duration'),
-                    label: 'Duration',
-                    // No placeholder: the eyebrow names the field, and the
-                    // 'min' suffix keeps its room even while hidden, so in
-                    // 120 dp any word was cut off ('Optional' at 1x).
-                    hint: '',
-                    suffix: 'min',
-                    keyboardType: TextInputType.number,
-                  ),
-                ),
-              ],
-            ),
-            const SizedBox(height: 16),
-            const FsEyebrow('Repeat on'),
-            const SizedBox(height: 8),
-            TrainingDaysRow(
-              selected: _weekdays,
-              enabled: !_busy,
-              onChanged: (days) => setState(() => _weekdays = days),
-            ),
-            if (_error != null) ...[
-              const SizedBox(height: 12),
-              Text(
-                _error!,
-                key: const Key('habit.error'),
-                style: TextStyle(fontSize: 12, color: t.red),
-              ),
-            ],
-            const SizedBox(height: 18),
-            FsButton(
-              key: const Key('habit.save'),
-              label: 'Save',
-              busy: _busy,
-              onPressed: _busy ? null : _save,
-            ),
-            if (existing != null) ...[
-              const SizedBox(height: 6),
-              TextButton(
-                key: const Key('habit.delete'),
-                onPressed: _busy ? null : () => _delete(existing),
-                child: Text('Delete habit', style: TextStyle(color: t.red)),
-              ),
-            ],
+            FsErrorLine(_error!, key: const Key('habit.error')),
           ],
-        ),
+          const SizedBox(height: 18),
+          FsButton(
+            key: const Key('habit.save'),
+            label: 'Save',
+            busy: _busy,
+            onPressed: _busy ? null : _save,
+          ),
+          if (existing != null) ...[
+            const SizedBox(height: 6),
+            TextButton(
+              key: const Key('habit.delete'),
+              onPressed: _busy ? null : () => _delete(existing),
+              child: Text('Delete habit', style: TextStyle(color: t.red)),
+            ),
+          ],
+        ],
       ),
     );
   }

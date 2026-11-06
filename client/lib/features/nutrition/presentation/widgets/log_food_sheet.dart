@@ -1,5 +1,4 @@
 import 'package:flutter/material.dart';
-import 'package:flutter/semantics.dart';
 
 import '../../../../core/numbers.dart';
 import '../../../../core/theme.dart';
@@ -8,6 +7,7 @@ import '../../domain/nutrition.dart';
 import 'fatsecret_attribution.dart';
 import 'meal_chips.dart';
 import 'number_box.dart';
+import 'text_limits.dart';
 
 class LogChoice {
   const LogChoice({required this.mealType, required this.servings, this.edited});
@@ -27,7 +27,13 @@ Future<LogChoice?> showLogFoodSheet(BuildContext context, Food food,
         {required String mealType, double servings = 1, bool changing = false}) =>
     showModalBottomSheet<LogChoice>(
       context: context,
+      // With Edit numbers open the sheet fills most of the screen: the
+      // handle shows it can be dragged away, as the app's other sheets do.
+      showDragHandle: true,
       isScrollControlled: true,
+      // Scroll-controlled, it may grow to the full height: kept out from
+      // under the status bar.
+      useSafeArea: true,
       builder: (_) => LogFoodSheet(food: food, mealType: mealType, servings: servings, changing: changing),
     );
 
@@ -72,17 +78,15 @@ class _LogFoodSheetState extends State<LogFoodSheet> {
     super.dispose();
   }
 
-  /// One step of the servings stepper, read out as servings and what they
-  /// come to. An announcement rather than a live region: the kcal also
-  /// follows the numbers typed under "Edit numbers", and a live region would
-  /// speak again on every keystroke there.
-  void _step(double by, int perKcal) {
-    setState(() => _servings = (_servings + by).clamp(_minServings, _maxServings));
-    SemanticsService.sendAnnouncement(View.of(context), _amountLabel(perKcal), Directionality.of(context));
-  }
+  /// One step of the servings stepper. The figure between the buttons is a
+  /// live region that says the new servings.
+  void _step(double by) =>
+      setState(() => _servings = (_servings + by).clamp(_minServings, _maxServings));
 
-  String _amountLabel(int perKcal) =>
-      '${formatServings(_servings)} ${_servings == 1 ? 'serving' : 'servings'} · ${(perKcal * _servings).round()} kcal';
+  /// The servings as said: "1.5 servings", never a bare number.
+  String get _servingsLabel => '${formatServings(_servings)} ${_servings == 1 ? 'serving' : 'servings'}';
+
+  String _amountLabel(int perKcal) => '$_servingsLabel · ${(perKcal * _servings).round()} kcal';
 
   @override
   Widget build(BuildContext context) {
@@ -93,9 +97,9 @@ class _LogFoodSheetState extends State<LogFoodSheet> {
     final p = _grams(_protein), c = _grams(_carbs), fat = _grams(_fat);
     final fiber = _optionalNumber(_fiber);
     final sugar = _optionalNumber(_sugar), sodium = _optionalNumber(_sodium);
-    final gramsOk = [p, c, fat].every((g) => g != null && g >= 0 && g <= 500) &&
-        [fiber, sugar].every((g) => g == null || (g >= 0 && g <= 500));
-    final sodiumOk = sodium == null || (sodium >= 0 && sodium <= 20000);
+    final gramsOk = [p, c, fat].every((g) => g != null && inGramsRange(g)) &&
+        [fiber, sugar].every((g) => g == null || inGramsRange(g));
+    final sodiumOk = sodium == null || inSodiumRange(sodium);
     // Only a real change makes this the user's own entry; opening the boxes
     // and logging untouched still logs the listed food, whatever its numbers
     // (a 0-macro drink, or a listed value over 500 g). Unreadable text (null,
@@ -138,7 +142,7 @@ class _LogFoodSheetState extends State<LogFoodSheet> {
 
     return SafeArea(
       child: SingleChildScrollView(
-        padding: EdgeInsets.fromLTRB(20, 20, 20, 16 + MediaQuery.viewInsetsOf(context).bottom),
+        padding: EdgeInsets.fromLTRB(20, 0, 20, 16 + MediaQuery.viewInsetsOf(context).bottom),
         child: Column(
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -155,15 +159,21 @@ class _LogFoodSheetState extends State<LogFoodSheet> {
                 IconButton(
                   key: const Key('servings.minus'),
                   tooltip: 'Fewer servings',
-                  onPressed: _servings > _minServings ? () => _step(-0.5, perKcal) : null,
+                  onPressed: _servings > _minServings ? () => _step(-0.5) : null,
                   icon: const Icon(Icons.remove),
                 ),
-                // At least 48 dp, and the figure shrinks rather than breaking
-                // "1.5" over two lines at large text. The live region below
-                // speaks it, so it is not a second, bare node.
+                // At least 48 dp, and "1.5" stays on one line at large text.
+                // A live region whose words follow the servings alone: the
+                // kcal also follows the numbers typed under Edit numbers, and
+                // a region carrying it would speak on every keystroke there.
                 ConstrainedBox(
                   constraints: const BoxConstraints(minWidth: 48),
-                  child: ExcludeSemantics(
+                  child: Semantics(
+                    key: const Key('logSheet.servings'),
+                    container: true,
+                    liveRegion: true,
+                    label: _servingsLabel,
+                    excludeSemantics: true,
                     child: Center(
                       widthFactor: 1,
                       child: FsOneLine(formatServings(_servings), style: theme.textTheme.titleMedium!),
@@ -173,14 +183,14 @@ class _LogFoodSheetState extends State<LogFoodSheet> {
                 IconButton(
                   key: const Key('servings.plus'),
                   tooltip: 'More servings',
-                  onPressed: _servings < _maxServings ? () => _step(0.5, perKcal) : null,
+                  onPressed: _servings < _maxServings ? () => _step(0.5) : null,
                   icon: const Icon(Icons.add),
                 ),
               ],
             ),
             const SizedBox(height: 8),
-            // How many servings and what they come to, never a bare number;
-            // _step reads the same words out after every step.
+            // How many servings and what they come to, never a bare number.
+            // Not live: it follows typing too (see the servings figure).
             Semantics(
               key: const Key('logSheet.amount'),
               container: true,
@@ -219,7 +229,7 @@ class _LogFoodSheetState extends State<LogFoodSheet> {
               )
             else ...[
               const SizedBox(height: 12),
-              Text('Your numbers, per serving', style: theme.textTheme.titleSmall),
+              Semantics(header: true, child: const FsEyebrow('Your numbers, per serving')),
               const SizedBox(height: 8),
               // Two rows of two, not one row of four: four boxes in a row
               // overflow a narrow phone at large text.
@@ -263,8 +273,8 @@ class _LogFoodSheetState extends State<LogFoodSheet> {
                                 source: 'manual',
                                 // A FatSecret name or serving can be longer
                                 // than a manual entry may be.
-                                name: _clip(f.name, _maxName),
-                                servingDesc: f.servingDesc == null ? null : _clip(f.servingDesc!, _maxServingDesc),
+                                name: clipUtf16(f.name, _maxName),
+                                servingDesc: f.servingDesc == null ? null : clipUtf16(f.servingDesc!, _maxServingDesc),
                                 kcal: perKcal,
                                 proteinG: p!,
                                 carbsG: c!,
@@ -294,19 +304,6 @@ const _maxServings = 20.0;
 /// (server/src/routes/nutrition.js).
 const _maxName = 100;
 const _maxServingDesc = 60;
-
-/// [text], trimmed and cut to at most [max] UTF-16 units -- what the server's
-/// length check counts -- without splitting a character, then trimmed again.
-String _clip(String text, int max) {
-  final trimmed = text.trim();
-  if (trimmed.length <= max) return trimmed;
-  final out = StringBuffer();
-  for (final ch in trimmed.characters) {
-    if (out.length + ch.length > max) break;
-    out.write(ch);
-  }
-  return out.toString().trimRight();
-}
 
 /// 4.3 -> "4.3", 28.0 -> "28": a number as someone would type it.
 String _plain(double v) => v == v.roundToDouble() ? v.toStringAsFixed(0) : v.toString();

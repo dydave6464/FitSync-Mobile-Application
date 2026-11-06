@@ -58,6 +58,22 @@ FsChip _chip(WidgetTester tester, String key) =>
     tester.widget<FsChip>(find.byKey(Key(key)));
 
 void main() {
+  testWidgets('has the shared sheet header, and its Close shuts the sheet', (
+    tester,
+  ) async {
+    await _open(tester);
+    final header = find.byType(FsSheetHeader);
+    expect(header, findsOneWidget);
+    expect(
+      find.descendant(of: header, matching: find.text('Rest time')),
+      findsOneWidget,
+    );
+
+    await tester.tap(find.byTooltip('Close'));
+    await tester.pumpAndSettle();
+    expect(find.byKey(const Key('rest.sheet')), findsNothing);
+  });
+
   testWidgets('offers 30-second steps from 0:30 to 5:00, and Custom', (
     tester,
   ) async {
@@ -117,6 +133,14 @@ void main() {
 
     expect(
       find.textContaining("Couldn't save your rest time."),
+      findsOneWidget,
+    );
+    // The kit's error line: red icon and text, read out as it appears.
+    expect(
+      find.ancestor(
+        of: find.textContaining("Couldn't save your rest time."),
+        matching: find.byType(FsErrorLine),
+      ),
       findsOneWidget,
     );
     expect(_chip(tester, 'rest.preset.90').selected, isTrue);

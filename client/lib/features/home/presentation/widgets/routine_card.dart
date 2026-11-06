@@ -57,12 +57,17 @@ class RoutineCard extends StatelessWidget {
                 crossAxisAlignment: WrapCrossAlignment.center,
                 runSpacing: 4,
                 children: [
-                  Text(
-                    "Today's routine",
-                    style: TextStyle(
-                      fontSize: 15,
-                      fontWeight: FontWeight.w700,
-                      color: t.text,
+                  // Folds into the card's one button node, which a screen
+                  // reader then also offers as a heading.
+                  Semantics(
+                    header: true,
+                    child: Text(
+                      "Today's routine",
+                      style: TextStyle(
+                        fontSize: 15,
+                        fontWeight: FontWeight.w700,
+                        color: t.text,
+                      ),
                     ),
                   ),
                   if (streak >= 1 || entries.isNotEmpty)

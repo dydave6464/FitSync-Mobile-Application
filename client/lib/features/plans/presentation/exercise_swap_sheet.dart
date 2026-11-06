@@ -28,6 +28,29 @@ String _altSubtitle(ExerciseAlternative alt) => switch (alt.equipment) {
 /// Alternatives lead and the search field starts empty: the catalogue's names
 /// are not guessable (one exercise is named `quads`, and the plain bodyweight
 /// squat is filed under glutes), so most swaps should need no typing.
+/// Opens [ExerciseSwapSheet], the one way the app does: from the Plan tab
+/// and from the logger. Resolves to the name swapped to, or null.
+///
+/// Material's handle is off: it sits outside the sheet's child, where a drag
+/// on it would close the sheet mid-swap past the hold below, and it would
+/// add its 48 dp on top of the height the sheet is tuned to. The sheet draws
+/// the kit's handle itself instead (PT-22).
+Future<String?> showExerciseSwapSheet(
+  BuildContext context, {
+  required int planExerciseId,
+  required String exerciseName,
+  VoidCallback? onGoToProfile,
+}) => showModalBottomSheet<String>(
+  context: context,
+  isScrollControlled: true,
+  showDragHandle: false,
+  builder: (_) => ExerciseSwapSheet(
+    planExerciseId: planExerciseId,
+    exerciseName: exerciseName,
+    onGoToProfile: onGoToProfile,
+  ),
+);
+
 class ExerciseSwapSheet extends ConsumerStatefulWidget {
   const ExerciseSwapSheet({
     super.key,
@@ -67,6 +90,10 @@ class _ExerciseSwapSheetState extends ConsumerState<ExerciseSwapSheet> {
   /// covered the screen while one with two barely showed — the same action
   /// looking like two different screens.
   static const _heightFraction = 0.52;
+
+  /// What the sheet spends above and below its panes: 10 dp, the handle,
+  /// 10 dp, and 16 dp at the bottom.
+  static const _chromeHeight = 10.0 + 4 + 10 + 16;
 
   /// How tall the list pane has to be, at 1x text, for its heading, search
   /// field and equipment note to stay put with the list scrolling between
@@ -189,7 +216,7 @@ class _ExerciseSwapSheetState extends ConsumerState<ExerciseSwapSheet> {
         children: [
           const TextSpan(text: "Don't see your equipment? "),
           TextSpan(
-            text: 'Update it in Profile \u2192 Equipment & location.',
+            text: 'Update it in Profile \u2192 Level, equipment & location.',
             style: TextStyle(color: linked ? t.accentText : t.text3),
           ),
         ],
@@ -262,19 +289,10 @@ class _ExerciseSwapSheetState extends ConsumerState<ExerciseSwapSheet> {
           child: detail.when(
             loading: () => const Center(child: CircularProgressIndicator()),
             error: (err, _) => Center(
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Text(describeError(err), textAlign: TextAlign.center),
-                  const SizedBox(height: 12),
-                  FsButton(
-                    label: 'Retry',
-                    small: true,
-                    kind: FsButtonKind.secondary,
-                    onPressed: () =>
-                        ref.invalidate(exerciseDetailProvider(alt.exerciseId)),
-                  ),
-                ],
+              child: FsRetry(
+                message: userMessage(err),
+                onRetry: () =>
+                    ref.invalidate(exerciseDetailProvider(alt.exerciseId)),
               ),
             ),
             data: (exercise) => exercise.animationUrl == null
@@ -320,10 +338,7 @@ class _ExerciseSwapSheetState extends ConsumerState<ExerciseSwapSheet> {
         ),
         if (_error != null) ...[
           const SizedBox(height: 12),
-          Text(
-            _error!,
-            style: TextStyle(color: Theme.of(context).colorScheme.error),
-          ),
+          FsErrorLine(_error!),
         ],
         const SizedBox(height: 12),
         FsButton(
@@ -357,7 +372,7 @@ class _ExerciseSwapSheetState extends ConsumerState<ExerciseSwapSheet> {
     final screen = MediaQuery.sizeOf(context).height;
     final paneHeight =
         screen * _heightFraction -
-        32 -
+        _chromeHeight -
         MediaQuery.viewPaddingOf(context).bottom;
     // A body-size factor rather than scaling the bar itself: a phone's
     // nonlinear text scaling grows a 360 "font size" far less than text.
@@ -398,13 +413,7 @@ class _ExerciseSwapSheetState extends ConsumerState<ExerciseSwapSheet> {
                 ),
         ),
       ),
-      if (_error != null) ...[
-        const SizedBox(height: 12),
-        Text(
-          _error!,
-          style: TextStyle(color: Theme.of(context).colorScheme.error),
-        ),
-      ],
+      if (_error != null) ...[const SizedBox(height: 12), FsErrorLine(_error!)],
       const SizedBox(height: 16),
     ];
     final foot = <Widget>[
@@ -522,15 +531,25 @@ class _ExerciseSwapSheetState extends ConsumerState<ExerciseSwapSheet> {
           padding: EdgeInsets.only(
             left: 20,
             right: 20,
-            top: 16,
+            top: 10,
             bottom: insets + 16,
           ),
-          // The list pane is replaced rather than covered, so its query, its
-          // filter and its scroll offset are all still here when the preview
-          // is dismissed.
-          child: previewing != null
-              ? _preview(t, previewing)
-              : _listPane(t, alternatives),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              // Inside the drag hold below, unlike Material's handle.
+              const Center(child: FsSheetHandle()),
+              const SizedBox(height: 10),
+              // The list pane is replaced rather than covered, so its query,
+              // its filter and its scroll offset are all still here when the
+              // preview is dismissed.
+              Expanded(
+                child: previewing != null
+                    ? _preview(t, previewing)
+                    : _listPane(t, alternatives),
+              ),
+            ],
+          ),
         ),
       ),
     );

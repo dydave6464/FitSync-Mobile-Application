@@ -10,6 +10,7 @@ import '../../../core/units.dart';
 import '../../../core/widgets/fs_kit.dart';
 import '../../profile/presentation/providers.dart' show weightUnitProvider;
 import '../domain/streaks.dart';
+import 'goal_sheet.dart';
 import 'providers.dart';
 
 /// Adds a lift goal in two steps: choose the exercise, then the target.
@@ -17,6 +18,8 @@ import 'providers.dart';
 Future<void> showAddGoalSheet(BuildContext context) {
   return showModalBottomSheet<void>(
     context: context,
+    // Material's 48 dp would push a sheet sized to the room above the keyboard off the top (PT-22).
+    showDragHandle: false,
     backgroundColor: context.fs.surface,
     shape: const RoundedRectangleBorder(
       borderRadius: BorderRadius.vertical(top: Radius.circular(22)),
@@ -73,6 +76,37 @@ class _AddGoalSheetState extends ConsumerState<_AddGoalSheet> {
       _picked = (exerciseId: exerciseId, name: name, bestKg: best);
       _error = null;
     });
+  }
+
+  /// A lift with an unreached goal can take no second one (the server
+  /// answers GOAL_EXISTS), so its row opens that goal instead: this sheet
+  /// closes and the goal's own sheet opens in its place.
+  void _openGoal(LiftGoal goal) {
+    final navigator = Navigator.of(context);
+    final unit = ref.read(weightUnitProvider);
+    navigator.pop();
+    showGoalSheet(navigator.context, goal, unit);
+  }
+
+  /// The user's unreached goals by exercise, once the list has loaded.
+  /// Until then, or if it fails, every row is offered as before and the
+  /// server still refuses a second goal.
+  Map<int, LiftGoal> _openGoals() => {
+    for (final g in ref.watch(goalsProvider).value ?? const <LiftGoal>[])
+      if (!g.reached) g.exerciseId: g,
+  };
+
+  /// A row's tap: its open goal when it has one, else step two.
+  VoidCallback _onRow(
+    Map<int, LiftGoal> open,
+    int exerciseId,
+    String name,
+    List<GoalOption> known,
+  ) {
+    final goal = open[exerciseId];
+    return goal == null
+        ? () => _pick(exerciseId, name, known)
+        : () => _openGoal(goal);
   }
 
   Future<void> _save() async {
@@ -145,11 +179,24 @@ class _AddGoalSheetState extends ConsumerState<_AddGoalSheet> {
       160.0,
       math.min(media.size.height * 0.7, roomAboveKeyboard),
     );
-    return Padding(
-      padding: EdgeInsets.fromLTRB(20, 16, 20, 20 + media.viewInsets.bottom),
-      child: SizedBox(
-        height: height,
-        child: picked == null ? _chooseStep(options) : _targetStep(picked),
+    // The phone's back on the target step goes back a step, as the arrow
+    // does, rather than closing the sheet and losing the chosen lift. Held
+    // while a save is in flight, as the arrow is.
+    return PopScope(
+      canPop: picked == null,
+      onPopInvokedWithResult: (didPop, _) {
+        if (didPop || _busy) return;
+        setState(() {
+          _picked = null;
+          _error = null;
+        });
+      },
+      child: Padding(
+        padding: EdgeInsets.fromLTRB(20, 16, 20, 20 + media.viewInsets.bottom),
+        child: SizedBox(
+          height: height,
+          child: picked == null ? _chooseStep(options) : _targetStep(picked),
+        ),
       ),
     );
   }
@@ -161,7 +208,7 @@ class _AddGoalSheetState extends ConsumerState<_AddGoalSheet> {
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Text(
-          'New goal',
+          'New lift goal',
           style: TextStyle(
             fontSize: 18,
             fontWeight: FontWeight.w700,
@@ -188,9 +235,14 @@ class _AddGoalSheetState extends ConsumerState<_AddGoalSheet> {
 
   Widget _liftedBefore(AsyncValue<List<GoalOption>> options) {
     final unit = ref.watch(weightUnitProvider);
+    final open = _openGoals();
     return options.when(
       loading: () => const Center(child: CircularProgressIndicator()),
-      error: (error, _) => _Hint(userMessage(error)),
+      error: (error, _) => _LoadFailed(
+        message: userMessage(error),
+        buttonKey: const Key('goal.options.retry'),
+        onRetry: () => ref.invalidate(goalOptionsProvider),
+      ),
       data: (list) => list.isEmpty
           ? const _Hint('Search for an exercise to set a goal.')
           : ListView(
@@ -202,7 +254,8 @@ class _AddGoalSheetState extends ConsumerState<_AddGoalSheet> {
                     key: Key('goal.option.${o.exerciseId}'),
                     title: o.name,
                     subtitle: 'Best ${formatWeightWithUnit(o.bestKg, unit)}',
-                    onTap: () => _pick(o.exerciseId, o.name, list),
+                    goalSet: open.containsKey(o.exerciseId),
+                    onTap: _onRow(open, o.exerciseId, o.name, list),
                   ),
               ],
             ),
@@ -210,11 +263,16 @@ class _AddGoalSheetState extends ConsumerState<_AddGoalSheet> {
   }
 
   Widget _searchResults(List<GoalOption> known) {
+    final open = _openGoals();
     return ref
         .watch(goalSearchProvider(_query))
         .when(
           loading: () => const Center(child: CircularProgressIndicator()),
-          error: (error, _) => _Hint(userMessage(error)),
+          error: (error, _) => _LoadFailed(
+            message: userMessage(error),
+            buttonKey: const Key('goal.search.retry'),
+            onRetry: () => ref.invalidate(goalSearchProvider(_query)),
+          ),
           data: (items) => items.isEmpty
               ? _Hint('No exercises match "$_query".')
               : ListView(
@@ -224,7 +282,8 @@ class _AddGoalSheetState extends ConsumerState<_AddGoalSheet> {
                         key: Key('goal.result.${e.exerciseId}'),
                         title: e.name,
                         subtitle: null,
-                        onTap: () => _pick(e.exerciseId, e.name, known),
+                        goalSet: open.containsKey(e.exerciseId),
+                        onTap: _onRow(open, e.exerciseId, e.name, known),
                       ),
                   ],
                 ),
@@ -274,7 +333,8 @@ class _AddGoalSheetState extends ConsumerState<_AddGoalSheet> {
           const SizedBox(height: 16),
           FsField(
             controller: _target,
-            hint: 'Target (${unit.api})',
+            hint: 'Target',
+            suffix: unit.api,
             fieldKey: const Key('goal.target'),
             keyboardType: const TextInputType.numberWithOptions(decimal: true),
           ),
@@ -303,35 +363,60 @@ class _PickRow extends StatelessWidget {
     required this.title,
     required this.subtitle,
     required this.onTap,
+    this.goalSet = false,
   });
 
   final String title;
   final String? subtitle;
   final VoidCallback onTap;
 
+  /// The lift already has an unreached goal; the row opens it.
+  final bool goalSet;
+
   @override
   Widget build(BuildContext context) {
     final t = context.fs;
-    return InkWell(
-      onTap: onTap,
-      child: Padding(
-        padding: const EdgeInsets.symmetric(vertical: 10),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(
-              title,
-              style: TextStyle(
-                fontSize: 14,
-                fontWeight: FontWeight.w600,
-                color: t.text,
-              ),
+    // One button per row, at least a thumb's 48 dp even with no subtitle.
+    return Semantics(
+      container: true,
+      button: true,
+      child: InkWell(
+        onTap: onTap,
+        child: ConstrainedBox(
+          constraints: const BoxConstraints(minHeight: 48),
+          child: Padding(
+            padding: const EdgeInsets.symmetric(vertical: 10),
+            child: Row(
+              children: [
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        title,
+                        style: TextStyle(
+                          fontSize: 14,
+                          fontWeight: FontWeight.w600,
+                          color: t.text,
+                        ),
+                      ),
+                      if (subtitle != null) ...[
+                        const SizedBox(height: 2),
+                        Text(
+                          subtitle!,
+                          style: TextStyle(fontSize: 11.5, color: t.text3),
+                        ),
+                      ],
+                    ],
+                  ),
+                ),
+                if (goalSet) ...[
+                  const SizedBox(width: 8),
+                  const FsTag('Goal set'),
+                ],
+              ],
             ),
-            if (subtitle != null) ...[
-              const SizedBox(height: 2),
-              Text(subtitle!, style: TextStyle(fontSize: 11.5, color: t.text3)),
-            ],
-          ],
+          ),
         ),
       ),
     );
@@ -356,4 +441,25 @@ class _Hint extends StatelessWidget {
       ),
     );
   }
+}
+
+/// A list that could not load, in the sheet's list area: the kit's
+/// FsRetry, centred, and scrollable so large text never overflows.
+class _LoadFailed extends StatelessWidget {
+  const _LoadFailed({
+    required this.message,
+    required this.buttonKey,
+    required this.onRetry,
+  });
+
+  final String message;
+  final Key buttonKey;
+  final VoidCallback onRetry;
+
+  @override
+  Widget build(BuildContext context) => Center(
+    child: SingleChildScrollView(
+      child: FsRetry(message: message, buttonKey: buttonKey, onRetry: onRetry),
+    ),
+  );
 }

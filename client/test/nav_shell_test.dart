@@ -426,7 +426,7 @@ void main() {
     // not, so nothing connected FsNav's index 1 to the Training shell.
     // home_screen_test.dart proves onGoToTrain fires and nav_shell.dart
     // wires it to `_index = 1`, but nothing tied those two facts together —
-    // reordering the tab list would send "Start workout" to the wrong
+    // reordering the tab list would send "View today's plan" to the wrong
     // screen with every existing test still green. find.byType(TrainingShell)
     // is discriminating here because IndexedStack's debugVisitOnstageChildren
     // override means a default finder only ever sees the *selected* child —
@@ -757,9 +757,8 @@ void main() {
     expect(find.byType(RecoveryScreen), findsOneWidget);
   });
 
-  testWidgets("Start workout opens Train on Plan, whatever Train last showed", (
-    tester,
-  ) async {
+  testWidgets("View today's plan opens Train on Plan, whatever Train last "
+      'showed', (tester) async {
     // Opening Train at Recovery (via the readiness card) and then going
     // back to Home must not leave "View today's plan" landing on Recovery,
     // which has no start button.

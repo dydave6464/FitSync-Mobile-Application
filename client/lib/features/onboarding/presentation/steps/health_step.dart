@@ -89,7 +89,14 @@ class HealthStep extends StatelessWidget {
         ),
         for (final q in healthQuestions) ...[
           const SizedBox(height: 12),
-          Text(q.label, style: TextStyle(fontSize: 13.5, color: t.text)),
+          // Said with each answer instead (below), so a screen reader never
+          // hears a bare "Yes" with nothing to say what it answers.
+          ExcludeSemantics(
+            child: Text(
+              q.label,
+              style: TextStyle(fontSize: 13.5, color: t.text),
+            ),
+          ),
           const SizedBox(height: 8),
           Row(
             children: [
@@ -98,12 +105,19 @@ class HealthStep extends StatelessWidget {
                 _AnswerBand(
                   key: Key('health.${q.field}.${answer ? 'yes' : 'no'}.target'),
                   onTap: () => onChanged(value.answer(q.field, answer)),
-                  child: FsChip(
-                    key: Key('health.${q.field}.${answer ? 'yes' : 'no'}'),
-                    label: label,
-                    selected: value.valueOf(q.field) == answer,
-                    small: true,
-                    onTap: () => onChanged(value.answer(q.field, answer)),
+                  // One node, "<question> Yes", in a single-choice pair.
+                  child: MergeSemantics(
+                    child: Semantics(
+                      label: q.label,
+                      child: FsChip(
+                        key: Key('health.${q.field}.${answer ? 'yes' : 'no'}'),
+                        label: label,
+                        selected: value.valueOf(q.field) == answer,
+                        small: true,
+                        exclusive: true,
+                        onTap: () => onChanged(value.answer(q.field, answer)),
+                      ),
+                    ),
                   ),
                 ),
               ],

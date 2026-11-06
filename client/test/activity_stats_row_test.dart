@@ -73,21 +73,24 @@ class _FailingActivity extends ActivityController {
   Future<void> sync() async {}
 }
 
-ActivityWeek _week({List<String> missing = const [], int? usual}) =>
-    ActivityWeek(
-      days: [
-        for (var d = 22; d <= 28; d++)
-          ActivityDay(
-            date: '2026-09-$d',
-            steps: d == 28 ? 6420 : null,
-            caloriesBurned: d == 28 ? 158 : null,
-            distanceKm: d == 28 ? 4.52 : null,
-            activeMinutes: d == 28 ? 64 : null,
-          ),
-      ],
-      usual: usual,
-      missing: missing,
-    );
+ActivityWeek _week({
+  List<String> missing = const [],
+  int? usual,
+  int kcal = 158,
+}) => ActivityWeek(
+  days: [
+    for (var d = 22; d <= 28; d++)
+      ActivityDay(
+        date: '2026-09-$d',
+        steps: d == 28 ? 6420 : null,
+        caloriesBurned: d == 28 ? kcal : null,
+        distanceKm: d == 28 ? 4.52 : null,
+        activeMinutes: d == 28 ? 64 : null,
+      ),
+  ],
+  usual: usual,
+  missing: missing,
+);
 
 Future<void> _pump(
   WidgetTester tester,
@@ -141,7 +144,8 @@ void main() {
   );
 
   testWidgets(
-    'refused: zero tiles; a tap asks again, then opens Settings if still refused',
+    'refused: zero tiles; a tap asks again, then says what to switch on '
+    'before opening Settings',
     (tester) async {
       final permission = _Permission(StepAccess.refused);
       await _pump(tester, permission);
@@ -150,9 +154,91 @@ void main() {
       expect(find.text('Step counting is off — tap to allow'), findsOneWidget);
       await tester.tap(find.byKey(const Key('home.activity.steps')));
       await tester.pumpAndSettle();
+
+      // Not straight out of the app: first what to turn on, and where.
+      expect(permission.log, ['request']);
+      expect(find.text('Step counting is off for FitSync'), findsOneWidget);
+      expect(
+        find.text(
+          'In Settings, open Permissions, then Physical activity, and choose '
+          'Allow.',
+        ),
+        findsOneWidget,
+      );
+      await tester.tap(find.byKey(const Key('activity.settings.open')));
+      await tester.pumpAndSettle();
       expect(permission.log, ['request', 'settings']);
+      expect(find.text('Step counting is off for FitSync'), findsNothing);
     },
   );
+
+  testWidgets('refused: Not now stays in the app', (tester) async {
+    final permission = _Permission(StepAccess.refused);
+    await _pump(tester, permission);
+
+    await tester.tap(find.byKey(const Key('home.activity.kcal')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const Key('activity.settings.notNow')));
+    await tester.pumpAndSettle();
+
+    expect(permission.log, ['request']);
+    expect(find.text('Step counting is off for FitSync'), findsNothing);
+  });
+
+  testWidgets('refused on iPhone: names Motion & Fitness', (tester) async {
+    await _pump(tester, _Permission(StepAccess.refused));
+
+    await tester.tap(find.byKey(const Key('home.activity.steps')));
+    await tester.pumpAndSettle();
+
+    expect(
+      find.text('In Settings, turn on Motion & Fitness for FitSync.'),
+      findsOneWidget,
+    );
+  }, variant: TargetPlatformVariant.only(TargetPlatform.iOS));
+
+  testWidgets('refused: taps while the phone is still asking are ignored', (
+    tester,
+  ) async {
+    final answer = Completer<StepAccess>();
+    final permission = _SlowRequest(answer.future);
+    await _pump(tester, permission);
+
+    await tester.tap(find.byKey(const Key('home.activity.steps')));
+    await tester.pump();
+    await tester.tap(find.byKey(const Key('home.activity.km')));
+    await tester.pump();
+    expect(permission.requests, 1);
+
+    answer.complete(StepAccess.refused);
+    await tester.pumpAndSettle();
+    // One question, not one queued behind another.
+    expect(find.text('Step counting is off for FitSync'), findsOneWidget);
+  });
+
+  for (final (access, hint) in const [
+    (StepAccess.notAsked, 'Tap to start counting your steps'),
+    (StepAccess.refused, 'Step counting is off — tap to allow'),
+  ]) {
+    testWidgets(
+      '${access.name}: a screen reader hears one button that says what it '
+      'does, not three zeros',
+      (tester) async {
+        final semantics = tester.ensureSemantics();
+        await _pump(tester, _Permission(access));
+
+        expect(
+          tester.getSemantics(find.bySemanticsLabel(hint)),
+          matchesSemantics(label: hint, isButton: true, hasTapAction: true),
+        );
+        // The tiles' bare figures are not offered as buttons of their own.
+        expect(find.bySemanticsLabel(RegExp(r'^0')), findsNothing);
+        await expectLater(tester, meetsGuideline(androidTapTargetGuideline));
+        await expectLater(tester, meetsGuideline(labeledTapTargetGuideline));
+        semantics.dispose();
+      },
+    );
+  }
 
   testWidgets(
     'refused, granted when asked again: no Settings, the stats show',
@@ -173,7 +259,8 @@ void main() {
   );
 
   testWidgets(
-    'while step access loads: zero tiles that do nothing when tapped',
+    'while step access loads: dashes, not zeros, on tiles that do nothing '
+    'when tapped',
     (tester) async {
       final pending = Completer<StepAccess>();
       await tester.pumpWidget(
@@ -188,9 +275,12 @@ void main() {
       );
       await tester.pump();
 
-      expect(tile('steps', '0'), findsOneWidget);
-      expect(tile('kcal', '0'), findsOneWidget);
-      expect(tile('km', '0.0'), findsOneWidget);
+      // Not known yet, rather than none: someone who has walked thousands
+      // would otherwise see "0 steps" flash before their count.
+      expect(tile('steps', '—'), findsOneWidget);
+      expect(tile('kcal', '—'), findsOneWidget);
+      expect(tile('km', '—'), findsOneWidget);
+      expect(tile('steps', '0'), findsNothing);
       expect(find.text('Tap to start counting your steps'), findsNothing);
       await tester.tap(find.byKey(const Key('home.activity.steps')));
       await tester.pump();
@@ -229,6 +319,48 @@ void main() {
     await tester.tap(find.byKey(const Key('home.activity.km')));
     await tester.pumpAndSettle();
     expect(find.byType(ActivityScreen), findsOneWidget);
+  });
+
+  testWidgets('kcal and km match the Activity screen the tiles open', (
+    tester,
+  ) async {
+    // RH-13: Activity carries the server's estimates along to the live
+    // count; Home showed the saved ones beside the same step count, so a tap
+    // opened different kcal and km for the same moment.
+    await _pump(tester, _Permission(StepAccess.granted), steps: 9630);
+
+    expect(tile('steps', '9,630'), findsOneWidget);
+    expect(tile('kcal', '237'), findsOneWidget);
+    expect(tile('km', '6.8'), findsOneWidget);
+
+    await tester.tap(find.byKey(const Key('home.activity.kcal')));
+    await tester.pumpAndSettle();
+    expect(
+      find.descendant(
+        of: find.byKey(const Key('activity.kcal')),
+        matching: find.text('237'),
+      ),
+      findsOneWidget,
+    );
+    expect(
+      find.descendant(
+        of: find.byKey(const Key('activity.km')),
+        matching: find.text('6.78'),
+      ),
+      findsOneWidget,
+    );
+  });
+
+  testWidgets('on: kcal over a thousand is grouped, as steps are', (
+    tester,
+  ) async {
+    await _pump(
+      tester,
+      _Permission(StepAccess.granted),
+      week: _week(kcal: 1180),
+    );
+
+    expect(tile('kcal', '1,180'), findsOneWidget);
   });
 
   testWidgets('on, weight missing: kcal is a dash, km stays', (tester) async {
@@ -465,4 +597,17 @@ class _PendingPermission implements StepPermission {
   Future<StepAccess> request() async => StepAccess.refused;
   @override
   Future<void> openSettings() async {}
+}
+
+/// Refused, with the OS prompt held open on [_answer] until a test says.
+class _SlowRequest extends _Permission {
+  _SlowRequest(this._answer) : super(StepAccess.refused);
+  final Future<StepAccess> _answer;
+  int requests = 0;
+
+  @override
+  Future<StepAccess> request() {
+    requests++;
+    return _answer;
+  }
 }

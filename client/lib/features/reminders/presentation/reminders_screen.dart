@@ -2,10 +2,9 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../core/api_exception.dart';
+import '../../../core/app_settings.dart';
 import '../../../core/theme.dart';
 import '../../../core/widgets/fs_kit.dart';
-import '../../nutrition/presentation/meal_photo/providers.dart'
-    show appSettingsOpenerProvider;
 import '../../plans/presentation/providers.dart' show activePlanProvider;
 import '../../profile/domain/profile.dart';
 import '../../profile/presentation/providers.dart';
@@ -19,11 +18,14 @@ import 'providers.dart';
 Future<TimeOfDay?> _systemPickTime(BuildContext context, TimeOfDay initial) =>
     showTimePicker(context: context, initialTime: initial);
 
+/// "About" and "Around": reminders are scheduled inexactly, and Android can
+/// hold one back several minutes while the phone dozes, so promising the
+/// minute would promise more than the phone keeps.
 const _leadOptions = [
-  (value: '0', label: 'At the time'),
-  (value: '5', label: '5 min before'),
-  (value: '15', label: '15 min before'),
-  (value: '30', label: '30 min before'),
+  (value: '0', label: 'Around the time'),
+  (value: '5', label: 'About 5 min before'),
+  (value: '15', label: 'About 15 min before'),
+  (value: '30', label: 'About 30 min before'),
 ];
 
 /// Shown wherever turning reminders on meets a notification permission the
@@ -261,7 +263,7 @@ class _RemindersScreenState extends ConsumerState<RemindersScreen> {
   }) => Column(
     crossAxisAlignment: CrossAxisAlignment.start,
     children: [
-      FsEyebrow(title),
+      Semantics(container: true, header: true, child: FsEyebrow(title)),
       const SizedBox(height: 10),
       Opacity(
         opacity: enabled ? 1 : 0.45,
@@ -448,6 +450,8 @@ class _RemindersScreenState extends ConsumerState<RemindersScreen> {
                   FsChip(
                     key: Key('reminders.lead.${option.value}'),
                     label: option.label,
+                    // One lead time at a time: announced as a radio group.
+                    exclusive: true,
                     selected:
                         (_pendingLead ?? settings.habitLeadMin).toString() ==
                         option.value,

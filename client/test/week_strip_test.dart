@@ -556,6 +556,38 @@ void main() {
     expect(find.text('1 of 3'), findsOneWidget);
   });
 
+  testWidgets('the tally is read with what it counts (PT-25)', (tester) async {
+    // "1 of 3" alone is a fraction to a screen reader; it has to say what
+    // is counted and over what.
+    final handle = tester.ensureSemantics();
+    await tester.pumpWidget(
+      _host(
+        WeekStrip(
+          daysPerWeek: 4,
+          trainingDays: const [1, 3, 5],
+          completedDates: const {'2026-09-07'},
+          today: DateTime(2026, 9, 10),
+        ),
+      ),
+    );
+    expect(find.bySemanticsLabel('1 of 3 workouts this week'), findsOneWidget);
+    expect(find.bySemanticsLabel('1 of 3'), findsNothing);
+
+    // With no target, the bare count is still said as this week's.
+    await tester.pumpWidget(
+      _host(
+        WeekStrip(
+          daysPerWeek: 4,
+          trainingDays: null,
+          completedDates: const {'2026-09-07'},
+          today: DateTime(2026, 9, 10),
+        ),
+      ),
+    );
+    expect(find.bySemanticsLabel('1 session this week'), findsOneWidget);
+    handle.dispose();
+  });
+
   testWidgets('the card offers Start with no session and Resume with one', (
     tester,
   ) async {

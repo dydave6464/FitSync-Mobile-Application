@@ -91,7 +91,7 @@ class SequenceProfileRepository implements ProfileRepository {
   Future<BodyWeightSeries> bodyWeight(String period) =>
       throw UnimplementedError();
   @override
-  Future<BodyWeightPoint> logBodyWeight(double weightKg) =>
+  Future<BodyWeightPoint> logBodyWeight(double weightKg, {String? loggedOn}) =>
       throw UnimplementedError();
 }
 

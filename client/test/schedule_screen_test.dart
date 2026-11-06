@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 
+import 'package:fitsync/core/widgets/fs_kit.dart';
 import 'package:fitsync/core/api_exception.dart';
 import 'package:fitsync/features/profile/domain/profile.dart';
 import 'package:fitsync/features/profile/presentation/providers.dart';
@@ -207,6 +208,21 @@ class _MutableCalendarRepo implements CalendarRepository {
   }
 }
 
+/// Holds back the answer for [held] until [gate] completes -- a month still
+/// loading -- and answers everything else at once.
+class _GatedCalendarRepo implements CalendarRepository {
+  _GatedCalendarRepo(this.held, this.gate);
+
+  final String held;
+  final Completer<void> gate;
+
+  @override
+  Future<CalendarRange> range(String from, String to) async {
+    if ('$from..$to' == held) await gate.future;
+    return _range(from, to, days: _fixture);
+  }
+}
+
 const _grid = '2026-08-31..2026-10-11';
 const _week = '2026-09-23..2026-09-26';
 
@@ -330,7 +346,7 @@ void main() {
     expect(find.text('Upcoming'), findsOneWidget);
     expect(find.text('Reminders on'), findsOneWidget);
     // Defaults: habit reminders 15 min before; workout reminders off.
-    expect(find.text('Reminder 15 min before'), findsOneWidget);
+    expect(find.text('Reminder about 15 min before'), findsOneWidget);
     expect(find.textContaining('Reminder at'), findsNothing);
   });
 
@@ -341,7 +357,7 @@ void main() {
     await _pump(tester, now: DateTime.utc(2026, 9, 24, 13));
 
     expect(find.text('Today · Stretch · 9:00 PM'), findsOneWidget);
-    expect(find.text('Reminder 15 min before'), findsNothing);
+    expect(find.text('Reminder about 15 min before'), findsNothing);
   });
 
   testWidgets(
@@ -408,7 +424,7 @@ void main() {
       _y(tester, 'Reminder at 7:00 AM'),
       greaterThan(_y(tester, 'Tomorrow · Workout · Upper/Lower')),
     );
-    expect(find.text('Reminder 15 min before'), findsNothing);
+    expect(find.text('Reminder about 15 min before'), findsNothing);
   });
 
   testWidgets('nothing today or tomorrow says so, whatever comes later', (
@@ -511,12 +527,53 @@ void main() {
     expect(find.text('Upcoming'), findsOneWidget);
   });
 
+  testWidgets('a month still loading says so (PT-23)', (tester) async {
+    // Prev/next used to leave a grid with no dots and days that ignored a
+    // tap, with nothing to say the month was on its way.
+    tester.view.physicalSize = const Size(800, 1800);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.reset);
+    final gate = Completer<void>();
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          calendarRepositoryProvider.overrideWithValue(
+            _GatedCalendarRepo('2026-09-28..2026-11-08', gate),
+          ),
+          profileProvider.overrideWith(() => _Profile(true)),
+          reminderSettingsProvider.overrideWith(
+            () => _Settings(ReminderSettings.defaults),
+          ),
+          reminderSchedulerProvider.overrideWithValue(_Scheduler()),
+        ],
+        child: MaterialApp(home: ScheduleScreen(now: () => _now)),
+      ),
+    );
+    await tester.pumpAndSettle();
+    final loading = find.byKey(const Key('schedule.grid.loading'));
+    expect(loading, findsNothing);
+
+    final handle = tester.ensureSemantics();
+    await tester.tap(find.byKey(const Key('schedule.next')));
+    await tester.pump();
+    expect(loading, findsOneWidget);
+    expect(find.bySemanticsLabel('Loading month'), findsOneWidget);
+
+    gate.complete();
+    await tester.pumpAndSettle();
+    expect(loading, findsNothing);
+    handle.dispose();
+  });
+
   testWidgets("the grid's error and Retry leave the list showing", (
     tester,
   ) async {
     await _pump(tester, failOnce: {_grid});
 
-    expect(find.text("Couldn't load this month"), findsOneWidget);
+    expect(
+      find.widgetWithText(FsRetry, "Couldn't load this month"),
+      findsOneWidget,
+    );
     expect(find.text('Today · Walk · Any time'), findsOneWidget);
     expect(
       find.byKey(const Key('schedule.dot.workout.2026-09-22')),
@@ -538,7 +595,10 @@ void main() {
   ) async {
     await _pump(tester, failOnce: {_week});
 
-    expect(find.text("Couldn't load what's coming up"), findsOneWidget);
+    expect(
+      find.widgetWithText(FsRetry, "Couldn't load what's coming up"),
+      findsOneWidget,
+    );
     expect(
       find.byKey(const Key('schedule.dot.workout.2026-09-22')),
       findsOneWidget,
@@ -576,7 +636,7 @@ void main() {
 
       // Sanity: reminders show while the settings are good.
       expect(find.text('Reminders on'), findsOneWidget);
-      expect(find.text('Reminder 15 min before'), findsOneWidget);
+      expect(find.text('Reminder about 15 min before'), findsOneWidget);
 
       // A refetch fails; the settings provider keeps its old value
       // (Riverpod 3's AsyncError.copyWithPrevious) but is now in error.

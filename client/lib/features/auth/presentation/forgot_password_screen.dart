@@ -23,20 +23,29 @@ const _resentMessage =
 /// nothing about the address, and claiming a code was sent would leave the
 /// user waiting for an email nobody asked for.
 class ForgotPasswordScreen extends ConsumerStatefulWidget {
-  const ForgotPasswordScreen({super.key});
+  const ForgotPasswordScreen({super.key, this.initialEmail = ''});
+
+  /// What was already typed into sign-in's email field, so the user does not
+  /// have to type it again. Empty when there was nothing.
+  final String initialEmail;
 
   @override
   ConsumerState<ForgotPasswordScreen> createState() =>
       _ForgotPasswordScreenState();
 }
 
+/// Which request is on its way, so only the button that sent it spins. The
+/// other is disabled without a spinner: one request at a time.
+enum _Pending { none, sendCode, reset }
+
 class _ForgotPasswordScreenState extends ConsumerState<ForgotPasswordScreen> {
-  final _email = TextEditingController();
+  late final _email = TextEditingController(text: widget.initialEmail);
   final _code = TextEditingController();
   final _password = TextEditingController();
 
   bool _onCodeStep = false;
-  bool _busy = false;
+  _Pending _pending = _Pending.none;
+  bool get _busy => _pending != _Pending.none;
 
   /// Starts hidden, as on sign-in; the eye shows it. A successful reset
   /// signs in with exactly what was typed, so a typo would otherwise become
@@ -79,7 +88,7 @@ class _ForgotPasswordScreenState extends ConsumerState<ForgotPasswordScreen> {
     final repo = ref.read(authRepositoryProvider);
     final resending = _onCodeStep;
     setState(() {
-      _busy = true;
+      _pending = _Pending.sendCode;
       _message = null;
     });
 
@@ -89,7 +98,7 @@ class _ForgotPasswordScreenState extends ConsumerState<ForgotPasswordScreen> {
       if (error.code == 'NETWORK_ERROR') {
         // Nothing was sent: stay where the user is and say why.
         if (mounted) {
-          setState(() => _busy = false);
+          setState(() => _pending = _Pending.none);
           _showError(userMessage(error));
         }
         return;
@@ -100,7 +109,7 @@ class _ForgotPasswordScreenState extends ConsumerState<ForgotPasswordScreen> {
     }
     if (!mounted) return;
     setState(() {
-      _busy = false;
+      _pending = _Pending.none;
       _onCodeStep = true;
       _message = (
         text: resending ? _resentMessage : _sentMessage,
@@ -108,6 +117,15 @@ class _ForgotPasswordScreenState extends ConsumerState<ForgotPasswordScreen> {
       );
     });
   }
+
+  /// Back to step 1 with the address still typed, to correct it. The code
+  /// and password belong to the old address, so they go.
+  void _changeEmail() => setState(() {
+    _onCodeStep = false;
+    _message = null;
+    _code.clear();
+    _password.clear();
+  });
 
   Future<void> _reset() async {
     if (_busy) return;
@@ -129,7 +147,7 @@ class _ForgotPasswordScreenState extends ConsumerState<ForgotPasswordScreen> {
     final email = _email.text.trim();
     final password = _password.text;
     setState(() {
-      _busy = true;
+      _pending = _Pending.reset;
       _message = null;
     });
 
@@ -184,7 +202,7 @@ class _ForgotPasswordScreenState extends ConsumerState<ForgotPasswordScreen> {
         error.code == 'CODE_INVALID' ? wrongCodeMessage : userMessage(error),
       );
     } finally {
-      if (mounted) setState(() => _busy = false);
+      if (mounted) setState(() => _pending = _Pending.none);
     }
   }
 
@@ -249,6 +267,8 @@ class _ForgotPasswordScreenState extends ConsumerState<ForgotPasswordScreen> {
                         icon: Icons.mail_outline,
                         keyboardType: TextInputType.emailAddress,
                         autofillHints: const [AutofillHints.email],
+                        textInputAction: TextInputAction.send,
+                        onSubmitted: (_) => _sendCode(),
                       ),
                     ),
                     ...message,
@@ -256,7 +276,7 @@ class _ForgotPasswordScreenState extends ConsumerState<ForgotPasswordScreen> {
                     FsButton(
                       key: const Key('submit'),
                       label: 'Send code',
-                      busy: _busy,
+                      busy: _pending == _Pending.sendCode,
                       onPressed: _busy ? null : _sendCode,
                     ),
                   ]
@@ -275,7 +295,24 @@ class _ForgotPasswordScreenState extends ConsumerState<ForgotPasswordScreen> {
                         height: 1.5,
                       ),
                     ),
-                    const SizedBox(height: 22),
+                    // A typo in the address shows here, under the sentence
+                    // that names it; Back would leave the whole reset. The
+                    // button's 48 dp brings room of its own above and below.
+                    if (!_resetDone) ...[
+                      Align(
+                        alignment: AlignmentDirectional.centerStart,
+                        child: TextButton(
+                          key: const Key('changeEmail'),
+                          style: TextButton.styleFrom(
+                            minimumSize: const Size(48, 48),
+                          ),
+                          onPressed: _busy ? null : _changeEmail,
+                          child: const Text('Use a different email'),
+                        ),
+                      ),
+                      const SizedBox(height: 8),
+                    ] else
+                      const SizedBox(height: 22),
                     if (!_resetDone) ...[
                       FsLabeledField(
                         label: 'Code',
@@ -323,7 +360,7 @@ class _ForgotPasswordScreenState extends ConsumerState<ForgotPasswordScreen> {
                     FsButton(
                       key: const Key('reset'),
                       label: _resetDone ? 'Sign in' : 'Reset password',
-                      busy: _busy,
+                      busy: _pending == _Pending.reset,
                       onPressed: _busy ? null : _reset,
                     ),
                     if (!_resetDone) ...[
@@ -332,6 +369,7 @@ class _ForgotPasswordScreenState extends ConsumerState<ForgotPasswordScreen> {
                         key: const Key('resend'),
                         label: 'Send a new code',
                         kind: FsButtonKind.secondary,
+                        busy: _pending == _Pending.sendCode,
                         onPressed: _busy ? null : _sendCode,
                       ),
                     ],

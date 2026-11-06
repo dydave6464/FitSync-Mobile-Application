@@ -96,44 +96,28 @@ class FakeProfileNotifier extends ProfileNotifier {
   final List<String> seedGoals;
   final String? seedMainGoal;
 
+  /// The profile as the server would hold it, in its wire form. Each patch
+  /// merges into it and the profile is read back through [Profile.fromJson],
+  /// as the real notifier reads the server's answer, so no field a patch did
+  /// not touch is lost along the way.
+  late final Map<String, dynamic> _stored = {
+    'userId': 7,
+    'email': 'juan@example.com',
+    'fullName': 'Juan Dela Cruz',
+    'onboardingCompleted': false,
+    'goals': seedGoals,
+    'mainGoal': seedMainGoal,
+  };
+
   @override
-  Future<Profile> build() async => Profile(
-    userId: 7,
-    email: 'juan@example.com',
-    fullName: 'Juan Dela Cruz',
-    onboardingCompleted: false,
-    isPremium: false,
-    notificationsEnabled: true,
-    equipment: const [],
-    injuries: const [],
-    goals: seedGoals,
-    mainGoal: seedMainGoal,
-  );
+  Future<Profile> build() async => Profile.fromJson(_stored);
 
   @override
   Future<void> patch(Map<String, dynamic> fields) async {
     patches.add(fields);
     if (onPatch != null) await onPatch!();
-    // The unit is a display preference the step reads back at once, as the
-    // real notifier's refreshed profile would give it.
-    if (fields['weightUnit'] case final String unit) {
-      final loaded = state.value!;
-      state = AsyncData(
-        Profile(
-          userId: loaded.userId,
-          email: loaded.email,
-          fullName: loaded.fullName,
-          onboardingCompleted: loaded.onboardingCompleted,
-          isPremium: loaded.isPremium,
-          notificationsEnabled: loaded.notificationsEnabled,
-          equipment: loaded.equipment,
-          injuries: loaded.injuries,
-          goals: loaded.goals,
-          mainGoal: loaded.mainGoal,
-          weightUnit: WeightUnit.fromApi(unit),
-        ),
-      );
-    }
+    _stored.addAll(fields);
+    state = AsyncData(Profile.fromJson(_stored));
   }
 
   @override
@@ -161,17 +145,20 @@ class FakeProfileNotifier extends ProfileNotifier {
   }
 }
 
-/// A profile that cannot load until [fail] is cleared, counting attempts.
+/// A profile that cannot load while [failing] says so, counting attempts.
+/// A callback rather than a shared flag, so each test owns its own switch.
 class _FailingProfileNotifier extends FakeProfileNotifier {
-  _FailingProfileNotifier(this.attempts) : super([]);
+  _FailingProfileNotifier(this.attempts, {bool Function()? failing})
+    : failing = failing ?? (() => true),
+      super([]);
 
   final List<int> attempts;
-  static bool fail = true;
+  final bool Function() failing;
 
   @override
   Future<Profile> build() async {
     attempts.add(attempts.length);
-    if (fail) {
+    if (failing()) {
       throw const ApiException(
         'NETWORK_ERROR',
         'Could not reach http://10.0.2.2:3000. Check the server is running.',
@@ -1406,6 +1393,9 @@ void main() {
       findsNothing,
       reason: 'the wizard chrome has no place on the generating screen',
     );
+    // AO-19: not "Profile saved" before it has ticked.
+    expect(find.text('Saving your profile'), findsOneWidget);
+    expect(find.text('Profile saved'), findsNothing);
 
     gate.complete();
     await tester.pumpAndSettle();
@@ -1809,12 +1799,11 @@ void main() {
   group('A profile that cannot load', () {
     testWidgets('says why in plain words and retries', (tester) async {
       final attempts = <int>[];
-      _FailingProfileNotifier.fail = true;
-      addTearDown(() => _FailingProfileNotifier.fail = true);
+      var fail = true;
       await _pumpFlow(
         tester,
         patches: [],
-        profile: () => _FailingProfileNotifier(attempts),
+        profile: () => _FailingProfileNotifier(attempts, failing: () => fail),
       );
 
       expect(
@@ -1826,7 +1815,7 @@ void main() {
       expect(find.textContaining('10.0.2.2'), findsNothing);
       expect(find.byType(FsRetry), findsOneWidget);
 
-      _FailingProfileNotifier.fail = false;
+      fail = false;
       final before = attempts.length;
       await tester.tap(find.byKey(const Key('onboarding.retry')));
       await tester.pumpAndSettle();
@@ -1872,6 +1861,68 @@ void main() {
 
       expect(tester.takeException(), isNull);
       expect(find.byType(FilledButton), findsNothing);
+    });
+  });
+
+  testWidgets('Skip leaves out a number that looks like a slip', (
+    tester,
+  ) async {
+    // L-24: Continue queries 17 cm, but Skip sent it straight to the plan.
+    final patches = <Map<String, dynamic>>[];
+    await _pumpFlow(tester, patches: patches);
+    await _skip(tester);
+
+    await tester.enterText(find.byKey(const Key('weightKg')), '72');
+    await tester.enterText(find.byKey(const Key('heightCm')), '17');
+    await tester.pumpAndSettle();
+    await _skip(tester);
+
+    expect(patches, [
+      {'weightKg': 72.0},
+    ], reason: 'a height of 17 cm is far more likely a typo than a fact');
+    expect(find.text('STEP 3 / 6'), findsOneWidget);
+  });
+
+  group('the kg/lb switch on About', () {
+    // AO-26: it waited for the server to move, and a failed save changed
+    // nothing and said nothing.
+    FsUnitToggle toggle(WidgetTester tester) =>
+        tester.widget<FsUnitToggle>(find.byType(FsUnitToggle));
+
+    testWidgets('moves at once, before the save comes back', (tester) async {
+      final pending = Completer<void>();
+      final patches = <Map<String, dynamic>>[];
+      await _pumpFlow(tester, patches: patches, onPatch: () => pending.future);
+      await _skip(tester);
+
+      await _tapKey(tester, const Key('unit.lb'));
+      await tester.pump();
+
+      expect(toggle(tester).value, WeightUnit.lb);
+      expect(patches, [
+        {'weightUnit': 'lb'},
+      ]);
+
+      pending.complete();
+      await tester.pumpAndSettle();
+      expect(toggle(tester).value, WeightUnit.lb);
+    });
+
+    testWidgets('goes back and says so when the save fails', (tester) async {
+      await _pumpFlow(
+        tester,
+        patches: [],
+        onPatch: () async =>
+            throw const ApiException('NETWORK_ERROR', 'http://10.0.2.2'),
+      );
+      await _skip(tester);
+
+      await _tapKey(tester, const Key('unit.lb'));
+      await tester.pumpAndSettle();
+
+      expect(tester.takeException(), isNull);
+      expect(toggle(tester).value, WeightUnit.kg);
+      expect(find.text("Couldn't switch to lb. Try again."), findsOneWidget);
     });
   });
 

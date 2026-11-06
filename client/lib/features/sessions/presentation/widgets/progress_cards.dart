@@ -303,14 +303,27 @@ class VolumeByMuscleCard extends StatelessWidget {
   }
 }
 
+/// "this week's progress" for the Progress tab's period -- what a coach's
+/// link covers, in the words the segment above it uses. Not "window", which
+/// is how the server counts, not how anyone talks.
+String periodProgressWords(String period) => switch (period) {
+  'week' => "this week's progress",
+  'month' => "this month's progress",
+  'year' => "this year's progress",
+  _ => 'your progress',
+};
+
 /// The way into the share sheet, at the foot of the Progress tab.
 ///
 /// Accent-filled rather than a plain row: it is the only action on a screen
 /// that is otherwise all readouts, and the prototype draws it that way.
 class ShareWithCoachCard extends StatelessWidget {
-  const ShareWithCoachCard({super.key, this.onTap});
+  const ShareWithCoachCard({super.key, this.onTap, this.period = 'week'});
 
   final VoidCallback? onTap;
+
+  /// The Progress tab's period, which the link shares.
+  final String period;
 
   @override
   Widget build(BuildContext context) {
@@ -338,7 +351,9 @@ class ShareWithCoachCard extends StatelessWidget {
                 ),
                 const SizedBox(height: 2),
                 Text(
-                  'A link to this window, good for 30 days',
+                  // No lifetime: the server decides it, and the SnackBar
+                  // after sharing quotes the real expiry date.
+                  'A link to ${periodProgressWords(period)} for your coach',
                   style: TextStyle(fontSize: 11.5, color: t.text3),
                 ),
               ],

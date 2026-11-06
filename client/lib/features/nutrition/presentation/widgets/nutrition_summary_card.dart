@@ -199,7 +199,7 @@ class _MoreNutrientsState extends State<_MoreNutrients> {
             key: const Key('nutrition.moreNutrients'),
             onTap: () => setState(() => _open = !_open),
             child: ConstrainedBox(
-              constraints: const BoxConstraints(minHeight: 44),
+              constraints: const BoxConstraints(minHeight: 48),
               child: Row(children: [
                 Expanded(child: Text('More nutrients', style: TextStyle(color: t.text2, fontSize: 13))),
                 ExcludeSemantics(

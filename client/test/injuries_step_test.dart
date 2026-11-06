@@ -2,6 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 
+import 'package:fitsync/core/api_exception.dart';
+import 'package:fitsync/core/widgets/fs_kit.dart';
 import 'package:fitsync/features/onboarding/presentation/steps/injuries_step.dart';
 import 'package:fitsync/features/profile/domain/profile.dart';
 import 'package:fitsync/features/profile/presentation/providers.dart';
@@ -336,5 +338,40 @@ void main() {
     // No androidTapTargetGuideline check here: it passed with the chips'
     // band at 37 dp. The tap-just-above and tap-just-below tests are the
     // ones that fail when the band shrinks.
+  });
+
+  testWidgets('a failed lookup says why and offers Try again', (tester) async {
+    var calls = 0;
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          injuryOptionsProvider.overrideWith((ref) async {
+            calls++;
+            if (calls == 1) {
+              throw const ApiException('INVALID_RESPONSE', 'HTTP 502 <html>');
+            }
+            return _options;
+          }),
+        ],
+        child: MaterialApp(
+          home: Scaffold(
+            body: SingleChildScrollView(
+              child: _Host(initial: const [], sink: []),
+            ),
+          ),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.byType(FsRetry), findsOneWidget);
+    expect(
+      find.text(userMessage(const ApiException('INVALID_RESPONSE', ''))),
+      findsOneWidget,
+    );
+    await _tapKey(tester, const Key('injuries.retry'));
+
+    expect(calls, 2);
+    expect(find.byType(FsRetry), findsNothing);
   });
 }

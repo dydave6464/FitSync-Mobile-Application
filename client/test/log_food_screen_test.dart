@@ -125,6 +125,16 @@ void main() {
     expect(repo.queries, ['a' * 60]);
   });
 
+  // L-62: in the UTF-16 units the server counts, not characters.
+  testWidgets('the search stops at 60 UTF-16 units, whole characters only', (tester) async {
+    final repo = _SearchRepo();
+    await _pump(tester, repo);
+    await tester.enterText(find.byKey(const Key('food.search')), '🍚' * 40);
+    await tester.pump(const Duration(milliseconds: 300));
+    await tester.pumpAndSettle();
+    expect(repo.queries, ['🍚' * 30]);
+  });
+
   // The phone reached the server, so its connection is fine: the note says
   // the gap is temporary and what to do, without blaming the connection.
   testWidgets('FatSecret down shows a quiet note', (tester) async {
@@ -378,7 +388,7 @@ void main() {
     await tester.pumpAndSettle();
     await tester.tap(find.byKey(const Key('logSheet.log')));
     await tester.pumpAndSettle();
-    expect(find.text("Couldn't save Chicken adobo."), findsOneWidget);
+    expect(find.text("Couldn't save Chicken adobo. Couldn't reach FitSync. Check your connection and try again."), findsOneWidget);
   });
 
   testWidgets('a food with edited numbers is saved as your own entry', (tester) async {
@@ -393,6 +403,10 @@ void main() {
     await tester.pumpAndSettle();
     await tester.enterText(find.descendant(of: find.byKey(const Key('logSheet.protein')), matching: find.byType(TextField)), '30');
     await tester.pump();
+    // The boxes' names take two lines in the test font's full-em glyphs, which
+    // pushes Log below this short test screen; the sheet scrolls to it.
+    await tester.ensureVisible(find.byKey(const Key('logSheet.log')));
+    await tester.pumpAndSettle();
     await tester.tap(find.byKey(const Key('logSheet.log')));
     await tester.pumpAndSettle();
     expect(repo.lastLogged!.source, 'manual');
@@ -597,11 +611,11 @@ void main() {
     await tester.pump();
     await tester.tap(find.byKey(const Key('logSheet.log')));
     await tester.pumpAndSettle();
-    expect(find.text("Couldn't save Chicken adobo."), findsOneWidget);
+    expect(find.text("Couldn't save Chicken adobo. Couldn't reach FitSync. Check your connection and try again."), findsOneWidget);
 
     await tester.tap(find.text('Try again'));
     await tester.pumpAndSettle();
     expect(repo.calls.where((c) => c == 'log 2026-10-14 dinner Chicken adobo x1.5'), hasLength(2));
-    expect(find.text("Couldn't save Chicken adobo."), findsNothing);
+    expect(find.text("Couldn't save Chicken adobo. Couldn't reach FitSync. Check your connection and try again."), findsNothing);
   });
 }

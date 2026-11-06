@@ -227,6 +227,45 @@ void main() {
     handle.dispose();
   });
 
+  for (final scale in [1.3, 1.5, 2.0]) {
+    testWidgets('at ${scale}x text, with the chip under the title, its reach '
+        'stays off the title and the tag', (tester) async {
+      // Once the chip wraps under the title (and the tag under the chip),
+      // a 48 dp band reaching up or down would take taps meant for the card.
+      tester.view.physicalSize = const Size(320, 568);
+      tester.view.devicePixelRatio = 1.0;
+      addTearDown(tester.view.reset);
+      final taps = await _pump(
+        tester,
+        _day([_habit(1, 'Walk', time: '06:00')]),
+        streak: 3,
+        textScale: scale,
+      );
+
+      final title = tester.getRect(find.text("Today's routine"));
+      final tag = tester.getRect(find.byType(FsTag));
+      final chip = tester.getRect(find.byKey(const Key('home.routine.streak')));
+      expect(chip.top, greaterThan(title.bottom), reason: 'chip wrapped');
+
+      for (final point in [
+        title.center,
+        title.bottomLeft + const Offset(4, -1),
+        tag.center,
+        tag.topCenter + const Offset(0, 1),
+      ]) {
+        taps.clear();
+        await tester.tapAt(point);
+        await tester.pump(const Duration(milliseconds: 500));
+        expect(taps, ['tap'], reason: '$point');
+      }
+      // While the chip itself still opens the streak.
+      taps.clear();
+      await tester.tap(find.byKey(const Key('home.routine.streak')));
+      await tester.pump(const Duration(milliseconds: 500));
+      expect(taps, ['streak']);
+    });
+  }
+
   for (final size in [const Size(360, 640), const Size(320, 568)]) {
     testWidgets('at 2x text on ${size.width.toInt()} dp the header neither '
         'overflows nor breaks the title mid-word', (tester) async {

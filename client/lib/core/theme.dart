@@ -45,9 +45,9 @@ class FsTokens extends ThemeExtension<FsTokens> {
   /// Captions: dates, units, the words under figures. 4.5:1 or better on the
   /// plain surfaces (bg, surface, surface2, elev), but not on the accent
   /// tint: where `FsCard`'s accent gradient is strongest (the accent at 0.16)
-  /// it drops to about 4.0-4.2:1 in both themes. So secondary text on
-  /// `FsCard(accent: true)` or on an [accentDim] surface uses [text2], which
-  /// holds 4.5:1 there, not [text3].
+  /// it drops below that, to about 4.2:1 over the light page and 3.6:1 over
+  /// a dark card. So secondary text on `FsCard(accent: true)` or on an
+  /// [accentDim] surface uses [text2], which holds 4.5:1 there, not [text3].
   final Color text3;
 
   /// The outline that says a control is there: an unticked checkbox, an
@@ -94,7 +94,8 @@ class FsTokens extends ThemeExtension<FsTokens> {
     // every plain surface, still dimmer than text2 (parked §32). Not on the
     // accent tint: see [text3].
     text3: Color(0xFF838E98),
-    // text3's grey: 5.1:1 or better on every surface, where line2 was 1.4:1.
+    // text3's grey: 4.5:1 or better on every surface (4.58:1 on elev, the
+    // lowest), where line2 was 1.4:1.
     control: Color(0xFF838E98),
     accent: Color(0xFF7DFF5C),
     // The lime already reads at well over 4.5:1 on every dark surface.
@@ -352,10 +353,21 @@ ThemeData _build(FsTokens t, Brightness brightness) {
     ),
     // Unset, M3 drew the label in primary (the brand green, 2.87:1 on white)
     // inside a line2 outline that barely read as a control.
+    //
+    // The outline follows the state, as M3's own does: dim while disabled,
+    // so a dead button does not look live, and the text green while focused
+    // -- M3 uses primary there, the brand green, under 3:1 on white.
     outlinedButtonTheme: OutlinedButtonThemeData(
-      style: OutlinedButton.styleFrom(
-        foregroundColor: t.accentText,
-        side: BorderSide(color: t.control),
+      style: OutlinedButton.styleFrom(foregroundColor: t.accentText).copyWith(
+        side: WidgetStateProperty.resolveWith(
+          (s) => BorderSide(
+            color: s.contains(WidgetState.disabled)
+                ? t.text.withValues(alpha: 0.12)
+                : s.contains(WidgetState.focused)
+                ? t.accentText
+                : t.control,
+          ),
+        ),
       ),
     ),
     snackBarTheme: SnackBarThemeData(
@@ -388,6 +400,22 @@ ThemeData _build(FsTokens t, Brightness brightness) {
       checkColor: WidgetStatePropertyAll(t.onAccent),
       side: BorderSide(color: t.control, width: 2),
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(6)),
+    ),
+    // One chrome for every sheet (PT-22): the surface, the card's corners
+    // and the prototype's 38 x 4 line2 handle. A sheet that must hold back a
+    // drag turns Material's handle off and draws FsSheetHandle inside its
+    // guard instead.
+    bottomSheetTheme: BottomSheetThemeData(
+      backgroundColor: t.surface,
+      surfaceTintColor: Colors.transparent,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(
+          top: Radius.circular(FsRadius.card),
+        ),
+      ),
+      showDragHandle: true,
+      dragHandleColor: t.line2,
+      dragHandleSize: const Size(38, 4),
     ),
     listTileTheme: ListTileThemeData(
       titleTextStyle: textTheme.titleMedium,

@@ -58,7 +58,14 @@ class EquipmentFilterButton extends ConsumerWidget {
             size: 16,
             color: selected == null ? t.text2 : t.onAccent,
           ),
-          label: Text(chosen ?? 'Equipment'),
+          // Says it is a filter, and which one is on: "Dumbbell" alone
+          // read as an exercise, or as nothing at all.
+          label: Text(
+            chosen ?? 'Equipment',
+            semanticsLabel: chosen == null
+                ? 'Equipment filter'
+                : 'Equipment filter: $chosen',
+          ),
           labelStyle: TextStyle(
             fontSize: 13,
             color: selected == null ? t.text2 : t.onAccent,
@@ -80,8 +87,9 @@ class EquipmentFilterButton extends ConsumerWidget {
   ) async {
     final chosen = await showModalBottomSheet<_Choice>(
       context: context,
+      // FsSheetHeader draws the handle (PT-22).
+      showDragHandle: false,
       isScrollControlled: true,
-      showDragHandle: true,
       builder: (_) => _EquipmentSheet(
         options: options,
         selected: ref.read(selectedFiltersProvider).equipment,
@@ -144,16 +152,11 @@ class _EquipmentSheetState extends State<_EquipmentSheet> {
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            Padding(
-              padding: const EdgeInsets.fromLTRB(20, 0, 20, 4),
-              child: Text(
-                'Equipment',
-                style: TextStyle(
-                  fontSize: 16,
-                  fontWeight: FontWeight.w600,
-                  color: t.text,
-                ),
-              ),
+            // Closing is not choosing: it pops null, which leaves the filter
+            // as it was (see _open).
+            const Padding(
+              padding: EdgeInsets.fromLTRB(20, 10, 8, 0),
+              child: FsSheetHeader(title: 'Equipment'),
             ),
             Padding(
               padding: const EdgeInsets.fromLTRB(16, 8, 16, 8),

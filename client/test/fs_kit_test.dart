@@ -1,4 +1,4 @@
-import 'dart:ui' show Tristate;
+import 'dart:ui' show CheckedState, Tristate;
 
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
@@ -11,15 +11,10 @@ import 'package:fitsync/core/widgets/fs_kit.dart';
 
 import 'helpers/a11y.dart';
 
-Widget _host(Widget child) => MaterialApp(
-  theme: fsLightTheme(),
-  home: Scaffold(body: Center(child: child)),
-);
-
 void main() {
   testWidgets('a selected chip shows a check when asked', (tester) async {
     await tester.pumpWidget(
-      _host(
+      host(
         FsChip(label: 'Bench', selected: true, showCheck: true, onTap: () {}),
       ),
     );
@@ -28,7 +23,7 @@ void main() {
 
   testWidgets('an unselected chip shows no check', (tester) async {
     await tester.pumpWidget(
-      _host(
+      host(
         FsChip(label: 'Bench', selected: false, showCheck: true, onTap: () {}),
       ),
     );
@@ -37,7 +32,7 @@ void main() {
 
   testWidgets('a chip without showCheck never shows one', (tester) async {
     await tester.pumpWidget(
-      _host(FsChip(label: 'Home gym', selected: true, onTap: () {})),
+      host(FsChip(label: 'Home gym', selected: true, onTap: () {})),
     );
     expect(
       find.byIcon(Icons.check),
@@ -53,7 +48,7 @@ void main() {
     // enclosing Wrap and pushed neighbouring chips onto another line.
     Future<double> widthWhen(bool selected) async {
       await tester.pumpWidget(
-        _host(
+        host(
           FsChip(
             label: 'Pull-up bar',
             selected: selected,
@@ -74,12 +69,12 @@ void main() {
     // The reserved slot must not leak onto the location chips, which would
     // gain 18px of dead space for a check they never render.
     await tester.pumpWidget(
-      _host(const FsChip(label: 'Home gym', selected: false, onTap: _noop)),
+      host(const FsChip(label: 'Home gym', selected: false, onTap: _noop)),
     );
     final plain = tester.getSize(find.byType(FsChip)).width;
 
     await tester.pumpWidget(
-      _host(
+      host(
         const FsChip(
           label: 'Home gym',
           selected: false,
@@ -94,7 +89,7 @@ void main() {
   });
 
   testWidgets('FsTag renders its text', (tester) async {
-    await tester.pumpWidget(_host(const FsTag('4 selected')));
+    await tester.pumpWidget(host(const FsTag('4 selected')));
     expect(find.text('4 selected'), findsOneWidget);
   });
 
@@ -108,7 +103,7 @@ void main() {
       // longer soft-wrap to the Wrap's bounded width. 320dp mirrors a small
       // phone; 2.0x mirrors Android 14's maximum text scale.
       await tester.pumpWidget(
-        _host(
+        host(
           MediaQuery(
             data: const MediaQueryData(
               size: Size(320, 800),
@@ -141,7 +136,7 @@ void main() {
       // Guards the fix in the other direction: Flexible must not make the
       // chip stretch to fill the Wrap's width when nothing forces wrapping.
       await tester.pumpWidget(
-        _host(
+        host(
           const SizedBox(
             width: 320,
             child: Wrap(
@@ -165,7 +160,7 @@ void main() {
   ) async {
     final taps = <int>[];
     await tester.pumpWidget(
-      _host(
+      host(
         FsNav(
           currentIndex: 0,
           onSelect: taps.add,
@@ -193,7 +188,7 @@ void main() {
   testWidgets('the current tab reads in the text green', (tester) async {
     // A 10 px label in the brand green was 2.87:1 on the light bar.
     await tester.pumpWidget(
-      _host(
+      host(
         FsNav(
           currentIndex: 0,
           onSelect: (_) {},
@@ -222,7 +217,7 @@ void main() {
     // maxLines: 1 and overflow: TextOverflow.ellipsis.
     // 320dp mirrors a small phone; 2.0x mirrors Android 14's maximum text scale.
     await tester.pumpWidget(
-      _host(
+      host(
         MediaQuery(
           data: const MediaQueryData(
             size: Size(320, 800),
@@ -258,7 +253,7 @@ void main() {
       // width left inside a card on a 320dp phone after its padding; 2.0x
       // mirrors Android 14's maximum text scale.
       await tester.pumpWidget(
-        _host(
+        host(
           MediaQuery(
             data: const MediaQueryData(
               size: Size(320, 800),
@@ -317,7 +312,7 @@ void main() {
       required String label,
       required bool wrap,
     }) => tester.pumpWidget(
-      _host(
+      host(
         SizedBox(
           width: 160,
           child: FsButton(label: label, wrapLabel: wrap, onPressed: () {}),
@@ -433,7 +428,7 @@ void main() {
     tester,
   ) async {
     await tester.pumpWidget(
-      _host(
+      host(
         const FsSegmented(
           options: [
             (value: 'male', label: 'Male'),
@@ -467,7 +462,7 @@ void main() {
   ) async {
     final picked = <String>[];
     await tester.pumpWidget(
-      _host(
+      host(
         FsSegmented(
           options: const [
             (value: 'beginner', label: 'Beginner'),
@@ -493,7 +488,7 @@ void main() {
     // — arrive here matching no segment at all, and must not blank the
     // control or throw.
     await tester.pumpWidget(
-      _host(
+      host(
         const FsSegmented(
           options: [
             (value: 'male', label: 'Male'),
@@ -514,7 +509,7 @@ void main() {
     final controller = TextEditingController();
     addTearDown(controller.dispose);
     await tester.pumpWidget(
-      _host(
+      host(
         FsStatField(
           fieldKey: const Key('heightCm'),
           label: 'Height',
@@ -538,7 +533,7 @@ void main() {
     final controller = TextEditingController();
     addTearDown(controller.dispose);
     await tester.pumpWidget(
-      _host(
+      host(
         FsStatField(
           fieldKey: const Key('weightKg'),
           label: 'Weight',
@@ -563,7 +558,7 @@ void main() {
     addTearDown(controller.dispose);
 
     await tester.pumpWidget(
-      _host(
+      host(
         FsStatField(
           fieldKey: const Key('heightCm'),
           label: 'Height',
@@ -623,7 +618,7 @@ void main() {
     ) async {
       final handle = tester.ensureSemantics();
       await tester.pumpWidget(
-        _host(FsChip(label: 'Bench', selected: true, onTap: _noop)),
+        host(FsChip(label: 'Bench', selected: true, onTap: _noop)),
       );
       expect(
         tester.getSemantics(find.byType(FsChip)),
@@ -641,7 +636,7 @@ void main() {
       );
 
       await tester.pumpWidget(
-        _host(FsChip(label: 'Bench', selected: false, onTap: _noop)),
+        host(FsChip(label: 'Bench', selected: false, onTap: _noop)),
       );
       expect(
         tester.getSemantics(find.byType(FsChip)),
@@ -655,7 +650,7 @@ void main() {
     ) async {
       final handle = tester.ensureSemantics();
       await tester.pumpWidget(
-        _host(const FsChip(label: 'Bench', selected: false, onTap: null)),
+        host(const FsChip(label: 'Bench', selected: false, onTap: null)),
       );
       expect(
         tester.getSemantics(find.byType(FsChip)),
@@ -676,7 +671,7 @@ void main() {
     ) async {
       final handle = tester.ensureSemantics();
       await tester.pumpWidget(
-        _host(
+        host(
           SizedBox(
             width: 300,
             child: FsSegmented(
@@ -722,7 +717,7 @@ void main() {
     ) async {
       final handle = tester.ensureSemantics();
       await tester.pumpWidget(
-        _host(const FsCard(onTap: _noop, child: Text('Lose fat'))),
+        host(const FsCard(onTap: _noop, child: Text('Lose fat'))),
       );
       expect(
         tester.getSemantics(find.byType(FsCard)),
@@ -734,7 +729,7 @@ void main() {
         ),
       );
 
-      await tester.pumpWidget(_host(const FsCard(child: Text('Summary'))));
+      await tester.pumpWidget(host(const FsCard(child: Text('Summary'))));
       expect(
         tester.getSemantics(find.text('Summary')),
         isSemantics(label: 'Summary', isButton: false),
@@ -745,7 +740,7 @@ void main() {
     testWidgets('a card given a selected state exposes it', (tester) async {
       final handle = tester.ensureSemantics();
       await tester.pumpWidget(
-        _host(
+        host(
           const FsCard(
             onTap: _noop,
             accent: true,
@@ -771,7 +766,7 @@ void main() {
       (tester) async {
         final handle = tester.ensureSemantics();
         await tester.pumpWidget(
-          _host(const FsButton(label: 'Continue', onPressed: _noop)),
+          host(const FsButton(label: 'Continue', onPressed: _noop)),
         );
         expect(
           tester.getSemantics(find.byType(FsButton)),
@@ -785,7 +780,7 @@ void main() {
         );
 
         await tester.pumpWidget(
-          _host(const FsButton(label: 'Continue', onPressed: null)),
+          host(const FsButton(label: 'Continue', onPressed: null)),
         );
         expect(
           tester.getSemantics(find.byType(FsButton)),
@@ -805,7 +800,7 @@ void main() {
     ) async {
       final handle = tester.ensureSemantics();
       await tester.pumpWidget(
-        _host(const FsButton(label: 'Save', onPressed: _noop, busy: true)),
+        host(const FsButton(label: 'Save', onPressed: _noop, busy: true)),
       );
       expect(
         tester.getSemantics(find.byType(FsButton)),
@@ -826,7 +821,7 @@ void main() {
   group('tap targets', () {
     /// [child] with room all round, as a chip in a column of content has,
     /// so a tap just off it lands inside the column.
-    Widget roomy(Widget child) => _host(
+    Widget roomy(Widget child) => host(
       SizedBox(
         width: 300,
         child: Column(
@@ -882,7 +877,7 @@ void main() {
       tester,
     ) async {
       await tester.pumpWidget(
-        _host(const FsChip(label: 'Bench', selected: false, onTap: _noop)),
+        host(const FsChip(label: 'Bench', selected: false, onTap: _noop)),
       );
 
       // About 30 dp: the band is not layout, or every Wrap of chips would
@@ -893,7 +888,7 @@ void main() {
     testWidgets('a screen reader frames the chip at 48 dp too', (tester) async {
       final handle = tester.ensureSemantics();
       await tester.pumpWidget(
-        _host(
+        host(
           const FsChip(label: 'No', selected: false, small: true, onTap: _noop),
         ),
       );
@@ -1045,7 +1040,7 @@ void main() {
         final controller = TextEditingController();
         addTearDown(controller.dispose);
         await tester.pumpWidget(
-          _host(
+          host(
             SizedBox(
               width: 140,
               child: FsStatField(
@@ -1092,7 +1087,7 @@ void main() {
       final controller = TextEditingController();
       addTearDown(controller.dispose);
       await tester.pumpWidget(
-        _host(
+        host(
           SizedBox(
             width: 140,
             child: FsStatField(
@@ -1128,7 +1123,7 @@ void main() {
       final controller = TextEditingController();
       addTearDown(controller.dispose);
       await tester.pumpWidget(
-        _host(
+        host(
           SizedBox(
             width: 140,
             child: FsStatField(
@@ -1267,7 +1262,7 @@ void main() {
     testWidgets('a screen reader hears which unit is in force', (tester) async {
       final handle = tester.ensureSemantics();
       await tester.pumpWidget(
-        _host(FsUnitToggle(value: WeightUnit.kg, onChanged: (_) {})),
+        host(FsUnitToggle(value: WeightUnit.kg, onChanged: (_) {})),
       );
 
       final kg = tester.getSemantics(find.byKey(const Key('unit.kg')));
@@ -1686,6 +1681,160 @@ void main() {
     });
   });
 
+  // L-7: a row where picking one chip unpicks the others (meal, lead time)
+  // was announced like a row of independent toggles.
+  //
+  // The group flag alone changes nothing a screen reader says on a node that
+  // only reports `selected`: Android reads it only on a node with a checked
+  // state, to pick RadioButton over CheckBox, and iOS only uses it to hide a
+  // checked value. So an exclusive chip reports itself the way Flutter's own
+  // radio (RawRadio) does on each platform, and these tests check the flags
+  // each platform's bridge actually reads.
+  group('single-choice chips', () {
+    SemanticsData chipData(WidgetTester tester, String label) =>
+        tester.getSemantics(find.text(label)).getSemanticsData();
+
+    testWidgets('on Android an exclusive chip is a radio button, checked or '
+        'not checked', (tester) async {
+      final h = tester.ensureSemantics();
+      await tester.pumpWidget(
+        host(
+          Row(
+            children: [
+              FsChip(
+                label: 'Lunch',
+                selected: true,
+                exclusive: true,
+                onTap: () {},
+              ),
+              FsChip(
+                label: 'Dinner',
+                selected: false,
+                exclusive: true,
+                onTap: () {},
+              ),
+            ],
+          ),
+        ),
+      );
+      final lunch = chipData(tester, 'Lunch');
+      final dinner = chipData(tester, 'Dinner');
+      // A checked state with the group flag is what makes Android's bridge
+      // name the node android.widget.RadioButton.
+      expect(lunch.flagsCollection.isChecked, CheckedState.isTrue);
+      expect(dinner.flagsCollection.isChecked, CheckedState.isFalse);
+      expect(lunch.flagsCollection.isInMutuallyExclusiveGroup, isTrue);
+      expect(dinner.flagsCollection.isInMutuallyExclusiveGroup, isTrue);
+      // As RawRadio on Android: the check says it, so no "selected" on top.
+      expect(lunch.flagsCollection.isSelected, Tristate.none);
+      expect(lunch.flagsCollection.isButton, isTrue);
+      expect(lunch.hasAction(SemanticsAction.tap), isTrue);
+      h.dispose();
+    });
+
+    testWidgets('on iOS an exclusive chip is selected, or says it is not', (
+      tester,
+    ) async {
+      final h = tester.ensureSemantics();
+      await tester.pumpWidget(
+        host(
+          Row(
+            children: [
+              FsChip(
+                label: 'Lunch',
+                selected: true,
+                exclusive: true,
+                onTap: () {},
+              ),
+              FsChip(
+                label: 'Dinner',
+                selected: false,
+                exclusive: true,
+                onTap: () {},
+              ),
+            ],
+          ),
+        ),
+      );
+      final lunch = chipData(tester, 'Lunch');
+      final dinner = chipData(tester, 'Dinner');
+      // VoiceOver has no radio role: the Selected trait marks the one that
+      // is on, and the others say "Not selected", as RawRadio's do.
+      expect(lunch.flagsCollection.isSelected, Tristate.isTrue);
+      expect(lunch.hint, isEmpty);
+      expect(dinner.flagsCollection.isSelected, Tristate.isFalse);
+      expect(dinner.hint, 'Not selected');
+      // The group flag keeps iOS from making a checked node a switch.
+      expect(dinner.flagsCollection.isInMutuallyExclusiveGroup, isTrue);
+      h.dispose();
+    }, variant: TargetPlatformVariant.only(TargetPlatform.iOS));
+
+    testWidgets('picking another chip moves the check', (tester) async {
+      final h = tester.ensureSemantics();
+      var meal = 'Lunch';
+      await tester.pumpWidget(
+        host(
+          StatefulBuilder(
+            builder: (context, setState) => Row(
+              children: [
+                for (final m in ['Lunch', 'Dinner'])
+                  FsChip(
+                    label: m,
+                    selected: meal == m,
+                    exclusive: true,
+                    onTap: () => setState(() => meal = m),
+                  ),
+              ],
+            ),
+          ),
+        ),
+      );
+      await tester.tap(find.text('Dinner'));
+      await tester.pump();
+      expect(
+        chipData(tester, 'Lunch').flagsCollection.isChecked,
+        CheckedState.isFalse,
+      );
+      expect(
+        chipData(tester, 'Dinner').flagsCollection.isChecked,
+        CheckedState.isTrue,
+      );
+      h.dispose();
+    });
+
+    testWidgets('a chip is an independent toggle by default', (tester) async {
+      final h = tester.ensureSemantics();
+      await tester.pumpWidget(
+        host(FsChip(label: 'Bench', selected: true, onTap: () {})),
+      );
+      final data = chipData(tester, 'Bench');
+      expect(data.flagsCollection.isSelected, Tristate.isTrue);
+      expect(data.flagsCollection.isChecked, CheckedState.none);
+      expect(data.flagsCollection.isInMutuallyExclusiveGroup, isFalse);
+      h.dispose();
+    });
+
+    testWidgets('an action chip ignores exclusive', (tester) async {
+      final h = tester.ensureSemantics();
+      await tester.pumpWidget(
+        host(
+          FsChip(
+            label: 'Add',
+            selected: false,
+            toggle: false,
+            exclusive: true,
+            onTap: () {},
+          ),
+        ),
+      );
+      final data = chipData(tester, 'Add');
+      expect(data.flagsCollection.isChecked, CheckedState.none);
+      expect(data.flagsCollection.isSelected, Tristate.none);
+      expect(data.flagsCollection.isInMutuallyExclusiveGroup, isFalse);
+      h.dispose();
+    });
+  });
+
   // A placeholder vanishes once the user types, and a label beside the field
   // is a separate node: the field itself has to carry its name.
   group('field labels', () {
@@ -1715,6 +1864,39 @@ void main() {
       );
       expect(find.bySemanticsLabel('HEIGHT'), findsNothing);
       expect(find.bySemanticsLabel('cm'), findsNothing);
+      h.dispose();
+    });
+
+    // L-3: the empty card's '--' placeholder was read inside its name,
+    // "Height, dash dash, cm".
+    testWidgets('an empty FsStatField does not say its "--" placeholder', (
+      tester,
+    ) async {
+      final h = tester.ensureSemantics();
+      final controller = TextEditingController();
+      addTearDown(controller.dispose);
+      await tester.pumpWidget(
+        host(
+          SizedBox(
+            width: 200,
+            child: FsStatField(
+              label: 'Height',
+              unit: 'cm',
+              controller: controller,
+            ),
+          ),
+        ),
+      );
+      // Still drawn for sighted users.
+      expect(find.text('--'), findsOneWidget);
+      final data = tester
+          .getSemantics(find.byType(TextField))
+          .getSemanticsData();
+      expect(data.label, 'Height');
+      expect(data.hint, 'cm');
+      for (final said in [data.label, data.hint, data.value]) {
+        expect(said, isNot(contains('--')));
+      }
       h.dispose();
     });
 
@@ -1789,6 +1971,29 @@ void main() {
         expect(border.top.color, t.control);
       });
     }
+
+    // L-6: one helper for both rings' "say this instead" wrapper.
+    testWidgets('fsSpokenAs says its label in place of its parts', (
+      tester,
+    ) async {
+      final h = tester.ensureSemantics();
+      await tester.pumpWidget(
+        host(
+          Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              fsSpokenAs('3 of 5 done today', const Text('3/5')),
+              fsSpokenAs(null, const Text('Rest day')),
+            ],
+          ),
+        ),
+      );
+      expect(find.bySemanticsLabel('3 of 5 done today'), findsOneWidget);
+      expect(find.bySemanticsLabel('3/5'), findsNothing);
+      // No label: the child reads as it always did.
+      expect(find.bySemanticsLabel('Rest day'), findsOneWidget);
+      h.dispose();
+    });
 
     testWidgets('FsRing reads as one labelled node', (tester) async {
       final h = tester.ensureSemantics();
@@ -1907,6 +2112,27 @@ void main() {
         lessThanOrEqualTo(tester.getRect(find.byKey(const Key('retry'))).top),
       );
     });
+
+    // L-13: the look in both themes, not only the light one.
+    for (final dark in [false, true]) {
+      testWidgets('reads clearly in the ${dark ? 'dark' : 'light'} theme', (
+        tester,
+      ) async {
+        await tester.pumpWidget(
+          host(
+            FsRetry(message: "Couldn't load.", onRetry: () {}),
+            dark: dark,
+          ),
+        );
+        final t = dark ? FsTokens.dark : FsTokens.light;
+        final message = tester.widget<Text>(find.text("Couldn't load."));
+        expect(message.style?.color, t.text2);
+        expect(contrast(t.text2, t.bg), greaterThanOrEqualTo(4.5));
+        final label = tester.widget<Text>(find.text('Try again'));
+        expect(label.style?.color, t.text);
+        expect(contrast(t.text, t.surface), greaterThanOrEqualTo(4.5));
+      });
+    }
 
     testWidgets('puts a secondary action below Try again', (tester) async {
       await tester.pumpWidget(
@@ -2202,15 +2428,18 @@ void main() {
     Future<void> pumpAsker(
       WidgetTester tester,
       List<bool> answers, {
+      String? title,
       String? message,
+      bool dark = false,
     }) async {
       await tester.pumpWidget(
         MaterialApp(
-          theme: fsLightTheme(),
+          theme: dark ? fsDarkTheme() : fsLightTheme(),
           home: Builder(
             builder: (c) => TextButton(
-              onPressed: () async =>
-                  answers.add(await confirmDiscard(c, message: message)),
+              onPressed: () async => answers.add(
+                await confirmDiscard(c, title: title, message: message),
+              ),
               child: const Text('ask'),
             ),
           ),
@@ -2243,28 +2472,46 @@ void main() {
       expect(answers, [false]);
     });
 
-    testWidgets('Discard is drawn in red', (tester) async {
-      await pumpAsker(tester, []);
-      const t = FsTokens.light;
-      final style = tester
-          .widget<TextButton>(
-            find.ancestor(
-              of: find.text('Discard'),
-              matching: find.byType(TextButton),
-            ),
-          )
-          .style!;
-      expect(style.foregroundColor!.resolve({}), t.red);
-    });
+    // L-13: in the dark theme too, not only the light one.
+    for (final dark in [false, true]) {
+      testWidgets('Discard is drawn in red (${dark ? 'dark' : 'light'})', (
+        tester,
+      ) async {
+        await pumpAsker(tester, [], dark: dark);
+        final t = dark ? FsTokens.dark : FsTokens.light;
+        final style = tester
+            .widget<TextButton>(
+              find.ancestor(
+                of: find.text('Discard'),
+                matching: find.byType(TextButton),
+              ),
+            )
+            .style!;
+        expect(style.foregroundColor!.resolve({}), t.red);
+        // The dialog sits on elev.
+        expect(contrast(t.red, t.elev), greaterThanOrEqualTo(4.5));
+      });
+    }
 
     testWidgets('can say why discarding matters here', (tester) async {
       await pumpAsker(tester, [], message: 'The photo still counts today.');
       expect(find.text('The photo still counts today.'), findsOneWidget);
     });
+
+    // L-8: Snap a meal asks "Leave without logging?", not about changes.
+    testWidgets('can ask in its own words', (tester) async {
+      await pumpAsker(tester, [], title: 'Leave without logging?');
+      expect(find.text('Leave without logging?'), findsOneWidget);
+      expect(find.text('Discard your changes?'), findsNothing);
+    });
   });
 
   group('FsDiscardGuard', () {
-    Future<void> pumpGuard(WidgetTester tester, {required bool dirty}) async {
+    Future<void> pumpGuard(
+      WidgetTester tester, {
+      required bool dirty,
+      String? title,
+    }) async {
       await tester.pumpWidget(
         MaterialApp(
           theme: fsLightTheme(),
@@ -2274,6 +2521,7 @@ void main() {
                 MaterialPageRoute<void>(
                   builder: (_) => FsDiscardGuard(
                     dirty: dirty,
+                    title: title,
                     message: 'Nothing here is saved yet.',
                     child: const Scaffold(body: Text('form')),
                   ),
@@ -2315,6 +2563,14 @@ void main() {
       await tester.pumpAndSettle();
       expect(find.text('form'), findsNothing);
       expect(find.text('open'), findsOneWidget);
+    });
+
+    testWidgets('passes its own title to the dialog', (tester) async {
+      await pumpGuard(tester, dirty: true, title: 'Leave without logging?');
+      await tester.binding.handlePopRoute();
+      await tester.pumpAndSettle();
+      expect(find.text('Leave without logging?'), findsOneWidget);
+      expect(find.text('Discard your changes?'), findsNothing);
     });
   });
 }

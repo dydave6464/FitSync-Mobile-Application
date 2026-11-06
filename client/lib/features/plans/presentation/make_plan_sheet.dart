@@ -31,7 +31,7 @@ Future<String?> showMakePlanSheet(
   bool planUnknown = false,
 }) => showModalBottomSheet<String>(
   context: context,
-  showDragHandle: true,
+  // The handle, surface and corners are the theme's (PT-22).
   // At large text on a small phone the chips, the warning and both buttons
   // are taller than the default 9/16 cap; the scroll view below takes the
   // rest.

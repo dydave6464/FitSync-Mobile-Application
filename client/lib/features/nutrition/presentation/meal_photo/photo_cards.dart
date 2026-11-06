@@ -43,7 +43,7 @@ class PhotoItemCard extends StatelessWidget {
               Expanded(
                 child: Padding(
                   padding: const EdgeInsets.only(top: 12),
-                  child: Text(food.name, style: theme.textTheme.titleSmall),
+                  child: Text(food.name, style: theme.textTheme.titleMedium),
                 ),
               ),
               IconButton(
@@ -102,8 +102,10 @@ class PhotoItemCard extends StatelessWidget {
                     onPressed: servings > minPhotoServings ? () => onServings(servings - 0.5) : null,
                     icon: const Icon(Icons.remove),
                   ),
-                  // At least 48 dp; the figure shrinks rather than breaking
-                  // "1.5" over two lines at large text.
+                  // At least 48 dp, and "1.5" stays on one line at large
+                  // text. It never shrinks: in this Row it has unbounded
+                  // width, so FsOneLine's scale-down never acts and the box
+                  // grows with the figure instead.
                   ConstrainedBox(
                     constraints: const BoxConstraints(minWidth: 48),
                     child: ExcludeSemantics(
@@ -249,7 +251,7 @@ class PhotoTotalCard extends StatelessWidget {
             crossAxisAlignment: WrapCrossAlignment.center,
             spacing: 12,
             children: [
-              Text('Estimated total', style: theme.textTheme.titleSmall),
+              Text('Estimated total', style: theme.textTheme.titleMedium),
               Text('${totals.kcal} kcal', style: TextStyle(fontSize: 18, fontWeight: FontWeight.w700, color: t.accentText)),
             ],
           ),

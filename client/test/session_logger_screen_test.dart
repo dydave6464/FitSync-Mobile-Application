@@ -162,6 +162,10 @@ class FakeSessionController extends ActiveSessionController {
   Object? completeError;
   Object? abandonError;
 
+  /// The closed session's volume as the server reports it: null for a
+  /// workout with no weighted set.
+  double? completedVolumeKg = 380;
+
   /// When set, [abandon] suspends here after recording the call -- a discard
   /// still in flight when the phone is locked. Null resolves immediately.
   Completer<void>? abandonGate;
@@ -237,7 +241,7 @@ class FakeSessionController extends ActiveSessionController {
       sessionDate: '2026-09-08',
       planId: source.planId,
       durationMin: durationMin,
-      totalVolumeKg: 380,
+      totalVolumeKg: completedVolumeKg,
       sets: source.sets,
     );
     state = const AsyncValue.data(null);
@@ -573,8 +577,15 @@ Future<FakeSessionController> _pump(
   // Opens the logger the way Home's card and the Plan tab's Resume do, on
   // where the workout was left rather than on exercise 1's demo.
   bool resume = false,
+  // The phone's clock, which elapsed time is read from. Null is the real
+  // one, which the sessions above are stamped against.
+  DateTime Function()? wallClock,
+  // A controller of the test's own, for a state the default cannot reach --
+  // a session that has not loaded yet.
+  FakeSessionController? sessionController,
 }) async {
-  final controller = FakeSessionController(session ?? _session());
+  final controller =
+      sessionController ?? FakeSessionController(session ?? _session());
 
   await tester.pumpWidget(
     ProviderScope(
@@ -582,6 +593,7 @@ Future<FakeSessionController> _pump(
         // The rest reads time from here; the binding's fake clock advances
         // with every pump, so a test can run a rest down by pumping.
         restNowProvider.overrideWithValue(() => tester.binding.clock.now()),
+        if (wallClock != null) wallClockProvider.overrideWithValue(wallClock),
         activePlanProvider.overrideWith((ref) async {
           onActivePlanRead?.call();
           // Routed through the fake repository when one is supplied, mirroring
@@ -1429,6 +1441,27 @@ void main() {
 
     // The closed session comes back at 380 kg, which is 837.75... lb.
     expect(find.textContaining('838 lb lifted'), findsOneWidget);
+  });
+
+  // History leaves volume out of a bodyweight session for the same reason:
+  // "0 kg lifted" reads as a failure to record, not a fact about the workout.
+  testWidgets('a workout with no weight says nothing about lifting', (
+    tester,
+  ) async {
+    final controller = await _pump(
+      tester,
+      session: _session(
+        sets: const [LoggedSet(exerciseId: 101, setNumber: 1, reps: 10)],
+      ),
+    );
+    controller.completedVolumeKg = null;
+
+    await _finishWithSetsLeft(tester);
+
+    expect(find.byKey(const Key('logger.summary')), findsOneWidget);
+    expect(find.textContaining('lifted'), findsNothing);
+    expect(find.textContaining('1 sets'), findsNothing);
+    expect(find.textContaining('1 set'), findsOneWidget);
   });
 
   testWidgets('switching the unit in the header saves it to the profile', (
@@ -2523,6 +2556,43 @@ void main() {
       await tester.pumpAndSettle();
       expect(tester.takeException(), isNull);
     });
+  });
+
+  // The caption above the bar opens the jump sheet, but read as plain text.
+  testWidgets('the position caption is a button that says what it does', (
+    tester,
+  ) async {
+    final handle = tester.ensureSemantics();
+    await _pump(tester);
+
+    final node = tester.getSemantics(find.byKey(const Key('logger.position')));
+    expect(node.flagsCollection.isButton, isTrue);
+    expect(node.hint, 'Jump to another exercise');
+    handle.dispose();
+  });
+
+  // Nothing else rebuilds the screen while the user rests or reads the demo:
+  // the rest repaints only its own tag. The caption keeps time on its own.
+  testWidgets('the elapsed time moves on while nothing else changes', (
+    tester,
+  ) async {
+    var wall = DateTime(2026, 9, 8, 18, 12);
+    await _pump(
+      tester,
+      wallClock: () => wall,
+      session: ActiveSession(
+        sessionId: 7,
+        status: 'in_progress',
+        sessionDate: '2026-09-08',
+        startedAt: DateTime(2026, 9, 8, 18),
+      ),
+    );
+    expect(find.text('12 min elapsed'), findsOneWidget);
+
+    wall = wall.add(const Duration(minutes: 2));
+    await tester.pump(const Duration(seconds: 30));
+
+    expect(find.text('14 min elapsed'), findsOneWidget);
   });
 
   // Beyond the brief -- startedAt is the SERVER's NOW(). A phone clock behind
@@ -4678,6 +4748,92 @@ void main() {
     });
   });
 
+  // The screens shown before the workout itself -- the plan failing or
+  // still loading -- close on Back too, and leave the same open session
+  // behind (L-50).
+  group('back out before the exercises are on screen', () {
+    const logged = [
+      LoggedSet(exerciseId: 101, setNumber: 1, weightKg: 20, reps: 10),
+    ];
+
+    testWidgets('from a plan that failed, says the workout is kept open', (
+      tester,
+    ) async {
+      await _pump(
+        tester,
+        session: _session(planId: 42, sets: logged),
+        plans: _FlakyPlanRepository(failing: true),
+      );
+      expect(find.byKey(const Key('logger.planError')), findsOneWidget);
+
+      await tester.tap(find.byKey(const Key('logger.back')));
+      await tester.pumpAndSettle();
+
+      expect(find.byType(SessionLoggerScreen), findsNothing);
+      expect(find.text(_keptOpen), findsOneWidget);
+    });
+
+    testWidgets('from a plan still loading, says the workout is kept open', (
+      tester,
+    ) async {
+      final gate = Completer<WorkoutPlan?>();
+      await _pump(
+        tester,
+        session: _session(planId: 42, sets: logged),
+        plans: _FlakyPlanRepository(hold: gate),
+        settle: false,
+      );
+
+      await tester.binding.handlePopRoute();
+      await tester.pump();
+      await tester.pump(const Duration(seconds: 1));
+
+      expect(find.byType(SessionLoggerScreen), findsNothing);
+      expect(find.text(_keptOpen), findsOneWidget);
+      gate.complete(_plan);
+    });
+
+    testWidgets('with nothing logged, a failed plan closes quietly', (
+      tester,
+    ) async {
+      await _pump(
+        tester,
+        session: _session(planId: 42),
+        plans: _FlakyPlanRepository(failing: true),
+      );
+
+      await tester.tap(find.byKey(const Key('logger.back')));
+      await tester.pumpAndSettle();
+
+      expect(find.byType(SessionLoggerScreen), findsNothing);
+      expect(find.byType(SnackBar), findsNothing);
+    });
+
+    // L-52. Before the session itself has loaded there is no menu -- nothing
+    // to act on -- but the app bar's Back is there, and works. Nothing is
+    // said on the way out: with no session seen, there are no sets to vouch
+    // for.
+    testWidgets('a session not loaded yet still has a working Back', (
+      tester,
+    ) async {
+      final pending = _PendingSessionController();
+      await _pump(tester, sessionController: pending, settle: false);
+
+      expect(find.byType(AppBar), findsOneWidget);
+      expect(find.byKey(const Key('logger.back')), findsOneWidget);
+      expect(find.byKey(const Key('logger.menu')), findsNothing);
+      expect(find.byType(CircularProgressIndicator), findsOneWidget);
+
+      await tester.tap(find.byKey(const Key('logger.back')));
+      await tester.pump();
+      await tester.pump(const Duration(seconds: 1));
+
+      expect(find.byType(SessionLoggerScreen), findsNothing);
+      expect(find.byType(SnackBar), findsNothing);
+      pending.release();
+    });
+  });
+
   // Back on exercise 1's demo closes the logger. With sets logged, it says
   // the same as Leave, rather than nothing at all (SE-9).
   group('back out of the first exercise', () {
@@ -4754,6 +4910,21 @@ void main() {
       isTrue,
     );
   });
+}
+
+/// A session still on its way from the server: [build] waits until
+/// [release], so the logger shows its no-session state.
+class _PendingSessionController extends FakeSessionController {
+  _PendingSessionController() : super(null);
+
+  final _gate = Completer<ActiveSession?>();
+
+  void release() {
+    if (!_gate.isCompleted) _gate.complete(null);
+  }
+
+  @override
+  Future<ActiveSession?> build() => _gate.future;
 }
 
 /// Fails every plan load the way a dropped connection does while [failing],

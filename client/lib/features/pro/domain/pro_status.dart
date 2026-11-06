@@ -14,9 +14,6 @@ enum ProPlan {
   /// (server/src/lib/pro-plans.js). One payment, one period: nothing renews.
   final int months;
 
-  /// "1 month", "12 months".
-  String get period => months == 1 ? '1 month' : '$months months';
-
   static ProPlan? fromWire(Object? value) => switch (value) {
     'monthly' => ProPlan.monthly,
     'annual' => ProPlan.annual,
@@ -168,10 +165,13 @@ String? methodLabel(String? method) => switch (method) {
   _ => null,
 };
 
-/// The Settings Pro card's second line.
-String proCardSubtitle(ProStatus? status) {
+/// The Settings Pro card's second line. [premium] is what the profile says;
+/// it answers while [status] is not in yet (loading, or a failed read), so a
+/// Pro account is not shown the free pitch.
+String proCardSubtitle(ProStatus? status, {bool premium = false}) {
+  if (status == null && premium) return 'Pro';
   if (status == null || !status.pro) {
-    return 'See where your training volume goes';
+    return 'Muscle analytics, Snap a meal, unlimited AI cues';
   }
   if (status.source == ProSource.granted) return 'Pro (granted)';
   final until = status.until;

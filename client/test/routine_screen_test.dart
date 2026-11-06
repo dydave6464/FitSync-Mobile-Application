@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 
+import 'package:fitsync/core/widgets/fs_kit.dart';
 import 'package:fitsync/core/api_exception.dart';
 import 'package:fitsync/core/theme.dart';
 import 'package:fitsync/features/routine/data/routine_repository.dart';
@@ -146,6 +147,19 @@ void main() {
 
     expect(find.text('1/3'), findsOneWidget);
     expect(find.text('2 left today'), findsOneWidget);
+  });
+
+  testWidgets('the ring is read as a count, not "1 slash 3" (PT-25)', (
+    tester,
+  ) async {
+    final handle = tester.ensureSemantics();
+    final repo = _FakeRoutineRepo(_fixtureDay);
+    await tester.pumpWidget(_harness(repo));
+    await tester.pumpAndSettle();
+
+    expect(find.bySemanticsLabel('1 of 3 done today'), findsOneWidget);
+    expect(find.bySemanticsLabel('1/3'), findsNothing);
+    handle.dispose();
   });
 
   testWidgets('the header reads all done when everything is ticked', (
@@ -371,6 +385,8 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.byKey(const Key('routine.retry')), findsOneWidget);
+    expect(find.widgetWithText(FsRetry, 'Something broke.'), findsOneWidget);
+    expect(find.text('Try again'), findsOneWidget);
   });
 
   testWidgets('the list icon opens every habit', (tester) async {
@@ -503,29 +519,38 @@ void main() {
     });
 
     for (final dark in [false, true]) {
-      testWidgets('a finished workout says so, in a colour that reads '
-          '(${dark ? 'dark' : 'light'}, PT-1)', (tester) async {
-        final handle = tester.ensureSemantics();
-        final repo = _FakeRoutineRepo(
-          const RoutineDay(
-            date: '2026-09-24',
-            habits: [],
-            workout: RoutineWorkout(title: 'Upper Body', done: true),
-          ),
-        );
-        await tester.pumpWidget(_harness(repo, onOpenPlan: () {}, dark: dark));
-        await tester.pumpAndSettle();
+      for (final done in [true, false]) {
+        testWidgets('${done ? 'a finished' : 'an unfinished'} workout says '
+            'so, with its own icon in a colour that reads '
+            '(${dark ? 'dark' : 'light'}, PT-1, L-43)', (tester) async {
+          final handle = tester.ensureSemantics();
+          final repo = _FakeRoutineRepo(
+            RoutineDay(
+              date: '2026-09-24',
+              habits: const [],
+              workout: RoutineWorkout(title: 'Upper Body', done: done),
+            ),
+          );
+          await tester.pumpWidget(
+            _harness(repo, onOpenPlan: () {}, dark: dark),
+          );
+          await tester.pumpAndSettle();
 
-        final status = find.byKey(const Key('routine.workout.status'));
-        expect(
-          tester.getSemantics(status).getSemanticsData().label,
-          contains('Workout finished'),
-        );
-        final t = tester.element(status).fs;
-        final icon = tester.widget<Icon>(status);
-        expect(contrast(icon.color!, t.surface), greaterThanOrEqualTo(3));
-        handle.dispose();
-      });
+          final status = find.byKey(const Key('routine.workout.status'));
+          expect(
+            tester.getSemantics(status).getSemanticsData().label,
+            contains(done ? 'Workout finished' : 'Not finished yet'),
+          );
+          final t = tester.element(status).fs;
+          final icon = tester.widget<Icon>(status);
+          // The glyph carries the state as well as the colour: colour alone
+          // is not enough to tell done from not done.
+          expect(icon.icon, done ? Icons.check_circle : Icons.schedule);
+          expect(icon.color, done ? t.accentText : t.text3);
+          expect(contrast(icon.color!, t.surface), greaterThanOrEqualTo(3));
+          handle.dispose();
+        });
+      }
     }
 
     testWidgets('a habit row says it edits the habit', (tester) async {

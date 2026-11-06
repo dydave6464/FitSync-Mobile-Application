@@ -79,6 +79,24 @@ ScheduleDot? _dot(WidgetTester tester, String kind, String date) {
   return finder.evaluate().isEmpty ? null : tester.widget<ScheduleDot>(finder);
 }
 
+/// The colour a day's number is drawn in, after every [Opacity] above it
+/// inside the cell: a faded cell fades the number with it.
+Color _numberColor(WidgetTester tester, String date) {
+  final cell = find.byKey(Key('schedule.day.$date'));
+  final number = find.descendant(
+    of: cell,
+    matching: find.text('${int.parse(date.substring(8, 10))}'),
+  );
+  var alpha = 1.0;
+  for (final opacity in tester.widgetList<Opacity>(
+    find.ancestor(of: number, matching: find.byType(Opacity)),
+  )) {
+    alpha *= opacity.opacity;
+  }
+  final color = tester.widget<Text>(number).style!.color!;
+  return color.withValues(alpha: color.a * alpha);
+}
+
 void main() {
   testWidgets('42 cells from Monday 31 Aug, under Monday-first letters', (
     tester,
@@ -112,16 +130,9 @@ void main() {
     expect(_cell(tester, '2026-08-31').inMonth, isFalse);
     expect(_cell(tester, '2026-09-01').inMonth, isTrue);
     expect(_cell(tester, '2026-10-01').inMonth, isFalse);
-    double opacity(String date) => tester
-        .widget<Opacity>(
-          find.descendant(
-            of: find.byKey(Key('schedule.day.$date')),
-            matching: find.byType(Opacity),
-          ),
-        )
-        .opacity;
-    expect(opacity('2026-08-31'), lessThan(1));
-    expect(opacity('2026-09-01'), 1);
+    // Dimmed by the number's colour, not by fading the cell (PT-27).
+    expect(_numberColor(tester, '2026-08-31'), _t.text3);
+    expect(_numberColor(tester, '2026-09-01'), _t.text);
 
     Color? fill(String date) => tester
         .widget<Material>(
@@ -233,6 +244,26 @@ void main() {
         // The grid sits in a card; the page is behind the legend's edges.
         expect(contrast(dot.color, t.surface), greaterThanOrEqualTo(3));
         expect(contrast(dot.color, t.bg), greaterThanOrEqualTo(3));
+      }
+    });
+  }
+
+  for (final dark in [false, true]) {
+    testWidgets("neighbouring months' day numbers read at 4.5:1 "
+        '(${dark ? 'dark' : 'light'}) (PT-27)', (tester) async {
+      // They stay tappable, so they have to stay readable: a whole cell at
+      // 35% left the number at 2.25:1.
+      await _pump(tester, days: _days, dark: dark);
+      final t = dark ? FsTokens.dark : FsTokens.light;
+
+      for (final date in ['2026-08-31', '2026-10-01']) {
+        final color = _numberColor(tester, date);
+        final shown = Color.alphaBlend(color, t.surface);
+        expect(
+          contrast(shown, t.surface),
+          greaterThanOrEqualTo(4.5),
+          reason: date,
+        );
       }
     });
   }
