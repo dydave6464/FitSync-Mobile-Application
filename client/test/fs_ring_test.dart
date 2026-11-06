@@ -106,4 +106,29 @@ void main() {
       }
     }
   });
+
+  // The nutrition ring's centre is two lines, "1,160" and "/ 2,050 kcal",
+  // which a screen reader read as two bare figures.
+  testWidgets('the ring reads as one labelled node when given a label', (
+    tester,
+  ) async {
+    final h = tester.ensureSemantics();
+    await tester.pumpWidget(
+      const MaterialApp(
+        home: Scaffold(
+          body: Center(
+            child: FsRing(
+              value: 0.56,
+              color: Colors.amber,
+              semanticLabel: '1,160 of 2,050 kcal eaten',
+              child: Text('1,160'),
+            ),
+          ),
+        ),
+      ),
+    );
+    expect(find.bySemanticsLabel('1,160 of 2,050 kcal eaten'), findsOneWidget);
+    expect(find.bySemanticsLabel('1,160'), findsNothing);
+    h.dispose();
+  });
 }

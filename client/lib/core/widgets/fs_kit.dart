@@ -1191,7 +1191,7 @@ class FsRadioDot extends StatelessWidget {
       decoration: BoxDecoration(
         shape: BoxShape.circle,
         color: selected ? t.accent : Colors.transparent,
-        border: Border.all(color: selected ? t.accent : t.line2, width: 2),
+        border: Border.all(color: selected ? t.accent : t.control, width: 2),
       ),
       child: selected ? Icon(Icons.check, size: 13, color: t.onAccent) : null,
     );
@@ -1240,17 +1240,27 @@ class FsIconTile extends StatelessWidget {
 /// but the server builds a plan in a single call and reports no progress, so
 /// a filled fraction would be a number we invented.
 class FsRing extends StatelessWidget {
-  const FsRing({super.key, this.size = 120, this.stroke = 10, this.child});
+  const FsRing({
+    super.key,
+    this.size = 120,
+    this.stroke = 10,
+    this.child,
+    this.semanticLabel,
+  });
 
   final double size;
   final double stroke;
   final Widget? child;
 
+  /// When given, the ring is one node a screen reader hears as this, in
+  /// place of whatever its [child] says piece by piece.
+  final String? semanticLabel;
+
   @override
   Widget build(BuildContext context) {
     final t = context.fs;
 
-    return SizedBox(
+    final ring = SizedBox(
       width: size,
       height: size,
       child: Stack(
@@ -1268,6 +1278,14 @@ class FsRing extends StatelessWidget {
           ?child,
         ],
       ),
+    );
+    final label = semanticLabel;
+    if (label == null) return ring;
+    return Semantics(
+      container: true,
+      label: label,
+      excludeSemantics: true,
+      child: ring,
     );
   }
 }

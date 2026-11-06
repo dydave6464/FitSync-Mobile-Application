@@ -112,6 +112,17 @@ void main() {
       expect(item!.text, 'Thu, Oct 15 · 3,100 kg');
     });
 
+    testWidgets('bars fill in the data green by default', (tester) async {
+      // The light brand green is 2.45:1 on surface2: the bars are the data.
+      await _pump(
+        tester,
+        const FsBarChart(label: 'Training volume', bars: _week),
+      );
+      for (final group in _barData(tester).barGroups) {
+        expect(group.barRods.single.color, FsTokens.light.accentFill);
+      }
+    });
+
     testWidgets('a screen reader hears every bar, in words it can say', (
       tester,
     ) async {
@@ -298,6 +309,14 @@ void main() {
         expect(showing(tester), isEmpty);
       });
     });
+  });
+
+  testWidgets('a bar row fills in the data green by default', (tester) async {
+    await _pump(tester, const FsBarRow(label: 'Chest', fraction: 0.6));
+    final bar = tester.widget<LinearProgressIndicator>(
+      find.byType(LinearProgressIndicator),
+    );
+    expect(bar.color, FsTokens.light.accentFill);
   });
 
   group('FsLineChart', () {

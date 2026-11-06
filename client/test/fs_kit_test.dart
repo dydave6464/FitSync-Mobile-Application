@@ -1770,6 +1770,44 @@ void main() {
       h.dispose();
     });
   });
+
+  group('readable controls', () {
+    for (final dark in [false, true]) {
+      testWidgets('an unselected radio ring takes the control outline '
+          '(${dark ? 'dark' : 'light'})', (tester) async {
+        await tester.pumpWidget(
+          host(const FsRadioDot(selected: false), dark: dark),
+        );
+        final box = tester.widget<Container>(
+          find.descendant(
+            of: find.byType(FsRadioDot),
+            matching: find.byType(Container),
+          ),
+        );
+        final border = (box.decoration! as BoxDecoration).border! as Border;
+        final t = dark ? FsTokens.dark : FsTokens.light;
+        expect(border.top.color, t.control);
+      });
+    }
+
+    testWidgets('FsRing reads as one labelled node', (tester) async {
+      final h = tester.ensureSemantics();
+      await tester.pumpWidget(
+        host(
+          const FsRing(
+            semanticLabel: '1,160 of 2,050 kcal eaten',
+            child: Text('1,160'),
+          ),
+        ),
+      );
+      expect(
+        find.bySemanticsLabel('1,160 of 2,050 kcal eaten'),
+        findsOneWidget,
+      );
+      expect(find.bySemanticsLabel('1,160'), findsNothing);
+      h.dispose();
+    });
+  });
 }
 
 void _noop() {}

@@ -17,8 +17,10 @@ class FsTokens extends ThemeExtension<FsTokens> {
     required this.text,
     required this.text2,
     required this.text3,
+    required this.control,
     required this.accent,
     required this.accentText,
+    required this.accentFill,
     required this.accentDim,
     required this.accentLine,
     required this.onAccent,
@@ -39,16 +41,37 @@ class FsTokens extends ThemeExtension<FsTokens> {
   // text
   final Color text;
   final Color text2;
+
+  /// Captions: dates, units, the words under figures. 4.5:1 or better on the
+  /// plain surfaces (bg, surface, surface2, elev), but not on the accent
+  /// tint: where `FsCard`'s accent gradient is strongest (the accent at 0.16)
+  /// it drops to about 4.0-4.2:1 in both themes. So secondary text on
+  /// `FsCard(accent: true)` or on an [accentDim] surface uses [text2], which
+  /// holds 4.5:1 there, not [text3].
   final Color text3;
+
+  /// The outline that says a control is there: an unticked checkbox, an
+  /// unselected radio ring, an outlined button. WCAG asks 3:1 for that
+  /// boundary on every surface; [line2] is a hairline at about 1.4:1, so it
+  /// stays for dividers and card edges only.
+  final Color control;
 
   // accent + functional
   final Color accent;
 
   /// The accent where it is read rather than seen: link and text-button
-  /// labels, green figures, the current tab, icons that carry meaning. Fills,
-  /// rings and bars keep [accent]. The two differ only in the light theme,
-  /// where the brand green on white is 2.87:1 and reads as faint text.
+  /// labels, green figures, the current tab, icons that carry meaning. Fills
+  /// keep [accent], or [accentFill] where the fill is data. The two differ
+  /// only in the light theme, where the brand green on white is 2.87:1 and
+  /// reads as faint text.
   final Color accentText;
+
+  /// The accent where it is data: progress bars, chart bars, state dots.
+  /// A fill like that is read for how full it is, so it needs 3:1 on every
+  /// surface, which the light theme's brand green (2.45:1 on surface2) is
+  /// not. Buttons, chips and the nav button keep [accent]: there the green
+  /// is the brand, not a measure.
+  final Color accentFill;
   final Color accentDim;
   final Color accentLine;
   final Color onAccent;
@@ -68,11 +91,16 @@ class FsTokens extends ThemeExtension<FsTokens> {
     text: Color(0xFFEEF2F5),
     text2: Color(0xFF97A3AD),
     // Lifted from #5D6873 (3.2:1 on cards) to read at 4.5:1 or better on
-    // every surface, still dimmer than text2 (parked §32).
+    // every plain surface, still dimmer than text2 (parked §32). Not on the
+    // accent tint: see [text3].
     text3: Color(0xFF838E98),
+    // text3's grey: 5.1:1 or better on every surface, where line2 was 1.4:1.
+    control: Color(0xFF838E98),
     accent: Color(0xFF7DFF5C),
     // The lime already reads at well over 4.5:1 on every dark surface.
     accentText: Color(0xFF7DFF5C),
+    // The lime already stands out at well over 3:1 on every dark surface.
+    accentFill: Color(0xFF7DFF5C),
     accentDim: Color(0x247DFF5C), // rgba(125,255,92,0.14)
     accentLine: Color(0x577DFF5C), // rgba(125,255,92,0.34)
     onAccent: Color(0xFF06140A),
@@ -94,13 +122,19 @@ class FsTokens extends ThemeExtension<FsTokens> {
     text: Color(0xFF0F1613),
     text2: Color(0xFF55636B),
     // Darkened from #8B969C (3.0:1 on white) to read at 4.5:1 or better on
-    // every surface, still lighter than text2 (parked §32).
+    // every plain surface, still lighter than text2 (parked §32). Not on the
+    // accent tint: see [text3].
     text3: Color(0xFF616C73),
+    // text3's grey: 4.6:1 or better on every surface, where line2 was 1.4:1.
+    control: Color(0xFF616C73),
     accent: Color(0xFF0FB04A),
     // A deeper shade of the same green for words: 4.5:1 or better on every
     // surface and on the green's own tint (accentDim), which the brand green
     // is not. Still plainly the accent beside a filled button (parked §32).
     accentText: Color(0xFF087530),
+    // A shade deeper than the brand green, for bars read as data: 3.1:1 or
+    // better on every surface, where the brand green is 2.45:1 on surface2.
+    accentFill: Color(0xFF0C9A40),
     accentDim: Color(0x210FB04A), // rgba(15,176,74,0.13)
     accentLine: Color(0x4D0FB04A), // rgba(15,176,74,0.30)
     // Dark, as in the dark theme: white on this green was 2.87:1, and the
@@ -125,8 +159,10 @@ class FsTokens extends ThemeExtension<FsTokens> {
     Color? text,
     Color? text2,
     Color? text3,
+    Color? control,
     Color? accent,
     Color? accentText,
+    Color? accentFill,
     Color? accentDim,
     Color? accentLine,
     Color? onAccent,
@@ -144,8 +180,10 @@ class FsTokens extends ThemeExtension<FsTokens> {
     text: text ?? this.text,
     text2: text2 ?? this.text2,
     text3: text3 ?? this.text3,
+    control: control ?? this.control,
     accent: accent ?? this.accent,
     accentText: accentText ?? this.accentText,
+    accentFill: accentFill ?? this.accentFill,
     accentDim: accentDim ?? this.accentDim,
     accentLine: accentLine ?? this.accentLine,
     onAccent: onAccent ?? this.onAccent,
@@ -168,8 +206,10 @@ class FsTokens extends ThemeExtension<FsTokens> {
       text: Color.lerp(text, other.text, t)!,
       text2: Color.lerp(text2, other.text2, t)!,
       text3: Color.lerp(text3, other.text3, t)!,
+      control: Color.lerp(control, other.control, t)!,
       accent: Color.lerp(accent, other.accent, t)!,
       accentText: Color.lerp(accentText, other.accentText, t)!,
+      accentFill: Color.lerp(accentFill, other.accentFill, t)!,
       accentDim: Color.lerp(accentDim, other.accentDim, t)!,
       accentLine: Color.lerp(accentLine, other.accentLine, t)!,
       onAccent: Color.lerp(onAccent, other.onAccent, t)!,
@@ -310,6 +350,14 @@ ThemeData _build(FsTokens t, Brightness brightness) {
     textButtonTheme: TextButtonThemeData(
       style: TextButton.styleFrom(foregroundColor: t.accentText),
     ),
+    // Unset, M3 drew the label in primary (the brand green, 2.87:1 on white)
+    // inside a line2 outline that barely read as a control.
+    outlinedButtonTheme: OutlinedButtonThemeData(
+      style: OutlinedButton.styleFrom(
+        foregroundColor: t.accentText,
+        side: BorderSide(color: t.control),
+      ),
+    ),
     snackBarTheme: SnackBarThemeData(
       backgroundColor: t.elev,
       contentTextStyle: TextStyle(fontFamily: _fontFamily, color: t.text),
@@ -338,7 +386,7 @@ ThemeData _build(FsTokens t, Brightness brightness) {
         (s) => s.contains(WidgetState.selected) ? t.accent : Colors.transparent,
       ),
       checkColor: WidgetStatePropertyAll(t.onAccent),
-      side: BorderSide(color: t.line2, width: 2),
+      side: BorderSide(color: t.control, width: 2),
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(6)),
     ),
     listTileTheme: ListTileThemeData(
