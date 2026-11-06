@@ -24,6 +24,18 @@ const MAX_DAYS = 7;
 const MIN_SESSION_MIN = 20;
 const MAX_SESSION_MIN = 120;
 
+/// The refusal both plan-changing routes give while a workout is open. It
+/// names that workout, so the app can offer to resume it instead of leaving
+/// the user at a message with no way forward. startedAt is null for a legacy
+/// row that never recorded one.
+function sessionInProgress(open) {
+  return AppError.conflict(
+    'SESSION_IN_PROGRESS',
+    'You have a workout in progress. Finish or discard it before changing your plan.',
+    [{ sessionId: open.sessionId, startedAt: open.startedAt }],
+  );
+}
+
 function invalidPlanField(field, message) {
   return AppError.badRequest('INVALID_PLAN_FIELD', message, [{ field }]);
 }
@@ -92,12 +104,8 @@ module.exports = function buildPlansRouter(deps) {
 
       // Replacing the plan under a running workout would strand the logger on
       // exercises no longer in it. Refusing is honest; finish or discard first.
-      if (await getActiveSession(deps.pool, userId)) {
-        throw AppError.conflict(
-          'SESSION_IN_PROGRESS',
-          'Finish or discard your current session before changing your plan.',
-        );
-      }
+      const open = await getActiveSession(deps.pool, userId);
+      if (open) throw sessionInProgress(open);
 
       // A generated plan is the machine's to replace. One the user built out
       // of workouts they actually did is not, and savePlan deactivates the
@@ -156,12 +164,8 @@ module.exports = function buildPlansRouter(deps) {
 
       // Changing the plan under a running workout would strand the logger on
       // exercises no longer in it. Same guard, same reason, as regenerate.
-      if (await getActiveSession(deps.pool, userId)) {
-        throw AppError.conflict(
-          'SESSION_IN_PROGRESS',
-          'Finish or discard your current session before changing your plan.',
-        );
-      }
+      const open = await getActiveSession(deps.pool, userId);
+      if (open) throw sessionInProgress(open);
 
       await createPlanFromSession(deps.pool, userId, { sessionId, splitStyle, dayNo });
 

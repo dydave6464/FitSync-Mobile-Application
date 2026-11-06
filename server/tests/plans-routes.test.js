@@ -370,12 +370,21 @@ test('plan endpoints', async (t) => {
     await withPlan();
     const before = await request(app).get('/api/v1/plans/active')
       .set('Authorization', auth).expect(200);
-    await request(app).post('/api/v1/sessions').set('Authorization', auth).expect(201);
+    const started = await request(app).post('/api/v1/sessions')
+      .set('Authorization', auth).expect(201);
 
     const res = await request(app).post('/api/v1/plans/regenerate')
       .set('Authorization', auth)
       .send({ splitStyle: 'push_pull_legs' }).expect(409);
     assert.equal(res.body.error.code, 'SESSION_IN_PROGRESS');
+    assert.equal(
+      res.body.error.message,
+      'You have a workout in progress. Finish or discard it before changing your plan.',
+    );
+    // Names the open session, so the app can offer to resume it rather than
+    // leave the user at a dead-end message.
+    assert.equal(res.body.error.details[0].sessionId, started.body.data.session.sessionId);
+    assert.match(res.body.error.details[0].startedAt, /^\d{4}-\d{2}-\d{2}T/);
 
     // The refusal changed nothing: the plan the running session logs against
     // is still the SAME ROW it started with, not merely a row that happens to
@@ -580,7 +589,7 @@ test('plan endpoints', async (t) => {
     await reset();
     const [[u]] = await pool.query("SELECT user_id FROM users WHERE email = 'w@example.com'");
     const sessionId = await finishedWorkout(u.user_id);
-    await pool.query(
+    const [open] = await pool.query(
       `INSERT INTO workout_sessions (user_id, status, session_date, started_at)
        VALUES (?, 'in_progress', CURDATE(), NOW())`,
       [u.user_id],
@@ -591,6 +600,12 @@ test('plan endpoints', async (t) => {
       .send({ sessionId, splitStyle: 'full_body' })
       .expect(409);
     assert.equal(res.body.error.code, 'SESSION_IN_PROGRESS');
+    assert.equal(
+      res.body.error.message,
+      'You have a workout in progress. Finish or discard it before changing your plan.',
+    );
+    assert.equal(res.body.error.details[0].sessionId, open.insertId);
+    assert.equal(typeof res.body.error.details[0].startedAt, 'string');
   });
 
   await t.test('from-session needs a signed-in caller', async () => {
