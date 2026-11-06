@@ -4,6 +4,7 @@ import '../../../../core/theme.dart';
 import '../../../exercises/presentation/widgets/coaching_tag.dart';
 import '../../../plans/domain/workout_plan.dart';
 import '../../domain/active_session.dart';
+import 'sheet_header.dart';
 import '../../../exercises/domain/exercise_labels.dart';
 
 /// Opens [ExerciseJumpSheet] over the logger: resolves to the index chosen,
@@ -69,9 +70,6 @@ class ExerciseJumpSheet extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final t = context.fs;
-    final theme = Theme.of(context);
-
     return ConstrainedBox(
       constraints: BoxConstraints(
         maxHeight: MediaQuery.sizeOf(context).height * _maxHeightFraction,
@@ -81,23 +79,9 @@ class ExerciseJumpSheet extends StatelessWidget {
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Center(
-              child: Container(
-                width: 38,
-                height: 4,
-                margin: const EdgeInsets.only(top: 10, bottom: 16),
-                decoration: BoxDecoration(
-                  color: t.line2,
-                  borderRadius: BorderRadius.circular(99),
-                ),
-              ),
-            ),
-            Padding(
-              padding: const EdgeInsets.fromLTRB(20, 0, 20, 12),
-              child: Text(
-                'Jump to an exercise',
-                style: theme.textTheme.titleLarge,
-              ),
+            const Padding(
+              padding: EdgeInsets.fromLTRB(20, 10, 8, 4),
+              child: SheetHeader(title: 'Jump to an exercise'),
             ),
             // Only the rows scroll; the handle and the title stay put.
             Flexible(

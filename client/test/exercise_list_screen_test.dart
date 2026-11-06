@@ -9,6 +9,7 @@ import 'package:fitsync/features/exercises/domain/exercise.dart';
 import 'package:fitsync/features/exercises/domain/exercise_filters.dart';
 import 'package:fitsync/features/exercises/presentation/exercise_list_screen.dart';
 import 'package:fitsync/features/exercises/presentation/providers.dart';
+import 'package:fitsync/features/sessions/presentation/widgets/sheet_header.dart';
 
 import 'helpers/no_recent_exercises.dart';
 
@@ -222,6 +223,29 @@ void main() {
 
     expect(find.text('Barbell'), findsOneWidget);
     expect(find.text('Equipment'), findsNothing);
+  });
+
+  testWidgets('the equipment sheet has the shared header and a Close', (
+    tester,
+  ) async {
+    final repo = FakeRepository();
+    await tester.pumpWidget(harness(repo));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const Key('library.equipment')));
+    await tester.pumpAndSettle();
+
+    final header = find.byType(SheetHeader);
+    expect(header, findsOneWidget);
+    expect(
+      find.descendant(of: header, matching: find.text('Equipment')),
+      findsOneWidget,
+    );
+
+    await tester.tap(find.byTooltip('Close'));
+    await tester.pumpAndSettle();
+    expect(find.byKey(const Key('equipment.option.any')), findsNothing);
+    // Closing is not choosing: the filter stays as it was.
+    expect(repo.lastEquipment, isNull);
   });
 
   testWidgets('the sheet names gear the way onboarding does', (tester) async {

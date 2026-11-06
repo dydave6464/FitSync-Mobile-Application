@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import 'package:fitsync/core/theme.dart';
+import 'package:fitsync/core/widgets/fs_kit.dart';
 import 'package:fitsync/features/sessions/data/session_repository.dart';
 import 'package:fitsync/features/sessions/domain/shared_report.dart';
 import 'package:fitsync/features/profile/domain/profile.dart';
@@ -12,6 +13,7 @@ import 'package:fitsync/features/sessions/presentation/providers.dart';
 import 'package:fitsync/features/pro/presentation/pro_screen.dart';
 import 'package:fitsync/features/pro/presentation/providers.dart';
 import 'package:fitsync/features/sessions/presentation/widgets/share_report_sheet.dart';
+import 'package:fitsync/features/sessions/presentation/widgets/sheet_header.dart';
 
 import 'helpers/fake_pro_repository.dart';
 
@@ -115,6 +117,29 @@ Future<_FakeRepo> _open(
 }
 
 void main() {
+  testWidgets('has the shared sheet header, and its Close shuts the sheet', (
+    tester,
+  ) async {
+    await _open(tester);
+    final header = find.byType(SheetHeader);
+    expect(header, findsOneWidget);
+    expect(
+      find.descendant(of: header, matching: find.text('Share with coach')),
+      findsOneWidget,
+    );
+
+    await tester.tap(find.byTooltip('Close'));
+    await tester.pumpAndSettle();
+    expect(find.byKey(const Key('share.create')), findsNothing);
+  });
+
+  testWidgets('names the period it shares in plain words', (tester) async {
+    await _open(tester);
+
+    expect(find.textContaining("this week's progress"), findsOneWidget);
+    expect(find.textContaining('window'), findsNothing);
+  });
+
   testWidgets('the sheet lists the sections that can be shared', (
     tester,
   ) async {
@@ -246,6 +271,13 @@ void main() {
     expect(copied, isEmpty);
     // describeError's fallback for a non-ApiException.
     expect(find.textContaining('Something went wrong'), findsOneWidget);
+    expect(
+      find.ancestor(
+        of: find.textContaining('Something went wrong'),
+        matching: find.byType(FsErrorLine),
+      ),
+      findsOneWidget,
+    );
   });
 
   testWidgets('the sheet paints its own surface', (tester) async {
@@ -255,10 +287,10 @@ void main() {
     // Material ancestor: the surface has to be that Material's own colour,
     // not a box behind it. A transparent one leaves the toggles sitting on
     // the scrim with the screen showing through.
-    final eyebrow = find.text('SHARE WITH COACH');
-    final t = tester.element(eyebrow).fs;
+    final title = find.text('Share with coach');
+    final t = tester.element(title).fs;
     final behind = tester.widget<Material>(
-      find.ancestor(of: eyebrow, matching: find.byType(Material)).first,
+      find.ancestor(of: title, matching: find.byType(Material)).first,
     );
 
     expect(behind.color, t.surface);

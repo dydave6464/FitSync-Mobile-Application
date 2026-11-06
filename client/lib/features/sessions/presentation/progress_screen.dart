@@ -144,6 +144,7 @@ class ProgressScreen extends ConsumerWidget {
         ),
         const SizedBox(height: 12),
         ShareWithCoachCard(
+          period: period,
           onTap: () => showShareReportSheet(context, period: period),
         ),
         const SizedBox(height: 22),

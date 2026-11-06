@@ -1,3 +1,5 @@
+import '../../exercises/domain/muscle_regions.dart';
+
 /// The four answers to "any pain since?", in the order the sheet shows them.
 ///
 /// The server's own spellings: session_outcomes.pain_level is an ENUM of
@@ -12,6 +14,7 @@ class PendingOutcome {
     required this.sessionId,
     required this.sessionDate,
     required this.planName,
+    this.muscleGroups = const [],
   });
 
   final int sessionId;
@@ -20,12 +23,20 @@ class PendingOutcome {
   final String sessionDate;
   final String? planName;
 
+  /// A hand-picked session's muscle groups, as history rows carry them.
+  /// Empty from a server that does not send them yet.
+  final List<String> muscleGroups;
+
   /// The same name the Progress list and the "+" sheet give a session.
-  String get title => planName ?? 'Your own workout';
+  String get title =>
+      planName ?? manualWorkoutName(muscleGroups) ?? 'Your own workout';
 
   factory PendingOutcome.fromJson(Map<String, dynamic> json) => PendingOutcome(
     sessionId: json['sessionId'] as int,
     sessionDate: json['sessionDate'] as String,
     planName: json['planName'] as String?,
+    muscleGroups: (json['muscleGroups'] as List<dynamic>? ?? const [])
+        .cast<String>()
+        .toList(growable: false),
   );
 }

@@ -6,6 +6,7 @@ import '../../../../core/widgets/fs_kit.dart';
 import '../../domain/exercise_filters.dart';
 import '../equipment_icon.dart';
 import '../providers.dart';
+import '../../../sessions/presentation/widgets/sheet_header.dart';
 
 /// The catalogue's equipment filter, as a labelled button rather than chips.
 ///
@@ -81,7 +82,6 @@ class EquipmentFilterButton extends ConsumerWidget {
     final chosen = await showModalBottomSheet<_Choice>(
       context: context,
       isScrollControlled: true,
-      showDragHandle: true,
       builder: (_) => _EquipmentSheet(
         options: options,
         selected: ref.read(selectedFiltersProvider).equipment,
@@ -144,16 +144,11 @@ class _EquipmentSheetState extends State<_EquipmentSheet> {
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            Padding(
-              padding: const EdgeInsets.fromLTRB(20, 0, 20, 4),
-              child: Text(
-                'Equipment',
-                style: TextStyle(
-                  fontSize: 16,
-                  fontWeight: FontWeight.w600,
-                  color: t.text,
-                ),
-              ),
+            // Closing is not choosing: it pops null, which leaves the filter
+            // as it was (see _open).
+            const Padding(
+              padding: EdgeInsets.fromLTRB(20, 10, 8, 0),
+              child: SheetHeader(title: 'Equipment'),
             ),
             Padding(
               padding: const EdgeInsets.fromLTRB(16, 8, 16, 8),

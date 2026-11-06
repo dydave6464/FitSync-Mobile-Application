@@ -374,6 +374,21 @@ void main() {
       expect(find.textContaining('link'), findsOneWidget);
     });
 
+    testWidgets('names the period, with no internal words or fixed lifetime', (
+      tester,
+    ) async {
+      await tester.pumpWidget(
+        const MaterialApp(
+          home: Scaffold(body: ShareWithCoachCard(period: 'month')),
+        ),
+      );
+
+      expect(find.textContaining("this month's progress"), findsOneWidget);
+      // The server decides how long a link lasts; the SnackBar quotes it.
+      expect(find.textContaining('30 days'), findsNothing);
+      expect(find.textContaining('window'), findsNothing);
+    });
+
     testWidgets('tapping it fires the handler', (tester) async {
       var taps = 0;
       await tester.pumpWidget(
