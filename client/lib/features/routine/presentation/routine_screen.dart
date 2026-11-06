@@ -114,6 +114,8 @@ class _Header extends StatelessWidget {
             color: t.accent,
             size: 62,
             stroke: 7,
+            // "1/3" is read as "1 slash 3", or as a date.
+            semanticLabel: '${day.done} of ${day.total} done today',
             // In the clear middle, not the whole 62 dp box: inside the 7 dp
             // stroke that is a circle 24 dp in radius, and 41 x 19 is a line
             // that fits it with room to spare (20.5^2 + 9.5^2 < 24^2).

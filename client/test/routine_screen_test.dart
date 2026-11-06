@@ -148,6 +148,19 @@ void main() {
     expect(find.text('2 left today'), findsOneWidget);
   });
 
+  testWidgets('the ring is read as a count, not "1 slash 3" (PT-25)', (
+    tester,
+  ) async {
+    final handle = tester.ensureSemantics();
+    final repo = _FakeRoutineRepo(_fixtureDay);
+    await tester.pumpWidget(_harness(repo));
+    await tester.pumpAndSettle();
+
+    expect(find.bySemanticsLabel('1 of 3 done today'), findsOneWidget);
+    expect(find.bySemanticsLabel('1/3'), findsNothing);
+    handle.dispose();
+  });
+
   testWidgets('the header reads all done when everything is ticked', (
     tester,
   ) async {
