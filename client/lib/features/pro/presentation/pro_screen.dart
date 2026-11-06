@@ -454,6 +454,8 @@ class _ProScreenState extends ConsumerState<ProScreen> {
           : FsButtonKind.ghost,
       busy: _opening,
       onPressed: _opening ? null : _openPage,
+      // Read whole at large text: "again" is what says the page reopens.
+      wrapLabel: true,
     );
     final otherPlan = FsButton(
       key: const Key('pro.otherPlan'),
@@ -480,6 +482,8 @@ class _ProScreenState extends ConsumerState<ProScreen> {
               label: 'Pay ${peso(p.forPlan(_plan))} with PayMongo',
               busy: busy,
               onPressed: busy ? null : _start,
+              // The amount and who takes it, read whole at large text.
+              wrapLabel: true,
             ),
             // The terms, where the prototype states them: under the button
             // that commits to them.

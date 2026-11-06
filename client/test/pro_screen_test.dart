@@ -1,7 +1,7 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
-import 'package:flutter/rendering.dart' show SemanticsNode;
+import 'package:flutter/rendering.dart' show RenderParagraph, SemanticsNode;
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -441,6 +441,32 @@ void main() {
     await tester.pump();
     expect(plan('pro.plan.annual'), isSemantics(isSelected: true));
     handle.dispose();
+  });
+
+  // PS-18: "with PayMongo" and "again" were cut off at larger text.
+  testWidgets('Pay and Open payment page again are read whole at 2x text', (
+    tester,
+  ) async {
+    tester.view.physicalSize = const Size(360, 640);
+    tester.view.devicePixelRatio = 1.0;
+    addTearDown(tester.view.reset);
+    tester.platformDispatcher.textScaleFactorTestValue = 2.0;
+    addTearDown(tester.platformDispatcher.clearTextScaleFactorTestValue);
+
+    void expectWhole(String label) {
+      final paragraph = tester.renderObject<RenderParagraph>(find.text(label));
+      expect(paragraph.didExceedMaxLines, isFalse, reason: label);
+    }
+
+    await _pump(tester);
+    await tester.scrollUntilVisible(find.byKey(const Key('pro.pay')), 200);
+    expectWhole('Pay ₱1,788 with PayMongo');
+
+    await tester.tap(find.byKey(const Key('pro.pay')));
+    await tester.pumpAndSettle();
+    await tester.scrollUntilVisible(find.byKey(const Key('pro.reopen')), 200);
+    expectWhole('Open payment page again');
+    expect(tester.takeException(), isNull);
   });
 
   testWidgets('paid: the end date and how it was paid, with plans to extend', (
