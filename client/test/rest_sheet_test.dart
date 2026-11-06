@@ -1,5 +1,5 @@
 import 'dart:async';
-import 'dart:ui' show SemanticsAction;
+import 'dart:ui' show CheckedState, SemanticsAction;
 
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -101,6 +101,29 @@ void main() {
     expect(_chip(tester, 'rest.preset.150').selected, isTrue);
     expect(_chip(tester, 'rest.preset.90').selected, isFalse);
     expect(_chip(tester, 'rest.custom').selected, isFalse);
+  });
+
+  // One default rest at a time, Custom included: a screen reader hears a
+  // radio group, so the chips that are off say "not checked".
+  testWidgets('the defaults are announced as one radio group', (tester) async {
+    final handle = tester.ensureSemantics();
+    await _open(tester, stored: 150);
+
+    final keys = [for (final s in restPresets) 'rest.preset.$s', 'rest.custom'];
+    for (final key in keys) {
+      final data = tester.getSemantics(find.byKey(Key(key))).getSemanticsData();
+      expect(
+        data.flagsCollection.isInMutuallyExclusiveGroup,
+        isTrue,
+        reason: key,
+      );
+      expect(
+        data.flagsCollection.isChecked,
+        key == 'rest.preset.150' ? CheckedState.isTrue : CheckedState.isFalse,
+        reason: key,
+      );
+    }
+    handle.dispose();
   });
 
   testWidgets('without a countdown it shows no timer and no skip', (

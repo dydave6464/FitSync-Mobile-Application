@@ -355,6 +355,9 @@ class _RestSheetState extends ConsumerState<RestSheet> {
                         key: Key('rest.preset.$seconds'),
                         label: formatRest(seconds),
                         selected: seconds == saved,
+                        // One default at a time, Custom included: a radio
+                        // group to a screen reader.
+                        exclusive: true,
                         small: true,
                         onTap: () => _save(seconds),
                       ),
@@ -368,6 +371,7 @@ class _RestSheetState extends ConsumerState<RestSheet> {
                           ? 'Custom…'
                           : 'Custom (${formatRest(saved)})',
                       selected: !isPreset,
+                      exclusive: true,
                       small: true,
                       onTap: () => _custom(saved),
                     ),
