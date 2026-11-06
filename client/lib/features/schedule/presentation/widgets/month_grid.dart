@@ -110,11 +110,29 @@ class ScheduleDayCell extends StatelessWidget {
   final DotState habits;
   final VoidCallback? onTap;
 
+  /// What a screen reader says for the day: the fill, the outline and the
+  /// dots are all colour and shape, which it cannot pass on. As the week
+  /// strip's cells do.
+  String get semanticsLabel => [
+    formatDayLabel(date),
+    if (isToday) 'today',
+    switch (workout) {
+      DotState.done => 'workout done',
+      DotState.planned => 'workout planned',
+      DotState.none => null,
+    },
+    switch (habits) {
+      DotState.done => 'habits done',
+      DotState.planned => 'habits due',
+      DotState.none => null,
+    },
+  ].nonNulls.join(', ');
+
   @override
   Widget build(BuildContext context) {
     final t = context.fs;
     final radius = BorderRadius.circular(9);
-    return Opacity(
+    final cell = Opacity(
       opacity: inMonth ? 1 : 0.35,
       child: Padding(
         padding: const EdgeInsets.all(2),
@@ -177,6 +195,15 @@ class ScheduleDayCell extends StatelessWidget {
           ),
         ),
       ),
+    );
+    return Semantics(
+      container: true,
+      button: onTap != null,
+      selected: selected,
+      label: semanticsLabel,
+      onTap: onTap,
+      excludeSemantics: true,
+      child: cell,
     );
   }
 }

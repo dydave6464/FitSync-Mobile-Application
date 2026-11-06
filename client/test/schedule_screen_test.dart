@@ -935,4 +935,18 @@ void main() {
       expect(tester.getSize(tag()).height, greaterThanOrEqualTo(48));
     });
   });
+
+  testWidgets('the month title is a heading that announces a new month '
+      '(PT-6)', (tester) async {
+    final handle = tester.ensureSemantics();
+    await _pump(tester);
+
+    final flags = tester
+        .getSemantics(find.text('September 2026'))
+        .getSemanticsData()
+        .flagsCollection;
+    expect(flags.isHeader, isTrue);
+    expect(flags.isLiveRegion, isTrue);
+    handle.dispose();
+  });
 }

@@ -152,12 +152,17 @@ class _ScheduleScreenState extends ConsumerState<ScheduleScreen> {
                 Row(
                   children: [
                     Expanded(
-                      child: Text(
-                        formatMonthTitle(month),
-                        style: TextStyle(
-                          fontSize: 16,
-                          fontWeight: FontWeight.w700,
-                          color: t.text,
+                      // A heading, and live: prev/next say the new month.
+                      child: Semantics(
+                        header: true,
+                        liveRegion: true,
+                        child: Text(
+                          formatMonthTitle(month),
+                          style: TextStyle(
+                            fontSize: 16,
+                            fontWeight: FontWeight.w700,
+                            color: t.text,
+                          ),
                         ),
                       ),
                     ),

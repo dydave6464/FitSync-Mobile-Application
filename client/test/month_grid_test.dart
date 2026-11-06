@@ -236,4 +236,52 @@ void main() {
       }
     });
   }
+
+  group('screen readers (PT-6)', () {
+    testWidgets('a day says its date, today, and what its dots mean', (
+      tester,
+    ) async {
+      final handle = tester.ensureSemantics();
+      await _pump(tester, days: _days, selected: '2026-09-22');
+
+      expect(
+        tester.getSemantics(find.byKey(const Key('schedule.day.2026-09-24'))),
+        isSemantics(
+          label: 'Thu 24 Sep, today, workout planned, habits done',
+          isButton: true,
+          hasSelectedState: true,
+          isSelected: false,
+          hasTapAction: true,
+        ),
+      );
+      expect(
+        tester.getSemantics(find.byKey(const Key('schedule.day.2026-09-22'))),
+        isSemantics(
+          label: 'Tue 22 Sep, workout done, habits done',
+          isSelected: true,
+        ),
+      );
+      expect(
+        tester.getSemantics(find.byKey(const Key('schedule.day.2026-09-25'))),
+        isSemantics(label: 'Fri 25 Sep, habits due'),
+      );
+      // The bare number is folded into the label, not read again.
+      expect(find.bySemanticsLabel('24'), findsNothing);
+      handle.dispose();
+    });
+
+    testWidgets('a day that cannot be tapped yet is not a button', (
+      tester,
+    ) async {
+      final handle = tester.ensureSemantics();
+      await _pump(tester, days: null, tappable: false);
+
+      final node = tester.getSemantics(
+        find.byKey(const Key('schedule.day.2026-09-24')),
+      );
+      expect(node.label, 'Thu 24 Sep, today');
+      expect(node.getSemanticsData().flagsCollection.isButton, isFalse);
+      handle.dispose();
+    });
+  });
 }
