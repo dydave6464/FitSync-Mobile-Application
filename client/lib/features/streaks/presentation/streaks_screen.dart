@@ -67,7 +67,7 @@ class _StreakSection extends ConsumerWidget {
             height: 190,
             child: Center(child: CircularProgressIndicator()),
           ),
-          error: (error, _) => _SectionError(
+          error: (error, _) => FsRetry(
             message: "Couldn't load your streak",
             buttonKey: const Key('streaks.streak.retry'),
             onRetry: () => ref.invalidate(streakProvider),
@@ -239,7 +239,7 @@ class _GoalsSection extends ConsumerWidget {
             height: 80,
             child: Center(child: CircularProgressIndicator()),
           ),
-          error: (error, _) => _SectionError(
+          error: (error, _) => FsRetry(
             message: "Couldn't load your goals",
             buttonKey: const Key('streaks.goals.retry'),
             onRetry: () => ref.invalidate(goalsProvider),
@@ -454,42 +454,6 @@ class _NoGoals extends StatelessWidget {
             key: const Key('streaks.goals.empty.add'),
             label: 'Add a goal',
             onPressed: () => showAddGoalSheet(context),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-class _SectionError extends StatelessWidget {
-  const _SectionError({
-    required this.message,
-    required this.buttonKey,
-    required this.onRetry,
-  });
-
-  final String message;
-  final Key buttonKey;
-  final VoidCallback onRetry;
-
-  @override
-  Widget build(BuildContext context) {
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 12),
-      child: Column(
-        children: [
-          Text(
-            message,
-            textAlign: TextAlign.center,
-            style: TextStyle(fontSize: 13, color: context.fs.text2),
-          ),
-          const SizedBox(height: 8),
-          FsButton(
-            key: buttonKey,
-            label: 'Retry',
-            small: true,
-            kind: FsButtonKind.secondary,
-            onPressed: onRetry,
           ),
         ],
       ),

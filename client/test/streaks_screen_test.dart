@@ -6,6 +6,7 @@ import 'package:flutter_test/flutter_test.dart';
 
 import 'package:fitsync/core/api_exception.dart';
 import 'package:fitsync/core/theme.dart';
+import 'package:fitsync/core/widgets/fs_kit.dart' show FsRetry;
 import 'package:fitsync/core/units.dart';
 import 'package:fitsync/features/profile/presentation/providers.dart'
     show weightUnitProvider;
@@ -291,6 +292,9 @@ void main() {
     );
 
     expect(find.byKey(const Key('streaks.streak.retry')), findsOneWidget);
+    // The app's shared retry treatment.
+    expect(find.byType(FsRetry), findsOneWidget);
+    expect(find.text('Try again'), findsOneWidget);
     expect(find.byKey(const Key('streaks.goal.1')), findsOneWidget);
   });
 
