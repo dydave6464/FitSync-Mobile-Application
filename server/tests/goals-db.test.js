@@ -133,6 +133,16 @@ test('goals db', async (t) => {
 
     assert.deepEqual(opts.map((o) => [o.exerciseId, o.bestKg, o.sets]), [[press, 42.5, 2], [squat, 80, 1]]);
     assert.equal(typeof opts[0].name, 'string');
+    assert.deepEqual(opts.map((o) => [o.hasOpenGoal, o.goalId]), [[false, null], [false, null]]);
+
+    // An unreached goal marks its lift; a reached one and another user's do not.
+    const open = await goal(u, press, 45);
+    await goal(u, squat, 80);
+    const other = await makeUser();
+    await goal(other, squat, 100);
+    const marked = await goals.listOptions(pool, u);
+    assert.deepEqual(marked.map((o) => [o.exerciseId, o.hasOpenGoal, o.goalId]),
+      [[press, true, open], [squat, false, null]]);
   });
 
   await t.test('bestKg and isLiveExercise', async () => {
@@ -144,24 +154,42 @@ test('goals db', async (t) => {
     assert.equal(await goals.isLiveExercise(pool, 99999999), false);
   });
 
-  await t.test('createGoalIfNoneOpen returns null when unreached goal exists, creates when only reached', async () => {
+  await t.test('createGoalIfNoneOpen names the open goal that blocks it, creates when only reached', async () => {
     const u = await makeUser();
     // Create and keep unreached
-    const g1 = await goals.createGoalIfNoneOpen(pool, u, squat, 70);
-    assert.ok(g1);
-    assert.equal(g1.targetKg, 70);
+    const first = await goals.createGoalIfNoneOpen(pool, u, squat, 70);
+    assert.equal(first.openGoalId, null);
+    assert.equal(first.goal.targetKg, 70);
 
-    // Try to create another for same exercise: should be null
-    const g2 = await goals.createGoalIfNoneOpen(pool, u, squat, 80);
-    assert.equal(g2, null);
+    // Another for the same exercise is blocked, naming the first
+    const blocked = await goals.createGoalIfNoneOpen(pool, u, squat, 80);
+    assert.deepEqual(blocked, { goal: null, openGoalId: first.goal.goalId });
 
     // Reach the first goal
     await session(u, { daysAgo: 1, sets: [{ weightKg: 70, reps: 5 }] });
 
     // Now can create a higher goal
-    const g3 = await goals.createGoalIfNoneOpen(pool, u, squat, 80);
-    assert.ok(g3);
-    assert.equal(g3.targetKg, 80);
-    assert.equal(g3.reachedOn, null);
+    const next = await goals.createGoalIfNoneOpen(pool, u, squat, 80);
+    assert.equal(next.openGoalId, null);
+    assert.equal(next.goal.targetKg, 80);
+    assert.equal(next.goal.reachedOn, null);
+  });
+
+  await t.test("updateGoalTarget changes only the owner's goal", async () => {
+    const u = await makeUser();
+    const other = await makeUser();
+    const id = await goal(u, squat, 70);
+
+    assert.equal(await goals.updateGoalTarget(pool, other, id, 90), null);
+    assert.equal((await goals.readGoal(pool, u, id)).targetKg, 70);
+
+    const changed = await goals.updateGoalTarget(pool, u, id, 82.5);
+    assert.equal(changed.goalId, id);
+    assert.equal(changed.targetKg, 82.5);
+    assert.equal((await goals.readGoal(pool, u, id)).targetKg, 82.5);
+
+    // The same value again still answers with the goal.
+    assert.equal((await goals.updateGoalTarget(pool, u, id, 82.5)).targetKg, 82.5);
+    assert.equal(await goals.updateGoalTarget(pool, u, 99999999, 90), null);
   });
 });
