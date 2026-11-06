@@ -946,6 +946,90 @@ void main() {
     });
   });
 
+  // PS-2: "Goals saved" / "Body metrics saved" appeared over writes that
+  // never happened.
+  group('Save says saved only for a real write', () {
+    bool saveEnabled(WidgetTester tester) =>
+        tester.widget<FsButton>(find.byKey(const Key('save'))).onPressed !=
+        null;
+
+    testWidgets('unticking every goal greys Save and says why', (
+      tester,
+    ) async {
+      final goalWrites = <({List<String> goals, String mainGoal})>[];
+      await _pump(
+        tester,
+        goals: ['build_muscle'],
+        mainGoal: 'build_muscle',
+        goalWrites: goalWrites,
+      );
+      await _openRow(tester, const Key('edit.goal'));
+      await tester.tap(find.byKey(const Key('goal.build_muscle')));
+      await tester.pumpAndSettle();
+
+      expect(saveEnabled(tester), isFalse);
+      expect(find.text('Pick at least one goal to save.'), findsOneWidget);
+
+      await tester.tap(find.byKey(const Key('save')));
+      await tester.pumpAndSettle();
+      expect(goalWrites, isEmpty);
+      expect(find.text('Goals saved'), findsNothing);
+      expect(find.byType(EditScaffold), findsOneWidget, reason: 'still open');
+    });
+
+    testWidgets('clearing a stored goal weight removes it', (tester) async {
+      final patches = <Map<String, dynamic>>[];
+      await _pump(
+        tester,
+        patches: patches,
+        goals: ['lose_weight'],
+        mainGoal: 'lose_weight',
+        heightCm: 170,
+        weightKg: 70,
+        goalWeightKg: 65,
+      );
+      await _openRow(tester, const Key('edit.about'));
+      await tester.enterText(find.byKey(const Key('goalWeightKg')), '');
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const Key('save')));
+      await tester.pumpAndSettle();
+
+      expect(patches.single.containsKey('goalWeightKg'), isTrue);
+      expect(patches.single['goalWeightKg'], isNull);
+      expect(find.text('Body metrics saved'), findsOneWidget);
+    });
+
+    testWidgets('an untouched empty goal weight is not sent', (tester) async {
+      final patches = <Map<String, dynamic>>[];
+      await _pump(tester, patches: patches, heightCm: 170, weightKg: 70);
+      await _openRow(tester, const Key('edit.about'));
+      await tester.tap(find.byKey(const Key('save')));
+      await tester.pumpAndSettle();
+
+      expect(patches.single.containsKey('goalWeightKg'), isFalse);
+    });
+
+    for (final (field, hint) in [
+      ('heightCm', 'Enter your height to save.'),
+      ('weightKg', 'Enter your weight to save.'),
+    ]) {
+      testWidgets('an empty $field greys Save and says why', (tester) async {
+        final patches = <Map<String, dynamic>>[];
+        await _pump(tester, patches: patches, heightCm: 170, weightKg: 70);
+        await _openRow(tester, const Key('edit.about'));
+        await tester.enterText(find.byKey(Key(field)), '');
+        await tester.pumpAndSettle();
+
+        expect(saveEnabled(tester), isFalse);
+        expect(find.text(hint), findsOneWidget);
+        await tester.tap(find.byKey(const Key('save')));
+        await tester.pumpAndSettle();
+        expect(patches, isEmpty);
+        expect(find.text('Body metrics saved'), findsNothing);
+      });
+    }
+  });
+
   // AO-12 / PS-3: a failed save's message sat under the whole form, often
   // below the fold, and was not announced.
   group('a failed save is reported right above Save', () {

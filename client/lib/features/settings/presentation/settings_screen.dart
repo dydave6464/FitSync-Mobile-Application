@@ -397,6 +397,12 @@ abstract class _EditorState<W extends ConsumerStatefulWidget>
   /// with. While it does, back asks before throwing the edit away.
   bool get isDirty;
 
+  /// Why the answer on screen cannot be saved yet, or null when it can.
+  /// Greys Save and is shown right above it, the way the Health editor
+  /// already says what it is waiting for -- rather than a Save that closes
+  /// and reports success over a write it skipped.
+  String? get blocker => null;
+
   Future<void> _onSave() async {
     if (_busy) return;
     setState(() {
@@ -438,12 +444,14 @@ abstract class _EditorState<W extends ConsumerStatefulWidget>
     // Built before isDirty is read: the step seeds the working value on its
     // first build.
     final step = buildStep(profile);
+    final blocked = blocker;
     return EditScaffold(
       title: title,
       busy: _busy,
       dirty: isDirty,
       error: _error,
-      onSave: _onSave,
+      hint: blocked,
+      onSave: blocked == null ? _onSave : null,
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         mainAxisSize: MainAxisSize.min,
@@ -486,10 +494,12 @@ class _GoalEditorState extends _EditorState<_GoalEditor> {
   }
 
   @override
-  Future<void> save(ProfileNotifier notifier) async {
-    if (_value.goals.isEmpty) return;
-    await notifier.setGoals(_value.goals, _value.mainGoal!);
-  }
+  String? get blocker =>
+      _value.goals.isEmpty ? 'Pick at least one goal to save.' : null;
+
+  @override
+  Future<void> save(ProfileNotifier notifier) =>
+      notifier.setGoals(_value.goals, _value.mainGoal!);
 }
 
 class _AboutEditor extends ConsumerStatefulWidget {
@@ -545,6 +555,15 @@ class _AboutEditorState extends _EditorState<_AboutEditor> {
     );
   }
 
+  /// Height and weight drive every calorie target, so a blank one is asked
+  /// for rather than quietly left out of the write.
+  @override
+  String? get blocker {
+    if (_value.heightCm == null) return 'Enter your height to save.';
+    if (_value.weightKg == null) return 'Enter your weight to save.';
+    return null;
+  }
+
   @override
   Future<void> save(ProfileNotifier notifier) async {
     final fields = {
@@ -552,7 +571,10 @@ class _AboutEditorState extends _EditorState<_AboutEditor> {
       if (_value.dateOfBirth != null) 'dateOfBirth': _value.dateOfBirth,
       if (_value.heightCm != null) 'heightCm': _value.heightCm,
       if (_value.weightKg != null) 'weightKg': _value.weightKg,
-      if (_value.goalWeightKg != null) 'goalWeightKg': _value.goalWeightKg,
+      // Goal weight is optional: an emptied field clears the stored one, as
+      // the server allows, rather than leaving it in place unseen.
+      if (_value.goalWeightKg != null || _seed.goalWeightKg != null)
+        'goalWeightKg': _value.goalWeightKg,
       if (_value.activityLevel != null) 'activityLevel': _value.activityLevel,
     };
     if (fields.isNotEmpty) await notifier.patch(fields);
