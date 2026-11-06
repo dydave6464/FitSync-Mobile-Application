@@ -203,5 +203,6 @@ async function listRecentFoods(pool, userId, limit = 20) {
 }
 
 module.exports = {
-  MEALS, insertEntry, insertEntryOnce, findEntryIdByClientId, getEntry, getStoredEntry, updateEntry, deleteEntry, listDayEntries, targetProfile, listRecentFoods,
+  MEALS, insertEntry, insertEntryOnce, findEntryIdByClientId, getEntry, getStoredEntry, updateEntry, deleteEntry,
+  listDayEntries, targetProfile, listRecentFoods,
 };

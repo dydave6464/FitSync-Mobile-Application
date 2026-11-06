@@ -9,7 +9,8 @@ const {
 } = require('../lib/nutrition-input');
 const { resolveFood } = require('../lib/resolve-food');
 const {
-  MEALS, insertEntry, insertEntryOnce, findEntryIdByClientId, getEntry, getStoredEntry, updateEntry, deleteEntry, listDayEntries, targetProfile,
+  MEALS, insertEntry, insertEntryOnce, findEntryIdByClientId, getEntry, getStoredEntry, updateEntry, deleteEntry,
+  listDayEntries, targetProfile,
 } = require('../db/nutrition');
 
 function totalsOf(entries) {
