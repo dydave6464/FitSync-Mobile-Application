@@ -8,6 +8,7 @@ import '../domain/auth_user.dart';
 import 'auth_controller.dart';
 import 'auth_text_link.dart';
 import 'code_entry.dart';
+import 'editable_under.dart';
 
 const _sentMessage = "If that address has an account, we've sent a code.";
 const _resentMessage =
@@ -136,18 +137,7 @@ class _ForgotPasswordScreenState extends ConsumerState<ForgotPasswordScreen> {
     });
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted) return;
-      EditableTextState? editable;
-      void visit(Element element) {
-        if (editable != null) return;
-        if (element is StatefulElement && element.state is EditableTextState) {
-          editable = element.state as EditableTextState;
-          return;
-        }
-        element.visitChildren(visit);
-      }
-
-      (_emailField.currentContext as Element?)?.visitChildren(visit);
-      editable?.requestKeyboard();
+      editableUnder(_emailField)?.requestKeyboard();
     });
   }
 

@@ -12,6 +12,7 @@ import '../data/google_sign_in_gateway.dart';
 import 'auth_controller.dart';
 import 'auth_text_link.dart';
 import 'check_email_screen.dart';
+import 'editable_under.dart';
 import 'forgot_password_screen.dart';
 import 'google_g_mark.dart';
 
@@ -136,18 +137,7 @@ class _SignInScreenState extends ConsumerState<SignInScreen> {
   /// a field on an outside tap) focus cannot move, so nothing would be read.
   /// [message] is announced instead -- only then, so it is never said twice.
   void _focus(_Field field, String message) {
-    EditableTextState? editable;
-    void visit(Element element) {
-      if (editable != null) return;
-      if (element is StatefulElement && element.state is EditableTextState) {
-        editable = element.state as EditableTextState;
-        return;
-      }
-      element.visitChildren(visit);
-    }
-
-    (_fieldKeys[field]!.currentContext as Element?)?.visitChildren(visit);
-    final target = editable;
+    final target = editableUnder(_fieldKeys[field]!);
     if (target == null) return;
     if (target.widget.focusNode.hasFocus) {
       SemanticsService.sendAnnouncement(
