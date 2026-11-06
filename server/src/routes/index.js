@@ -3,6 +3,7 @@ const express = require('express');
 const buildHealthRouter = require('./health');
 const buildExercisesRouter = require('./exercises');
 const buildAuthRouter = require('./auth');
+const buildAccountRouter = require('./account');
 const buildProfileRouter = require('./profile');
 const buildHealthCheckRouter = require('./health-check');
 const buildPlansRouter = require('./plans');
@@ -26,6 +27,7 @@ module.exports = function buildRoutes(deps = {}) {
   const router = express.Router();
   router.use('/health', buildHealthRouter(deps));
   router.use('/auth', buildAuthRouter(deps));
+  router.use('/account', buildAccountRouter(deps));
   router.use(buildProfileRouter(deps));
   router.use(buildHealthCheckRouter(deps));
   router.use('/plans', buildPlansRouter(deps));

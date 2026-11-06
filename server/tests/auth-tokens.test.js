@@ -5,6 +5,7 @@ const { migrate } = require('../src/db/migrate');
 const { createPool } = require('../src/db/pool');
 const { testDbConfig, dropAllTables } = require('./helpers/test-db');
 const { issueToken, consumeToken, TTL_SECONDS } = require('../src/lib/auth-tokens');
+const { TTL_MINUTES: CODE_TTL_MINUTES } = require('../src/lib/auth-codes');
 
 test('auth tokens', async (t) => {
   const pool = createPool(testDbConfig());
@@ -110,5 +111,12 @@ test('auth tokens', async (t) => {
     assert.equal(TTL_SECONDS.verify_email, 86400);
     assert.ok(TTL_SECONDS.reset_password < TTL_SECONDS.verify_email,
       'a reset token is worth more, so it must live less');
+  });
+
+  await t.test('a delete link lives as long as the live password reset: 15 minutes', () => {
+    // The spec ties the delete link to the password reset's expiry. The live
+    // reset is the emailed code (lib/auth-codes.js), not a reset link.
+    assert.equal(TTL_SECONDS.delete_account, CODE_TTL_MINUTES.reset_password * 60);
+    assert.equal(TTL_SECONDS.delete_account, 15 * 60);
   });
 });

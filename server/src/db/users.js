@@ -4,11 +4,19 @@ const { isProSql } = require('./pro');
 
 // is_premium here is "is Pro now" (db/pro.js): granted by hand or a paid
 // period that has not ended -- requireAuth and the auth routes read it.
+//
+// token_version is the account's token generation: requireAuth accepts only
+// tokens signed for it, and login and Google sign-in sign with the value read
+// here, in the same row as password_hash. has_google says whether a Google
+// identity is linked -- the public user's hasGoogle.
 const USER_COLUMNS = `
   user_id, email, password_hash, full_name, sex, date_of_birth,
   height_cm, weight_kg, goal_weight_kg, main_goal, fitness_level,
   activity_level, training_location, city, ${isProSql('users')} AS is_premium,
-  notifications_enabled, onboarding_completed_at, email_verified, created_at
+  notifications_enabled, onboarding_completed_at, email_verified, created_at,
+  token_version,
+  EXISTS (SELECT 1 FROM user_identities gi
+           WHERE gi.user_id = users.user_id AND gi.provider = 'google') AS has_google
 `;
 
 async function findUserByEmail(pool, email) {
@@ -42,11 +50,23 @@ async function markEmailVerified(pool, userId) {
   await pool.query('UPDATE users SET email_verified = 1 WHERE user_id = ?', [userId]);
 }
 
-// The one place password_hash changes outside registration. Used by the
-// password-reset route once checkCode has already proven the caller knows
-// the live reset_password code for this user.
-async function updatePasswordHash(pool, userId, passwordHash) {
-  await pool.query('UPDATE users SET password_hash = ? WHERE user_id = ?', [passwordHash, userId]);
+/// The one place password_hash changes outside registration: the password
+/// reset (once checkCode has proven the caller holds the live code) and the
+/// password change (once the current password matched). Moves the account
+/// to its next token generation in the SAME statement, so every token signed
+/// before it stops working -- including one a login signs later from a row
+/// it read before this landed, which carries the old hash's generation.
+/// Returns the new generation, for the caller's fresh token.
+async function replacePasswordAndSignOut(pool, userId, passwordHash) {
+  // LAST_INSERT_ID(expr) hands the incremented value back on this
+  // connection's OK packet (insertId), so it is the value this UPDATE wrote,
+  // not one a concurrent change wrote a moment later.
+  const [result] = await pool.query(
+    `UPDATE users SET password_hash = ?, token_version = LAST_INSERT_ID(token_version + 1)
+      WHERE user_id = ?`,
+    [passwordHash, userId],
+  );
+  return result.insertId;
 }
 
 async function findOrCreateGoogleUser(pool, identity) {
@@ -137,6 +157,6 @@ module.exports = {
   createUserWithPassword,
   findOrCreateGoogleUser,
   markEmailVerified,
-  updatePasswordHash,
+  replacePasswordAndSignOut,
   setPremium,
 };
