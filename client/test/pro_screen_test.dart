@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import 'package:flutter/rendering.dart' show SemanticsNode;
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -391,6 +392,55 @@ void main() {
     await tester.tap(find.byKey(const Key('pro.pay')), warnIfMissed: false);
     await tester.pump();
     expect(repo.checkouts.length, 1);
+  });
+
+  // PS-17: while a payment is in progress the cards looked tappable but did
+  // nothing, and a screen reader heard no "disabled".
+  testWidgets('while paying, the plans look and read as locked', (
+    tester,
+  ) async {
+    final handle = tester.ensureSemantics();
+    await _pump(tester);
+    double opacityOf(String key) => tester
+        .widgetList<Opacity>(
+          find.descendant(
+            of: find.byKey(Key(key)),
+            matching: find.byType(Opacity),
+          ),
+        )
+        .fold(1.0, (o, w) => o * w.opacity);
+    // The card's own node, under any dimming wrapped around it.
+    SemanticsNode plan(String key) => tester.getSemantics(
+      find.descendant(
+        of: find.byKey(Key(key)),
+        matching: find.byType(MergeSemantics),
+      ),
+    );
+    expect(opacityOf('pro.plan.monthly'), 1.0);
+    expect(
+      plan('pro.plan.monthly'),
+      isSemantics(isButton: true, isEnabled: true),
+    );
+
+    await tester.tap(find.byKey(const Key('pro.pay')));
+    await tester.pumpAndSettle();
+    expect(find.byKey(const Key('pro.waiting')), findsOneWidget);
+
+    // The plan not being paid for is dimmed, as a disabled FsButton is; the
+    // one being paid for stays legible.
+    expect(opacityOf('pro.plan.monthly'), 0.45);
+    expect(opacityOf('pro.plan.annual'), 1.0);
+    for (final key in ['pro.plan.monthly', 'pro.plan.annual']) {
+      expect(
+        plan(key),
+        isSemantics(hasEnabledState: true, isEnabled: false),
+        reason: key,
+      );
+    }
+    await tester.tap(find.byKey(const Key('pro.plan.monthly')));
+    await tester.pump();
+    expect(plan('pro.plan.annual'), isSemantics(isSelected: true));
+    handle.dispose();
   });
 
   testWidgets('paid: the end date and how it was paid, with plans to extend', (

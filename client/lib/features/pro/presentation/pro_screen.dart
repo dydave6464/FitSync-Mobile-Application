@@ -576,6 +576,10 @@ class _StatusCard extends StatelessWidget {
 /// A choosable plan. FsCard gives the button and selected state to a screen
 /// reader, and the two cards are one radio group; [semanticsLabel] says the
 /// whole price in one sentence.
+///
+/// A null [onTap] (a payment in progress) is said as disabled, and the plan
+/// not being paid for is dimmed as a disabled FsButton is, so neither card
+/// looks like a choice that a tap would change.
 class _PlanCard extends StatelessWidget {
   const _PlanCard({
     super.key,
@@ -599,7 +603,7 @@ class _PlanCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final t = context.fs;
-    return MergeSemantics(
+    final card = MergeSemantics(
       child: FsCard(
         small: true,
         accent: selected,
@@ -608,6 +612,7 @@ class _PlanCard extends StatelessWidget {
         child: Semantics(
           label: semanticsLabel,
           inMutuallyExclusiveGroup: true,
+          enabled: onTap != null,
           excludeSemantics: true,
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
@@ -641,6 +646,8 @@ class _PlanCard extends StatelessWidget {
         ),
       ),
     );
+    if (onTap != null || selected) return card;
+    return Opacity(opacity: 0.45, child: card);
   }
 }
 
