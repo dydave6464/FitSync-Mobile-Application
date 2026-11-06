@@ -205,6 +205,7 @@ class _Row extends ConsumerWidget {
         _TickBox(
           key: Key('routine.tick.${habit.habitId}'),
           done: habit.done,
+          label: habit.title,
           onTap: () => _toggle(context, ref, habit),
         ),
       ),
@@ -213,10 +214,13 @@ class _Row extends ConsumerWidget {
         workout.done ? 'Finished today' : 'Ticks itself when you finish',
         onOpenPlan,
         // The box itself cannot be ticked by hand -- the workout is done by
-        // training -- so tapping it does what the rest of the row does.
+        // training -- so tapping it does what the rest of the row does. A
+        // screen reader hears its state, not a checkbox it cannot tick; the
+        // row is the way to the plan.
         _TickBox(
           key: const Key('routine.workout.tick'),
           done: workout.done,
+          status: workout.done ? 'Workout finished' : 'Not finished yet',
           onTap: onOpenPlan,
         ),
       ),
@@ -232,36 +236,48 @@ class _Row extends ConsumerWidget {
             FsIconTile(icon: icon),
             const SizedBox(width: 12),
             Expanded(
-              child: InkWell(
-                key: switch (entry) {
-                  HabitEntry(:final habit) => Key(
-                    'routine.habit.${habit.habitId}',
-                  ),
-                  WorkoutEntry() => const Key('routine.workout'),
-                },
-                onTap: onOpen,
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      entry.title,
-                      style: TextStyle(
-                        fontSize: 13.5,
-                        fontWeight: FontWeight.w600,
-                        color: t.text,
-                        decoration: entry.done
-                            ? TextDecoration.lineThrough
-                            : TextDecoration.none,
+              child: Semantics(
+                button: onOpen != null,
+                hint: entry is HabitEntry ? 'Edit habit' : null,
+                child: InkWell(
+                  key: switch (entry) {
+                    HabitEntry(:final habit) => Key(
+                      'routine.habit.${habit.habitId}',
+                    ),
+                    WorkoutEntry() => const Key('routine.workout'),
+                  },
+                  onTap: onOpen,
+                  // As tall as the tick box beside it, so the row's own
+                  // target is 48 dp too.
+                  child: ConstrainedBox(
+                    constraints: const BoxConstraints(minHeight: 48),
+                    child: Align(
+                      alignment: AlignmentDirectional.centerStart,
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            entry.title,
+                            style: TextStyle(
+                              fontSize: 13.5,
+                              fontWeight: FontWeight.w600,
+                              color: t.text,
+                              decoration: entry.done
+                                  ? TextDecoration.lineThrough
+                                  : TextDecoration.none,
+                            ),
+                          ),
+                          if (subtitle.isNotEmpty) ...[
+                            const SizedBox(height: 2),
+                            Text(
+                              subtitle,
+                              style: TextStyle(fontSize: 10.5, color: t.text3),
+                            ),
+                          ],
+                        ],
                       ),
                     ),
-                    if (subtitle.isNotEmpty) ...[
-                      const SizedBox(height: 2),
-                      Text(
-                        subtitle,
-                        style: TextStyle(fontSize: 10.5, color: t.text3),
-                      ),
-                    ],
-                  ],
+                  ),
                 ),
               ),
             ),
@@ -274,28 +290,66 @@ class _Row extends ConsumerWidget {
   }
 }
 
+/// The prototype's 24 dp tick square, in a 48 dp target.
+///
+/// With a [label] it is a checkbox: a screen reader hears the habit's name
+/// and whether it is ticked. With a [status] instead it only reports a state
+/// it cannot change (the workout, which ticks itself).
 class _TickBox extends StatelessWidget {
-  const _TickBox({super.key, required this.done, required this.onTap});
+  const _TickBox({
+    super.key,
+    required this.done,
+    required this.onTap,
+    this.label,
+    this.status,
+  }) : assert((label == null) != (status == null));
 
   final bool done;
   final VoidCallback? onTap;
+  final String? label;
+  final String? status;
 
   @override
   Widget build(BuildContext context) {
     final t = context.fs;
-    return GestureDetector(
-      behavior: HitTestBehavior.opaque,
+    final target = InkResponse(
       onTap: onTap,
-      child: Container(
-        width: 24,
-        height: 24,
-        decoration: BoxDecoration(
-          color: done ? t.accent : Colors.transparent,
-          borderRadius: BorderRadius.circular(8),
-          border: Border.all(color: done ? t.accent : t.line2, width: 2),
+      radius: 24,
+      excludeFromSemantics: true,
+      child: SizedBox.square(
+        dimension: 48,
+        child: Center(
+          child: Container(
+            width: 24,
+            height: 24,
+            decoration: BoxDecoration(
+              color: done ? t.accent : Colors.transparent,
+              borderRadius: BorderRadius.circular(8),
+              // control, not line2: an empty box must read as one (3:1).
+              border: Border.all(color: done ? t.accent : t.control, width: 2),
+            ),
+            child: done ? Icon(Icons.check, size: 14, color: t.onAccent) : null,
+          ),
         ),
-        child: done ? Icon(Icons.check, size: 14, color: t.onAccent) : null,
       ),
+    );
+    final status = this.status;
+    if (status != null) {
+      return Semantics(
+        container: true,
+        label: status,
+        excludeSemantics: true,
+        child: target,
+      );
+    }
+    return Semantics(
+      container: true,
+      checked: done,
+      enabled: onTap != null,
+      label: label,
+      onTap: onTap,
+      excludeSemantics: true,
+      child: target,
     );
   }
 }

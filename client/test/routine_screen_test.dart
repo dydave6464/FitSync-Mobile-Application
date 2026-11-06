@@ -1,8 +1,11 @@
+import 'dart:ui' show CheckedState;
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import 'package:fitsync/core/api_exception.dart';
+import 'package:fitsync/core/theme.dart';
 import 'package:fitsync/features/routine/data/routine_repository.dart';
 import 'package:fitsync/features/routine/domain/routine.dart';
 import 'package:fitsync/features/routine/presentation/all_habits_screen.dart';
@@ -14,6 +17,7 @@ import 'package:fitsync/features/schedule/domain/calendar.dart';
 import 'package:fitsync/features/schedule/presentation/providers.dart';
 import 'package:fitsync/features/schedule/presentation/schedule_screen.dart';
 
+import 'helpers/a11y.dart' show contrast;
 import 'settings_screen_test.dart'
     show DefaultReminderSettings, FakeProfileNotifier;
 
@@ -91,11 +95,31 @@ class _FakeRoutineRepo implements RoutineRepository {
   Future<void> remove(int habitId) async => throw UnimplementedError();
 }
 
-Widget _harness(_FakeRoutineRepo repo, {VoidCallback? onOpenPlan}) =>
-    ProviderScope(
-      overrides: [routineRepositoryProvider.overrideWithValue(repo)],
-      child: MaterialApp(home: RoutineScreen(onOpenPlan: onOpenPlan)),
-    );
+Widget _harness(
+  _FakeRoutineRepo repo, {
+  VoidCallback? onOpenPlan,
+  bool dark = false,
+}) => ProviderScope(
+  overrides: [routineRepositoryProvider.overrideWithValue(repo)],
+  child: MaterialApp(
+    theme: dark ? fsDarkTheme() : fsLightTheme(),
+    home: RoutineScreen(onOpenPlan: onOpenPlan),
+  ),
+);
+
+/// The drawn 24 dp square inside a tick box.
+BoxDecoration _boxOf(WidgetTester tester, Key key) =>
+    tester
+            .widget<Container>(
+              find.descendant(
+                of: find.byKey(key),
+                matching: find.byWidgetPredicate(
+                  (w) => w is Container && w.decoration is BoxDecoration,
+                ),
+              ),
+            )
+            .decoration!
+        as BoxDecoration;
 
 void main() {
   testWidgets('rows are ordered timed habits, then untimed by title', (
@@ -330,5 +354,113 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.byType(ScheduleScreen), findsOneWidget);
+  });
+
+  group('tick box (PT-1)', () {
+    testWidgets('a habit tick box is a named checkbox with its state', (
+      tester,
+    ) async {
+      final handle = tester.ensureSemantics();
+      final repo = _FakeRoutineRepo(_fixtureDay);
+      await tester.pumpWidget(_harness(repo));
+      await tester.pumpAndSettle();
+
+      expect(
+        tester.getSemantics(find.byKey(const Key('routine.tick.2'))),
+        isSemantics(
+          label: 'Walk',
+          hasCheckedState: true,
+          isChecked: false,
+          hasEnabledState: true,
+          isEnabled: true,
+          hasTapAction: true,
+        ),
+      );
+      expect(
+        tester.getSemantics(find.byKey(const Key('routine.tick.1'))),
+        isSemantics(label: 'Mobility', hasCheckedState: true, isChecked: true),
+      );
+      handle.dispose();
+    });
+
+    testWidgets('tick boxes are 48 dp targets', (tester) async {
+      final repo = _FakeRoutineRepo(_fixtureDay);
+      await tester.pumpWidget(_harness(repo, onOpenPlan: () {}));
+      await tester.pumpAndSettle();
+
+      final size = tester.getSize(find.byKey(const Key('routine.tick.2')));
+      expect(size.width, greaterThanOrEqualTo(48));
+      expect(size.height, greaterThanOrEqualTo(48));
+      // The prototype's square is still drawn at 24 dp.
+      final drawn = tester.getSize(
+        find.descendant(
+          of: find.byKey(const Key('routine.tick.2')),
+          matching: find.byWidgetPredicate(
+            (w) => w is Container && w.decoration is BoxDecoration,
+          ),
+        ),
+      );
+      expect(drawn, const Size(24, 24));
+    });
+
+    testWidgets('the screen meets the tap-target and label guidelines', (
+      tester,
+    ) async {
+      final handle = tester.ensureSemantics();
+      final repo = _FakeRoutineRepo(_fixtureDay);
+      await tester.pumpWidget(_harness(repo, onOpenPlan: () {}));
+      await tester.pumpAndSettle();
+
+      await expectLater(tester, meetsGuideline(androidTapTargetGuideline));
+      await expectLater(tester, meetsGuideline(labeledTapTargetGuideline));
+      handle.dispose();
+    });
+
+    for (final dark in [false, true]) {
+      testWidgets('an unticked box outline is at least 3:1 '
+          '(${dark ? 'dark' : 'light'})', (tester) async {
+        final repo = _FakeRoutineRepo(_fixtureDay);
+        await tester.pumpWidget(_harness(repo, dark: dark));
+        await tester.pumpAndSettle();
+
+        final t = dark ? FsTokens.dark : FsTokens.light;
+        final border = _boxOf(tester, const Key('routine.tick.2')).border!;
+        final side = (border as Border).top;
+        expect(side.color, t.control);
+        expect(contrast(side.color, t.surface), greaterThanOrEqualTo(3));
+      });
+    }
+
+    testWidgets('the workout box shows its state, not a checkbox', (
+      tester,
+    ) async {
+      final handle = tester.ensureSemantics();
+      final repo = _FakeRoutineRepo(_fixtureDay);
+      await tester.pumpWidget(_harness(repo, onOpenPlan: () {}));
+      await tester.pumpAndSettle();
+
+      final node = tester.getSemantics(
+        find.byKey(const Key('routine.workout.tick')),
+      );
+      expect(node.label, 'Not finished yet');
+      expect(
+        node.getSemanticsData().flagsCollection.isChecked,
+        CheckedState.none,
+      );
+      handle.dispose();
+    });
+
+    testWidgets('a habit row says it edits the habit', (tester) async {
+      final handle = tester.ensureSemantics();
+      final repo = _FakeRoutineRepo(_fixtureDay);
+      await tester.pumpWidget(_harness(repo));
+      await tester.pumpAndSettle();
+
+      expect(
+        tester.getSemantics(find.byKey(const Key('routine.habit.2'))),
+        isSemantics(isButton: true, hint: 'Edit habit'),
+      );
+      handle.dispose();
+    });
   });
 }
