@@ -273,8 +273,8 @@ class _LogFoodSheetState extends State<LogFoodSheet> {
                                 source: 'manual',
                                 // A FatSecret name or serving can be longer
                                 // than a manual entry may be.
-                                name: clipUtf16(f.name, _maxName),
-                                servingDesc: f.servingDesc == null ? null : clipUtf16(f.servingDesc!, _maxServingDesc),
+                                name: clipUtf16(f.name, maxFoodName),
+                                servingDesc: f.servingDesc == null ? null : clipUtf16(f.servingDesc!, maxServingDesc),
                                 kcal: perKcal,
                                 proteinG: p!,
                                 carbsG: c!,
@@ -299,11 +299,6 @@ class _LogFoodSheetState extends State<LogFoodSheet> {
 /// The fewest and most servings the sheet steps between.
 const _minServings = 0.5;
 const _maxServings = 20.0;
-
-/// The longest name and serving a manual entry may have
-/// (server/src/routes/nutrition.js).
-const _maxName = 100;
-const _maxServingDesc = 60;
 
 /// 4.3 -> "4.3", 28.0 -> "28": a number as someone would type it.
 String _plain(double v) => v == v.roundToDouble() ? v.toStringAsFixed(0) : v.toString();

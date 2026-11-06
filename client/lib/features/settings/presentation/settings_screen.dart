@@ -24,6 +24,7 @@ import '../../pro/presentation/pro_screen.dart';
 import '../../pro/presentation/providers.dart' show proStatusProvider;
 import '../../profile/domain/profile.dart';
 import '../../profile/presentation/providers.dart';
+import '../../profile/presentation/weight_unit_switch.dart';
 import '../../reminders/presentation/reminders_screen.dart';
 import '../../streaks/presentation/streaks_screen.dart';
 import '../../schedule/presentation/schedule_screen.dart';
@@ -45,7 +46,7 @@ class SettingsScreen extends ConsumerWidget {
       backgroundColor: t.bg,
       appBar: AppBar(
         title: const Text('Profile'),
-        actions: const [_ThemeToggleButton()],
+        actions: const [_ThemeButton()],
       ),
       body: profile.when(
         loading: () => const Center(child: CircularProgressIndicator()),
@@ -61,24 +62,85 @@ class SettingsScreen extends ConsumerWidget {
   }
 }
 
-/// Dark/light in the header, where the prototype's Profile bar puts its one
+/// The three theme choices, in the order the control draws them.
+const _themeChoices = [
+  (
+    mode: ThemeMode.system,
+    label: 'System',
+    icon: Icons.brightness_auto_outlined,
+  ),
+  (mode: ThemeMode.light, label: 'Light', icon: Icons.light_mode_outlined),
+  (mode: ThemeMode.dark, label: 'Dark', icon: Icons.dark_mode_outlined),
+];
+
+({ThemeMode mode, String label, IconData icon}) _themeChoice(ThemeMode mode) =>
+    _themeChoices.firstWhere((c) => c.mode == mode);
+
+/// The theme in the header, where the prototype's Profile bar puts its one
 /// icon button -- rather than a row the user has to scroll the whole screen
 /// to reach. It is the only control for the setting: a second one in the App
-/// card would be the same switch drawn twice.
-class _ThemeToggleButton extends ConsumerWidget {
-  const _ThemeToggleButton();
+/// card would be the same setting drawn twice.
+///
+/// With System as a third choice (D-1) one tap can no longer flip it, so the
+/// button opens a short sheet with all three side by side. Its icon names the
+/// mode in force, System included, so a stored System never reads as Light.
+class _ThemeButton extends ConsumerWidget {
+  const _ThemeButton();
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final isDark = ref.watch(themeModeProvider) == ThemeMode.dark;
+    final choice = _themeChoice(ref.watch(themeModeProvider));
 
     return IconButton(
-      key: const Key('themeToggle'),
-      // The icon the row used, kept so the meaning does not change with the
-      // move: it names the mode you are in, not the one you would get.
-      icon: Icon(isDark ? Icons.dark_mode_outlined : Icons.light_mode_outlined),
-      tooltip: isDark ? 'Switch to light theme' : 'Switch to dark theme',
-      onPressed: () => ref.read(themeModeProvider.notifier).setDark(!isDark),
+      key: const Key('theme.open'),
+      icon: Icon(choice.icon),
+      tooltip: 'Theme: ${choice.label}',
+      onPressed: () => showModalBottomSheet<void>(
+        context: context,
+        // FsSheetHeader draws the handle.
+        showDragHandle: false,
+        builder: (_) => const _ThemeSheet(),
+      ),
+    );
+  }
+}
+
+/// System / Light / Dark. A pick applies at once and the sheet stays open,
+/// so the new look is seen behind it before it is closed.
+class _ThemeSheet extends ConsumerWidget {
+  const _ThemeSheet();
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final mode = ref.watch(themeModeProvider);
+
+    return SafeArea(
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(
+          FsSheetHeader.sideInset,
+          10,
+          FsSheetHeader.sideInset,
+          18,
+        ),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            const FsSheetHeader(title: 'Theme'),
+            const SizedBox(height: 8),
+            FsSegmented(
+              options: [
+                for (final c in _themeChoices)
+                  (value: c.mode.name, label: c.label),
+              ],
+              selected: mode.name,
+              onSelected: (value) => ref
+                  .read(themeModeProvider.notifier)
+                  .setMode(ThemeMode.values.byName(value)),
+            ),
+          ],
+        ),
+      ),
     );
   }
 }
@@ -104,6 +166,8 @@ class _SettingsList extends ConsumerWidget {
     final t = context.fs;
     final theme = Theme.of(context);
     final proStatus = ref.watch(proStatusProvider).value;
+    // The Edit chip's one action, for its tap and for its screen-reader node.
+    void editNameCity() => _open(context, const _NameCityEditor());
 
     final subtitle = [
       if (profile.fitnessLevel != null)
@@ -162,7 +226,7 @@ class _SettingsList extends ConsumerWidget {
                   container: true,
                   button: true,
                   label: 'Edit name and city',
-                  onTap: () => _open(context, const _NameCityEditor()),
+                  onTap: editNameCity,
                   excludeSemantics: true,
                   child: ConstrainedBox(
                     constraints: const BoxConstraints(
@@ -178,7 +242,7 @@ class _SettingsList extends ConsumerWidget {
                         small: true,
                         selected: false,
                         toggle: false,
-                        onTap: () => _open(context, const _NameCityEditor()),
+                        onTap: editNameCity,
                       ),
                     ),
                   ),
@@ -346,67 +410,52 @@ class _SettingsList extends ConsumerWidget {
 /// Signs out after asking: signing out also cancels every reminder this
 /// phone has scheduled, which one stray tap should not do.
 Future<void> _confirmSignOut(BuildContext context, WidgetRef ref) async {
+  final confirmed = await _confirmDestructive(
+    context,
+    keyPrefix: 'signOut',
+    title: 'Sign out of FitSync?',
+    message: 'Reminders on this phone stop until you sign in again.',
+    action: 'Sign out',
+  );
+  if (!confirmed || !context.mounted) return;
+  await ref.read(authControllerProvider.notifier).signOut();
+}
+
+/// Asks before a step one stray tap should not take: Cancel, and [action] in
+/// `t.red`, keyed `<keyPrefix>.cancel` and `<keyPrefix>.confirm`. True only
+/// for a tap on [action]; the barrier or back is a no.
+Future<bool> _confirmDestructive(
+  BuildContext context, {
+  required String keyPrefix,
+  required String title,
+  required String message,
+  required String action,
+}) async {
   final confirmed = await showDialog<bool>(
     context: context,
     builder: (dialog) => AlertDialog(
-      title: const Text('Sign out of FitSync?'),
-      content: const Text(
-        'Reminders on this phone stop until you sign in again.',
-      ),
+      title: Text(title),
+      content: Text(message),
       actions: [
         TextButton(
-          key: const Key('signOut.cancel'),
+          key: Key('$keyPrefix.cancel'),
           onPressed: () => Navigator.of(dialog).pop(false),
           child: const Text('Cancel'),
         ),
         TextButton(
-          key: const Key('signOut.confirm'),
+          key: Key('$keyPrefix.confirm'),
           style: TextButton.styleFrom(foregroundColor: dialog.fs.red),
           onPressed: () => Navigator.of(dialog).pop(true),
-          child: const Text('Sign out'),
+          child: Text(action),
         ),
       ],
     ),
   );
-  if (confirmed != true || !context.mounted) return;
-  await ref.read(authControllerProvider.notifier).signOut();
+  return confirmed ?? false;
 }
 
 /// The level editor's row and title: fitness level is changed there too.
 const _levelTitle = 'Level, equipment & location';
-
-/// Saves a kg/lb switch the moment it is tapped, showing the new unit at
-/// once rather than when the server answers (up to the API timeout on a slow
-/// connection, during which the switch looked dead). Further taps wait for
-/// that answer; a refused switch goes back and says so.
-mixin _UnitSwitch<W extends ConsumerStatefulWidget> on ConsumerState<W> {
-  WeightUnit? _pendingUnit;
-
-  /// The unit to draw: the one on its way to the server, else the saved one.
-  WeightUnit shownUnit(Profile profile) => _pendingUnit ?? profile.weightUnit;
-
-  Future<void> switchUnit(WeightUnit unit) async {
-    if (_pendingUnit != null) return;
-    // Captured first: the Body metrics editor can close while this is on
-    // its way, and the app-level messenger outlives it.
-    final messenger = ScaffoldMessenger.of(context);
-    setState(() => _pendingUnit = unit);
-    try {
-      await ref.read(profileProvider.notifier).patch({'weightUnit': unit.api});
-    } catch (_) {
-      // Any failure, not only an ApiException: a timeout or a bad response
-      // leaves the unit unsaved just the same.
-      messenger.showSnackBar(
-        SnackBar(content: Text("Couldn't switch to ${unit.api}. Try again.")),
-      );
-    } finally {
-      // On success the profile already holds the new unit; on failure it
-      // still holds the old one, which is what goes back on screen. In a
-      // finally so no failure can leave the switch ignoring taps for good.
-      if (mounted) setState(() => _pendingUnit = null);
-    }
-  }
-}
 
 /// The App card's kg/lb switch.
 class _WeightUnitSwitch extends ConsumerStatefulWidget {
@@ -419,10 +468,12 @@ class _WeightUnitSwitch extends ConsumerStatefulWidget {
 }
 
 class _WeightUnitSwitchState extends ConsumerState<_WeightUnitSwitch>
-    with _UnitSwitch {
+    with WeightUnitSwitch {
   @override
-  Widget build(BuildContext context) =>
-      FsUnitToggle(value: shownUnit(widget.profile), onChanged: switchUnit);
+  Widget build(BuildContext context) => FsUnitToggle(
+    value: shownUnit(widget.profile.weightUnit),
+    onChanged: switchUnit,
+  );
 }
 
 /// The prototype's `SettRow`: square icon tile, label, trailing control, and a
@@ -757,7 +808,8 @@ class _AboutEditor extends ConsumerStatefulWidget {
   ConsumerState<_AboutEditor> createState() => _AboutEditorState();
 }
 
-class _AboutEditorState extends _EditorState<_AboutEditor> with _UnitSwitch {
+class _AboutEditorState extends _EditorState<_AboutEditor>
+    with WeightUnitSwitch {
   AboutAnswers _value = const AboutAnswers();
   AboutAnswers _seed = const AboutAnswers();
   bool _seeded = false;
@@ -797,7 +849,7 @@ class _AboutEditorState extends _EditorState<_AboutEditor> with _UnitSwitch {
         activityLevel: profile.activityLevel,
       );
     }
-    _unit = shownUnit(profile);
+    _unit = shownUnit(profile.weightUnit);
     return AboutStep(
       value: _value,
       // A rebuild per keystroke, so back and Save know what is on screen.
@@ -818,7 +870,7 @@ class _AboutEditorState extends _EditorState<_AboutEditor> with _UnitSwitch {
       // Not part of the form's working value: it is a display preference, so
       // it saves on tap and survives a cancelled edit rather than sitting in
       // _value waiting for Save.
-      unit: shownUnit(profile),
+      unit: shownUnit(profile.weightUnit),
       onUnitChanged: switchUnit,
     );
   }
@@ -1042,29 +1094,15 @@ class _HealthEditorState extends ConsumerState<_HealthEditor> {
   );
 
   Future<void> _delete() async {
-    final confirmed = await showDialog<bool>(
-      context: context,
-      builder: (dialog) => AlertDialog(
-        title: const Text('Delete your health answers?'),
-        content: const Text(
+    final confirmed = await _confirmDestructive(
+      context,
+      keyPrefix: 'health.delete',
+      title: 'Delete your health answers?',
+      message:
           'Your next plan goes back to your usual sets and session length.',
-        ),
-        actions: [
-          TextButton(
-            key: const Key('health.delete.cancel'),
-            onPressed: () => Navigator.of(dialog).pop(false),
-            child: const Text('Cancel'),
-          ),
-          TextButton(
-            key: const Key('health.delete.confirm'),
-            style: TextButton.styleFrom(foregroundColor: dialog.fs.red),
-            onPressed: () => Navigator.of(dialog).pop(true),
-            child: const Text('Delete'),
-          ),
-        ],
-      ),
+      action: 'Delete',
     );
-    if (confirmed != true || !mounted) return;
+    if (!confirmed || !mounted) return;
     await _run(
       () => ref.read(healthRepositoryProvider).deleteHealth(),
       'Health answers deleted',

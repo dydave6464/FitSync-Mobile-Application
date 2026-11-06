@@ -21,7 +21,7 @@ class SetRow extends StatelessWidget {
     this.unit = WeightUnit.kg,
     this.showWeight = true,
     this.active = false,
-    this.repsHint = 'reps',
+    this.targetReps,
     this.onReopen,
     this.onRemove,
     this.trailingWidth = tickWidth,
@@ -69,9 +69,10 @@ class SetRow extends StatelessWidget {
   /// is next -- every empty row is otherwise identical.
   final bool active;
 
-  /// What the empty reps box says: the exercise's target range ("8-12") when
-  /// there is one, so the number to aim for sits where it is typed.
-  final String repsHint;
+  /// The exercise's target ("8-12"), or null or empty for none. The empty
+  /// reps box shows it, so the number to aim for sits where it is typed, and
+  /// the box's name carries it; with none the box says just "reps".
+  final String? targetReps;
 
   /// Reopens a stored set for editing. Null leaves the row inert.
   final VoidCallback? onReopen;
@@ -97,6 +98,9 @@ class SetRow extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final t = context.fs;
+    final target = targetReps == null || targetReps!.isEmpty
+        ? null
+        : targetReps;
     final done = logged != null;
     // A stored set is the record and is not typed over; anything else is.
     // There is no in-flight lock here any more: the write happens at the
@@ -238,10 +242,8 @@ class SetRow extends StatelessWidget {
                     focus: editable ? drafts.repsFocus(setNumber) : null,
                     child: Semantics(
                       // The target goes with the hint too, so it is in the
-                      // name; 'reps' is the hint when there is none.
-                      label: repsHint == 'reps'
-                          ? 'Reps'
-                          : 'Reps, target $repsHint',
+                      // name.
+                      label: target == null ? 'Reps' : 'Reps, target $target',
                       child: TextField(
                         key: Key('set.$setNumber.reps'),
                         controller: drafts.reps(setNumber),
@@ -255,7 +257,7 @@ class SetRow extends StatelessWidget {
                             RegExp(r'^\d{0,3}'),
                           ),
                         ],
-                        decoration: decoration(repsHint),
+                        decoration: decoration(target ?? 'reps'),
                         style: TextStyle(
                           fontFamily: fsMonoFamily,
                           fontSize: 14,

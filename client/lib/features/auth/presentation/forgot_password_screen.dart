@@ -6,7 +6,9 @@ import '../../../core/theme.dart';
 import '../../../core/widgets/fs_kit.dart';
 import '../domain/auth_user.dart';
 import 'auth_controller.dart';
+import 'auth_text_link.dart';
 import 'code_entry.dart';
+import 'editable_under.dart';
 
 const _sentMessage = "If that address has an account, we've sent a code.";
 const _resentMessage =
@@ -118,14 +120,26 @@ class _ForgotPasswordScreenState extends ConsumerState<ForgotPasswordScreen> {
     });
   }
 
+  /// Holds step 1's email field, so [_changeEmail] can put the cursor in it.
+  final _emailField = GlobalKey();
+
   /// Back to step 1 with the address still typed, to correct it. The code
   /// and password belong to the old address, so they go.
-  void _changeEmail() => setState(() {
-    _onCodeStep = false;
-    _message = null;
-    _code.clear();
-    _password.clear();
-  });
+  ///
+  /// The link that was tapped is gone with step 2, so focus moves to the
+  /// address being corrected rather than nowhere.
+  void _changeEmail() {
+    setState(() {
+      _onCodeStep = false;
+      _message = null;
+      _code.clear();
+      _password.clear();
+    });
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      editableUnder(_emailField)?.requestKeyboard();
+    });
+  }
 
   Future<void> _reset() async {
     if (_busy) return;
@@ -259,6 +273,7 @@ class _ForgotPasswordScreenState extends ConsumerState<ForgotPasswordScreen> {
                     ),
                     const SizedBox(height: 24),
                     FsLabeledField(
+                      key: _emailField,
                       label: 'Email',
                       field: FsField(
                         fieldKey: const Key('email'),
@@ -297,17 +312,21 @@ class _ForgotPasswordScreenState extends ConsumerState<ForgotPasswordScreen> {
                     ),
                     // A typo in the address shows here, under the sentence
                     // that names it; Back would leave the whole reset. The
-                    // button's 48 dp brings room of its own above and below.
+                    // link's 48 dp brings room of its own above and below.
                     if (!_resetDone) ...[
                       Align(
                         alignment: AlignmentDirectional.centerStart,
-                        child: TextButton(
+                        child: AuthTextLink(
                           key: const Key('changeEmail'),
-                          style: TextButton.styleFrom(
-                            minimumSize: const Size(48, 48),
+                          onTap: _busy ? null : _changeEmail,
+                          child: Text(
+                            'Use a different email',
+                            style: TextStyle(
+                              fontSize: 12.5,
+                              color: t.accentText,
+                              fontWeight: FontWeight.w600,
+                            ),
                           ),
-                          onPressed: _busy ? null : _changeEmail,
-                          child: const Text('Use a different email'),
                         ),
                       ),
                       const SizedBox(height: 8),

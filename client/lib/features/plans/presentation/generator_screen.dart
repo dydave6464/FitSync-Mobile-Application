@@ -20,6 +20,11 @@ import 'widgets/training_days_row.dart';
 const _defaultSplit = 'full_body';
 const _defaultDays = 3;
 
+/// Why Generate is off while a workout runs: the note above the button, and
+/// the button's own hint.
+const _inProgressNote =
+    'You have a workout in progress. Finish or discard it first.';
+
 class GeneratorScreen extends ConsumerStatefulWidget {
   const GeneratorScreen({super.key});
 
@@ -402,6 +407,7 @@ class _GeneratorScreenState extends ConsumerState<GeneratorScreen> {
                   FsChip(
                     label: s.label,
                     selected: s.value == split,
+                    exclusive: true,
                     onTap: () => setState(() => _splitStyle = s.value),
                   ),
               ],
@@ -487,7 +493,7 @@ class _GeneratorScreenState extends ConsumerState<GeneratorScreen> {
         const SizedBox(height: 22),
         Text(
           inProgress
-              ? 'You have a workout in progress. Finish or discard it first.'
+              ? _inProgressNote
               : 'Generating replaces your current plan.',
           style: TextStyle(
             fontSize: 12,
@@ -496,14 +502,23 @@ class _GeneratorScreenState extends ConsumerState<GeneratorScreen> {
           ),
         ),
         const SizedBox(height: 18),
-        FsButton(
-          key: const Key('gen.generate'),
-          label: 'Generate plan',
-          // No in-button spinner: `_busy` takes the whole body over with the
-          // building screen, so this button is not on screen to spin.
-          onPressed: inProgress
-              ? null
-              : () => _generate(split, days, trainingDays),
+        // While a workout runs, the dimmed button says why as its hint, so a
+        // screen reader hears the reason on the button and not only in the
+        // note a swipe before it. Merged so the hint lands on the button's
+        // own node rather than splitting off one of its own.
+        MergeSemantics(
+          child: Semantics(
+            hint: inProgress ? _inProgressNote : null,
+            child: FsButton(
+              key: const Key('gen.generate'),
+              label: 'Generate plan',
+              // No in-button spinner: `_busy` takes the whole body over with
+              // the building screen, so this button is not on screen to spin.
+              onPressed: inProgress
+                  ? null
+                  : () => _generate(split, days, trainingDays),
+            ),
+          ),
         ),
         if (inProgress) ...[
           const SizedBox(height: 10),

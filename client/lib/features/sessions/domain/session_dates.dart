@@ -11,14 +11,8 @@ import '../../../core/manila_day.dart';
 String sessionDayLabel(String sessionDate, {DateTime? now}) {
   final parsed = DateTime.tryParse(sessionDate);
   if (parsed == null) return sessionDate;
-  // Whole days in UTC, which has no clock changes to make one 23 hours long.
-  DateTime utcDay(DateTime d) => DateTime.utc(d.year, d.month, d.day);
-  final day = utcDay(parsed);
-  final today = utcDay(DateTime.parse(manilaDayOf(now ?? DateTime.now())));
-
-  final behind = today.difference(day).inDays;
-  if (behind == 0) return 'Today';
-  if (behind == 1) return 'Yesterday';
-  final named = '${weekdayShort[day.weekday - 1]}, ${shortDate(day)}';
-  return day.year == today.year ? named : '$named, ${day.year}';
+  return calendarDayLabel(
+    parsed,
+    DateTime.parse(manilaDayOf(now ?? DateTime.now())),
+  );
 }

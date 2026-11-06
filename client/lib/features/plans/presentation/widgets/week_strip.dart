@@ -284,13 +284,13 @@ class WeekStrip extends StatelessWidget {
             children: [
               const Flexible(child: FsEyebrow('This week')),
               // Read with what it counts: a bare "1 of 3" is a fraction to a
-              // screen reader.
-              Semantics(
-                label: hasTarget
+              // screen reader. Its own node, so a card around the strip does
+              // not fold the label into its own.
+              fsSpokenAs(
+                hasTarget
                     ? '$done of $target workouts this week'
                     : '$tally this week',
-                excludeSemantics: true,
-                child: Text(
+                Text(
                   hasTarget ? '$done of $target' : tally,
                   key: const Key('week.tally'),
                   style: TextStyle(

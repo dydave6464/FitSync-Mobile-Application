@@ -911,7 +911,9 @@ void main() {
           isButton: true,
           hasSelectedState: true,
           isSelected: true,
-          isInMutuallyExclusiveGroup: true,
+          // No group flag, as on the bottom nav: a tab is not a radio
+          // button, and with no checked state the flag says nothing.
+          isInMutuallyExclusiveGroup: false,
           hasTapAction: true,
         ),
       );

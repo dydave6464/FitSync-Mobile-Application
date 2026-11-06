@@ -11,16 +11,10 @@ import '../../domain/recovery.dart';
 /// estimate. How the score is computed (the rules, and the model trained on
 /// simulated data) is left out: a user acts on the level, not the mechanism.
 Future<void> showHowToReadSheet(BuildContext context) {
+  // The theme's whole chrome: Material's handle, the surface and the 22 dp
+  // corners (PT-22). It has no discard guard to draw a handle inside of.
   return showModalBottomSheet<void>(
     context: context,
-    // It draws its own handle (PT-22).
-    showDragHandle: false,
-    // The surface goes on the sheet's own Material, as the check-in sheet
-    // does, rather than a transparent sheet around a coloured Container.
-    backgroundColor: context.fs.surface,
-    shape: const RoundedRectangleBorder(
-      borderRadius: BorderRadius.vertical(top: Radius.circular(22)),
-    ),
     isScrollControlled: true,
     builder: (_) => const _HowToReadSheet(),
   );
@@ -39,35 +33,19 @@ const _levels = <({String level, String readiness})>[
 class _HowToReadSheet extends StatelessWidget {
   const _HowToReadSheet();
 
-  /// The tallest the sheet grows: a strip of the Recovery tab stays in view
-  /// above it, so it reads as a sheet over the tab rather than a new screen.
-  static const _maxHeightFraction = 0.9;
-
   @override
   Widget build(BuildContext context) {
     final t = context.fs;
 
-    return ConstrainedBox(
+    // The kit's cap: a strip of the Recovery tab stays in view above it, so
+    // it reads as a sheet over the tab rather than a new screen.
+    return FsSheetHeightCap(
       key: const Key('howto.sheet'),
-      constraints: BoxConstraints(
-        maxHeight: MediaQuery.sizeOf(context).height * _maxHeightFraction,
-      ),
       child: SafeArea(
         child: Column(
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            Center(
-              child: Container(
-                width: 38,
-                height: 4,
-                margin: const EdgeInsets.only(top: 10, bottom: 12),
-                decoration: BoxDecoration(
-                  color: t.line2,
-                  borderRadius: BorderRadius.circular(99),
-                ),
-              ),
-            ),
             // Everything below the handle scrolls: at large text on a small
             // phone the guide is several screens long.
             Flexible(

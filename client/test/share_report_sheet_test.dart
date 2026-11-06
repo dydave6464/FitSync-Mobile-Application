@@ -15,6 +15,7 @@ import 'package:fitsync/features/pro/presentation/providers.dart';
 import 'package:fitsync/features/sessions/presentation/widgets/share_report_sheet.dart';
 
 import 'helpers/fake_pro_repository.dart';
+import 'helpers/sheet_insets.dart';
 
 class _FakeRepo implements SessionRepository {
   _FakeRepo({this.error});
@@ -116,6 +117,12 @@ Future<_FakeRepo> _open(
 }
 
 void main() {
+  // P-21: the × and the title sit at the one sheet inset every sheet uses.
+  testWidgets('the header sits at the shared sheet inset', (tester) async {
+    await _open(tester);
+    expectSheetHeaderAtSideInset(tester, title: 'Share with coach');
+  });
+
   testWidgets('has the shared sheet header, and its Close shuts the sheet', (
     tester,
   ) async {

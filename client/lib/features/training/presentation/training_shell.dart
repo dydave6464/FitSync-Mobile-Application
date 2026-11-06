@@ -157,7 +157,9 @@ class _TrainingShellState extends State<TrainingShell> {
                   for (var i = 0; i < _tabs.length; i++)
                     // Tab semantics as on the bottom nav: "Plan, selected,
                     // tab 1 of 3", so the current section is said and not
-                    // only underlined. The target is 48 dp tall, the room
+                    // only underlined. No group flag: a tab is not a radio
+                    // button, and without a checked state the flag says
+                    // nothing anyway. The target is 48 dp tall, the room
                     // added above the label so the underline stays on the
                     // divider.
                     Semantics(
@@ -165,7 +167,6 @@ class _TrainingShellState extends State<TrainingShell> {
                       button: true,
                       enabled: true,
                       selected: i == _index,
-                      inMutuallyExclusiveGroup: true,
                       hint: 'Tab ${i + 1} of ${_tabs.length}',
                       child: InkWell(
                         key: Key('tab.${_tabs[i].$1}'),

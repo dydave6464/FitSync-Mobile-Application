@@ -418,8 +418,15 @@ ThemeData _build(FsTokens t, Brightness brightness) {
       dragHandleSize: const Size(38, 4),
     ),
     listTileTheme: ListTileThemeData(
-      titleTextStyle: textTheme.titleMedium,
-      subtitleTextStyle: TextStyle(fontSize: 11, color: t.text3),
+      // Both name the font: ListTile does not merge these with the text
+      // theme, and `textTheme` here is the one before ThemeData applies
+      // fontFamily, so without it a tile draws in the platform font.
+      titleTextStyle: textTheme.titleMedium?.copyWith(fontFamily: _fontFamily),
+      subtitleTextStyle: TextStyle(
+        fontFamily: _fontFamily,
+        fontSize: 11,
+        color: t.text3,
+      ),
       iconColor: t.text2,
       selectedColor: t.text,
       contentPadding: const EdgeInsets.symmetric(horizontal: 4),

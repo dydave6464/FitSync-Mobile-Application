@@ -162,9 +162,9 @@ class _ShareReportSheetState extends ConsumerState<_ShareReportSheet> {
     return SafeArea(
       child: SingleChildScrollView(
         padding: EdgeInsets.fromLTRB(
-          18,
+          FsSheetHeader.sideInset,
           10,
-          18,
+          FsSheetHeader.sideInset,
           MediaQuery.of(context).viewInsets.bottom + 20,
         ),
         child: Column(

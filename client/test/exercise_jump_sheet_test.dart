@@ -10,6 +10,8 @@ import 'package:fitsync/features/plans/domain/workout_plan.dart';
 import 'package:fitsync/features/sessions/presentation/widgets/exercise_jump_sheet.dart';
 import 'package:fitsync/core/widgets/fs_kit.dart';
 
+import 'helpers/sheet_insets.dart';
+
 List<PlanExercise> _plan(int count) => [
   for (var i = 0; i < count; i++)
     PlanExercise(
@@ -84,6 +86,17 @@ void main() {
     expect(chosen, [null]);
   });
 
+  // P-21: this sheet held its header 8 dp from the right edge while the
+  // rest hold it at their content inset, so the × sat in a different place
+  // on each sheet. Now it sits at the one inset every sheet uses.
+  testWidgets('the close button ends at the shared sheet inset', (
+    tester,
+  ) async {
+    await _open(tester, count: 3);
+
+    expectSheetHeaderAtSideInset(tester, title: 'Jump to an exercise');
+  });
+
   // Every row is built up front, so only a hit-testable finder makes
   // scrollUntilVisible drag the list the way a finger does -- rather than
   // jump it there programmatically, which works on a list nobody can scroll.
@@ -121,6 +134,17 @@ void main() {
 
     expect(_sheet, findsNothing);
     expect(chosen, [null]);
+  });
+
+  // One ceiling for every tall sheet, the kit's: the jump sheet had its own
+  // 0.85 beside the check-in's and How to read's 0.9.
+  testWidgets('a long list grows to the shared sheet cap', (tester) async {
+    await _open(tester, count: 20);
+
+    expect(
+      tester.getSize(_sheet).height,
+      closeTo(640 * FsSheetHeightCap.maxHeightFraction, 0.5),
+    );
   });
 
   // On a list that scrolls, a drag on the rows scrolls them; the handle and

@@ -23,9 +23,13 @@ const foodSearchDebounce = Duration(milliseconds: 300);
 const _maxQuery = 60;
 
 class LogFoodScreen extends ConsumerStatefulWidget {
-  const LogFoodScreen({super.key, required this.mealType, this.onLogged, this.pick = false, this.initialQuery});
+  const LogFoodScreen({super.key, required String this.mealType, this.onLogged, this.initialQuery}) : pick = false;
 
-  final String mealType;
+  /// Choosing a food, not logging one: see [pickFood].
+  const LogFoodScreen.pick({super.key, this.initialQuery}) : mealType = null, onLogged = null, pick = true;
+
+  /// The meal the food goes into; null when choosing, which shows no meal.
+  final String? mealType;
 
   /// Called once a food logged from here (or from Add manually) is saved,
   /// with the day it went to, after this screen has closed.
@@ -50,9 +54,7 @@ class LogFoodScreen extends ConsumerStatefulWidget {
 /// none.
 Future<Food?> pickFood(BuildContext context, {String? query}) =>
     Navigator.of(context).push<Food>(MaterialPageRoute(
-      // Unused when choosing: neither this screen nor Add manually shows a
-      // meal then.
-      builder: (_) => LogFoodScreen(mealType: mealTypes.first, pick: true, initialQuery: query),
+      builder: (_) => LogFoodScreen.pick(initialQuery: query),
     ));
 
 class _LogFoodScreenState extends ConsumerState<LogFoodScreen> {
@@ -63,8 +65,9 @@ class _LogFoodScreenState extends ConsumerState<LogFoodScreen> {
 
   /// The meal the food goes into: the one whose Add row or + was tapped,
   /// shown at the top and changeable before anything is searched. It used
-  /// to be fixed in the title and changeable only in the last step.
-  late String _meal = widget.mealType;
+  /// to be fixed in the title and changeable only in the last step. Null
+  /// only when choosing, which never logs.
+  late String? _meal = widget.mealType;
 
   @override
   void initState() {
@@ -123,7 +126,7 @@ class _LogFoodScreenState extends ConsumerState<LogFoodScreen> {
       Navigator.of(context).pop(food);
       return;
     }
-    final choice = await showLogFoodSheet(context, food, mealType: _meal);
+    final choice = await showLogFoodSheet(context, food, mealType: _meal!);
     if (choice == null || !mounted) return;
     final messenger = ScaffoldMessenger.of(context);
     final controller = ref.read(nutritionDayProvider.notifier);
@@ -147,13 +150,13 @@ class _LogFoodScreenState extends ConsumerState<LogFoodScreen> {
   Future<void> _manual() async {
     if (widget.pick) {
       final food = await Navigator.of(context).push<Food>(MaterialPageRoute(
-        builder: (_) => AddFoodManuallyScreen(mealType: _meal, pick: true),
+        builder: (_) => const AddFoodManuallyScreen.pick(),
       ));
       if (food != null && mounted) Navigator.of(context).pop(food);
       return;
     }
     final logged = await Navigator.of(context).push<bool>(MaterialPageRoute(
-      builder: (_) => AddFoodManuallyScreen(mealType: _meal, onLogged: widget.onLogged),
+      builder: (_) => AddFoodManuallyScreen(mealType: _meal!, onLogged: widget.onLogged),
     ));
     if (logged == true && mounted) Navigator.of(context).pop();
   }
@@ -162,7 +165,7 @@ class _LogFoodScreenState extends ConsumerState<LogFoodScreen> {
     final logged = await startSnapMeal(
       context,
       ref,
-      mealType: _meal,
+      mealType: _meal!,
       date: ref.read(nutritionDayProvider).value?.date,
       // Log food is right behind the photo screen: going back is the search,
       // for the meal the photo screen had.
@@ -248,7 +251,7 @@ class _LogFoodScreenState extends ConsumerState<LogFoodScreen> {
                   spacing: 10,
                   children: [
                     FsEyebrow(adding, maxLines: 2),
-                    _MealPicker(meal: _meal, onPicked: (m) => setState(() => _meal = m)),
+                    _MealPicker(meal: _meal!, onPicked: (m) => setState(() => _meal = m)),
                   ],
                 ),
               ),

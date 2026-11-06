@@ -44,7 +44,8 @@ class StepAccessController extends AsyncNotifier<StepAccess> {
     return access;
   }
 
-  Future<void> openSettings() => ref.read(stepPermissionProvider).openSettings();
+  Future<void> openSettings() =>
+      ref.read(stepPermissionProvider).openSettings();
 }
 
 /// Today's count (from the phone, so it works offline) and the week (from
@@ -100,7 +101,11 @@ class ActivityController extends AsyncNotifier<ActivityState> {
           await _save(repo, entry.key, steps);
         }
       }
-      return ActivityState(today: today, week: await repo.week(), offline: false);
+      return ActivityState(
+        today: today,
+        week: await repo.week(),
+        offline: false,
+      );
     } on ApiException catch (error) {
       if (error.code != 'NETWORK_ERROR') rethrow;
       return ActivityState(today: today, week: previous, offline: true);
@@ -136,10 +141,59 @@ class ActivityController extends AsyncNotifier<ActivityState> {
 /// slow connection. autoDispose: it is only read until that week arrives,
 /// and a later cold load reads the phone afresh.
 final todayStepsProvider = FutureProvider.autoDispose<DaySteps>(
-  (ref) => ref.watch(stepSourceProvider).today(ref.read(activityClockProvider)()),
+  (ref) =>
+      ref.watch(stepSourceProvider).today(ref.read(activityClockProvider)()),
 );
 
-/// Today's running total while the Activity screen listens.
-final liveStepsProvider = StreamProvider.autoDispose<int>(
-  (ref) => ref.watch(stepSourceProvider).live(ref.read(activityClockProvider)()),
-);
+/// The Manila day the live count counts from. It moves on when [refresh]
+/// finds the clock on a later day: on resume (ActivitySync) and when the
+/// live stream reports after midnight. Home keeps [liveStepsProvider]
+/// alive all session, so without this a stream started last night would
+/// go on adding today's steps to yesterday's.
+final stepsDayProvider =
+    NotifierProvider.autoDispose<StepsDayController, String>(
+      StepsDayController.new,
+    );
+
+class StepsDayController extends Notifier<String> {
+  @override
+  String build() => manilaDayOf(ref.read(activityClockProvider)());
+
+  /// Moves to the clock's Manila day; a no-op on the same day.
+  void refresh() {
+    final today = manilaDayOf(ref.read(activityClockProvider)());
+    if (today != state) state = today;
+  }
+}
+
+/// Today's running total from the phone, while anything shows today's
+/// steps ([stepsShownTodayProvider]). Restarts from the new midnight when
+/// the Manila day moves on ([stepsDayProvider]); a count the old stream
+/// reports after midnight is dropped, as it includes yesterday.
+final liveStepsProvider = StreamProvider.autoDispose<int>((ref) {
+  final day = ref.watch(stepsDayProvider);
+  final clock = ref.read(activityClockProvider);
+  return ref.watch(stepSourceProvider).live(clock()).where((_) {
+    if (manilaDayOf(clock()) == day) return true;
+    ref.read(stepsDayProvider.notifier).refresh();
+    return false;
+  });
+});
+
+/// Today's steps as every screen shows them: the phone's live count once it
+/// has one, else the count read with the week, else -- while the week is
+/// still on its way -- the phone's own read. Null only before the phone has
+/// answered at all.
+///
+/// One source for Home's steps tile and the Activity screen, so the two
+/// never show different counts, or different kcal and km grown from them
+/// (ActivityDay.grownTo), for the same moment.
+final stepsShownTodayProvider = Provider.autoDispose<int?>((ref) {
+  // Data only: while the stream restarts on a new day, its previous value
+  // is yesterday's count.
+  if (ref.watch(liveStepsProvider) case AsyncData(:final value)) return value;
+  final saved = ref.watch(activityProvider).value;
+  if (saved != null) return saved.today.steps;
+  // Watched only until the week arrives, so it is read afresh next time.
+  return ref.watch(todayStepsProvider).value?.steps;
+});

@@ -135,42 +135,54 @@ class LevelStep extends ConsumerWidget {
   Future<void> _pickLocation(BuildContext context, WidgetRef ref) async {
     final picked = await showModalBottomSheet<String>(
       context: context,
-      builder: (sheet) => SafeArea(
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            // Named, so the sheet says what it is choosing; a heading, so a
-            // screen reader lands on it first.
-            Padding(
-              padding: const EdgeInsets.fromLTRB(20, 16, 20, 4),
-              child: Semantics(
-                key: const Key('location.title'),
-                container: true,
-                header: true,
-                child: Text(
-                  'Training location',
-                  style: Theme.of(sheet).textTheme.titleMedium,
+      // Scroll-controlled and capped, so the theme's drag handle plus four
+      // rows never outgrow a small phone at large text: past the cap the
+      // rows scroll instead of overflowing under the gesture bar.
+      isScrollControlled: true,
+      builder: (sheet) => FsSheetHeightCap(
+        child: SafeArea(
+          child: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                // Named, so the sheet says what it is choosing; a heading, so a
+                // screen reader lands on it first.
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(20, 16, 20, 4),
+                  child: Semantics(
+                    key: const Key('location.title'),
+                    container: true,
+                    header: true,
+                    child: Text(
+                      'Training location',
+                      style: Theme.of(sheet).textTheme.titleMedium,
+                    ),
+                  ),
                 ),
-              ),
+                for (final location in _locations)
+                  ListTile(
+                    key: Key('location.${location.value}'),
+                    // Said as "selected" as well as shown by the tick.
+                    selected: location.value == value.trainingLocation,
+                    // The app theme insets tile content by 4dp, which reads as
+                    // padding only inside a card that brings its own. In a sheet
+                    // flush with the screen it puts the labels against the edge,
+                    // so this matches the 20dp the swap sheet uses.
+                    contentPadding: const EdgeInsets.symmetric(horizontal: 20),
+                    title: Text(location.label),
+                    trailing: location.value == value.trainingLocation
+                        ? Icon(
+                            Icons.check,
+                            size: 18,
+                            color: sheet.fs.accentText,
+                          )
+                        : null,
+                    onTap: () => Navigator.of(sheet).pop(location.value),
+                  ),
+              ],
             ),
-            for (final location in _locations)
-              ListTile(
-                key: Key('location.${location.value}'),
-                // Said as "selected" as well as shown by the tick.
-                selected: location.value == value.trainingLocation,
-                // The app theme insets tile content by 4dp, which reads as
-                // padding only inside a card that brings its own. In a sheet
-                // flush with the screen it puts the labels against the edge,
-                // so this matches the 20dp the swap sheet uses.
-                contentPadding: const EdgeInsets.symmetric(horizontal: 20),
-                title: Text(location.label),
-                trailing: location.value == value.trainingLocation
-                    ? Icon(Icons.check, size: 18, color: sheet.fs.accentText)
-                    : null,
-                onTap: () => Navigator.of(sheet).pop(location.value),
-              ),
-          ],
+          ),
         ),
       ),
     );

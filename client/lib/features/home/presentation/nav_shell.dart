@@ -229,7 +229,8 @@ class _NavShellState extends State<NavShell> {
                   currentIndex: _index,
                   onSelect: _select,
                   items: _items,
-                  // Named by FsNav's own default, 'Start a workout'.
+                  // Named by FsNav's default fabLabel, so the words live in
+                  // one place.
                   onFabTap: () => showStartWorkoutSheet(context),
                 ),
               ),

@@ -778,13 +778,17 @@ void main() {
   testWidgets('a failed equipment lookup says why and offers Try again', (
     tester,
   ) async {
+    // The lookup stays down until the user asks again: a garbled reply is
+    // retried twice on its own first (apiRetryPolicy), so failing only the
+    // first call would never reach the error state.
     var calls = 0;
+    var down = true;
     await tester.pumpWidget(
       ProviderScope(
         overrides: [
           equipmentOptionsProvider.overrideWith((ref) async {
             calls++;
-            if (calls == 1) {
+            if (down) {
               throw const ApiException('INVALID_RESPONSE', 'HTTP 502 <html>');
             }
             return _serverEquipment;
@@ -807,9 +811,11 @@ void main() {
       find.text(userMessage(const ApiException('INVALID_RESPONSE', ''))),
       findsOneWidget,
     );
+    expect(calls, 3, reason: 'the first try and two automatic retries');
+    down = false;
     await _tapKey(tester, const Key('equipment.retry'));
 
-    expect(calls, 2);
+    expect(calls, 4);
     expect(find.text('Resistance band'), findsOneWidget);
   });
 }

@@ -70,10 +70,6 @@ class _HabitSheetState extends ConsumerState<_HabitSheet> {
             _weekdays.toSet().containsAll(days));
   }
 
-  /// How far the current drag has pulled the sheet down, while [_dirty]
-  /// holds the drag back from the sheet itself.
-  double _dragDown = 0;
-
   /// The weekday of the day the routine screen was showing when this sheet
   /// opened, 1-7. Read once, in initState, rather than each time it is
   /// needed: the provider may have already moved on to a different day by the
@@ -224,36 +220,9 @@ class _HabitSheetState extends ConsumerState<_HabitSheet> {
   @override
   Widget build(BuildContext context) {
     // Typed or picked and not saved: back, a tap on the scrim and a swipe
-    // down ask before throwing it away, as the check-in sheet does.
-    // FsDiscardGuard covers back and the scrim, which ask the route to pop.
-    // A drag down never asks -- the bottom sheet pops its route itself once
-    // the drag ends -- so while dirty the drag is claimed here first and a
-    // clear pull down asks the route to pop, which the guard turns into the
-    // question.
-    final dirty = _dirty;
-    return FsDiscardGuard(
-      dirty: dirty,
-      child: GestureDetector(
-        behavior: HitTestBehavior.opaque,
-        // Kept out of semantics, so a dirty sheet does not tell a screen
-        // reader it scrolls; screen readers close it through back or the
-        // scrim, which the guard covers.
-        excludeFromSemantics: true,
-        onVerticalDragStart: dirty ? (_) => _dragDown = 0 : null,
-        onVerticalDragUpdate: dirty
-            ? (details) => _dragDown += details.primaryDelta ?? 0
-            : null,
-        onVerticalDragEnd: dirty
-            ? (details) {
-                final velocity = details.primaryVelocity ?? 0;
-                if (_dragDown > 48 || velocity > 700) {
-                  Navigator.of(context).maybePop();
-                }
-              }
-            : null,
-        child: _content(),
-      ),
-    );
+    // down ask before throwing it away, as the check-in sheet does (the
+    // kit's sheet guard, which claims the drag while dirty).
+    return FsSheetDiscardGuard(dirty: _dirty, child: _content());
   }
 
   Widget _content() {

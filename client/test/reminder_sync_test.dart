@@ -475,43 +475,59 @@ void main() {
   });
 
   testWidgets('a scheduling failure is contained', (tester) async {
-    final harness = await _pump(
-      tester,
-      scheduleAllError: Exception('scheduler boom'),
-    );
+    // Each failed attempt logs its cause; captured here rather than printed
+    // into the test output, and checked, since the log is all it leaves.
+    final logs = <String?>[];
+    final original = debugPrint;
+    debugPrint = (message, {wrapWidth}) => logs.add(message);
+    try {
+      final harness = await _pump(
+        tester,
+        scheduleAllError: Exception('scheduler boom'),
+      );
 
-    expect(
-      tester.takeException(),
-      isNull,
-      reason: 'the widget must keep working despite the failure',
-    );
-    expect(
-      harness.scheduler.scheduleAllCalls,
-      isNotEmpty,
-      reason: 'the failed attempt is still recorded',
-    );
+      expect(
+        tester.takeException(),
+        isNull,
+        reason: 'the widget must keep working despite the failure',
+      );
+      expect(
+        harness.scheduler.scheduleAllCalls,
+        isNotEmpty,
+        reason: 'the failed attempt is still recorded',
+      );
 
-    final callsBefore = harness.scheduler.scheduleAllCalls.length;
-    (harness.container.read(
-      reminderSettingsProvider.notifier,
-    ) as _StubReminderSettings).set(
-      const ReminderSettings(
-        habitsEnabled: true,
-        habitLeadMin: 15,
-        workoutEnabled: false,
-        workoutTime: '07:00',
-        checkinEnabled: true,
-        checkinTime: '07:00',
+      final callsBefore = harness.scheduler.scheduleAllCalls.length;
+      (harness.container.read(
+        reminderSettingsProvider.notifier,
+      ) as _StubReminderSettings).set(
+        const ReminderSettings(
+          habitsEnabled: true,
+          habitLeadMin: 15,
+          workoutEnabled: false,
+          workoutTime: '07:00',
+          checkinEnabled: true,
+          checkinTime: '07:00',
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      expect(
+        harness.scheduler.scheduleAllCalls.length,
+        greaterThan(callsBefore),
+        reason: 'a later trigger must retry scheduling',
+      );
+      expect(tester.takeException(), isNull);
+    } finally {
+      debugPrint = original;
+    }
+    expect(logs, isNotEmpty);
+    expect(
+      logs,
+      everyElement(
+        'ReminderSync: scheduling failed: Exception: scheduler boom',
       ),
     );
-    await tester.pumpAndSettle();
-
-    expect(
-      harness.scheduler.scheduleAllCalls.length,
-      greaterThan(callsBefore),
-      reason: 'a later trigger must retry scheduling',
-    );
-    expect(tester.takeException(), isNull);
   });
 
   testWidgets(

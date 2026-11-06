@@ -12,7 +12,40 @@ double _contrast(Color a, Color b) {
   return (max(la, lb) + 0.05) / (min(la, lb) + 0.05);
 }
 
+/// What an AlertDialog really draws on in [theme]: the dialog theme's
+/// colour, else M3's surfaceContainerHigh, which the colour scheme leaves
+/// to default to its surface (t.surface). The rows used to call t.elev the
+/// dialog's; t.elev is the snack bar's.
+Color _dialogSurface(String theme) {
+  final data = theme == 'light' ? fsLightTheme() : fsDarkTheme();
+  return data.dialogTheme.backgroundColor ??
+      data.colorScheme.surfaceContainerHigh;
+}
+
 void main() {
+  // P-30: the 'dialog' rows below check the colour a dialog is drawn on.
+  for (final theme in ['light', 'dark']) {
+    testWidgets('the dialog rows use what an AlertDialog draws on ($theme)', (
+      tester,
+    ) async {
+      await tester.pumpWidget(
+        MaterialApp(
+          theme: theme == 'light' ? fsLightTheme() : fsDarkTheme(),
+          home: const AlertDialog(title: Text('Sign out?')),
+        ),
+      );
+      final material = tester.widget<Material>(
+        find
+            .descendant(
+              of: find.byType(AlertDialog),
+              matching: find.byType(Material),
+            )
+            .first,
+      );
+      expect(material.color, _dialogSurface(theme));
+    });
+  }
+
   // Red is read, not just seen: the destructive choice in every "are you
   // sure" dialog, Sign out, and error messages. Those are normal-size labels,
   // so WCAG AA's 4.5:1 applies, on the page, cards and dialogs alike.
@@ -24,7 +57,8 @@ void main() {
       for (final (name, background) in [
         ('page', t.bg),
         ('card', t.surface),
-        ('dialog', t.elev),
+        ('dialog', _dialogSurface(theme)),
+        ('snack bar', t.elev),
       ]) {
         expect(
           _contrast(t.red, background),
@@ -46,7 +80,8 @@ void main() {
         ('page', t.bg),
         ('card', t.surface),
         ('chip', t.surface2),
-        ('dialog', t.elev),
+        ('dialog', _dialogSurface(theme)),
+        ('snack bar', t.elev),
       ]) {
         expect(
           _contrast(t.text3, background),
@@ -75,7 +110,8 @@ void main() {
         ('page', t.bg),
         ('card', t.surface),
         ('chip', t.surface2),
-        ('dialog', t.elev),
+        ('dialog', _dialogSurface(theme)),
+        ('snack bar', t.elev),
         ('green tint on the page', Color.alphaBlend(t.accentDim, t.bg)),
         ('green tint on a card', Color.alphaBlend(t.accentDim, t.surface)),
       ]) {
@@ -130,7 +166,8 @@ void main() {
         ('page', t.bg),
         ('card', t.surface),
         ('chip', t.surface2),
-        ('dialog', t.elev),
+        ('dialog', _dialogSurface(theme)),
+        ('snack bar', t.elev),
       ]) {
         expect(
           _contrast(Color.alphaBlend(t.control, bg), bg),
@@ -147,7 +184,8 @@ void main() {
         ('page', t.bg),
         ('card', t.surface),
         ('chip', t.surface2),
-        ('dialog', t.elev),
+        ('dialog', _dialogSurface(theme)),
+        ('snack bar', t.elev),
       ]) {
         expect(
           _contrast(t.accentFill, bg),

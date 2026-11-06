@@ -223,6 +223,21 @@ List<String> _rowLabels(WidgetTester tester, String field) {
   return [for (final p in positions) p.$1];
 }
 
+/// Runs [body] with `debugPrint` captured rather than printed: a pending-
+/// outcome lookup that fails or times out logs why it was skipped. Restored
+/// inside the test, as flutter_test requires.
+Future<List<String?>> _capturingLogs(Future<void> Function() body) async {
+  final logs = <String?>[];
+  final original = debugPrint;
+  debugPrint = (message, {wrapWidth}) => logs.add(message);
+  try {
+    await body();
+  } finally {
+    debugPrint = original;
+  }
+  return logs;
+}
+
 void main() {
   testWidgets('it asks all four questions', (tester) async {
     await _open(tester);
@@ -544,6 +559,31 @@ void main() {
     semantics.dispose();
   });
 
+  testWidgets('all four questions are one-choice groups for a screen reader', (
+    tester,
+  ) async {
+    final semantics = tester.ensureSemantics();
+    await _open(tester);
+
+    for (final label in [
+      'Sleep: Poor',
+      'Soreness: Severe',
+      'Energy: Very low',
+      'Stress: High',
+    ]) {
+      final data = tester
+          .getSemantics(find.bySemanticsLabel(label))
+          .getSemanticsData();
+      expect(
+        data.flagsCollection.isInMutuallyExclusiveGroup,
+        isTrue,
+        reason: label,
+      );
+      expect(data.flagsCollection.isChecked, CheckedState.isFalse);
+    }
+    semantics.dispose();
+  });
+
   testWidgets('it says why it asks', (tester) async {
     await _open(tester);
 
@@ -597,6 +637,13 @@ void main() {
       await _open(tester);
 
       expect(find.byKey(const Key('checkin.handle')), findsOneWidget);
+      // P-19/P-23: the kit's handle, drag claim and height cap, not copies.
+      expect(
+        tester.widget(find.byKey(const Key('checkin.handle'))),
+        isA<FsSheetHandle>(),
+      );
+      expect(find.byType(FsSheetDiscardGuard), findsOneWidget);
+      expect(find.byType(FsSheetHeightCap), findsOneWidget);
       // Its own, inside the discard guard, and not Material's as well:
       // Material's sits outside the sheet's child, where a drag on it would
       // close the sheet without asking (PT-22).
@@ -916,29 +963,41 @@ void main() {
       tester,
     ) async {
       final never = Completer<PendingOutcome?>();
-      final repo = await _open(tester, pendingLookup: () => never.future);
+      late _FakeRepo repo;
+      final logs = await _capturingLogs(() async {
+        repo = await _open(tester, pendingLookup: () => never.future);
 
-      expect(find.text('Any pain since?'), findsNothing);
-      expect(find.text("Helps estimate today's injury risk."), findsOneWidget);
-      // Lets the lookup's time limits run out, so no timer outlives the test.
-      await tester.pump(const Duration(seconds: 7));
-      expect(find.text('Any pain since?'), findsNothing);
+        expect(find.text('Any pain since?'), findsNothing);
+        expect(
+          find.text("Helps estimate today's injury risk."),
+          findsOneWidget,
+        );
+        // Lets the lookup's time limits run out, so no timer outlives the
+        // test.
+        await tester.pump(const Duration(seconds: 7));
+        expect(find.text('Any pain since?'), findsNothing);
 
-      await _answerAll(tester);
-      await _tapKey(tester, 'checkin.save');
+        await _answerAll(tester);
+        await _tapKey(tester, 'checkin.save');
+      });
       expect(repo.sent, isNotNull);
+      expect(logs, [startsWith('Pending-outcome lookup skipped')]);
     });
 
     testWidgets('no pain row when the lookup fails', (tester) async {
-      final repo = await _open(
-        tester,
-        pendingLookup: () async => throw Exception('offline'),
-      );
+      late _FakeRepo repo;
+      final logs = await _capturingLogs(() async {
+        repo = await _open(
+          tester,
+          pendingLookup: () async => throw Exception('offline'),
+        );
 
-      expect(find.text('Any pain since?'), findsNothing);
-      await _answerAll(tester);
-      await _tapKey(tester, 'checkin.save');
+        expect(find.text('Any pain since?'), findsNothing);
+        await _answerAll(tester);
+        await _tapKey(tester, 'checkin.save');
+      });
       expect(repo.sent, isNotNull);
+      expect(logs, [startsWith('Pending-outcome lookup skipped')]);
     });
 
     testWidgets('a workout that became askable overnight gets its row', (

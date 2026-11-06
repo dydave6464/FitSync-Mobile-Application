@@ -222,6 +222,43 @@ void main() {
     expect(figure('minutes', '128'), findsOneWidget);
   });
 
+  // Nothing saved for today yet (0 steps, or none at all): there is no share
+  // to grow the estimates by, so they stay as saved rather than dividing by
+  // zero into Infinity or NaN.
+  for (final saved in [0, null]) {
+    testWidgets('with $saved steps saved for today, the live count leaves the estimates as saved', (tester) async {
+      final live = StreamController<int>();
+      addTearDown(live.close);
+      final week = ActivityWeek(
+        days: [
+          ..._week().days.take(6),
+          ActivityDay(
+            date: '2026-09-28', steps: saved,
+            caloriesBurned: saved, distanceKm: saved?.toDouble(), activeMinutes: saved,
+          ),
+        ],
+        usual: 5180,
+        missing: const [],
+      );
+      await _pump(
+        tester,
+        ActivityState(today: DaySteps(steps: saved ?? 0), week: week, offline: false),
+        live: live.stream,
+      );
+
+      live.add(500);
+      await tester.pumpAndSettle();
+
+      expect(tester.takeException(), isNull);
+      expect(find.descendant(of: find.byKey(const Key('activity.steps')), matching: find.text('500')), findsOneWidget);
+      Finder figure(String key, String value) =>
+          find.descendant(of: find.byKey(Key('activity.$key')), matching: find.text(value));
+      expect(figure('kcal', '0'), findsOneWidget);
+      expect(figure('km', '0.00'), findsOneWidget);
+      expect(figure('minutes', saved == null ? '—' : '0'), findsOneWidget);
+    });
+  }
+
   testWidgets('missing height shows dashes and a way to Profile', (tester) async {
     await _pump(tester, ActivityState(
       today: const DaySteps(steps: 6420), week: _week(missing: ['height']), offline: false,
@@ -288,6 +325,9 @@ void main() {
       ],
       child: const MaterialApp(home: ActivityScreen()),
     ));
+    // A garbled reply is retried twice first (apiRetryPolicy); the phone's
+    // own count shows meanwhile, so let the backoff run out before looking.
+    await tester.pump(const Duration(seconds: 2));
     await tester.pumpAndSettle();
 
     expect(find.text('Something went wrong on our side. Please try again.'), findsOneWidget);

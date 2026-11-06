@@ -4,11 +4,6 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../../core/theme.dart';
 import '../../../../core/widgets/fs_kit.dart';
-// describeError lives beside the catalogue list rather than in core/ -- it is
-// the one place that turns an ApiException into a sentence, and every screen
-// imports it from there with `show`.
-import '../../../exercises/presentation/exercise_list_screen.dart'
-    show describeError;
 import '../../domain/recovery.dart';
 import '../providers.dart';
 import '../../../../core/api_exception.dart';
@@ -105,16 +100,11 @@ Future<void> showCheckinSheet(
 }) {
   return showModalBottomSheet<void>(
     context: context,
-    // Its own handle sits inside the discard guard; Material's would sit outside it (PT-22).
+    // The surface and corners are the theme's (bottomSheetTheme), on the
+    // sheet's own Material, which this sheet's InkWell chips need. Its
+    // handle is not: it draws the kit's inside the discard guard, since
+    // Material's would sit outside it (PT-22).
     showDragHandle: false,
-    // The surface goes on the sheet's own Material -- see share_report_sheet's
-    // note on the same choice. This sheet's chips are InkWells on a Material
-    // too, so Colors.transparent-plus-Container would only relocate the same
-    // bug that once made a copy of that pattern render see-through.
-    backgroundColor: context.fs.surface,
-    shape: const RoundedRectangleBorder(
-      borderRadius: BorderRadius.vertical(top: Radius.circular(22)),
-    ),
     isScrollControlled: true,
     builder: (_) => _CheckinSheet(existing: existing),
   );
@@ -159,10 +149,6 @@ class _CheckinSheetState extends ConsumerState<_CheckinSheet> {
         _answers.entries.any((e) => _saved[e.key] != e.value);
     return changed || (_painLevel != null && !_painSaved);
   }
-
-  /// How far the current drag has pulled the sheet down, while [_dirty]
-  /// holds the drag back from the sheet itself.
-  double _dragDown = 0;
 
   /// The workout the pain row asks about, once [lookUpPendingOutcome] has
   /// answered; null hides the row. Held here rather than watched: the save
@@ -309,14 +295,14 @@ class _CheckinSheetState extends ConsumerState<_CheckinSheet> {
         if (messenger != null) {
           showErrorSnackBar(
             messenger,
-            "Your check-in wasn't saved. ${describeError(error)}",
+            "Your check-in wasn't saved. ${userMessage(error)}",
           );
         }
         return;
       }
       setState(() {
         _busy = false;
-        _failure = describeError(error);
+        _failure = userMessage(error);
       });
     }
   }
@@ -326,69 +312,30 @@ class _CheckinSheetState extends ConsumerState<_CheckinSheet> {
     final t = context.fs;
 
     // Answers given and not saved make back, a tap on the scrim and a swipe
-    // down ask before throwing them away. FsDiscardGuard covers back and the
-    // scrim, which both ask the route to pop. A drag down never asks: the
-    // bottom sheet pops its route itself once the drag ends. So while dirty
-    // the drag is claimed here first -- the innermost vertical-drag
-    // recognizer wins the arena, as in exercise_swap_sheet -- and a clear
-    // pull down asks the route to pop, which the guard turns into the
-    // question.
-    final dirty = _dirty;
-    return FsDiscardGuard(
-      dirty: dirty,
+    // down ask before throwing them away (the kit's sheet guard, which
+    // claims the drag while dirty).
+    return FsSheetDiscardGuard(
+      dirty: _dirty,
       message: "Your check-in answers won't be saved.",
-      child: GestureDetector(
-        behavior: HitTestBehavior.opaque,
-        // Kept out of semantics: otherwise a dirty sheet tells a screen
-        // reader it scrolls, and a scroll gesture runs these callbacks into
-        // the discard question. Screen readers close the sheet through back,
-        // escape or the scrim, which the guard already covers.
-        excludeFromSemantics: true,
-        onVerticalDragStart: dirty ? (_) => _dragDown = 0 : null,
-        onVerticalDragUpdate: dirty
-            ? (details) => _dragDown += details.primaryDelta ?? 0
-            : null,
-        onVerticalDragEnd: dirty
-            ? (details) {
-                final velocity = details.primaryVelocity ?? 0;
-                if (_dragDown > 48 || velocity > 700) {
-                  Navigator.of(context).maybePop();
-                }
-              }
-            : null,
-        child: _content(t),
-      ),
+      child: _content(t),
     );
   }
 
-  /// The tallest the sheet grows, as the How to read sheet: a strip of the
-  /// Recovery tab stays in view above it, and its title never slides under
-  /// the status bar.
-  static const _maxHeightFraction = 0.9;
-
   Widget _content(FsTokens t) {
-    return ConstrainedBox(
-      constraints: BoxConstraints(
-        maxHeight: MediaQuery.sizeOf(context).height * _maxHeightFraction,
-      ),
+    // At most 0.9 of the screen, as the How to read sheet: a strip of the
+    // Recovery tab stays in view above it, and its title never slides under
+    // the status bar.
+    return FsSheetHeightCap(
       child: SafeArea(
         child: Column(
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            // The handle the How to read sheet draws, so the two sheets on
-            // this tab look and close alike.
-            Center(
-              child: Container(
-                key: const Key('checkin.handle'),
-                width: 38,
-                height: 4,
-                margin: const EdgeInsets.only(top: 10, bottom: 12),
-                decoration: BoxDecoration(
-                  color: t.line2,
-                  borderRadius: BorderRadius.circular(99),
-                ),
-              ),
+            // The kit's handle, drawn inside the guard: Material's would
+            // sit outside it, where a drag would close the sheet unasked.
+            const Padding(
+              padding: EdgeInsets.only(top: 10, bottom: 12),
+              child: Center(child: FsSheetHandle(key: Key('checkin.handle'))),
             ),
             // Everything below the handle scrolls, so at large text on a
             // small phone Save is still reachable rather than pushed off the

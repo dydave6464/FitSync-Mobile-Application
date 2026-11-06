@@ -6,7 +6,6 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../core/api_exception.dart';
 import '../../../core/theme.dart';
-import '../../../core/units.dart';
 import '../../../core/widgets/fs_kit.dart';
 import '../../auth/presentation/auth_controller.dart';
 import '../../health/domain/health_answers.dart';
@@ -14,6 +13,7 @@ import '../../health/presentation/providers.dart';
 import '../../home/presentation/plan_ready.dart';
 import '../../profile/domain/profile.dart';
 import '../../profile/presentation/providers.dart';
+import '../../profile/presentation/weight_unit_switch.dart';
 import '../../reminders/data/reminder_prompt_store.dart';
 import '../../reminders/data/reminder_scheduler.dart';
 import '../../reminders/presentation/providers.dart'
@@ -40,7 +40,8 @@ class OnboardingFlow extends ConsumerStatefulWidget {
   ConsumerState<OnboardingFlow> createState() => _OnboardingFlowState();
 }
 
-class _OnboardingFlowState extends ConsumerState<OnboardingFlow> {
+class _OnboardingFlowState extends ConsumerState<OnboardingFlow>
+    with WeightUnitSwitch {
   static const _total = 6;
 
   /// The health check: no Skip, and Continue only once it is answered.
@@ -49,9 +50,6 @@ class _OnboardingFlowState extends ConsumerState<OnboardingFlow> {
   int _index = 0;
   bool _busy = false;
 
-  /// A kg/lb choice on its way to the server, shown at once rather than when
-  /// the server answers. Null once the save has landed or failed.
-  WeightUnit? _pendingUnit;
   String? _error;
   bool _seeded = false;
 
@@ -329,26 +327,6 @@ class _OnboardingFlowState extends ConsumerState<OnboardingFlow> {
 
   Future<void> _skip() => _save(_saveTypedAnswers);
 
-  /// Saves a kg/lb switch the moment it is tapped, as Settings does: the new
-  /// unit shows at once, further taps wait for the answer, and a refused
-  /// switch goes back and says so.
-  Future<void> _switchUnit(WeightUnit unit) async {
-    if (_pendingUnit != null) return;
-    final messenger = ScaffoldMessenger.of(context);
-    setState(() => _pendingUnit = unit);
-    try {
-      await ref.read(profileProvider.notifier).patch({'weightUnit': unit.api});
-    } catch (_) {
-      messenger.showSnackBar(
-        SnackBar(content: Text("Couldn't switch to ${unit.api}. Try again.")),
-      );
-    } finally {
-      // The profile now holds the new unit, or still the old one, which is
-      // what goes back on screen.
-      if (mounted) setState(() => _pendingUnit = null);
-    }
-  }
-
   /// Runs one of the two saves, then moves on -- or, if it failed, stays put
   /// and says why.
   Future<void> _save(Future<void> Function() write) async {
@@ -486,8 +464,9 @@ class _OnboardingFlowState extends ConsumerState<OnboardingFlow> {
       // Saved to the account as it is tapped rather than held with the
       // rest of the step: it changes what the two cards on screen say
       // right now, so it cannot wait for Continue.
-      unit: _pendingUnit ?? ref.watch(weightUnitProvider),
-      onUnitChanged: _switchUnit,
+      // Shown at once and saved as Settings does (WeightUnitSwitch).
+      unit: shownUnit(ref.watch(weightUnitProvider)),
+      onUnitChanged: switchUnit,
     ),
     2 => LevelStep(
       value: _level,

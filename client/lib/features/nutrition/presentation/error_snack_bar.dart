@@ -24,12 +24,9 @@ void showErrorSnackBar(
   ));
 }
 
-/// Whether sending the same request again may go through: the phone could
-/// not reach the server, the server failed, or its answer was garbled (a
-/// proxy's error page). A refusal the server named -- no such entry, a
-/// value out of range -- would only be refused again.
-bool retryCanFix(Object error) =>
-    error is ApiException && const {'NETWORK_ERROR', 'INTERNAL_ERROR', 'INVALID_RESPONSE'}.contains(error.code);
+/// Whether sending the same request again may go through; see
+/// [isRetryableError], the one definition the automatic retry uses too.
+bool retryCanFix(Object error) => isRetryableError(error);
 
 /// Runs [save]. If it fails, says [failure] and why (see `userMessage`).
 /// When a retry can fix it, the message carries "Try again", which runs the

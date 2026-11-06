@@ -1,4 +1,7 @@
+import 'dart:ui' show CheckedState;
+
 import 'package:flutter/material.dart';
+import 'package:flutter/semantics.dart' show SemanticsData;
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 
@@ -94,6 +97,14 @@ Future<void> _tapKey(WidgetTester tester, Key key) async {
   await tester.tap(find.byKey(key));
   await tester.pumpAndSettle();
 }
+
+/// The semantics a single-choice chip reports (P-1a): one of a group where
+/// picking one unpicks the rest, checked or not checked.
+SemanticsData _chipData(WidgetTester tester, Key key) => tester
+    .getSemantics(
+      find.descendant(of: find.byKey(key), matching: find.byType(Text)),
+    )
+    .getSemanticsData();
 
 void main() {
   testWidgets('groups the regions and orders the groups for reading', (
@@ -341,13 +352,17 @@ void main() {
   });
 
   testWidgets('a failed lookup says why and offers Try again', (tester) async {
+    // The lookup stays down until the user asks again: a garbled reply is
+    // retried twice on its own first (apiRetryPolicy), so failing only the
+    // first call would never reach the error state.
     var calls = 0;
+    var down = true;
     await tester.pumpWidget(
       ProviderScope(
         overrides: [
           injuryOptionsProvider.overrideWith((ref) async {
             calls++;
-            if (calls == 1) {
+            if (down) {
               throw const ApiException('INVALID_RESPONSE', 'HTTP 502 <html>');
             }
             return _options;
@@ -369,9 +384,30 @@ void main() {
       find.text(userMessage(const ApiException('INVALID_RESPONSE', ''))),
       findsOneWidget,
     );
+    expect(calls, 3, reason: 'the first try and two automatic retries');
+    down = false;
     await _tapKey(tester, const Key('injuries.retry'));
 
-    expect(calls, 2);
+    expect(calls, 4);
     expect(find.byType(FsRetry), findsNothing);
+  });
+
+  // P-1a: an injury has one side, so its side chips are a radio group.
+  testWidgets('the side chips are one single choice', (tester) async {
+    final handle = tester.ensureSemantics();
+    await _pump(
+      tester,
+      value: const [SelectedInjury(injuryId: 1, side: 'left')],
+    );
+
+    for (final side in ['left', 'right', 'both']) {
+      final data = _chipData(tester, Key('side.1.$side'));
+      expect(data.flagsCollection.isInMutuallyExclusiveGroup, isTrue);
+      expect(
+        data.flagsCollection.isChecked,
+        side == 'left' ? CheckedState.isTrue : CheckedState.isFalse,
+      );
+    }
+    handle.dispose();
   });
 }

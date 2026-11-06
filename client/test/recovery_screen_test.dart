@@ -7,7 +7,8 @@ import 'package:fitsync/core/theme.dart';
 import 'package:fitsync/core/units.dart';
 import 'package:fitsync/core/widgets/fs_charts.dart' show FsRing, FsBarChart;
 import 'package:fitsync/core/api_exception.dart';
-import 'package:fitsync/core/widgets/fs_kit.dart' show FsCard, FsRetry;
+import 'package:fitsync/core/widgets/fs_kit.dart'
+    show FsCard, FsRetry, FsSheetHandle, FsSheetHeightCap;
 import 'package:fitsync/features/profile/presentation/providers.dart'
     show weightUnitProvider;
 import 'package:fitsync/features/recovery/domain/recovery.dart';
@@ -1005,6 +1006,50 @@ void main() {
           tester.getBottomLeft(find.text('Morning check-in')).dy,
         ),
       );
+    });
+
+    // P-23: How to read had its own copy of the 0.9 cap and a hand-drawn
+    // handle. With no discard guard it takes the theme's chrome: Material's
+    // handle, surface and corners, under the kit's cap -- the whole sheet
+    // within 0.9 of the screen, handle included.
+    testWidgets('the guide takes the theme chrome under the kit cap', (
+      tester,
+    ) async {
+      await narrow(tester);
+      await _pump(tester, _withToday(_todays()));
+      await tester.tap(find.byKey(const Key('recovery.howToRead')));
+      await tester.pumpAndSettle();
+
+      final bottomSheet = tester.widget<BottomSheet>(find.byType(BottomSheet));
+      expect(bottomSheet.showDragHandle, isTrue);
+      expect(find.byType(FsSheetHandle), findsNothing);
+      expect(
+        find.byWidgetPredicate(
+          (w) =>
+              w is Container &&
+              w.constraints ==
+                  const BoxConstraints.tightFor(width: 38, height: 4),
+        ),
+        findsOneWidget,
+        reason: "only Material's handle, none hand-drawn beside it",
+      );
+      expect(find.byType(FsSheetHeightCap), findsOneWidget);
+      final material = find
+          .descendant(
+            of: find.byType(BottomSheet),
+            matching: find.byType(Material),
+          )
+          .first;
+      expect(tester.widget<Material>(material).color, FsTokens.light.surface);
+      expect(
+        tester.widget<Material>(material).shape,
+        const RoundedRectangleBorder(
+          borderRadius: BorderRadius.vertical(
+            top: Radius.circular(FsRadius.card),
+          ),
+        ),
+      );
+      expect(tester.getSize(material).height, lessThanOrEqualTo(640 * 0.9));
     });
 
     testWidgets('the guide does not overflow and scrolls to its end', (

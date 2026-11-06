@@ -29,12 +29,14 @@ class _Profile extends ProfileNotifier {
 
   final bool premium;
 
-  /// Loading the profile fails (a reply the app can't read; a network error
-  /// is retried first, then fails the same way).
+  /// Loading the profile fails. A code apiRetryPolicy does not retry, since
+  /// a retry here runs only while something watches the profile (Home does
+  /// in the app; nothing does in this test), and these tests are about what
+  /// happens once it has failed.
   final bool fails;
 
   @override
-  Future<Profile> build() async => fails ? throw const ApiException('INVALID_RESPONSE', 'x') : Profile(
+  Future<Profile> build() async => fails ? throw const ApiException('UNKNOWN_ERROR', 'x') : Profile(
     userId: 7, email: 'juan@example.com', fullName: 'Juan Dela Cruz', onboardingCompleted: true,
     isPremium: premium, notificationsEnabled: true, equipment: const [], injuries: const [],
   );

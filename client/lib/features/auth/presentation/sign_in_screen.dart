@@ -1,17 +1,20 @@
 import 'dart:math' as math;
 
+import 'package:flutter/foundation.dart' show kDebugMode;
 import 'package:flutter/material.dart';
 import 'package:flutter/semantics.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:font_awesome_flutter/font_awesome_flutter.dart';
 
 import '../../../core/api_exception.dart';
 import '../../../core/theme.dart';
 import '../../../core/widgets/fs_kit.dart';
 import '../data/google_sign_in_gateway.dart';
 import 'auth_controller.dart';
+import 'auth_text_link.dart';
 import 'check_email_screen.dart';
+import 'editable_under.dart';
 import 'forgot_password_screen.dart';
+import 'google_g_mark.dart';
 
 /// One screen for both signing in and registering.
 ///
@@ -69,6 +72,16 @@ class _SignInScreenState extends ConsumerState<SignInScreen> {
   /// A message from the server or Google, about the request as a whole.
   String? _error;
 
+  /// True only while [_error] says the email is taken on Create account, so
+  /// the line offers "Sign in instead". Set with the message by [_setError],
+  /// never inferred from its words.
+  bool _emailTaken = false;
+
+  void _setError(String? message, {bool emailTaken = false}) {
+    _error = message;
+    _emailTaken = emailTaken;
+  }
+
   /// A validation message, shown under the field it is about so the user
   /// does not have to work out which box to fix.
   ({_Field field, String message})? _fieldError;
@@ -124,18 +137,7 @@ class _SignInScreenState extends ConsumerState<SignInScreen> {
   /// a field on an outside tap) focus cannot move, so nothing would be read.
   /// [message] is announced instead -- only then, so it is never said twice.
   void _focus(_Field field, String message) {
-    EditableTextState? editable;
-    void visit(Element element) {
-      if (editable != null) return;
-      if (element is StatefulElement && element.state is EditableTextState) {
-        editable = element.state as EditableTextState;
-        return;
-      }
-      element.visitChildren(visit);
-    }
-
-    (_fieldKeys[field]!.currentContext as Element?)?.visitChildren(visit);
-    final target = editable;
+    final target = editableUnder(_fieldKeys[field]!);
     if (target == null) return;
     if (target.widget.focusNode.hasFocus) {
       SemanticsService.sendAnnouncement(
@@ -163,7 +165,7 @@ class _SignInScreenState extends ConsumerState<SignInScreen> {
 
     setState(() {
       _pending = _Pending.google;
-      _error = null;
+      _setError(null);
       _fieldError = null;
     });
 
@@ -181,8 +183,10 @@ class _SignInScreenState extends ConsumerState<SignInScreen> {
         case GoogleSignInFailed(:final cause):
           // Never shown -- the message names another way in instead -- but
           // without it a broken build gives no clue why Google failed.
-          debugPrint('Google sign-in failed: $cause');
-          setState(() => _error = _googleFailedMessage);
+          // Debug builds only: debugPrint still prints in release, and the
+          // phone's log is no place for a sign-in failure's details.
+          if (kDebugMode) debugPrint('Google sign-in failed: $cause');
+          setState(() => _setError(_googleFailedMessage));
           return;
       }
 
@@ -193,13 +197,13 @@ class _SignInScreenState extends ConsumerState<SignInScreen> {
       ref.read(authControllerProvider.notifier).onAuthenticated(user);
     } on ApiException catch (error) {
       if (!mounted) return;
-      setState(() => _error = userMessage(error));
+      setState(() => _setError(userMessage(error)));
     } catch (error) {
       // Anything else, so a tap never just stops the spinner and says
       // nothing: this is the only way in without a password.
-      debugPrint('Google sign-in failed: $error');
+      if (kDebugMode) debugPrint('Google sign-in failed: $error');
       if (!mounted) return;
-      setState(() => _error = _googleFailedMessage);
+      setState(() => _setError(_googleFailedMessage));
     } finally {
       if (mounted) setState(() => _pending = _Pending.none);
     }
@@ -214,7 +218,7 @@ class _SignInScreenState extends ConsumerState<SignInScreen> {
     if (problem != null) {
       setState(() {
         _fieldError = problem;
-        _error = null;
+        _setError(null);
       });
       _focus(problem.field, problem.message);
       return;
@@ -222,7 +226,7 @@ class _SignInScreenState extends ConsumerState<SignInScreen> {
 
     setState(() {
       _pending = _Pending.email;
-      _error = null;
+      _setError(null);
       _fieldError = null;
     });
 
@@ -258,11 +262,11 @@ class _SignInScreenState extends ConsumerState<SignInScreen> {
         // then has most likely expired, so the screen asks for a fresh one.
         _pushCheckEmail(email, password, sendCodeOnOpen: true);
       } else if (_registering && error.code == 'EMAIL_TAKEN') {
-        setState(() => _error = _emailTakenMessage);
+        setState(() => _setError(_emailTakenMessage, emailTaken: true));
       } else {
         // The fields keep their text on purpose — a wrong password should
         // cost one character, not the whole form.
-        setState(() => _error = userMessage(error));
+        setState(() => _setError(userMessage(error)));
       }
     } finally {
       if (mounted) setState(() => _pending = _Pending.none);
@@ -273,7 +277,7 @@ class _SignInScreenState extends ConsumerState<SignInScreen> {
   /// password stay: they are the same two fields in both modes.
   void _setRegistering(bool registering) => setState(() {
     _registering = registering;
-    _error = null;
+    _setError(null);
     _fieldError = null;
   });
 
@@ -432,7 +436,7 @@ class _SignInScreenState extends ConsumerState<SignInScreen> {
                 if (!_registering)
                   Align(
                     alignment: Alignment.centerRight,
-                    child: _TextLink(
+                    child: AuthTextLink(
                       key: const Key('forgotPassword'),
                       onTap: _busy ? null : _openForgotPassword,
                       child: Text(
@@ -449,10 +453,10 @@ class _SignInScreenState extends ConsumerState<SignInScreen> {
                   // A live region, so a screen reader says it as it
                   // appears: otherwise a failed sign-in sounds like a hang.
                   FsErrorLine(_error!, key: const Key('error')),
-                  if (_error == _emailTakenMessage)
+                  if (_emailTaken)
                     Align(
                       alignment: AlignmentDirectional.centerStart,
-                      child: _TextLink(
+                      child: AuthTextLink(
                         key: const Key('signInInstead'),
                         onTap: _busy ? null : () => _setRegistering(false),
                         child: Text(
@@ -498,15 +502,15 @@ class _SignInScreenState extends ConsumerState<SignInScreen> {
                   label: 'Continue with Google',
                   kind: FsButtonKind.secondary,
                   small: true,
-                  // Google's own G, as the prototype draws it, in the
-                  // button's text colour.
-                  icon: const FaIcon(FontAwesomeIcons.google),
+                  // Google's own colour G, which its sign-in branding
+                  // requires, in place of the prototype's one-colour G.
+                  icon: const GoogleGMark(),
                   busy: _pending == _Pending.google,
                   onPressed: _busy ? null : _signInWithGoogle,
                 ),
                 const SizedBox(height: 8),
                 Center(
-                  child: _TextLink(
+                  child: AuthTextLink(
                     key: const Key('toggleMode'),
                     onTap: _busy ? null : () => _setRegistering(!_registering),
                     child: Text.rich(
@@ -533,31 +537,6 @@ class _SignInScreenState extends ConsumerState<SignInScreen> {
               ],
             ),
           ),
-        ),
-      ),
-    );
-  }
-}
-
-/// A line of small text that acts as a button, inside a 48dp tap target.
-///
-/// The words stay as small as the design draws them; the target around them
-/// is what grows, so a thumb that lands just above or below still counts.
-class _TextLink extends StatelessWidget {
-  const _TextLink({super.key, required this.onTap, required this.child});
-
-  final VoidCallback? onTap;
-  final Widget child;
-
-  @override
-  Widget build(BuildContext context) {
-    return Semantics(
-      button: true,
-      child: InkWell(
-        onTap: onTap,
-        child: ConstrainedBox(
-          constraints: const BoxConstraints(minWidth: 48, minHeight: 48),
-          child: Align(widthFactor: 1, heightFactor: 1, child: child),
         ),
       ),
     );

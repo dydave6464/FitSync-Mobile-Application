@@ -64,6 +64,7 @@ ProviderContainer _container(WidgetTester tester) =>
 Future<(FakeProRepository, _Opener)> _pump(
   WidgetTester tester, {
   ProStatus status = freeStatus,
+  bool dark = false,
 }) async {
   final repo = FakeProRepository(status);
   final opener = _Opener();
@@ -73,7 +74,10 @@ Future<(FakeProRepository, _Opener)> _pump(
         proRepositoryProvider.overrideWithValue(repo),
         proCheckoutOpenerProvider.overrideWithValue(opener.call),
       ],
-      child: MaterialApp(theme: fsLightTheme(), home: const ProScreen()),
+      child: MaterialApp(
+        theme: dark ? fsDarkTheme() : fsLightTheme(),
+        home: const ProScreen(),
+      ),
     ),
   );
   await tester.pumpAndSettle();
@@ -450,6 +454,24 @@ void main() {
     handle.dispose();
   });
 
+  // P-25: dimming the plan not being paid for wrapped it in a new Opacity,
+  // which tore the card down and built a fresh one as the payment started.
+  testWidgets('dimming a plan keeps the same card, not a rebuilt one', (
+    tester,
+  ) async {
+    await _pump(tester);
+    Element inkOf(String key) => tester.element(
+      find.descendant(of: find.byKey(Key(key)), matching: find.byType(InkWell)),
+    );
+    final before = inkOf('pro.plan.monthly');
+
+    await tester.tap(find.byKey(const Key('pro.pay')));
+    await tester.pumpAndSettle();
+    expect(find.byKey(const Key('pro.waiting')), findsOneWidget);
+
+    expect(identical(inkOf('pro.plan.monthly'), before), isTrue);
+  });
+
   // PS-18: "with PayMongo" and "again" were cut off at larger text.
   testWidgets('Pay and Open payment page again are read whole at 2x text', (
     tester,
@@ -618,6 +640,60 @@ void main() {
     );
   });
 
+  // P-29d: the PS-16 error line and the PS-17 paying state, checked in the
+  // dark theme as well as the light one.
+  for (final dark in [false, true]) {
+    final theme = dark ? 'dark' : 'light';
+    final t = dark ? FsTokens.dark : FsTokens.light;
+    Color colorOf(WidgetTester tester, Finder text) =>
+        tester.renderObject<RenderParagraph>(text).text.style!.color!;
+
+    testWidgets('$theme: a page that will not open reads in red', (
+      tester,
+    ) async {
+      final (_, opener) = await _pump(tester, dark: dark);
+      opener.answer = false;
+      await tester.tap(find.byKey(const Key('pro.pay')));
+      await tester.pumpAndSettle();
+      final line = find.byKey(const Key('pro.openError'));
+      final words = find.descendant(of: line, matching: find.byType(Text));
+      expect(colorOf(tester, words), t.red);
+      expect(contrast(t.red, t.bg), greaterThanOrEqualTo(4.5));
+      final icon = tester.widget<Icon>(
+        find.descendant(of: line, matching: find.byIcon(Icons.error_outline)),
+      );
+      expect(contrast(icon.color!, t.bg), greaterThanOrEqualTo(3));
+    });
+
+    testWidgets('$theme: while paying, the plan paid for and the panel read', (
+      tester,
+    ) async {
+      await _pump(tester, dark: dark);
+      await tester.tap(find.byKey(const Key('pro.pay')));
+      await tester.pumpAndSettle();
+      expect(find.byKey(const Key('pro.waiting')), findsOneWidget);
+
+      // The plan being paid for stays at full strength on its accent card,
+      // whose tint is drawn over the page.
+      final price = _inside('pro.plan.annual', find.text('₱149'));
+      expect(
+        contrast(
+          colorOf(tester, price),
+          Color.alphaBlend(t.accent.withValues(alpha: 0.16), t.bg),
+        ),
+        greaterThanOrEqualTo(4.5),
+      );
+      final words = _inside(
+        'pro.waiting',
+        find.textContaining("Finish paying on PayMongo's page"),
+      );
+      expect(
+        contrast(colorOf(tester, words), t.surface),
+        greaterThanOrEqualTo(4.5),
+      );
+    });
+  }
+
   testWidgets('a status that will not load says why, with the kit Try again', (
     tester,
   ) async {
@@ -659,7 +735,9 @@ void main() {
   // PS-24: the prototype's 56 px crown square is accent-filled.
   testWidgets('the header crown sits on an accent tile', (tester) async {
     await _pump(tester);
-    final tile = tester.widget<FsIconTile>(find.byType(FsIconTile).first);
+    // By its key, not as the first FsIconTile: any tile placed above it
+    // would have been checked instead (P-28).
+    final tile = tester.widget<FsIconTile>(find.byKey(const Key('pro.crown')));
     expect(tile.icon, Icons.workspace_premium_outlined);
     expect(tile.size, 56);
     expect(tile.selected, isTrue);
@@ -737,13 +815,24 @@ void main() {
   );
 
   testWidgets(
-    'the plan cards are one choice: a radio group to a screen reader',
+    'the plan cards are one choice: each says whether it is the one picked',
     (tester) async {
       await _pump(tester);
-      for (final key in ['pro.plan.annual', 'pro.plan.monthly']) {
+      for (final (key, picked) in [
+        ('pro.plan.annual', true),
+        ('pro.plan.monthly', false),
+      ]) {
         expect(
           tester.getSemantics(find.byKey(Key(key))),
-          isSemantics(isInMutuallyExclusiveGroup: true),
+          // No group flag (P-30, as FsSegmented): with no checked state it
+          // says nothing on either platform; the selected state does.
+          isSemantics(
+            isButton: true,
+            hasSelectedState: true,
+            isSelected: picked,
+            isInMutuallyExclusiveGroup: false,
+          ),
+          reason: key,
         );
       }
     },

@@ -12,9 +12,13 @@ import 'widgets/number_box.dart';
 import 'widgets/text_limits.dart';
 
 class AddFoodManuallyScreen extends ConsumerStatefulWidget {
-  const AddFoodManuallyScreen({super.key, required this.mealType, this.onLogged, this.pick = false});
+  const AddFoodManuallyScreen({super.key, required String this.mealType, this.onLogged}) : pick = false;
 
-  final String mealType;
+  /// Choosing for Snap a meal, as [pick] says: no meal is shown or used.
+  const AddFoodManuallyScreen.pick({super.key}) : mealType = null, onLogged = null, pick = true;
+
+  /// The meal the food goes into; null when choosing, which shows no meal.
+  final String? mealType;
 
   /// Called once the food is saved, with the day it went to.
   final void Function(FoodEntry entry, String date)? onLogged;
@@ -36,7 +40,8 @@ class _AddFoodManuallyScreenState extends ConsumerState<AddFoodManuallyScreen> {
   final _fiber = TextEditingController();
   final _sugar = TextEditingController();
   final _sodium = TextEditingController();
-  late String _meal = widget.mealType;
+  /// Null only when choosing, which never logs.
+  late String? _meal = widget.mealType;
 
   @override
   void dispose() {
@@ -70,7 +75,7 @@ class _AddFoodManuallyScreenState extends ConsumerState<AddFoodManuallyScreen> {
     final sodiumOk = sodium == null || inSodiumRange(sodium);
     final kcal = gramsOk ? manualKcal(p!, c!, f!) : null;
     final name = _name.text.trim();
-    final valid = name.isNotEmpty && name.length <= _maxName && _serving.text.trim().length <= _maxServing
+    final valid = name.isNotEmpty && name.length <= maxFoodName && _serving.text.trim().length <= maxServingDesc
         && gramsOk && sodiumOk && (p! + c! + f!) > 0;
 
     Widget gramsField(String label, Key key, TextEditingController ctrl, {bool sodium = false}) => Expanded(
@@ -111,14 +116,14 @@ class _AddFoodManuallyScreenState extends ConsumerState<AddFoodManuallyScreen> {
               hint: 'e.g. Grilled bangus',
               textCapitalization: TextCapitalization.sentences,
               // The most the server accepts, so Log never greys out unexplained.
-              inputFormatters: const [Utf16LengthLimit(_maxName)],
+              inputFormatters: const [Utf16LengthLimit(maxFoodName)],
               onChanged: (_) => setState(() {}),
             ),
             const SizedBox(height: 16),
             if (!widget.pick) ...[
               FsEyebrow(date == null || date == today ? 'Meal' : 'Meal · ${dayLabel(date, today)}', maxLines: 2),
               const SizedBox(height: 6),
-              MealChips(keyPrefix: 'manual.meal', selected: _meal, onSelected: (m) => setState(() => _meal = m)),
+              MealChips(keyPrefix: 'manual.meal', selected: _meal!, onSelected: (m) => setState(() => _meal = m)),
               const SizedBox(height: 16),
             ],
             FsField(
@@ -126,7 +131,7 @@ class _AddFoodManuallyScreenState extends ConsumerState<AddFoodManuallyScreen> {
               fieldKey: const Key('manual.serving'),
               label: 'Serving size · optional',
               hint: 'e.g. 1 cup',
-              inputFormatters: const [Utf16LengthLimit(_maxServing)],
+              inputFormatters: const [Utf16LengthLimit(maxServingDesc)],
               onChanged: (_) => setState(() {}),
             ),
             const SizedBox(height: 16),
@@ -183,7 +188,7 @@ class _AddFoodManuallyScreenState extends ConsumerState<AddFoodManuallyScreen> {
                 final controller = ref.read(nutritionDayProvider.notifier);
                 final date = ref.read(nutritionDayProvider).value?.date;
                 final onLogged = widget.onLogged;
-                final meal = _meal;
+                final meal = _meal!;
                 final persist = MediaQuery.accessibleNavigationOf(context);
                 Navigator.of(context).pop(true);
                 // The form is gone, but the food is kept: Try again sends it
@@ -203,8 +208,3 @@ class _AddFoodManuallyScreenState extends ConsumerState<AddFoodManuallyScreen> {
     );
   }
 }
-
-/// The longest name and serving a manual entry may have
-/// (server/src/routes/nutrition.js).
-const _maxName = 100;
-const _maxServing = 60;

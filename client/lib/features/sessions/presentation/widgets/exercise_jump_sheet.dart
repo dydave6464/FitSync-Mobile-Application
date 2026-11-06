@@ -58,12 +58,6 @@ class ExerciseJumpSheet extends StatelessWidget {
 
   final int currentIndex;
 
-  /// The tallest the sheet grows, as a share of the screen. Enough for about
-  /// ten exercises on a small phone before the list scrolls, while a strip of
-  /// the workout stays in view above it -- a sheet, not a new screen, and a
-  /// tap on that strip closes it.
-  static const _maxHeightFraction = 0.85;
-
   int _doneCount(int exerciseId) {
     final current = session;
     if (current == null) return 0;
@@ -72,17 +66,23 @@ class ExerciseJumpSheet extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return ConstrainedBox(
-      constraints: BoxConstraints(
-        maxHeight: MediaQuery.sizeOf(context).height * _maxHeightFraction,
-      ),
+    // The kit's ceiling, as every tall sheet has: about ten exercises on a
+    // small phone before the list scrolls, while a strip of the workout stays
+    // in view above it -- a sheet, not a new screen, and a tap on that strip
+    // closes it.
+    return FsSheetHeightCap(
       child: SafeArea(
         child: Column(
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             const Padding(
-              padding: EdgeInsets.fromLTRB(20, 10, 8, 4),
+              padding: EdgeInsets.fromLTRB(
+                FsSheetHeader.sideInset,
+                10,
+                FsSheetHeader.sideInset,
+                4,
+              ),
               child: FsSheetHeader(title: 'Jump to an exercise'),
             ),
             // Only the rows scroll; the handle and the title stay put.
@@ -130,7 +130,11 @@ class ExerciseJumpSheet extends StatelessWidget {
         key: Key('jump.${exercise.exerciseId}'),
         onTap: pick,
         child: Container(
-          padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 13),
+          // Rows start where the title does.
+          padding: const EdgeInsets.symmetric(
+            horizontal: FsSheetHeader.sideInset,
+            vertical: 13,
+          ),
           color: current ? t.accentDim : null,
           child: Row(
             crossAxisAlignment: CrossAxisAlignment.start,

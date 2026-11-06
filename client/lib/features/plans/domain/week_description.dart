@@ -98,12 +98,8 @@ const _numberWords = {
 /// choosers' own label ([splitStyles]) in lower case, which
 /// [parseWeekDescription] reads back to the same split. Null for a split the
 /// choosers do not offer, which the sentence then leaves out.
-String? _splitInSentence(String? slug) {
-  for (final s in splitStyles) {
-    if (s.value == slug) return s.label.toLowerCase();
-  }
-  return null;
-}
+String? _splitInSentence(String? slug) =>
+    offeredSplitLabel(slug)?.toLowerCase();
 
 const _goalLabels = {
   'build_muscle': 'build muscle',

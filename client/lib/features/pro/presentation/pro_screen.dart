@@ -305,6 +305,7 @@ class _ProScreenState extends ConsumerState<ProScreen> {
               children: [
                 // The prototype's crown square: accent-filled, crown in on-accent.
                 const FsIconTile(
+                  key: Key('pro.crown'),
                   icon: Icons.workspace_premium_outlined,
                   size: 56,
                   selected: true,
@@ -583,8 +584,9 @@ class _StatusCard extends StatelessWidget {
 }
 
 /// A choosable plan. FsCard gives the button and selected state to a screen
-/// reader, and the two cards are one radio group; [semanticsLabel] says the
-/// whole price in one sentence.
+/// reader, which is how the one picked is told from the other; no group flag,
+/// which without a checked state says nothing on either platform (as
+/// FsSegmented). [semanticsLabel] says the whole price in one sentence.
 ///
 /// A null [onTap] (a payment in progress) is said as disabled, and the plan
 /// not being paid for is dimmed as a disabled FsButton is, so neither card
@@ -612,51 +614,55 @@ class _PlanCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final t = context.fs;
-    final card = MergeSemantics(
-      child: FsCard(
-        small: true,
-        accent: selected,
-        selected: selected,
-        onTap: onTap,
-        child: Semantics(
-          label: semanticsLabel,
-          inMutuallyExclusiveGroup: true,
-          enabled: onTap != null,
-          excludeSemantics: true,
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Row(
-                children: [
-                  Expanded(
-                    child: Text(
-                      title,
-                      style: TextStyle(fontSize: 11, color: t.text2),
+    return MergeSemantics(
+      // Always wrapped, at full strength when not dimmed: adding the Opacity
+      // only as a payment started changed the tree's shape and remounted the
+      // card (P-25). Inside MergeSemantics, so the card's node stays the
+      // widget's own.
+      child: Opacity(
+        opacity: onTap != null || selected ? 1 : 0.45,
+        child: FsCard(
+          small: true,
+          accent: selected,
+          selected: selected,
+          onTap: onTap,
+          child: Semantics(
+            label: semanticsLabel,
+            enabled: onTap != null,
+            excludeSemantics: true,
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  children: [
+                    Expanded(
+                      child: Text(
+                        title,
+                        style: TextStyle(fontSize: 11, color: t.text2),
+                      ),
                     ),
-                  ),
-                  if (tag != null) FsTag(tag!),
-                ],
-              ),
-              const SizedBox(height: 4),
-              Text(
-                price,
-                style: TextStyle(
-                  fontSize: 20,
-                  fontWeight: FontWeight.w700,
-                  color: t.text,
+                    if (tag != null) FsTag(tag!),
+                  ],
                 ),
-              ),
-              Text(
-                note,
-                style: TextStyle(fontSize: 10, color: t.text2, height: 1.3),
-              ),
-            ],
+                const SizedBox(height: 4),
+                Text(
+                  price,
+                  style: TextStyle(
+                    fontSize: 20,
+                    fontWeight: FontWeight.w700,
+                    color: t.text,
+                  ),
+                ),
+                Text(
+                  note,
+                  style: TextStyle(fontSize: 10, color: t.text2, height: 1.3),
+                ),
+              ],
+            ),
           ),
         ),
       ),
     );
-    if (onTap != null || selected) return card;
-    return Opacity(opacity: 0.45, child: card);
   }
 }
 

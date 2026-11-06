@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/semantics.dart' show SemanticsService;
 
 import '../../../../core/theme.dart';
 import '../../../../core/units.dart';
@@ -603,9 +604,20 @@ class _AboutStepState extends State<AboutStep> {
                     key: Key('activity.${option.value}'),
                     label: option.label,
                     selected: _activityLevel == option.value,
+                    exclusive: true,
                     onTap: () {
+                      final changed = _activityLevel != option.value;
                       setState(() => _activityLevel = option.value);
                       _emit();
+                      // Focus stays on the chip, so the explanation that just
+                      // changed below it is read out.
+                      if (changed) {
+                        SemanticsService.sendAnnouncement(
+                          View.of(context),
+                          _activityHint(option.value),
+                          Directionality.of(context),
+                        );
+                      }
                     },
                   ),
               ],

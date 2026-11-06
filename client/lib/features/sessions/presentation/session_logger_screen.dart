@@ -204,7 +204,7 @@ class _SessionLoggerScreenState extends ConsumerState<SessionLoggerScreen>
     await _alerts.requestPermission();
   }
 
-  DateTime _now() => ref.read(restNowProvider)();
+  DateTime _now() => ref.read(loggerClockProvider)();
 
   void _startRest(int seconds) {
     _restOverTimer?.cancel();
@@ -460,7 +460,7 @@ class _SessionLoggerScreenState extends ConsumerState<SessionLoggerScreen>
   int _elapsedMinutes(DateTime? startedAt) {
     if (startedAt == null) return 0;
     return ref
-        .read(wallClockProvider)()
+        .read(loggerClockProvider)()
         .difference(startedAt)
         .inMinutes
         .clamp(0, 1440);

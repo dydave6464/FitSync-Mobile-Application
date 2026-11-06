@@ -567,6 +567,8 @@ void main() {
         isFalse,
       );
       expect(find.byType(FsSheetHandle), findsOneWidget);
+      // P-19: the kit's drag claim, shared with the check-in sheet.
+      expect(find.byType(FsSheetDiscardGuard), findsOneWidget);
       await tester.enterText(find.byKey(const Key('habit.title')), 'Stretch');
       await tester.pump();
 

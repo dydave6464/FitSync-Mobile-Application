@@ -680,18 +680,19 @@ class FsSegmented extends StatelessWidget {
                     for (final (index, option) in options.indexed) ...[
                       if (option != options.first) const SizedBox(width: 2),
                       Expanded(
-                        // Each segment is its own button in a single-choice
-                        // group, with its place in the set, so a screen
-                        // reader can say "Female, selected, 2 of 2" rather
-                        // than just the word. The band carries the node, so
-                        // it frames the 48 dp a thumb can hit, not the pill.
+                        // Each segment is its own button, with its place in
+                        // the set, so a screen reader can say "Female,
+                        // selected, 2 of 2" rather than just the word. No
+                        // group flag: without a checked state it says
+                        // nothing on either platform (see FsChip). The band
+                        // carries the node, so it frames the 48 dp a thumb
+                        // can hit, not the pill.
                         child: _TapReach(
                           minSize: const Size(0, _minTapTarget),
                           button: true,
                           enabled: true,
                           selected: selected == option.value,
                           child: Semantics(
-                            inMutuallyExclusiveGroup: true,
                             hint: '${index + 1} of ${options.length}',
                             child: InkWell(
                               key: Key('segment.${option.value}'),
@@ -832,6 +833,15 @@ class FsStatField extends StatelessWidget {
   /// Accent border and accent digits, which the design gives goal weight.
   final bool accent;
 
+  /// The number, typed or the empty dashes: one style for both, so the
+  /// dashes sit and space exactly as a number would.
+  static const _numberStyle = TextStyle(
+    fontFamily: fsMonoFamily,
+    fontSize: 22,
+    fontWeight: FontWeight.w600,
+    letterSpacing: -0.22,
+  );
+
   @override
   Widget build(BuildContext context) {
     final t = context.fs;
@@ -894,11 +904,7 @@ class FsStatField extends StatelessWidget {
                                 : previous,
                           ),
                         ],
-                        style: TextStyle(
-                          fontFamily: fsMonoFamily,
-                          fontSize: 22,
-                          fontWeight: FontWeight.w600,
-                          letterSpacing: -0.22,
+                        style: _numberStyle.copyWith(
                           color: accent ? t.accentText : t.text,
                         ),
                         cursorColor: t.accent,
@@ -914,12 +920,7 @@ class FsStatField extends StatelessWidget {
                           hint: ExcludeSemantics(
                             child: Text(
                               '--',
-                              style: TextStyle(
-                                fontFamily: fsMonoFamily,
-                                fontSize: 22,
-                                fontWeight: FontWeight.w600,
-                                color: t.text3,
-                              ),
+                              style: _numberStyle.copyWith(color: t.text3),
                             ),
                           ),
                         ),
@@ -1128,13 +1129,14 @@ class FsNav extends StatelessWidget {
                 ),
               Expanded(
                 // One node per tab: "Profile, selected, tab 4 of 4", so the
-                // current tab is said and not only coloured.
+                // current tab is said and not only coloured. No group flag:
+                // a tab is not a radio button, and without a checked state
+                // the flag says nothing anyway.
                 child: Semantics(
                   container: true,
                   button: true,
                   enabled: true,
                   selected: index == currentIndex,
-                  inMutuallyExclusiveGroup: true,
                   hint: 'Tab ${index + 1} of ${items.length}',
                   child: InkWell(
                     key: Key('nav.$index'),
@@ -1990,6 +1992,121 @@ class FsSheetHandle extends StatelessWidget {
   );
 }
 
+/// [FsDiscardGuard] for a bottom sheet: back, a tap on the scrim and a
+/// swipe down all ask before throwing away what is [dirty].
+///
+/// FsDiscardGuard covers back and the scrim, which ask the route to pop. A
+/// drag down never asks: the bottom sheet pops its route itself once the
+/// drag ends. So while dirty the drag is claimed here first -- the innermost
+/// vertical-drag recognizer wins the arena -- and a clear pull down asks the
+/// route to pop, which the guard turns into the question. A sheet that uses
+/// this draws its own [FsSheetHandle] inside it (`showDragHandle: false`):
+/// Material's handle sits outside the sheet's child, past this claim.
+///
+/// One copy for the check-in and habit sheets, which each held their own.
+class FsSheetDiscardGuard extends StatefulWidget {
+  const FsSheetDiscardGuard({
+    super.key,
+    required this.dirty,
+    required this.child,
+    this.title,
+    this.message,
+  });
+
+  final bool dirty;
+  final Widget child;
+
+  /// Passed to [confirmDiscard].
+  final String? title;
+
+  /// Passed to [confirmDiscard].
+  final String? message;
+
+  /// How far down a drag must pull, or how fast it must fling, to ask.
+  static const minPull = 48.0;
+  static const minFlingVelocity = 700.0;
+
+  @override
+  State<FsSheetDiscardGuard> createState() => _FsSheetDiscardGuardState();
+}
+
+class _FsSheetDiscardGuardState extends State<FsSheetDiscardGuard> {
+  /// How far the current drag has pulled the sheet down.
+  double _dragDown = 0;
+
+  @override
+  Widget build(BuildContext context) {
+    final dirty = widget.dirty;
+    return FsDiscardGuard(
+      dirty: dirty,
+      title: widget.title,
+      message: widget.message,
+      child: GestureDetector(
+        behavior: HitTestBehavior.opaque,
+        // Kept out of semantics: otherwise a dirty sheet tells a screen
+        // reader it scrolls, and a scroll gesture runs these callbacks into
+        // the discard question. Screen readers close the sheet through back,
+        // escape or the scrim, which the guard already covers.
+        excludeFromSemantics: true,
+        onVerticalDragStart: dirty ? (_) => _dragDown = 0 : null,
+        onVerticalDragUpdate: dirty
+            ? (details) => _dragDown += details.primaryDelta ?? 0
+            : null,
+        onVerticalDragEnd: dirty
+            ? (details) {
+                final velocity = details.primaryVelocity ?? 0;
+                if (_dragDown > FsSheetDiscardGuard.minPull ||
+                    velocity > FsSheetDiscardGuard.minFlingVelocity) {
+                  Navigator.of(context).maybePop();
+                }
+              }
+            : null,
+        child: widget.child,
+      ),
+    );
+  }
+}
+
+/// The tallest a scroll-controlled sheet grows: 0.9 of the screen, so a
+/// strip of the screen behind stays in view above it (it reads as a sheet,
+/// not a new screen) and its top never slides under the status bar.
+///
+/// The theme cannot say this (`bottomSheetTheme.constraints` takes sizes,
+/// not a share of the screen), so a sheet opened with
+/// `isScrollControlled: true` wraps its contents in this.
+///
+/// The cap is on the whole sheet. Under the theme's drag handle Material
+/// sets the contents [kMinInteractiveDimension] down, so the contents get
+/// that much less; a sheet that draws its own handle inside (one with a
+/// discard guard) gets the full 0.9.
+class FsSheetHeightCap extends StatelessWidget {
+  const FsSheetHeightCap({super.key, required this.child});
+
+  static const maxHeightFraction = 0.9;
+
+  final Widget child;
+
+  @override
+  Widget build(BuildContext context) {
+    final sheet = context.findAncestorWidgetOfExactType<BottomSheet>();
+    // A modal sheet passes the resolved value; a bare BottomSheet may leave
+    // it to the theme, as Material itself then does.
+    final themeHandle =
+        sheet != null &&
+        (sheet.showDragHandle ??
+            (sheet.enableDrag &&
+                (Theme.of(context).bottomSheetTheme.showDragHandle ?? false)));
+    return ConstrainedBox(
+      constraints: BoxConstraints(
+        maxHeight:
+            MediaQuery.sizeOf(context).height * maxHeightFraction -
+            (themeHandle ? kMinInteractiveDimension : 0),
+      ),
+      child: child,
+    );
+  }
+}
+
 /// The top of a bottom sheet, as the prototype draws every sheet
 /// (ScreenStartSheet, ScreenShareProgress): a 38 x 4 handle, the title, and
 /// an × that closes it.
@@ -1999,19 +2116,33 @@ class FsSheetHandle extends StatelessWidget {
 /// but a swipe. The same shape as the start-workout sheet's own header.
 ///
 /// [onClose] defaults to popping the sheet with no result, which every
-/// caller reads as "dismissed". Padding is the sheet's own business: this
-/// fills whatever width it is given.
+/// caller reads as "dismissed". [closeKey] keys the × ([defaultCloseKey]
+/// unless given).
+///
+/// It sits inside the sheet's content padding of [sideInset] on both sides,
+/// as the start-workout sheet's header does: the title starts where the
+/// content starts, and the ×'s 48 dp button ends where the content ends.
+/// So the × is in one place on every sheet.
 class FsSheetHeader extends StatelessWidget {
   const FsSheetHeader({
     super.key,
     required this.title,
     this.onClose,
-    this.closeKey,
+    this.closeKey = defaultCloseKey,
   });
+
+  /// The ×'s key on any sheet that does not name its own.
+  static const defaultCloseKey = Key('sheet.close');
+
+  /// The side inset of every sheet's content, and so of this header: the
+  /// prototype's sheets pad 18 px at the sides (screens-training.jsx, the
+  /// start and share sheets, `padding: '10px 18px ...'`). One number, so
+  /// the × is in the same place on every sheet.
+  static const sideInset = 18.0;
 
   final String title;
   final VoidCallback? onClose;
-  final Key? closeKey;
+  final Key closeKey;
 
   @override
   Widget build(BuildContext context) {

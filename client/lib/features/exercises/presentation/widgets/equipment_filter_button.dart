@@ -155,11 +155,23 @@ class _EquipmentSheetState extends State<_EquipmentSheet> {
             // Closing is not choosing: it pops null, which leaves the filter
             // as it was (see _open).
             const Padding(
-              padding: EdgeInsets.fromLTRB(20, 10, 8, 0),
+              padding: EdgeInsets.fromLTRB(
+                FsSheetHeader.sideInset,
+                10,
+                FsSheetHeader.sideInset,
+                0,
+              ),
               child: FsSheetHeader(title: 'Equipment'),
             ),
+            // Content at the header's inset: it starts where the title
+            // starts and ends where the × ends.
             Padding(
-              padding: const EdgeInsets.fromLTRB(16, 8, 16, 8),
+              padding: const EdgeInsets.fromLTRB(
+                FsSheetHeader.sideInset,
+                8,
+                FsSheetHeader.sideInset,
+                8,
+              ),
               child: FsField(
                 fieldKey: const Key('equipment.search'),
                 controller: _controller,
@@ -186,7 +198,12 @@ class _EquipmentSheetState extends State<_EquipmentSheet> {
                   ),
                   if (visible.isEmpty)
                     Padding(
-                      padding: const EdgeInsets.fromLTRB(20, 16, 20, 20),
+                      padding: const EdgeInsets.fromLTRB(
+                        FsSheetHeader.sideInset,
+                        16,
+                        FsSheetHeader.sideInset,
+                        20,
+                      ),
                       child: Text(
                         'No equipment matches that.',
                         style: TextStyle(fontSize: 13, color: t.text3),
@@ -239,6 +256,12 @@ class _OptionRow extends StatelessWidget {
 
     return ListTile(
       onTap: onTap,
+      // The sheet's inset, not the theme's 4 dp: the icon lines up with the
+      // title and the count with the ×, while the row's ripple still spans
+      // the sheet.
+      contentPadding: const EdgeInsets.symmetric(
+        horizontal: FsSheetHeader.sideInset,
+      ),
       leading: Icon(icon, size: 20, color: selected ? t.accentText : t.text2),
       title: Text(
         label,

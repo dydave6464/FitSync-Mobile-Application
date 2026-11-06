@@ -553,6 +553,39 @@ void main() {
     expect(controller.text, '72.5', reason: 'one decimal place is enough');
   });
 
+  // P-30 (L-3): the dashes moved from hintText to a hint widget to keep
+  // them out of the field's spoken name. As hintText they took the typed
+  // number's letter spacing; the widget must too, so nothing shifts.
+  testWidgets("a stat field's dashes are spaced like the number", (
+    tester,
+  ) async {
+    final controller = TextEditingController();
+    addTearDown(controller.dispose);
+    await tester.pumpWidget(
+      host(
+        FsStatField(
+          fieldKey: const Key('heightCm'),
+          label: 'Height',
+          unit: 'cm',
+          controller: controller,
+        ),
+      ),
+    );
+
+    TextStyle drawn(Finder text) => tester
+        .widget<RichText>(
+          find.descendant(of: text, matching: find.byType(RichText)),
+        )
+        .text
+        .style!;
+    final dashes = drawn(find.text('--'));
+    final typed = tester.widget<EditableText>(find.byType(EditableText)).style;
+    expect(dashes.letterSpacing, typed.letterSpacing);
+    expect(dashes.fontFamily, typed.fontFamily);
+    expect(dashes.fontSize, typed.fontSize);
+    expect(dashes.fontWeight, typed.fontWeight);
+  });
+
   testWidgets('a stat field types into the big number', (tester) async {
     final controller = TextEditingController(text: '175');
     addTearDown(controller.dispose);
@@ -695,7 +728,9 @@ void main() {
           hasEnabledState: true,
           isSelected: true,
           hasSelectedState: true,
-          isInMutuallyExclusiveGroup: true,
+          // P-30: no group flag. With no checked state it said nothing on
+          // either platform; the place in the set is the hint's job.
+          isInMutuallyExclusiveGroup: false,
           hasTapAction: true,
         ),
       );
@@ -1497,11 +1532,12 @@ void main() {
         );
         expect(
           tester.getSemantics(find.text('Profile')),
+          // P-30: no group flag, which said nothing without a checked
+          // state; a tab is a selected tab, not a radio button.
           matchesSemantics(
             isButton: true,
             isSelected: true,
             hasSelectedState: true,
-            isInMutuallyExclusiveGroup: true,
             hasTapAction: true,
             hasFocusAction: true,
             isFocusable: true,
