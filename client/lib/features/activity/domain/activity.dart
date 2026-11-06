@@ -57,6 +57,7 @@ class ActivityWeek {
   /// and the bar above it measure against one baseline. Today's partial
   /// count would drag it down every morning.
   int? get average {
+    if (days.isEmpty) return null;
     final withData = [
       for (final d in days.take(days.length - 1))
         if (d.steps != null) d.steps!,

@@ -77,6 +77,23 @@ void main() {
     expect(week.average, 4000);
   });
 
+  test('a week with only today has no average yet', () {
+    final week = ActivityWeek.fromJson({
+      'days': [
+        for (var d = 22; d <= 27; d++) _day('2026-09-$d', null),
+        _day('2026-09-28', 6420),
+      ],
+      'usual': null,
+      'usualDays': 0,
+      'missing': <String>[],
+    });
+    expect(week.average, isNull);
+    expect(
+      const ActivityWeek(days: [], usual: null, missing: []).average,
+      isNull,
+    );
+  });
+
   test('a week with no data has no average', () {
     final week = ActivityWeek.fromJson({
       'days': [for (var d = 22; d <= 28; d++) _day('2026-09-$d', null)],
