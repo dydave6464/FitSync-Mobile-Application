@@ -1236,6 +1236,45 @@ class _SessionLoggerScreenState extends ConsumerState<SessionLoggerScreen>
     );
   }
 
+  /// The AppBar's leading slot is this wide: the 15 dp inset and the 48 dp
+  /// target, which puts the drawn square where the mockup's 20 did.
+  static const _backWidth = 63.0;
+
+  /// The mockup's 38 dp square, inside a 48 dp target: this is the only back
+  /// control on iOS mid-workout, where the PopScope turns the swipe off.
+  /// Centred, so the toolbar's full height does not stretch the box.
+  Widget _backButton(FsTokens t) => Padding(
+    padding: const EdgeInsets.only(left: 15),
+    child: Center(
+      child: Semantics(
+        button: true,
+        child: Tooltip(
+          message: 'Back',
+          child: InkWell(
+            key: const Key('logger.back'),
+            onTap: () => Navigator.maybePop(context),
+            borderRadius: BorderRadius.circular(FsRadius.sm),
+            child: SizedBox.square(
+              dimension: 48,
+              child: Center(
+                child: Container(
+                  width: 38,
+                  height: 38,
+                  decoration: BoxDecoration(
+                    color: t.surface,
+                    borderRadius: BorderRadius.circular(FsRadius.sm),
+                    border: Border.all(color: t.line),
+                  ),
+                  child: Icon(Icons.chevron_left, size: 19, color: t.text),
+                ),
+              ),
+            ),
+          ),
+        ),
+      ),
+    ),
+  );
+
   /// The logger's chrome, shared by the loaded state and the empty-day
   /// one below. Both need the same way out: back steps through the
   /// workout, and the overflow still carries Finish and Discard. The
@@ -1261,49 +1300,13 @@ class _SessionLoggerScreenState extends ConsumerState<SessionLoggerScreen>
     required int restSeconds,
     VoidCallback? onRestart,
     _SwitchState? switchState,
-    bool menu = true,
   }) => AppBar(
     // The mockup's 38px rounded-square icon button, not Material's bare
     // arrow. Tooltipped 'Back' so the platform affordance -- and
     // tester.pageBack -- still finds it, and maybePop routes it through
     // the PopScope above, which is what steps an exercise back.
-    //
-    // The square stays 38 as drawn, inside a 48 dp target: this is the only
-    // back control on iOS mid-workout, where the PopScope turns the swipe
-    // off. Centred, so the toolbar's full height does not stretch the box;
-    // the 15 dp inset puts the drawn square where the mockup's 20 did.
-    leadingWidth: 63,
-    leading: Padding(
-      padding: const EdgeInsets.only(left: 15),
-      child: Center(
-        child: Semantics(
-          button: true,
-          child: Tooltip(
-            message: 'Back',
-            child: InkWell(
-              key: const Key('logger.back'),
-              onTap: () => Navigator.maybePop(context),
-              borderRadius: BorderRadius.circular(FsRadius.sm),
-              child: SizedBox.square(
-                dimension: 48,
-                child: Center(
-                  child: Container(
-                    width: 38,
-                    height: 38,
-                    decoration: BoxDecoration(
-                      color: t.surface,
-                      borderRadius: BorderRadius.circular(FsRadius.sm),
-                      border: Border.all(color: t.line),
-                    ),
-                    child: Icon(Icons.chevron_left, size: 19, color: t.text),
-                  ),
-                ),
-              ),
-            ),
-          ),
-        ),
-      ),
-    ),
+    leadingWidth: _backWidth,
+    leading: _backButton(t),
     // 5 rather than 10: the target reaches 5 dp past the drawn square, and
     // the title stays where the mockup puts it.
     titleSpacing: 5,
@@ -1316,98 +1319,95 @@ class _SessionLoggerScreenState extends ConsumerState<SessionLoggerScreen>
         color: t.text,
       ),
     ),
-    actions: !menu
-        ? null
-        : [
-            // The rest countdown is a tag up here rather than a card over the
-            // content, so ticking a set does not shove the set table down.
-            // On both stages: the rest carries across exercises, so the demo of
-            // the next one is exactly where it is still running.
-            if (_rest != null || _restOver) ...[
-              RestTimer(
-                reading: _restReading,
-                over: _rest == null && _restOver,
-                onOpen: _rest == null
-                    ? null
-                    : () => showRestSheet(
-                        context,
-                        countdown: RestCountdown(
-                          reading: _restReading,
-                          onAdjust: (seconds) =>
-                              setState(() => _adjustRest(seconds)),
-                          onSkip: () => setState(_endRest),
-                        ),
-                      ),
-              ),
-              const SizedBox(width: 6),
-            ],
-            // Finish lives here as well as on the footer button, so stopping a
-            // workout early does not mean paging to the end of it first.
-            PopupMenuButton<String>(
-              key: const Key('logger.menu'),
-              onSelected: (value) => switch (value) {
-                'restTime' => showRestSheet(context),
-                'restart' => onRestart?.call(),
-                'switch' => switchState?.onSwitch?.call(),
-                'leave' => _leave(),
-                'finish' => _finish(),
-                _ => _discard(),
-              },
-              itemBuilder: (_) => [
-                // Reachable before the first set, when there is no rest tag yet to
-                // tap. Names the current value so the menu answers the question
-                // without opening anything.
-                PopupMenuItem(
-                  key: const Key('logger.restTime'),
-                  value: 'restTime',
-                  child: Text('Rest time: ${formatRest(restSeconds)}'),
-                ),
-                PopupMenuItem(
-                  key: const Key('logger.restart'),
-                  value: 'restart',
-                  enabled: onRestart != null,
-                  child: const Text('Restart this exercise'),
-                ),
-                if (switchState != null)
-                  PopupMenuItem(
-                    key: const Key('logger.switch.menu'),
-                    value: 'switch',
-                    enabled: switchState.onSwitch != null,
-                    child: Column(
-                      mainAxisSize: MainAxisSize.min,
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        const Text('Switch exercise'),
-                        // Greyed with no reason reads as broken. t.text2 rather
-                        // than the item's own disabled grey, so the reason stays
-                        // readable.
-                        if (switchState.onSwitch == null)
-                          Text(
-                            "You've logged sets on this one",
-                            style: TextStyle(fontSize: 12, color: t.text2),
-                          ),
-                      ],
-                    ),
+    actions: [
+      // The rest countdown is a tag up here rather than a card over the
+      // content, so ticking a set does not shove the set table down.
+      // On both stages: the rest carries across exercises, so the demo of
+      // the next one is exactly where it is still running.
+      if (_rest != null || _restOver) ...[
+        RestTimer(
+          reading: _restReading,
+          over: _rest == null && _restOver,
+          onOpen: _rest == null
+              ? null
+              : () => showRestSheet(
+                  context,
+                  countdown: RestCountdown(
+                    reading: _restReading,
+                    onAdjust: (seconds) => setState(() => _adjustRest(seconds)),
+                    onSkip: () => setState(_endRest),
                   ),
-                const PopupMenuItem(
-                  key: Key('logger.leave'),
-                  value: 'leave',
-                  child: Text('Leave, keep for later'),
                 ),
-                const PopupMenuItem(
-                  key: Key('logger.finish'),
-                  value: 'finish',
-                  child: Text('Finish session'),
-                ),
-                const PopupMenuItem(
-                  key: Key('logger.discard'),
-                  value: 'discard',
-                  child: Text('Discard session'),
-                ),
-              ],
+        ),
+        const SizedBox(width: 6),
+      ],
+      // Finish lives here as well as on the footer button, so stopping a
+      // workout early does not mean paging to the end of it first.
+      PopupMenuButton<String>(
+        key: const Key('logger.menu'),
+        onSelected: (value) => switch (value) {
+          'restTime' => showRestSheet(context),
+          'restart' => onRestart?.call(),
+          'switch' => switchState?.onSwitch?.call(),
+          'leave' => _leave(),
+          'finish' => _finish(),
+          _ => _discard(),
+        },
+        itemBuilder: (_) => [
+          // Reachable before the first set, when there is no rest tag yet to
+          // tap. Names the current value so the menu answers the question
+          // without opening anything.
+          PopupMenuItem(
+            key: const Key('logger.restTime'),
+            value: 'restTime',
+            child: Text('Rest time: ${formatRest(restSeconds)}'),
+          ),
+          PopupMenuItem(
+            key: const Key('logger.restart'),
+            value: 'restart',
+            enabled: onRestart != null,
+            child: const Text('Restart this exercise'),
+          ),
+          if (switchState != null)
+            PopupMenuItem(
+              key: const Key('logger.switch.menu'),
+              value: 'switch',
+              enabled: switchState.onSwitch != null,
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Text('Switch exercise'),
+                  // Greyed with no reason reads as broken. t.text2 rather
+                  // than the item's own disabled grey, so the reason stays
+                  // readable.
+                  if (switchState.onSwitch == null)
+                    Text(
+                      "You've logged sets on this one",
+                      style: TextStyle(fontSize: 12, color: t.text2),
+                    ),
+                ],
+              ),
             ),
-            const SizedBox(width: 8),
-          ],
+          const PopupMenuItem(
+            key: Key('logger.leave'),
+            value: 'leave',
+            child: Text('Leave, keep for later'),
+          ),
+          const PopupMenuItem(
+            key: Key('logger.finish'),
+            value: 'finish',
+            child: Text('Finish session'),
+          ),
+          const PopupMenuItem(
+            key: Key('logger.discard'),
+            value: 'discard',
+            child: Text('Discard session'),
+          ),
+        ],
+      ),
+      const SizedBox(width: 8),
+    ],
   );
 
   @override
@@ -1426,7 +1426,7 @@ class _SessionLoggerScreenState extends ConsumerState<SessionLoggerScreen>
       // No session to act on yet, so no menu -- but a way back, always.
       return Scaffold(
         backgroundColor: t.bg,
-        appBar: _appBar(t, restSeconds: restSeconds, menu: false),
+        appBar: AppBar(leadingWidth: _backWidth, leading: _backButton(t)),
         body: const Center(child: CircularProgressIndicator()),
       );
     }
