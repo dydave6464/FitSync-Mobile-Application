@@ -7,6 +7,7 @@ const { createPool } = require('../src/db/pool');
 const { buildTestApp } = require('./helpers/test-app');
 const { testDbConfig, dropAllTables } = require('./helpers/test-db');
 const { markEmailVerified } = require('../src/db/users');
+const { saveEstimate } = require('../src/db/recovery');
 
 const ANSWERS = {
   sleepQuality: 'poor',
@@ -688,14 +689,25 @@ test('POST /recovery/estimate retries today\'s estimate', async (t) => {
   // Something in every input, so comparing the two requests compares real
   // values: an earlier check-in inside the window and one outside it, a
   // profile injury and a recent pain report.
+  const earlierCheckins = {};
   for (const daysAgo of [1, 5]) {
-    await pool.query(
+    const [res] = await pool.query(
       `INSERT INTO morning_checkins
          (user_id, checkin_date, sleep_quality, muscle_soreness, energy, stress)
        VALUES (?, DATE_SUB(CURDATE(), INTERVAL ? DAY), 'good', 'mild', 'moderate', 'low')`,
       [userId, daysAgo],
     );
+    earlierCheckins[daysAgo] = res.insertId;
   }
+  // A returning user: yesterday's check-in already has its estimate, so the
+  // newest estimate on file is an older day's. A retry must still compute
+  // today's rather than hand yesterday's back.
+  await saveEstimate(pool, {
+    userId, checkinId: earlierCheckins[1], riskLevel: 'low', trainingLoadScore: 12,
+  });
+  const yesterday = (await request(app).get('/api/v1/recovery').set(auth).expect(200))
+    .body.data.latestEstimate;
+  assert.equal(yesterday.riskLevel, 'low');
   await pool.query(
     "INSERT INTO user_injuries (user_id, injury_id, side) VALUES (?, ?, 'left')",
     [userId, knee],
@@ -723,13 +735,18 @@ test('POST /recovery/estimate retries today\'s estimate', async (t) => {
     const res = await request(app).post('/api/v1/recovery/estimate').set(auth).expect(502);
     assert.equal(res.body.error.code, 'ESTIMATE_UNAVAILABLE');
     assert.equal(res.body.error.message, ESTIMATE_UNAVAILABLE);
-    assert.equal(await estimates(), 0);
+    assert.equal(calls.length, 2, 'the retry asked the service, not yesterday\'s estimate');
+    assert.equal(await estimates(), 1, 'only yesterday\'s estimate');
   });
 
   let created;
   await t.test('once the service is back it computes, stores and returns a dated estimate', async () => {
     down = false;
+    assert.notEqual(yesterday.checkinDate, checkin.checkinDate);
+    const before = calls.length;
     const res = await request(app).post('/api/v1/recovery/estimate').set(auth).expect(201);
+    assert.equal(calls.length, before + 1, 'the service is asked for today\'s');
+    assert.equal(await estimates(), 2, 'today\'s is stored beside yesterday\'s');
     created = res.body.data.estimate;
     assert.deepEqual(created, {
       riskLevel: 'moderate',
@@ -741,7 +758,9 @@ test('POST /recovery/estimate retries today\'s estimate', async (t) => {
       drivers: answer.drivers,
     });
 
-    const [[row]] = await pool.query('SELECT checkin_id FROM injury_risk_estimates');
+    const [[row]] = await pool.query(
+      'SELECT checkin_id FROM injury_risk_estimates ORDER BY estimate_id DESC LIMIT 1',
+    );
     assert.equal(row.checkin_id, checkin.checkinId);
 
     const got = (await request(app).get('/api/v1/recovery').set(auth).expect(200))
@@ -767,7 +786,7 @@ test('POST /recovery/estimate retries today\'s estimate', async (t) => {
     const { modelVersion, ...stored } = created;
     assert.deepEqual(res.body.data.estimate, stored);
     assert.equal(calls.length, before, 'the service is not asked again');
-    assert.equal(await estimates(), 1, 'no duplicate row');
+    assert.equal(await estimates(), 2, 'no duplicate row');
   });
 });
 
