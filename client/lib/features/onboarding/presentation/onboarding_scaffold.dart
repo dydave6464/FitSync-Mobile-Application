@@ -53,9 +53,10 @@ class OnboardingScaffold extends StatelessWidget {
   /// step it landed below the fold and the user saw nothing happen.
   final String? error;
 
-  /// Why Continue is greyed out, when the step can say. Shown directly above
-  /// it for the same reason as [error]: at the end of a long step's content
-  /// it could be scrolled out of sight of the button it explains.
+  /// Why Continue is greyed out, when the step can say. Shown above it for
+  /// the same reason as [error], above the error when both are up: at the
+  /// end of a long step's content it could be scrolled out of sight of the
+  /// button it explains.
   final String? hint;
 
   /// When set, a small "Sign out" under the buttons: the way out for someone
@@ -153,12 +154,15 @@ class OnboardingScaffold extends StatelessWidget {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
-                  if (error != null) ...[
-                    FsErrorLine(error!, key: const Key('error')),
-                    const SizedBox(height: 10),
-                  ],
+                  // The hint, then the error, then the button: the order
+                  // EditScaffold uses too, so a failure sits right on the
+                  // button it is about in both.
                   if (hint != null) ...[
                     ContinueHint(hint!),
+                    const SizedBox(height: 10),
+                  ],
+                  if (error != null) ...[
+                    FsErrorLine(error!, key: const Key('error')),
                     const SizedBox(height: 10),
                   ],
                   FsButton(

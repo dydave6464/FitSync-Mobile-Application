@@ -240,6 +240,31 @@ void main() {
       expect(cont.top - hint.bottom, lessThan(24));
     });
 
+    // L-9: the wizard and the editor stacked these in opposite orders.
+    testWidgets('stacks the hint above the error, the error on Continue', (
+      tester,
+    ) async {
+      await tester.pumpWidget(
+        MaterialApp(
+          home: OnboardingScaffold(
+            step: 5,
+            total: 6,
+            onContinue: null,
+            hint: 'Answer every question to continue',
+            error: 'That did not save.',
+            child: const Text('content'),
+          ),
+        ),
+      );
+
+      final hint = tester.getRect(find.byKey(const Key('hint')));
+      final error = tester.getRect(find.byKey(const Key('error')));
+      final cont = tester.getRect(find.byKey(const Key('continue')));
+      expect(hint.bottom, lessThanOrEqualTo(error.top));
+      expect(error.bottom, lessThanOrEqualTo(cont.top));
+      expect(cont.top - error.bottom, lessThan(24));
+    });
+
     testWidgets('the hint is readable text, not the faint tertiary grey', (
       tester,
     ) async {
@@ -374,6 +399,29 @@ void main() {
       final save = tester.getRect(find.byKey(const Key('save')));
       expect(hint.bottom, lessThanOrEqualTo(save.top));
       expect(save.top - hint.bottom, lessThan(24));
+    });
+
+    testWidgets('stacks the hint above the error, the error on Save', (
+      tester,
+    ) async {
+      await tester.pumpWidget(
+        MaterialApp(
+          home: EditScaffold(
+            title: 'Health',
+            onSave: null,
+            hint: 'Answer every question to save',
+            error: 'That did not save.',
+            child: const Text('content'),
+          ),
+        ),
+      );
+
+      final hint = tester.getRect(find.byKey(const Key('hint')));
+      final error = tester.getRect(find.byKey(const Key('error')));
+      final save = tester.getRect(find.byKey(const Key('save')));
+      expect(hint.bottom, lessThanOrEqualTo(error.top));
+      expect(error.bottom, lessThanOrEqualTo(save.top));
+      expect(save.top - error.bottom, lessThan(24));
     });
 
     testWidgets('shows no wizard chrome', (tester) async {

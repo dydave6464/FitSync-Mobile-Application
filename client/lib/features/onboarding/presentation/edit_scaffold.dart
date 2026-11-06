@@ -29,8 +29,8 @@ class EditScaffold extends StatelessWidget {
   final VoidCallback? onSave;
   final bool busy;
 
-  /// Why Save is greyed out, shown directly above it, as the wizard does
-  /// for Continue.
+  /// Why Save is greyed out, shown above it, as the wizard does for
+  /// Continue: above [error] when both are up, as there.
   final String? hint;
 
   /// Whether the answer on screen differs from the one the editor opened
