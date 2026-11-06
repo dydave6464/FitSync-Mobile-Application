@@ -75,7 +75,7 @@ test('session outcome endpoints', async (t) => {
     assert.equal(after.body.data.session, null);
   });
 
-  await t.test("pending names a hand-picked session by its muscles", async () => {
+  await t.test('pending names a hand-picked session by its muscles', async () => {
     const { token, userId } = await freshUser();
     const sessionId = await session(userId);
     const [x] = await pool.query(
