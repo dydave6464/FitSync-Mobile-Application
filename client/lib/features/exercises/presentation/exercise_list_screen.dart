@@ -63,7 +63,8 @@ class _ExerciseListScreenState extends ConsumerState<ExerciseListScreen> {
 
   void _open(ExerciseSummary exercise) => Navigator.of(context).push(
     MaterialPageRoute<void>(
-      builder: (_) => ExerciseDetailScreen(exerciseId: exercise.exerciseId),
+      builder: (_) =>
+          ExerciseDetailScreen(exerciseId: exercise.exerciseId, pick: exercise),
     ),
   );
 

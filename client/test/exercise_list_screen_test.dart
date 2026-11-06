@@ -234,6 +234,20 @@ void main() {
 
   // The tiles' own 4 dp inset left the rows 4 dp from the edge, under a
   // search box and chips inset 12.
+  testWidgets("a row's demo can add it to the workout", (tester) async {
+    await tester.pumpWidget(harness(FakeRepository()));
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.byKey(const Key('tile.info.1')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Add to workout'));
+    await tester.pumpAndSettle();
+    await tester.pageBack();
+    await tester.pumpAndSettle();
+
+    expect(find.text('Review · 1 exercise'), findsOneWidget);
+  });
+
   testWidgets('rows line up with the search box above them', (tester) async {
     // In the app's theme, which sets the tiles' own 4 dp inset.
     await tester.pumpWidget(
