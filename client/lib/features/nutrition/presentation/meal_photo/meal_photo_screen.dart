@@ -286,6 +286,8 @@ class _MealPhotoScreenState extends ConsumerState<MealPhotoScreen> {
     // come back without another one.
     return FsDiscardGuard(
       dirty: _phase == _Phase.confirm && !_logging,
+      // Nothing was typed here, so "your changes" would not fit.
+      title: 'Leave without logging?',
       message: "This photo still counts toward today's limit.",
       child: PopScope(
         // Leaving mid-log would hide whether the meal was saved.

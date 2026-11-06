@@ -742,7 +742,7 @@ void main() {
       final h = await _open(tester);
       await tester.binding.handlePopRoute();
       await tester.pumpAndSettle();
-      expect(find.text('Discard your changes?'), findsOneWidget);
+      expect(find.text('Leave without logging?'), findsOneWidget);
       expect(find.text("This photo still counts toward today's limit."), findsOneWidget);
 
       await tester.tap(find.byKey(const Key('discard.keep')));
@@ -755,7 +755,7 @@ void main() {
       final h = await _open(tester);
       await tester.tap(find.byKey(const Key('snap.back')));
       await tester.pumpAndSettle();
-      expect(find.text('Discard your changes?'), findsOneWidget);
+      expect(find.text('Leave without logging?'), findsOneWidget);
       await tester.tap(find.byKey(const Key('discard.confirm')));
       await tester.pumpAndSettle();
       expect(find.byKey(const Key('snap.log')), findsNothing, reason: 'the screen is gone');
@@ -768,7 +768,7 @@ void main() {
       await _open(tester, h: h);
       await tester.binding.handlePopRoute();
       await tester.pumpAndSettle();
-      expect(find.text('Discard your changes?'), findsNothing);
+      expect(find.text('Leave without logging?'), findsNothing);
       expect(find.byKey(const Key('snap.retry')), findsNothing, reason: 'the screen is gone');
     });
 
@@ -776,7 +776,7 @@ void main() {
       final h = await _open(tester);
       await tester.tap(find.byKey(const Key('snap.log')));
       await tester.pumpAndSettle();
-      expect(find.text('Discard your changes?'), findsNothing);
+      expect(find.text('Leave without logging?'), findsNothing);
       expect(h.result, isTrue);
     });
   });
