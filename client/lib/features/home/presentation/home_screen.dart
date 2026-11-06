@@ -6,6 +6,8 @@ import '../../../core/widgets/fs_kit.dart';
 import '../../exercises/presentation/exercise_list_screen.dart'
     show describeError;
 import '../../plans/presentation/providers.dart';
+import '../../plans/presentation/widgets/regenerate_plan_button.dart'
+    show openGenerator;
 import '../../recovery/presentation/providers.dart'
     show recoveryOverviewProvider;
 import '../../recovery/presentation/widgets/checkin_sheet.dart'
@@ -241,9 +243,8 @@ class _ActiveWorkoutState extends ConsumerState<_ActiveWorkout> {
   );
 }
 
-/// Plans are created only by `POST /profile/complete-onboarding`. There is no
-/// on-demand generate endpoint, so this state deliberately offers no action —
-/// a button that calls nothing is worse than a sentence that explains why.
+/// No active plan: the Plan tab's words for the same state, and its way out,
+/// "Generate a plan", which opens the generator.
 class _NoPlan extends StatelessWidget {
   const _NoPlan();
 
@@ -262,9 +263,18 @@ class _NoPlan extends StatelessWidget {
         children: [
           const FsEyebrow("Today's plan"),
           const SizedBox(height: 8),
+          Text('No plan yet', style: Theme.of(context).textTheme.titleMedium),
+          const SizedBox(height: 4),
           Text(
-            'You have no active plan yet.',
+            'Build one from your goals, equipment and injuries.',
             style: TextStyle(fontSize: 12.5, color: t.text2),
+          ),
+          const SizedBox(height: 12),
+          FsButton(
+            key: const Key('home.noPlan.generate'),
+            label: 'Generate a plan',
+            small: true,
+            onPressed: () => openGenerator(context),
           ),
         ],
       ),

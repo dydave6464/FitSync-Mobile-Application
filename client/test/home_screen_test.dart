@@ -18,6 +18,7 @@ import 'package:fitsync/features/home/presentation/plan_ready.dart';
 import 'package:fitsync/features/home/presentation/widgets/greeting.dart';
 import 'package:fitsync/features/home/presentation/widgets/plan_card.dart';
 import 'package:fitsync/features/plans/domain/workout_plan.dart';
+import 'package:fitsync/features/plans/presentation/generator_screen.dart';
 import 'package:fitsync/features/plans/presentation/providers.dart';
 import 'package:fitsync/features/profile/domain/profile.dart';
 import 'package:fitsync/features/profile/presentation/providers.dart';
@@ -545,40 +546,28 @@ void main() {
     ], reason: 'Home selects tabs; it never pushes a second PlanScreen');
   });
 
-  testWidgets('a null plan explains itself and offers no generate action', (
-    tester,
-  ) async {
+  testWidgets('a null plan says so and offers to generate one', (tester) async {
     await _pumpHome(tester, plan: null);
     expect(find.byKey(const Key('home.plan.open')), findsNothing);
-    expect(find.textContaining('no active plan'), findsOneWidget);
+    // The Plan tab's own words for the same state, so the two agree.
+    expect(find.text('No plan yet'), findsOneWidget);
     expect(
-      find.byKey(const Key('home.noPlan')),
+      find.text('Build one from your goals, equipment and injuries.'),
       findsOneWidget,
-      reason:
-          'the descendant check below is vacuous if this key does not '
-          'resolve to the no-plan card',
     );
-    // Absence of the one specific label is not enough — a relabelled
-    // "Generate plan" button would satisfy both assertions above. The
-    // no-plan state must offer no action at all, so nothing tappable may
-    // exist inside it: there is no on-demand generate endpoint, so a
-    // button here would call nothing. Scoped to the home.noPlan-keyed
-    // subtree, not the whole screen, so this can't be satisfied or defeated
-    // by an unrelated FsButton elsewhere (e.g. a retry button in another
-    // state). This key is distinct from PlanScreen's own 'noPlan' key —
-    // both tabs build eagerly once visited, and with no active plan both
-    // no-plan states can exist in the tree at once, so a shared key would
-    // leave any finder using it ambiguous.
-    expect(
-      find.descendant(
-        of: find.byKey(const Key('home.noPlan')),
-        matching: find.byType(FsButton),
-      ),
-      findsNothing,
-      reason:
-          'the no-plan state must offer no action; a "Generate plan" '
-          'button would call an endpoint that does not exist',
+
+    final generate = find.descendant(
+      of: find.byKey(const Key('home.noPlan')),
+      matching: find.widgetWithText(FsButton, 'Generate a plan'),
     );
+    expect(generate, findsOneWidget);
+
+    await tester.ensureVisible(generate);
+    await tester.pumpAndSettle();
+    await tester.tap(generate);
+    await tester.pumpAndSettle();
+
+    expect(find.byType(GeneratorScreen), findsOneWidget);
   });
 
   testWidgets('a failed plan load offers a retry', (tester) async {
