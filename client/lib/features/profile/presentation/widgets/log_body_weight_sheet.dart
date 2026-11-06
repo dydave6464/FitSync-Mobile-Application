@@ -106,7 +106,14 @@ class _LogBodyWeightSheetState extends ConsumerState<_LogBodyWeightSheet> {
     final day = _day;
     if (day == null) return 'Today';
     final today = _today();
-    if (today.difference(day).inDays == 1) return 'Yesterday';
+    // By calendar date, not a duration: a day across a clock change is not
+    // 24 hours long.
+    if (DateUtils.isSameDay(
+      day,
+      DateTime(today.year, today.month, today.day - 1),
+    )) {
+      return 'Yesterday';
+    }
     final date = '${weekdayShort[day.weekday - 1]}, ${shortDate(day)}';
     return day.year == today.year ? date : '$date ${day.year}';
   }
