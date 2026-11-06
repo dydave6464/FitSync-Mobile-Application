@@ -680,18 +680,19 @@ class FsSegmented extends StatelessWidget {
                     for (final (index, option) in options.indexed) ...[
                       if (option != options.first) const SizedBox(width: 2),
                       Expanded(
-                        // Each segment is its own button in a single-choice
-                        // group, with its place in the set, so a screen
-                        // reader can say "Female, selected, 2 of 2" rather
-                        // than just the word. The band carries the node, so
-                        // it frames the 48 dp a thumb can hit, not the pill.
+                        // Each segment is its own button, with its place in
+                        // the set, so a screen reader can say "Female,
+                        // selected, 2 of 2" rather than just the word. No
+                        // group flag: without a checked state it says
+                        // nothing on either platform (see FsChip). The band
+                        // carries the node, so it frames the 48 dp a thumb
+                        // can hit, not the pill.
                         child: _TapReach(
                           minSize: const Size(0, _minTapTarget),
                           button: true,
                           enabled: true,
                           selected: selected == option.value,
                           child: Semantics(
-                            inMutuallyExclusiveGroup: true,
                             hint: '${index + 1} of ${options.length}',
                             child: InkWell(
                               key: Key('segment.${option.value}'),
@@ -1128,13 +1129,14 @@ class FsNav extends StatelessWidget {
                 ),
               Expanded(
                 // One node per tab: "Profile, selected, tab 4 of 4", so the
-                // current tab is said and not only coloured.
+                // current tab is said and not only coloured. No group flag:
+                // a tab is not a radio button, and without a checked state
+                // the flag says nothing anyway.
                 child: Semantics(
                   container: true,
                   button: true,
                   enabled: true,
                   selected: index == currentIndex,
-                  inMutuallyExclusiveGroup: true,
                   hint: 'Tab ${index + 1} of ${items.length}',
                   child: InkWell(
                     key: Key('nav.$index'),

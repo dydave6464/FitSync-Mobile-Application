@@ -728,7 +728,9 @@ void main() {
           hasEnabledState: true,
           isSelected: true,
           hasSelectedState: true,
-          isInMutuallyExclusiveGroup: true,
+          // P-30: no group flag. With no checked state it said nothing on
+          // either platform; the place in the set is the hint's job.
+          isInMutuallyExclusiveGroup: false,
           hasTapAction: true,
         ),
       );
@@ -1530,11 +1532,12 @@ void main() {
         );
         expect(
           tester.getSemantics(find.text('Profile')),
+          // P-30: no group flag, which said nothing without a checked
+          // state; a tab is a selected tab, not a radio button.
           matchesSemantics(
             isButton: true,
             isSelected: true,
             hasSelectedState: true,
-            isInMutuallyExclusiveGroup: true,
             hasTapAction: true,
             hasFocusAction: true,
             isFocusable: true,
