@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import 'package:flutter/scheduler.dart' show SchedulerBinding, SchedulerPhase;
 import 'package:flutter/semantics.dart' show SemanticsService;
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
@@ -326,10 +327,22 @@ class _OnboardingFlowState extends ConsumerState<OnboardingFlow> {
         if (_aboutValue(queried, key) == _aboutValue(value, key)) key: message,
     };
     if (left.length == _fieldErrors.length) return;
-    setState(() {
-      _fieldErrors = left;
-      if (left.isEmpty) _error = null;
-    });
+    void clear() {
+      if (!mounted) return;
+      setState(() {
+        _fieldErrors = left;
+        if (left.isEmpty) _error = null;
+      });
+    }
+
+    // A kg/lb switch rewrites the weights while this screen is building, and
+    // a rebuild may not be asked for then: it waits for the frame to end.
+    if (SchedulerBinding.instance.schedulerPhase ==
+        SchedulerPhase.persistentCallbacks) {
+      SchedulerBinding.instance.addPostFrameCallback((_) => clear());
+    } else {
+      clear();
+    }
   }
 
   Future<void> _skip() => _save(_saveTypedAnswers);

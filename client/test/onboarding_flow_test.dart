@@ -7,6 +7,7 @@ import 'package:flutter_test/flutter_test.dart';
 
 import 'package:fitsync/core/api_exception.dart';
 import 'package:fitsync/core/token_store.dart' show InMemorySecureStore;
+import 'package:fitsync/core/units.dart';
 import 'package:fitsync/core/widgets/fs_kit.dart';
 import 'package:fitsync/features/auth/domain/auth_user.dart';
 import 'package:fitsync/features/auth/presentation/auth_controller.dart';
@@ -113,6 +114,26 @@ class FakeProfileNotifier extends ProfileNotifier {
   Future<void> patch(Map<String, dynamic> fields) async {
     patches.add(fields);
     if (onPatch != null) await onPatch!();
+    // The unit is a display preference the step reads back at once, as the
+    // real notifier's refreshed profile would give it.
+    if (fields['weightUnit'] case final String unit) {
+      final loaded = state.value!;
+      state = AsyncData(
+        Profile(
+          userId: loaded.userId,
+          email: loaded.email,
+          fullName: loaded.fullName,
+          onboardingCompleted: loaded.onboardingCompleted,
+          isPremium: loaded.isPremium,
+          notificationsEnabled: loaded.notificationsEnabled,
+          equipment: loaded.equipment,
+          injuries: loaded.injuries,
+          goals: loaded.goals,
+          mainGoal: loaded.mainGoal,
+          weightUnit: WeightUnit.fromApi(unit),
+        ),
+      );
+    }
   }
 
   @override
@@ -1932,6 +1953,24 @@ void main() {
 
       expect(patches, isEmpty);
       expect(find.byKey(const Key('error.heightCm')), findsOneWidget);
+    });
+
+    testWidgets('switching kg and lb under a queried weight is safe', (
+      tester,
+    ) async {
+      final patches = <Map<String, dynamic>>[];
+      await _pumpFlow(tester, patches: patches);
+      await toAbout(tester);
+
+      await tester.enterText(find.byKey(const Key('weightKg')), '7');
+      await tester.pumpAndSettle();
+      await _tapKey(tester, const Key('continue'));
+      expect(find.byKey(const Key('error.weightKg')), findsOneWidget);
+
+      await _tapKey(tester, const Key('unit.lb'));
+
+      expect(tester.takeException(), isNull);
+      expect(find.text('STEP 2 / 6'), findsOneWidget);
     });
 
     testWidgets('a rejected answer names the field the server pointed at', (
