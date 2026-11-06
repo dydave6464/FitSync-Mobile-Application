@@ -9,6 +9,7 @@ import '../../streaks/presentation/providers.dart' show streakProvider;
 import '../data/session_repository.dart';
 import '../data/training_settings_repository.dart';
 import '../domain/active_session.dart';
+import '../domain/session_detail.dart';
 import '../domain/session_history.dart';
 import '../domain/session_outcome.dart';
 import '../domain/training_analytics.dart';
@@ -245,6 +246,14 @@ final olderHistoryProvider = FutureProvider.family<SessionHistoryPage, int>((
   ref.watch(sessionHistoryProvider);
   return ref.watch(sessionRepositoryProvider).history(page: page);
 }, retry: apiRetryPolicy);
+
+/// One finished workout, opened from History. Disposed when its screen
+/// closes: a past workout does not change, and nothing else reads it.
+final sessionDetailProvider = FutureProvider.autoDispose
+    .family<SessionDetail, int>(
+      (ref, sessionId) =>
+          ref.watch(sessionRepositoryProvider).detail(sessionId),
+    );
 
 /// The workout the "+" sheet offers to repeat, or null when there is none.
 final lastWorkoutProvider = FutureProvider<LastWorkout?>(

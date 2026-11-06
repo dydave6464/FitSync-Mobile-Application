@@ -1,3 +1,5 @@
+import '../../../core/numbers.dart';
+import '../../../core/units.dart';
 import '../../exercises/domain/exercise.dart';
 import '../../exercises/domain/muscle_regions.dart';
 
@@ -7,6 +9,25 @@ import '../../exercises/domain/muscle_regions.dart';
 /// user nothing.
 String sessionTitle(String? planName, Iterable<String> muscleGroups) =>
     planName ?? manualWorkoutName(muscleGroups) ?? 'Your own workout';
+
+/// A finished workout's numbers on one line: '12 sets · 2,954 kg · 52 min'.
+///
+/// Shared by the History row and the session detail, so the two never read
+/// differently. A bodyweight-only session has no volume, and "0 kg" would read
+/// as a failure to record rather than as a fact about the workout, so it is
+/// left out; so is a duration from before durations were stamped. The volume
+/// is stored in kilograms and read out in [unit].
+String sessionFactsLine({
+  required int setCount,
+  required double? totalVolumeKg,
+  required int? durationMin,
+  required WeightUnit unit,
+}) => [
+  '$setCount ${setCount == 1 ? 'set' : 'sets'}',
+  if (totalVolumeKg != null && totalVolumeKg > 0)
+    '${groupThousands(convertFromKg(totalVolumeKg, unit))} ${unit.api}',
+  if (durationMin != null) '$durationMin min',
+].join(' · ');
 
 /// One finished workout, as the Progress tab lists it.
 ///

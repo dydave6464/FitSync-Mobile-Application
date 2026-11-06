@@ -2,7 +2,6 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../core/api_exception.dart';
-import '../../../core/numbers.dart';
 import '../../../core/theme.dart';
 import '../../../core/units.dart';
 import '../../../core/widgets/fs_kit.dart';
@@ -267,15 +266,12 @@ class _HistoryRow extends StatelessWidget {
   Widget build(BuildContext context) {
     final t = context.fs;
 
-    // A bodyweight-only session has no volume. "0 kg" would read as a failure
-    // to record rather than as a fact about the workout, so it is left out.
-    final facts = [
-      '${entry.setCount} ${entry.setCount == 1 ? 'set' : 'sets'}',
-      if (entry.totalVolumeKg != null && entry.totalVolumeKg! > 0)
-        '${groupThousands(convertFromKg(entry.totalVolumeKg!, unit))} '
-            '${unit.api}',
-      if (entry.durationMin != null) '${entry.durationMin} min',
-    ].join(' · ');
+    final facts = sessionFactsLine(
+      setCount: entry.setCount,
+      totalVolumeKg: entry.totalVolumeKg,
+      durationMin: entry.durationMin,
+      unit: unit,
+    );
 
     return Padding(
       padding: const EdgeInsets.only(bottom: 10),
