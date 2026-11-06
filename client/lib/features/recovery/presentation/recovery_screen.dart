@@ -1,14 +1,13 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../../core/api_exception.dart';
 import '../../../core/numbers.dart';
 import '../../../core/theme.dart';
 import '../../../core/units.dart';
 import '../../../core/widgets/fs_charts.dart'
     show FsRing, FsBarChart, FsChartBar;
 import '../../../core/widgets/fs_kit.dart' hide FsRing;
-import '../../exercises/presentation/exercise_list_screen.dart'
-    show describeError;
 import '../../profile/presentation/providers.dart' show weightUnitProvider;
 import '../../sessions/domain/training_analytics.dart' show VolumeBucket;
 import '../../sessions/domain/volume_labels.dart'
@@ -21,9 +20,8 @@ import 'widgets/checkin_sheet.dart';
 import 'widgets/how_to_read_sheet.dart';
 
 /// The Recovery tab's body: the injury-risk ring with what it means and why,
-/// what feeds it, and the 7-day training load beneath. Mirrors the loading
-/// spinner and describeError + Retry treatment `PlanScreen` uses for its own
-/// top-level provider, rather than inventing a third failure style.
+/// what feeds it, and the 7-day training load beneath. A failed load shows
+/// the kit's FsRetry, as the app's other screens do.
 class RecoveryScreen extends ConsumerWidget {
   const RecoveryScreen({super.key});
 
@@ -33,22 +31,12 @@ class RecoveryScreen extends ConsumerWidget {
 
     return overview.when(
       loading: () => const Center(child: CircularProgressIndicator()),
-      error: (error, _) => Center(
-        child: Padding(
-          padding: const EdgeInsets.all(24),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Text(describeError(error), textAlign: TextAlign.center),
-              const SizedBox(height: 16),
-              FsButton(
-                label: 'Retry',
-                small: true,
-                onPressed: () => ref.invalidate(recoveryOverviewProvider),
-              ),
-            ],
-          ),
-        ),
+      // The tab fills the Training shell's body, so the kit's full-screen
+      // retry: centred, and scrollable at large text.
+      error: (error, _) => FsRetry(
+        fullScreen: true,
+        message: userMessage(error),
+        onRetry: () => ref.invalidate(recoveryOverviewProvider),
       ),
       data: (data) => _RecoveryView(overview: data),
     );

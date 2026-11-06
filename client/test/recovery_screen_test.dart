@@ -6,7 +6,8 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:fitsync/core/theme.dart';
 import 'package:fitsync/core/units.dart';
 import 'package:fitsync/core/widgets/fs_charts.dart' show FsRing, FsBarChart;
-import 'package:fitsync/core/widgets/fs_kit.dart' show FsCard;
+import 'package:fitsync/core/api_exception.dart';
+import 'package:fitsync/core/widgets/fs_kit.dart' show FsCard, FsRetry;
 import 'package:fitsync/features/profile/presentation/providers.dart'
     show weightUnitProvider;
 import 'package:fitsync/features/recovery/domain/recovery.dart';
@@ -125,6 +126,42 @@ Future<void> _pump(
 }
 
 void main() {
+  testWidgets('a failed load says why over the kit retry, which loads again', (
+    tester,
+  ) async {
+    var calls = 0;
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          recoveryOverviewProvider.overrideWith((ref) async {
+            if (calls++ == 0) {
+              // Not a network error, which the provider retries itself.
+              throw const ApiException('SERVER_ERROR', 'Recovery is down.');
+            }
+            return const RecoveryOverview(
+              todayCheckin: null,
+              latestEstimate: null,
+              load: [],
+            );
+          }),
+          weightUnitProvider.overrideWithValue(WeightUnit.kg),
+        ],
+        child: MaterialApp(
+          theme: fsLightTheme(),
+          home: const Scaffold(body: RecoveryScreen()),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.byType(FsRetry), findsOneWidget);
+    expect(find.text('Recovery is down.'), findsOneWidget);
+    await tester.tap(find.text('Try again'));
+    await tester.pumpAndSettle();
+    expect(calls, 2);
+    expect(find.byKey(const Key('recovery.empty')), findsOneWidget);
+  });
+
   testWidgets('an account that has never checked in is invited to', (
     tester,
   ) async {
