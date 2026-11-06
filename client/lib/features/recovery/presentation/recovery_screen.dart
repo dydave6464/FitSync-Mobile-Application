@@ -193,10 +193,16 @@ class _EstimateCard extends StatelessWidget {
       children: [
         Center(
           // One phrase for a screen reader, which would otherwise hear the
-          // bare word in the ring with nothing to say what it measures.
+          // bare word in the ring with nothing to say what it measures. An
+          // earlier day's ring is told apart only by its grey, so its day is
+          // said here too, not just in the box below.
           child: Semantics(
             container: true,
-            label: 'Injury risk: ${estimate.label}',
+            label: isToday
+                ? 'Injury risk: ${estimate.label}'
+                : 'Injury risk: ${estimate.label}, from '
+                      '${formatShareExpiry(DateTime.parse(estimate.checkinDate))}. '
+                      "Not today's estimate.",
             excludeSemantics: true,
             child: FsRing(
               value: estimate.ringValue,

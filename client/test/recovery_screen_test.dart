@@ -693,6 +693,31 @@ void main() {
       semantics.dispose();
     });
 
+    testWidgets("an earlier day's ring says so to a screen reader", (
+      tester,
+    ) async {
+      final semantics = tester.ensureSemantics();
+      await _pump(
+        tester,
+        const RecoveryOverview(
+          todayCheckin: null,
+          latestEstimate: _estimate,
+          load: [],
+        ),
+      );
+
+      // Its grey is the only sign on the ring itself; the date comes two
+      // nodes later, so the ring names it too.
+      expect(
+        find.bySemanticsLabel(
+          "Injury risk: Moderate, from September 18, 2026. "
+          "Not today's estimate.",
+        ),
+        findsOneWidget,
+      );
+      semantics.dispose();
+    });
+
     testWidgets('the ⓘ control is named, big enough and opens the guide', (
       tester,
     ) async {
