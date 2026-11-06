@@ -28,9 +28,16 @@ void main() {
   });
 
   group('Utf16LengthLimit', () {
-    TextEditingValue format(String old, String typed, int max) => Utf16LengthLimit(max).formatEditUpdate(
-          TextEditingValue(text: old, selection: TextSelection.collapsed(offset: old.length)),
-          TextEditingValue(text: typed, selection: TextSelection.collapsed(offset: typed.length)),
+    TextEditingValue format(String old, String typed, int max) =>
+        Utf16LengthLimit(max).formatEditUpdate(
+          TextEditingValue(
+            text: old,
+            selection: TextSelection.collapsed(offset: old.length),
+          ),
+          TextEditingValue(
+            text: typed,
+            selection: TextSelection.collapsed(offset: typed.length),
+          ),
         );
 
     test('keeps text within the limit as typed', () {
@@ -39,11 +46,14 @@ void main() {
       expect(v.selection, const TextSelection.collapsed(offset: 5));
     });
 
-    test('cuts pasted text to the limit in UTF-16 units, whole characters only', () {
-      final v = format('', '😀' * 60, 100);
-      expect(v.text, '😀' * 50);
-      expect(v.selection, const TextSelection.collapsed(offset: 100));
-    });
+    test(
+      'cuts pasted text to the limit in UTF-16 units, whole characters only',
+      () {
+        final v = format('', '😀' * 60, 100);
+        expect(v.text, '😀' * 50);
+        expect(v.selection, const TextSelection.collapsed(offset: 100));
+      },
+    );
 
     test('keeps the old text when a character would not fit at all', () {
       final full = 'a' * 99;

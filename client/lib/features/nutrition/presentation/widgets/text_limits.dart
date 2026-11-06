@@ -16,7 +16,8 @@ String truncateUtf16(String text, int max) {
 
 /// [text], trimmed and cut to at most [max] UTF-16 units (see
 /// [truncateUtf16]), then trimmed again: a name ready to send.
-String clipUtf16(String text, int max) => truncateUtf16(text.trim(), max).trimRight();
+String clipUtf16(String text, int max) =>
+    truncateUtf16(text.trim(), max).trimRight();
 
 /// Stops a field at [max] UTF-16 units, the server's own count. Flutter's
 /// LengthLimitingTextInputFormatter counts characters instead, so a name
@@ -27,7 +28,10 @@ class Utf16LengthLimit extends TextInputFormatter {
   final int max;
 
   @override
-  TextEditingValue formatEditUpdate(TextEditingValue oldValue, TextEditingValue newValue) {
+  TextEditingValue formatEditUpdate(
+    TextEditingValue oldValue,
+    TextEditingValue newValue,
+  ) {
     if (newValue.text.length <= max) return newValue;
     final text = truncateUtf16(newValue.text, max);
     final selection = newValue.selection;
