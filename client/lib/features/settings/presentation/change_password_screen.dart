@@ -224,7 +224,9 @@ class _ChangePasswordScreenState extends ConsumerState<ChangePasswordScreen> {
               _Field.confirm,
               label: 'Confirm new password',
               hint: 'The new password again',
-              what: 'new password',
+              // Not 'new password' again: TalkBack would read two different
+              // toggles alike, "Show new password".
+              what: 'confirmed password',
               autofill: AutofillHints.newPassword,
               action: TextInputAction.done,
             ),

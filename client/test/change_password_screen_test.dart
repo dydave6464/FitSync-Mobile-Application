@@ -314,6 +314,35 @@ void main() {
     expect(find.byType(ChangePasswordScreen), findsNothing);
   });
 
+  testWidgets('each eye names its own field, so no two read alike', (
+    tester,
+  ) async {
+    await _pump(tester, _FakeAuthRepository());
+    String tooltip(String key) => tester
+        .widget<IconButton>(
+          find.descendant(
+            of: find.byKey(Key('$key.reveal')),
+            matching: find.byType(IconButton),
+          ),
+        )
+        .tooltip!;
+
+    final tooltips = [
+      for (final key in [
+        'password.current',
+        'password.new',
+        'password.confirm',
+      ])
+        tooltip(key),
+    ];
+    expect(tooltips, [
+      'Show current password',
+      'Show new password',
+      'Show confirmed password',
+    ]);
+    expect(tooltips.toSet(), hasLength(3), reason: 'TalkBack tells them apart');
+  });
+
   testWidgets('back with nothing typed just closes', (tester) async {
     await _pump(tester, _FakeAuthRepository());
     await tester.pageBack();
