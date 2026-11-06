@@ -10,8 +10,6 @@ import '../../../core/theme_controller.dart';
 import '../../../core/units.dart';
 import '../../../core/widgets/fs_kit.dart';
 import '../../auth/presentation/auth_controller.dart';
-import '../../exercises/presentation/exercise_list_screen.dart'
-    show describeError;
 import '../../health/domain/health_answers.dart';
 import '../../health/presentation/providers.dart';
 import '../../onboarding/presentation/edit_scaffold.dart';
@@ -52,22 +50,11 @@ class SettingsScreen extends ConsumerWidget {
       ),
       body: profile.when(
         loading: () => const Center(child: CircularProgressIndicator()),
-        error: (error, _) => Center(
-          child: Padding(
-            padding: const EdgeInsets.all(24),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Text(describeError(error), textAlign: TextAlign.center),
-                const SizedBox(height: 16),
-                FsButton(
-                  label: 'Retry',
-                  small: true,
-                  onPressed: () => ref.invalidate(profileProvider),
-                ),
-              ],
-            ),
-          ),
+        error: (error, _) => FsRetry(
+          fullScreen: true,
+          message: userMessage(error),
+          buttonKey: const Key('settings.retry'),
+          onRetry: () => ref.invalidate(profileProvider),
         ),
         data: (loaded) => _SettingsList(profile: loaded),
       ),
@@ -170,13 +157,32 @@ class _SettingsList extends ConsumerWidget {
               // shows, the name Home greets the user by and the city, which
               // nothing else in the app can change.
               FsTapRoom(
-                child: FsChip(
-                  key: const Key('profile.edit'),
-                  label: 'Edit',
-                  small: true,
-                  selected: false,
-                  toggle: false,
+                // Said as what it edits: a bare "Edit" names no target. One
+                // node of at least 48 dp, as the chip's own band is.
+                child: Semantics(
+                  container: true,
+                  button: true,
+                  label: 'Edit name and city',
                   onTap: () => _open(context, const _NameCityEditor()),
+                  excludeSemantics: true,
+                  child: ConstrainedBox(
+                    constraints: const BoxConstraints(
+                      minWidth: 48,
+                      minHeight: 48,
+                    ),
+                    child: Center(
+                      widthFactor: 1,
+                      heightFactor: 1,
+                      child: FsChip(
+                        key: const Key('profile.edit'),
+                        label: 'Edit',
+                        small: true,
+                        selected: false,
+                        toggle: false,
+                        onTap: () => _open(context, const _NameCityEditor()),
+                      ),
+                    ),
+                  ),
                 ),
               ),
             ],
@@ -191,10 +197,10 @@ class _SettingsList extends ConsumerWidget {
           onTap: () => openProScreen(context),
           child: Row(
             children: [
-              Icon(
-                Icons.workspace_premium_outlined,
-                size: 22,
-                color: t.accentText,
+              // The prototype's accent square, as on the Pro screen.
+              const FsIconTile(
+                icon: Icons.workspace_premium_outlined,
+                selected: true,
               ),
               const SizedBox(width: 13),
               Expanded(
@@ -211,13 +217,44 @@ class _SettingsList extends ConsumerWidget {
                     ),
                     const SizedBox(height: 2),
                     Text(
-                      proCardSubtitle(proStatus),
+                      proCardSubtitle(proStatus, premium: profile.isPremium),
                       style: TextStyle(fontSize: 11, color: t.text2),
                     ),
                   ],
                 ),
               ),
               Icon(Icons.chevron_right, size: 17, color: t.accentText),
+            ],
+          ),
+        ),
+        const SizedBox(height: 22),
+        // The prototype's own grouping: what the plan does with your week
+        // first, then the answers the plan is built from.
+        const FsEyebrow('Plan & motivation'),
+        const SizedBox(height: 10),
+        FsCard(
+          padding: const EdgeInsets.symmetric(horizontal: 16),
+          child: Column(
+            children: [
+              _SettingsRow(
+                rowKey: const Key('edit.trainingDays'),
+                icon: Icons.event_available_outlined,
+                label: 'Training days',
+                onTap: () => _open(context, const _TrainingDaysEditor()),
+              ),
+              _SettingsRow(
+                rowKey: const Key('edit.schedule'),
+                icon: Icons.calendar_month_outlined,
+                label: 'Schedule',
+                onTap: () => _open(context, const ScheduleScreen()),
+              ),
+              _SettingsRow(
+                rowKey: const Key('edit.streaks'),
+                icon: Icons.emoji_events_outlined,
+                label: 'Streaks & goals',
+                onTap: () => _open(context, const StreaksScreen()),
+                last: true,
+              ),
             ],
           ),
         ),
@@ -243,7 +280,9 @@ class _SettingsList extends ConsumerWidget {
               _SettingsRow(
                 rowKey: const Key('edit.level'),
                 icon: Icons.fitness_center_outlined,
-                label: 'Equipment & location',
+                // Named for all three: the header shows the level, and this
+                // is the one place it is changed.
+                label: _levelTitle,
                 onTap: () => _open(context, const _LevelEditor()),
               ),
               _SettingsRow(
@@ -258,24 +297,6 @@ class _SettingsList extends ConsumerWidget {
                 icon: Icons.health_and_safety_outlined,
                 label: 'Health',
                 onTap: () => _open(context, const _HealthEditor()),
-              ),
-              _SettingsRow(
-                rowKey: const Key('edit.trainingDays'),
-                icon: Icons.event_available_outlined,
-                label: 'Training days',
-                onTap: () => _open(context, const _TrainingDaysEditor()),
-              ),
-              _SettingsRow(
-                rowKey: const Key('edit.schedule'),
-                icon: Icons.calendar_month_outlined,
-                label: 'Schedule',
-                onTap: () => _open(context, const ScheduleScreen()),
-              ),
-              _SettingsRow(
-                rowKey: const Key('edit.streaks'),
-                icon: Icons.emoji_events_outlined,
-                label: 'Streaks & goals',
-                onTap: () => _open(context, const StreaksScreen()),
                 last: true,
               ),
             ],
@@ -316,12 +337,44 @@ class _SettingsList extends ConsumerWidget {
           kind: FsButtonKind.ghost,
           danger: true,
           small: true,
-          onPressed: () => ref.read(authControllerProvider.notifier).signOut(),
+          onPressed: () => _confirmSignOut(context, ref),
         ),
       ],
     );
   }
 }
+
+/// Signs out after asking: signing out also cancels every reminder this
+/// phone has scheduled, which one stray tap should not do.
+Future<void> _confirmSignOut(BuildContext context, WidgetRef ref) async {
+  final confirmed = await showDialog<bool>(
+    context: context,
+    builder: (dialog) => AlertDialog(
+      title: const Text('Sign out of FitSync?'),
+      content: const Text(
+        'Reminders on this phone stop until you sign in again.',
+      ),
+      actions: [
+        TextButton(
+          key: const Key('signOut.cancel'),
+          onPressed: () => Navigator.of(dialog).pop(false),
+          child: const Text('Cancel'),
+        ),
+        TextButton(
+          key: const Key('signOut.confirm'),
+          style: TextButton.styleFrom(foregroundColor: dialog.fs.red),
+          onPressed: () => Navigator.of(dialog).pop(true),
+          child: const Text('Sign out'),
+        ),
+      ],
+    ),
+  );
+  if (confirmed != true || !context.mounted) return;
+  await ref.read(authControllerProvider.notifier).signOut();
+}
+
+/// The level editor's row and title: fitness level is changed there too.
+const _levelTitle = 'Level, equipment & location';
 
 /// Saves a kg/lb switch the moment it is tapped, showing the new unit at
 /// once rather than when the server answers (up to the API timeout on a slow
@@ -341,7 +394,9 @@ mixin _UnitSwitch<W extends ConsumerStatefulWidget> on ConsumerState<W> {
     setState(() => _pendingUnit = unit);
     try {
       await ref.read(profileProvider.notifier).patch({'weightUnit': unit.api});
-    } on ApiException {
+    } catch (_) {
+      // Any failure, not only an ApiException: a timeout or a bad response
+      // leaves the unit unsaved just the same.
       messenger.showSnackBar(
         SnackBar(content: Text("Couldn't switch to ${unit.api}. Try again.")),
       );
@@ -396,33 +451,49 @@ class _SettingsRow extends StatelessWidget {
   Widget build(BuildContext context) {
     final t = context.fs;
 
-    return InkWell(
+    // A button for a screen reader, as FsCard is: InkWell alone gives a tap
+    // action but no role. The icon tile and chevron are decoration beside
+    // the label.
+    return Semantics(
       key: rowKey,
-      onTap: onTap,
-      child: Container(
-        padding: const EdgeInsets.symmetric(vertical: 12),
-        decoration: BoxDecoration(
-          border: last ? null : Border(bottom: BorderSide(color: t.line)),
-        ),
-        // The row's 12 dp padding is where a trailing switch, drawn a few
-        // pixels tall, gets the rest of its 48 dp.
-        child: FsTapRoom(
-          child: Row(
-            children: [
-              FsIconTile(icon: icon, size: 32, color: iconColor),
-              const SizedBox(width: 13),
-              Expanded(
-                child: Text(
-                  label,
-                  style: TextStyle(
-                    fontSize: 12.5,
-                    fontWeight: FontWeight.w500,
-                    color: t.text,
+      container: true,
+      button: onTap != null,
+      child: InkWell(
+        onTap: onTap,
+        child: Container(
+          padding: const EdgeInsets.symmetric(vertical: 12),
+          decoration: BoxDecoration(
+            border: last ? null : Border(bottom: BorderSide(color: t.line)),
+          ),
+          // The row's 12 dp padding is where a trailing switch, drawn a few
+          // pixels tall, gets the rest of its 48 dp.
+          child: FsTapRoom(
+            child: Row(
+              children: [
+                ExcludeSemantics(
+                  child: FsIconTile(icon: icon, size: 32, color: iconColor),
+                ),
+                const SizedBox(width: 13),
+                Expanded(
+                  child: Text(
+                    label,
+                    style: TextStyle(
+                      fontSize: 12.5,
+                      fontWeight: FontWeight.w500,
+                      color: t.text,
+                    ),
                   ),
                 ),
-              ),
-              trailing ?? Icon(Icons.chevron_right, size: 16, color: t.text3),
-            ],
+                trailing ??
+                    ExcludeSemantics(
+                      child: Icon(
+                        Icons.chevron_right,
+                        size: 16,
+                        color: t.text3,
+                      ),
+                    ),
+              ],
+            ),
           ),
         ),
       ),
@@ -839,7 +910,7 @@ class _LevelEditorState extends _EditorState<_LevelEditor> {
   bool _seeded = false;
 
   @override
-  String get title => 'Equipment & location';
+  String get title => _levelTitle;
 
   @override
   bool get isDirty =>
@@ -1103,7 +1174,9 @@ class _TrainingDaysEditorState extends _EditorState<_TrainingDaysEditor> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        const FsEyebrow('Which days do you train?'),
+        // A whole question: it may take a second line at large text rather
+        // than end in an ellipsis.
+        const FsEyebrow('Which days do you train?', maxLines: 2),
         const SizedBox(height: 10),
         TrainingDaysRow(
           selected: _value,
@@ -1112,7 +1185,7 @@ class _TrainingDaysEditorState extends _EditorState<_TrainingDaysEditor> {
         const SizedBox(height: 12),
         Text(
           'Leave every day off if your week varies. Your plan is the same '
-          'either way -- this only decides which days can be reported as '
+          'either way — this only decides which days can be reported as '
           'missed.',
           style: TextStyle(fontSize: 12, color: context.fs.text3, height: 1.4),
         ),

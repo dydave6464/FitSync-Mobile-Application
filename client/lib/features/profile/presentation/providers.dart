@@ -100,6 +100,11 @@ final injuryOptionsProvider = FutureProvider<List<InjuryOption>>(
   retry: apiRetryPolicy,
 );
 
+/// The clock the weigh-in sheet reads "today" from; a test fixes it.
+final bodyWeightClockProvider = Provider<DateTime Function()>(
+  (ref) => DateTime.now,
+);
+
 /// The unit every weight in the app is rendered in and typed in.
 ///
 /// Kilograms until the profile arrives, and if it fails: that is the column's

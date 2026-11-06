@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import 'package:flutter/rendering.dart' show RenderParagraph, SemanticsNode;
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -83,6 +84,13 @@ Finder _inside(String key, Finder f) =>
     find.descendant(of: find.byKey(Key(key)), matching: f);
 
 void main() {
+  // L-83: the words for a plan's length live with the screen that says them,
+  // not in the domain enum.
+  test('a plan says how long one payment lasts', () {
+    expect(planPeriod(ProPlan.monthly), '1 month');
+    expect(planPeriod(ProPlan.annual), '12 months');
+  });
+
   testWidgets(
     'a free user picks a plan; annual is picked first and named for a screen reader',
     (tester) async {
@@ -393,6 +401,81 @@ void main() {
     expect(repo.checkouts.length, 1);
   });
 
+  // PS-17: while a payment is in progress the cards looked tappable but did
+  // nothing, and a screen reader heard no "disabled".
+  testWidgets('while paying, the plans look and read as locked', (
+    tester,
+  ) async {
+    final handle = tester.ensureSemantics();
+    await _pump(tester);
+    double opacityOf(String key) => tester
+        .widgetList<Opacity>(
+          find.descendant(
+            of: find.byKey(Key(key)),
+            matching: find.byType(Opacity),
+          ),
+        )
+        .fold(1.0, (o, w) => o * w.opacity);
+    // The card's own node, under any dimming wrapped around it.
+    SemanticsNode plan(String key) => tester.getSemantics(
+      find.descendant(
+        of: find.byKey(Key(key)),
+        matching: find.byType(MergeSemantics),
+      ),
+    );
+    expect(opacityOf('pro.plan.monthly'), 1.0);
+    expect(
+      plan('pro.plan.monthly'),
+      isSemantics(isButton: true, isEnabled: true),
+    );
+
+    await tester.tap(find.byKey(const Key('pro.pay')));
+    await tester.pumpAndSettle();
+    expect(find.byKey(const Key('pro.waiting')), findsOneWidget);
+
+    // The plan not being paid for is dimmed, as a disabled FsButton is; the
+    // one being paid for stays legible.
+    expect(opacityOf('pro.plan.monthly'), 0.45);
+    expect(opacityOf('pro.plan.annual'), 1.0);
+    for (final key in ['pro.plan.monthly', 'pro.plan.annual']) {
+      expect(
+        plan(key),
+        isSemantics(hasEnabledState: true, isEnabled: false),
+        reason: key,
+      );
+    }
+    await tester.tap(find.byKey(const Key('pro.plan.monthly')));
+    await tester.pump();
+    expect(plan('pro.plan.annual'), isSemantics(isSelected: true));
+    handle.dispose();
+  });
+
+  // PS-18: "with PayMongo" and "again" were cut off at larger text.
+  testWidgets('Pay and Open payment page again are read whole at 2x text', (
+    tester,
+  ) async {
+    tester.view.physicalSize = const Size(360, 640);
+    tester.view.devicePixelRatio = 1.0;
+    addTearDown(tester.view.reset);
+    tester.platformDispatcher.textScaleFactorTestValue = 2.0;
+    addTearDown(tester.platformDispatcher.clearTextScaleFactorTestValue);
+
+    void expectWhole(String label) {
+      final paragraph = tester.renderObject<RenderParagraph>(find.text(label));
+      expect(paragraph.didExceedMaxLines, isFalse, reason: label);
+    }
+
+    await _pump(tester);
+    await tester.scrollUntilVisible(find.byKey(const Key('pro.pay')), 200);
+    expectWhole('Pay ₱1,788 with PayMongo');
+
+    await tester.tap(find.byKey(const Key('pro.pay')));
+    await tester.pumpAndSettle();
+    await tester.scrollUntilVisible(find.byKey(const Key('pro.reopen')), 200);
+    expectWhole('Open payment page again');
+    expect(tester.takeException(), isNull);
+  });
+
   testWidgets('paid: the end date and how it was paid, with plans to extend', (
     tester,
   ) async {
@@ -519,6 +602,48 @@ void main() {
     expect(find.byKey(const Key('pro.pay')), findsOneWidget);
   });
 
+  // PS-16: both errors looked like the neutral "Pro ends on" note.
+  testWidgets('a page that will not open is said as an error, in red', (
+    tester,
+  ) async {
+    final (_, opener) = await _pump(tester);
+    opener.answer = false;
+    await tester.tap(find.byKey(const Key('pro.pay')));
+    await tester.pumpAndSettle();
+    final line = find.byKey(const Key('pro.openError'));
+    expect(tester.widget(line), isA<FsErrorLine>());
+    expect(
+      find.descendant(of: line, matching: find.byIcon(Icons.error_outline)),
+      findsOneWidget,
+    );
+  });
+
+  testWidgets('a status that will not load says why, with the kit Try again', (
+    tester,
+  ) async {
+    final repo = FakeProRepository()
+      ..statusError = const ApiException('NETWORK_ERROR', 'offline');
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [proRepositoryProvider.overrideWithValue(repo)],
+        child: MaterialApp(theme: fsLightTheme(), home: const ProScreen()),
+      ),
+    );
+    await tester.pumpAndSettle();
+    expect(find.byType(FsRetry), findsOneWidget);
+    expect(
+      find.text(userMessage(const ApiException('NETWORK_ERROR', 'offline'))),
+      findsOneWidget,
+    );
+    expect(
+      find.descendant(
+        of: find.byType(FsRetry),
+        matching: find.byKey(const Key('pro.retryStatus')),
+      ),
+      findsOneWidget,
+    );
+  });
+
   testWidgets('coming back to the app checks at once', (tester) async {
     final (repo, _) = await _pump(tester);
     await tester.tap(find.byKey(const Key('pro.pay')));
@@ -529,6 +654,15 @@ void main() {
     await tester.pump();
     expect(repo.confirms, [7]);
     expect(find.byKey(const Key('pro.notCompleted')), findsOneWidget);
+  });
+
+  // PS-24: the prototype's 56 px crown square is accent-filled.
+  testWidgets('the header crown sits on an accent tile', (tester) async {
+    await _pump(tester);
+    final tile = tester.widget<FsIconTile>(find.byType(FsIconTile).first);
+    expect(tile.icon, Icons.workspace_premium_outlined);
+    expect(tile.size, 56);
+    expect(tile.selected, isTrue);
   });
 
   testWidgets('the close button leaves', (tester) async {

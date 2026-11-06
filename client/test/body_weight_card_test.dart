@@ -277,7 +277,11 @@ void main() {
         ),
       ),
     );
-    expect(find.textContaining('all entries'), findsOneWidget);
+    // PS-22: a caption starts with a capital, as "Last 7 days" does.
+    expect(
+      find.text('All entries — fewer than two in this period'),
+      findsOneWidget,
+    );
   });
 
   testWidgets('an lb user sees pounds, not the raw kilogram number', (
